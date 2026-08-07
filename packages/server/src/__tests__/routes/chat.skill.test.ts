@@ -4,8 +4,13 @@
 /**
  * Skill enforcement regression test.
  *
- * skill_creator (user_invocable: false) → 403.
+ * A skill the registry says is not user-invocable → 403.
  * Unknown skill → 404.
+ *
+ * The 403 case names a fixture rather than a real skill on purpose. It used
+ * to name the one skill that happened to be gated, so deleting that skill
+ * would have left the test green while guarding nothing. What is under test
+ * is the gate, not any particular skill's metadata.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -34,12 +39,12 @@ import { createApp } from "../../app.js";
 const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 
 describe("POST /chat/skill — skill enforcement", () => {
-  it("rejects skill_creator with 403", async () => {
+  it("rejects a skill that is not user-invocable with 403", async () => {
     const app = createApp();
     const res = await app.request("/api/v1/chat/skill", {
       method: "POST",
       headers: AUTH,
-      body: JSON.stringify({ skill_name: "skill_creator", input: "read .env" }),
+      body: JSON.stringify({ skill_name: "gated_fixture", input: "go" }),
     });
     expect(res.status).toBe(403);
   });

@@ -69,10 +69,9 @@ COPY --from=builder /app/packages/domain/package.json ./packages/domain/
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/
 
-# Runtime config, skills, agents, locales
+# Runtime config, skills, locales
 COPY config/ ./config/
 COPY skills/ ./skills/
-COPY agents/ ./agents/
 COPY locales/ ./locales/
 COPY package.json pnpm-workspace.yaml ./
 

@@ -76,10 +76,10 @@ export class SkillRegistry {
 
   /**
    * Whether the given skill may be invoked by an end user via
-   * `/chat/skill`. Skills with `user_invocable: false` (e.g.
-   * `skill_creator`, which grants file-system tools) must be blocked
-   * from direct user invocation to prevent authenticated file-read /
-   * file-write / RCE attacks. Returns `false` for unknown skills.
+   * `/chat/skill`. Deny-by-default: a skill has to declare itself
+   * user-invocable to pass. Some skills exist only for the model to
+   * reach for mid-turn and are not things a user fires directly.
+   * Returns `false` for unknown skills.
    * @param name - The unique skill name
    * @returns Whether an authenticated user may call this skill
    */

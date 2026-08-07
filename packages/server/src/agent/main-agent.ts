@@ -62,7 +62,7 @@ export class MainAgent {
       content: userMessage,
       ts: new Date().toISOString(),
     });
-    this.ctx.billing = { turnIndex, spawnCount: { value: 0 } };
+    this.ctx.billing = { turnIndex };
 
     // Build system prompt (memory already loaded in route layer)
     const system = buildSystemPrompt({ memoryContext });
@@ -106,7 +106,7 @@ export class MainAgent {
       content: `/skill ${skillName} ${userInput}`,
       ts: new Date().toISOString(),
     });
-    this.ctx.billing = { turnIndex, spawnCount: { value: 0 } };
+    this.ctx.billing = { turnIndex };
 
     // Build system prompt with skill context (memory from request context)
     const instructions = registry.loadSkillContent(skillName);
@@ -244,8 +244,7 @@ export class MainAgent {
     consolidateIfNeeded(userId, conversationId, projectId)
       .catch((err) => logger.warn({ err }, "Memory consolidation failed"));
 
-    // Deduct credits for MainAgent tokens only. SubAgents deduct their own
-    // via RequestStore.billing.spawnCount (see spawnTool). Using
+    // Deduct credits for this turn's model tokens. Using
     // `deductOnce` with the turn-scoped refKey ensures this billing is
     // idempotent: an SSE reconnect or handler re-entry on the same turn
     // won't double-charge.
@@ -283,12 +282,6 @@ export class MainAgent {
       responseLength: fullResponse.length,
       creditsUsed,
     }, "agent_response");
-
-    // Extract plan
-    const plan = MainAgent.extractPlan(fullResponse);
-    if (plan) {
-      yield this.sse(SSEEventType.CHAT_PLAN, plan);
-    }
 
     yield this.sse(SSEEventType.CHAT_DONE, {
       conversationId,
@@ -337,25 +330,4 @@ export class MainAgent {
     return parts;
   }
 
-  /**
-   * Extract a JSON task plan from LLM response text.
-   *
-   * Looks for ```json ... ``` blocks containing a plan object.
-   * @param text - The LLM response text to scan for a fenced JSON plan block.
-   * @returns The parsed `plan` object when the block contains `ready: true` and a `plan` field; otherwise `null`.
-   */
-  static extractPlan(text: string): Record<string, unknown> | null {
-    const match = text.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-    if (!match?.[1]) return null;
-
-    try {
-      const data = JSON.parse(match[1]) as Record<string, unknown>;
-      if (data.ready && "plan" in data) {
-        return data.plan as Record<string, unknown>;
-      }
-    } catch {
-      // Invalid JSON — ignore
-    }
-    return null;
-  }
 }

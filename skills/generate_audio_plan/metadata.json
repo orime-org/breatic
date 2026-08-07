@@ -2,7 +2,7 @@
   "name": "generate_audio_plan",
   "description": "Generate a task plan for music or sound effects creation. Use when the user asks to create music, compose a song, generate sound effects, or produce ambient audio.",
   "tools": [],
-  "output_type": "task_plan",
+  "output_type": "canvas",
   "category": "audio",
   "keywords": [
     "music",

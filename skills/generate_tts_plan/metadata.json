@@ -2,7 +2,7 @@
   "name": "generate_tts_plan",
   "description": "Generate a task plan for text-to-speech or voice cloning. Use when the user asks to generate speech, voiceover, narration, dialogue, or clone a voice.",
   "tools": [],
-  "output_type": "task_plan",
+  "output_type": "canvas",
   "category": "tts",
   "keywords": [
     "tts",

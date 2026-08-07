@@ -2,7 +2,7 @@
 
 breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架构(7 package + 3 服务)、**Frontend**(`packages/web`)、以及全栈**函数定义编码规范**。行为 mandate(头号原则 / DD / TDD / 红线 / 判定题)在仓库根 [`CLAUDE.md`](../CLAUDE.md);本文写"怎么做的细节"(技术栈 / 包依赖 / 数据流 / 命名 / 节点模型 / token / 函数注释格式),mandate 指向这里。
 
-- [Backend](#backend) — 技术栈 / 7 package / 3 服务 / 画布协作 / 三层记忆 / SubAgent / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志
+- [Backend](#backend) — 技术栈 / 7 package / 3 服务 / 画布协作 / 三层记忆 / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志
 - [Frontend](#frontend) — `packages/web` 技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由 / 源码布局
 - [Coding standards (function definition format)](#coding-standards-function-definition-format) — 函数注释 / 显式返回类型 / 异常类型格式 + CI 强制
 
@@ -90,16 +90,6 @@ config/ agents/ skills/ locales/ (git-tracked); uploads/ + sandbox/ (git-ignored
 - **Context 压缩**:最近 `full_detail_turns`(默认 3)个 Turn 保留完整 step(tool_call + tool_result),更早 Turn 只保留 user + assistant 最终回复。`thinking` 字段永远不发回 LLM
 - **消息存储**:`conversations.messages` JSONB 数组,含 `turnIndex`、`thinking?`、`tool_calls?: ToolCallInfo[]`。原始消息不删除,归纳只生成摘要
 
-### SubAgent (spawn tool)
-
-SubAgent 通过 `spawn({ task, agent, skill? })` 调用。每个 Agent 是 `agents/*.md` 中定义的角色(frontmatter: name, description, tools, model, skills + body: system prompt)。Skill 是可选的知识补充(`skills/` 目录)。
-
-**Agent 定义角色(谁来做),Skill 定义知识(怎么做)。** 两者正交、可组合。
-
-内置 4 个 Agent:`researcher`(搜索参考)| `prompt_optimizer`(提示词优化)| `analyst`(多模态分析)| `planner`(项目规划)。
-
-Tools 取并集:Agent 声明的 tools ∪ Skill 声明的 tools,始终排除 spawn(防递归)。SubAgent 通过 `AsyncLocalStorage` 继承请求上下文(三层记忆 + 压缩对话历史 + userId),在内部直接扣费。
-
 ### Worker 5 paths
 
 1. **AIGC Mini-Tool**(source="mini_tool")→ toolName 查表 → provider 直调
@@ -152,13 +142,13 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **metadata.json**:仅 `name` / `description` 必填;其他字段(`scope`/`category`/`tools`/`output_type`/`requires`/...)`skills-loader.ts` 都有 default 兜底(`scope` 默认 `["agent"]`,`category` 默认 `"default"`)。建议显式填 `scope`/`category` 避免读代码才知行为。完整字段表见 `packages/domain/src/agent/skills-loader.ts` 的 schema 定义。禁用 npm 字段(version/author/license/engines/files/main)。
 
-### Agent tools (12)
+### Agent tools (6)
 
-`run_script` | `read_file` | `write_file` | `edit_file` | `list_dir` | `web_search` | `web_fetch` | `ask_user_question` | `spawn`
+`web_search` | `web_fetch` | `ask_user_question`
 
 **交互工具(3)**:`ask_user_choice` | `propose_canvas_action` | `show_search_results` —— LLM 调用它们发送结构化 payload 供前端渲染成 UI 组件,不执行动作;`main-agent` 检测 sentinel 前缀的结果后 yield 对应 SSE 事件。
 
-**无通用 shell 执行器**。`run_script` 只能执行 `skills/{name}/scripts/` 下的脚本,路径防穿越,按扩展名选解释器(.py → python3, .sh → sh, .js → node)。
+**无脚本执行能力**。第一版的 skill 只声明要用哪些工具,不带脚本 —— 「skill 带一个脚本、由 agent 执行它」是一整套要单独设计的东西(在哪跑 / 跑多久 / 能碰什么 / 失败怎么办 / 算不算钱),整块不做。
 
 ### Configuration files
 

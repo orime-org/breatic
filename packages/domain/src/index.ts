@@ -40,10 +40,8 @@ export * as assetRepo from "@domain/asset/asset.repo.js";
 // ── Agent (AIGC execution kernel: model / tools / skill loading / prompt extraction) ──
 export { getModel, resolveProvider } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
-export { buildToolSet, DEFAULT_TOOLS } from "@domain/agent/tools/index.js";
+export { buildToolSet, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
 export { getSkillRegistry, SkillRegistry } from "@domain/agent/skills-loader.js";
-export { loadAgents, getAgent, listAgents } from "@domain/agent/agent-loader.js";
-export type { AgentDefinition } from "@domain/agent/agent-loader.js";
 export { extractPromptText } from "@domain/agent/extract-prompt.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────

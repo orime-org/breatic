@@ -41,7 +41,7 @@ breatic/                           # Turborepo monorepo
 │   │   ├── src/
 │   │   │   ├── routes/            #   Hono HTTP routes
 │   │   │   ├── middleware/        #   Auth, CORS, logging, error handler
-│   │   │   ├── agent/             #   AI core (MainAgent, spawn SubAgents, tools, skills)
+│   │   │   ├── agent/             #   AI core (MainAgent, tools, skills)
 │   │   │   ├── providers/         #   AIGC providers (image/video/audio/tts/3d/understand)
 │   │   │   ├── worker/            #   BullMQ job handlers (5 execution paths)
 │   │   │   ├── modules/           #   Business modules (Repo + Service per domain)
@@ -53,7 +53,6 @@ breatic/                           # Turborepo monorepo
 │   │   └── src/                   #   Yjs sync, auth, persistence, task result listener
 │   └── web/                       # Frontend (placeholder)
 ├── config/                        # YAML configs (agent, collab, worker, pricing, text-tools, models/)
-├── agents/                        # SubAgent role definitions (*.md with frontmatter)
 ├── skills/                        # Built-in skill definitions (knowledge + scripts)
 ├── docker-compose.yml             # Deployment stack — pulls pre-built images from GHCR
 ├── Dockerfile                     # Backend image (API/Worker/Collab/Migrate shared, 357MB). Built by CI, published to ghcr.io/orime-org/breatic
@@ -93,15 +92,13 @@ Memory is automatically consolidated by the LLM when the conversation exceeds `m
 **Agents** define _who_ does the work (role, tools, model). **Skills** define _how_ to do the work (knowledge, instructions, scripts). The two are orthogonal and composable.
 
 ```
-agents/{name}.md      # SubAgent role definition (frontmatter: name, tools, model, skills + system prompt)
 skills/{name}/
 ├── SKILL.md          # Frontmatter (name, description) + LLM instructions
 ├── metadata.json     # Runtime config: tools, category, output_type, scope, requires
-├── scripts/          # Self-contained scripts invoked via run_script tool (path-sandboxed)
 └── references/       # Optional reference docs loaded on demand
 ```
 
-Built-in agents: `researcher` | `prompt_optimizer` | `analyst` | `planner`. SubAgents inherit the request context (memory + compressed conversation history) via AsyncLocalStorage.
+A skill declares which tools it may use; the host assembles the tool set and the model calls them within one turn.
 
 ## Quick Start
 

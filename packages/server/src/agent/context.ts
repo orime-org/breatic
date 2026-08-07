@@ -11,7 +11,6 @@
 
 import type { MemoryContext } from "@breatic/shared";
 import { getSkillRegistry } from "@breatic/domain";
-import { listAgents } from "@breatic/domain";
 
 /**
  * Static template with `{skills_summary}` and `{always_skills}` placeholders.
@@ -42,11 +41,6 @@ Always respond in the same language the user is using.
 - Analyze reference images, audio, or text the user provides
 - Suggest related artists, styles, or techniques for inspiration
 
-### 4. Project Planning
-- Break complex creative projects into concrete generation tasks
-- Plan multi-modal outputs (image + audio + text combinations)
-- Sequence tasks logically (e.g. concept art → final render → soundtrack)
-
 ### 5. Parameter Optimization
 - Recommend the best model and parameters based on creative intent
 - Enhance prompts with specificity: art style, lighting, color palette, mood, composition
@@ -68,55 +62,7 @@ Always respond in the same language the user is using.
 ## Always-active Skill Context
 {always_skills}
 
-## Generating Task Plans
-
-When the user has confirmed a creative direction and is ready to generate, output a task plan:
-
-\`\`\`json
-{
-  "ready": true,
-  "plan": {
-    "description": "Brief description of what will be created",
-    "tasks": [
-      {
-        "task_type": "image",
-        "model": "nano-banana-2",
-        "params": {"prompt": "detailed description...", "aspect_ratio": "16:9", "resolution": "2k"},
-        "label": "Hero image for the project"
-      }
-    ]
-  }
-}
-\`\`\`
-
-Each task requires \`task_type\`, \`model\` (from the skill's model list), and \`params\` (API-native parameter names).
-
-**Important**: Do NOT jump to task plans immediately. First understand the user's creative intent through conversation. Only produce the plan JSON when the user has confirmed what they want.
-
-## Sub-Agent Delegation
-
-You can spawn specialized sub-agents using the \`spawn\` tool. Each sub-agent has its own role, tools, model, and skill context.
-
-**Available Agents:**
-{agent_list}
-
-**When to spawn**:
-- Multiple research/search tasks that can run simultaneously
-- Independent sub-tasks that don't depend on each other
-- Tasks that match a specific agent's expertise
-
-**When NOT to spawn**: If the task is simple (single search, quick analysis), use your own tools directly. Only spawn when parallelism or specialization adds real value.
-
-Example — parallel creative research:
-\`\`\`
-spawn({ task: "Search for cyberpunk cityscape reference images and describe 3 distinct visual styles", agent: "researcher" })
-spawn({ task: "Optimize this prompt for Nano Banana Pro: a neon-lit cyberpunk city", agent: "prompt_optimizer" })
-spawn({ task: "Analyze the color palette and composition in this reference image", agent: "analyst" })
-\`\`\`
-
-You can optionally override an agent's default skill: \`spawn({ task: "...", agent: "researcher", skill: "brainstorm" })\`
-
-All spawn calls in one turn execute in parallel. Synthesize the results into a coherent response.`;
+`;
 
 /** Options accepted by {@link buildSystemPrompt}. */
 export interface BuildSystemPromptOptions {
@@ -140,16 +86,9 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): strin
   const summary = skillsSummary ?? registry.buildSummaryXml();
   const always = alwaysSkillsContent ?? (registry.getAlwaysContent() || "(none)");
 
-  // Build agent list for sub-agent delegation section
-  const agents = listAgents();
-  const agentListText = agents.length > 0
-    ? agents.map((a) => `- \`${a.name}\` — ${a.description}`).join("\n")
-    : "(no agents defined)";
-
   let prompt = SYSTEM_PROMPT_TEMPLATE
     .replace("{skills_summary}", summary)
-    .replace("{always_skills}", always)
-    .replace("{agent_list}", agentListText);
+    .replace("{always_skills}", always);
 
   if (memoryContext) {
     if (memoryContext.userMemory) {

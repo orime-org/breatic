@@ -431,15 +431,12 @@ export const domainMock = () => ({
   getModel: vi.fn(),
   resolveProvider: vi.fn(),
   buildToolSet: vi.fn().mockReturnValue({}),
-  DEFAULT_TOOLS: [],
+  BASELINE_TOOLS: [],
   getSkillRegistry: () => ({
-    get: (name: string) => name === "skill_creator" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,
-    canUserInvoke: (name: string) => name !== "skill_creator",
+    get: (name: string) => name === "gated_fixture" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,
+    canUserInvoke: (name: string) => name !== "gated_fixture",
   }),
   SkillRegistry: class {},
-  loadAgents: vi.fn(),
-  getAgent: vi.fn(),
-  listAgents: vi.fn().mockReturnValue([]),
   extractPromptText: vi.fn((s: string) => s),
   ...mocks.canvasLock,
 });
