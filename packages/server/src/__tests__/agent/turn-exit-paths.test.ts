@@ -50,6 +50,13 @@ vi.mock("@breatic/core", async (importOriginal) => {
     ...base,
     runWithContext: actual.runWithContext,
     getContext: actual.getContext,
+    // The search key, so web_search is not dropped for want of one. That
+    // rule is real and has its own tests; here it would just quietly turn
+    // "six baseline tools" into five.
+    env: new Proxy(base.env as object, {
+      get: (t, p: string) =>
+        p === "BRAVE_SEARCH_API_KEY" ? "test-key" : Reflect.get(t, p),
+    }),
   };
 });
 
@@ -61,7 +68,10 @@ vi.mock("@breatic/domain", async () => {
     ...base,
     finalizeTurn: actual.finalizeTurn,
     streamTextRetry,
-    buildAgentConfig: () => ({ modelId: "m", instructions: "s", tools: {} }),
+    // The real factory, not a stub. What a plain chat turn hands the model
+    // is one of this PR's deliverables, and a stub returning `tools: {}`
+    // would let the caller pass anything at all and still look right.
+    buildAgentConfig: actual.buildAgentConfig,
     creditService: { deductOnce },
     resolveProvider: () => "test",
     getModel: () => "model",
@@ -112,6 +122,35 @@ async function runTurn(): Promise<string[]> {
 
 beforeEach(() => {
   [addMessage, consolidateIfNeeded, deductOnce, usageRead].forEach((m) => m.mockClear());
+});
+
+describe("what a plain chat turn hands the model", () => {
+  // Asserted on the CALLER, not on the factory. The defect being fixed was
+  // that `chat()` passed an empty tool array — a factory test alone stays
+  // green through exactly that, which is why the acceptance item spells out
+  // "run chat() and deep-equal what reaches streamText".
+  it("gives it the six baseline tools, and only those", async () => {
+    streamTextRetry.mockReturnValue(streamOf([{ type: "text-delta", text: "hi" }]));
+    await runTurn();
+    const call = streamTextRetry.mock.calls[0]?.[0] as { tools: Record<string, unknown> };
+    expect(Object.keys(call.tools).sort()).toEqual([
+      "ask_user_choice",
+      "ask_user_question",
+      "propose_canvas_action",
+      "show_search_results",
+      "web_fetch",
+      "web_search",
+    ]);
+  });
+
+  it("marks the turn interactive, which is what keeps those four in", async () => {
+    // The same six could arrive with `interactive` unset if the filter ever
+    // stopped applying; this pins the reason rather than the outcome.
+    streamTextRetry.mockReturnValue(streamOf([{ type: "text-delta", text: "hi" }]));
+    await runTurn();
+    const call = streamTextRetry.mock.calls[0]?.[0] as { tools: Record<string, unknown> };
+    expect(Object.keys(call.tools)).toContain("ask_user_question");
+  });
 });
 
 describe("how a turn ends", () => {

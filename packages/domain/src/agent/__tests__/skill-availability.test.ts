@@ -33,18 +33,59 @@ import {
 
 const keys: Record<string, string> = {};
 
+/**
+ * Two skills that differ only in whether their model can be reached. The
+ * model name is written out rather than referencing MEDIA_MODEL below: this
+ * block is hoisted above it by the mock factory.
+ */
+const SKILLS: Record<string, Record<string, unknown>> = {
+  unreachable: { name: "unreachable", description: "d", tools: [], model: "kling-o3-pro" },
+  reachable: { name: "reachable", description: "d", tools: [], model: "anthropic/claude-sonnet-4-6" },
+};
+
+vi.mock("@domain/agent/skills-loader.js", () => ({
+  getSkillRegistry: () => ({
+    get: (name: string) => SKILLS[name],
+    getInternal: (name: string) => SKILLS[name],
+    loadSkillContent: () => "body",
+  }),
+}));
+
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
   return {
     ...actual,
-    env: new Proxy(actual.env, {
-      get: (t, p: string) => (p in keys ? keys[p] : Reflect.get(t, p)),
+    // `getRawEnvVar`, not the `env` proxy. The proxy resolves against the
+    // validated config, which holds only the schema's keys — and a provider's
+    // key name comes off a yaml file that is free to name one the schema has
+    // never heard of. `KLING_ACCESS_KEY` is exactly that: providers.yaml
+    // declares it, the schema declares KLINGAI_ACCESS_KEY, and reading it
+    // through the proxy yields undefined however the process was started.
+    getRawEnvVar: (name: string) => keys[name],
+    // Both fixtures are permitted, so the only thing left that can refuse
+    // them is the availability check — which is what these tests are about.
+    getSkillRouting: () => ({
+      skills: {
+        unreachable: { surfaces: ["chat"], user_invocable: true, model_invocable: true },
+        reachable: { surfaces: ["chat"], user_invocable: true, model_invocable: true },
+      },
     }),
   };
 });
 
-/** A media model that really is in the catalog, with its real provider. */
+/**
+ * A media model that really is in the catalog, and the env vars its two
+ * providers declare in config/models/video/providers.yaml.
+ *
+ * Named rather than read back from the check's own output: an earlier
+ * version of these tests asserted only that SOMETHING was missing, which the
+ * text fallback path satisfies just as well — deleting the entire media
+ * branch left all eight green. Naming a key the text path can never produce
+ * is what makes these two tests about media at all.
+ */
 const MEDIA_MODEL = "kling-o3-pro";
+const KLINGAI_KEY = "KLING_ACCESS_KEY";
+const WAVESPEED_KEY = "WAVESPEED_API_KEY";
 
 beforeAll(() => {
   initCore(process.env);
@@ -84,19 +125,30 @@ describe("whether a skill's model can actually run", () => {
     expect(result.missing).toContain("GOOGLE_API_KEY");
   });
 
-  it("says no for a media model when none of its providers has a key", () => {
+  it("says no for a media model, naming every provider key that would fix it", () => {
+    keys.OPENROUTER_API_KEY = "sk-or";
     const result = checkSkillModelRunnable(MEDIA_MODEL);
     expect(result.ok).toBe(false);
-    // The names come off providers.yaml, so this asserts something was
-    // found rather than a hardcoded guess at which key it is.
-    expect(result.missing.length).toBeGreaterThan(0);
+    // Both of the model's providers, read off providers.yaml. Note
+    // KLING_ACCESS_KEY: it is not in the env schema, which is exactly why
+    // the names have to come from that file rather than a list in code.
+    expect([...result.missing].sort()).toEqual([KLINGAI_KEY, WAVESPEED_KEY].sort());
+    // And an OpenRouter key does not save a media model, however text-like
+    // the model name looks.
+    expect(result.missing).not.toContain("OPENROUTER_API_KEY");
   });
 
-  it("says yes for a media model as soon as one provider has a key", () => {
-    const { missing } = checkSkillModelRunnable(MEDIA_MODEL);
-    const firstKey = missing[0] ?? "";
-    keys[firstKey] = "configured";
+  it("says yes for a media model as soon as one of its providers has a key", () => {
+    // The lower-priority one, so this cannot pass by only ever consulting
+    // the first entry.
+    keys[WAVESPEED_KEY] = "configured";
     expect(checkSkillModelRunnable(MEDIA_MODEL).ok).toBe(true);
+  });
+
+  it("still says no for a media model when an unrelated key is set", () => {
+    keys.ANTHROPIC_API_KEY = "sk-ant";
+    keys.OPENROUTER_API_KEY = "sk-or";
+    expect(checkSkillModelRunnable(MEDIA_MODEL).ok).toBe(false);
   });
 
   it("throws a typed error rather than letting the library fail", () => {
@@ -122,5 +174,36 @@ describe("whether a skill's model can actually run", () => {
     expect(() =>
       assertSkillModelRunnable("fine", "anthropic/claude-sonnet-4-6"),
     ).not.toThrow();
+  });
+});
+
+// Everything above tests the judgement. These test that anything actually
+// asks it — a check nothing calls is a check that does not exist, and both
+// call sites are one deleted line away from that.
+describe("who asks it", () => {
+  it("the factory refuses to assemble a run on an unreachable model", async () => {
+    const { buildAgentConfig } = await import("@domain/agent/agent-config.js");
+    expect(() => buildAgentConfig({ skillName: "unreachable" })).toThrow(
+      /cannot reach/,
+    );
+  });
+
+  it("the factory assembles one whose model is reachable", async () => {
+    keys.ANTHROPIC_API_KEY = "sk-ant";
+    const { buildAgentConfig } = await import("@domain/agent/agent-config.js");
+    expect(buildAgentConfig({ skillName: "reachable" }).modelId).toBe(
+      "anthropic/claude-sonnet-4-6",
+    );
+  });
+
+  it("the gate refuses before a request gets any further", async () => {
+    const { assertSkillUsable } = await import("@domain/agent/skill-gate.js");
+    expect(() => assertSkillUsable("unreachable", "chat")).toThrow(/cannot reach/);
+  });
+
+  it("the gate lets through a skill whose model is reachable", async () => {
+    keys.ANTHROPIC_API_KEY = "sk-ant";
+    const { assertSkillUsable } = await import("@domain/agent/skill-gate.js");
+    expect(() => assertSkillUsable("reachable", "chat")).not.toThrow();
   });
 });

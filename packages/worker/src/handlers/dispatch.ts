@@ -1708,12 +1708,15 @@ async function runAigcDirect(
  * Model, instructions and tools all come from `buildAgentConfig`, the same
  * factory the chat path uses. This function used to resolve all three itself
  * and disagreed with chat on every one of them.
+ * Exported for its tests, like the other internals of this file: the branch
+ * that reaches it needs a whole job, a database and a queue, and none of that
+ * is what these assertions are about.
  * @param skillName - The skill to run; the caller has already checked it is set
  * @param params - Task params serialised into the user message for the agent
  * @returns A `[text, resolvedSkills]` tuple: the agent's final text and the skill it ran
  * @throws {Error} when the registry has no such skill
  */
-async function runSkillAgent(
+export async function runSkillAgent(
   skillName: string,
   params: Record<string, unknown>,
 ): Promise<[string, string[]]> {

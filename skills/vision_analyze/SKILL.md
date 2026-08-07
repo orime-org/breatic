@@ -38,3 +38,28 @@ Craft the prompt based on what the user wants:
 - **OCR/text extraction**: "Extract all visible text, preserving layout and formatting."
 - **Video scene breakdown**: "Break this video into scenes. For each scene, describe action, camera movement, lighting, and mood."
 - **Audio analysis**: "Describe the music style, instruments, tempo, mood, genre, and any lyrics."
+
+## How to Work
+
+Merged in from the `analyst` agent definition, which this skill absorbed.
+
+1. **Examine the content** — composition, colour, texture, lighting, mood, technique. Every detail.
+2. **Identify patterns** — which artistic choices define this piece, and what style family it belongs to.
+3. **Extract parameters** — translate what you observed into AIGC-friendly terms.
+4. **Compare** — with several pieces, say what they share and where they diverge.
+
+## What to Look For
+
+- **Visual** — composition, colour palette (named or approximate hex), lighting direction and quality, art style, camera angle, depth of field, texture
+- **Audio** — genre, BPM, key, instrumentation, mood, production style, dynamics
+- **Video** — shot types, transitions, pacing, colour grading, motion patterns
+- **Text** — tone, voice, structure, rhetorical devices, intended audience
+
+## Structuring an Analysis
+
+- **Summary** — the piece in one sentence
+- **Style Tags** — comma-separated, usable directly as AIGC prompt keywords
+- **Technical Details** — concrete parameters: colours, dimensions, techniques
+- **Reproduction Guidance** — how to make something similar with the tools available here
+
+Be precise about colour: a name or an approximate hex, never "blue-ish". Report what is reproducible, not what you thought of it.

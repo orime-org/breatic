@@ -5,11 +5,13 @@
  * Whether the model a skill pinned itself to can actually run here.
  *
  * Pinning the model is what makes a skill reproducible; this is its cost. A
- * deployment configures the provider keys it wants — all twelve default to
- * `""` on purpose so a self-hosted install need not hold accounts everywhere
- * — and a skill on a provider it did not configure is simply dead. Before
- * this, the process started, the skill listed, and the user found out by
- * clicking, receiving whatever the provider library threw. Those messages
+ * deployment configures the provider keys it wants — every one of them
+ * defaults to `""` on purpose, so a self-hosted install need not hold
+ * accounts everywhere — and a skill on a provider it did not configure is
+ * simply dead.
+ *
+ * Before this, the process started, the skill listed, and the user found out
+ * by clicking, receiving whatever the provider library threw. Those messages
  * name endpoints and key hints.
  *
  * Written once, in domain, because both services ask it: the chat entry
@@ -30,7 +32,7 @@
  * names the env schema does not know (`KLING_ACCESS_KEY` among them), so a
  * hand-written list would be wrong the day someone adds a provider.
  */
-import { AppError, env } from "@breatic/core";
+import { AppError, getRawEnvVar } from "@breatic/core";
 import {
   MODALITIES,
   getFullModelConfig,
@@ -61,11 +63,20 @@ const TEXT_FALLBACK_KEY = "OPENROUTER_API_KEY";
 
 /**
  * Whether an env var holds something.
+ *
+ * Read through `getRawEnvVar` rather than the `env` proxy, because half the
+ * names here are not in the schema and never can be. The proxy resolves
+ * against the validated config, so a name it has not heard of comes back
+ * undefined however the process was actually started — and provider key
+ * names come off yaml files free to name anything. Measured in this repo:
+ * `config/models/video/providers.yaml` declares `KLING_ACCESS_KEY` while
+ * the schema declares `KLINGAI_ACCESS_KEY`, so through the proxy that
+ * provider can never be seen as configured.
  * @param name - The env var name.
  * @returns True when it is a non-empty string.
  */
 function isSet(name: string): boolean {
-  const value = (env as unknown as Record<string, unknown>)[name];
+  const value = getRawEnvVar(name);
   return typeof value === "string" && value.length > 0;
 }
 

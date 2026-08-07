@@ -24,15 +24,14 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return {
     ...actual,
     env: new Proxy(actual.env, {
-      // Both keys are set because neither is what this file is about: the
-      // search key keeps a tool from being dropped, and the OpenRouter key
-      // keeps the availability check from refusing a made-up model name.
-      // Which model gets chosen is the subject here.
+      // Keeps web_search from being dropped for want of a key, which is a
+      // separate rule with its own tests.
       get: (t, p: string) =>
-        p === "BRAVE_SEARCH_API_KEY" || p === "OPENROUTER_API_KEY"
-          ? "test-key"
-          : Reflect.get(t, p),
+        p === "BRAVE_SEARCH_API_KEY" ? "test-key" : Reflect.get(t, p),
     }),
+    // Every key configured, so the availability check refuses nothing. Which
+    // model gets chosen is the subject here; whether it can run is not.
+    getRawEnvVar: () => "test-key",
   };
 });
 
