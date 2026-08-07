@@ -25,11 +25,17 @@
  * a test is always inserted after 0049 has already run. Reading the file is the
  * only way to exercise the statement at all.
  *
- * Everything happens inside a transaction that is rolled back. That is not
- * tidiness: nine integration suites insert `private` projects on purpose, one of
- * them (`project-visibility-materialize`) exists to test the filter that hides
- * them. A committed sweep here would quietly lift their fixtures out from under
- * them.
+ * WHY IT RUNS AGAINST A COPY OF THE TABLE rather than the real one. The suites
+ * share one database and vitest runs them in parallel forks; nine of them
+ * insert `private` projects on purpose and one exists to test the filter that
+ * hides them. A sweep of the real table would both read their rows (the first
+ * version of this file asserted on a row count and saw 51 instead of 1) and
+ * lock rows they were mid-way through using. Verifying what a statement MEANS
+ * does not require running it on production tables — so the transaction builds
+ * a same-shaped table in a throwaway schema, points the search path at it, and
+ * rolls the whole thing back. The copy is taken with `LIKE ... INCLUDING ALL`,
+ * so column types, defaults and check constraints come along; foreign keys do
+ * not, which is why the rows below reference nothing.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -66,6 +72,9 @@ const MIGRATION = resolve(
 /** Drizzle's statement separator, stripped before the SQL is executed. */
 const BREAKPOINT = /-->\s*statement-breakpoint/g;
 
+/** Where the throwaway copy of `projects` lives for the length of one test. */
+const PROBE_SCHEMA = "mig0049_probe";
+
 let sql: ReturnType<typeof postgres>;
 
 beforeAll(() => {
@@ -89,13 +98,14 @@ interface Observed {
   readonly seededPrivate: string;
   /** Visibility of the row seeded as `studio`. */
   readonly seededStudio: string;
-  /** How many rows the statement touched, across the whole table. */
+  /** How many rows the statement touched in the copied table. */
   readonly touched: number;
 }
 
 /**
- * Seed one private and one studio-visible project, run the migration's SQL,
- * and report what the two rows say afterwards — then roll everything back.
+ * Seed one private and one studio-visible project into a throwaway copy of the
+ * table, run the migration's SQL against it, and report what the rows say
+ * afterwards — then roll the whole thing back, schema included.
  * @returns What the two seeded rows said, and how many rows were touched.
  * @throws {Error} if the migration file cannot be read or its SQL fails.
  */
@@ -107,22 +117,23 @@ async function runMigrationOnSeededRows(): Promise<Observed> {
   let observed: Observed | undefined;
   await sql
     .begin(async (tx) => {
-      const [user] = await tx<{ id: string }[]>`
-        INSERT INTO users (email, email_verified)
-        VALUES ('vis-backfill@example.com', true) RETURNING id
-      `;
-      const [studio] = await tx<{ id: string }[]>`
-        INSERT INTO studios (created_by_user_id, slug, type, name)
-        VALUES (${user!.id}, 'vis-backfill-studio', 'team', 'Backfill') RETURNING id
-      `;
+      await tx.unsafe(`CREATE SCHEMA ${PROBE_SCHEMA}`);
+      await tx.unsafe(
+        `CREATE TABLE ${PROBE_SCHEMA}.projects (LIKE public.projects INCLUDING ALL)`,
+      );
+      // The migration names `"projects"` unqualified, so the search path is
+      // what decides which table it hits. LOCAL keeps it inside this
+      // transaction.
+      await tx.unsafe(`SET LOCAL search_path TO ${PROBE_SCHEMA}, public`);
+
       const [hidden] = await tx<{ id: string }[]>`
         INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-        VALUES (${studio!.id}, ${user!.id}, 'Hidden', 'vis-hidden', 'private')
+        VALUES (gen_random_uuid(), gen_random_uuid(), 'Hidden', 'vis-hidden', 'private')
         RETURNING id
       `;
       const [open] = await tx<{ id: string }[]>`
         INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-        VALUES (${studio!.id}, ${user!.id}, 'Open', 'vis-open', 'studio')
+        VALUES (gen_random_uuid(), gen_random_uuid(), 'Open', 'vis-open', 'studio')
         RETURNING id
       `;
 
@@ -158,11 +169,10 @@ describe("migration 0049 — every project becomes studio-visible", () => {
   });
 
   it("touches only the rows that were not already studio-visible", async () => {
-    // The container is migrated before any test runs, so the only non-studio
-    // row in the table is the one seeded above. A statement without the WHERE
-    // clause would rewrite every project in the table and show up here as a
-    // count above one — that is the point of asserting on it rather than just
-    // on the two rows, which would pass either way.
+    // The copied table holds exactly the two rows seeded above, so this count
+    // is exact. A statement without the WHERE clause rewrites both and shows up
+    // here as 2 — which is the whole reason this case exists, since the
+    // assertions above pass either way.
     const observed = await runMigrationOnSeededRows();
     expect(observed.touched).toBe(1);
   });
