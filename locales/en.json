@@ -884,10 +884,7 @@
         "slugReserved": "That Slug is already in use.",
         "slugChecking": "Checking availability…",
         "slugAvailable": "Slug is available",
-        "createStudioError": "Couldn't create the studio",
-        "visibilityLabel": "Visibility",
-        "visibilityStudioOption": "Studio — all members",
-        "visibilityPrivateOption": "Private — invite only"
+        "createStudioError": "Couldn't create the studio"
       },
       "toolbar": {
         "sortLabel": "Sort",

@@ -4,7 +4,8 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { authApi, deriveDisplayName } from '@web/data/api/auth';
+import { authApi } from '@web/data/api/auth';
+import { toCurrentUser } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
 import { useCurrentUserStore } from '@web/stores';
 import { Button } from '@web/components/ui/button';
@@ -78,15 +79,7 @@ export default function RegisterPage(): React.JSX.Element {
       // Step one creates the account with no personal studio yet — the
       // store mirrors that null so the onboarding gate is consistent
       // even before the recovery dialog is dismissed.
-      setUser({
-        id: user.id,
-        email: user.email,
-        name: deriveDisplayName({
-          personalStudioName: user.personalStudio?.name ?? null,
-          email: user.email,
-        }),
-        personalStudio: user.personalStudio,
-      });
+      setUser(toCurrentUser(user));
       navigate('/recovery-code', {
         state: { code, next: '/choose-slug' },
         replace: true,

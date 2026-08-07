@@ -24,8 +24,8 @@ import type * as Y from 'yjs';
 
 import { t } from '@breatic/shared';
 
-import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
+import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
 /** The body fragment, plus the optional collaborative layers. */
@@ -47,8 +47,8 @@ export interface DocumentExtensionOptions {
    * throws on a null provider, so it mounts only once this is present.
    */
   caretProvider?: { awareness: unknown } | null;
-  /** This user's caret identity, published to other clients. */
-  caretUser?: CaretUserIdentity | null;
+  /** Resolves collaborators' display names from the project roster (#1882). */
+  resolveCollaboratorName?: ResolveCollaboratorName;
   /**
    * The editor's undo manager. Held by the caller rather than left to the
    * binding so it can be read without a plugin-key lookup; its lifetime is the
@@ -69,7 +69,8 @@ export interface DocumentExtensionOptions {
 export function buildDocumentExtensions(
   options: DocumentExtensionOptions,
 ): Extensions {
-  const { fragment, caretProvider, caretUser, undoManager } = options;
+  const { fragment, caretProvider, undoManager, resolveCollaboratorName } =
+    options;
 
   const extensions: Extensions = [
     StarterKit.configure({
@@ -114,8 +115,8 @@ export function buildDocumentExtensions(
     ...buildCollabExtensions({
       fragment,
       caretProvider,
-      caretUser,
       undoManager,
+      resolveCollaboratorName,
     }),
   );
 

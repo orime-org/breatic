@@ -1,40 +1,30 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { apiGet, apiPost } from '@web/data/api/request';
+import type { PersonalStudioRef } from '@breatic/shared';
 
-/**
- * The user's personal studio identity, as returned on every
- * `/auth/*` response. `users` is a pure authentication table with no
- * identity columns — a user's display name + web handle live on their
- * personal studio (`/studio/{slug}` is their home page).
- *
- * `null` means the account exists but has NOT yet completed the
- * onboarding step that picks a slug and creates the personal studio
- * (the second step of the two-step registration flow). The frontend
- * uses this null as the onboarding gate signal in `ProtectedRoute`.
- */
-export interface PersonalStudio {
-  /** Display name (free-form, initially equal to the slug). */
-  name: string;
-  /** Globally-unique web handle — `/studio/{slug}` is the user's home. */
-  slug: string;
-}
+import { apiGet, apiPost } from '@web/data/api/request';
 
 /**
  * Server `/auth/*` response user shape — mirrors shared
  * `UserEntity` (packages/shared/src/types/entities.ts). `users` no
  * longer carries any identity field (the `username` column was
- * removed); the display name + web handle live on the user's
+ * removed); the display name, web handle and avatar live on the user's
  * `personalStudio`, which is `null` until onboarding picks a slug.
  * Always go through `deriveDisplayName` below when projecting into UI
  * state so a null personal studio gets a graceful email-local-part
  * fallback.
+ *
+ * The studio ref itself is `PersonalStudioRef` from `@breatic/shared`,
+ * the same type the server builds its responses from. This file used to
+ * declare a second copy of that shape; two declarations of one wire
+ * contract drift the moment a field is added to only one of them, which
+ * is exactly what #1882 had to add (`avatarUrl`).
  */
 export interface AuthUser {
   id: string;
   email: string;
-  personalStudio: PersonalStudio | null;
+  personalStudio: PersonalStudioRef | null;
   credits: number;
 }
 
@@ -85,7 +75,7 @@ interface LoginResponse {
  * without a follow-up `/auth/me` round-trip.
  */
 interface SetupStudioResponse {
-  personalStudio: PersonalStudio;
+  personalStudio: PersonalStudioRef;
 }
 
 interface ResetWithRecoveryCodeResponse {

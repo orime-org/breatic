@@ -23,9 +23,10 @@
  * loser of the race re-reads the winner's bytes.
  *
  * Fidelity (accepted degradation, per design): collab has no user repo,
- * so the seeded Space is attributed to a `system` placeholder; the
- * awareness hook backfills the real creator's name/avatar into
- * `meta.users` when they first connect. The Space is named by its type
+ * so the seeded Space is attributed to a `system` placeholder. Nothing
+ * backfills a name for it and nothing needs to — since #1882 the meta doc
+ * carries no identity at all, and anyone rendering an actor resolves the
+ * name from the project roster. The Space is named by its type
  * (`defaultSpaceName` — "Canvas" / "Document" / "Timeline"); the user
  * renames it afterwards.
  */
@@ -81,8 +82,6 @@ export async function lazySeedMeta(
     kind,
     name: defaultSpaceName(kind),
     createdBy: SYSTEM_ACTOR,
-    creatorName: SYSTEM_ACTOR,
-    creatorAvatarUrl: null,
     ts: Date.now(),
   });
 

@@ -13,9 +13,11 @@
  * the only way to assert it is to send real frames at a real server and look
  * at the document afterwards.
  *
- * Every "the write did not land" case is paired with the same frame sent to a
- * Space CONTENT doc by the same editor, which does land. Without that pair the
- * assertions would also pass if the harness simply could not write anything.
+ * Every "the write did not land" case is paired with a frame of the same shape
+ * sent to a Space CONTENT doc by the same editor, which does land. Without that
+ * pair the assertions would also pass if the harness simply could not write
+ * anything. Where the PAYLOAD is the thing that could be silently empty, the
+ * pair sends that very payload rather than a stand-in.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -143,6 +145,47 @@ function ownTabsUpdate(userId: string): Uint8Array {
 }
 
 /**
+ * The largest uint32, handed to the forged presence doc as its client id.
+ *
+ * Yjs settles two concurrent writes to the SAME map key by client id, and the
+ * larger one wins — measured on 13.6.30, symmetric across four orderings. A
+ * forged record carrying a random id would therefore sometimes lose that race
+ * on its own merits, which would make "the seeded record survived" a much
+ * weaker statement than it looks. Client ids come from lib0's
+ * `random.uint32()` (`getRandomValues(new Uint32Array(1))[0]`), whose range
+ * tops out here, so no drawn id outranks this one.
+ *
+ * It is a sharpener, not the guard: the case that uses it also asserts the
+ * refusal directly, so lowering this number weakens the assertion without
+ * silencing it.
+ */
+const ALWAYS_WINS = 4294967295;
+
+/**
+ * A Yjs update that writes one presence record into `users` — the root the
+ * collaborator roster lives in (#1886), the one whose whole guarantee is that
+ * only the server writes it.
+ * @param userId - Whose record to write.
+ * @param online - The presence flag to claim.
+ * @param lastSeenAt - The timestamp to claim.
+ * @returns Update bytes.
+ */
+function presenceUpdate(
+  userId: string,
+  online: boolean,
+  lastSeenAt: number,
+): Uint8Array {
+  const doc = new Y.Doc();
+  doc.clientID = ALWAYS_WINS;
+  const entry = new Y.Map<unknown>();
+  entry.set("id", userId);
+  entry.set("online", online);
+  entry.set("lastSeenAt", lastSeenAt);
+  doc.getMap("users").set(userId, entry);
+  return Y.encodeStateAsUpdate(doc);
+}
+
+/**
  * A Yjs update that writes into the content doc's own map, so the control
  * case writes something a content doc really holds.
  * @returns Update bytes.
@@ -205,6 +248,28 @@ async function connect(docName: string): Promise<LiveClient> {
   const client = await connectLiveClient(server, docName, { cookie: COOKIE });
   clients.push(client);
   return client;
+}
+
+/**
+ * Write into the meta doc through a direct connection — not a client, so no
+ * read-only flag applies.
+ *
+ * Every "the server had already written X" precondition has to come from here,
+ * because the client under test cannot put anything there itself. That is the
+ * point of the file.
+ *
+ * This is one of the two ways collab's own writers reach this document, not
+ * the only one: the Space RPCs open a direct connection like this, while
+ * presence writes straight to the loaded document it was handed
+ * (`presence-wiring.ts`). Both are server-side and neither is gated.
+ * @param mutate - Applied to the live document inside a transaction.
+ */
+async function seedMetaDoc(mutate: (live: Y.Doc) => void): Promise<void> {
+  const seed = await server.openDirectConnection(META_DOC, {
+    context: { user: { id: "system" } },
+  });
+  await seed.transact(mutate);
+  await seed.disconnect();
 }
 
 /**
@@ -350,6 +415,81 @@ describe("meta doc — a client write never lands", () => {
     expect(status.at(-1)?.syncStatusOk).toBe(false);
   });
 
+  it("refuses a presence record forged for somebody else", async () => {
+    const client = await connect(META_DOC);
+    const framesBefore = client.frames().length;
+
+    client.send(
+      syncFrame(
+        META_DOC,
+        WIRE.sync,
+        SYNC.update,
+        presenceUpdate("user-2", true, 1),
+      ),
+    );
+    await waitFor(
+      () => client.frames().length > framesBefore,
+      "an answer to the forged presence write",
+    );
+
+    const doc = server.documents.get(META_DOC);
+    if (!doc) throw new Error("meta doc not loaded");
+    // Names the forged id rather than asserting the root is empty. Emptiness
+    // holds here only because this server omits the presence wiring: in
+    // production `connected` runs `recordPresenceOnConnect`, which puts the
+    // CONNECTING user in this very map. An empty-root assertion would
+    // therefore be true for a reason that has nothing to do with the gate,
+    // and could not tell a refused forgery apart from nobody writing here.
+    expect(doc.getMap("users").has("user-2")).toBe(false);
+    const status = client.frames().filter((f) => f.type === WIRE.syncStatus);
+    expect(status.at(-1)?.syncStatusOk).toBe(false);
+  });
+
+  it("cannot turn somebody else's presence off — a record already there stands", async () => {
+    // The only case in this file that asserts an EXISTING value survived
+    // rather than a forged key being absent. A gate that refused new keys but
+    // let a client overwrite what is already there would pass every other
+    // case here, and it would be the whole of #1886 undone: marking a present
+    // collaborator offline drops them off everybody's roster.
+    const client = await connect(META_DOC);
+    await seedMetaDoc((live: Y.Doc) => {
+      const entry = new Y.Map<unknown>();
+      entry.set("id", "user-2");
+      entry.set("online", true);
+      entry.set("lastSeenAt", 1000);
+      live.getMap("users").set("user-2", entry);
+    });
+    const framesBefore = client.frames().length;
+
+    client.send(
+      syncFrame(
+        META_DOC,
+        WIRE.sync,
+        SYNC.update,
+        presenceUpdate("user-2", false, 1),
+      ),
+    );
+    await waitFor(
+      () => client.frames().length > framesBefore,
+      "an answer to the presence-off write",
+    );
+
+    const doc = server.documents.get(META_DOC);
+    if (!doc) throw new Error("meta doc not loaded");
+    const entry = doc.getMap("users").get("user-2") as Y.Map<unknown>;
+    expect(entry.get("online")).toBe(true);
+    expect(entry.get("lastSeenAt")).toBe(1000);
+    // The refusal itself, asserted the way its five siblings do. Without it
+    // this case would be the one place in the file whose whole detecting
+    // power sits in `ALWAYS_WINS`: the surviving value proves a refusal only
+    // as long as the forged update WOULD have won had it been applied.
+    // Measured — with the constant lowered to 1 and the gate deleted, this
+    // was the only REFUSAL case still green. The four controls stayed green
+    // too, but they are meant to.
+    const status = client.frames().filter((f) => f.type === WIRE.syncStatus);
+    expect(status.at(-1)?.syncStatusOk).toBe(false);
+  });
+
   it("applies the very same frame shape to a Space content doc", async () => {
     const client = await connect(CANVAS_DOC);
     const framesBefore = client.frames().length;
@@ -368,6 +508,38 @@ describe("meta doc — a client write never lands", () => {
     const status = client.frames().filter((f) => f.type === WIRE.syncStatus);
     expect(status.at(-1)?.syncStatusOk).toBe(true);
   });
+
+  it("applies the presence payload itself to a Space content doc", async () => {
+    // The pair the file's own rule demands, for the presence payload rather
+    // than a different one. Without it, a `presenceUpdate` that wrote nothing
+    // — wrong root, unattached map, empty encoding — would leave both refusal
+    // cases green while proving nothing at all. Measured: emptying that
+    // function with the gate intact passed all twelve cases; this one is what
+    // goes red.
+    const client = await connect(CANVAS_DOC);
+    const framesBefore = client.frames().length;
+
+    client.send(
+      syncFrame(
+        CANVAS_DOC,
+        WIRE.sync,
+        SYNC.update,
+        presenceUpdate("user-2", false, 1),
+      ),
+    );
+    await waitFor(
+      () => client.frames().length > framesBefore,
+      "an answer to the presence-payload write",
+    );
+
+    const doc = server.documents.get(CANVAS_DOC);
+    if (!doc) throw new Error("content doc not loaded");
+    const entry = doc.getMap("users").get("user-2") as Y.Map<unknown>;
+    expect(entry.get("online")).toBe(false);
+    expect(entry.get("lastSeenAt")).toBe(1);
+    const status = client.frames().filter((f) => f.type === WIRE.syncStatus);
+    expect(status.at(-1)?.syncStatusOk).toBe(true);
+  });
 });
 
 describe("meta doc — read-only does not close our own paths", () => {
@@ -375,18 +547,12 @@ describe("meta doc — read-only does not close our own paths", () => {
     const client = await connect(META_DOC);
     const doc = server.documents.get(META_DOC);
     if (!doc) throw new Error("meta doc not loaded");
-    // Seed through a direct connection, the way collab's own writers reach
-    // this document — the client cannot put it there.
-    const seed = await server.openDirectConnection(META_DOC, {
-      context: { user: { id: "system" } },
-    });
-    await seed.transact((live: Y.Doc) => {
+    await seedMetaDoc((live: Y.Doc) => {
       const entry = new Y.Map<unknown>();
       entry.set("id", SID);
       entry.set("name", "Before");
       live.getMap("spaces").set(SID, entry);
     });
-    await seed.disconnect();
 
     client.send(
       statelessFrame(

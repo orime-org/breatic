@@ -53,7 +53,7 @@ describe('NewItemDialog (spec §3.12)', () => {
     expect(screen.getByText(/Lowercase letters/)).toBeInTheDocument();
   });
 
-  it('reports valid values (defaulting visibility to studio) and closes on submit', async () => {
+  it('reports valid values and closes on submit', async () => {
     const onCreate = vi.fn();
     const onOpenChange = vi.fn();
     const user = userEvent.setup();
@@ -68,30 +68,28 @@ describe('NewItemDialog (spec §3.12)', () => {
     await user.type(screen.getByLabelText('Name'), 'Moodboard');
     await user.type(screen.getByLabelText('Slug'), 'mood-board');
     await user.click(screen.getByRole('button', { name: 'Create' }));
+    // An exact match, so a visibility field creeping back in fails here.
     expect(onCreate).toHaveBeenCalledWith({
       name: 'Moodboard',
       slug: 'mood-board',
       description: '',
-      visibility: 'studio',
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it('reports visibility=private when the Private option is chosen', async () => {
+  it('reports a project without any visibility field', async () => {
     const onCreate = vi.fn();
     const user = userEvent.setup();
     render(
       <NewItemDialog kind='project' open onOpenChange={() => {}} onCreate={onCreate} />,
     );
-    await user.type(screen.getByLabelText('Name'), 'Secret');
-    await user.type(screen.getByLabelText('Slug'), 'secret-proj');
-    await user.click(screen.getByLabelText(/invite only/));
+    await user.type(screen.getByLabelText('Name'), 'Fresh');
+    await user.type(screen.getByLabelText('Slug'), 'fresh-proj');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).toHaveBeenCalledWith({
-      name: 'Secret',
-      slug: 'secret-proj',
+      name: 'Fresh',
+      slug: 'fresh-proj',
       description: '',
-      visibility: 'private',
       spaceType: 'canvas',
     });
   });
@@ -107,21 +105,18 @@ describe('NewItemDialog (spec §3.12)', () => {
     expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
   });
 
-  it('renders visibility as a neutral one-row RadioGroup (no native blue radio)', () => {
+  it('offers no visibility choice — every project is visible to the studio', () => {
     render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
-    // The two options live in a Radix RadioGroup (role=radiogroup), laid out on
-    // one row (flex-row). Replaces the native <input type=radio> whose browser
-    // accent rendered blue against the all-neutral design system.
-    const group = screen.getByTestId('new-project-visibility');
-    expect(group).toHaveAttribute('role', 'radiogroup');
-    expect(group.className).toContain('flex-row');
-    // Both visible options are neutral Radix radios (role=radio carrying the
-    // border-border hairline), not the bare browser-blue <input type=radio>.
-    // (Radix also renders aria-hidden native inputs for form submission; those
-    // are visually hidden and never show the browser accent.)
-    const radios = group.querySelectorAll('[role="radio"]');
-    expect(radios).toHaveLength(2);
-    expect(radios[0].className).toContain('border-border');
+    // Neither the group nor either option. The concept left the product on
+    // 2026-08-07; a picker reappearing here would put a choice back in front
+    // of users that the product no longer makes. (The server still honours an
+    // explicit value — that is the accepted gap of stopping at the UI layer,
+    // not a reason for the dialog to offer one.)
+    expect(
+      screen.queryByTestId('new-project-visibility'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/invite only/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/all members/)).not.toBeInTheDocument();
   });
 });
 

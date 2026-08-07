@@ -191,7 +191,7 @@ describe('useStudioSettings — changing the slug', () => {
       id: 'u1',
       name: 'Alice',
       email: 'a@example.com',
-      personalStudio: { name: 'Alice', slug: 'alice' },
+      personalStudio: { name: 'Alice', slug: 'alice', avatarUrl: null },
     });
     vi.mocked(studiosApi.update).mockResolvedValue(
       updated(PERSONAL, { slug: 'alice-new', name: 'Alice' }),
@@ -214,7 +214,7 @@ describe('useStudioSettings — changing the slug', () => {
       id: 'u1',
       name: 'Alice',
       email: 'a@example.com',
-      personalStudio: { name: 'Alice', slug: 'alice' },
+      personalStudio: { name: 'Alice', slug: 'alice', avatarUrl: null },
     });
     vi.mocked(studiosApi.update).mockResolvedValue(
       updated(TEAM, { slug: 'acme-co' }),
@@ -234,7 +234,7 @@ describe('useStudioSettings — changing the slug', () => {
       id: 'u1',
       name: 'Alice',
       email: 'a@example.com',
-      personalStudio: { name: 'Alice', slug: 'alice' },
+      personalStudio: { name: 'Alice', slug: 'alice', avatarUrl: null },
     });
     vi.mocked(studiosApi.uploadAvatar).mockResolvedValue(
       updated(PERSONAL, { avatarUrl: 'https://cdn/a.webp' }),
@@ -323,7 +323,7 @@ describe('useStudioSettings — leaving', () => {
       id: 'u1',
       name: 'Alice',
       email: 'a@example.com',
-      personalStudio: { name: 'Alice', slug: 'alice' },
+      personalStudio: { name: 'Alice', slug: 'alice', avatarUrl: null },
     });
     vi.mocked(studiosApi.leave).mockResolvedValue({ ok: true });
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });

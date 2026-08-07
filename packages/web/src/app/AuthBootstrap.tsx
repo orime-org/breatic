@@ -3,8 +3,9 @@
 
 import React from 'react';
 
-import { authApi, deriveDisplayName } from '@web/data/api/auth';
+import { authApi } from '@web/data/api/auth';
 import { useCurrentUserStore } from '@web/stores';
+import { toCurrentUser } from '@web/stores/current-user';
 
 interface AuthBootstrapProps {
   children: React.ReactNode;
@@ -43,15 +44,7 @@ export default function AuthBootstrap({
       .me()
       .then((u) => {
         if (cancelled) return;
-        setUser({
-          id: u.id,
-          name: deriveDisplayName({
-            personalStudioName: u.personalStudio?.name ?? null,
-            email: u.email,
-          }),
-          email: u.email,
-          personalStudio: u.personalStudio,
-        });
+        setUser(toCurrentUser(u));
       })
       .catch(() => {
         // 401 (no/expired session cookie) or network error — leave

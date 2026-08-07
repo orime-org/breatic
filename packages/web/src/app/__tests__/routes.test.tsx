@@ -102,7 +102,7 @@ describe('routes', () => {
         id: 'test-user',
         name: 'Tester',
         email: 't@t.com',
-        personalStudio: { name: 'Tester', slug: 'tester' },
+        personalStudio: { name: 'Tester', slug: 'tester', avatarUrl: null },
       },
       role: null,
       loading: false,

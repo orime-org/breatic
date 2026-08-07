@@ -262,14 +262,17 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     await waitFor(() =>
       expect(document.querySelector('.ProseMirror')).not.toBeNull(),
     );
-    // What a collaborator receives: the caret extension publishes the local
-    // user into the shared awareness. The identity fields come from the
-    // current-user store seeded in beforeEach.
+    // What a collaborator receives: a caret with a focus flag and nothing that
+    // says who we are (#1886). The server writes the id from the credential
+    // this connection presented, and peers resolve the name from the project
+    // roster and the colour from that id.
     await waitFor(() => {
       const local = awareness.getLocalState() as {
-        user?: { name?: string };
+        user?: Record<string, unknown>;
       } | null;
-      expect(local?.user?.name).toBe('Ada');
+      expect(local?.user).not.toBeUndefined();
+      expect(local?.user).not.toHaveProperty('id');
+      expect(local?.user).not.toHaveProperty('name');
     });
 
     // The OTHER half of item 2, and the half the assertion above cannot see:

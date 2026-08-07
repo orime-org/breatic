@@ -13,6 +13,7 @@ import type * as Y from 'yjs';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
+import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 
 import {
   extractAtMentionedSourceIds,
@@ -80,13 +81,6 @@ interface PromptEditorProps {
    * extension mounts only when present (it throws on a null provider).
    */
   caretProvider?: Pick<HocuspocusProvider, 'awareness'> | null;
-  /**
-   * This user's identity shown at their caret on OTHER clients: display name,
-   * a concrete 6-digit hex (what the wire carries — y-prosemirror validates
-   * it), and the palette hue breatic receivers actually render from (see
-   * `user-color.ts` / `caret-render.ts`).
-   */
-  caretUser?: { name: string; color: string; hue: string } | null;
 }
 
 /**
@@ -105,7 +99,6 @@ interface PromptEditorProps {
  * @param root0.mode - Active generation sub-mode (t2i greys out `@` chips).
  * @param root0.mentionEmptyLabel - Localized empty-state text for the `@` popup.
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
- * @param root0.caretUser - This user's caret identity (name + palette color) published to other clients.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
@@ -122,10 +115,12 @@ export const PromptEditor = React.forwardRef<
     mode,
     mentionEmptyLabel,
     caretProvider = null,
-    caretUser = null,
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
+  // From context, not from a prop: the roster is a project-level fact and every
+  // layer between here and the project page used to have to forward it.
+  const collaboratorNames = useCollaboratorNames();
   // The reference pool changes as edges are added / removed, but the editor is
   // rebuilt only on `fragment` change. A ref keeps the `@` suggestion reading
   // the CURRENT pool without recreating the editor.
@@ -158,7 +153,11 @@ export const PromptEditor = React.forwardRef<
         // it mount only when awareness is available: the extension THROWS in
         // onCreate on a null provider, and before the socket's first connect
         // there is genuinely nothing to publish carets through.
-        ...buildCollabExtensions({ fragment, caretProvider, caretUser }),
+        ...buildCollabExtensions({
+          fragment,
+          caretProvider,
+          resolveCollaboratorName: collaboratorNames?.resolve,
+        }),
         Placeholder.configure({ placeholder }),
         ReferenceMention.configure({
           suggestion: makeReferenceSuggestion({
@@ -198,15 +197,25 @@ export const PromptEditor = React.forwardRef<
     // panel reopened (adversarial round-2). Both change only on a locale switch
     // (rare); the reference POOL stays a live ref (poolRef) so frequent edge
     // add/remove never triggers a recreate. caretProvider flips null→provider
-    // once on first socket connect (mounting the caret extension); caretUser is
-    // memoized by the container so it never churns per render.
-    [fragment, placeholder, mentionEmptyLabel, caretProvider, caretUser],
+    // once on first socket connect (mounting the caret extension). The name
+    // RESOLVER is listed rather than the roster bundle holding it — the bundle
+    // is rebuilt on every project-page render and would tear this editor down
+    // mid-keystroke, while the resolver keeps one identity for the editor's
+    // whole life and reads the current roster through a ref. Listed at all so
+    // that a resolver arriving after mount still reaches the extensions.
+    [
+      fragment,
+      placeholder,
+      mentionEmptyLabel,
+      caretProvider,
+      collaboratorNames?.resolve,
+    ],
   );
   // Publish this window's focus and dim collaborators who have left theirs.
   // Shared with the document editor — both halves have to travel together,
   // or one side publishes into a void and the other renders a flag nobody
   // sets.
-  useCollabCaretPresence(editor, caretProvider, caretUser);
+  useCollabCaretPresence(editor, caretProvider);
   // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
   // narrow imperative handle rather than the raw editor, keeping TipTap
   // encapsulated (same boundary as the onTextChange / onAtMentionsChange
@@ -215,7 +224,7 @@ export const PromptEditor = React.forwardRef<
     ref,
     () => ({
       insertReference: (item: ReferenceRailItem): void => {
-        if (!editor) return;
+        if (!editor || editor.isDestroyed) return;
         const content = referenceMentionContent(item);
         // Focused → insert at the caret; unfocused (no live cursor) → append to
         // the end. The rail button preventDefaults mousedown so it never blurs.
@@ -238,7 +247,7 @@ export const PromptEditor = React.forwardRef<
   // stale substitution (an empty node @-ed keeps the button dead after the
   // node gains words; an emptied node leaves the button lit but dead).
   React.useEffect(() => {
-    if (!editor) return;
+    if (!editor || editor.isDestroyed) return;
     onTextChange(serializePromptText(editor, references));
   }, [editor, references, onTextChange]);
 
@@ -260,7 +269,7 @@ export const PromptEditor = React.forwardRef<
   // pool). Collect the mention occurrences, plan the deletions purely, then
   // apply them in one transaction (synced to collaborators via Collaboration).
   React.useEffect(() => {
-    if (!editor) return;
+    if (!editor || editor.isDestroyed) return;
     const poolIds = new Set(references.map((r) => r.sourceNodeId));
     const occurrences: MentionOccurrence[] = [];
     editor.state.doc.descendants((n, pos) => {
@@ -304,7 +313,7 @@ export const PromptEditor = React.forwardRef<
   // HoverPreview's resolveOnOpen), keeping the source node the single truth
   // (freezing the body into an attr would duplicate it into the Yjs prompt doc).
   React.useEffect(() => {
-    if (!editor) return;
+    if (!editor || editor.isDestroyed) return;
     const chips: ChipDisplaySnapshot[] = [];
     editor.state.doc.descendants((n, pos) => {
       if (n.type.name !== REFERENCE_MENTION_NODE) return;

@@ -8,6 +8,9 @@
  * across sessions. Returned as a `var(--color-palette-*)` reference — the
  * palette tokens carry hand-tuned light/dark values (classification colors
  * are per-mode constants, never contrast math — user 2026-07-03).
+ *
+ * The token reference, rather than a resolved value, is also what lets two
+ * people in different themes each see the colour their own theme defines.
  */
 
 /** The 7 palette identity hues, in token order (theme/tokens.css). */
@@ -49,30 +52,9 @@ export function userPaletteColor(userId: string): string {
   return `var(--color-palette-${userPaletteHue(userId)})`;
 }
 
-/** Matches the only color form y-prosemirror's cursor validator accepts. */
-const SIX_DIGIT_HEX = /^#[0-9a-fA-F]{6}$/;
-
-/**
- * Wire-safe fallback when the palette token cannot be resolved (detached
- * documents, tests): a neutral mid gray that satisfies the 6-digit-hex shape
- * awareness payloads must carry. Never used for on-screen rendering by
- * breatic clients — they re-derive the token var from the hue.
- */
-const WIRE_FALLBACK_HEX = '#888888'; // design-value: allow — wire-protocol constant, never rendered by breatic clients
-
-/**
- * Resolves a palette hue to its CURRENT concrete hex value from the live
- * document styles. Used for the AWARENESS payload: y-prosemirror validates
- * `user.color` as a 6-digit hex (anything else console-warns on every remote
- * caret update), so the wire carries a concrete hex while breatic receivers
- * render from the whitelisted hue instead (viewer-theme adaptive).
- * @param hue - The palette hue to resolve.
- * @returns The token's current hex, or a neutral fallback when unresolvable.
- */
-export function resolvePaletteHex(hue: PaletteHue): string {
-  if (typeof document === 'undefined') return WIRE_FALLBACK_HEX;
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue(`--color-palette-${hue}`)
-    .trim();
-  return SIX_DIGIT_HEX.test(raw) ? raw : WIRE_FALLBACK_HEX;
-}
+// Nothing here resolves a hue to a concrete hex any more. That existed to put
+// a colour ON THE WIRE — y-prosemirror validates `user.color` as a 6-digit hex
+// — and #1882 stopped publishing a colour at all: awareness carries the user
+// id, and every client derives the same hue from it locally. Reintroducing a
+// hex here would mean reintroducing a colour on the wire, which is the thing
+// that made a caret's colour depend on whichever tab published last.

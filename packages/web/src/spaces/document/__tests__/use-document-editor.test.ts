@@ -20,7 +20,6 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import {
   _resetDocumentEditorCacheForTests,
   evictDocumentEditor,
@@ -52,8 +51,6 @@ function syncAsRemote(target: Y.Doc, source: Y.Doc): void {
   );
 }
 
-const HUE = userPaletteHue('test-user');
-const CARET_USER = { name: 'Tester', color: resolvePaletteHex(HUE), hue: HUE };
 
 describe('useDocumentEditor', () => {
   let doc: Y.Doc;
@@ -77,7 +74,6 @@ describe('useDocumentEditor', () => {
         doc,
         name,
         caretProvider: { awareness },
-        caretUser: CARET_USER,
         hasEverSynced: true,
       }),
     );
@@ -132,7 +128,6 @@ describe('useDocumentEditor', () => {
           doc,
           name: NAME,
           caretProvider: { awareness },
-          caretUser: CARET_USER,
           hasEverSynced: false,
         }),
       );
@@ -173,7 +168,6 @@ describe('useDocumentEditor', () => {
             doc,
             name: NAME,
             caretProvider: { awareness },
-            caretUser: CARET_USER,
             hasEverSynced,
           }),
         { initialProps: { hasEverSynced: false } },
@@ -200,7 +194,6 @@ describe('useDocumentEditor', () => {
             doc,
             name: NAME,
             caretProvider: { awareness },
-            caretUser: CARET_USER,
             hasEverSynced: true,
             editable,
           }),
@@ -226,7 +219,6 @@ describe('useDocumentEditor', () => {
           doc,
           name: NAME,
           caretProvider: { awareness },
-          caretUser: CARET_USER,
           hasEverSynced: true,
           editable: false,
         }),
@@ -271,7 +263,6 @@ describe('useDocumentEditor', () => {
           doc,
           name: NAME,
           caretProvider: null,
-          caretUser: CARET_USER,
           hasEverSynced: true,
         }),
       );

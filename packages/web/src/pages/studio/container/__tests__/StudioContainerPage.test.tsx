@@ -197,23 +197,22 @@ describe('StudioContainerPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('creates a project via the real API with the current studio id, chosen visibility and space type', async () => {
+  it('creates a project via the real API with the current studio id and space type', async () => {
     const user = userEvent.setup();
     setup('acme-studio');
     await screen.findByText('Real Studio Project');
     await user.click(screen.getByRole('button', { name: 'New project' }));
     await user.type(screen.getByLabelText('Name'), 'Fresh');
     await user.type(screen.getByLabelText('Slug'), 'fresh-proj');
-    await user.click(screen.getByLabelText(/invite only/));
     await user.click(screen.getByRole('button', { name: 'Create' }));
     // studioId is the current studio (s-acme), and the first space defaults to
     // canvas (the only selectable type today). The studio selector that would
-    // let the user target a different studio is a later slice (§7).
+    // let the user target a different studio is a later slice (§7). An exact
+    // match, so a visibility field creeping back into the request fails here.
     expect(vi.mocked(projectsApi.create)).toHaveBeenCalledWith({
       studioId: 's-acme',
       name: 'Fresh',
       slug: 'fresh-proj',
-      visibility: 'private',
       spaceType: 'canvas',
       description: undefined,
     });

@@ -20,7 +20,6 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
@@ -35,8 +34,6 @@ function syncAsRemote(target: Y.Doc, source: Y.Doc): void {
   );
 }
 
-const HUE = userPaletteHue('test-user');
-const CARET_USER = { name: 'Tester', color: resolvePaletteHex(HUE), hue: HUE };
 
 interface Harness {
   handle: ReturnType<typeof useDocumentEditor>;
@@ -68,7 +65,6 @@ describe('useDocumentHistory', () => {
         doc,
         name: NAME,
         caretProvider: { awareness },
-        caretUser: CARET_USER,
         hasEverSynced: true,
       });
       const history = useDocumentHistory(handle?.undoManager ?? null);

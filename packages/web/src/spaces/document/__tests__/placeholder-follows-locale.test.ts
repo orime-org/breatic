@@ -25,12 +25,9 @@ import * as Y from 'yjs';
 
 import { getLocale, setLocale } from '@breatic/shared';
 
-import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
-const HUE = userPaletteHue('u');
-const CARET_USER = { name: 'Me', color: resolvePaletteHex(HUE), hue: HUE };
 
 describe('the document placeholder', () => {
   let original: ReturnType<typeof getLocale>;
@@ -51,7 +48,6 @@ describe('the document placeholder', () => {
         doc,
         name: 'project-p/document-locale',
         caretProvider: { awareness },
-        caretUser: CARET_USER,
         hasEverSynced: true,
       }),
     );

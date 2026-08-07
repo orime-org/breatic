@@ -80,7 +80,6 @@ vi.mock('@web/data/yjs/project-meta', async () => {
       spaces: meta.spaces,
       openTabIds: [SPACE_A, SPACE_B],
       users: new Map(),
-      onlineUserIds: new Set<string>(),
       synced: true,
       provider: fakeProvider,
       status: 'connected',
@@ -199,7 +198,7 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
         id: 'u-me',
         name: 'Me',
         email: 'me@e.com',
-        personalStudio: { name: 'Me', slug: 'me' },
+        personalStudio: { name: 'Me', slug: 'me', avatarUrl: null },
       },
     });
   });
