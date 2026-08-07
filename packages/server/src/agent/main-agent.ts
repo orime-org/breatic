@@ -96,7 +96,7 @@ export class MainAgent {
   ): AsyncGenerator<SSEEvent> {
     const { conversationId, memoryContext, compressedHistory } = this.ctx;
 
-    // Whether the skill exists is not asked here. `assertUserMayInvoke` on
+    // Whether the skill exists is not asked here. `assertSkillUsable` on
     // the route has already answered it — with a 404 the client can act on,
     // before a message was saved or a stream opened. Asking again would be a
     // second answer to a settled question, which is how the two entry points

@@ -28,7 +28,19 @@ const MODES_CONFIG_PATH = resolve(MONOREPO_ROOT, "config/models/modes.yaml");
 // ── Internal skill metadata (superset of shared SkillMeta) ──────────
 
 /** Extended metadata tracked internally but not exposed via the shared type. */
-interface InternalSkillMeta extends SkillMeta {
+export interface InternalSkillMeta extends SkillMeta {
+  /**
+   * The model this skill runs on, when it cares which.
+   *
+   * Deliberately not on the shared `SkillMeta`: that type is what
+   * `GET /skills` returns and what the browser imports, and a model routing
+   * string is internal plumbing with no business reaching a client.
+   *
+   * Absent means the skill has no opinion and takes `agent.yaml`'s default.
+   * Most do not care; naming one is how a skill written around a particular
+   * model's behaviour makes that stick.
+   */
+  model?: string;
   /** Whether the skill content is always included in the system prompt. */
   always: boolean;
   /** System binaries that must be on PATH. */
@@ -66,6 +78,20 @@ export class SkillRegistry {
    * @returns The SkillMeta if found, or undefined
    */
   get(name: string): SkillMeta | undefined {
+    return this.skills.get(name);
+  }
+
+  /**
+   * Look up a skill including the fields the shared type does not carry.
+   *
+   * Separate from `get` so the public shape stays public: its
+   * return type is what a route may hand to a client, and widening it would
+   * put the model routing string one careless `c.json()` away from the
+   * browser. Backend code that needs the model asks for it by name.
+   * @param name - The unique skill name
+   * @returns The internal metadata if found, or undefined
+   */
+  getInternal(name: string): InternalSkillMeta | undefined {
     return this.skills.get(name);
   }
 
@@ -273,6 +299,7 @@ export class SkillRegistry {
       const meta: InternalSkillMeta = {
         name: frontmatter.name as string,
         description: (frontmatter.description as string) ?? "",
+        ...(typeof pkg.model === "string" && pkg.model ? { model: pkg.model } : {}),
         always: (pkg.always as boolean) ?? false,
         requiresBins: (requires.bins as string[]) ?? [],
         requiresEnv: (requires.env as string[]) ?? [],

@@ -40,13 +40,19 @@ vi.mock("@domain/agent/skills-loader.js", async (importOriginal) => {
   const actual = await importOriginal<typeof SkillsLoaderModule>();
   return {
     ...actual,
-    getSkillRegistry: () => ({
-      get: (name: string) =>
-        name === "researchy"
-          ? { name, description: "d", tools: ["web_search"], category: "research" }
-          : undefined,
-      loadSkillContent: (name: string) => `## Skill: ${name}\nbody text`,
-    }),
+    getSkillRegistry: () => {
+      const skills: Record<string, Record<string, unknown>> = {
+        researchy: { name: "researchy", description: "d", tools: ["web_search"], category: "research" },
+        // Declares an interaction tool. No shipped skill does, which is why
+        // the fixture has to.
+        chatty: { name: "chatty", description: "d", tools: ["ask_user_question"], category: "research" },
+      };
+      return {
+        get: (name: string) => skills[name],
+        getInternal: (name: string) => skills[name],
+        loadSkillContent: (name: string) => `## Skill: ${name}\nbody text`,
+      };
+    },
   };
 });
 
@@ -161,6 +167,15 @@ describe("buildAgentConfig", () => {
     // sentinel string comes back as the answer.
     const config = buildAgentConfig({ skillName: "researchy" });
     expect(Object.keys(config.tools).sort()).toEqual(["web_fetch", "web_search"]);
+  });
+
+  it("keeps them away even when the skill itself asks for one", () => {
+    // The filter has to hold over the result, not over the baseline it was
+    // applied to. Filtering the baseline and then unioning the skill's tools
+    // on top puts the tool right back, and no skill declares one today —
+    // which is what would let that go unnoticed until one did.
+    const config = buildAgentConfig({ skillName: "chatty" });
+    expect(Object.keys(config.tools)).not.toContain("ask_user_question");
   });
 
   it("gives them to a caller that can", () => {

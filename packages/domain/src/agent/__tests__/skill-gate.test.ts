@@ -14,7 +14,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import { assertUserMayInvoke } from "@domain/agent/skill-gate.js";
+import { assertSkillUsable } from "@domain/agent/skill-gate.js";
 
 const routing = {
   skills: {
@@ -31,36 +31,39 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 vi.mock("@domain/agent/skills-loader.js", () => ({
   getSkillRegistry: () => ({
-    get: (name: string) =>
+    // `getInternal`, because the gate needs the model the skill pinned —
+    // "can it run here" is one of the questions it answers. None of these
+    // fixtures names a model, so none of them is unreachable.
+    getInternal: (name: string) =>
       ["chat_only", "both", "model_only", "unlisted"].includes(name)
         ? { name }
         : undefined,
   }),
 }));
 
-describe("assertUserMayInvoke", () => {
+describe("assertSkillUsable", () => {
   it("lets through a skill this surface serves", () => {
-    expect(() => assertUserMayInvoke("chat_only", "chat")).not.toThrow();
-    expect(() => assertUserMayInvoke("both", "canvas")).not.toThrow();
+    expect(() => assertSkillUsable("chat_only", "chat")).not.toThrow();
+    expect(() => assertSkillUsable("both", "canvas")).not.toThrow();
   });
 
   it("rejects a skill this surface does not serve", () => {
     // The axis that had no consumer at all before this. A chat-only skill
     // reaching canvas is what the config exists to stop.
-    expect(() => assertUserMayInvoke("chat_only", "canvas")).toThrow(/not available/);
+    expect(() => assertSkillUsable("chat_only", "canvas")).toThrow(/not available/);
   });
 
   it("rejects a skill the user may not fire directly", () => {
-    expect(() => assertUserMayInvoke("model_only", "chat")).toThrow(/not user-invocable/);
+    expect(() => assertSkillUsable("model_only", "chat")).toThrow(/not user-invocable/);
   });
 
   it("rejects a skill absent from the routing config", () => {
     // It exists on disk, so the registry has it. The config does not, and
     // the config's own rule is that silence grants nothing.
-    expect(() => assertUserMayInvoke("unlisted", "chat")).toThrow(/not available/);
+    expect(() => assertSkillUsable("unlisted", "chat")).toThrow(/not available/);
   });
 
   it("rejects a skill that does not exist at all", () => {
-    expect(() => assertUserMayInvoke("nope", "chat")).toThrow(/not found/);
+    expect(() => assertSkillUsable("nope", "chat")).toThrow(/not found/);
   });
 });

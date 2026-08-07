@@ -29,7 +29,7 @@ import { serializeSSE } from "@server/agent/types.js";
 import { runWithContext } from "@breatic/core";
 import { compressForContext } from "@server/agent/message-compressor.js";
 import { getAgentConfig } from "@breatic/core";
-import { assertUserMayInvoke } from "@breatic/domain";
+import { assertSkillUsable } from "@breatic/domain";
 import type { ChatAttachedChip } from "@breatic/shared";
 
 /**
@@ -141,7 +141,7 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
   // user may fire directly — some exist only for the model to reach for
   // mid-turn. The gate is deny-by-default: a skill has to be declared
   // user-invocable to get through here.
-  assertUserMayInvoke(body.skill_name, "chat");
+  assertSkillUsable(body.skill_name, "chat");
 
   // Cross-tenant guard (same rationale as /chat/message)
   if (body.project_id) {

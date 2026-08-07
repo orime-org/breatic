@@ -11,6 +11,22 @@
 ## 装啥
 积分"花"侧(credit + `markCompletedAndBill` 原子扣费)· 任务 · 节点历史 · agent(模型 / 工具 / skill 加载 / extract-prompt / llm)· model-catalog(含每次成本)· canvas-lock(节点覆盖锁)。
 
+## agent 这块的抽象判定线(MANDATORY)
+
+四层:**tool**(一次外部动作,可被任何 skill 复用)· **skill**(一件事的知识 + 它要用的 tool + 它跑在哪个模型 = 定死三样)· **workflow**(把多个 skill 编排成一条线,只跑一个 skill 时也套一层空的,所以 `Agent → workflow → skill / tool` 没有旁路)· **Agent**(拿着 skill 清单和 tool 清单跟用户对话的那个)。
+
+**不派生**:skill 不另开进程 / 线程 / 独立 agent,一律在调用方的循环里跑。
+
+| 判定题 | 答案 |
+|---|---|
+| 这东西是「一次外部动作」还是「一件事的知识」? | 动作 → tool;知识 → skill |
+| 它要不要另开一个上下文? | **不要**。第一版没有派生,`spawn` 那套已删 |
+| 模型 / 指令 / 工具这三样谁来定? | **只有 `agent-config.ts` 的 `buildAgentConfig`**。任何第四处装配都是回到三处各写一套的老路 |
+| 哪个界面能用它、谁能调起它? | **`config/skill-routing.yaml`**,不在 skill 自己的文件里(否则 skill 给自己发许可) |
+| 这个 skill 该在主对话里跑还是独立跑? | 看它要不要污染主对话的上下文。**这个区别对用户完全不可见** |
+
+**流程型 vs 对话型看 `metadata.json` 的 `output_type`**,不另立一份清单(清单会跟真相漂):`canvas` = 流程型,产物交给下一步程序(落节点 / 起任务);`inline` = 对话型,产物直接给用户读。判定题:**它的产物是给人读的,还是给下一步程序读的?**(不在这里写各有几个 —— 那个数每加一个 skill 就过期一次,字段本身才是唯一真相。)
+
 ## 可 import 谁
 - ✅ `@breatic/core` · `@breatic/shared` + 外部 npm
 - ❌ `@server` / `@worker` / `@collab` / `@web` —— 库不能 import 应用层(`lint:dependency-cruiser` 的 `library-no-app-import` 规则把 domain 一并扫描强制)

@@ -92,6 +92,58 @@ describe("Tasks routes", () => {
       expect(body.data.task_id).toBe("task-1");
     });
 
+    /** A canvas task body, with whatever the test wants to vary merged in. */
+    const canvasTask = (extra: Record<string, unknown> = {}): string =>
+      JSON.stringify({
+        task_type: "image",
+        params: { prompt: "a cat" },
+        model: "test-model",
+        source: "canvas",
+        project_id: PID,
+        space_id: SID,
+        mode: "append",
+        ...extra,
+      });
+
+    // This entry took a skill_name straight off the request body into the
+    // task row and the queue, with nothing asked. The three tests below are
+    // the canvas half of the pair the chat entry already had; without them
+    // the gate could be deleted and nothing would go red.
+    it("rejects a skill this surface does not serve with 403", async () => {
+      // The surface axis specifically: the skill exists, the user may fire
+      // it, and it is still not something canvas offers.
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: canvasTask({ skill_name: "creative_research" }),
+      });
+
+      expect(res.status).toBe(403);
+    });
+
+    it("rejects a skill the user may not fire with 403", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: canvasTask({ skill_name: "gated_fixture" }),
+      });
+
+      expect(res.status).toBe(403);
+    });
+
+    it("lets through a skill canvas serves", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: canvasTask({ skill_name: "canvas_fixture" }),
+      });
+
+      expect(res.status).toBe(201);
+    });
+
     it("rejects without auth", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {

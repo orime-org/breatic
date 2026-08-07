@@ -14,19 +14,26 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
  * written alongside it, so the two cannot disagree.
  *
  * Exported so the tests plant every entry rather than a sample. A test naming
- * four of eighteen reads as covering the list, and the name added nineteenth
- * would arrive with nothing exercising it.
+ * a handful of them reads as covering the list, and the next name added would
+ * arrive with nothing exercising it.
  *
  * Each name is matched as a substring, so a name that is a substring of a
  * living symbol cannot go in. Two were rejected on exactly that ground and
  * the reasons are worth keeping, because both look safe until measured:
  *
- * - `getAgent` would hit `getAgentConfig`, the config reader, nine times. It
- *   has nothing to do with the deleted concept. The loader's module path
- *   stands in for it — that path appears in every file importing the symbol.
- * - bare `spawn` would hit thirty-five files, nearly all of them ffmpeg child
- *   processes in worker. The dispatch tool and the billing counter are named
- *   in full below, which is precise.
+ * - `getAgent` is a prefix of `getAgentConfig`, the config reader, which is
+ *   alive and widely used and has nothing to do with the deleted concept.
+ *   The loader's module path stands in for it — that path appears in every
+ *   file importing the symbol.
+ * - bare `spawn` is what worker calls to start ffmpeg child processes, in
+ *   many files. The dispatch tool and the billing counter are named in full
+ *   below, which is precise.
+ *
+ * How many files each of those would have hit is deliberately not written
+ * here. Both counts were measured once and both were wrong within the same
+ * change that recorded them — the deletion this guard exists for is what
+ * moved them. What makes the two exclusions right is that the names collide
+ * with living symbols at all, which stays true however many there are.
  */
 export const DELETED_NAMES: ReadonlyArray<readonly [string, string]> = [
   // The dispatch machinery.

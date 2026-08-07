@@ -89,7 +89,7 @@ Memory is automatically consolidated by the LLM when the conversation exceeds `m
 
 ### Agent & Skill System
 
-**Agents** define _who_ does the work (role, tools, model). **Skills** define _how_ to do the work (knowledge, instructions, scripts). The two are orthogonal and composable.
+**Skills** are the unit of work. A skill carries three things — its knowledge (`SKILL.md`), the tools it may use, and the model it runs on — and one factory resolves all three, so every entry point that runs a skill runs it the same way. Where a skill may be used and who may fire it are the host's decision, and live in `config/skill-routing.yaml` rather than in the skill.
 
 ```
 skills/{name}/

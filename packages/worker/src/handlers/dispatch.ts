@@ -4,12 +4,15 @@
 /**
  * BullMQ job handlers for task execution.
  *
- * Implements 5 execution paths matching the Python worker:
+ * Four execution paths:
  * 1. Mini-tool → direct provider call
  * 2. Understand → media analysis / ASR
  * 3. AIGC Direct → provider call with explicit params
  * 4. Skill (explicit) → AI SDK agent loop
- * 5. Skill (auto-select) → merged skills, LLM chooses
+ *
+ * Anything else throws. There used to be a fifth path that picked skills by
+ * category and merged them, which cannot hold "a skill's three things are
+ * fixed" — merged, whose model wins?
  */
 
 import type { Job } from "bullmq";

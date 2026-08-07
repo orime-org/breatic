@@ -28,6 +28,7 @@
 import type { Tool } from "ai";
 import { getAgentConfig } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";
+import { assertSkillModelRunnable } from "@domain/agent/skill-availability.js";
 import { getSkillRegistry } from "@domain/agent/skills-loader.js";
 import {
   BASELINE_TOOLS,
@@ -87,6 +88,7 @@ export interface ResolvedAgentConfig {
  * @param request - What the caller knows about this run.
  * @returns The three things, decided in one place.
  * @throws {Error} When `skillName` names a skill the registry does not have.
+ * @throws {AppError} 503 when the skill pinned a model this deployment cannot reach.
  */
 export function buildAgentConfig(
   request: AgentConfigRequest,
@@ -94,21 +96,37 @@ export function buildAgentConfig(
   const { skillName, basePrompt, memoryContext } = request;
   const registry = getSkillRegistry();
 
-  const skill = skillName ? registry.get(skillName) : undefined;
+  // `getInternal` rather than `get`, because the model is one of the three
+  // things being resolved here and the shared type deliberately does not
+  // carry it — see `InternalSkillMeta.model`.
+  const skill = skillName ? registry.getInternal(skillName) : undefined;
   if (skillName && !skill) {
     throw new Error(`Skill not found: ${skillName}`);
   }
+
+  // Refusing an unreachable model is part of deciding the model, so it
+  // happens here — the one place a model gets resolved, which no fourth
+  // call site can go around. The entries check earlier too, where the answer
+  // can still reach the user before anything is saved; this is the backstop
+  // for callers that have no entry, worker among them, and for keys that
+  // change between a job being queued and being run.
+  if (skill) assertSkillModelRunnable(skill.name, skill.model);
 
   // A skill's declared tools are added to the baseline, never substituted
   // for it. Ten of the eleven skills declare none; substitution would leave
   // every one of them running with nothing, which is the same defect plain
   // chat had, relocated to the skill path.
-  const baseline = request.interactive
-    ? BASELINE_TOOLS
-    : BASELINE_TOOLS.filter((n) => !INTERACTION_TOOLS.includes(n));
-  const toolNames = skill
-    ? [...new Set([...baseline, ...skill.tools])]
-    : [...baseline];
+  const merged = skill
+    ? [...new Set([...BASELINE_TOOLS, ...skill.tools])]
+    : [...BASELINE_TOOLS];
+  // Filtered after the union, not before it. Filtering the baseline alone
+  // leaves the rule true of the list it was applied to and false of the
+  // result: a skill naming an interaction tool would hand it straight back
+  // to a caller that cannot draw it. No skill does today, which is exactly
+  // why it has to be the result that is guaranteed, not the input.
+  const toolNames = request.interactive
+    ? merged
+    : merged.filter((n) => !INTERACTION_TOOLS.includes(n));
 
   const sections: string[] = [];
   if (basePrompt) sections.push(basePrompt);
@@ -132,7 +150,10 @@ export function buildAgentConfig(
   }
 
   return {
-    modelId: getAgentConfig().default_model,
+    // The skill's choice wins when it made one. That is the third of the
+    // three things a skill fixes; without it a skill written around one
+    // model's behaviour runs on whatever the deployment defaults to.
+    modelId: skill?.model ?? getAgentConfig().default_model,
     instructions: sections.join("\n\n"),
     tools: buildToolSet(toolNames),
   };

@@ -449,12 +449,23 @@ export const domainMock = () => ({
   // Throws the real AppError, because the error handler identifies errors
   // with `instanceof` — a look-alike carrying the same `.status` comes back
   // as a 500. `mocks.appError` is set by coreMock, which does have it.
-  assertUserMayInvoke: (name: string) => {
+  // Mirrors the real gate's SHAPE, both parameters included. An earlier
+  // version took only the name, which made every call site's surface
+  // argument unobservable: swapping "chat" for "canvas" at a route changed
+  // nothing any test could see, on the one axis this PR introduced.
+  assertSkillUsable: (name: string, surface: string) => {
     const AppErrorClass = mocks.appError;
-    if (name !== "gated_fixture" && name !== "creative_research") {
-      throw new AppErrorClass(404, `Skill '${name}' not found`);
+    const routes: Record<string, { surfaces: string[]; userInvocable: boolean }> = {
+      creative_research: { surfaces: ["chat"], userInvocable: true },
+      gated_fixture: { surfaces: ["chat"], userInvocable: false },
+      canvas_fixture: { surfaces: ["canvas"], userInvocable: true },
+    };
+    const route = routes[name];
+    if (!route) throw new AppErrorClass(404, `Skill '${name}' not found`);
+    if (!route.surfaces.includes(surface)) {
+      throw new AppErrorClass(403, `Skill '${name}' is not available here`);
     }
-    if (name === "gated_fixture") {
+    if (!route.userInvocable) {
       throw new AppErrorClass(403, `Skill '${name}' is not user-invocable`);
     }
   },

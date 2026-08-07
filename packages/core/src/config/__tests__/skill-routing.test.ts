@@ -18,8 +18,12 @@
  * dangerous tool, one was explicitly gated and the other was not, and the
  * only difference was whether someone remembered to write the line.
  */
-import { describe, expect, it } from "vitest";
-import { skillRoutingSchema } from "@core/config/skill-routing.js";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  getSkillRouting,
+  resetSkillRouting,
+  skillRoutingSchema,
+} from "@core/config/skill-routing.js";
 
 describe("skill routing config", () => {
   it("lets a skill be visible everywhere without saying so", () => {
@@ -69,5 +73,36 @@ describe("skill routing config", () => {
   it("treats a skill absent from the file as allowed nowhere", () => {
     const parsed = skillRoutingSchema.parse({ skills: {} });
     expect(parsed.skills.unlisted).toBeUndefined();
+  });
+});
+
+describe("the routing file we actually ship", () => {
+  afterEach(() => {
+    resetSkillRouting();
+  });
+
+  // Everything above parses objects written in this file, which says nothing
+  // about the document on disk. The only other place the real file is read
+  // is a process entry, where a failure surfaces as a crashed deployment.
+  it("parses, and resolves every axis for every skill it lists", () => {
+    const routing = getSkillRouting();
+    const entries = Object.entries(routing.skills);
+    expect(entries.length).toBeGreaterThan(0);
+
+    for (const [name, route] of entries) {
+      expect(route.surfaces.length, `${name} serves no surface`).toBeGreaterThan(0);
+      expect(typeof route.user_invocable, name).toBe("boolean");
+      expect(typeof route.model_invocable, name).toBe("boolean");
+    }
+  });
+
+  // Which names it lists, and whether they match the skills on disk, is a
+  // repo-lint check (`skill-routing-matches-skills`) — it compares two files
+  // neither of which imports the other.
+  it("gives every listed skill somewhere to be used", () => {
+    for (const [name, route] of Object.entries(getSkillRouting().skills)) {
+      const reachable = route.user_invocable || route.model_invocable;
+      expect(reachable, `${name} is listed but nobody may invoke it`).toBe(true);
+    }
   });
 });
