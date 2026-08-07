@@ -11,6 +11,7 @@ import {
   forgetDocument,
   hasUnsavedContent,
   noteDocumentChange,
+  releaseTimedStoreArm,
 } from "@collab/services/store-tracker.js";
 
 const DOC = "project-11111111-1111-4111-8111-111111111111/document-1";
@@ -102,9 +103,10 @@ describe("the timed-store arm", () => {
   });
 
   it("does not survive being forgotten", () => {
-    armTimedStore(DOC);
+    const arm = armTimedStore(DOC);
     forgetDocument(DOC);
     expect(consumeTimedStoreArm(DOC)).toBe(false);
+    expect(releaseTimedStoreArm(DOC, arm)).toBe(false);
   });
 
   it("arming twice still only permits one store", () => {
@@ -114,5 +116,51 @@ describe("the timed-store arm", () => {
     armTimedStore(DOC);
     expect(consumeTimedStoreArm(DOC)).toBe(true);
     expect(consumeTimedStoreArm(DOC)).toBe(false);
+  });
+});
+
+describe("giving an arm back", () => {
+  // Gate 2 round 2 finding 8. Both writers reclaim their arm when they stop
+  // waiting, because a chain aborted upstream never reaches the persistence
+  // extension and would otherwise leave the arm behind for the next
+  // change-triggered store to spend. With the arm keyed only by document
+  // name, that reclamation could take back an arm somebody else had just
+  // issued — and the store it belonged to then wrote nothing at all.
+
+  it("takes back only the arm this caller issued", () => {
+    const mine = armTimedStore(DOC);
+    const theirs = armTimedStore(DOC);
+
+    // My attempt gave up. The arm sitting there is no longer mine.
+    expect(releaseTimedStoreArm(DOC, mine)).toBe(false);
+
+    // So theirs survived, and their store still gets to write.
+    expect(consumeTimedStoreArm(DOC)).toBe(true);
+    expect(releaseTimedStoreArm(DOC, theirs)).toBe(false);
+  });
+
+  it("reports true when the arm was never spent — nothing reached us", () => {
+    // The one signal that separates "the database refused" from "an upstream
+    // extension aborted the chain, so our hook never ran at all".
+    const arm = armTimedStore(DOC);
+
+    expect(releaseTimedStoreArm(DOC, arm)).toBe(true);
+    expect(consumeTimedStoreArm(DOC)).toBe(false);
+  });
+
+  it("reports false once the store consumed it — our hook did run", () => {
+    const arm = armTimedStore(DOC);
+    consumeTimedStoreArm(DOC);
+
+    expect(releaseTimedStoreArm(DOC, arm)).toBe(false);
+  });
+
+  it("does not touch another document's arm", () => {
+    const arm = armTimedStore(DOC);
+    armTimedStore(OTHER);
+
+    releaseTimedStoreArm(DOC, arm);
+
+    expect(consumeTimedStoreArm(OTHER)).toBe(true);
   });
 });

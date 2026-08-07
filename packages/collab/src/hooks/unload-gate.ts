@@ -25,13 +25,34 @@ import { createLogger } from "@breatic/core";
 import type { StoreFailureAlert } from "@collab/services/store-alert.js";
 import {
   armTimedStore,
-  consumeTimedStoreArm,
-  forgetDocument,
   hasUnsavedContent,
+  releaseTimedStoreArm,
 } from "@collab/services/store-tracker.js";
 import { runWithTimeout } from "@collab/services/with-timeout.js";
 
 const logger = createLogger("collab-unload-gate");
+
+/**
+ * What the one final store attempt turned out to be.
+ *
+ * `not-reached` is the one the gate could not see before. `hooks()` chains the
+ * extensions with `.then`, so a rejection from any of them skips every hook
+ * behind it — and the Redis extension, which runs first, rejects exactly that
+ * way when another instance holds the cross-instance store lock. The library
+ * catches it and resolves normally, so the attempt looks identical to a
+ * completed store from out here. Telling an operator the database refused
+ * content that a healthy database never even saw is a lie, and one that costs
+ * real attention during an outage.
+ */
+type FinalAttempt = "stored" | "refused" | "not-reached";
+
+/** How each outcome is explained to whoever reads the alert. */
+const ATTEMPT_REASON: Record<Exclude<FinalAttempt, "stored">, string> = {
+  refused: "the final store attempt did not land",
+  "not-reached":
+    "this instance's write never ran — another instance held the cross-instance " +
+    "store lock, so the content may already be safe, but this instance could not confirm it",
+};
 
 /** A document the gate is settling. */
 export interface UnloadGateEntry {
@@ -83,8 +104,6 @@ export interface UnloadGate {
   beforeUnloadDocument(payload: UnloadPayload): Promise<void>;
   /** Shutdown: write to disk first, then try the database. */
   settleForShutdown(payload: ShutdownPayload): Promise<void>;
-  /** The document has actually left memory; drop its bookkeeping. */
-  afterUnloadDocument(payload: { documentName: string }): void;
 }
 
 /**
@@ -100,21 +119,27 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
    * 30-second connect timeout, which is several times the whole shutdown
    * budget, so waiting for it would mean losing the rescue file too.
    * @param documentName - Full Yjs document name.
-   * @returns Resolves once the attempt finished or the timeout elapsed.
+   * @returns What the attempt turned out to be.
    */
-  async function attemptStore(documentName: string): Promise<void> {
-    armTimedStore(documentName);
+  async function attemptStore(documentName: string): Promise<FinalAttempt> {
+    const arm = armTimedStore(documentName);
+    let neverRan = false;
     try {
       await runWithTimeout(deps.storeNow({ name: documentName }), deps.finalAttemptTimeoutMs);
     } catch (err) {
-      // Whether it threw or timed out changes nothing: the counters, not
-      // this call's outcome, say whether the content landed.
+      // Whether it threw or timed out changes nothing here: the counters and
+      // the arm, not this call's outcome, say what happened.
       logger.warn({ err, documentName }, "collab_final_store_attempt_errored");
     } finally {
-      // Reclaim our own arm rather than trusting it was consumed — see the
-      // same reclamation in the timed loop for why it may not have been.
-      consumeTimedStoreArm(documentName);
+      // Give our own arm back rather than trusting it was consumed, and learn
+      // from it whether our extension ran at all. Handing back the token
+      // rather than deleting by name is what keeps this from taking the timed
+      // loop's arm instead of ours.
+      neverRan = releaseTimedStoreArm(documentName, arm);
     }
+
+    if (!hasUnsavedContent(documentName)) return "stored";
+    return neverRan ? "not-reached" : "refused";
   }
 
   /**
@@ -135,18 +160,21 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   }
 
   /**
-   * Report a document whose content never reached the database.
+   * Report a document whose content the database was never confirmed to hold.
    * @param documentName - Full Yjs document name.
    * @param bytes - How much content was at stake.
    * @param rescuePath - Where it was written, when it was.
+   * @param attempt - Why the content is unaccounted for.
    */
   async function reportLoss(
     documentName: string,
     bytes: number,
     rescuePath: string | undefined,
+    attempt: Exclude<FinalAttempt, "stored">,
   ): Promise<void> {
+    const reason = ATTEMPT_REASON[attempt];
     logger.error(
-      { documentName, bytes, rescuePath: rescuePath ?? null },
+      { documentName, bytes, rescuePath: rescuePath ?? null, attempt },
       "collab_store_unrecoverable",
     );
     // Told even when there is no file. That case is the worst one — the
@@ -158,8 +186,8 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
       rescuePath: rescuePath ?? "",
       bytes,
       reason: rescuePath
-        ? "the final store attempt did not land"
-        : "the final store attempt did not land AND the rescue file could not be written — this content has no copy anywhere",
+        ? reason
+        : `${reason} AND the rescue file could not be written — this content has no copy anywhere`,
     });
   }
 
@@ -172,12 +200,12 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   async function settleNormally({ documentName, document }: UnloadPayload): Promise<void> {
     if (!hasUnsavedContent(documentName)) return;
 
-    await attemptStore(documentName);
-    if (!hasUnsavedContent(documentName)) return;
+    const attempt = await attemptStore(documentName);
+    if (attempt === "stored") return;
 
     const state = deps.encode(document);
     const path = await rescue(documentName, state);
-    await reportLoss(documentName, state.length, path);
+    await reportLoss(documentName, state.length, path, attempt);
   }
 
   /**
@@ -202,13 +230,13 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     const path = await rescue(documentName, state);
 
     onStep?.("store");
-    await attemptStore(documentName);
+    const attempt = await attemptStore(documentName);
 
-    if (!hasUnsavedContent(documentName)) {
+    if (attempt === "stored") {
       if (path) await deps.deleteRescue(path);
       return;
     }
-    await reportLoss(documentName, state.length, path);
+    await reportLoss(documentName, state.length, path, attempt);
   }
 
   return {
@@ -229,8 +257,9 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
       // if a connection arrived meanwhile, so a document can survive this
       // call. Clearing the counters here would mark a live document holding
       // unstored content as clean, and the timed loop would skip it from then
-      // on. Cleanup belongs to `afterUnloadDocument`, which only fires once
-      // the document has actually gone.
+      // on. Cleanup belongs to the change-tracking extension, which owns the
+      // bookkeeping and drops it in `afterUnloadDocument` — the one hook that
+      // fires only once the document has actually gone.
     },
 
     settleForShutdown: async (payload): Promise<void> => {
@@ -239,13 +268,6 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
       } catch (err) {
         logger.error({ err, documentName: payload.documentName }, "collab_shutdown_settle_failed");
       }
-    },
-
-    afterUnloadDocument: ({ documentName }): void => {
-      // The document has left memory for real. Only now are the counters
-      // safe to drop; keeping them would leak one entry per document ever
-      // opened, and dropping them any earlier would mislabel a live one.
-      forgetDocument(documentName);
     },
   };
 }

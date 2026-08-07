@@ -22,6 +22,7 @@ const mockLogger = vi.hoisted(() => ({
 vi.mock("@breatic/core", () => ({ createLogger: () => mockLogger }));
 
 import { createUnloadGate } from "@collab/hooks/unload-gate.js";
+import type { StoreFailureAlert } from "@collab/services/store-alert.js";
 import {
   commitStore,
   consumeTimedStoreArm,
@@ -45,10 +46,10 @@ function documentWithText(text: string): Y.Doc {
  * @param outcome - What the final attempt should do.
  * @returns The gate plus everything it did.
  */
-function harness(outcome: "lands" | "fails" | "hangs" = "lands") {
+function harness(outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands") {
   const rescued: Array<{ documentName: string; state: Uint8Array }> = [];
   const deleted: string[] = [];
-  const alerted: Array<{ documentName: string; rescuePath: string }> = [];
+  const alerted: StoreFailureAlert[] = [];
   const storeCalls: string[] = [];
 
   const gate = createUnloadGate({
@@ -60,8 +61,15 @@ function harness(outcome: "lands" | "fails" | "hangs" = "lands") {
       // extension, which consumes the arm and commits the counter. Stand in
       // for exactly that, so the gate is judged on the counter like in
       // production rather than on this stub's return value.
-      if (outcome === "hangs") return new Promise<void>(() => {});
+      // Exactly what an aborted hook chain looks like from out here: the
+      // library resolves normally and our extension never ran, so the arm is
+      // still sitting there untouched.
+      if (outcome === "not-reached") return;
       if (!consumeTimedStoreArm(name)) return;
+      // Our hook DID run — the arm above is spent — and then the write itself
+      // never came back. That is what a hung database looks like, and it is a
+      // different thing from the chain never reaching us.
+      if (outcome === "hangs") return new Promise<void>(() => {});
       if (outcome === "fails") return;
       commitStore(name, beginStore(name));
     },
@@ -167,15 +175,9 @@ describe("the unload gate — a document with outstanding content", () => {
     expect(hasUnsavedContent(DOC)).toBe(true);
   });
 
-  it("clears them once the document has actually left memory", async () => {
-    const { gate } = harness("fails");
-    noteDocumentChange(DOC);
-
-    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
-    gate.afterUnloadDocument({ documentName: DOC });
-
-    expect(hasUnsavedContent(DOC)).toBe(false);
-  });
+  // Clearing them once the document HAS left memory is no longer the gate's
+  // job — it belongs to the change-tracking extension, which owns the
+  // bookkeeping it drops. Covered in services/__tests__/change-tracking.test.ts.
 
   it("reclaims its own arm, so no leftover can be spent by the library", async () => {
     // The Redis extension runs first (priority 1000 against our default 100)
@@ -298,5 +300,44 @@ describe("the unload gate — which order it picks", () => {
     noteDocumentChange(DOC);
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
     expect(order).toEqual(["rescue", "store"]);
+  });
+});
+
+describe("the unload gate — when nothing reached our extension", () => {
+  // Gate 2 round 2 finding 5. In a multi-instance deployment the Redis
+  // extension runs first (priority 1000 against our default 100) and aborts
+  // the whole hook chain when another instance holds the cross-instance store
+  // lock. The library catches that and resolves normally, so from out here it
+  // is indistinguishable from a completed store — except that the arm is
+  // still unspent. Without that signal the gate told an operator a healthy
+  // database had refused the content.
+
+  it("still writes the rescue file — losing the lock is not proof the content is safe", async () => {
+    const { gate, rescued } = harness("not-reached");
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("hello") });
+
+    expect(rescued).toHaveLength(1);
+  });
+
+  it("says so, instead of claiming the store did not land", async () => {
+    const { gate, alerted } = harness("not-reached");
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("hello") });
+
+    expect(alerted).toHaveLength(1);
+    expect(alerted[0]?.reason).toMatch(/never ran|another instance/i);
+    expect(alerted[0]?.reason).not.toMatch(/did not land/);
+  });
+
+  it("leaves no arm behind for a change-triggered store to spend", async () => {
+    const { gate } = harness("not-reached");
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("hello") });
+
+    expect(consumeTimedStoreArm(DOC)).toBe(false);
   });
 });

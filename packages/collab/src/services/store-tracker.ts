@@ -32,8 +32,19 @@ const changeCount = new Map<string, number>();
 /** Update count that the last SUCCESSFUL store covered, per document. */
 const storedCount = new Map<string, number>();
 
-/** Documents for which a store initiated by us is permitted exactly once. */
-const armed = new Set<string>();
+/**
+ * The one-shot permission each document currently carries, if any.
+ *
+ * A map rather than a set of names, because the permission has an owner. Two
+ * writers can want to store the same document (the timed round and the unload
+ * gate), and both give their permission back when they stop waiting — an
+ * upstream extension can abort the hook chain before ours is reached, which
+ * would otherwise leave the permission behind for the next change-triggered
+ * store to spend. Keyed only by name, one writer's reclamation took back the
+ * other's permission and that store then wrote nothing at all. The token says
+ * whose it is.
+ */
+const armed = new Map<string, symbol>();
 
 /**
  * Bumped every time a document is forgotten.
@@ -106,6 +117,12 @@ export function commitStore(documentName: string, ticket: StoreTicket): void {
   storedCount.set(documentName, ticket.covered);
 }
 
+/** One writer's permission to store one document once. */
+export interface StoreArm {
+  /** Identifies the attempt, so only its issuer can take it back. */
+  token: symbol;
+}
+
 /**
  * Permit exactly one store for a document.
  *
@@ -113,9 +130,12 @@ export function commitStore(documentName: string, ticket: StoreTicket): void {
  * library to store. Our persistence extension consumes it; a store the
  * library started on its own finds nothing and returns without encoding.
  * @param documentName - Full Yjs document name.
+ * @returns The arm, to hand back to {@link releaseTimedStoreArm} afterwards.
  */
-export function armTimedStore(documentName: string): void {
-  armed.add(documentName);
+export function armTimedStore(documentName: string): StoreArm {
+  const token = Symbol(documentName);
+  armed.set(documentName, token);
+  return { token };
 }
 
 /**
@@ -125,6 +145,28 @@ export function armTimedStore(documentName: string): void {
  */
 export function consumeTimedStoreArm(documentName: string): boolean {
   return armed.delete(documentName);
+}
+
+/**
+ * Give an unspent permission back, and learn whether it was ever spent.
+ *
+ * Answers the one question nothing else in the system can: did our persistence
+ * hook actually run? A store can resolve without it having run at all, because
+ * `hooks()` chains the extensions with `.then` and an upstream rejection skips
+ * every hook behind it — which is exactly what the Redis extension does when
+ * another instance holds the cross-instance store lock. The library catches
+ * that and resolves normally, so the outcome is indistinguishable from a
+ * successful store unless the arm is still sitting there.
+ * @param documentName - Full Yjs document name.
+ * @param arm - What {@link armTimedStore} returned for this attempt.
+ * @returns True when this arm was still unspent, meaning our hook never ran.
+ *   False when it was consumed, superseded by another writer, or the document
+ *   was forgotten in the meantime.
+ */
+export function releaseTimedStoreArm(documentName: string, arm: StoreArm): boolean {
+  if (armed.get(documentName) !== arm.token) return false;
+  armed.delete(documentName);
+  return true;
 }
 
 /**

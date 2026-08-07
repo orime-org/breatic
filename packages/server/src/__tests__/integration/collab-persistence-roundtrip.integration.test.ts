@@ -36,7 +36,7 @@ import {
   storeDocumentNow,
 } from "@breatic/collab/src/services/persistence.js";
 import { createUnloadGate } from "@breatic/collab/src/hooks/unload-gate.js";
-import { noteDocumentChange } from "@breatic/collab/src/services/store-tracker.js";
+import { createChangeTrackingExtension } from "@breatic/collab/src/services/change-tracking.js";
 
 initCore(process.env);
 
@@ -104,11 +104,12 @@ beforeAll(async () => {
     debounce: 50,
     unloadImmediately: true,
     extensions: [
+      // The real change tracker, so this exercises the same wiring the collab
+      // server builds rather than a hand-rolled stand-in that would go on
+      // passing after production stopped counting that way.
+      createChangeTrackingExtension(),
       createPersistenceExtension(),
       {
-        onChange: async ({ documentName }: { documentName: string }): Promise<void> => {
-          noteDocumentChange(documentName);
-        },
         beforeUnloadDocument: async (payload: {
           documentName: string;
           document: Y.Doc;

@@ -34,12 +34,9 @@ vi.mock("@breatic/core", () => ({ createLogger: () => mockLogger }));
 import { createLiveServer, connectLiveClient, waitFor } from "./helpers/live-hocuspocus.js";
 import { createPersistenceExtension, storeDocumentNow } from "../services/persistence.js";
 import { createStoreLoop } from "../services/store-loop.js";
+import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { createUnloadGate } from "../hooks/unload-gate.js";
-import {
-  forgetDocument,
-  hasUnsavedContent,
-  noteDocumentChange,
-} from "../services/store-tracker.js";
+import { forgetDocument, hasUnsavedContent } from "../services/store-tracker.js";
 
 const DOC = "project-11111111-1111-4111-8111-111111111111/document-1";
 
@@ -77,11 +74,12 @@ function harness(options: { failing?: boolean; delayMs?: number } = {}): Harness
 
   const hocuspocus = createLiveServer({
     extensions: [
+      // The real change tracker, so this exercises the same wiring the server
+      // builds. A hand-rolled `onChange` counter here would go on passing
+      // after production had stopped counting that way.
+      createChangeTrackingExtension(),
       persistence,
       {
-        onChange: ({ documentName }: { documentName: string }): void => {
-          noteDocumentChange(documentName);
-        },
         beforeUnloadDocument: async (payload: {
           documentName: string;
           document: Y.Doc;

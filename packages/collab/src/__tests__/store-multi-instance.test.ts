@@ -36,13 +36,13 @@ const mockLogger = vi.hoisted(() => ({
 vi.mock("@breatic/core", () => ({ createLogger: () => mockLogger }));
 
 import { createLiveServer, connectLiveClient } from "./helpers/live-hocuspocus.js";
+import { createChangeTrackingExtension } from "../services/change-tracking.js";
 import { createPersistenceExtension, storeDocumentNow } from "../services/persistence.js";
 import { createStoreLoop } from "../services/store-loop.js";
 import {
   consumeTimedStoreArm,
   forgetDocument,
   hasUnsavedContent,
-  noteDocumentChange,
 } from "../services/store-tracker.js";
 
 const DOC = "project-11111111-1111-4111-8111-111111111111/document-1";
@@ -60,15 +60,15 @@ beforeEach(() => {
 function harness(options: { lockLost?: boolean } = {}) {
   const writes: string[] = [];
   const extensions: unknown[] = [
+    // The real one, not a stand-in. Counting used to be hand-rolled here on
+    // an `onChange` hook, which stopped mirroring production the moment the
+    // tracker moved off the hook chain — a test that exercises a mechanism
+    // the server no longer uses is green about nothing.
+    createChangeTrackingExtension(),
     createPersistenceExtension({
       fetch: async () => null,
       store: async ({ documentName }) => void writes.push(documentName),
     }),
-    {
-      onChange: async ({ documentName }: { documentName: string }): Promise<void> => {
-        noteDocumentChange(documentName);
-      },
-    },
   ]
   if (options.lockLost) {
     // Stands in for the Redis extension: higher priority, so it runs first,

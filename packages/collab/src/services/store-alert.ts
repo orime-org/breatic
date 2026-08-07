@@ -30,7 +30,7 @@ export interface StoreFailureAlert {
   rescuePath: string;
   /** How much content is in that file. */
   bytes: number;
-  /** Why the database refused it. */
+  /** Why the content is unaccounted for, in words an operator can act on. */
   reason: string;
 }
 

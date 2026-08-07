@@ -55,7 +55,7 @@ import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js"
 import { createStoreLoop, type StoreLoop } from "@collab/services/store-loop.js";
 import { createStoreAlerter } from "@collab/services/store-alert.js";
 import { deleteRescueFile, writeRescueFile } from "@collab/services/rescue-file.js";
-import { noteDocumentChange } from "@collab/services/store-tracker.js";
+import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { getCollabConfig } from "@collab/config.js";
 import { cleanupOnDisconnect } from "@collab/hooks/disconnect-cleanup.js";
 import { handleSpaceRpc } from "@collab/services/space-rpc.js";
@@ -126,6 +126,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // Build extensions list
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const extensions: any[] = [
+    // First of every chain (#40). It watches the Yjs document directly rather
+    // than through `onChange`, so no other extension's failure can hide an
+    // edit from the store tracker, and it owns dropping a document's
+    // bookkeeping once the document has actually left memory.
+    createChangeTrackingExtension(),
     createPersistenceExtension(),
     new RedisExtension({
       // Hocuspocus extension-redis supports an explicit `createClient`
@@ -219,14 +224,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       document: Y.Doc;
     }): Promise<void> => {
       await storeGate.current?.beforeUnloadDocument({ documentName, document });
-    },
-
-    // Only once the document has really gone. The gate cannot clean up: the
-    // library re-checks whether to unload AFTER the gate returns, so a
-    // document can survive it, and clearing its counters there would mark a
-    // live document holding unstored content as clean (#40).
-    afterUnloadDocument: async ({ documentName }: { documentName: string }): Promise<void> => {
-      storeGate.current?.afterUnloadDocument({ documentName });
     },
 
     onConnect: async ({ documentName, context, socketId }) => {
@@ -428,13 +425,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     },
 
     // Document size limit — reject updates that would exceed max.
-    //
-    // Also where the store tracker learns a document changed (#40). Every
-    // update counts, whatever produced it — including one relayed from
-    // another instance, which is what lets a surviving instance store content
-    // on behalf of one that died. See services/store-tracker.ts.
     onChange: async ({ documentName, document }) => {
-      noteDocumentChange(documentName);
       if (cfg.max_document_bytes > 0) {
         const size = Y.encodeStateAsUpdate(document).byteLength;
         if (size > cfg.max_document_bytes) {
