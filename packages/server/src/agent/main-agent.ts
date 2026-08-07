@@ -134,9 +134,12 @@ export class MainAgent {
    * Core streaming loop using AI SDK `streamText()`.
    *
    * AI SDK handles the tool-call iteration automatically via `maxSteps`.
-   * @param system - The assembled system prompt for this turn.
+   *
+   * The loop is wrapped in try/finally so the turn's obligations run
+   * however it ends — including the user closing the page, which stops
+   * this generator where it stands.
+   * @param agentConfig - Model, instructions and tools, from the one factory that decides them.
    * @param messages - Conversation history plus the current user message.
-   * @param toolNames - Tool names to expose to the model; defaults to the standard tool set when omitted.
    * @yields SSE events (chat chunks, tool hints, interaction prompts, plan, done) for real-time frontend rendering.
    */
   private async *runStream(

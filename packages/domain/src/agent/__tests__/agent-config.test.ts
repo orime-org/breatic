@@ -16,18 +16,18 @@
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { getAgentConfig, initCore } from "@breatic/core";
+import type * as CoreModule from "@breatic/core";
+import type * as SkillsLoaderModule from "@domain/agent/skills-loader.js";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
 import { BASELINE_TOOLS } from "@domain/agent/tools/index.js";
 
 vi.mock("@breatic/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@breatic/core")>();
+  const actual = await importOriginal<typeof CoreModule>();
   return { ...actual, getAgentConfig: vi.fn(actual.getAgentConfig) };
 });
 
 vi.mock("@domain/agent/skills-loader.js", async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import("@domain/agent/skills-loader.js")
-  >();
+  const actual = await importOriginal<typeof SkillsLoaderModule>();
   return {
     ...actual,
     getSkillRegistry: () => ({

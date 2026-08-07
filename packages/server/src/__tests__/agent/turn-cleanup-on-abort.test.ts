@@ -18,6 +18,8 @@
  * this reproduces the real failure rather than a stand-in for it.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as CoreModule from "@breatic/core";
+import type * as DomainModule from "@breatic/domain";
 
 const addMessage = vi.fn(
   async (_id: string, _msg: Record<string, unknown>) => 1,
@@ -38,7 +40,7 @@ const streamTextRetry = vi.fn();
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
   const base = await coreMock(importOriginal);
-  const actual = await importOriginal<typeof import("@breatic/core")>();
+  const actual = await importOriginal<typeof CoreModule>();
   return {
     ...base,
     // The shared mock stubs runWithContext into a plain call, which never
@@ -53,9 +55,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
-  const actual = await vi.importActual<typeof import("@breatic/domain")>(
-    "@breatic/domain",
-  );
+  const actual = await vi.importActual<typeof DomainModule>("@breatic/domain");
   return {
     ...base,
     // The finalizer itself is the real one — mocking it would test the mock.
