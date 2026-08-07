@@ -109,7 +109,45 @@ describe('SettingsTab — a save of one thing must not seize the other', () => {
     );
   });
 
-  it('still locks the rename dialog while the RENAME itself is in flight', async () => {
+  it('does not let a rename go out while another save is still out', async () => {
+    // Both ride one mutation. Firing the second replaces the first on the
+    // observer without stopping it, so two PATCHes run and both come back
+    // into the same success handler — and both were addressed to the slug the
+    // studio had when the pair started.
+    vi.mocked(studiosApi.update).mockReturnValue(new Promise(() => {}));
+
+    renderTab();
+    fireEvent.change(screen.getByTestId('settings-name'), {
+      target: { value: 'Acme Inc' },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-save')).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByTestId('settings-save'));
+    await waitFor(() => expect(studiosApi.update).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByTestId('settings-slug-open'));
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-slug-dialog')).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByLabelText('studio.container.settings.slug'), {
+      target: { value: 'acme-renamed' },
+    });
+    // Wait for the check to ANSWER, not merely to be asked: while it is still
+    // out the button is disabled for that reason instead, and the case would
+    // pass without the gate it exists to test.
+    await waitFor(() =>
+      expect(
+        screen.getByText('studio.container.dialog.slugAvailable'),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled();
+  });
+
+  it('leaves the rename dialog dismissible while the RENAME itself is in flight', async () => {
+    // The spinner says what is happening; leaving is the user's to decide.
+    // Ant Design, Bootstrap, Chakra and Radix all keep these two apart, and
+    // all of them default to dismissible.
     vi.mocked(studiosApi.update).mockReturnValue(new Promise(() => {}));
 
     renderTab();
@@ -126,10 +164,15 @@ describe('SettingsTab — a save of one thing must not seize the other', () => {
     fireEvent.click(screen.getByTestId('settings-slug-confirm'));
     await waitFor(() => expect(studiosApi.update).toHaveBeenCalledTimes(1));
 
+    const confirm = screen.getByTestId('settings-slug-confirm');
+    expect(confirm).toBeDisabled();
+    expect(confirm.querySelector('.animate-spin')).not.toBeNull();
+
     fireEvent.click(screen.getByTestId('settings-slug-cancel'));
-    expect(screen.getByTestId('settings-slug-dialog')).toBeInTheDocument();
-    expect(
-      screen.getByLabelText('studio.container.settings.slug'),
-    ).toHaveValue('acme-renamed');
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('settings-slug-dialog'),
+      ).not.toBeInTheDocument(),
+    );
   });
 });

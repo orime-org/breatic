@@ -26,7 +26,9 @@ interface DangerZoneProps {
   members: readonly StudioMember[];
   leaving: boolean;
   onLeave: () => void;
-  /** Whether a SLUG change is in flight — not any save. See the slug entry. */
+  /** Whether any settings save is in flight — holds the slug entry back. */
+  saving: boolean;
+  /** Whether a SLUG change in particular is in flight — draws its spinner. */
   renaming: boolean;
   onSave: (patch: UpdateStudioInput) => void;
 }
@@ -58,7 +60,8 @@ interface DangerZoneProps {
  * @param props.members - The studio's members (the transfer picker's source).
  * @param props.leaving - Whether a leave request is in flight.
  * @param props.onLeave - Called once the user confirms leaving.
- * @param props.renaming - Whether a slug change is in flight.
+ * @param props.saving - Whether any settings save is in flight.
+ * @param props.renaming - Whether a slug change in particular is in flight.
  * @param props.onSave - Called with the slug patch once a rename is confirmed.
  * @returns The danger zone, or nothing when the viewer has no action in it.
  */
@@ -67,6 +70,7 @@ export function DangerZone({
   members,
   leaving,
   onLeave,
+  saving,
   renaming,
   onSave,
 }: DangerZoneProps): React.JSX.Element | null {
@@ -110,6 +114,7 @@ export function DangerZone({
         {canChangeSlug ? (
           <ChangeSlugSection
             studio={studio}
+            saving={saving}
             renaming={renaming}
             onSave={onSave}
           />

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { Loader2 } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -23,11 +24,21 @@ import type { UpdateStudioInput } from '@breatic/shared';
 interface ChangeSlugSectionProps {
   studio: StudioDetail;
   /**
-   * Whether THIS rename is in flight.
+   * Whether ANY settings save is in flight — this holds Confirm back.
    *
-   * Not "a save is in flight". The name and the slug ride the same mutation,
-   * so the broader flag would let a name save hold this dialog shut over a
-   * rename nobody submitted.
+   * The name, the description and the slug are one mutation, and firing a
+   * second one replaces the first on its observer without stopping the request
+   * it already sent. Two patches would then be out at once, both addressed to
+   * the slug the studio had when the pair started.
+   */
+  saving: boolean;
+  /**
+   * Whether THIS rename is the thing in flight — this draws the spinner.
+   *
+   * Deliberately the narrower of the two: a spinner is a claim about what is
+   * running, and a name save must not make this button claim to be renaming.
+   * Getting it wrong costs an inaccurate icon and nothing else, which is why
+   * the question that has to be inferred drives the icon rather than the gate.
    */
   renaming: boolean;
   onSave: (patch: UpdateStudioInput) => void;
@@ -48,14 +59,24 @@ interface ChangeSlugSectionProps {
  * nothing moves afterwards, whereas a rename leaves the page standing on an
  * address that no longer exists — so this one goes through the settings hook's
  * `save`, which owns the five steps that have to follow.
- * @param props - The studio, whether this rename is running, and the handler.
+ *
+ * While the request is out the button carries a spinner and the dialog stays
+ * dismissible, which is how Ant Design, Bootstrap, Chakra and Radix all treat
+ * it — the in-progress state and the ability to leave are separate concerns,
+ * and every one of them defaults to dismissible. An earlier version locked the
+ * dialog instead, reasoned from the avatar upload dialog next door; that one
+ * locks because closing mid-upload abandons an upload, and a rename has no
+ * equivalent, since success navigates away and failure raises a toast.
+ * @param props - The studio, the two in-flight flags, and the save handler.
  * @param props.studio - The studio being renamed.
- * @param props.renaming - Whether this rename is already in flight.
+ * @param props.saving - Whether any settings save is in flight.
+ * @param props.renaming - Whether this rename in particular is in flight.
  * @param props.onSave - Called with the slug patch once confirmed.
  * @returns The entry button and its dialog.
  */
 export function ChangeSlugSection({
   studio,
+  saving,
   renaming,
   onSave,
 }: ChangeSlugSectionProps): React.JSX.Element {
@@ -69,33 +90,37 @@ export function ChangeSlugSection({
   // Written as "only when available", never as "unless invalid": an emptied
   // field reports neither, it reports `idle`, and a gate phrased the other way
   // walks the user through a destructive confirmation the server then refuses.
-  const canConfirm = changed && availability.status === 'available' && !renaming;
+  const canConfirm = changed && availability.status === 'available' && !saving;
   // The sentence in the header names both ends of the move. Until there is a
   // destination it stays a placeholder: on open both ends hold the same slug,
   // and "the address changes from X to X" is not a thing to greet someone
   // with.
   const destination = changed && next !== '' ? next : '…';
 
+  // The studio can change under a mounted dialog: switching to an already
+  // cached studio in the rail re-renders these components rather than
+  // rebuilding them. A draft seeded once at mount would then describe somebody
+  // else — the dialog would open on an address change nobody asked for, and
+  // the availability check would ask about the OTHER studio's slug and be
+  // told, truthfully, that it is taken.
+  // The studio can change under a mounted dialog: switching to an already
+  // cached studio in the rail re-renders these components rather than
+  // rebuilding them. A draft seeded once at mount would then describe somebody
+  // else — the dialog would open on an address change nobody asked for, and
+  // the availability check would ask about the OTHER studio's slug and be
+  // told, truthfully, that it is taken.
+  React.useEffect(() => {
+    setSlug(studio.slug);
+  }, [studio.slug]);
+
   const onOpenChange = React.useCallback(
     (nextOpen: boolean): void => {
-      // Closing mid-request would leave the rename running with nothing
-      // listening for its answer, and would take the typed slug with it — the
-      // one thing a failure is supposed not to cost.
-      //
-      // This one line covers every way out, because every one of them ends
-      // here: Escape and clicking outside both reach Radix's `onDismiss`,
-      // which calls `onOpenChange(false)`; the header's X is a
-      // `DialogPrimitive.Close`, which calls the same; and Cancel calls it
-      // directly. Guarding the dismissal events individually as well was
-      // tried and removed — deleting those handlers left every one of the
-      // four cases below still passing, so they were not holding anything up.
-      if (!nextOpen && renaming) return;
       setOpen(nextOpen);
       // Both directions: an abandoned draft must not be waiting when the
       // dialog is opened again.
       setSlug(studio.slug);
     },
-    [renaming, studio.slug],
+    [studio.slug],
   );
 
   const confirm = React.useCallback((): void => {
@@ -145,7 +170,7 @@ export function ChangeSlugSection({
               label={t('studio.container.settings.slug')}
               value={slug}
               onChange={setSlug}
-              disabled={renaming}
+              disabled={saving}
               error={
                 availability.status === 'invalid' ||
                 availability.status === 'taken'
@@ -175,7 +200,7 @@ export function ChangeSlugSection({
             </ul>
             <div className='flex items-center justify-end gap-2'>
               <Button
-                variant='ghost'
+                variant='outline'
                 size='sm'
                 onClick={() => onOpenChange(false)}
                 data-testid='settings-slug-cancel'
@@ -188,6 +213,12 @@ export function ChangeSlugSection({
                 onClick={confirm}
                 data-testid='settings-slug-confirm'
               >
+                {renaming ? (
+                  <Loader2
+                    className='mr-1.5 h-3.5 w-3.5 animate-spin'
+                    aria-hidden='true'
+                  />
+                ) : null}
                 {renaming
                   ? t('studio.container.settings.saving')
                   : t('studio.container.settings.slugChangeConfirm')}

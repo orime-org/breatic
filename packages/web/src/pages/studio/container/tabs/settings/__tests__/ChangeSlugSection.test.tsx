@@ -55,45 +55,54 @@ const STUDIO: StudioDetail = {
 
 const SLUG_LABEL = 'studio.container.settings.slug';
 
-/** A render result that can be put into, and taken out of, the in-flight state. */
+/** The two in-flight flags this section takes, as one thing to pass around. */
+interface Flags {
+  /** Any settings save is out — holds Confirm back. */
+  saving: boolean;
+  /** THIS rename is out — draws the spinner. */
+  renaming: boolean;
+}
+
+/** A render result that can be put into, and taken out of, an in-flight state. */
 interface SectionHandle {
-  /** Re-render with this rename in flight, or no longer in flight. */
-  setRenaming: (renaming: boolean) => void;
+  setFlags: (flags: Flags) => void;
 }
 
 /**
  * Render the section.
  *
- * `setRenaming` exists because the in-flight rules cannot be reached by
- * rendering straight into that state: with the field disabled from the start,
- * nothing can be typed, so the confirm button is off for want of a changed
- * value rather than for the reason under test.
+ * `setFlags` exists because the in-flight rules cannot be reached by rendering
+ * straight into that state: nothing can be typed first, so Confirm is off for
+ * want of a changed value rather than for the reason under test.
  * @param props - Overrides for the section's props.
- * @param props.renaming - Whether this rename is in flight to begin with.
  * @param props.onSave - The save handler.
- * @returns The render result, plus a way to flip the in-flight flag.
+ * @returns The render result, plus a way to flip the in-flight flags.
  */
 function renderSection(props: {
-  renaming?: boolean;
   onSave?: (patch: unknown) => void;
 } = {}): ReturnType<typeof render> & SectionHandle {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const onSave = props.onSave ?? vi.fn();
   /**
-   * Build the tree for a given in-flight flag.
-   * @param renaming - Whether this rename is in flight.
+   * Build the tree for a given pair of flags.
+   * @param flags - The in-flight flags.
    * @returns The element tree.
    */
-  const tree = (renaming: boolean): React.JSX.Element => (
+  const tree = (flags: Flags): React.JSX.Element => (
     <QueryClientProvider client={qc}>
-      <ChangeSlugSection studio={STUDIO} renaming={renaming} onSave={onSave} />
+      <ChangeSlugSection
+        studio={STUDIO}
+        saving={flags.saving}
+        renaming={flags.renaming}
+        onSave={onSave}
+      />
     </QueryClientProvider>
   );
-  const result = render(tree(props.renaming ?? false));
+  const result = render(tree({ saving: false, renaming: false }));
   return {
     ...result,
-    setRenaming: (renaming: boolean): void => {
-      result.rerender(tree(renaming));
+    setFlags: (flags: Flags): void => {
+      result.rerender(tree(flags));
     },
   };
 }
@@ -149,6 +158,56 @@ describe('ChangeSlugSection — the entry point', () => {
       expect(screen.getByTestId('settings-slug-body')).toHaveTextContent(
         '"newSlug":"acme-renamed"',
       ),
+    );
+  });
+});
+
+describe('ChangeSlugSection — when it is handed a different studio', () => {
+  it('lets go of the slug it was holding for the previous one', async () => {
+    // The container page does not remount its tabs when the rail switches to
+    // a studio whose data is already cached, so these instances are re-rendered
+    // with a new studio rather than rebuilt. A draft seeded once at mount then
+    // describes somebody else: the dialog opens claiming an address change
+    // nobody asked for, and the availability check asks the server about the
+    // OTHER studio's slug and is told, truthfully, that it is taken.
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const other: StudioDetail = { ...STUDIO, id: 's2', slug: 'other-studio' };
+    /**
+     * Build the tree for a studio.
+     * @param studio - The studio to render for.
+     * @returns The element tree.
+     */
+    const tree = (studio: StudioDetail): React.JSX.Element => (
+      <QueryClientProvider client={qc}>
+        <ChangeSlugSection
+          studio={studio}
+          saving={false}
+          renaming={false}
+          onSave={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree(STUDIO));
+
+    rerender(tree(other));
+    const input = await openDialog();
+    expect(input).toHaveValue(other.slug);
+  });
+});
+
+describe('ChangeSlugSection — how the footer looks', () => {
+  it('gives Cancel the bordered variant every other dialog uses', async () => {
+    // The shared AlertDialog primitive dresses its own Cancel in `outline`,
+    // and the create-studio, invite-member and new-item dialogs all do the
+    // same by hand. This one was written off the transfer dialog next door,
+    // which was the single place using a borderless Cancel.
+    renderSection();
+    await openDialog();
+    expect(screen.getByTestId('settings-slug-cancel')).toHaveClass(
+      'border',
+      'border-border',
     );
   });
 });
@@ -231,27 +290,25 @@ describe('ChangeSlugSection — the confirm gate', () => {
     expect(onSave).toHaveBeenCalledWith({ slug: 'acme-renamed' });
   });
 
-  it('shuts again the moment the request goes out, so it cannot be pressed twice', async () => {
-    // Reached by typing FIRST and only then going in-flight. Rendering
-    // straight into the in-flight state disables the field, so nothing can be typed and
-    // the button is off for want of a changed value — which is how the first
-    // version of this case passed without the clause it claimed to protect.
-    const { setRenaming } = renderSection();
+  it('shuts the moment ANY settings save goes out, so two cannot ride at once', async () => {
+    // The broad flag, not the narrow one: the name, the description and the
+    // slug are one mutation, and firing the second replaces the first on the
+    // observer without stopping its request.
+    const { setFlags } = renderSection();
     const input = await openDialog();
     fireEvent.change(input, { target: { value: 'acme-renamed' } });
     await waitFor(() =>
       expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
     );
 
-    setRenaming(true);
+    setFlags({ saving: true, renaming: false });
     expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled();
   });
 });
 
-describe('ChangeSlugSection — while the request is in flight', () => {
+describe('ChangeSlugSection — while the request is out', () => {
   /**
-   * Open the dialog, type a free slug, and put the section into the saving
-   * state — the situation every case in this block is about.
+   * Open the dialog, type a free slug, and put the rename in flight.
    * @returns The handle, so a case can take it back out of that state.
    */
   async function reachInFlight(): Promise<SectionHandle> {
@@ -261,47 +318,70 @@ describe('ChangeSlugSection — while the request is in flight', () => {
     await waitFor(() =>
       expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
     );
-    handle.setRenaming(true);
+    handle.setFlags({ saving: true, renaming: true });
     return handle;
   }
 
-  /** Assert the dialog is still up and still holding what was typed. */
-  function expectStillThere(): void {
-    expect(screen.getByTestId('settings-slug-dialog')).toBeInTheDocument();
-    expect(screen.getByLabelText(SLUG_LABEL)).toHaveValue('acme-renamed');
-  }
+  it('puts a spinner on the confirm button and keeps it disabled', async () => {
+    await reachInFlight();
+    const confirm = screen.getByTestId('settings-slug-confirm');
+    expect(confirm).toBeDisabled();
+    expect(confirm.querySelector('.animate-spin')).not.toBeNull();
+  });
 
-  it('does not let Escape close it', async () => {
+  it('shows no spinner when the save running is somebody else’s', async () => {
+    // A name or description save is out. This button is held back so two
+    // patches cannot ride the one mutation at once, but it must not claim to
+    // be doing something it is not.
+    const handle = renderSection();
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+    );
+
+    handle.setFlags({ saving: true, renaming: false });
+    const confirm = screen.getByTestId('settings-slug-confirm');
+    expect(confirm).toBeDisabled();
+    expect(confirm.querySelector('.animate-spin')).toBeNull();
+  });
+
+  it('still closes on Escape', async () => {
     await reachInFlight();
     fireEvent.keyDown(screen.getByTestId('settings-slug-dialog'), {
       key: 'Escape',
     });
-    expectStillThere();
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('settings-slug-dialog'),
+      ).not.toBeInTheDocument(),
+    );
   });
 
-  it('does not let Cancel close it', async () => {
+  it('still closes on Cancel', async () => {
     await reachInFlight();
     fireEvent.click(screen.getByTestId('settings-slug-cancel'));
-    expectStillThere();
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('settings-slug-dialog'),
+      ).not.toBeInTheDocument(),
+    );
   });
 
-  it('does not let the header’s close button close it', async () => {
+  it('still closes on the header’s close button', async () => {
     await reachInFlight();
     fireEvent.click(screen.getByLabelText('Close'));
-    expectStillThere();
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('settings-slug-dialog'),
+      ).not.toBeInTheDocument(),
+    );
   });
 
-  it('does not let a click outside close it', async () => {
+  it('still closes on a click outside', async () => {
     await reachInFlight();
     fireEvent.pointerDown(document.body);
     fireEvent.click(document.body);
-    expectStillThere();
-  });
-
-  it('lets it close again once the request is done', async () => {
-    const { setRenaming } = await reachInFlight();
-    setRenaming(false);
-    fireEvent.click(screen.getByTestId('settings-slug-cancel'));
     await waitFor(() =>
       expect(
         screen.queryByTestId('settings-slug-dialog'),

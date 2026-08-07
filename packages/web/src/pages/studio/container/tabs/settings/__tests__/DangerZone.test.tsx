@@ -79,6 +79,7 @@ function renderZone(detail: StudioDetail): ReturnType<typeof render> {
         members={members}
         leaving={false}
         onLeave={vi.fn()}
+        saving={false}
         renaming={false}
         onSave={vi.fn()}
       />

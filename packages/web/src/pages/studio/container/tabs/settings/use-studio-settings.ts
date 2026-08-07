@@ -39,10 +39,12 @@ export interface StudioSettingsActions {
   /**
    * The in-flight edit is a SLUG change specifically.
    *
-   * The rename dialog refuses to close while its own request is out, so it
-   * needs the narrower question. Handing it `saving` would let a name save
-   * hold it shut: press Save on the name, open the rename dialog, and it is a
-   * modal with no way out over a rename nobody submitted.
+   * The rename dialog draws a spinner off this one, and holds its Confirm
+   * button back off `saving`. Keeping them apart matters in both directions: a
+   * spinner is a claim about what is running, so the broad flag would have the
+   * rename button claim to be renaming during a name save; and the gate has to
+   * be the broad one, or a rename fires while another patch is still out and
+   * two ride the single mutation at once.
    */
   renaming: boolean;
   uploadingAvatar: boolean;

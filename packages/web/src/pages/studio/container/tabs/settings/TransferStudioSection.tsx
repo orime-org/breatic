@@ -203,7 +203,7 @@ export function TransferStudioSection({
               </Select>
             )}
             <div className='flex items-center justify-end gap-2'>
-              <Button variant='ghost' size='sm' onClick={() => setOpen(false)}>
+              <Button variant='outline' size='sm' onClick={() => setOpen(false)}>
                 {t('studio.container.dialog.cancel')}
               </Button>
               <Button
