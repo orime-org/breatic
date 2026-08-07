@@ -5,14 +5,15 @@
  * Handling-lease sweeper (#1569).
  *
  * `state: 'handling'` is fragile shared state: the driver advancing it
- * (a user's browser for uploads, a Worker for AIGC) can die silently, and
- * there is no fast path to fall back on. A disconnect-triggered one used to
- * exist and was removed on 2026-07-02 (#1580 slice 4) because a closing
- * socket is not evidence the work died — an upload goes straight to object
- * storage, invisible to collab and outliving the socket — and a worker judged
- * dead by BullMQ never runs its own write-back either. So this sweeper is not
- * a backstop behind an accelerator; it is the only thing that reclaims a
- * handling node its driver never closed. Every handling node carries
+ * (a user's browser for uploads, a Worker for AIGC) can die silently, and the
+ * accelerators that normally clean up after it can miss. The owner's own
+ * write-back covers the common cases, and the cross-process `QueueEvents`
+ * 'failed' net (`worker/handlers/failed-job-cleanup.ts`) covers a worker
+ * BullMQ judged dead — but neither fires when the driver dies without a word.
+ * A DISCONNECT-triggered accelerator used to sit here too; it was removed on
+ * 2026-07-02 (#1580 slice 4) because a closing socket is not evidence the work
+ * died — an upload goes straight to object storage, invisible to collab and
+ * outliving the socket. What is left is this: every handling node carries
  * `handlingBy.startedAt`, and any node still
  * handling more than HANDLING_TIMEOUT_MS (unified 1h fixed budget, user
  * decision 2026-07-02) after that is reclaimed here — regardless of what

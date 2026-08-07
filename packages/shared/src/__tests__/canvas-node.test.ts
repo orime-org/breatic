@@ -179,7 +179,7 @@ describe("HandlingActor", () => {
   it("HANDLING_TIMEOUT_MS is the single unified 1-hour lease budget (#1569)", () => {
     // User decision 2026-07-02: ONE timeout for every handling operation
     // (upload / AIGC / future frontend media ops). The budget's job is to
-    // bound rare zombies (lost disconnect events), not to fit per-op
+    // bound rare zombies (a driver that died without writing back), not per-op
     // durations. Web (display fallback) and collab (sweeper) both import
     // THIS constant so the two sides can never drift.
     expect(HANDLING_TIMEOUT_MS).toBe(3_600_000);
@@ -470,9 +470,9 @@ describe("CanvasNodeFields", () => {
     // @ts-expect-error outputType removed (2026-06-15 model revision — no generative node)
     data.outputType;
 
-    // @ts-expect-error operationLocks removed (#1889 — the mini-tool configure
-    // lock was never wired up; the only reader was a disconnect pass that
-    // could therefore only ever find nothing, and it went too)
+    // @ts-expect-error operationLocks removed (#1889 — its only producer went
+    // with the 2026-05-18 web rewrite, so the one reader left, a disconnect
+    // pass, could only ever find nothing; both went)
     data.operationLocks;
 
     // Positive control: .name access works

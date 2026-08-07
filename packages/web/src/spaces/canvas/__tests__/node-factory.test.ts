@@ -69,11 +69,12 @@ describe('createEmptyNode — empty content node factory', () => {
   });
 
   it('a handling upload node carries handlingBy (frontend driver + lease start, #1569)', () => {
-    // Without handlingBy the lease sweeper cannot compute the timeout, and a
-    // node whose upload dies would stay in handling forever. Nothing else
-    // frees it: a disconnect writes nothing, because a closing socket is not
-    // evidence the upload died (it goes straight to object storage and
-    // outlives the socket).
+    // Without handlingBy the sweeper has no lease to measure and treats the
+    // node as an orphan — `startedAt === undefined` expires it on the very
+    // next pass, killing a live upload rather than letting it run its budget.
+    // Nothing softens that: a disconnect writes nothing, because a closing
+    // socket is not evidence the upload died (it goes straight to object
+    // storage and outlives the socket).
     const before = Date.now();
     const node = createEmptyNode('image', pos, 'u', 'handling');
     const after = Date.now();

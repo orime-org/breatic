@@ -153,9 +153,9 @@ export interface HandlingActor {
 /**
  * Unified fixed-budget handling lease (#1569, user decision 2026-07-02):
  * ONE hour for every handling operation (upload / AIGC / future frontend
- * media ops). The budget's job is to bound rare zombies (lost disconnect
- * events), not to fit per-operation durations — common cases are cleaned
- * by the owner writing back on success / failure. Web (display-level
+ * media ops). The budget's job is to bound rare zombies (a driver that died
+ * without ever writing back), not to fit per-operation durations — common
+ * cases are cleaned by the owner writing back on success / failure. Web (display-level
  * timeout fallback) and collab (sweeper) both import THIS constant so the two
  * sides can never drift.
  */
@@ -269,10 +269,9 @@ export interface CanvasNodeFields {
     /** User id who created the node. Set once at creation; never updated. */
     createdBy: string;
     /**
-     * User-driven manual lock (spec §10.13.6). Only the user UI can
-     * toggle this; mini-tool operations and Collab `onDisconnect`
-     * never touch it. When `true`, the node is undeletable and its
-     * `content` is immutable.
+     * User-driven manual lock (spec §10.13.6). Only the user UI toggles
+     * this; no server-side path writes it. When `true`, the node is
+     * undeletable and its `content` is immutable.
      */
     locked: boolean;
 

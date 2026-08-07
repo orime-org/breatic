@@ -309,8 +309,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // to collab and outliving the socket. The 1h lease sweeper
       // (`services/handling-sweeper.ts`) is the guarantee. The other half,
       // stripping `operationLocks`, went with the field itself in #1889: the
-      // mini-tool configure lock was never wired up, so the pass walked every
-      // node on every disconnect and could only ever find nothing.
+      // mini-tool configure lock's only producer went with the 2026-05-18 web
+      // rewrite, so nothing had written an entry since and the pass walked
+      // every node on every disconnect to find nothing.
     },
 
     // A client trying to write the meta doc gets ONE LOG LINE and nothing
