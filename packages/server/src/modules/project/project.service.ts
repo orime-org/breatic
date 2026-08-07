@@ -75,9 +75,10 @@ export async function assertAccess(
  * business transaction. Instead collab lazy-seeds the `project-{id}/meta`
  * doc AND the first Space's content doc together on its first load,
  * using the `initial_space_type` stored here (deterministic Space id
- * derived from the project id, so concurrent first-loads converge), and
- * the awareness hook backfills the creator's real name/avatar when they
- * first connect. The "project exists ⇒ ≥1 Space" invariant the frontend
+ * derived from the project id, so concurrent first-loads converge). No
+ * identity is seeded or backfilled anywhere in that path: names and avatars
+ * are read from the project member roster at render time and never live in
+ * Yjs (#1882). The "project exists ⇒ ≥1 Space" invariant the frontend
  * relies on is preserved by that read-time seed, not an eager write.
  * @param userId - Authenticated user UUID (becomes the project owner)
  * @param studioId - Studio the project is created in (the gate checks the

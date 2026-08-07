@@ -40,12 +40,13 @@ import { Collaboration } from '@tiptap/extension-collaboration';
 import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
 import type * as Y from 'yjs';
 
-import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 import { CollabCaretRefresh } from '@web/features/collab-editor/collab-caret-refresh';
 import { CollabUndoSelection } from '@web/features/collab-editor/collab-undo-selection';
 import {
   renderCollabCaret,
   renderCollabSelection,
+  type CaretUser,
+  type ResolveCollaboratorName,
 } from '@web/features/collab-editor/caret-render';
 
 /** What an editor has to supply to be bound to a shared document. */
@@ -64,8 +65,21 @@ export interface CollabExtensionOptions {
    * throws on a null provider, so carets mount only once this is present.
    */
   caretProvider?: { awareness: unknown } | null;
-  /** This user's caret identity, published to other clients. */
-  caretUser?: CaretUserIdentity | null;
+  /**
+   * Turns a remote collaborator's user id into a display name (#1882).
+   *
+   * Awareness carries no name, so without this every remote caret renders as
+   * a bare coloured line. It must be reference-stable: the extension keeps
+   * whatever it is given here for as long as the editor lives, and a resolver
+   * that changed identity would be silently ignored from then on. How long
+   * that is varies by caller — the document editor is cached per document and
+   * outlives tab switches, while the canvas editors are rebuilt whenever one
+   * of their `useEditor` dependencies moves (a locale switch changes the
+   * placeholder, reopening a node changes the fragment). Either way, changing
+   * the resolver is not how a later roster reaches the carets; it reads the
+   * current one through a ref.
+   */
+  resolveCollaboratorName?: ResolveCollaboratorName;
   /**
    * An undo manager to bind instead of letting the collaboration extension
    * build its own. Supply it when the caller needs to READ the manager — a
@@ -82,7 +96,8 @@ export interface CollabExtensionOptions {
 export function buildCollabExtensions(
   options: CollabExtensionOptions,
 ): Extensions {
-  const { fragment, caretProvider, caretUser, undoManager } = options;
+  const { fragment, caretProvider, undoManager, resolveCollaboratorName } =
+    options;
 
   const extensions: Extensions = [
     Collaboration.configure({
@@ -103,19 +118,61 @@ export function buildCollabExtensions(
     CollabCaretRefresh,
   ];
 
-  // Carets need both an awareness-bearing provider and an identity to publish;
-  // the extension throws when the provider is absent.
-  if (caretProvider?.awareness && caretUser) {
+  // A provider is all carets need; the extension throws when it is absent.
+  // There used to be a second condition here — this client's own identity —
+  // because the browser announced who it was. It no longer does (#1886), and
+  // keeping the condition would have meant withholding EVERYONE's caret until
+  // the local account resolved, for no remaining reason.
+  if (caretProvider?.awareness) {
     extensions.push(
       CollaborationCaret.configure({
         provider: caretProvider,
-        user: caretUser,
-        // Receiver-side safe render: a whitelisted hue resolves to a theme
-        // token, so a remote client's colour string is never inlined into the
-        // DOM. BOTH builders are supplied — the default selectionRender inlines
-        // the raw remote colour too, and that omission is exactly what an
-        // editor assembling this list by hand would miss.
-        render: renderCollabCaret,
+        // No `user`. Nothing about who this is belongs on the wire — the
+        // server writes the id onto this field from the credential the
+        // connection presented, and the focus flag comes from
+        // `useCollabCaretPresence`, its single producer.
+        //
+        // The extension still seeds the field when its plugin starts, with the
+        // option's default `{name: null, color: null}`, and that cannot be
+        // switched off from here: `configure` deep-merges into the defaults, so
+        // passing an empty object leaves them exactly where they were. It
+        // states nothing — both values are null — and the server replaces the
+        // whole field before any peer sees it. Passing `user: {}` to look
+        // tidier would be a no-op dressed as a decision.
+        //
+        // Receiver-side render. The colour is derived from the remote user id
+        // rather than read off the wire, so no remote string is ever inlined
+        // into the DOM. BOTH builders are supplied — the default
+        // selectionRender inlines the raw remote colour, and that omission is
+        // exactly what an editor assembling this list by hand would miss.
+        //
+        // The name comes from the resolver, which is why this closure exists
+        // at all: upstream calls `render(user, clientId)` and has nowhere to
+        // put a third argument.
+        //
+        // DO NOT remove the resolver here as redundant plumbing. There is a
+        // second path that also names carets — the presence hook patches the
+        // label onto carets already on screen when the roster moves — and it
+        // looks like it makes this one unnecessary, because deleting this
+        // argument leaves the whole suite green nearly every time. Nearly.
+        // Measured: with it deleted, the end-to-end caret test passed 9 runs
+        // out of 10 and failed once, unchanged code both times.
+        //
+        // The two paths answer different questions. This one names a caret AT
+        // BIRTH, synchronously, as part of building it. The presence hook
+        // repaints an EXISTING caret, and it runs off the same awareness event
+        // that produced the caret — so which of the two lands first is a race,
+        // and the one-in-ten failure is that race being lost. Keeping this
+        // means a caret is never briefly nameless; removing it means it
+        // usually is not, which is a different promise.
+        //
+        // That difference is a frame wide, so no assertion here can hold it
+        // down. This comment is the guard.
+        // `clientId` stays optional so this still matches upstream's
+        // single-argument `render` type. It arrives at runtime — the caret's
+        // data-client-id, which the DOM patches key off, comes from it.
+        render: (user: CaretUser, clientId?: number) =>
+          renderCollabCaret(user, clientId, resolveCollaboratorName),
         selectionRender: renderCollabSelection,
       }),
     );

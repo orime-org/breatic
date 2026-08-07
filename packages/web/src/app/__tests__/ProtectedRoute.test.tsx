@@ -7,7 +7,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
-import type { PersonalStudio } from '@web/data/api/auth';
+import type { PersonalStudioRef } from '@breatic/shared';
 import { useCurrentUserStore } from '@web/stores';
 
 // Use the declarative `<MemoryRouter>` + `<Routes>` form rather than
@@ -50,7 +50,11 @@ function LoginProbe(): React.ReactElement {
   return <div data-testid='login-page'>{location.search}</div>;
 }
 
-const studio: PersonalStudio = { name: 'Alice', slug: 'alice' };
+const studio: PersonalStudioRef = {
+  name: 'Alice',
+  slug: 'alice',
+  avatarUrl: null,
+};
 
 describe('ProtectedRoute', () => {
   beforeEach(() => {

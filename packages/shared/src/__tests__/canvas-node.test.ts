@@ -138,9 +138,10 @@ describe("HandlingActor", () => {
   });
 
   it("carries no display-name snapshot — userId + driver type + lease start only", () => {
-    // Email-registration rewrite (2026-06-06): the name is rendered from
-    // the live `meta.users[userId]` awareness roster, never frozen onto
-    // the node. A revert that re-adds `username` trips this type assertion.
+    // Email-registration rewrite (2026-06-06): the name is resolved from the
+    // project member roster the client fetches, never frozen onto the node
+    // (#1882 moved that lookup off a `meta.users` Yjs map; the rule is the
+    // same). A revert that re-adds `username` trips this type assertion.
     // `startedAt` (2026-07-02, #1569 lease): REQUIRED epoch-ms lease start —
     // the fixed-budget timeout (HANDLING_TIMEOUT_MS) is measured from it.
     // #1580 #7 unified gen (2026-07-03): `gen` is REQUIRED (owner triple

@@ -83,7 +83,6 @@ vi.mock('@web/data/yjs/project-meta', async () => {
       spaces: meta.spaces,
       openTabIds: meta.openTabIds,
       users: new Map(),
-      onlineUserIds: new Set<string>(),
       synced: true,
       provider: fakeProvider,
       status: 'connected',
@@ -254,7 +253,7 @@ describe('ProjectPage — a close tears down only once the tab has left the list
         id: 'u-me',
         name: 'Me',
         email: 'me@e.com',
-        personalStudio: { name: 'Me', slug: 'me' },
+        personalStudio: { name: 'Me', slug: 'me', avatarUrl: null },
       },
     });
   });

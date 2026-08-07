@@ -107,4 +107,55 @@ describe("POST /auth/google", () => {
     expect(body.data.token).toBeUndefined();
     expect(body.data.user.id).toBe("user-1");
   });
+
+  /** Sign in successfully and return the parsed user object. */
+  async function signIn(): Promise<{ personalStudio: unknown }> {
+    verifyIdTokenMock.mockResolvedValue({
+      getPayload: () => ({ iss: "https://accounts.google.com", sub: "g-123", email: "a@x.com", email_verified: true }),
+    });
+    const res = await createApp().request("/api/v1/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: "v.p.s" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: { user: { personalStudio: unknown } } };
+    return body.data.user;
+  }
+
+  // #1882: every /auth/* exit carries `personalStudio` in one shape. Google was
+  // the exit that had no test for it, and this is the endpoint where the field
+  // matters most — a Google sign-in is often somebody's first visit, so the
+  // client decides between the app and the slug-setup gate on what lands here.
+  it("carries the personal studio, projected field by field", async () => {
+    // Sentinel values: an assertion against the default mock would pass just as
+    // well if the route hard-coded a studio instead of reading the one it was
+    // handed.
+    mocks.studioService.getPersonalStudio.mockResolvedValueOnce({
+      id: "studio-9",
+      createdByUserId: "user-1",
+      type: "personal",
+      slug: "sentinel-slug",
+      name: "Sentinel Name",
+      avatarUrl: "https://cdn.example/sentinel.png",
+    });
+
+    expect((await signIn()).personalStudio).toEqual({
+      name: "Sentinel Name",
+      slug: "sentinel-slug",
+      avatarUrl: "https://cdn.example/sentinel.png",
+    });
+  });
+
+  it("carries an explicit null for a first-time Google user", async () => {
+    // Signing in with Google creates the account but not the studio — the slug
+    // is picked in step two. The key still has to be present: the client reads
+    // `personalStudio?.name`, and an absent key and a null one are the same to
+    // it, but only the null one says "asked, and there is none" out loud.
+    mocks.studioService.getPersonalStudio.mockResolvedValueOnce(null);
+
+    const user = await signIn();
+    expect(user).toHaveProperty("personalStudio");
+    expect(user.personalStudio).toBeNull();
+  });
 });

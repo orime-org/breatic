@@ -4,27 +4,37 @@
 /**
  * Receiver-side renderer for remote collaborator carets (batch-2 item 14).
  *
- * The awareness payload is UNTRUSTED wire data from other clients. The
- * CollaborationCaret default render inlines `user.color` straight into a
- * style attribute — a hostile collaborator could smuggle extra declarations
- * (`;background:url(...)` = request beacon) through it. This renderer never
- * inlines raw remote strings: it renders from the WHITELISTED palette hue
- * (which also makes the color viewer-theme adaptive — each client resolves
- * the token var against its own light/dark values), falls back to the wire
- * color only when it matches the strict 6-digit-hex shape, and otherwise
- * uses a neutral token.
+ * NO WIRE STRING reaches the DOM here. The awareness payload is untrusted
+ * data written by another client, and the CollaborationCaret default render
+ * inlines `user.color` straight into a style attribute — a hostile
+ * collaborator could smuggle extra declarations through it
+ * (`;background:url(...)` = a request beacon). This renderer reads exactly
+ * two fields off the wire, and neither is rendered as text or style:
+ *
+ *   - `focused`, a boolean, which only picks between two fixed classes.
+ *   - `id`, from which everything DISPLAYED is derived: the COLOUR, keyed on
+ *     it through a whitelisted palette hue (a token rather than a literal, so
+ *     each client resolves the same var against its own light/dark values),
+ *     and the NAME, looked up in the project roster (#1882). There is no wire
+ *     name to render and no wire colour to fall back to.
+ *
+ * An id that is missing or not a string gets the neutral token, which is the
+ * only other decision this file makes.
  */
 
-import { PALETTE_HUES, type PaletteHue } from '@web/lib/user-color';
+import { userPaletteHue, type PaletteHue } from '@web/lib/user-color';
 
-/** The caret identity payload carried in awareness `user` fields. */
+/**
+ * The caret identity payload carried in awareness `user` fields.
+ *
+ * Identity is the user id and nothing else (#1882). The name is resolved on
+ * the receiving side from the project member roster, and the colour is derived
+ * from the id — so two clients cannot disagree about either, and a peer's
+ * awareness state has no free-form string that reaches the DOM.
+ */
 export interface CaretUser {
-  /** Display name shown in the caret label (rendered as a text node). */
-  name?: string;
-  /** 6-digit hex for foreign/validator consumption (see user-color.ts). */
-  color?: string;
-  /** Palette hue for receiver-side token rendering (whitelisted here). */
-  hue?: string;
+  /** The collaborator's user id — the only identity on the wire. */
+  id?: string;
   /**
    * Whether the user's window currently has focus (published on window
    * blur/focus). Untrusted wire data: ONLY the literal `false` dims the remote
@@ -33,26 +43,31 @@ export interface CaretUser {
   focused?: boolean;
 }
 
-const SIX_DIGIT_HEX = /^#[0-9a-fA-F]{6}$/;
+/**
+ * Resolve a collaborator's display name from their user id.
+ *
+ * Returns null when the roster cannot name them — either it has not arrived
+ * yet or the entry carries a blank name (the roster merge fills `''` for a
+ * member whose profile query is still in flight, so "unknown" and "known but
+ * blank" reach this contract through the same door and mean the same thing).
+ */
+export type ResolveCollaboratorName = (userId: string) => string | null;
 
 /**
- * Resolves the CSS color a remote user's caret renders with, never trusting
- * free-form wire strings: whitelisted hue → palette token var (viewer-theme
- * adaptive); else strict 6-digit hex → as-is; else a neutral token.
+ * The CSS colour a remote user's caret renders with, derived from their user
+ * id so both ends compute the same value without publishing one.
+ *
+ * `userPaletteHue` only ever returns a whitelisted hue, so the result is a
+ * theme token and never a string that came off the wire — the caret and
+ * selection style attributes have no injection door left to close.
  * @param user - The remote user's awareness identity payload.
- * @returns A safe CSS color value.
+ * @returns A palette token var, or a neutral token when there is no id.
  */
-export function safeCaretColor(user: CaretUser): string {
-  if (
-    typeof user.hue === 'string' &&
-    (PALETTE_HUES as readonly string[]).includes(user.hue)
-  ) {
-    return `var(--color-palette-${user.hue as PaletteHue})`;
+export function caretColor(user: CaretUser): string {
+  if (typeof user.id !== 'string' || user.id.length === 0) {
+    return 'var(--color-muted-foreground)';
   }
-  if (typeof user.color === 'string' && SIX_DIGIT_HEX.test(user.color)) {
-    return user.color;
-  }
-  return 'var(--color-muted-foreground)';
+  return `var(--color-palette-${userPaletteHue(user.id) as PaletteHue})`;
 }
 
 /**
@@ -81,7 +96,7 @@ export function renderCollabSelection(user: CaretUser): {
     // Without this, the wrapper's own background drew a rectangle over the rounded
     // pill (B, user 2026-07-13). A custom property inherits through the whole
     // subtree, so the pill picks up the color regardless of wrapper nesting.
-    style: `--collab-selection-bg: color-mix(in srgb, ${safeCaretColor(user)} ${ratio}, transparent)`,
+    style: `--collab-selection-bg: color-mix(in srgb, ${caretColor(user)} ${ratio}, transparent)`,
     class: 'collaboration-carets__selection',
   };
 }
@@ -187,16 +202,28 @@ function scheduleLabelFlip(caret: HTMLElement, label: HTMLElement): void {
 /**
  * Builds the caret DOM for a remote collaborator (CollaborationCaret `render`
  * option): the caret line + a floating name label, both colored via
- * {@link safeCaretColor}. The name lands as a TEXT NODE (no markup path). The
+ * {@link caretColor}. The name lands as a TEXT NODE (no markup path). The
  * label renders above the caret, flipping BELOW on the first line where the
  * above position would clip at the scroll-viewport top (D, user 2026-07-12).
+ *
+ * The name comes from `resolveName`, not from the wire (#1882). When that
+ * returns null the caret renders as a bare coloured line with NO label — the
+ * roster is fetched rather than broadcast, so a caret can legitimately appear
+ * before its owner's name is known, and an empty label would flash a coloured
+ * box with nothing in it. The name arrives later by DOM mutation rather than
+ * by a rebuild, for the same reason the focus dim does (see the note below).
  * @param user - The remote user's awareness identity payload.
  * @param clientId - The remote awareness client id (stamped as data-client-id
- * so the focus-dim awareness listener can find this caret's reused DOM).
- * @returns The caret element (label nested inside).
+ * so the focus-dim and roster listeners can find this caret's reused DOM).
+ * @param resolveName - Looks the collaborator's display name up by user id.
+ * @returns The caret element (label nested inside, when the name is known).
  */
-export function renderCollabCaret(user: CaretUser, clientId?: number): HTMLElement {
-  const color = safeCaretColor(user);
+export function renderCollabCaret(
+  user: CaretUser,
+  clientId?: number,
+  resolveName?: ResolveCollaboratorName,
+): HTMLElement {
+  const color = caretColor(user);
   const caret = document.createElement('span');
   caret.classList.add('collaboration-carets__caret');
   // Dim the whole caret+label when the collaborator's window lost focus (they
@@ -214,13 +241,55 @@ export function renderCollabCaret(user: CaretUser, clientId?: number): HTMLEleme
     caret.dataset.clientId = String(clientId);
   }
   caret.style.borderColor = color;
+  const name =
+    typeof user.id === 'string' && resolveName ? resolveName(user.id) : null;
+  applyCaretName(caret, name, color);
+  return caret;
+}
+
+/** Class of the floating name label nested inside a caret. */
+const LABEL_CLASS = 'collaboration-carets__label';
+
+/**
+ * Bring a caret's name label in line with the name we can currently resolve:
+ * create it, update its text, or remove it when the name is unknown.
+ *
+ * Both writers go through here — the builder above on a fresh caret, and the
+ * roster listener in `use-collab-caret-presence` on a caret already in the
+ * DOM. One function because the two must agree on what "no name" looks like;
+ * writing the removal in one place and the creation in the other is how a
+ * caret ends up with a stale label nobody clears.
+ * @param caret - The caret element.
+ * @param name - The resolved display name, or null when it is not known.
+ * @param color - The caret's colour, used when the label has to be created.
+ */
+export function applyCaretName(
+  caret: HTMLElement,
+  name: string | null,
+  color: string,
+): void {
+  const existing = caret.querySelector<HTMLElement>(`.${LABEL_CLASS}`);
+  if (name === null || name.length === 0) {
+    existing?.remove();
+    return;
+  }
+  if (existing) {
+    existing.textContent = name;
+    // Re-measure. The flip decisions were taken against the OLD text, and a
+    // longer name overruns an edge the short one cleared — a rename on a caret
+    // that is sitting still would otherwise clip instead of flipping, and the
+    // caret is exactly the element that does not get rebuilt (see the note in
+    // the renderer). Safe to re-run: the measurement does not depend on the
+    // current flip state, and the class toggles are idempotent.
+    scheduleLabelFlip(caret, existing);
+    return;
+  }
   const label = document.createElement('div');
-  label.classList.add('collaboration-carets__label');
+  label.classList.add(LABEL_CLASS);
   label.style.backgroundColor = color;
-  label.appendChild(
-    document.createTextNode(typeof user.name === 'string' ? user.name : ''),
-  );
+  // A text node, never markup: the name is server data but it travels through
+  // the roster, and the caret is the one place it lands in the DOM.
+  label.appendChild(document.createTextNode(name));
   caret.appendChild(label);
   scheduleLabelFlip(caret, label);
-  return caret;
 }

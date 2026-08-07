@@ -28,7 +28,8 @@ import type * as Y from 'yjs';
 
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
-import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
+import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
+import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 
 /**
  * The box metrics the two states of a text node's body MUST share.
@@ -86,17 +87,17 @@ const EDITOR_CLASS = `${TEXT_BODY_BOX} cursor-text focus:bg-accent/30`;
  * @param options - The fragment to bind and the caret wiring.
  * @param options.fragment - The node's shared body.
  * @param options.caretProvider - Provider carrying collaborator carets, or null before first connect.
- * @param options.caretUser - This user's caret identity.
+ * @param options.collaboratorNames - Resolves collaborators' names from the roster.
  * @param options.placeholder - Text shown while the body is empty.
  * @returns The complete extension list.
  */
 export function buildTextNodeExtensions(options: {
   fragment: Y.XmlFragment;
   caretProvider?: Pick<HocuspocusProvider, 'awareness'> | null;
-  caretUser?: CaretUserIdentity | null;
+  collaboratorNames?: CollaboratorNames | null;
   placeholder: string;
 }): Extensions {
-  const { fragment, caretProvider, caretUser, placeholder } = options;
+  const { fragment, caretProvider, collaboratorNames, placeholder } = options;
   return [
     Document,
     Paragraph,
@@ -106,7 +107,11 @@ export function buildTextNodeExtensions(options: {
     // within it mount only once awareness exists: the extension throws on a
     // null provider, and before the socket's first connect there is nothing to
     // publish through.
-    ...buildCollabExtensions({ fragment, caretProvider, caretUser }),
+    ...buildCollabExtensions({
+      fragment,
+      caretProvider,
+      resolveCollaboratorName: collaboratorNames?.resolve,
+    }),
     Placeholder.configure({ placeholder }),
   ];
 }
@@ -116,8 +121,6 @@ interface TextNodeEditorProps {
   fragment: Y.XmlFragment;
   /** Provider carrying collaborator carets, or null before the first connect. */
   caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
-  /** This user's caret identity. */
-  caretUser: CaretUserIdentity | null;
   /** Text shown while the body is empty. */
   placeholder: string;
   /**
@@ -149,7 +152,6 @@ interface TextNodeEditorProps {
  * @param props - The editor's inputs.
  * @param props.fragment - The node's shared body.
  * @param props.caretProvider - Provider carrying collaborator carets.
- * @param props.caretUser - This user's caret identity.
  * @param props.placeholder - Text shown while the body is empty.
  * @param props.editable - Whether this user may write.
  * @param props.onLeave - Leave the editor, saying where focus should end up.
@@ -158,7 +160,6 @@ interface TextNodeEditorProps {
 export function TextNodeEditor({
   fragment,
   caretProvider,
-  caretUser,
   placeholder,
   editable,
   onLeave,
@@ -170,6 +171,9 @@ export function TextNodeEditor({
   // editor down per key, yanking the caret and dropping IME composition. A
   // ref makes that impossible instead of documenting it as a rule callers
   // have to know.
+  // From context, not from a prop: the roster is a project-level fact and
+  // every layer between here and the project page used to have to forward it.
+  const collaboratorNames = useCollaboratorNames();
   const onLeaveRef = React.useRef(onLeave);
   onLeaveRef.current = onLeave;
   const editor = useEditor(
@@ -177,7 +181,7 @@ export function TextNodeEditor({
       extensions: buildTextNodeExtensions({
         fragment,
         caretProvider,
-        caretUser,
+        collaboratorNames,
         placeholder,
       }),
       editable,
@@ -227,12 +231,25 @@ export function TextNodeEditor({
     // re-synced, so a locale switch while a node is open would otherwise leave
     // the old language behind until it was reopened. `caretProvider` flips
     // from null to a provider once, on the socket's first connect.
-    [fragment, placeholder, caretProvider, caretUser, editable],
+    //
+    // The RESOLVER, not the roster bundle around it: the bundle is a new object
+    // on every project-page render, and listing it here rebuilt this editor
+    // whenever anyone joined the project — the exact tear-down the ref above
+    // exists to prevent. The resolver keeps one identity for the editor's whole
+    // life and reads the current roster through a ref, so later names reach the
+    // carets without the editor being recreated.
+    [
+      fragment,
+      placeholder,
+      caretProvider,
+      collaboratorNames?.resolve,
+      editable,
+    ],
   );
   // Publish this window's focus and dim collaborators who have left theirs.
   // The other half of the caret story: without it this client publishes into a
   // void, and renders a flag nobody sets.
-  useCollabCaretPresence(editor, caretProvider, caretUser);
+  useCollabCaretPresence(editor, caretProvider);
 
   return <EditorContent editor={editor} />;
 }

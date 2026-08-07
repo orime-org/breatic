@@ -119,6 +119,57 @@ function ensureSharedSocket(url: string): HocuspocusProviderWebsocket {
 }
 
 /**
+ * Put every provider's awareness state back after the browser restores a page
+ * it had put aside.
+ *
+ * The browser's contract for a page that gets cached and restored has two
+ * halves: tear down in `pagehide`, set back up in `pageshow`. The collaboration
+ * provider does the first half for us — its own `pagehide` handler removes this
+ * client's awareness state — and leaves the second to the application. Without
+ * it, that state stays removed for the rest of the page's life, and two things
+ * quietly stop working:
+ *
+ *   - The heartbeat. y-protocols renews the local clock only
+ *     `if (this.getLocalState() !== null)`, so the timer keeps firing and keeps
+ *     doing nothing. The server sees somebody connected but silent and the
+ *     presence sweep turns them off — for good, since coming back needs a beat.
+ *   - The caret. `setLocalStateField` is a no-op on a null state, and that is
+ *     the only way this client publishes its cursor and focus.
+ *
+ * Restoring is a one-liner because of where the state comes from: the
+ * `Awareness` constructor's last line sets it to `{}` and nothing else ever
+ * does. A restored page brings the whole JavaScript context back as it was, so
+ * that line does not run again — and reconnecting only restores the socket, not
+ * the state that decides whether anything travels over it. Setting `{}` is
+ * exactly what construction did; the cursor and focus fields are republished by
+ * the editors on the next selection or focus change.
+ */
+function restoreAwarenessAfterPageRestore(): void {
+  docEntries.forEach((entry) => {
+    const { awareness } = entry.provider;
+    // Only when it is actually missing. A live state holds this client's
+    // current cursor and focus, and overwriting it would throw those away.
+    if (awareness && awareness.getLocalState() === null) {
+      awareness.setLocalState({});
+    }
+  });
+}
+
+// Registered once, for the tab, next to the registry it repairs — the same
+// place the providers live, so a new document is covered by construction rather
+// than by remembering to wire something. Guarded for non-browser environments
+// the way the provider library guards its own listener.
+if (typeof window !== 'undefined' && 'addEventListener' in window) {
+  window.addEventListener('pageshow', (event) => {
+    // `persisted` false is an ordinary load: nothing was torn down, and there
+    // is nothing to put back.
+    if ((event as PageTransitionEvent).persisted) {
+      restoreAwarenessAfterPageRestore();
+    }
+  });
+}
+
+/**
  * Destroy the shared WebSocket once no documents remain attached.
  */
 function maybeDestroySharedSocket(): void {

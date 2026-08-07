@@ -13,6 +13,7 @@ import {
 } from '@testing-library/react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 
 // The prompt's `@` chips inherit the ONE app-level TooltipProvider at runtime
 // (App.tsx); supply the real Radix provider here (single-provider mandate).
@@ -26,10 +27,7 @@ import * as React from 'react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import {
-  renderCollabCaret,
-  renderCollabSelection,
-} from '@web/features/collab-editor/caret-render';
+import { userPaletteHue } from '@web/lib/user-color';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -242,17 +240,24 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     fragment.insert(0, [paragraph]);
     const awareness = new Awareness(doc);
     render(
-      <PromptEditor
-        fragment={fragment}
-        placeholder='p'
-        onTextChange={vi.fn()}
-        onAtMentionsChange={vi.fn()}
-        references={[]}
-        mode='t2i'
-        mentionEmptyLabel='none'
-        caretProvider={withProvider ? { awareness } : null}
-        caretUser={{ name: 'Ada', color: '#008573', hue: 'teal' }}
-      />,
+      <CollaboratorNamesProvider
+        value={{
+          // Stands in for the project roster the page publishes (#1882).
+          resolve: (userId: string) => (userId === 'u-grace' ? 'Grace' : null),
+          members: [],
+        }}
+      >
+        <PromptEditor
+          fragment={fragment}
+          placeholder='p'
+          onTextChange={vi.fn()}
+          onAtMentionsChange={vi.fn()}
+          references={[]}
+          mode='t2i'
+          mentionEmptyLabel='none'
+          caretProvider={withProvider ? { awareness } : null}
+        />
+      </CollaboratorNamesProvider>,
     );
     const editorEl = screen.getByTestId('generate-prompt-editor');
     await waitFor(() =>
@@ -261,23 +266,22 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     return { awareness, editorEl };
   }
 
-  it('publishes the local user identity into awareness when the provider is supplied', async () => {
+  it('publishes the focus flag and no identity when the provider is supplied', async () => {
     const { awareness } = await mountWithAwareness(true);
     await waitFor(() => {
       const local = awareness.getLocalState() as {
-        user?: { name: string; color: string };
+        user?: Record<string, unknown>;
       } | null;
-      // The published color is a concrete 6-digit hex (y-prosemirror's
-      // validator warns on anything else); the hue rides along so receiving
-      // breatic clients render the viewer-theme-adaptive palette token, and
+      // Nothing about who this is (#1886): the server writes the id from the
+      // credential this connection presented, and receivers resolve the name
+      // from the project roster and the colour from that id.
       // `focused` seeds from the REAL document.hasFocus() on mount (its jsdom
       // value depends on what earlier tests focused — assert the type only).
-      expect(local?.user).toMatchObject({
-        name: 'Ada',
-        color: '#008573',
-        hue: 'teal',
-      });
-      expect(typeof (local?.user as { focused?: unknown })?.focused).toBe('boolean');
+      expect(local?.user).not.toHaveProperty('id');
+      expect(typeof local?.user?.focused).toBe('boolean');
+      expect(local?.user).not.toHaveProperty('name');
+      expect(local?.user).not.toHaveProperty('color');
+      expect(local?.user).not.toHaveProperty('hue');
     });
   });
 
@@ -438,7 +442,7 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     const REMOTE_CLIENT = awareness.clientID + 1;
     const states = new Map(awareness.getStates());
     states.set(REMOTE_CLIENT, {
-      user: { name: 'Grace', color: '#c2298a', hue: 'pink' },
+      user: { id: 'u-grace' },
       cursor: {
         anchor: JSON.parse(
           JSON.stringify(Y.relativePositionToJSON(anchor)),
@@ -460,13 +464,14 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
       const caret = editorEl.querySelector('.collaboration-carets__caret');
       expect(caret).not.toBeNull();
       const label = caret?.querySelector('.collaboration-carets__label');
+      // The name came from the roster resolver, not from the wire (#1882):
+      // the remote client published nothing but `{ id: 'u-grace' }`.
       expect(label?.textContent).toBe('Grace');
-      // Receiver-side rendering resolves the WHITELISTED hue to the palette
-      // token var — the viewer's own theme picks the light/dark value. The
-      // raw remote color string is never inlined when a valid hue exists
-      // (style-attribute injection from a hostile collaborator).
+      // The colour is derived from that same id, resolving to a palette token
+      // var so the viewer's own theme picks the light/dark value. No remote
+      // string reaches the style attribute at all any more.
       expect(label?.getAttribute('style')).toContain(
-        'var(--color-palette-pink)',
+        `var(--color-palette-${userPaletteHue('u-grace')})`,
       );
     });
   });
@@ -486,8 +491,29 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
       (e) => e.name === 'collaborationCaret',
     );
     expect(caretExt).toBeDefined();
-    expect(caretExt?.options.render).toBe(renderCollabCaret);
-    expect(caretExt?.options.selectionRender).toBe(renderCollabSelection);
+    // Asserted by BEHAVIOUR, not by function identity: `render` is now a
+    // closure so the name resolver can be threaded in (#1882 — upstream's
+    // signature has nowhere to put a third argument). Comparing references
+    // would have failed on that wrapper while the wiring was perfectly fine,
+    // and — worse — would pass on a wrapper that forgot to call through.
+    const render = caretExt?.options.render as (
+      user: { id: string },
+      clientId?: number,
+    ) => HTMLElement;
+    const caret = render({ id: 'u-remote' }, 5);
+    expect(caret.classList.contains('collaboration-carets__caret')).toBe(true);
+    expect(caret.style.borderColor).toContain('var(--color-palette-');
+    expect(caret.dataset.clientId).toBe('5');
+
+    const selectionRender = caretExt?.options.selectionRender as (u: {
+      id: string;
+    }) => { style: string; class: string };
+    const attrs = selectionRender({ id: 'u-remote' });
+    expect(attrs.class).toBe('collaboration-carets__selection');
+    // The hardened part: a custom property, never a raw background-color —
+    // the default builder inlines the remote colour (adversarial round-1 HIGH).
+    expect(attrs.style).toContain('--collab-selection-bg:');
+    expect(attrs.style).not.toContain('background-color');
   });
 
   it('mounts NO caret extension without a provider (the extension throws on null)', async () => {
@@ -515,6 +541,52 @@ describe('collaboration caret CSS contract (index.css)', () => {
   it('floats the name label above the caret in the user color', () => {
     expect(css).toMatch(
       /\.collaboration-carets__label\s*\{[^}]*position:\s*absolute[^}]*\}/,
+    );
+  });
+});
+
+// The editor is rebuilt whenever one of its dependencies changes — a locale
+// switch changes the placeholder baked into the extensions, and reopening a
+// node changes the fragment. Rebuilding destroys the old instance, and a
+// DESTROYED editor is not null: its `schema` is. So a guard that only asks
+// `if (!editor) return` lets every effect run against a corpse, and the first
+// one to touch the schema throws.
+describe('PromptEditor — effects after the editor is rebuilt', () => {
+  it('does not touch the destroyed instance when the placeholder changes', async () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('prompt');
+    const paragraph = new Y.XmlElement('paragraph');
+    paragraph.insert(0, [new Y.XmlText('hello')]);
+    fragment.insert(0, [paragraph]);
+
+    /** Render at a given placeholder; changing it rebuilds the editor. */
+    const view = (placeholder: string): React.JSX.Element => (
+      <PromptEditor
+        fragment={fragment}
+        placeholder={placeholder}
+        onTextChange={vi.fn()}
+        onAtMentionsChange={vi.fn()}
+        references={[]}
+        mode='t2i'
+        mentionEmptyLabel='none'
+      />
+    );
+
+    const { rerender } = render(view('Describe the image'));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('generate-prompt-editor').querySelector('.ProseMirror'),
+      ).not.toBeNull(),
+    );
+
+    // A locale switch. The old editor is destroyed here; anything still
+    // holding it must notice.
+    rerender(view('Décrivez l’image'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('generate-prompt-editor').querySelector('.ProseMirror'),
+      ).not.toBeNull(),
     );
   });
 });

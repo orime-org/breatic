@@ -33,8 +33,6 @@ describe("encodeInitialMetaState", () => {
       kind: "canvas",
       name: "Untitled",
       createdBy: userId,
-      creatorName: "Test Creator",
-      creatorAvatarUrl: null,
       ts,
     });
 
@@ -64,8 +62,6 @@ describe("encodeInitialMetaState", () => {
       kind: "canvas" as const,
       name: "Untitled",
       createdBy: "22222222-2222-2222-2222-222222222222",
-      creatorName: "Test Creator",
-      creatorAvatarUrl: null,
       ts: 1_700_000_000_000,
     };
     const a = encodeInitialMetaState(args);
@@ -74,26 +70,25 @@ describe("encodeInitialMetaState", () => {
     expect(a).toEqual(b);
   });
 
-  it("seeds meta.users[creator] with creator name + avatar + lastSeenAt", () => {
+  it("seeds NO identity — the meta doc never carries names or avatars (#1882)", () => {
+    // This used to seed `meta.users[creator]` so a peer opening the project
+    // before the creator first connected would still see a name on the
+    // space-created audit entry. Two things retired it: the activity feed
+    // renders `actorName` straight from the PG activity row and never read
+    // this map, and identity is now resolved from the project roster rather
+    // than persisted anywhere in Yjs. A seed here would be a second copy of
+    // a fact that goes stale the moment the creator renames themselves.
     const userId = "22222222-2222-2222-2222-222222222222";
-    const ts = 1_700_000_000_000;
     const update = encodeInitialMetaState({
       spaceId: "11111111-1111-1111-1111-111111111111",
       kind: "canvas",
       name: "Untitled",
       createdBy: userId,
-      creatorName: "Yuki",
-      creatorAvatarUrl: "https://cdn/yuki.png",
-      ts,
+      ts: 1_700_000_000_000,
     });
     const doc = new Y.Doc();
     Y.applyUpdate(doc, update);
-    const entry = doc.getMap("users").get(userId) as Y.Map<unknown>;
-    expect(entry).toBeInstanceOf(Y.Map);
-    expect(entry.get("id")).toBe(userId);
-    expect(entry.get("name")).toBe("Yuki");
-    expect(entry.get("avatarUrl")).toBe("https://cdn/yuki.png");
-    expect(entry.get("lastSeenAt")).toBe(ts);
+    expect(doc.getMap("users").size).toBe(0);
   });
 
   it("seeds meta.perUser[creator] with first space open + active", () => {
@@ -104,8 +99,6 @@ describe("encodeInitialMetaState", () => {
       kind: "canvas",
       name: "Untitled",
       createdBy: userId,
-      creatorName: "Yuki",
-      creatorAvatarUrl: null,
       ts: 1_700_000_000_000,
     });
     const doc = new Y.Doc();
@@ -122,8 +115,6 @@ describe("encodeInitialMetaState", () => {
       spaceId: "11111111-1111-1111-1111-111111111111",
       name: "Untitled",
       createdBy: "22222222-2222-2222-2222-222222222222",
-      creatorName: "Test Creator",
-      creatorAvatarUrl: null,
       ts: 1_700_000_000_000,
     };
     for (const kind of ["document", "timeline"] as const) {
@@ -178,8 +169,6 @@ describe("writeSpaceEntry (shared Space-entry construction)", () => {
         kind: "canvas",
         name: "Canvas",
         createdBy: "u",
-        creatorName: "U",
-        creatorAvatarUrl: null,
         ts: 1,
       }),
     );

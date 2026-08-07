@@ -251,9 +251,10 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
           handlingBy: {
             userId: user.id,
             // No display-name snapshot — collaborators render "who is
-            // handling" from the live `meta.users[userId]` awareness
-            // roster, which updates on rename (email-registration
-            // rewrite, 2026-06-06).
+            // handling" by resolving this id against the project member
+            // roster they fetch, which is current on rename
+            // (email-registration rewrite 2026-06-06; roster replaced the
+            // `meta.users` Yjs map in #1882).
             // Worker-driven path — this endpoint dispatches BullMQ jobs.
             // Collab `onDisconnect` leaves backend-driven handling nodes
             // alone; Worker owns the terminal state transition.

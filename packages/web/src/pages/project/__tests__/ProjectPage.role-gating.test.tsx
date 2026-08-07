@@ -119,7 +119,7 @@ describe('ProjectPage — agent-column role gating (B model — hide)', () => {
         id: 'u-me',
         name: 'Me',
         email: 'me@e.com',
-        personalStudio: { name: 'Me', slug: 'me' },
+        personalStudio: { name: 'Me', slug: 'me', avatarUrl: null },
       },
       role: null,
       loading: false,

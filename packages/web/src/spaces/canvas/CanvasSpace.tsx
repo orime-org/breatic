@@ -167,7 +167,6 @@ import {
   CanvasContext,
   type CanvasContextValue,
 } from '@web/spaces/canvas/canvas-context';
-import { useCaretUser } from '@web/features/collab-editor/use-caret-user';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
@@ -3704,18 +3703,14 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
     name: canvasDocName,
     doc: canvasDoc,
   });
-  // Shared with every other editor, so one person keeps the same caret name and
-  // colour wherever their cursor turns up.
-  const caretUser = useCaretUser();
   const canvas = React.useMemo<CanvasContextValue>(
     () => ({
       projectId: props.projectId,
       spaceId: props.spaceId,
       readOnly: props.readOnly ?? false,
       caretProvider,
-      caretUser,
     }),
-    [props.projectId, props.spaceId, props.readOnly, caretProvider, caretUser],
+    [props.projectId, props.spaceId, props.readOnly, caretProvider],
   );
   return (
     <CanvasContext.Provider value={canvas}>

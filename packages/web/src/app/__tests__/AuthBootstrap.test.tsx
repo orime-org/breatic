@@ -45,7 +45,11 @@ describe('AuthBootstrap', () => {
     vi.mocked(authApi.me).mockResolvedValueOnce({
       id: 'u1',
       email: 'a@b.com',
-      personalStudio: { name: 'Alice', slug: 'alice' },
+      personalStudio: {
+        name: 'Alice',
+        slug: 'alice',
+        avatarUrl: 'https://cdn/alice.png',
+      },
       credits: 100,
     });
     render(
@@ -60,7 +64,37 @@ describe('AuthBootstrap', () => {
     expect(s.user?.id).toBe('u1');
     expect(s.user?.name).toBe('Alice');
     expect(s.user?.email).toBe('a@b.com');
-    expect(s.user?.personalStudio).toEqual({ name: 'Alice', slug: 'alice' });
+    expect(s.user?.personalStudio).toEqual({
+      name: 'Alice',
+      slug: 'alice',
+      avatarUrl: 'https://cdn/alice.png',
+    });
+    // #1882: the avatar has to land on the store too, not just inside the
+    // mirrored studio ref. StudioAccountMenu reads `user.avatarUrl`, and
+    // before this the only writer was the studio-settings save handler — so
+    // a reload dropped the avatar back to the initials fallback.
+    expect(s.user?.avatarUrl).toBe('https://cdn/alice.png');
+  });
+
+  it('a studio with no avatar leaves the store avatar undefined, not an empty string', async () => {
+    // The absent case has to stay absent: StudioAvatar decides between the
+    // image and the initials fallback on this value, and '' would read as a
+    // present-but-broken image source.
+    vi.mocked(authApi.me).mockResolvedValueOnce({
+      id: 'u3',
+      email: 'c@d.com',
+      personalStudio: { name: 'Chen', slug: 'chen', avatarUrl: null },
+      credits: 0,
+    });
+    render(
+      <AuthBootstrap>
+        <div />
+      </AuthBootstrap>,
+    );
+    await waitFor(() =>
+      expect(useCurrentUserStore.getState().bootstrapped).toBe(true),
+    );
+    expect(useCurrentUserStore.getState().user?.avatarUrl).toBeUndefined();
   });
 
   it('200 OK with null personalStudio falls back to email local-part and stays gated', async () => {

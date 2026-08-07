@@ -5,7 +5,8 @@ import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
-import { authApi, deriveDisplayName } from '@web/data/api/auth';
+import { authApi } from '@web/data/api/auth';
+import { toCurrentUser } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
 import { useCurrentUserStore } from '@web/stores';
 import { Button } from '@web/components/ui/button';
@@ -84,15 +85,7 @@ export default function LoginPage(): React.JSX.Element {
     setSubmitting(true);
     try {
       const { user } = await authApi.login({ email: trimmedEmail, password });
-      setUser({
-        id: user.id,
-        email: user.email,
-        name: deriveDisplayName({
-          personalStudioName: user.personalStudio?.name ?? null,
-          email: user.email,
-        }),
-        personalStudio: user.personalStudio,
-      });
+      setUser(toCurrentUser(user));
       navigate(params.get('next') ?? '/studio', { replace: true });
     } catch (err) {
       const message =
