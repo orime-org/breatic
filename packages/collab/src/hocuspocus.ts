@@ -55,7 +55,11 @@ import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js"
 import { createStoreLoop, type StoreLoop } from "@collab/services/store-loop.js";
 import { createStoreAlerter } from "@collab/services/store-alert.js";
 import { runWithTimeout } from "@collab/services/with-timeout.js";
-import { deleteRescueFile, writeRescueFile } from "@collab/services/rescue-file.js";
+import {
+  deleteRescueFile,
+  writeRescueFile,
+  writeRescueNote,
+} from "@collab/services/rescue-file.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { getCollabConfig } from "@collab/config.js";
 import { cleanupOnDisconnect } from "@collab/hooks/disconnect-cleanup.js";
@@ -481,6 +485,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   });
   storeGate.current = createUnloadGate({
     finalAttemptTimeoutMs: cfg.store_final_attempt_timeout_ms,
+    instanceId,
     encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
     storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus, name),
     writeRescue: ({ documentName, state }) =>
@@ -490,6 +495,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         state,
         instanceId,
       }),
+    writeRescueNote,
     deleteRescue: deleteRescueFile,
     alert: (failure) => storeAlerter.alert(failure),
   });

@@ -54,6 +54,7 @@ function harness(outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands")
 
   const gate = createUnloadGate({
     finalAttemptTimeoutMs: 50,
+    instanceId: "inst-a",
     encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
     storeNow: async ({ name }) => {
       storeCalls.push(name);
@@ -77,6 +78,7 @@ function harness(outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands")
       rescued.push({ documentName, state });
       return `/rescue/${rescued.length}.yjs`;
     },
+    writeRescueNote: async () => {},
     deleteRescue: async (path: string) => void deleted.push(path),
     alert: async (failure) => void alerted.push(failure),
   });
@@ -199,11 +201,13 @@ describe("the unload gate — a document with outstanding content", () => {
     const alerted: Array<{ rescuePath: string; reason: string }> = [];
     const gate = createUnloadGate({
       finalAttemptTimeoutMs: 50,
+      instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async () => {},
       writeRescue: async () => {
         throw new Error("disk full");
       },
+      writeRescueNote: async () => {},
       deleteRescue: async () => {},
       alert: async (failure) => void alerted.push(failure),
     });
@@ -308,6 +312,7 @@ describe("settling every document on the way out", () => {
     const rescued: string[] = [];
     const gate = createUnloadGate({
       finalAttemptTimeoutMs: 50,
+      instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async () => {},
       writeRescue: async ({ documentName }) => {
@@ -315,6 +320,7 @@ describe("settling every document on the way out", () => {
         rescued.push(documentName);
         return "/rescue/x.yjs";
       },
+      writeRescueNote: async () => {},
       deleteRescue: async () => {},
       alert: async () => {},
     });
@@ -410,5 +416,97 @@ describe("the unload gate — when the write had not come back", () => {
     expect(alerted).toHaveLength(1);
     expect(alerted[0]?.reason).toMatch(/stopped waiting|may still have landed/i);
     expect(alerted[0]?.reason).not.toMatch(/did not land/);
+  });
+});
+
+describe("what the gate leaves behind for whoever has to sort it out", () => {
+  // Gate 2 round 2 findings 9 and 13. Acceptance #20 asked for one log line
+  // carrying the error, the document, the size, the rescue path and a stable
+  // message name; what shipped had no error in it, and none of the gate's log
+  // names were asserted anywhere, so any of them could have been renamed
+  // without a single test noticing.
+
+  it("writes a note beside the rescue file saying what it is", async () => {
+    const notes: Array<{ rescuePath: string; note: { reason: string } }> = [];
+    const gate = createUnloadGate({
+      finalAttemptTimeoutMs: 50,
+      instanceId: "inst-a",
+      encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
+      storeNow: async ({ name }) => void consumeTimedStoreArm(name),
+      writeRescue: async () => "/rescue/1.yjs",
+      writeRescueNote: async (rescuePath, note) => void notes.push({ rescuePath, note }),
+      deleteRescue: async () => {},
+      alert: async () => {},
+    });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.rescuePath).toBe("/rescue/1.yjs");
+    expect(notes[0]?.note.reason).toBe("the final store attempt did not land");
+  });
+
+  it("logs the failure under a stable name, with everything needed to act on it", async () => {
+    const { gate } = harness("fails");
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("hello") });
+
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentName: DOC,
+        bytes: expect.any(Number),
+        rescuePath: "/rescue/1.yjs",
+        attempt: "refused",
+      }),
+      "collab_store_unrecoverable",
+    );
+  });
+
+  it("logs under a stable name when even the rescue file could not be written", async () => {
+    const gate = createUnloadGate({
+      finalAttemptTimeoutMs: 50,
+      instanceId: "inst-a",
+      encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
+      storeNow: async ({ name }) => void consumeTimedStoreArm(name),
+      writeRescue: async () => {
+        throw new Error("the rescue directory is gone");
+      },
+      writeRescueNote: async () => {},
+      deleteRescue: async () => {},
+      alert: async () => {},
+    });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(Error), documentName: DOC }),
+      "collab_rescue_write_failed",
+    );
+  });
+
+  it("logs under a stable name when the attempt itself threw", async () => {
+    const gate = createUnloadGate({
+      finalAttemptTimeoutMs: 50,
+      instanceId: "inst-a",
+      encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
+      storeNow: async () => {
+        throw new Error("the connection went away");
+      },
+      writeRescue: async () => "/rescue/1.yjs",
+      writeRescueNote: async () => {},
+      deleteRescue: async () => {},
+      alert: async () => {},
+    });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(Error), documentName: DOC }),
+      "collab_final_store_attempt_errored",
+    );
   });
 });

@@ -122,11 +122,13 @@ beforeAll(async () => {
   hocuspocus = wsServer.hocuspocus;
   storeGate.current = createUnloadGate({
     finalAttemptTimeoutMs: 3000,
+    instanceId: "inst-test",
     encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
     storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
     writeRescue: async () => {
       throw new Error("no rescue path in this test — the store is expected to land");
     },
+    writeRescueNote: async () => {},
     deleteRescue: async () => {},
     alert: async () => {},
   });

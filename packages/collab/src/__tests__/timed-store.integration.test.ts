@@ -54,7 +54,7 @@ interface Harness {
  * @param options - Failure and slowness switches for the write.
  * @returns The server plus handles onto what it did.
  */
-function harness(options: { failing?: boolean; delayMs?: number } = {}): Harness {
+function harness(options: { failing?: boolean; delayMs?: number; debounceMs?: number } = {}): Harness {
   const writes: Array<{ documentName: string; state: Uint8Array }> = [];
   const encodes: string[] = [];
   const storeGate: { current?: ReturnType<typeof createUnloadGate> } = {};
@@ -73,6 +73,12 @@ function harness(options: { failing?: boolean; delayMs?: number } = {}): Harness
   });
 
   const hocuspocus = createLiveServer({
+    // `debounce: 0` by default, so the library's own store runs in the same turn
+    // as the edit. A caller that wants the OTHER state — a change-triggered
+    // store still sitting on its timer — asks for a real debounce.
+    ...(options.debounceMs === undefined
+      ? {}
+      : { debounce: options.debounceMs, maxDebounce: options.debounceMs * 2 }),
     extensions: [
       // The real change tracker, so this exercises the same wiring the server
       // builds. A hand-rolled `onChange` counter here would go on passing
@@ -92,9 +98,11 @@ function harness(options: { failing?: boolean; delayMs?: number } = {}): Harness
 
   storeGate.current = createUnloadGate({
     finalAttemptTimeoutMs: 2000,
+    instanceId: "inst-test",
     encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
     storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
     writeRescue: async () => "/rescue/x.yjs",
+    writeRescueNote: async () => {},
     deleteRescue: async () => {},
     alert: async () => {},
   });
@@ -258,6 +266,67 @@ describe("the timed store on a live server", () => {
       expect.objectContaining({ documentName: DOC }),
       "collab_store_failed",
     );
+    client.close();
+  });
+});
+
+describe("a timed round landing on top of a pending change-triggered store", () => {
+  // Acceptance #4, and Gate 2 round 2 finding 12: it had no test at all. The
+  // only live harness pinned `debounce` to 0, which makes the library's store
+  // run in the same turn as the edit — so the state this is about, a
+  // change-triggered store still sitting on its timer while the round fires,
+  // could not occur on it. A harness that cannot produce the state cannot
+  // cover it.
+  //
+  // WHAT MAKES THE COLLISION HARMLESS is the library, not our arm — measured,
+  // by deleting the arm check and watching these two stay green while three
+  // other tests went red. `storeDocumentHooks` debounces under one id per
+  // document (`onStoreDocument-${name}`), and the round calls it with
+  // `immediately`, which takes the pending call's slot rather than queueing
+  // behind it. So there is no second store to decline. These pin the outcome
+  // the acceptance asks for; the arm is pinned by the tests that fire the
+  // library's store on its own.
+
+  it("writes exactly once, and it is the round that writes", async () => {
+    const h = harness({ debounceMs: 60 });
+    const client = await connectLiveClient(h.hocuspocus, DOC);
+    const document = h.hocuspocus.documents.get(DOC)!;
+
+    // The edit arms the library's debounced store, 60ms out.
+    document.transact(() => {
+      document.getText("body").insert(0, "typed just before the round");
+    });
+    expect(h.writes).toHaveLength(0);
+
+    // The round runs while that store is still pending.
+    await h.runRound();
+    expect(h.writes).toHaveLength(1);
+
+    // And when the library's own store finally fires, it finds no arm and
+    // writes nothing. Waited out rather than assumed: a pending timer left
+    // behind also leaks into the next file in this single-fork run.
+    await new Promise((r) => setTimeout(r, 150));
+    expect(h.writes).toHaveLength(1);
+    expect(h.encodes).toHaveLength(1);
+
+    client.close();
+  });
+
+  it("leaves the document clean, so the next round skips it", async () => {
+    const h = harness({ debounceMs: 60 });
+    const client = await connectLiveClient(h.hocuspocus, DOC);
+    const document = h.hocuspocus.documents.get(DOC)!;
+    document.transact(() => {
+      document.getText("body").insert(0, "typed just before the round");
+    });
+
+    await h.runRound();
+    await new Promise((r) => setTimeout(r, 150));
+
+    expect(hasUnsavedContent(DOC)).toBe(false);
+    await h.runRound();
+    expect(h.writes).toHaveLength(1);
+
     client.close();
   });
 });

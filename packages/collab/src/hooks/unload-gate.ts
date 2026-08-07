@@ -23,6 +23,7 @@
 import type * as Y from "yjs";
 import { createLogger } from "@breatic/core";
 import type { StoreFailureAlert } from "@collab/services/store-alert.js";
+import type { RescueNote } from "@collab/services/rescue-file.js";
 import {
   armTimedStore,
   hasUnsavedContent,
@@ -55,6 +56,21 @@ const logger = createLogger("collab-unload-gate");
  */
 type FinalAttempt = "stored" | "refused" | "not-reached" | "unknown";
 
+/** One attempt's outcome, plus whatever it threw on the way. */
+interface AttemptResult {
+  attempt: FinalAttempt;
+  /**
+   * What the attempt threw, if anything.
+   *
+   * Usually nothing even when the store failed: the library swallows store
+   * errors, so "refused" normally arrives silently and the counters are the
+   * only evidence. Carried anyway so the one log line that reports the loss
+   * holds the cause too, rather than leaving an operator to correlate it with
+   * a different line by document name.
+   */
+  error?: unknown;
+}
+
 /** How each outcome is explained to whoever reads the alert. */
 const ATTEMPT_REASON: Record<Exclude<FinalAttempt, "stored">, string> = {
   refused: "the final store attempt did not land",
@@ -76,12 +92,16 @@ export interface UnloadGateEntry {
 export interface UnloadGateDeps {
   /** How long the final attempt gets before it counts as failed. */
   finalAttemptTimeoutMs: number;
+  /** Which collab instance this is — the rescue file only exists on this host. */
+  instanceId: string;
   /** Turn a live document into the bytes to store or rescue. */
   encode(document: Y.Doc): Uint8Array;
   /** Ask hocuspocus to store this document immediately. */
   storeNow(entry: UnloadGateEntry): Promise<void>;
   /** Write content that could not be stored to local disk. */
   writeRescue(args: { documentName: string; state: Uint8Array }): Promise<string>;
+  /** Write the note that says what a rescue file is and why it exists. */
+  writeRescueNote(rescuePath: string, note: RescueNote): Promise<void>;
   /** Remove a rescue file whose content reached the database after all. */
   deleteRescue(path: string): Promise<void>;
   /** Tell operations about a rescued document. */
@@ -138,7 +158,7 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
    * @param documentName - Full Yjs document name.
    * @returns What the attempt turned out to be.
    */
-  async function attemptStore(documentName: string): Promise<FinalAttempt> {
+  async function attemptStore(documentName: string): Promise<AttemptResult> {
     const arm = armTimedStore(documentName);
     const outcome = await runWithTimeout(
       deps.storeNow({ name: documentName }),
@@ -153,11 +173,12 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     // arm instead of ours.
     const neverRan = releaseTimedStoreArm(documentName, arm);
 
-    if (!hasUnsavedContent(documentName)) return "stored";
+    const error = outcome.error;
+    if (!hasUnsavedContent(documentName)) return { attempt: "stored", error };
     // Order matters. An unspent arm means the chain never got to us, which is
     // true whether or not we also ran out of patience waiting for it.
-    if (neverRan) return "not-reached";
-    return outcome.timedOut ? "unknown" : "refused";
+    if (neverRan) return { attempt: "not-reached", error };
+    return { attempt: outcome.timedOut ? "unknown" : "refused", error };
   }
 
   /**
@@ -182,19 +203,40 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
    * @param documentName - Full Yjs document name.
    * @param bytes - How much content was at stake.
    * @param rescuePath - Where it was written, when it was.
-   * @param attempt - Why the content is unaccounted for.
+   * @param result - Why the content is unaccounted for.
+   * @param result.attempt - Which of the three failures this was.
+   * @param result.error - What the attempt threw, if it threw at all.
    */
   async function reportLoss(
     documentName: string,
     bytes: number,
     rescuePath: string | undefined,
-    attempt: Exclude<FinalAttempt, "stored">,
+    result: { attempt: Exclude<FinalAttempt, "stored">; error?: unknown },
   ): Promise<void> {
+    const { attempt, error } = result;
     const reason = ATTEMPT_REASON[attempt];
     logger.error(
-      { documentName, bytes, rescuePath: rescuePath ?? null, attempt },
+      { err: error ?? null, documentName, bytes, rescuePath: rescuePath ?? null, attempt },
       "collab_store_unrecoverable",
     );
+    if (rescuePath) {
+      // The file on its own is an opaque binary with a flattened name. The
+      // note is what turns it back into "this document, on this host, at this
+      // time, for this reason".
+      try {
+        await deps.writeRescueNote(rescuePath, {
+          documentName,
+          instanceId: deps.instanceId,
+          bytes,
+          reason,
+          writtenAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        // The content itself is already safe on disk; losing its description
+        // is bad but not a reason to skip telling anyone about it.
+        logger.error({ err, documentName, rescuePath }, "collab_rescue_note_write_failed");
+      }
+    }
     // Told even when there is no file. That case is the worst one — the
     // content now has no copy anywhere — and it is also the one an operator
     // can still act on, by fixing the rescue directory before the next
@@ -218,12 +260,15 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   async function settleNormally({ documentName, document }: UnloadPayload): Promise<void> {
     if (!hasUnsavedContent(documentName)) return;
 
-    const attempt = await attemptStore(documentName);
-    if (attempt === "stored") return;
+    const result = await attemptStore(documentName);
+    if (result.attempt === "stored") return;
 
     const state = deps.encode(document);
     const path = await rescue(documentName, state);
-    await reportLoss(documentName, state.length, path, attempt);
+    await reportLoss(documentName, state.length, path, {
+      attempt: result.attempt,
+      error: result.error,
+    });
   }
 
   /**
@@ -248,13 +293,16 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     const path = await rescue(documentName, state);
 
     onStep?.("store");
-    const attempt = await attemptStore(documentName);
+    const result = await attemptStore(documentName);
 
-    if (attempt === "stored") {
+    if (result.attempt === "stored") {
       if (path) await deps.deleteRescue(path);
       return;
     }
-    await reportLoss(documentName, state.length, path, attempt);
+    await reportLoss(documentName, state.length, path, {
+      attempt: result.attempt,
+      error: result.error,
+    });
   }
 
   return {

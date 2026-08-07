@@ -63,6 +63,40 @@ export async function writeRescueFile(request: RescueFileRequest): Promise<strin
   return path;
 }
 
+/** What the note beside a rescue file records about it. */
+export interface RescueNote {
+  /** Full Yjs document name, unflattened. */
+  documentName: string;
+  /** Which collab instance wrote the file. */
+  instanceId: string;
+  /** Size of the rescued content. */
+  bytes: number;
+  /** Why the content is unaccounted for, in the same words the alert carries. */
+  reason: string;
+  /** When the note was written, ISO 8601. */
+  writtenAt: string;
+}
+
+/**
+ * Write the note that says what a rescue file is.
+ *
+ * Without it the rescue directory is a pile of opaque binaries whose names have
+ * been flattened for the filesystem — every path-significant character replaced
+ * — so there is no way back from a file to the document it holds, let alone to
+ * why it is there. The note is JSON because the thing that will eventually read
+ * it is a reconciliation job, not a person.
+ *
+ * Written once the reason is known rather than alongside the bytes: on the way
+ * out the file is written BEFORE the store is attempted, so at that moment
+ * there is no reason to record yet.
+ * @param rescuePath - Path returned by {@link writeRescueFile}.
+ * @param note - What to record about it.
+ * @throws {Error} When the note cannot be written.
+ */
+export async function writeRescueNote(rescuePath: string, note: RescueNote): Promise<void> {
+  await writeFile(`${rescuePath}.json`, `${JSON.stringify(note, null, 2)}\n`);
+}
+
 /**
  * Remove a rescue file, once its content has reached the database after all.
  *
@@ -72,5 +106,9 @@ export async function writeRescueFile(request: RescueFileRequest): Promise<strin
  * @param path - Path returned by {@link writeRescueFile}.
  */
 export async function deleteRescueFile(path: string): Promise<void> {
-  await rm(path, { force: true });
+  // The note goes with it. It only ever exists once the content was written off,
+  // so in the ordinary case there is nothing here to remove — but a note left
+  // behind pointing at a file that no longer exists would be worse than no note
+  // at all: it says a document was lost when it was not.
+  await Promise.all([rm(path, { force: true }), rm(`${path}.json`, { force: true })]);
 }
