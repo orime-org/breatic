@@ -17,7 +17,8 @@ import { parse as parseYaml } from "yaml";
 import { IMAGE_GENERATION_MODES } from "@breatic/shared";
 import type { SkillMeta } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@breatic/core";
-import { getRawEnvVar } from "@breatic/core";
+import { getRawEnvVar, getSkillRouting } from "@breatic/core";
+import type { SkillSurface } from "@breatic/core";
 
 // ── Paths ───────────────────────────────────────────────────────────
 
@@ -28,14 +29,8 @@ const MODES_CONFIG_PATH = resolve(MONOREPO_ROOT, "config/models/modes.yaml");
 
 /** Extended metadata tracked internally but not exposed via the shared type. */
 interface InternalSkillMeta extends SkillMeta {
-  /** Scope: where this skill can be used ("agent", "canvas", or both). */
-  scope: string[];
   /** Whether the skill content is always included in the system prompt. */
   always: boolean;
-  /** If true, only the user can invoke this skill (hidden from LLM). */
-  disableModelInvocation: boolean;
-  /** Whether the skill appears in the user menu. */
-  userInvocable: boolean;
   /** System binaries that must be on PATH. */
   requiresBins: string[];
   /** Environment variables that must be set. */
@@ -84,19 +79,19 @@ export class SkillRegistry {
    * @returns Whether an authenticated user may call this skill
    */
   canUserInvoke(name: string): boolean {
-    const skill = this.skills.get(name);
-    if (!skill) return false;
-    return (skill).userInvocable;
+    if (!this.skills.has(name)) return false;
+    return getSkillRouting().skills[name]?.user_invocable === true;
   }
 
   /**
-   * Return all registered skills (user-invocable by default).
+   * Return the skills an end user may fire directly.
    * @returns An array of SkillMeta objects
    */
   list(): SkillMeta[] {
+    const routing = getSkillRouting();
     const result: SkillMeta[] = [];
     for (const s of this.skills.values()) {
-      if (s.userInvocable) {
+      if (routing.skills[s.name]?.user_invocable === true) {
         result.push(s);
       }
     }
@@ -119,14 +114,15 @@ export class SkillRegistry {
   }
 
   /**
-   * Return all skills matching the given scope.
-   * @param scope - "agent" or "canvas"
+   * Return the skills allowed on one surface.
+   * @param surface - Where the caller is: "chat", "canvas", a node type, or "document"
    * @returns An array of matching SkillMeta objects
    */
-  listByScope(scope: string): SkillMeta[] {
+  listBySurface(surface: SkillSurface): SkillMeta[] {
+    const routing = getSkillRouting();
     const result: SkillMeta[] = [];
     for (const s of this.skills.values()) {
-      if ((s).scope.includes(scope)) {
+      if (routing.skills[s.name]?.surfaces.includes(surface)) {
         result.push(s);
       }
     }
@@ -134,16 +130,22 @@ export class SkillRegistry {
   }
 
   /**
-   * Return skills matching both scope and category.
-   * @param scope - "agent" or "canvas"
+   * Return skills allowed on one surface within one category.
+   * @param surface - Where the caller is
    * @param category - Category filter (e.g. "image")
    * @returns Filtered SkillMeta array
    */
-  listByScopeAndCategory(scope: string, category: string): SkillMeta[] {
+  listBySurfaceAndCategory(
+    surface: SkillSurface,
+    category: string,
+  ): SkillMeta[] {
+    const routing = getSkillRouting();
     const result: SkillMeta[] = [];
     for (const s of this.skills.values()) {
-      const internal = s;
-      if (internal.scope.includes(scope) && s.category === category) {
+      if (
+        routing.skills[s.name]?.surfaces.includes(surface) &&
+        s.category === category
+      ) {
         result.push(s);
       }
     }
@@ -160,9 +162,10 @@ export class SkillRegistry {
    * @returns An XML string listing each skill with its availability status
    */
   buildSummaryXml(): string {
+    const routing = getSkillRouting();
     const lines: string[] = ["<available_skills>"];
     for (const skill of this.skills.values()) {
-      if (skill.disableModelInvocation) continue;
+      if (routing.skills[skill.name]?.model_invocable !== true) continue;
       const avail = checkAvailability(skill);
       lines.push(
         `  <skill name="${skill.name}" available="${String(avail)}"` +
@@ -298,10 +301,7 @@ export class SkillRegistry {
       const meta: InternalSkillMeta = {
         name: frontmatter.name as string,
         description: (frontmatter.description as string) ?? "",
-        scope: (pkg.scope as string[]) ?? ["agent"],
         always: (pkg.always as boolean) ?? false,
-        disableModelInvocation: (pkg.disable_model_invocation as boolean) ?? false,
-        userInvocable: (pkg.user_invocable as boolean) ?? true,
         requiresBins: (requires.bins as string[]) ?? [],
         requiresEnv: (requires.env as string[]) ?? [],
         tools: (pkg.tools as string[]) ?? [],

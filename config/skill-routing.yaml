@@ -1,0 +1,80 @@
+# Skill routing — which skill may be used where, and by whom.
+#
+# These three answers used to sit in each skill's own metadata.json, which put
+# a skill in charge of its own permissions. They are the host's decision, so
+# they live here: a third-party skill can be dropped in unchanged, and routing
+# stops depending on whoever wrote the skill.
+#
+# Defaults differ per axis, deliberately:
+#
+#   surfaces        omitted -> [chat, canvas]   visibility, open is harmless
+#   user_invocable  omitted -> false            authorization, closed unless said
+#   model_invocable omitted -> false            authorization, closed unless said
+#
+# A skill missing from this file entirely is allowed nowhere. Adding a skill
+# means adding it here — silence never grants anything.
+#
+# Surfaces: chat | canvas | image_node | video_node | document
+
+skills:
+  # ── Creative and research, chat-side ──────────────────────
+  brainstorm:
+    surfaces: [chat]
+    user_invocable: true
+    model_invocable: true
+
+  creative_research:
+    surfaces: [chat]
+    user_invocable: true
+    model_invocable: true
+
+  prompt_engineer:
+    surfaces: [chat]
+    user_invocable: true
+    model_invocable: true
+
+  text_generation:
+    surfaces: [chat]
+    user_invocable: true
+    model_invocable: true
+
+  mini_tool_creator:
+    surfaces: [chat]
+    user_invocable: true
+    model_invocable: true
+
+  # ── Generation planning, one per modality ─────────────────
+  generate_image_plan:
+    surfaces: [chat]
+    user_invocable: true
+    model_invocable: true
+
+  generate_video_plan:
+    surfaces: [chat]
+    user_invocable: true
+    model_invocable: true
+
+  generate_audio_plan:
+    surfaces: [chat]
+    user_invocable: true
+    model_invocable: true
+
+  generate_tts_plan:
+    surfaces: [chat]
+    user_invocable: true
+    model_invocable: true
+
+  generate_3d_plan:
+    surfaces: [chat]
+    user_invocable: true
+    model_invocable: true
+
+  # ── Canvas-side ───────────────────────────────────────────
+  # The only skill on two surfaces, and the only one the model may not reach
+  # for on its own: it runs from a node's action button, so the user picks it.
+  # That last fact used to live in the skill's description as prose the model
+  # read and no code could act on.
+  vision_analyze:
+    surfaces: [chat, canvas]
+    user_invocable: true
+    model_invocable: false

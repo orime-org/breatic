@@ -13,8 +13,5 @@
     "three-dimensional",
     "text-to-3d",
     "image-to-3d"
-  ],
-  "scope": [
-    "agent"
   ]
 }

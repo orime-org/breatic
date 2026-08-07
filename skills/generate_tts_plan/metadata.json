@@ -13,8 +13,5 @@
     "voice",
     "clone",
     "text-to-speech"
-  ],
-  "scope": [
-    "agent"
   ]
 }
