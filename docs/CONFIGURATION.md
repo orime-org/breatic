@@ -64,6 +64,8 @@ loader:`packages/collab/src/config.ts`。**只有行为参数,没有端口** —
 | `throttle_max_attempts` | 200 | 单 IP 60s 窗口内连接尝试上限,超则 ban |
 | `throttle_ban_time` | 1(分钟) | ban 时长(**单位是分钟**,扩展内部乘 60×1000) |
 | `handling_lease.default_budget_ms` | 3600000(1 小时) | handling 租约默认预算,超时清扫 |
+| `presence_stale_after_ms` | 90000(90 秒) | 在场名单里一条「在线」记录在没人刷新的情况下还被相信多久。**跟下面那个数绑死**:门槛必须盖过「一个还连着的人两次刷新之间最长的间隔」,而那个间隔不是浏览器 15 秒的心跳 —— 隐藏的浏览器标签页超过 5 分钟后定时器被节流到**每分钟一次**(Chrome),而 socket 一直开着(保活的 pong 由网络层回,不跑 JS)。所以 60000 正好压在那个周期上、会让人每分钟在线离线闪一次,90000 才有余量。`presence-config.test.ts` 钉住这个关系,改小会红 |
+| `presence_heartbeat_throttle_ms` | 30000(30 秒) | 同一个人的在场时间戳最短多久写一次。协作流量很密(每次光标移动都算一次),这个节流把写入压到每人每窗口一次;在场名单的清扫也搭在这次写入上,顺带被限流 |
 
 ## 5. `config/worker.yaml` — BullMQ Worker
 
