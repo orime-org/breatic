@@ -20,20 +20,36 @@
  * one step earlier, synchronously, and with nothing in between that could fail.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as Y from "yjs";
 
 vi.mock("@breatic/core", () => ({
   createLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
 }));
 
-import { createLiveServer, connectLiveClient } from "../../__tests__/helpers/live-hocuspocus.js";
+import {
+  captureUnhandledRejections,
+  createLiveServer,
+  connectLiveClient,
+  type RejectionTrap,
+} from "../../__tests__/helpers/live-hocuspocus.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { forgetDocument, hasUnsavedContent } from "@collab/services/store-tracker.js";
 
 const DOC = "project-11111111-1111-4111-8111-111111111111/document-1";
 
-beforeEach(() => forgetDocument(DOC));
+let rejections: RejectionTrap;
+
+beforeEach(() => {
+  forgetDocument(DOC);
+  // The library fires the onChange chain without awaiting it
+  // (`Hocuspocus.ts:573`), so an extension that rejects there rejects with
+  // nobody listening. That is the production behaviour under test, not a
+  // test artefact — and left uncaught it takes the whole file down.
+  rejections = captureUnhandledRejections();
+});
+
+afterEach(() => rejections.restore());
 
 /**
  * Stand up a live server that tracks changes, optionally behind a saboteur.
@@ -100,6 +116,9 @@ describe("noticing a change", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(hasUnsavedContent(DOC)).toBe(true);
+    // And the rejection really did escape unhandled, which is what makes the
+    // truncation this test is about happen at all.
+    expect(rejections.escaped).toContain("upstream extension rejected");
     client.close();
   });
 
