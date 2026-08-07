@@ -95,7 +95,7 @@ Memory is automatically consolidated by the LLM when the conversation exceeds `m
 ```
 skills/{name}/
 ├── SKILL.md          # Frontmatter (name, description) + LLM instructions
-├── metadata.json     # Runtime config: tools, category, output_type, requires
+├── metadata.json     # Runtime config: model, tools, category, output_type, requires
 └── references/       # Optional reference docs loaded on demand
 ```
 

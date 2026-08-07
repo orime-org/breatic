@@ -39,8 +39,8 @@ packages/
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
 │              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
 │              db/(schema.ts 25 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
-├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费)· node-history · agent(loader/skills/tools/llm)· model-catalog · canvas-lock(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)
-├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/project-invitations/notifications/skills/tasks/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:auth〔含 user.repo + recovery-code〕/activity〔活动流写入 + 读取〕/conversation/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/role-upgrade-request/studio/skill/text-tool/yjs-doc,barrel index.ts re-export) + infra/(stripe/mailer) + config/(pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码,见 [CONFIGURATION.md](./CONFIGURATION.md)**)(healthz 走独立 :3001 进程,见 DEPLOY.md)
+├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费)· node-history · agent(skills-loader/agent-config〔模型+指令+工具的唯一装配点〕/skill-gate/skill-availability/turn-finalizer/tools/llm)· model-catalog · canvas-lock(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)
+├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/project-invitations/notifications/skills/tasks/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:activity〔活动流写入 + 读取〕/asset/auth〔含 user.repo + recovery-code〕/conversation/decision/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/recent/role-upgrade-request/skill/studio/text-tool,barrel index.ts re-export) + infra/(stripe/mailer) + config/(pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码,见 [CONFIGURATION.md](./CONFIGURATION.md)**)(healthz 走独立 :3001 进程,见 DEPLOY.md)
 ├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + local/{runtime,video} 本地 ffmpeg 执行) + providers/(image/video/audio/tts/three-d/understand) + 根(index 入口 / mini-tool-registry / bootstrap-config)
 ├── collab/   # Hocuspocus 独立进程: hooks/(auth/meta-write-attempt-log/presence/awareness-identity/presence-wiring/disconnect) + services/(persistence/event-stream/space-rpc/task-listener/members-sync) + infra/(health-checks · connection-gate〔连接准入:升级阶段从原始对端地址裁决,回环豁免、非回环取 nginx 的 x-real-ip 否则 403;裁决本身随请求头传下去〕 · client-identity〔上面那条规则的纯判定〕 · socket-ceilings〔库里几个「超了就关整条 socket」的上限,从一个声明数推导〕) + 根(index/hocuspocus 装配/config)
 └── web/      # React app — see the [Frontend](#frontend) part
@@ -142,7 +142,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Skill system
 
-**两区边界**:Agent(多轮对话,注入上下文)| Canvas(Worker 单次执行,必须生成)。文本编辑器(TipTap)独立运行,不使用 Skill。
+**skill 出现在哪由 `config/skill-routing.yaml` 的 `surfaces` 定**,取值是 `packages/core/src/config/skill-routing.ts` 的 `SKILL_SURFACES` 闭集:`chat`(多轮对话,注入上下文)/ `canvas` / `image_node` / `video_node` / `document`(各 node 面与画布是 Worker 单次执行,必须生成)。**今天实际被路由到的只有 `chat` 和 `canvas`** —— 后三个是已开放但还没有 skill 用的面,数各面上有几个 skill 一律现读那份 yaml。
 
 **metadata.json**:仅 `name` / `description` 必填;其他字段(`category`/`tools`/`output_type`/`requires`/...)`skills-loader.ts` 都有 default 兜底(`category` 默认 `"default"`)。建议显式填 `category` 避免读代码才知行为。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。完整字段表见 `packages/domain/src/agent/skills-loader.ts` 的 schema 定义。禁用 npm 字段(version/author/license/engines/files/main)。
 
