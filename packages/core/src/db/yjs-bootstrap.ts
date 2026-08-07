@@ -162,10 +162,18 @@ export function encodeInitialMetaState(
   // No identity is seeded here. This used to write `meta.users[creator]`
   // (name + avatar + lastSeenAt) so a peer opening the project before the
   // creator first connected would still see a name on the space-created
-  // audit entry. #1882 retired the whole `meta.users` map: the activity feed
-  // renders `actorName` from the PG activity row and never read it, and a
-  // display name is now resolved from the project roster at render time —
-  // server data that cannot go stale, unlike a copy frozen at creation.
+  // audit entry. #1882 retired that: the activity feed renders `actorName`
+  // from the PG activity row and never read it, and a display name is now
+  // resolved from the project roster at render time — server data that
+  // cannot go stale, unlike a copy frozen at creation.
+  //
+  // `meta.users` itself came back in #1886, in a different shape and for a
+  // different job: a presence record per user, `{ id, online, lastSeenAt }`
+  // and nothing else, written ONLY by the collab server as people connect and
+  // leave. It is still not seeded here, and that is load-bearing rather than
+  // incidental — `markOnline` reads an absent entry as "this person has never
+  // been here", so a row invented at project creation would be a person the
+  // presence rules believe is already known.
 
   // Seed `meta.perUser[creator]` with the first space opened +
   // active. The frontend `readMetaState` fallback used to derive
