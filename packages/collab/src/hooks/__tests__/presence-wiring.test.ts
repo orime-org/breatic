@@ -210,6 +210,30 @@ describe("presence wiring — a heartbeat refreshes and sweeps", () => {
     expect(readPresence(metaDoc(), "u-ghost")?.online).toBe(false);
   });
 
+  it("clears a ghost the moment somebody arrives, before any heartbeat", async () => {
+    // The first person back after a crash should not have to wait for their own
+    // first heartbeat to see a clean list, so connecting sweeps too. Without
+    // this case the connect-time sweep could be deleted and every other case
+    // here would stay green — it is the only one that arrives and looks.
+    const alice = await connect("alice");
+    await waitFor(
+      () => readPresence(metaDoc(), ALICE)?.online === true,
+      "alice recorded online",
+    );
+    seedGhost(metaDoc(), "u-ghost", clock - 600_000);
+
+    // Bob connecting is the only thing that happens. No frames are sent.
+    await connect("bob");
+    await waitFor(
+      () => readPresence(metaDoc(), "u-ghost")?.online === false,
+      "ghost cleared by the arrival itself",
+    );
+
+    expect(readPresence(metaDoc(), "u-ghost")?.online).toBe(false);
+    expect(readPresence(metaDoc(), ALICE)?.online).toBe(true);
+    alice.close();
+  });
+
   it("puts a swept user back when their own heartbeat arrives", async () => {
     // A browser throttles a hidden tab's timers to once a minute while the
     // socket stays open, so a connected person can drift into the sweep. Their

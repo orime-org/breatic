@@ -29,9 +29,6 @@ import { describe, it, expect } from "vitest";
 
 import { getCollabConfig } from "@collab/config";
 
-/** How often a browser renews awareness while the tab is visible. */
-const FOREGROUND_BEAT_MS = 15_000;
-
 /**
  * How often it renews while the tab is hidden and its timers are throttled.
  * This is the binding number: it is larger than the server's write throttle,
@@ -54,20 +51,32 @@ describe("presence thresholds", () => {
     );
   });
 
-  it("believes it for longer than the server's own write throttle can delay", () => {
-    // A write can land just before a window opens, so the next one waits a full
-    // throttle window plus one beat.
-    expect(defaults.presence_stale_after_ms).toBeGreaterThan(
-      defaults.presence_heartbeat_throttle_ms + FOREGROUND_BEAT_MS,
-    );
+  it("believes it for longer than the throttle can push a write out to", () => {
+    // The throttle does not ADD to the beat, it SKIPS beats: a write lands on
+    // the first beat at least a full window after the previous one. So the real
+    // gap is the throttle rounded UP to a whole number of beats, and it jumps in
+    // steps rather than growing smoothly.
+    //
+    // That distinction is the whole point of this case. Written as
+    // "threshold > throttle + one beat" it looks right and is not: at a 70s
+    // throttle the beat at 60s is skipped and the next write is at 120s, well
+    // past a 90s threshold, while `70000 + 15000` sits comfortably under it and
+    // the guard waves it through.
+    const gapBetweenWrites =
+      Math.ceil(defaults.presence_heartbeat_throttle_ms / BACKGROUND_BEAT_MS) *
+      BACKGROUND_BEAT_MS;
+    expect(defaults.presence_stale_after_ms).toBeGreaterThan(gapBetweenWrites);
   });
 
   it("keeps enough margin to absorb propagation and timer jitter", () => {
-    // Half again over the binding floor. Not a preference: at 1.0 the threshold
-    // IS the cycle, and any delay in reaching another instance through the
-    // shared document pushes a live record over it.
+    // Half again over the real gap. Not a preference: at 1.0 the threshold IS
+    // the gap, and any delay in reaching another instance through the shared
+    // document pushes a live record over it.
+    const gapBetweenWrites =
+      Math.ceil(defaults.presence_heartbeat_throttle_ms / BACKGROUND_BEAT_MS) *
+      BACKGROUND_BEAT_MS;
     expect(defaults.presence_stale_after_ms).toBeGreaterThanOrEqual(
-      BACKGROUND_BEAT_MS * 1.5,
+      gapBetweenWrites * 1.5,
     );
   });
 });
