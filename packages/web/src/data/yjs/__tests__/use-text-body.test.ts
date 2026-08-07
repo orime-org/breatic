@@ -49,7 +49,6 @@ function textNode(id: string): CanvasNodeFields {
       createdAt: 1,
       createdBy: 'u',
       locked: false,
-      operationLocks: [],
       state: 'idle',
       attachments: [],
     },

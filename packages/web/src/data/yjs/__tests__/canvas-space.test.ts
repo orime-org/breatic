@@ -69,7 +69,6 @@ function sampleFields(
       createdAt: 1000,
       createdBy: 'u1',
       locked: false,
-      operationLocks: [],
       state: 'idle',
       attachments: [],
       ...data,
@@ -818,8 +817,9 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
 
     it('setNodeHandling writes handlingBy (frontend driver + lease start, #1569)', () => {
       // The fill-from-file path (double-click / Upload menu) must carry the
-      // same lease fields as upload-created nodes, or disconnect-cleanup and
-      // the lease sweeper cannot reclaim it after a crashed tab.
+      // same lease fields as upload-created nodes, or the lease sweeper — the
+      // only thing that reclaims a node after a crashed tab — cannot compute
+      // the timeout.
       addNode(PID, SID, sampleFields('image', {}, { id: 'img2' }));
       const before = Date.now();
       setNodeHandling(PID, SID, 'img2', 'user-x');

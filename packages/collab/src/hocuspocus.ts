@@ -53,7 +53,6 @@ import {
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import { createPersistenceExtension } from "@collab/services/persistence.js";
 import { getCollabConfig } from "@collab/config.js";
-import { cleanupOnDisconnect } from "@collab/hooks/disconnect-cleanup.js";
 import { handleSpaceRpc } from "@collab/services/space-rpc.js";
 
 const logger = createLogger("hocuspocus");
@@ -293,25 +292,25 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         await connectionRegistry.unregister(documentName, socketId);
       }
       logger.info({ documentName, userId }, "Client disconnected");
-      // Nothing is written to the project's presence list here, on purpose.
-      // This socket ending says nothing about whether its owner is still in the
-      // project: one person holds several connections at once, and on a
-      // multi-instance deployment the others may be on a machine this one
-      // cannot see. Absence is inferred by the sweep instead, from nobody
-      // anywhere refreshing the timestamp (see `hooks/presence.ts`).
-      // Mini-tool state-machine cleanup (ADR 2026-05-11). Strips
-      // operationLocks and finishes frontend-driver handling nodes the
-      // disconnected client was running.
-      if (userId) {
-        try {
-          await cleanupOnDisconnect(wsServer.hocuspocus, documentName, userId);
-        } catch (err) {
-          // Cleanup failure is non-fatal — we logged the error inside the
-          // helper. Continue so Hocuspocus's own disconnect bookkeeping
-          // finishes cleanly.
-          logger.error({ err, documentName, userId }, "disconnect cleanup failed");
-        }
-      }
+      // NOTHING about the document's contents is touched here, and both
+      // halves of that are deliberate.
+      //
+      // The presence list is not written because this socket ending says
+      // nothing about whether its owner is still in the project: one person
+      // holds several connections at once, and on a multi-instance deployment
+      // the others may be on a machine this one cannot see. Absence is
+      // inferred by the sweep instead, from nobody anywhere refreshing the
+      // timestamp (see `hooks/presence.ts`).
+      //
+      // Canvas node state is not touched either. A disconnect hook used to
+      // reclaim a frontend driver's `handling` here; that was removed on
+      // 2026-07-02 (#1580 slice 4) because a closing socket is not evidence
+      // the work died — an upload goes straight to object storage, invisible
+      // to collab and outliving the socket. The 1h lease sweeper
+      // (`services/handling-sweeper.ts`) is the guarantee. The other half,
+      // stripping `operationLocks`, went with the field itself in #1889: the
+      // mini-tool configure lock was never wired up, so the pass walked every
+      // node on every disconnect and could only ever find nothing.
     },
 
     // A client trying to write the meta doc gets ONE LOG LINE and nothing

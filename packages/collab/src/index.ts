@@ -50,7 +50,7 @@ const SHUTDOWN_DEADLINE_MS = 4000;
 
 /**
  * Sentinel document the healthz end-to-end probe loads. Deliberately NOT a
- * project doc name so `parseDocName` rejects it and the auth / disconnect-cleanup
+ * project doc name so `parseDocName` rejects it and the auth hook
  * hooks skip it.
  */
 const HEALTHZ_PROBE_DOC = "__healthz_probe__";
@@ -163,7 +163,7 @@ async function main(): Promise<void> {
   /**
    * End-to-end "can collab actually process a document" health probe. Opens a
    * server-side direct connection to a sentinel doc (a non-project name, so the
-   * disconnect-cleanup / auth hooks skip it), loads it, and tears it down within
+   * the auth hook skips it), loads it, and tears it down within
    * a timeout. The infra probes (PG / Redis / listen socket) all stay green when
    * the process is alive but has stopped serving connections (throttle-ban /
    * doc-pipeline wedge); this walks the real load-and-process path, so such a

@@ -36,7 +36,7 @@
  *
  * Writes carry the {@link HANDLING_SWEEP_ORIGIN} named transaction origin,
  * which names the writer. Unlike `node-state-update` and
- * `collab-disconnect-cleanup` — both nested inside a `DirectConnection`
+ * — nested inside a `DirectConnection`
  * transaction, which keeps its own origin and discards theirs — this one does
  * survive, because the sweeper writes through a direct document reference and
  * so opens the outermost transaction. Nothing reads it today; it is there for
