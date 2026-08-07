@@ -216,3 +216,57 @@ describe("the origin a timed store carries", () => {
     expect(seen[0]?.lastTransactionOrigin.source).not.toBe("connection");
   });
 });
+
+describe("an edit that arrives while the write is in flight", () => {
+  // Acceptance #7, and Gate 2 round 3 finding 9. The invariant was pinned only
+  // against hand-called `beginStore`/`commitStore`, never against the extension
+  // that has to get the order right. Measured: moving the ticket from before
+  // the encode to the moment of commit left all 411 collab tests green, and the
+  // consequence is a document that reads as saved while holding content the
+  // database never received — the timed round skips it and the unload gate lets
+  // it go with no rescue file and nothing logged.
+  //
+  // This goes through `createPersistenceExtension`, so the ordering it depends
+  // on is the ordering under test.
+
+  it("still reads as unsaved once the store returns", async () => {
+    const document = new Y.Doc();
+    let arrived: (() => void) | undefined;
+    const midWrite = new Promise<void>((resolve) => {
+      arrived = resolve;
+    });
+
+    const extension = createPersistenceExtension({
+      fetch: async () => null,
+      store: async () => {
+        // The edit lands after the bytes were taken and before the write
+        // returns — the one window the ticket exists for.
+        noteDocumentChange(DOC);
+        arrived?.();
+      },
+    });
+
+    noteDocumentChange(DOC);
+    armTimedStore(DOC);
+    await extension.onStoreDocument({ documentName: DOC, document });
+    await midWrite;
+
+    expect(hasUnsavedContent(DOC)).toBe(true);
+  });
+
+  it("reads as saved when nothing arrives during the write", async () => {
+    // The other half: without this, "always unsaved" would pass the test above
+    // and store the same document forever.
+    const document = new Y.Doc();
+    const extension = createPersistenceExtension({
+      fetch: async () => null,
+      store: async () => {},
+    });
+
+    noteDocumentChange(DOC);
+    armTimedStore(DOC);
+    await extension.onStoreDocument({ documentName: DOC, document });
+
+    expect(hasUnsavedContent(DOC)).toBe(false);
+  });
+});

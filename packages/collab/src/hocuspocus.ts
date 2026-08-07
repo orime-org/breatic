@@ -525,6 +525,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     settleAllForShutdown: async (): Promise<void> => {
       const gate = storeGate.current;
       if (!gate) return;
+      // Disk before database from here on, and one attempt per document
+      // across both paths.
+      gate.markShuttingDown();
+      // Stop the typing before taking the final snapshot. `httpServer.close()`
+      // in the entry only refuses NEW connections — Node keeps established
+      // sockets open — so without this the settle encodes a document somebody
+      // is still editing, and everything typed between that encode and
+      // `server.destroy()` is destroyed with no store, no rescue file and no
+      // log line. A settle that is not final is not a settle.
+      wsServer.hocuspocus.closeConnections();
       // Bounded as a phase rather than per document. The documents settle
       // concurrently, so a hung database costs one budget, not one per open
       // document — and the process is on a deadline it does not control.

@@ -63,6 +63,17 @@ export function createChangeTrackingExtension(): ChangeTrackingExtension {
   /** Live listeners, so each can be detached from the document it watches. */
   const watching = new Map<string, { document: Y.Doc; handler: () => void }>();
 
+  /**
+   * Detach the listener held for a document name, if there is one.
+   * @param documentName - Full Yjs document name.
+   */
+  function stopWatching(documentName: string): void {
+    const watched = watching.get(documentName);
+    if (!watched) return;
+    watched.document.off("update", watched.handler);
+    watching.delete(documentName);
+  }
+
   return {
     priority: BEFORE_EVERY_OTHER_EXTENSION,
 
@@ -73,7 +84,18 @@ export function createChangeTrackingExtension(): ChangeTrackingExtension {
       // would write back exactly what it had just read. By the time this
       // runs, loading is done and no connection can have sent anything yet:
       // the library only publishes the document once `loadDocument` resolves.
-      if (watching.has(documentName)) return;
+      //
+      // Detach whatever is here before attaching, rather than returning early
+      // when something is. A load can fail AFTER this hook has run — the
+      // library wraps only `onLoadDocument` in a try/catch, and an extension
+      // behind us can still reject — and then the document never enters
+      // `instance.documents`, so `afterUnloadDocument`, the only thing that
+      // clears this map, never fires. An early return would read that leftover
+      // as "already watching" and attach nothing to the document loaded next
+      // under the same name: every edit in that session invisible, and lost
+      // without a line in the log. Detaching first is idempotent for the
+      // ordinary case and correct for this one.
+      stopWatching(documentName);
 
       /** Count one update against this document, whatever produced it. */
       const handler = (): void => {
@@ -90,11 +112,7 @@ export function createChangeTrackingExtension(): ChangeTrackingExtension {
       // any earlier would mark a live document holding unstored content as
       // clean and the timed loop would skip it from then on. This hook only
       // fires once the document has actually been destroyed.
-      const watched = watching.get(documentName);
-      if (watched) {
-        watched.document.off("update", watched.handler);
-        watching.delete(documentName);
-      }
+      stopWatching(documentName);
       forgetDocument(documentName);
     },
   };

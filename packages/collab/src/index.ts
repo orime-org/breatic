@@ -354,14 +354,17 @@ async function main(): Promise<void> {
     }
 
     // Every document still in memory gets its one attempt, HERE, before
-    // anything is destroyed (#40). It cannot be one of the drains below —
-    // those run in parallel, so it would race `server.destroy()` over the same
-    // documents — and it cannot be left to the library's own unload either:
-    // `runDestroy()` waits for the document count to reach zero, while
-    // `shouldUnloadDocument` stays false for as long as a document's save mutex
-    // is held. One store still in flight from the last timed round meant that
-    // document never unloaded, never reached the gate, and got no rescue file
-    // at all before the deadline fired.
+    // anything is destroyed (#40). It closes the client connections first —
+    // the socket release above only refuses NEW ones — because a snapshot
+    // taken while somebody is still typing is not a final snapshot.
+    //
+    // It cannot be one of the drains below: those run in parallel, so it would
+    // race `server.destroy()` over the same documents. And it cannot be left to
+    // the library's own unload either — `runDestroy()` waits for the document
+    // count to reach zero, while `shouldUnloadDocument` stays false for as long
+    // as a document's save mutex is held, so one store still in flight from the
+    // last timed round meant that document never unloaded, never reached the
+    // gate, and got no rescue file at all before the deadline fired.
     await settleAllForShutdown();
 
     // Onto disk now, not at the end. What the settle just recorded is the

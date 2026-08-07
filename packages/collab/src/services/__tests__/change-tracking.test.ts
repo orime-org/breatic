@@ -34,7 +34,12 @@ import {
   type RejectionTrap,
 } from "../../__tests__/helpers/live-hocuspocus.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
-import { forgetDocument, hasUnsavedContent } from "@collab/services/store-tracker.js";
+import {
+  beginStore,
+  commitStore,
+  forgetDocument,
+  hasUnsavedContent,
+} from "@collab/services/store-tracker.js";
 
 const DOC = "project-11111111-1111-4111-8111-111111111111/document-1";
 
@@ -160,5 +165,63 @@ describe("letting a document go", () => {
 
     expect(hasUnsavedContent(DOC)).toBe(false);
     client.close();
+  });
+});
+
+describe("a load that fails after we have already attached", () => {
+  // Gate 2 round 3 findings 1 and 4. The library wraps only `onLoadDocument`
+  // in a try/catch (hocuspocus-server.esm.js:1467-1475); `afterLoadDocument`
+  // at :1482 is outside it. So a later extension throwing there — the Redis
+  // one rethrows when its initial-sync publish rejects — makes `loadDocument`
+  // reject, the document never enters `instance.documents`, `unloadDocument`
+  // bails at :1568, and `afterUnloadDocument` never fires. That hook is the
+  // only thing that clears our bookkeeping.
+  //
+  // The early return that made attaching idempotent then became the bug: the
+  // stale entry says "already watching" for a document that no longer exists,
+  // so the next load of that name attaches nothing and every edit in that
+  // session is invisible.
+
+  it("still watches the next document loaded under that name", async () => {
+    const tracker = createChangeTrackingExtension();
+    const abandoned = new Y.Doc();
+    await tracker.afterLoadDocument({ documentName: DOC, document: abandoned });
+    // The load failed here. No afterUnloadDocument, so nothing was cleared.
+
+    const reloaded = new Y.Doc();
+    await tracker.afterLoadDocument({ documentName: DOC, document: reloaded });
+    forgetDocument(DOC);
+    reloaded.getText("body").insert(0, "typed after the failed load");
+
+    expect(hasUnsavedContent(DOC)).toBe(true);
+  });
+
+  it("stops watching the document that was abandoned", async () => {
+    // Otherwise its updates keep counting against a name that now belongs to
+    // a different document, and the tracker holds it alive.
+    const tracker = createChangeTrackingExtension();
+    const abandoned = new Y.Doc();
+    await tracker.afterLoadDocument({ documentName: DOC, document: abandoned });
+
+    const reloaded = new Y.Doc();
+    await tracker.afterLoadDocument({ documentName: DOC, document: reloaded });
+    forgetDocument(DOC);
+    abandoned.getText("body").insert(0, "a ghost typing into a dead document");
+
+    expect(hasUnsavedContent(DOC)).toBe(false);
+  });
+
+  it("attaching twice for the same document does not count each update twice", async () => {
+    const tracker = createChangeTrackingExtension();
+    const document = new Y.Doc();
+    await tracker.afterLoadDocument({ documentName: DOC, document });
+    await tracker.afterLoadDocument({ documentName: DOC, document });
+    forgetDocument(DOC);
+
+    document.getText("body").insert(0, "x");
+    const ticket = beginStore(DOC);
+    commitStore(DOC, ticket);
+
+    expect(hasUnsavedContent(DOC)).toBe(false);
   });
 });

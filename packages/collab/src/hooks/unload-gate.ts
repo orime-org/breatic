@@ -131,6 +131,11 @@ export interface UnloadGate {
    * @param entries - Every document the instance currently holds.
    */
   settleAllForShutdown(entries: Iterable<UnloadPayload>): Promise<void>;
+  /**
+   * The process is going down: write to disk before the database from now on,
+   * and give each document exactly one attempt across both paths.
+   */
+  markShuttingDown(): void;
 }
 
 /**
@@ -140,14 +145,47 @@ export interface UnloadGate {
  */
 export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   /**
-   * Documents whose one attempt has already been spent on the way out.
+   * Documents somebody is settling, or has settled, right now.
    *
-   * `server.destroy()` runs after the shutdown settle and drives the ordinary
-   * unload path over the same documents. Without this they would get a second
-   * rescue file and a second alert for content that has already been settled —
-   * and "one attempt" was a decision, not an accident.
+   * A claim rather than a mark, because both paths want the same documents and
+   * either can get there first. `server.destroy()` drives the ordinary unload
+   * over exactly the documents the shutdown walk enumerates, and the library
+   * keeps a document reachable for the whole of `beforeUnloadDocument` — it
+   * leaves `instance.documents` only after that chain resolves. A one-way mark
+   * caught only one of the two orders; the other produced two rescue files for
+   * one document, with the second alert swallowed by the per-document window,
+   * so an operator was told about one file and would find two.
+   *
+   * Released once the settle finishes, EXCEPT while shutting down. In ordinary
+   * operation the library may abandon an unload after the hook returns (a
+   * connection arrived), and that document's next real departure deserves its
+   * own attempt — the claim is for one departure, not for the document's life.
+   * On the way out there is no next departure, so it stands.
    */
-  const settledForShutdown = new Set<string>();
+  const settling = new Set<string>();
+
+  /** True once the process is going down; see {@link UnloadGate.markShuttingDown}. */
+  let shuttingDown = false;
+
+  /**
+   * Take the one attempt for a document, if nobody else has it.
+   * @param documentName - Full Yjs document name.
+   * @returns True when this caller may settle it.
+   */
+  function claim(documentName: string): boolean {
+    if (settling.has(documentName)) return false;
+    settling.add(documentName);
+    return true;
+  }
+
+  /**
+   * Give the claim back, so a later departure can be settled too.
+   * @param documentName - Full Yjs document name.
+   */
+  function releaseClaim(documentName: string): void {
+    if (shuttingDown) return;
+    settling.delete(documentName);
+  }
 
   /**
    * Make one store attempt, giving up after the configured timeout.
@@ -316,13 +354,18 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
 
   return {
     beforeUnloadDocument: async (payload): Promise<void> => {
+      if (!claim(payload.documentName)) return;
       try {
-        if (settledForShutdown.has(payload.documentName)) return;
-        await settleNormally(payload);
+        // Disk first once the process is going down: the whole budget is a few
+        // seconds and one database attempt can outlast it, so the fast local
+        // write has to happen while there is still a process to do it.
+        await (shuttingDown ? settleForShutdown(payload) : settleNormally(payload));
       } catch (err) {
         // Belt and braces. A throw escaping here would abort the unload and
         // strand the document; nothing this hook does is worth that.
         logger.error({ err, documentName: payload.documentName }, "collab_unload_gate_failed");
+      } finally {
+        releaseClaim(payload.documentName);
       }
       // Deliberately no cleanup here. The library re-checks
       // `shouldUnloadDocument` AFTER this hook returns and abandons the unload
@@ -334,12 +377,18 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
       // fires only once the document has actually gone.
     },
 
+    markShuttingDown: (): void => {
+      shuttingDown = true;
+    },
+
     settleForShutdown: async (payload): Promise<void> => {
-      settledForShutdown.add(payload.documentName);
+      if (!claim(payload.documentName)) return;
       try {
         await settleForShutdown(payload);
       } catch (err) {
         logger.error({ err, documentName: payload.documentName }, "collab_shutdown_settle_failed");
+      } finally {
+        releaseClaim(payload.documentName);
       }
     },
 
@@ -350,7 +399,9 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
       // writes of independent rows; the pool queues them.
       await Promise.all(
         Array.from(entries, async (payload) => {
-          settledForShutdown.add(payload.documentName);
+          // Whoever gets here first settles it. The other path finds the claim
+          // taken and stands down.
+          if (!claim(payload.documentName)) return;
           try {
             await settleForShutdown(payload);
           } catch (err) {
@@ -359,6 +410,8 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
               { err, documentName: payload.documentName },
               "collab_shutdown_settle_failed",
             );
+          } finally {
+            releaseClaim(payload.documentName);
           }
         }),
       );

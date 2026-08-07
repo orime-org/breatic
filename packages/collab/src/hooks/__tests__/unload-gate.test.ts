@@ -346,6 +346,7 @@ describe("settling every document on the way out", () => {
     // over the same documents. Settling again would write a second rescue file
     // and send a second alert for content that has already had its one attempt.
     const { gate, rescued, alerted } = harness("fails");
+    gate.markShuttingDown();
     noteDocumentChange(DOC);
 
     await gate.settleAllForShutdown([
@@ -517,5 +518,119 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       expect.objectContaining({ err: expect.any(Error), documentName: DOC }),
       "collab_final_store_attempt_errored",
     );
+  });
+});
+
+describe("who settles a document when both paths want to", () => {
+  // Gate 2 round 3 finding 2. The guard used to be one-directional: the
+  // shutdown settle marked a document and `beforeUnloadDocument` checked the
+  // mark, but nothing said "an ordinary settle is already running". The
+  // library keeps a document reachable for the whole of that hook — it deletes
+  // it from `instance.documents` only after the chain resolves — so the
+  // shutdown walk enumerates it and settles it a second time. Two rescue
+  // files, and the second alert is swallowed by the per-document window, so an
+  // operator is told about one file and finds two.
+
+  it("does not settle again when the shutdown settle already did", async () => {
+    const { gate, rescued, alerted } = harness("fails");
+    gate.markShuttingDown();
+    noteDocumentChange(DOC);
+
+    await gate.settleAllForShutdown([
+      { documentName: DOC, document: documentWithText("x") },
+    ]);
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(rescued).toHaveLength(1);
+    expect(alerted).toHaveLength(1);
+  });
+
+  it("does not settle again when an ordinary settle is already running", async () => {
+    // The direction that was missing. The ordinary settle is still in flight
+    // when shutdown starts walking the documents.
+    let releaseStore: (() => void) | undefined;
+    const blocked = new Promise<void>((resolve) => {
+      releaseStore = resolve;
+    });
+    const rescued: string[] = [];
+    const gate = createUnloadGate({
+      finalAttemptTimeoutMs: 5_000,
+      instanceId: "inst-a",
+      encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
+      storeNow: async ({ name }) => {
+        if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
+        await blocked;
+      },
+      writeRescue: async ({ documentName }) => {
+        rescued.push(documentName);
+        return `/rescue/${rescued.length}.yjs`;
+      },
+      writeRescueNote: async () => {},
+      deleteRescue: async () => {},
+      alert: async () => {},
+    });
+    noteDocumentChange(DOC);
+
+    const ordinary = gate.beforeUnloadDocument({
+      documentName: DOC,
+      document: documentWithText("x"),
+    });
+    await new Promise((r) => setTimeout(r, 5));
+
+    gate.markShuttingDown();
+    await gate.settleAllForShutdown([
+      { documentName: DOC, document: documentWithText("x") },
+    ]);
+
+    releaseStore?.();
+    await ordinary;
+
+    expect(rescued).toHaveLength(1);
+  });
+
+  it("settles again on a later unload when the document survived the first", async () => {
+    // hocuspocus re-checks `shouldUnloadDocument` after the hook returns and
+    // abandons the unload when a connection arrived meanwhile. That document
+    // is still live and still holds unstored content, so its next real
+    // departure deserves its own attempt — the claim is for one departure,
+    // not for the document's whole life.
+    const { gate, rescued } = harness("fails");
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(rescued).toHaveLength(2);
+  });
+
+  it("writes the rescue file before attempting the store once shutting down", async () => {
+    const order: string[] = [];
+    const gate = createUnloadGate({
+      finalAttemptTimeoutMs: 50,
+      instanceId: "inst-a",
+      encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
+      storeNow: async ({ name }) => {
+        order.push("store");
+        if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
+      },
+      writeRescue: async () => {
+        order.push("rescue");
+        return "/rescue/x.yjs";
+      },
+      writeRescueNote: async () => {},
+      deleteRescue: async () => {},
+      alert: async () => {},
+    });
+
+    noteDocumentChange(DOC);
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+    expect(order).toEqual(["store", "rescue"]);
+
+    order.length = 0;
+    forgetDocument(DOC);
+    noteDocumentChange(DOC);
+    gate.markShuttingDown();
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+    expect(order).toEqual(["rescue", "store"]);
   });
 });
