@@ -54,7 +54,8 @@ vi.mock('@web/data/yjs/use-socket', () => ({
 }));
 
 /**
- * Write one presence record the way the server writes it.
+ * Write one presence record the way the server writes it FOR THE FIRST TIME:
+ * a new nested map, set on the root.
  * @param userId - Whose record.
  * @param online - Whether they are currently connected.
  * @param lastSeenAt - When they were last heard from.
@@ -70,6 +71,35 @@ function seedPresence(
     entry.set('online', online);
     entry.set('lastSeenAt', lastSeenAt);
     doc.getMap('users').set(userId, entry);
+  });
+}
+
+/**
+ * Change an EXISTING record in place, which is what every write after the first
+ * one does — the sweep flipping somebody off, a heartbeat pushing a timestamp.
+ *
+ * The distinction is the whole reason this helper exists separately. Replacing
+ * the nested map is a change to the ROOT, which a plain `observe` sees; editing
+ * the existing one is a change one level down, which only `observeDeep` sees.
+ * Written with the wrong one, a case that says it watches somebody go offline
+ * passes while the subscription that has to notice it is broken — measured: with
+ * `users.observeDeep` swapped for `users.observe`, every case in this file
+ * stayed green while a real collaborator would have been rendered as online
+ * forever after disconnecting.
+ * @param userId - Whose record.
+ * @param online - The new online flag.
+ * @param lastSeenAt - The new timestamp.
+ */
+function updatePresence(
+  userId: string,
+  online: boolean,
+  lastSeenAt: number,
+): void {
+  const entry = doc.getMap('users').get(userId);
+  if (!(entry instanceof Y.Map)) throw new Error(`no record for ${userId}`);
+  doc.transact(() => {
+    entry.set('online', online);
+    entry.set('lastSeenAt', lastSeenAt);
   });
 }
 
@@ -112,15 +142,31 @@ describe('who is online', () => {
   });
 
   it('follows the list when the server marks someone offline later', async () => {
+    // In place, the way the sweep does it — see `updatePresence` for why the
+    // difference between this and a fresh nested map decides whether this case
+    // can see a regression at all.
     seedPresence(ME, true);
     const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
     await waitFor(() => expect(result.current.onlineUserIds.has(ME)).toBe(true));
 
-    seedPresence(ME, false, 2_000);
+    updatePresence(ME, false, 2_000);
 
     await waitFor(() =>
       expect(result.current.onlineUserIds.has(ME)).toBe(false),
     );
+  });
+
+  it('follows it back when a heartbeat puts them online again', async () => {
+    // The other direction, and it travels the same way: the server writes both
+    // by editing the existing record, never by replacing it.
+    seedPresence(ME, false);
+    const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
+    await waitFor(() => expect(result.current.synced).toBe(true));
+    expect(result.current.onlineUserIds.has(ME)).toBe(false);
+
+    updatePresence(ME, true, 3_000);
+
+    await waitFor(() => expect(result.current.onlineUserIds.has(ME)).toBe(true));
   });
 
   it('keeps no display name on the record', async () => {
