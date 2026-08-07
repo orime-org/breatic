@@ -126,7 +126,7 @@ describe("whether a skill's model can actually run", () => {
   });
 
   it("says no for a media model, naming every provider key that would fix it", () => {
-    keys.OPENROUTER_API_KEY = "sk-or";
+    keys.OPENROUTER_API_KEY = "sk-or";  // text route fine; the media one is not
     const result = checkSkillModelRunnable(MEDIA_MODEL);
     expect(result.ok).toBe(false);
     // Both of the model's providers, read off providers.yaml. Note
@@ -138,17 +138,29 @@ describe("whether a skill's model can actually run", () => {
     expect(result.missing).not.toContain("OPENROUTER_API_KEY");
   });
 
-  it("says yes for a media model as soon as one of its providers has a key", () => {
-    // The lower-priority one, so this cannot pass by only ever consulting
-    // the first entry.
+  it("says yes for a media model once its provider AND the text route are set", () => {
+    // The lower-priority provider, so this cannot pass by only ever
+    // consulting the first entry. The text key too: both consumers hand the
+    // resolved model to `getModel`, which carries every request whatever the
+    // modality, so a media key alone is not enough to run anything.
     keys[WAVESPEED_KEY] = "configured";
+    keys.OPENROUTER_API_KEY = "sk-or";
     expect(checkSkillModelRunnable(MEDIA_MODEL).ok).toBe(true);
   });
 
-  it("still says no for a media model when an unrelated key is set", () => {
+  it("still says no for a media model with only the text route set", () => {
     keys.ANTHROPIC_API_KEY = "sk-ant";
     keys.OPENROUTER_API_KEY = "sk-or";
-    expect(checkSkillModelRunnable(MEDIA_MODEL).ok).toBe(false);
+    const result = checkSkillModelRunnable(MEDIA_MODEL);
+    expect(result.ok).toBe(false);
+    expect([...result.missing].sort()).toEqual([KLINGAI_KEY, WAVESPEED_KEY].sort());
+  });
+
+  it("still says no for a media model with only its provider set", () => {
+    keys[WAVESPEED_KEY] = "configured";
+    const result = checkSkillModelRunnable(MEDIA_MODEL);
+    expect(result.ok).toBe(false);
+    expect(result.missing).toContain("OPENROUTER_API_KEY");
   });
 
   it("throws a typed error rather than letting the library fail", () => {
@@ -166,7 +178,28 @@ describe("whether a skill's model can actually run", () => {
     expect(thrown).toBeInstanceOf(AppError);
     expect((thrown as AppError).statusCode).toBe(503);
     expect((thrown as Error).message).toContain("picky");
-    expect((thrown as Error).message).toContain("OPENROUTER_API_KEY");
+  });
+
+  it("keeps the deployment's env var names out of what the user is shown", () => {
+    // The error handler returns `AppError.message` verbatim to the caller,
+    // so anything named here lands on the screen of whoever clicked. The
+    // names belong in `missing`, for the layer that knows where its logs go.
+    keys.GOOGLE_API_KEY = "";
+    keys.OPENROUTER_API_KEY = "";
+    let thrown: unknown;
+    try {
+      assertSkillModelRunnable("picky", "google/gemini-2.5-flash");
+    } catch (err) {
+      thrown = err;
+    }
+    const message = (thrown as Error).message;
+    for (const name of ["OPENROUTER_API_KEY", "GOOGLE_API_KEY", "API_KEY"]) {
+      expect(message).not.toContain(name);
+    }
+    // Still knowable by the caller, which is the point of returning them.
+    expect(checkSkillModelRunnable("google/gemini-2.5-flash").missing).toContain(
+      "OPENROUTER_API_KEY",
+    );
   });
 
   it("does not throw for a skill whose model is runnable", () => {
@@ -184,7 +217,7 @@ describe("who asks it", () => {
   it("the factory refuses to assemble a run on an unreachable model", async () => {
     const { buildAgentConfig } = await import("@domain/agent/agent-config.js");
     expect(() => buildAgentConfig({ skillName: "unreachable" })).toThrow(
-      /cannot reach/,
+      /not available on this deployment/,
     );
   });
 
@@ -198,7 +231,9 @@ describe("who asks it", () => {
 
   it("the gate refuses before a request gets any further", async () => {
     const { assertSkillUsable } = await import("@domain/agent/skill-gate.js");
-    expect(() => assertSkillUsable("unreachable", "chat")).toThrow(/cannot reach/);
+    expect(() => assertSkillUsable("unreachable", "chat")).toThrow(
+      /not available on this deployment/,
+    );
   });
 
   it("the gate lets through a skill whose model is reachable", async () => {

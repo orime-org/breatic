@@ -18,7 +18,6 @@ import { IMAGE_GENERATION_MODES } from "@breatic/shared";
 import type { SkillMeta } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@breatic/core";
 import { getRawEnvVar, getSkillRouting } from "@breatic/core";
-import type { SkillSurface } from "@breatic/core";
 
 // ── Paths ───────────────────────────────────────────────────────────
 
@@ -47,6 +46,28 @@ export interface InternalSkillMeta extends SkillMeta {
   requiresBins: string[];
   /** Environment variables that must be set. */
   requiresEnv: string[];
+}
+
+/**
+ * Narrow internal metadata to the shape a route may hand to a client.
+ *
+ * A cast would not do this. `InternalSkillMeta extends SkillMeta`, so the
+ * compiler is happy to call the wider object by the narrower name — and the
+ * object still carries every extra field at runtime, one `c.json()` away from
+ * the browser. The fields are listed rather than deleted so that adding an
+ * internal field cannot leak by omission: anything not named here is gone.
+ * @param meta - The stored metadata.
+ * @returns Only the fields the shared type declares.
+ */
+function toPublic(meta: InternalSkillMeta): SkillMeta {
+  return {
+    name: meta.name,
+    description: meta.description,
+    category: meta.category,
+    tools: meta.tools,
+    outputType: meta.outputType,
+    keywords: meta.keywords,
+  };
 }
 
 // ── SkillRegistry ───────────────────────────────────────────────────
@@ -78,7 +99,8 @@ export class SkillRegistry {
    * @returns The SkillMeta if found, or undefined
    */
   get(name: string): SkillMeta | undefined {
-    return this.skills.get(name);
+    const meta = this.skills.get(name);
+    return meta && toPublic(meta);
   }
 
   /**
@@ -104,51 +126,12 @@ export class SkillRegistry {
     const result: SkillMeta[] = [];
     for (const s of this.skills.values()) {
       if (routing.skills[s.name]?.user_invocable === true) {
-        result.push(s);
+        result.push(toPublic(s));
       }
     }
     return result;
   }
 
-
-  /**
-   * Return the skills allowed on one surface.
-   * @param surface - Where the caller is: "chat", "canvas", a node type, or "document"
-   * @returns An array of matching SkillMeta objects
-   */
-  listBySurface(surface: SkillSurface): SkillMeta[] {
-    const routing = getSkillRouting();
-    const result: SkillMeta[] = [];
-    for (const s of this.skills.values()) {
-      if (routing.skills[s.name]?.surfaces.includes(surface)) {
-        result.push(s);
-      }
-    }
-    return result;
-  }
-
-  /**
-   * Return skills allowed on one surface within one category.
-   * @param surface - Where the caller is
-   * @param category - Category filter (e.g. "image")
-   * @returns Filtered SkillMeta array
-   */
-  listBySurfaceAndCategory(
-    surface: SkillSurface,
-    category: string,
-  ): SkillMeta[] {
-    const routing = getSkillRouting();
-    const result: SkillMeta[] = [];
-    for (const s of this.skills.values()) {
-      if (
-        routing.skills[s.name]?.surfaces.includes(surface) &&
-        s.category === category
-      ) {
-        result.push(s);
-      }
-    }
-    return result;
-  }
 
   // ── Summary (Level 1 — always in system prompt) ─────────────────
 

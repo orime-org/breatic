@@ -79,15 +79,22 @@ let _cached: Readonly<SkillRouting> | null = null;
  *
  * Lazy like the other config readers: reading at module load would make
  * importing the barrel depend on the file being present.
- * @param configDir - Path to the config directory, for tests.
+ *
+ * It used to take a directory "for tests", which was a lie the moment
+ * anything had loaded the config first: the cache is checked before the
+ * argument is read, so a test pointing at a fixture would silently get
+ * whatever the shipped file said. Nothing passed it. Tests that need a
+ * different document parse it with {@link skillRoutingSchema} directly.
  * @returns Frozen, validated routing for every listed skill.
  * @throws {Error} When the file is missing or fails validation.
  */
-export function getSkillRouting(configDir?: string): Readonly<SkillRouting> {
+export function getSkillRouting(): Readonly<SkillRouting> {
   if (_cached) return _cached;
 
-  const dir = configDir ?? resolve(MONOREPO_ROOT, "config");
-  const raw = readFileSync(resolve(dir, "skill-routing.yaml"), "utf-8");
+  const raw = readFileSync(
+    resolve(MONOREPO_ROOT, "config", "skill-routing.yaml"),
+    "utf-8",
+  );
   _cached = Object.freeze(skillRoutingSchema.parse(parse(raw) as unknown));
   return _cached;
 }

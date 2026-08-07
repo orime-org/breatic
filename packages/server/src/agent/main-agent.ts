@@ -147,6 +147,12 @@ export class MainAgent {
     messages: ModelMessage[],
   ): AsyncGenerator<SSEEvent> {
     const { userId, conversationId, projectId } = this.ctx;
+    // Read with the others, not from inside the `finally`. `this.ctx` reaches
+    // into AsyncLocalStorage, which is only guaranteed to be there while the
+    // caller is still driving this generator — and the whole point of the
+    // cleanup below is to survive exits where that is not the case. Three
+    // context fields were already captured here and this was the odd one out.
+    const billingTurnIndex = this.ctx.billing?.turnIndex;
     const agentCfg = getAgentConfig();
 
     const result = streamTextRetry({
@@ -338,7 +344,6 @@ export class MainAgent {
             if (tokensUsed === 0) return;
 
             creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
-            const billingTurnIndex = this.ctx.billing?.turnIndex;
             if (billingTurnIndex === undefined) {
               throw new Error("MainAgent.runStream: billing.turnIndex not initialized");
             }

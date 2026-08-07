@@ -32,6 +32,8 @@ const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1
 const consolidateIfNeeded = vi.fn(async () => undefined);
 const deductOnce = vi.fn(async (..._args: unknown[]) => undefined);
 const streamTextRetry = vi.fn();
+/** The real factory, wrapped so both what goes in and what comes out are visible. */
+const buildAgentConfig = vi.hoisted(() => vi.fn());
 /** Set when the code under test reads `usage`, which is what consumes a stream. */
 const usageRead = vi.fn();
 
@@ -64,14 +66,17 @@ vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
   const actual = await vi.importActual<typeof DomainModule>("@breatic/domain");
+  buildAgentConfig.mockImplementation(actual.buildAgentConfig);
   return {
     ...base,
     finalizeTurn: actual.finalizeTurn,
     streamTextRetry,
-    // The real factory, not a stub. What a plain chat turn hands the model
-    // is one of this PR's deliverables, and a stub returning `tools: {}`
-    // would let the caller pass anything at all and still look right.
-    buildAgentConfig: actual.buildAgentConfig,
+    // The real factory wrapped in a spy: real, because what a plain chat turn
+    // hands the model is one of this PR's deliverables and a stub returning
+    // `tools: {}` would let the caller pass anything and still look right;
+    // spied, because the other entry point's wiring is only observable in the
+    // arguments it passes.
+    buildAgentConfig,
     creditService: { deductOnce },
     resolveProvider: () => "test",
     getModel: () => "model",
@@ -99,6 +104,27 @@ function streamOf(parts: unknown[]) {
   };
 }
 
+/** Drive one skill command to completion and collect its events. */
+async function runSkillTurn(skillName: string): Promise<string[]> {
+  const { MainAgent } = await import("@server/agent/main-agent.js");
+  const { runWithContext } = await import("@breatic/core");
+  const events: string[] = [];
+  await runWithContext(
+    {
+      userId: "u1",
+      conversationId: "c1",
+      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+      compressedHistory: [],
+    },
+    async () => {
+      for await (const e of new MainAgent().handleSkillCommand(skillName, "go")) {
+        events.push((e as { event: string }).event);
+      }
+    },
+  );
+  return events;
+}
+
 /** Drive one turn to completion and collect its events. */
 async function runTurn(): Promise<string[]> {
   const { MainAgent } = await import("@server/agent/main-agent.js");
@@ -121,7 +147,9 @@ async function runTurn(): Promise<string[]> {
 }
 
 beforeEach(() => {
-  [addMessage, consolidateIfNeeded, deductOnce, usageRead].forEach((m) => m.mockClear());
+  [addMessage, consolidateIfNeeded, deductOnce, usageRead, streamTextRetry, buildAgentConfig].forEach(
+    (m) => m.mockClear(),
+  );
 });
 
 describe("what a plain chat turn hands the model", () => {
@@ -150,6 +178,42 @@ describe("what a plain chat turn hands the model", () => {
     await runTurn();
     const call = streamTextRetry.mock.calls[0]?.[0] as { tools: Record<string, unknown> };
     expect(Object.keys(call.tools)).toContain("ask_user_question");
+  });
+});
+
+describe("what a skill command hands the model", () => {
+  // The other of the two entry points this PR exists to unify, and the one
+  // with nothing watching it: deleting `skillName` from its factory call left
+  // every test and typecheck green, because `skillName` is optional and the
+  // route tests stop at 403/404.
+  // The factory itself is stubbed for these two: the real one would look the
+  // fixture skill up in a registry that has no skills under the test root.
+  // What is under test is the call, not what the factory does with it — that
+  // has its own tests where the factory lives.
+  const stubConfig = { modelId: "m", instructions: "s", tools: {} };
+
+  it("names the skill it was asked for", async () => {
+    buildAgentConfig.mockReturnValueOnce(stubConfig);
+    streamTextRetry.mockReturnValue(streamOf([{ type: "text-delta", text: "hi" }]));
+    await runSkillTurn("creative_research");
+    expect(buildAgentConfig.mock.calls[0]?.[0]).toMatchObject({
+      skillName: "creative_research",
+    });
+  });
+
+  it("marks it interactive and passes the caller's prompt and memory", async () => {
+    // All four arguments, so dropping any one of them goes red here. The
+    // skill path used to assemble its own instructions and drifted from chat
+    // on every value; passing them is what stopped that.
+    buildAgentConfig.mockReturnValueOnce(stubConfig);
+    streamTextRetry.mockReturnValue(streamOf([{ type: "text-delta", text: "hi" }]));
+    await runSkillTurn("creative_research");
+    expect(buildAgentConfig.mock.calls[0]?.[0]).toMatchObject({
+      skillName: "creative_research",
+      interactive: true,
+      basePrompt: "system",
+      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    });
   });
 });
 

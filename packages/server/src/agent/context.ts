@@ -2,21 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * System prompt builder for the Main Agent.
+ * The persona and the skill list, which is all the base prompt is.
  *
- * Translates Python `backend/agent/main/context.py` into TypeScript.
- * Assembles the full system prompt from a static template, skill summaries,
- * always-on skill content, and three-layer memory context.
+ * Memory is deliberately not assembled here — see `buildSystemPrompt` for
+ * why — and neither is anything about tools beyond how to behave with them:
+ * each tool's own description already reaches the model, and a roster written
+ * here would drift from whatever the running skill actually declares.
  */
 
 import { getSkillRegistry } from "@breatic/domain";
 
-/**
- * Static template with `{skills_summary}` and `{always_skills}` placeholders.
- *
- * Double braces `{{` / `}}` are literal JSON braces shown to the LLM as
- * examples; single braces are substitution targets.
- */
+/** Static template with `{skills_summary}` and `{always_skills}` placeholders. */
 const SYSTEM_PROMPT_TEMPLATE = `\
 You are the AI core of Breatic — a creative operating system for content creators.
 You are not a task dispatcher. You are a creative collaborator.

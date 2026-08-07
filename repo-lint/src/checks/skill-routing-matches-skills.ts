@@ -30,6 +30,19 @@ const ROUTING_FILE = "config/skill-routing.yaml";
  * files neither of which the other imports — a directory listing against a
  * YAML document.
  */
+/**
+ * Read a skill's declared name out of its SKILL.md frontmatter.
+ * @param source - The file's full text.
+ * @returns The declared name, or null when the file declares none.
+ * @throws {never}
+ */
+function frontmatterName(source: string): string | null {
+  const end = source.indexOf("\n---", 4);
+  if (!source.startsWith("---") || end === -1) return null;
+  const match = /^name:\s*["']?([^"'\n]+?)["']?\s*$/m.exec(source.slice(0, end));
+  return match?.[1] ?? null;
+}
+
 export const skillRoutingMatchesSkills = {
   name: "skill-routing-matches-skills",
   description: "config/skill-routing.yaml names exactly the skills on disk",
@@ -44,13 +57,24 @@ export const skillRoutingMatchesSkills = {
       ];
     }
 
-    // A skill is a directory under skills/ with a SKILL.md — the same thing
-    // the loader looks for, so this cannot disagree with what actually loads.
-    const onDisk = new Set(
-      context
-        .files((p) => /^skills\/[^/]+\/SKILL\.md$/.test(p), "built-in skills")
-        .map((p) => p.split("/")[1] ?? ""),
-    );
+    // A skill's name is what its SKILL.md frontmatter declares, NOT its
+    // directory. The loader finds the file by walking directories but keys
+    // the registry on `frontmatter.name`, and so does every gate that later
+    // looks a skill up. Comparing directories would pass a skill whose two
+    // names differ while it is denied everywhere — the exact failure this
+    // check exists to catch. The repo has carried that shape before: one of
+    // the skills this PR deleted lived in a directory named nothing like the
+    // name it declared.
+    const onDisk = new Set<string>();
+    for (const file of context.files(
+      (p) => /^skills\/[^/]+\/SKILL\.md$/.test(p),
+      "built-in skills",
+    )) {
+      const declared = frontmatterName(context.read(file));
+      // No name at all means the loader skips the file entirely, so there is
+      // nothing for the routing config to name either.
+      if (declared) onDisk.add(declared);
+    }
 
     // Top-level entries under `skills:`, which the file's shape puts at
     // exactly two spaces of indentation.
@@ -83,14 +107,14 @@ export const skillRoutingMatchesSkills = {
       if (!onDisk.has(name)) {
         findings.push({
           file: ROUTING_FILE,
-          message: `'${name}' is routed here but no skills/${name}/SKILL.md exists. If it was renamed, the real name is now absent from this file — and absent means allowed nowhere, so that skill 403s for every user and never reaches the model.`,
+          message: `'${name}' is routed here but no skill declares that name. Names come from each SKILL.md's frontmatter, not from its directory. If one was renamed, the real name is now absent from this file — and absent means allowed nowhere, so that skill 403s for every user and never reaches the model.`,
         });
       }
     }
     for (const name of onDisk) {
       if (!listed.has(name)) {
         findings.push({
-          file: `skills/${name}/SKILL.md`,
+          file: `the skill declaring name '${name}'`,
           message: `This skill has no entry in ${ROUTING_FILE}, so it is allowed nowhere: users get 403 and the model is never told it exists. Add it, naming both surfaces and both authorization axes explicitly.`,
         });
       }

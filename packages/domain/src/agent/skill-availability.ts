@@ -29,8 +29,14 @@
  * A media model falls back sideways. One model names several providers with
  * priorities and any one of their keys will do. Their env var NAMES are read
  * from each modality's `providers.yaml`, never listed here: that file holds
- * names the env schema does not know (`KLING_ACCESS_KEY` among them), so a
- * hand-written list would be wrong the day someone adds a provider.
+ * names the env schema does not know, so a hand-written list would be wrong
+ * the day someone adds a provider.
+ *
+ * A media model also has to clear the text check, and that is not belt and
+ * braces. The two consumers of a resolved model both hand it to `getModel`,
+ * which knows only text routing — direct provider by prefix, OpenRouter for
+ * everything else. So a skill on an image model with its image key set but
+ * no text key would be approved here and fail at the call. Both have to hold.
  */
 import { AppError, getRawEnvVar } from "@breatic/core";
 import {
@@ -113,20 +119,26 @@ export function checkSkillModelRunnable(
   // global condition, not this skill's problem.
   if (!modelName) return { ok: true, missing: [] };
 
+  // The route the run will actually take. Both callers hand `modelId` to
+  // `getModel`, so this decides reachability for every model, media or not.
+  const direct = TEXT_DIRECT_KEYS.find(([prefix]) => modelName.startsWith(prefix));
+  const textOk = (direct !== undefined && isSet(direct[1])) || isSet(TEXT_FALLBACK_KEY);
+  const textMissing = direct ? [direct[1], TEXT_FALLBACK_KEY] : [TEXT_FALLBACK_KEY];
+
+  // A model in the media catalog needs its own provider too — the text route
+  // carries the request, the media provider answers it.
   const mediaKeys = mediaProviderKeys(modelName);
   if (mediaKeys !== null) {
-    if (mediaKeys.some(isSet)) return { ok: true, missing: [] };
-    return { ok: false, missing: mediaKeys };
+    const mediaOk = mediaKeys.some(isSet);
+    if (mediaOk && textOk) return { ok: true, missing: [] };
+    return {
+      ok: false,
+      missing: [...(mediaOk ? [] : mediaKeys), ...(textOk ? [] : textMissing)],
+    };
   }
 
-  const direct = TEXT_DIRECT_KEYS.find(([prefix]) => modelName.startsWith(prefix));
-  if (direct && isSet(direct[1])) return { ok: true, missing: [] };
-  if (isSet(TEXT_FALLBACK_KEY)) return { ok: true, missing: [] };
-
-  return {
-    ok: false,
-    missing: direct ? [direct[1], TEXT_FALLBACK_KEY] : [TEXT_FALLBACK_KEY],
-  };
+  if (textOk) return { ok: true, missing: [] };
+  return { ok: false, missing: textMissing };
 }
 
 /**
@@ -139,14 +151,18 @@ export function assertSkillModelRunnable(
   skillName: string,
   modelName: string | undefined,
 ): void {
-  const { ok, missing } = checkSkillModelRunnable(modelName);
+  const { ok } = checkSkillModelRunnable(modelName);
   if (ok) return;
   // 503 rather than 500: nothing is broken, something is not configured, and
-  // the fix is an operator's rather than a developer's. The message names the
-  // keys because the operator is who reads it — it never carries what the
-  // provider library would have said.
+  // the fix is an operator's rather than a developer's.
+  //
+  // The message reaches the end user, not the operator — the error handler
+  // returns `AppError.message` verbatim — so it says which skill and nothing
+  // else. The env var names go to the caller in `missing`, for the layer that
+  // knows where its logs go; naming them here would put the deployment's
+  // configuration on a screen belonging to whoever happened to click.
   throw new AppError(
     503,
-    `Skill '${skillName}' needs a model this deployment cannot reach. Configure one of: ${missing.join(", ")}`,
+    `Skill '${skillName}' is not available on this deployment.`,
   );
 }
