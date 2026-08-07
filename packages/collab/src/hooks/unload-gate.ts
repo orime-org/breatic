@@ -42,19 +42,24 @@ const logger = createLogger("collab-unload-gate");
  *
  *   refused      our extension ran, the write came back, the content did not
  *                land. The database really did say no.
- *   not-reached  our extension never ran. `hooks()` chains the extensions with
- *                `.then`, so a rejection from any of them skips every hook
- *                behind it — and the Redis extension, which runs first, rejects
- *                exactly that way when another instance holds the
- *                cross-instance store lock. The library catches it and resolves
- *                normally, so the attempt looks identical to a completed one.
+ *   not-reached  our extension never ran: the permission we issued was still
+ *                unspent. `hooks()` chains the extensions with `.then`, so a
+ *                rejection from any of them skips every hook behind it, and the
+ *                library catches that and resolves normally — from out here the
+ *                attempt looks identical to a completed one. WHICH extension
+ *                aborted it is not visible, so the operator text names none.
+ *   unconfirmed  we cannot say what happened: another writer superseded our
+ *                attempt, the document left memory while we waited, or the
+ *                library had already unloaded it before we got there. All three
+ *                may well have stored it, and none of them is "nothing reached
+ *                us".
  *   unknown      our extension ran and we stopped waiting. Giving up cancels
  *                nothing; the write may land seconds later.
  *
  * Telling an operator a healthy database rejected content it never saw, or very
  * probably accepted, costs real attention during an outage.
  */
-type FinalAttempt = "stored" | "refused" | "not-reached" | "unknown";
+type FinalAttempt = "stored" | "refused" | "not-reached" | "unconfirmed" | "unknown";
 
 /** One attempt's outcome, plus whatever it threw on the way. */
 interface AttemptResult {
@@ -75,8 +80,13 @@ interface AttemptResult {
 const ATTEMPT_REASON: Record<Exclude<FinalAttempt, "stored">, string> = {
   refused: "the final store attempt did not land",
   "not-reached":
-    "this instance's write never ran — another instance held the cross-instance " +
-    "store lock, so the content may already be safe, but this instance could not confirm it",
+    "this instance's write never ran, and it cannot tell why — the store hook chain " +
+    "was aborted before it reached us. Check the document in the database before " +
+    "acting on this file",
+  unconfirmed:
+    "this instance could not confirm what happened to its write — another attempt " +
+    "took over, or the document left memory first. Check the document in the " +
+    "database before acting on this file",
   unknown:
     "the final store attempt had not come back when this instance stopped waiting, " +
     "so it may still have landed — check the document in the database before acting on this file",
@@ -96,8 +106,13 @@ export interface UnloadGateDeps {
   instanceId: string;
   /** Turn a live document into the bytes to store or rescue. */
   encode(document: Y.Doc): Uint8Array;
-  /** Ask hocuspocus to store this document immediately. */
-  storeNow(entry: UnloadGateEntry): Promise<void>;
+  /**
+   * Ask hocuspocus to store this document immediately.
+   * @returns Whether the document was still loaded. False means the library
+   *   unloaded it before we got there, so nothing was written and nothing
+   *   could be.
+   */
+  storeNow(entry: UnloadGateEntry): Promise<boolean>;
   /** Write content that could not be stored to local disk. */
   writeRescue(args: { documentName: string; state: Uint8Array }): Promise<string>;
   /** Write the note that says what a rescue file is and why it exists. */
@@ -198,8 +213,11 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
    */
   async function attemptStore(documentName: string): Promise<AttemptResult> {
     const arm = armTimedStore(documentName);
+    let stillLoaded = true;
     const outcome = await runWithTimeout(
-      deps.storeNow({ name: documentName }),
+      deps.storeNow({ name: documentName }).then((found) => {
+        stillLoaded = found;
+      }),
       deps.finalAttemptTimeoutMs,
     );
     if (outcome.error) {
@@ -212,7 +230,17 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     const result = releaseTimedStoreArm(documentName, arm);
     const error = outcome.error;
 
-    if (!result.ran) return { attempt: "not-reached", error };
+    // The document going away first looks exactly like an unspent permission
+    // from here — we arm, nothing consumes it — but they are different events
+    // and only the lookup knows which happened. On the shutdown path the rescue
+    // file is written before the store is attempted, so the library has a whole
+    // disk write in which to unload the document out from under us.
+    if (!stillLoaded) return { attempt: "unconfirmed", error };
+    // Of the rest, only an unspent permission means nothing reached our
+    // extension; superseded and gone both mean we cannot say.
+    if (!result.ran) {
+      return { attempt: result.reason === "unspent" ? "not-reached" : "unconfirmed", error };
+    }
     if (result.outcome === "stored") return { attempt: "stored", error };
     if (result.outcome === "refused") return { attempt: "refused", error };
     // It ran and has not reported. That is a write still in flight, whether or

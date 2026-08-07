@@ -52,9 +52,9 @@ import { projectAwarenessIntoMetaUsers } from "@collab/hooks/awareness-meta-user
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
 import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js";
+import { settleEverythingForShutdown } from "@collab/hooks/shutdown-settle.js";
 import { createStoreLoop, type StoreLoop } from "@collab/services/store-loop.js";
 import { createStoreAlerter } from "@collab/services/store-alert.js";
-import { runWithTimeout } from "@collab/services/with-timeout.js";
 import {
   deleteRescueFile,
   writeRescueFile,
@@ -175,6 +175,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const wsServer = new Server({
     port: infra.port,
     quiet: cfg.quiet,
+
+    // The library installs its own SIGINT / SIGQUIT / SIGTERM handler by
+    // default (`stopOnSignals`, hocuspocus-server.esm.js:1675-1682) and it is
+    // `await destroy(); process.exit(0)` — no coordination with anything else.
+    // Ours does the store settle: one final attempt per document, a rescue file
+    // for whatever did not land, its note, and an email to operations. Leaving
+    // both installed means the library can exit the process in the middle of
+    // that, and the part it would cut off is the part that tells anyone the
+    // file exists. Shutdown has one owner, and it is `index.ts`.
+    stopOnSignals: false,
 
     // Document lifecycle
     unloadImmediately: cfg.unload_immediately,
@@ -525,34 +535,18 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     settleAllForShutdown: async (): Promise<void> => {
       const gate = storeGate.current;
       if (!gate) return;
-      // Disk before database from here on, and one attempt per document
-      // across both paths.
-      gate.markShuttingDown();
-      // Stop the typing before taking the final snapshot. `httpServer.close()`
-      // in the entry only refuses NEW connections — Node keeps established
-      // sockets open — so without this the settle encodes a document somebody
-      // is still editing, and everything typed between that encode and
-      // `server.destroy()` is destroyed with no store, no rescue file and no
-      // log line. A settle that is not final is not a settle.
-      wsServer.hocuspocus.closeConnections();
-      // Bounded as a phase rather than per document. The documents settle
-      // concurrently, so a hung database costs one budget, not one per open
-      // document — and the process is on a deadline it does not control.
-      const outcome = await runWithTimeout(
-        gate.settleAllForShutdown(
+      await settleEverythingForShutdown({
+        gate,
+        closeConnections: () => wsServer.hocuspocus.closeConnections(),
+        // Read AFTER the connections are closed, which is why it is a callback
+        // rather than an array captured here.
+        listDocuments: () =>
           Array.from(wsServer.hocuspocus.documents, ([documentName, document]) => ({
             documentName,
             document: document as unknown as Y.Doc,
           })),
-        ),
-        cfg.store_shutdown_settle_budget_ms,
-      );
-      if (outcome.timedOut) {
-        logger.error(
-          { budgetMs: cfg.store_shutdown_settle_budget_ms },
-          "collab_shutdown_settle_budget_exhausted",
-        );
-      }
+        budgetMs: cfg.store_shutdown_settle_budget_ms,
+      });
     },
   };
 }

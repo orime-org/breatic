@@ -66,6 +66,31 @@ const collabConfigSchema = z.object({
 });
 
 /** Validated collab configuration type. */
+/**
+ * The two shutdown budgets have to be in a relation, not just individually
+ * positive.
+ *
+ * `store_shutdown_settle_budget_ms` bounds the whole settle phase, and every
+ * document in it is bounded separately by `store_final_attempt_timeout_ms`,
+ * concurrently. A phase budget that does not outlast one attempt therefore
+ * always cuts short: under a hung database every document reports the budget
+ * exhausted, and every loss report — the log line and the operator email that
+ * say where the rescue file is — lands outside the bound it was meant to sit
+ * inside. Shipped 2000 against 3000, which is exactly that.
+ */
+const collabConfigSchemaWithBudgetRelation = collabConfigSchema.refine(
+  (cfg) => cfg.store_shutdown_settle_budget_ms > cfg.store_final_attempt_timeout_ms,
+  {
+    message:
+      "the shutdown settle budget must be larger than one document's final-attempt " +
+      "timeout, or the phase always ends before any attempt can finish",
+    path: ["store_shutdown_settle_budget_ms"],
+  },
+);
+
+/** Exposed so the relation above can be tested without a YAML file. */
+export const collabConfigSchemaForTests = collabConfigSchemaWithBudgetRelation;
+
 export type CollabConfig = z.infer<typeof collabConfigSchema>;
 
 let _cached: Readonly<CollabConfig> | null = null;
@@ -88,6 +113,6 @@ export function getCollabConfig(): Readonly<CollabConfig> {
   const raw = readFileSync(configPath, "utf-8");
   const parsed = parse(raw) as unknown;
 
-  _cached = Object.freeze(collabConfigSchema.parse(parsed));
+  _cached = Object.freeze(collabConfigSchemaWithBudgetRelation.parse(parsed));
   return _cached;
 }

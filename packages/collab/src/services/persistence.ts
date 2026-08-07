@@ -132,13 +132,18 @@ const TIMED_STORE_ORIGIN = { source: "breatic-timed-store" } as const;
  * the tracker's counters.
  * @param driver - The Hocuspocus instance.
  * @param documentName - Full Yjs document name.
+ * @returns Whether the document was still loaded. False means nothing was
+ *   written and nothing could be: the library unloaded it first. Reported
+ *   rather than swallowed, because from anywhere else that outcome is
+ *   indistinguishable from "our extension was never reached", and the two send
+ *   an operator to different places.
  */
 export async function storeDocumentNow(
   driver: Hocuspocus,
   documentName: string,
-): Promise<void> {
+): Promise<boolean> {
   const document = driver.documents.get(documentName);
-  if (!document) return;
+  if (!document) return false;
   await driver.storeDocumentHooks(
     document,
     {
@@ -151,6 +156,7 @@ export async function storeDocumentNow(
     },
     true,
   );
+  return true;
 }
 
 /** Collaborators the extension needs, overridable so tests can count them. */

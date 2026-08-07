@@ -104,8 +104,11 @@ store_final_attempt_timeout_ms: 3000
 # bounds the lot of them so a hung database cannot hold the process past the
 # window the platform gives it. Documents settle concurrently, so this is a
 # ceiling on the phase rather than the sum of `store_final_attempt_timeout_ms`
-# over however many documents happened to be open.
-store_shutdown_settle_budget_ms: 2000
+# over however many documents happened to be open. It MUST be larger than
+# `store_final_attempt_timeout_ms` (the loader rejects the config otherwise):
+# a phase that ends before one attempt can finish always reports itself
+# exhausted, and the loss reports it exists to bound land outside it.
+store_shutdown_settle_budget_ms: 4000
 
 # Where content goes when even the final attempt fails. Relative paths are
 # resolved from the monorepo root; in Docker this sits under the mounted

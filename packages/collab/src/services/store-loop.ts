@@ -43,8 +43,12 @@ export interface StoreLoopDeps {
   storeTimeoutMs: number;
   /** Documents currently held in memory. */
   listDocuments(): Iterable<StoreLoopEntry>;
-  /** Ask hocuspocus to store this document immediately. */
-  storeNow(entry: StoreLoopEntry): Promise<void>;
+  /**
+   * Ask hocuspocus to store this document immediately.
+   * @returns Whether the document was still loaded. A document that unloaded
+   *   between the listing and the store is ordinary, not a failure.
+   */
+  storeNow(entry: StoreLoopEntry): Promise<boolean>;
 }
 
 /** A running (or startable) timed store loop. */
@@ -86,7 +90,13 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
         // reaches the documents behind this one — and each of those is holding
         // unstored content too. `runWithTimeout` does not reject, so one
         // document cannot take the round down with it.
-        const outcome = await runWithTimeout(deps.storeNow(entry), deps.storeTimeoutMs);
+        let stillLoaded = true;
+        const outcome = await runWithTimeout(
+          deps.storeNow(entry).then((found) => {
+            stillLoaded = found;
+          }),
+          deps.storeTimeoutMs,
+        );
         // Give our own arm back rather than trusting it was consumed. The
         // Redis extension runs first (priority 1000 against our default 100)
         // and aborts the whole hook chain when another instance holds the
@@ -108,7 +118,10 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
         // next round picks it up. Recorded because a document that never wins
         // the cross-instance lock, or never finishes a write, is invisible
         // otherwise — it just quietly stays dirty round after round.
-        if (result.outcome !== "stored" && result.outcome !== "refused") {
+        // A document that left memory between the listing and the store is
+        // ordinary — the unload gate settled it on the way out — so it is not
+        // worth a line. Everything else that did not confirm is.
+        if (stillLoaded && result.outcome !== "stored" && result.outcome !== "refused") {
           logger.warn(
             {
               documentName: entry.name,

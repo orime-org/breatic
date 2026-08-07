@@ -24,6 +24,7 @@ vi.mock("@breatic/core", () => ({ createLogger: () => mockLogger }));
 import { createUnloadGate } from "@collab/hooks/unload-gate.js";
 import type { StoreFailureAlert } from "@collab/services/store-alert.js";
 import {
+  armTimedStore,
   commitStore,
   consumeTimedStoreArm,
   forgetDocument,
@@ -66,18 +67,19 @@ function harness(outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands")
       // Exactly what an aborted hook chain looks like from out here: the
       // library resolves normally and our extension never ran, so the arm is
       // still sitting there untouched.
-      if (outcome === "not-reached") return;
-      if (!consumeTimedStoreArm(name)) return;
+      if (outcome === "not-reached") return true;
+      if (!consumeTimedStoreArm(name)) return true;
       // Our hook DID run — the arm above is spent — and then the write itself
       // never came back. That is what a hung database looks like, and it is a
       // different thing from the chain never reaching us.
-      if (outcome === "hangs") return new Promise<void>(() => {});
+      if (outcome === "hangs") return new Promise<boolean>(() => {});
       if (outcome === "fails") {
         noteStoreOutcome(name, "refused");
-        return;
+        return true;
       }
       commitStore(name, beginStore(name));
       noteStoreOutcome(name, "stored");
+      return true;
     },
     writeRescue: async ({ documentName, state }) => {
       rescued.push({ documentName, state });
@@ -208,7 +210,7 @@ describe("the unload gate — a document with outstanding content", () => {
       finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
-      storeNow: async () => {},
+      storeNow: async () => true,
       writeRescue: async () => {
         throw new Error("disk full");
       },
@@ -319,7 +321,7 @@ describe("settling every document on the way out", () => {
       finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
-      storeNow: async () => {},
+      storeNow: async () => true,
       writeRescue: async ({ documentName }) => {
         if (documentName === DOC) throw new Error("the rescue directory is gone");
         rescued.push(documentName);
@@ -384,7 +386,12 @@ describe("the unload gate — when nothing reached our extension", () => {
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("hello") });
 
     expect(alerted).toHaveLength(1);
-    expect(alerted[0]?.reason).toMatch(/never ran|another instance/i);
+    // Deliberately worded so that ONLY the current text passes. The previous
+    // assertion matched "never ran|another instance", and the text it was
+    // meant to replace contained both — so it passed whether or not the fix
+    // had landed, and it certified a change that had not been made.
+    expect(alerted[0]?.reason).toContain("cannot tell why");
+    expect(alerted[0]?.reason).not.toContain("another instance held");
     expect(alerted[0]?.reason).not.toMatch(/did not land/);
   });
 
@@ -440,6 +447,7 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
         if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
+        return true;
       },
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async (rescuePath, note) => void notes.push({ rescuePath, note }),
@@ -479,6 +487,7 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
         if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
+        return true;
       },
       writeRescue: async () => {
         throw new Error("the rescue directory is gone");
@@ -504,6 +513,7 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async () => {
         throw new Error("the connection went away");
+        return true;
       },
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
@@ -560,6 +570,7 @@ describe("who settles a document when both paths want to", () => {
       storeNow: async ({ name }) => {
         if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
         await blocked;
+        return true;
       },
       writeRescue: async ({ documentName }) => {
         rescued.push(documentName);
@@ -612,6 +623,7 @@ describe("who settles a document when both paths want to", () => {
       storeNow: async ({ name }) => {
         order.push("store");
         if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
+        return true;
       },
       writeRescue: async () => {
         order.push("rescue");
@@ -632,5 +644,184 @@ describe("who settles a document when both paths want to", () => {
     gate.markShuttingDown();
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
     expect(order).toEqual(["rescue", "store"]);
+  });
+});
+
+describe("what the operator is told when there is no answer", () => {
+  // Gate 2 round 4 findings 1, 4, 9 and 11. `not-reached` used to be reported
+  // as "another instance held the cross-instance store lock" — one named cause
+  // for a signal that covers several, and on a single-instance deployment it
+  // states the opposite of what happened. The tracker's own docstring already
+  // said the gate must not name a cause it cannot see; the gate did anyway.
+
+  it("names no cause at all when nothing reached our extension", async () => {
+    const { gate, alerted } = harness("not-reached");
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(alerted[0]?.reason).toContain("cannot tell why");
+    expect(alerted[0]?.reason).not.toContain("another instance held");
+  });
+
+  it("does not claim nothing reached us when another writer took over", async () => {
+    // The round arms BEFORE calling the library, so it can arm over the gate's
+    // permission while the gate's attempt is in flight. The gate then cannot
+    // confirm — but "cannot confirm" is not "nothing reached us", and the
+    // superseding attempt may well have stored the document.
+    const gate = createUnloadGate({
+      finalAttemptTimeoutMs: 50,
+      instanceId: "inst-a",
+      encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
+      storeNow: async ({ name }) => {
+        // Somebody else's round arms over ours and stores it.
+        armTimedStore(name);
+        consumeTimedStoreArm(name);
+        commitStore(name, beginStore(name));
+        noteStoreOutcome(name, "stored");
+        return true;
+      },
+      writeRescue: async () => "/rescue/1.yjs",
+      writeRescueNote: async () => {},
+      deleteRescue: async () => {},
+      alert: async (failure) => void alerted.push(failure),
+    });
+    const alerted: StoreFailureAlert[] = [];
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(alerted).toHaveLength(0);
+  });
+});
+
+describe("a document destroyed while the shutdown settle is working on it", () => {
+  // Gate 2 round 4 finding 10. Closing the client connections is what lets the
+  // library start unloading, and the settle's first step awaits a disk write.
+  // During that await the library can delete the document from
+  // `instance.documents` and destroy it, after which `storeDocumentNow` finds
+  // nothing and returns having written not one byte — silently, because an
+  // unspent permission then reads as "nothing reached us".
+  //
+  // The bytes are taken synchronously, before anything is awaited, so what the
+  // library does to the document afterwards cannot change what we hold.
+
+  it("tells the operator it could not confirm, not that nothing reached us", async () => {
+    // What actually happens in the race: the rescue file is written (the bytes
+    // were taken synchronously, before the await), but `storeDocumentNow` then
+    // finds no document in `instance.documents` and returns having written
+    // nothing — leaving the permission unspent. Read naively that says
+    // "nothing reached our extension", which is not what happened.
+    const alerted: StoreFailureAlert[] = [];
+    const document = documentWithText("x");
+    const gate = createUnloadGate({
+      finalAttemptTimeoutMs: 50,
+      instanceId: "inst-a",
+      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
+      storeNow: async () => {
+        // The document is gone from `instance.documents` by now, which is
+        // exactly what the real `storeDocumentNow` reports back.
+        return false;
+      },
+      writeRescue: async () => {
+        // The library unloads and destroys during this await, and the
+        // change-tracking extension drops the document's bookkeeping.
+        document.destroy();
+        forgetDocument(DOC);
+        return "/rescue/1.yjs";
+      },
+      writeRescueNote: async () => {},
+      deleteRescue: async () => {},
+      alert: async (failure) => void alerted.push(failure),
+    });
+    gate.markShuttingDown();
+    noteDocumentChange(DOC);
+
+    await gate.settleAllForShutdown([{ documentName: DOC, document }]);
+
+    expect(alerted).toHaveLength(1);
+    expect(alerted[0]?.reason).toContain("could not confirm");
+    expect(alerted[0]?.reason).not.toContain("never ran");
+  });
+
+  it("still rescues the content it took before the first await", async () => {
+    const rescued: Array<{ documentName: string; state: Uint8Array }> = [];
+    const document = documentWithText("content that must survive the race");
+    const gate = createUnloadGate({
+      finalAttemptTimeoutMs: 50,
+      instanceId: "inst-a",
+      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
+      storeNow: async ({ name }) => {
+        if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
+        return true;
+      },
+      writeRescue: async (args) => {
+        // The library gets its chance exactly here, during the first await.
+        document.destroy();
+        rescued.push(args);
+        return "/rescue/1.yjs";
+      },
+      writeRescueNote: async () => {},
+      deleteRescue: async () => {},
+      alert: async () => {},
+    });
+    gate.markShuttingDown();
+    noteDocumentChange(DOC);
+
+    await gate.settleAllForShutdown([{ documentName: DOC, document }]);
+
+    expect(rescued).toHaveLength(1);
+    const back = new Y.Doc();
+    Y.applyUpdate(back, rescued[0]!.state);
+    expect(back.getText("body").toString()).toBe("content that must survive the race");
+  });
+});
+
+describe("when the shutdown settle may delete the rescue file", () => {
+  // Gate 2 round 4 finding 8. Deleting it needs BOTH facts: this attempt
+  // reported landing, and nothing has come in since. Only the first was
+  // covered — the "lands" harness leaves the document clean, so the second
+  // conjunct was never the deciding one and could be removed with the suite
+  // green. The state it guards is reachable: the ticket is taken before the
+  // encode, so an update arriving mid-write leaves the document dirty while
+  // the write itself lands.
+
+  it("keeps the file when the write landed but something arrived during it", async () => {
+    const deleted: string[] = [];
+    const gate = createUnloadGate({
+      finalAttemptTimeoutMs: 50,
+      instanceId: "inst-a",
+      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
+      storeNow: async ({ name }) => {
+        if (!consumeTimedStoreArm(name)) return true;
+        const ticket = beginStore(name);
+        // Relayed from another instance while our write was in flight. It is
+        // not in the bytes the database took.
+        noteDocumentChange(name);
+        commitStore(name, ticket);
+        noteStoreOutcome(name, "stored");
+        return true;
+      },
+      writeRescue: async () => "/rescue/1.yjs",
+      writeRescueNote: async () => {},
+      deleteRescue: async (path: string) => void deleted.push(path),
+      alert: async () => {},
+    });
+    gate.markShuttingDown();
+    noteDocumentChange(DOC);
+
+    await gate.settleAllForShutdown([{ documentName: DOC, document: documentWithText("x") }]);
+
+    expect(deleted).toHaveLength(0);
+  });
+
+  it("still deletes it when the write landed and nothing arrived", async () => {
+    const { gate, deleted } = harness("lands");
+    gate.markShuttingDown();
+    noteDocumentChange(DOC);
+
+    await gate.settleAllForShutdown([{ documentName: DOC, document: documentWithText("x") }]);
+
+    expect(deleted).toEqual(["/rescue/1.yjs"]);
   });
 });

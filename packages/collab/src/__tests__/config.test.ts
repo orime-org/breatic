@@ -65,3 +65,30 @@ describe("getCollabConfig", () => {
     expect(Object.isFrozen(first)).toBe(true);
   });
 });
+
+describe("the two shutdown budgets", () => {
+  // Gate 2 round 4 finding 5. The settle phase bounds ALL documents at once
+  // and each document's own attempt is bounded separately, so the phase has to
+  // outlast one attempt or it always cuts short: under a hung database every
+  // document reports "budget exhausted" and every loss report escapes the
+  // bound it was supposed to sit inside. Shipped as 2000 against 3000.
+
+  it("gives the phase more room than one document's attempt", async () => {
+    const cfg = await loadConfig();
+
+    expect(cfg.store_shutdown_settle_budget_ms).toBeGreaterThan(
+      cfg.store_final_attempt_timeout_ms,
+    );
+  });
+
+  it("refuses a config where the phase is the smaller of the two", async () => {
+    const { collabConfigSchemaForTests } = await import("../config.js");
+
+    expect(() =>
+      collabConfigSchemaForTests.parse({
+        store_final_attempt_timeout_ms: 3000,
+        store_shutdown_settle_budget_ms: 2000,
+      }),
+    ).toThrow(/settle budget/i);
+  });
+});

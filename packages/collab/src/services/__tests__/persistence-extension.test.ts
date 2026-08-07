@@ -26,6 +26,7 @@ vi.mock("@breatic/core", () => ({
 import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
 import {
   armTimedStore,
+  releaseTimedStoreArm,
   forgetDocument,
   hasUnsavedContent,
   noteDocumentChange,
@@ -268,5 +269,46 @@ describe("an edit that arrives while the write is in flight", () => {
     await extension.onStoreDocument({ documentName: DOC, document });
 
     expect(hasUnsavedContent(DOC)).toBe(false);
+  });
+});
+
+describe("what the extension reports back about its own write", () => {
+  // Gate 2 round 4 finding 7. Both report lines could be deleted with the whole
+  // suite green: every test that asserted on an outcome fabricated it in its
+  // own stub, so nothing checked that the EXTENSION reports anything at all.
+  // Delete the "stored" line and every landed final write reads as unconfirmed
+  // — rescue file kept, operator emailed, per dirty document per shutdown.
+  // Delete the "refused" line and a genuinely refused write is reported as
+  // "may still have landed", which is the misdiagnosis this whole rework
+  // exists to remove.
+
+  it("reports that the write landed", async () => {
+    const document = new Y.Doc();
+    const extension = createPersistenceExtension({
+      fetch: async () => null,
+      store: async () => {},
+    });
+    noteDocumentChange(DOC);
+    const arm = armTimedStore(DOC);
+
+    await extension.onStoreDocument({ documentName: DOC, document });
+
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: true, outcome: "stored" });
+  });
+
+  it("reports that the database refused it", async () => {
+    const document = new Y.Doc();
+    const extension = createPersistenceExtension({
+      fetch: async () => null,
+      store: async () => {
+        throw new Error("the database is down");
+      },
+    });
+    noteDocumentChange(DOC);
+    const arm = armTimedStore(DOC);
+
+    await extension.onStoreDocument({ documentName: DOC, document });
+
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: true, outcome: "refused" });
   });
 });

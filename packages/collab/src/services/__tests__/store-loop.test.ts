@@ -56,6 +56,7 @@ function harness(names: string[], storeNow?: (name: string) => Promise<void>) {
       // every round look unconfirmed.
       if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "stored");
       if (storeNow) await storeNow(name);
+      return true;
     },
   });
   return { loop, stored };
@@ -91,6 +92,7 @@ describe("the timed store loop", () => {
       listDocuments: () => [{ name: DIRTY }],
       storeNow: async () => {
         armedAtStoreTime = consumeTimedStoreArm(DIRTY);
+        return true;
       },
     });
     noteDocumentChange(DIRTY);
@@ -191,7 +193,7 @@ describe("a round that could not confirm the write", () => {
       intervalMs: 10_000,
       storeTimeoutMs: 5_000,
       listDocuments: () => [{ name: DIRTY }],
-      storeNow: async () => {},
+      storeNow: async () => true,
     });
     noteDocumentChange(DIRTY);
 
@@ -210,7 +212,7 @@ describe("a round that could not confirm the write", () => {
       listDocuments: () => [{ name: DIRTY }],
       storeNow: async ({ name }) => {
         consumeTimedStoreArm(name);
-        return new Promise<void>(() => {});
+        return new Promise<boolean>(() => {});
       },
     });
     noteDocumentChange(DIRTY);

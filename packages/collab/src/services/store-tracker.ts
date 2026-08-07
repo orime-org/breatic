@@ -141,19 +141,32 @@ export interface StoreArm {
 /** What one write did, as reported by the extension that made it. */
 export type StoreOutcome = "stored" | "refused";
 
+/**
+ * Why an attempt has no answer.
+ *
+ * These used to be one value, and the gate reported all three as "our
+ * extension never ran". Only `unspent` is that. Being superseded means another
+ * writer's attempt took over and may well have stored the document; `gone`
+ * means the document left memory while we were waiting. Reporting either as
+ * "nothing reached us" sends an operator looking for a problem that is not
+ * there.
+ */
+export type NoAnswerReason =
+  /** Our permission was still sitting there — nothing reached our extension. */
+  | "unspent"
+  /** Another writer armed over ours; their attempt is the live one. */
+  | "superseded"
+  /** The document was forgotten while we were waiting. */
+  | "gone";
+
 /** What an attempt's issuer learns when it hands the permission back. */
 export interface ArmResult {
-  /**
-   * Whether the persistence extension ran at all for this attempt.
-   *
-   * False covers three different things that all mean "we never got to
-   * write": the hook chain was aborted upstream, we stopped waiting before it
-   * reached us, or the document was forgotten in the meantime. The gate must
-   * not name a cause it cannot see.
-   */
+  /** Whether the persistence extension ran at all for this attempt. */
   ran: boolean;
   /** Present once the write finished; absent while it is still in flight. */
   outcome?: StoreOutcome;
+  /** Why there is no answer; present exactly when `ran` is false. */
+  reason?: NoAnswerReason;
 }
 
 /**
@@ -218,14 +231,17 @@ export function noteStoreOutcome(documentName: string, outcome: StoreOutcome): v
  */
 export function releaseTimedStoreArm(documentName: string, arm: StoreArm): ArmResult {
   const record = armed.get(documentName);
-  // Not ours any more: superseded by another writer, or the document was
-  // forgotten. Either way this attempt has nothing to report and nothing to
-  // take back, and "no answer" must not be mistaken for "it worked".
-  if (!record || record.token !== arm.token) return { ran: false };
+  // Not ours any more. Which of the two it is matters: superseded means
+  // somebody else's attempt is the live one and may have stored the document,
+  // while gone means the document left memory. Neither is "nothing reached
+  // us", and "no answer" must never be mistaken for "it worked".
+  if (!record) return { ran: false, reason: "gone" };
+  if (record.token !== arm.token) return { ran: false, reason: "superseded" };
   armed.delete(documentName);
+  if (!record.ran) return { ran: false, reason: "unspent" };
   return record.outcome === undefined
-    ? { ran: record.ran }
-    : { ran: record.ran, outcome: record.outcome };
+    ? { ran: true }
+    : { ran: true, outcome: record.outcome };
 }
 
 /**

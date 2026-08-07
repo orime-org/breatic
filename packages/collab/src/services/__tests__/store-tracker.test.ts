@@ -107,7 +107,7 @@ describe("the timed-store arm", () => {
     const arm = armTimedStore(DOC);
     forgetDocument(DOC);
     expect(consumeTimedStoreArm(DOC)).toBe(false);
-    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false });
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false, reason: "gone" });
   });
 
   it("arming twice still only permits one store", () => {
@@ -134,7 +134,7 @@ describe("giving an arm back", () => {
 
     // My attempt gave up. The arm sitting there is no longer mine, so I learn
     // nothing about it — and "nothing" must not read as "it worked".
-    expect(releaseTimedStoreArm(DOC, mine)).toEqual({ ran: false });
+    expect(releaseTimedStoreArm(DOC, mine)).toEqual({ ran: false, reason: "superseded" });
 
     // So theirs survived, and their store still gets to write.
     expect(consumeTimedStoreArm(DOC)).toBe(true);
@@ -146,7 +146,7 @@ describe("giving an arm back", () => {
     // change-triggered store, which is the one write this design prevents.
     const arm = armTimedStore(DOC);
 
-    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false });
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false, reason: "unspent" });
     expect(consumeTimedStoreArm(DOC)).toBe(false);
   });
 
@@ -174,7 +174,7 @@ describe("what an arm brings back", () => {
   it("says our extension never ran when nothing consumed it", () => {
     const arm = armTimedStore(DOC);
 
-    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false });
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false, reason: "unspent" });
   });
 
   it("says it ran but has not finished when the store is still in flight", () => {
@@ -224,7 +224,7 @@ describe("what an arm brings back", () => {
     noteStoreOutcome(DOC, "stored");
     forgetDocument(DOC);
 
-    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false });
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false, reason: "gone" });
   });
 
   it("ignores an outcome recorded against somebody else's arm", () => {
@@ -233,6 +233,38 @@ describe("what an arm brings back", () => {
     armTimedStore(DOC);
     noteStoreOutcome(DOC, "stored");
 
-    expect(releaseTimedStoreArm(DOC, mine)).toEqual({ ran: false });
+    expect(releaseTimedStoreArm(DOC, mine)).toEqual({ ran: false, reason: "superseded" });
+  });
+});
+
+describe("why an attempt has no answer", () => {
+  // Gate 2 round 4 finding 9. Three different things used to answer
+  // `{ ran: false }`, and the gate reported all three as "our extension never
+  // ran". Only one of them is that. Being superseded means somebody else's
+  // attempt took over and may well have stored the document — telling an
+  // operator nothing reached us, and pointing at a cross-instance lock while
+  // doing it, sends them looking for a problem that is not there.
+
+  it("says nothing reached us when our own arm was never spent", () => {
+    const arm = armTimedStore(DOC);
+
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false, reason: "unspent" });
+  });
+
+  it("says superseded when another writer armed over ours", () => {
+    // Reachable: the timed round arms BEFORE it calls the library, so the
+    // per-document save mutex cannot serialise this away, and a round already
+    // in flight when shutdown starts is explicitly not interrupted.
+    const mine = armTimedStore(DOC);
+    armTimedStore(DOC);
+
+    expect(releaseTimedStoreArm(DOC, mine)).toEqual({ ran: false, reason: "superseded" });
+  });
+
+  it("says gone when the document was forgotten", () => {
+    const arm = armTimedStore(DOC);
+    forgetDocument(DOC);
+
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false, reason: "gone" });
   });
 });
