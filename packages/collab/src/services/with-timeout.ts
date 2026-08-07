@@ -39,9 +39,10 @@ export interface TimedOutcome {
  * Wait for a promise, giving up after a deadline.
  * @param work - The operation to wait for.
  * @param timeoutMs - How long to wait before giving up.
- * @returns Which of the two happened. Never rejects: neither giving up nor the
- *   work throwing says whether the content landed, and the caller answers that
- *   from the tracker instead.
+ * @returns Which of the two happened. Never rejects, because the caller has to
+ *   tell them apart in its log line: giving up on the transport and the
+ *   transport refusing are different events, and throwing would flatten both
+ *   into one catch block.
  */
 export async function runWithTimeout(
   work: Promise<void>,

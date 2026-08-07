@@ -100,9 +100,10 @@ export async function writeRescueNote(rescuePath: string, note: RescueNote): Pro
 /**
  * Remove a rescue file, once its content has reached the database after all.
  *
- * Quiet when the file is already gone: on shutdown this runs inside a budget
- * measured in seconds, and a failed delete must never be the reason the
- * process does not finish shutting down.
+ * Quiet when the file is already gone. This runs on the way out, where a
+ * failed delete must never be the reason the process does not finish shutting
+ * down — and the file it would have removed is a copy of content the database
+ * already accepted, so leaving it costs an operator one look, nothing more.
  * @param path - Path returned by {@link writeRescueFile}.
  */
 export async function deleteRescueFile(path: string): Promise<void> {

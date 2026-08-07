@@ -214,141 +214,6 @@ describe("the unload gate — a document with outstanding content", () => {
   });
 });
 
-describe("the unload gate — shutdown order", () => {
-  it("writes the rescue file BEFORE attempting the store", async () => {
-    // A store takes as long as the database takes, and this is the last moment
-    // the content exists anywhere, so the fast, certain local write goes first.
-    // This order is also what makes the unbounded settle safe — see
-    // shutdown-settle.ts — so it is not a preference, it is the guarantee.
-    const order: string[] = [];
-    const { gate } = harness("lands");
-    noteDocumentChange(DOC);
-
-    await gate.settleForShutdown({
-      documentName: DOC,
-      document: documentWithText("x"),
-      onStep: (step: string) => order.push(step),
-    });
-
-    expect(order).toEqual(["rescue", "store"]);
-  });
-
-  it("deletes the rescue file once the store lands", async () => {
-    const { gate, rescued, deleted } = harness("lands");
-    noteDocumentChange(DOC);
-
-    await gate.settleForShutdown({ documentName: DOC, document: documentWithText("x") });
-
-    expect(rescued).toHaveLength(1);
-    expect(deleted).toEqual(["/rescue/1.yjs"]);
-  });
-
-  it("keeps the rescue file and alerts when the store does not land", async () => {
-    const { gate, deleted, alerted } = harness("fails");
-    noteDocumentChange(DOC);
-
-    await gate.settleForShutdown({ documentName: DOC, document: documentWithText("x") });
-
-    expect(deleted).toHaveLength(0);
-    expect(alerted).toHaveLength(1);
-  });
-
-  it("does nothing at all for a document with nothing outstanding", async () => {
-    const { gate, rescued, storeCalls } = harness();
-
-    await gate.settleForShutdown({ documentName: DOC, document: documentWithText("x") });
-
-    expect(rescued).toHaveLength(0);
-    expect(storeCalls).toHaveLength(0);
-  });
-});
-
-describe("settling every document on the way out", () => {
-  // Gate 2 round 2 finding 7. This used to ride on the library's own unload:
-  // a flag made `beforeUnloadDocument` pick the shutdown order, and
-  // `server.destroy()` was expected to drive it. It does not, reliably.
-  // `runDestroy()` only resolves once the document count reaches zero, and
-  // `shouldUnloadDocument` is false the whole time a document's save mutex is
-  // held — so one store still in flight from the last timed round meant that
-  // document never unloaded, never reached the gate, and got no rescue file at
-  // all before the deadline fired and the process exited. Settling is driven
-  // from here now, before anything is destroyed, so it does not depend on the
-  // library deciding to let a document go.
-
-  it("settles every document that has outstanding content", async () => {
-    const { gate, rescued } = harness("fails");
-    const other = "project-11111111-1111-4111-8111-111111111111/document-2";
-    forgetDocument(other);
-    noteDocumentChange(DOC);
-    noteDocumentChange(other);
-
-    await gate.settleAllForShutdown([
-      { documentName: DOC, document: documentWithText("one") },
-      { documentName: other, document: documentWithText("two") },
-    ]);
-
-    expect(rescued.map((r) => r.documentName).sort()).toEqual([DOC, other].sort());
-    forgetDocument(other);
-  });
-
-  it("skips the ones with nothing outstanding", async () => {
-    const { gate, rescued, storeCalls } = harness("fails");
-
-    await gate.settleAllForShutdown([
-      { documentName: DOC, document: documentWithText("x") },
-    ]);
-
-    expect(rescued).toHaveLength(0);
-    expect(storeCalls).toHaveLength(0);
-  });
-
-  it("does not let one document stop the others", async () => {
-    const other = "project-11111111-1111-4111-8111-111111111111/document-2";
-    forgetDocument(other);
-    const rescued: string[] = [];
-    const gate = createUnloadGate({
-      instanceId: "inst-a",
-      encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
-      storeNow: async () => true,
-      writeRescue: async ({ documentName }) => {
-        if (documentName === DOC) throw new Error("the rescue directory is gone");
-        rescued.push(documentName);
-        return "/rescue/x.yjs";
-      },
-      writeRescueNote: async () => {},
-      deleteRescue: async () => {},
-      alert: async () => {},
-    });
-    noteDocumentChange(DOC);
-    noteDocumentChange(other);
-
-    await gate.settleAllForShutdown([
-      { documentName: DOC, document: documentWithText("one") },
-      { documentName: other, document: documentWithText("two") },
-    ]);
-
-    expect(rescued).toEqual([other]);
-    forgetDocument(other);
-  });
-
-  it("does not settle a document twice when the library then unloads it", async () => {
-    // `server.destroy()` runs after this and drives the ordinary unload path
-    // over the same documents. Settling again would write a second rescue file
-    // and send a second alert for content that has already had its one attempt.
-    const { gate, rescued, alerted } = harness("fails");
-    gate.markShuttingDown();
-    noteDocumentChange(DOC);
-
-    await gate.settleAllForShutdown([
-      { documentName: DOC, document: documentWithText("x") },
-    ]);
-    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
-
-    expect(rescued).toHaveLength(1);
-    expect(alerted).toHaveLength(1);
-  });
-});
-
 describe("the unload gate — when nothing reached our extension", () => {
   // Gate 2 round 2 finding 5. In a multi-instance deployment the Redis
   // extension runs first (priority 1000 against our default 100) and aborts
@@ -524,72 +389,13 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
   });
 });
 
-describe("who settles a document when both paths want to", () => {
-  // Gate 2 round 3 finding 2. The guard used to be one-directional: the
-  // shutdown settle marked a document and `beforeUnloadDocument` checked the
-  // mark, but nothing said "an ordinary settle is already running". The
-  // library keeps a document reachable for the whole of that hook — it deletes
-  // it from `instance.documents` only after the chain resolves — so the
-  // shutdown walk enumerates it and settles it a second time. Two rescue
-  // files, and the second alert is swallowed by the per-document window, so an
-  // operator is told about one file and finds two.
-
-  it("does not settle again when the shutdown settle already did", async () => {
-    const { gate, rescued, alerted } = harness("fails");
-    gate.markShuttingDown();
-    noteDocumentChange(DOC);
-
-    await gate.settleAllForShutdown([
-      { documentName: DOC, document: documentWithText("x") },
-    ]);
-    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
-
-    expect(rescued).toHaveLength(1);
-    expect(alerted).toHaveLength(1);
-  });
-
-  it("does not settle again when an ordinary settle is already running", async () => {
-    // The direction that was missing. The ordinary settle is still in flight
-    // when shutdown starts walking the documents.
-    let releaseStore: (() => void) | undefined;
-    const blocked = new Promise<void>((resolve) => {
-      releaseStore = resolve;
-    });
-    const rescued: string[] = [];
-    const gate = createUnloadGate({
-      instanceId: "inst-a",
-      encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
-      storeNow: async ({ name }) => {
-        if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
-        await blocked;
-        return true;
-      },
-      writeRescue: async ({ documentName }) => {
-        rescued.push(documentName);
-        return `/rescue/${rescued.length}.yjs`;
-      },
-      writeRescueNote: async () => {},
-      deleteRescue: async () => {},
-      alert: async () => {},
-    });
-    noteDocumentChange(DOC);
-
-    const ordinary = gate.beforeUnloadDocument({
-      documentName: DOC,
-      document: documentWithText("x"),
-    });
-    await new Promise((r) => setTimeout(r, 5));
-
-    gate.markShuttingDown();
-    await gate.settleAllForShutdown([
-      { documentName: DOC, document: documentWithText("x") },
-    ]);
-
-    releaseStore?.();
-    await ordinary;
-
-    expect(rescued).toHaveLength(1);
-  });
+describe("settling the same document twice", () => {
+  // The library keeps a document reachable for the whole of
+  // `beforeUnloadDocument` — it deletes it from `instance.documents` only
+  // after the chain resolves — so a second unload of the same document can
+  // begin while the first is still waiting on its write. That produced two
+  // rescue files for one document, and the second alert was swallowed by the
+  // per-document window, so an operator was told about one file and found two.
 
   it("settles again on a later unload when the document survived the first", async () => {
     // hocuspocus re-checks `shouldUnloadDocument` after the hook returns and
@@ -606,36 +412,6 @@ describe("who settles a document when both paths want to", () => {
     expect(rescued).toHaveLength(2);
   });
 
-  it("writes the rescue file before attempting the store once shutting down", async () => {
-    const order: string[] = [];
-    const gate = createUnloadGate({
-      instanceId: "inst-a",
-      encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
-      storeNow: async ({ name }) => {
-        order.push("store");
-        if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
-        return true;
-      },
-      writeRescue: async () => {
-        order.push("rescue");
-        return "/rescue/x.yjs";
-      },
-      writeRescueNote: async () => {},
-      deleteRescue: async () => {},
-      alert: async () => {},
-    });
-
-    noteDocumentChange(DOC);
-    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
-    expect(order).toEqual(["store", "rescue"]);
-
-    order.length = 0;
-    forgetDocument(DOC);
-    noteDocumentChange(DOC);
-    gate.markShuttingDown();
-    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
-    expect(order).toEqual(["rescue", "store"]);
-  });
 });
 
 describe("what the operator is told when there is no answer", () => {
@@ -685,128 +461,12 @@ describe("what the operator is told when there is no answer", () => {
   });
 });
 
-describe("a document destroyed while the shutdown settle is working on it", () => {
-  // Gate 2 round 4 finding 10. Closing the client connections is what lets the
-  // library start unloading, and the settle's first step awaits a disk write.
-  // During that await the library can delete the document from
-  // `instance.documents` and destroy it, after which `storeDocumentNow` finds
-  // nothing and returns having written not one byte — silently, because an
-  // unspent permission then reads as "nothing reached us".
-  //
-  // The bytes are taken synchronously, before anything is awaited, so what the
-  // library does to the document afterwards cannot change what we hold.
-
-  it("tells the operator it could not confirm, not that nothing reached us", async () => {
-    // What actually happens in the race: the rescue file is written (the bytes
-    // were taken synchronously, before the await), but `storeDocumentNow` then
-    // finds no document in `instance.documents` and returns having written
-    // nothing — leaving the permission unspent. Read naively that says
-    // "nothing reached our extension", which is not what happened.
-    const alerted: StoreFailureAlert[] = [];
-    const document = documentWithText("x");
-    const gate = createUnloadGate({
-      instanceId: "inst-a",
-      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
-      storeNow: async () => {
-        // The document is gone from `instance.documents` by now, which is
-        // exactly what the real `storeDocumentNow` reports back.
-        return false;
-      },
-      writeRescue: async () => {
-        // The library unloads and destroys during this await, and the
-        // change-tracking extension drops the document's bookkeeping.
-        document.destroy();
-        forgetDocument(DOC);
-        return "/rescue/1.yjs";
-      },
-      writeRescueNote: async () => {},
-      deleteRescue: async () => {},
-      alert: async (failure) => void alerted.push(failure),
-    });
-    gate.markShuttingDown();
-    noteDocumentChange(DOC);
-
-    await gate.settleAllForShutdown([{ documentName: DOC, document }]);
-
-    expect(alerted).toHaveLength(1);
-    expect(alerted[0]?.reason).toContain("could not confirm");
-    expect(alerted[0]?.reason).not.toContain("never ran");
-  });
-
-  it("still rescues the content it took before the first await", async () => {
-    const rescued: Array<{ documentName: string; state: Uint8Array }> = [];
-    const document = documentWithText("content that must survive the race");
-    const gate = createUnloadGate({
-      instanceId: "inst-a",
-      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
-      storeNow: async ({ name }) => {
-        if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
-        return true;
-      },
-      writeRescue: async (args) => {
-        // The library gets its chance exactly here, during the first await.
-        document.destroy();
-        rescued.push(args);
-        return "/rescue/1.yjs";
-      },
-      writeRescueNote: async () => {},
-      deleteRescue: async () => {},
-      alert: async () => {},
-    });
-    gate.markShuttingDown();
-    noteDocumentChange(DOC);
-
-    await gate.settleAllForShutdown([{ documentName: DOC, document }]);
-
-    expect(rescued).toHaveLength(1);
-    const back = new Y.Doc();
-    Y.applyUpdate(back, rescued[0]!.state);
-    expect(back.getText("body").toString()).toBe("content that must survive the race");
-  });
-});
-
-describe("when the shutdown settle may delete the rescue file", () => {
-  // Gate 2 round 4 finding 8. Deleting it needs BOTH facts: this attempt
-  // reported landing, and nothing has come in since. Only the first was
-  // covered — the "lands" harness leaves the document clean, so the second
-  // conjunct was never the deciding one and could be removed with the suite
-  // green. The state it guards is reachable: the ticket is taken before the
-  // encode, so an update arriving mid-write leaves the document dirty while
-  // the write itself lands.
-
-  it("keeps the file when the write landed but something arrived during it", async () => {
-    const deleted: string[] = [];
-    const gate = createUnloadGate({
-      instanceId: "inst-a",
-      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
-      storeNow: async ({ name }) => {
-        if (!consumeTimedStoreArm(name)) return true;
-        const ticket = beginStore(name);
-        // Relayed from another instance while our write was in flight. It is
-        // not in the bytes the database took.
-        noteDocumentChange(name);
-        commitStore(name, ticket);
-        noteStoreOutcome(name, "stored");
-        return true;
-      },
-      writeRescue: async () => "/rescue/1.yjs",
-      writeRescueNote: async () => {},
-      deleteRescue: async (path: string) => void deleted.push(path),
-      alert: async () => {},
-    });
-    gate.markShuttingDown();
-    noteDocumentChange(DOC);
-
-    await gate.settleAllForShutdown([{ documentName: DOC, document: documentWithText("x") }]);
-
-    expect(deleted).toHaveLength(0);
-  });
-
-  // Gate 2 round 5 finding 1. Keeping the file is only half of it — the alert
-  // has to say which copy is which, and the two paths are OPPOSITE. The gate
-  // used to give them one label and one sentence, and that sentence was true
-  // on one path and false on the other. An operator acting on the false one
-  // restores an older file over a database that already holds the newer bytes.
+describe("a write that landed while new content was arriving", () => {
+  // The reachable state: the ticket is taken before the encode, so an update
+  // arriving mid-write leaves the document dirty while the write itself lands.
+  // The rescue file is encoded AFTER the attempt, so it holds that content and
+  // the database does not — and the alert has to say so, because an operator
+  // deciding whether to restore the file needs to know it is the newer copy.
 
   it("tells the operator the FILE is the newer copy on an ordinary unload", async () => {
     // Ordinary order: store first, then encode the rescue file. So the file
@@ -836,55 +496,4 @@ describe("when the shutdown settle may delete the rescue file", () => {
     expect(alerted[0]?.reason).toContain("this file holds it");
   });
 
-  it("tells the operator NOT to restore the file over the database on the way out", async () => {
-    // Shutdown order: rescue file first, store second. The file therefore
-    // predates the write and can never be the newer of the two.
-    //
-    // Gate 2 round 6: the first version of this sentence said the database is
-    // "newer", which is only true when a second update lands during the disk
-    // write — usually the two copies are byte-identical, because `beginStore`
-    // and the encode beside it are adjacent synchronous statements, so the
-    // update that makes the document dirty lands after both. Claiming a
-    // difference that is usually not there sends an operator to compare two
-    // identical files and then distrust the clause that IS always true.
-    const alerted: StoreFailureAlert[] = [];
-    const gate = createUnloadGate({
-      instanceId: "inst-a",
-      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
-      storeNow: async ({ name }) => {
-        if (!consumeTimedStoreArm(name)) return true;
-        const ticket = beginStore(name);
-        noteDocumentChange(name);
-        commitStore(name, ticket);
-        noteStoreOutcome(name, "stored");
-        return true;
-      },
-      writeRescue: async () => "/rescue/1.yjs",
-      writeRescueNote: async () => {},
-      deleteRescue: async () => {},
-      alert: async (failure) => void alerted.push(failure),
-    });
-    gate.markShuttingDown();
-    noteDocumentChange(DOC);
-
-    await gate.settleAllForShutdown([{ documentName: DOC, document: documentWithText("x") }]);
-
-    expect(alerted).toHaveLength(1);
-    expect(alerted[0]?.reason).toContain("at least as new as this file");
-    expect(alerted[0]?.reason).toContain("Do NOT restore this file over the database");
-    // The claim that is false here, and the one this whole split exists to
-    // keep off this path.
-    expect(alerted[0]?.reason).not.toContain("this file holds it");
-    expect(alerted[0]?.reason).not.toContain("newer of the two copies");
-  });
-
-  it("still deletes it when the write landed and nothing arrived", async () => {
-    const { gate, deleted } = harness("lands");
-    gate.markShuttingDown();
-    noteDocumentChange(DOC);
-
-    await gate.settleAllForShutdown([{ documentName: DOC, document: documentWithText("x") }]);
-
-    expect(deleted).toEqual(["/rescue/1.yjs"]);
-  });
 });

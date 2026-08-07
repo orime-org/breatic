@@ -163,7 +163,7 @@ async function main(): Promise<void> {
   }
 
   // Create and start Hocuspocus server
-  const { server, hocuspocus, connectionRegistry, handlingSweeper, storeLoop, settleAllForShutdown } =
+  const { server, hocuspocus, connectionRegistry, handlingSweeper, storeLoop } =
     await createCollabServer({
     collabRedisUrl: REDIS_COLLAB_URL,
     port: env.COLLAB_PORT,
@@ -344,43 +344,24 @@ async function main(): Promise<void> {
    */
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutting down...");
-    // Stop starting new store rounds. A round already in flight finishes; the
-    // settle below covers whatever it did not reach.
+    // Stop starting new store rounds. A round already in flight finishes on
+    // its own, and each document gets its own last attempt when the library
+    // unloads it — `server.destroy()` is the first drain below, and it closes
+    // the client connections, which is what makes the documents unload.
     storeLoop.stop();
 
     // Free :1234 before anything slow runs, so a restart can rebind straight
-    // away rather than waiting behind the settle. `runGracefulShutdown` asks
-    // for the same release below and swallows the error from closing twice.
+    // away. `runGracefulShutdown` asks for the same release below and swallows
+    // the error from closing twice.
     try {
       server.httpServer.close();
     } catch {
-      // Best effort — a release error must not stop the settle below.
+      // Best effort — a release error must not stop the teardown below.
     }
 
-    // Every document still in memory gets its one attempt, HERE, before
-    // anything is destroyed (#40). It closes the client connections first —
-    // the socket release above only refuses NEW ones — because a snapshot
-    // taken while somebody is still typing is not a final snapshot.
-    //
-    // It cannot be one of the drains below: those run in parallel, so it would
-    // race `server.destroy()` over the same documents. And it cannot be left to
-    // the library's own unload either — `runDestroy()` waits for the document
-    // count to reach zero, while `shouldUnloadDocument` stays false for as long
-    // as a document's save mutex is held, so one store still in flight from the
-    // last timed round meant that document never unloaded, never reached the
-    // gate, and got no rescue file at all.
-    //
-    // Unbounded on purpose. The settle writes each document's rescue file
-    // BEFORE it attempts the store, so the content is already safe on disk by
-    // the time anything slow can happen; what a deadline here would buy is
-    // exiting sooner, at the cost of abandoning writes that were about to land.
-    await settleAllForShutdown();
-
-    // Onto disk now, not at the end. What the settle just recorded is the
-    // whole point of it: which documents were rescued, where their files are,
-    // and who could not be told. Everything after this line is teardown, and
-    // if the platform loses patience and kills the process mid-drain, those
-    // logs are the part that must already be safe.
+    // Onto disk before the teardown, not after it: if the platform loses
+    // patience and kills the process mid-drain, everything logged up to here
+    // is already safe.
     await flushLogger();
 
     await runGracefulShutdown({

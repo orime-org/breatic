@@ -101,11 +101,10 @@ store_interval_ms: 10000
 # hypothetical: three such alerts fired in smoke against a healthy database
 # answering in 250ms.
 #
-# What makes the shutdown settle safe without a bound is not a fallback
-# elsewhere — `runGracefulShutdown` in the entry runs AFTER the settle and only
-# bounds the drains it is handed — it is the order inside the settle: each
-# document's rescue file is written before its store is attempted, so the
-# content is already on disk before anything slow can happen.
+# There is one store path and one only: a document about to leave memory is
+# stored to the database, and its content goes to disk only if that does not
+# land. The timed round above does not write to disk at all — a failed round
+# needs nothing but the next round.
 
 # Where content goes when the final attempt does not land. Relative paths are
 # resolved from the monorepo root; in Docker this sits under the mounted

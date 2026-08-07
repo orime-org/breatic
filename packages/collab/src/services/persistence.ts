@@ -93,8 +93,8 @@ export async function storeDoc({
  * waits `disconnectDelay` (1000ms by default) whenever the source is "local".
  * The library holds the document's save mutex across both store hooks, so
  * copying its own "local" origin cost every timed store a second of held mutex,
- * every round, forever — and a quarter of the whole shutdown budget on the way
- * out.
+ * every round, forever — and a second added to every document's settle on the
+ * way out, when the supervisor is already waiting.
  *
  * That delay is for a direct connection disconnecting, where peers need a beat
  * to receive the sync before the document unloads. A timed store is not an

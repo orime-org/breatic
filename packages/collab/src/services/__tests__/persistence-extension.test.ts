@@ -183,8 +183,8 @@ describe("the origin a timed store carries", () => {
   // purpose: `afterStoreDocument` waits `disconnectDelay` (1000ms by default)
   // whenever the source is "local". The library holds the save mutex across
   // both store hooks, so copying the library's own "local" origin cost every
-  // timed store a second of held mutex, every round, forever — and ate a
-  // quarter of the whole shutdown budget on the way out.
+  // timed store a second of held mutex, every round, forever — and added a
+  // second to every document's settle on the way out.
   //
   // The delay exists for a direct connection disconnecting, where peers need a
   // beat to receive the sync before the document unloads. A timed store is not

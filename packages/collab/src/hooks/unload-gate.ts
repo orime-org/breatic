@@ -44,22 +44,8 @@ const logger = createLogger("collab-unload-gate");
  *   refused      our extension ran, the write came back, the content did not
  *                land. The database really did say no.
  *   raced-by-edit the write landed, and content arrived while it was in flight.
- *                ORDINARY PATH ONLY, where the rescue file is encoded AFTER the
- *                write, so the file is the newer of the two copies.
- *   stale-snapshot the same race, on the SHUTDOWN path, where the rescue file is
- *                encoded BEFORE the write — so the file is never the newer of
- *                the two, and restoring it over the database can only lose.
- *                "At least as new", not "newer": the two are usually IDENTICAL,
- *                because `beginStore` and the encode beside it are adjacent
- *                synchronous statements (persistence.ts), so the update that
- *                makes the document dirty lands after both and is in neither
- *                copy. The database is strictly newer only when a SECOND update
- *                also lands during the disk write. Overclaiming here would send
- *                an operator to compare two identical files and then stop
- *                believing the clause that is always true.
- *                One label for both paths would be a sentence true on one and
- *                false on the other, and the false one tells an operator to
- *                restore an old file over a database that has the better bytes.
+ *                The rescue file is encoded AFTER the write, so it holds that
+ *                content and the database does not.
  *   not-reached  our extension never ran: the permission we issued was still
  *                unspent. `hooks()` chains the extensions with `.then`, so a
  *                rejection from any of them skips every hook behind it, and the
@@ -74,13 +60,7 @@ const logger = createLogger("collab-unload-gate");
  * Telling an operator a healthy database rejected content it never saw, or very
  * probably accepted, costs real attention during an outage.
  */
-type FinalAttempt =
-  | "stored"
-  | "refused"
-  | "raced-by-edit"
-  | "stale-snapshot"
-  | "not-reached"
-  | "unconfirmed";
+type FinalAttempt = "stored" | "refused" | "raced-by-edit" | "not-reached" | "unconfirmed";
 
 /** One attempt's outcome, plus whatever it threw on the way. */
 interface AttemptResult {
@@ -103,19 +83,14 @@ const ATTEMPT_REASON: Record<Exclude<FinalAttempt, "stored">, string> = {
   "raced-by-edit":
     "the final store attempt landed, and content arrived while it was in flight that the " +
     "database does not have — this file holds it, and is the newer of the two copies",
-  "stale-snapshot":
-    "this file was written BEFORE the final store attempt, and that attempt landed, so the " +
-    "database is at least as new as this file and may be newer. Content that arrived during " +
-    "the write is in neither. Do NOT restore this file over the database — check the " +
-    "document there first",
   "not-reached":
     "this instance's write never ran, and it cannot tell why — the store hook chain " +
     "was aborted before it reached us. Check the document in the database before " +
     "acting on this file",
   unconfirmed:
     "this instance could not confirm what happened to its write — another attempt " +
-    "took over, or the document left memory first. Check the document in the " +
-    "database before acting on this file",
+    "took over, the document left memory first, or the write threw before it could " +
+    "report. Check the document in the database before acting on this file",
 };
 
 /** A document the gate is settling. */
@@ -153,58 +128,35 @@ export interface UnloadPayload {
   document: Y.Doc;
 }
 
-/** What the shutdown path is given, plus an optional step recorder. */
-export interface ShutdownPayload extends UnloadPayload {
-  /** Called with each step as it starts; used by tests to pin the order. */
-  onStep?: (step: "rescue" | "store") => void;
-}
-
-/** The gate, in its two orders. */
+/** The gate. */
 export interface UnloadGate {
-  /** Normal unload: try the database first, fall back to disk. */
+  /** Try the database; if that does not land, write the content to disk. */
   beforeUnloadDocument(payload: UnloadPayload): Promise<void>;
-  /** Shutdown: write one document to disk first, then try the database. */
-  settleForShutdown(payload: ShutdownPayload): Promise<void>;
-  /**
-   * Shutdown: settle everything still in memory, before anything is destroyed.
-   * @param entries - Every document the instance currently holds.
-   */
-  settleAllForShutdown(entries: Iterable<UnloadPayload>): Promise<void>;
-  /**
-   * The process is going down: write to disk before the database from now on,
-   * and give each document exactly one attempt across both paths.
-   */
-  markShuttingDown(): void;
 }
 
 /**
  * Build the unload gate.
- * @param deps - Timeout, encoder, store call, rescue I/O, and alerting.
- * @returns The gate in both its orders.
+ * @param deps - Instance id, encoder, store call, rescue I/O, and alerting.
+ * @returns The gate.
  */
 export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   /**
-   * Documents somebody is settling, or has settled, right now.
+   * Documents somebody is settling right now.
    *
-   * A claim rather than a mark, because both paths want the same documents and
-   * either can get there first. `server.destroy()` drives the ordinary unload
-   * over exactly the documents the shutdown walk enumerates, and the library
-   * keeps a document reachable for the whole of `beforeUnloadDocument` — it
-   * leaves `instance.documents` only after that chain resolves. A one-way mark
-   * caught only one of the two orders; the other produced two rescue files for
-   * one document, with the second alert swallowed by the per-document window,
-   * so an operator was told about one file and would find two.
+   * The library keeps a document reachable for the whole of
+   * `beforeUnloadDocument` — it leaves `instance.documents` only after that
+   * chain resolves — so a second unload of the same document can begin while
+   * the first is still waiting on its write. Without this, one document
+   * produced two rescue files, and the second alert was swallowed by the
+   * per-document window, so an operator was told about one file and would
+   * find two.
    *
-   * Released once the settle finishes, EXCEPT while shutting down. In ordinary
-   * operation the library may abandon an unload after the hook returns (a
-   * connection arrived), and that document's next real departure deserves its
-   * own attempt — the claim is for one departure, not for the document's life.
-   * On the way out there is no next departure, so it stands.
+   * Released once the settle finishes: the library may abandon an unload after
+   * the hook returns (a connection arrived), and that document's next real
+   * departure deserves its own attempt. The claim is for one departure, not
+   * for the document's life.
    */
   const settling = new Set<string>();
-
-  /** True once the process is going down; see {@link UnloadGate.markShuttingDown}. */
-  let shuttingDown = false;
 
   /**
    * Take the one attempt for a document, if nobody else has it.
@@ -222,7 +174,6 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
    * @param documentName - Full Yjs document name.
    */
   function releaseClaim(documentName: string): void {
-    if (shuttingDown) return;
     settling.delete(documentName);
   }
 
@@ -345,12 +296,12 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   }
 
   /**
-   * Ordinary unload: try the database, fall back to disk.
+   * Try the database; if the content does not land, write it to disk.
    * @param payload - The document about to leave memory.
    * @param payload.documentName - Full Yjs document name.
    * @param payload.document - The live document.
    */
-  async function settleNormally({ documentName, document }: UnloadPayload): Promise<void> {
+  async function settle({ documentName, document }: UnloadPayload): Promise<void> {
     if (!hasUnsavedContent(documentName)) return;
 
     const result = await attemptStore(documentName);
@@ -364,54 +315,10 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     const path = await rescue(documentName, state);
     await reportLoss(documentName, state.length, path, {
       // Landed, and still dirty: the only way both hold is that content
-      // arrived during the write. On this path the encode two lines up ran
-      // AFTER the attempt, so the file just written holds that content and the
-      // database does not — unconditionally, unlike the shutdown path below.
+      // arrived during the write. The encode two lines up ran AFTER the
+      // attempt, so the file just written holds that content and the database
+      // does not.
       attempt: result.attempt === "stored" ? "raced-by-edit" : result.attempt,
-      error: result.error,
-    });
-  }
-
-  /**
-   * Shutdown: write to disk first, then try the database.
-   * @param payload - The document about to leave memory, plus a step recorder.
-   * @param payload.documentName - Full Yjs document name.
-   * @param payload.document - The live document.
-   * @param payload.onStep - Called with each step as it starts.
-   */
-  async function settleForShutdown({
-    documentName,
-    document,
-    onStep,
-  }: ShutdownPayload): Promise<void> {
-    if (!hasUnsavedContent(documentName)) return;
-
-    // Disk first. A store can take as long as the database takes, and this is
-    // the last moment the content exists anywhere, so the fast local write
-    // happens while there is certainly still a process to do it.
-    onStep?.("rescue");
-    const state = deps.encode(document);
-    const path = await rescue(documentName, state);
-
-    onStep?.("store");
-    const result = await attemptStore(documentName);
-
-    // Both, not either. The file is the only copy, so it goes only when this
-    // attempt explicitly reported landing AND nothing has come in since. A
-    // document forgotten mid-attempt reports neither, and used to read as
-    // stored — which deleted the file.
-    if (result.attempt === "stored" && !hasUnsavedContent(documentName)) {
-      if (path) await deps.deleteRescue(path);
-      return;
-    }
-    await reportLoss(documentName, state.length, path, {
-      // Same race as the ordinary path, opposite conclusion. Here the file was
-      // encoded above, BEFORE the attempt, and the extension takes its own
-      // ticket-then-encode inside the write — so the database's copy is
-      // strictly newer than this file, and whatever arrived during the write is
-      // in neither. Calling this "raced-by-edit" would tell the operator to
-      // restore the older file over the better bytes.
-      attempt: result.attempt === "stored" ? "stale-snapshot" : result.attempt,
       error: result.error,
     });
   }
@@ -420,9 +327,7 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     beforeUnloadDocument: async (payload): Promise<void> => {
       if (!claim(payload.documentName)) return;
       try {
-        // Disk first once the process is going down: a store takes as long as
-        // the database takes, and the local write is quick and certain.
-        await (shuttingDown ? settleForShutdown(payload) : settleNormally(payload));
+        await settle(payload);
       } catch (err) {
         // Belt and braces. A throw escaping here would abort the unload and
         // strand the document; nothing this hook does is worth that.
@@ -438,46 +343,6 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
       // on. Cleanup belongs to the change-tracking extension, which owns the
       // bookkeeping and drops it in `afterUnloadDocument` — the one hook that
       // fires only once the document has actually gone.
-    },
-
-    markShuttingDown: (): void => {
-      shuttingDown = true;
-    },
-
-    settleForShutdown: async (payload): Promise<void> => {
-      if (!claim(payload.documentName)) return;
-      try {
-        await settleForShutdown(payload);
-      } catch (err) {
-        logger.error({ err, documentName: payload.documentName }, "collab_shutdown_settle_failed");
-      } finally {
-        releaseClaim(payload.documentName);
-      }
-    },
-
-    settleAllForShutdown: async (entries): Promise<void> => {
-      // Concurrently, not one after another. A hundred documents in series is
-      // a hundred database round trips end to end, on the way out, when the
-      // supervisor is already waiting. They are independent writes of
-      // independent rows; the pool queues them.
-      await Promise.all(
-        Array.from(entries, async (payload) => {
-          // Whoever gets here first settles it. The other path finds the claim
-          // taken and stands down.
-          if (!claim(payload.documentName)) return;
-          try {
-            await settleForShutdown(payload);
-          } catch (err) {
-            // One document must not take the rest of the shutdown with it.
-            logger.error(
-              { err, documentName: payload.documentName },
-              "collab_shutdown_settle_failed",
-            );
-          } finally {
-            releaseClaim(payload.documentName);
-          }
-        }),
-      );
     },
   };
 }

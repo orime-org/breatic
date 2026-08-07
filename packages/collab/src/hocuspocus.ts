@@ -52,7 +52,6 @@ import { projectAwarenessIntoMetaUsers } from "@collab/hooks/awareness-meta-user
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
 import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js";
-import { settleEverythingForShutdown } from "@collab/hooks/shutdown-settle.js";
 import { createStoreLoop, type StoreLoop } from "@collab/services/store-loop.js";
 import { createStoreAlerter } from "@collab/services/store-alert.js";
 import {
@@ -94,7 +93,7 @@ export interface CollabServerInfra {
  * @param infra - Database and Redis connection details
  * @returns Configured Server + Hocuspocus instances + the cross-instance connection registry and the handling-lease sweeper (caller stops both on shutdown)
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; handlingSweeper: HandlingSweeper; storeLoop: StoreLoop; settleAllForShutdown: () => Promise<void> }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; handlingSweeper: HandlingSweeper; storeLoop: StoreLoop }> {
   const cfg = getCollabConfig();
 
   // Handling-lease budgets (#1580 #2): default + per-operation overrides,
@@ -522,28 +521,5 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     connectionRegistry,
     handlingSweeper,
     storeLoop,
-    // Called by the entry BEFORE anything is destroyed (#40). It cannot be one
-    // of the graceful-shutdown drains: those run in parallel, so it would race
-    // `server.destroy()` over the same documents. And it cannot be left to the
-    // library's own unload either — `runDestroy()` waits for the document count
-    // to reach zero, while `shouldUnloadDocument` stays false for as long as a
-    // document's save mutex is held, so one store still in flight from the last
-    // timed round meant that document never unloaded, never reached the gate,
-    // and got no rescue file at all.
-    settleAllForShutdown: async (): Promise<void> => {
-      const gate = storeGate.current;
-      if (!gate) return;
-      await settleEverythingForShutdown({
-        gate,
-        closeConnections: () => wsServer.hocuspocus.closeConnections(),
-        // Read AFTER the connections are closed, which is why it is a callback
-        // rather than an array captured here.
-        listDocuments: () =>
-          Array.from(wsServer.hocuspocus.documents, ([documentName, document]) => ({
-            documentName,
-            document: document as unknown as Y.Doc,
-          })),
-      });
-    },
   };
 }
