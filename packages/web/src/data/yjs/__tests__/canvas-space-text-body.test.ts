@@ -67,7 +67,6 @@ function sampleFields(type: NodeType, opts: { id?: string } = {}): CanvasNodeFie
       createdAt: 1000,
       createdBy: 'u1',
       locked: false,
-      operationLocks: [],
       state: 'idle',
       attachments: [],
     },

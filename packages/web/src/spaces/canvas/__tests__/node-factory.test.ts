@@ -33,7 +33,6 @@ describe('createEmptyNode — empty content node factory', () => {
     expect(node.position).toEqual(pos);
     expect(node.data.createdBy).toBe('user-1');
     expect(node.data.locked).toBe(false);
-    expect(node.data.operationLocks).toEqual([]);
     expect(node.data.state).toBe('idle');
     expect(node.data.attachments).toEqual([]);
     expect(typeof node.data.createdAt).toBe('number');
@@ -70,10 +69,12 @@ describe('createEmptyNode — empty content node factory', () => {
   });
 
   it('a handling upload node carries handlingBy (frontend driver + lease start, #1569)', () => {
-    // Without handlingBy the collab disconnect-cleanup can never match the
-    // node (its filter is handlingBy.userId + type==='frontend') and the
-    // lease sweeper cannot compute the timeout — the exact pair of holes
-    // that left upload nodes stuck in handling forever.
+    // Without handlingBy the sweeper has no lease to measure and treats the
+    // node as an orphan — `startedAt === undefined` expires it on the very
+    // next pass, killing a live upload rather than letting it run its budget.
+    // Nothing softens that: a disconnect writes nothing, because a closing
+    // socket is not evidence the upload died (it goes straight to object
+    // storage and outlives the socket).
     const before = Date.now();
     const node = createEmptyNode('image', pos, 'u', 'handling');
     const after = Date.now();

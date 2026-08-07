@@ -92,9 +92,10 @@ quiet: true
 
 # ── Handling Lease (#1580) ────────────────────────
 # 'handling' is fragile shared Yjs state; its driver (a browser uploading,
-# a Worker running AIGC) can die silently. These tune the collab sweeper +
-# disconnect cleanup — the ONLY consumer of these values (server/worker just
-# stamp timestamps, web only renders the backend-authoritative result).
+# a Worker running AIGC) can die silently. These tune the collab sweeper, the
+# ONLY consumer of these values — server/worker just stamp timestamps, and web
+# derives an expired-lease display state from the shared HANDLING_TIMEOUT_MS
+# constant, never from this file.
 #
 # NOT the same as worker.yaml's `lock_duration_ms` (10min): that is BullMQ's
 # own stalled-worker detection (fast path → the worker.on failed net); THIS

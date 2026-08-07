@@ -153,38 +153,13 @@ export interface HandlingActor {
 /**
  * Unified fixed-budget handling lease (#1569, user decision 2026-07-02):
  * ONE hour for every handling operation (upload / AIGC / future frontend
- * media ops). The budget's job is to bound rare zombies (lost disconnect
- * events), not to fit per-operation durations — common cases are cleaned
- * by the owner writing back on success / failure. Web (display-level
+ * media ops). The budget's job is to bound rare zombies (a driver that died
+ * without ever writing back), not to fit per-operation durations — common
+ * cases are cleaned by the owner writing back on success / failure. Web (display-level
  * timeout fallback) and collab (sweeper) both import THIS constant so the two
  * sides can never drift.
  */
 export const HANDLING_TIMEOUT_MS = 3_600_000;
-
-/**
- * One mini-tool configure-phase lock on a node.
- *
- * Added 2026-05-11 (ADR `2026-05-11-mini-tool-state-machine.md`). Multiple
- * locks can coexist on the same node — one per (user, tool) pair — to
- * support concurrent multi-user mini-tool configuration.
- *
- * Lifecycle:
- *   - Pushed when a user picks a tool in `NodeFloatMenu`.
- *   - Removed when the same user presses Apply or Cancel (matched by
- *     `toolId + userId`; one operation may only release its own lock).
- *   - Stripped by Collab's `onDisconnect` hook when the holder leaves
- *     the canvas doc (any operationLock entry with `userId === disconnected`).
- *
- * Independent of the user's manual `data.locked` (which Collab never
- * touches) and of the implicit `state === 'handling'` lock (handled
- * separately, see `HandlingActor`).
- */
-export interface OperationLock {
-  /** Tool id matching a row in `IMAGE_TOOLS` etc. */
-  toolId: string;
-  /** User who owns this lock; the only one allowed to remove it. */
-  userId: string;
-}
 
 /**
  * Attachment reference stored in a node's `attachments` array — a plain
@@ -294,29 +269,11 @@ export interface CanvasNodeFields {
     /** User id who created the node. Set once at creation; never updated. */
     createdBy: string;
     /**
-     * User-driven manual lock (spec §10.13.6). Only the user UI can
-     * toggle this; mini-tool operations and Collab `onDisconnect`
-     * never touch it. When `true`, the node is undeletable and its
-     * `content` is immutable.
+     * User-driven manual lock (spec §10.13.6). Only the user UI toggles
+     * this; no server-side path writes it. When `true`, the node is
+     * undeletable and its `content` is immutable.
      */
     locked: boolean;
-    /**
-     * Mini-tool configure-phase locks (spec §10.13.6.2 — added
-     * 2026-05-11 in ADR `2026-05-11-mini-tool-state-machine.md`).
-     * Each entry is `{ toolId, userId }`. Multiple entries can coexist
-     * — one per (user, tool) pair — so two collaborators may simultaneously
-     * configure different tools on the same node.
-     *
-     * Reading conventions:
-     *   - Empty array (or undefined on older Yjs docs) = no operation lock
-     *   - The `yMapToNode` adapter normalizes missing field to `[]`
-     *
-     * Authorization (enforced by writers, not type system):
-     *   - Mini-tool `setActive`: push `{ toolId, userId: self }` iff not present
-     *   - Mini-tool Apply/Cancel: remove entries matching `toolId + userId`
-     *   - Collab `onDisconnect`: strip entries where `userId === disconnected`
-     */
-    operationLocks: OperationLock[];
 
     // ─── State machine (all node types) ─────────────────────
     /** Yjs-shared lifecycle. */

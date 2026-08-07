@@ -50,7 +50,6 @@ export type {
   NodeType,
   HandlingActor,
   HandlingPhase,
-  OperationLock,
   AttachRef,
   FocusImage,
   CanvasNodeFields,
