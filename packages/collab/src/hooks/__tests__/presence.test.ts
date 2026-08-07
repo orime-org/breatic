@@ -33,7 +33,7 @@
  * absence of heartbeats.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import * as Y from "yjs";
 
 import {
@@ -75,6 +75,25 @@ describe("presence — the server records who is here", () => {
     expect([...entry.keys()].sort()).toEqual(["id", "lastSeenAt", "online"]);
   });
 
+  it("never reads a record before it is attached to the document", () => {
+    // A Y.Map that is not yet in a document holds writes somewhere its own
+    // `keys()` cannot see, and yjs answers that read with an unconditional
+    // warning — straight to stderr, outside our logger, worded like data
+    // corruption and naming neither the document nor the user. It fired once
+    // per first-ever presence record, which is every member's first visit to
+    // every project, and 11 times in one run of this file.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      markOnline({ document: emptyMetaDoc(), userId: ALICE, now: 1_000 });
+      const complaints = warn.mock.calls
+        .map((c) => c.join(" "))
+        .filter((m) => m.includes("Invalid access"));
+      expect(complaints).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("strips fields an older version left on the record", () => {
     // Writing three fields onto an existing map leaves everything else alone,
     // so a record made before #1886 kept its name and avatar for good. Measured
@@ -106,11 +125,12 @@ describe("presence — the server records who is here", () => {
 
 describe("presence — the timestamp tracks the heartbeat", () => {
   it("moves the timestamp forward on every heartbeat", () => {
-    // Every one of them, with nothing skipped. The meta document carries no
-    // traffic but these renewals — carets live in the canvas and document
-    // files — so there is no burst to rate-limit, and the widest gap between
-    // two writes is exactly the browser's beat interval. A skip here would
-    // silently widen that gap past what the threshold is sized for.
+    // Every one of them, with nothing skipped. Nothing but these renewals
+    // reaches the meta document's awareness channel — carets live in the
+    // canvas and document files — so there is no burst to rate-limit, and the
+    // widest gap between two writes is exactly the browser's beat interval. A
+    // skip here would silently widen that gap past what the threshold is
+    // sized for.
     const doc = emptyMetaDoc();
     markOnline({ document: doc, userId: ALICE, now: 1_000 });
 

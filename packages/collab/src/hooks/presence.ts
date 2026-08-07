@@ -38,12 +38,14 @@
  *
  * ## Every heartbeat is written, and there are only heartbeats
  *
- * The meta document carries ONE kind of client traffic: the awareness clock
- * renewal. Carets live in the canvas and document files, never
- * here (see the package's CLAUDE.md — publishing a caret onto a meta document
- * is a bug), so there is no burst of cursor traffic to rate-limit and no reason
- * to skip a beat. Each one moves the timestamp, and the widest gap between two
- * writes is therefore exactly the widest gap between two heartbeats.
+ * The meta document's AWARENESS channel carries one thing: the clock renewal.
+ * Carets live in the canvas and document files, never here (see the package's
+ * CLAUDE.md — publishing a caret onto a meta document is a bug), so there is no
+ * burst of cursor traffic to rate-limit and no reason to skip a beat. Each one
+ * moves the timestamp, and the widest gap between two writes is therefore
+ * exactly the widest gap between two heartbeats. The meta doc's SOCKET does
+ * carry more — the Space and tab RPCs ride it as stateless messages — but those
+ * reach a different hook and never touch presence.
  */
 
 import type { Doc as YDoc, Map as YMap } from "yjs";
@@ -98,6 +100,13 @@ export function markOnline(args: {
     const existing = users.get(args.userId);
     const entry: YMap<unknown> =
       existing instanceof Y.Map ? existing : new Y.Map<unknown>();
+    // Attached BEFORE anything is written or read. A Y.Map that is not yet in
+    // a document keeps writes in a holding area its own `keys()` cannot see,
+    // and yjs answers the read with an unconditional warning that goes to
+    // stderr outside our logger, worded like data corruption and carrying no
+    // document or user to trace it to. Measured: 11 of them in one run of this
+    // module's tests.
+    if (!(existing instanceof Y.Map)) users.set(args.userId, entry);
     entry.set("id", args.userId);
     entry.set("online", true);
     entry.set("lastSeenAt", args.now);
@@ -112,7 +121,6 @@ export function markOnline(args: {
         entry.delete(key);
       }
     }
-    if (!(existing instanceof Y.Map)) users.set(args.userId, entry);
   });
 }
 

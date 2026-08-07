@@ -6,8 +6,8 @@
  *
  * Nothing writes "offline" when a socket closes (see `hooks/presence.ts`), so a
  * record is turned off purely because its timestamp stopped moving. Every
- * heartbeat moves it — the meta document carries no other client traffic, so
- * there is nothing to rate-limit and no beat is ever skipped. The threshold is
+ * heartbeat moves it — nothing else reaches the meta document's awareness
+ * channel, so there is nothing to rate-limit and no beat is ever skipped. The threshold is
  * therefore a claim about ONE thing: the slowest rate at which a genuinely
  * connected browser beats. Set it under that rate and everyone with a hidden
  * tab flips off and on forever, and the mistake is invisible in every other

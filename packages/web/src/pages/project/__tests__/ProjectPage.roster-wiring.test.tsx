@@ -209,6 +209,11 @@ describe('ProjectPage roster wiring', () => {
     const { rerender } = renderPage();
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
 
+    // A NEW map with the same contents. Handing back the same one would leave
+    // the effect's dependency unchanged, so it would not run and this case
+    // would assert nothing beyond the mount — measured: with the refresh made
+    // unconditional, every case in this file stayed green.
+    usersNow = new Map();
     rerender(
       <MemoryRouter initialEntries={[`/project/demo-${PID}`]}>
         <Routes>
