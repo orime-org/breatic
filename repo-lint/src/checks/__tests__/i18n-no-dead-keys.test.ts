@@ -381,4 +381,23 @@ describe("i18n-no-dead-keys", () => {
       ),
     ).toEqual([]);
   });
+
+  it("sees a key whose segment starts with a digit", () => {
+    // `canvas.nodePlaceholder.3d` is in all five catalogs and was invisible
+    // here: every segment had to begin with a letter, so a plain call
+    // naming it counted as no use at all and the key read as dead. The one
+    // file that does read it builds the id by interpolation, which is why
+    // nothing had gone wrong yet — rewrite that line as a plain call and
+    // this check used to report a live key for deletion.
+    expect(
+      i18nNoDeadKeys.run(
+        fakeContext({
+          "locales/en.json": JSON.stringify({
+            canvas: { nodePlaceholder: { "3d": "3D" } },
+          }),
+          "packages/web/src/a.tsx": "t('canvas.nodePlaceholder.3d')",
+        }),
+      ),
+    ).toEqual([]);
+  });
 });

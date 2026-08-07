@@ -5,12 +5,21 @@ import { i18nKeysNamespaced } from "#repo-lint/checks/i18n-keys-namespaced";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
 
 /**
- * Builds a context over one English catalog.
+ * Builds a context over one English catalog plus a source that asks it for a
+ * message.
+ *
+ * The source is not decoration. This check reads both sides of the
+ * namespacing rule — where ids are defined and where they are used — and the
+ * context throws when a selection matches nothing, so a catalog-only fixture
+ * would fail before the check could say anything.
  * @param body The catalog.
  * @returns A context the check can run against.
  */
 function catalog(body: Record<string, unknown>) {
-  return fakeContext({ "locales/en.json": JSON.stringify(body) });
+  return fakeContext({
+    "locales/en.json": JSON.stringify(body),
+    "packages/web/src/a.tsx": 't("common.cancel")',
+  });
 }
 
 describe("i18n-keys-namespaced", () => {
@@ -56,10 +65,68 @@ describe("i18n-keys-namespaced", () => {
           common: { cancel: "キャンセル" },
           loading: "読み込み中...",
         }),
+        "packages/web/src/a.tsx": 't("common.cancel")',
       }),
     );
     expect(findings).toHaveLength(1);
     expect(findings[0]?.file).toBe("locales/ja.json");
+  });
+
+  it("catches an id with no namespace at the call site", () => {
+    // The other half of the same rule, and the half nobody was checking. A
+    // dotless id at a call site is wrong on its face — the catalog cannot
+    // contain one, because the case above fails the build on it — so it is
+    // reported here, on the shape, rather than routed through a catalog
+    // lookup that would blame the wrong thing.
+    const findings = i18nKeysNamespaced.run(
+      fakeContext({
+        "locales/en.json": JSON.stringify({ common: { cancel: "Cancel" } }),
+        "packages/server/src/a.ts": 't("cancel")',
+      }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.file).toBe("packages/server/src/a.ts");
+    expect(findings[0]?.line).toBe(1);
+    expect(findings[0]?.message).toContain("cancel");
+  });
+
+  it("says nothing about a namespaced id at the call site", () => {
+    expect(
+      i18nKeysNamespaced.run(
+        fakeContext({
+          "locales/en.json": JSON.stringify({ common: { cancel: "Cancel" } }),
+          "packages/web/src/a.tsx": 't("common.cancel")\nt("canvas.node.3d")',
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("names the line the call sits on", () => {
+    const findings = i18nKeysNamespaced.run(
+      fakeContext({
+        "locales/en.json": JSON.stringify({ common: { cancel: "Cancel" } }),
+        "packages/web/src/a.tsx": ['t("common.cancel")', "", "t('loading')"].join(
+          "\n",
+        ),
+      }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.line).toBe(3);
+  });
+
+  it("does not read test material for call sites", () => {
+    // A test may name a dotless id on purpose to prove this check catches
+    // it — the cases in this very file do. Reading tests would make the
+    // suite report itself.
+    expect(
+      i18nKeysNamespaced.run(
+        fakeContext({
+          "locales/en.json": JSON.stringify({ common: { cancel: "Cancel" } }),
+          "packages/web/src/a.tsx": 't("common.cancel")',
+          "packages/web/src/__tests__/a.test.ts": "t('deliberatelyDotless')",
+        }),
+      ),
+    ).toEqual([]);
   });
 
   it("catches a top-level value that is neither a namespace nor a message", () => {

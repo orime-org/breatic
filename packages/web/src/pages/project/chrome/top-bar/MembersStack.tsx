@@ -21,7 +21,12 @@ import { StudioAvatar } from '@web/ui/StudioAvatar';
 export type { Member, MemberRole };
 
 interface MembersStackProps {
-  members?: ReadonlyArray<Member>;
+  /**
+   * The project's roster. Required, and deliberately so: this used to default
+   * to five invented people, which put them one forgotten prop away from the
+   * screen. A component with no data should render none, not make some up.
+   */
+  members: ReadonlyArray<Member>;
   currentUserId?: string;
   /**
    * Current user's role on the project. Drives the owner-only "Manage
@@ -30,14 +35,6 @@ interface MembersStackProps {
    */
   currentUserRole?: MemberRole;
 }
-
-const STUB_MEMBERS: ReadonlyArray<Member> = [
-  { id: 'me', userId: 'u-me', name: 'Songxiu Lei', email: 'sx@example.com', role: 'owner' },
-  { id: 'yj', userId: 'u-yj', name: 'Yuki Jia', email: 'yj@example.com', role: 'editor' },
-  { id: 'dm', userId: 'u-dm', name: 'Diana Marquez', email: 'dm@example.com', role: 'editor' },
-  { id: 'rt', userId: 'u-rt', name: 'Ryo Tanaka', email: 'rt@example.com', role: 'viewer' },
-  { id: 'pl', userId: 'u-pl', name: 'Priya Lokesh', email: 'pl@example.com', role: 'viewer' },
-];
 
 const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'> = {
   owner: 'role.owner',
@@ -56,15 +53,16 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
  * control (2026-06-18 — the per-row hover-remove was dropped so remove
  * has a single home).
  *
- * Tests use the STUB_MEMBERS fallback by omitting the `members` prop;
- * production callers should pass real data fetched via React Query.
+ * Every caller passes the roster; there is no fallback to omit it in favour
+ * of. `useProjectMembers` supplies it, and it is an empty array until both
+ * of that hook's queries resolve.
  *
  * Spec: access-permission design (2026-05-28) § 5.
  */
 export const MembersStack = React.forwardRef<
   HTMLButtonElement,
   MembersStackProps
->(({ members = STUB_MEMBERS, currentUserId, currentUserRole }, ref) => {
+>(({ members, currentUserId, currentUserRole }, ref) => {
   const t = useTranslation();
   // Owner-only affordance (B model — hidden, not disabled): the manage
   // button only renders when the current user is owner.

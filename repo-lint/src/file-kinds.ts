@@ -76,12 +76,17 @@ export const GENERATED = /(^|\/)pnpm-lock\.yaml$/;
 /**
  * Source that ships to users: under a package's `src`, in TypeScript.
  *
- * Both i18n key checks ask a question about shipped text — one that every
- * catalog message has a reader, the other that every message a source names
- * exists — so both need the same answer to "which files count", and there is
- * one copy of it here rather than one each. The reasoning below was written
- * for the dead-key check and moved here with the constant, because it explains
- * the constant rather than either check.
+ * All three i18n key checks ask a question about shipped text — that every
+ * catalog message has a reader, that every message a source names exists, and
+ * that every id a source names is namespaced — so all three need the same
+ * answer to "which files count", and there is one copy of it here rather than
+ * one each. The reasoning below was written for the dead-key check and moved
+ * here with the constant, because it explains the constant rather than any
+ * one check.
+ *
+ * The third arrived on 2026-08-06, when the namespacing check gained a
+ * call-site half. Widening or narrowing this now moves three verdicts, not
+ * two.
  *
  * Test material is subtracted by `TEST_FILE`, which knows it by directory and
  * by suffix. That misses scaffolding kept beside the code it serves —

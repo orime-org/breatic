@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { APPLICATION_SOURCE, TEST_FILE } from "#repo-lint/file-kinds";
+import { spelledOutKeys } from "#repo-lint/message-keys";
 
 /**
  * Every locale catalog, translations included.
@@ -12,7 +14,8 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
 const CATALOG = /^locales\/[^/]+\.json$/;
 
 /**
- * Every message lives in a namespace.
+ * Every message id lives in a namespace — where it is defined, and where it
+ * is used.
  *
  * The dead-key check finds a use by looking for the key's dotted name in the
  * sources. A key with no dot has no shape to look for: matching it as a bare
@@ -28,6 +31,20 @@ const CATALOG = /^locales\/[^/]+\.json$/;
  * silently goes back to reporting live dotless keys as dead — which it did,
  * once, and the finding was `cancel` and `loading`.
  *
+ * BOTH SIDES, since 2026-08-06. Until then only the catalogs were read, and
+ * a source could ask for a dotless id with nothing to say so: the catalog
+ * cannot hold one, the dead-key check runs the other way and never meets
+ * one, and the missing-key check's pattern required a dot and so did not see
+ * the call at all. Three checks, none of them responsible, and the user reads
+ * `cancel` on screen.
+ *
+ * The call site is judged on its SHAPE and no catalog is consulted. A lookup
+ * would reach the same verdict today, and that is the trap: it would reach it
+ * only because a sibling check keeps dotless ids out of the catalogs, so the
+ * moment that check changes this one goes quiet. It would also blame the
+ * wrong side — the reader would go add the id to the catalogs, where the case
+ * below would reject it.
+ *
  * A namespace is asked for positively — a top-level value must be an object
  * that is not an array — rather than by rejecting types one at a time. The
  * array is spelled out because `typeof` calls one an object while it is not a
@@ -36,13 +53,11 @@ const CATALOG = /^locales\/[^/]+\.json$/;
  * WHAT THIS DOES NOT GIVE YOU, stated plainly, because the gap is easy to
  * read past. This check delivers "every id contains at least one dot". The
  * dead-key check needs something strictly stronger: that `DOTTED_LITERAL`
- * matches the id whole, and that pattern requires EVERY segment to begin with
- * a letter. Having a dot is necessary, not sufficient, and the difference is
- * not hypothetical — `canvas.nodePlaceholder.3d` is in all five catalogs
- * today, has two dots, passes this check, and cannot be matched, because the
- * `3d` segment starts with a digit. It survives only because the one file
- * reading it builds the id with a template literal, so the interpolated-prefix
- * path covers it; rewritten as a plain call it would be reported dead.
+ * matches the id whole. Having a dot is necessary, not sufficient. The two
+ * were further apart until 2026-08-06, when the segment shape was widened to
+ * admit a leading digit and `canvas.nodePlaceholder.3d` — in all five
+ * catalogs, and until then matchable by neither check — became visible to
+ * both.
  *
  * Three more shapes sit in that same gap and this check sees none of them:
  * an array NESTED under a namespace (top-level values are all it inspects, so
@@ -64,9 +79,38 @@ const CATALOG = /^locales\/[^/]+\.json$/;
  */
 export const i18nKeysNamespaced = {
   name: "i18n-keys-namespaced",
-  description: "Every catalog message lives in a namespace",
+  description: "Every message id lives in a namespace",
   run(context: CheckContext): Finding[] {
     const findings: Finding[] = [];
+
+    // Both sides of the same rule. An id is defined in a catalog and used at
+    // a call site, and until 2026-08-06 only the first was checked: a source
+    // could ask for a dotless id and nothing said anything, because the
+    // catalog cannot hold one and the missing-key check's pattern could not
+    // see one. That left a caller's mistake with no owner — the runtime
+    // prints the id and the user reads `cancel` on screen.
+    //
+    // Reported here on the shape rather than by looking the id up. The two
+    // are not the same finding: a lookup would blame the catalog for a
+    // caller's error, and the reader would go add the id to the catalogs,
+    // where the check below would then reject it.
+    for (const source of context.files(
+      (path) => APPLICATION_SOURCE.test(path) && !TEST_FILE.test(path),
+      "application sources that could ask for a message",
+    )) {
+      for (const { key, line } of spelledOutKeys(
+        context.read(source),
+        source,
+      )) {
+        if (key.includes(".")) continue;
+        findings.push({
+          file: source,
+          line,
+          message: `${key} is asked of the catalog with no namespace, and no catalog can answer it — the case below fails the build on a top-level message, so a dotless id is unanswerable by construction and the runtime falls back to printing the id itself. Give it a namespace at this call site and in every catalog: \`common\` if the product shares the message, the feature's own namespace otherwise.`,
+        });
+      }
+    }
+
     for (const catalog of context.files(
       (path) => CATALOG.test(path),
       "locale catalogs",
