@@ -49,12 +49,19 @@ export interface ShutdownSettleDeps {
 /**
  * Settle every document the instance still holds, on the way out.
  *
- * Waited for in full. This phase is a set of stores, and a store either lands
- * or it does not; a deadline over them cancels nothing, so cutting the phase
- * short only stops this side listening while the writes carry on regardless.
- * Keeping the process from hanging forever is a real concern and a separate
- * one — `runGracefulShutdown` in the entry has owned it since long before any
- * of this, and it bounds the whole exit rather than this one step.
+ * Waited for in full, and NOTHING bounds it. This phase is a set of stores, and
+ * a store either lands or it does not; a deadline over them cancels nothing, so
+ * cutting the phase short only stops this side listening while the writes carry
+ * on regardless.
+ *
+ * What makes that safe is not a fallback elsewhere — be precise, because the
+ * first version of this comment pointed at `runGracefulShutdown` and that was
+ * wrong twice over: the entry awaits this phase BEFORE calling it, and its
+ * deadline races only the drains array it is handed. What makes it safe is the
+ * ORDER inside the settle: each document's rescue file is written before its
+ * store is attempted, so the content is already on disk before anything slow
+ * can happen. A deadline here would buy exiting sooner at the price of
+ * abandoning writes that were about to land.
  * @param deps - The gate, the connection close, and the document source.
  * @returns Resolves once every document has been settled.
  */

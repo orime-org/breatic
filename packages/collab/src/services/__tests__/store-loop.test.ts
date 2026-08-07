@@ -123,9 +123,10 @@ describe("the timed store loop", () => {
     expect(mockLogger.error).toHaveBeenCalledTimes(1);
   });
 
-  it("does not start a round while the previous one is still running", async () => {
-    // A slow database makes a round outlast the interval. Overlapping rounds
-    // would put two writes of the same document in flight at once.
+  it("does not start a second write of a document whose first is still out", async () => {
+    // A slow database makes a round outlast the interval. Two writes of the
+    // same document in flight together is the thing to prevent: the second
+    // would carry a snapshot taken before the first landed.
     let release: (() => void) | undefined;
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
@@ -234,30 +235,99 @@ describe("a round that could not confirm the write", () => {
   });
 });
 
+describe("one document whose store never comes back", () => {
+  // Gate 2 round 5 finding 2. Removing the per-document deadline took away the
+  // thing that used to let a round step past a wedged write. What replaces it
+  // is not another clock — it is the right MUTUAL-EXCLUSION GRAIN. The guard
+  // exists to stop two writes of the SAME document overlapping; making it
+  // whole-round meant one stuck write silently retired the only retry
+  // mechanism in the process, for every other document too.
+
+  it("still stores the other documents in the same round", async () => {
+    const stored: string[] = [];
+    const loop = createStoreLoop({
+      intervalMs: 10_000,
+      listDocuments: () => [{ name: DIRTY }, { name: OTHER }],
+      storeNow: async ({ name }) => {
+        stored.push(name);
+        if (name === DIRTY) return new Promise<boolean>(() => {});
+        if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "stored");
+        return true;
+      },
+    });
+    noteDocumentChange(DIRTY);
+    noteDocumentChange(OTHER);
+
+    void loop.runOnce();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(stored).toContain(OTHER);
+  });
+
+  it("lets later rounds run, skipping only the document still being stored", async () => {
+    const stored: string[] = [];
+    const loop = createStoreLoop({
+      intervalMs: 10_000,
+      listDocuments: () => [{ name: DIRTY }, { name: OTHER }],
+      storeNow: async ({ name }) => {
+        stored.push(name);
+        if (name === DIRTY) return new Promise<boolean>(() => {});
+        if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "stored");
+        return true;
+      },
+    });
+    noteDocumentChange(DIRTY);
+    noteDocumentChange(OTHER);
+
+    void loop.runOnce();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    noteDocumentChange(OTHER);
+    void loop.runOnce();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // The healthy document got both rounds; the wedged one was asked once and
+    // is not asked again while its write is still out there — two writes of one
+    // document in flight together is the thing the guard exists to prevent.
+    expect(stored.filter((n) => n === OTHER)).toHaveLength(2);
+    expect(stored.filter((n) => n === DIRTY)).toHaveLength(1);
+  });
+});
+
 describe("a store that takes its time", () => {
   // A store is one event with two outcomes: it lands, or it does not. A clock
   // racing it answers neither question — it cannot cancel the write, so all it
   // does is make this side stop listening and invent a third outcome, "I do not
   // know", which the document then gets rescued and alerted on. Three such
   // alerts fired in smoke against a healthy database that answers in 250ms.
+  //
+  // Gate 2 round 5 finding 3: this test used to race the hung store against a
+  // 50 ms timer, which only proves nobody gives up INSIDE 50 ms. The three
+  // deleted deadlines (3000 / 3000 / 4000 ms) could all be pasted back with the
+  // whole suite green. Fake timers are what make the assertion mean what it
+  // says: advance an hour, and any `setTimeout` anywhere on this path fires.
 
-  it("waits for the answer instead of moving on without one", async () => {
-    const loop = createStoreLoop({
-      intervalMs: 10_000,
-      listDocuments: () => [{ name: DIRTY }],
-      storeNow: async ({ name }) => {
-        consumeTimedStoreArm(name);
-        return new Promise<boolean>(() => {});
-      },
-    });
-    noteDocumentChange(DIRTY);
+  it("waits for the answer, even an hour later", async () => {
+    vi.useFakeTimers();
+    try {
+      const loop = createStoreLoop({
+        intervalMs: 10_000,
+        listDocuments: () => [{ name: DIRTY }],
+        storeNow: async ({ name }) => {
+          consumeTimedStoreArm(name);
+          return new Promise<boolean>(() => {});
+        },
+      });
+      noteDocumentChange(DIRTY);
 
-    const round = loop.runOnce();
-    const raced = await Promise.race([
-      round.then(() => "the round moved on"),
-      new Promise((resolve) => setTimeout(() => resolve("still waiting"), 50)),
-    ]);
+      let movedOn = false;
+      void loop.runOnce().then(() => {
+        movedOn = true;
+      });
+      await vi.advanceTimersByTimeAsync(3_600_000);
 
-    expect(raced).toBe("still waiting");
+      expect(movedOn).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

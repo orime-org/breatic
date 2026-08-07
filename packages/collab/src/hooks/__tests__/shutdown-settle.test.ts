@@ -91,21 +91,30 @@ describe("settling everything on the way out", () => {
     expect(h.seen).toEqual([["project-p/document-1"]]);
   });
 
-  it("waits for the settle rather than cutting it short on a clock", async () => {
+  it("waits for the settle, even an hour later, rather than cutting it short", async () => {
     // The settle is a set of stores, and a store either lands or does not. A
     // deadline over the phase cancels none of them; it only stops this side
     // listening, so a document whose write was about to come back gets counted
-    // as unaccounted for. Keeping the process from hanging forever is a
-    // different job, and `runGracefulShutdown` in the entry already has it.
-    const settling = new Promise<void>(() => {});
-    const h = harness({ settle: () => settling });
+    // as unaccounted for.
+    //
+    // Gate 2 round 5 finding 3: racing against a 50 ms timer only proved
+    // nothing gives up inside 50 ms, and the deleted 4000 ms budget could be
+    // pasted back with the suite green. Advancing an hour on fake timers fires
+    // any `setTimeout` anywhere on this path.
+    vi.useFakeTimers();
+    try {
+      const settling = new Promise<void>(() => {});
+      const h = harness({ settle: () => settling });
 
-    const phase = settleEverythingForShutdown(h.deps as never);
-    const raced = await Promise.race([
-      phase.then(() => "the phase moved on"),
-      new Promise((resolve) => setTimeout(() => resolve("still waiting"), 50)),
-    ]);
+      let movedOn = false;
+      void settleEverythingForShutdown(h.deps as never).then(() => {
+        movedOn = true;
+      });
+      await vi.advanceTimersByTimeAsync(3_600_000);
 
-    expect(raced).toBe("still waiting");
+      expect(movedOn).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

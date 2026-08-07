@@ -101,9 +101,11 @@ store_interval_ms: 10000
 # hypothetical: three such alerts fired in smoke against a healthy database
 # answering in 250ms.
 #
-# The process not hanging forever is a separate, real concern, and the entry's
-# `runGracefulShutdown` has owned it since long before any of this — it bounds
-# the whole exit rather than one step inside it.
+# What makes the shutdown settle safe without a bound is not a fallback
+# elsewhere — `runGracefulShutdown` in the entry runs AFTER the settle and only
+# bounds the drains it is handed — it is the order inside the settle: each
+# document's rescue file is written before its store is attempted, so the
+# content is already on disk before anything slow can happen.
 
 # Where content goes when the final attempt does not land. Relative paths are
 # resolved from the monorepo root; in Docker this sits under the mounted

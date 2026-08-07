@@ -54,7 +54,12 @@ export interface StoreLoop {
   start(): void;
   /** Stop running rounds. Does not interrupt a round already in flight. */
   stop(): void;
-  /** Run exactly one round now; a no-op while another round is in flight. */
+  /**
+   * Run exactly one round now.
+   * @returns Resolves once every store this round started has come back.
+   *   Documents already being stored by an earlier round are skipped, so a
+   *   write that never answers holds up nothing but itself.
+   */
   runOnce(): Promise<void>;
 }
 
@@ -65,79 +70,100 @@ export interface StoreLoop {
  */
 export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
   let timer: ReturnType<typeof setInterval> | null = null;
-  let inFlight = false;
+
+  /**
+   * Documents whose store is out there right now, unanswered.
+   *
+   * PER DOCUMENT, not per round. What has to be prevented is two writes of the
+   * SAME document overlapping — the second would carry a snapshot taken before
+   * the first landed. A whole-round guard prevents that too, but it also lets
+   * one document that never answers retire the loop for every other document
+   * in the process, and this loop is the only retry mechanism there is: a
+   * document nothing re-attempts survives only if it later unloads through the
+   * gate, and a SIGKILL loses it. Measured with a wedged store: the healthy
+   * document beside it was stored zero times, and every later round returned
+   * immediately.
+   */
+  const storing = new Set<string>();
+
+  /**
+   * Store one document and record what became of the attempt.
+   * @param entry - The document to store.
+   * @returns Resolves when the store has answered, whatever it answered.
+   */
+  async function storeOne(entry: StoreLoopEntry): Promise<void> {
+    // Arm immediately before the call: the persistence extension returns
+    // without writing anything when it finds no arm.
+    const arm = armTimedStore(entry.name);
+    // Waited for, not raced against a clock. A store is one event with two
+    // outcomes — it lands or it does not — and only the write itself can
+    // say which. A deadline cancels nothing, so giving up on one produces
+    // no answer at all, just a third state that then gets reported as if
+    // something had gone wrong.
+    let stillLoaded = true;
+    let storeError: unknown;
+    try {
+      stillLoaded = await deps.storeNow(entry);
+    } catch (err) {
+      // Caught rather than allowed to escape: one document must not take the
+      // rest of the round down with it.
+      storeError = err;
+    }
+    // Give our own arm back rather than trusting it was consumed. The
+    // Redis extension runs first (priority 1000 against our default 100)
+    // and aborts the whole hook chain when another instance holds the
+    // cross-instance lock, so our hook — and its consumption of the arm —
+    // is skipped. A leftover arm would then be spent by the library's own
+    // change-triggered store, which is exactly the write this design
+    // exists to prevent. Handing back the token rather than deleting by
+    // name is what keeps this from taking the unload gate's arm.
+    const result = releaseTimedStoreArm(entry.name, arm);
+
+    if (storeError) {
+      logger.error(
+        { err: storeError, documentName: entry.name },
+        "collab_store_round_document_failed",
+      );
+    }
+    // Nothing to retry here and nothing to alert about: the document is
+    // still in memory and still reads as holding unstored content, so the
+    // next round picks it up. Recorded because a document that never wins
+    // the cross-instance lock is invisible otherwise — it just quietly
+    // stays dirty round after round.
+    // A document that left memory between the listing and the store is
+    // ordinary — the unload gate settled it on the way out — so it is not
+    // worth a line. Everything else that did not confirm is.
+    if (stillLoaded && result.outcome !== "stored" && result.outcome !== "refused") {
+      logger.warn(
+        {
+          documentName: entry.name,
+          // Our extension ran and still said nothing, which it only does
+          // when it threw before reaching its own try block — encoding the
+          // document is the one step out there.
+          outcome: result.ran ? "no-result" : "not-reached",
+        },
+        "collab_store_round_document_unconfirmed",
+      );
+    }
+  }
 
   /**
    * Store every document that has content the database has not accepted.
-   * @returns Resolves when the round is over.
+   * @returns Resolves when every store this round started has come back.
    */
   async function runOnce(): Promise<void> {
-    // A slow database can make a round outlast the interval. Overlapping
-    // rounds would put two writes of the same document in flight at once,
-    // and the second would carry a snapshot taken before the first landed.
-    if (inFlight) return;
-    inFlight = true;
-    try {
-      for (const entry of deps.listDocuments()) {
-        if (!hasUnsavedContent(entry.name)) continue;
-        // Arm immediately before the call: the persistence extension returns
-        // without writing anything when it finds no arm.
-        const arm = armTimedStore(entry.name);
-        // Waited for, not raced against a clock. A store is one event with two
-        // outcomes — it lands or it does not — and only the write itself can
-        // say which. A deadline cancels nothing, so giving up on one produces
-        // no answer at all, just a third state that then gets reported as if
-        // something had gone wrong.
-        let stillLoaded = true;
-        let storeError: unknown;
-        try {
-          stillLoaded = await deps.storeNow(entry);
-        } catch (err) {
-          // Caught rather than allowed to escape: one document must not stop
-          // the round from reaching the documents behind it, each of which is
-          // holding unstored content too.
-          storeError = err;
-        }
-        // Give our own arm back rather than trusting it was consumed. The
-        // Redis extension runs first (priority 1000 against our default 100)
-        // and aborts the whole hook chain when another instance holds the
-        // cross-instance lock, so our hook — and its consumption of the arm —
-        // is skipped. A leftover arm would then be spent by the library's own
-        // change-triggered store, which is exactly the write this design
-        // exists to prevent. Handing back the token rather than deleting by
-        // name is what keeps this from taking the unload gate's arm.
-        const result = releaseTimedStoreArm(entry.name, arm);
-
-        if (storeError) {
-          logger.error(
-            { err: storeError, documentName: entry.name },
-            "collab_store_round_document_failed",
-          );
-        }
-        // Nothing to retry here and nothing to alert about: the document is
-        // still in memory and still reads as holding unstored content, so the
-        // next round picks it up. Recorded because a document that never wins
-        // the cross-instance lock is invisible otherwise — it just quietly
-        // stays dirty round after round.
-        // A document that left memory between the listing and the store is
-        // ordinary — the unload gate settled it on the way out — so it is not
-        // worth a line. Everything else that did not confirm is.
-        if (stillLoaded && result.outcome !== "stored" && result.outcome !== "refused") {
-          logger.warn(
-            {
-              documentName: entry.name,
-              // Our extension ran and still said nothing, which it only does
-              // when it threw before reaching its own try block — encoding the
-              // document is the one step out there.
-              outcome: result.ran ? "no-result" : "not-reached",
-            },
-            "collab_store_round_document_unconfirmed",
-          );
-        }
-      }
-    } finally {
-      inFlight = false;
+    const started: Array<Promise<void>> = [];
+    for (const entry of deps.listDocuments()) {
+      if (!hasUnsavedContent(entry.name)) continue;
+      if (storing.has(entry.name)) continue;
+      storing.add(entry.name);
+      started.push(storeOne(entry).finally(() => storing.delete(entry.name)));
     }
+    // Concurrently. They are independent writes of independent rows and the
+    // pool queues them, so the round costs one slow database rather than one
+    // per document — and a document that never answers is one entry in the set
+    // above, not a stalled cursor the rest of the round is queued behind.
+    await Promise.all(started);
   }
 
   return {

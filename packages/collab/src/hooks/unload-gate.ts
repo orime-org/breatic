@@ -43,8 +43,15 @@ const logger = createLogger("collab-unload-gate");
  *   stored       our extension ran and its write landed.
  *   refused      our extension ran, the write came back, the content did not
  *                land. The database really did say no.
- *   raced-by-edit the write landed, and content arrived while it was in flight,
- *                so the database holds a copy that is already behind.
+ *   raced-by-edit the write landed, and content arrived while it was in flight.
+ *                ORDINARY PATH ONLY, where the rescue file is encoded AFTER the
+ *                write, so the file is the newer of the two copies.
+ *   stale-snapshot the same race, on the SHUTDOWN path, where the rescue file is
+ *                encoded BEFORE the write — so the database is the newer copy
+ *                and the file is behind it. One label for both would be a
+ *                sentence that is true on one path and false on the other, and
+ *                the false one tells an operator to restore an old file over a
+ *                database that already has the better bytes.
  *   not-reached  our extension never ran: the permission we issued was still
  *                unspent. `hooks()` chains the extensions with `.then`, so a
  *                rejection from any of them skips every hook behind it, and the
@@ -59,7 +66,13 @@ const logger = createLogger("collab-unload-gate");
  * Telling an operator a healthy database rejected content it never saw, or very
  * probably accepted, costs real attention during an outage.
  */
-type FinalAttempt = "stored" | "refused" | "raced-by-edit" | "not-reached" | "unconfirmed";
+type FinalAttempt =
+  | "stored"
+  | "refused"
+  | "raced-by-edit"
+  | "stale-snapshot"
+  | "not-reached"
+  | "unconfirmed";
 
 /** One attempt's outcome, plus whatever it threw on the way. */
 interface AttemptResult {
@@ -80,8 +93,12 @@ interface AttemptResult {
 const ATTEMPT_REASON: Record<Exclude<FinalAttempt, "stored">, string> = {
   refused: "the final store attempt did not land",
   "raced-by-edit":
-    "the final store attempt landed, but content arrived while it was in flight and " +
-    "is not in the database — this file holds the newer copy",
+    "the final store attempt landed, and content arrived while it was in flight that the " +
+    "database does not have — this file holds it, and is the newer of the two copies",
+  "stale-snapshot":
+    "this file was written BEFORE the final store attempt, and that attempt landed, so " +
+    "the database holds a newer copy than this file. Content that arrived during the " +
+    "write is in neither — check the document in the database before acting on this file",
   "not-reached":
     "this instance's write never ran, and it cannot tell why — the store hook chain " +
     "was aborted before it reached us. Check the document in the database before " +
@@ -338,9 +355,8 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     const path = await rescue(documentName, state);
     await reportLoss(documentName, state.length, path, {
       // Landed, and still dirty: the only way both hold is that content
-      // arrived during the write. Saying "it did not land" here would be
-      // false, and it is the one case where the database has a real, if
-      // slightly older, copy.
+      // arrived during the write. The encode below happens AFTER the attempt,
+      // so the file about to be written is the newer of the two copies.
       attempt: result.attempt === "stored" ? "raced-by-edit" : result.attempt,
       error: result.error,
     });
@@ -379,9 +395,13 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
       return;
     }
     await reportLoss(documentName, state.length, path, {
-      // Same pairing as the ordinary path: landed AND still dirty means an
-      // edit arrived mid-write, and the file is the copy that has it.
-      attempt: result.attempt === "stored" ? "raced-by-edit" : result.attempt,
+      // Same race as the ordinary path, opposite conclusion. Here the file was
+      // encoded above, BEFORE the attempt, and the extension takes its own
+      // ticket-then-encode inside the write — so the database's copy is
+      // strictly newer than this file, and whatever arrived during the write is
+      // in neither. Calling this "raced-by-edit" would tell the operator to
+      // restore the older file over the better bytes.
+      attempt: result.attempt === "stored" ? "stale-snapshot" : result.attempt,
       error: result.error,
     });
   }

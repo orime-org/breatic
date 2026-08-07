@@ -216,8 +216,10 @@ describe("the unload gate — a document with outstanding content", () => {
 
 describe("the unload gate — shutdown order", () => {
   it("writes the rescue file BEFORE attempting the store", async () => {
-    // On shutdown the whole budget is 4 seconds and one attempt can outlast
-    // it, so the fast, local write goes first.
+    // A store takes as long as the database takes, and this is the last moment
+    // the content exists anywhere, so the fast, certain local write goes first.
+    // This order is also what makes the unbounded settle safe — see
+    // shutdown-settle.ts — so it is not a preference, it is the guarantee.
     const order: string[] = [];
     const { gate } = harness("lands");
     noteDocumentChange(DOC);
@@ -398,22 +400,31 @@ describe("the unload gate — a write that is taking its time", () => {
   // document and mailed an operator about a database that was merely busy.
   // Three such alerts fired in smoke against a database answering in 250ms.
 
-  it("waits for the answer instead of rescuing on a clock", async () => {
-    const { gate, rescued, alerted } = harness("hangs");
-    noteDocumentChange(DOC);
+  // Gate 2 round 5 finding 3: racing this against a 50 ms timer only proved
+  // nobody gives up inside 50 ms — the deleted 3000 ms deadline could be pasted
+  // straight back with the suite green. Fake timers make the assertion mean
+  // what it says: advance an hour and any `setTimeout` on this path fires.
 
-    const settle = gate.beforeUnloadDocument({
-      documentName: DOC,
-      document: documentWithText("hello"),
-    });
-    const raced = await Promise.race([
-      settle.then(() => "the gate moved on"),
-      new Promise((resolve) => setTimeout(() => resolve("still waiting"), 50)),
-    ]);
+  it("waits for the answer, even an hour later, and rescues nothing meanwhile", async () => {
+    vi.useFakeTimers();
+    try {
+      const { gate, rescued, alerted } = harness("hangs");
+      noteDocumentChange(DOC);
 
-    expect(raced).toBe("still waiting");
-    expect(rescued).toHaveLength(0);
-    expect(alerted).toHaveLength(0);
+      let movedOn = false;
+      void gate
+        .beforeUnloadDocument({ documentName: DOC, document: documentWithText("hello") })
+        .then(() => {
+          movedOn = true;
+        });
+      await vi.advanceTimersByTimeAsync(3_600_000);
+
+      expect(movedOn).toBe(false);
+      expect(rescued).toHaveLength(0);
+      expect(alerted).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -789,6 +800,71 @@ describe("when the shutdown settle may delete the rescue file", () => {
     await gate.settleAllForShutdown([{ documentName: DOC, document: documentWithText("x") }]);
 
     expect(deleted).toHaveLength(0);
+  });
+
+  // Gate 2 round 5 finding 1. Keeping the file is only half of it — the alert
+  // has to say which copy is which, and the two paths are OPPOSITE. The gate
+  // used to give them one label and one sentence, and that sentence was true
+  // on one path and false on the other. An operator acting on the false one
+  // restores an older file over a database that already holds the newer bytes.
+
+  it("tells the operator the FILE is the newer copy on an ordinary unload", async () => {
+    // Ordinary order: store first, then encode the rescue file. So the file
+    // was serialised after the write and does hold what arrived during it.
+    const alerted: StoreFailureAlert[] = [];
+    const gate = createUnloadGate({
+      instanceId: "inst-a",
+      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
+      storeNow: async ({ name }) => {
+        if (!consumeTimedStoreArm(name)) return true;
+        const ticket = beginStore(name);
+        noteDocumentChange(name);
+        commitStore(name, ticket);
+        noteStoreOutcome(name, "stored");
+        return true;
+      },
+      writeRescue: async () => "/rescue/1.yjs",
+      writeRescueNote: async () => {},
+      deleteRescue: async () => {},
+      alert: async (failure) => void alerted.push(failure),
+    });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(alerted).toHaveLength(1);
+    expect(alerted[0]?.reason).toContain("this file holds it");
+  });
+
+  it("tells the operator the DATABASE is the newer copy on the way out", async () => {
+    // Shutdown order: rescue file first, store second. The file therefore
+    // predates the write, the database holds a strictly newer copy, and what
+    // arrived during the write is in neither.
+    const alerted: StoreFailureAlert[] = [];
+    const gate = createUnloadGate({
+      instanceId: "inst-a",
+      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
+      storeNow: async ({ name }) => {
+        if (!consumeTimedStoreArm(name)) return true;
+        const ticket = beginStore(name);
+        noteDocumentChange(name);
+        commitStore(name, ticket);
+        noteStoreOutcome(name, "stored");
+        return true;
+      },
+      writeRescue: async () => "/rescue/1.yjs",
+      writeRescueNote: async () => {},
+      deleteRescue: async () => {},
+      alert: async (failure) => void alerted.push(failure),
+    });
+    gate.markShuttingDown();
+    noteDocumentChange(DOC);
+
+    await gate.settleAllForShutdown([{ documentName: DOC, document: documentWithText("x") }]);
+
+    expect(alerted).toHaveLength(1);
+    expect(alerted[0]?.reason).toContain("the database holds a newer copy than this file");
+    expect(alerted[0]?.reason).not.toContain("this file holds it");
   });
 
   it("still deletes it when the write landed and nothing arrived", async () => {
