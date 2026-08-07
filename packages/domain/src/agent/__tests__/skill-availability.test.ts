@@ -5,7 +5,7 @@
  * Pinning a skill's model has a cost, and this is it: no key for that
  * model's provider and the whole skill is dead.
  *
- * Twelve provider keys all default to `""` so a self-hosted deployment can
+ * Every provider key defaults to `""` so a self-hosted deployment can
  * configure only the ones it wants. That is deliberate and stays. What it
  * produced before this was: the process starts fine, the skill lists fine,
  * and the user finds out by clicking — with whatever the underlying library

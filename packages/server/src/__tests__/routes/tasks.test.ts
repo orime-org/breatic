@@ -123,14 +123,20 @@ describe("Tasks routes", () => {
     });
 
     it("rejects a skill the user may not fire with 403", async () => {
+      // A skill canvas DOES serve, so the surface axis lets it through and
+      // the refusal can only come from the authorization one. Naming a
+      // chat-only skill here would be stopped a step earlier and this test
+      // would pass without ever reaching what it is named for.
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {
         method: "POST",
         headers: AUTH,
-        body: canvasTask({ skill_name: "gated_fixture" }),
+        body: canvasTask({ skill_name: "canvas_gated" }),
       });
 
       expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { message: string } };
+      expect(body.error.message).toMatch(/not user-invocable/);
     });
 
     it("lets through a skill canvas serves", async () => {

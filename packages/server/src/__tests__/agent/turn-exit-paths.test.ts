@@ -7,22 +7,23 @@
  * The exits covered here: the stream finishing, a blocking interaction tool
  * stopping to ask, a provider failure, and the stream being torn down. Every
  * one owes the frontend a `chat_done` -- without it the UI has nothing to
- * switch out of its in-flight state. (The fourth exit, the client walking
- * away, lives in turn-cleanup-on-abort.test.ts along with what is measured
- * about how reachable it currently is.)
+ * switch out of its in-flight state. (One more exit, the client walking away,
+ * lives in turn-cleanup-on-abort.test.ts along with what is measured about
+ * how reachable it currently is.)
  *
- * Two of these are subtler than they look, and both were regressions this PR
- * introduced and then had to undo:
+ * Two of these are subtler than they look, for different reasons.
  *
  * Reading `result.usage` is not a passive read: in AI SDK 6.0.141 the getter
  * chains `usage` to `finalStep` to `steps`, and `steps` calls
  * `consumeStream()`. Awaiting it in a finally that a blocking tool just
  * returned through drives the model loop to completion -- the exact opposite
  * of what the sentinel exists to do, and billable output nobody asked for.
+ * That one this PR introduced and then had to undo.
  *
  * And a failing provider does not throw. Measured on ai@6.0.141 with a model
  * whose `doStream` throws, the loop saw ["start","error"] and did not throw,
  * so a loop watching only for exceptions calls a dead turn a clean finish.
+ * That one was never handled at all, here or on main.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";

@@ -6,12 +6,19 @@
  * decided in one place. No source file may value-import an SDK entry point
  * that starts a model run — only `model-call.ts` may.
  *
- * The list is every such entry point the SDK exports, not just the two we use
- * today. That is deliberate: PR-2 considered adding wrappers for
- * `generateObject` and the agent class and decided not to, because nothing
- * calls them — which leaves this guard as the only thing standing between a
- * future call site and a silently different retry budget. A guard that only
- * knows about today's call sites would wave that call site straight through.
+ * The list covers the text and structured-output entry points and the agent
+ * class, not just the two we use today. That is deliberate: PR-2 considered
+ * adding wrappers for `generateObject` and the agent class and decided not
+ * to, because nothing calls them — which leaves this guard as the only thing
+ * standing between a future call site and a silently different retry budget.
+ * A guard that only knows about today's call sites would wave that call site
+ * straight through.
+ *
+ * It is not every export that reaches a provider: `embed`, `generateImage`,
+ * `generateSpeech`, `transcribe` and `rerank` are outside it, because the
+ * wrapper this guard protects is about the retry budget for a model run and
+ * those go through their own paths. Adding one here would mean wrapping it
+ * first.
  *
  * Two blind spots the earlier version had, both closed here:
  *
@@ -36,13 +43,18 @@ const WRAPPER = join(MONOREPO_ROOT, "packages/domain/src/agent/model-call.ts");
  * The SDK exports that start a model run, verbatim from ai@6.0.141's export
  * list. `Experimental_Agent` is an alias of `ToolLoopAgent`; both are named
  * because either spelling imports the same class.
+ *
+ * `Agent` is deliberately absent even though the SDK exports the name: it is
+ * an interface, not a class (`interface Agent<...>` at index.d.ts:3405, which
+ * `ToolLoopAgent` implements). Checked at runtime against the installed
+ * package — `'Agent' in ai` is false. A value import of it starts no run and
+ * cannot even resolve, so listing it would be a rule with nothing behind it.
  */
 const RUN_STARTERS = [
   "generateText",
   "streamText",
   "generateObject",
   "streamObject",
-  "Agent",
   "ToolLoopAgent",
   "Experimental_Agent",
 ];
@@ -72,7 +84,6 @@ const SAMPLES: ReadonlyArray<{ source: string; flagged: boolean; why: string }> 
   { source: `import { streamObject } from "ai";`, flagged: true, why: "streaming structured output" },
   { source: `import { Experimental_Agent } from "ai";`, flagged: true, why: "the agent class, aliased name" },
   { source: `import { ToolLoopAgent } from "ai";`, flagged: true, why: "the agent class, real name" },
-  { source: `import { Agent } from "ai";`, flagged: true, why: "the other agent class" },
   { source: `import { tool, generateText } from "ai";`, flagged: true, why: "hidden among allowed names" },
   { source: `import * as ai from "ai";`, flagged: true, why: "namespace import reaches all of them" },
   { source: `import type { GenerateTextResult } from "ai";`, flagged: false, why: "types cost nothing at runtime" },

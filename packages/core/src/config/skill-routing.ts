@@ -99,7 +99,14 @@ export function getSkillRouting(): Readonly<SkillRouting> {
   return _cached;
 }
 
-/** Drop the cached routing so a test can load a different file. */
+/**
+ * Drop the cached routing, so the next read opens the file again.
+ *
+ * Not for loading a different document — there is no longer a way to point
+ * this at one, and a test that needs a different one parses it with
+ * {@link skillRoutingSchema} directly. This is so a test that read the
+ * shipped file does not leave that read cached for the next one.
+ */
 export function resetSkillRouting(): void {
   _cached = null;
 }

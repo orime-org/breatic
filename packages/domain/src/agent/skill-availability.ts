@@ -14,9 +14,11 @@
  * by clicking, receiving whatever the provider library threw. Those messages
  * name endpoints and key hints.
  *
- * Written once, in domain, because both services ask it: the chat entry
- * before opening a stream, the worker before claiming a job. Two copies
- * would answer differently the first time a fallback rule changed.
+ * Written once, in domain, because both services reach it: the entries ask
+ * before a message is saved or a stream opened, and the factory asks again
+ * when it resolves a model — which is the only way the worker reaches it, on
+ * a job it has already claimed. Two copies would answer differently the
+ * first time a fallback rule changed.
  *
  * Text and media reach a key by different routes, so one function knows
  * both:
@@ -158,9 +160,10 @@ export function assertSkillModelRunnable(
   //
   // The message reaches the end user, not the operator — the error handler
   // returns `AppError.message` verbatim — so it says which skill and nothing
-  // else. The env var names go to the caller in `missing`, for the layer that
-  // knows where its logs go; naming them here would put the deployment's
-  // configuration on a screen belonging to whoever happened to click.
+  // else. Naming the env vars here would put the deployment's configuration
+  // on a screen belonging to whoever happened to click. They are available
+  // from {@link checkSkillModelRunnable} for a caller that wants to log them;
+  // nothing does that yet, and this throw deliberately does not.
   throw new AppError(
     503,
     `Skill '${skillName}' is not available on this deployment.`,

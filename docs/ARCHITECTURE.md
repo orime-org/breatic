@@ -148,9 +148,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Agent tools (6)
 
-`web_search` | `web_fetch` | `ask_user_question`
+`web_search` | `web_fetch`
 
-**交互工具(3)**:`ask_user_choice` | `propose_canvas_action` | `show_search_results` —— LLM 调用它们发送结构化 payload 供前端渲染成 UI 组件,不执行动作;`main-agent` 检测 sentinel 前缀的结果后 yield 对应 SSE 事件。
+**交互工具(4)**:`ask_user_question` | `ask_user_choice` | `propose_canvas_action` | `show_search_results` —— LLM 调用它们发送结构化 payload 供前端渲染成 UI 组件,不执行动作;`main-agent` 检测 sentinel 前缀的结果后 yield 对应 SSE 事件。
 
 **无脚本执行能力**。第一版的 skill 只声明要用哪些工具,不带脚本 —— 「skill 带一个脚本、由 agent 执行它」是一整套要单独设计的东西(在哪跑 / 跑多久 / 能碰什么 / 失败怎么办 / 算不算钱),整块不做。
 
@@ -166,8 +166,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/worker.yaml` | Worker 并发、重试、轮询 |
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制、单文档连接数上限(`max_connections_per_document`,默认 100;满了**降级只读**非拒绝) |
 | `config/pricing.yaml` | 积分**购买包**(5 档一次性购买,不是订阅/会员,test+live Stripe ID) |
+| `config/skill-routing.yaml` | 哪个 skill 能在哪用、谁能调起(`surfaces` / `user_invocable` / `model_invocable`)。**缺了它每个 skill 都哪儿都不许用**,两个服务启动时读一次、读不了就 `exit(1)`。加载器 `packages/core/src/config/skill-routing.ts` |
 | `config/limits.yaml` | 成员容量**业务软上限**(`studio_member_cap` / `project_collaborator_cap`,默认各 100;project 只数显式邀请的成员,owner + 自动 viewer 豁免)。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)|
-| `config/models/*.yaml` | AI 模型路由(46 文件,model-centric) |
+| `config/models/*.yaml` | AI 模型路由(按模态分目录,model-centric) |
 
 ### Logging
 

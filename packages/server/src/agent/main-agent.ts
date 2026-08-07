@@ -135,12 +135,12 @@ export class MainAgent {
    *
    * AI SDK handles the tool-call iteration automatically via `maxSteps`.
    *
-   * The loop is wrapped in try/finally so the turn's obligations run
-   * however it ends — including the user closing the page, which stops
-   * this generator where it stands.
+   * The loop is wrapped in try/finally so the turn's obligations run however
+   * it ends. Which exits actually reach that finally today, and which one is
+   * written for but not yet reachable, is set out where `exit` is declared.
    * @param agentConfig - Model, instructions and tools, from the one factory that decides them.
    * @param messages - Conversation history plus the current user message.
-   * @yields SSE events (chat chunks, tool hints, interaction prompts, plan, done) for real-time frontend rendering.
+   * @yields SSE events — chat chunks, tool hints, interaction prompts, an error, and the ending.
    */
   private async *runStream(
     agentConfig: ResolvedAgentConfig,

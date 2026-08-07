@@ -127,9 +127,9 @@ describe("buildAgentConfig", () => {
     // Asserting against getAgentConfig().default_model directly does NOT
     // catch that: the yaml's value IS that literal, so a hardcoded factory
     // and a reading one produce the same string and the test cannot tell
-    // them apart. Measured -- replacing the read with the literal left all
-    // seven tests green. So the config has to say something the literal
-    // does not.
+    // them apart. Measured when this was written -- replacing the read with
+    // the literal left every test in this file green. So the config has to
+    // say something the literal does not.
     const sentinel = "sentinel/model-from-config";
     vi.mocked(getAgentConfig).mockReturnValueOnce({
       ...getAgentConfig(),

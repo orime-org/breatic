@@ -441,7 +441,10 @@ export const domainMock = () => ({
   buildToolSet: vi.fn().mockReturnValue({}),
   BASELINE_TOOLS: [],
   getSkillRegistry: () => ({
-    get: (name: string) => name === "gated_fixture" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,
+    get: (name: string) =>
+      ["gated_fixture", "creative_research", "canvas_fixture", "canvas_gated"].includes(name)
+        ? { name, description: "...", tools: [] }
+        : undefined,
   }),
   // The gate both entry points call. Mirrors the real one's two outcomes:
   // 404 for a skill that does not exist, 403 for one the routing config
@@ -459,6 +462,10 @@ export const domainMock = () => ({
       creative_research: { surfaces: ["chat"], userInvocable: true },
       gated_fixture: { surfaces: ["chat"], userInvocable: false },
       canvas_fixture: { surfaces: ["canvas"], userInvocable: true },
+      // Canvas serves it, but no user may fire it. Without this, a canvas
+      // test aimed at the authorization axis is stopped by the surface axis
+      // first and passes for the wrong reason.
+      canvas_gated: { surfaces: ["canvas"], userInvocable: false },
     };
     const route = routes[name];
     if (!route) throw new AppErrorClass(404, `Skill '${name}' not found`);

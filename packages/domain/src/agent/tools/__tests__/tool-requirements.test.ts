@@ -5,10 +5,10 @@
  * A tool whose configuration is missing never reaches the model.
  *
  * Found by running the product, not the suite. A smoke run on a deployment
- * without a search key produced twenty-six consecutive web_search calls and
- * no reply at all: the tool returned the string "Error: ... not configured",
- * the model read that as a result rather than a refusal, and tried again.
- * Every unit test was green throughout.
+ * without a search key had the model call web_search over and over until the
+ * step ceiling stopped it, and reply nothing at all: the tool returned the
+ * string "Error: ... not configured", the model read that as a result rather
+ * than a refusal, and tried again. Every unit test was green throughout.
  *
  * Returning an error string is what makes it a loop. The model cannot tell a
  * failed call from a call whose answer happens to describe a failure, so it

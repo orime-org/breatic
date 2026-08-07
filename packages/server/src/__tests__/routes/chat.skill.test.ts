@@ -4,8 +4,12 @@
 /**
  * Skill enforcement regression test.
  *
- * A skill the registry says is not user-invocable → 403.
+ * A skill the routing config does not let a user fire → 403.
  * Unknown skill → 404.
+ *
+ * The registry no longer answers the first question — moving that answer out
+ * of skill metadata and into `config/skill-routing.yaml` is what this change
+ * is for. The registry is only asked whether the skill exists at all.
  *
  * The 403 case names a fixture rather than a real skill on purpose. It used
  * to name the one skill that happened to be gated, so deleting that skill

@@ -41,19 +41,20 @@ breatic/                           # Turborepo monorepo
 │   │   ├── src/
 │   │   │   ├── routes/            #   Hono HTTP routes
 │   │   │   ├── middleware/        #   Auth, CORS, logging, error handler
-│   │   │   ├── agent/             #   AI core (MainAgent, tools, skills)
-│   │   │   ├── providers/         #   AIGC providers (image/video/audio/tts/3d/understand)
-│   │   │   ├── worker/            #   BullMQ job handlers (4 execution paths)
+│   │   │   ├── agent/             #   Chat agent: streaming loop, prompt, SSE
 │   │   │   ├── modules/           #   Business modules (Repo + Service per domain)
-│   │   │   ├── db/                #   Drizzle schema + client
-│   │   │   ├── infra/             #   Redis, queues, session store, request context (AsyncLocalStorage)
-│   │   │   └── config/            #   Environment + YAML config loaders
+│   │   │   ├── infra/             #   Metrics and other server-local infrastructure
+│   │   │   └── config/            #   Server-local YAML config loaders
 │   │   └── vitest.config.ts
+│   ├── core/                      # Shared kernel: db, redis, queues, config, auth, logging
+│   ├── domain/                    # Business kernel shared by server + worker (agent, credit, tasks)
+│   ├── worker/                    # BullMQ service
+│   │   └── src/                   #   handlers/ (4 execution paths) + providers/ (image/video/audio/tts/3d/understand)
 │   ├── collab/                    # Hocuspocus service (COLLAB_PORT, default 1234)
 │   │   └── src/                   #   Yjs sync, auth, persistence, task result listener
-│   └── web/                       # Frontend (placeholder)
+│   └── web/                       # Frontend (React + Vite)
 ├── config/                        # YAML configs (agent, collab, worker, pricing, text-tools, models/)
-├── skills/                        # Built-in skill definitions (knowledge + scripts)
+├── skills/                        # Built-in skill definitions (knowledge + declared tools)
 ├── docker-compose.yml             # Deployment stack — pulls pre-built images from GHCR
 ├── Dockerfile                     # Backend image (API/Worker/Collab/Migrate shared, 357MB). Built by CI, published to ghcr.io/orime-org/breatic
 └── Dockerfile.web                 # Frontend image (Vite build → nginx:alpine, 73MB). Built by CI, published to ghcr.io/orime-org/breatic-web
@@ -89,7 +90,7 @@ Memory is automatically consolidated by the LLM when the conversation exceeds `m
 
 ### Agent & Skill System
 
-**Skills** are the unit of work. A skill carries three things — its knowledge (`SKILL.md`), the tools it may use, and the model it runs on — and one factory resolves all three, so every entry point that runs a skill runs it the same way. Where a skill may be used and who may fire it are the host's decision, and live in `config/skill-routing.yaml` rather than in the skill.
+**Skills** are the unit of work. A skill fixes three things — its knowledge (`SKILL.md`), the tools it may use, and the model it runs on — and one factory resolves all three, so every entry point that runs a skill runs it the same way. The model is the only optional one: a skill that names none takes the configured default, which is what every shipped skill does today. Where a skill may be used and who may fire it are the host's decision, and live in `config/skill-routing.yaml` rather than in the skill.
 
 ```
 skills/{name}/

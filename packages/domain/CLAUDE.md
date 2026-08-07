@@ -13,7 +13,9 @@
 
 ## agent 这块的抽象判定线(MANDATORY)
 
-四层:**tool**(一次外部动作,可被任何 skill 复用)· **skill**(一件事的知识 + 它要用的 tool + 它跑在哪个模型 = 定死三样)· **workflow**(把多个 skill 编排成一条线,只跑一个 skill 时也套一层空的,所以 `Agent → workflow → skill / tool` 没有旁路)· **Agent**(拿着 skill 清单和 tool 清单跟用户对话的那个)。
+**已拍板的四层**:**tool**(一次外部动作,可被任何 skill 复用)· **skill**(一件事的知识 + 它要用的 tool + 它跑在哪个模型 = 定死三样)· **workflow**(把多个 skill 编排成一条线,只跑一个 skill 时也套一层空的,所以 `Agent → workflow → skill / tool` 没有旁路)· **Agent**(拿着 skill 清单和 tool 清单跟用户对话的那个)。
+
+**今天代码里只有三层** —— **workflow 那一层还没建**,全仓没有它的实现;Agent 直接调 skill 和 tool。写在这里是因为它是判定新东西该往哪放的依据,不是因为它已经在跑。**别照着这段去代码里找 workflow**,也别因为它不在就以为四层作废了。
 
 **不派生**:skill 不另开进程 / 线程 / 独立 agent,一律在调用方的循环里跑。
 

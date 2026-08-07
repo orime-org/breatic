@@ -72,8 +72,9 @@ export const INTERACTION_TOOLS: readonly string[] = [
  * allowed to fail. That distinction is the whole point: a tool that returns
  * "Error: key not configured" hands the model a string, and the model cannot
  * tell a failed call from a call whose answer describes a failure — so it
- * retries. A smoke run on a deployment without a search key produced
- * twenty-six consecutive web_search calls and no reply at all.
+ * retries. A smoke run on a deployment without a search key had the model
+ * call web_search over and over until the step ceiling stopped it, and reply
+ * nothing at all.
  *
  * Only genuinely required configuration goes here. Something a tool merely
  * prefers would silently remove the tool on a deployment that works fine.

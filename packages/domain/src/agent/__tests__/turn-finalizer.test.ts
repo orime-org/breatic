@@ -4,11 +4,14 @@
 /**
  * A turn's cleanup runs no matter how the turn ends.
  *
- * The cleanup used to sit after the streaming loop. SSE is an async
- * generator, so when the user closes the page the consumer calls `.return()`
- * on it and every line after the loop is skipped -- the reply was never
- * saved and billing never ran. Three of the four ways a turn can end skipped
- * it.
+ * The cleanup used to sit after the streaming loop, where every early exit
+ * skipped it -- the reply was never saved and billing never ran.
+ *
+ * An async generator stops where its consumer stopped it, so a consumer that
+ * walks away skips everything after the loop too. That exit is written for
+ * rather than observed: measured on this stack, hono's `StreamingApi.write`
+ * swallows the write error, so the SSE route never breaks out of its loop and
+ * never calls `.return()` at all.
  *
  * Measured before writing any of this: a generator whose cleanup sits after
  * the loop runs none of it when the consumer breaks early, while the same
