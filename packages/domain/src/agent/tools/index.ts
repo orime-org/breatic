@@ -5,6 +5,7 @@
  * Tool registry — maps tool names to AI SDK tool definitions.
  */
 import type { Tool } from "ai";
+import { env } from "@breatic/core";
 
 import { askUser } from "@domain/agent/tools/ask-user.js";
 import { askUserChoice } from "@domain/agent/tools/ask-user-choice.js";
@@ -50,10 +51,40 @@ export const BASELINE_TOOLS: readonly string[] = [
 ];
 
 /**
+ * What each tool needs configured before it can do anything.
+ *
+ * A tool missing its configuration is left out rather than offered and
+ * allowed to fail. That distinction is the whole point: a tool that returns
+ * "Error: key not configured" hands the model a string, and the model cannot
+ * tell a failed call from a call whose answer describes a failure — so it
+ * retries. A smoke run on a deployment without a search key produced
+ * twenty-six consecutive web_search calls and no reply at all.
+ *
+ * Only genuinely required configuration goes here. Something a tool merely
+ * prefers would silently remove the tool on a deployment that works fine.
+ */
+const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
+  web_search: "BRAVE_SEARCH_API_KEY",
+};
+
+/**
+ * Whether a tool has what it needs to run.
+ * @param name - The tool name to check.
+ * @returns True when the tool needs no configuration, or has it.
+ */
+function isConfigured(name: string): boolean {
+  const required = TOOL_REQUIREMENTS[name];
+  if (!required) return true;
+  const value = (env as unknown as Record<string, unknown>)[required];
+  return typeof value === "string" && value.length > 0;
+}
+
+/**
  * Build a tool set for the AI SDK from a list of tool names.
  *
  * Unknown names are silently skipped, which is what keeps a stale name in a
- * skill's metadata from taking down the whole assembly.
+ * skill's metadata from taking down the whole assembly. Tools whose required
+ * configuration is missing are skipped too — see `TOOL_REQUIREMENTS`.
  * @param toolNames - Array of tool name strings to include.
  * @returns A `Record<string, Tool>` suitable for the AI SDK `tools` option.
  * @example
@@ -68,7 +99,7 @@ export function buildToolSet(
   const result: Record<string, Tool> = {};
   for (const name of toolNames) {
     const t = TOOL_MAP[name];
-    if (t) result[name] = t;
+    if (t && isConfigured(name)) result[name] = t;
   }
   return result;
 }

@@ -23,7 +23,17 @@ import { BASELINE_TOOLS } from "@domain/agent/tools/index.js";
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
-  return { ...actual, getAgentConfig: vi.fn(actual.getAgentConfig) };
+  return {
+    ...actual,
+    getAgentConfig: vi.fn(actual.getAgentConfig),
+    // buildToolSet drops tools whose configuration is missing, which is a
+    // separate rule with its own tests. Here the subject is what the factory
+    // hands out when nothing is missing, so nothing is missing.
+    env: new Proxy(actual.env, {
+      get: (t, p: string) =>
+        p === "BRAVE_SEARCH_API_KEY" ? "test-key" : Reflect.get(t, p),
+    }),
+  };
 });
 
 vi.mock("@domain/agent/skills-loader.js", async (importOriginal) => {
