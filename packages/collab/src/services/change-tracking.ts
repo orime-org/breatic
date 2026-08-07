@@ -75,7 +75,10 @@ export function createChangeTrackingExtension(): ChangeTrackingExtension {
       // the library only publishes the document once `loadDocument` resolves.
       if (watching.has(documentName)) return;
 
-      const handler = (): void => noteDocumentChange(documentName);
+      /** Count one update against this document, whatever produced it. */
+      const handler = (): void => {
+        noteDocumentChange(documentName);
+      };
       document.on("update", handler);
       watching.set(documentName, { document, handler });
     },

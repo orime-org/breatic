@@ -205,7 +205,10 @@ describe("the origin a timed store carries", () => {
       },
     };
 
-    await storeDocumentNow(driver, DOC);
+    // A stand-in, so it has to be converted. This is the only conversion left
+    // anywhere on this path: both production call sites pass the real
+    // instance unchanged.
+    await storeDocumentNow(driver as unknown as Parameters<typeof storeDocumentNow>[0], DOC);
 
     expect(seen).toHaveLength(1);
     expect(seen[0]?.lastTransactionOrigin.source).not.toBe("local");

@@ -24,6 +24,7 @@
  */
 
 import type * as Y from "yjs";
+import type { Hocuspocus } from "@hocuspocus/server";
 import { encodeStateAsUpdate } from "yjs";
 import { applyUpdate } from "yjs";
 import { createLogger } from "@breatic/core";
@@ -83,17 +84,11 @@ export async function storeDoc({
   await yjsDocumentsRepo.upsertDocData(documentName, state);
 }
 
-/** The document shape {@link storeDocumentNow} needs off the instance. */
-export interface StorableDocument {
-  name: string;
-  getConnectionsCount(): number;
-}
-
 /**
  * Says who asked for this store, in a word the library does not recognise.
  *
- * @hocuspocus/extension-redis is the only reader of `lastTransactionOrigin`
- * anywhere in the library, and it reads it for one purpose: `afterStoreDocument`
+ * The Redis extension is the only reader of `lastTransactionOrigin` anywhere
+ * in the library, and it reads it for one purpose: `afterStoreDocument`
  * waits `disconnectDelay` (1000ms by default) whenever the source is "local".
  * The library holds the document's save mutex across both store hooks, so
  * copying its own "local" origin cost every timed store a second of held mutex,
@@ -111,33 +106,6 @@ export interface StorableDocument {
  */
 const TIMED_STORE_ORIGIN = { source: "breatic-timed-store" } as const;
 
-/** What {@link storeDocumentNow} hands the library's store entry. */
-export interface StorePayload {
-  instance: unknown;
-  clientsCount: number;
-  document: StorableDocument;
-  documentName: string;
-  lastContext: Record<string, unknown>;
-  lastTransactionOrigin: typeof TIMED_STORE_ORIGIN;
-}
-
-/**
- * The part of the Hocuspocus instance {@link storeDocumentNow} drives.
- *
- * Named rather than inferred because the library ships duplicate copies of
- * its own types under pnpm hoisting, so the real instance does not satisfy an
- * import of them. Spelling out exactly the two members used keeps the call
- * checked instead of casting the whole object away.
- */
-export interface StoreDriver {
-  documents: Map<string, StorableDocument>;
-  storeDocumentHooks(
-    document: StorableDocument,
-    payload: StorePayload,
-    immediately?: boolean,
-  ): unknown;
-}
-
 /**
  * Ask hocuspocus to store one document right now.
  *
@@ -148,6 +116,16 @@ export interface StoreDriver {
  * last connection went away mid-write. A direct write would strand such a
  * document in memory with zero connections and nothing left to release it.
  *
+ * Typed against the library's own instance. There used to be a hand-written
+ * interface here, on the stated grounds that pnpm hoisting ships duplicate
+ * copies of the library's types so the real instance could not satisfy an
+ * import of them — and both call sites then passed the instance through
+ * `as never`, which is what an unsatisfiable interface always turns into. The
+ * claim does not hold: this file imports the type and the real instance
+ * satisfies it, with the two call sites in `hocuspocus.ts` passing it
+ * unconverted. A stand-in in a test is the only thing that needs a conversion
+ * now, which is the right place for one.
+ *
  * It does not throw and its resolution says nothing about success — the
  * library swallows store errors. Whether the content landed is answered by
  * the tracker's counters.
@@ -155,7 +133,7 @@ export interface StoreDriver {
  * @param documentName - Full Yjs document name.
  */
 export async function storeDocumentNow(
-  driver: StoreDriver,
+  driver: Hocuspocus,
   documentName: string,
 ): Promise<void> {
   const document = driver.documents.get(documentName);

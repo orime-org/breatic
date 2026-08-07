@@ -92,7 +92,7 @@ function harness(options: { lockLost?: boolean } = {}) {
     intervalMs: 60_000,
     storeTimeoutMs: 3_000,
     listDocuments: () => Array.from(hocuspocus.documents.keys(), (name) => ({ name })),
-    storeNow: ({ name }) => storeDocumentNow(hocuspocus as never, name),
+    storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
   });
   return { hocuspocus, writes, runRound: loop.runOnce };
 }

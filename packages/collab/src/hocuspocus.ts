@@ -482,7 +482,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   storeGate.current = createUnloadGate({
     finalAttemptTimeoutMs: cfg.store_final_attempt_timeout_ms,
     encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
-    storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus as never, name),
+    storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus, name),
     writeRescue: ({ documentName, state }) =>
       writeRescueFile({
         dir: resolve(MONOREPO_ROOT, cfg.store_rescue_dir),
@@ -498,7 +498,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     storeTimeoutMs: cfg.store_final_attempt_timeout_ms,
     listDocuments: () =>
       Array.from(wsServer.hocuspocus.documents.keys(), (name) => ({ name })),
-    storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus as never, name),
+    storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus, name),
   });
   storeLoop.start();
 

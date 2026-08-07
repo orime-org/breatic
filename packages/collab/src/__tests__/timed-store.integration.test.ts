@@ -93,7 +93,7 @@ function harness(options: { failing?: boolean; delayMs?: number } = {}): Harness
   storeGate.current = createUnloadGate({
     finalAttemptTimeoutMs: 2000,
     encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
-    storeNow: ({ name }) => storeDocumentNow(hocuspocus as never, name),
+    storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
     writeRescue: async () => "/rescue/x.yjs",
     deleteRescue: async () => {},
     alert: async () => {},
@@ -103,7 +103,7 @@ function harness(options: { failing?: boolean; delayMs?: number } = {}): Harness
     intervalMs: 10_000,
     storeTimeoutMs: 5_000,
     listDocuments: () => Array.from(hocuspocus.documents.keys(), (name) => ({ name })),
-    storeNow: ({ name }) => storeDocumentNow(hocuspocus as never, name),
+    storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
   });
 
   return { hocuspocus, writes, encodes, runRound: loop.runOnce, storeGate };
