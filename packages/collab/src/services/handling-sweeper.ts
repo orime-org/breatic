@@ -6,11 +6,14 @@
  *
  * `state: 'handling'` is fragile shared state: the driver advancing it
  * (a user's browser for uploads, a Worker for AIGC) can die silently, and
- * the disconnect-event fast path that normally cleans up after a closed
- * tab can itself be lost (collab restart drops every pending disconnect
- * event; a worker judged dead by BullMQ never runs its own write-back).
- * The lease is the correctness guarantee the events cannot give: every
- * handling node carries `handlingBy.startedAt`, and any node still
+ * there is no fast path to fall back on. A disconnect-triggered one used to
+ * exist and was removed on 2026-07-02 (#1580 slice 4) because a closing
+ * socket is not evidence the work died — an upload goes straight to object
+ * storage, invisible to collab and outliving the socket — and a worker judged
+ * dead by BullMQ never runs its own write-back either. So this sweeper is not
+ * a backstop behind an accelerator; it is the only thing that reclaims a
+ * handling node its driver never closed. Every handling node carries
+ * `handlingBy.startedAt`, and any node still
  * handling more than HANDLING_TIMEOUT_MS (unified 1h fixed budget, user
  * decision 2026-07-02) after that is reclaimed here — regardless of what
  * happened to its driver. Industry-standard shape: events accelerate,
@@ -35,11 +38,10 @@
  * is by definition an orphan (pre-#1569 zombie or a torn write).
  *
  * Writes carry the {@link HANDLING_SWEEP_ORIGIN} named transaction origin,
- * which names the writer. Unlike `node-state-update` and
- * — nested inside a `DirectConnection`
- * transaction, which keeps its own origin and discards theirs — this one does
- * survive, because the sweeper writes through a direct document reference and
- * so opens the outermost transaction. Nothing reads it today; it is there for
+ * which names the writer. Unlike `node-state-update` — nested inside a
+ * `DirectConnection` transaction, which keeps its own origin and discards the
+ * inner one — this origin does survive, because the sweeper writes through a
+ * direct document reference and so opens the outermost transaction. Nothing reads it today; it is there for
  * whoever is holding a debugger. It is NOT what keeps a sweep out of a user's
  * undo stack: origins never cross the wire, and the canvas UndoManager tracks
  * an allow-list holding a single local Symbol that no server-side string could

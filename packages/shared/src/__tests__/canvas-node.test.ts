@@ -470,6 +470,11 @@ describe("CanvasNodeFields", () => {
     // @ts-expect-error outputType removed (2026-06-15 model revision — no generative node)
     data.outputType;
 
+    // @ts-expect-error operationLocks removed (#1889 — the mini-tool configure
+    // lock was never wired up; the only reader was a disconnect pass that
+    // could therefore only ever find nothing, and it went too)
+    data.operationLocks;
+
     // Positive control: .name access works
     expect(data.name).toBe("x");
   });
