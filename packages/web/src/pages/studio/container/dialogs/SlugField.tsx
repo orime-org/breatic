@@ -34,8 +34,9 @@ interface SlugFieldProps {
   availability?: 'checking' | 'available';
   /**
    * Greys the input out while an edit could not be submitted anyway — the
-   * rename dialog sets it for the length of the request, so the field cannot
-   * be changed out from under a rename that is already on its way.
+   * rename dialog sets it while ANY settings save is in flight, which is the
+   * same condition that holds its Confirm button back. Typing into a field
+   * whose Confirm is unreachable only looks like it will work.
    */
   disabled?: boolean;
 }

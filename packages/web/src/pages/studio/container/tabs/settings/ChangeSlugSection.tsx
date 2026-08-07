@@ -37,8 +37,9 @@ interface ChangeSlugSectionProps {
    *
    * Deliberately the narrower of the two: a spinner is a claim about what is
    * running, and a name save must not make this button claim to be renaming.
-   * Getting it wrong costs an inaccurate icon and nothing else, which is why
-   * the question that has to be inferred drives the icon rather than the gate.
+   * It drives both the spinner and the button's label. Getting it wrong costs
+   * an inaccurate button and nothing else, which is why the question that has
+   * to be inferred drives what the button says rather than the gate.
    */
   renaming: boolean;
   onSave: (patch: UpdateStudioInput) => void;
@@ -58,7 +59,7 @@ interface ChangeSlugSectionProps {
  * dialog); the wiring does not. Transferring owns its own request because
  * nothing moves afterwards, whereas a rename leaves the page standing on an
  * address that no longer exists — so this one goes through the settings hook's
- * `save`, which owns the five steps that have to follow.
+ * `save`, which owns everything that has to follow it.
  *
  * While the request is out the button carries a spinner and the dialog stays
  * dismissible, which is how Ant Design, Bootstrap, Chakra and Radix all treat

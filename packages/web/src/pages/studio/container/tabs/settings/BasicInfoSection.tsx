@@ -28,8 +28,11 @@ interface BasicInfoSectionProps {
 /**
  * The studio's display details: its name and its description.
  *
- * Both are freely editable and freely reversible — nothing outside this studio
- * depends on either. The slug is not here: changing it breaks every link that
+ * Both are freely editable and freely reversible — changing either breaks no
+ * link and releases no name for anyone else to take. (A personal studio's name
+ * does travel beyond it: the whole app reads it as its owner's display name.
+ * But it can be changed straight back, which is the property that matters
+ * here.) The slug is not here: changing it breaks every link that
  * points at this studio and releases the name for anyone to take, so it lives
  * in the danger zone with the other things that cannot be undone.
  *
