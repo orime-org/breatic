@@ -167,18 +167,19 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     if (outcome.error) {
       logger.warn({ err: outcome.error, documentName }, "collab_final_store_attempt_errored");
     }
-    // Give our own arm back rather than trusting it was consumed, and learn
-    // from it whether our extension ran at all. Handing back the token rather
-    // than deleting by name is what keeps this from taking the timed loop's
-    // arm instead of ours.
-    const neverRan = releaseTimedStoreArm(documentName, arm);
-
+    // Hand our own permission back and read what became of it. This is the
+    // whole answer: whether our extension ran, and what its write did. Handing
+    // back the token rather than deleting by name is what keeps this from
+    // taking the timed loop's permission instead of ours.
+    const result = releaseTimedStoreArm(documentName, arm);
     const error = outcome.error;
-    if (!hasUnsavedContent(documentName)) return { attempt: "stored", error };
-    // Order matters. An unspent arm means the chain never got to us, which is
-    // true whether or not we also ran out of patience waiting for it.
-    if (neverRan) return { attempt: "not-reached", error };
-    return { attempt: outcome.timedOut ? "unknown" : "refused", error };
+
+    if (!result.ran) return { attempt: "not-reached", error };
+    if (result.outcome === "stored") return { attempt: "stored", error };
+    if (result.outcome === "refused") return { attempt: "refused", error };
+    // It ran and has not reported. That is a write still in flight, whether or
+    // not our own deadline is what stopped us waiting for it.
+    return { attempt: "unknown", error };
   }
 
   /**
@@ -261,12 +262,16 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     if (!hasUnsavedContent(documentName)) return;
 
     const result = await attemptStore(documentName);
-    if (result.attempt === "stored") return;
+    // Two separate questions. What the attempt did decides what the operator
+    // is told; whether the document still holds unstored content decides
+    // whether there is anything left to rescue. A write can land AND leave the
+    // document dirty, when an edit arrived while it was in flight.
+    if (!hasUnsavedContent(documentName)) return;
 
     const state = deps.encode(document);
     const path = await rescue(documentName, state);
     await reportLoss(documentName, state.length, path, {
-      attempt: result.attempt,
+      attempt: result.attempt === "stored" ? "unknown" : result.attempt,
       error: result.error,
     });
   }
@@ -295,12 +300,16 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     onStep?.("store");
     const result = await attemptStore(documentName);
 
-    if (result.attempt === "stored") {
+    // Both, not either. The file is the only copy, so it goes only when this
+    // attempt explicitly reported landing AND nothing has come in since. A
+    // document forgotten mid-attempt reports neither, and used to read as
+    // stored — which deleted the file.
+    if (result.attempt === "stored" && !hasUnsavedContent(documentName)) {
       if (path) await deps.deleteRescue(path);
       return;
     }
     await reportLoss(documentName, state.length, path, {
-      attempt: result.attempt,
+      attempt: result.attempt === "stored" ? "unknown" : result.attempt,
       error: result.error,
     });
   }

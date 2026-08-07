@@ -32,19 +32,34 @@ const changeCount = new Map<string, number>();
 /** Update count that the last SUCCESSFUL store covered, per document. */
 const storedCount = new Map<string, number>();
 
+/** One attempt's permission, and what became of it. */
+interface ArmRecord {
+  /** Identifies the attempt, so only its issuer can take it back. */
+  token: symbol;
+  /** Whether the persistence extension actually ran for this attempt. */
+  ran: boolean;
+  /** What that extension's write did, once it knows. */
+  outcome?: StoreOutcome;
+}
+
 /**
  * The one-shot permission each document currently carries, if any.
  *
- * A map rather than a set of names, because the permission has an owner. Two
- * writers can want to store the same document (the timed round and the unload
- * gate), and both give their permission back when they stop waiting — an
- * upstream extension can abort the hook chain before ours is reached, which
- * would otherwise leave the permission behind for the next change-triggered
- * store to spend. Keyed only by name, one writer's reclamation took back the
- * other's permission and that store then wrote nothing at all. The token says
- * whose it is.
+ * It has an owner, because two writers can want to store the same document
+ * (the timed round and the unload gate) and both give their permission back
+ * when they stop waiting — an upstream extension can abort the hook chain
+ * before ours is reached, which would otherwise leave the permission behind
+ * for the next change-triggered store to spend. Keyed only by name, one
+ * writer's reclamation took back the other's and that store wrote nothing.
+ *
+ * It also carries the result, because "did MY write land" is a different
+ * question from "does this document hold unstored content", and the gate used
+ * to ask the second one to answer the first. They disagree in both directions:
+ * an edit arriving during the write makes a landed write read as refused, and
+ * a document forgotten mid-attempt makes a write that never happened read as
+ * stored.
  */
-const armed = new Map<string, symbol>();
+const armed = new Map<string, ArmRecord>();
 
 /**
  * Bumped every time a document is forgotten.
@@ -123,6 +138,24 @@ export interface StoreArm {
   token: symbol;
 }
 
+/** What one write did, as reported by the extension that made it. */
+export type StoreOutcome = "stored" | "refused";
+
+/** What an attempt's issuer learns when it hands the permission back. */
+export interface ArmResult {
+  /**
+   * Whether the persistence extension ran at all for this attempt.
+   *
+   * False covers three different things that all mean "we never got to
+   * write": the hook chain was aborted upstream, we stopped waiting before it
+   * reached us, or the document was forgotten in the meantime. The gate must
+   * not name a cause it cannot see.
+   */
+  ran: boolean;
+  /** Present once the write finished; absent while it is still in flight. */
+  outcome?: StoreOutcome;
+}
+
 /**
  * Permit exactly one store for a document.
  *
@@ -134,7 +167,7 @@ export interface StoreArm {
  */
 export function armTimedStore(documentName: string): StoreArm {
   const token = Symbol(documentName);
-  armed.set(documentName, token);
+  armed.set(documentName, { token, ran: false });
   return { token };
 }
 
@@ -144,29 +177,55 @@ export function armTimedStore(documentName: string): StoreArm {
  * @returns True when this store was initiated by us; false otherwise.
  */
 export function consumeTimedStoreArm(documentName: string): boolean {
-  return armed.delete(documentName);
+  const record = armed.get(documentName);
+  if (!record || record.ran) return false;
+  // Marked rather than deleted. The record is what carries the result back to
+  // whoever issued it, so it has to outlive being spent.
+  record.ran = true;
+  return true;
 }
 
 /**
- * Give an unspent permission back, and learn whether it was ever spent.
+ * Record what the write this permission authorised actually did.
  *
- * Answers the one question nothing else in the system can: did our persistence
+ * Called by the persistence extension, which is the only code that knows.
+ * Silently ignored when the permission has moved on — a write whose document
+ * was forgotten, or whose permission was superseded, has nobody to report to.
+ * @param documentName - Full Yjs document name.
+ * @param outcome - What the write did.
+ */
+export function noteStoreOutcome(documentName: string, outcome: StoreOutcome): void {
+  const record = armed.get(documentName);
+  if (!record || !record.ran) return;
+  record.outcome = outcome;
+}
+
+/**
+ * Hand the permission back, and learn what became of the attempt.
+ *
+ * Answers two questions nothing else in the system can. Did our persistence
  * hook actually run? A store can resolve without it having run at all, because
  * `hooks()` chains the extensions with `.then` and an upstream rejection skips
  * every hook behind it — which is exactly what the Redis extension does when
  * another instance holds the cross-instance store lock. The library catches
- * that and resolves normally, so the outcome is indistinguishable from a
- * successful store unless the arm is still sitting there.
+ * that and resolves normally, so from outside it looks like a completed store.
+ * And if it did run, what did its write do? That is the question the gate needs
+ * and the one it used to answer by asking whether the document is dirty, which
+ * is a different question with a different answer.
  * @param documentName - Full Yjs document name.
  * @param arm - What {@link armTimedStore} returned for this attempt.
- * @returns True when this arm was still unspent, meaning our hook never ran.
- *   False when it was consumed, superseded by another writer, or the document
- *   was forgotten in the meantime.
+ * @returns Whether our extension ran for this attempt, and what its write did.
  */
-export function releaseTimedStoreArm(documentName: string, arm: StoreArm): boolean {
-  if (armed.get(documentName) !== arm.token) return false;
+export function releaseTimedStoreArm(documentName: string, arm: StoreArm): ArmResult {
+  const record = armed.get(documentName);
+  // Not ours any more: superseded by another writer, or the document was
+  // forgotten. Either way this attempt has nothing to report and nothing to
+  // take back, and "no answer" must not be mistaken for "it worked".
+  if (!record || record.token !== arm.token) return { ran: false };
   armed.delete(documentName);
-  return true;
+  return record.outcome === undefined
+    ? { ran: record.ran }
+    : { ran: record.ran, outcome: record.outcome };
 }
 
 /**

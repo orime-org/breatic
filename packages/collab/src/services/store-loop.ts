@@ -95,7 +95,7 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
         // change-triggered store, which is exactly the write this design
         // exists to prevent. Handing back the token rather than deleting by
         // name is what keeps this from taking the unload gate's arm.
-        const neverRan = releaseTimedStoreArm(entry.name, arm);
+        const result = releaseTimedStoreArm(entry.name, arm);
 
         if (outcome.error) {
           logger.error(
@@ -108,11 +108,11 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
         // next round picks it up. Recorded because a document that never wins
         // the cross-instance lock, or never finishes a write, is invisible
         // otherwise — it just quietly stays dirty round after round.
-        if (neverRan || outcome.timedOut) {
+        if (result.outcome !== "stored" && result.outcome !== "refused") {
           logger.warn(
             {
               documentName: entry.name,
-              outcome: neverRan ? "not-reached" : "still-in-flight",
+              outcome: result.ran ? "still-in-flight" : "not-reached",
             },
             "collab_store_round_document_unconfirmed",
           );

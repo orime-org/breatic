@@ -23,6 +23,7 @@ import {
   consumeTimedStoreArm,
   forgetDocument,
   noteDocumentChange,
+  noteStoreOutcome,
 } from "@collab/services/store-tracker.js";
 
 const DIRTY = "project-p/document-dirty";
@@ -49,10 +50,11 @@ function harness(names: string[], storeNow?: (name: string) => Promise<void>) {
     storeNow: async ({ name }) => {
       stored.push(name);
       // The real path reaches the persistence extension, which spends the arm
-      // before it writes. Standing in for that is what separates an ordinary
-      // round from one whose hook chain was aborted upstream — a stub that
-      // never spends the arm makes every test look like the latter.
-      consumeTimedStoreArm(name);
+      // and then reports what its write did. Standing in for both is what
+      // separates an ordinary round from one whose chain was aborted upstream
+      // or whose write never came back — a stub that only spends the arm makes
+      // every round look unconfirmed.
+      if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "stored");
       if (storeNow) await storeNow(name);
     },
   });

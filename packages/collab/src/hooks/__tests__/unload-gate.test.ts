@@ -29,6 +29,7 @@ import {
   forgetDocument,
   hasUnsavedContent,
   noteDocumentChange,
+  noteStoreOutcome,
   beginStore,
 } from "@collab/services/store-tracker.js";
 
@@ -71,8 +72,12 @@ function harness(outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands")
       // never came back. That is what a hung database looks like, and it is a
       // different thing from the chain never reaching us.
       if (outcome === "hangs") return new Promise<void>(() => {});
-      if (outcome === "fails") return;
+      if (outcome === "fails") {
+        noteStoreOutcome(name, "refused");
+        return;
+      }
       commitStore(name, beginStore(name));
+      noteStoreOutcome(name, "stored");
     },
     writeRescue: async ({ documentName, state }) => {
       rescued.push({ documentName, state });
@@ -432,7 +437,9 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
-      storeNow: async ({ name }) => void consumeTimedStoreArm(name),
+      storeNow: async ({ name }) => {
+        if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
+      },
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async (rescuePath, note) => void notes.push({ rescuePath, note }),
       deleteRescue: async () => {},
@@ -469,7 +476,9 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
-      storeNow: async ({ name }) => void consumeTimedStoreArm(name),
+      storeNow: async ({ name }) => {
+        if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
+      },
       writeRescue: async () => {
         throw new Error("the rescue directory is gone");
       },

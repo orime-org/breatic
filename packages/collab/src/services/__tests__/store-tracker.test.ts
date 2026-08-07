@@ -11,6 +11,7 @@ import {
   forgetDocument,
   hasUnsavedContent,
   noteDocumentChange,
+  noteStoreOutcome,
   releaseTimedStoreArm,
 } from "@collab/services/store-tracker.js";
 
@@ -106,7 +107,7 @@ describe("the timed-store arm", () => {
     const arm = armTimedStore(DOC);
     forgetDocument(DOC);
     expect(consumeTimedStoreArm(DOC)).toBe(false);
-    expect(releaseTimedStoreArm(DOC, arm)).toBe(false);
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false });
   });
 
   it("arming twice still only permits one store", () => {
@@ -131,28 +132,22 @@ describe("giving an arm back", () => {
     const mine = armTimedStore(DOC);
     const theirs = armTimedStore(DOC);
 
-    // My attempt gave up. The arm sitting there is no longer mine.
-    expect(releaseTimedStoreArm(DOC, mine)).toBe(false);
+    // My attempt gave up. The arm sitting there is no longer mine, so I learn
+    // nothing about it — and "nothing" must not read as "it worked".
+    expect(releaseTimedStoreArm(DOC, mine)).toEqual({ ran: false });
 
     // So theirs survived, and their store still gets to write.
     expect(consumeTimedStoreArm(DOC)).toBe(true);
-    expect(releaseTimedStoreArm(DOC, theirs)).toBe(false);
+    expect(releaseTimedStoreArm(DOC, theirs)).toEqual({ ran: true });
   });
 
-  it("reports true when the arm was never spent — nothing reached us", () => {
-    // The one signal that separates "the database refused" from "an upstream
-    // extension aborted the chain, so our hook never ran at all".
+  it("takes the permission out of circulation when nothing spent it", () => {
+    // A leftover would otherwise be spent by the library's own
+    // change-triggered store, which is the one write this design prevents.
     const arm = armTimedStore(DOC);
 
-    expect(releaseTimedStoreArm(DOC, arm)).toBe(true);
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false });
     expect(consumeTimedStoreArm(DOC)).toBe(false);
-  });
-
-  it("reports false once the store consumed it — our hook did run", () => {
-    const arm = armTimedStore(DOC);
-    consumeTimedStoreArm(DOC);
-
-    expect(releaseTimedStoreArm(DOC, arm)).toBe(false);
   });
 
   it("does not touch another document's arm", () => {
@@ -162,5 +157,82 @@ describe("giving an arm back", () => {
     releaseTimedStoreArm(DOC, arm);
 
     expect(consumeTimedStoreArm(OTHER)).toBe(true);
+  });
+});
+
+describe("what an arm brings back", () => {
+  // Gate 2 round 3 findings 8 and 6. The unload gate used to answer "did my
+  // write land?" by asking "does this document hold anything unstored right
+  // now?" — a different question with a different answer. An edit arriving
+  // while the write was in flight made a landed write read as refused; a
+  // document forgotten mid-attempt made a write that never happened read as
+  // stored, and the gate then deleted the rescue file holding the only copy.
+  //
+  // The arm already identifies one attempt. It carries that attempt's result
+  // back to whoever issued it, so the question can be asked precisely.
+
+  it("says our extension never ran when nothing consumed it", () => {
+    const arm = armTimedStore(DOC);
+
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false });
+  });
+
+  it("says it ran but has not finished when the store is still in flight", () => {
+    const arm = armTimedStore(DOC);
+    consumeTimedStoreArm(DOC);
+
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: true });
+  });
+
+  it("brings back that the write landed", () => {
+    const arm = armTimedStore(DOC);
+    consumeTimedStoreArm(DOC);
+    noteStoreOutcome(DOC, "stored");
+
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: true, outcome: "stored" });
+  });
+
+  it("brings back that the database refused it", () => {
+    const arm = armTimedStore(DOC);
+    consumeTimedStoreArm(DOC);
+    noteStoreOutcome(DOC, "refused");
+
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: true, outcome: "refused" });
+  });
+
+  it("still says the write landed even though an edit arrived during it", () => {
+    // The case that used to read as "refused". Both are true at once: the
+    // write landed, AND the document now holds something newer that it does
+    // not contain. Two facts, two questions.
+    noteDocumentChange(DOC);
+    const arm = armTimedStore(DOC);
+    consumeTimedStoreArm(DOC);
+    const ticket = beginStore(DOC);
+    noteDocumentChange(DOC);
+    commitStore(DOC, ticket);
+    noteStoreOutcome(DOC, "stored");
+
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: true, outcome: "stored" });
+    expect(hasUnsavedContent(DOC)).toBe(true);
+  });
+
+  it("brings back nothing for a document forgotten mid-attempt", () => {
+    // The case that used to read as "stored" — and had the gate delete the
+    // rescue file. An arm from a lifetime that has ended answers nothing.
+    const arm = armTimedStore(DOC);
+    consumeTimedStoreArm(DOC);
+    noteStoreOutcome(DOC, "stored");
+    forgetDocument(DOC);
+
+    expect(releaseTimedStoreArm(DOC, arm)).toEqual({ ran: false });
+  });
+
+  it("ignores an outcome recorded against somebody else's arm", () => {
+    const mine = armTimedStore(DOC);
+    consumeTimedStoreArm(DOC);
+    armTimedStore(DOC);
+    noteStoreOutcome(DOC, "stored");
+
+    expect(releaseTimedStoreArm(DOC, mine)).toEqual({ ran: false });
   });
 });

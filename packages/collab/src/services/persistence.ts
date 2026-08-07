@@ -34,6 +34,7 @@ import {
   beginStore,
   commitStore,
   consumeTimedStoreArm,
+  noteStoreOutcome,
 } from "@collab/services/store-tracker.js";
 
 const logger = createLogger("collab-persistence");
@@ -200,6 +201,11 @@ export function createPersistenceExtension(
       try {
         await store({ documentName, state });
         commitStore(documentName, ticket);
+        // Told to whoever asked for this store, not inferred by them. "Did my
+        // write land" and "does this document hold unstored content" are
+        // different questions, and they disagree whenever an edit arrives
+        // while the write is in flight.
+        noteStoreOutcome(documentName, "stored");
       } catch (err) {
         // Deliberately not rethrown. Letting it escape makes hocuspocus skip
         // `afterStoreDocument`, which leaves the cross-instance lock held
@@ -207,6 +213,7 @@ export function createPersistenceExtension(
         // last connection went away mid-write. Correctness lives in the
         // counters, which stay untouched on failure — so the next round, and
         // the unload gate, both still see this content as outstanding.
+        noteStoreOutcome(documentName, "refused");
         logger.error({ err, documentName, bytes: state.length }, "collab_store_failed");
       }
     },
