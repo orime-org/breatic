@@ -39,7 +39,7 @@
  * ## Every heartbeat is written, and there are only heartbeats
  *
  * The meta document carries ONE kind of client traffic: the awareness clock
- * renewal every 15 seconds. Carets live in the canvas and document files, never
+ * renewal. Carets live in the canvas and document files, never
  * here (see the package's CLAUDE.md — publishing a caret onto a meta document
  * is a bug), so there is no burst of cursor traffic to rate-limit and no reason
  * to skip a beat. Each one moves the timestamp, and the widest gap between two
@@ -101,6 +101,17 @@ export function markOnline(args: {
     entry.set("id", args.userId);
     entry.set("online", true);
     entry.set("lastSeenAt", args.now);
+    // Anything else on this record is from a version that put more here, and
+    // it is not merely untidy: a name written months ago outlives every rename
+    // since, and the reason this record holds no name is that a copy cannot be
+    // kept true. Measured in dev, records still carried `name` and `avatarUrl`
+    // from before #1886, because writing three fields onto an existing map
+    // leaves the rest of it exactly where it was.
+    for (const key of [...entry.keys()]) {
+      if (key !== "id" && key !== "online" && key !== "lastSeenAt") {
+        entry.delete(key);
+      }
+    }
     if (!(existing instanceof Y.Map)) users.set(args.userId, entry);
   });
 }
@@ -154,7 +165,7 @@ export function touchLastSeen(args: {
  * stamp nobody has touched therefore means nobody anywhere is holding them.
  *
  * The threshold has to clear the widest real gap between two heartbeats. That
- * is not 15 seconds: a browser throttles a hidden tab's timers to once a minute
+ * is not the awake rate: a browser throttles a hidden tab's timers to once a minute
  * (Chrome, after five minutes hidden), while the socket stays open because the
  * keepalive pong never runs JavaScript. So a connected person can legitimately
  * look a minute stale, and a threshold at 60s would flip them on every cycle —

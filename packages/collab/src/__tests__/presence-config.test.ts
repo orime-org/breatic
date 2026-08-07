@@ -14,13 +14,19 @@
  * test because it lives between a config value and a browser behaviour rather
  * than inside any function.
  *
- * The rate that binds is the surprising one. A tab hidden for more than five
- * minutes has its timers checked once a MINUTE (Chrome 88 onward,
+ * An awake tab beats every 18 seconds — measured in Chrome, three consecutive
+ * gaps of 17981/18000/18000ms. y-protocols renews after 15 seconds of silence
+ * but only checks on a 3-second tick, and the tick at 15 seconds lands a hair
+ * under the mark every time, so it waits for the next one. The library's own
+ * "every 15 seconds" is therefore a floor, not the interval.
+ *
+ * The rate that binds is slower still, and it is the surprising one. A tab
+ * hidden for more than five minutes has its timers checked once a MINUTE
+ * (Chrome 88 onward,
  * https://developer.chrome.com/blog/timer-throttling-in-chrome-88), while its
  * socket stays open the whole time because the keepalive pong is answered by
- * the network stack and never runs JavaScript. So "connected" and "beating
- * every 15 seconds" are not the same thing, and the threshold has to be built
- * for the slower one.
+ * the network stack and never runs JavaScript. So "connected" and "beating"
+ * are not the same rate, and the threshold has to be built for the slowest.
  */
 
 import { describe, it, expect } from "vitest";
@@ -29,9 +35,9 @@ import { getCollabConfig } from "@collab/config";
 
 /**
  * How often a browser renews its awareness clock while the tab is hidden and
- * its timers are throttled. The library renews after 15s of silence, so an
- * awake tab beats every 15s; this is that same renewal seen through a
- * once-a-minute timer, and it is the widest gap a connected person can show.
+ * its timers are throttled: the same renewal as an awake tab (measured at 18s),
+ * seen through a once-a-minute timer. The widest gap a connected person can
+ * show, and therefore the one number the threshold has to clear.
  */
 const BACKGROUND_BEAT_MS = 60_000;
 

@@ -199,7 +199,7 @@ describe('useRosterRefreshOnJoin', () => {
   it('does not re-fetch when the map is rebuilt with the same flags', () => {
     // A fresh Map arrives on every heartbeat, since the timestamp inside every
     // record moves. Re-fetching on identity rather than on the flag would hit
-    // the endpoint every 15 seconds per person in the project.
+    // the endpoint on every heartbeat of every person in the project.
     const { rerender } = mount(presence({ a: true, b: true }));
 
     rerender({ u: presence({ b: true, a: true }) });

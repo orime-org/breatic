@@ -28,7 +28,7 @@ max_debounce: 10000
 #
 # The threshold must clear the widest real gap between two heartbeats. Every
 # heartbeat is written, so that gap is exactly the browser's beat interval —
-# and the slowest beat is NOT the usual 15s: a hidden browser tab has its
+# and the slowest beat is NOT the awake one: a hidden browser tab has its
 # timers throttled to once a minute while its socket stays open (Chrome, after
 # 5 minutes hidden), so a connected person can legitimately look ~60s stale.
 # 60000 would sit exactly on that cycle and flip them once a minute forever;
@@ -65,7 +65,7 @@ max_connections_per_document: 100
 #   pending documents    library default 100    fires first        -> derived
 #   queued frame count   library default 1000   fires at ~500 docs -> derived
 #   queued frame bytes   library default 5 MB   ~390 KB used       -> left alone
-#   idle timeout         library default 60 s   client beats at 15s -> left alone
+#   idle timeout         library default 60 s   client beats well inside -> left alone
 #
 # The byte ceiling is deliberately left at the library's value: it is the one
 # that actually bounds memory, so it stays as a real guard behind the two

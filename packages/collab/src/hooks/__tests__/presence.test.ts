@@ -74,6 +74,34 @@ describe("presence — the server records who is here", () => {
     const entry = doc.getMap("users").get(ALICE) as Y.Map<unknown>;
     expect([...entry.keys()].sort()).toEqual(["id", "lastSeenAt", "online"]);
   });
+
+  it("strips fields an older version left on the record", () => {
+    // Writing three fields onto an existing map leaves everything else alone,
+    // so a record made before #1886 kept its name and avatar for good. Measured
+    // in dev: every record in a real project still carried both. A name that
+    // outlives every rename since is the exact bug this record shape removes,
+    // so arriving has to clear it rather than write around it.
+    const doc = emptyMetaDoc();
+    doc.transact(() => {
+      const legacy = new Y.Map<unknown>();
+      legacy.set("id", ALICE);
+      legacy.set("online", false);
+      legacy.set("lastSeenAt", 1);
+      legacy.set("name", "A name from months ago");
+      legacy.set("avatarUrl", "https://example.test/old.png");
+      doc.getMap("users").set(ALICE, legacy);
+    });
+
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
+
+    const entry = doc.getMap("users").get(ALICE) as Y.Map<unknown>;
+    expect([...entry.keys()].sort()).toEqual(["id", "lastSeenAt", "online"]);
+    expect(readPresence(doc, ALICE)).toEqual({
+      id: ALICE,
+      online: true,
+      lastSeenAt: 1_000,
+    });
+  });
 });
 
 describe("presence — the timestamp tracks the heartbeat", () => {

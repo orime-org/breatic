@@ -155,7 +155,7 @@ export function recordPresenceOnConnect(
  * a restart made every ghost look alive — and the document then stayed loaded
  * for as long as anyone was in it, so the pass never came round again. Riding
  * the heartbeat turns the threshold into a delay instead of a single missed
- * chance, and costs one walk of a per-project map every 15 seconds per person.
+ * chance, and costs one walk of a per-project map per heartbeat per person.
  * @param payload - The `onAwarenessUpdate` hook payload.
  * @param payload.documentName - Document the frame was for.
  * @param payload.document - That document.

@@ -26,7 +26,7 @@ const collabConfigSchema = z.object({
   //
   // It has to clear the WIDEST real gap between two heartbeats. Every heartbeat
   // is written, so that gap is the browser's beat interval — and the slowest
-  // beat is not the usual 15s: a hidden tab has its timers throttled to once a
+  // beat is not the awake one: a hidden tab has its timers throttled to once a
   // minute while its socket stays open, so a connected person can legitimately
   // look ~60s stale. 60_000 would sit exactly on that cycle and flip them once
   // a minute forever; 90_000 clears it by half again. Pinned by a test so the
