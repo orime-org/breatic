@@ -86,16 +86,6 @@ export interface UnloadGateDeps {
   deleteRescue(path: string): Promise<void>;
   /** Tell operations about a rescued document. */
   alert(failure: StoreFailureAlert): Promise<void>;
-  /**
-   * Whether the process is shutting down, which reverses the order.
-   *
-   * A flag rather than a separate shutdown drain, because the drains run in
-   * parallel (`Promise.allSettled`), so a drain that settled documents would
-   * race the one that destroys the server — and both would be walking the
-   * same documents. Setting this before the drains start makes the ordinary
-   * unload path, which `server.destroy()` drives anyway, do the right thing.
-   */
-  isShuttingDown?(): boolean;
 }
 
 /** What hocuspocus hands the unload hook. */
@@ -114,8 +104,13 @@ export interface ShutdownPayload extends UnloadPayload {
 export interface UnloadGate {
   /** Normal unload: try the database first, fall back to disk. */
   beforeUnloadDocument(payload: UnloadPayload): Promise<void>;
-  /** Shutdown: write to disk first, then try the database. */
+  /** Shutdown: write one document to disk first, then try the database. */
   settleForShutdown(payload: ShutdownPayload): Promise<void>;
+  /**
+   * Shutdown: settle everything still in memory, before anything is destroyed.
+   * @param entries - Every document the instance currently holds.
+   */
+  settleAllForShutdown(entries: Iterable<UnloadPayload>): Promise<void>;
 }
 
 /**
@@ -124,6 +119,16 @@ export interface UnloadGate {
  * @returns The gate in both its orders.
  */
 export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
+  /**
+   * Documents whose one attempt has already been spent on the way out.
+   *
+   * `server.destroy()` runs after the shutdown settle and drives the ordinary
+   * unload path over the same documents. Without this they would get a second
+   * rescue file and a second alert for content that has already been settled —
+   * and "one attempt" was a decision, not an accident.
+   */
+  const settledForShutdown = new Set<string>();
+
   /**
    * Make one store attempt, giving up after the configured timeout.
    *
@@ -255,10 +260,7 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   return {
     beforeUnloadDocument: async (payload): Promise<void> => {
       try {
-        if (deps.isShuttingDown?.()) {
-          await settleForShutdown(payload);
-          return;
-        }
+        if (settledForShutdown.has(payload.documentName)) return;
         await settleNormally(payload);
       } catch (err) {
         // Belt and braces. A throw escaping here would abort the unload and
@@ -276,11 +278,33 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     },
 
     settleForShutdown: async (payload): Promise<void> => {
+      settledForShutdown.add(payload.documentName);
       try {
         await settleForShutdown(payload);
       } catch (err) {
         logger.error({ err, documentName: payload.documentName }, "collab_shutdown_settle_failed");
       }
+    },
+
+    settleAllForShutdown: async (entries): Promise<void> => {
+      // Concurrently, not one after another. Each document's attempt is
+      // bounded, but a hundred of them in series is a hundred times that, and
+      // the process is on a deadline it does not control. They are independent
+      // writes of independent rows; the pool queues them.
+      await Promise.all(
+        Array.from(entries, async (payload) => {
+          settledForShutdown.add(payload.documentName);
+          try {
+            await settleForShutdown(payload);
+          } catch (err) {
+            // One document must not take the rest of the shutdown with it.
+            logger.error(
+              { err, documentName: payload.documentName },
+              "collab_shutdown_settle_failed",
+            );
+          }
+        }),
+      );
     },
   };
 }

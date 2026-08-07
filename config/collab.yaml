@@ -99,6 +99,14 @@ store_interval_ms: 10000
 # would lose the rescue file as well as the database write.
 store_final_attempt_timeout_ms: 3000
 
+# How long the whole shutdown settle gets, across every document at once.
+# On the way out each document still in memory gets its one attempt, and this
+# bounds the lot of them so a hung database cannot hold the process past the
+# window the platform gives it. Documents settle concurrently, so this is a
+# ceiling on the phase rather than the sum of `store_final_attempt_timeout_ms`
+# over however many documents happened to be open.
+store_shutdown_settle_budget_ms: 2000
+
 # Where content goes when even the final attempt fails. Relative paths are
 # resolved from the monorepo root; in Docker this sits under the mounted
 # ./logs volume so the files survive the container. They are NEVER removed

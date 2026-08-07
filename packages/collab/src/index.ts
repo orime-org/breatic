@@ -43,8 +43,13 @@ initLogger("collab");
 const logger = createLogger("main");
 
 /**
- * Overall graceful-shutdown deadline (ms). Kept under the dev `tsx watch` 5s
- * force-kill window so a restart never races a slow drain holding :1234.
+ * Deadline (ms) for the teardown drains that follow the store settle.
+ *
+ * It no longer has to cover the listen socket: that is released before the
+ * settle now, so a dev `tsx watch` restart can rebind :1234 immediately rather
+ * than waiting behind anything. What it still guarantees is that a hung drain
+ * (a Redis quit that never returns, say) cannot hold the process open — and by
+ * the time it can bite, every rescue file and its log are already on disk.
  */
 const SHUTDOWN_DEADLINE_MS = 4000;
 
@@ -154,7 +159,7 @@ async function main(): Promise<void> {
   }
 
   // Create and start Hocuspocus server
-  const { server, hocuspocus, connectionRegistry, handlingSweeper, storeLoop, markShuttingDown } =
+  const { server, hocuspocus, connectionRegistry, handlingSweeper, storeLoop, settleAllForShutdown } =
     await createCollabServer({
     collabRedisUrl: REDIS_COLLAB_URL,
     port: env.COLLAB_PORT,
@@ -335,16 +340,37 @@ async function main(): Promise<void> {
    */
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutting down...");
-    // Before any drain runs. The drains go in parallel, so this cannot be a
-    // drain of its own — it would race `server.destroy()`, and both would be
-    // walking the same documents. The flag makes the unload path that
-    // destroy() drives anyway write each document's rescue file BEFORE
-    // attempting the database, which matters because one attempt can outlast
-    // the whole budget below (#40).
-    markShuttingDown();
     // Stop starting new store rounds. A round already in flight finishes; the
-    // unload gate settles whatever it did not reach.
+    // settle below covers whatever it did not reach.
     storeLoop.stop();
+
+    // Free :1234 before anything slow runs, so a restart can rebind straight
+    // away rather than waiting behind the settle. `runGracefulShutdown` asks
+    // for the same release below and swallows the error from closing twice.
+    try {
+      server.httpServer.close();
+    } catch {
+      // Best effort — a release error must not stop the settle below.
+    }
+
+    // Every document still in memory gets its one attempt, HERE, before
+    // anything is destroyed (#40). It cannot be one of the drains below —
+    // those run in parallel, so it would race `server.destroy()` over the same
+    // documents — and it cannot be left to the library's own unload either:
+    // `runDestroy()` waits for the document count to reach zero, while
+    // `shouldUnloadDocument` stays false for as long as a document's save mutex
+    // is held. One store still in flight from the last timed round meant that
+    // document never unloaded, never reached the gate, and got no rescue file
+    // at all before the deadline fired.
+    await settleAllForShutdown();
+
+    // Onto disk now, not at the end. What the settle just recorded is the
+    // whole point of it: which documents were rescued, where their files are,
+    // and who could not be told. Everything after this line is teardown, and
+    // if the platform loses patience and kills the process mid-drain, those
+    // logs are the part that must already be safe.
+    await flushLogger();
+
     await runGracefulShutdown({
       // Release the WS listen socket first so a restart can rebind :1234
       // immediately, instead of holding it behind the drains below — the old

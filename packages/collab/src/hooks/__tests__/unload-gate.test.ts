@@ -263,43 +263,87 @@ describe("the unload gate — shutdown order", () => {
   });
 });
 
-describe("the unload gate — which order it picks", () => {
-  it("uses the shutdown order once the process is shutting down", async () => {
-    // The graceful-shutdown drains run in parallel, so a separate "settle
-    // everything" drain would race the one destroying the server, with both
-    // walking the same documents. The flag makes the ordinary unload path —
-    // which server.destroy() drives anyway — do the right thing instead.
-    const order: string[] = [];
-    let shuttingDown = false;
+describe("settling every document on the way out", () => {
+  // Gate 2 round 2 finding 7. This used to ride on the library's own unload:
+  // a flag made `beforeUnloadDocument` pick the shutdown order, and
+  // `server.destroy()` was expected to drive it. It does not, reliably.
+  // `runDestroy()` only resolves once the document count reaches zero, and
+  // `shouldUnloadDocument` is false the whole time a document's save mutex is
+  // held — so one store still in flight from the last timed round meant that
+  // document never unloaded, never reached the gate, and got no rescue file at
+  // all before the deadline fired and the process exited. Settling is driven
+  // from here now, before anything is destroyed, so it does not depend on the
+  // library deciding to let a document go.
+
+  it("settles every document that has outstanding content", async () => {
+    const { gate, rescued } = harness("fails");
+    const other = "project-11111111-1111-4111-8111-111111111111/document-2";
+    forgetDocument(other);
+    noteDocumentChange(DOC);
+    noteDocumentChange(other);
+
+    await gate.settleAllForShutdown([
+      { documentName: DOC, document: documentWithText("one") },
+      { documentName: other, document: documentWithText("two") },
+    ]);
+
+    expect(rescued.map((r) => r.documentName).sort()).toEqual([DOC, other].sort());
+    forgetDocument(other);
+  });
+
+  it("skips the ones with nothing outstanding", async () => {
+    const { gate, rescued, storeCalls } = harness("fails");
+
+    await gate.settleAllForShutdown([
+      { documentName: DOC, document: documentWithText("x") },
+    ]);
+
+    expect(rescued).toHaveLength(0);
+    expect(storeCalls).toHaveLength(0);
+  });
+
+  it("does not let one document stop the others", async () => {
+    const other = "project-11111111-1111-4111-8111-111111111111/document-2";
+    forgetDocument(other);
     const rescued: string[] = [];
     const gate = createUnloadGate({
       finalAttemptTimeoutMs: 50,
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
-      storeNow: async ({ name }) => {
-        order.push("store");
-        if (!consumeTimedStoreArm(name)) return;
-        commitStore(name, beginStore(name));
-      },
+      storeNow: async () => {},
       writeRescue: async ({ documentName }) => {
-        order.push("rescue");
+        if (documentName === DOC) throw new Error("the rescue directory is gone");
         rescued.push(documentName);
         return "/rescue/x.yjs";
       },
       deleteRescue: async () => {},
       alert: async () => {},
-      isShuttingDown: () => shuttingDown,
     });
-
     noteDocumentChange(DOC);
-    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
-    expect(order).toEqual(["store"]);
+    noteDocumentChange(other);
 
-    order.length = 0;
-    shuttingDown = true;
-    forgetDocument(DOC);
+    await gate.settleAllForShutdown([
+      { documentName: DOC, document: documentWithText("one") },
+      { documentName: other, document: documentWithText("two") },
+    ]);
+
+    expect(rescued).toEqual([other]);
+    forgetDocument(other);
+  });
+
+  it("does not settle a document twice when the library then unloads it", async () => {
+    // `server.destroy()` runs after this and drives the ordinary unload path
+    // over the same documents. Settling again would write a second rescue file
+    // and send a second alert for content that has already had its one attempt.
+    const { gate, rescued, alerted } = harness("fails");
     noteDocumentChange(DOC);
+
+    await gate.settleAllForShutdown([
+      { documentName: DOC, document: documentWithText("x") },
+    ]);
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
-    expect(order).toEqual(["rescue", "store"]);
+
+    expect(rescued).toHaveLength(1);
+    expect(alerted).toHaveLength(1);
   });
 });
 

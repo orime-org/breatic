@@ -46,6 +46,7 @@ const collabConfigSchema = z.object({
   // so a failed write is retried and has no consequence for the editor.
   store_interval_ms: z.number().int().positive().default(10_000),
   store_final_attempt_timeout_ms: z.number().int().positive().default(3_000),
+  store_shutdown_settle_budget_ms: z.number().int().positive().default(2_000),
   store_rescue_dir: z.string().default("logs/collab/rescue"),
   store_alert_email: z.string().default(""),
   store_alert_window_ms: z.number().int().positive().default(600_000),

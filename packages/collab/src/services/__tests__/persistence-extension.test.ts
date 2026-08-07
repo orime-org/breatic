@@ -23,7 +23,7 @@ vi.mock("@breatic/core", () => ({
   createLogger: () => mockLogger,
 }));
 
-import { createPersistenceExtension } from "@collab/services/persistence.js";
+import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
 import {
   armTimedStore,
   forgetDocument,
@@ -173,5 +173,43 @@ describe("createPersistenceExtension — what a store leaves behind", () => {
     await extension.onStoreDocument({ documentName: DOC, document: documentWithText("hello") });
 
     expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("the origin a timed store carries", () => {
+  // Gate 2 round 2 finding 11. @hocuspocus/extension-redis is the only reader
+  // of `lastTransactionOrigin` in the whole library, and it reads it for one
+  // purpose: `afterStoreDocument` waits `disconnectDelay` (1000ms by default)
+  // whenever the source is "local". The library holds the save mutex across
+  // both store hooks, so copying the library's own "local" origin cost every
+  // timed store a second of held mutex, every round, forever — and ate a
+  // quarter of the whole shutdown budget on the way out.
+  //
+  // The delay exists for a direct connection disconnecting, where peers need a
+  // beat to receive the sync before the document unloads. A timed store is not
+  // an unload. `isTransactionOrigin` recognises only "connection", "redis" and
+  // "local", so anything else makes that check fall through — which is the
+  // whole mechanism, and why this asserts on the source rather than on a clock.
+
+  it("is not one the library recognises, so nothing waits on it", async () => {
+    const seen: Array<{ lastTransactionOrigin: { source: string } }> = [];
+    const document = { name: DOC, getConnectionsCount: () => 1 };
+    const driver = {
+      documents: new Map([[DOC, document]]),
+      storeDocumentHooks: (
+        _document: unknown,
+        payload: { lastTransactionOrigin: { source: string } },
+      ): unknown => {
+        seen.push(payload);
+        return Promise.resolve();
+      },
+    };
+
+    await storeDocumentNow(driver, DOC);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.lastTransactionOrigin.source).not.toBe("local");
+    expect(seen[0]?.lastTransactionOrigin.source).not.toBe("redis");
+    expect(seen[0]?.lastTransactionOrigin.source).not.toBe("connection");
   });
 });

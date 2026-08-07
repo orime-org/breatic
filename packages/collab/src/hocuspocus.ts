@@ -54,6 +54,7 @@ import { createPersistenceExtension, storeDocumentNow } from "@collab/services/p
 import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js";
 import { createStoreLoop, type StoreLoop } from "@collab/services/store-loop.js";
 import { createStoreAlerter } from "@collab/services/store-alert.js";
+import { runWithTimeout } from "@collab/services/with-timeout.js";
 import { deleteRescueFile, writeRescueFile } from "@collab/services/rescue-file.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { getCollabConfig } from "@collab/config.js";
@@ -89,7 +90,7 @@ export interface CollabServerInfra {
  * @param infra - Database and Redis connection details
  * @returns Configured Server + Hocuspocus instances + the cross-instance connection registry and the handling-lease sweeper (caller stops both on shutdown)
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; handlingSweeper: HandlingSweeper; storeLoop: StoreLoop; markShuttingDown: () => void }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; handlingSweeper: HandlingSweeper; storeLoop: StoreLoop; settleAllForShutdown: () => Promise<void> }> {
   const cfg = getCollabConfig();
 
   // Handling-lease budgets (#1580 #2): default + per-operation overrides,
@@ -166,7 +167,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // attempt goes through the instance. The hooks below run long after that,
   // so reading it late is safe.
   const storeGate: { current?: UnloadGate } = {};
-  let shuttingDown = false;
 
   const wsServer = new Server({
     port: infra.port,
@@ -491,7 +491,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }),
     deleteRescue: deleteRescueFile,
     alert: (failure) => storeAlerter.alert(failure),
-    isShuttingDown: (): boolean => shuttingDown,
   });
   const storeLoop = createStoreLoop({
     intervalMs: cfg.store_interval_ms,
@@ -508,12 +507,35 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     connectionRegistry,
     handlingSweeper,
     storeLoop,
-    // Called by the entry before the shutdown drains start. The drains run in
-    // parallel, so a drain that settled documents itself would race the one
-    // destroying the server; flipping this makes the ordinary unload path,
-    // which server.destroy() drives anyway, write the rescue file first.
-    markShuttingDown: (): void => {
-      shuttingDown = true;
+    // Called by the entry BEFORE anything is destroyed (#40). It cannot be one
+    // of the graceful-shutdown drains: those run in parallel, so it would race
+    // `server.destroy()` over the same documents. And it cannot be left to the
+    // library's own unload either — `runDestroy()` waits for the document count
+    // to reach zero, while `shouldUnloadDocument` stays false for as long as a
+    // document's save mutex is held, so one store still in flight from the last
+    // timed round meant that document never unloaded, never reached the gate,
+    // and got no rescue file before the deadline fired.
+    settleAllForShutdown: async (): Promise<void> => {
+      const gate = storeGate.current;
+      if (!gate) return;
+      // Bounded as a phase rather than per document. The documents settle
+      // concurrently, so a hung database costs one budget, not one per open
+      // document — and the process is on a deadline it does not control.
+      const outcome = await runWithTimeout(
+        gate.settleAllForShutdown(
+          Array.from(wsServer.hocuspocus.documents, ([documentName, document]) => ({
+            documentName,
+            document: document as unknown as Y.Doc,
+          })),
+        ),
+        cfg.store_shutdown_settle_budget_ms,
+      );
+      if (outcome.timedOut) {
+        logger.error(
+          { budgetMs: cfg.store_shutdown_settle_budget_ms },
+          "collab_shutdown_settle_budget_exhausted",
+        );
+      }
     },
   };
 }

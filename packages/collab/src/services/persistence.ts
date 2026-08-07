@@ -89,6 +89,28 @@ export interface StorableDocument {
   getConnectionsCount(): number;
 }
 
+/**
+ * Says who asked for this store, in a word the library does not recognise.
+ *
+ * @hocuspocus/extension-redis is the only reader of `lastTransactionOrigin`
+ * anywhere in the library, and it reads it for one purpose: `afterStoreDocument`
+ * waits `disconnectDelay` (1000ms by default) whenever the source is "local".
+ * The library holds the document's save mutex across both store hooks, so
+ * copying its own "local" origin cost every timed store a second of held mutex,
+ * every round, forever — and a quarter of the whole shutdown budget on the way
+ * out.
+ *
+ * That delay is for a direct connection disconnecting, where peers need a beat
+ * to receive the sync before the document unloads. A timed store is not an
+ * unload, and the delay that guards the actual unload — the Redis extension's
+ * own `beforeUnloadDocument` — is untouched by this.
+ *
+ * `isTransactionOrigin` recognises only "connection", "redis" and "local", so
+ * a source outside that set makes the check fall through. Naming it after
+ * ourselves is what makes it obvious in a log where the store came from.
+ */
+const TIMED_STORE_ORIGIN = { source: "breatic-timed-store" } as const;
+
 /** What {@link storeDocumentNow} hands the library's store entry. */
 export interface StorePayload {
   instance: unknown;
@@ -96,7 +118,7 @@ export interface StorePayload {
   document: StorableDocument;
   documentName: string;
   lastContext: Record<string, unknown>;
-  lastTransactionOrigin: { source: "local"; context: Record<string, unknown> };
+  lastTransactionOrigin: typeof TIMED_STORE_ORIGIN;
 }
 
 /**
@@ -146,7 +168,7 @@ export async function storeDocumentNow(
       document,
       documentName,
       lastContext: {},
-      lastTransactionOrigin: { source: "local", context: {} },
+      lastTransactionOrigin: TIMED_STORE_ORIGIN,
     },
     true,
   );
