@@ -9,7 +9,6 @@
  * always-on skill content, and three-layer memory context.
  */
 
-import type { MemoryContext } from "@breatic/shared";
 import { getSkillRegistry } from "@breatic/domain";
 
 /**
@@ -66,8 +65,6 @@ Always respond in the same language the user is using.
 
 /** Options accepted by {@link buildSystemPrompt}. */
 export interface BuildSystemPromptOptions {
-  /** Three-layer memory context injected as separate sections. */
-  memoryContext?: MemoryContext;
   /** Pre-built XML skill summary (overrides registry lookup when provided). */
   skillsSummary?: string;
   /** Pre-built always-on skill content (overrides registry lookup when provided). */
@@ -75,32 +72,25 @@ export interface BuildSystemPromptOptions {
 }
 
 /**
- * Build the full system prompt with skill summaries and three-layer memory.
- * @param options - Optional memory context and pre-built skill sections
- * @returns The formatted system prompt string ready to send to the LLM
+ * Build the base system prompt: persona plus the skill summary.
+ *
+ * Memory is deliberately not here. It used to be injected in three separate
+ * places with two different sets of section headings, so it now belongs to
+ * `buildAgentConfig`, which is the one place an agent's instructions get
+ * assembled.
+ * @param options - Pre-built skill sections, when the caller has them
+ * @returns The base prompt, ready to hand to `buildAgentConfig`
  */
 export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): string {
-  const { memoryContext, skillsSummary, alwaysSkillsContent } = options;
+  const { skillsSummary, alwaysSkillsContent } = options;
 
   const registry = getSkillRegistry();
   const summary = skillsSummary ?? registry.buildSummaryXml();
   const always = alwaysSkillsContent ?? (registry.getAlwaysContent() || "(none)");
 
-  let prompt = SYSTEM_PROMPT_TEMPLATE
+  const prompt = SYSTEM_PROMPT_TEMPLATE
     .replace("{skills_summary}", summary)
     .replace("{always_skills}", always);
-
-  if (memoryContext) {
-    if (memoryContext.userMemory) {
-      prompt += `\n\n## User Preferences & Style\n${memoryContext.userMemory}`;
-    }
-    if (memoryContext.projectMemory) {
-      prompt += `\n\n## Project Context\n${memoryContext.projectMemory}`;
-    }
-    if (memoryContext.conversationMemory) {
-      prompt += `\n\n## Conversation Memory\n${memoryContext.conversationMemory}`;
-    }
-  }
 
   return prompt;
 }

@@ -41,6 +41,8 @@ export * as assetRepo from "@domain/asset/asset.repo.js";
 export { getModel, resolveProvider } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export { buildToolSet, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
+export { buildAgentConfig } from "@domain/agent/agent-config.js";
+export type { AgentConfigRequest, ResolvedAgentConfig } from "@domain/agent/agent-config.js";
 export { getSkillRegistry, SkillRegistry } from "@domain/agent/skills-loader.js";
 export { extractPromptText } from "@domain/agent/extract-prompt.js";
 

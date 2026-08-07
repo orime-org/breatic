@@ -13,7 +13,8 @@ import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, TextPart, ImagePart } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/domain";
-import { buildToolSet } from "@breatic/domain";
+import { buildAgentConfig } from "@breatic/domain";
+import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { getSkillRegistry } from "@breatic/domain";
 import { getAgentConfig } from "@breatic/core";
@@ -64,8 +65,12 @@ export class MainAgent {
     });
     this.ctx.billing = { turnIndex };
 
-    // Build system prompt (memory already loaded in route layer)
-    const system = buildSystemPrompt({ memoryContext });
+    // One factory decides model, instructions and tools — see
+    // domain/agent/agent-config.ts for why nothing else may assemble them.
+    const agentConfig = buildAgentConfig({
+      basePrompt: buildSystemPrompt(),
+      memoryContext,
+    });
 
     // Build messages array from pre-compressed history
     const userContent = MainAgent.buildUserContent(userMessage, resources);
@@ -74,8 +79,7 @@ export class MainAgent {
       { role: "user", content: userContent },
     ] as ModelMessage[];
 
-    // Stream with AI SDK
-    yield* this.runStream(system, messages);
+    yield* this.runStream(agentConfig, messages);
   }
 
   /**
@@ -108,10 +112,11 @@ export class MainAgent {
     });
     this.ctx.billing = { turnIndex };
 
-    // Build system prompt with skill context (memory from request context)
-    const instructions = registry.loadSkillContent(skillName);
-    const basePrompt = buildSystemPrompt({ memoryContext });
-    const system = `${basePrompt}\n\n## Active Skill: ${skillName}\n${instructions}`;
+    const agentConfig = buildAgentConfig({
+      skillName,
+      basePrompt: buildSystemPrompt(),
+      memoryContext,
+    });
 
     const userContent = MainAgent.buildUserContent(
       `/skill ${skillName} ${userInput}`,
@@ -122,8 +127,7 @@ export class MainAgent {
       { role: "user", content: userContent },
     ] as ModelMessage[];
 
-    // Use skill-declared tools instead of defaults
-    yield* this.runStream(system, messages, skill.tools);
+    yield* this.runStream(agentConfig, messages);
   }
 
   /**
@@ -136,19 +140,17 @@ export class MainAgent {
    * @yields SSE events (chat chunks, tool hints, interaction prompts, plan, done) for real-time frontend rendering.
    */
   private async *runStream(
-    system: string,
+    agentConfig: ResolvedAgentConfig,
     messages: ModelMessage[],
-    toolNames?: string[],
   ): AsyncGenerator<SSEEvent> {
     const { userId, conversationId, projectId } = this.ctx;
     const agentCfg = getAgentConfig();
-    const tools = buildToolSet(toolNames ?? []);
 
     const result = streamTextRetry({
-      model: getModel(agentCfg.default_model),
-      system,
+      model: getModel(agentConfig.modelId),
+      system: agentConfig.instructions,
       messages,
-      tools,
+      tools: agentConfig.tools,
       stopWhen: stepCountIs(agentCfg.max_tool_iterations),
       temperature: 0.2,
     });
@@ -267,8 +269,8 @@ export class MainAgent {
           "Agent chat",
           {
             tokensUsed: mainTokens,
-            model: agentCfg.default_model,
-            provider: resolveProvider(agentCfg.default_model),
+            model: agentConfig.modelId,
+            provider: resolveProvider(agentConfig.modelId),
           },
         );
       }
