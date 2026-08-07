@@ -8,7 +8,6 @@ import * as Y from 'yjs';
 import type { SpaceType } from '@web/spaces';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket, type ConnectionStatus } from '@web/data/yjs/use-socket';
-import { useCurrentUserStore } from '@web/stores/current-user';
 
 /**
  * Project meta Yjs document — single source of truth for the project's
@@ -62,13 +61,14 @@ const SPACES_KEY = 'spaces';
 const PER_USER_KEY = 'perUser';
 const OPEN_TAB_IDS_KEY = 'openTabIds';
 /**
- * Y.Map<userId, { name, avatarUrl }> seeded at project creation by the
- * meta bootstrap and kept live by collab's awareness projection
- * (`hooks/awareness-meta-users.ts`, which replaced the earlier
- * handshake-time upsert - PR #153). Consumers (ProjectActivityButton
- * activity panel, MembersStack, canvas handlingBy rendering, future
- * presence overlays) look up display names via this map so a username
- * rename propagates live. See Q11 v2 design (2026-05-26).
+ * `Y.Map<userId, { id, online, lastSeenAt }>` — who has been in this project
+ * and who is here now.
+ *
+ * Written only by the server, from the credential each connection presented
+ * (#1886). It used to hold a name and an avatar too, projected from what the
+ * browser announced about itself; both are gone. Those belong to the account,
+ * and a copy here went stale the moment somebody renamed themselves — which
+ * is what everyone else then saw on their carets.
  */
 const USERS_KEY = 'users';
 
@@ -87,17 +87,23 @@ export interface ProjectSpace {
   claimToken?: string;
 }
 
-/** Live user record stored in `meta.users[userId]`. */
+/**
+ * Live user record stored in `meta.users[userId]`.
+ *
+ * Written only by the server, from the credential a connection presented
+ * (#1886). It carries no name and no avatar: those belong to the account and
+ * are read from the project roster, so a copy here would be a second truth
+ * that goes stale the moment somebody renames themselves.
+ */
 export interface ProjectUser {
   id: string;
-  name: string;
-  avatarUrl: string | null;
+  /** Whether the server is currently holding a connection for this user. */
+  online: boolean;
   /**
-   * Timestamp (ms) of the most recent awareness update for this
-   * user as persisted by the collab onAwarenessUpdate hook. Used
-   * for "last active N min ago" rendering when the user is
-   * currently offline. Optional because seeded entries may predate
-   * the field; treat missing as "unknown".
+   * When this user was last heard from, in ms. Tracks the heartbeat rather
+   * than the moment they connected, so it stays meaningful for somebody who
+   * has been sitting here for days. Optional because records seeded before
+   * this field existed have none; treat missing as "unknown".
    */
   lastSeenAt?: number;
 }
@@ -107,23 +113,12 @@ export interface ProjectMetaState {
   /** Spaces the current user has open in their tab bar. */
   openTabIds: ReadonlyArray<string>;
   /**
-   * Live map of `userId → { name, avatarUrl, lastSeenAt }` for
-   * everyone who has connected to this project's meta doc.
-   * ProjectActivityButton looks up `users[m.actor]?.name` to render
-   * display names so rename propagates retroactively. Map shape,
-   * not array, because callsites lookup by id far more often than
-   * iterate.
+   * Live map of `userId → { id, online, lastSeenAt }` for everyone who has
+   * connected to this project. Map shape rather than array, because callsites
+   * look up by id far more often than they iterate. Display names are not
+   * here — resolve them from the project roster by id.
    */
   users: ReadonlyMap<string, ProjectUser>;
-  /**
-   * Live set of `userId`s currently online (have an active
-   * awareness entry on the meta doc). Derived from
-   * `provider.awareness.getStates()`; updates whenever any peer
-   * connects, disconnects, or rewrites their awareness state.
-   * Empty until the first awareness change fires (or the provider
-   * is null).
-   */
-  onlineUserIds: ReadonlySet<string>;
   /** True after the initial Hocuspocus sync completes. */
   synced: boolean;
   /**
@@ -195,65 +190,13 @@ export function useProjectMeta(
     };
   }, [doc, userId]);
 
-  // 2026-05-27 (awareness rewrite) — project current user identity
-  // into Yjs awareness. Backend's `onAwarenessUpdate` hook persists
-  // the snapshot into `meta.users[userId]`. Awareness is declarative
-  // — `setLocalStateField` re-fires whenever `currentUser` changes
-  // (rename / avatar update via settings → React Query invalidate →
-  // store update → this effect re-runs), so identity stays in sync
-  // without manual `sendStateless` bookkeeping. Yjs internally diffs
-  // and only broadcasts when the serialized value actually changes,
-  // so a re-render with unchanged `currentUser` is free.
-  const currentUser = useCurrentUserStore((s) => s.user);
-  React.useEffect(() => {
-    if (!provider || !provider.awareness || !currentUser) return;
-    provider.awareness.setLocalStateField('user', {
-      id: currentUser.id,
-      name: currentUser.name,
-      avatarUrl: currentUser.avatarUrl ?? null,
-    });
-  }, [provider, currentUser]);
-
-  // Track the live set of online users by subscribing to the
-  // awareness instance. The collab `onAwarenessUpdate` hook
-  // persists name/avatar into meta.users on every awareness change,
-  // so the persisted record stays fresh; this subscription only
-  // covers "is the user currently online" (a derived ephemeral
-  // signal not worth stuffing into Y.Doc state). Combined with
-  // `users[userId].lastSeenAt` the UI can render
-  // "online" vs "last active N min ago" without polling.
-  const [onlineUserIds, setOnlineUserIds] = React.useState<
-    ReadonlySet<string>
-  >(() => new Set());
-  React.useEffect(() => {
-    const awareness = provider?.awareness;
-    if (!awareness) {
-      setOnlineUserIds(new Set());
-      return;
-    }
-    /**
-     * Recompute the set of currently-online user ids from awareness states.
-     */
-    const update = (): void => {
-      const next = new Set<string>();
-      awareness.getStates().forEach((state) => {
-        const userField = (state as { user?: { id?: unknown } }).user;
-        if (userField && typeof userField.id === 'string') {
-          next.add(userField.id);
-        }
-      });
-      setOnlineUserIds(next);
-    };
-    awareness.on('change', update);
-    update();
-    return () => {
-      awareness.off('change', update);
-    };
-  }, [provider]);
-
+  // Who is online is read off `users` by whoever needs it. There used to be a
+  // second field here holding the online ids as a set, derived from that same
+  // map — one truth exposed twice, which read as two sources of presence. It
+  // was added in May for a presence UI that was never built, and its one real
+  // consumer works directly off `users` (#1886).
   return {
     ...state,
-    onlineUserIds,
     synced,
     provider,
     status,
@@ -335,8 +278,7 @@ function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
     const lastSeenRaw = m.get('lastSeenAt');
     out.set(userId, {
       id: String(m.get('id') ?? userId),
-      name: String(m.get('name') ?? ''),
-      avatarUrl: (m.get('avatarUrl') as string | null) ?? null,
+      online: m.get('online') === true,
       lastSeenAt:
         typeof lastSeenRaw === 'number' ? lastSeenRaw : undefined,
     });

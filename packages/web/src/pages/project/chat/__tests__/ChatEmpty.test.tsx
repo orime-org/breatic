@@ -23,7 +23,7 @@ describe('ChatEmpty', () => {
       id: 'u1',
       name: 'Songxiulei',
       email: 'sx@example.com',
-      personalStudio: { name: 'Songxiulei', slug: 'songxiulei' },
+      personalStudio: { name: 'Songxiulei', slug: 'songxiulei', avatarUrl: null },
     });
     render(<ChatEmpty />);
     expect(screen.getByTestId('chat-empty')).toHaveTextContent(

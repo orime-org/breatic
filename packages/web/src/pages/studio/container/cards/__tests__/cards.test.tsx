@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
@@ -44,14 +44,27 @@ function renderProject(project: ContainerProject, studioRole: StudioRole) {
 const MORE = { name: 'More actions' };
 
 describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
-  it('renders name + badges and links to /project/{slug}-{uuid}', () => {
+  it('renders name + role badge and links to /project/{slug}-{uuid}', () => {
     renderProject(SHARED_STUDIO, 'guest');
     expect(screen.getByText('Shared Project')).toBeInTheDocument();
-    expect(screen.getByText('Studio-visible')).toBeInTheDocument();
     expect(screen.getByRole('link')).toHaveAttribute(
       'href',
       '/project/shared-p2',
     );
+  });
+
+  it('carries no visibility badge, whatever the row says', () => {
+    // The concept left the product on 2026-08-07. The column survives and the
+    // filter still reads it, so a project row can still SAY private — the card
+    // must stay silent either way. CollectionCard keeps its badge, which is
+    // why the assertion is scoped to this card.
+    renderProject(SHARED_STUDIO, 'guest');
+    expect(screen.queryByText('Studio-visible')).toBeNull();
+    expect(screen.queryByText('Private')).toBeNull();
+    cleanup();
+    renderProject(OWNED_PRIVATE, 'guest');
+    expect(screen.queryByText('Studio-visible')).toBeNull();
+    expect(screen.queryByText('Private')).toBeNull();
   });
 
   it('shows the governance menu to the project owner', () => {

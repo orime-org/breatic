@@ -79,10 +79,11 @@ export function canGenerate(type: NodeType): boolean {
  * first one added.
  *
  * No display-name snapshot here (email-registration rewrite, 2026-06-06):
- * "who is handling" is rendered by looking up `meta.users[userId].name` in
- * the live Yjs awareness roster, which updates automatically when a user
- * renames themselves. Freezing a name onto the node would drift the moment
- * the user changed their display name.
+ * "who is handling" is rendered by resolving `userId` against the project
+ * member roster, which the client fetches and refreshes. Freezing a name
+ * onto the node would drift the moment that person renamed themselves.
+ * (The roster replaced a `meta.users` map in the Yjs meta doc, #1882 — the
+ * rule is unchanged, only where the name is looked up.)
  *
  * `startedAt` was added 2026-07-02 (#1569 handling lease): the epoch-ms
  * start of the fixed-budget lease. The lease is the SINGLE correctness

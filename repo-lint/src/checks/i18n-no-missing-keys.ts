@@ -2,50 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import { APPLICATION_SOURCE, TEST_FILE } from "#repo-lint/file-kinds";
-import { KEY_SEGMENT } from "#repo-lint/message-keys";
-import { stripComments } from "#repo-lint/strip-comments";
+import { spelledOutKeys } from "#repo-lint/message-keys";
 
 /** English is the source catalog; the others are translations of it. */
 const SOURCE_CATALOG = "locales/en.json";
-
-/**
- * A message asked of the catalog by name: `t("a.b.c")`, in any of the three
- * string delimiters.
- *
- * Only the argument of a `t(...)` call counts. The sibling dead-key check
- * sweeps every dotted literal in a file, because for its question a false
- * match is harmless — one extra thing keeping a key alive. Here a false match
- * is a finding against a file path or a property chain, so the call is what
- * anchors it.
- *
- * A backtick is in the class because a backtick with nothing interpolated is a
- * literal like any other, and nothing stops one being written: `packages/web`
- * forbids the form with a `quotes` lint rule, the root config that governs
- * `packages/server` has no such rule, and server is where the typo this check
- * exists for shipped. An interpolated one still cannot match, since a segment
- * cannot contain `$` or `{`.
- *
- * The literal has to BE the argument, which is what the trailing `[),]` says:
- * a `)` closes the call, a `,` starts the params object. Without it,
- * `t('canvas.group' + suffix)` matched as far as the closing quote and the
- * namespace `canvas.group` was reported as a missing message — a finding
- * against a call whose real key is not in the source at all.
- *
- * That anchor is also where this stops: a literal wearing a trailing type
- * assertion (`t("a.b" as const)`, `t("a.b" satisfies string)`) or reached
- * through an optional call (`t?.("a.b")`) is not followed by `)` or `,` and
- * goes unseen. Those are syntax decorations rather than another way of naming
- * a key, and a text scan chasing them has no end; none appears in the tree.
- * Saying where the scan stops is worth more than pretending it does not.
- */
-const MESSAGE_CALL = new RegExp(
-  String.raw`\bt\(\s*(['"` +
-    "`" +
-    String.raw`])(` +
-    `${KEY_SEGMENT}(?:\\.${KEY_SEGMENT})+` +
-    String.raw`)\1\s*[),]`,
-  "g",
-);
 
 /**
  * Resolve a dotted key against the catalog.
@@ -84,9 +44,12 @@ function messageAt(catalog: unknown, key: string): string | undefined {
  * deliberately not written here — it moves with any commit, and a number in a
  * comment is a claim nobody re-measures.
  *
- * A key whose shape `KEY_SEGMENT` excludes: a segment starting with a digit,
- * or no dot at all. Those limits belong to both i18n checks and are written
- * where the shape is.
+ * An id with no namespace, which is deliberately somebody else's finding.
+ * `i18n-keys-namespaced` reports it at the call site, on the shape, without
+ * consulting any catalog — and that is the right place for it. Reporting it
+ * here as well would give one mistake two findings and blame the catalog for
+ * a caller's error: the reader would go add `cancel` to the catalogs, where
+ * that same check would then reject it.
  *
  * All of that is stated rather than closed because closing it is a different
  * piece of work: the indirect forms need the key resolved back through a
@@ -122,13 +85,15 @@ export const i18nNoMissingKeys = {
       (path) => APPLICATION_SOURCE.test(path) && !TEST_FILE.test(path),
       "application sources that could ask for a message",
     )) {
-      const code = stripComments(context.read(file), "js", file);
-      for (const match of code.matchAll(MESSAGE_CALL)) {
-        const key = match[2];
-        if (key === undefined) continue;
+      for (const { key, line } of spelledOutKeys(context.read(file), file)) {
+        // A dotless id belongs to `i18n-keys-namespaced`, which reports it on
+        // the shape. Looking it up here would find nothing and say so, which
+        // is true but blames the wrong side.
+        if (!key.includes(".")) continue;
         if (messageAt(catalog, key) !== undefined) continue;
         findings.push({
           file,
+          line,
           message: `${key} is asked of the catalog and ${SOURCE_CATALOG} has no message there, so the runtime falls back to printing the key and the user reads it as text. Either the key is misspelled — separator style is the usual cause, and it is not uniform: every key under server.* is snake_case, most of the rest is camelCase, and a few outside server.* are not, so read the catalog rather than guess — or the message was never added, in which case add it to all five catalogs.`,
         });
       }

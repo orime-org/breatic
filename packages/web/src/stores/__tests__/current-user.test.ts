@@ -32,12 +32,16 @@ describe('useCurrentUserStore', () => {
       id: 'u1',
       name: 'Alice',
       email: 'a@b.com',
-      personalStudio: { name: 'Alice', slug: 'alice' },
+      personalStudio: { name: 'Alice', slug: 'alice', avatarUrl: null },
     });
     useCurrentUserStore.getState().setRole('owner');
     const s = useCurrentUserStore.getState();
     expect(s.user?.id).toBe('u1');
-    expect(s.user?.personalStudio).toEqual({ name: 'Alice', slug: 'alice' });
+    expect(s.user?.personalStudio).toEqual({
+      name: 'Alice',
+      slug: 'alice',
+      avatarUrl: null,
+    });
     expect(s.role).toBe('owner');
   });
 
@@ -69,7 +73,7 @@ describe('useCurrentUserStore', () => {
       id: 'u',
       name: 'x',
       email: 'x@y',
-      personalStudio: { name: 'x', slug: 'xhandle' },
+      personalStudio: { name: 'x', slug: 'xhandle', avatarUrl: null },
     });
     useCurrentUserStore.getState().setRole('owner');
     useCurrentUserStore.getState().setBootstrapped(true);

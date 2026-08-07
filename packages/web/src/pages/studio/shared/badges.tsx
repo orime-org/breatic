@@ -28,9 +28,13 @@ const VISIBILITY_OVERLAY =
   'inline-flex items-center gap-1 rounded-chrome bg-black/45 px-1.5 text-2xs font-semibold leading-5 text-white';
 
 /**
- * Project / collection visibility badge (spec §3.5) — a dark overlay pill that
- * sits on the card thumbnail's top-left (locked mock `.vbadge`): studio-visible,
- * or private with a lock icon. The card positions it absolutely.
+ * Collection visibility badge (spec §3.5) — a dark overlay pill that sits on
+ * the card thumbnail's top-left (locked mock `.vbadge`): studio-visible, or
+ * private with a lock icon. The card positions it absolutely.
+ *
+ * Collections only. Projects dropped the visibility concept on 2026-08-07 —
+ * the column and the filter survive, but nobody chooses a value and the card
+ * says nothing, so ProjectCard no longer renders this.
  * @param props the item visibility.
  * @param props.visibility the item visibility.
  * @returns the visibility overlay badge.

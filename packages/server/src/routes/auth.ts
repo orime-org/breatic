@@ -21,6 +21,7 @@ import { authService, studioService } from "@server/modules";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { t } from "@breatic/shared";
+import type { PersonalStudioRef } from "@breatic/shared";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
@@ -30,6 +31,34 @@ import {
 import { logMailResult } from "@server/utils/log-mail.js";
 
 const auth = new Hono<{ Variables: AuthVariables }>();
+
+/**
+ * Project a studio row onto the wire shape every `/auth/*` response uses
+ * for `personalStudio`.
+ *
+ * There is exactly one of these because there are four exits that carry it
+ * (register, login, google, me) plus setup-studio, and they used to disagree:
+ * register and login omitted the key entirely, me and setup-studio each
+ * hand-built `{ name, slug }` and dropped the avatar. A client that logged in
+ * therefore derived its display name from the email local part while a client
+ * that refreshed got the studio name — the same account under two names
+ * (#1882).
+ *
+ * The avatar belongs to the studio, not to the user (#1808's pointer model),
+ * so it rides inside this ref and never beside it.
+ * @param studio - The caller's personal studio, or null before onboarding picks a slug.
+ * @returns The wire ref, or null to signal the onboarding gate.
+ */
+function toPersonalStudioRef(
+  studio: { name: string; slug: string; avatarUrl?: string | null } | null,
+): PersonalStudioRef | null {
+  if (!studio) return null;
+  return {
+    name: studio.name,
+    slug: studio.slug,
+    avatarUrl: studio.avatarUrl ?? null,
+  };
+}
 
 /**
  * Lazily constructed Google OAuth2 client.
@@ -80,7 +109,14 @@ auth.post("/register", rateLimitFor("register"), zValidator("json", registerSche
   // the application boundary that owns request context.
   logger.info({ userId: user.id, email }, "user_registered");
   logger.info({ userId: user.id, method: "email" }, "user_logged_in");
-  return c.json({ data: { user, recoveryCode } }, 201);
+  // `personalStudio` is unconditionally null here: step one creates the
+  // account and nothing else, so there is no studio to look up yet. The KEY
+  // still ships — an absent key reads as `undefined` on the client, which
+  // slips past the `=== null` onboarding gate and silently degrades the
+  // display name (#1882).
+  return c.json({
+    data: { user: { ...user, personalStudio: null }, recoveryCode },
+  }, 201);
 });
 
 /**
@@ -103,25 +139,32 @@ auth.post("/setup-studio", requireAuth, zValidator("json", setupStudioSchema), a
   const { slug } = c.req.valid("json");
   const studio = await studioService.createPersonalStudio(user.id, slug);
   logger.info({ userId: user.id, studioId: studio.id, slug }, "personal_studio_created");
-  return c.json({ data: { personalStudio: { name: studio.name, slug: studio.slug } } }, 201);
+  return c.json({ data: { personalStudio: toPersonalStudioRef(studio) } }, 201);
 });
 
 /**
  * `POST /auth/login` - authenticate with email and password.
  *
  * Session is delivered as an httpOnly cookie (see `/register` for
- * rationale); response body returns only the user.
+ * rationale); the body returns the user plus their `personalStudio`, which
+ * is where their display name and avatar live. Before #1882 this response
+ * omitted the studio, so the tab that had just logged in fell back to the
+ * email local part for its display name while every other tab (populated by
+ * `/auth/me`) showed the studio name.
  * @param c - Hono context with validated `loginSchema` body
- * @returns `200` with `{ user }` on success + Set-Cookie
+ * @returns `200` with `{ user: { ...user, personalStudio } }` + Set-Cookie
  * @throws {AppError} `401` if credentials are invalid
  */
 auth.post("/login", rateLimitFor("login"), zValidator("json", loginSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const { user, token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
+  const studio = await studioService.getPersonalStudio(user.id);
   // Audit log moved from auth.service.ts (17B mandate).
   logger.info({ userId: user.id, method: "email" }, "user_logged_in");
-  return c.json({ data: { user } });
+  return c.json({
+    data: { user: { ...user, personalStudio: toPersonalStudioRef(studio) } },
+  });
 });
 
 /**
@@ -151,8 +194,13 @@ const googleAuthSchema = z.object({
  * who registers `victim@gmail.com` at an identity provider that
  * federates to Google (and doesn't verify ownership) cannot claim
  * someone else's email.
+ * The session token leaves in the cookie, never in the body. The user
+ * carries `personalStudio` like every other auth exit — a first Google
+ * sign-in creates the account but not the studio, so it is `null` here more
+ * often than anywhere else, and that null is what routes the client to the
+ * slug-setup gate.
  * @param c - Hono context with Google credential in body
- * @returns `200` with `{ data: { user, token } }`
+ * @returns `200` with `{ data: { user: { ...user, personalStudio } } }`
  * @throws {AppError} `401` if the credential is invalid, expired, or unverified
  * @throws {AppError} `503` if Google OAuth is not configured on this server
  */
@@ -202,9 +250,12 @@ auth.post("/google", rateLimitFor("google"), zValidator("json", googleAuthSchema
   );
 
   setSessionCookie(c, token);
+  const studio = await studioService.getPersonalStudio(user.id);
   // Audit log moved from auth.service.ts (17B mandate).
   logger.info({ userId: user.id, method: "google" }, "user_logged_in");
-  return c.json({ data: { user } });
+  return c.json({
+    data: { user: { ...user, personalStudio: toPersonalStudioRef(studio) } },
+  });
 });
 
 /**
@@ -213,17 +264,17 @@ auth.post("/google", rateLimitFor("google"), zValidator("json", googleAuthSchema
  * `personalStudio` is the onboarding-gate data source: `null` means the
  * user registered (step 1) but has not yet picked a slug (step 2), so the
  * frontend gate routes them to the slug-setup page. Once set it carries
- * the studio `name` (the user's display name) + `slug` (their URL handle).
+ * the studio `name` (the user's display name), `slug` (their URL handle),
+ * and `avatarUrl` (their avatar). The service already loads the whole studio
+ * row; this route used to drop the avatar while assembling the response,
+ * which left the client's avatar unset on every cold load (#1882).
  * @param c - Hono context with authenticated user
- * @returns `200` with `{ data: { ...user, personalStudio: { name, slug } | null } }`
+ * @returns `200` with `{ data: { ...user, personalStudio: PersonalStudioRef | null } }`
  */
 auth.get("/me", requireAuth, async (c) => {
   const user = c.get("user");
   const studio = await studioService.getPersonalStudio(user.id);
-  const personalStudio = studio
-    ? { name: studio.name, slug: studio.slug }
-    : null;
-  return c.json({ data: { ...user, personalStudio } });
+  return c.json({ data: { ...user, personalStudio: toPersonalStudioRef(studio) } });
 });
 
 auth.post("/logout", requireAuth, async (c) => {

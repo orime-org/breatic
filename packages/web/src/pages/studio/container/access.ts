@@ -45,10 +45,11 @@ export function canRenderItemCard(
 }
 
 /**
- * Whether the viewer may run governance actions (delete / transfer / change
- * visibility) on an item (spec §4 invariant 2). Only the item Owner or a
- * studio Admin may; a non-owner Guest and a non-member (`null` studio role) never
- * see governance controls.
+ * Whether the viewer may run governance actions (delete / transfer) on an item
+ * (spec §4 invariant 2). Only the item Owner or a studio Admin may; a
+ * non-owner Guest and a non-member (`null` studio role) never see governance
+ * controls. Changing visibility is not among them — projects dropped that
+ * concept on 2026-08-07 and no control offers it.
  * @param studioRole the viewer's studio-level role, or `null` for a non-member.
  * @param isOwner whether the viewer owns the item.
  * @returns whether governance controls should be shown.

@@ -505,8 +505,8 @@ async function publishMetaChange(
     // write to the database arrived exactly here. In 4.5.0 `transact` does
     // not store at all — the document's own update schedules a debounced one
     // — and a failed store is swallowed inside the library, so no database
-    // problem reaches any caller anywhere. Measured both ways:
-    // inner/engineering/demo/2026-08-06-v4-transact-store-semantics.mjs.
+    // problem reaches any caller anywhere. Measured on both library versions
+    // rather than read off the changelog.
     //
     // What still arrives is the library refusing a closed connection before
     // running the callback, which is the last branch. The first two need the

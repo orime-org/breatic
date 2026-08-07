@@ -48,7 +48,11 @@ import {
   type SpaceRpcResponse,
 } from "@breatic/shared";
 import { createAuthHook } from "@collab/hooks/auth.js";
-import { projectAwarenessIntoMetaUsers } from "@collab/hooks/awareness-meta-users.js";
+import {
+  recordHeartbeat,
+  recordPresenceOnConnect,
+  stampIdentityOnAwareness,
+} from "@collab/hooks/presence-wiring.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
 import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js";
@@ -287,57 +291,36 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // phantom member (registering in onAuthenticate instead would, because
     // onDisconnect never fires for a connection whose load failed). Meta
     // docs are exempt from the cap → not tracked.
-    connected: async ({ documentName, socketId }) => {
+    connected: async ({ documentName, socketId, context, instance }) => {
       if (shouldTrackConnection(documentName)) {
         await connectionRegistry.register(documentName, socketId);
       }
+      // The id comes from what onAuthenticate resolved out of the credential,
+      // so the list reflects who the server knows is here.
+      recordPresenceOnConnect({ documentName, context, instance }, {
+        now: Date.now,
+        staleAfterMs: cfg.presence_stale_after_ms,
+      });
     },
 
-    // `meta.users[userId]` population (2026-05-27 awareness rewrite):
-    // the front-end writes `user` into awareness via
-    // `provider.awareness.setLocalStateField('user', { id, name, avatarUrl })`
-    // and we project it into `meta.users[userId]` here. Awareness is
-    // declarative — `setLocalStateField` re-fires for any
-    // `currentUser` deps change in `useProjectMeta`, so a user
-    // renaming themselves in settings flows through automatically
-    // (the prior `users:upsert-self` stateless RPC path missed this
-    // because its `sentForProviderRef` guard skipped re-sends).
-    //
-    // Anti-spoof: only awareness state whose `user.id` matches the
-    // connection-context user is honored. Multi-collab-instance dedup
-    // falls out of the same check — remote-synced updates land here
-    // with a non-matching (or empty) context.user.id and are
-    // rejected without writing.
-    //
-    // Debounce: cursor / selection awareness updates would fire this
-    // hook at sub-second rates. The helper diffs the user fields and
-    // throttles the `lastSeenAt` refresh to one transact per user
-    // per 30s — see `awareness-meta-users.ts`.
-    onAwarenessUpdate: async ({
-      documentName,
-      document,
-      awareness,
-      added,
-      updated,
-      connection,
-    }) => {
-      const parsed = parseDocName(documentName);
-      if (!parsed || parsed.kind !== "meta") return;
-      // From v4 the payload carries the originating connection instead of a
-      // bare context, and it is ABSENT for updates relayed from another
-      // instance. Both shapes feed the same anti-spoof check below: an update
-      // whose declared user id does not match the connection's own context is
-      // rejected, and a relayed update has no connection at all so it can
-      // never match.
-      const ctx = connection?.context as { user?: { id?: string } } | undefined;
-      projectAwarenessIntoMetaUsers({
-        documentName,
-        document,
-        awareness,
-        added,
-        updated,
-        contextUserId: ctx?.user?.id,
-        now: Date.now(),
+    // Whose caret is whose, decided here rather than taken from the client.
+    // Every peer derives the name and colour it shows from this id, so the
+    // server writes it from the credential it validated at the handshake.
+    // Runs on every document, not just the meta one: carets live in the canvas
+    // and document files, which is where an id becomes a name on a screen.
+    beforeHandleAwareness: async ({ states, document, connection, context }) => {
+      stampIdentityOnAwareness({ states, document, connection, context });
+    },
+
+    // Every heartbeat does two things: keeps its own owner's timestamp moving,
+    // and sweeps whoever nobody is refreshing any more. The sweep lives here
+    // rather than on the document-load hook because that hook fires when the
+    // records are freshest and then never fires again while anyone is in the
+    // project — see `recordHeartbeat` for the full story.
+    onAwarenessUpdate: async ({ documentName, document, connection }) => {
+      recordHeartbeat({ documentName, document, connection }, {
+        now: Date.now,
+        staleAfterMs: cfg.presence_stale_after_ms,
       });
     },
 
@@ -354,6 +337,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         await connectionRegistry.unregister(documentName, socketId);
       }
       logger.info({ documentName, userId }, "Client disconnected");
+      // Nothing is written to the project's presence list here, on purpose.
+      // This socket ending says nothing about whether its owner is still in the
+      // project: one person holds several connections at once, and on a
+      // multi-instance deployment the others may be on a machine this one
+      // cannot see. Absence is inferred by the sweep instead, from nobody
+      // anywhere refreshing the timestamp (see `hooks/presence.ts`).
       // Mini-tool state-machine cleanup (ADR 2026-05-11). Strips
       // operationLocks and finishes frontend-driver handling nodes the
       // disconnected client was running.

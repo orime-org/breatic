@@ -12,8 +12,7 @@
  *   onConnect   sees only a standard Request. Reads the normalised identity
  *               and either exempts it or hands it to the throttle to count.
  *
- * The refusal shape is measured, not assumed — see
- * inner/engineering/demo/2026-08-05-onupgrade-reject-semantics.mjs. Rejecting
+ * The refusal shape was measured against the library, not assumed. Rejecting
  * with a truthy error leaves the socket open AND produces an unhandled
  * rejection, which collab's own handler turns into process.exit(1). All three
  * assertions below exist to stop that from ever being written.

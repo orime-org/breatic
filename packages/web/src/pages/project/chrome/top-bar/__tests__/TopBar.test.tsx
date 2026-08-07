@@ -13,6 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
 import { TopBar } from '@web/pages/project/chrome/top-bar/TopBar';
+import type { Member } from '@web/data/api/members';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
@@ -38,6 +39,14 @@ function AllProviders({ children }: { children: React.ReactNode }) {
 const render = (ui: React.ReactElement, options?: RenderOptions) =>
   rtlRender(ui, { wrapper: AllProviders, ...options });
 
+// The bar forwards this roster to both member components. It is passed
+// explicitly because there is no stub to fall back on: a component that
+// invents people when nobody gives it any is what this file's pin removes.
+const MEMBERS: ReadonlyArray<Member> = [
+  { id: 'm-own', userId: 'u-own', name: 'Owner Person', email: 'own@e.com', role: 'owner' },
+  { id: 'm-ed', userId: 'u-ed', name: 'Editor Person', email: 'ed@e.com', role: 'editor' },
+];
+
 function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
   const onRename = vi.fn();
   render(
@@ -49,6 +58,7 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
         role='owner'
         credits={42}
         onRename={onRename}
+        members={MEMBERS}
         {...overrides}
       />
     </MemoryRouter>,
@@ -57,6 +67,27 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
 }
 
 describe('TopBar', () => {
+  it('does not compile without members, which is the whole point of the change', () => {
+    // The bar is the third carrier of the same trap: it declared the roster
+    // optional and forwarded it to both member components, so making only
+    // those two required would have moved the trap up a layer rather than
+    // removed it. If `members` goes back to optional here, there is no error
+    // for this directive to expect and typecheck fails on it.
+    const onRename = vi.fn();
+    const element = (
+      // @ts-expect-error members is required
+      <TopBar
+        projectId='p1'
+        projectName='Demo'
+        // eslint-disable-next-line jsx-a11y/aria-role -- component prop, not a DOM ARIA role
+        role='owner'
+        credits={42}
+        onRename={onRename}
+      />
+    );
+    expect(element).toBeTruthy();
+  });
+
   it('renders the top-bar landmark', () => {
     setup();
     expect(screen.getByTestId('top-bar')).toBeInTheDocument();

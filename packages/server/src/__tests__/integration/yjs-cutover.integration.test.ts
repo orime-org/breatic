@@ -129,8 +129,6 @@ describe("yjs repo against the separate yjs DB", () => {
       kind: "canvas",
       name: "Canvas",
       createdBy: "system",
-      creatorName: "system",
-      creatorAvatarUrl: null,
       ts: 1,
     });
     expect(await yjsRepo.seedInitialState(META, bytes)).toBe(true);

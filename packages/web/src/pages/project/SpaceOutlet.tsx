@@ -43,6 +43,10 @@ export function SpaceOutlet({
   }
   const Body = def.bodyComponent;
   return (
-    <Body projectId={projectId} spaceId={spaceId} readOnly={readOnly} />
+    <Body
+      projectId={projectId}
+      spaceId={spaceId}
+      readOnly={readOnly}
+    />
   );
 }

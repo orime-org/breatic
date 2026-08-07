@@ -4,40 +4,50 @@
 /**
  * Keeps this client's caret PRESENCE published, and applies everyone else's.
  *
- * Presence is the whole awareness payload behind a caret: who you are — name
- * and colour — and whether your window is in the foreground, so a cursor
- * sitting still reads as "they stepped away" rather than "they are about to
- * type". Both halves live here because either alone is dead weight: an editor
- * that publishes but never applies the incoming flag shows nothing, and one
- * that applies but never publishes leaves its own caret looking permanently
- * attentive to everyone else.
+ * Presence is what a caret says about the moment rather than about the person:
+ * whether your window is in the foreground, so a cursor sitting still reads as
+ * "they stepped away" rather than "they are about to type". Both halves live
+ * here because either alone is dead weight: an editor that publishes but never
+ * applies the incoming flag shows nothing, and one that applies but never
+ * publishes leaves its own caret looking permanently attentive to everyone
+ * else.
  *
- * ## Identity is published here, not baked into the editor
+ * ## Identity is NOT published — the server writes it
  *
- * The caret extension takes a `user` at construction, and the editor is
- * constructed ONCE per document — it survives Space-tab switches by design, and
- * a rebuild with a new identity would take the undo stack and selection with
- * it. So the identity configured on the extension is only ever the one that was
- * current when the document was first opened. If the user renames themselves,
- * or their derived colour changes, that configured value is stale for the rest
- * of the session.
+ * This used to be the file that kept a renamed user's caret current, by
+ * re-publishing the whole identity whenever it changed. It had to: the caret
+ * extension takes its `user` at construction and the editor is built once per
+ * document (it survives Space-tab switches by design), so a name baked in at
+ * construction would stay frozen for the session.
  *
- * This hook is what keeps it true: it publishes the FULL identity on every
- * change, not just the focus flag, which overwrites the awareness field the
- * extension seeded. That makes `caretUser` in the publish effect's dependencies
- * load-bearing rather than incidental — narrow that list to the focus flag and
- * collaborators will see a stale name for as long as the tab stays open, with
- * every test still green unless one pins this.
+ * #1882 removed most of the need: peers resolve the display name from the
+ * project member roster and derive the colour from the id, so a rename needs no
+ * re-publish. #1886 removed the rest. The id is not ours to state either — the
+ * server already resolved this connection's user from the credential it
+ * validated at the handshake, and it writes that id onto every awareness entry
+ * belonging to the connection. So this hook publishes one field, focus, and the
+ * `user` field it lands in is the server's from then on.
+ *
+ * ## Why both effects below write to the DOM directly
+ *
+ * A caret that is not moving is never rebuilt — prosemirror-view keys the
+ * widget on the client id and reuses its DOM on key equality WITHOUT
+ * re-invoking the builder. So neither a focus flip nor a name arriving late
+ * reaches the builder, and both have to be written onto the element found by
+ * the `data-client-id` the builder stamps. The focus half learned this the
+ * hard way (an adversarial round found both flip directions dead); the name
+ * half is the same lesson applied before it could bite.
  */
 
 import type { Editor } from '@tiptap/react';
 import * as React from 'react';
 
-import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
+import { applyCaretName } from '@web/features/collab-editor/caret-render';
+import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 
 /** The slice of awareness this hook reads. */
 interface FocusAwareness {
-  getStates: () => Map<number, { user?: { focused?: boolean } }>;
+  getStates: () => Map<number, { user?: { focused?: boolean; id?: string } }>;
   on: (event: string, fn: () => void) => void;
   off: (event: string, fn: () => void) => void;
 }
@@ -46,17 +56,24 @@ interface FocusAwareness {
 const BLURRED_CLASS = 'collaboration-carets__caret--blurred';
 
 /**
- * Publish this window's focus, and dim the carets of collaborators who have
- * left theirs.
+ * Publish this window's focus, dim the carets of collaborators who have left
+ * theirs, and keep every rendered caret's name in step with the roster.
+ * The roster comes from context rather than from an argument. It is a
+ * project-level fact and every editor wants the same one, so making it a
+ * parameter meant each layer between the project page and the editor writing a
+ * line to pass it along — lines that were optional, and whose absence nothing
+ * reported. Three rounds of adversarial review found four places where cutting
+ * one left types, lint and the whole suite green while every remote caret lost
+ * its name (#1882). Carets render as bare colour lines with no provider above
+ * them, which is also the honest answer while the roster is still loading.
  * @param editor - The collaborative editor, or null before it mounts.
  * @param caretProvider - Provider whose awareness carries carets.
- * @param caretUser - This user's caret identity; focus is published alongside it.
  */
 export function useCollabCaretPresence(
   editor: Editor | null,
   caretProvider: { awareness: unknown } | null | undefined,
-  caretUser: CaretUserIdentity | null | undefined,
 ): void {
+  const names = useCollaboratorNames();
   // Depend on the awareness instance, not on the object wrapping it, so that
   // neither effect below re-runs merely because a caller rebuilt its provider
   // wrapper. This buys tidiness, not safety, and the reason is worth stating
@@ -79,14 +96,18 @@ export function useCollabCaretPresence(
   // Publish. Receivers dim on a literal `false` only, so a client that never
   // publishes the field simply renders normally.
   React.useEffect(() => {
-    if (!editor || !awareness || !caretUser) return undefined;
+    if (!editor || !awareness) return undefined;
     /**
      * Publishes the current focus state into the awareness user field.
      * @param focused - Whether this window has focus.
      */
     const publish = (focused: boolean): void => {
       if (editor.isDestroyed) return;
-      editor.commands.updateUser({ ...caretUser, focused });
+      // Focus is the only thing we put here. Who this caret belongs to is
+      // written by the server from the credential this connection presented,
+      // so sending an id would at best be ignored and at worst be a claim we
+      // have no standing to make (#1886).
+      editor.commands.updateUser({ focused });
     };
     /**
      * Publishes focused=true on window focus.
@@ -112,7 +133,7 @@ export function useCollabCaretPresence(
       const presence = awareness as { setLocalStateField?: (k: string, v: unknown) => void };
       presence.setLocalStateField?.('cursor', null);
     };
-  }, [editor, awareness, caretUser]);
+  }, [editor, awareness]);
 
   // Receive. A parked caret's widget is keyed by client id and prosemirror-view
   // reuses its DOM on key equality WITHOUT re-invoking the builder, so a
@@ -156,4 +177,38 @@ export function useCollabCaretPresence(
       focusAwareness.off('change', applyDim);
     };
   }, [editor, awareness]);
+
+  // Names. Same problem as the dim above, same shape of fix: a caret sitting
+  // still is never rebuilt, so a name that resolves after it was drawn has to
+  // be written onto the existing DOM. This runs both when the roster changes
+  // (a rename, a re-fetch landing) and when awareness changes (a peer whose
+  // caret was just built by a builder that could not name them).
+  React.useEffect(() => {
+    const nameAwareness = awareness as FocusAwareness | null;
+    if (!editor || !nameAwareness || !names) return undefined;
+    const { resolve } = names;
+    /** Re-derives every rendered caret's label from the current roster. */
+    const applyNames = (): void => {
+      if (editor.isDestroyed) return;
+      const states = nameAwareness.getStates();
+      editor.view.dom
+        .querySelectorAll<HTMLElement>(
+          '.collaboration-carets__caret[data-client-id]',
+        )
+        .forEach((el) => {
+          const state = states.get(Number(el.dataset.clientId));
+          const userId = state?.user?.id;
+          // No id means the peer is gone from awareness — there is nothing to
+          // resolve, and clearing the label would only strip a name off a
+          // caret that is still on screen waiting to be swept.
+          if (typeof userId !== 'string') return;
+          applyCaretName(el, resolve(userId), el.style.borderColor);
+        });
+    };
+    nameAwareness.on('change', applyNames);
+    applyNames();
+    return (): void => {
+      nameAwareness.off('change', applyNames);
+    };
+  }, [editor, awareness, names]);
 }

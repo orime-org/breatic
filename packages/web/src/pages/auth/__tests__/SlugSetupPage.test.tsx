@@ -162,7 +162,7 @@ describe('SlugSetupPage', () => {
 
   it('on success calls setup-studio, stores the personal studio, and navigates to /studio', async () => {
     vi.mocked(authApi.setupStudio).mockResolvedValueOnce({
-      personalStudio: { name: 'my-handle', slug: 'my-handle' },
+      personalStudio: { name: 'my-handle', slug: 'my-handle', avatarUrl: null },
     });
     const user = userEvent.setup();
     setup();
@@ -178,9 +178,13 @@ describe('SlugSetupPage', () => {
     expect(stored?.personalStudio).toEqual({
       name: 'my-handle',
       slug: 'my-handle',
+      avatarUrl: null,
     });
     // Display name now reflects the personal studio (lifting the gate).
     expect(stored?.name).toBe('my-handle');
+    // A studio created moments ago has no avatar, and the store keeps that
+    // absent rather than storing an empty string (#1882).
+    expect(stored?.avatarUrl).toBeUndefined();
   });
 
   it('surfaces a 409 conflict as the inline "taken" error (no navigation)', async () => {

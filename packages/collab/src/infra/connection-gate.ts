@@ -18,8 +18,8 @@
  * runs the upgrade hooks BEFORE handing the request to crossws, and crossws
  * builds the standard Request from the node request's header object at that
  * moment. Mutating those headers in the hook is therefore visible downstream.
- * Measured, not assumed — see
- * inner/engineering/demo/2026-08-05-onupgrade-header-normalisation.mjs.
+ * Measured by driving the real library through an upgrade, not read off its
+ * documentation.
  *
  * The refusal shape is likewise measured. hocuspocus's upgrade handler is
  * `try { await hooks(...); handleUpgrade(...) } catch (e) { if (e) throw e }`,
@@ -32,7 +32,8 @@
  *   then throw falsy     the client is told, the socket is released, the
  *                        upgrade is skipped, and nothing escapes  <-- this one
  *
- * See inner/engineering/demo/2026-08-05-onupgrade-reject-semantics.mjs.
+ * All three rows were measured against the library, not inferred from its
+ * source.
  */
 
 import type { IncomingMessage } from "node:http";

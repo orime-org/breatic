@@ -93,13 +93,25 @@ describe("Auth routes", () => {
       expect(res.status).toBe(201);
       assertSessionCookie(res.headers.get("set-cookie"), "new-token");
       const body = await res.json() as {
-        data: { user: { id: string }; recoveryCode: string; token?: string };
+        data: {
+          user: { id: string; personalStudio: unknown };
+          recoveryCode: string;
+          token?: string;
+        };
       };
       // Token MUST NOT appear in the JSON body — that would defeat
       // the httpOnly cookie's XSS protection.
       expect(body.data.token).toBeUndefined();
       expect(body.data.user.id).toBe("user-new");
       expect(body.data.recoveryCode).toBe("ABCD-EFGH-JKLM-NPQR");
+      // #1882: every /auth/* response carries `personalStudio` in the same
+      // shape. Step one of registration has not picked a slug yet, so the
+      // correct value is an explicit null — the KEY has to be there. Omitting
+      // it made the frontend's `AuthUser` type a lie (it declares the field,
+      // the wire never carried it) and `personalStudio?.name ?? null` then read
+      // undefined, silently degrading the display name to the email local part.
+      expect(body.data.user).toHaveProperty("personalStudio");
+      expect(body.data.user.personalStudio).toBeNull();
     });
 
     it("rejects invalid email with 400", async () => {
@@ -126,9 +138,10 @@ describe("Auth routes", () => {
   });
 
   describe("POST /auth/setup-studio", () => {
-    it("creates the personal studio for the slug and returns { personalStudio: { name, slug } }", async () => {
+    it("creates the personal studio for the slug and returns { personalStudio: { name, slug, avatarUrl } }", async () => {
       mocks.studioService.createPersonalStudio.mockResolvedValue({
         id: "studio-9", name: "my-handle", slug: "my-handle",
+        avatarUrl: null,
         createdByUserId: "user-1", type: "personal",
       });
 
@@ -141,9 +154,13 @@ describe("Auth routes", () => {
 
       expect(res.status).toBe(201);
       const body = await res.json() as {
-        data: { personalStudio: { name: string; slug: string } };
+        data: { personalStudio: { name: string; slug: string; avatarUrl: string | null } };
       };
-      expect(body.data.personalStudio).toEqual({ name: "my-handle", slug: "my-handle" });
+      // #1882: a freshly created studio has no avatar yet, but the KEY ships —
+      // all four /auth/* responses return one shape, no exception.
+      expect(body.data.personalStudio).toEqual({
+        name: "my-handle", slug: "my-handle", avatarUrl: null,
+      });
       expect(mocks.studioService.createPersonalStudio).toHaveBeenCalledWith(
         "user-1",
         "my-handle",
@@ -178,6 +195,10 @@ describe("Auth routes", () => {
         user: { id: "user-1", email: "u@x.com" },
         token: "sess-token",
       });
+      mocks.studioService.getPersonalStudio.mockResolvedValue({
+        id: "studio-1", name: "Alice", slug: "alice",
+        avatarUrl: "https://cdn/alice.png",
+      });
 
       const app = createApp();
       const res = await app.request("/api/v1/auth/login", {
@@ -189,10 +210,47 @@ describe("Auth routes", () => {
       expect(res.status).toBe(200);
       assertSessionCookie(res.headers.get("set-cookie"), "sess-token");
       const body = await res.json() as {
-        data: { user: { id: string }; token?: string };
+        data: {
+          user: {
+            id: string;
+            personalStudio: { name: string; slug: string; avatarUrl: string | null } | null;
+          };
+          token?: string;
+        };
       };
       expect(body.data.token).toBeUndefined();
       expect(body.data.user.id).toBe("user-1");
+      // #1882: this is the response the login TAB is populated from, and it
+      // used to omit personalStudio entirely — so that tab derived its display
+      // name from the email local part while every refreshed tab (which goes
+      // through /auth/me) showed the studio name. Same account, two names.
+      expect(body.data.user.personalStudio).toEqual({
+        name: "Alice", slug: "alice", avatarUrl: "https://cdn/alice.png",
+      });
+    });
+
+    it("returns personalStudio: null when the account has not finished onboarding", async () => {
+      mocks.authService.loginEmail.mockResolvedValue({
+        user: { id: "user-1", email: "u@x.com" },
+        token: "sess-token",
+      });
+      mocks.studioService.getPersonalStudio.mockResolvedValue(null);
+
+      const app = createApp();
+      const res = await app.request("/api/v1/auth/login", {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ email: "u@x.com", password: "password123" }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as {
+        data: { user: { personalStudio: unknown } };
+      };
+      // Null, not absent: the onboarding gate reads this as "send them to
+      // slug setup", and an absent key would read as undefined instead.
+      expect(body.data.user).toHaveProperty("personalStudio");
+      expect(body.data.user.personalStudio).toBeNull();
     });
   });
 
@@ -227,12 +285,13 @@ describe("Auth routes", () => {
   });
 
   describe("GET /auth/me", () => {
-    it("returns current user + personalStudio { name, slug } when the user has a studio", async () => {
+    it("returns current user + personalStudio { name, slug, avatarUrl } when the user has a studio", async () => {
       mocks.userRepo.getUserById.mockResolvedValue({
         id: "user-1", email: "u@x.com",
       });
       mocks.studioService.getPersonalStudio.mockResolvedValue({
         id: "studio-1", name: "Alice", slug: "alice",
+        avatarUrl: "https://cdn/alice.png",
       });
 
       const app = createApp();
@@ -242,15 +301,23 @@ describe("Auth routes", () => {
 
       expect(res.status).toBe(200);
       const body = await res.json() as {
-        data: { id: string; personalStudio: { name: string; slug: string } | null };
+        data: {
+          id: string;
+          personalStudio: { name: string; slug: string; avatarUrl: string | null } | null;
+        };
       };
       expect(body.data.id).toBe("user-1");
       // The onboarding-gate data: a completed account exposes its studio.
-      expect(body.data.personalStudio).toEqual({ name: "Alice", slug: "alice" });
-      // INV-3 (#1808): avatar is removed from the auth hot path — /auth/me no
-      // longer carries an `avatarUrl` (it was a dead field on the frontend;
-      // own-avatar display is future #1809). A regression that re-adds it to
-      // the auth context / this response trips here.
+      // #1882 adds avatarUrl here — the service already loads the whole studio
+      // row, the route was simply dropping the field while assembling the
+      // response, which left the store's avatar unset on every cold load.
+      expect(body.data.personalStudio).toEqual({
+        name: "Alice", slug: "alice", avatarUrl: "https://cdn/alice.png",
+      });
+      // INV-3 (#1808) still holds, and #1882 does NOT weaken it: the avatar is
+      // a property of the personal STUDIO, never of the user. It rides inside
+      // `personalStudio` (the pointer model #1808 established); a regression
+      // that hangs it off the user object again trips here.
       expect(body.data).not.toHaveProperty("avatarUrl");
     });
 

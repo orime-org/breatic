@@ -36,20 +36,18 @@ function leafKeys(value: unknown, prefix = "", out: string[] = []): string[] {
  * out of the translation call instead, and there was one — a second matching
  * path, covering strictly less, kept only for two keys.
  *
- * Read that carefully, because it is only half of what this pattern asks. A
- * dot is necessary; it is not sufficient. Every SEGMENT here must also begin
- * with a letter, and nothing upstream guarantees that. One catalog key already
- * fails it: `canvas.nodePlaceholder.3d`, in all five locales. It is alive only
- * because the one file that reads it builds the id with a template literal, so
- * `TEMPLATE_PREFIX` covers the whole namespace; rewrite that line as a plain
- * `t('canvas.nodePlaceholder.3d')` — the form the very next line of that file
- * uses — and this check reports a live key dead. The removed second path did
- * match it, since its character class allowed a digit to lead a segment.
- *
- * So the removal traded a real, narrow piece of coverage for one matching path
- * instead of two. That trade is deliberate and the residue is written down
- * rather than papered over; closing it (align the two shapes, or rename the
- * key) is tracked as its own task.
+ * A segment may begin with a digit, which it could not until 2026-08-06. The
+ * exclusion cost real coverage: `canvas.nodePlaceholder.3d` is in all five
+ * locales and this pattern could not match it, so a plain
+ * `t('canvas.nodePlaceholder.3d')` counted as no use at all and the key read
+ * as dead. It survived only because the one file that reads it builds the id
+ * with a template literal, so `TEMPLATE_PREFIX` covered the namespace.
+ * Widening it was measured: a few hundred more literals land in the evidence
+ * set — version numbers, an IP address, a licence id — and no key changes
+ * verdict, because a catalog key is matched whole and none of them looks like
+ * one. The exact count is not written here on purpose: it moves with any
+ * commit that edits a source, and the version that did name a number went
+ * false within one commit of being written.
  *
  * Widening this to bare words is not the alternative it looks like. `cancel`
  * and `loading` are ordinary words that appear all over the tree as enum
@@ -84,12 +82,11 @@ const TEMPLATE_PREFIX = new RegExp(
  * were alive on nothing but a test fixture or a sentence in a spec.
  *
  * One matching path, not two, and that rests on `i18n-keys-namespaced`: every
- * id has a dot because that check fails the build on a catalog key without
- * one. Delete it and this one starts reporting live keys as dead — the shape
- * it forbids is a shape `DOTTED_LITERAL` cannot see. A shape, not every shape:
- * the two are not the same set, and where they differ is spelled out on
- * `DOTTED_LITERAL` below. Nothing enforces that dependency mechanically, so
- * deleting the upstream check leaves this suite green.
+ * id has a dot because that check fails the build on a dotless one, in the
+ * catalog and at the call site both. Delete it and this one starts reporting
+ * live keys as dead — the shape it forbids is a shape `DOTTED_LITERAL` cannot
+ * see. Nothing enforces that dependency mechanically, so deleting the
+ * upstream check leaves this suite green.
  *
  * Within that scope the matching stays generous, since the two mistakes do not
  * cost the same: a live key called dead ships a raw id to the UI, while a dead
@@ -100,11 +97,13 @@ const TEMPLATE_PREFIX = new RegExp(
  * fabricating twelve keys named like code — nine survived, among them
  * `user.email`, `canvas.width`, and `Math.max`. A dead key whose name collides
  * with a common expression is therefore invisible here. Narrowing it means
- * matching the translation call *instead of* the mention — a smaller set, and
- * the opposite direction from the call-matching that was removed alongside the
- * dotless keys, which was a second path unioned *onto* this one. Worth not
- * confusing, since both are described as "matching the call". What must not
- * happen is reading the scope above as if it closed this too.
+ * matching the translation call *instead of* the mention — which is what
+ * `spelledOutKeys` does for the two checks that reason about call sites, and
+ * it is a strictly smaller set: it sees only ids written out in full inside
+ * a call, and this check needs every mention, including the interpolated
+ * prefixes that keep a whole namespace alive. Using it here would report
+ * live keys dead. What must not happen is reading the scope above as if it
+ * closed this too.
  *
  * One honest caveat about the self-exclusion. This check no longer reads its
  * own source, which closes a real mechanism — the tests below pin it — but on

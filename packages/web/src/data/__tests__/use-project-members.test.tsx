@@ -116,8 +116,10 @@ describe('useProjectMembers (#1375: real two-endpoint member merge)', () => {
       wrapper: makeWrapper(makeClient()),
     });
 
-    // The 'demo' sentinel disables the roster query, so neither endpoint
-    // is hit and MembersStack falls back to its own stub.
+    // The 'demo' sentinel disables the roster query, so neither endpoint is
+    // hit and the roster stays empty — which is what the stack renders.
+    // There is no fallback: the stub roster this used to name was deleted
+    // and the components' `members` prop is required.
     expect(vi.mocked(membersApi.list)).not.toHaveBeenCalled();
     expect(vi.mocked(usersApi.getByIds)).not.toHaveBeenCalled();
   });

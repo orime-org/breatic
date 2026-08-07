@@ -6,7 +6,6 @@ import * as React from 'react';
 
 import { toast } from '@web/lib/toast';
 import { docName, getDoc } from '@web/data/yjs/manager';
-import { useCaretUser } from '@web/features/collab-editor/use-caret-user';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
@@ -54,7 +53,6 @@ export function DocumentSpace({
     name,
     doc,
   });
-  const caretUser = useCaretUser();
 
   // This Space's own document was refused, or the server granted it read-only.
   // Both are told to the user and NEITHER disables the editor: showing the
@@ -92,7 +90,6 @@ export function DocumentSpace({
     doc,
     name,
     caretProvider: provider,
-    caretUser,
     // Only the ROLE decides this. A refused or read-only connection is reported
     // to the user, not enforced against them — see above.
     editable: !readOnly,
