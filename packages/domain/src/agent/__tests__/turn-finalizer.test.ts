@@ -7,8 +7,8 @@
  * The cleanup used to sit after the streaming loop. SSE is an async
  * generator, so when the user closes the page the consumer calls `.return()`
  * on it and every line after the loop is skipped -- the reply was never
- * saved, memory was never consolidated, billing never ran. Three of the four
- * ways a turn can end skipped it.
+ * saved and billing never ran. Three of the four ways a turn can end skipped
+ * it.
  *
  * Measured before writing any of this: a generator whose cleanup sits after
  * the loop runs none of it when the consumer breaks early, while the same
@@ -27,10 +27,6 @@ function recorder() {
       persist: vi.fn(async () => {
         await Promise.resolve();
         ran.push("persist");
-      }),
-      consolidate: vi.fn(async () => {
-        await Promise.resolve();
-        ran.push("consolidate");
       }),
       bill: vi.fn(async () => {
         await Promise.resolve();
@@ -57,33 +53,33 @@ describe("finalizeTurn", () => {
   it("runs every step it was given", async () => {
     const { ran, steps } = recorder();
     await finalizeTurn({ steps });
-    expect(ran).toEqual(["persist", "consolidate", "bill"]);
+    expect(ran).toEqual(["persist", "bill"]);
   });
 
   it("runs the remaining steps when one of them throws", async () => {
-    // Cleanup is several independent obligations, not a transaction. Losing
-    // the saved reply because consolidation failed would trade one missing
-    // thing for a worse one.
+    // Cleanup is independent obligations, not a transaction. Skipping the
+    // charge because the database was down would trade one missing thing
+    // for a worse one, and the reverse costs the user their reply.
     const { ran, steps } = recorder();
     const failing = {
       ...steps,
-      consolidate: vi.fn(async () => {
+      persist: vi.fn(async () => {
         await Promise.resolve();
-        throw new Error("consolidation is down");
+        throw new Error("the database is down");
       }),
     };
     await finalizeTurn({ steps: failing });
-    expect(ran).toEqual(["persist", "bill"]);
+    expect(ran).toEqual(["bill"]);
   });
 
   it("reports what failed instead of swallowing it", async () => {
     const { steps } = recorder();
-    const boom = new Error("consolidation is down");
+    const boom = new Error("the database is down");
     const failures = await finalizeTurn({
-      steps: { ...steps, consolidate: vi.fn(async () => { throw boom; }) },
+      steps: { ...steps, persist: vi.fn(async () => { throw boom; }) },
     });
     expect(failures).toHaveLength(1);
-    expect(failures[0]?.step).toBe("consolidate");
+    expect(failures[0]?.step).toBe("persist");
     expect(failures[0]?.error).toBe(boom);
   });
 
@@ -94,8 +90,8 @@ describe("finalizeTurn", () => {
 
   it("accepts a caller that only has some of the steps", async () => {
     // Worker runs an agent loop with no conversation and no SSE, so it has
-    // nothing to persist and nothing to consolidate. It declares what it
-    // has rather than passing no-ops, and the finalizer does not care.
+    // nothing to persist. It declares what it has rather than passing
+    // no-ops, and the finalizer does not care.
     const ran: string[] = [];
     await finalizeTurn({
       steps: { bill: async () => { ran.push("bill"); } },

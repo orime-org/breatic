@@ -158,6 +158,49 @@ describe("how a turn ends", () => {
     expect(loop).not.toMatch(/^\s+return;/m);
   });
 
+  it("keeps going after a tool that only shows the user something", async () => {
+    // Two kinds of interaction tool, and treating them alike costs the rest
+    // of the turn. `ask_user_choice` needs an answer before the model can
+    // continue, so it stops. `show_search_results` and
+    // `propose_canvas_action` just draw a card -- the model is meant to keep
+    // writing around them, and may draw several in one turn. Stopping on
+    // them means the first card a turn produces is the last thing it says.
+    streamTextRetry.mockReturnValue(
+      streamOf([
+        { type: "tool-call", toolCallId: "t1", toolName: "show_search_results", input: {} },
+        { type: "tool-result", toolCallId: "t1", output: '__SHOW_SEARCH_RESULTS__{"results":[]}' },
+        { type: "text-delta", text: "here is what I found" },
+      ]),
+    );
+    const events = await runTurn();
+    expect(events).toContain("agent_search_results");
+    // The delta after the card is the point: it only exists if the loop ran on.
+    expect(events.indexOf("chat_chunk")).toBeGreaterThan(
+      events.indexOf("agent_search_results"),
+    );
+  });
+
+  it("does not make the user wait for memory consolidation", async () => {
+    // Consolidation is an LLM call of its own, seconds long, and nobody is
+    // waiting for it -- the user is waiting for the turn to be over. Putting
+    // it in front of `chat_done` leaves the frontend spinning on a reply
+    // that has already finished streaming.
+    //
+    // The race is the assertion: a consolidation that never finishes must
+    // not hold the ending. Everything else in this path is mocked, so the
+    // only thing that can take 200ms is an await on that promise.
+    consolidateIfNeeded.mockReturnValueOnce(new Promise<undefined>(() => {}));
+    streamTextRetry.mockReturnValue(streamOf([{ type: "text-delta", text: "hi" }]));
+    const events = await Promise.race([
+      runTurn(),
+      new Promise<string[]>((_, reject) =>
+        setTimeout(() => reject(new Error("chat_done waited for consolidation")), 200),
+      ),
+    ]);
+    expect(events).toContain("chat_done");
+    expect(consolidateIfNeeded).toHaveBeenCalled();
+  });
+
   it("ends with error and chat_done when the model throws", async () => {
     streamTextRetry.mockReturnValue({
       fullStream: (async function* () {

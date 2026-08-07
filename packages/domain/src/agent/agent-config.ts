@@ -112,7 +112,15 @@ export function buildAgentConfig(
 
   const sections: string[] = [];
   if (basePrompt) sections.push(basePrompt);
-  if (skillName) sections.push(registry.loadSkillContent(skillName));
+  // The heading names the skill above its body. The body is a wall of
+  // markdown with headings of its own, so without this line the model gets
+  // instructions with no subject: it cannot tell the user which skill is
+  // running, nor the skill's rules from the persona's.
+  if (skillName) {
+    sections.push(
+      `## Active Skill: ${skillName}\n${registry.loadSkillContent(skillName)}`,
+    );
+  }
   if (memoryContext?.userMemory) {
     sections.push(`## User Preferences & Style\n${memoryContext.userMemory}`);
   }

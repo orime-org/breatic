@@ -16,7 +16,6 @@ import { getModel, resolveProvider } from "@breatic/domain";
 import { buildAgentConfig, finalizeTurn } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
-import { getSkillRegistry } from "@breatic/domain";
 import { getAgentConfig } from "@breatic/core";
 import { env } from "@breatic/core";
 import { creditService } from "@breatic/domain";
@@ -96,13 +95,12 @@ export class MainAgent {
     resources?: string[],
   ): AsyncGenerator<SSEEvent> {
     const { conversationId, memoryContext, compressedHistory } = this.ctx;
-    const registry = getSkillRegistry();
-    const skill = registry.get(skillName);
 
-    if (!skill) {
-      yield this.sse(SSEEventType.ERROR, { message: `Skill '${skillName}' not found` });
-      return;
-    }
+    // Whether the skill exists is not asked here. `assertUserMayInvoke` on
+    // the route has already answered it — with a 404 the client can act on,
+    // before a message was saved or a stream opened. Asking again would be a
+    // second answer to a settled question, which is how the two entry points
+    // drifted apart in the first place.
 
     // Save user command. Capture the assigned turnIndex for billing refKey,
     // same reason as `chat()` above.
@@ -165,16 +163,29 @@ export class MainAgent {
     let creditsUsed = 0;
     const toolCallLog: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
 
+    // Tokens are counted off the stream as it goes past, never from
+    // `result.usage`. That getter is not a passive read: it chains to
+    // `finalStep` to `steps`, and `steps` calls `consumeStream()`. On the
+    // exit that matters most — the user closing the page while the model
+    // loop is still mid-flight — reading it would drive the rest of that
+    // loop after everyone has gone, running real provider calls and real
+    // tool calls nobody asked for, then bill for them. Every step announces
+    // what it spent in a `finish-step` part, so adding those up as they
+    // arrive gives the figure with none of that, on every exit alike.
+    let tokensUsed = 0;
+
     // Everything below runs inside try/finally so the turn's obligations are
     // met however it ends. Three of the four exits used to skip them: the
     // user closing the page (the consumer calls `.return()` on this
     // generator and nothing after the loop runs), the model throwing, and a
     // blocking interaction tool returning early. In each the reply went
     // unsaved and the turn unbilled.
-    // How this turn ended, which decides what the cleanup may do. Reading
-    // usage is not passive — it consumes the stream, running whatever is
-    // left of the model loop — so a turn that stopped early must not.
-    let exit: "completed" | "blocked" | "failed" = "completed";
+    // How this turn ended, for the log. It starts at the exit nothing has to
+    // announce — the client walking away, where control never comes back to
+    // this function's own code — and each of the other three says so on its
+    // way out. A default of "completed" is what let a disconnect log itself
+    // as a clean finish.
+    let exit: "aborted" | "completed" | "blocked" | "failed" = "aborted";
 
     try {
       stream: for await (const part of result.fullStream) {
@@ -186,6 +197,10 @@ export class MainAgent {
 
           case "reasoning-delta":
             thinkingContent += part.text;
+            break;
+
+          case "finish-step":
+            tokensUsed += part.usage?.totalTokens ?? 0;
             break;
 
           case "tool-call":
@@ -247,13 +262,22 @@ export class MainAgent {
 
             if (interaction) {
               yield this.sse(interaction.event, interaction.payload);
-              exit = "blocked";
-              break stream;
+              // Only the tools that asked the user something stop here. The
+              // ones that merely drew a card let the model write on around
+              // them, and let it draw more than one in a turn.
+              if (interaction.blocking) {
+                exit = "blocked";
+                break stream;
+              }
             }
             break;
           }
         }
       }
+      // Two ways to arrive here: the stream ran out, or a blocking tool
+      // broke out of it. That one has already recorded itself, so only the
+      // untouched default counts as a clean finish.
+      if (exit === "aborted") exit = "completed";
     } catch (err) {
       exit = "failed";
       logger.error({ err, userId, conversationId }, "agent_turn_failed");
@@ -261,6 +285,16 @@ export class MainAgent {
         message: "The assistant could not finish this turn.",
       });
     } finally {
+      // Memory consolidation is an LLM call of its own and nobody is waiting
+      // for it — the user is waiting for the turn to be over. Starting it
+      // here rather than awaiting it keeps it out from in front of
+      // `chat_done`, and starting it inside the finally means a disconnect
+      // still triggers it. Its failure is logged here because it has nobody
+      // left to return to.
+      void consolidateIfNeeded(userId, conversationId, projectId).catch((err: unknown) =>
+        logger.warn({ err, userId, conversationId }, "memory_consolidation_failed"),
+      );
+
       const failures = await finalizeTurn({
         steps: {
           persist: fullResponse
@@ -273,19 +307,10 @@ export class MainAgent {
                 });
               }
             : undefined,
-          consolidate: async () => {
-            await consolidateIfNeeded(userId, conversationId, projectId);
-          },
-          // Only a turn that ran to the end may read usage. The getter
-          // chains to `steps`, which calls `consumeStream()` — on a turn
-          // that stopped early that would drive the rest of the model loop
-          // and bill for output nobody asked for.
-          bill: exit !== "completed" ? undefined : async () => {
-            const usage = await result.usage;
-            const mainTokens = usage?.totalTokens ?? 0;
-            if (mainTokens === 0) return;
+          bill: async () => {
+            if (tokensUsed === 0) return;
 
-            creditsUsed = Math.ceil((mainTokens / 1000) * env.CREDIT_MULTIPLIER);
+            creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
             const billingTurnIndex = this.ctx.billing?.turnIndex;
             if (billingTurnIndex === undefined) {
               throw new Error("MainAgent.runStream: billing.turnIndex not initialized");
@@ -298,7 +323,7 @@ export class MainAgent {
               creditsUsed,
               "Agent chat",
               {
-                tokensUsed: mainTokens,
+                tokensUsed,
                 model: agentConfig.modelId,
                 provider: resolveProvider(agentConfig.modelId),
               },

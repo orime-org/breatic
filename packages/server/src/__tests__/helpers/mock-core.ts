@@ -442,7 +442,6 @@ export const domainMock = () => ({
   BASELINE_TOOLS: [],
   getSkillRegistry: () => ({
     get: (name: string) => name === "gated_fixture" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,
-    canUserInvoke: (name: string) => name !== "gated_fixture",
   }),
   // The gate both entry points call. Mirrors the real one's two outcomes:
   // 404 for a skill that does not exist, 403 for one the routing config

@@ -25,7 +25,9 @@ const addMessage = vi.fn(
   async (_id: string, _msg: Record<string, unknown>) => 1,
 );
 const consolidateIfNeeded = vi.fn(async () => undefined);
-const deductOnce = vi.fn(async () => undefined);
+const deductOnce = vi.fn(async (..._args: unknown[]) => undefined);
+/** Set when the code under test reads `usage`, which is what consumes a stream. */
+const usageRead = vi.fn();
 
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
@@ -94,23 +96,36 @@ vi.mock("@server/agent/context.js", () => ({
 }));
 
 beforeEach(() => {
-  addMessage.mockClear();
-  consolidateIfNeeded.mockClear();
-  deductOnce.mockClear();
+  [addMessage, consolidateIfNeeded, deductOnce, usageRead].forEach((m) => m.mockClear());
 });
 
 describe("a turn cut short by the client", () => {
-  it("still saves, consolidates and bills", async () => {
+  it("still saves, consolidates and bills — without touching `usage`", async () => {
+    // The billing figure has to come off the stream as it goes past, not
+    // from `result.usage` at the end. That getter is not a passive read: in
+    // AI SDK 6.0.141 it chains to `finalStep` to `steps`, and `steps` calls
+    // `consumeStream()`. Reading it here -- the one exit where the model
+    // loop is still mid-flight -- would drive the rest of that loop after
+    // the user has gone, running real provider calls and real tool calls
+    // nobody asked for, and bill for all of it.
+    //
+    // Each step announces what it spent in a `finish-step` part, so adding
+    // those up as they arrive gives the same number with none of that.
+    //
     // A stream that keeps producing, so the consumer is what stops the turn
     // rather than the stream running out.
     streamTextRetry.mockReturnValue({
       fullStream: (async function* () {
         yield { type: "text-delta", text: "hello " };
+        yield { type: "finish-step", usage: { totalTokens: 900 } };
         yield { type: "text-delta", text: "world" };
         // Never reached: the consumer walks away first.
         yield { type: "text-delta", text: " and more" };
       })(),
-      usage: Promise.resolve({ totalTokens: 1200 }),
+      get usage() {
+        usageRead();
+        return Promise.resolve({ totalTokens: 1200 });
+      },
     });
 
     const { MainAgent } = await import("@server/agent/main-agent.js");
@@ -147,5 +162,9 @@ describe("a turn cut short by the client", () => {
     ).toBe(true);
     expect(consolidateIfNeeded).toHaveBeenCalled();
     expect(deductOnce).toHaveBeenCalled();
+    // What it billed for is the step the stream actually reported, not the
+    // figure the consuming getter would have produced.
+    expect(deductOnce.mock.calls[0]?.[4]).toMatchObject({ tokensUsed: 900 });
+    expect(usageRead).not.toHaveBeenCalled();
   });
 });

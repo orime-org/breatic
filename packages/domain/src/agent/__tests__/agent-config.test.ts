@@ -138,6 +138,19 @@ describe("buildAgentConfig", () => {
     expect(config.instructions).toContain("body text");
   });
 
+  it("names the active skill above its body", () => {
+    // The body arrives as a wall of markdown with its own headings. Without
+    // a line saying which skill is running, the model gets instructions with
+    // no subject -- it cannot say "I am running X" or tell the skill's rules
+    // apart from the persona's. The chat path had this line and the
+    // collapse into one factory dropped it.
+    const config = buildAgentConfig({ skillName: "researchy", basePrompt: "base" });
+    expect(config.instructions).toContain("## Active Skill: researchy");
+    expect(config.instructions.indexOf("## Active Skill: researchy")).toBeLessThan(
+      config.instructions.indexOf("body text"),
+    );
+  });
+
   it("omits the skill section when no skill is named", () => {
     expect(buildAgentConfig({ basePrompt: "base" }).instructions).toBe("base");
   });

@@ -70,20 +70,6 @@ export class SkillRegistry {
   }
 
   /**
-   * Whether the given skill may be invoked by an end user via
-   * `/chat/skill`. Deny-by-default: a skill has to declare itself
-   * user-invocable to pass. Some skills exist only for the model to
-   * reach for mid-turn and are not things a user fires directly.
-   * Returns `false` for unknown skills.
-   * @param name - The unique skill name
-   * @returns Whether an authenticated user may call this skill
-   */
-  canUserInvoke(name: string): boolean {
-    if (!this.skills.has(name)) return false;
-    return getSkillRouting().skills[name]?.user_invocable === true;
-  }
-
-  /**
    * Return the skills an end user may fire directly.
    * @returns An array of SkillMeta objects
    */

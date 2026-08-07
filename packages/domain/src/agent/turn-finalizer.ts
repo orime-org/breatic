@@ -9,8 +9,13 @@
  * calls `.return()` on it and every line after the loop is skipped. Three of
  * the four ways a turn can end went through that gap -- the user closing the
  * page, the model throwing, and a blocking interaction tool returning early
- * -- and in each the reply went unsaved, memory unconsolidated, billing
- * unrun.
+ * -- and in each the reply went unsaved and the turn unbilled.
+ *
+ * What belongs here is what the turn's ending waits on. Work the user is not
+ * waiting for -- memory consolidation, an LLM call of its own -- does not:
+ * putting it in this list would hold `chat_done` behind it, leaving the
+ * frontend spinning on a reply that finished streaming seconds ago. The
+ * caller starts that kind of work without awaiting it.
  *
  * Two properties make this work, and both are deliberate:
  *
@@ -31,8 +36,6 @@
 export interface TurnSteps {
   /** Write the turn's output where it belongs. */
   persist?: () => Promise<void>;
-  /** Fold the turn into longer-term memory. */
-  consolidate?: () => Promise<void>;
   /** Charge for what the turn consumed. */
   bill?: () => Promise<void>;
 }
@@ -51,12 +54,8 @@ export interface TurnStepFailure {
   error: unknown;
 }
 
-/** Fixed order: save first, since the later two can be redone from it. */
-const STEP_ORDER: ReadonlyArray<keyof TurnSteps> = [
-  "persist",
-  "consolidate",
-  "bill",
-];
+/** Fixed order: save first, since billing can be redone from what was saved. */
+const STEP_ORDER: ReadonlyArray<keyof TurnSteps> = ["persist", "bill"];
 
 /**
  * Run a turn's obligations, whatever happened to the turn.
