@@ -16,8 +16,13 @@
  * the STATEMENT: that it lifts `private` rows and leaves `studio` rows alone.
  * It does NOT prove the migration will be executed — drizzle's migrator reads
  * `meta/_journal.json` and never opens a `.sql` that is not listed there, so an
- * unregistered file is silently skipped. That half is covered by the journal
- * entry itself plus repo-lint's migration-style check, not by any test.
+ * unregistered file is silently skipped.
+ *
+ * Nothing mechanical covers that half. repo-lint's migration-style check is
+ * NOT it: it finds folders through the journal but then lints every `.sql` in
+ * them, so an unregistered orphan reads clean. What actually catches a missing
+ * entry is running `pnpm db:migrate` and watching it not throw — drizzle opens
+ * each entry's file by tag and errors when it cannot. That is a human step.
  *
  * Nor can it be written the obvious way. `global-setup.ts` migrates the
  * container before any test module loads, and drizzle's migrate() no-ops on a
@@ -26,16 +31,19 @@
  * only way to exercise the statement at all.
  *
  * WHY IT RUNS AGAINST A COPY OF THE TABLE rather than the real one. The suites
- * share one database and vitest runs them in parallel forks; nine of them
- * insert `private` projects on purpose and one exists to test the filter that
- * hides them. A sweep of the real table would both read their rows (the first
- * version of this file asserted on a row count and saw 51 instead of 1) and
- * lock rows they were mid-way through using. Verifying what a statement MEANS
- * does not require running it on production tables — so the transaction builds
- * a same-shaped table in a throwaway schema, points the search path at it, and
- * rolls the whole thing back. The copy is taken with `LIKE ... INCLUDING ALL`,
- * so column types, defaults and check constraints come along; foreign keys do
- * not, which is why the rows below reference nothing.
+ * share one database and none of them cleans up: nine insert `private`
+ * projects on purpose, and one exists to test the filter that hides them. They
+ * run one at a time (`singleFork: true`), so nothing races — but by the time
+ * this file runs, every row those earlier suites left is still sitting there.
+ * A sweep of the real table reads all of them; the first version of this file
+ * asserted on a row count and saw 51 instead of 1.
+ *
+ * Verifying what a statement MEANS does not require running it on production
+ * tables, so the transaction builds a same-shaped table in a throwaway schema,
+ * points the search path at it, and rolls the whole thing back. The copy is
+ * taken with `LIKE ... INCLUDING ALL`, so column types, defaults and check
+ * constraints come along; foreign keys do not, which is why the rows below
+ * reference nothing.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";

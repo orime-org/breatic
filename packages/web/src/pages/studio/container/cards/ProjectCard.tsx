@@ -23,11 +23,15 @@ interface ProjectCardProps {
 
 /**
  * A project card in the studio container Projects tab (spec §3.3): a 16:10
- * thumbnail, the name, visibility + role badges, and a governance (`⋯`) entry
- * shown only to the project Owner or a studio Admin (spec §4 invariant 2).
- * Inside the container the source-studio label is omitted (only the
- * cross-studio Recent landing shows provenance). The card links to
- * `/project/{slug}-{uuid}`.
+ * thumbnail, the name, a role badge, and a governance (`⋯`) entry shown only
+ * to the project Owner or a studio Admin (spec §4 invariant 2). Inside the
+ * container the source-studio label is omitted (only the cross-studio Recent
+ * landing shows provenance). The card links to `/project/{slug}-{uuid}`.
+ *
+ * No visibility badge: projects dropped the concept on 2026-08-07. The row
+ * still carries the column and the filters still read it, so a project can
+ * still SAY private — the card stays silent either way. CollectionCard does
+ * show one, which is why the badge component itself survives.
  * @param props the project and the viewer's studio role.
  * @param props.project the project to render.
  * @param props.studioRole the viewer's studio role.
