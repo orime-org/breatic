@@ -70,6 +70,7 @@ export class MainAgent {
     const agentConfig = buildAgentConfig({
       basePrompt: buildSystemPrompt(),
       memoryContext,
+      interactive: true,
     });
 
     // Build messages array from pre-compressed history
@@ -116,6 +117,7 @@ export class MainAgent {
       skillName,
       basePrompt: buildSystemPrompt(),
       memoryContext,
+      interactive: true,
     });
 
     const userContent = MainAgent.buildUserContent(
@@ -169,8 +171,13 @@ export class MainAgent {
     // generator and nothing after the loop runs), the model throwing, and a
     // blocking interaction tool returning early. In each the reply went
     // unsaved and the turn unbilled.
+    // How this turn ended, which decides what the cleanup may do. Reading
+    // usage is not passive — it consumes the stream, running whatever is
+    // left of the model loop — so a turn that stopped early must not.
+    let exit: "completed" | "blocked" | "failed" = "completed";
+
     try {
-      for await (const part of result.fullStream) {
+      stream: for await (const part of result.fullStream) {
         switch (part.type) {
           case "text-delta":
             fullResponse += part.text;
@@ -231,17 +238,28 @@ export class MainAgent {
               } catch {
                 yield this.sse(SSEEventType.AGENT_ASK, { question: resultStr });
               }
-              return;
+              // The turn stops here waiting for the user, but it still owes
+              // an ending. Breaking rather than returning keeps the exit on
+              // one path so `chat_done` cannot be skipped.
+              exit = "blocked";
+              break stream;
             }
 
             if (interaction) {
               yield this.sse(interaction.event, interaction.payload);
-              return;
+              exit = "blocked";
+              break stream;
             }
             break;
           }
         }
       }
+    } catch (err) {
+      exit = "failed";
+      logger.error({ err, userId, conversationId }, "agent_turn_failed");
+      yield this.sse(SSEEventType.ERROR, {
+        message: "The assistant could not finish this turn.",
+      });
     } finally {
       const failures = await finalizeTurn({
         steps: {
@@ -258,10 +276,11 @@ export class MainAgent {
           consolidate: async () => {
             await consolidateIfNeeded(userId, conversationId, projectId);
           },
-          // Billing reads usage off the finished stream. On an aborted turn
-          // that promise still settles — the model call gets no abort signal
-          // from us, so it runs to completion and the token count is real.
-          bill: async () => {
+          // Only a turn that ran to the end may read usage. The getter
+          // chains to `steps`, which calls `consumeStream()` — on a turn
+          // that stopped early that would drive the rest of the model loop
+          // and bill for output nobody asked for.
+          bill: exit !== "completed" ? undefined : async () => {
             const usage = await result.usage;
             const mainTokens = usage?.totalTokens ?? 0;
             if (mainTokens === 0) return;
@@ -302,13 +321,17 @@ export class MainAgent {
         conversationId,
         responseLength: fullResponse.length,
         creditsUsed,
+        exit,
       }, "agent_response");
-    }
 
-    yield this.sse(SSEEventType.CHAT_DONE, {
-      conversationId,
-      creditsUsed,
-    });
+      // Inside the finally so every exit emits it. A turn that ends without
+      // one leaves the frontend with nothing to switch out of its in-flight
+      // state — the stop button never clears.
+      yield this.sse(SSEEventType.CHAT_DONE, {
+        conversationId,
+        creditsUsed,
+      });
+    }
   }
 
   /**

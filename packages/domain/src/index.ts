@@ -42,6 +42,7 @@ export { getModel, resolveProvider } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export { buildToolSet, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
+export { assertUserMayInvoke } from "@domain/agent/skill-gate.js";
 export { finalizeTurn } from "@domain/agent/turn-finalizer.js";
 export type { TurnSteps, TurnStepFailure } from "@domain/agent/turn-finalizer.js";
 export type { AgentConfigRequest, ResolvedAgentConfig } from "@domain/agent/agent-config.js";

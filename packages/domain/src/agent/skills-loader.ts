@@ -98,20 +98,6 @@ export class SkillRegistry {
     return result;
   }
 
-  /**
-   * Return all skills matching the given category.
-   * @param category - The category to filter by (e.g. "image", "video")
-   * @returns An array of matching SkillMeta objects
-   */
-  listByCategory(category: string): SkillMeta[] {
-    const result: SkillMeta[] = [];
-    for (const s of this.skills.values()) {
-      if (s.category === category) {
-        result.push(s);
-      }
-    }
-    return result;
-  }
 
   /**
    * Return the skills allowed on one surface.

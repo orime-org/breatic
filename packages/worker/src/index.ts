@@ -27,6 +27,7 @@ import {
   yjsRawPg,
   startHealthServer,
   runGracefulShutdown,
+  getSkillRouting,
 } from "@breatic/core";
 
 initLogger("worker");
@@ -36,6 +37,12 @@ initLogger("worker");
 // nowhere anyone reads at 3am. Warnings are exactly what matters then: a
 // provider silently dropping a parameter, a model ignoring a setting. The
 // call still succeeds, so nothing else says so.
+// Read the skill routing config now rather than on the first request. It is
+// lazy like every other config reader, and lazy here means a typo surfaces
+// mid-SSE-stream — the user's message already saved, the stream already
+// open, and no way left to send them an error.
+getSkillRouting();
+
 globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
   logger.warn({ warnings, provider, model }, "ai_sdk_warning");
 };

@@ -55,6 +55,14 @@ export const mockCreateQueue = vi.fn();
 
 /** Mock references — tests can override behavior per-test. */
 export const mocks = {
+  /**
+   * core's real AppError, stashed by coreMock.
+   *
+   * domainMock is synchronous and importOriginal-free, so it cannot reach
+   * the class itself — and the error handler identifies errors by
+   * `instanceof`, so a look-alike with the same `.status` comes back a 500.
+   */
+  appError: Error as unknown as new (status: number, message: string) => Error,
   authService: {
     register: vi.fn(),
     loginEmail: vi.fn(),
@@ -390,7 +398,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     projectAuthService: mocks.projectAuthService,
     runWithContext: vi.fn((_ctx: unknown, fn: () => unknown) => fn()),
     // Errors (keep actual error classes)
-    AppError: actual.AppError,
+    AppError: (mocks.appError = actual.AppError as typeof mocks.appError),
     NotFoundError: actual.NotFoundError,
     ForbiddenError: actual.ForbiddenError,
     ConflictError: actual.ConflictError,
@@ -436,6 +444,21 @@ export const domainMock = () => ({
     get: (name: string) => name === "gated_fixture" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,
     canUserInvoke: (name: string) => name !== "gated_fixture",
   }),
+  // The gate both entry points call. Mirrors the real one's two outcomes:
+  // 404 for a skill that does not exist, 403 for one the routing config
+  // does not let a user fire from here.
+  // Throws the real AppError, because the error handler identifies errors
+  // with `instanceof` — a look-alike carrying the same `.status` comes back
+  // as a 500. `mocks.appError` is set by coreMock, which does have it.
+  assertUserMayInvoke: (name: string) => {
+    const AppErrorClass = mocks.appError;
+    if (name !== "gated_fixture" && name !== "creative_research") {
+      throw new AppErrorClass(404, `Skill '${name}' not found`);
+    }
+    if (name === "gated_fixture") {
+      throw new AppErrorClass(403, `Skill '${name}' is not user-invocable`);
+    }
+  },
   SkillRegistry: class {},
   extractPromptText: vi.fn((s: string) => s),
   ...mocks.canvasLock,

@@ -51,6 +51,21 @@ export const BASELINE_TOOLS: readonly string[] = [
 ];
 
 /**
+ * The tools whose result is a sentinel the caller has to decode.
+ *
+ * They do not do anything on their own — they hand back a marker that the
+ * SSE loop turns into an event the frontend draws. A caller with no such
+ * loop must not be offered them, or the model will ask a question nobody
+ * can see and read the raw sentinel back as its answer.
+ */
+export const INTERACTION_TOOLS: readonly string[] = [
+  "ask_user_question",
+  "ask_user_choice",
+  "propose_canvas_action",
+  "show_search_results",
+];
+
+/**
  * What each tool needs configured before it can do anything.
  *
  * A tool missing its configuration is left out rather than offered and

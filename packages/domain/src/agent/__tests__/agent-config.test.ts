@@ -54,41 +54,60 @@ beforeAll(() => {
   initCore(process.env);
 });
 
-/** What a caller gets to compare, with tools reduced to a stable key list. */
-function comparable(config: ReturnType<typeof buildAgentConfig>) {
-  return {
-    modelId: config.modelId,
-    instructions: config.instructions,
-    toolNames: Object.keys(config.tools).sort(),
-  };
-}
 
 describe("buildAgentConfig", () => {
-  it("gives both entry points the same config for the same request", () => {
-    // The chat entry and the worker entry, each building what it builds.
+  it("gives both entry points the same model and tools for one skill", () => {
+    // The two entries genuinely differ in what they pass: chat has a base
+    // prompt and memory, worker has neither. So the previous version of this
+    // test — same literal twice — could never fail; it asserted that a pure
+    // function is deterministic.
+    //
+    // What must hold across them is the part that is not caller-specific:
+    // the model and the tool set. Instructions legitimately differ, and the
+    // skill's own body has to be in both.
     const fromChat = buildAgentConfig({
       skillName: "researchy",
-      basePrompt: "base",
+      basePrompt: "chat base prompt",
+      memoryContext: {
+        userMemory: "u",
+        projectMemory: "p",
+        conversationMemory: "c",
+      },
     });
-    const fromWorker = buildAgentConfig({
-      skillName: "researchy",
-      basePrompt: "base",
-    });
-    expect(comparable(fromChat)).toEqual(comparable(fromWorker));
+    const fromWorker = buildAgentConfig({ skillName: "researchy" });
+
+    expect(fromChat.modelId).toBe(fromWorker.modelId);
+    expect(Object.keys(fromChat.tools).sort()).toEqual(
+      Object.keys(fromWorker.tools).sort(),
+    );
+    expect(fromChat.instructions).toContain("body text");
+    expect(fromWorker.instructions).toContain("body text");
   });
 
-  it("hands a caller that declares no skill the baseline tools", () => {
+  it("hands a caller that declares no skill the six baseline tools", () => {
     // The defect this fixes: bare chat used to pass an empty array and get
     // no tools at all, so the model could not search and invented answers.
-    const config = buildAgentConfig({ basePrompt: "base" });
-    expect(Object.keys(config.tools).sort()).toEqual([...BASELINE_TOOLS].sort());
+    //
+    // The names are written out rather than compared against BASELINE_TOOLS,
+    // which would be self-referential — adding a tool nobody vetted to that
+    // constant would change both sides and stay green. This is the list, and
+    // adding to it is supposed to require editing this line.
+    const config = buildAgentConfig({ basePrompt: "base", interactive: true });
+    expect(Object.keys(config.tools).sort()).toEqual([
+      "ask_user_choice",
+      "ask_user_question",
+      "propose_canvas_action",
+      "show_search_results",
+      "web_fetch",
+      "web_search",
+    ]);
   });
 
   it("gives a skill the baseline plus whatever else it declares", () => {
     // Ten of the eleven skills declare no tools. If a skill's declaration
     // replaced the baseline instead of adding to it, every one of them would
     // run with nothing -- the same defect, moved to the skill path.
-    const config = buildAgentConfig({ skillName: "researchy" });
+    const config = buildAgentConfig({ skillName: "researchy", interactive: true });
     for (const name of BASELINE_TOOLS) {
       expect(Object.keys(config.tools)).toContain(name);
     }
@@ -121,6 +140,19 @@ describe("buildAgentConfig", () => {
 
   it("omits the skill section when no skill is named", () => {
     expect(buildAgentConfig({ basePrompt: "base" }).instructions).toBe("base");
+  });
+
+  it("keeps interaction tools away from a caller that cannot draw them", () => {
+    // Worker runs a task with nobody watching. Handing it ask_user_question
+    // means the model asks a question, nothing renders it, and the raw
+    // sentinel string comes back as the answer.
+    const config = buildAgentConfig({ skillName: "researchy" });
+    expect(Object.keys(config.tools).sort()).toEqual(["web_fetch", "web_search"]);
+  });
+
+  it("gives them to a caller that can", () => {
+    const config = buildAgentConfig({ skillName: "researchy", interactive: true });
+    expect(Object.keys(config.tools)).toContain("ask_user_question");
   });
 
   it("throws a typed error for a skill that does not exist", () => {

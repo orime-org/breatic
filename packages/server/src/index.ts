@@ -12,7 +12,9 @@
 import "@server/bootstrap-config.js";
 import { serve } from "@hono/node-server";
 import { createApp } from "@server/app.js";
-import { env } from "@breatic/core";
+import { env,
+  getSkillRouting,
+} from "@breatic/core";
 import { closeDb } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
@@ -36,6 +38,12 @@ initLogger("server");
 // nowhere anyone reads at 3am. Warnings are exactly what matters then: a
 // provider silently dropping a parameter, a model ignoring a setting. The
 // call still succeeds, so nothing else says so.
+// Read the skill routing config now rather than on the first request. It is
+// lazy like every other config reader, and lazy here means a typo surfaces
+// mid-SSE-stream — the user's message already saved, the stream already
+// open, and no way left to send them an error.
+getSkillRouting();
+
 globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
   logger.warn({ warnings, provider, model }, "ai_sdk_warning");
 };

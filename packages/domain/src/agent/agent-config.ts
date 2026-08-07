@@ -29,7 +29,11 @@ import type { Tool } from "ai";
 import { getAgentConfig } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";
 import { getSkillRegistry } from "@domain/agent/skills-loader.js";
-import { BASELINE_TOOLS, buildToolSet } from "@domain/agent/tools/index.js";
+import {
+  BASELINE_TOOLS,
+  INTERACTION_TOOLS,
+  buildToolSet,
+} from "@domain/agent/tools/index.js";
 
 /** What a caller tells the factory about the run it is about to start. */
 export interface AgentConfigRequest {
@@ -50,6 +54,16 @@ export interface AgentConfigRequest {
   basePrompt?: string;
   /** Three-layer memory, when the caller has any. Worker never does. */
   memoryContext?: MemoryContext;
+  /**
+   * Whether this caller can render an interaction tool's payload.
+   *
+   * The four interaction tools return a sentinel-prefixed string that the
+   * SSE loop decodes into an event the frontend draws. A caller without that
+   * loop — worker, running a task with nobody watching — would hand the
+   * model a tool that asks the user a question and then let the raw sentinel
+   * stand as the answer. Such a caller does not get them.
+   */
+  interactive?: boolean;
 }
 
 /** The three things, resolved. */
@@ -89,9 +103,12 @@ export function buildAgentConfig(
   // for it. Ten of the eleven skills declare none; substitution would leave
   // every one of them running with nothing, which is the same defect plain
   // chat had, relocated to the skill path.
+  const baseline = request.interactive
+    ? BASELINE_TOOLS
+    : BASELINE_TOOLS.filter((n) => !INTERACTION_TOOLS.includes(n));
   const toolNames = skill
-    ? [...new Set([...BASELINE_TOOLS, ...skill.tools])]
-    : [...BASELINE_TOOLS];
+    ? [...new Set([...baseline, ...skill.tools])]
+    : [...baseline];
 
   const sections: string[] = [];
   if (basePrompt) sections.push(basePrompt);
