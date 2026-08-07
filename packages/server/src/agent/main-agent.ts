@@ -13,7 +13,7 @@ import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, TextPart, ImagePart } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/domain";
-import { buildAgentConfig } from "@breatic/domain";
+import { buildAgentConfig, finalizeTurn } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { getSkillRegistry } from "@breatic/domain";
@@ -157,133 +157,150 @@ export class MainAgent {
 
     let fullResponse = "";
     let thinkingContent = "";
+    let creditsUsed = 0;
     const toolCallLog: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
 
-    for await (const part of result.fullStream) {
-      switch (part.type) {
-        case "text-delta":
-          fullResponse += part.text;
-          yield this.sse(SSEEventType.CHAT_CHUNK, { text: part.text });
-          break;
+    // Everything below runs inside try/finally so the turn's obligations are
+    // met however it ends. Three of the four exits used to skip them: the
+    // user closing the page (the consumer calls `.return()` on this
+    // generator and nothing after the loop runs), the model throwing, and a
+    // blocking interaction tool returning early. In each the reply went
+    // unsaved and the turn unbilled.
+    try {
+      for await (const part of result.fullStream) {
+        switch (part.type) {
+          case "text-delta":
+            fullResponse += part.text;
+            yield this.sse(SSEEventType.CHAT_CHUNK, { text: part.text });
+            break;
 
-        case "reasoning-delta":
-          thinkingContent += part.text;
-          break;
+          case "reasoning-delta":
+            thinkingContent += part.text;
+            break;
 
-        case "tool-call":
-          toolCallLog.push({
-            id: part.toolCallId,
-            name: part.toolName,
-            arguments: part.input as Record<string, unknown>,
-          });
-          yield this.sse(SSEEventType.AGENT_TOOL_HINT, { hint: part.toolName });
-          break;
-
-        case "tool-result": {
-          const toolCall = toolCallLog.find((tc) => tc.id === part.toolCallId);
-
-          // Stringify output once; reused for sentinel detection,
-          // interaction-tool payload parse, and the `role: 'tool'`
-          // history message that the LLM sees on subsequent turns.
-          const output = "output" in part ? part.output : undefined;
-          const resultStr = typeof output === "string" ? output : JSON.stringify(output);
-
-          // Pre-parse interaction-tool payload BEFORE persisting so the
-          // structured result lands on the assistant `tool_calls[0].result`
-          // record. History reload reads that field directly — sentinel
-          // decoding stays a backend protocol concern and never leaks
-          // into the frontend persistence boundary.
-          const interaction = parseInteractionSentinel(resultStr);
-
-          if (toolCall) {
-            await conversationRepo.addMessage(conversationId, {
-              role: "assistant",
-              content: "",
-              ts: new Date().toISOString(),
-              tool_calls: [
-                interaction ? { ...toolCall, result: interaction.payload } : toolCall,
-              ],
+          case "tool-call":
+            toolCallLog.push({
+              id: part.toolCallId,
+              name: part.toolName,
+              arguments: part.input as Record<string, unknown>,
             });
-            await conversationRepo.addMessage(conversationId, {
-              role: "tool",
-              content: resultStr,
-              ts: new Date().toISOString(),
-              tool_call_id: part.toolCallId,
-              name: toolCall.name,
-            });
-          }
+            yield this.sse(SSEEventType.AGENT_TOOL_HINT, { hint: part.toolName });
+            break;
 
-          if (resultStr.startsWith(ASK_USER_SENTINEL)) {
-            try {
-              const payload = JSON.parse(resultStr.slice(ASK_USER_SENTINEL.length)) as Record<string, unknown>;
-              yield this.sse(SSEEventType.AGENT_ASK, payload);
-            } catch {
-              yield this.sse(SSEEventType.AGENT_ASK, { question: resultStr });
+          case "tool-result": {
+            const toolCall = toolCallLog.find((tc) => tc.id === part.toolCallId);
+
+            // Stringify output once; reused for sentinel detection,
+            // interaction-tool payload parse, and the `role: 'tool'`
+            // history message that the LLM sees on subsequent turns.
+            const output = "output" in part ? part.output : undefined;
+            const resultStr = typeof output === "string" ? output : JSON.stringify(output);
+
+            // Pre-parse interaction-tool payload BEFORE persisting so the
+            // structured result lands on the assistant `tool_calls[0].result`
+            // record. History reload reads that field directly — sentinel
+            // decoding stays a backend protocol concern and never leaks
+            // into the frontend persistence boundary.
+            const interaction = parseInteractionSentinel(resultStr);
+
+            if (toolCall) {
+              await conversationRepo.addMessage(conversationId, {
+                role: "assistant",
+                content: "",
+                ts: new Date().toISOString(),
+                tool_calls: [
+                  interaction ? { ...toolCall, result: interaction.payload } : toolCall,
+                ],
+              });
+              await conversationRepo.addMessage(conversationId, {
+                role: "tool",
+                content: resultStr,
+                ts: new Date().toISOString(),
+                tool_call_id: part.toolCallId,
+                name: toolCall.name,
+              });
             }
-            return;
-          }
 
-          if (interaction) {
-            yield this.sse(interaction.event, interaction.payload);
-            return;
+            if (resultStr.startsWith(ASK_USER_SENTINEL)) {
+              try {
+                const payload = JSON.parse(resultStr.slice(ASK_USER_SENTINEL.length)) as Record<string, unknown>;
+                yield this.sse(SSEEventType.AGENT_ASK, payload);
+              } catch {
+                yield this.sse(SSEEventType.AGENT_ASK, { question: resultStr });
+              }
+              return;
+            }
+
+            if (interaction) {
+              yield this.sse(interaction.event, interaction.payload);
+              return;
+            }
+            break;
           }
-          break;
         }
       }
-    }
-
-    // Save assistant final response (with thinking if present)
-    if (fullResponse) {
-      await conversationRepo.addMessage(conversationId, {
-        role: "assistant",
-        content: fullResponse,
-        ts: new Date().toISOString(),
-        ...(thinkingContent ? { thinking: thinkingContent } : {}),
-      });
-    }
-
-    // Trigger memory consolidation (fire-and-forget, non-blocking)
-    consolidateIfNeeded(userId, conversationId, projectId)
-      .catch((err) => logger.warn({ err }, "Memory consolidation failed"));
-
-    // Deduct credits for this turn's model tokens. Using
-    // `deductOnce` with the turn-scoped refKey ensures this billing is
-    // idempotent: an SSE reconnect or handler re-entry on the same turn
-    // won't double-charge.
-    let creditsUsed = 0;
-    try {
-      const usage = await result.usage;
-      const mainTokens = usage?.totalTokens ?? 0;
-
-      if (mainTokens > 0) {
-        creditsUsed = Math.ceil((mainTokens / 1000) * env.CREDIT_MULTIPLIER);
-        const billingTurnIndex = this.ctx.billing?.turnIndex;
-        if (billingTurnIndex === undefined) {
-          // Should be set by chat()/handleSkillCommand() before we reach here.
-          throw new Error("MainAgent.runStream: billing.turnIndex not initialized");
-        }
-        await creditService.deductOnce(
-          userId,
-          `turn:${conversationId}:${billingTurnIndex}`,
-          creditsUsed,
-          "Agent chat",
-          {
-            tokensUsed: mainTokens,
-            model: agentConfig.modelId,
-            provider: resolveProvider(agentConfig.modelId),
+    } finally {
+      const failures = await finalizeTurn({
+        steps: {
+          persist: fullResponse
+            ? async () => {
+                await conversationRepo.addMessage(conversationId, {
+                  role: "assistant",
+                  content: fullResponse,
+                  ts: new Date().toISOString(),
+                  ...(thinkingContent ? { thinking: thinkingContent } : {}),
+                });
+              }
+            : undefined,
+          consolidate: async () => {
+            await consolidateIfNeeded(userId, conversationId, projectId);
           },
+          // Billing reads usage off the finished stream. On an aborted turn
+          // that promise still settles — the model call gets no abort signal
+          // from us, so it runs to completion and the token count is real.
+          bill: async () => {
+            const usage = await result.usage;
+            const mainTokens = usage?.totalTokens ?? 0;
+            if (mainTokens === 0) return;
+
+            creditsUsed = Math.ceil((mainTokens / 1000) * env.CREDIT_MULTIPLIER);
+            const billingTurnIndex = this.ctx.billing?.turnIndex;
+            if (billingTurnIndex === undefined) {
+              throw new Error("MainAgent.runStream: billing.turnIndex not initialized");
+            }
+            // The turn-scoped refKey makes this idempotent: an SSE reconnect
+            // or a re-entry on the same turn will not double-charge.
+            await creditService.deductOnce(
+              userId,
+              `turn:${conversationId}:${billingTurnIndex}`,
+              creditsUsed,
+              "Agent chat",
+              {
+                tokensUsed: mainTokens,
+                model: agentConfig.modelId,
+                provider: resolveProvider(agentConfig.modelId),
+              },
+            );
+          },
+        },
+      });
+
+      // The finalizer does not log — it is in domain, which has no logger.
+      // This is the layer that knows the user and the conversation.
+      for (const failure of failures) {
+        logger.error(
+          { err: failure.error, userId, conversationId, step: failure.step },
+          "turn_finalizer_step_failed",
         );
       }
-    } catch {
-      logger.warn({ userId, creditsUsed }, "Agent chat credit deduction failed");
-    }
 
-    logger.info({
-      userId,
-      conversationId,
-      responseLength: fullResponse.length,
-      creditsUsed,
-    }, "agent_response");
+      logger.info({
+        userId,
+        conversationId,
+        responseLength: fullResponse.length,
+        creditsUsed,
+      }, "agent_response");
+    }
 
     yield this.sse(SSEEventType.CHAT_DONE, {
       conversationId,
