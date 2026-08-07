@@ -884,10 +884,7 @@
         "slugReserved": "该 Slug 已被使用。",
         "slugChecking": "正在检查可用性…",
         "slugAvailable": "该 Slug 可用",
-        "createStudioError": "无法创建 Studio",
-        "visibilityLabel": "可见性",
-        "visibilityStudioOption": "Studio 内可见 — 所有成员",
-        "visibilityPrivateOption": "私有 — 仅受邀"
+        "createStudioError": "无法创建 Studio"
       },
       "toolbar": {
         "sortLabel": "排序",

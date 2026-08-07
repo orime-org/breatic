@@ -41,7 +41,6 @@ export function useCreateProject(
         studioId,
         name: values.name,
         slug: values.slug,
-        visibility: values.visibility,
         spaceType: values.spaceType ?? 'canvas',
         description: values.description || undefined,
       });

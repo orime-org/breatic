@@ -11,7 +11,7 @@ import {
   effectiveItemRole,
 } from '@web/pages/studio/container/access';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
-import { RoleBadge, VisibilityBadge } from '@web/pages/studio/shared/badges';
+import { RoleBadge } from '@web/pages/studio/shared/badges';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
 import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
@@ -55,9 +55,6 @@ export function ProjectCard({
           ) : (
             <ImageIcon className='h-6 w-6' aria-hidden='true' />
           )}
-          <span className='absolute left-[7px] top-[7px] z-[1]'>
-            <VisibilityBadge visibility={project.visibility} />
-          </span>
         </div>
         <div className='p-2.5'>
           <p className='truncate text-base font-semibold text-foreground'>
