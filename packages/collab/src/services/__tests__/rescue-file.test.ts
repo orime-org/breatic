@@ -14,7 +14,6 @@ import { join } from "node:path";
 import * as Y from "yjs";
 
 import {
-  deleteRescueFile,
   writeRescueFile,
   writeRescueNote,
 } from "@collab/services/rescue-file.js";
@@ -98,28 +97,6 @@ describe("writeRescueFile", () => {
   });
 });
 
-describe("deleteRescueFile", () => {
-  it("removes a file written moments earlier", async () => {
-    const path = await writeRescueFile({
-      dir,
-      documentName: DOC,
-      state: bytesOf("x"),
-      instanceId: "i",
-    });
-
-    await deleteRescueFile(path);
-
-    expect(await readdir(dir)).toHaveLength(0);
-  });
-
-  it("is quiet about a file that is already gone", async () => {
-    // On shutdown the file is written first and deleted once the database
-    // takes the content. A failure to delete must never become the reason a
-    // shutdown does not finish.
-    await expect(deleteRescueFile(join(dir, "not-there"))).resolves.toBeUndefined();
-  });
-});
-
 describe("the note beside a rescue file", () => {
   // Design §3.4: the rescue file gets a same-named note carrying the document,
   // the instance, the time, the reason and the size. Without it an operator
@@ -174,23 +151,4 @@ describe("the note beside a rescue file", () => {
     expect(rescuePath).not.toContain(DOC);
   });
 
-  it("goes when the file it describes goes", async () => {
-    const rescuePath = await writeRescueFile({
-      dir,
-      documentName: DOC,
-      state: new Uint8Array([1]),
-      instanceId: "inst-a",
-    });
-    await writeRescueNote(rescuePath, {
-      documentName: DOC,
-      instanceId: "inst-a",
-      bytes: 1,
-      reason: "x",
-      writtenAt: "2026-08-07T00:00:00.000Z",
-    });
-
-    await deleteRescueFile(rescuePath);
-
-    await expect(readFile(`${rescuePath}.json`, "utf8")).rejects.toThrow();
-  });
 });

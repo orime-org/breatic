@@ -55,7 +55,6 @@ import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js"
 import { createStoreLoop, type StoreLoop } from "@collab/services/store-loop.js";
 import { createStoreAlerter } from "@collab/services/store-alert.js";
 import {
-  deleteRescueFile,
   writeRescueFile,
   writeRescueNote,
 } from "@collab/services/rescue-file.js";
@@ -504,7 +503,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         instanceId,
       }),
     writeRescueNote,
-    deleteRescue: deleteRescueFile,
     alert: (failure) => storeAlerter.alert(failure),
   });
   const storeLoop = createStoreLoop({

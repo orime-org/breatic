@@ -116,8 +116,6 @@ export interface UnloadGateDeps {
   writeRescue(args: { documentName: string; state: Uint8Array }): Promise<string>;
   /** Write the note that says what a rescue file is and why it exists. */
   writeRescueNote(rescuePath: string, note: RescueNote): Promise<void>;
-  /** Remove a rescue file whose content reached the database after all. */
-  deleteRescue(path: string): Promise<void>;
   /** Tell operations about a rescued document. */
   alert(failure: StoreFailureAlert): Promise<void>;
 }
@@ -209,9 +207,9 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
 
     // The document going away first looks exactly like an unspent permission
     // from here — we arm, nothing consumes it — but they are different events
-    // and only the lookup knows which happened. On the shutdown path the rescue
-    // file is written before the store is attempted, so the library has a whole
-    // disk write in which to unload the document out from under us.
+    // and only the lookup knows which happened. `storeDocumentNow` reports it
+    // directly: it looks the document up in `instance.documents` and returns
+    // false when the library has already unloaded it.
     if (!stillLoaded) return { attempt: "unconfirmed", error };
     // Of the rest, only an unspent permission means nothing reached our
     // extension; superseded and gone both mean we cannot say.

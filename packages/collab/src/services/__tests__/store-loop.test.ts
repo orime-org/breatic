@@ -20,6 +20,7 @@ vi.mock("@breatic/core", () => ({ createLogger: () => mockLogger }));
 
 import { createStoreLoop } from "@collab/services/store-loop.js";
 import {
+  armTimedStore,
   consumeTimedStoreArm,
   forgetDocument,
   noteDocumentChange,
@@ -221,6 +222,51 @@ describe("a round that could not confirm the write", () => {
 
     expect(mockLogger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ documentName: DIRTY, outcome: "no-result" }),
+      "collab_store_round_document_unconfirmed",
+    );
+  });
+
+  it("does not call it 'nothing reached us' when another writer took over", async () => {
+    // Gate 2 round 8. `releaseTimedStoreArm` distinguishes three reasons and
+    // store-tracker says why it bothers: reporting `superseded` or `gone` as
+    // "nothing reached our extension" sends an operator hunting an aborted
+    // hook chain — a Redis lock, a rejecting extension — for a document that
+    // may well have been stored. The gate honours the distinction; the round
+    // did not.
+    const loop = createStoreLoop({
+      intervalMs: 10_000,
+      listDocuments: () => [{ name: DIRTY }],
+      storeNow: async ({ name }) => {
+        // The unload gate arms over ours while our write is still out.
+        armTimedStore(name);
+        return true;
+      },
+    });
+    noteDocumentChange(DIRTY);
+
+    await loop.runOnce();
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ documentName: DIRTY, outcome: "superseded" }),
+      "collab_store_round_document_unconfirmed",
+    );
+  });
+
+  it("does not call it 'nothing reached us' when the document was forgotten", async () => {
+    const loop = createStoreLoop({
+      intervalMs: 10_000,
+      listDocuments: () => [{ name: DIRTY }],
+      storeNow: async ({ name }) => {
+        forgetDocument(name);
+        return true;
+      },
+    });
+    noteDocumentChange(DIRTY);
+
+    await loop.runOnce();
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ documentName: DIRTY, outcome: "gone" }),
       "collab_store_round_document_unconfirmed",
     );
   });

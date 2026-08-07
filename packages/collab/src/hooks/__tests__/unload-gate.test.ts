@@ -85,7 +85,6 @@ function harness(outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands")
       return `/rescue/${rescued.length}.yjs`;
     },
     writeRescueNote: async () => {},
-    deleteRescue: async (path: string) => void deleted.push(path),
     alert: async (failure) => void alerted.push(failure),
   });
 
@@ -202,7 +201,6 @@ describe("the unload gate — a document with outstanding content", () => {
         throw new Error("disk full");
       },
       writeRescueNote: async () => {},
-      deleteRescue: async () => {},
       alert: async (failure) => void alerted.push(failure),
     });
     noteDocumentChange(DOC);
@@ -211,6 +209,39 @@ describe("the unload gate — a document with outstanding content", () => {
 
     expect(alerted).toHaveLength(1);
     expect(alerted[0]?.reason).toContain("no copy anywhere");
+  });
+});
+
+describe("the unload gate — when the library unloaded the document first", () => {
+  // Gate 2 round 8. `storeDocumentNow` looks the document up in
+  // `instance.documents` and returns false when the library has already
+  // removed it — nothing was written and nothing could be. From out here that
+  // is indistinguishable from an unspent permission unless the gate checks it
+  // separately, and the two send an operator to different places: one says
+  // "your hook chain was aborted", the other says "the document was gone".
+  //
+  // The branch that tells them apart had no test at all: replacing its
+  // condition with `if (false)` left all 426 collab tests green.
+
+  it("says it could not confirm, not that nothing reached our extension", async () => {
+    const alerted: StoreFailureAlert[] = [];
+    const gate = createUnloadGate({
+      instanceId: "inst-a",
+      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
+      // Exactly what the real `storeDocumentNow` returns once the library has
+      // taken the document out of `instance.documents`.
+      storeNow: async () => false,
+      writeRescue: async () => "/rescue/1.yjs",
+      writeRescueNote: async () => {},
+      alert: async (failure) => void alerted.push(failure),
+    });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(alerted).toHaveLength(1);
+    expect(alerted[0]?.reason).toContain("could not confirm");
+    expect(alerted[0]?.reason).not.toContain("never ran");
   });
 });
 
@@ -311,7 +342,6 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       },
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async (rescuePath, note) => void notes.push({ rescuePath, note }),
-      deleteRescue: async () => {},
       alert: async () => {},
     });
     noteDocumentChange(DOC);
@@ -352,7 +382,6 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
         throw new Error("the rescue directory is gone");
       },
       writeRescueNote: async () => {},
-      deleteRescue: async () => {},
       alert: async () => {},
     });
     noteDocumentChange(DOC);
@@ -375,7 +404,6 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       },
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
-      deleteRescue: async () => {},
       alert: async () => {},
     });
     noteDocumentChange(DOC);
@@ -449,7 +477,6 @@ describe("what the operator is told when there is no answer", () => {
       },
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
-      deleteRescue: async () => {},
       alert: async (failure) => void alerted.push(failure),
     });
     const alerted: StoreFailureAlert[] = [];
@@ -485,7 +512,6 @@ describe("a write that landed while new content was arriving", () => {
       },
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
-      deleteRescue: async () => {},
       alert: async (failure) => void alerted.push(failure),
     });
     noteDocumentChange(DOC);

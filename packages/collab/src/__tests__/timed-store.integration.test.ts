@@ -102,7 +102,6 @@ function harness(options: { failing?: boolean; delayMs?: number; debounceMs?: nu
     storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
     writeRescue: async () => "/rescue/x.yjs",
     writeRescueNote: async () => {},
-    deleteRescue: async () => {},
     alert: async () => {},
   });
 

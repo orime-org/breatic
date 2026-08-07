@@ -25,8 +25,20 @@ import {
   hasUnsavedContent,
   releaseTimedStoreArm,
 } from "@collab/services/store-tracker.js";
+import type { ArmResult } from "@collab/services/store-tracker.js";
 
 const logger = createLogger("collab-store-loop");
+
+/**
+ * Name the state an attempt ended in, for the operator reading the log.
+ * @param result - What the attempt's permission came back as.
+ * @returns A stable word naming what happened, never one naming what did not.
+ */
+function unconfirmedOutcome(result: ArmResult): string {
+  if (result.ran) return "no-result";
+  if (result.reason === "unspent") return "not-reached";
+  return result.reason ?? "not-reached";
+}
 
 /** One document the loop may have to store. */
 export interface StoreLoopEntry {
@@ -137,10 +149,16 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
       logger.warn(
         {
           documentName: entry.name,
-          // Our extension ran and still said nothing, which it only does
-          // when it threw before reaching its own try block — encoding the
-          // document is the one step out there.
-          outcome: result.ran ? "no-result" : "not-reached",
+          // The tracker's three reasons, kept apart. Only `unspent` means
+          // nothing reached our extension, and it keeps the gate's name for
+          // that. `superseded` means the unload gate took the attempt over and
+          // may well have stored the document; `gone` means the document was
+          // forgotten while we waited. Reporting those two as "nothing reached
+          // us" sends whoever is on call hunting an aborted hook chain that is
+          // not there. `no-result` is our own extension running and saying
+          // nothing, which it only does by throwing before its try block —
+          // encoding the document is the one step out there.
+          outcome: unconfirmedOutcome(result),
         },
         "collab_store_round_document_unconfirmed",
       );

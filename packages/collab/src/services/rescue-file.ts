@@ -15,7 +15,7 @@
  * removing it afterwards is their call.
  */
 
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -86,30 +86,12 @@ export interface RescueNote {
  * why it is there. The note is JSON because the thing that will eventually read
  * it is a reconciliation job, not a person.
  *
- * Written once the reason is known rather than alongside the bytes: on the way
- * out the file is written BEFORE the store is attempted, so at that moment
- * there is no reason to record yet.
+ * Written after the bytes rather than with them: the reason is only known once
+ * the store has answered, and the bytes are taken before that.
  * @param rescuePath - Path returned by {@link writeRescueFile}.
  * @param note - What to record about it.
  * @throws {Error} When the note cannot be written.
  */
 export async function writeRescueNote(rescuePath: string, note: RescueNote): Promise<void> {
   await writeFile(`${rescuePath}.json`, `${JSON.stringify(note, null, 2)}\n`);
-}
-
-/**
- * Remove a rescue file, once its content has reached the database after all.
- *
- * Quiet when the file is already gone. This runs on the way out, where a
- * failed delete must never be the reason the process does not finish shutting
- * down — and the file it would have removed is a copy of content the database
- * already accepted, so leaving it costs an operator one look, nothing more.
- * @param path - Path returned by {@link writeRescueFile}.
- */
-export async function deleteRescueFile(path: string): Promise<void> {
-  // The note goes with it. It only ever exists once the content was written off,
-  // so in the ordinary case there is nothing here to remove — but a note left
-  // behind pointing at a file that no longer exists would be worse than no note
-  // at all: it says a document was lost when it was not.
-  await Promise.all([rm(path, { force: true }), rm(`${path}.json`, { force: true })]);
 }

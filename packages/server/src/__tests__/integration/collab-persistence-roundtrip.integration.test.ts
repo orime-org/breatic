@@ -128,7 +128,6 @@ beforeAll(async () => {
       throw new Error("no rescue path in this test — the store is expected to land");
     },
     writeRescueNote: async () => {},
-    deleteRescue: async () => {},
     alert: async () => {},
   });
   await wsServer.listen();

@@ -125,8 +125,9 @@ describe("createStoreAlerter", () => {
   });
 
   it("logs and swallows a sender that throws", async () => {
-    // The caller is on a shutdown path with seconds to spare; a broken SMTP
-    // server must not become the reason it does not finish.
+    // The caller is the unload gate, inside a hook the library is waiting on;
+    // a broken SMTP server must not become the reason a document cannot leave
+    // memory.
     const { alerter } = harness({
       send: async () => {
         throw new Error("smtp unreachable");
