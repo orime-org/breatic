@@ -13,9 +13,11 @@
  * the only way to assert it is to send real frames at a real server and look
  * at the document afterwards.
  *
- * Every "the write did not land" case is paired with the same frame sent to a
- * Space CONTENT doc by the same editor, which does land. Without that pair the
- * assertions would also pass if the harness simply could not write anything.
+ * Every "the write did not land" case is paired with a frame of the same shape
+ * sent to a Space CONTENT doc by the same editor, which does land. Without that
+ * pair the assertions would also pass if the harness simply could not write
+ * anything. Where the PAYLOAD is the thing that could be silently empty, the
+ * pair sends that very payload rather than a stand-in.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -160,9 +162,9 @@ function ownTabsUpdate(userId: string): Uint8Array {
 const ALWAYS_WINS = 4294967295;
 
 /**
- * A Yjs update that writes a presence record — the root the collaborator
- * roster lives in (#1886), and the one whose whole guarantee is that only the
- * server writes it.
+ * A Yjs update that writes one presence record into `users` — the root the
+ * collaborator roster lives in (#1886), the one whose whole guarantee is that
+ * only the server writes it.
  * @param userId - Whose record to write.
  * @param online - The presence flag to claim.
  * @param lastSeenAt - The timestamp to claim.
@@ -249,12 +251,17 @@ async function connect(docName: string): Promise<LiveClient> {
 }
 
 /**
- * Write into the meta doc the way collab's own writers reach it — a direct
- * connection, which is not a client and carries no read-only flag.
+ * Write into the meta doc through a direct connection — not a client, so no
+ * read-only flag applies.
  *
  * Every "the server had already written X" precondition has to come from here,
  * because the client under test cannot put anything there itself. That is the
  * point of the file.
+ *
+ * This is one of the two ways collab's own writers reach this document, not
+ * the only one: the Space RPCs open a direct connection like this, while
+ * presence writes straight to the loaded document it was handed
+ * (`presence-wiring.ts`). Both are server-side and neither is gated.
  * @param mutate - Applied to the live document inside a transaction.
  */
 async function seedMetaDoc(mutate: (live: Y.Doc) => void): Promise<void> {
@@ -477,7 +484,8 @@ describe("meta doc — a client write never lands", () => {
     // power sits in `ALWAYS_WINS`: the surviving value proves a refusal only
     // as long as the forged update WOULD have won had it been applied.
     // Measured — with the constant lowered to 1 and the gate deleted, this
-    // was the only case still green.
+    // was the only REFUSAL case still green. The four controls stayed green
+    // too, but they are meant to.
     const status = client.frames().filter((f) => f.type === WIRE.syncStatus);
     expect(status.at(-1)?.syncStatusOk).toBe(false);
   });
