@@ -64,6 +64,11 @@ export function ChangeSlugSection({
   // field reports neither, it reports `idle`, and a gate phrased the other way
   // walks the user through a destructive confirmation the server then refuses.
   const canConfirm = changed && availability.status === 'available' && !saving;
+  // The sentence in the header names both ends of the move. Until there is a
+  // destination it stays a placeholder: on open both ends hold the same slug,
+  // and "the address changes from X to X" is not a thing to greet someone
+  // with.
+  const destination = changed && next !== '' ? next : '…';
 
   const onOpenChange = React.useCallback(
     (nextOpen: boolean): void => {
@@ -100,10 +105,10 @@ export function ChangeSlugSection({
             <DialogTitle>
               {t('studio.container.settings.slugChangeTitle')}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription data-testid='settings-slug-body'>
               {t('studio.container.settings.slugChangeBody', {
                 oldSlug: studio.slug,
-                newSlug: next === '' ? '…' : next,
+                newSlug: destination,
               })}
             </DialogDescription>
           </DialogHeader>

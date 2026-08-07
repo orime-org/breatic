@@ -25,8 +25,13 @@ import { ChangeSlugSection } from '@web/pages/studio/container/tabs/settings/Cha
 import { studiosApi } from '@web/data/api/studios';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
 
+// Interpolation values are rendered alongside the key, because one of the
+// cases below is about what gets substituted into the address sentence.
 vi.mock('@web/i18n/use-translation', () => ({
-  useTranslation: () => (key: string) => key,
+  useTranslation:
+    () =>
+      (key: string, params?: Record<string, unknown>): string =>
+        params === undefined ? key : `${key}:${JSON.stringify(params)}`,
 }));
 vi.mock('@web/domain/use-debounce', () => ({
   useDebounce: <T,>(value: T): T => value,
@@ -103,6 +108,28 @@ describe('ChangeSlugSection — the entry point', () => {
     renderSection();
     const input = await openDialog();
     expect(input).toHaveValue(STUDIO.slug);
+  });
+
+  it('does not claim the address changes to the address it already has', async () => {
+    // The sentence names both ends, and on open both ends are the same slug —
+    // "the address changes from acme-studio to acme-studio" is the first thing
+    // the user reads. The destination stays a placeholder until there is one.
+    renderSection();
+    await openDialog();
+    const body = screen.getByTestId('settings-slug-body');
+    expect(body).toHaveTextContent(`"oldSlug":"${STUDIO.slug}"`);
+    expect(body).not.toHaveTextContent(`"newSlug":"${STUDIO.slug}"`);
+  });
+
+  it('names the destination once there is one', async () => {
+    renderSection();
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-slug-body')).toHaveTextContent(
+        '"newSlug":"acme-renamed"',
+      ),
+    );
   });
 });
 
