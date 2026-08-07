@@ -131,3 +131,31 @@ describe('DangerZone — what each kind of viewer gets', () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe('DangerZone — the line explaining the box', () => {
+  // The hint is a second, independent statement of which cells are present:
+  // it names transfer and deletion for one viewer and not for another. Pinning
+  // only the cells would let the two drift, and a personal studio would be
+  // read a warning about handing itself to somebody.
+  const HINT = {
+    team: 'studio.container.settings.dangerHint',
+    personal: 'studio.container.settings.dangerHintPersonal',
+    member: 'studio.container.settings.dangerHintMember',
+  } as const;
+
+  it('tells a personal studio about its slug, not about transferring', () => {
+    renderZone(studio({ type: 'personal', myStudioRole: 'admin' }));
+    expect(screen.getByText(HINT.personal)).toBeInTheDocument();
+    expect(screen.queryByText(HINT.team)).not.toBeInTheDocument();
+  });
+
+  it('tells a team admin about all three', () => {
+    renderZone(studio({ type: 'team', myStudioRole: 'admin' }));
+    expect(screen.getByText(HINT.team)).toBeInTheDocument();
+  });
+
+  it('tells a team member about what leaving costs', () => {
+    renderZone(studio({ type: 'team', myStudioRole: 'maintainer' }));
+    expect(screen.getByText(HINT.member)).toBeInTheDocument();
+  });
+});

@@ -33,10 +33,9 @@ interface SlugFieldProps {
    */
   availability?: 'checking' | 'available';
   /**
-   * Greys the input out, matching how the caller treats its other fields —
-   * the settings form disables Name and Bio for a non-admin and while a save
-   * is in flight, and a Slug that stayed editable there would be the one field
-   * inviting an edit nobody can submit.
+   * Greys the input out while an edit could not be submitted anyway — the
+   * rename dialog sets it for the length of the request, so the field cannot
+   * be changed out from under a rename that is already on its way.
    */
   disabled?: boolean;
 }

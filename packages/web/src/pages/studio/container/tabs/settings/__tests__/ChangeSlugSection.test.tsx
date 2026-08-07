@@ -55,27 +55,47 @@ const STUDIO: StudioDetail = {
 
 const SLUG_LABEL = 'studio.container.settings.slug';
 
+/** A render result that can be put into, and taken out of, the saving state. */
+interface SectionHandle {
+  /** Re-render with a save in flight, or no longer in flight. */
+  setSaving: (saving: boolean) => void;
+}
+
 /**
  * Render the section.
+ *
+ * `setSaving` exists because the in-flight rules cannot be reached by
+ * rendering straight into that state: with the field disabled from the start,
+ * nothing can be typed, so the confirm button is off for want of a changed
+ * value rather than for the reason under test.
  * @param props - Overrides for the section's props.
- * @param props.saving - Whether a save is in flight.
+ * @param props.saving - Whether a save is in flight to begin with.
  * @param props.onSave - The save handler.
- * @returns The render result.
+ * @returns The render result, plus a way to flip the saving flag.
  */
 function renderSection(props: {
   saving?: boolean;
   onSave?: (patch: unknown) => void;
-} = {}): ReturnType<typeof render> {
+} = {}): ReturnType<typeof render> & SectionHandle {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const onSave = props.onSave ?? vi.fn();
+  /**
+   * Build the tree for a given saving flag.
+   * @param saving - Whether a save is in flight.
+   * @returns The element tree.
+   */
+  const tree = (saving: boolean): React.JSX.Element => (
     <QueryClientProvider client={qc}>
-      <ChangeSlugSection
-        studio={STUDIO}
-        saving={props.saving ?? false}
-        onSave={props.onSave ?? vi.fn()}
-      />
-    </QueryClientProvider>,
+      <ChangeSlugSection studio={STUDIO} saving={saving} onSave={onSave} />
+    </QueryClientProvider>
   );
+  const result = render(tree(props.saving ?? false));
+  return {
+    ...result,
+    setSaving: (saving: boolean): void => {
+      result.rerender(tree(saving));
+    },
+  };
 }
 
 /**
@@ -211,12 +231,81 @@ describe('ChangeSlugSection — the confirm gate', () => {
     expect(onSave).toHaveBeenCalledWith({ slug: 'acme-renamed' });
   });
 
-  it('stays shut while a save is already in flight', async () => {
-    renderSection({ saving: true });
+  it('shuts again the moment the request goes out, so it cannot be pressed twice', async () => {
+    // Reached by typing FIRST and only then going in-flight. Rendering
+    // straight into `saving` disables the field, so nothing can be typed and
+    // the button is off for want of a changed value — which is how the first
+    // version of this case passed without the clause it claimed to protect.
+    const { setSaving } = renderSection();
     const input = await openDialog();
     fireEvent.change(input, { target: { value: 'acme-renamed' } });
     await waitFor(() =>
-      expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled(),
+      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+    );
+
+    setSaving(true);
+    expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled();
+  });
+});
+
+describe('ChangeSlugSection — while the request is in flight', () => {
+  /**
+   * Open the dialog, type a free slug, and put the section into the saving
+   * state — the situation every case in this block is about.
+   * @returns The handle, so a case can take it back out of that state.
+   */
+  async function reachInFlight(): Promise<SectionHandle> {
+    const handle = renderSection();
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+    );
+    handle.setSaving(true);
+    return handle;
+  }
+
+  /** Assert the dialog is still up and still holding what was typed. */
+  function expectStillThere(): void {
+    expect(screen.getByTestId('settings-slug-dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText(SLUG_LABEL)).toHaveValue('acme-renamed');
+  }
+
+  it('does not let Escape close it', async () => {
+    await reachInFlight();
+    fireEvent.keyDown(screen.getByTestId('settings-slug-dialog'), {
+      key: 'Escape',
+    });
+    expectStillThere();
+  });
+
+  it('does not let Cancel close it', async () => {
+    await reachInFlight();
+    fireEvent.click(screen.getByTestId('settings-slug-cancel'));
+    expectStillThere();
+  });
+
+  it('does not let the header’s close button close it', async () => {
+    await reachInFlight();
+    fireEvent.click(screen.getByLabelText('Close'));
+    expectStillThere();
+  });
+
+  it('does not let a click outside close it', async () => {
+    await reachInFlight();
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+    expectStillThere();
+  });
+
+  it('lets it close again once the request is done', async () => {
+    const { setSaving } = await reachInFlight();
+    setSaving(false);
+    fireEvent.click(screen.getByTestId('settings-slug-cancel'));
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('settings-slug-dialog'),
+      ).not.toBeInTheDocument(),
     );
   });
 });

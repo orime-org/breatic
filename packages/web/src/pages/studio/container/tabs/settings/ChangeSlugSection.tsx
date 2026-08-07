@@ -72,12 +72,24 @@ export function ChangeSlugSection({
 
   const onOpenChange = React.useCallback(
     (nextOpen: boolean): void => {
+      // Closing mid-request would leave the rename running with nothing
+      // listening for its answer, and would take the typed slug with it — the
+      // one thing a failure is supposed not to cost.
+      //
+      // This one line covers every way out, because every one of them ends
+      // here: Escape and clicking outside both reach Radix's `onDismiss`,
+      // which calls `onOpenChange(false)`; the header's X is a
+      // `DialogPrimitive.Close`, which calls the same; and Cancel calls it
+      // directly. Guarding the dismissal events individually as well was
+      // tried and removed — deleting those handlers left every one of the
+      // four cases below still passing, so they were not holding anything up.
+      if (!nextOpen && saving) return;
       setOpen(nextOpen);
       // Both directions: an abandoned draft must not be waiting when the
       // dialog is opened again.
       setSlug(studio.slug);
     },
-    [studio.slug],
+    [saving, studio.slug],
   );
 
   const confirm = React.useCallback((): void => {
@@ -85,6 +97,13 @@ export function ChangeSlugSection({
     // the address it is standing on has just been released; the only state in
     // which the dialog is still here afterwards is a failed one, and closing
     // it there would throw away what the user typed.
+    //
+    // That unmount is not this component's doing and is worth knowing about
+    // before changing either end: `StudioContainerPage` keys its query on the
+    // slug in the route, so the navigation the settings hook performs lands on
+    // a key with nothing cached, and its pending branch replaces the whole tab
+    // area. A future change that keeps the old data on screen during that
+    // switch would leave this dialog standing open over a successful rename.
     onSave({ slug: next });
   }, [next, onSave]);
 
@@ -100,7 +119,9 @@ export function ChangeSlugSection({
       </button>
 
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent data-testid='settings-slug-dialog'>
+        <DialogContent
+          data-testid='settings-slug-dialog'
+        >
           <DialogHeader>
             <DialogTitle>
               {t('studio.container.settings.slugChangeTitle')}
