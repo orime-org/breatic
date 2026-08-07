@@ -884,10 +884,7 @@
         "slugReserved": "その Slug は既に使用されています。",
         "slugChecking": "利用可能か確認しています…",
         "slugAvailable": "この Slug は利用できます",
-        "createStudioError": "Studio を作成できませんでした",
-        "visibilityLabel": "公開範囲",
-        "visibilityStudioOption": "Studio 内に表示 — 全メンバー",
-        "visibilityPrivateOption": "非公開 — 招待のみ"
+        "createStudioError": "Studio を作成できませんでした"
       },
       "toolbar": {
         "sortLabel": "並び替え",

@@ -150,12 +150,23 @@ async function ownerCount(projectId: string): Promise<number> {
   return rows[0]!.n;
 }
 
-/** Read the persisted initial_space_type for a project (B.2). */
-async function storedSpaceType(projectId: string): Promise<string> {
-  const rows = await sql<{ t: string }[]>`
-    SELECT initial_space_type AS t FROM projects WHERE id = ${projectId}
+/**
+ * Read back what `create` actually wrote for the two columns it carries
+ * through untouched: the first space's type (B.2) and the visibility.
+ * @param projectId - The project to read.
+ * @returns The persisted values.
+ * @throws {Error} if the project row is gone.
+ */
+async function storedProject(
+  projectId: string,
+): Promise<{ spaceType: string; visibility: string }> {
+  const rows = await sql<{ space_type: string; visibility: string }[]>`
+    SELECT initial_space_type AS space_type, visibility
+    FROM projects WHERE id = ${projectId}
   `;
-  return rows[0]!.t;
+  const row = rows[0];
+  if (row === undefined) throw new Error(`no project ${projectId}`);
+  return { spaceType: row.space_type, visibility: row.visibility };
 }
 
 describe("projectService.create — studio admin/maintainer gate (critical path 鉴权 + §0.2)", () => {
@@ -177,7 +188,15 @@ describe("projectService.create — studio admin/maintainer gate (critical path 
     expect(project.createdByUserId).toBe(admin);
     expect(await ownerCount(project.id)).toBe(1);
     expect(await activeMemberCount(project.id, admin)).toBe(1);
-    expect(await storedSpaceType(project.id)).toBe("canvas");
+    const stored = await storedProject(project.id);
+    expect(stored.spaceType).toBe("canvas");
+    // The last leg of the wire that decides what a new project gets. Since
+    // 2026-08-07 the client sends no visibility and the request schema
+    // defaults it to 'studio'; the schema and route ends are pinned in
+    // shared/schemas/__tests__/api.test.ts and __tests__/routes/projects.test.ts.
+    // This is the end that proves the value survives service → repo → INSERT
+    // rather than being rewritten on the way down.
+    expect(stored.visibility).toBe("studio");
   });
 
   it("a maintainer may create (admin + maintainer can spend shared studio credits)", async () => {
@@ -200,7 +219,7 @@ describe("projectService.create — studio admin/maintainer gate (critical path 
     expect(project.createdByUserId).toBe(maintainer);
     // A non-default type persists end-to-end (B.2 plumbing — even though
     // document is disabled in the picker, the column stores any SpaceType).
-    expect(await storedSpaceType(project.id)).toBe("document");
+    expect((await storedProject(project.id)).spaceType).toBe("document");
   });
 
   it("a plain guest is rejected (ForbiddenError) — cannot burn shared studio credits", async () => {

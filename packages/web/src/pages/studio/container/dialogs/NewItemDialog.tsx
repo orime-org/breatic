@@ -14,7 +14,6 @@ import {
 } from '@web/components/ui/dialog';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@web/components/ui/radio-group';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
@@ -27,7 +26,6 @@ import {
   validateItemSlug,
   type SlugError,
 } from '@web/pages/studio/container/dialogs/slug-util';
-import type { ItemVisibility } from '@web/pages/studio/shared/studio-types';
 import { SpaceKindPicker } from '@web/spaces/SpaceKindPicker';
 import { type SpaceType } from '@web/spaces';
 
@@ -36,8 +34,6 @@ export interface NewItemValues {
   name: string;
   slug: string;
   description: string;
-  /** `studio` = visible to every studio member (open baseline) | `private`. */
-  visibility: ItemVisibility;
   /**
    * The first space's type, seeded on create (project only — collections have
    * no spaces). Omitted for `kind='collection'`. Canvas is the only editable
@@ -96,7 +92,6 @@ export function NewItemDialog({
   const [name, setName] = React.useState('');
   const [slug, setSlug] = React.useState('');
   const [description, setDescription] = React.useState('');
-  const [visibility, setVisibility] = React.useState<ItemVisibility>('studio');
   const [spaceType, setSpaceType] = React.useState<SpaceType>('canvas');
   const [studioId, setStudioId] = React.useState(defaultStudioId ?? '');
   const [slugError, setSlugError] = React.useState<SlugError>(null);
@@ -120,7 +115,6 @@ export function NewItemDialog({
     setName('');
     setSlug('');
     setDescription('');
-    setVisibility('studio');
     setSpaceType('canvas');
     setStudioId(defaultStudioId ?? '');
     setSlugError(null);
@@ -165,7 +159,6 @@ export function NewItemDialog({
       name: name.trim(),
       slug,
       description: description.trim(),
-      visibility,
       // A space type + target studio only apply to a project; collections have
       // neither spaces nor a studio selector, so both are omitted for them.
       ...(kind === 'project'
@@ -237,26 +230,6 @@ export function NewItemDialog({
               bounds={ITEM_SLUG_BOUNDS}
               helper={slugHelper}
             />
-            <fieldset className='flex flex-col gap-1.5'>
-              <legend className='text-sm font-medium'>
-                {t('studio.container.dialog.visibilityLabel')}
-              </legend>
-              <RadioGroup
-                value={visibility}
-                onValueChange={(value) => setVisibility(value as ItemVisibility)}
-                data-testid={`new-${kind}-visibility`}
-                className='flex-row flex-wrap gap-4 text-sm'
-              >
-                <label className='flex items-center gap-1.5'>
-                  <RadioGroupItem value='studio' />
-                  {t('studio.container.dialog.visibilityStudioOption')}
-                </label>
-                <label className='flex items-center gap-1.5'>
-                  <RadioGroupItem value='private' />
-                  {t('studio.container.dialog.visibilityPrivateOption')}
-                </label>
-              </RadioGroup>
-            </fieldset>
             <div className='flex flex-col gap-1.5'>
               <Label htmlFor={descId}>
                 {t('studio.container.dialog.descriptionLabel')}

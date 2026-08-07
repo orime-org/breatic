@@ -1,0 +1,26 @@
+-- Every project is visible to its whole studio.
+--
+-- The visibility concept left the product on 2026-08-07: the create dialog no
+-- longer asks and the card no longer says. Rows created before that could hold
+-- `private`, and both filter layers still read the column — so a leftover
+-- `private` row would go on hiding itself from most of its studio with nothing
+-- in the UI able to change it. This lifts them all.
+--
+-- The COLUMN stays, deliberately. It keeps its `studio` default, the request
+-- schema still accepts a value, and the filters still consult it; that was the
+-- chosen scope, so that restoring the concept later means putting the picker
+-- back rather than rebuilding the reading side. Collections keep their own
+-- visibility and are untouched here — this statement names one table.
+--
+-- No CHECK constraint either, for the same reason: one would start rejecting
+-- the requests the schema still accepts, which is a wider change than the one
+-- that was decided.
+--
+-- The WHERE clause is what keeps this off the rows that are already correct.
+-- Without it the statement rewrites every project in the table, which is
+-- indistinguishable in the result and very different in what it touches.
+--
+-- Hand-written (drizzle-kit generate needs a TTY here; same pattern as
+-- 0018/0025/0026: .sql + _journal entry, no snapshot).
+
+UPDATE "projects" SET "visibility" = 'studio' WHERE "visibility" <> 'studio';
