@@ -21,10 +21,18 @@ const collabConfigSchema = z.object({
   debounce: z.number().int().positive().default(2000),
   max_debounce: z.number().int().positive().default(10000),
 
-  // How long an online presence record with no live connection behind it is
-  // believed. Must stay well above the keepalive interval (60s), or the load
-  // sweep evicts people who are merely idle rather than gone.
-  presence_stale_after_ms: z.number().int().positive().default(300_000),
+  // Presence: how long an "online" record is believed once nothing is
+  // refreshing it, and how often one user's timestamp may be rewritten.
+  //
+  // The two are related and must move together. The threshold has to clear the
+  // WIDEST real gap between two refreshes, and that gap is not the 15s browser
+  // heartbeat: a hidden tab has its timers throttled to once a minute while its
+  // socket stays open, so a connected person can legitimately look ~60s stale.
+  // 60_000 would sit exactly on that cycle and flip them once a minute forever;
+  // 90_000 clears it by half again. Pinned by a test so the relationship cannot
+  // drift when either number is tuned.
+  presence_stale_after_ms: z.number().int().positive().default(90_000),
+  presence_heartbeat_throttle_ms: z.number().int().positive().default(30_000),
 
   // Document size limit
   max_document_bytes: z.number().int().min(0).default(10_485_760), // 10 MB

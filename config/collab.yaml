@@ -20,13 +20,20 @@ unload_immediately: true
 debounce: 2000
 max_debounce: 10000
 
-# How long a presence record that says "online" is believed once nobody is
-# connected as that user. Only the server writes these records, and it writes
-# "offline" on disconnect — so a record older than this means the server that
-# wrote it went away before it could. Keep it well above the 60s keepalive:
-# the timestamp only advances when a client does something, so an idle-but-
-# connected person leans on the live-connection check rather than on this.
-presence_stale_after_ms: 300000
+# Presence. Only the server writes these records, and NOTHING writes "offline"
+# when a socket closes — a socket ending is not evidence its owner left, since
+# they may hold another one on this or another instance. So "online" is only
+# ever asserted (on connect, and on each heartbeat) and absence is inferred:
+# a record nobody anywhere is refreshing is turned off after the threshold.
+#
+# The two numbers move together. The threshold must clear the widest real gap
+# between two refreshes, and that is NOT the 15s browser heartbeat: a hidden
+# browser tab has its timers throttled to once a minute while its socket stays
+# open (Chrome, after 5 minutes hidden), so a connected person can legitimately
+# look ~60s stale. 60000 would sit exactly on that cycle and flip them once a
+# minute forever; 90000 clears it by half again. A test pins the relationship.
+presence_stale_after_ms: 90000
+presence_heartbeat_throttle_ms: 30000
 
 # ── Document Size Limit ───────────────────────────
 # Max Yjs document size in bytes (0 = unlimited).

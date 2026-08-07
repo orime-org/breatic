@@ -16,36 +16,37 @@
  * the moment its owner renames themselves — that is the bug #1882 set out to
  * remove, and putting either field back would bring it straight back.
  *
+ * ## Presence is asserted, never denied
+ *
+ * Two things write "online": a connection arriving, and a heartbeat. NOTHING
+ * writes "offline" when a socket closes, and that is the design rather than an
+ * oversight. A disconnect is one SOCKET ending, while a record is keyed on the
+ * PERSON — and the machine losing that socket cannot see whether they still
+ * hold one somewhere else. So absence is never announced; it is inferred, by
+ * {@link sweepStalePresence}, from nobody anywhere refreshing the timestamp.
+ *
+ * That inference is right across every instance without any of them
+ * coordinating, because the record lives in the shared meta document: whichever
+ * machine holds the connection refreshes the stamp, and the refresh reaches all
+ * of them. A stale stamp therefore means no machine in the cluster is holding
+ * that person — which is exactly what "offline" should mean.
+ *
+ * It also makes a crashed server need no special handling. The records it left
+ * claiming to be online simply stop being refreshed, and the first person to
+ * arrive afterwards starts the sweeps that clear them. The threshold is a
+ * DELAY before that happens, not a chance to miss it.
+ *
  * ## Why the timestamp has to keep moving
  *
- * `lastSeenAt` is what {@link sweepStalePresence} judges staleness by, so it
- * has to mean "last heard from", not "connected at". Stamped once on connect,
- * somebody online for three days would carry a three-day-old stamp and the
- * sweep would evict a person who never left. So it is refreshed while the
- * connection lives — throttled, because a connection heartbeats every 15
+ * `lastSeenAt` has to mean "last heard from", not "connected at". Stamped once
+ * on connect, somebody online for three days would carry a three-day-old stamp
+ * and the sweep would evict a person who never left. So it is refreshed while
+ * the connection lives — throttled, because a connection heartbeats every 15
  * seconds and nobody reads this number at that resolution.
- *
- * ## Why a sweep is needed at all
- *
- * The WebSocket keepalive covers everything that happens to a *client*: the
- * server pings, and a client that stops answering has its connection closed,
- * which arrives here as an ordinary disconnect. What it cannot cover is the
- * server process itself going away mid-session — a deploy, a restart, a crash.
- * Nobody is left to write "offline", so the record sits there claiming to be
- * online. Such a record announces itself: online, with a last heartbeat far in
- * the past. That is exactly what the sweep looks for.
  */
 
 import type { Doc as YDoc, Map as YMap } from "yjs";
 import * as Y from "yjs";
-
-/**
- * Minimum gap between two `lastSeenAt` writes for one user, in ms.
- *
- * Matches the window the previous awareness projection used, for the same
- * reason: heartbeats arrive far more often than this number is read.
- */
-export const LAST_SEEN_THROTTLE_MS = 30_000;
 
 /** Yjs root holding the per-user presence records. */
 const USERS_KEY = "users";
@@ -125,60 +126,46 @@ export function markOnline(args: {
 }
 
 /**
- * Record that a user has left.
+ * Record a heartbeat: push the timestamp forward, and assert that this person
+ * is here — at most once per throttle window.
  *
- * The caller decides when this is true: a user may hold several connections at
- * once (one socket carries several documents, and they may have several tabs),
- * so this belongs after the last of them has gone, not after any one of them.
- * @param args - Who left and when.
- * @param args.document - The meta document to write into.
- * @param args.userId - The user who left.
- * @param args.now - Current time in ms, recorded as when they were last seen.
- */
-export function markOffline(args: {
-  document: YDoc;
-  userId: string;
-  now: number;
-}): void {
-  const users = args.document.getMap(USERS_KEY);
-  const existing = users.get(args.userId);
-  if (!(existing instanceof Y.Map)) return;
-  args.document.transact(() => {
-    existing.set("online", false);
-    existing.set("lastSeenAt", args.now);
-  });
-}
-
-/**
- * Push a present user's timestamp forward, at most once per throttle window.
+ * It puts an offline record BACK online, which it used to refuse. The refusal
+ * was aimed at a late heartbeat resurrecting somebody who had just left, and
+ * that danger went away when the socket close stopped writing "offline" at all.
+ * What remains is the opposite risk: the sweep runs continuously and can flip
+ * somebody who is still connected — a backgrounded browser tab has its timers
+ * throttled and drifts toward the threshold — and without this, that record
+ * could never recover. A wrongly revived record is corrected by the next sweep;
+ * a wrongly offline one would be permanent.
  *
- * Two things it refuses to do, both of which would be wrong rather than merely
- * wasteful: it will not create a record (a heartbeat is not an arrival), and it
- * will not touch someone already marked offline — a heartbeat and a disconnect
- * race on reconnect, and the late one must not put a departed user back.
- * @param args - Whose heartbeat, and when.
+ * The one thing it still refuses is CREATING a record. A heartbeat is not an
+ * arrival; only an authenticated connection is, and that goes through
+ * {@link markOnline}.
+ * @param args - Whose heartbeat, when, and how often this may be written.
  * @param args.documentName - Meta document name; scopes the write throttle.
  * @param args.document - The meta document to write into.
- * @param args.userId - The user still connected.
+ * @param args.userId - The user whose connection this heartbeat came from.
  * @param args.now - Current time in ms.
- * @returns True when the timestamp was written, false when it was throttled or refused.
+ * @param args.throttleMs - Minimum gap between two writes for one user.
+ * @returns True when the record was written, false when throttled or absent.
  */
 export function touchLastSeen(args: {
   documentName: string;
   document: YDoc;
   userId: string;
   now: number;
+  throttleMs: number;
 }): boolean {
   const users = args.document.getMap(USERS_KEY);
   const existing = users.get(args.userId);
   if (!(existing instanceof Y.Map)) return false;
-  if (existing.get("online") !== true) return false;
 
   const key = throttleKey(args.documentName, args.userId);
   const previous = lastWriteAt.get(key) ?? 0;
-  if (args.now - previous < LAST_SEEN_THROTTLE_MS) return false;
+  if (args.now - previous < args.throttleMs) return false;
 
   args.document.transact(() => {
+    existing.set("online", true);
     existing.set("lastSeenAt", args.now);
   });
   lastWriteAt.set(key, args.now);
@@ -186,30 +173,33 @@ export function touchLastSeen(args: {
 }
 
 /**
- * Clear records that claim to be online but stopped beating long ago.
+ * Turn off every record nobody is refreshing any more.
  *
- * Runs when a document loads, which is the moment after a server restart when
- * such records can exist and nothing else will correct them. Records that
- * already say offline are left untouched: their timestamp is when their owner
- * actually left, and rewriting it every load would keep pushing "last seen"
- * forward for somebody long gone.
+ * This is the ONLY thing that writes "offline", and the timestamp is the only
+ * evidence it uses. That sounds weaker than asking the server who it is holding
+ * a connection for, and it is in fact stronger: a server only knows about its
+ * OWN sockets, while this stamp is refreshed by whichever machine in the cluster
+ * holds the connection and reaches all of them through the shared document. A
+ * stamp nobody has touched therefore means nobody anywhere is holding them.
  *
- * The timestamp alone is not enough to convict. It only advances when a client
- * does something, so someone sitting on an open canvas without touching
- * anything stops advancing it while the WebSocket keepalive quietly holds their
- * connection open. Whoever the server is actually holding a connection for is
- * therefore spared regardless of how old their timestamp looks — the server
- * knows this for free, and it is the stronger evidence of the two.
- * @param args - Which document, who is connected, when, and how old counts as stale.
+ * The threshold has to clear the widest real gap between two refreshes. That is
+ * not the 15-second heartbeat: a browser throttles a hidden tab's timers to once
+ * a minute (Chrome, after five minutes hidden), while the socket stays open
+ * because the keepalive pong never runs JavaScript. So a connected person can
+ * legitimately look a minute stale, and a threshold at 60s would flip them on
+ * every cycle — offline, then back on their next beat, once a minute forever.
+ *
+ * Records that already say offline are left alone: their timestamp is when they
+ * were last actually heard from, and rewriting it on every pass would push
+ * "last seen" forward for somebody long gone.
+ * @param args - Which document, when, and how old counts as stale.
  * @param args.document - The meta document to sweep.
- * @param args.connectedUserIds - Users the server is holding at least one live connection for; never swept.
  * @param args.now - Current time in ms.
- * @param args.staleAfterMs - How long without a heartbeat before an unconnected online record is disbelieved.
+ * @param args.staleAfterMs - How long without a heartbeat before an online record is disbelieved.
  * @returns The user ids that were flipped to offline.
  */
 export function sweepStalePresence(args: {
   document: YDoc;
-  connectedUserIds: ReadonlySet<string>;
   now: number;
   staleAfterMs: number;
 }): string[] {
@@ -220,8 +210,6 @@ export function sweepStalePresence(args: {
     users.forEach((value, userId) => {
       if (!(value instanceof Y.Map)) return;
       if (value.get("online") !== true) return;
-      // Sitting right there. Whatever the timestamp says, they are here.
-      if (args.connectedUserIds.has(userId)) return;
       const lastSeenAt = value.get("lastSeenAt");
       if (typeof lastSeenAt !== "number") return;
       if (args.now - lastSeenAt < args.staleAfterMs) return;

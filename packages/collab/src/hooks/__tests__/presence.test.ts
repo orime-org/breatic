@@ -8,17 +8,29 @@
  * into the roster. Now the server takes the id from the credential it already
  * validated at the handshake, so nothing here reads anything a client sent.
  *
- * Two failure modes drive most of these cases, and both were found by Gate 1
- * rather than by writing the happy path:
+ * ## Presence is asserted, never denied
  *
- *   - A timestamp written once on connect stops moving. Someone connected for
- *     three days would carry a three-day-old stamp, and the staleness pass
- *     below would evict a person who never left. So the stamp tracks the
- *     heartbeat, throttled.
- *   - The heartbeat cannot cover the server process disappearing mid-session:
- *     nobody is left to write "offline". Such a record identifies itself — it
- *     claims to be online while its last heartbeat is long past — which is
- *     what the staleness pass looks for.
+ * Only two things put a record in the "online" state: a connection arriving,
+ * and a heartbeat. NOTHING writes "offline" on a disconnect, and that is the
+ * whole design rather than an omission. A disconnect is one socket closing,
+ * while a presence record is keyed on the PERSON — and one machine cannot see
+ * whether that person still holds a socket somewhere else. So absence is not
+ * announced by whoever happened to lose a socket; it is inferred from nobody,
+ * anywhere, refreshing the timestamp.
+ *
+ * That inference is correct across every instance without any of them talking
+ * to each other, because the record lives in the shared meta document: whoever
+ * holds the connection refreshes the stamp, and the refresh reaches everyone.
+ * A stale stamp therefore means no machine in the cluster is holding them.
+ *
+ * ## Why the heartbeat may put someone BACK online
+ *
+ * It used to refuse, to stop a late heartbeat resurrecting somebody who had
+ * just left. With the sweep running continuously, refusing is the dangerous
+ * half: a record wrongly flipped offline could never recover, while a wrongly
+ * revived one is corrected by the next sweep. One error is permanent, the
+ * other is bounded — so the heartbeat wins, and staying gone is left to the
+ * absence of heartbeats.
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -26,17 +38,18 @@ import * as Y from "yjs";
 
 import {
   markOnline,
-  markOffline,
   touchLastSeen,
   sweepStalePresence,
   readPresence,
-  LAST_SEEN_THROTTLE_MS,
   __resetPresenceThrottle,
 } from "@collab/hooks/presence";
 
 const DOC = "project-p1/meta";
 const ALICE = "u-alice";
 const BOB = "u-bob";
+
+/** The write throttle these cases exercise; production reads it from config. */
+const THROTTLE_MS = 30_000;
 
 /** A meta doc with nothing in it yet. */
 function emptyMetaDoc(): Y.Doc {
@@ -50,6 +63,7 @@ describe("presence — the server records who is here", () => {
 
   it("records a user as online when their connection is established", () => {
     const doc = emptyMetaDoc();
+
     markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
 
     expect(readPresence(doc, ALICE)).toEqual({
@@ -60,35 +74,14 @@ describe("presence — the server records who is here", () => {
   });
 
   it("keeps nothing but the id, the online flag and the timestamp", () => {
-    // Names and avatars have exactly one source of truth, the project roster.
-    // A copy here is a copy that goes stale the moment somebody renames
-    // themselves — the whole reason #1882 took them off the wire.
+    // A name or an avatar here would be a second copy of something the account
+    // owns, and a copy goes stale the moment its owner renames themselves.
     const doc = emptyMetaDoc();
+
     markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
 
     const entry = doc.getMap("users").get(ALICE) as Y.Map<unknown>;
     expect([...entry.keys()].sort()).toEqual(["id", "lastSeenAt", "online"]);
-  });
-
-  it("marks a user offline and moves their timestamp forward", () => {
-    const doc = emptyMetaDoc();
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
-    markOffline({ document: doc, userId: ALICE, now: 5_000 });
-
-    expect(readPresence(doc, ALICE)).toEqual({
-      id: ALICE,
-      online: false,
-      lastSeenAt: 5_000,
-    });
-  });
-
-  it("leaves other people alone when one of them goes offline", () => {
-    const doc = emptyMetaDoc();
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
-    markOnline({ documentName: DOC, document: doc, userId: BOB, now: 1_000 });
-    markOffline({ document: doc, userId: ALICE, now: 5_000 });
-
-    expect(readPresence(doc, BOB)?.online).toBe(true);
   });
 });
 
@@ -101,61 +94,71 @@ describe("presence — the timestamp tracks the heartbeat", () => {
     const doc = emptyMetaDoc();
     markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
 
-    const later = 1_000 + LAST_SEEN_THROTTLE_MS;
     const wrote = touchLastSeen({
       documentName: DOC,
       document: doc,
       userId: ALICE,
-      now: later,
+      now: 1_000 + THROTTLE_MS,
+      throttleMs: THROTTLE_MS,
     });
 
     expect(wrote).toBe(true);
-    expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(later);
+    expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(1_000 + THROTTLE_MS);
   });
 
   it("writes at most once inside a throttle window", () => {
-    // A connection heartbeats every 15s. Writing the doc on each one would
-    // put a Yjs transaction on the wire per user per beat, for a number
-    // nobody reads at that resolution.
     const doc = emptyMetaDoc();
     markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
 
-    const inWindow = 1_000 + LAST_SEEN_THROTTLE_MS - 1;
     const wrote = touchLastSeen({
       documentName: DOC,
       document: doc,
       userId: ALICE,
-      now: inWindow,
+      now: 1_000 + THROTTLE_MS - 1,
+      throttleMs: THROTTLE_MS,
     });
 
     expect(wrote).toBe(false);
     expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(1_000);
   });
 
-  it("does not resurrect someone who is already marked offline", () => {
-    // Heartbeats and disconnects race on reconnect. A late touch must not
-    // put a departed user back on the list.
+  it("puts a user back online when their heartbeat arrives", () => {
+    // The sweep runs constantly, so it can flip somebody who is still here —
+    // a backgrounded browser tab has its timers throttled to once a minute and
+    // can drift close to the threshold. Their next heartbeat is proof they are
+    // connected, and proof outranks the inference that flipped them.
     const doc = emptyMetaDoc();
     markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
-    markOffline({ document: doc, userId: ALICE, now: 2_000 });
+    sweepStalePresence({ document: doc, now: 500_000, staleAfterMs: 90_000 });
+    expect(readPresence(doc, ALICE)?.online).toBe(false);
 
-    touchLastSeen({
+    const wrote = touchLastSeen({
       documentName: DOC,
       document: doc,
       userId: ALICE,
-      now: 2_000 + LAST_SEEN_THROTTLE_MS,
+      now: 500_100,
+      throttleMs: THROTTLE_MS,
     });
 
-    expect(readPresence(doc, ALICE)?.online).toBe(false);
+    expect(wrote).toBe(true);
+    expect(readPresence(doc, ALICE)).toEqual({
+      id: ALICE,
+      online: true,
+      lastSeenAt: 500_100,
+    });
   });
 
   it("does not create an entry for someone who was never here", () => {
+    // A heartbeat is not an arrival. Only an authenticated connection is, and
+    // that goes through `markOnline`.
     const doc = emptyMetaDoc();
+
     const wrote = touchLastSeen({
       documentName: DOC,
       document: doc,
       userId: ALICE,
       now: 1_000,
+      throttleMs: THROTTLE_MS,
     });
 
     expect(wrote).toBe(false);
@@ -163,7 +166,7 @@ describe("presence — the timestamp tracks the heartbeat", () => {
   });
 });
 
-describe("presence — stale records left by a vanished server", () => {
+describe("presence — records nobody is refreshing any more", () => {
   beforeEach(() => {
     __resetPresenceThrottle();
   });
@@ -174,27 +177,25 @@ describe("presence — stale records left by a vanished server", () => {
 
     const swept = sweepStalePresence({
       document: doc,
-      connectedUserIds: new Set<string>(),
-      now: 1_000 + 600_000,
-      staleAfterMs: 300_000,
+      now: 1_000 + 90_001,
+      staleAfterMs: 90_000,
     });
 
     expect(swept).toEqual([ALICE]);
     expect(readPresence(doc, ALICE)?.online).toBe(false);
   });
 
-  it("leaves a genuinely live user alone", () => {
-    // The pass runs when a document loads, which happens while people are
-    // connecting. Sweeping on "the server holds no connection for them yet"
-    // would evict the very person who just triggered the load.
+  it("leaves a user whose heartbeat is still arriving alone", () => {
+    // The only evidence that matters. Whoever holds their connection — this
+    // machine or another one — is refreshing this stamp, and the refresh
+    // reaches every instance through the shared document.
     const doc = emptyMetaDoc();
     markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
 
     const swept = sweepStalePresence({
       document: doc,
-      connectedUserIds: new Set<string>(),
-      now: 1_000 + 10_000,
-      staleAfterMs: 300_000,
+      now: 1_000 + 89_999,
+      staleAfterMs: 90_000,
     });
 
     expect(swept).toEqual([]);
@@ -202,70 +203,52 @@ describe("presence — stale records left by a vanished server", () => {
   });
 
   it("does not touch records that already say offline", () => {
-    // Their timestamp is the moment they left. Rewriting it on every load
-    // would keep pushing "last seen" forward for someone long gone.
+    // Their timestamp is when they were last actually heard from. Rewriting it
+    // on every sweep would keep pushing "last seen" forward for someone gone.
     const doc = emptyMetaDoc();
     markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
-    markOffline({ document: doc, userId: ALICE, now: 2_000 });
-
-    sweepStalePresence({
-      document: doc,
-      connectedUserIds: new Set<string>(),
-      now: 2_000 + 600_000,
-      staleAfterMs: 300_000,
-    });
-
-    expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(2_000);
-  });
-
-  it("spares someone the server is holding a connection for right now", () => {
-    // The timestamp only moves when a client does something. Sit on an open
-    // canvas without touching anything and it stops advancing, while the
-    // WebSocket keepalive quietly holds the connection open. Judging by the
-    // timestamp alone would evict someone who is sitting right there, so the
-    // server's own list of live connections overrides it.
-    const doc = emptyMetaDoc();
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
+    sweepStalePresence({ document: doc, now: 200_000, staleAfterMs: 90_000 });
+    const afterFirst = readPresence(doc, ALICE);
 
     const swept = sweepStalePresence({
       document: doc,
-      connectedUserIds: new Set([ALICE]),
-      now: 1_000 + 600_000,
-      staleAfterMs: 300_000,
+      now: 900_000,
+      staleAfterMs: 90_000,
     });
 
     expect(swept).toEqual([]);
-    expect(readPresence(doc, ALICE)?.online).toBe(true);
+    expect(readPresence(doc, ALICE)).toEqual(afterFirst);
   });
 
-  it("sweeps the stale one and spares the connected one in the same pass", () => {
+  it("sweeps the stale one and leaves the fresh one in the same pass", () => {
     const doc = emptyMetaDoc();
     markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
-    markOnline({ documentName: DOC, document: doc, userId: BOB, now: 1_000 });
+    markOnline({ documentName: DOC, document: doc, userId: BOB, now: 500_000 });
 
     const swept = sweepStalePresence({
       document: doc,
-      connectedUserIds: new Set([BOB]),
-      now: 1_000 + 600_000,
-      staleAfterMs: 300_000,
+      now: 500_000,
+      staleAfterMs: 90_000,
     });
 
     expect(swept).toEqual([ALICE]);
+    expect(readPresence(doc, ALICE)?.online).toBe(false);
     expect(readPresence(doc, BOB)?.online).toBe(true);
   });
 
   it("sweeps every stale record in one pass, not just the first", () => {
     const doc = emptyMetaDoc();
     markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
-    markOnline({ documentName: DOC, document: doc, userId: BOB, now: 1_000 });
+    markOnline({ documentName: DOC, document: doc, userId: BOB, now: 2_000 });
 
     const swept = sweepStalePresence({
       document: doc,
-      connectedUserIds: new Set<string>(),
-      now: 1_000 + 600_000,
-      staleAfterMs: 300_000,
+      now: 500_000,
+      staleAfterMs: 90_000,
     });
 
     expect(swept.sort()).toEqual([ALICE, BOB].sort());
+    expect(readPresence(doc, ALICE)?.online).toBe(false);
+    expect(readPresence(doc, BOB)?.online).toBe(false);
   });
 });

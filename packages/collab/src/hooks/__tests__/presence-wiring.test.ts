@@ -6,13 +6,16 @@
  *
  * The two modules underneath this are pure and already have their own tests.
  * What those cannot show is whether the framework ever calls them, with what,
- * and at which moment — and that gap is not hypothetical here. The guard this
- * work replaces passed its unit tests for months while never running once in
- * production, because it read the frame from the wrong offset and no test ever
- * fed it a frame the library had actually produced.
+ * and at which moment — and that gap is not hypothetical here. TWICE now: the
+ * guard this work replaces passed its unit tests for months while never running
+ * once in production because it read the frame from the wrong offset, and then
+ * the first version of this very module wired its sweep to a hook that fires
+ * before any connection exists, so the guard inside it could never run and the
+ * case that "proved" it called the function by hand.
  *
  * So these cases connect clients through the real handshake, let the real hooks
- * fire, and read the result out of the real document.
+ * fire, and read the result out of the real document. Where a case does reach
+ * for a function directly, it is testing that function's rule, not its wiring.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -30,8 +33,7 @@ import {
 import { readPresence, __resetPresenceThrottle } from "@collab/hooks/presence";
 import {
   recordPresenceOnConnect,
-  recordAbsenceOnDisconnect,
-  sweepPresenceOnLoad,
+  recordHeartbeat,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring";
 
@@ -41,6 +43,9 @@ const ALICE = "u-alice";
 
 /** Clock the wiring reads, so a case can move time without waiting. */
 let clock = 1_000_000;
+
+/** Presence policy these cases run under; production reads it from config. */
+const POLICY = { staleAfterMs: 90_000, throttleMs: 30_000 };
 
 /** Who each fake connection authenticates as, by cookie. */
 const USER_BY_COOKIE: Record<string, string> = {
@@ -54,6 +59,10 @@ const clients: LiveClient[] = [];
 
 /**
  * A live server wired exactly the way production wires these hooks.
+ *
+ * Note what is NOT here: `onDisconnect` writes no presence at all. A socket
+ * closing is not evidence the person left — they may hold another one, on this
+ * machine or another — so absence is left entirely to the sweep.
  * @returns The server.
  */
 function makeServer(): Hocuspocus {
@@ -68,20 +77,14 @@ function makeServer(): Hocuspocus {
       if (!userId) throw new Error("Not authenticated");
       return { user: { id: userId } };
     },
-    afterLoadDocument: async (payload: unknown): Promise<void> => {
-      sweepPresenceOnLoad(payload as never, {
-        now: () => clock,
-        staleAfterMs: 300_000,
-      });
-    },
     connected: async (payload: unknown): Promise<void> => {
-      recordPresenceOnConnect(payload as never, { now: () => clock });
-    },
-    onDisconnect: async (payload: unknown): Promise<void> => {
-      recordAbsenceOnDisconnect(payload as never, { now: () => clock });
+      recordPresenceOnConnect(payload as never, { now: () => clock, ...POLICY });
     },
     beforeHandleAwareness: async (payload: unknown): Promise<void> => {
       stampIdentityOnAwareness(payload as never);
+    },
+    onAwarenessUpdate: async (payload: unknown): Promise<void> => {
+      recordHeartbeat(payload as never, { now: () => clock, ...POLICY });
     },
   });
   return instance;
@@ -109,6 +112,44 @@ function metaDoc(): Y.Doc {
   return doc as unknown as Y.Doc;
 }
 
+/**
+ * Send one awareness frame from a client, the way its heartbeat does.
+ * @param client - Who is beating.
+ * @param clientId - Yjs client id to attribute the state to.
+ */
+async function beat(client: LiveClient, clientId: number): Promise<void> {
+  const scratch = new Y.Doc();
+  scratch.clientID = clientId;
+  const awareness = new awarenessProtocol.Awareness(scratch);
+  awareness.setLocalState({ cursor: { anchor: 1, head: 1 } });
+  client.send(
+    awarenessFrame(
+      META_DOC,
+      awarenessProtocol.encodeAwarenessUpdate(awareness, [clientId]),
+    ),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  awareness.destroy();
+  scratch.destroy();
+}
+
+/**
+ * Seed the record a vanished server would have left: online, last heard from
+ * long ago, with nobody connected as them now.
+ * @param doc - The meta document.
+ * @param userId - Who to leave behind.
+ * @param lastSeenAt - When they were last heard from.
+ */
+function seedGhost(doc: Y.Doc, userId: string, lastSeenAt: number): void {
+  doc.transact(() => {
+    const ghost = new Y.Map<unknown>();
+    ghost.set("id", userId);
+    ghost.set("online", true);
+    ghost.set("lastSeenAt", lastSeenAt);
+    doc.getMap("users").set(userId, ghost);
+  });
+}
+
 beforeEach(() => {
   clock = 1_000_000;
   __resetPresenceThrottle();
@@ -134,11 +175,13 @@ describe("presence wiring — a connection puts you on the list", () => {
     });
   });
 
-  it("takes them off the list when their connection closes", async () => {
-    // Bob stays connected throughout. Without him the document unloads the
-    // moment the last connection goes, and there is nothing left to read —
-    // which is the library's behaviour, not a defect, but it does mean this
-    // case has to keep somebody in the room to observe from.
+  it("leaves them on the list when a connection closes", async () => {
+    // The heart of the design. This machine knows one socket ended; it does not
+    // know whether the person still holds another, here or on another instance.
+    // So it says nothing, and the sweep decides once nobody is refreshing them.
+    //
+    // Bob stays connected throughout: without him the document unloads the
+    // moment the last connection goes and there is nothing left to read.
     const alice = await connect("alice");
     await connect("bob");
     await waitFor(
@@ -146,28 +189,46 @@ describe("presence wiring — a connection puts you on the list", () => {
       "alice recorded online",
     );
 
-    clock += 5_000;
     alice.close();
-    await waitFor(
-      () => readPresence(metaDoc(), ALICE)?.online === false,
-      "alice recorded offline",
-    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock);
+    expect(readPresence(metaDoc(), ALICE)?.online).toBe(true);
+  });
+});
+
+describe("presence wiring — a heartbeat refreshes and sweeps", () => {
+  it("clears a record nobody is refreshing when a heartbeat arrives", async () => {
+    // The sweep runs off other people's traffic, which is what makes it able to
+    // clean up after a crashed server: the first person back starts the beats
+    // that clear whoever that server left behind.
+    const alice = await connect("alice");
+    seedGhost(metaDoc(), "u-ghost", clock - 600_000);
+
+    clock += POLICY.throttleMs;
+    await beat(alice, 4242);
+
+    expect(readPresence(metaDoc(), "u-ghost")?.online).toBe(false);
   });
 
-  it("keeps them on the list while any of their connections survives", async () => {
-    // One person with two tabs open. Closing one must not make them vanish
-    // from everyone else's screen while they are still sitting in the other.
-    const first = await connect("alice");
-    await connect("alice-second");
+  it("puts a swept user back when their own heartbeat arrives", async () => {
+    // A browser throttles a hidden tab's timers to once a minute while the
+    // socket stays open, so a connected person can drift into the sweep. Their
+    // beat is proof they are here, and it has to outrank that inference — or
+    // the mistake would be permanent.
+    const alice = await connect("alice");
     await waitFor(
       () => readPresence(metaDoc(), ALICE)?.online === true,
       "alice recorded online",
     );
+    metaDoc().transact(() => {
+      (metaDoc().getMap("users").get(ALICE) as Y.Map<unknown>).set(
+        "online",
+        false,
+      );
+    });
 
-    first.close();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    clock += POLICY.throttleMs;
+    await beat(alice, 4243);
 
     expect(readPresence(metaDoc(), ALICE)?.online).toBe(true);
   });
@@ -199,43 +260,5 @@ describe("presence wiring — the server decides whose caret is whose", () => {
     expect(state?.user).toEqual({ id: ALICE });
     awareness.destroy();
     scratch.destroy();
-  });
-});
-
-describe("presence wiring — stale records are cleaned when the document loads", () => {
-  it("flips a record left claiming to be online by a server that went away", async () => {
-    // Seed the document the way a vanished server would have left it: online,
-    // last heard from long ago, and nobody connected as them now.
-    await connect("alice");
-    const doc = metaDoc();
-    doc.transact(() => {
-      const ghost = new Y.Map<unknown>();
-      ghost.set("id", "u-ghost");
-      ghost.set("online", true);
-      ghost.set("lastSeenAt", clock - 600_000);
-      doc.getMap("users").set("u-ghost", ghost);
-    });
-
-    sweepPresenceOnLoad(
-      { documentName: META_DOC, document: doc as never },
-      { now: () => clock, staleAfterMs: 300_000 },
-    );
-
-    expect(readPresence(doc, "u-ghost")?.online).toBe(false);
-  });
-
-  it("spares the person whose connection triggered the load", async () => {
-    // The load hook fires while somebody is connecting. Sweeping purely on the
-    // timestamp would evict them; the live-connection check is what saves them.
-    await connect("alice");
-    const doc = metaDoc();
-    clock += 600_000;
-
-    sweepPresenceOnLoad(
-      { documentName: META_DOC, document: doc as never },
-      { now: () => clock, staleAfterMs: 300_000 },
-    );
-
-    expect(readPresence(doc, ALICE)?.online).toBe(true);
   });
 });

@@ -45,12 +45,10 @@ import {
   type SpaceRpcResponse,
 } from "@breatic/shared";
 import { createAuthHook } from "@collab/hooks/auth.js";
-import { touchLastSeen } from "@collab/hooks/presence.js";
 import {
-  recordAbsenceOnDisconnect,
+  recordHeartbeat,
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
-  sweepPresenceOnLoad,
 } from "@collab/hooks/presence-wiring.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import { createPersistenceExtension } from "@collab/services/persistence.js";
@@ -222,12 +220,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // + N broadcast transactions at once; the jitter is negligible against
     // the 1h budget, and a doc unloaded while waiting is skipped.
     afterLoadDocument: async ({ documentName, document, instance }) => {
-      // Presence records a vanished server left behind can only be corrected
-      // here: the process that would have written "offline" is gone.
-      sweepPresenceOnLoad(
-        { documentName, document },
-        { now: Date.now, staleAfterMs: cfg.presence_stale_after_ms },
-      );
       const parsed = parseDocName(documentName);
       if (!parsed || parsed.kind !== "canvas") return;
       scheduleLoadSweep({
@@ -263,6 +255,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // so the list reflects who the server knows is here.
       recordPresenceOnConnect({ documentName, context, instance }, {
         now: Date.now,
+        staleAfterMs: cfg.presence_stale_after_ms,
+        throttleMs: cfg.presence_heartbeat_throttle_ms,
       });
     },
 
@@ -275,20 +269,20 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       stampIdentityOnAwareness({ states, document, connection, context });
     },
 
-    // A live connection keeps its owner's timestamp moving. Stamped only at
-    // connect, it would freeze while somebody stayed online, and the load
-    // sweep would then evict a person who never left. Awareness traffic is the
-    // signal available here; the write itself is throttled inside the helper.
+    // Every heartbeat does two things: keeps its own owner's timestamp moving,
+    // and sweeps whoever nobody is refreshing any more. The sweep lives here
+    // rather than on the document-load hook because that hook fires when the
+    // records are freshest and then never fires again while anyone is in the
+    // project — see `recordHeartbeat` for the full story.
     onAwarenessUpdate: async ({ documentName, document, connection }) => {
-      const parsed = parseDocName(documentName);
-      if (!parsed || parsed.kind !== "meta") return;
-      const userId = (connection?.context as { user?: { id?: string } } | undefined)
-        ?.user?.id;
-      if (!userId) return;
-      touchLastSeen({ documentName, document, userId, now: Date.now() });
+      recordHeartbeat({ documentName, document, connection }, {
+        now: Date.now,
+        staleAfterMs: cfg.presence_stale_after_ms,
+        throttleMs: cfg.presence_heartbeat_throttle_ms,
+      });
     },
 
-    onDisconnect: async ({ documentName, document, context, socketId }) => {
+    onDisconnect: async ({ documentName, context, socketId }) => {
       const ctx = context as { user?: { id: string } };
       const userId = ctx.user?.id;
       // Symmetric to the `connected` registration (#1421): remove this
@@ -301,13 +295,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         await connectionRegistry.unregister(documentName, socketId);
       }
       logger.info({ documentName, userId }, "Client disconnected");
-      // Take them off the project's list — but only once nothing of theirs is
-      // left. One person holds several connections at a time (one socket
-      // carries several documents, and they may have several tabs), so acting
-      // on the first close would make them vanish while they are still here.
-      recordAbsenceOnDisconnect({ documentName, document, context }, {
-        now: Date.now,
-      });
+      // Nothing is written to the project's presence list here, on purpose.
+      // This socket ending says nothing about whether its owner is still in the
+      // project: one person holds several connections at once, and on a
+      // multi-instance deployment the others may be on a machine this one
+      // cannot see. Absence is inferred by the sweep instead, from nobody
+      // anywhere refreshing the timestamp (see `hooks/presence.ts`).
       // Mini-tool state-machine cleanup (ADR 2026-05-11). Strips
       // operationLocks and finishes frontend-driver handling nodes the
       // disconnected client was running.

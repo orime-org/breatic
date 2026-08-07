@@ -7,10 +7,19 @@
  * The rules themselves live in `presence.ts` and `awareness-identity.ts` and
  * know nothing about the framework. This module is the only place that reads a
  * hook payload, and it exists so that reading is written once: production wires
- * these four functions into the server, and their tests drive the same four
- * through a real server. A guard whose extraction logic is written twice is a
- * guard that can pass its tests while doing nothing in production, which is
- * exactly what happened to the one this work replaces.
+ * these functions into the server, and their tests drive the same ones through a
+ * real server. A guard whose extraction logic is written twice is a guard that
+ * can pass its tests while doing nothing in production, which is exactly what
+ * happened to the one this work replaces.
+ *
+ * ## There is deliberately no disconnect function here
+ *
+ * A socket closing is not evidence that its owner left: they may hold another
+ * one, on this machine or another, and this machine can only see its own. So
+ * nothing writes "offline" on a disconnect. Absence is inferred by the sweep,
+ * from nobody anywhere refreshing the timestamp — see `presence.ts`. The
+ * absence of a function here IS the enforcement; a test cannot easily prove a
+ * hook was left unwired, but code that does not exist cannot be called.
  */
 
 import { parseDocName } from "@breatic/shared";
@@ -18,7 +27,7 @@ import { parseDocName } from "@breatic/shared";
 import { stampConnectionIdentity } from "@collab/hooks/awareness-identity.js";
 import {
   markOnline,
-  markOffline,
+  touchLastSeen,
   sweepStalePresence,
 } from "@collab/hooks/presence.js";
 
@@ -88,22 +97,19 @@ function isMetaDoc(documentName: string): boolean {
   return parsed !== null && parsed.kind === "meta";
 }
 
-/**
- * Everyone the server is currently holding at least one connection for.
- * @param document - The document to inspect.
- * @returns Their user ids.
- */
-function connectedUserIds(document: DocumentLike): Set<string> {
-  const ids = new Set<string>();
-  for (const connection of document.getConnections?.() ?? []) {
-    const id = connection.context?.user?.id;
-    if (id) ids.add(id);
-  }
-  return ids;
+/** How presence decides things, injected so tests can move both. */
+interface PresencePolicy {
+  /** Returns the current time in ms. */
+  now: () => number;
+  /** How long without a heartbeat before an online record is disbelieved. */
+  staleAfterMs: number;
+  /** Minimum gap between two timestamp writes for one user. */
+  throttleMs: number;
 }
 
 /**
- * Put the connecting user on the project's list.
+ * Put the connecting user on the project's list, and clear whoever nobody is
+ * refreshing any more.
  *
  * Wired to `connected`, which fires after `onAuthenticate` — so the id here is
  * the one the server resolved from the credential, never one a client offered.
@@ -118,8 +124,7 @@ function connectedUserIds(document: DocumentLike): Set<string> {
  * @param payload.documentName - Document the connection opened.
  * @param payload.instance - The server, used to look the document up.
  * @param payload.context - Connection context established by `onAuthenticate`.
- * @param deps - Injected clock.
- * @param deps.now - Returns the current time in ms.
+ * @param policy - Clock and presence thresholds.
  */
 export function recordPresenceOnConnect(
   payload: {
@@ -127,7 +132,7 @@ export function recordPresenceOnConnect(
     instance: InstanceLike;
     context?: AuthContext;
   },
-  deps: { now: () => number },
+  policy: PresencePolicy,
 ): void {
   if (!isMetaDoc(payload.documentName)) return;
   const userId = userIdOf(payload);
@@ -136,67 +141,62 @@ export function recordPresenceOnConnect(
     | PresenceDoc
     | undefined;
   if (!document) return;
+  const now = policy.now();
   markOnline({
     documentName: payload.documentName,
     document,
     userId,
-    now: deps.now(),
+    now,
   });
+  // Someone arriving is the earliest chance to clean up after a server that
+  // went away, and it costs one pass over a small map.
+  sweepStalePresence({ document, now, staleAfterMs: policy.staleAfterMs });
 }
 
 /**
- * Take the user off the list — but only once their last connection is gone.
+ * Take one heartbeat: push this user's timestamp forward, and sweep.
  *
- * A person holds several connections at a time: one socket carries several
- * documents, and they may have several tabs. Marking them absent on the first
- * close would make them vanish from everyone's screen while they are still
- * sitting in another tab.
- * @param payload - The `onDisconnect` hook payload.
- * @param payload.documentName - Document the connection was on.
- * @param payload.document - That document, used to see who is still connected.
- * @param payload.context - Context of the connection that just closed.
- * @param deps - Injected clock.
- * @param deps.now - Returns the current time in ms.
+ * The sweep rides on the write rather than on the hook. Awareness traffic is
+ * heavy — every cursor move is one — while the write is throttled to once per
+ * window per user, so sweeping only when the write actually happened bounds the
+ * work to roughly one pass per user per window without a second timer to own.
+ *
+ * This is also the whole reason the sweep can clean up after a crashed process.
+ * Its predecessor ran once when the document loaded, which is the moment the
+ * records are FRESHEST — a client reconnecting seconds after a restart made
+ * every ghost look alive, and the document then stayed loaded for as long as
+ * anyone was in it, so the pass never came round again. Riding the heartbeat
+ * turns the threshold into a delay instead of a single missed chance.
+ * @param payload - The `onAwarenessUpdate` hook payload.
+ * @param payload.documentName - Document the frame was for.
+ * @param payload.document - That document.
+ * @param payload.connection - The connection the frame came from.
+ * @param policy - Clock and presence thresholds.
  */
-export function recordAbsenceOnDisconnect(
+export function recordHeartbeat(
   payload: {
     documentName: string;
-    document: PresenceDoc & DocumentLike;
-    context?: AuthContext;
+    document: PresenceDoc;
+    connection?: ConnectionLike;
   },
-  deps: { now: () => number },
+  policy: PresencePolicy,
 ): void {
   if (!isMetaDoc(payload.documentName)) return;
   const userId = userIdOf(payload);
   if (!userId) return;
-  // The closing connection may or may not still be listed depending on where
-  // in its teardown this fires, so count what is left rather than assuming.
-  if (connectedUserIds(payload.document).has(userId)) return;
-  markOffline({ document: payload.document, userId, now: deps.now() });
-}
-
-/**
- * Clear records a vanished server left behind, when the document loads.
- *
- * This is the one moment such records can exist and nothing else will correct
- * them: the process that would have written "offline" is gone.
- * @param payload - The `afterLoadDocument` hook payload.
- * @param payload.documentName - Document that just loaded.
- * @param payload.document - That document.
- * @param deps - Injected clock and policy.
- * @param deps.now - Returns the current time in ms.
- * @param deps.staleAfterMs - How long without a heartbeat before an unconnected online record is disbelieved.
- */
-export function sweepPresenceOnLoad(
-  payload: { documentName: string; document: PresenceDoc & DocumentLike },
-  deps: { now: () => number; staleAfterMs: number },
-): void {
-  if (!isMetaDoc(payload.documentName)) return;
+  const now = policy.now();
+  const wrote = touchLastSeen({
+    documentName: payload.documentName,
+    document: payload.document,
+    userId,
+    now,
+    throttleMs: policy.throttleMs,
+  });
+  if (!wrote) return;
   sweepStalePresence({
     document: payload.document,
-    connectedUserIds: connectedUserIds(payload.document),
-    now: deps.now(),
-    staleAfterMs: deps.staleAfterMs,
+    now,
+    staleAfterMs: policy.staleAfterMs,
   });
 }
 
