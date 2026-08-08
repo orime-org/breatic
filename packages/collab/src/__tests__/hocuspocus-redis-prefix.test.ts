@@ -189,8 +189,9 @@ describe("createCollabServer — the identity rule is registered", () => {
   // forwards are the ones the rule needs. Those tests stand up their own
   // server and wire the hooks themselves, so deleting the wiring here — or
   // dropping `connection` from what it forwards — leaves every one of them
-  // green while carets go out unstamped in production. This package's own
-  // rule says that failure has already happened twice.
+  // green while carets go out unstamped in production. The sibling suite's own
+  // header records that failure happening twice already
+  // (`hooks/__tests__/presence-wiring.test.ts`).
   it("wires the awareness hook so an inbound frame comes back stamped", async () => {
     await createCollabServer({
       collabRedisUrl: "redis://localhost:6379/3",

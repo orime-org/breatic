@@ -50,9 +50,10 @@
  * per-entry ownership question: it writes the identity it authenticated onto
  * every entry it is handed, and asking whose an entry is has been banned
  * outright (`packages/collab/CLAUDE.md`, #1887). This particular frame never
- * reaches that rule anyway — the server applies an inbound frame to a scratch
- * awareness first, and a removal deletes the entry from it, so there is
- * nothing left to hand over.
+ * reaches that rule anyway — the server builds a scratch awareness per frame
+ * and hands the rule its states, and a removal carries a null state, which
+ * never puts an entry into a scratch that never had one. Nothing is deleted;
+ * there is simply nothing to hand over.
  *
  * That removal is the one y-protocols' own sweep issues for a peer it has not
  * heard from in thirty seconds (`awareness.js:70-75`) — read there, not

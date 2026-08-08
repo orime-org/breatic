@@ -57,8 +57,10 @@ describe("stampConnectionIdentity", () => {
   });
 
   it("stamps an entry that names somebody else with the sender's id", () => {
-    // Nothing our frontend sends names a peer, so an entry keyed to somebody
-    // else's client id was built by hand. It is not passed through and it is
+    // The only frame our frontend sends that names a peer is a timeout
+    // removal, which carries a null state and so never reaches this map — a
+    // live entry keyed to somebody else's client id was built by hand. It is
+    // not passed through and it is
     // not judged: it gets the sender's identity like every other entry, which
     // is what makes impersonation impossible rather than merely detectable.
     const states = new Map([[PEER_CLIENT, cursorState({ id: "u-peer" })]]);
@@ -87,10 +89,11 @@ describe("stampConnectionIdentity", () => {
   });
 
   it("never removes an entry, so a frame is never emptied", () => {
-    // Emptying a frame would cost the sender their heartbeat: awareness emits
-    // an update only when something changed, the presence heartbeat hangs off
-    // that event, and ninety seconds of silence reads as offline. Nothing here
-    // deletes, which is what keeps that coupling out of reach.
+    // Emptying a frame would cost the sender their heartbeat: a frame naming
+    // nobody applies nothing, so awareness emits no update event, and that
+    // event is the one the presence heartbeat hangs off — ninety seconds of
+    // silence reads as offline. Nothing here deletes, which is what keeps that
+    // coupling out of reach.
     const states = new Map<number, Record<string, unknown>>([
       [MY_CLIENT, cursorState()],
       [PEER_CLIENT, cursorState({ id: "u-peer" })],

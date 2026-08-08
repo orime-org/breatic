@@ -32,15 +32,18 @@
  * ## What this rule does not do
  *
  * It never removes an entry. Emptying a frame would cost its sender their
- * presence heartbeat: awareness emits an update only when something changed,
- * the heartbeat hangs off that event, and ninety seconds of silence reads as
- * offline.
+ * presence heartbeat: a frame that names nobody applies nothing, so awareness
+ * emits no update event, and that event is the one the heartbeat hangs off —
+ * ninety seconds of silence reads as offline. What the event does NOT require
+ * is that anything changed: a heartbeat is the same state sent again, and it
+ * is `change`, not `update`, that filters those out.
  *
  * It never sees a removal, either. A client does forward one kind of frame
  * naming a peer — a removal it decided on its own, on the timeout its copy of
- * the protocol keeps. But the server applies an inbound frame to a scratch
- * awareness first and hands this hook `getStates()`, and a removal deletes the
- * entry from that scratch, so nothing is left to hand over.
+ * the protocol keeps. But the server builds a scratch awareness per frame and
+ * hands this hook its `getStates()`, and a removal carries a null state, which
+ * never puts an entry into a scratch that never had one. Nothing is deleted;
+ * there is simply nothing to hand over.
  *
  * And it does not really reach an entry whose state is an array. An array is
  * an object, so the identity is written onto it here, but re-encoding runs the
@@ -59,7 +62,7 @@ const USER_FIELD = "user";
  * Mutates `states` in place — that is the contract of the hook this serves:
  * whatever the map holds afterwards is what peers receive.
  * @param args - The decoded frame and who sent it.
- * @param args.states - Per-client awareness states from one inbound frame, keyed by Yjs client id. Mutated in place.
+ * @param args.states - The awareness map the server hands this hook, keyed by Yjs client id and mutated in place. It holds the entries decoded from one inbound frame AND one more: the scratch awareness's own local entry, an empty object at clock zero, which is why the returned list always carries an id the sender never sent. That entry is stamped like any other and then refused by the document as stale, so it goes nowhere.
  * @param args.userId - The authenticated user behind this frame; undefined when the frame came from another collab instance rather than a client connection, in which case nothing is touched.
  * @returns The client ids that were stamped.
  */
