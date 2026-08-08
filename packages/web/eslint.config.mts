@@ -333,6 +333,23 @@ export default [
     },
   },
   {
+    // The vendor primitives define the variants rather than choose between
+    // them. The dev gallery's whole purpose is to render every variant side
+    // by side, borderless ones included.
+    files: ['src/**/*.tsx'],
+    ignores: [
+      'src/components/ui/**',
+      'src/pages/_dev/**',
+      '**/__tests__/**',
+      '**/*.test.tsx',
+      '**/*.spec.tsx',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/bordered-text-button': 'error',
+    },
+  },
+  {
     // The dev gallery renders native controls on purpose, to show what we
     // replaced. Tests assert on markup rather than shipping it.
     //

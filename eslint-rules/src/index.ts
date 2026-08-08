@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { activeBorder } from "#rules/rules/active-border";
+import { borderedTextButton } from "#rules/rules/bordered-text-button";
 import { hoverPattern } from "#rules/rules/hover-pattern";
 import { noCollabAuthPrimitives } from "#rules/rules/no-collab-auth-primitives";
 import { noCorsWildcardCredentials } from "#rules/rules/no-cors-wildcard-credentials";
@@ -45,6 +46,7 @@ export const breaticPlugin = {
   meta: { name: "@breatic/eslint-rules", version: "0.1.0" },
   rules: {
     "active-border": activeBorder,
+    "bordered-text-button": borderedTextButton,
     "hover-pattern": hoverPattern,
     "no-collab-auth-primitives": noCollabAuthPrimitives,
     "no-cors-wildcard-credentials": noCorsWildcardCredentials,

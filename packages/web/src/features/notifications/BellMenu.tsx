@@ -284,7 +284,7 @@ function NotificationItem({
           </Button>
         ) : (
           <Button
-            variant='ghost'
+            variant='outline'
             size='sm'
             className='h-7 px-2 text-xs'
             onClick={onMarkRead}
