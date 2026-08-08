@@ -2,25 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Structural promises of the chat storage layer (PR-3).
+ * Structural promises of the chat message table (PR-3).
  *
- * Two tables replace one JSONB column:
+ * `conversation_messages` holds one row per message, with `parts` carrying the
+ * heterogeneous pieces of that message. It replaces `conversations.messages`,
+ * a single column holding the entire array, where every append rewrote and
+ * re-compressed the whole document while holding a lock on the conversation
+ * row.
  *
- *   1. `current_conversations` — the pointer that answers "which conversation
- *      is this user writing to in this project". The whole front-end contract
- *      rests on it: the client never sends a conversation id, so the server has
- *      to hold one. Its primary key IS the uniqueness guarantee, which is what
- *      lets "switch conversation" be a single atomic upsert.
- *
- *   2. `conversation_messages` — one row per message, `parts` holding the
- *      heterogeneous pieces of that message. `conversations.messages` used to
- *      hold the entire array in a single column, so every append rewrote and
- *      re-compressed the whole document and locked the conversation row.
- *
- * These promises are invisible to unit tests: a primary key, a partial unique
- * index and an FK delete rule only exist in the migration, so only a real
- * Postgres can prove they are there. The behavioural half (pointer switching,
- * turn numbering under concurrency, cascade soft delete) lives in
+ * These promises are invisible to unit tests: a unique index and an FK delete
+ * rule exist only in the migration, so only a real Postgres can prove they are
+ * there. The behaviour they support — turn numbering under concurrency, cascade
+ * soft delete, the round trip through parts — lives in
  * chat-storage-behaviour.integration.test.ts.
  */
 
@@ -108,41 +101,6 @@ async function indexDefsOf(table: string): Promise<string[]> {
   `;
   return rows.map((r) => r.indexdef);
 }
-
-describe("current_conversations — the pointer the client never sends", () => {
-  it("keys on (user_id, project_id), so one row per user per project", async () => {
-    expect(await primaryKeyOf("current_conversations")).toEqual(["user_id", "project_id"]);
-  });
-
-  it("stores a conversation id, not a timestamp to sort by", async () => {
-    const cols = await columnsOf("current_conversations");
-    expect(cols).toContain("conversation_id");
-
-    const notNull = await sql<{ is_nullable: string }[]>`
-      SELECT is_nullable FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'current_conversations'
-        AND column_name = 'conversation_id'
-    `;
-    expect(notNull[0]?.is_nullable).toBe("NO");
-  });
-
-  it("holds every reference with RESTRICT", async () => {
-    expect(await deleteRuleOf("current_conversations", "user_id")).toBe("RESTRICT");
-    expect(await deleteRuleOf("current_conversations", "project_id")).toBe("RESTRICT");
-    expect(await deleteRuleOf("current_conversations", "conversation_id")).toBe("RESTRICT");
-  });
-
-  it("has created_at and deliberately has no deleted_at", async () => {
-    const cols = await columnsOf("current_conversations");
-    // `created_at` is mandatory on every table, no exceptions.
-    expect(cols).toContain("created_at");
-    // A pointer row is overwritten, never soft-deleted: the carve-out is
-    // registered in the schema-timestamps ESLint rule, which is where the
-    // guard actually reads (a migration comment is invisible to it).
-    expect(cols).not.toContain("deleted_at");
-  });
-});
 
 describe("conversation_messages — one row per message", () => {
   it("has the columns a message is made of", async () => {

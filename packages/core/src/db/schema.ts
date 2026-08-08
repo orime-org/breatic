@@ -362,41 +362,6 @@ export const conversationMessages = pgTable(
   ],
 );
 
-/**
- * Which conversation a user is currently writing to in a given project.
- *
- * The client never sends a conversation id — it posts content and the server
- * decides where it lands — so the server has to hold that id somewhere. It is
- * a single value per (user, project), so it lives as a single column keyed by
- * exactly those two, which also makes "switch conversation" one atomic upsert.
- *
- * Deliberately NOT expressed as "the most recently touched conversation":
- * ordering by a timestamp needs a unique sort key to be predictable, `now()`
- * is the transaction's start time (so rows touched together tie), and any
- * background write would silently reassign what the user is looking at.
- *
- * No `deleted_at`: a pointer row is overwritten, never deleted. Registered in
- * the `schema-timestamps` ESLint rule, which is where the guard reads.
- */
-export const currentConversations = pgTable(
-  "current_conversations",
-  {
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    projectId: uuid("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "restrict" }),
-    conversationId: uuid("conversation_id")
-      .notNull()
-      .references(() => conversations.id, { onDelete: "restrict" }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [primaryKey({ columns: [table.userId, table.projectId] })],
-);
-
 // ── 6. Tasks ─────────────────────────────────────────────────────────
 
 export const tasks = pgTable(

@@ -11,10 +11,11 @@
  * of owned children lives in {@link cascadeDeleteConversations}.
  */
 
-import { and, eq, desc, isNull, inArray } from "drizzle-orm";
+import { and, eq, desc, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import {
   conversations,
+  conversationMessages,
   conversationAttachments,
   conversationMemories,
   memoryHistoryEntries,
@@ -116,6 +117,83 @@ export async function listConversations(
     .limit(limit)
     .offset(offset);
   return rows.map(toEntity);
+}
+
+/**
+ * Take the right to create this user's first conversation in this project.
+ *
+ * Held until the surrounding transaction ends. Two tabs opening the same empty
+ * project both ask "is there a conversation here?", both hear no, and both
+ * create one — leaving the user looking at a list with two empty conversations
+ * in it. This makes the ask-then-create pair one indivisible step per (user,
+ * project); the second caller waits, then finds the first one's conversation.
+ *
+ * An advisory lock rather than a row lock, because at this moment there is no
+ * row to lock — that is the whole problem. The two ids are hashed into the
+ * lock's two integer halves; a collision between unrelated pairs costs a brief
+ * wait and nothing else, since the lock guards a check that is repeated inside
+ * it anyway.
+ * @param tx - Transaction handle; the lock lives as long as it does
+ * @param userId - Owner the lock is scoped to
+ * @param projectId - Project the lock is scoped to
+ */
+export async function lockChatCreation(
+  tx: DbTx,
+  userId: string,
+  projectId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${userId}), hashtext(${projectId}))`,
+  );
+}
+
+/**
+ * The conversation this user spoke in most recently in this project.
+ *
+ * Ordered by the newest message in each conversation, falling back to the
+ * conversation's own creation time for one that has never been spoken in.
+ * `conversations.updated_at` is deliberately not used: renaming a conversation
+ * touches it, and renaming is not speaking.
+ *
+ * The id is the final ordering key so the answer never wobbles between two
+ * conversations whose newest messages share a timestamp — without it, the same
+ * user refreshing twice could land somewhere different each time.
+ * @param userId - Owner whose conversations to consider
+ * @param projectId - Project to look in
+ * @param tx - Optional transaction handle, so the caller can read inside the
+ *   same transaction that holds the creation lock
+ * @returns The most recently used conversation, or null when there is none
+ */
+export async function findMostRecentlyUsed(
+  userId: string,
+  projectId: string,
+  tx?: DbTx,
+): Promise<ConversationEntity | null> {
+  const rows = await (tx ?? db)
+    .select({ conversation: conversations })
+    .from(conversations)
+    .leftJoin(
+      conversationMessages,
+      and(
+        eq(conversationMessages.conversationId, conversations.id),
+        isNull(conversationMessages.deletedAt),
+      ),
+    )
+    .where(
+      and(
+        eq(conversations.userId, userId),
+        eq(conversations.projectId, projectId),
+        isNull(conversations.deletedAt),
+      ),
+    )
+    .groupBy(conversations.id)
+    .orderBy(
+      sql`COALESCE(max(${conversationMessages.createdAt}), ${conversations.createdAt}) DESC`,
+      desc(conversations.id),
+    )
+    .limit(1);
+
+  return rows[0] ? toEntity(rows[0].conversation) : null;
 }
 
 /**

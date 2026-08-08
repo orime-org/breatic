@@ -170,7 +170,7 @@ export {
   checkoutSchema,
   paginationSchema,
   chatConversationsQuerySchema,
-  chatCurrentQuerySchema,
+  chatOpenSchema,
 } from "@shared/schemas/index.js";
 
 export type {

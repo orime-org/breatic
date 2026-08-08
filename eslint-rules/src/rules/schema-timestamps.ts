@@ -32,10 +32,6 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "per-user upsert tracker behind the Recent feed: a row for a deleted project is filtered out by the query's join, so a leftover row is harmless. Its mutable column is last_opened_at; there is no updated_at either",
   ],
   [
-    "currentConversations",
-    "a pointer, not an entity: it holds which conversation a user is writing to in a project, and switching overwrites the row rather than retiring it. Structurally it mirrors projectLastOpened, but the reason differs — that one's leftover rows are harmless because they are only ever READ through a join that filters deleted parents, whereas this one is a WRITE target, so a row pointing at a deleted conversation would be handed straight to the next message. That case is closed by a liveness predicate on the resolve path, not by a column here",
-  ],
-  [
     "uploadGrants",
     "single-use presign grant, consumed once by /uploaded and retained as an anti-replay marker. Nobody deletes a grant — it is spent. Same append-only carve-out as the two queues above. It was never allowlisted because the guard this rule replaces silently credited it with a deleted_at that belongs to the table below it: the token appeared in a comment past this table's closing paren, and the guard read whole line ranges rather than the table",
   ],

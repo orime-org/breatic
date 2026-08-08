@@ -47,10 +47,8 @@ import postgres from "postgres";
 import fc from "fast-check";
 import { initCore } from "@breatic/core";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
-import * as conversationService from "@server/modules/conversation/conversation.service.js";
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
-import * as pointerRepo from "@server/modules/conversation/current-conversation.repo.js";
 
 try {
   initCore(process.env);
@@ -104,68 +102,22 @@ async function seedProject(): Promise<{ userId: string; projectId: string }> {
   return { userId: user!.id, projectId: project!.id };
 }
 
-describe("the current conversation pointer", () => {
-  it("creates a conversation on the first message and returns it again on the second", async () => {
-    const { userId, projectId } = await seedProject();
-
-    const first = await conversationService.resolveCurrentConversation(
-      userId,
-      projectId,
-      "hello",
-    );
-    const second = await conversationService.resolveCurrentConversation(
-      userId,
-      projectId,
-      "still me",
-    );
-
-    expect(second.id).toBe(first.id);
-
-    const rows = await sql<{ n: string }[]>`
-      SELECT count(*) AS n FROM current_conversations
-      WHERE user_id = ${userId} AND project_id = ${projectId}
-    `;
-    expect(Number(rows[0]!.n)).toBe(1);
-  });
-
-  it("keeps exactly one row however many times it is written", async () => {
-    // Item 2. Switching to a conversation the user picks out of history is
-    // PR-7 — there is no entrance for it yet, and no unconditional writer of
-    // this pointer left in the codebase either. What batch 1 owes is that
-    // every write of it is one statement leaving one row, which resolving
-    // repeatedly, healing a dead pointer, and the race below all exercise.
-    const { userId, projectId } = await seedProject();
-
-    const first = await conversationService.resolveCurrentConversation(userId, projectId, "a");
-    await conversationService.resolveCurrentConversation(userId, projectId, "b");
-    await conversationRepo.softDeleteConversation(first.id);
-    const afterHeal = await conversationService.resolveCurrentConversation(userId, projectId, "c");
-
-    const rows = await sql<{ conversation_id: string }[]>`
-      SELECT conversation_id FROM current_conversations
-      WHERE user_id = ${userId} AND project_id = ${projectId}
-    `;
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.conversation_id).toBe(afterHeal.id);
-  });
-
-  it("starts a fresh conversation when the pointed-at one was deleted", async () => {
-    const { userId, projectId } = await seedProject();
-    const first = await conversationService.resolveCurrentConversation(userId, projectId, "a");
-
-    await conversationRepo.softDeleteConversation(first.id);
-
-    const next = await conversationService.resolveCurrentConversation(userId, projectId, "b");
-
-    expect(next.id).not.toBe(first.id);
-    expect(await pointerRepo.getCurrentConversationId(userId, projectId)).toBe(next.id);
-  });
-});
+/**
+ * Create a conversation in a project, the way opening chat would.
+ * @param userId - Owner of the conversation.
+ * @param projectId - Project it belongs to.
+ * @returns The created conversation.
+ */
+async function seedConversation(userId: string, projectId: string) {
+  const conv = await conversationRepo.createConversation(userId, "seeded");
+  await conversationRepo.setProjectId(conv.id, projectId);
+  return { ...conv, projectId };
+}
 
 describe("messages", () => {
   it("reads back in the order they were written", async () => {
     const { userId, projectId } = await seedProject();
-    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+    const conv = await seedConversation(userId, projectId);
 
     await messageRepo.addMessage(conv.id, { role: "user", content: "one" });
     await messageRepo.addMessage(conv.id, { role: "assistant", content: "two" });
@@ -177,7 +129,7 @@ describe("messages", () => {
 
   it("opens a new turn on each user message and keeps replies in that turn", async () => {
     const { userId, projectId } = await seedProject();
-    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+    const conv = await seedConversation(userId, projectId);
 
     const t1 = await messageRepo.addMessage(conv.id, { role: "user", content: "q1" });
     const r1 = await messageRepo.addMessage(conv.id, { role: "assistant", content: "a1" });
@@ -189,7 +141,7 @@ describe("messages", () => {
 
   it("parks on the conversation row, so two user messages cannot share a turn", async () => {
     const { userId, projectId } = await seedProject();
-    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+    const conv = await seedConversation(userId, projectId);
 
     // Firing two calls with Promise.all proves nothing here: the pool hands
     // the second one the connection the first just returned, so they run one
@@ -229,7 +181,7 @@ describe("messages", () => {
 
   it("hides its messages once the conversation is soft-deleted", async () => {
     const { userId, projectId } = await seedProject();
-    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+    const conv = await seedConversation(userId, projectId);
     await messageRepo.addMessage(conv.id, { role: "user", content: "one" });
 
     await conversationRepo.softDeleteConversation(conv.id);
@@ -259,7 +211,7 @@ describe("deleting a conversation while it is still being written to", () => {
     // lands last, but "almost" is why one round would be flaky.
     for (let round = 0; round < 5; round++) {
       const { userId, projectId } = await seedProject();
-      const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+      const conv = await seedConversation(userId, projectId);
       await messageRepo.addMessage(conv.id, { role: "user", content: "already here" });
 
       await Promise.allSettled([
@@ -326,11 +278,7 @@ describe("a message survives the round trip through parts", () => {
 
     await fc.assert(
       fc.asyncProperty(messageArb, async (message) => {
-        const conv = await conversationService.resolveCurrentConversation(
-          userId,
-          projectId,
-          "round trip",
-        );
+        const conv = await seedConversation(userId, projectId);
         await messageRepo.addMessage(conv.id, message);
         const [stored] = await messageRepo.getMessages(conv.id, 1);
 
@@ -352,7 +300,7 @@ describe("a message survives the round trip through parts", () => {
 describe("the memory chain still sees the same messages", () => {
   it("counts the turns past the consolidated watermark", async () => {
     const { userId, projectId } = await seedProject();
-    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+    const conv = await seedConversation(userId, projectId);
 
     for (let i = 0; i < 5; i++) {
       await messageRepo.addMessage(conv.id, { role: "user", content: `q${i}` });
@@ -366,7 +314,7 @@ describe("the memory chain still sees the same messages", () => {
 
   it("hands consolidation exactly the turns inside the window", async () => {
     const { userId, projectId } = await seedProject();
-    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+    const conv = await seedConversation(userId, projectId);
 
     for (let i = 1; i <= 6; i++) {
       await messageRepo.addMessage(conv.id, { role: "user", content: `q${i}` });
@@ -381,7 +329,7 @@ describe("the memory chain still sees the same messages", () => {
 
   it("strips internal fields and consolidated turns for the LLM", async () => {
     const { userId, projectId } = await seedProject();
-    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+    const conv = await seedConversation(userId, projectId);
 
     await messageRepo.addMessage(conv.id, { role: "user", content: "old" });
     await messageRepo.addMessage(conv.id, { role: "user", content: "new" });

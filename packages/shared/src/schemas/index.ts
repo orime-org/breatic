@@ -21,7 +21,7 @@ export {
   checkoutSchema,
   paginationSchema,
   chatConversationsQuerySchema,
-  chatCurrentQuerySchema,
+  chatOpenSchema,
 } from "@shared/schemas/api.js";
 
 export type {

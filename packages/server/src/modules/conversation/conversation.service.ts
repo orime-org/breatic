@@ -10,28 +10,10 @@
 
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
-import * as pointerRepo from "@server/modules/conversation/current-conversation.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import { t } from "@breatic/shared";
-import { db, NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
+import { db, NotFoundError, ForbiddenError } from "@breatic/core";
 import type { ConversationEntity, MessageData } from "@breatic/shared";
-
-/**
- * How many times to retry resolving when another request wins the pointer.
- *
- * Each loss means someone else just created the conversation, so the next read
- * finds it. A second retry is only needed if that winner is deleted in the same
- * instant — bounded so a pathological caller cannot spin here forever.
- */
-const CREATE_ATTEMPTS = 3;
-
-/**
- * Thrown inside the create transaction when another request claimed the
- * pointer first. It exists to roll that transaction back — a transaction that
- * simply returns commits, so the conversation this caller just created would
- * survive as a twin of the winner's. Never escapes this module.
- */
-class LostTheClaim extends Error {}
 
 /**
  * Validate that a conversation exists and belongs to the given user.
@@ -54,10 +36,10 @@ async function validateOwnership(
 /**
  * Assert that the given user may access the given conversation.
  *
- * Shared entry point for REST route handlers that need to reject
- * cross-tenant reads (e.g. conversation attachment listings) before
- * doing any work. Discards the returned entity so call sites read
- * as an assertion rather than a fetch.
+ * Shared entry point for REST route handlers that need to reject cross-tenant
+ * reads (e.g. conversation attachment listings) before doing any work.
+ * Discards the returned entity so call sites read as an assertion rather than
+ * a fetch.
  * @param conversationId - Conversation UUID from untrusted client input
  * @param userId - Authenticated user UUID from the session
  * @throws {NotFoundError} if conversation does not exist
@@ -70,109 +52,98 @@ export async function assertAccess(
   await validateOwnership(conversationId, userId);
 }
 
+/** Title a conversation carries until something better is known. */
+const NEW_TITLE = "New conversation";
+
 /**
- * Resolve which conversation this user's next message belongs to.
+ * Open chat in a project: the list, plus whatever the user was last saying.
  *
- * The client sends content, not a conversation id — so the server answers
- * "where does this land" from the current-conversation pointer, and creates a
- * conversation the first time there is nothing to point at. That keeps the
- * product flow honest: a user opens a project and starts typing, without
- * being asked to create a conversation first.
+ * This is the client's single entry point into a project's chat, and the only
+ * place a conversation is created on the user's behalf. It creates one when the
+ * project has none, so a client always leaves here holding an id — which is why
+ * sending a message can require one rather than having a creation path of its
+ * own.
  *
- * A pointer naming a soft-deleted conversation counts as no pointer. Without
- * that, deleting the conversation you are in would make every following
- * message fail with no way to recover.
- * @param userId - Owner user UUID
- * @param projectId - Project the conversation belongs to
- * @param firstMessage - Used as the title when a conversation gets created
- * @returns The conversation this message belongs to
- * @throws {NotFoundError} if the caller is not a member of the project at all
- *   — non-membership is answered as "no such project", not as a refusal
+ * Access is judged as a WRITE. It creates, so a member who may only read the
+ * project must not get through, or a look-only visit leaves a conversation
+ * behind in someone else's project.
+ *
+ * "What the user was last saying" is computed, never stored. Storing it would
+ * mean one value per (user, project), and a user with two tabs on two
+ * conversations has two states that one value cannot hold — which is why the
+ * previous design was withdrawn.
+ * @param userId - The signed-in user
+ * @param projectId - Project being opened
+ * @returns This user's conversations in this project, and the most recently
+ *   used one together with its messages
+ * @throws {NotFoundError} if the caller is not a member of the project
  * @throws {ForbiddenError} if they are a member but may only read
- * @throws {ConflictError} if every attempt lost the pointer to another request
- *   and then found that winner already deleted
  */
-export async function resolveCurrentConversation(
+export async function openChat(
   userId: string,
   projectId: string,
-  firstMessage: string,
-): Promise<ConversationEntity> {
-  for (let attempt = 0; attempt < CREATE_ATTEMPTS; attempt++) {
-    // `getConversation` filters soft-deleted rows, so a pointer naming a
-    // deleted conversation reads as no pointer at all and falls through to
-    // creating a new one. That is the whole recovery path: without it, deleting
-    // the conversation you are in makes every following message fail forever.
-    const currentId = await pointerRepo.getCurrentConversationId(userId, projectId);
-    if (currentId) {
-      const current = await conversationRepo.getConversation(currentId);
-      if (current) return current;
-    }
+): Promise<{
+  conversations: ConversationEntity[];
+  current: { conversation: ConversationEntity; messages: MessageData[] };
+}> {
+  await projectService.assertAccess(projectId, userId, "editor");
 
-    // Enforce project access BEFORE creating anything, so a failed check does
-    // not leave an orphan conversation behind. Chat is a creative-write action
-    // — view-only members cannot open conversations.
-    await projectService.assertAccess(projectId, userId, "editor");
+  // Asking "is there one?" and then creating leaves a gap two tabs can both
+  // walk through, each leaving an empty conversation behind. The lock makes the
+  // pair one indivisible step per (user, project); whoever arrives second finds
+  // the first one's conversation and uses it.
+  const conversation = await db.transaction(async (tx) => {
+    await conversationRepo.lockChatCreation(tx, userId, projectId);
 
-    const created = await db.transaction(async (tx) => {
-      const conv = await conversationRepo.createConversation(
-        userId,
-        firstMessage.slice(0, 100),
-        tx,
-      );
-      await conversationRepo.setProjectId(conv.id, projectId, tx);
+    const existing = await conversationRepo.findMostRecentlyUsed(userId, projectId, tx);
+    if (existing) return existing;
 
-      // Losing the claim rolls the conversation back with it, so a race leaves
-      // one conversation rather than one plus a stranded twin. The next turn of
-      // the loop then reads whoever won.
-      const won = await pointerRepo.claimCurrentConversation(
-        userId,
-        projectId,
-        conv.id,
-        tx,
-      );
-      if (!won) throw new LostTheClaim();
+    const created = await conversationRepo.createConversation(userId, NEW_TITLE, tx);
+    await conversationRepo.setProjectId(created.id, projectId, tx);
+    return { ...created, projectId };
+  });
 
-      return { ...conv, projectId };
-    }).catch((err: unknown) => {
-      if (err instanceof LostTheClaim) return null;
-      throw err;
-    });
-
-    if (created) return created;
-  }
-
-  // Only reachable when every attempt both lost the claim AND then found the
-  // winning conversation already deleted — someone deleting conversations in a
-  // tight loop while another tab sends. Surfacing it beats spinning forever.
-  throw new ConflictError(t("server.error.conflict"));
+  return {
+    conversations: await conversationRepo.listConversations(userId, { projectId }),
+    current: {
+      conversation,
+      messages: await messageRepo.getMessages(conversation.id),
+    },
+  };
 }
 
 /**
- * Read the messages of the conversation this user is currently in.
+ * Check that a client-supplied conversation id may be written to here.
  *
- * The read half of the same decision as {@link resolveCurrentConversation}:
- * the client asks "what is in front of me in this project" without naming a
- * conversation. Returns an empty history rather than an error when there is
- * nothing yet — a project a user has never chatted in is a normal state, not
- * a missing resource.
- * @param userId - Owner user UUID
- * @param projectId - Project to read the current conversation of
- * @returns The current conversation and its messages, or nulls when there is
- *   no live current conversation
+ * The id arrives from outside now, so three things have to hold before a
+ * message is appended: the conversation belongs to this user, it lives in this
+ * project, and it still exists. The third is not an edge case — one tab holds
+ * an id while the user deletes that conversation from another, and the first
+ * two checks pass for it.
+ *
+ * All three answer NotFound rather than Forbidden: which conversations exist is
+ * not something a caller may learn by probing.
+ * @param conversationId - Conversation id as supplied by the client
+ * @param userId - The signed-in user
+ * @param projectId - Project the request claims to be in
+ * @returns The conversation, once it has passed all three checks
+ * @throws {NotFoundError} if it is missing, deleted, owned by someone else, or
+ *   belongs to a different project
  */
-export async function getCurrentWithMessages(
+export async function assertWritable(
+  conversationId: string,
   userId: string,
   projectId: string,
-): Promise<{ conversation: ConversationEntity | null; messages: MessageData[] }> {
-  const currentId = await pointerRepo.getCurrentConversationId(userId, projectId);
-  if (!currentId) return { conversation: null, messages: [] };
-
-  // Deleted-but-still-pointed-at reads as "nothing here yet", same rule as
-  // the write path applies.
-  const conversation = await conversationRepo.getConversation(currentId);
-  if (!conversation) return { conversation: null, messages: [] };
-
-  return { conversation, messages: await messageRepo.getMessages(currentId) };
+): Promise<ConversationEntity> {
+  const conversation = await conversationRepo.getConversation(conversationId);
+  if (
+    !conversation ||
+    conversation.userId !== userId ||
+    conversation.projectId !== projectId
+  ) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  return conversation;
 }
 
 /**

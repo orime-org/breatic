@@ -7,11 +7,6 @@
 -- Postgres' own guidance is that a JSON document should be an atomic datum;
 -- a single message is, a conversation is not.
 --
--- `current_conversations` exists because the client no longer sends a
--- conversation id: it posts content, and the server decides where it lands.
--- One value per (user, project), so it is one column keyed by exactly those
--- two, which also makes switching conversations a single atomic upsert.
---
 -- Backfill and drop happen in the same migration: leaving the old column
 -- behind would leave two sources of truth with nothing marking which is live.
 
@@ -34,18 +29,6 @@ ALTER TABLE "conversation_messages" ADD CONSTRAINT "conversation_messages_user_i
 -- racing append from computing a turn index that is already taken, which would
 -- collide on the billing idempotency key `turn:<conversation>:<index>`.
 CREATE UNIQUE INDEX "conversation_messages_turn_seq_key" ON "conversation_messages" USING btree ("conversation_id","turn_index","seq");--> statement-breakpoint
-
-CREATE TABLE "current_conversations" (
-	"user_id" uuid NOT NULL,
-	"project_id" uuid NOT NULL,
-	"conversation_id" uuid NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "current_conversations_user_id_project_id_pk" PRIMARY KEY("user_id","project_id")
-);
---> statement-breakpoint
-ALTER TABLE "current_conversations" ADD CONSTRAINT "current_conversations_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "current_conversations" ADD CONSTRAINT "current_conversations_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "current_conversations" ADD CONSTRAINT "current_conversations_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 
 -- The array is exploded in SQL rather than looped over in the application, so
 -- the whole move is one statement inside this migration's transaction.
