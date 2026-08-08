@@ -70,8 +70,8 @@ export const GroupSelectionToolbar = React.memo(function GroupSelectionToolbar({
             onPick={onPickBg}
           />
           <Button
-            variant='outline'
-            size='sm'
+            variant={null}
+            size={null}
             type='button'
             data-testid='group-toolbar-ungroup'
             onClick={onUngroup}
@@ -82,8 +82,8 @@ export const GroupSelectionToolbar = React.memo(function GroupSelectionToolbar({
         </>
       ) : (
         <Button
-          variant='outline'
-          size='sm'
+          variant={null}
+          size={null}
           type='button'
           data-testid='group-toolbar-group'
           onClick={onGroup}

@@ -84,8 +84,8 @@ export const MembersStack = React.forwardRef<
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant='chrome-ghost'
-          size='chrome'
+          variant={null}
+          size={null}
           ref={ref}
           type='button'
           aria-label={t('members.stack.triggerAria', { count: members.length })}
@@ -94,7 +94,7 @@ export const MembersStack = React.forwardRef<
           // `w-auto` releases the square width the chrome size sets: this
           // trigger is a 32px-tall chrome control, but as wide as the avatar
           // stack plus the chevron.
-          className='inline-flex w-auto shrink-0 items-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+          className='inline-flex shrink-0 items-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
           style={{
             height: 'var(--btn-chrome)',
             padding: '0 var(--space-2) 0 var(--space-2)',

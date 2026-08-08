@@ -3482,19 +3482,19 @@ function CanvasSpaceInner({
               )}
             </span>
             <Button
-              variant='ghost'
-              size='icon'
+              variant={null}
+              size={null}
               type='button'
               data-testid='reference-pick-locate'
               aria-label={t('canvas.generatePanel.locateSource')}
               onClick={onLocateSource}
-              className='h-6 w-6 rounded-sm text-muted-foreground hover:text-foreground'
+              className='flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground'
             >
               <LocateFixed className='h-4 w-4' aria-hidden='true' />
             </Button>
             <Button
-              variant='outline'
-              size='sm'
+              variant={null}
+              size={null}
               type='button'
               data-testid='reference-pick-exit'
               onClick={onExitPick}

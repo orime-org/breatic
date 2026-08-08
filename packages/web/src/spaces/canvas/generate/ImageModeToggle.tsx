@@ -75,11 +75,11 @@ export const ImageModeToggle = React.memo(function ImageModeToggle({
       <PopoverTrigger asChild>
         <Button
           type='button'
-          variant='outline'
-          size='default'
+          variant={null}
+          size={null}
           data-testid='generate-mode-trigger'
           disabled={disabled}
-          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-background px-2.5 text-xs text-foreground hover:bg-accent'
+          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
         >
           {MODE_LABELS[value]}
           <ChevronDown

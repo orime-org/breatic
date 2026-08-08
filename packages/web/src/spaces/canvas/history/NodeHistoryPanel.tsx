@@ -125,12 +125,12 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
         </div>
         <Button
           type='button'
-          variant='ghost'
-          size='icon'
+          variant={null}
+          size={null}
           data-testid='node-history-close'
           aria-label={t('canvas.history.close')}
           onClick={onClose}
-          className='h-6 w-6 rounded-content-sm text-muted-foreground'
+          className='flex h-6 w-6 items-center justify-center rounded-content-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-3.5 w-3.5' aria-hidden='true' />
         </Button>
@@ -171,11 +171,11 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
           </span>
           <Button
             type='button'
-            variant='outline'
-            size='sm'
+            variant={null}
+            size={null}
             data-testid='node-history-retry'
             onClick={onRetry}
-            className='gap-1 rounded-content-sm border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            className='inline-flex items-center gap-1 rounded-content-sm border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
           >
             <RotateCw className='h-3 w-3' aria-hidden='true' />
             {t('canvas.history.retry')}

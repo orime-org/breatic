@@ -51,20 +51,10 @@ describe('NodePlaceholder', () => {
   // Empty state is the one node body that responds on hover, and it does so by
   // brightening its prompt text (muted → foreground), NOT by filling a bg —
   // the rest of the shell hovers its border only (9th-slice design system).
-  //
-  // The assertion used to be "no hover:bg- class at all". That was a proxy for
-  // the rule, and it stopped being one when this became a Button: every filling
-  // variant of the primitive writes a hover background, so the class is now
-  // always present and the question is whether it fills. `bg-transparent` is
-  // the one value that does not, and the check below is the rule itself rather
-  // than a stand-in for it.
   it('hovers the TEXT color, not the background', () => {
     render(<NodePlaceholder modality='image' />);
     const btn = screen.getByTestId('node-placeholder');
     expect(btn.className).toContain('hover:text-foreground');
-    const hoverFills = btn.className
-      .split(/\s+/)
-      .filter((c) => c.startsWith('hover:bg-') && c !== 'hover:bg-transparent');
-    expect(hoverFills).toEqual([]);
+    expect(btn.className).not.toContain('hover:bg-');
   });
 });

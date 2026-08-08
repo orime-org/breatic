@@ -184,15 +184,15 @@ function CameraWheel({
     <div className='flex flex-col items-center'>
       <Button
         type='button'
-        variant='ghost'
-        size='icon'
+        variant={null}
+        size={null}
         // Icon-only, but a 20px sliver far shorter than the square icon size and
         // wider than it is tall — the bespoke h-5 / w-auto / px-3 in className
         // win over the size's, keeping the wheel's own proportions.
         aria-label={`${cap} ▲`}
         disabled={idx <= 0}
         onClick={() => move(-1)}
-        className='h-5 w-auto rounded-content-xs px-3 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30'
+        className='rounded-content-xs px-3 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30'
       >
         <ChevronUp className='h-4 w-4' aria-hidden='true' />
       </Button>
@@ -209,12 +209,12 @@ function CameraWheel({
       <span className='h-[18px] max-w-full truncate text-2xs text-muted-foreground/70'>{nextLabel}</span>
       <Button
         type='button'
-        variant='ghost'
-        size='icon'
+        variant={null}
+        size={null}
         aria-label={`${cap} ▼`}
         disabled={idx >= values.length - 1}
         onClick={() => move(1)}
-        className='h-5 w-auto rounded-content-xs px-3 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30'
+        className='rounded-content-xs px-3 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30'
       >
         <ChevronDown className='h-4 w-4' aria-hidden='true' />
       </Button>
@@ -262,7 +262,8 @@ export const CameraPicker = React.memo(function CameraPicker({
   const enabled = value.enable_camera === true;
 
   const triggerClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full ' +
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border transition-colors ' +
+    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
     (enabled ? ' text-foreground hover:bg-accent' : ' text-muted-foreground hover:bg-accent hover:text-foreground');
 
   return (
@@ -272,8 +273,8 @@ export const CameraPicker = React.memo(function CameraPicker({
           <PopoverTrigger asChild>
             <Button
               type='button'
-              variant='outline'
-              size='icon'
+              variant={null}
+              size={null}
               data-testid='generate-camera'
               aria-label={t('canvas.generatePanel.camera')}
               // This button is BOTH a TooltipTrigger and a PopoverTrigger:

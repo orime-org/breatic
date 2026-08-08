@@ -18,8 +18,9 @@ import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 // entry for — it overrides the height of the implicit `size='default'`, which
 // is what these tools fall back to since they pass no size.
 const TOOL_BASE =
-  'flex h-auto flex-col items-center gap-1 rounded-overlay px-2 py-1.5 text-xs ' +
-  'disabled:opacity-50 disabled:cursor-not-allowed';
+  'flex flex-col items-center gap-1 rounded-overlay px-2 py-1.5 text-xs ' +
+  'transition-colors focus-visible:outline-none focus-visible:ring-1 ' +
+  'focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed';
 const TOOL_INACTIVE =
   ' text-muted-foreground enabled:hover:bg-accent enabled:hover:text-accent-foreground';
 // Active toggle = the minimap's white fill (ViewportToolbar VtButton), a solid
@@ -27,8 +28,7 @@ const TOOL_INACTIVE =
 // panel must read identically (I4, user 2026-07-12). The hover pair repeats the
 // resting fill so the `outline` variant's own `hover:bg-accent` cannot flip an
 // active toggle to grey mid-hover.
-const TOOL_ACTIVE =
-  ' bg-foreground text-background hover:bg-foreground hover:text-background';
+const TOOL_ACTIVE = ' bg-foreground text-background';
 
 interface ToggleToolProps {
   testId: string;
@@ -70,7 +70,8 @@ function ToggleTool({
         type='button'
         // The tool carries a visible word, so it takes a border (`outline`) —
         // a borderless label does not read as a button.
-        variant='outline'
+        variant={null}
+        size={null}
         data-testid={testId}
         onClick={onClick}
         onFocusCapture={suppressTooltipFocusOpen}
@@ -172,7 +173,8 @@ function StyleTool({
         <Button
           type='button'
           // Same word-carrying tool as ToggleTool — bordered for the same reason.
-          variant='outline'
+          variant={null}
+          size={null}
           data-testid='generate-tool-style'
           aria-label={label}
           onClick={onStyle}
@@ -206,12 +208,12 @@ function StyleTool({
       {thumbnail ? (
         <Button
           type='button'
-          variant='outline'
-          size='icon'
+          variant={null}
+          size={null}
           data-testid='generate-style-clear'
           aria-label={clearLabel}
           onClick={onClear}
-          className='absolute -right-1 -top-1 z-10 flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground shadow-sm hover:bg-accent hover:text-accent-foreground'
+          className='absolute -right-1 -top-1 z-10 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-2.5 w-2.5' aria-hidden='true' />
         </Button>

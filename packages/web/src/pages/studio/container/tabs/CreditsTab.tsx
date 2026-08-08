@@ -84,9 +84,9 @@ export function CreditsTab({
                 {isAdmin && lot.isRefundable && lot.amountRemaining > 0 ? (
                   <Button
                     type='button'
-                    variant='outline'
-                    size='sm'
-                    className='text-xs text-status-error-foreground'
+                    variant={null}
+                    size={null}
+                    className='text-xs text-status-error-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
                   >
                     {t('studio.container.credits.refund')}
                   </Button>

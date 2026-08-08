@@ -52,14 +52,14 @@ export function StudioAccountMenu(): React.JSX.Element {
         <Button
           type='button'
           aria-label={t('studio.topBar.account')}
-          variant='ghost'
-          size='icon'
+          variant={null}
+          size={null}
           // Hover dims rather than tinting the background: with an avatar set
           // the background is covered by the image, so a background hover is
           // invisible. Opacity also leaves the element's box untouched — this
           // button is the popover's anchor, and anything that resizes it
           // (a scale, a border) makes the popover jump on hover.
-          className='ml-1 flex shrink-0 rounded-full transition-opacity hover:opacity-80'
+          className='ml-1 flex shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <StudioAvatar
             name={user?.name ?? '?'}

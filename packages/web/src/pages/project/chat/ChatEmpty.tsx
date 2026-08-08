@@ -71,10 +71,10 @@ export function ChatEmpty({
             <Button
               key={qa.id}
               type='button'
-              variant='outline'
-              size='menu-item'
+              variant={null}
+              size={null}
               onClick={() => onQuickAction?.(label)}
-              className='flex justify-start gap-2 rounded-md bg-transparent px-3 py-2 text-left text-xs text-foreground hover:bg-accent'
+              className='flex items-center gap-2 rounded-md border border-border bg-transparent px-3 py-2 text-left text-xs text-foreground transition-colors hover:bg-accent'
               data-testid={`chat-empty-qa-${qa.id}`}
             >
               <Icon className='h-4 w-4 shrink-0 text-muted-foreground' />

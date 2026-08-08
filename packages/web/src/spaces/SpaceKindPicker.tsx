@@ -116,10 +116,10 @@ export function SpaceKindPicker({
           return (
             <Button
               key={card.type}
-              variant='outline'
+              variant={null}
               // `menu-item` is the only auto-height size — the card stacks an
               // icon over two text lines, so a fixed `h-*` size would clip it.
-              size='menu-item'
+              size={null}
               type='button'
               role='radio'
               aria-checked={selected}
@@ -128,9 +128,7 @@ export function SpaceKindPicker({
               onClick={() => card.available && onChange(card.type)}
               data-testid={`${idPrefix}-${card.type}`}
               className={cn(
-                // `whitespace-normal` re-enables wrapping: the Button base sets
-                // `whitespace-nowrap`, which the two-line card subtitle needs off.
-                'flex flex-1 flex-col items-center gap-2 whitespace-normal rounded-chrome border px-3 py-3 text-center',
+                'flex flex-1 flex-col items-center gap-2 rounded-chrome border px-3 py-3 text-center transition-colors',
                 selected
                   ? 'border-active-border bg-accent text-foreground'
                   : 'border-border bg-transparent text-foreground',

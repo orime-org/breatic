@@ -90,18 +90,16 @@ export function MediaPlayer({
   // variant ships `hover:text-accent-foreground`, which would pull the glyph
   // off white on the dark scrim. Restating white keeps the control bar as it
   // renders today.
-  const btnCls = `h-7 w-7 shrink-0 rounded-chrome ${
-    isVideo
-      ? 'hover:bg-white/20 hover:text-white'
-      : 'hover:bg-accent hover:text-accent-foreground'
+  const btnCls = `inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome ${
+    isVideo ? 'hover:bg-white/20' : 'hover:bg-accent hover:text-accent-foreground'
   }`;
   const volumePct = Math.round((p.muted ? 0 : p.volume) * 100);
 
   const playButton = (
     <Button
       type='button'
-      variant='ghost'
-      size='icon'
+      variant={null}
+      size={null}
       onClick={p.togglePlay}
       aria-label={p.playing ? 'Pause' : 'Play'}
       data-testid='play-toggle'
@@ -116,8 +114,8 @@ export function MediaPlayer({
       <PopoverTrigger asChild>
         <Button
           type='button'
-          variant='ghost'
-          size='icon'
+          variant={null}
+          size={null}
           aria-label={p.muted ? 'Unmute' : 'Mute'}
           data-testid='volume-button'
           className={btnCls}
@@ -207,8 +205,8 @@ export function MediaPlayer({
           {showFullscreen ? (
             <Button
               type='button'
-              variant='ghost'
-              size='icon'
+              variant={null}
+              size={null}
               onClick={p.requestFullscreen}
               aria-label='Fullscreen'
               data-testid='fullscreen'

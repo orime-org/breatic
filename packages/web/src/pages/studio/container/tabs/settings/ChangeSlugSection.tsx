@@ -137,8 +137,8 @@ export function ChangeSlugSection({
     <>
       <Button
         type='button'
-        variant='outline'
-        size='sm'
+        variant={null}
+        size={null}
         className={DANGER_BUTTON}
         onClick={() => setOpen(true)}
         data-testid='settings-slug-open'

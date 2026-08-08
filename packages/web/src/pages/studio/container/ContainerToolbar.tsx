@@ -75,9 +75,9 @@ export function ContainerToolbar({
             type='button'
             disabled
             aria-label={notAvailable}
-            variant='outline'
-            size='sm'
-            className='h-[30px] gap-1.5 rounded-chrome px-2.5 text-xs font-medium text-foreground'
+            variant={null}
+            size={null}
+            className='inline-flex h-[30px] items-center gap-1.5 rounded-chrome border border-border px-2.5 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50'
           >
             <span className='font-normal text-muted-foreground'>
               {t('studio.container.toolbar.sortLabel')}

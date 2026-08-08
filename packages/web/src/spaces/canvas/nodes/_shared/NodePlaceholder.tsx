@@ -56,21 +56,21 @@ export function NodePlaceholder({
   return (
     <Button
       type='button'
-      // The node shell draws this control's frame, so a bordered variant would
-      // show a second edge a pixel inside the first. The 9th-slice system also
-      // fixes how a node body answers hover — it brightens its text rather
-      // than filling — and every filling variant of the primitive writes a
-      // hover background, hence `ghost` plus the neutralising
-      // `hover:bg-transparent` below. NodePlaceholder.test.tsx pins that.
-      variant='ghost'
-      size='sm'
+      // No variant, no size: the node shell already draws this control's
+      // frame and the 9th-slice system fixes how a node body answers hover
+      // (it brightens its text rather than filling), so every chrome the
+      // primitive could add would be a second edge or a wrong hover. The
+      // classes below are the whole appearance. NodePlaceholder.test.tsx
+      // pins the hover behaviour.
+      variant={null}
+      size={null}
       onDoubleClick={onActivate}
       onClick={(event) => {
         if (event.detail === 0) onActivate?.();
       }}
       data-testid='node-placeholder'
       data-modality={modality}
-      className='flex h-full w-full flex-col gap-2 p-4 text-center text-muted-foreground hover:bg-transparent hover:text-foreground'
+      className='flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground hover:text-foreground'
     >
       <Icon className='h-5 w-5 opacity-70' aria-hidden='true' />
       {hint ? (

@@ -331,15 +331,15 @@ function SpaceDrawerRow({
         data-testid={`space-drawer-row-${space.id}`}
       >
         <Button
-          variant='ghost'
-          size='menu-item'
+          variant={null}
+          size={null}
           type='button'
           onClick={onActivate}
           aria-label={t('spaces.drawer.openAria', { name: space.name })}
           aria-current={isActive ? 'true' : undefined}
           // `justify-start` restates the left alignment the row had before the
           // primitive's `justify-center` arrived with it.
-          className='flex min-w-0 flex-1 items-start justify-start gap-3 text-left'
+          className='flex min-w-0 flex-1 items-start gap-3 text-left'
         >
           <span className='mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome bg-muted text-muted-foreground'>
             <Icon className='h-4 w-4' />
@@ -517,8 +517,8 @@ function RowAction({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant='ghost'
-          size='icon'
+          variant={null}
+          size={null}
           type='button'
           aria-label={label}
           onClick={onClick}

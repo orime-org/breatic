@@ -542,8 +542,8 @@ export function ProjectActivityButton({
                     </div>
                     {canRestore ? (
                       <Button
-                        variant='outline'
-                        size='sm'
+                        variant={null}
+                        size={null}
                         type='button'
                         onClick={() => m.spaceId && onClickRestore(m.spaceId)}
                         disabled={busyId === m.spaceId}
@@ -555,8 +555,8 @@ export function ProjectActivityButton({
                       </Button>
                     ) : showRestoredBadge ? (
                       <Button
-                        variant='outline'
-                        size='sm'
+                        variant={null}
+                        size={null}
                         type='button'
                         disabled
                         aria-disabled

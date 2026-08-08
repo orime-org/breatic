@@ -105,8 +105,8 @@ export function DangerZone({
             <TransferStudioSection slug={studio.slug} members={members} />
             <Button
               type='button'
-              variant='outline'
-              size='sm'
+              variant={null}
+              size={null}
               className={DANGER_BUTTON}
               data-testid='settings-delete'
             >
@@ -125,8 +125,8 @@ export function DangerZone({
         {canLeave ? (
           <Button
             type='button'
-            variant='outline'
-            size='sm'
+            variant={null}
+            size={null}
             className={DANGER_BUTTON}
             disabled={leaving}
             onClick={() => setConfirmingLeave(true)}

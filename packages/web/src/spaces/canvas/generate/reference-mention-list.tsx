@@ -124,8 +124,8 @@ export const ReferenceMentionList = React.forwardRef<
           return (
             <Button
               key={item.sourceNodeId}
-              variant='ghost'
-              size='menu-item'
+              variant={null}
+              size={null}
               type='button'
               data-testid={`reference-mention-option-${item.sourceNodeId}`}
               onClick={() => pick(i)}
@@ -133,7 +133,7 @@ export const ReferenceMentionList = React.forwardRef<
               // justify-start: the Button base centres its content, and these
               // rows are left-aligned thumbnail → badge → name.
               className={
-                'flex w-full items-center justify-start gap-2 rounded-overlay px-2 py-1 text-left text-xs ' +
+                'flex w-full items-center gap-2 rounded-overlay px-2 py-1 text-left text-xs ' +
                 (i === selected
                   ? 'bg-accent text-accent-foreground'
                   : 'text-popover-foreground')

@@ -129,10 +129,7 @@ function toolButtonClassName(item: MenuItem): string {
   return cn(
     'inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50',
     item.featured
-      ? // `hover:text-background` restates the resting colour: the ghost
-    // variant contributes `hover:text-accent-foreground`, which on the
-    // solid featured fill would hide the icon.
-      'bg-foreground text-background shadow-sm hover:bg-primary-hover hover:text-background'
+      ? 'bg-foreground text-background shadow-sm hover:bg-primary-hover'
       : item.placeholder
         ? 'bg-transparent text-muted-foreground/50 hover:text-muted-foreground'
         : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -242,8 +239,8 @@ function MenuButton({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant='ghost'
-          size='icon'
+          variant={null}
+          size={null}
           type='button'
           aria-label={label}
           onClick={() => onPick(item.id)}
@@ -285,8 +282,8 @@ function NodesMenuButton({
   const tooltipLabel = disabled ? t('menu.disabledTooltip') : label;
   const button = (
     <Button
-      variant='ghost'
-      size='icon'
+      variant={null}
+      size={null}
       type='button'
       aria-label={label}
       disabled={disabled}

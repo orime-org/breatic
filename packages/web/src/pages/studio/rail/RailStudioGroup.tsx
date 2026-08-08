@@ -60,9 +60,9 @@ export function RailStudioGroup({
         type='button'
         onClick={toggle}
         aria-expanded={!collapsed}
-        variant='outline'
-        size='sm'
-        className='flex h-8 items-center justify-start gap-2 rounded-chrome px-2 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground'
+        variant={null}
+        size={null}
+        className='flex h-8 items-center gap-2 rounded-chrome px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
       >
         <Icon className='h-4 w-4' />
         {title}
