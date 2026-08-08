@@ -1,0 +1,207 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * The keys that cross the line between the title and the body.
+ *
+ * The title is a node type nothing else in the schema resembles, so every
+ * gesture at that boundary lands in a branch the editor's defaults were not
+ * written for. They are pinned together rather than one at a time because they
+ * are one decision: what Enter does dictates what Backspace has to undo, and
+ * changing either alone leaves the pair inconsistent.
+ *
+ * NOT covered here, deliberately: the up and down arrows. Vertical caret
+ * movement in a contenteditable is the browser's own, not something the
+ * editor's key handling sees, so a jsdom test of it would assert nothing. They
+ * are checked in the browser instead.
+ */
+
+import { describe, it, expect, afterEach } from 'vitest';
+import { Editor } from '@tiptap/core';
+import * as Y from 'yjs';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+
+import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+
+const editors: Editor[] = [];
+
+afterEach(() => {
+  editors.splice(0).forEach((e) => {
+    e.destroy();
+  });
+});
+
+/**
+ * A document with a title and the given body blocks, plus a live editor.
+ * @param title - Text for the title.
+ * @param bodyHtml - HTML for the blocks after it.
+ * @returns The fragment and the editor bound to it.
+ */
+function open(
+  title: string,
+  bodyHtml = '',
+): { body: Y.XmlFragment; editor: Editor } {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, encodeInitialSpaceContent('document', title));
+  const body = documentBodyFragment(doc);
+  const editor = new Editor({ extensions: buildDocumentExtensions({ fragment: body }) });
+  editors.push(editor);
+  if (bodyHtml) {
+    editor.commands.setContent(
+      `<h1 class="doc-title">${title}</h1>${bodyHtml}`,
+    );
+  }
+  return { body, editor };
+}
+
+/**
+ * Press a key the way the browser delivers one.
+ *
+ * NOT `editor.commands.keyboardShortcut(...)`: that wrapper takes a
+ * transaction from the state BEFORE running the handler and dispatches it
+ * afterwards, so a handler that builds and dispatches its own transaction has
+ * its work silently reverted. Measured — the same key through this path
+ * produces the right document, through that one produces the old.
+ * @param editor - The editor to send the key to.
+ * @param key - The key name, as `KeyboardEvent.key` reports it.
+ */
+function press(editor: Editor, key: string): void {
+  editor.view.someProp('handleKeyDown', (f) =>
+    f(editor.view, new KeyboardEvent('keydown', { key })),
+  );
+}
+
+/**
+ * Where the caret sits, as a block index plus an offset inside that block.
+ * @param editor - The editor to read.
+ * @returns The caret's block index and its offset within that block's text.
+ */
+function caret(editor: Editor): { block: number; offset: number } {
+  const $from = editor.state.selection.$from;
+  return { block: $from.index(0), offset: $from.parentOffset };
+}
+
+describe('Enter inside the title', () => {
+  it('splits at the caret: what follows becomes the body’s new first block', () => {
+    const { editor } = open('ABCDE');
+    // Caret after "B" — position 1 is the start of the title's text.
+    editor.commands.setTextSelection(1 + 2);
+    press(editor, 'Enter');
+
+    expect(editor.state.doc.child(0).textContent).toBe('AB');
+    expect(editor.state.doc.child(1).type.name).toBe('paragraph');
+    expect(editor.state.doc.child(1).textContent).toBe('CDE');
+    // And the caret follows the text it cut loose.
+    expect(caret(editor)).toEqual({ block: 1, offset: 0 });
+  });
+
+  it('at the end of the title, opens an empty first body block', () => {
+    const { editor } = open('ABCDE');
+    editor.commands.setTextSelection(1 + 5);
+    press(editor, 'Enter');
+
+    expect(editor.state.doc.child(0).textContent).toBe('ABCDE');
+    expect(editor.state.doc.child(1).type.name).toBe('paragraph');
+    expect(editor.state.doc.child(1).textContent).toBe('');
+    expect(caret(editor)).toEqual({ block: 1, offset: 0 });
+  });
+
+  it('at the start of the title, moves the whole title text down', () => {
+    const { editor } = open('ABCDE');
+    editor.commands.setTextSelection(1);
+    press(editor, 'Enter');
+
+    expect(editor.state.doc.child(0).type.name).toBe('title');
+    expect(editor.state.doc.child(0).textContent).toBe('');
+    expect(editor.state.doc.child(1).textContent).toBe('ABCDE');
+    expect(caret(editor)).toEqual({ block: 1, offset: 0 });
+  });
+
+  it('puts the new block first, ahead of blocks that were already there', () => {
+    const { editor } = open('ABCDE', '<p>already here</p>');
+    editor.commands.setTextSelection(1 + 2);
+    press(editor, 'Enter');
+
+    expect(editor.state.doc.child(1).textContent).toBe('CDE');
+    expect(editor.state.doc.child(2).textContent).toBe('already here');
+  });
+});
+
+describe('Backspace at the start of the body', () => {
+  it('merges the first block back into the title', () => {
+    const { editor } = open('AB', '<p>CDE</p>');
+    // Start of the body's first block.
+    editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
+    press(editor, 'Backspace');
+
+    expect(editor.state.doc.child(0).textContent).toBe('ABCDE');
+    expect(editor.state.doc.childCount).toBe(1);
+    // The caret sits at the join, so typing continues where the text was cut.
+    expect(caret(editor)).toEqual({ block: 0, offset: 2 });
+  });
+
+  it('drops the marks the title cannot hold', () => {
+    const { editor } = open('AB', '<p><strong>CDE</strong></p>');
+    editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
+    press(editor, 'Backspace');
+
+    expect(editor.state.doc.child(0).textContent).toBe('ABCDE');
+    expect(editor.getHTML()).not.toContain('<strong>');
+  });
+
+  it('when that block is empty, removes it and leaves the title alone', () => {
+    const { editor } = open('AB', '<p></p><p>keep me</p>');
+    editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
+    press(editor, 'Backspace');
+
+    expect(editor.state.doc.child(0).textContent).toBe('AB');
+    expect(editor.state.doc.childCount).toBe(2);
+    expect(editor.state.doc.child(1).textContent).toBe('keep me');
+  });
+
+  it('does nothing when the body holds no blocks at all', () => {
+    const { body, editor } = open('AB');
+    editor.commands.setTextSelection(1 + 2);
+    press(editor, 'Backspace');
+    // Backspace at the END of the title is ordinary text editing, so a
+    // character goes; what must not happen is the title itself going.
+    expect(body.length).toBe(1);
+    expect((body.get(0) as Y.XmlElement).nodeName).toBe('title');
+  });
+});
+
+describe('Delete at the end of the title', () => {
+  it('pulls the body’s first block up into it', () => {
+    const { editor } = open('AB', '<p>CDE</p>');
+    editor.commands.setTextSelection(1 + 2);
+    press(editor, 'Delete');
+
+    expect(editor.state.doc.child(0).textContent).toBe('ABCDE');
+    expect(editor.state.doc.childCount).toBe(1);
+    expect(caret(editor)).toEqual({ block: 0, offset: 2 });
+  });
+
+  it('does nothing at all when the body is empty', () => {
+    const { body, editor } = open('AB');
+    editor.commands.setTextSelection(1 + 2);
+    press(editor, 'Delete');
+
+    expect(editor.state.doc.child(0).textContent).toBe('AB');
+    expect(body.length).toBe(1);
+  });
+});
+
+describe('a selection that spans the boundary', () => {
+  it('clears the selected text but leaves the title block standing', () => {
+    const { body, editor } = open('ABCDE', '<p>12345</p><p>keep me</p>');
+    const titleSize = editor.state.doc.child(0).nodeSize;
+    // From inside the title through into the first body block.
+    editor.commands.setTextSelection({ from: 1 + 2, to: titleSize + 4 });
+    editor.commands.deleteSelection();
+
+    expect(editor.state.doc.child(0).type.name).toBe('title');
+    expect(body.toString()).toContain('<title>');
+    expect(editor.getText()).not.toContain('CDE');
+    expect(editor.getText()).toContain('keep me');
+  });
+});
