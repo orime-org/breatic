@@ -211,7 +211,6 @@ export {
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export {
-  DOCUMENT_BODY_KEY,
   documentBodyFragment,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";

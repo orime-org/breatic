@@ -31,7 +31,6 @@
  */
 
 import * as Y from "yjs";
-import { encodeInitialSpaceContent } from "@breatic/shared";
 
 /** The kinds of Space the meta doc tracks. Mirrors `@breatic/shared` SpaceType. */
 export type SpaceKind = "canvas" | "document" | "timeline";
@@ -202,30 +201,11 @@ export function encodeInitialMetaState(
   return Y.encodeStateAsUpdate(doc);
 }
 
-/**
- * Encode the initial state for a fresh Space's CONTENT doc (e.g.
- * `project-{pid}/canvas-{sid}`, `…/document-{sid}`, `…/timeline-{sid}`).
- *
- * Seeding makes the content-doc ROW exist the moment the Space becomes
- * visible in `meta` (the invariant `lazySeedMeta` + the `space:create` RPC
- * uphold). A canvas and a timeline start with nothing in that row — their
- * editors build their own structure on first bind. A document does not: its
- * body has to hold one block from birth, or the first undo that empties it
- * costs the user the text they just undid.
- *
- * The content itself is encoded by `@breatic/shared`, which is also what the
- * editor in the browser consumes. Keeping one function rather than one per
- * side is the whole point: a second copy would let the two drift silently,
- * and the contract tests on both ends would each be checking a copy of
- * themselves. Read that module for the invariant and why the backend, not the
- * editor, is the one that establishes it.
- * @param kind - The kind of Space this content doc belongs to.
- * @returns The encoded Yjs update, ready to persist as a Space content doc's
- *   initial state.
- */
-export function encodeInitialSpaceContentState(kind: SpaceKind): Uint8Array {
-  return encodeInitialSpaceContent(kind);
-}
+// A Space's CONTENT doc is seeded from `@breatic/shared`'s
+// `encodeInitialSpaceContent`, which callers reach directly — the editor in
+// the browser consumes that same function, and one shared definition is the
+// point. core briefly wrapped it under a second name; the wrapper only
+// renamed, and a rename is not worth a hop.
 
 /**
  * Default display name for a freshly-seeded Space of a given kind.

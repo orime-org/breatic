@@ -54,15 +54,53 @@ import { documentBodyFragment } from '@breatic/shared';
  * Undoing an attribute CHANGE is unaffected: the old value comes back. That is
  * pinned by test rather than explained here — the mechanism is inside yjs's
  * redo path and I have not traced it far enough to describe it.
+ *
+ * **The body's last block is kept whatever else says.** See
+ * {@link wouldEmptyTheBody} for why that rule cannot be dropped.
  * @param item - The yjs item undo proposes to delete.
+ * @param body - The body this manager owns.
  * @returns True to allow the deletion, false to keep the item.
  */
-function isDeletableByUndo(item: Y.Item): boolean {
+function isDeletableByUndo(item: Y.Item, body: Y.XmlFragment): boolean {
+  if (wouldEmptyTheBody(item, body)) return false;
   const nodes = protectedNodes();
   if (!defaultDeleteFilter(item, nodes)) return false;
   if (item.parentSub === null) return true;
   const container = (item.parent as { _item?: Y.Item | null } | null)?._item;
   return container == null || defaultDeleteFilter(container, nodes);
+}
+
+/**
+ * Is this the last block standing in the body?
+ *
+ * A body with no blocks at all is a state ProseMirror will not hold: its schema
+ * requires one, because text has to live inside a block and a caret has nowhere
+ * to sit without one. Yjs has no such rule, so the two disagree the moment the
+ * fragment reaches zero — and the editor settles the disagreement on the next
+ * dispatch by writing its block into Yjs, which yjs reads as a fresh local
+ * edit. The redo stack is cleared and the text just undone is unrecoverable,
+ * with the deletion synced to everyone.
+ *
+ * Seeding the body when the Space is created does not remove the need for this.
+ * That first block belongs to the document rather than to whoever typed into
+ * it, and a co-editor deleting the paragraph it became is an ordinary edit —
+ * after which every remaining block was made by somebody, and undoing the last
+ * of them empties the body. Measured, with two real editors, in
+ * `body-never-empties.test.ts`. An earlier version of this file held the same
+ * rule and it was removed in `e61298d4` on the grounds that a seeded body made
+ * it unnecessary; that reads "born with one" as "always has one", which stops
+ * being true as soon as a second person edits.
+ *
+ * Only direct children count. Deleting the text inside a block leaves the block
+ * standing, which is all ProseMirror asks for.
+ * @param item - The yjs item undo proposes to delete.
+ * @param body - The body this manager owns.
+ * @returns True when removing it would leave the body with no blocks.
+ */
+function wouldEmptyTheBody(item: Y.Item, body: Y.XmlFragment): boolean {
+  const isDirectChild =
+    (item as unknown as { parent?: unknown }).parent === body;
+  return isDirectChild && body.length <= 1;
 }
 
 /** Computed once; the schema is fixed for the lifetime of the bundle. */
@@ -161,10 +199,10 @@ export interface DocumentUndoManager extends Y.UndoManager {
  * came back as an h1. {@link isDeletableByUndo} covers those too. Alice's own
  * text still comes out in every case.
  *
- * An earlier version of this file added a rule refusing to delete the body's
- * last child, to stop undo emptying the fragment. The need went away when the
- * body started arriving with a paragraph already in it — the backend writes
- * one when the Space is created (`@breatic/shared`'s `document-body`).
+ * The filter also refuses to delete the body's last block, so undo can never
+ * empty the fragment — see {@link wouldEmptyTheBody}. The backend writing a
+ * block when the Space is created does not cover that case, and this rule was
+ * once removed on the belief that it did.
  *
  * `captureTransaction` honours the `addToHistory: false` marker, so
  * machine-driven edits stay off the stack.
@@ -181,7 +219,7 @@ export function createDocumentUndoManager(doc: Y.Doc): DocumentUndoManager {
     () =>
       new Y.UndoManager(body, {
         trackedOrigins: new Set([ySyncPluginKey]),
-        deleteFilter: isDeletableByUndo,
+        deleteFilter: (item) => isDeletableByUndo(item, body),
         captureTransaction: (tr) => tr.meta.get('addToHistory') !== false,
       }) as DocumentUndoManager,
   );

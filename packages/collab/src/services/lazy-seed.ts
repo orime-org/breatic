@@ -35,11 +35,15 @@ import {
   createLogger,
   defaultSpaceName,
   encodeInitialMetaState,
-  encodeInitialSpaceContentState,
   loadInitialSpaceType,
   projectActivitiesRepo,
 } from "@breatic/core";
-import { deriveId, parseDocName, spaceContentDocName } from "@breatic/shared";
+import {
+  deriveId,
+  encodeInitialSpaceContent,
+  parseDocName,
+  spaceContentDocName,
+} from "@breatic/shared";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 
 const logger = createLogger("lazy-seed");
@@ -74,7 +78,7 @@ export async function lazySeedMeta(
   // deterministically named, so concurrent first-loads converge.
   await yjsDocumentsRepo.seedInitialState(
     spaceContentDocName(projectId, spaceId, kind),
-    encodeInitialSpaceContentState(kind),
+    encodeInitialSpaceContent(kind),
   );
 
   const bytes = encodeInitialMetaState({

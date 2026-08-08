@@ -54,6 +54,7 @@ import { lazySeedMeta } from "../services/lazy-seed.js";
 import {
   canvasSpaceDocName,
   deriveId,
+  documentBodyFragment,
   projectMetaDocName,
   spaceContentDocName,
 } from "@breatic/shared";
@@ -108,5 +109,41 @@ describe("lazySeedMeta", () => {
     // content doc seeded under the document-{spaceId} name, not canvas-
     const seededNames = seedInitialStateMock.mock.calls.map((c) => c[0] as string);
     expect(seededNames).toContain(spaceContentDocName(PID, spaceId, "document"));
+  });
+
+  // The name carrying the right type is not the same as the CONTENT carrying
+  // it. Hardcoding the kind at this call site left the whole suite green while
+  // every new document Space shipped with an empty body — the state that costs
+  // the first person to undo back to nothing their text and their redo stack.
+  it("seeds a document's content doc with a body, not an empty doc", async () => {
+    loadInitialSpaceTypeMock.mockResolvedValue("document");
+    const metaName = projectMetaDocName(PID);
+    await lazySeedMeta(metaName);
+
+    const spaceId = deriveId(PID);
+    const contentName = spaceContentDocName(PID, spaceId, "document");
+    const call = seedInitialStateMock.mock.calls.find((c) => c[0] === contentName);
+    expect(call).toBeDefined();
+
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, call?.[1] as Uint8Array);
+    const body = documentBodyFragment(doc);
+    expect(body.length).toBe(1);
+    expect((body.get(0) as Y.XmlElement).nodeName).toBe("paragraph");
+  });
+
+  it("leaves a canvas's content doc empty — its editor builds its own structure", async () => {
+    loadInitialSpaceTypeMock.mockResolvedValue("canvas");
+    const metaName = projectMetaDocName(PID);
+    await lazySeedMeta(metaName);
+
+    const spaceId = deriveId(PID);
+    const contentName = spaceContentDocName(PID, spaceId, "canvas");
+    const call = seedInitialStateMock.mock.calls.find((c) => c[0] === contentName);
+    expect(call).toBeDefined();
+
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, call?.[1] as Uint8Array);
+    expect(doc.share.size).toBe(0);
   });
 });

@@ -40,7 +40,6 @@ import * as Y from "yjs";
 
 import {
   createLogger,
-  encodeInitialSpaceContentState,
   projectActivitiesRepo,
   writeSpaceEntry,
   type NewProjectActivity,
@@ -53,6 +52,7 @@ import {
 import {
   spaceContentDocName,
   projectMetaDocName,
+  encodeInitialSpaceContent,
   type DocKind,
   type ProjectRole,
   type SpaceRpcRequest,
@@ -636,7 +636,7 @@ async function handleCreate(
   try {
     seeded = await yjsDocumentsRepo.seedInitialState(
       spaceContentDocName(projectId, spaceId, type),
-      encodeInitialSpaceContentState(type),
+      encodeInitialSpaceContent(type),
     );
   } catch (seedError) {
     logger.error(

@@ -25,16 +25,21 @@
  * clears the redo stack, and syncs the deletion to everyone. The text just
  * undone is gone for good.
  *
- * Seeding the body at birth removes the disagreement instead of reacting to
- * it. It holds for whatever the body later contains, because the invariant is
- * about the body being non-empty, not about what kind of block is in it.
+ * Writing a block here settles the state a Space is BORN in, and that is all
+ * it settles. The block belongs to the document rather than to whoever later
+ * types into it, so a co-editor deleting the paragraph it became is an
+ * ordinary edit — after which every block in the body was made by somebody,
+ * and undo takes back what its owner made. Undo is therefore the one writer
+ * today that can empty a body, and it is held back from doing so by
+ * `web/spaces/document/document-undo`, which refuses to delete the last block
+ * standing. Measured with two real editors in `body-never-empties.test.ts`.
  *
- * **Every writer that empties a body has to put a block back.** Restoring a
- * saved version and generating content both clear the body before writing;
- * either one that stops short of a single block brings the bug back, and worse
- * than before — every client online at that moment writes its own paragraph
- * back, so they each lose a redo and the document ends up with one blank
- * paragraph per person.
+ * **Any future writer that clears the body has to put a block back**, and the
+ * cost of forgetting is worse than one stray paragraph: every client online at
+ * that moment writes its own block back, so they each lose a redo and the
+ * document ends up with one blank paragraph per person. Version restore
+ * (task #19) and generated content (task #20) will both clear before writing —
+ * neither exists yet, and neither ships without this.
  *
  * ## Why the backend seeds it, and not the editor
  *
@@ -69,8 +74,14 @@ import * as Y from "yjs";
 
 import type { SpaceType } from "@shared/types/space.js";
 
-/** Top-level key holding a document Space's body. */
-export const DOCUMENT_BODY_KEY = "content";
+/**
+ * Top-level key holding a document Space's body.
+ *
+ * Not exported past this module: everyone reaches the fragment through
+ * {@link documentBodyFragment}, which is the point — a second place naming the
+ * key is a second place that can drift from it.
+ */
+const DOCUMENT_BODY_KEY = "content";
 
 /**
  * Get a document Space's body fragment — what the editor binds to.
@@ -101,8 +112,16 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
  */
 export function encodeInitialSpaceContent(kind: SpaceType): Uint8Array {
   const doc = new Y.Doc();
-  if (kind === "document") {
-    documentBodyFragment(doc).push([new Y.XmlElement("paragraph")]);
+  // Exhaustive on purpose. A fourth kind that also binds ProseMirror would
+  // need a body of its own, and an `if` would hand it an empty document with
+  // nothing to say so — this stops compiling instead.
+  switch (kind) {
+    case "document":
+      documentBodyFragment(doc).push([new Y.XmlElement("paragraph")]);
+      break;
+    case "canvas":
+    case "timeline":
+      break;
   }
   return Y.encodeStateAsUpdate(doc);
 }
