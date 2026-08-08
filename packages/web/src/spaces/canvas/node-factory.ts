@@ -98,7 +98,6 @@ export function createEmptyNode(
       createdAt: Date.now(),
       createdBy,
       locked: false,
-      operationLocks: [],
       state: initialState,
       attachments: [],
       // A handling upload node carries its driver + lease start (#1569):
@@ -159,7 +158,6 @@ export function createGroupNode(
       createdAt: Date.now(),
       createdBy,
       locked: false,
-      operationLocks: [],
       state: 'idle',
       attachments: [],
       width,

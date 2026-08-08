@@ -5,7 +5,7 @@
  * application entry injects validated config via `initCore()`. In tests
  * there is no entry, so this file guarantees the two no-default required
  * vars are present, so a test that calls `initCore()` itself passes the
- * schema validation (fs-sandbox.test injects its own FILE_TOOL_SANDBOX_DIR
+ * schema validation (a test that needs a specific env var injects it
  * and calls initCore in beforeAll). Unlike core's setup it does NOT call
  * initCore — initCore is single-shot and that test owns the call.
  *

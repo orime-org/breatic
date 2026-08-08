@@ -378,8 +378,7 @@ export function useCanvasSpace(
  * Build the nested `data` Y.Map for a node from a plain wire data object.
  * Each defined field becomes a Y.Map entry (plain values — strings,
  * numbers, booleans, plain arrays / objects — matching how the backend
- * reads `operationLocks` via `Array.isArray` and `handlingBy` as a plain
- * object). Undefined fields are omitted.
+ * reads `handlingBy` as a plain object). Undefined fields are omitted.
  *
  * Three keys are exceptions to the plain-values convention, and all three are
  * seeded here rather than on demand. A container created on demand is a

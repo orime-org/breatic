@@ -75,7 +75,6 @@ function seedNode(text = ''): void {
       createdAt: 1,
       createdBy: 'u',
       locked: false,
-      operationLocks: [],
       state: 'idle',
       attachments: [],
     },

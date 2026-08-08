@@ -29,8 +29,7 @@ import { serializeSSE } from "@server/agent/types.js";
 import { runWithContext } from "@breatic/core";
 import { compressForContext } from "@server/agent/message-compressor.js";
 import { getAgentConfig } from "@breatic/core";
-import { getSkillRegistry } from "@breatic/domain";
-import { ForbiddenError, NotFoundError } from "@breatic/core";
+import { assertSkillUsable } from "@breatic/domain";
 import type { ChatAttachedChip } from "@breatic/shared";
 
 /**
@@ -93,7 +92,7 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
     body.project_id,
   );
 
-  // Build request context (shared by MainAgent + SubAgents)
+  // Build request context for this turn
   const agentCfg = getAgentConfig();
   const memoryContext = await memoryService.buildContext(
     user.id, conversation.id, body.project_id, "agent_chat",
@@ -138,19 +137,11 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
-  // Gate the skill to end-user invocation. Skills that grant dangerous
-  // tools (read_file/write_file/edit_file/run_script) MUST be marked
-  // `user_invocable: false` in their metadata so this check rejects
-  // them — otherwise any authenticated user could drive the agent into
-  // arbitrary file read/write on the server. See security notes in
-  // skills/skill_creator/metadata.json.
-  const registry = getSkillRegistry();
-  if (!registry.get(body.skill_name)) {
-    throw new NotFoundError(`Skill '${body.skill_name}' not found`);
-  }
-  if (!registry.canUserInvoke(body.skill_name)) {
-    throw new ForbiddenError(`Skill '${body.skill_name}' is not user-invocable`);
-  }
+  // Gate the skill to end-user invocation. Not every skill is something a
+  // user may fire directly — some exist only for the model to reach for
+  // mid-turn. The gate is deny-by-default: a skill has to be declared
+  // user-invocable to get through here.
+  assertSkillUsable(body.skill_name, "chat");
 
   // Cross-tenant guard (same rationale as /chat/message)
   if (body.project_id) {

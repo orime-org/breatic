@@ -32,7 +32,7 @@ import type {
 const MODELS_DIR = resolve(MONOREPO_ROOT, "config/models");
 
 /** Supported modalities (subdirectory names). */
-const MODALITIES = ["image", "video", "audio", "tts", "three_d", "understand"] as const;
+export const MODALITIES = ["image", "video", "audio", "tts", "three_d", "understand"] as const;
 export type Modality = (typeof MODALITIES)[number];
 
 // ModelTier / ParamDescriptor / ModelProvider / ModelEntry / ModelCatalog are

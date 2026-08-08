@@ -23,7 +23,6 @@ import type {
   NodeState,
   HandlingActor,
   HandlingPhase,
-  OperationLock,
   AttachRef,
   FocusImage,
   CanvasNodeFields,
@@ -69,7 +68,6 @@ describe("FocusImage (#1782 focus slice)", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
-        operationLocks: [],
         state: "idle",
         attachments: [],
         focusImages: [crop],
@@ -181,44 +179,10 @@ describe("HandlingActor", () => {
   it("HANDLING_TIMEOUT_MS is the single unified 1-hour lease budget (#1569)", () => {
     // User decision 2026-07-02: ONE timeout for every handling operation
     // (upload / AIGC / future frontend media ops). The budget's job is to
-    // bound rare zombies (lost disconnect events), not to fit per-op
+    // bound rare zombies (a driver that died without writing back), not per-op
     // durations. Web (display fallback) and collab (sweeper) both import
     // THIS constant so the two sides can never drift.
     expect(HANDLING_TIMEOUT_MS).toBe(3_600_000);
-  });
-});
-
-// ── OperationLock ──────────────────────────────────────────────────
-
-describe("OperationLock", () => {
-  it("accepts a valid OperationLock shape", () => {
-    const lock: OperationLock = {
-      toolId: "adjust",
-      userId: "user-1",
-    };
-    expect(lock.toolId).toBe("adjust");
-    expect(lock.userId).toBe("user-1");
-  });
-
-  it("type narrows to { toolId: string; userId: string }", () => {
-    expectTypeOf<OperationLock>().toEqualTypeOf<{
-      toolId: string;
-      userId: string;
-    }>();
-  });
-
-  it("multiple OperationLock entries can coexist on one node", () => {
-    const locks: OperationLock[] = [
-      { toolId: "adjust", userId: "user-A" },
-      { toolId: "filter", userId: "user-B" },
-      // Same tool, different user (collaborative configure of same tool):
-      { toolId: "crop", userId: "user-A" },
-      { toolId: "crop", userId: "user-B" },
-    ];
-    expect(locks).toHaveLength(4);
-    // userId is the owner — filtering by it is the disconnect-cleanup primitive.
-    const userAEntries = locks.filter((l) => l.userId === "user-A");
-    expect(userAEntries).toHaveLength(2);
   });
 });
 
@@ -235,7 +199,6 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
-        operationLocks: [],
         state: "idle",
         attachments: [],
       },
@@ -261,7 +224,6 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
-        operationLocks: [],
         state: "idle",
         attachments: [],
         leaseGen: 3,
@@ -283,7 +245,6 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
-        operationLocks: [],
         state: "idle",
         attachments: [],
         handlingBy: undefined,
@@ -320,7 +281,6 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
-        operationLocks: [],
         state: "handling",
         handlingBy: { userId: "u1", type: "backend", startedAt: 1_700_000_000_000, gen: 1 },
         attachments: [],
@@ -348,7 +308,6 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
-        operationLocks: [],
         state: "idle",
         attachments: [],
         backgroundColor: "#eef2ff",
@@ -372,7 +331,6 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
-        operationLocks: [],
         state: "idle",
         attachments: [],
       },
@@ -394,7 +352,6 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
-        operationLocks: [],
         state: "idle",
         attachments: [],
         width: 400,
@@ -425,7 +382,6 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-author",
         locked: false,
-        operationLocks: [],
         state: "idle",
         attachments: [],
         content: "remember to fix the bug",
@@ -450,7 +406,6 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: true,
-        operationLocks: [],
         state: "idle",
         attachments: [],
       },
@@ -459,11 +414,10 @@ describe("CanvasNodeFields", () => {
     expect(node.data.createdBy).toBe("user-1");
   });
 
-  it("accepts a node with operationLocks + frontend handlingBy (Category A mid-op)", () => {
-    // Spec §10.13.6.2 + ADR 2026-05-11-mini-tool-state-machine.md:
-    //   - operationLocks: configure-phase lock list, multiple entries allowed
-    //   - handlingBy.type: 'frontend' = browser-driven (Category A); Collab
-    //     onDisconnect writes errorMessage if the holder leaves mid-op
+  it("accepts a node mid-operation under a frontend driver (Category A)", () => {
+    // `handlingBy.type: 'frontend'` = browser-driven. Nothing reclaims it on
+    // a disconnect — a closing socket is not evidence the work died — so the
+    // lease sweeper's 1h budget is what eventually frees the node.
     const node: CanvasNodeFields = {
       id: "node-mid-op",
       type: "image",
@@ -473,9 +427,6 @@ describe("CanvasNodeFields", () => {
         createdAt: 1714492800000,
         createdBy: "user-1",
         locked: false,
-        operationLocks: [
-          { toolId: "adjust", userId: "user-2" },
-        ],
         state: "handling",
         handlingBy: {
           userId: "user-2",
@@ -489,9 +440,9 @@ describe("CanvasNodeFields", () => {
         sourceNodeId: "node-source",
       },
     };
-    expect(node.data.operationLocks).toHaveLength(1);
-    expect(node.data.operationLocks[0]?.toolId).toBe("adjust");
     expect(node.data.handlingBy?.type).toBe("frontend");
+    expect(node.data.operation).toBe("adjust");
+    expect(node.data.sourceNodeId).toBe("node-source");
   });
 
   it("removed data fields no longer compile", () => {
@@ -500,7 +451,6 @@ describe("CanvasNodeFields", () => {
       createdAt: 1714492800000,
       createdBy: "user-1",
       locked: false,
-      operationLocks: [],
       state: "idle",
       attachments: [],
     };
@@ -519,6 +469,11 @@ describe("CanvasNodeFields", () => {
 
     // @ts-expect-error outputType removed (2026-06-15 model revision — no generative node)
     data.outputType;
+
+    // @ts-expect-error operationLocks removed (#1889 — its only producer went
+    // with the 2026-05-18 web rewrite, so the one reader left, a disconnect
+    // pass, could only ever find nothing; both went)
+    data.operationLocks;
 
     // Positive control: .name access works
     expect(data.name).toBe("x");

@@ -18,7 +18,7 @@ import {
 } from "../model-catalog.js";
 
 // getModelCatalog resolves config YAML via core's injected config; tests
-// stand in for the application entry (same pattern as fs-sandbox.test).
+// stand in for the application entry, which is what normally calls initCore.
 beforeAll(() => {
   initCore(process.env);
 });

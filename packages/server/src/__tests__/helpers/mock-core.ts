@@ -55,6 +55,14 @@ export const mockCreateQueue = vi.fn();
 
 /** Mock references — tests can override behavior per-test. */
 export const mocks = {
+  /**
+   * core's real AppError, stashed by coreMock.
+   *
+   * domainMock is synchronous and importOriginal-free, so it cannot reach
+   * the class itself — and the error handler identifies errors by
+   * `instanceof`, so a look-alike with the same `.status` comes back a 500.
+   */
+  appError: Error as unknown as new (status: number, message: string) => Error,
   authService: {
     register: vi.fn(),
     loginEmail: vi.fn(),
@@ -396,7 +404,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     projectAuthService: mocks.projectAuthService,
     runWithContext: vi.fn((_ctx: unknown, fn: () => unknown) => fn()),
     // Errors (keep actual error classes)
-    AppError: actual.AppError,
+    AppError: (mocks.appError = actual.AppError as typeof mocks.appError),
     NotFoundError: actual.NotFoundError,
     ForbiddenError: actual.ForbiddenError,
     ConflictError: actual.ConflictError,
@@ -437,15 +445,44 @@ export const domainMock = () => ({
   getModel: vi.fn(),
   resolveProvider: vi.fn(),
   buildToolSet: vi.fn().mockReturnValue({}),
-  DEFAULT_TOOLS: [],
+  BASELINE_TOOLS: [],
   getSkillRegistry: () => ({
-    get: (name: string) => name === "skill_creator" || name === "creative_research" ? { name, description: "...", tools: [] } : undefined,
-    canUserInvoke: (name: string) => name !== "skill_creator",
+    get: (name: string) =>
+      ["gated_fixture", "creative_research", "canvas_fixture", "canvas_gated"].includes(name)
+        ? { name, description: "...", tools: [] }
+        : undefined,
   }),
+  // The gate both entry points call. Mirrors the real one's two outcomes:
+  // 404 for a skill that does not exist, 403 for one the routing config
+  // does not let a user fire from here.
+  // Throws the real AppError, because the error handler identifies errors
+  // with `instanceof` — a look-alike carrying the same `.status` comes back
+  // as a 500. `mocks.appError` is set by coreMock, which does have it.
+  // Mirrors the real gate's SHAPE, both parameters included. An earlier
+  // version took only the name, which made every call site's surface
+  // argument unobservable: swapping "chat" for "canvas" at a route changed
+  // nothing any test could see, on the one axis this PR introduced.
+  assertSkillUsable: (name: string, surface: string) => {
+    const AppErrorClass = mocks.appError;
+    const routes: Record<string, { surfaces: string[]; userInvocable: boolean }> = {
+      creative_research: { surfaces: ["chat"], userInvocable: true },
+      gated_fixture: { surfaces: ["chat"], userInvocable: false },
+      canvas_fixture: { surfaces: ["canvas"], userInvocable: true },
+      // Canvas serves it, but no user may fire it. Without this, a canvas
+      // test aimed at the authorization axis is stopped by the surface axis
+      // first and passes for the wrong reason.
+      canvas_gated: { surfaces: ["canvas"], userInvocable: false },
+    };
+    const route = routes[name];
+    if (!route) throw new AppErrorClass(404, `Skill '${name}' not found`);
+    if (!route.surfaces.includes(surface)) {
+      throw new AppErrorClass(403, `Skill '${name}' is not available here`);
+    }
+    if (!route.userInvocable) {
+      throw new AppErrorClass(403, `Skill '${name}' is not user-invocable`);
+    }
+  },
   SkillRegistry: class {},
-  loadAgents: vi.fn(),
-  getAgent: vi.fn(),
-  listAgents: vi.fn().mockReturnValue([]),
   extractPromptText: vi.fn((s: string) => s),
   ...mocks.canvasLock,
 });
