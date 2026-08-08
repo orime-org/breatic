@@ -116,15 +116,26 @@ function metaDoc(): Y.Doc {
 }
 
 /**
- * Send one awareness frame from a client, the way its heartbeat does.
- * @param client - Who is beating.
- * @param clientId - Yjs client id to attribute the state to.
+ * Send one awareness frame from a client, keyed to any client id.
+ *
+ * Built the way a browser builds one, so what arrives at the server is
+ * indistinguishable from real traffic — including when the client id names
+ * somebody else, which is the whole point of the impersonation cases.
+ * @param client - Connection to send it on.
+ * @param clientId - Yjs client id to key the entry to.
+ * @param state - Awareness state to put in that entry.
+ * @param revisions - How many state writes the sender has made. The awareness clock counts exactly these, and a frame is applied only when its clock beats the one the document already holds for that entry — so a frame keyed to a client id somebody else has already used needs more revisions than they have made, or it is dropped before this rule's work can be seen at all.
  */
-async function beat(client: LiveClient, clientId: number): Promise<void> {
+async function sendCaret(
+  client: LiveClient,
+  clientId: number,
+  state: Record<string, unknown>,
+  revisions = 1,
+): Promise<void> {
   const scratch = new Y.Doc();
   scratch.clientID = clientId;
   const awareness = new awarenessProtocol.Awareness(scratch);
-  awareness.setLocalState({ cursor: { anchor: 1, head: 1 } });
+  for (let i = 0; i < revisions; i += 1) awareness.setLocalState(state);
   client.send(
     awarenessFrame(
       META_DOC,
@@ -134,6 +145,30 @@ async function beat(client: LiveClient, clientId: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
   awareness.destroy();
   scratch.destroy();
+}
+
+/**
+ * Read one awareness entry back out of the live meta document.
+ * @param clientId - Entry to read.
+ * @returns The stored state, or undefined when the document has none.
+ */
+function caretState(clientId: number): Record<string, unknown> | undefined {
+  return (
+    metaDoc() as unknown as {
+      awareness: { getStates: () => Map<number, Record<string, unknown>> };
+    }
+  ).awareness
+    .getStates()
+    .get(clientId);
+}
+
+/**
+ * Send one awareness frame from a client, the way its heartbeat does.
+ * @param client - Who is beating.
+ * @param clientId - Yjs client id to attribute the state to.
+ */
+async function beat(client: LiveClient, clientId: number): Promise<void> {
+  await sendCaret(client, clientId, { cursor: { anchor: 1, head: 1 } });
 }
 
 /**
@@ -288,27 +323,59 @@ describe("presence wiring — the server decides whose caret is whose", () => {
   it("replaces an identity the client put on its own caret", async () => {
     const alice = await connect("alice");
 
-    // A frame claiming to be somebody else, built the way a client builds one.
-    const scratch = new Y.Doc();
-    scratch.clientID = 4242;
-    const awareness = new awarenessProtocol.Awareness(scratch);
-    awareness.setLocalState({
+    await sendCaret(alice, 4242, {
       cursor: { anchor: 1, head: 1 },
       user: { id: "u-victim" },
     });
-    const update = awarenessProtocol.encodeAwarenessUpdate(awareness, [4242]);
 
-    alice.send(awarenessFrame(META_DOC, update));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(caretState(4242)?.user).toEqual({ id: ALICE });
+  });
 
-    const state = (
-      server.documents.get(META_DOC) as unknown as { awareness: { getStates: () => Map<number, Record<string, unknown>> } }
-    ).awareness
-      .getStates()
-      .get(4242);
+  it("stamps a frame keyed to somebody else's caret with the sender", async () => {
+    // The impersonation attempt, end to end: Alice's client id is public —
+    // every peer is told it so it can draw her caret — so Bob can key an entry
+    // to it. What comes out the other side is Bob.
+    const alice = await connect("alice");
+    await beat(alice, 5150);
 
-    expect(state?.user).toEqual({ id: ALICE });
-    awareness.destroy();
-    scratch.destroy();
+    const bob = await connect("bob");
+    await sendCaret(
+      bob,
+      5150,
+      { cursor: { anchor: 9, head: 9 }, user: { id: ALICE } },
+      // Past Alice's clock, or the frame is dropped before it is applied and
+      // this case would pass on her leftover entry without proving anything.
+      2,
+    );
+
+    expect(caretState(5150)?.user).toEqual({ id: "u-bob" });
+    expect(caretState(5150)?.cursor).toEqual({ anchor: 9, head: 9 });
+  });
+
+  it("stamps a caret arriving on a second connection with the same client id", async () => {
+    // What a reconnect looks like from here: the browser keeps its Y.Doc, so
+    // the client id survives, while the old socket has not been reaped yet.
+    // The id stays registered against that old connection and never joins the
+    // new one — a connection's client set only grows from `added`, and an id
+    // the document already knows is `updated` from then on. Judging ownership
+    // therefore used to leave this entry unstamped, and with the browser no
+    // longer naming itself that meant a caret with no identity at all.
+    const first = await connect("alice");
+    await beat(first, 6060);
+
+    const second = await connect("alice-second");
+    await sendCaret(
+      second,
+      6060,
+      { cursor: { anchor: 2, head: 2 }, user: { id: "u-never-stamped" } },
+      // Past the first connection's clock, for the same reason as above.
+      2,
+    );
+
+    // The sentinel is what makes this case sharp: an unstamped entry keeps it,
+    // and the entry the first connection left behind carries a different
+    // cursor, so neither outcome can be mistaken for a pass.
+    expect(caretState(6060)?.user).toEqual({ id: ALICE });
+    expect(caretState(6060)?.cursor).toEqual({ anchor: 2, head: 2 });
   });
 });

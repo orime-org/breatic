@@ -58,18 +58,6 @@ interface InstanceLike {
 }
 
 /**
- * The document as Hocuspocus hands it to a hook.
- *
- * Declared with method syntax on purpose. Property syntax makes parameters
- * strictly contravariant, which would reject the library's own `Connection`
- * type against the smaller shape this module actually needs.
- */
-interface DocumentLike {
-  getConnections?(): ConnectionLike[];
-  getClients?(connection: ConnectionLike): Set<number>;
-}
-
-/**
  * Read the authenticated user id off whatever the payload carries it in.
  *
  * `connected` and `onDisconnect` hand over a bare `context`; the awareness hook
@@ -184,39 +172,26 @@ export function recordHeartbeat(
 }
 
 /**
- * Write the connection's own identity onto the carets it owns.
+ * Write the connection's own identity onto every caret in one frame.
  *
  * Runs on every document, not just the meta one: carets live in the canvas and
  * document files, and that is where an id turns into a name on somebody's
  * screen.
+ *
+ * The document is not read. It used to be, to ask which client ids belonged to
+ * which connection, and that question is gone — see `awareness-identity.ts`.
  * @param payload - The `beforeHandleAwareness` hook payload.
  * @param payload.states - Per-client states decoded from the inbound frame, mutated in place.
- * @param payload.document - The document this frame is for.
  * @param payload.connection - The originating connection, absent for updates relayed between instances.
  * @param payload.context - Connection context, when the hook provides it directly.
  */
 export function stampIdentityOnAwareness(payload: {
   states: Map<number, Record<string, unknown>>;
-  document: DocumentLike;
   connection?: ConnectionLike;
   context?: AuthContext;
 }): void {
   const userId = userIdOf(payload);
   if (!userId || !payload.connection) return;
 
-  const own = payload.document.getClients?.(payload.connection) ?? new Set();
-  const other = new Set<number>();
-  for (const connection of payload.document.getConnections?.() ?? []) {
-    if (connection === payload.connection) continue;
-    for (const clientId of payload.document.getClients?.(connection) ?? []) {
-      other.add(clientId);
-    }
-  }
-
-  stampConnectionIdentity({
-    states: payload.states,
-    ownClientIds: own,
-    otherClientIds: other,
-    userId,
-  });
+  stampConnectionIdentity({ states: payload.states, userId });
 }
