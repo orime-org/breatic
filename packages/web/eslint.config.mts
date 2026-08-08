@@ -333,23 +333,6 @@ export default [
     },
   },
   {
-    // The vendor primitives define the variants rather than choose between
-    // them. The dev gallery's whole purpose is to render every variant side
-    // by side, borderless ones included.
-    files: ['src/**/*.tsx'],
-    ignores: [
-      'src/components/ui/**',
-      'src/pages/_dev/**',
-      '**/__tests__/**',
-      '**/*.test.tsx',
-      '**/*.spec.tsx',
-    ],
-    plugins: { breatic: breaticPlugin },
-    rules: {
-      'breatic/bordered-text-button': 'error',
-    },
-  },
-  {
     // Exempt by provenance, not by directory. `components/ui/` is where the
     // shadcn primitives live, but it is not purely vendor — `password-input`
     // is ours, and exempting the whole path left the one first-party control
@@ -357,13 +340,17 @@ export default [
     // element is excused: `Button` itself. The dev gallery is exempt for the
     // reason the other visual rules exempt it — it exists to display what we
     // replaced.
-    files: ['src/**/*.tsx'],
+    //
+    // `.ts` is in scope alongside `.tsx`: `createElement('button')` is the
+    // same element written without JSX, and that spelling lives in plain
+    // modules. Watching only `.tsx` would leave half of this rule unreachable.
+    files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/components/ui/button.tsx',
       'src/pages/_dev/**',
       '**/__tests__/**',
-      '**/*.test.tsx',
-      '**/*.spec.tsx',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
     ],
     plugins: { breatic: breaticPlugin },
     rules: {

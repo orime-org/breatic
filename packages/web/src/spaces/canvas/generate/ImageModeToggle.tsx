@@ -79,7 +79,7 @@ export const ImageModeToggle = React.memo(function ImageModeToggle({
           size='default'
           data-testid='generate-mode-trigger'
           disabled={disabled}
-          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-background px-2.5 text-xs text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50'
+          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-background px-2.5 text-xs text-foreground hover:bg-accent'
         >
           {MODE_LABELS[value]}
           <ChevronDown

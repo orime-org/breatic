@@ -56,13 +56,12 @@ export function NodePlaceholder({
   return (
     <Button
       type='button'
-      // bordered-button:allow — the node shell draws this control's frame, so
-      // a bordered variant would show a second edge a pixel inside the first.
-      // The 9th-slice system also fixes how a node body answers hover — it
-      // brightens its text rather than filling — and every filling variant of
-      // the primitive writes a hover background, hence `ghost` plus the
-      // neutralising `hover:bg-transparent` below. NodePlaceholder.test.tsx
-      // pins that behaviour.
+      // The node shell draws this control's frame, so a bordered variant would
+      // show a second edge a pixel inside the first. The 9th-slice system also
+      // fixes how a node body answers hover — it brightens its text rather
+      // than filling — and every filling variant of the primitive writes a
+      // hover background, hence `ghost` plus the neutralising
+      // `hover:bg-transparent` below. NodePlaceholder.test.tsx pins that.
       variant='ghost'
       size='sm'
       onDoubleClick={onActivate}

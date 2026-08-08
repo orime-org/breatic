@@ -27,17 +27,23 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 ## 组件复用:先查 `components/ui/` 再造(MANDATORY)
 写任何**浮层 / 表单 / 交互控件**(popover · dropdown · dialog · tooltip · select · menu · command · sheet 等)前,**必须先 grep `components/ui/` 看有没有现成 shadcn primitive,有就复用**。**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。判定题:**这 UI 是浮层 / 表单 / 交互控件吗?是 → 先 grep `components/ui/`,别手写**。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
 
-## 按钮必须看得出是按钮:独立文字按钮一律有边框(MANDATORY)
+## 按钮只有一种拼法:一律走 `Button` primitive(MANDATORY,CI 强制)
 
-**独立的文字按钮一律 `variant='outline'`,不许用无边框的 `ghost`**(user 2026-08-07 拍定,原话「按钮没有特殊的」「你连个边框都没有,用户是看不出来它是个按钮的,它怎么可能还特例?」)。**这不是风格偏好** —— 没有边框,那个东西在用户眼里就是一段文字,他不知道能点。所以这条**没有例外**,包括弹窗的「取消」。
+**`packages/web` 里禁止手写 `<button>`,一律用 `components/ui/button` 的 `Button`**(user 2026-08-08 拍定,原话「所有 button 不允许小写,必须都是大写」)。`createElement('button')` 是同一个元素换个写法,同样禁。
 
-**合法的无边框按 size 划,一共三种**:`menu-item`(下拉菜单里的整行菜单项 —— 整行宽 + hover 高亮就是它的可点信号,加边框反而破坏菜单形态)· `icon` 和 `chrome`(纯图标按钮,形状本身就是信号,文案在 `aria-label` 里、不在屏幕上)。**除这三种之外,`ghost` 和 `chrome-ghost` 一律不许用**。
+**为什么是禁令而不是"尽量"**:一个元素两种拼法,任何关于按钮的检查都只看得见它被教过的那一种,另一种就成了没人管的地方 —— 当初画布里那三个无边框文字按钮正是写在手写 `<button>` 上,而守卫盯着组件、报告一切正常。**一种拼法把这个问题消掉,而不是逐个回答它。**
 
-判定题:**这个按钮是独立摆着的一段文字吗?是 → `outline`,没有第二个选项。**
+**什么都没有牺牲**:`Button` 继承 `React.ButtonHTMLAttributes<HTMLButtonElement>` 并透传收到的一切,`type` / `role` / `aria-*` / `data-*` 和自定义 class 原样通过;`className` 经 `cn()` 盖在变体类之上而不是输给它们;触发器归别的 primitive 拥有时用 `asChild` 把元素交出去。裸 `<button>` 能做的,`<Button>` 都能做。
 
-**CI 强制**:`breatic/bordered-text-button`(ESLint)。**它按「许可清单」写而不是「禁止清单」** —— 只禁今天存在的那一种组合(`ghost` 配 `sm`),同样的错换个 size 写就漏了;改成「`ghost` 家族只许配上面三种 size」,以后新增的 size 一出生就被挡住。**读不出的写法不猜**:`variant={active ? 'secondary' : 'ghost'}` 这种守卫看不懂,放行不报 —— 它的 size 属性照样受检,而且今天所有动态写法都是图标按钮。shadcn vendor(`components/ui/`)和 `_dev` 陈列页豁免:前者定义 variant 而不是选用,后者的用途就是把每种 variant 并排展示。
+**CI 强制**:`breatic/no-raw-button`(ESLint),扫 `src/**/*.{ts,tsx}`(`.ts` 也扫 —— `createElement('button')` 这种写法就住在普通模块里)。**豁免按出身不按目录**:只放行 `components/ui/button.tsx` 一个文件(`Button` 自己要渲染这个元素),**不放行整个 `components/ui/`** —— 那个目录不是纯 vendor,`password-input` 是我们自己的。另豁免 `_dev` 陈列页(它的用途就是把被替换掉的原生控件并排展示)和测试。
 
-**这条是怎么破的,值得记一笔**:当时全仓有**四个**独立文字按钮用着无边框的 `ghost`(转让弹窗的取消 · 头像裁剪弹窗的取消 · 项目顶栏成员弹窗的取消 · 头像区的「移除」),我写改 Slug 弹窗时照着旁边最近的那个抄,又添了一个。**「看兄弟功能怎么做」要看的是多数和共享 primitive,不是离得最近的那一个**:共享 primitive `AlertDialogCancel` 自己用的就是 `outline`,建 Studio / 邀请成员 / 新建条目三个弹窗也都是,那才是准。**这正是为什么这条规则必须有机器守卫** —— 靠人守时,下一个人照抄手边最近的样例,而那个样例可能恰好是错的,于是错误按邻接关系传播。
+## 按钮的边框:看着定,不上机器守卫(MANDATORY)
+
+**独立摆着的文字按钮应当有边框**(user 2026-08-07 原话「你连个边框都没有,用户是看不出来它是个按钮的」),包括弹窗的「取消」。写新按钮时按这条办:一段文字单独摆着能点 → 给它 `variant='outline'`。
+
+**但这条不上 CI**(user 2026-08-08 拍定,原话「这个问题能明确,现在应该是有边框的,把它改成有边框的就行了,其他的就不要管了。等我发现有问题的时候,我就会说这个地方改」)。原因是**机器判不了**:一个按钮该不该有边框,取决于它最终被放进什么容器里(下拉菜单的行、已有边框的卡片内部、标签条),而那个容器写在别的文件、运行时才拼起来 —— ESLint 一次只读一个文件,看不到。硬要机器判就只能靠一串猜测和豁免撑着,而每个猜测都是一个新洞。**曾经存在过一条 `breatic/bordered-text-button` 规则,就是因为这个原因删掉的。**
+
+判定题:**这个按钮是独立摆着的一段文字吗?是 → `outline`。它的框由外面那层画吗?那就别自己再画一个。** 拿不准就照做,视觉上不对由人在真界面上指出来。
 
 ## 禁止浏览器 / OS 原生渲染的交互控件(MANDATORY,CI 强制)
 **凡「视觉皮肤由浏览器 / 操作系统绘制」的交互控件,一律禁用,必须自绘(Radix primitive 或自绘组件)。** 根因:各引擎(Chrome / Safari / Firefox)画同一个原生控件长得不一样,**对创作类产品这种跨引擎不一致是致命的**;「跨引擎像素一致」是硬功能需求,不是锦上添花。这是滚动条 / toast / tooltip 那些单点守卫背后的**总原则** —— 它们都是本条的实例,本条把教训泛化,让每个新原生控件(color → range → 未来 date)被**机械挡住**,而不是每次靠真机 review 一个个逮。

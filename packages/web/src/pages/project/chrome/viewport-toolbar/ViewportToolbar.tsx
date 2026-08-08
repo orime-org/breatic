@@ -399,7 +399,10 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
                 className={cn(
                   'inline-flex h-7 items-center justify-start rounded-chrome px-2 text-xs transition-colors',
                   isCurrent
-                    ? 'bg-secondary text-secondary-foreground'
+                    // Restate the hover on the selected row: the variant's
+                    // `hover:bg-accent` would otherwise paint over the
+                    // selection and make it read as any other row.
+                    ? 'bg-secondary text-secondary-foreground hover:bg-secondary hover:text-secondary-foreground'
                     : 'bg-transparent text-foreground hover:bg-accent',
                 )}
               >

@@ -119,9 +119,10 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 type='button'
                 // The chip's own border (on the row wrapper) is what makes this
                 // read as pressable, and the ✕ shares that frame — so this
-                // button draws none of its own, the `menu-item` case: a row
-                // whose enclosing surface carries the framing. `p-0` keeps the
-                // padding on that wrapper, where it was.
+                // button draws none of its own. `menu-item` is picked for its
+                // metrics: it is the one size that imposes no height, leaving
+                // the chip's. `p-0` keeps the padding on the wrapper, where it
+                // was.
                 variant='ghost'
                 size='menu-item'
                 data-testid={`generate-ref-insert-${ref.refId}`}

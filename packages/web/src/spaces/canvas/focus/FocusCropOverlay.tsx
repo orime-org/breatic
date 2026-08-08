@@ -800,7 +800,10 @@ export function FocusCropOverlay({
                 className={
                   'shrink-0 rounded-sm px-1.5 py-0.5 tabular-nums ' +
               (ratio === value
-                ? 'bg-foreground text-background'
+                // The selected chip has to restate its own hover, or the
+                // variant's `hover:bg-accent` paints over the selection and
+                // the one under the pointer stops looking chosen.
+                ? 'bg-foreground text-background hover:bg-foreground hover:text-background'
                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')
                 }
               >
