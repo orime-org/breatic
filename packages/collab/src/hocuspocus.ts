@@ -307,8 +307,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // server writes it from the credential it validated at the handshake.
     // Runs on every document, not just the meta one: carets live in the canvas
     // and document files, which is where an id becomes a name on a screen.
-    beforeHandleAwareness: async ({ states, document, connection, context }) => {
-      stampIdentityOnAwareness({ states, document, connection, context });
+    beforeHandleAwareness: async ({ states, connection, context }) => {
+      stampIdentityOnAwareness({ states, connection, context });
     },
 
     // Every heartbeat does two things: keeps its own owner's timestamp moving,
