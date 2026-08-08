@@ -37,7 +37,8 @@
 import type { Editor } from '@tiptap/core';
 import { Node } from '@tiptap/core';
 import type { Command, EditorState, Transaction } from '@tiptap/pm/state';
-import { TextSelection } from '@tiptap/pm/state';
+import { Selection, TextSelection } from '@tiptap/pm/state';
+import { liftTarget } from '@tiptap/pm/transform';
 import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 
 /**
@@ -140,6 +141,11 @@ const splitTitleIntoBody: Command = (state, dispatch) => {
 /**
  * Fold the body's first block back into the end of the title.
  *
+ * Only a textblock — a paragraph, a heading, a code block. A container block
+ * holds several textblocks of its own, and folding one in would delete every
+ * one of them and run their text together; `liftFirstBodyTextblock` is what
+ * answers for those.
+ *
  * The text arrives as plain text because the title holds no marks — a bold
  * paragraph merged into the title comes back unbold rather than carrying a
  * mark the schema would drop on the next parse.
@@ -154,6 +160,7 @@ function mergeFirstBodyBlock(
   if (state.doc.childCount < 2) return false;
   const title = state.doc.child(0);
   const first = state.doc.child(1);
+  if (!first.isTextblock) return false;
   if (!dispatch) return true;
 
   const titleContentEnd = 1 + title.content.size;
@@ -167,10 +174,55 @@ function mergeFirstBodyBlock(
 }
 
 /**
+ * Lift the first textblock inside the body's first container block out of it.
+ *
+ * This is what the editor itself does at every other boundary in the body: with
+ * the caret at the end of a paragraph followed by a list, Delete lifts the
+ * first item out as a paragraph of its own and leaves the rest of the list
+ * standing, and a second press then merges it. Measured in the browser on this
+ * build.
+ *
+ * The title cannot inherit that behaviour, because it is `isolating` and
+ * `prosemirror-commands`' `deleteBarrier` refuses to cross an isolating
+ * boundary before it ever reaches its lift branch. So the three calls that
+ * branch makes are made here instead — the same `Selection.findFrom`,
+ * `blockRange` and `liftTarget`, which is why the result matches the body
+ * rather than resembling it.
+ * @param state - Current editor state.
+ * @param dispatch - Applies the transaction.
+ * @returns True when this handled the key.
+ */
+function liftFirstBodyTextblock(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
+  if (state.doc.childCount < 2) return false;
+  const boundary = state.doc.child(0).nodeSize;
+  const container = state.doc.child(1);
+  const inside = Selection.findFrom(state.doc.resolve(boundary), 1);
+  // Nothing to lift unless the position found is INSIDE that first block. An
+  // atom at the front of the body (a divider) has no interior, and without
+  // this the search would run past it and lift a block the key never touched.
+  if (!inside || inside.$from.pos >= boundary + container.nodeSize) return false;
+  const range = inside.$from.blockRange(inside.$to);
+  const target = range ? liftTarget(range) : null;
+  if (!range || target === null) return false;
+  if (!dispatch) return true;
+  dispatch(state.tr.lift(range, target).scrollIntoView());
+  return true;
+}
+
+/**
  * Backspace at the very start of the body's first block.
  *
  * This is Enter run backwards, and it is the only way back from an Enter
  * pressed by mistake.
+ *
+ * A caret at the start of a paragraph nested in a container block passes the
+ * gate below — its top-level index IS 1 — and `mergeFirstBodyBlock` is what
+ * turns it away, because that block is not a textblock. Declining hands the
+ * key to the editor's own Backspace chain, which lifts the paragraph out of
+ * its container exactly as it would anywhere else in the body.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction.
  * @returns True when this handled the key.
@@ -184,7 +236,12 @@ const mergeBodyStartIntoTitle: Command = (state, dispatch) => {
 /**
  * Delete at the very end of the title.
  *
- * Same join as the Backspace above, reached from the other side.
+ * Same join as the Backspace above, reached from the other side — and where
+ * that one can decline and leave the key to the editor's own chain, this one
+ * cannot: the caret is inside the isolating title, so every default handler
+ * stops at the boundary and the press would do nothing whatsoever. A first body
+ * block that cannot be folded in therefore gets its first textblock lifted out
+ * instead, which is what this same press does everywhere else in the body.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction.
  * @returns True when this handled the key.
@@ -193,5 +250,8 @@ const pullBodyIntoTitleEnd: Command = (state, dispatch) => {
   const { $from, empty } = state.selection;
   if (!empty || $from.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
   if ($from.parentOffset !== $from.parent.content.size) return false;
-  return mergeFirstBodyBlock(state, dispatch);
+  return (
+    mergeFirstBodyBlock(state, dispatch) ||
+    liftFirstBodyTextblock(state, dispatch)
+  );
 };
