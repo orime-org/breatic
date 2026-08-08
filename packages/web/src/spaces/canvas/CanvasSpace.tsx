@@ -28,6 +28,7 @@ import * as React from 'react';
 import { toast } from '@web/lib/toast';
 import { canGenerate, newId } from '@breatic/shared';
 
+import { Button } from '@web/components/ui/button';
 import { assetsApi, canvasApi } from '@web/data/api';
 import {
   MAX_FOCUS_ENTRIES,
@@ -3480,23 +3481,27 @@ function CanvasSpaceInner({
                     : 'canvas.generatePanel.selectFromCanvas',
               )}
             </span>
-            <button
+            <Button
+              variant='ghost'
+              size='icon'
               type='button'
               data-testid='reference-pick-locate'
               aria-label={t('canvas.generatePanel.locateSource')}
               onClick={onLocateSource}
-              className='flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground'
+              className='h-6 w-6 rounded-sm text-muted-foreground hover:text-foreground'
             >
               <LocateFixed className='h-4 w-4' aria-hidden='true' />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant='outline'
+              size='sm'
               type='button'
               data-testid='reference-pick-exit'
               onClick={onExitPick}
               className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
             >
               {t('canvas.generatePanel.exitSelect')}
-            </button>
+            </Button>
           </div>
         ) : null}
         {pickSession?.purpose === 'focus' && focusCropTargetId !== null ? (

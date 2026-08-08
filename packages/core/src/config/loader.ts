@@ -16,6 +16,14 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const agentConfigSchema = z.object({
   max_tool_iterations: z.number().int().positive().default(40),
+  /**
+   * Step ceiling for a worker task running one skill.
+   *
+   * Separate from `max_tool_iterations` on purpose: chat has a person
+   * waiting and can afford more turns, a worker task is a bounded job.
+   * Both used to be literals in three places, disagreeing 40 against 15.
+   */
+  skill_agent_max_steps: z.number().int().positive().default(15),
   default_model: z.string().default("anthropic/claude-sonnet-4-6"),
   consolidation_model: z.string().default("anthropic/claude-sonnet-4-6"),
   memory_window: z.number().int().positive().default(20),

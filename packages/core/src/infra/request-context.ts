@@ -6,7 +6,7 @@
  *
  * Stores user identity, conversation info, memory context, and compressed
  * conversation history. Set once per request at the route layer, then
- * accessible anywhere in the async call chain — including SubAgents.
+ * accessible anywhere in the async call chain.
  * @module
  */
 
@@ -21,7 +21,7 @@ export interface RequestStore {
   conversationId: string;
   /** Associated project ID (may be undefined). */
   projectId?: string;
-  /** Three-layer memory context (loaded once, shared by MainAgent + SubAgents). */
+  /** Three-layer memory context, loaded once per request. */
   memoryContext: MemoryContext;
   /** Compressed conversation history (old turns compressed, recent full). */
   compressedHistory: readonly MessageData[];
@@ -31,17 +31,14 @@ export interface RequestStore {
    * `deductOnce` call sites for idempotent billing refKeys.
    *
    * - `turnIndex` — the conversation turn this request is processing,
-   *   used to build `turn:${conversationId}:${turnIndex}` for main-agent
-   *   billing and `spawn:${conversationId}:${turnIndex}:${idx}` for spawns.
-   * - `spawnCount` — mutable counter, incremented by `spawnTool.execute`
-   *   on each invocation. Each spawn in one turn gets a distinct refKey.
+   *   used to build `turn:${conversationId}:${turnIndex}`, the refKey that
+   *   makes a turn's billing idempotent across a reconnect or a re-entry.
    *
    * Optional because not every code path uses AsyncLocalStorage (tests,
    * background jobs). Callers that need it must null-check.
    */
   billing?: {
     turnIndex: number;
-    spawnCount: { value: number };
   };
 }
 

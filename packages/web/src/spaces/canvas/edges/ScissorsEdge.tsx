@@ -11,6 +11,7 @@ import {
 import { Scissors } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
@@ -57,7 +58,9 @@ export const ScissorsEdge = React.memo(function ScissorsEdge(props: EdgeProps): 
       <BaseEdge id={id} path={edgePath} />
       {shouldShowScissors(Boolean(selected), readOnly) ? (
         <EdgeLabelRenderer>
-          <button
+          <Button
+            variant='outline'
+            size='icon'
             type='button'
             data-testid={`edge-scissors-${id}`}
             aria-label={t('canvas.edge.delete')}
@@ -72,10 +75,10 @@ export const ScissorsEdge = React.memo(function ScissorsEdge(props: EdgeProps): 
             }}
             // `nopan nodrag` so pressing the scissors never pans the canvas or
             // starts a drag; rounded chip matching the viewport toolbar buttons.
-            className='nopan nodrag inline-flex h-6 w-6 items-center justify-center rounded-full border border-border bg-popover text-muted-foreground shadow transition-colors hover:bg-accent hover:text-foreground'
+            className='nopan nodrag h-6 w-6 rounded-full border-border bg-popover text-muted-foreground shadow hover:bg-accent hover:text-foreground'
           >
             <Scissors className='h-3.5 w-3.5' aria-hidden='true' />
-          </button>
+          </Button>
         </EdgeLabelRenderer>
       ) : null}
     </>

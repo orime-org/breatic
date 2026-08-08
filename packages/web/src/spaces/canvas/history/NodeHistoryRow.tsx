@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
@@ -248,14 +249,16 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
             {t('canvas.history.current')}
           </span>
         ) : restorable ? (
-          <button
+          <Button
             type='button'
+            variant='default'
+            size='sm'
             data-testid='node-history-restore'
             onClick={() => onRestore(entry)}
-            className='rounded-content-sm bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            className='rounded-content-sm bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary-hover'
           >
             {t('canvas.history.restore')}
-          </button>
+          </Button>
         ) : (
           <span className='text-2xs text-status-error'>
             {t('canvas.history.failed')}

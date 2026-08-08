@@ -14,7 +14,7 @@ export interface ToolCall {
   name: string;
   args: Record<string, unknown>;
   result?: unknown;
-  /** Pending when the worker / SubAgent hasn't returned yet. */
+  /** Pending when the worker hasn't returned yet. */
   status: 'pending' | 'success' | 'error';
   errorMessage?: string;
 }

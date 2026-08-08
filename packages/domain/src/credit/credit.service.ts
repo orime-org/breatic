@@ -20,7 +20,7 @@ import { AppError, ValidationError } from "@breatic/core";
  * refKey format contract: ASCII alphanumerics plus a small punctuation
  * set (`_`, `:`, `.`, `-`), length 1-255. Matches the typical output of
  * UUID generators, `${conversationId}-turn-${N}` composites, and
- * `${taskId}:spawn:${idx}` patterns we'll use at call sites.
+ * `${conversationId}:turn:${idx}` patterns we'll use at call sites.
  *
  * Enforced at `deductOnce` entry so an empty/malformed key can never
  * slip through and create a lock-key collision like `dev:bill::userId:`.
@@ -49,7 +49,7 @@ export async function getBalance(userId: string): Promise<number> {
  * Only deducts from balance when PAYMENT_ENABLED is true.
  * @param userId - The user who consumed resources
  * @param amount - Number of credits to deduct (must be positive)
- * @param description - Human-readable reason (e.g. "Agent chat", "SubAgent:researcher")
+ * @param description - Human-readable reason (e.g. "Agent chat", "Text tool")
  * @param referenceId - External reference (e.g. conversation ID, task ID)
  * @param options - Token count and model name for detailed tracking
  * @param options.tokensUsed - Number of LLM/AIGC tokens consumed by this usage.
@@ -178,7 +178,7 @@ export async function add(
  * @returns `{ deducted: true, creditsAfter }` on first use; `{ deducted: false }` if the refKey was already billed for this user.
  * @throws {ValidationError} if refKey doesn't match REFKEY_PATTERN.
  *
- * Use for non-task-level billing: text stream, agent turn, subagent spawn.
+ * Use for non-task-level billing: text stream, agent turn.
  */
 export async function deductOnce(
   userId: string,

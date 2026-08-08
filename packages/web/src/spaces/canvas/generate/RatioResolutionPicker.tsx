@@ -6,6 +6,7 @@ import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
+import { Button } from '@web/components/ui/button';
 import {
   Popover,
   PopoverContent,
@@ -71,16 +72,18 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   // boundary — a verbose value must clip inside the w-64 popover, not overflow
   // it (same class as the ModelPicker display_name fix).
   const optionClass =
-    'max-w-full truncate rounded-overlay border border-border px-2 py-1 text-xs text-foreground transition-colors ' +
-    'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
+    'max-w-full truncate rounded-overlay px-2 py-1 text-xs text-foreground ' +
+    'hover:bg-accent ' +
     'aria-[current=true]:border-active-border aria-[current=true]:bg-accent';
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type='button'
+          variant='outline'
+          size='default'
           data-testid='generate-ratio-trigger'
-          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-background px-2.5 text-xs text-foreground hover:bg-accent'
         >
           {/* truncate: catalog aspect_ratio/resolution values carry no length
               cap at the sanitize boundary — unbounded, a verbose value would
@@ -91,7 +94,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
             className='h-3.5 w-3.5 shrink-0 opacity-60'
             aria-hidden='true'
           />
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         side='top'
@@ -109,16 +112,18 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
             </p>
             <div className='flex flex-wrap gap-1.5'>
               {resolutions.map((r) => (
-                <button
+                <Button
                   key={r}
                   type='button'
+                  variant='outline'
+                  size='sm'
                   data-testid={`generate-resolution-option-${r}`}
                   aria-current={value.resolution === r}
                   onClick={() => onChange({ resolution: r })}
                   className={optionClass}
                 >
                   {r}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -130,16 +135,18 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
             </p>
             <div className='flex flex-wrap gap-1.5'>
               {ratios.map((r) => (
-                <button
+                <Button
                   key={r}
                   type='button'
+                  variant='outline'
+                  size='sm'
                   data-testid={`generate-ratio-option-${r}`}
                   aria-current={value.aspect_ratio === r}
                   onClick={() => onChange({ aspect_ratio: r })}
                   className={optionClass}
                 >
                   {r}
-                </button>
+                </Button>
               ))}
             </div>
           </div>

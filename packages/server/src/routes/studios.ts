@@ -167,9 +167,9 @@ studio.get("/:slug", async (c) => {
  *
  * Changing the slug frees the old one immediately — no redirect, no alias
  * (rule 7) — so every existing link to the old address breaks. The frontend
- * puts this behind a confirmation in the danger zone; the API simply applies
- * it. Personal studios are editable: their name, handle and bio are the
- * owner's own profile.
+ * puts this behind a confirmation dialog; the API simply applies it. Personal
+ * studios are editable: their name, handle and bio are the owner's own
+ * profile.
  *
  * Rate limited per user: a rename churns every link to the studio, and the
  * slug-availability probe next to it is already limited.

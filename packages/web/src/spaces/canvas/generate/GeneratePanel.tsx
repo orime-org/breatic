@@ -6,6 +6,7 @@ import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   CameraPicker,
@@ -151,7 +152,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   // shrink-0 keeps the fixed-size footer icons from being squeezed when the
   // pickers' labels run long (the footer row has no flex-wrap by design).
   const placeholderClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border ' +
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full ' +
     'text-muted-foreground opacity-50 cursor-not-allowed';
   return (
     <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
@@ -172,26 +173,30 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         />
         <div className='flex items-center gap-1.5'>
           {HEADER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
-            <button
+            <Button
               key={key}
               type='button'
+              variant='outline'
+              size='icon'
               data-testid={testId}
               disabled
               aria-label={t(`canvas.generatePanel.${key}`)}
               className={placeholderClass}
             >
               <Icon className='h-4 w-4' aria-hidden='true' />
-            </button>
+            </Button>
           ))}
-          <button
+          <Button
             type='button'
+            variant='ghost'
+            size='icon'
             data-testid='generate-exit'
             aria-label={t('canvas.generatePanel.exit')}
             onClick={onExit}
-            className='flex h-7 w-7 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            className='flex h-7 w-7 items-center justify-center rounded-overlay text-muted-foreground hover:bg-accent hover:text-accent-foreground'
           >
             <X className='h-4 w-4' aria-hidden='true' />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -229,16 +234,18 @@ export const GeneratePanel = React.memo(function GeneratePanel({
 
         <div className='ml-auto flex items-center gap-1.5'>
           {FOOTER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
-            <button
+            <Button
               key={key}
               type='button'
+              variant='outline'
+              size='icon'
               data-testid={testId}
               disabled
               aria-label={t(`canvas.generatePanel.${key}`)}
               className={placeholderClass}
             >
               <Icon className='h-4 w-4' aria-hidden='true' />
-            </button>
+            </Button>
           ))}
           <span
             data-testid='generate-credit'
@@ -247,16 +254,18 @@ export const GeneratePanel = React.memo(function GeneratePanel({
             <Star className='h-3.5 w-3.5' aria-hidden='true' />
             {creditEstimate}
           </span>
-          <button
+          <Button
             type='button'
+            variant='default'
+            size='icon'
             data-testid='generate-execute'
             aria-label={t('canvas.generatePanel.execute')}
             disabled={!canExecute}
             onClick={onExecute}
-            className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
+            className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed'
           >
             <ArrowUp className='h-4 w-4' aria-hidden='true' />
-          </button>
+          </Button>
         </div>
       </div>
     </div>

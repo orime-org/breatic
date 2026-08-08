@@ -65,3 +65,33 @@ describe("getCollabConfig", () => {
     expect(Object.isFrozen(first)).toBe(true);
   });
 });
+
+describe("the store's knobs", () => {
+  // Storing is not on a clock: an attempt runs until the write answers, and
+  // the answer is the whole outcome. The two timeouts that used to be here —
+  // one per attempt, one over the shutdown phase — cancelled nothing and only
+  // manufactured a third outcome to report. What is left is the interval,
+  // which is a write-load knob.
+
+  it("declares how often the loop runs", async () => {
+    const cfg = await loadConfig();
+
+    expect(cfg.store_interval_ms).toBeGreaterThan(0);
+  });
+
+  // Same trap as `port` above, and Gate 2 round 5 caught this block falling
+  // into it: the first version asserted the PARSED config has no
+  // `store_final_attempt_timeout_ms`, which zod's stripping guarantees whether
+  // or not the key is in the file. (Verified: putting both keys back into the
+  // YAML left that assertion green.) Someone reading an old runbook or the
+  // pre-removal git history and re-adding either key would get a silent no-op.
+  it("collab.yaml declares no deadline over a store — waiting is the whole point", () => {
+    const yaml = readFileSync(
+      resolve(import.meta.dirname, "../../../../config/collab.yaml"),
+      "utf-8",
+    );
+
+    expect(yaml).not.toMatch(/^\s*store_final_attempt_timeout_ms\s*:/m);
+    expect(yaml).not.toMatch(/^\s*store_shutdown_settle_budget_ms\s*:/m);
+  });
+});

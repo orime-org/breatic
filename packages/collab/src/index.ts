@@ -43,8 +43,17 @@ initLogger("collab");
 const logger = createLogger("main");
 
 /**
- * Overall graceful-shutdown deadline (ms). Kept under the dev `tsx watch` 5s
- * force-kill window so a restart never races a slow drain holding :1234.
+ * Deadline (ms) for the teardown drains that follow the store settle.
+ *
+ * Predates the timed store by two months (`6e07f4fd`, the shared
+ * graceful-shutdown refactor across all three services) and covers what it
+ * always covered: a hung drain — a Redis quit that never returns, say — must
+ * not hold the process open. It does NOT bound the store settle, which runs
+ * before it and is deliberately unbounded; a store answers when the database
+ * answers, and a clock over it would cancel nothing.
+ *
+ * It no longer has to cover the listen socket either: that is released before
+ * the settle now, so a dev `tsx watch` restart can rebind :1234 immediately.
  */
 const SHUTDOWN_DEADLINE_MS = 4000;
 
@@ -153,7 +162,8 @@ async function main(): Promise<void> {
   }
 
   // Create and start Hocuspocus server
-  const { server, hocuspocus, connectionRegistry, handlingSweeper } = await createCollabServer({
+  const { server, hocuspocus, connectionRegistry, handlingSweeper, storeLoop } =
+    await createCollabServer({
     collabRedisUrl: REDIS_COLLAB_URL,
     port: env.COLLAB_PORT,
     redisKeyPrefix: REDIS_KEY_PREFIX,
@@ -333,6 +343,26 @@ async function main(): Promise<void> {
    */
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutting down...");
+    // Stop starting new store rounds. A round already in flight finishes on
+    // its own, and each document gets its own last attempt when the library
+    // unloads it — `server.destroy()` is the first drain below, and it closes
+    // the client connections, which is what makes the documents unload.
+    storeLoop.stop();
+
+    // Free :1234 before anything slow runs, so a restart can rebind straight
+    // away. `runGracefulShutdown` asks for the same release below and swallows
+    // the error from closing twice.
+    try {
+      server.httpServer.close();
+    } catch {
+      // Best effort — a release error must not stop the teardown below.
+    }
+
+    // Onto disk before the teardown, not after it: if the platform loses
+    // patience and kills the process mid-drain, everything logged up to here
+    // is already safe.
+    await flushLogger();
+
     await runGracefulShutdown({
       // Release the WS listen socket first so a restart can rebind :1234
       // immediately, instead of holding it behind the drains below — the old

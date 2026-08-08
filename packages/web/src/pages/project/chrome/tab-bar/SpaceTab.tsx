@@ -20,6 +20,7 @@ import * as React from 'react';
 import { toast } from '@web/lib/toast';
 
 import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
+import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceType } from '@web/spaces';
@@ -158,7 +159,12 @@ export function SpaceTab({
   };
 
   return (
-    <button
+    <Button
+      // A tab strip, not a standalone labelled button: the active fill is the
+      // affordance, and `menu-item` is the one size that leaves the tab's own
+      // 32px chrome height alone.
+      variant='ghost'
+      size='menu-item'
       type='button'
       role='tab'
       aria-selected={active}
@@ -246,6 +252,6 @@ export function SpaceTab({
           <X style={{ width: 12, height: 12 }} />
         </span>
       ) : null}
-    </button>
+    </Button>
   );
 }

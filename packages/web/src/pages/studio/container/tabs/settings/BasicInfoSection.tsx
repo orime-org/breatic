@@ -3,24 +3,11 @@
 
 import * as React from 'react';
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
-import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
-import { STUDIO_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
-import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
 import type { UpdateStudioInput } from '@breatic/shared';
 
@@ -39,18 +26,17 @@ interface BasicInfoSectionProps {
 }
 
 /**
- * The studio's own details: name, `Slug` and bio.
+ * The studio's display details: its name and its description.
  *
- * `Slug` lives here rather than in the danger zone even though changing it is
- * the destructive one, because the danger zone does not exist for a personal
- * studio — and a personal studio's slug is its owner's `@handle`, which they
- * must be able to change. The weight of the action is carried by a
- * confirmation spelling out the consequences, not by which box it sits in.
+ * Both are freely editable and freely reversible — changing either breaks no
+ * link and releases no name for anyone else to take. (A personal studio's name
+ * does travel beyond it: the whole app reads it as its owner's display name.
+ * But it can be changed straight back, which is the property that matters
+ * here.) The slug is not here: changing it breaks every link that
+ * points at this studio and releases the name for anyone to take, so it lives
+ * in the danger zone with the other things that cannot be undone.
  *
- * Only changed fields are sent. Submitting a field at its current value would
- * be harmless for the name and bio, but for the slug it would mean releasing
- * and re-taking the same handle, which is a real (if brief) window where
- * someone else could claim it.
+ * Only changed fields are sent, so a save that touched neither is not a save.
  * @param props - The studio, the viewer's permission and the save wiring.
  * @param props.studio - The studio being edited.
  * @param props.canEdit - Whether the fields are editable.
@@ -66,56 +52,29 @@ export function BasicInfoSection({
 }: BasicInfoSectionProps): React.JSX.Element {
   const t = useTranslation();
   const [name, setName] = React.useState(studio.name);
-  const [slug, setSlug] = React.useState(studio.slug);
   const [bio, setBio] = React.useState(studio.bio ?? '');
-  const [confirmingSlug, setConfirmingSlug] = React.useState(false);
 
   // A save (or someone else's edit arriving) re-seeds the fields.
   React.useEffect(() => {
     setName(studio.name);
-    setSlug(studio.slug);
     setBio(studio.bio ?? '');
-  }, [studio.bio, studio.name, studio.slug]);
-
-  const availability = useSlugAvailability(slug, { ownSlug: studio.slug });
+  }, [studio.bio, studio.name]);
 
   const patch = React.useMemo((): UpdateStudioInput => {
     const next: UpdateStudioInput = {};
     if (name.trim() !== studio.name) next.name = name.trim();
-    if (slug.trim() !== studio.slug) next.slug = slug.trim();
     if (bio.trim() !== (studio.bio ?? '')) next.bio = bio.trim();
     return next;
-  }, [bio, name, slug, studio.bio, studio.name, studio.slug]);
+  }, [bio, name, studio.bio, studio.name]);
 
-  const slugChanged = patch.slug !== undefined;
   const dirty = Object.keys(patch).length > 0;
-  // An emptied field reads as `idle` from the availability check, not as
-  // `invalid` — so without the explicit emptiness test it slips past the gate
-  // and the user walks all the way through the destructive confirmation before
-  // the server rejects it. The name has no availability check at all and needs
-  // the same guard.
-  const slugBlocked =
-    slugChanged &&
-    (patch.slug === '' ||
-      availability.status === 'invalid' ||
-      availability.status === 'taken' ||
-      availability.status === 'checking');
+  // The name has no availability check to lean on, so its emptiness is tested
+  // here or nowhere: a blank one would otherwise reach the server and come
+  // back as a validation error the form could have refused itself.
   const nameBlocked = patch.name !== undefined && patch.name === '';
-  const canSubmit =
-    canEdit && dirty && !saving && !slugBlocked && !nameBlocked;
+  const canSubmit = canEdit && dirty && !saving && !nameBlocked;
 
-  const submit = React.useCallback((): void => {
-    if (slugChanged) {
-      setConfirmingSlug(true);
-      return;
-    }
-    onSave(patch);
-  }, [onSave, patch, slugChanged]);
-
-  const confirmSlug = React.useCallback((): void => {
-    setConfirmingSlug(false);
-    onSave(patch);
-  }, [onSave, patch]);
+  const submit = React.useCallback((): void => onSave(patch), [onSave, patch]);
 
   return (
     <section className='flex flex-col gap-4'>
@@ -136,28 +95,6 @@ export function BasicInfoSection({
           data-testid='settings-name'
         />
       </div>
-
-      <SlugField
-        id='studio-slug'
-        label={t('studio.container.settings.slug')}
-        value={slug}
-        onChange={setSlug}
-        disabled={!canEdit || saving}
-        error={
-          availability.status === 'invalid' || availability.status === 'taken'
-            ? (availability.reason ?? null)
-            : null
-        }
-        bounds={STUDIO_SLUG_BOUNDS}
-        helper={t('studio.container.settings.slugHelper')}
-        availability={
-          availability.status === 'checking'
-            ? 'checking'
-            : availability.status === 'available' && slugChanged
-              ? 'available'
-              : undefined
-        }
-      />
 
       <div className='flex flex-col gap-1.5'>
         <Label htmlFor='studio-bio'>
@@ -194,43 +131,6 @@ export function BasicInfoSection({
           </Button>
         </div>
       ) : null}
-
-      <AlertDialog open={confirmingSlug} onOpenChange={setConfirmingSlug}>
-        <AlertDialogContent data-testid='settings-slug-dialog'>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('studio.container.settings.slugChangeTitle')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('studio.container.settings.slugChangeBody', {
-                oldSlug: studio.slug,
-                newSlug: patch.slug ?? '',
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <ul className='list-disc pl-5 text-xs text-muted-foreground'>
-            <li>{t('studio.container.settings.slugChangeLinks')}</li>
-            <li>{t('studio.container.settings.slugChangeReleased')}</li>
-            <li>{t('studio.container.settings.slugChangeNoRedirect')}</li>
-            <li>
-              {studio.type === 'personal'
-                ? t('studio.container.settings.slugChangeHandle')
-                : t('studio.container.settings.slugChangeMembers')}
-            </li>
-          </ul>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t('studio.container.dialog.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmSlug}
-              data-testid='settings-slug-confirm'
-            >
-              {t('studio.container.settings.slugChangeConfirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </section>
   );
 }

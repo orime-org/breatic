@@ -310,7 +310,7 @@ export function MembersTab({
                   </td>
                   <td className='py-2.5 text-right'>
                     <Button
-                      variant='ghost'
+                      variant='outline'
                       size='sm'
                       disabled={
                         revokeMutation.isPending &&

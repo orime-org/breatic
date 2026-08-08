@@ -38,7 +38,7 @@ logs/*
 # Uploads (user creates from uploads.example/)
 uploads/
 
-# Agent file-tool sandbox (FILE_TOOL_SANDBOX_DIR default; runtime scratch)
+# Runtime scratch
 sandbox/
 
 # Worktrees (optional parallel dev setup, see docs/WORKTREE.md)

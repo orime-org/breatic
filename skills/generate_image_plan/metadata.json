@@ -2,7 +2,7 @@
   "name": "generate_image_plan",
   "description": "Generate a task plan for image creation. Use when the user asks to create, draw, or generate an image.",
   "tools": [],
-  "output_type": "task_plan",
+  "output_type": "canvas",
   "category": "image",
   "keywords": [
     "image",
@@ -11,8 +11,5 @@
     "picture",
     "photo",
     "illustration"
-  ],
-  "scope": [
-    "agent"
   ]
 }

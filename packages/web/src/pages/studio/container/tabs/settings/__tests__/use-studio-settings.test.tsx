@@ -14,7 +14,11 @@
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  onlineManager,
+} from '@tanstack/react-query';
 
 import { useStudioSettings } from '@web/pages/studio/container/tabs/settings/use-studio-settings';
 import { studiosApi } from '@web/data/api/studios';
@@ -96,6 +100,69 @@ beforeEach(() => {
   vi.clearAllMocks();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   useCurrentUserStore.getState().clear();
+});
+
+describe('useStudioSettings — telling a rename apart from any other save', () => {
+  it('says no rename is running before anything has been saved', () => {
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+    expect(result.current.renaming).toBe(false);
+  });
+
+  it('says no rename is running while a NAME save is out', async () => {
+    vi.mocked(studiosApi.update).mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.save({ name: 'Acme Inc' });
+
+    await waitFor(() => expect(result.current.saving).toBe(true));
+    expect(result.current.renaming).toBe(false);
+  });
+
+  it('says a rename is running while the SLUG save is out', async () => {
+    vi.mocked(studiosApi.update).mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.save({ slug: 'acme-renamed' });
+
+    await waitFor(() => expect(result.current.renaming).toBe(true));
+  });
+
+  it('stops saying so once the rename has failed', async () => {
+    // The variables of the last mutation survive its settling, so "the patch
+    // in flight carried a slug" keeps answering yes afterwards. Only the
+    // in-flight half tells a finished rename from a running one — without it
+    // the confirm button would sit there spinning over a rename that came back
+    // 409 several seconds ago.
+    vi.mocked(studiosApi.update).mockRejectedValue(new Error('taken'));
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.save({ slug: 'acme-renamed' });
+
+    await waitFor(() => expect(result.current.saving).toBe(false));
+    expect(result.current.renaming).toBe(false);
+  });
+
+  it('counts a rename queued behind a lost connection as still running', async () => {
+    // Offline, React Query holds the mutation in `pending` and calls nothing;
+    // it will send once the connection returns. So reporting it as running is
+    // honest, and — since nothing locks on this any more — it costs at most a
+    // spinner over a request that has not left yet.
+    onlineManager.setOnline(false);
+    try {
+      vi.mocked(studiosApi.update).mockResolvedValue(
+        updated(TEAM, { slug: 'acme-renamed' }),
+      );
+      const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+      result.current.save({ slug: 'acme-renamed' });
+
+      await waitFor(() => expect(result.current.saving).toBe(true));
+      expect(studiosApi.update).not.toHaveBeenCalled();
+      expect(result.current.renaming).toBe(true);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
 });
 
 describe('useStudioSettings — editing name and bio', () => {

@@ -57,7 +57,12 @@ loader:`packages/collab/src/config.ts`。**只有行为参数,没有端口** —
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `debounce` / `max_debounce` | 2000 / 10000 ms | 文档持久化防抖 |
+| `debounce` / `max_debounce` | 2000 / 10000 ms | 库自己触发存盘钩子的节奏。**#40 起那次调用落到我们这儿是空返回**(只有定时循环和卸载闸能真正写库),这两个值保留是因为调大它们不是选项 —— 存盘挂起期间 `shouldUnloadDocument` 恒为假,调大等于让每份文档都卸载不掉 |
+| `store_interval_ms` | 10000 | 定时存盘间隔。**这是写库压力旋钮,不是安全旋钮** —— 正常关页面和正常重启都由卸载闸兜住,崩一个实例由别的实例兜住(它们连转发来的更新也计数、会自己写),全部实例同时断电则 2 秒和 10 秒没有区别,那一格靠救援文件加告警 |
+| `store_rescue_dir` | `logs/collab/rescue` | 补传也没成时,内容写到哪。相对路径从仓库根解析;Docker 下落在挂载的 `./logs` 卷里。**永不自动清理** —— 每个文件都是某人工作的最后一份拷贝 |
+| `store_alert_email` | 空 | 收告警的运维邮箱。**生产必须配** —— 没人知道的救援文件等于没有。注意 `EMAIL_BACKEND` 默认 `disabled` 且两个 env 模板都是 disabled,那种情况下告警只到日志,collab 会明说而不是静默 |
+| `store_alert_timeout_ms` | 3000 | 发告警邮件的超时。**这是唯一一个超时,而且它管的不是存盘** —— 邮件传输层没配任何超时,继承 nodemailer 默认的两分钟连接超时,而卸载闸要等这封信发完。库故障期间 SMTP 又不通的话,每份正在卸载的文档都会被挂住两分钟——内存被文档填满,正是整套设计要消灭的那个故障从另一扇门进来。信里不带内容(救援文件在发信之前就已经落盘),所以放弃等它不会丢任何东西 |
+| `store_alert_window_ms` | 600000(10 分钟) | 同一份文档在这个窗口内只发一封告警。一次库故障 = 每份打开的文档每轮一次失败,不去重会刷屏 |
 | `max_document_bytes` | 10485760(10 MB) | 单 Yjs 文档字节上限(0 = 不限) |
 | `max_connections_per_document` | 100 | 单文档跨实例连接数上限(0 = 不限) |
 | `max_documents_per_socket` | 1000 | 一条 socket 要能承载多少文档(= 一个 project 的 Space 数 + meta)。库里**几个**「超了就关掉整条 socket」的上限都从这一个数推导(`infra/socket-ceilings.ts`),因为只抬其中一个不算修 —— 下一个照样撞、症状一模一样。字节上限和静默超时实测远够用,故意保留库默认值 |
@@ -65,6 +70,10 @@ loader:`packages/collab/src/config.ts`。**只有行为参数,没有端口** —
 | `throttle_ban_time` | 1(分钟) | ban 时长(**单位是分钟**,扩展内部乘 60×1000) |
 | `handling_lease.default_budget_ms` | 3600000(1 小时) | handling 租约默认预算,超时清扫 |
 | `presence_stale_after_ms` | 90000(90 秒) | 在场名单里一条「在线」记录在没人刷新的情况下还被相信多久。**meta 文档的 awareness 通道上只有心跳**(光标只在 canvas / document 这类空间文档上;meta 的 socket 上另跑着 space / tab 的 stateless RPC,走别的钩子、不碰在场状态),每个心跳都写、不做任何限流,所以两次写之间的最大间隔就等于浏览器的心跳间隔。门槛必须盖过那个间隔中最慢的一档 —— 不是页面在前台时那一档(实测 18 秒:库是「静默满 15 秒补发」,但用 3 秒一跳的定时器检查,那一跳每次都差几毫秒够不到 15 秒),而是隐藏的浏览器标签页超过 5 分钟后定时器被节流到**每分钟一次**(Chrome),而 socket 一直开着(保活的 pong 由网络层回,不跑 JS)。所以 60000 正好压在那个周期上、会让人每分钟在线离线闪一次,90000 才有余量。`presence-config.test.ts` 钉住这个关系,改小会红 |
+
+**存盘路径上没有任何超时,这是故意的。** 存盘是一件有两个结果的事:写进去了,或者没写进去 —— 只有那次写自己说得清是哪一个。在旁边掐表取消不了任何东西,放弃等待也就得不到答案,只会凭空造出第三种状态「说不清」,而这个状态接下来会让文档被写进救援文件、让运维收到告警。这不是设想:曾经有三封这样的告警是在库健康、250 毫秒就能应答的情况下发出去的。所以定时那一轮和卸载前那一次,都等到写库给出答案为止。
+
+**存盘只有一条路,没有第二种顺序**:一份文档要离开内存的时候先写库,写成了就完事,没写成才把内容写到磁盘、记日志、通知运维。上面那个定时存盘完全不碰磁盘 —— 它失败了什么都不用做,下一轮会把内容写进去。
 
 ## 5. `config/worker.yaml` — BullMQ Worker
 
@@ -106,6 +115,23 @@ loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `llm_max_retries` | 2 | 每次 LLM 调用的重试次数(maxRetries),由 model-call wrapper 统一注入(#1625 Slice 3)|
+| `skill_agent_max_steps` | 15 | worker 跑一个 skill 时的步数上限。跟 `max_tool_iterations`(主对话 40)分开:主对话有人在等、可以多轮,worker 是一个有边界的后台任务 |
+
+## 7.1 `config/skill-routing.yaml` — 哪个 skill 能在哪儿用、谁能调
+
+loader:`packages/core/src/config/skill-routing.ts`。这三个答案原本在各 skill 自己的 `metadata.json` 里 —— 那等于让 skill 自己声明自己的权限。搬到宿主端的配置文件有两个好处:第三方 skill 原样拿来就能用(不往它的 frontmatter 里加字段),以及路由不再取决于谁写的这个 skill。
+
+**缺省方向按轴分开,这是关键**:
+
+| 字段 | 不写时 | 为什么 |
+|---|---|---|
+| `surfaces` | `[chat, canvas]` | 这是**可见性**。开着无非多显示一个入口 |
+| `user_invocable` | `false` | 这是**授权**。开着等于任何登录用户都能直接调 |
+| `model_invocable` | `false` | 同上,模型能不能自己调起也是授权 |
+
+`surfaces` 取值:`chat` · `canvas` · `image_node` · `video_node` · `document`,写错会在启动时报错而不是静默隐藏这个 skill。
+
+**没列进这个文件的 skill,哪儿都不能用** —— 沉默从不授予任何权限。
 
 ## 8. 连接 / 存储上传韧性(代码内,非 yaml)
 
@@ -125,6 +151,7 @@ loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 
 | `config/pricing.yaml` | `packages/server/src/config/pricing.ts` | 积分购买档位(Stripe test/live Price ID) |
 | `config/text-tools.yaml` | `packages/server/src/config/text-tools.ts` | 文本 mini-tool 模型 + 参数 |
 | `config/agent.yaml` | `packages/core/src/config/*` | MainAgent 行为 / 记忆 / 工具 / worker 限制 |
+| `config/skill-routing.yaml` | `packages/core/src/config/skill-routing.ts` | 哪个 skill 能在哪个面用、用户能不能直接调、模型能不能自己调起 |
 
 ## 10. 环境变量(部署级,非 yaml)
 

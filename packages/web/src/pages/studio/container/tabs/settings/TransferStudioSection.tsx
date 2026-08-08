@@ -134,29 +134,33 @@ export function TransferStudioSection({
         >
           {expiresInLabel(live.expiresAt, t)}
         </span>
-        <button
+        <Button
           type='button'
-          className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-accent'
+          variant='outline'
+          size='sm'
+          className='h-[30px] rounded-chrome px-3 text-xs font-medium'
           disabled={withdrawMutation.isPending}
           onClick={onWithdraw}
           data-testid='settings-transfer-withdraw'
         >
           {t('studio.container.settings.transferWithdraw')}
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
     <>
-      <button
+      <Button
         type='button'
-        className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-accent'
+        variant='outline'
+        size='sm'
+        className='h-[30px] rounded-chrome px-3 text-xs font-medium'
         onClick={() => setOpen(true)}
         data-testid='settings-transfer-open'
       >
         {t('studio.container.settings.transfer')}
-      </button>
+      </Button>
 
       <Dialog
         open={open}
@@ -203,7 +207,7 @@ export function TransferStudioSection({
               </Select>
             )}
             <div className='flex items-center justify-end gap-2'>
-              <Button variant='ghost' size='sm' onClick={() => setOpen(false)}>
+              <Button variant='outline' size='sm' onClick={() => setOpen(false)}>
                 {t('studio.container.dialog.cancel')}
               </Button>
               <Button

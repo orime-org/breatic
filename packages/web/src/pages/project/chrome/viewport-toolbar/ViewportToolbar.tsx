@@ -12,6 +12,7 @@ import {
   Undo2,
 } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import {
   Popover,
@@ -263,7 +264,9 @@ function VtButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
+        <Button
+          variant='ghost'
+          size='icon'
           type='button'
           {...rest}
           disabled={disabled}
@@ -272,12 +275,15 @@ function VtButton({
             disabled
               ? 'cursor-not-allowed bg-transparent text-muted-foreground/40'
               : active
-                ? 'bg-foreground text-background'
+                ? // The hover pair restates the resting colours: the ghost
+              // variant would otherwise wash the pressed state out on
+              // hover and hide the glyph against its own fill.
+                'bg-foreground text-background hover:bg-foreground hover:text-background'
                 : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
           )}
         >
           {children}
-        </button>
+        </Button>
       </TooltipTrigger>
       <TooltipContent side='top'>{tooltip}</TooltipContent>
     </Tooltip>
@@ -354,7 +360,9 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <button
+            <Button
+              variant='outline'
+              size='sm'
               type='button'
               aria-label={t('viewportToolbar.zoomResetAria')}
               data-testid='zoom-readout-trigger'
@@ -362,7 +370,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
               className='inline-flex h-8 w-12 shrink-0 items-center justify-center rounded-md bg-transparent text-2xs tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
             >
               <span data-testid='zoom-readout'>{Math.round(zoom * 100)}%</span>
-            </button>
+            </Button>
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side='top'>
@@ -381,20 +389,25 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
             const isCurrent = Math.abs(preset - zoom) < 0.001;
             const label = `${Math.round(preset * 100)}%`;
             return (
-              <button
+              <Button
                 key={preset}
+                variant='ghost'
+                size='menu-item'
                 type='button'
                 onClick={() => apply(preset)}
                 data-testid={`zoom-preset-${Math.round(preset * 100)}`}
                 className={cn(
                   'inline-flex h-7 items-center justify-start rounded-chrome px-2 text-xs transition-colors',
                   isCurrent
-                    ? 'bg-secondary text-secondary-foreground'
+                    // Restate the hover on the selected row: the variant's
+                    // `hover:bg-accent` would otherwise paint over the
+                    // selection and make it read as any other row.
+                    ? 'bg-secondary text-secondary-foreground hover:bg-secondary hover:text-secondary-foreground'
                     : 'bg-transparent text-foreground hover:bg-accent',
                 )}
               >
                 {label}
-              </button>
+              </Button>
             );
           })}
         </div>

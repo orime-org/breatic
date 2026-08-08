@@ -46,6 +46,10 @@ vi.mock("@breatic/core", () => {
   class ForbiddenError extends Error {}
   class ConflictError extends Error {}
   return {
+    // The mailer lives in core again (#40). This factory replaces the module
+    // wholesale rather than spreading the real exports, so anything the file
+    // imports has to be listed here or it arrives as undefined.
+    sendMail: vi.fn(async () => ({ ok: true })),
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
         cb({ marker: "fake-tx" }),
@@ -110,9 +114,6 @@ vi.mock("@server/config/limits.js", () => ({
 vi.mock("@server/modules/auth/user.repo.js", () => ({
   getUserById: vi.fn(),
 }));
-vi.mock("@server/infra/mailer.js", () => ({
-  sendMail: vi.fn(async () => ({ ok: true })),
-}));
 
 import * as notificationRepo from "../../notification/notification.repo.js";
 import * as notificationService from "../../notification/notification.service.js";
@@ -120,8 +121,7 @@ import * as studioService from "../../studio/studio.service.js";
 import * as projectRepo from "../../project/project.repo.js";
 import * as requestsRepo from "../roleUpgradeRequests.repo.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
-import { sendMail } from "@server/infra/mailer.js";
-import { projectMembersRepo } from "@breatic/core";
+import { projectMembersRepo, sendMail } from "@breatic/core";
 import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 

@@ -60,6 +60,8 @@ export { getStorageConfig } from "@core/config/storage.js";
 export type { StorageConfig } from "@core/config/storage.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
 export { getAgentConfig } from "@core/config/loader.js";
+export { getSkillRouting, resetSkillRouting, SKILL_SURFACES } from "@core/config/skill-routing.js";
+export type { SkillRoute, SkillRouting, SkillSurface } from "@core/config/skill-routing.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
 export {
@@ -92,6 +94,8 @@ export { createQueue, createQueueEvents, createWorker, defaultJobOpts, closeQueu
 export { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@core/infra/storage/index.js";
 export { sniffMimeType } from "@core/infra/storage/sniff-mime.js";
 export type { PersistedObject } from "@core/infra/storage/index.js";
+export { sendMail } from "@core/infra/mailer.js";
+export type { SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
 export {
   publishNodeEvent,
   publishToStream,

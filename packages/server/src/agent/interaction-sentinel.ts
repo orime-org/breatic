@@ -27,40 +27,52 @@ export type InteractionEvent =
   | typeof SSEEventType.AGENT_CANVAS_ACTION
   | typeof SSEEventType.AGENT_SEARCH_RESULTS;
 
+/**
+ * The three tools, split by whether the turn can carry on without an answer.
+ *
+ * `ask_user_choice` asks a question the model needs answered, so the turn
+ * stops there and waits. The other two only put something on screen — a set
+ * of results, a proposed canvas edit — and the model is meant to keep writing
+ * around them, and may raise several in one turn. Treating those as blocking
+ * makes the first card a turn draws the last thing it says.
+ */
 const INTERACTION_TOOL_SENTINELS: ReadonlyArray<{
   sentinel: string;
   event: InteractionEvent;
+  blocking: boolean;
 }> = [
-  { sentinel: ASK_USER_CHOICE_SENTINEL, event: SSEEventType.AGENT_CHOICE },
-  { sentinel: PROPOSE_CANVAS_ACTION_SENTINEL, event: SSEEventType.AGENT_CANVAS_ACTION },
-  { sentinel: SHOW_SEARCH_RESULTS_SENTINEL, event: SSEEventType.AGENT_SEARCH_RESULTS },
+  { sentinel: ASK_USER_CHOICE_SENTINEL, event: SSEEventType.AGENT_CHOICE, blocking: true },
+  { sentinel: PROPOSE_CANVAS_ACTION_SENTINEL, event: SSEEventType.AGENT_CANVAS_ACTION, blocking: false },
+  { sentinel: SHOW_SEARCH_RESULTS_SENTINEL, event: SSEEventType.AGENT_SEARCH_RESULTS, blocking: false },
 ];
 
 export interface ParsedInteraction {
   event: InteractionEvent;
   payload: Record<string, unknown>;
+  /** Whether the turn has to stop here and wait for the user. */
+  blocking: boolean;
 }
 
 /**
  * Detect + parse an interaction-tool sentinel.
  * @param resultStr - The raw `execute()` output of a tool, potentially prefixed with one of the v13 interaction sentinels.
- * @returns The matching SSE event and parsed JSON payload when
- * `resultStr` starts with one of the three v13 interaction sentinels.
- * `null` for any non-interaction tool output (including `__ASK_USER__`
- * which is handled separately by the agent loop).
+ * @returns The matching SSE event, its parsed JSON payload, and whether the
+ * turn must stop for it, when `resultStr` starts with one of the three v13
+ * interaction sentinels. `null` for any non-interaction tool output
+ * (including `__ASK_USER__` which is handled separately by the agent loop).
  *
  * On malformed JSON after a matched sentinel, returns the matched
  * event with `{ raw: resultStr }` so the frontend can still display
  * the agent's intent.
  */
 export function parseInteractionSentinel(resultStr: string): ParsedInteraction | null {
-  for (const { sentinel, event } of INTERACTION_TOOL_SENTINELS) {
+  for (const { sentinel, event, blocking } of INTERACTION_TOOL_SENTINELS) {
     if (resultStr.startsWith(sentinel)) {
       try {
         const payload = JSON.parse(resultStr.slice(sentinel.length)) as Record<string, unknown>;
-        return { event, payload };
+        return { event, payload, blocking };
       } catch {
-        return { event, payload: { raw: resultStr } };
+        return { event, payload: { raw: resultStr }, blocking };
       }
     }
   }

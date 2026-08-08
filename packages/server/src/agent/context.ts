@@ -2,23 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * System prompt builder for the Main Agent.
+ * The persona and the skill list, which is all the base prompt is.
  *
- * Translates Python `backend/agent/main/context.py` into TypeScript.
- * Assembles the full system prompt from a static template, skill summaries,
- * always-on skill content, and three-layer memory context.
+ * Memory is deliberately not assembled here — see `buildSystemPrompt` for
+ * why — and neither is anything about tools beyond how to behave with them:
+ * each tool's own description already reaches the model, and a roster written
+ * here would drift from whatever the running skill actually declares.
  */
 
-import type { MemoryContext } from "@breatic/shared";
 import { getSkillRegistry } from "@breatic/domain";
-import { listAgents } from "@breatic/domain";
 
-/**
- * Static template with `{skills_summary}` and `{always_skills}` placeholders.
- *
- * Double braces `{{` / `}}` are literal JSON braces shown to the LLM as
- * examples; single braces are substitution targets.
- */
+/** Static template with `{skills_summary}` and `{always_skills}` placeholders. */
 const SYSTEM_PROMPT_TEMPLATE = `\
 You are the AI core of Breatic — a creative operating system for content creators.
 You are not a task dispatcher. You are a creative collaborator.
@@ -42,25 +36,32 @@ Always respond in the same language the user is using.
 - Analyze reference images, audio, or text the user provides
 - Suggest related artists, styles, or techniques for inspiration
 
-### 4. Project Planning
-- Break complex creative projects into concrete generation tasks
-- Plan multi-modal outputs (image + audio + text combinations)
-- Sequence tasks logically (e.g. concept art → final render → soundtrack)
-
-### 5. Parameter Optimization
+### 4. Parameter Optimization
 - Recommend the best model and parameters based on creative intent
 - Enhance prompts with specificity: art style, lighting, color palette, mood, composition
 - Suggest aspect ratios, resolutions, and model choices that match the goal
 
-### 6. Iteration & Refinement
+### 5. Iteration & Refinement
 - Provide constructive feedback on generated results
 - Suggest specific adjustments to improve output quality
 - Help users refine prompts and parameters for better results
 
-### 7. Project Memory
+### 6. Project Memory
 - Remember the user's creative preferences and style across conversations
 - Maintain consistency within a project (color scheme, visual language, tone)
 - Build on previous work rather than starting from scratch
+
+## How You Work
+
+You have tools. When a task needs one, call it — do not write out what a call
+would look like, and do not describe the result you would have got. Text that
+looks like a tool call is not a tool call; nothing runs it.
+
+Never present something as looked up, searched, fetched or read unless a tool
+actually returned it on this turn. If you have not checked, say you have not.
+
+Some tools put a question to the user and end your turn there. Use one when
+you genuinely need an answer to continue, not to fill a pause.
 
 ## Available Skills
 {skills_summary}
@@ -68,60 +69,10 @@ Always respond in the same language the user is using.
 ## Always-active Skill Context
 {always_skills}
 
-## Generating Task Plans
-
-When the user has confirmed a creative direction and is ready to generate, output a task plan:
-
-\`\`\`json
-{
-  "ready": true,
-  "plan": {
-    "description": "Brief description of what will be created",
-    "tasks": [
-      {
-        "task_type": "image",
-        "model": "nano-banana-2",
-        "params": {"prompt": "detailed description...", "aspect_ratio": "16:9", "resolution": "2k"},
-        "label": "Hero image for the project"
-      }
-    ]
-  }
-}
-\`\`\`
-
-Each task requires \`task_type\`, \`model\` (from the skill's model list), and \`params\` (API-native parameter names).
-
-**Important**: Do NOT jump to task plans immediately. First understand the user's creative intent through conversation. Only produce the plan JSON when the user has confirmed what they want.
-
-## Sub-Agent Delegation
-
-You can spawn specialized sub-agents using the \`spawn\` tool. Each sub-agent has its own role, tools, model, and skill context.
-
-**Available Agents:**
-{agent_list}
-
-**When to spawn**:
-- Multiple research/search tasks that can run simultaneously
-- Independent sub-tasks that don't depend on each other
-- Tasks that match a specific agent's expertise
-
-**When NOT to spawn**: If the task is simple (single search, quick analysis), use your own tools directly. Only spawn when parallelism or specialization adds real value.
-
-Example — parallel creative research:
-\`\`\`
-spawn({ task: "Search for cyberpunk cityscape reference images and describe 3 distinct visual styles", agent: "researcher" })
-spawn({ task: "Optimize this prompt for Nano Banana Pro: a neon-lit cyberpunk city", agent: "prompt_optimizer" })
-spawn({ task: "Analyze the color palette and composition in this reference image", agent: "analyst" })
-\`\`\`
-
-You can optionally override an agent's default skill: \`spawn({ task: "...", agent: "researcher", skill: "brainstorm" })\`
-
-All spawn calls in one turn execute in parallel. Synthesize the results into a coherent response.`;
+`;
 
 /** Options accepted by {@link buildSystemPrompt}. */
 export interface BuildSystemPromptOptions {
-  /** Three-layer memory context injected as separate sections. */
-  memoryContext?: MemoryContext;
   /** Pre-built XML skill summary (overrides registry lookup when provided). */
   skillsSummary?: string;
   /** Pre-built always-on skill content (overrides registry lookup when provided). */
@@ -129,39 +80,25 @@ export interface BuildSystemPromptOptions {
 }
 
 /**
- * Build the full system prompt with skill summaries and three-layer memory.
- * @param options - Optional memory context and pre-built skill sections
- * @returns The formatted system prompt string ready to send to the LLM
+ * Build the base system prompt: persona plus the skill summary.
+ *
+ * Memory is deliberately not here. It used to be injected in three separate
+ * places with two different sets of section headings, so it now belongs to
+ * `buildAgentConfig`, which is the one place an agent's instructions get
+ * assembled.
+ * @param options - Pre-built skill sections, when the caller has them
+ * @returns The base prompt, ready to hand to `buildAgentConfig`
  */
 export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): string {
-  const { memoryContext, skillsSummary, alwaysSkillsContent } = options;
+  const { skillsSummary, alwaysSkillsContent } = options;
 
   const registry = getSkillRegistry();
   const summary = skillsSummary ?? registry.buildSummaryXml();
   const always = alwaysSkillsContent ?? (registry.getAlwaysContent() || "(none)");
 
-  // Build agent list for sub-agent delegation section
-  const agents = listAgents();
-  const agentListText = agents.length > 0
-    ? agents.map((a) => `- \`${a.name}\` — ${a.description}`).join("\n")
-    : "(no agents defined)";
-
-  let prompt = SYSTEM_PROMPT_TEMPLATE
+  const prompt = SYSTEM_PROMPT_TEMPLATE
     .replace("{skills_summary}", summary)
-    .replace("{always_skills}", always)
-    .replace("{agent_list}", agentListText);
-
-  if (memoryContext) {
-    if (memoryContext.userMemory) {
-      prompt += `\n\n## User Preferences & Style\n${memoryContext.userMemory}`;
-    }
-    if (memoryContext.projectMemory) {
-      prompt += `\n\n## Project Context\n${memoryContext.projectMemory}`;
-    }
-    if (memoryContext.conversationMemory) {
-      prompt += `\n\n## Conversation Memory\n${memoryContext.conversationMemory}`;
-    }
-  }
+    .replace("{always_skills}", always);
 
   return prompt;
 }
