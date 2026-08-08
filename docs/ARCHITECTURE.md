@@ -142,7 +142,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Skill system
 
-**skill 出现在哪由 `config/skill-routing.yaml` 的 `surfaces` 定**,取值是 `packages/core/src/config/skill-routing.ts` 的 `SKILL_SURFACES` 闭集:`chat`(多轮对话,注入上下文)/ `canvas` / `image_node` / `video_node` / `document`(各 node 面与画布是 Worker 单次执行,必须生成)。**今天实际被路由到的只有 `chat` 和 `canvas`** —— 后三个是已开放但还没有 skill 用的面,数各面上有几个 skill 一律现读那份 yaml。
+**skill 出现在哪由 `config/skill-routing.yaml` 的 `surfaces` 定**,取值是 `packages/core/src/config/skill-routing.ts` 的 `SKILL_SURFACES` 闭集:`chat`(多轮对话,注入上下文)/ `canvas` / `image_node` / `video_node` / `document`(各 node 面与画布是 Worker 单次执行,必须生成)。**当前实际被路由到的只有 `chat` 和 `canvas`** —— 后三个是已开放但还没有 skill 用的面,数各面上有几个 skill 一律现读那份 yaml。
 
 **metadata.json**:仅 `name` / `description` 必填;其他字段(`category`/`tools`/`output_type`/`requires`/...)`skills-loader.ts` 都有 default 兜底(`category` 默认 `"default"`)。建议显式填 `category` 避免读代码才知行为。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。完整字段表见 `packages/domain/src/agent/skills-loader.ts` 的 schema 定义。禁用 npm 字段(version/author/license/engines/files/main)。
 
