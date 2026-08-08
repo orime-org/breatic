@@ -71,12 +71,12 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
  * use it (project-page `NewSpaceDialog`, studio-page `NewItemDialog`) stay
  * separate components and only embed this one widget.
  *
- * Per decision D (2026-05-21): all three cards are visible so the product
- * roadmap is legible, but document + timeline are disabled with "not
- * available" until their editors ship — only canvas is selectable. The
- * `SPACE_TYPE_LIST` registry is consulted to surface only types the runtime
- * actually knows about (forward-compat against the registry pruning a type
- * the picker still lists).
+ * All three cards stay visible so the product roadmap is legible, and a card
+ * is selectable once that type's editor ships — canvas and document are, and
+ * timeline is still disabled with "not available". The `SPACE_TYPE_LIST`
+ * registry is consulted to surface only types the runtime actually knows
+ * about (forward-compat against the registry pruning a type the picker still
+ * lists).
  *
  * Mock alignment: mirrors the chrome-baseline mock `.type-segmented` — a flex
  * row of 3 cards; the active card uses the brand border on the mock, but per
