@@ -462,15 +462,40 @@ body {
 }
 
 /* ---- Room to click under the last block ----
-   A document Space is born with a title and no body blocks, so without space
-   below it there is nothing to click and `document-click-to-write` never
-   fires. It cannot be a percentage height: the scroll viewport wraps its
-   children in an auto-height block (see the `display: block !important` rule
-   above), and a percentage against `auto` collapses. Half the viewport always
-   leaves room and never outgrows the window, so an empty document does not
-   gain a scrollbar for no reason. */
+   A document Space is born with a title and no body blocks, so the editable
+   surface has to reach the bottom of the scroll viewport: below where it stops
+   there is nothing for `document-click-to-write` to receive, and a click there
+   does nothing at all.
+
+   The chain is three flex hops rather than percentage heights. Only the
+   FIRST hop can use a percentage: the viewport has a definite height
+   (`h-full`), so `min-height: 100%` on the wrapper Radix puts around its
+   children resolves. Below that, nothing does — the wrapper's own `height`
+   stays `auto`, and a percentage against `auto` computes to nothing — so the
+   remaining two hops grow by flex instead. `min-height` rather than `height`
+   throughout, so a document longer than the viewport still scrolls.
+
+   The wrapper's `display` is overridden back to flex here, undoing the
+   `display: block !important` rule further up for this one scroller. That rule
+   exists so a table wrapper cannot break the width chain `truncate` needs; a
+   column flex container keeps that chain intact, because a column's items
+   stretch to its width. The selector carries `[data-scrollbars='vertical']` as
+   well as the class purely to outrank that rule by specificity rather than by
+   source order, which would be a silent thing to depend on. */
+[data-scrollbars='vertical'].doc-body-scroller
+  > [data-radix-scroll-area-viewport]
+  > div {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 100%;
+}
+.doc-body-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+}
 .doc-body-editor .ProseMirror {
-  min-height: 50vh;
+  flex: 1 0 auto;
 }
 
 /* Remote collaborator carets, shared by every collaborative editor — the

@@ -44,7 +44,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* Overlay scrollbar (#1773): appears only while scrolling, takes no
           layout space. The viewport is the real scroller, so the body's
           padding lives on it — padding has to scroll with the content. */}
-      <ScrollArea className='flex-1' viewportClassName='px-6 py-4'>
+      <ScrollArea
+        className='doc-body-scroller flex-1'
+        viewportClassName='px-6 py-4'
+      >
         <EditorContent
           editor={editor}
           data-testid='document-editor-content'
