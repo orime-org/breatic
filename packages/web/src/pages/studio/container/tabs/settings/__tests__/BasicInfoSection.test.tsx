@@ -4,29 +4,22 @@
 /**
  * What the settings form will and will not let through.
  *
- * The emptiness cases are the ones an adversarial review found: an emptied
- * field reads as `idle` from the availability check rather than `invalid`, so
- * it slipped past the submit gate and the user walked all the way through the
- * destructive slug confirmation before the server rejected it.
+ * The slug used to be a third field here and is now in the danger zone, so
+ * everything about it — the availability check, the emptiness guard, the
+ * confirmation — moved to `ChangeSlugSection.test.tsx` with it. What stays is
+ * the pair of fields that are freely reversible, plus a guard that the slug
+ * really is gone from here.
  */
 
 import * as React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { BasicInfoSection } from '@web/pages/studio/container/tabs/settings/BasicInfoSection';
-import { studiosApi } from '@web/data/api/studios';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
 
 vi.mock('@web/i18n/use-translation', () => ({
   useTranslation: () => (key: string) => key,
-}));
-vi.mock('@web/domain/use-debounce', () => ({
-  useDebounce: <T,>(value: T): T => value,
-}));
-vi.mock('@web/data/api/studios', () => ({
-  studiosApi: { checkSlugAvailable: vi.fn().mockResolvedValue({ available: true }) },
 }));
 
 const STUDIO: StudioDetail = {
@@ -41,48 +34,34 @@ const STUDIO: StudioDetail = {
 };
 
 /**
- * Render the section under a query client.
+ * Render the section.
  * @param props - Overrides for the section's props.
- * @param props.studio - The studio being edited.
  * @param props.canEdit - Whether the fields are editable.
  * @param props.onSave - The save handler.
  * @returns The render result.
  */
 function renderSection(props: {
-  studio?: StudioDetail;
   canEdit?: boolean;
   onSave?: (patch: unknown) => void;
-}): ReturnType<typeof render> {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+} = {}): ReturnType<typeof render> {
   return render(
-    <QueryClientProvider client={qc}>
-      <BasicInfoSection
-        studio={props.studio ?? STUDIO}
-        canEdit={props.canEdit ?? true}
-        saving={false}
-        onSave={props.onSave ?? vi.fn()}
-      />
-    </QueryClientProvider>,
+    <BasicInfoSection
+      studio={STUDIO}
+      canEdit={props.canEdit ?? true}
+      saving={false}
+      onSave={props.onSave ?? vi.fn()}
+    />,
   );
 }
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  // `clearAllMocks` wipes recorded calls but leaves implementations in place,
-  // so a test that overrides this one would otherwise poison its neighbours.
-  vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValue({
-    available: true,
-  });
-});
-
 describe('BasicInfoSection — the submit gate', () => {
   it('stays disabled while nothing has changed', () => {
-    renderSection({});
+    renderSection();
     expect(screen.getByTestId('settings-save')).toBeDisabled();
   });
 
   it('enables once a field actually changes', async () => {
-    renderSection({});
+    renderSection();
     fireEvent.change(screen.getByTestId('settings-name'), {
       target: { value: 'Acme Inc' },
     });
@@ -91,18 +70,8 @@ describe('BasicInfoSection — the submit gate', () => {
     );
   });
 
-  it('refuses an emptied Slug rather than walking the user to the confirmation', async () => {
-    renderSection({});
-    fireEvent.change(screen.getByLabelText('studio.container.settings.slug'), {
-      target: { value: '' },
-    });
-    await waitFor(() =>
-      expect(screen.getByTestId('settings-save')).toBeDisabled(),
-    );
-  });
-
   it('refuses an emptied Name', async () => {
-    renderSection({});
+    renderSection();
     fireEvent.change(screen.getByTestId('settings-name'), {
       target: { value: '   ' },
     });
@@ -111,74 +80,29 @@ describe('BasicInfoSection — the submit gate', () => {
     );
   });
 
-  it('does not ask the server whether the studio may keep its own Slug', async () => {
-    // The form starts out holding it, and asking gets the truthful answer
-    // "taken" — by the very studio doing the asking. Assert the request never
-    // goes out, and that editing away and back does not produce a taken error:
-    // checking the save button instead would pass no matter what, since the
-    // button is disabled while nothing has changed either way.
-    vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValue({
-      available: false,
-      reason: 'taken',
-    });
-    renderSection({});
-    const slug = screen.getByLabelText('studio.container.settings.slug');
-
-    fireEvent.change(slug, { target: { value: 'something-else' } });
-    await waitFor(() =>
-      expect(studiosApi.checkSlugAvailable).toHaveBeenCalledWith(
-        'something-else',
-        expect.anything(),
-      ),
-    );
-    fireEvent.change(slug, { target: { value: STUDIO.slug } });
-
-    await waitFor(() =>
-      expect(
-        screen.queryByText('studio.container.dialog.slugTaken'),
-      ).not.toBeInTheDocument(),
-    );
-    expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalledWith(
-      STUDIO.slug,
-      expect.anything(),
-    );
-  });
-});
-
-describe('BasicInfoSection — the slug confirmation', () => {
-  it('is shown before a slug change, never before a name-only change', async () => {
+  it('sends only what changed, and saves without a confirmation', () => {
     const onSave = vi.fn();
     renderSection({ onSave });
-
     fireEvent.change(screen.getByTestId('settings-name'), {
       target: { value: 'Acme Inc' },
     });
-    await waitFor(() =>
-      expect(screen.getByTestId('settings-save')).toBeEnabled(),
-    );
     fireEvent.click(screen.getByTestId('settings-save'));
-
-    // A name-only edit saves straight away.
     expect(onSave).toHaveBeenCalledWith({ name: 'Acme Inc' });
-    expect(screen.queryByTestId('settings-slug-dialog')).not.toBeInTheDocument();
   });
+});
 
-  it('holds a slug change behind the confirmation', async () => {
-    const onSave = vi.fn();
-    renderSection({ onSave });
-
-    fireEvent.change(screen.getByLabelText('studio.container.settings.slug'), {
-      target: { value: 'acme-renamed' },
-    });
-    await waitFor(() =>
-      expect(screen.getByTestId('settings-save')).toBeEnabled(),
-    );
-    fireEvent.click(screen.getByTestId('settings-save'));
-
-    expect(onSave).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(screen.getByTestId('settings-slug-dialog')).toBeInTheDocument(),
-    );
+describe('BasicInfoSection — what is no longer here', () => {
+  it('does not offer the Slug beside the name and description', () => {
+    // Editing it releases the old address to anyone and 404s every link that
+    // points at this studio, which is not something to sit under the same
+    // Save button as the description.
+    renderSection();
+    expect(
+      screen.queryByLabelText('studio.container.settings.slug'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('settings-slug-dialog'),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -189,14 +113,9 @@ describe('BasicInfoSection — a non-admin', () => {
     expect(screen.queryByTestId('settings-save')).not.toBeInTheDocument();
   });
 
-  it('gets every field disabled, Slug included', () => {
-    // Slug used to stay editable while Name and Bio greyed out — the one
-    // field inviting an edit that could never be submitted.
+  it('gets both fields disabled', () => {
     renderSection({ canEdit: false });
     expect(screen.getByTestId('settings-name')).toBeDisabled();
     expect(screen.getByTestId('settings-bio')).toBeDisabled();
-    expect(
-      screen.getByLabelText('studio.container.settings.slug'),
-    ).toBeDisabled();
   });
 });

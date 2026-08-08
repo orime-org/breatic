@@ -410,7 +410,7 @@ function TransferOwnershipSection({
           )}
           <div className='flex items-center justify-end gap-2'>
             <Button
-              variant='ghost'
+              variant='outline'
               size='sm'
               className='h-8 text-xs'
               onClick={() => {

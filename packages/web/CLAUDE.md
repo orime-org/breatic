@@ -27,6 +27,16 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 ## 组件复用:先查 `components/ui/` 再造(MANDATORY)
 写任何**浮层 / 表单 / 交互控件**(popover · dropdown · dialog · tooltip · select · menu · command · sheet 等)前,**必须先 grep `components/ui/` 看有没有现成 shadcn primitive,有就复用**。**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。判定题:**这 UI 是浮层 / 表单 / 交互控件吗?是 → 先 grep `components/ui/`,别手写**。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
 
+## 按钮必须看得出是按钮:独立文字按钮一律有边框(MANDATORY)
+
+**独立的文字按钮一律 `variant='outline'`,不许用无边框的 `ghost`**(user 2026-08-07 拍定,原话「按钮没有特殊的」「你连个边框都没有,用户是看不出来它是个按钮的,它怎么可能还特例?」)。**这不是风格偏好** —— 没有边框,那个东西在用户眼里就是一段文字,他不知道能点。所以这条**没有例外**,包括弹窗的「取消」。
+
+**唯一合法的无边框**是 `size='menu-item'`:下拉菜单里的整行菜单项(带图标、整行宽、靠 hover 高亮表明可点),给它们加边框反而破坏菜单形态。`size='icon'` 的纯图标按钮另算(形状本身就是可点的信号)。
+
+判定题:**这个按钮是独立摆着的一段文字吗?是 → `outline`,没有第二个选项。**
+
+**这条是怎么破的,值得记一笔**:当时全仓有**四个**独立文字按钮用着无边框的 `ghost`(转让弹窗的取消 · 头像裁剪弹窗的取消 · 项目顶栏成员弹窗的取消 · 头像区的「移除」),我写改 Slug 弹窗时照着旁边最近的那个抄,又添了一个 —— 本 PR 一并改成 `outline`,还剩几个散在别处的归任务 #59。**「看兄弟功能怎么做」要看的是多数和共享 primitive,不是离得最近的那一个**:共享 primitive `AlertDialogCancel` 自己用的就是 `outline`,建 Studio / 邀请成员 / 新建条目三个弹窗也都是,那才是准。
+
 ## 禁止浏览器 / OS 原生渲染的交互控件(MANDATORY,CI 强制)
 **凡「视觉皮肤由浏览器 / 操作系统绘制」的交互控件,一律禁用,必须自绘(Radix primitive 或自绘组件)。** 根因:各引擎(Chrome / Safari / Firefox)画同一个原生控件长得不一样,**对创作类产品这种跨引擎不一致是致命的**;「跨引擎像素一致」是硬功能需求,不是锦上添花。这是滚动条 / toast / tooltip 那些单点守卫背后的**总原则** —— 它们都是本条的实例,本条把教训泛化,让每个新原生控件(color → range → 未来 date)被**机械挡住**,而不是每次靠真机 review 一个个逮。
 

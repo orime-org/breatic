@@ -126,7 +126,7 @@ export function AvatarSection({
             </Button>
             {studio.avatarUrl === null ? null : (
               <Button
-                variant='ghost'
+                variant='outline'
                 size='sm'
                 onClick={() => setConfirmingRemove(true)}
                 data-testid='avatar-remove-open'

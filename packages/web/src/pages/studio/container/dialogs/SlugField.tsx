@@ -33,10 +33,10 @@ interface SlugFieldProps {
    */
   availability?: 'checking' | 'available';
   /**
-   * Greys the input out, matching how the caller treats its other fields —
-   * the settings form disables Name and Bio for a non-admin and while a save
-   * is in flight, and a Slug that stayed editable there would be the one field
-   * inviting an edit nobody can submit.
+   * Greys the input out while an edit could not be submitted anyway — the
+   * rename dialog sets it while ANY settings save is in flight, which is the
+   * same condition that holds its Confirm button back. Typing into a field
+   * whose Confirm is unreachable only looks like it will work.
    */
   disabled?: boolean;
 }
