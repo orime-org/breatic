@@ -86,7 +86,7 @@ export function CreditsTab({
                     type='button'
                     variant='outline'
                     size='sm'
-                    className='text-xs text-status-error-foreground hover:underline'
+                    className='text-xs text-status-error-foreground'
                   >
                     {t('studio.container.credits.refund')}
                   </Button>
