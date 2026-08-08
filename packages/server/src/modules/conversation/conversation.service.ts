@@ -9,6 +9,8 @@
  */
 
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
+import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
+import * as pointerRepo from "@server/modules/conversation/current-conversation.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError } from "@breatic/core";
@@ -52,47 +54,76 @@ export async function assertAccess(
 }
 
 /**
- * Get an existing conversation by ID or create a new one.
+ * Resolve which conversation this user's next message belongs to.
  *
- * If `conversationId` is provided, validates ownership and returns it.
- * Otherwise creates a new conversation with a title derived from the
- * first message content (truncated to 100 chars). If `projectId` is
- * provided, the caller's access to that project is verified before
- * linking — otherwise a user could silently attach a conversation to
- * someone else's project.
+ * The client sends content, not a conversation id — so the server answers
+ * "where does this land" from the current-conversation pointer, and creates a
+ * conversation the first time there is nothing to point at. That keeps the
+ * product flow honest: a user opens a project and starts typing, without
+ * being asked to create a conversation first.
+ *
+ * A pointer naming a soft-deleted conversation counts as no pointer. Without
+ * that, deleting the conversation you are in would make every following
+ * message fail with no way to recover.
  * @param userId - Owner user UUID
- * @param conversationId - Optional existing conversation UUID
- * @param firstMessage - Content of the first message (used as title for new conversations)
- * @param projectId - Optional project to associate
- * @returns The existing or newly created conversation
+ * @param projectId - Project the conversation belongs to
+ * @param firstMessage - Used as the title when a conversation gets created
+ * @returns The conversation this message belongs to
+ * @throws {ForbiddenError} if the user may not write to the project
  */
-export async function getOrCreate(
+export async function resolveCurrentConversation(
   userId: string,
-  conversationId: string | undefined,
+  projectId: string,
   firstMessage: string,
-  projectId?: string,
 ): Promise<ConversationEntity> {
-  if (conversationId) {
-    return validateOwnership(conversationId, userId);
+  // `getConversation` filters soft-deleted rows, so a pointer naming a
+  // deleted conversation reads as no pointer at all and falls through to
+  // creating a new one. That is the whole recovery path: without it, deleting
+  // the conversation you are in makes every following message fail forever.
+  const currentId = await pointerRepo.getCurrentConversationId(userId, projectId);
+  if (currentId) {
+    const current = await conversationRepo.getConversation(currentId);
+    if (current) return current;
   }
 
-  // Enforce project access BEFORE creating the conversation so a
-  // failed check does not leave an orphan conversation row behind.
-  // Chat is a creative-write action — view-only members cannot
-  // open chat sessions (v10 §7.2.1).
-  if (projectId) {
-    await projectService.assertAccess(projectId, userId, "editor");
-  }
+  // Enforce project access BEFORE creating anything, so a failed check does
+  // not leave an orphan conversation behind. Chat is a creative-write action
+  // — view-only members cannot open conversations.
+  await projectService.assertAccess(projectId, userId, "editor");
 
-  const title = firstMessage.slice(0, 100);
-  const conv = await conversationRepo.createConversation(userId, title);
+  const conv = await conversationRepo.createConversation(userId, firstMessage.slice(0, 100));
+  await conversationRepo.setProjectId(conv.id, projectId);
+  await pointerRepo.setCurrentConversation(userId, projectId, conv.id);
 
-  if (projectId) {
-    await conversationRepo.setProjectId(conv.id, projectId);
-    return { ...conv, projectId };
-  }
+  return { ...conv, projectId };
+}
 
-  return conv;
+/**
+ * Read the messages of the conversation this user is currently in.
+ *
+ * The read half of the same decision as {@link resolveCurrentConversation}:
+ * the client asks "what is in front of me in this project" without naming a
+ * conversation. Returns an empty history rather than an error when there is
+ * nothing yet — a project a user has never chatted in is a normal state, not
+ * a missing resource.
+ * @param userId - Owner user UUID
+ * @param projectId - Project to read the current conversation of
+ * @returns The current conversation and its messages, or nulls when there is
+ *   no live current conversation
+ */
+export async function getCurrentWithMessages(
+  userId: string,
+  projectId: string,
+): Promise<{ conversation: ConversationEntity | null; messages: MessageData[] }> {
+  const currentId = await pointerRepo.getCurrentConversationId(userId, projectId);
+  if (!currentId) return { conversation: null, messages: [] };
+
+  // Deleted-but-still-pointed-at reads as "nothing here yet", same rule as
+  // the write path applies.
+  const conversation = await conversationRepo.getConversation(currentId);
+  if (!conversation) return { conversation: null, messages: [] };
+
+  return { conversation, messages: await messageRepo.getMessages(currentId) };
 }
 
 /**
@@ -125,7 +156,7 @@ export async function getWithMessages(
   userId: string,
 ): Promise<{ conversation: ConversationEntity; messages: MessageData[] }> {
   const conversation = await validateOwnership(conversationId, userId);
-  const messages = await conversationRepo.getMessages(conversationId);
+  const messages = await messageRepo.getMessages(conversationId);
   return { conversation, messages };
 }
 
@@ -159,15 +190,15 @@ export async function getMessagesForLlm(
   id: string,
   lastConsolidatedTurn = 0,
 ): Promise<MessageData[]> {
-  return conversationRepo.getMessagesForLlm(id, lastConsolidatedTurn);
+  return messageRepo.getMessagesForLlm(id, lastConsolidatedTurn);
 }
 
 /**
  * Soft-delete a conversation after validating ownership.
  *
- * Sets `deleted_at` on the conversation record. The underlying messages
- * and any related attachments remain in the database and can be
- * restored by clearing `deleted_at` if needed.
+ * Stamps `deleted_at` on the conversation and, because the FKs are RESTRICT
+ * and Postgres will not cascade, on its messages, attachments and memory
+ * rows as well.
  * @param conversationId - Conversation UUID
  * @param userId - Requesting user UUID
  * @throws {NotFoundError} if conversation does not exist

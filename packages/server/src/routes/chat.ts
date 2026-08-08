@@ -17,6 +17,7 @@ import {
   chatMessageSchema,
   skillCommandSchema,
   chatConversationsQuerySchema,
+  chatCurrentQuerySchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -75,21 +76,16 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
-  // Cross-tenant guard: client-supplied project_id must belong to the
-  // authenticated user. `getOrCreate` also re-validates on conversation
-  // creation, but we check here first so that every downstream call
-  // (memory, history, SSE) runs against a confirmed-owned project.
-  if (body.project_id) {
-    // Chat is a creative-write action (v10 §7.2.1) — view-only
-    // members cannot send chat messages or invoke skills.
-    await projectService.assertAccess(body.project_id, user.id, "editor");
-  }
+  // Cross-tenant guard: the client-supplied project_id must belong to the
+  // authenticated user. Checked here first so every downstream call (memory,
+  // history, SSE) runs against a confirmed-owned project. Chat is a
+  // creative-write action (v10 §7.2.1) — view-only members are refused.
+  await projectService.assertAccess(body.project_id, user.id, "editor");
 
-  const conversation = await conversationService.getOrCreate(
+  const conversation = await conversationService.resolveCurrentConversation(
     user.id,
-    body.conversation_id,
-    body.message,
     body.project_id,
+    body.message,
   );
 
   // Build request context for this turn
@@ -144,17 +140,12 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
   assertSkillUsable(body.skill_name, "chat");
 
   // Cross-tenant guard (same rationale as /chat/message)
-  if (body.project_id) {
-    // Chat is a creative-write action (v10 §7.2.1) — view-only
-    // members cannot send chat messages or invoke skills.
-    await projectService.assertAccess(body.project_id, user.id, "editor");
-  }
+  await projectService.assertAccess(body.project_id, user.id, "editor");
 
-  const conversation = await conversationService.getOrCreate(
+  const conversation = await conversationService.resolveCurrentConversation(
     user.id,
-    body.conversation_id,
-    body.input,
     body.project_id,
+    body.input,
   );
 
   // Build request context
@@ -208,6 +199,29 @@ chat.get(
     return c.json({ data: conversations });
   },
 );
+
+/**
+ * `GET /chat/current` — the conversation this user is in, with its messages.
+ *
+ * The read half of the message contract: the client asks what is in front of
+ * it in a project without naming a conversation, exactly as it posts without
+ * naming one. Without this endpoint a user who sends a message and refreshes
+ * the page gets a blank panel — nothing else can answer "which conversation
+ * am I in", since the list endpoint does not mark one.
+ *
+ * A project the user has never chatted in returns `null` with an empty
+ * history: that is a normal state, not a missing resource.
+ * @param c - Hono context with a `project_id` query parameter
+ * @returns The current conversation (or `null`) and its messages
+ * @throws {AppError} `403` if the user may not read the project
+ */
+chat.get("/current", zValidator("query", chatCurrentQuerySchema), async (c) => {
+  const user = c.get("user");
+  const { project_id: projectId } = c.req.valid("query");
+  await projectService.assertAccess(projectId, user.id, "viewer");
+  const result = await conversationService.getCurrentWithMessages(user.id, projectId);
+  return c.json({ data: result });
+});
 
 /**
  * `GET /chat/conversations/:id` — fetch a conversation with messages.

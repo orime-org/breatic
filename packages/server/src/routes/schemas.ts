@@ -21,6 +21,7 @@ export {
   checkoutSchema,
   paginationSchema,
   chatConversationsQuerySchema,
+  chatCurrentQuerySchema,
 } from "@breatic/shared";
 
 // ── Server-only schemas (complex discriminated unions) ───────────────

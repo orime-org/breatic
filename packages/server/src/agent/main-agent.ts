@@ -21,7 +21,7 @@ import { env } from "@breatic/core";
 import { creditService } from "@breatic/domain";
 import { SSEEventType } from "@server/agent/types.js";
 import type { SSEEvent } from "@server/agent/types.js";
-import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
+import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -57,10 +57,9 @@ export class MainAgent {
     // Save user message. Capture the assigned turnIndex so billing can
     // build a stable refKey (`turn:${conversationId}:${turnIndex}`) that
     // survives retries — see core/src/modules/credit.service.ts `deductOnce`.
-    const turnIndex = await conversationRepo.addMessage(conversationId, {
+    const turnIndex = await messageRepo.addMessage(conversationId, {
       role: "user",
       content: userMessage,
-      ts: new Date().toISOString(),
     });
     this.ctx.billing = { turnIndex };
 
@@ -104,10 +103,9 @@ export class MainAgent {
 
     // Save user command. Capture the assigned turnIndex for billing refKey,
     // same reason as `chat()` above.
-    const turnIndex = await conversationRepo.addMessage(conversationId, {
+    const turnIndex = await messageRepo.addMessage(conversationId, {
       role: "user",
       content: `/skill ${skillName} ${userInput}`,
-      ts: new Date().toISOString(),
     });
     this.ctx.billing = { turnIndex };
 
@@ -261,18 +259,16 @@ export class MainAgent {
             const interaction = parseInteractionSentinel(resultStr);
 
             if (toolCall) {
-              await conversationRepo.addMessage(conversationId, {
+              await messageRepo.addMessage(conversationId, {
                 role: "assistant",
                 content: "",
-                ts: new Date().toISOString(),
                 tool_calls: [
                   interaction ? { ...toolCall, result: interaction.payload } : toolCall,
                 ],
               });
-              await conversationRepo.addMessage(conversationId, {
+              await messageRepo.addMessage(conversationId, {
                 role: "tool",
                 content: resultStr,
-                ts: new Date().toISOString(),
                 tool_call_id: part.toolCallId,
                 name: toolCall.name,
               });
@@ -332,10 +328,9 @@ export class MainAgent {
         steps: {
           persist: fullResponse
             ? async () => {
-                await conversationRepo.addMessage(conversationId, {
+                await messageRepo.addMessage(conversationId, {
                   role: "assistant",
                   content: fullResponse,
-                  ts: new Date().toISOString(),
                   ...(thinkingContent ? { thinking: thinkingContent } : {}),
                 });
               }

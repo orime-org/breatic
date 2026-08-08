@@ -28,6 +28,8 @@ export type {
   UserEntity,
   ConversationEntity,
   MessageData,
+  MessageInput,
+  MessagePart,
   ToolCallInfo,
   TaskEntity,
   NodeHistoryEntity,
@@ -168,6 +170,7 @@ export {
   checkoutSchema,
   paginationSchema,
   chatConversationsQuerySchema,
+  chatCurrentQuerySchema,
 } from "@shared/schemas/index.js";
 
 export type {

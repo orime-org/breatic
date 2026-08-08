@@ -24,6 +24,7 @@ import {
   index,
   primaryKey,
 } from "drizzle-orm/pg-core";
+import type { MessagePart } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -298,23 +299,6 @@ export const studioMembers = pgTable(
 
 // ── 5. Conversations ─────────────────────────────────────────────────
 
-/** Shape of a single message stored inline in the JSONB array. */
-export interface ConversationMessage {
-  role: "user" | "assistant" | "tool";
-  content: string;
-  ts: string;
-  turnIndex: number;
-  thinking?: string;
-  tool_calls?: Array<{
-    id: string;
-    name: string;
-    arguments: Record<string, unknown>;
-    result?: Record<string, unknown>;
-  }>;
-  tool_call_id?: string;
-  name?: string;
-}
-
 export const conversations = pgTable(
   "conversations",
   {
@@ -327,7 +311,6 @@ export const conversations = pgTable(
       onDelete: "set null",
     }),
     lastConsolidatedTurn: integer("last_consolidated_turn").default(0).notNull(),
-    messages: jsonb("messages").$type<ConversationMessage[]>().default([]),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -335,6 +318,83 @@ export const conversations = pgTable(
     index("conversations_user_id_idx").on(table.userId),
     index("conversations_project_id_idx").on(table.projectId),
   ],
+);
+
+/**
+ * One row per message. Replaces the `conversations.messages` JSONB array,
+ * where every append rewrote and re-compressed the whole document and took a
+ * lock on the conversation row — cost that grows with the square of the
+ * conversation length.
+ *
+ * `parts` holds the pieces of a single message (prose, reasoning, tool calls),
+ * which is the granularity Postgres asks for: a JSON document should be an
+ * atomic datum, and a message is exactly that — a conversation is not.
+ */
+export const conversationMessages = pgTable(
+  "conversation_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "restrict" }),
+    /**
+     * Denormalised owner, so cross-tenant reads and audits do not have to
+     * join back through `conversations` on every query.
+     */
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    role: varchar("role", { length: 16 }).notNull(),
+    /** Increments on each user message; half of the billing idempotency key. */
+    turnIndex: integer("turn_index").notNull(),
+    /** Position within its turn. */
+    seq: integer("seq").notNull(),
+    parts: jsonb("parts").$type<MessagePart[]>().default([]).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("conversation_messages_turn_seq_key").on(
+      table.conversationId,
+      table.turnIndex,
+      table.seq,
+    ),
+  ],
+);
+
+/**
+ * Which conversation a user is currently writing to in a given project.
+ *
+ * The client never sends a conversation id — it posts content and the server
+ * decides where it lands — so the server has to hold that id somewhere. It is
+ * a single value per (user, project), so it lives as a single column keyed by
+ * exactly those two, which also makes "switch conversation" one atomic upsert.
+ *
+ * Deliberately NOT expressed as "the most recently touched conversation":
+ * ordering by a timestamp needs a unique sort key to be predictable, `now()`
+ * is the transaction's start time (so rows touched together tie), and any
+ * background write would silently reassign what the user is looking at.
+ *
+ * No `deleted_at`: a pointer row is overwritten, never deleted. Registered in
+ * the `schema-timestamps` ESLint rule, which is where the guard reads.
+ */
+export const currentConversations = pgTable(
+  "current_conversations",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.projectId] })],
 );
 
 // ── 6. Tasks ─────────────────────────────────────────────────────────

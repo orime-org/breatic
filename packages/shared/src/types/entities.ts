@@ -49,12 +49,40 @@ export interface ToolCallInfo {
   result?: Record<string, unknown>;
 }
 
-/** Single message within a conversation. */
+/**
+ * One piece of a stored message.
+ *
+ * A message is not a single string: an assistant turn can carry reasoning,
+ * visible prose and a tool call at once, and later work adds execution steps
+ * and interactive cards to the same list. Storing the pieces as a list is the
+ * shape the AI SDK itself uses for UI messages, so nothing has to be
+ * reassembled on the way to the client.
+ */
+export type MessagePart =
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
+  | {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: Record<string, unknown>;
+      /** Present only for tools whose output drives a frontend render. */
+      output?: Record<string, unknown>;
+    }
+  | { type: "tool-result"; toolCallId: string; toolName: string; output: string };
+
+/**
+ * Single message within a conversation, as the rest of the app handles it.
+ *
+ * The store keeps the pieces in {@link MessagePart} form; the repository maps
+ * between the two so callers keep working with one flat shape.
+ */
 export interface MessageData {
   role: "user" | "assistant" | "tool";
   content: string;
+  /** Creation time, ISO-formatted. Assigned by the store, never by callers. */
   ts: string;
-  /** Turn index — increments on each user message. */
+  /** Turn index — increments on each user message. Assigned by the store. */
   turnIndex: number;
   /** Model reasoning/thinking content (not sent back to LLM). */
   thinking?: string;
@@ -62,6 +90,9 @@ export interface MessageData {
   tool_call_id?: string;
   name?: string;
 }
+
+/** A message as callers hand it in: the store assigns `ts` and `turnIndex`. */
+export type MessageInput = Omit<MessageData, "ts" | "turnIndex">;
 
 /** Task entity. */
 export interface TaskEntity {

@@ -42,13 +42,18 @@ import { createApp } from "../../app.js";
 
 const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 
+// Every chat write names a project now — the server resolves which
+// conversation the message lands in from its (user, project) pointer, so
+// there is no such thing as a project-less chat request to gate.
+const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
+
 describe("POST /chat/skill — skill enforcement", () => {
   it("rejects a skill that is not user-invocable with 403", async () => {
     const app = createApp();
     const res = await app.request("/api/v1/chat/skill", {
       method: "POST",
       headers: AUTH,
-      body: JSON.stringify({ skill_name: "gated_fixture", input: "go" }),
+      body: JSON.stringify({ skill_name: "gated_fixture", input: "go", project_id: PROJECT_ID }),
     });
     expect(res.status).toBe(403);
   });
@@ -58,7 +63,7 @@ describe("POST /chat/skill — skill enforcement", () => {
     const res = await app.request("/api/v1/chat/skill", {
       method: "POST",
       headers: AUTH,
-      body: JSON.stringify({ skill_name: "nonexistent", input: "hi" }),
+      body: JSON.stringify({ skill_name: "nonexistent", input: "hi", project_id: PROJECT_ID }),
     });
     expect(res.status).toBe(404);
   });

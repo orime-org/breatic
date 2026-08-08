@@ -1,0 +1,376 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * Behaviour of the chat storage layer (PR-3) against a real Postgres.
+ *
+ * The structural half (primary keys, unique index, FK delete rules) lives in
+ * chat-storage-schema.integration.test.ts. This suite pins the behaviour that
+ * only shows up when two statements race or when a row is soft-deleted
+ * underneath a pointer:
+ *
+ *   - The pointer is what makes "the client never sends a conversation id"
+ *     work. Resolving it twice must land on the same conversation; switching it
+ *     must stay a single row.
+ *
+ *   - A conversation can be soft-deleted while the pointer still names it.
+ *     Without a liveness predicate on the resolve path the user is stuck: every
+ *     following message resolves to an invisible conversation and throws, and
+ *     at this stage the UI has no way to pick a different one.
+ *
+ *   - Turn numbering is a billing key (`turn:${conversationId}:${turnIndex}`).
+ *     Two concurrent user messages that compute the same turn index collide on
+ *     the idempotency key, and one of the two turns goes unbilled.
+ *
+ *   - The memory chain reads messages through the same repository. Moving
+ *     messages out of the JSONB column moves the ground under it, so its two
+ *     read functions are pinned here as well.
+ */
+
+import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
+
+// Mock `ai` BEFORE importing anything that reaches the @breatic/domain barrel
+// (→ agent/llm → the `ai` SDK → @opentelemetry/api, whose ESM build Node's
+// native ESM rejects). This suite never calls any ai function.
+vi.mock("ai", () => ({
+  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
+  streamText: () => ({
+    fullStream: (async function* () {})(),
+    text: Promise.resolve(""),
+    usage: Promise.resolve({ totalTokens: 0 }),
+  }),
+  stepCountIs: (_n: number) => () => false,
+  tool: (config: Record<string, unknown>) => config,
+}));
+
+import postgres from "postgres";
+import fc from "fast-check";
+import { initCore } from "@breatic/core";
+import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
+import * as conversationService from "@server/modules/conversation/conversation.service.js";
+import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
+import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
+import * as pointerRepo from "@server/modules/conversation/current-conversation.repo.js";
+
+try {
+  initCore(process.env);
+} catch {
+  // already initialised by a sibling suite in this worker — fine.
+}
+
+const PG_DRIVER_LOCAL = "chat-storage-behaviour-test-driver";
+
+let sql: ReturnType<typeof postgres>;
+
+beforeAll(() => {
+  sql = postgres(inject("DATABASE_URL"), {
+    max: 8,
+    prepare: false,
+    connection: { application_name: PG_DRIVER_LOCAL },
+  });
+});
+
+afterAll(async () => {
+  await sql?.end({ timeout: 1 });
+});
+
+let seq = 0;
+
+/**
+ * Seed an owner with a studio and a project they can write to.
+ * @returns The freshly created user and project ids.
+ */
+async function seedProject(): Promise<{ userId: string; projectId: string }> {
+  const tag = `cs-${seq++}`;
+  const [user] = await sql<{ id: string }[]>`
+    INSERT INTO users (email, email_verified) VALUES (${`${tag}@example.com`}, true) RETURNING id
+  `;
+  const [studio] = await sql<{ id: string }[]>`
+    INSERT INTO studios (created_by_user_id, slug, type, name)
+    VALUES (${user!.id}, ${`${tag}-studio`}, 'personal', ${tag}) RETURNING id
+  `;
+  const [project] = await sql<{ id: string }[]>`
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
+    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}, 'studio') RETURNING id
+  `;
+  await sql`
+    INSERT INTO studio_members (studio_id, user_id, role)
+    VALUES (${studio!.id}, ${user!.id}, 'admin')
+  `;
+  await sql`
+    INSERT INTO project_members (project_id, user_id, role, added_by)
+    VALUES (${project!.id}, ${user!.id}, 'owner', null)
+  `;
+  return { userId: user!.id, projectId: project!.id };
+}
+
+describe("the current conversation pointer", () => {
+  it("creates a conversation on the first message and returns it again on the second", async () => {
+    const { userId, projectId } = await seedProject();
+
+    const first = await conversationService.resolveCurrentConversation(
+      userId,
+      projectId,
+      "hello",
+    );
+    const second = await conversationService.resolveCurrentConversation(
+      userId,
+      projectId,
+      "still me",
+    );
+
+    expect(second.id).toBe(first.id);
+
+    const rows = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM current_conversations
+      WHERE user_id = ${userId} AND project_id = ${projectId}
+    `;
+    expect(Number(rows[0]!.n)).toBe(1);
+  });
+
+  it("points at the conversation named by the most recent switch", async () => {
+    const { userId, projectId } = await seedProject();
+    const a = await conversationService.resolveCurrentConversation(userId, projectId, "a");
+    const b = await conversationRepo.createConversation(userId, "b");
+    await conversationRepo.setProjectId(b.id, projectId);
+
+    await pointerRepo.setCurrentConversation(userId, projectId, b.id);
+    expect(await pointerRepo.getCurrentConversationId(userId, projectId)).toBe(b.id);
+
+    await pointerRepo.setCurrentConversation(userId, projectId, a.id);
+    expect(await pointerRepo.getCurrentConversationId(userId, projectId)).toBe(a.id);
+  });
+
+  it("overwrites rather than accumulating when pointed somewhere twice", async () => {
+    const { userId, projectId } = await seedProject();
+    const a = await conversationService.resolveCurrentConversation(userId, projectId, "a");
+    const b = await conversationRepo.createConversation(userId, "b");
+    await conversationRepo.setProjectId(b.id, projectId);
+
+    await Promise.all([
+      pointerRepo.setCurrentConversation(userId, projectId, a.id),
+      pointerRepo.setCurrentConversation(userId, projectId, b.id),
+    ]);
+
+    const rows = await sql<{ conversation_id: string }[]>`
+      SELECT conversation_id FROM current_conversations
+      WHERE user_id = ${userId} AND project_id = ${projectId}
+    `;
+    // Two writes for the same key leave one row, because the key IS the
+    // primary key. (These two do not actually overlap — a pooled connection
+    // freed by the first is handed straight to the second — so this pins the
+    // upsert semantics, not a race. The race that does matter, turn
+    // numbering, is parked on a real lock further down.)
+    expect(rows).toHaveLength(1);
+    expect([a.id, b.id]).toContain(rows[0]!.conversation_id);
+  });
+
+  it("starts a fresh conversation when the pointed-at one was deleted", async () => {
+    const { userId, projectId } = await seedProject();
+    const first = await conversationService.resolveCurrentConversation(userId, projectId, "a");
+
+    await conversationRepo.softDeleteConversation(first.id);
+
+    const next = await conversationService.resolveCurrentConversation(userId, projectId, "b");
+
+    expect(next.id).not.toBe(first.id);
+    expect(await pointerRepo.getCurrentConversationId(userId, projectId)).toBe(next.id);
+  });
+});
+
+describe("messages", () => {
+  it("reads back in the order they were written", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+
+    await messageRepo.addMessage(conv.id, { role: "user", content: "one" });
+    await messageRepo.addMessage(conv.id, { role: "assistant", content: "two" });
+    await messageRepo.addMessage(conv.id, { role: "user", content: "three" });
+
+    const msgs = await messageRepo.getMessages(conv.id);
+    expect(msgs.map((m) => m.content)).toEqual(["one", "two", "three"]);
+  });
+
+  it("opens a new turn on each user message and keeps replies in that turn", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+
+    const t1 = await messageRepo.addMessage(conv.id, { role: "user", content: "q1" });
+    const r1 = await messageRepo.addMessage(conv.id, { role: "assistant", content: "a1" });
+    const t2 = await messageRepo.addMessage(conv.id, { role: "user", content: "q2" });
+
+    expect(r1).toBe(t1);
+    expect(t2).toBe(t1 + 1);
+  });
+
+  it("parks on the conversation row, so two user messages cannot share a turn", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+
+    // Firing two calls with Promise.all proves nothing here: the pool hands
+    // the second one the connection the first just returned, so they run one
+    // after the other and the test passes whether or not a lock exists —
+    // measured, not assumed. Parking a real lock in the way is what turns
+    // "they serialise" into an observed fact.
+    let announceLock: () => void = () => {};
+    const gateHoldsLock = new Promise<void>((r) => {
+      announceLock = r;
+    });
+    let releaseGate: () => void = () => {};
+    const gateReleased = new Promise<void>((r) => {
+      releaseGate = r;
+    });
+
+    const gate = sql.begin(async (tx) => {
+      await tx`SELECT 1 FROM conversations WHERE id = ${conv.id} FOR UPDATE`;
+      announceLock();
+      await gateReleased;
+    });
+    await gateHoldsLock;
+
+    // Both appends must now be waiting on that row. If they are not, the
+    // append is computing its turn index without holding anything, which is
+    // exactly the race that lets two turns share a billing key.
+    const first = messageRepo.addMessage(conv.id, { role: "user", content: "p" });
+    await waitUntilBlockedOn(sql, "conversations");
+    const second = messageRepo.addMessage(conv.id, { role: "user", content: "q" });
+    await waitUntilBlockedOn(sql, "conversations");
+
+    releaseGate();
+    await gate;
+
+    const [a, b] = await Promise.all([first, second]);
+    expect(a).not.toBe(b);
+  });
+
+  it("hides its messages once the conversation is soft-deleted", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+    await messageRepo.addMessage(conv.id, { role: "user", content: "one" });
+
+    await conversationRepo.softDeleteConversation(conv.id);
+
+    expect(await messageRepo.getMessages(conv.id)).toEqual([]);
+
+    // The FK is RESTRICT, so Postgres will not cascade for us — the service
+    // layer has to stamp the children itself.
+    const rows = await sql<{ deleted_at: Date | null }[]>`
+      SELECT deleted_at FROM conversation_messages WHERE conversation_id = ${conv.id}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.deleted_at).not.toBeNull();
+  });
+});
+
+describe("a message survives the round trip through parts", () => {
+  // Five shapes reach `addMessage` today (main-agent.ts): a plain user
+  // message, a skill command, an assistant announcing a tool call, the tool
+  // result that follows it, and an assistant reply that may carry reasoning.
+  // Storage now splits a message into `parts`, so every one of those shapes
+  // has to come back out unchanged — a lossy mapping silently eats tool
+  // results or reasoning, and nothing else in the system would notice.
+  const messageArb = fc.oneof(
+    fc.record({
+      role: fc.constantFrom("user" as const, "assistant" as const),
+      content: fc.string({ minLength: 1 }),
+    }),
+    fc.record({
+      role: fc.constant("assistant" as const),
+      content: fc.string({ minLength: 1 }),
+      thinking: fc.string({ minLength: 1 }),
+    }),
+    fc.record({
+      role: fc.constant("assistant" as const),
+      content: fc.constant(""),
+      tool_calls: fc.array(
+        fc.record({
+          id: fc.uuid(),
+          name: fc.string({ minLength: 1 }),
+          arguments: fc.dictionary(fc.string({ minLength: 1 }), fc.jsonValue()),
+          result: fc.option(
+            fc.dictionary(fc.string({ minLength: 1 }), fc.jsonValue()),
+            { nil: undefined },
+          ),
+        }),
+        { minLength: 1, maxLength: 3 },
+      ),
+    }),
+    fc.record({
+      role: fc.constant("tool" as const),
+      content: fc.string(),
+      tool_call_id: fc.uuid(),
+      name: fc.string({ minLength: 1 }),
+    }),
+  );
+
+  it("comes back with every field it went in with", async () => {
+    const { userId, projectId } = await seedProject();
+
+    await fc.assert(
+      fc.asyncProperty(messageArb, async (message) => {
+        const conv = await conversationService.resolveCurrentConversation(
+          userId,
+          projectId,
+          "round trip",
+        );
+        await messageRepo.addMessage(conv.id, message);
+        const [stored] = await messageRepo.getMessages(conv.id, 1);
+
+        // `ts` and `turnIndex` are assigned by the store, not the caller.
+        const { ts: _ts, turnIndex: _turn, ...roundTripped } = stored!;
+        expect(roundTripped).toEqual(message);
+
+        // `ts` is created_at rendered as ISO — one source of truth, not a
+        // second timestamp the caller has to keep in sync.
+        expect(new Date(stored!.ts).toString()).not.toBe("Invalid Date");
+
+        await conversationRepo.softDeleteConversation(conv.id);
+      }),
+      { numRuns: 25 },
+    );
+  });
+});
+
+describe("the memory chain still sees the same messages", () => {
+  it("counts the turns past the consolidated watermark", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+
+    for (let i = 0; i < 5; i++) {
+      await messageRepo.addMessage(conv.id, { role: "user", content: `q${i}` });
+      await messageRepo.addMessage(conv.id, { role: "assistant", content: `a${i}` });
+    }
+    await conversationRepo.updateConsolidatedTurn(conv.id, 2);
+
+    // Five user messages → turns 1..5; watermark at 2 leaves three.
+    expect(await messageRepo.getUnconsolidatedTurnCount(conv.id)).toBe(3);
+  });
+
+  it("hands consolidation exactly the turns inside the window", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+
+    for (let i = 1; i <= 6; i++) {
+      await messageRepo.addMessage(conv.id, { role: "user", content: `q${i}` });
+      await messageRepo.addMessage(conv.id, { role: "assistant", content: `a${i}` });
+    }
+
+    // Turns 1..6 exist, 1 is already consolidated, the last 2 are kept back:
+    // the window is turns 2..4.
+    const window = await messageRepo.getMessagesForConsolidation(conv.id, 1, 2);
+    expect(window.map((m) => m.content)).toEqual(["q2", "a2", "q3", "a3", "q4", "a4"]);
+  });
+
+  it("strips internal fields and consolidated turns for the LLM", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+
+    await messageRepo.addMessage(conv.id, { role: "user", content: "old" });
+    await messageRepo.addMessage(conv.id, { role: "user", content: "new" });
+
+    const forLlm = await messageRepo.getMessagesForLlm(conv.id, 1);
+    expect(forLlm.map((m) => m.content)).toEqual(["new"]);
+    expect(forLlm[0]).not.toHaveProperty("turnIndex");
+    expect(forLlm[0]).not.toHaveProperty("ts");
+  });
+});

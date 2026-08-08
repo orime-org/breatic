@@ -165,8 +165,13 @@ export type ChatAttachedChip = z.infer<typeof chatAttachedChipSchema>;
 export const chatMessageSchema = z.object({
   message: z.string().min(1),
   resource_list: z.array(z.string()).default([]),
-  conversation_id: z.string().optional(),
-  project_id: z.string().optional(),
+  /**
+   * The project the message belongs to. There is no `conversation_id`: the
+   * client sends content and the server resolves where it lands from its
+   * current-conversation pointer, keyed by (user, project). A client-supplied
+   * conversation id would be a second, competing answer to that question.
+   */
+  project_id: z.string().uuid(),
   /**
    * V13 (spec §10.18.2): canvas-node snapshots the user attached to
    * this message via the chips bar. Required field but defaults to
@@ -195,8 +200,8 @@ export const skillCommandSchema = z.object({
   skill_name: z.string().min(1),
   input: z.string().min(1),
   resource_list: z.array(z.string()).default([]),
-  conversation_id: z.string().optional(),
-  project_id: z.string().optional(),
+  /** Same contract as `chatMessageSchema` — both entrances resolve alike. */
+  project_id: z.string().uuid(),
 });
 export type SkillCommandInput = z.infer<typeof skillCommandSchema>;
 
@@ -351,3 +356,15 @@ export const chatConversationsQuerySchema = paginationSchema.extend({
   project_id: z.string().uuid().optional(),
 });
 export type ChatConversationsQueryInput = z.infer<typeof chatConversationsQuerySchema>;
+
+/**
+ * Query for reading the conversation a user is currently in.
+ *
+ * The read counterpart of `chatMessageSchema`: the client names a project,
+ * never a conversation. Both directions have to agree, or the panel would
+ * display one conversation while typing into another.
+ */
+export const chatCurrentQuerySchema = z.object({
+  project_id: z.string().uuid(),
+});
+export type ChatCurrentQueryInput = z.infer<typeof chatCurrentQuerySchema>;

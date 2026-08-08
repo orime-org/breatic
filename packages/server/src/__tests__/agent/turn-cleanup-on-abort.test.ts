@@ -87,7 +87,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 
 // These three are what the turn owes, and each is imported from its own
 // module rather than through a barrel, so each is stubbed where it lives.
-vi.mock("@server/modules/conversation/conversation.repo.js", () => ({
+vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
 }));
 
