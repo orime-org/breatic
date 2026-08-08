@@ -142,6 +142,63 @@ describe('a document body never runs out of blocks', () => {
     expect(A.editor.getText()).toContain('alice two');
   });
 
+  // The block left standing decides nothing — these two exist because an
+  // earlier attempt made it decide everything. That attempt refused the
+  // deletion inside the delete filter, which works only when the survivor is a
+  // plain paragraph. A container was kept as an empty shell (yjs deletes
+  // children first, and they are not direct children of the body), the schema
+  // rejects `<bulletList>` with no items, and y-tiptap's error recovery then
+  // deleted it — body at zero again, by a longer road. A block with
+  // attributes was kept and stripped of them: an h3 came back an h1.
+  it.each([
+    ['a bullet list', (e: { commands: { toggleBulletList: () => void } }) => e.commands.toggleBulletList()],
+    ['a blockquote', (e: { commands: { toggleBlockquote: () => void } }) => e.commands.toggleBlockquote()],
+    ['a level-3 heading', (e: { commands: { toggleHeading: (a: { level: 3 }) => void } }) => e.commands.toggleHeading({ level: 3 })],
+  ])('survives when the last block is %s', async (_label, makeBlock) => {
+    const A = await open(docA, awA, `p/document-${_label.replace(/\s/g, '-')}`);
+    const B = await open(docB, awB, `p/document-${_label.replace(/\s/g, '-')}-b`);
+    const bodyA = documentBodyFragment(docA);
+
+    act(() => {
+      A.editor.commands.insertContent('alice one');
+    });
+    act(() => {
+      A.editor.commands.enter();
+    });
+    act(() => {
+      makeBlock(A.editor as never);
+    });
+    act(() => {
+      A.editor.commands.insertContent('KEEPME');
+    });
+    await waitFor(() => expect(bodyA.length).toBe(2));
+    act(() => sync(docA, docB));
+    await waitFor(() => expect(B.editor.getText()).toContain('KEEPME'));
+
+    act(() => {
+      const firstSize = B.editor.state.doc.child(0).nodeSize;
+      B.editor.commands.deleteRange({ from: 0, to: firstSize });
+    });
+    act(() => sync(docB, docA));
+    await waitFor(() => expect(bodyA.length).toBe(1));
+
+    act(() => {
+      A.editor.commands.undo();
+    });
+    expect(bodyA.length).toBeGreaterThanOrEqual(1);
+    expect(A.editor.can().redo()).toBe(true);
+
+    act(() => {
+      A.editor.view.dispatch(A.editor.state.tr);
+    });
+    expect(A.editor.can().redo()).toBe(true);
+
+    act(() => {
+      A.editor.commands.redo();
+    });
+    expect(A.editor.getText()).toContain('KEEPME');
+  });
+
   it('still lets undo take back a block when another one remains', async () => {
     // The guard must not become "undo can never remove a block". With two
     // blocks present, undoing the one I just made removes it as usual.
