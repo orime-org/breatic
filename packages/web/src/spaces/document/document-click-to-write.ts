@@ -15,12 +15,26 @@
  *
  * ## How the click is recognised
  *
- * By what it landed on, not by where it is. ProseMirror gives every block its
- * own element inside the editor's, so an event whose target is the EDITOR
- * itself landed in the space around the blocks rather than on one. Reading a
- * coordinate and comparing it against the last block's rectangle would say the
- * same thing, but only in a browser — this way the rule is a DOM fact and can
- * be pinned by ordinary tests.
+ * Two questions, and both have to answer yes.
+ *
+ * Did it land on the editor rather than on a block? ProseMirror gives every
+ * block its own element inside the editor's, so an event whose target is the
+ * EDITOR itself did not land on one.
+ *
+ * Is it below the last line? The first question alone is not enough, which is
+ * what the first version of this file got wrong. The editor's own box shows
+ * through wherever blocks are separated by margin — the title carries 28px of
+ * it, and margin belongs to no child's box — so a press in that gap reports the
+ * editor as its target while sitting near the TOP of the document. Acting on it
+ * appended a paragraph at the far end of the document and dragged the caret and
+ * the scroll position down there with it. Reproduced in a real browser on a
+ * document with a title and one paragraph before this was written.
+ *
+ * The vertical edge comes from `coordsAtPos` at the end of the document rather
+ * than from the last child element's rectangle: a widget decoration — a remote
+ * collaborator's caret — can be a direct child of the editor too, so "the last
+ * element" is not reliably the last block, while "the end of the document" is
+ * exactly the position this click is asking to reach.
  *
  * ## Why a viewer is turned away here rather than upstream
  *
@@ -35,6 +49,16 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
+
+/**
+ * Whether a press sits below everything the document has rendered.
+ * @param view - The editor view the press arrived in.
+ * @param clientY - Where the press landed vertically.
+ * @returns True when it is under the last line rather than beside a block.
+ */
+function isBelowTheLastLine(view: EditorView, clientY: number): boolean {
+  return clientY > view.coordsAtPos(view.state.doc.content.size).bottom;
+}
 
 /**
  * Put the caret where the click asked for one, adding a block if needed.
@@ -69,7 +93,7 @@ export const DocumentClickToWrite = Extension.create({
   name: 'documentClickToWrite',
 
   /**
-   * Watch for a press that landed on the editor rather than on a block.
+   * Watch for a press that landed on the editor, below the last line.
    *
    * `mousedown` rather than `click`, because the caret has to be in place
    * before the browser starts its own selection from wherever the press was.
@@ -84,6 +108,7 @@ export const DocumentClickToWrite = Extension.create({
             mousedown: (view, event) => {
               if (event.button !== 0) return false;
               if (event.target !== view.dom) return false;
+              if (!isBelowTheLastLine(view, event.clientY)) return false;
               return openABlockToTypeIn(view);
             },
           },
