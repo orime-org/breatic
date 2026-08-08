@@ -15,7 +15,8 @@ import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 
 // Shared layout / disabled classes; color + hover applied per-state. `h-auto`
 // keeps the two-line (icon over label) footprint the Button size ladder has no
-// entry for — the className height wins over the variant's.
+// entry for — it overrides the height of the implicit `size='default'`, which
+// is what these tools fall back to since they pass no size.
 const TOOL_BASE =
   'flex h-auto flex-col items-center gap-1 rounded-overlay px-2 py-1.5 text-xs ' +
   'disabled:opacity-50 disabled:cursor-not-allowed';

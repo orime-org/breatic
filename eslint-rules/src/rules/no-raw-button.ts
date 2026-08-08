@@ -4,14 +4,17 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
 /**
- * Outside the vendor directory, a button is written with the `Button`
- * primitive.
+ * Everywhere but the file that defines it, a button is written with the
+ * `Button` primitive.
  *
- * One element, two spellings, is how a guard ends up blind. A rule about what
- * buttons look like can only see the spelling it was taught, so the other one
- * accumulates whatever nobody checked — which is exactly what happened: three
- * borderless words shipped in the canvas while a rule watched the component
- * and reported clean.
+ * One element, two spellings, is how a check ends up blind: it can only see
+ * the spelling it was taught, so the other one accumulates whatever nobody
+ * looked at. That is not hypothetical — three borderless words shipped in the
+ * canvas written as bare `<button>`, while the border check of the day looked
+ * at the component and reported clean. That check is gone (borders are judged
+ * by a person looking at the screen; see `packages/web/CLAUDE.md`), but its
+ * lesson outlives it: whatever asks a question about buttons next, machine or
+ * human, should have one element to ask it about.
  *
  * The ban is flat on purpose. A selective version — report a hand-written
  * button only when it carries a word — turns every ambiguous child into a
@@ -22,12 +25,15 @@ import { createRule } from "#rules/create-rule";
  * Nothing is given up for it. `Button` extends
  * `React.ButtonHTMLAttributes<HTMLButtonElement>` and spreads what it gets,
  * so `type`, `role`, `aria-*`, `data-*` and any classes pass through
- * untouched; `className` merges over the variant classes rather than losing
- * to them; and `asChild` hands the element to another primitive when one owns
- * it. Anything a bare `<button>` can do, `<Button>` can do.
+ * untouched; `className` merges with the variant classes (same utility group,
+ * the caller wins); and `asChild` hands the element to another primitive when
+ * one owns it. Anything a bare `<button>` can do, `<Button>` can do.
  *
- * The vendor directory is exempt because that is where the element is
- * legitimately written — `Button` itself renders one.
+ * Exempt by provenance, not by directory: the single excused file is
+ * `components/ui/button.tsx`, because that is where `Button` legitimately
+ * renders the element. The rest of `components/ui/` is not — it also holds
+ * first-party controls such as `password-input`. The config additionally
+ * lists the `_dev` gallery and tests.
  */
 export const noRawButton = createRule({
   name: "no-raw-button",

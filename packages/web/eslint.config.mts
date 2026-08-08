@@ -337,9 +337,9 @@ export default [
     // shadcn primitives live, but it is not purely vendor — `password-input`
     // is ours, and exempting the whole path left the one first-party control
     // in the tree unguarded. Only the file that legitimately renders the
-    // element is excused: `Button` itself. The dev gallery is exempt for the
-    // reason the other visual rules exempt it — it exists to display what we
-    // replaced.
+    // element is excused: `Button` itself. The dev gallery is listed to keep
+    // this rule's scope identical to the other visual rules', not because it
+    // needs the escape — it renders `Button` throughout.
     //
     // `.ts` is in scope alongside `.tsx`: `createElement('button')` is the
     // same element written without JSX, and that spelling lives in plain

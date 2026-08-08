@@ -25,13 +25,14 @@ type BannerTone = 'error' | 'warning';
  * with the same status triple as the banner surface (#1549): the identity
  * color carries the text + border, hover recesses with the tint.
  *
- * Two of the variant's mode-aware tokens are overridden on purpose, because
- * they fight the banner-local colors (2026-05-26 user smoke): `bg-transparent`
- * replaces the variant's `bg-background`, which would otherwise paint an
- * opaque page-colored box on top of the tinted banner, and a per-tone
- * `hover:text-*` replaces `hover:text-accent-foreground`, which would drop the
- * identity color on hover. Everything else the variant brings is what this
- * button already wanted.
+ * Only the variant's bare `border` survives; every coloured token it brings is
+ * replaced, because they fight the banner-local colors (2026-05-26 user
+ * smoke). `bg-transparent` replaces `bg-background`, which would otherwise
+ * paint an opaque page-colored box on top of the tinted banner; the per-tone
+ * border replaces `border-border`; and the per-tone `hover:bg-*` /
+ * `hover:text-*` replace `hover:bg-accent` / `hover:text-accent-foreground`,
+ * which would drop the identity color on hover. The variant is still the right
+ * one to start from — it is the bordered, unfilled shape this button wants.
  *
  * Tailwind classes are written out per tone — no template-assembled class
  * names (they would be purged).

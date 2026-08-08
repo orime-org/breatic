@@ -34,8 +34,10 @@ export const TopBarTextIconButton = React.forwardRef<
 >(({ className, icon, withChevron, children, ...props }, ref) => {
   return (
     <Button
-      // It shows a label (the language glyph), so it draws a border: an
-      // outlined word is the one shape a reader can tell is pressable.
+      // It renders as a labelled control — callers pass the label as children,
+      // and `ThemeToggle` keeps its label screen-reader-only — so the border is
+      // set here rather than per caller: an outlined control is the one shape a
+      // reader can tell is pressable, and both switchers should read alike.
       variant='outline'
       size='sm'
       ref={ref}
