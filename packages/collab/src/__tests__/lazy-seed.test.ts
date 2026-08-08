@@ -129,7 +129,14 @@ describe("lazySeedMeta", () => {
     Y.applyUpdate(doc, call?.[1] as Uint8Array);
     const body = documentBodyFragment(doc);
     expect(body.length).toBe(1);
-    expect((body.get(0) as Y.XmlElement).nodeName).toBe("paragraph");
+    // A title, and an EMPTY one: this path seeds a project's first Space and
+    // has no name the creator typed. What it does have is a Space name the
+    // backend generated from the type ("Document"), which is a product type
+    // name — writing that in as the document's title would show the user a
+    // document called "Document".
+    const title = body.get(0) as Y.XmlElement;
+    expect(title.nodeName).toBe("title");
+    expect(title.toString()).toBe("<title></title>");
   });
 
   it("leaves a canvas's content doc empty — its editor builds its own structure", async () => {

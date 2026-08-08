@@ -65,60 +65,6 @@ function isDeletableByUndo(item: Y.Item): boolean {
   return container == null || defaultDeleteFilter(container, nodes);
 }
 
-/** Origin for the repair below — deliberately not one the manager tracks. */
-const BODY_REPAIR_ORIGIN = 'document-body-repair';
-
-/**
- * Put a block back when an undo or redo has left the body with none.
- *
- * ## Why this is not a rule inside the delete filter
- *
- * "The body holds at least one block" is a statement about the document AFTER
- * a step finishes. The delete filter runs DURING one, and sees a single yjs
- * item at a time — so a rule written there can only ever answer "may this one
- * item go", which is not the same question. Trying anyway produced two
- * measured failures:
- *
- * Keeping the last block when that block is a container (a list, a quote)
- * keeps the container and nothing else: yjs deletes children before parents,
- * and the children are not direct children of the body, so the rule never sees
- * them. The survivor is an empty `<bulletList>`, which the schema does not
- * allow — `listItem+` — and y-tiptap's own error recovery deletes it outright
- * on the next bind. The body reaches zero anyway, by a longer road.
- *
- * Keeping the last block when it carries attributes keeps the element and
- * drops them: an attribute is a map entry, so the filter asks upstream about
- * its container, and by then the container's text is gone and upstream reports
- * an empty, deletable container. An h3 comes back as an h1 — the exact harm
- * the wrapper above exists to prevent.
- *
- * Both are the same mistake: a whole-document constraint enforced one item at
- * a time. Chasing them would mean teaching the filter about subtrees, then
- * about attributes, then about whatever comes next.
- *
- * ## What this does instead
- *
- * `stack-item-popped` fires after the undo transaction has closed (yjs
- * `popStackItem` emits it outside the `transact`), so by then the step is
- * whole and the body can simply be read. If it is empty, one paragraph goes
- * back in.
- *
- * The write carries an origin the manager does not track, so it is not a new
- * user edit: it does not land on the undo stack and it does not clear the redo
- * the user is entitled to. That is what makes the repair invisible — the user
- * undoes, sees an empty document, and redo still brings their text back.
- * @param manager - The undo manager for this body.
- * @param body - The body it owns.
- */
-function keepBodyInhabited(manager: Y.UndoManager, body: Y.XmlFragment): void {
-  manager.on('stack-item-popped', () => {
-    if (body.length > 0) return;
-    body.doc?.transact(() => {
-      body.push([new Y.XmlElement('paragraph')]);
-    }, BODY_REPAIR_ORIGIN);
-  });
-}
-
 /** Computed once; the schema is fixed for the lifetime of the bundle. */
 let protectedNodesCache: Set<string> | null = null;
 
@@ -215,8 +161,10 @@ export interface DocumentUndoManager extends Y.UndoManager {
  * came back as an h1. {@link isDeletableByUndo} covers those too. Alice's own
  * text still comes out in every case.
  *
- * Separately, the body is put back on its feet after each undo or redo if that
- * step left it with no blocks at all — see {@link keepBodyInhabited}.
+ * Nothing here guards against the body running out of blocks. It cannot run
+ * out: the document's first block is a `title` the schema does not allow to be
+ * deleted, and the blocks after it are optional. See
+ * `@breatic/shared`'s `document-body` for that structure.
  *
  * `captureTransaction` honours the `addToHistory: false` marker, so
  * machine-driven edits stay off the stack.
@@ -237,8 +185,6 @@ export function createDocumentUndoManager(doc: Y.Doc): DocumentUndoManager {
         captureTransaction: (tr) => tr.meta.get('addToHistory') !== false,
       }) as DocumentUndoManager,
   );
-
-  keepBodyInhabited(manager, body);
 
   const listeners = new Set<() => void>();
   const undo = manager.undo.bind(manager);

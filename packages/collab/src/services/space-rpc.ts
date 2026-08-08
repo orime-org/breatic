@@ -636,7 +636,10 @@ async function handleCreate(
   try {
     seeded = await yjsDocumentsRepo.seedInitialState(
       spaceContentDocName(projectId, spaceId, type),
-      encodeInitialSpaceContent(type),
+      // The creator's name for the Space becomes the document's title. The
+      // other seed path (`lazy-seed`, a project's first Space) has no such
+      // name and passes none — see `encodeInitialSpaceContent`.
+      encodeInitialSpaceContent(type, name),
     );
   } catch (seedError) {
     logger.error(

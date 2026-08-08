@@ -294,7 +294,11 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
 
     const body = documentBodyFragment(await seededContentDoc("document"));
     expect(body.length).toBe(1);
-    expect((body.get(0) as Y.XmlElement).nodeName).toBe("paragraph");
+    // A title carrying the name the caller typed — this is the path that HAS
+    // one (`space:create` payload), unlike a project's first Space.
+    const title = body.get(0) as Y.XmlElement;
+    expect(title.nodeName).toBe("title");
+    expect(title.toString()).toBe("<title>S</title>");
 
     expect((await seededContentDoc("canvas")).share.size).toBe(0);
   });
