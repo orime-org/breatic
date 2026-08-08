@@ -4,17 +4,20 @@
 /**
  * The document editor's extension list.
  *
- * **This slice connects the document to a shared Yjs document. It does not
- * change what a user can write into it.** StarterKit is left as it was — every
- * heading, list, quote, code block and mark it ships stays exactly as it
- * behaved before, because the editing feature set is a separate body of work
+ * **What a user can write into the body is StarterKit's, unchanged.** Every
+ * heading, list, quote, code block and mark it ships behaves exactly as it
+ * would on its own, because the editing feature set is a separate body of work
  * with its own slice.
  *
- * Two of StarterKit's defaults ARE switched off, and both for the same reason:
- * they are safe in a private editor and unsafe in a shared one. Each is
- * explained where it is switched off. If a third ever joins them, it needs the
- * same justification — "connecting this document to a shared one broke it" —
- * and nothing else qualifies.
+ * What IS ours is the document's outer shape — a title that cannot be removed,
+ * followed by a body that may hold nothing — and the handful of behaviours that
+ * shape forces. Each is added below with the reason it qualifies, and the bar
+ * for another is the same: the shared, title-first document broke something,
+ * and nothing else counts.
+ *
+ * Three of StarterKit's defaults are switched off, each for its own reason
+ * stated where it happens. `document-extensions.test` pins both lists —
+ * additions and switches — so neither can grow quietly.
  */
 
 import type { Extensions } from '@tiptap/core';
@@ -27,6 +30,7 @@ import { DOCUMENT_TITLE_NODE, t } from '@breatic/shared';
 
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
+import { DocumentClickToWrite } from '@web/spaces/document/document-click-to-write';
 import { DocumentTitle } from '@web/spaces/document/document-title';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
@@ -84,6 +88,9 @@ export function buildDocumentExtensions(
     // `@breatic/shared`'s `document-body` carries the full reasoning.
     Document.extend({ content: `${DOCUMENT_TITLE_NODE} block*` }),
     DocumentTitle,
+    // The body may hold no blocks at all, so the space under the title has to
+    // be clickable or a fresh document cannot be written into.
+    DocumentClickToWrite,
     StarterKit.configure({
       // StarterKit's own Document is `block+`, which is both halves wrong.
       document: false,
@@ -107,11 +114,10 @@ export function buildDocumentExtensions(
       // appended paragraph, click once, and it is re-appended as a fresh local
       // edit — clearing the redo stack and stranding the text just undone.
       //
-      // What is lost is the convenience of always having a paragraph to click
-      // after a trailing block. Building that back has to happen without
-      // writing to the document — a rendered affordance that inserts only when
-      // the user actually puts the caret in it — and belongs with the editing
-      // slice, not here.
+      // What that costs is the convenience of always having a paragraph to
+      // click after a trailing block. `DocumentClickToWrite` above gives it
+      // back on the only terms a shared document allows: it writes when the
+      // user actually clicks the space, and never for a viewer.
       trailingNode: false,
     }),
   ];
