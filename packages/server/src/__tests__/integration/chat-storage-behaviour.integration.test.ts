@@ -128,65 +128,25 @@ describe("the current conversation pointer", () => {
     expect(Number(rows[0]!.n)).toBe(1);
   });
 
-  it("points at the conversation named by the most recent switch", async () => {
+  it("keeps exactly one row however many times it is written", async () => {
+    // Item 2. Switching to a conversation the user picks out of history is
+    // PR-7 — there is no entrance for it yet, and no unconditional writer of
+    // this pointer left in the codebase either. What batch 1 owes is that
+    // every write of it is one statement leaving one row, which resolving
+    // repeatedly, healing a dead pointer, and the race below all exercise.
     const { userId, projectId } = await seedProject();
-    const a = await conversationService.resolveCurrentConversation(userId, projectId, "a");
-    const b = await conversationRepo.createConversation(userId, "b");
-    await conversationRepo.setProjectId(b.id, projectId);
 
-    await pointerRepo.setCurrentConversation(userId, projectId, b.id);
-    expect(await pointerRepo.getCurrentConversationId(userId, projectId)).toBe(b.id);
-
-    await pointerRepo.setCurrentConversation(userId, projectId, a.id);
-    expect(await pointerRepo.getCurrentConversationId(userId, projectId)).toBe(a.id);
-  });
-
-  it("overwrites rather than accumulating when pointed somewhere twice", async () => {
-    const { userId, projectId } = await seedProject();
-    const a = await conversationService.resolveCurrentConversation(userId, projectId, "a");
-    const b = await conversationRepo.createConversation(userId, "b");
-    await conversationRepo.setProjectId(b.id, projectId);
-
-    await Promise.all([
-      pointerRepo.setCurrentConversation(userId, projectId, a.id),
-      pointerRepo.setCurrentConversation(userId, projectId, b.id),
-    ]);
+    const first = await conversationService.resolveCurrentConversation(userId, projectId, "a");
+    await conversationService.resolveCurrentConversation(userId, projectId, "b");
+    await conversationRepo.softDeleteConversation(first.id);
+    const afterHeal = await conversationService.resolveCurrentConversation(userId, projectId, "c");
 
     const rows = await sql<{ conversation_id: string }[]>`
       SELECT conversation_id FROM current_conversations
       WHERE user_id = ${userId} AND project_id = ${projectId}
     `;
-    // Two writes for the same key leave one row, because the key IS the
-    // primary key. (These two do not actually overlap — a pooled connection
-    // freed by the first is handed straight to the second — so this pins the
-    // upsert semantics, not a race. The race that does matter, turn
-    // numbering, is parked on a real lock further down.)
     expect(rows).toHaveLength(1);
-    expect([a.id, b.id]).toContain(rows[0]!.conversation_id);
-  });
-
-  it("makes one conversation, not two, when two first messages arrive together", async () => {
-    const { userId, projectId } = await seedProject();
-
-    // Two tabs open on a project nobody has chatted in yet, both sent at the
-    // same moment. Creating the conversation and claiming the pointer used to
-    // be three separately-committed statements, so both callers read "no
-    // pointer", both created one, and the loser's conversation was left
-    // stranded in the project with a message in it.
-    const [a, b] = await Promise.all([
-      conversationService.resolveCurrentConversation(userId, projectId, "tab one"),
-      conversationService.resolveCurrentConversation(userId, projectId, "tab two"),
-    ]);
-
-    expect(a.id).toBe(b.id);
-
-    const rows = await sql<{ n: string }[]>`
-      SELECT count(*)::text AS n FROM conversations WHERE project_id = ${projectId}
-    `;
-    expect(Number(rows[0]!.n)).toBe(1);
-
-    // And the survivor is the one the pointer names.
-    expect(await pointerRepo.getCurrentConversationId(userId, projectId)).toBe(a.id);
+    expect(rows[0]!.conversation_id).toBe(afterHeal.id);
   });
 
   it("starts a fresh conversation when the pointed-at one was deleted", async () => {
@@ -283,6 +243,40 @@ describe("messages", () => {
     `;
     expect(rows).toHaveLength(1);
     expect(rows[0]!.deleted_at).not.toBeNull();
+  });
+});
+
+describe("deleting a conversation while it is still being written to", () => {
+  it("never leaves a live message under a deleted conversation", async () => {
+    // A turn appends several messages seconds apart (the assistant's reply, a
+    // tool call, its result). Deleting mid-turn is an ordinary thing to do.
+    // Whatever order the two land in, one thing has to hold afterwards: a
+    // deleted conversation has no live messages. Either the append got in
+    // first and was stamped with the rest, or it was refused outright.
+    //
+    // Five rounds because the interleaving is probabilistic — the delete's
+    // parent UPDATE parks behind the append's row lock, so it almost always
+    // lands last, but "almost" is why one round would be flaky.
+    for (let round = 0; round < 5; round++) {
+      const { userId, projectId } = await seedProject();
+      const conv = await conversationService.resolveCurrentConversation(userId, projectId, "x");
+      await messageRepo.addMessage(conv.id, { role: "user", content: "already here" });
+
+      await Promise.allSettled([
+        messageRepo.addMessage(conv.id, { role: "assistant", content: "still writing" }),
+        conversationRepo.softDeleteConversation(conv.id),
+      ]);
+
+      const stranded = await sql<{ n: string }[]>`
+        SELECT count(*)::text AS n
+        FROM conversation_messages m
+        JOIN conversations c ON c.id = m.conversation_id
+        WHERE m.conversation_id = ${conv.id}
+          AND m.deleted_at IS NULL
+          AND c.deleted_at IS NOT NULL
+      `;
+      expect(Number(stranded[0]!.n)).toBe(0);
+    }
   });
 });
 

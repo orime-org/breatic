@@ -195,4 +195,46 @@ describe("the 0050 backfill", () => {
     expect(rows[0]!.created_at.toISOString()).toBe("2026-01-01T00:00:00.000Z");
     expect(rows[4]!.created_at.toISOString()).toBe("2026-01-01T00:00:04.000Z");
   });
+
+  it("carries a deleted conversation's messages across as deleted", async () => {
+    const backfill = readBackfillStatement();
+    let live = 0;
+
+    // The FK is RESTRICT and Postgres does not cascade, so "a deleted
+    // conversation's messages are deleted too" is a rule the code maintains by
+    // hand. The backfill is the one place that writes these rows without going
+    // through that code, so it owes the rule directly — otherwise every
+    // conversation deleted before this migration ends up with messages marked
+    // alive, and nothing in the running system ever repairs them (deleting an
+    // already-deleted conversation 404s before the cascade runs).
+    try {
+      await sql.begin(async (tx) => {
+        await tx`ALTER TABLE conversations ADD COLUMN messages jsonb DEFAULT '[]'::jsonb`;
+        const [user] = await tx<{ id: string }[]>`
+          INSERT INTO users (email, email_verified)
+          VALUES ('backfill-deleted@example.com', true) RETURNING id
+        `;
+        const [conv] = await tx<{ id: string }[]>`
+          INSERT INTO conversations (user_id, title, messages, deleted_at)
+          VALUES (${user!.id}, 'gone', ${tx.json([
+            { role: "user", content: "said before deleting", ts: "2026-01-01T00:00:00.000Z", turnIndex: 1 },
+          ])}, now())
+          RETURNING id
+        `;
+
+        await tx.unsafe(backfill);
+
+        const rows = await tx<{ n: string }[]>`
+          SELECT count(*)::text AS n FROM conversation_messages
+          WHERE conversation_id = ${conv!.id} AND deleted_at IS NULL
+        `;
+        live = Number(rows[0]!.n);
+        throw ROLLBACK;
+      });
+    } catch (err) {
+      if (err !== ROLLBACK) throw err;
+    }
+
+    expect(live).toBe(0);
+  });
 });

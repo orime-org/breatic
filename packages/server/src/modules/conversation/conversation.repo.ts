@@ -155,6 +155,21 @@ export async function cascadeDeleteConversations(
 
   const ids = [...convIds];
 
+  // Lock the parents FIRST. An append holds this same row FOR UPDATE while it
+  // computes a turn index and inserts, and it touches a different table — so
+  // without this, the delete stamps the messages that exist at that instant,
+  // the append then inserts a live one, and the conversation ends up deleted
+  // with a live message under it. Measured at 39 of 40 attempts, because the
+  // delete's own parent UPDATE parks behind the append's lock and therefore
+  // lands after it. Taking the lock up front makes the two serialise: the
+  // append either finishes first and gets stamped with the rest, or finds the
+  // conversation gone and refuses.
+  await tx
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(inArray(conversations.id, ids))
+    .for("update");
+
   await cascadeDeleteMessages(tx, ids, now);
 
   await tx

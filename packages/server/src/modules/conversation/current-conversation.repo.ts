@@ -91,31 +91,3 @@ export async function claimCurrentConversation(
 
   return claimed.length > 0;
 }
-
-/**
- * Point this user's project at a conversation.
- *
- * One statement, so two concurrent switches leave one row rather than a
- * duplicate or a lost update. Which of two racing switches wins is genuinely
- * undefined — both are the user's own action, and there is no ordering
- * between them to preserve.
- * @param userId - Owner of the pointer
- * @param projectId - Project the pointer is scoped to
- * @param conversationId - Conversation to point at
- * @param tx - Optional transaction handle, so a caller that creates the
- *   conversation and points at it can do both atomically
- */
-export async function setCurrentConversation(
-  userId: string,
-  projectId: string,
-  conversationId: string,
-  tx?: DbTx,
-): Promise<void> {
-  await (tx ?? db)
-    .insert(currentConversations)
-    .values({ userId, projectId, conversationId })
-    .onConflictDoUpdate({
-      target: [currentConversations.userId, currentConversations.projectId],
-      set: { conversationId },
-    });
-}

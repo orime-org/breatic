@@ -62,7 +62,7 @@ ALTER TABLE "current_conversations" ADD CONSTRAINT "current_conversations_conver
 -- so the backfill that ships is the backfill that was verified.
 -- >>> backfill
 INSERT INTO "conversation_messages"
-  ("conversation_id", "user_id", "role", "turn_index", "seq", "parts", "created_at", "updated_at")
+  ("conversation_id", "user_id", "role", "turn_index", "seq", "parts", "deleted_at", "created_at", "updated_at")
 SELECT
   c."id",
   c."user_id",
@@ -107,6 +107,13 @@ SELECT
         FROM jsonb_array_elements(m.value->'tool_calls') WITH ORDINALITY AS t(tc, tc_ord)
       ), '[]'::jsonb)
   END,
+  -- A deleted conversation's messages are deleted too. The FK is RESTRICT so
+  -- Postgres never cascades, which makes that a rule the application keeps by
+  -- hand — and this statement is the one place rows are written without going
+  -- through it. Miss it and every conversation deleted before this migration
+  -- keeps messages marked alive forever, since deleting an already-deleted
+  -- conversation is refused before the cascade can run.
+  c."deleted_at",
   COALESCE((m.value->>'ts')::timestamptz, c."created_at"),
   COALESCE((m.value->>'ts')::timestamptz, c."created_at")
 FROM "conversations" c

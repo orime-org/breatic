@@ -86,7 +86,11 @@ export async function assertAccess(
  * @param projectId - Project the conversation belongs to
  * @param firstMessage - Used as the title when a conversation gets created
  * @returns The conversation this message belongs to
- * @throws {ForbiddenError} if the user may not write to the project
+ * @throws {NotFoundError} if the caller is not a member of the project at all
+ *   — non-membership is answered as "no such project", not as a refusal
+ * @throws {ForbiddenError} if they are a member but may only read
+ * @throws {ConflictError} if every attempt lost the pointer to another request
+ *   and then found that winner already deleted
  */
 export async function resolveCurrentConversation(
   userId: string,

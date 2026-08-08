@@ -246,3 +246,55 @@ describe("POST /api/v1/chat/message — who gets in", () => {
     expect(Number(messages[0]!.n)).toBe(0);
   });
 });
+
+describe("POST /api/v1/chat/skill — the other way in owes the same guard", () => {
+  it("refuses a demoted member invoking a skill", async () => {
+    // Two doors lead into a chat turn, and a demoted member walking through
+    // the second one costs just as much: a skill invocation appends messages
+    // and bills a turn. The resolver returns early once a pointer exists, so
+    // its own access check never runs on this path — the route's guard is the
+    // only thing standing there, on BOTH entrances.
+    const { studioId, projectId } = await seedOwnedProject();
+    const member = await insertOutsider();
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${member}, 'maintainer')
+    `;
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${projectId}, ${member}, 'editor', null)
+    `;
+    const cookie = await loginCookie(member);
+
+    const conversation = await sql<{ id: string }[]>`
+      INSERT INTO conversations (user_id, title, project_id)
+      VALUES (${member}, 'earlier', ${projectId}) RETURNING id
+    `;
+    await sql`
+      INSERT INTO current_conversations (user_id, project_id, conversation_id)
+      VALUES (${member}, ${projectId}, ${conversation[0]!.id})
+    `;
+
+    await sql`
+      UPDATE project_members SET role = 'viewer'
+      WHERE project_id = ${projectId} AND user_id = ${member}
+    `;
+
+    const res = await app.request("/api/v1/chat/skill", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        skill_name: "brainstorm",
+        input: "three angles please",
+        project_id: projectId,
+      }),
+    });
+
+    expect(res.status).toBe(403);
+
+    const messages = await sql<{ n: string }[]>`
+      SELECT count(*)::text AS n FROM conversation_messages
+      WHERE conversation_id = ${conversation[0]!.id}
+    `;
+    expect(Number(messages[0]!.n)).toBe(0);
+  });
+});
