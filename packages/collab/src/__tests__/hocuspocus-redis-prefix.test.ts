@@ -18,6 +18,12 @@
  * shows up as production cross-talk. Hence an explicit assertion on what
  * the extension actually receives.
  *
+ * The same blind spot covers the lifecycle hooks: a hook that is never
+ * registered, or registered without one of the arguments it needs, compiles
+ * and runs. The hooks have their own tests, but those stand up a server and
+ * wire it themselves, so only a case here can see whether production wired it
+ * at all.
+ *
  * Everything that would open a socket or a timer is mocked; the YAML config
  * is read for real (it is a pure file read).
  */
@@ -172,5 +178,45 @@ describe("createCollabServer — Redis channel prefix", () => {
 
     expect(capturedPrefix()).not.toContain("redis://");
     expect(capturedPrefix()).toBe("dev-studio:hocuspocus");
+  });
+});
+
+describe("createCollabServer — the identity rule is registered", () => {
+  beforeEach(() => {
+    redisExtensionSpy.mockClear();
+    serverSpy.mockClear();
+  });
+
+  // The rule itself and the payload reading are covered elsewhere, both
+  // against a real server. What no other case reaches is this last link: that
+  // the hook is on the config handed to Hocuspocus, and that the arguments it
+  // forwards are the ones the rule needs. Those tests stand up their own
+  // server and wire the hooks themselves, so deleting the wiring here — or
+  // dropping `connection` from what it forwards — leaves every one of them
+  // green while carets go out unstamped in production. The sibling suite's own
+  // header records that failure happening twice already
+  // (`hooks/__tests__/presence-wiring.test.ts`).
+  it("wires the awareness hook so an inbound frame comes back stamped", async () => {
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+    });
+
+    const config = serverSpy.mock.calls[0]?.[0] as {
+      beforeHandleAwareness?: (payload: unknown) => Promise<void>;
+    };
+    expect(typeof config.beforeHandleAwareness).toBe("function");
+
+    const states = new Map<number, Record<string, unknown>>([
+      [4242, { cursor: { anchor: 1, head: 1 }, user: { id: "u-victim" } }],
+    ]);
+    await config.beforeHandleAwareness?.({
+      states,
+      documentName: "project-p/canvas-s",
+      connection: { context: { user: { id: "u-alice" } } },
+    });
+
+    expect(states.get(4242)?.user).toEqual({ id: "u-alice" });
   });
 });
