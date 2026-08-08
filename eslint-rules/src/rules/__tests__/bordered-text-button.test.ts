@@ -47,6 +47,10 @@ ruleTester.run("bordered-text-button", borderedTextButton, {
     {
       code: "export const W = () => (\n  <Button\n    // bordered-button:allow — the node shell draws the frame\n    variant='ghost'\n    size='sm'\n  >\n    Drop a file\n  </Button>\n);",
     },
+    // An icon size on a button with no words is what the allowance is for.
+    {
+      code: "export const Y = () => <Button variant='ghost' size='icon' aria-label='Close'><X /></Button>;",
+    },
   ],
   invalid: [
     // The shape this rule exists for: a word on a page with nothing around it.
@@ -91,6 +95,34 @@ ruleTester.run("bordered-text-button", borderedTextButton, {
     {
       code: "// bordered-button:allow\nexport const X = () => <Button variant='ghost' size='sm'>Revoke</Button>;",
       errors: [{ messageId: "borderless", line: 2 }],
+    },
+    // `size='icon'` is allowed because a glyph-only button has no word to
+    // mistake for prose. Declaring the size while rendering a word is the
+    // one-token way to silence the rule, so the premise is now checked.
+    {
+      code: "export const Z1 = () => <Button variant='ghost' size='icon'>Save</Button>;",
+      errors: [{ messageId: "borderless", line: 1 }],
+    },
+    {
+      code: "export const Z2 = () => <Button variant='ghost' size='chrome'>{t('a.b')}</Button>;",
+      errors: [{ messageId: "borderless", line: 1 }],
+    },
+    // An alias is the same import. Matching the bare name `Button` let a file
+    // that renames it on the way in opt out of the rule entirely.
+    {
+      code: "import { Button as B } from '@web/components/ui/button';\nexport const Z3 = () => <B variant='ghost' size='sm'>Save</B>;",
+      errors: [{ messageId: "borderless", line: 2 }],
+    },
+    // `as const` is ordinary TypeScript, not an attack — but it hid the variant.
+    {
+      code: "export const Z4 = () => <Button variant={'ghost' as const} size='sm'>Save</Button>;",
+      errors: [{ messageId: "borderless", line: 1 }],
+    },
+    // A marker at the end of a line must not excuse an element that merely
+    // shares that line; the exception is per button, not per line.
+    {
+      code: "export const Z5 = () => (\n  <div>\n    <Button variant='ghost' size='sm'>A</Button> {/* bordered-button:allow */}\n  </div>\n);",
+      errors: [{ messageId: "borderless", line: 3 }],
     },
   ],
 });

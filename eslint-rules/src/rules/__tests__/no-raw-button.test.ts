@@ -33,5 +33,14 @@ ruleTester.run("no-raw-button", noRawButton, {
       code: "export const H = () => <button role='tab'>Canvas</button>;",
       errors: [{ messageId: "rawButton", line: 1 }],
     },
+    // The element built through the factory is the same element.
+    {
+      code: "export const I = () => React.createElement('button', { type: 'button' }, 'Save');",
+      errors: [{ messageId: "rawButton", line: 1 }],
+    },
+    {
+      code: "export const J = () => createElement('button', null, 'Save');",
+      errors: [{ messageId: "rawButton", line: 1 }],
+    },
   ],
 });

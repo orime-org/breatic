@@ -35,6 +35,22 @@ const BORDERLESS_VARIANTS = new Set(["ghost", "chrome-ghost", "link"]);
  */
 const AFFORDANT_SIZES = new Set(["menu-item", "icon", "chrome"]);
 
+/**
+ * The sizes whose allowance rests on the button showing no word.
+ *
+ * `icon` and `chrome` are square glyph forms whose label lives in
+ * `aria-label`, off screen — so the allowance is checkable, and it is checked:
+ * declaring one of them while rendering a word used to be the single token
+ * that silenced this rule for good.
+ *
+ * `menu-item` is not in here because its premise — "this row sits inside a
+ * dropdown" — is not something the source can be asked. A row that borrows the
+ * size for its height rather than for its context therefore still passes; that
+ * is a known limit, and the `bordered-button:allow` marker is where a control
+ * whose frame comes from its container says so on purpose.
+ */
+const GLYPH_ONLY_SIZES = new Set(["icon", "chrome"]);
+
 /** What reading a JSX attribute produced. */
 type AttributeRead =
   | { kind: "absent" }
@@ -65,6 +81,16 @@ function attributeNamed(
  * @returns The string, or null when it is not statically one.
  */
 function constantString(expression: TSESTree.Node): string | null {
+  // `variant={'ghost' as const}` is ordinary TypeScript here, not a dodge, and
+  // an earlier version read straight past it into "cannot be read" — which
+  // switched the rule off for that call site.
+  if (
+    expression.type === AST_NODE_TYPES.TSAsExpression ||
+    expression.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+    expression.type === AST_NODE_TYPES.TSNonNullExpression
+  ) {
+    return constantString(expression.expression);
+  }
   if (
     expression.type === AST_NODE_TYPES.Literal &&
     typeof expression.value === "string"
@@ -109,6 +135,30 @@ function readAttribute(
 }
 
 /**
+ * Whether the element renders a word the reader can see.
+ *
+ * Bare text, a string in braces, and a call such as `t('some.key')`, which is
+ * how every label here is written. An expression it cannot classify is not
+ * counted — reporting a glyph button by mistake is worse than missing one,
+ * because a false alarm gets the rule turned off at the call site.
+ * @param element - The JSX element whose children to read.
+ * @returns True when at least one child is visible text.
+ */
+function rendersWord(element: TSESTree.JSXElement): boolean {
+  return element.children.some((child) => {
+    if (child.type === AST_NODE_TYPES.JSXText) {
+      return child.value.trim().length > 0;
+    }
+    if (child.type === AST_NODE_TYPES.JSXExpressionContainer) {
+      const { expression } = child;
+      if (constantString(expression) !== null) return true;
+      return expression.type === AST_NODE_TYPES.CallExpression;
+    }
+    return false;
+  });
+}
+
+/**
  * A control that shows a word has to look pressable.
  *
  * Without a border or a fill it is a coloured phrase, and a reader has no way
@@ -146,17 +196,51 @@ export const borderedTextButton = createRule({
   defaultOptions: [],
   create(context) {
     const allowedLines = allowMarkerLines(context.sourceCode, ALLOW_MARKER);
+    // The primitive's local name in this file. A file that renames it on the
+    // way in used to opt out of the rule entirely, since the selector matched
+    // the word `Button` rather than the thing it was bound to.
+    const localNames = new Set<string>();
+
+    /**
+     * Whether the marker sits inside this tag rather than merely on its line.
+     *
+     * A comment trailing a JSX line would otherwise excuse every button that
+     * line contains — the marker is meant to record one exception, not a row
+     * of them. Inside the tag is also the only place a comment fits in JSX.
+     * @param node - The opening element being judged.
+     * @returns True when a marker lies within the tag's own span.
+     */
+    function markedInsideTag(node: TSESTree.JSXOpeningElement): boolean {
+      // The first line carries `<Button` itself, so a trailing comment there
+      // belongs to whatever precedes it, not to this tag.
+      for (let l = node.loc.start.line + 1; l <= node.loc.end.line; l += 1) {
+        if (allowedLines.has(l)) return true;
+      }
+      return false;
+    }
 
     return {
-      "JSXOpeningElement[name.name='Button']"(
-        node: TSESTree.JSXOpeningElement,
-      ): void {
-        // Any line the opening tag spans, not just its first: a JSX tag runs
-        // over several lines and the marker is written among the attributes,
-        // which is the only place a comment fits inside one.
-        for (let l = node.loc.start.line; l <= node.loc.end.line; l += 1) {
-          if (allowedLines.has(l)) return;
+      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+        if (!String(node.source.value).endsWith("components/ui/button")) return;
+        for (const spec of node.specifiers) {
+          if (
+            spec.type === AST_NODE_TYPES.ImportSpecifier &&
+            spec.imported.type === AST_NODE_TYPES.Identifier &&
+            spec.imported.name === "Button"
+          ) {
+            localNames.add(spec.local.name);
+          }
         }
+      },
+      JSXOpeningElement(node: TSESTree.JSXOpeningElement): void {
+        if (node.name.type !== AST_NODE_TYPES.JSXIdentifier) return;
+        // `Button` by default: a file may render it without importing here
+        // (a test, a story), and the import visitor may not have run yet.
+        if (node.name.name !== "Button" && !localNames.has(node.name.name)) {
+          return;
+        }
+        if (markedInsideTag(node)) return;
+
         const variant = readAttribute(node, "variant");
         // No variant means the default one, which fills.
         if (variant.kind !== "value" || !BORDERLESS_VARIANTS.has(variant.value)) {
@@ -166,9 +250,19 @@ export const borderedTextButton = createRule({
         if (size.kind === "unreadable") return;
         // An absent size is the default one — a 32px button built for a word.
         const named = size.kind === "value" ? size.value : "default";
-        if (AFFORDANT_SIZES.has(named)) return;
-
-        context.report({ node, messageId: "borderless" });
+        if (!AFFORDANT_SIZES.has(named)) {
+          context.report({ node, messageId: "borderless" });
+          return;
+        }
+        // The glyph sizes are allowed because there is no word to mistake for
+        // prose. Check that rather than take the size's word for it.
+        if (
+          GLYPH_ONLY_SIZES.has(named) &&
+          node.parent.type === AST_NODE_TYPES.JSXElement &&
+          rendersWord(node.parent)
+        ) {
+          context.report({ node, messageId: "borderless" });
+        }
       },
     };
   },

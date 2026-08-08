@@ -350,14 +350,16 @@ export default [
     },
   },
   {
-    // The vendor directory is where the element is legitimately written —
-    // `Button` itself renders one. The dev gallery shows the primitive's own
-    // variants, so it has no reason to hand-roll a button either, but it is
-    // exempt for the same reason the other visual rules exempt it: it exists
-    // to display what we replaced.
+    // Exempt by provenance, not by directory. `components/ui/` is where the
+    // shadcn primitives live, but it is not purely vendor — `password-input`
+    // is ours, and exempting the whole path left the one first-party control
+    // in the tree unguarded. Only the file that legitimately renders the
+    // element is excused: `Button` itself. The dev gallery is exempt for the
+    // reason the other visual rules exempt it — it exists to display what we
+    // replaced.
     files: ['src/**/*.tsx'],
     ignores: [
-      'src/components/ui/**',
+      'src/components/ui/button.tsx',
       'src/pages/_dev/**',
       '**/__tests__/**',
       '**/*.test.tsx',

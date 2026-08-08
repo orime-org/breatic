@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
-import type { TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
 /**
@@ -47,6 +47,29 @@ export const noRawButton = createRule({
         node: TSESTree.JSXOpeningElement,
       ): void {
         context.report({ node, messageId: "rawButton" });
+      },
+      // The factory call renders the identical element, so a rule that watched
+      // JSX alone would ban one way of writing it and leave the other open.
+      CallExpression(node: TSESTree.CallExpression): void {
+        const callee = node.callee;
+        const name =
+          callee.type === AST_NODE_TYPES.Identifier
+            ? callee.name
+            : callee.type === AST_NODE_TYPES.MemberExpression &&
+                callee.property.type === AST_NODE_TYPES.Identifier
+              ? callee.property.name
+              : null;
+        if (name !== "createElement" && name !== "jsx" && name !== "jsxs") {
+          return;
+        }
+        const first = node.arguments[0];
+        if (
+          first !== undefined &&
+          first.type === AST_NODE_TYPES.Literal &&
+          first.value === "button"
+        ) {
+          context.report({ node, messageId: "rawButton" });
+        }
       },
     };
   },

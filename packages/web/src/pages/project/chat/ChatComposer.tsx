@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ArrowUp, Square, SquareMousePointer, Wand2 } from 'lucide-react';
+import { ArrowUp, Square, SquareMousePointer, Wand2, X } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -144,9 +144,9 @@ export function ChatComposer({
                   size='icon'
                   aria-label={`Remove ${chip.label}`}
                   onClick={() => onRemoveChip(chip.id)}
-                  className='h-4 w-4 text-xs leading-none text-muted-foreground hover:bg-accent hover:text-foreground'
+                  className='h-4 w-4 text-muted-foreground hover:bg-accent hover:text-foreground'
                 >
-                  ×
+                  <X className='h-3 w-3' aria-hidden='true' />
                 </Button>
               ) : null}
             </span>
