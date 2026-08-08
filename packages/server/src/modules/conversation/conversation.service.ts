@@ -13,8 +13,25 @@ import * as messageRepo from "@server/modules/conversation/conversation-message.
 import * as pointerRepo from "@server/modules/conversation/current-conversation.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import { t } from "@breatic/shared";
-import { NotFoundError, ForbiddenError } from "@breatic/core";
+import { db, NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 import type { ConversationEntity, MessageData } from "@breatic/shared";
+
+/**
+ * How many times to retry resolving when another request wins the pointer.
+ *
+ * Each loss means someone else just created the conversation, so the next read
+ * finds it. A second retry is only needed if that winner is deleted in the same
+ * instant — bounded so a pathological caller cannot spin here forever.
+ */
+const CREATE_ATTEMPTS = 3;
+
+/**
+ * Thrown inside the create transaction when another request claimed the
+ * pointer first. It exists to roll that transaction back — a transaction that
+ * simply returns commits, so the conversation this caller just created would
+ * survive as a twin of the winner's. Never escapes this module.
+ */
+class LostTheClaim extends Error {}
 
 /**
  * Validate that a conversation exists and belongs to the given user.
@@ -76,26 +93,54 @@ export async function resolveCurrentConversation(
   projectId: string,
   firstMessage: string,
 ): Promise<ConversationEntity> {
-  // `getConversation` filters soft-deleted rows, so a pointer naming a
-  // deleted conversation reads as no pointer at all and falls through to
-  // creating a new one. That is the whole recovery path: without it, deleting
-  // the conversation you are in makes every following message fail forever.
-  const currentId = await pointerRepo.getCurrentConversationId(userId, projectId);
-  if (currentId) {
-    const current = await conversationRepo.getConversation(currentId);
-    if (current) return current;
+  for (let attempt = 0; attempt < CREATE_ATTEMPTS; attempt++) {
+    // `getConversation` filters soft-deleted rows, so a pointer naming a
+    // deleted conversation reads as no pointer at all and falls through to
+    // creating a new one. That is the whole recovery path: without it, deleting
+    // the conversation you are in makes every following message fail forever.
+    const currentId = await pointerRepo.getCurrentConversationId(userId, projectId);
+    if (currentId) {
+      const current = await conversationRepo.getConversation(currentId);
+      if (current) return current;
+    }
+
+    // Enforce project access BEFORE creating anything, so a failed check does
+    // not leave an orphan conversation behind. Chat is a creative-write action
+    // — view-only members cannot open conversations.
+    await projectService.assertAccess(projectId, userId, "editor");
+
+    const created = await db.transaction(async (tx) => {
+      const conv = await conversationRepo.createConversation(
+        userId,
+        firstMessage.slice(0, 100),
+        tx,
+      );
+      await conversationRepo.setProjectId(conv.id, projectId, tx);
+
+      // Losing the claim rolls the conversation back with it, so a race leaves
+      // one conversation rather than one plus a stranded twin. The next turn of
+      // the loop then reads whoever won.
+      const won = await pointerRepo.claimCurrentConversation(
+        userId,
+        projectId,
+        conv.id,
+        tx,
+      );
+      if (!won) throw new LostTheClaim();
+
+      return { ...conv, projectId };
+    }).catch((err: unknown) => {
+      if (err instanceof LostTheClaim) return null;
+      throw err;
+    });
+
+    if (created) return created;
   }
 
-  // Enforce project access BEFORE creating anything, so a failed check does
-  // not leave an orphan conversation behind. Chat is a creative-write action
-  // — view-only members cannot open conversations.
-  await projectService.assertAccess(projectId, userId, "editor");
-
-  const conv = await conversationRepo.createConversation(userId, firstMessage.slice(0, 100));
-  await conversationRepo.setProjectId(conv.id, projectId);
-  await pointerRepo.setCurrentConversation(userId, projectId, conv.id);
-
-  return { ...conv, projectId };
+  // Only reachable when every attempt both lost the claim AND then found the
+  // winning conversation already deleted — someone deleting conversations in a
+  // tight loop while another tab sends. Surfacing it beats spinning forever.
+  throw new ConflictError(t("server.error.conflict"));
 }
 
 /**

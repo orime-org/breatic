@@ -112,7 +112,6 @@ export const mocks = {
   },
   conversationService: {
     assertAccess: vi.fn().mockResolvedValue(undefined),
-    getOrCreate: vi.fn().mockResolvedValue({ id: "conv-1", userId: "user-1" }),
     list: vi.fn(),
     getWithMessages: vi.fn(),
     deleteConversation: vi.fn(),

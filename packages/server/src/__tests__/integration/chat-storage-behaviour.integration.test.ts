@@ -165,6 +165,30 @@ describe("the current conversation pointer", () => {
     expect([a.id, b.id]).toContain(rows[0]!.conversation_id);
   });
 
+  it("makes one conversation, not two, when two first messages arrive together", async () => {
+    const { userId, projectId } = await seedProject();
+
+    // Two tabs open on a project nobody has chatted in yet, both sent at the
+    // same moment. Creating the conversation and claiming the pointer used to
+    // be three separately-committed statements, so both callers read "no
+    // pointer", both created one, and the loser's conversation was left
+    // stranded in the project with a message in it.
+    const [a, b] = await Promise.all([
+      conversationService.resolveCurrentConversation(userId, projectId, "tab one"),
+      conversationService.resolveCurrentConversation(userId, projectId, "tab two"),
+    ]);
+
+    expect(a.id).toBe(b.id);
+
+    const rows = await sql<{ n: string }[]>`
+      SELECT count(*)::text AS n FROM conversations WHERE project_id = ${projectId}
+    `;
+    expect(Number(rows[0]!.n)).toBe(1);
+
+    // And the survivor is the one the pointer names.
+    expect(await pointerRepo.getCurrentConversationId(userId, projectId)).toBe(a.id);
+  });
+
   it("starts a fresh conversation when the pointed-at one was deleted", async () => {
     const { userId, projectId } = await seedProject();
     const first = await conversationService.resolveCurrentConversation(userId, projectId, "a");

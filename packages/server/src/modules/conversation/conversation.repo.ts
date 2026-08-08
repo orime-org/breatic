@@ -56,13 +56,16 @@ function toEntity(row: typeof conversations.$inferSelect): ConversationEntity {
  * Create a new conversation.
  * @param userId - Owner of the new conversation (conversations are user-scoped)
  * @param title - Display title; truncated to 200 chars before insert
+ * @param tx - Optional transaction handle, so a caller can create the
+ *   conversation and claim the current-conversation pointer as one unit
  * @returns The newly created conversation entity
  */
 export async function createConversation(
   userId: string,
   title = "New conversation",
+  tx?: DbTx,
 ): Promise<ConversationEntity> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .insert(conversations)
     .values({ userId, title: title.slice(0, 200) })
     .returning();
@@ -225,9 +228,14 @@ export async function updateTitle(id: string, title: string): Promise<void> {
  * Set the project_id on a conversation. No-op if soft-deleted.
  * @param id - Conversation UUID to link
  * @param projectId - Project UUID to associate the conversation with
+ * @param tx - Optional transaction handle; see {@link createConversation}
  */
-export async function setProjectId(id: string, projectId: string): Promise<void> {
-  await db
+export async function setProjectId(
+  id: string,
+  projectId: string,
+  tx?: DbTx,
+): Promise<void> {
+  await (tx ?? db)
     .update(conversations)
     .set({ projectId, updatedAt: new Date() })
     .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
