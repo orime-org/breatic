@@ -129,6 +129,19 @@ describe("stampConnectionIdentity", () => {
     expect((state?.user as { focused?: boolean }).focused).toBe(true);
   });
 
+  it("keeps the focus flag when the client says its window lost focus", () => {
+    // The false value carries as much as the true one: a peer who switched
+    // away is drawn dimmer, and a rule that only forwarded `true` would leave
+    // their caret looking active for everybody else. This field is the one
+    // thing the server takes from the client, so both its values are the
+    // contract, and only asserting `true` leaves half of it unguarded.
+    const states = new Map([[MY_CLIENT, cursorState({ focused: false })]]);
+
+    stampConnectionIdentity({ states, userId: ME });
+
+    expect(states.get(MY_CLIENT)?.user).toEqual({ id: ME, focused: false });
+  });
+
   it("omits the focus flag when the client did not send one", () => {
     const states = new Map([
       [MY_CLIENT, { cursor: { anchor: 1, head: 1 }, user: {} }],

@@ -41,6 +41,13 @@
  * the protocol keeps. But the server applies an inbound frame to a scratch
  * awareness first and hands this hook `getStates()`, and a removal deletes the
  * entry from that scratch, so nothing is left to hand over.
+ *
+ * And it does not really reach an entry whose state is an array. An array is
+ * an object, so the identity is written onto it here, but re-encoding runs the
+ * state through `JSON.stringify`, which keeps only the indexed elements — that
+ * entry leaves exactly as it arrived. Harmless rather than a hole: what leaves
+ * carries no identity at all, so it cannot pass for anyone. Only a hand-built
+ * frame produces one.
  */
 
 /** Field the identity is written to. Only the server ever writes it. */

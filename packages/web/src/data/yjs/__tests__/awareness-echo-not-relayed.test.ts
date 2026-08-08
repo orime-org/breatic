@@ -44,8 +44,15 @@
  * That a frame from a client only ever names that client. The last case shows
  * one that names somebody else: a removal this client decided on its own,
  * which carries a `'timeout'` origin rather than the provider and so is
- * forwarded. The server therefore still has to decide per entry whom an entry
- * belongs to; it cannot assume the sender.
+ * forwarded.
+ *
+ * What the server does about that is settled and is the opposite of a
+ * per-entry ownership question: it writes the identity it authenticated onto
+ * every entry it is handed, and asking whose an entry is has been banned
+ * outright (`packages/collab/CLAUDE.md`, #1887). This particular frame never
+ * reaches that rule anyway — the server applies an inbound frame to a scratch
+ * awareness first, and a removal deletes the entry from it, so there is
+ * nothing left to hand over.
  *
  * That removal is the one y-protocols' own sweep issues for a peer it has not
  * heard from in thirty seconds (`awareness.js:70-75`) — read there, not

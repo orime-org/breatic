@@ -39,6 +39,8 @@ import {
 
 const PID = "11111111-1111-4111-8111-111111111111";
 const META_DOC = `project-${PID}/meta`;
+/** A space document — where carets actually live. */
+const CANVAS_DOC = `project-${PID}/canvas-22222222-2222-4222-8222-222222222222`;
 const ALICE = "u-alice";
 
 /** Clock the wiring reads, so a case can move time without waiting. */
@@ -124,21 +126,24 @@ function metaDoc(): Y.Doc {
  * @param client - Connection to send it on.
  * @param clientId - Yjs client id to key the entry to.
  * @param state - Awareness state to put in that entry.
- * @param revisions - How many state writes the sender has made. The awareness clock counts exactly these, and a frame is applied only when its clock beats the one the document already holds for that entry — so a frame keyed to a client id somebody else has already used needs more revisions than they have made, or it is dropped before this rule's work can be seen at all.
+ * @param options - Everything a case may need to vary.
+ * @param options.revisions - How many state writes the sender has made. The awareness clock counts exactly these, and a frame is applied only when its clock beats the one the document already holds for that entry — so a frame keyed to a client id somebody else has already used needs more revisions than they have made, or it is dropped before this rule's work can be seen at all.
+ * @param options.docName - Document to address the frame to. Carets live on space documents, so the cases that matter most are not on the meta one.
  */
 async function sendCaret(
   client: LiveClient,
   clientId: number,
   state: Record<string, unknown>,
-  revisions = 1,
+  options: { revisions?: number; docName?: string } = {},
 ): Promise<void> {
+  const { revisions = 1, docName = META_DOC } = options;
   const scratch = new Y.Doc();
   scratch.clientID = clientId;
   const awareness = new awarenessProtocol.Awareness(scratch);
   for (let i = 0; i < revisions; i += 1) awareness.setLocalState(state);
   client.send(
     awarenessFrame(
-      META_DOC,
+      docName,
       awarenessProtocol.encodeAwarenessUpdate(awareness, [clientId]),
     ),
   );
@@ -148,13 +153,20 @@ async function sendCaret(
 }
 
 /**
- * Read one awareness entry back out of the live meta document.
+ * Read one awareness entry back out of a live document.
  * @param clientId - Entry to read.
+ * @param docName - Document holding it.
  * @returns The stored state, or undefined when the document has none.
+ * @throws {Error} When the server is not holding that document.
  */
-function caretState(clientId: number): Record<string, unknown> | undefined {
+function caretState(
+  clientId: number,
+  docName: string = META_DOC,
+): Record<string, unknown> | undefined {
+  const doc = server.documents.get(docName);
+  if (!doc) throw new Error(`document not loaded: ${docName}`);
   return (
-    metaDoc() as unknown as {
+    doc as unknown as {
       awareness: { getStates: () => Map<number, Record<string, unknown>> };
     }
   ).awareness
@@ -345,7 +357,7 @@ describe("presence wiring — the server decides whose caret is whose", () => {
       { cursor: { anchor: 9, head: 9 }, user: { id: ALICE } },
       // Past Alice's clock, or the frame is dropped before it is applied and
       // this case would pass on her leftover entry without proving anything.
-      2,
+      { revisions: 2 },
     );
 
     expect(caretState(5150)?.user).toEqual({ id: "u-bob" });
@@ -369,7 +381,7 @@ describe("presence wiring — the server decides whose caret is whose", () => {
       6060,
       { cursor: { anchor: 2, head: 2 }, user: { id: "u-never-stamped" } },
       // Past the first connection's clock, for the same reason as above.
-      2,
+      { revisions: 2 },
     );
 
     // The sentinel is what makes this case sharp: an unstamped entry keeps it,
@@ -377,5 +389,23 @@ describe("presence wiring — the server decides whose caret is whose", () => {
     // cursor, so neither outcome can be mistaken for a pass.
     expect(caretState(6060)?.user).toEqual({ id: ALICE });
     expect(caretState(6060)?.cursor).toEqual({ anchor: 2, head: 2 });
+  });
+
+  it("stamps a caret on a space document, not only on the meta one", async () => {
+    // Every other case here runs on the meta document, which is the one place
+    // a caret can never appear — meta carries heartbeats and nothing else.
+    // So without this case the rule could be gated to meta only and the whole
+    // suite would still pass, while every real caret went out unstamped and
+    // therefore nameless, the browser having stopped naming itself in #1886.
+    const alice = await connect("alice", CANVAS_DOC);
+
+    await sendCaret(
+      alice,
+      7070,
+      { cursor: { anchor: 3, head: 3 }, user: { id: "u-victim" } },
+      { docName: CANVAS_DOC },
+    );
+
+    expect(caretState(7070, CANVAS_DOC)?.user).toEqual({ id: ALICE });
   });
 });
