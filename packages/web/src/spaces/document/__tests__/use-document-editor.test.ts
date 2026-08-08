@@ -58,11 +58,11 @@ describe('useDocumentEditor', () => {
 
   beforeEach(() => {
     doc = new Y.Doc();
-    // The shape a document has when it reaches a client: the backend wrote its
-    // body when the Space was created, so it already holds one paragraph. This
-    // hook no longer seeds anything, and a test that started from a body with
-    // nothing in it would be exercising a state production never produces.
-    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
+    // The shape a document has when it reaches a client: the backend wrote a
+    // title into it when the Space was created, and no body block at all. This
+    // hook seeds nothing, and a test starting from an empty fragment would be
+    // exercising a state production never produces.
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document', 'Storyboard v3'));
     awareness = new Awareness(doc);
   });
   afterEach(() => {
@@ -266,24 +266,29 @@ describe('useDocumentEditor', () => {
       // ordinary click does not set, so yjs read it as a fresh local edit and
       // cleared the redo stack: the text was unrecoverable and Redo went dead.
       //
-      // Seeding the body makes the two agree from the start, so there is
-      // nothing to reconcile. Every block type is covered because an earlier
-      // attempt — refusing to delete the body's last child — only held when
-      // that child was a paragraph: an empty blockquote or list violates the
-      // schema and the binding deletes it anyway, and an empty heading is
-      // legal but still leaves ProseMirror a paragraph to write back.
+      // The undeletable title makes the two agree from the start: the
+      // fragment always holds it, so it is never empty, and the body below it
+      // is allowed to hold nothing — there is nothing left to reconcile.
+      // Every block type is covered because an earlier attempt — refusing to
+      // delete the body's last child — only held when that child was a
+      // paragraph: an empty blockquote or list violates the schema and the
+      // binding deletes it anyway.
       const { editor } = await mountEditor();
 
       act(() => {
-        editor.commands.setContent(html);
+        editor.commands.setContent(`<h1 class="doc-title">Storyboard v3</h1>${html}`);
       });
       const written = editor.getText();
-      expect(written.length).toBeGreaterThan(0);
+      expect(written).toContain('Storyboard v3');
 
       act(() => {
         editor.commands.undo();
       });
-      expect(editor.getText().trim()).toBe('');
+      // The body is gone; the title is not, and no paragraph was invented to
+      // stand in for it.
+      const afterUndo = documentBodyFragment(doc);
+      expect(afterUndo.length).toBe(1);
+      expect((afterUndo.get(0) as Y.XmlElement).nodeName).toBe('title');
 
       // Anything at all happening in the editor, before the user hits redo.
       act(() => {
@@ -308,7 +313,9 @@ describe('useDocumentEditor', () => {
       const { editor } = await mountEditor();
 
       act(() => {
-        editor.commands.setContent('<p>the only sentence</p>');
+        editor.commands.setContent(
+          '<h1 class="doc-title">Storyboard v3</h1><p>the only sentence</p>',
+        );
       });
       await waitFor(() =>
         expect(textOf(documentBodyFragment(doc))).toContain('the only sentence'),
@@ -317,7 +324,7 @@ describe('useDocumentEditor', () => {
       act(() => {
         editor.commands.undo();
       });
-      expect(editor.getText()).toBe('');
+      expect(editor.getText()).not.toContain('the only sentence');
 
       // Anything at all happening in the editor, before the user hits redo.
       act(() => {
@@ -327,18 +334,21 @@ describe('useDocumentEditor', () => {
       act(() => {
         editor.commands.redo();
       });
-      expect(editor.getText()).toBe('the only sentence');
+      expect(editor.getText()).toContain('the only sentence');
     });
 
-    it('leaves a single empty block behind rather than nothing', async () => {
-      // The other half of the fix: what undo leaves in Yjs has to be something
-      // ProseMirror can represent, or the two disagree and the next dispatch
-      // reconciles them as a user edit. One empty paragraph is exactly what an
-      // empty ProseMirror document is, so the two now agree and no write-back
-      // happens. Undoing several paragraphs still collapses to one.
+    it('leaves the title behind and nothing else', async () => {
+      // The other half of the structure: what undo leaves in Yjs has to be
+      // something ProseMirror can represent, or the two disagree and the next
+      // dispatch reconciles them as a user edit. A document holding only its
+      // title is exactly that — the schema allows a body with no blocks — so
+      // the two agree and no write-back happens. Undoing several paragraphs
+      // takes all of them, and puts no paragraph back in their place.
       const { editor } = await mountEditor();
       act(() => {
-        editor.commands.setContent('<p>first</p><p>second</p><p>third</p>');
+        editor.commands.setContent(
+          '<h1 class="doc-title">Storyboard v3</h1><p>first</p><p>second</p><p>third</p>',
+        );
       });
       await waitFor(() =>
         expect(textOf(documentBodyFragment(doc))).toContain('third'),
@@ -351,9 +361,8 @@ describe('useDocumentEditor', () => {
       const fragment = documentBodyFragment(doc);
       expect(fragment.length).toBe(1);
       expect(fragment.toArray().map(String).join('')).toBe(
-        '<paragraph></paragraph>',
+        '<title>Storyboard v3</title>',
       );
-      expect(editor.getText()).toBe('');
     });
 
     it('puts the selection back where the undone edit started', async () => {

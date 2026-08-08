@@ -48,33 +48,27 @@ describe("encodeInitialSpaceContent", () => {
     expect(title.getAttributes()).toEqual({});
   });
 
-  it("leaves the title empty when the creator never named the Space", () => {
-    // The first Space of a project is seeded with no user-typed name at all —
-    // what that path has is a Space name the backend generated from the type
-    // ("Document"), which is a product type name, not a document title.
+  it("takes the name a project's first Space is given, same as any other", () => {
+    // That path has no name its creator typed; the one it has comes from the
+    // Space type. It is still the name on the Space's tab, so it is still the
+    // document's title — there is no second rule for this path.
     const body = documentBodyFragment(
-      decode(encodeInitialSpaceContent("document")),
+      decode(encodeInitialSpaceContent("document", "Document")),
     );
     expect(body.length).toBe(1);
-    const title = body.get(0) as Y.XmlElement;
-    expect(title.nodeName).toBe("title");
-    expect(title.toString()).toBe("<title></title>");
+    expect((body.get(0) as Y.XmlElement).toString()).toBe(
+      "<title>Document</title>",
+    );
   });
 
   it("leaves a canvas with nothing — its editor builds its own structure", () => {
-    expect(decode(encodeInitialSpaceContent("canvas")).share.size).toBe(0);
+    // The name is still passed; a canvas has one too. It just has nowhere to
+    // put it, and must not invent a structure its editor never heard of.
+    expect(decode(encodeInitialSpaceContent("canvas", "Canvas")).share.size).toBe(0);
   });
 
   it("leaves a timeline with nothing, for the same reason", () => {
-    expect(decode(encodeInitialSpaceContent("timeline")).share.size).toBe(0);
-  });
-
-  it("ignores a title for kinds that have no body to put it in", () => {
-    // The parameter exists for documents. Passing it for a canvas must not
-    // invent a structure that kind's editor has never heard of.
-    expect(
-      decode(encodeInitialSpaceContent("canvas", "Storyboard v3")).share.size,
-    ).toBe(0);
+    expect(decode(encodeInitialSpaceContent("timeline", "Timeline")).share.size).toBe(0);
   });
 
   it("does not pin the client id — two encodes are independent writers", () => {

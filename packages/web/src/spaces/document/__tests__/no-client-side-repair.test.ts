@@ -18,12 +18,12 @@
  * erroring, so the viewer ends up permanently one paragraph ahead of everyone
  * else with nothing to signal it.
  *
- * And the repair revives the exact defect the seeded body exists to prevent:
- * the appended paragraph is on the undo stack, so undoing back past it removes
- * it, the next ordinary click re-appends it as a fresh local edit, and the redo
- * stack is cleared — the text just undone is unrecoverable. The seed only ever
- * covered an EMPTY body; this fires on a body that merely ENDS in something
- * other than a paragraph.
+ * And the repair revives the exact defect the title exists to prevent: the
+ * appended paragraph is on the undo stack, so undoing back past it removes it,
+ * the next ordinary click re-appends it as a fresh local edit, and the redo
+ * stack is cleared — the text just undone is unrecoverable. The title only
+ * keeps the FRAGMENT inhabited; this fires on a body that merely ENDS in
+ * something other than a paragraph, which the title says nothing about.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -62,11 +62,17 @@ describe('opening a document does not write to it', () => {
   function loadBodyEndingIn(lastNodeName: string): void {
     const source = new Y.Doc();
     const body = documentBodyFragment(source);
+    // The title comes first because every document has one — a fragment
+    // without it is a shape production cannot produce, and starting from it
+    // would make this test measure the editor repairing that instead of the
+    // thing it is here for.
+    const title = new Y.XmlElement('title');
+    title.insert(0, [new Y.XmlText('Storyboard v3')]);
     const para = new Y.XmlElement('paragraph');
     para.insert(0, [new Y.XmlText('real body text')]);
     const last = new Y.XmlElement(lastNodeName);
-    last.insert(0, [new Y.XmlText('Title')]);
-    body.insert(0, [para, last]);
+    last.insert(0, [new Y.XmlText('A heading')]);
+    body.insert(0, [title, para, last]);
     // A remote origin: this is someone else's content arriving, not our edit.
     Y.applyUpdate(doc, Y.encodeStateAsUpdate(source), 'remote-provider');
     source.destroy();
@@ -92,7 +98,8 @@ describe('opening a document does not write to it', () => {
     loadBodyEndingIn('heading');
     const body = documentBodyFragment(doc);
     const before = body.toString();
-    expect(body.length).toBe(2);
+    // title + paragraph + heading
+    expect(body.length).toBe(3);
 
     const rendered = mount(true);
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
@@ -100,7 +107,7 @@ describe('opening a document does not write to it', () => {
     // and the binding dispatches one of its own on bind.
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(body.length).toBe(2);
+    expect(body.length).toBe(3);
     expect(body.toString()).toBe(before);
   });
 

@@ -18,14 +18,16 @@
  */
 
 import type { Extensions } from '@tiptap/core';
+import { Document } from '@tiptap/extension-document';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import StarterKit from '@tiptap/starter-kit';
 import type * as Y from 'yjs';
 
-import { t } from '@breatic/shared';
+import { DOCUMENT_TITLE_NODE, t } from '@breatic/shared';
 
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
+import { DocumentTitle } from '@web/spaces/document/document-title';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
 /** The body fragment, plus the optional collaborative layers. */
@@ -73,7 +75,18 @@ export function buildDocumentExtensions(
     options;
 
   const extensions: Extensions = [
+    // `title block*` — one title, always first, then any number of body
+    // blocks INCLUDING none. Both halves are load-bearing and neither works
+    // alone: the title is what keeps the shared fragment inhabited, and once
+    // it does, requiring a body block would re-open the very gap the title
+    // closes (two people deleting different body blocks merge into a body
+    // with none, and the editor's repair for that counts as a user edit).
+    // `@breatic/shared`'s `document-body` carries the full reasoning.
+    Document.extend({ content: `${DOCUMENT_TITLE_NODE} block*` }),
+    DocumentTitle,
     StarterKit.configure({
+      // StarterKit's own Document is `block+`, which is both halves wrong.
+      document: false,
       // Collaboration owns history through the shared Yjs undo manager, which
       // tracks only this client's transactions. Leaving StarterKit's own
       // history in place gives the editor a second, client-blind undo stack:

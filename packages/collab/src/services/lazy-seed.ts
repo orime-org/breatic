@@ -73,18 +73,22 @@ export async function lazySeedMeta(
   // across collab instances converge to one Space (see header).
   const spaceId = deriveId(projectId);
 
+  // One name, used twice on purpose: it goes on the Space's tab AND becomes
+  // the document's title, because those are the same name.
+  const spaceName = defaultSpaceName(kind);
+
   // Content doc FIRST, then meta — a Space must never be visible in meta
   // before its content doc exists. Both are `ON CONFLICT DO NOTHING` +
   // deterministically named, so concurrent first-loads converge.
   await yjsDocumentsRepo.seedInitialState(
     spaceContentDocName(projectId, spaceId, kind),
-    encodeInitialSpaceContent(kind),
+    encodeInitialSpaceContent(kind, spaceName),
   );
 
   const bytes = encodeInitialMetaState({
     spaceId,
     kind,
-    name: defaultSpaceName(kind),
+    name: spaceName,
     createdBy: SYSTEM_ACTOR,
     ts: Date.now(),
   });

@@ -100,12 +100,19 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
  * structure on first bind. A document starts with the title described at the
  * top of this file and no body blocks at all.
  *
- * `title` is the name the creator gave the Space, and it is optional because
- * one of the two creation paths has no such name: the first Space of a
- * project is seeded by the backend from the project's chosen Space type, and
- * the name on that path is generated from the type itself ("Document"). That
- * is a product type name, not a document title, so that path passes nothing
- * and the document opens with an empty title and its placeholder.
+ * `name` is the Space's name — the one shown on its tab. A document Space's
+ * title and its tab name start out as the same thing, on both creation paths:
+ * a Space made from the new-Space dialog carries the name its creator typed,
+ * and a project's first Space carries the one the backend derives from the
+ * Space type. It is required rather than optional precisely because there is
+ * no path without one, and an optional argument would be a branch someone
+ * could forget to pass.
+ *
+ * They are the same only at birth. Renaming the tab afterwards does not touch
+ * the title, and editing the title does not touch the tab — they live in two
+ * different Yjs documents (the tab name in the project's meta document, the
+ * title in this one), and syncing them would mean deciding who wins when both
+ * change at once.
  *
  * The bytes need not be identical across calls. The row is written with
  * `ON CONFLICT DO NOTHING`, so concurrent first-seeds converge by document
@@ -116,12 +123,12 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
  * believing they had the whole story. Two blocks is visible and fixable; a
  * silent divergence is neither.
  * @param kind - The kind of Space this content document belongs to.
- * @param title - The creator's name for the Space, for a document Space that has one.
+ * @param name - The Space's name, which is also the document's opening title.
  * @returns The encoded Yjs update, ready to persist as the initial state.
  */
 export function encodeInitialSpaceContent(
   kind: SpaceType,
-  title?: string,
+  name: string,
 ): Uint8Array {
   const doc = new Y.Doc();
   // Returning from inside each branch is what makes the switch exhaustive:
@@ -131,7 +138,10 @@ export function encodeInitialSpaceContent(
   switch (kind) {
     case "document": {
       const titleNode = new Y.XmlElement(DOCUMENT_TITLE_NODE);
-      if (title) titleNode.insert(0, [new Y.XmlText(title)]);
+      // An empty name would give the document an empty title, which is a
+      // legal state the placeholder covers — but no caller has one, so it is
+      // not worth a branch that no test could reach.
+      if (name) titleNode.insert(0, [new Y.XmlText(name)]);
       documentBodyFragment(doc).push([titleNode]);
       return Y.encodeStateAsUpdate(doc);
     }

@@ -39,7 +39,7 @@ describe('a document opened straight from the backend seed', () => {
     doc = new Y.Doc();
     // The bytes the backend persists when the Space is created — not a
     // reconstruction of them.
-    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document', 'Storyboard v3'));
     awareness = new Awareness(doc);
   });
   afterEach(() => {
@@ -73,21 +73,33 @@ describe('a document opened straight from the backend seed', () => {
     // and check none of it.
     const body = documentBodyFragment(doc);
     expect(body.length).toBe(1);
-    expect((body.get(0) as Y.XmlElement).nodeName).toBe('paragraph');
+    expect((body.get(0) as Y.XmlElement).toString()).toBe(
+      '<title>Storyboard v3</title>',
+    );
   });
 
-  it('opens as the schema says an empty document looks', async () => {
+  it('opens in the shape the schema itself would fill in, title text aside', async () => {
     const { editor } = await open();
-    // Comparing against what the schema itself fills an empty document with,
-    // rather than writing the shape out by hand. The literal shape carries
-    // attributes contributed by extensions — `{"type":"paragraph","attrs":
-    // {"textAlign":null}}` today — so a hand-written "one empty paragraph"
-    // would be wrong the moment an extension adds another attribute, and
-    // wrong in a way that says nothing about the seed.
+    // Comparing against what the schema fills an empty document with, rather
+    // than writing the shape out by hand. The literal shape carries attributes
+    // contributed by extensions, so a hand-written expectation would be wrong
+    // the moment an extension adds another one, and wrong in a way that says
+    // nothing about the seed.
+    //
+    // The one legitimate difference is the title's text: the schema fills in
+    // an empty title, the backend writes the Space's name into it. Everything
+    // else — node types, nesting, attributes — has to match, because any other
+    // difference means the backend invented a shape the editor would then
+    // quietly repair.
     const asSchemaWouldFill = editor.schema.topNodeType
       .createAndFill()
       ?.toJSON();
-    expect(editor.state.doc.toJSON()).toEqual(asSchemaWouldFill);
+    const seeded = editor.state.doc.toJSON() as {
+      content?: { content?: unknown }[];
+    };
+    expect(seeded.content?.[0]?.content).toBeDefined();
+    delete seeded.content?.[0]?.content;
+    expect(seeded).toEqual(asSchemaWouldFill);
   });
 
   it('gives the user nothing to undo — the seed is not their edit', async () => {
