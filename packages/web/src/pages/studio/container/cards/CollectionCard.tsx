@@ -5,6 +5,7 @@ import type * as React from 'react';
 import { Link } from 'react-router-dom';
 import { MoreHorizontal } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   canManageItem,
@@ -86,13 +87,15 @@ export function CollectionCard({
         </div>
       </Link>
       {canManage ? (
-        <button
+        <Button
           type='button'
           aria-label={t('studio.container.card.more')}
+          variant={null}
+          size={null}
           className='absolute right-[7px] top-[7px] z-10 flex h-[22px] w-[22px] items-center justify-center rounded-chrome bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
         >
           <MoreHorizontal className='h-3.5 w-3.5' />
-        </button>
+        </Button>
       ) : null}
     </div>
   );

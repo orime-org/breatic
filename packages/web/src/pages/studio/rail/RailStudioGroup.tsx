@@ -5,6 +5,7 @@ import * as React from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
 import { useRailCollapse } from '@web/pages/studio/rail/use-rail-collapse';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
@@ -55,16 +56,18 @@ export function RailStudioGroup({
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   return (
     <div className='flex flex-col'>
-      <button
+      <Button
         type='button'
         onClick={toggle}
         aria-expanded={!collapsed}
+        variant={null}
+        size={null}
         className='flex h-8 items-center gap-2 rounded-chrome px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
       >
         <Icon className='h-4 w-4' />
         {title}
         <Chevron className='ml-auto h-3.5 w-3.5' />
-      </button>
+      </Button>
       {collapsed ? null : studios.length === 0 ? (
         <p className='py-1.5 pl-3.5 pr-2 text-xs text-muted-foreground'>
           {emptyText}

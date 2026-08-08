@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -237,7 +238,9 @@ function MenuButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
+        <Button
+          variant={null}
+          size={null}
           type='button'
           aria-label={label}
           onClick={() => onPick(item.id)}
@@ -246,7 +249,7 @@ function MenuButton({
           className={toolButtonClassName(item)}
         >
           <Icon className='h-5 w-5' />
-        </button>
+        </Button>
       </TooltipTrigger>
       <TooltipContent side='right'>{tooltipLabel}</TooltipContent>
     </Tooltip>
@@ -278,7 +281,9 @@ function NodesMenuButton({
   const label = t(item.labelKey);
   const tooltipLabel = disabled ? t('menu.disabledTooltip') : label;
   const button = (
-    <button
+    <Button
+      variant={null}
+      size={null}
       type='button'
       aria-label={label}
       disabled={disabled}
@@ -287,7 +292,7 @@ function NodesMenuButton({
       onFocusCapture={suppressTooltipFocusOpen}
     >
       <Icon className='h-5 w-5' />
-    </button>
+    </Button>
   );
 
   // Viewers see the featured button but it never opens — render it without

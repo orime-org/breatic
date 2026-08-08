@@ -134,29 +134,33 @@ export function TransferStudioSection({
         >
           {expiresInLabel(live.expiresAt, t)}
         </span>
-        <button
+        <Button
           type='button'
+          variant={null}
+          size={null}
           className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-accent'
           disabled={withdrawMutation.isPending}
           onClick={onWithdraw}
           data-testid='settings-transfer-withdraw'
         >
           {t('studio.container.settings.transferWithdraw')}
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
     <>
-      <button
+      <Button
         type='button'
+        variant={null}
+        size={null}
         className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-accent'
         onClick={() => setOpen(true)}
         data-testid='settings-transfer-open'
       >
         {t('studio.container.settings.transfer')}
-      </button>
+      </Button>
 
       <Dialog
         open={open}

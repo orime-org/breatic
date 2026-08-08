@@ -4,6 +4,8 @@
 import type * as React from 'react';
 import { Plus } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
+
 interface RailCreateActionsProps {
   /** Label for the create-project action (resolved i18n). */
   createProjectLabel: string;
@@ -19,6 +21,8 @@ interface RailCreateActionsProps {
   onCreateStudio: () => void;
 }
 
+// `justify-start` because the Button primitive centres its content and these
+// are left-aligned rows.
 const ACTION =
   'flex h-8 items-center gap-2.5 rounded-chrome px-2 text-sm font-medium leading-none transition-colors';
 
@@ -48,34 +52,40 @@ export function RailCreateActions({
 }: RailCreateActionsProps): React.JSX.Element {
   return (
     <div className='flex flex-col gap-0.5'>
-      <button
+      <Button
         type='button'
+        variant={null}
+        size={null}
         onClick={onCreateProject}
         className={`${ACTION} text-foreground hover:bg-accent`}
       >
         <Plus className='h-4 w-4 text-foreground' />
         {createProjectLabel}
-      </button>
-      <button
+      </Button>
+      <Button
         type='button'
         disabled
         title={comingSoonLabel}
+        variant={null}
+        size={null}
         className={`${ACTION} cursor-not-allowed text-muted-foreground opacity-65`}
       >
         <Plus className='h-4 w-4' />
         {createCollectionLabel}
-      </button>
+      </Button>
 
       <hr className='mx-1.5 my-1.5 border-border' />
 
-      <button
+      <Button
         type='button'
+        variant={null}
+        size={null}
         onClick={onCreateStudio}
         className={`${ACTION} text-foreground hover:bg-accent`}
       >
         <Plus className='h-4 w-4 text-foreground' />
         {createStudioLabel}
-      </button>
+      </Button>
     </div>
   );
 }

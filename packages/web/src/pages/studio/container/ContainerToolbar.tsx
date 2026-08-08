@@ -71,10 +71,12 @@ export function ContainerToolbar({
       <div className='flex-1' />
       {showViewControls ? (
         <>
-          <button
+          <Button
             type='button'
             disabled
             aria-label={notAvailable}
+            variant={null}
+            size={null}
             className='inline-flex h-[30px] items-center gap-1.5 rounded-chrome border border-border px-2.5 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50'
           >
             <span className='font-normal text-muted-foreground'>
@@ -85,7 +87,7 @@ export function ContainerToolbar({
               className='h-3 w-3 text-muted-foreground'
               aria-hidden='true'
             />
-          </button>
+          </Button>
           <div
             className='inline-flex overflow-hidden rounded-chrome border border-border opacity-50'
             aria-hidden='true'

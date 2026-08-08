@@ -135,14 +135,16 @@ export function ChangeSlugSection({
 
   return (
     <>
-      <button
+      <Button
         type='button'
+        variant={null}
+        size={null}
         className={DANGER_BUTTON}
         onClick={() => setOpen(true)}
         data-testid='settings-slug-open'
       >
         {t('studio.container.settings.slugChangeOpen')}
-      </button>
+      </Button>
 
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent

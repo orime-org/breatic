@@ -31,7 +31,12 @@ export function MiniToolTrigger({
   const tool = getMiniTool(toolId);
   if (!tool) {
     return (
-      <Button variant='ghost' size='sm' disabled data-testid='mini-tool-unknown'>
+      <Button
+        variant='outline'
+        size='sm'
+        disabled
+        data-testid='mini-tool-unknown'
+      >
         Unknown
       </Button>
     );
@@ -40,7 +45,7 @@ export function MiniToolTrigger({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant='ghost'
+          variant='outline'
           size='sm'
           disabled={disabled}
           onClick={() => onTrigger(toolId)}

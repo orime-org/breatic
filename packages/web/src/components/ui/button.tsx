@@ -81,6 +81,13 @@ const buttonVariants = cva(
   },
 );
 
+// `variant={null}` / `size={null}` mean "bring no chrome of your own". cva
+// applies `defaultVariants` only when the prop is `undefined`, so an explicit
+// null selects no variant at all and the caller's `className` is the whole
+// appearance apart from the base string above. That is the shape most of the
+// buttons converted away from a hand-written `<button>` take: the element had
+// its own border, fill and metrics already, and picking a variant for them
+// would have silently restyled them.
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {

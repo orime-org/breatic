@@ -3,6 +3,7 @@
 
 import type * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Sheet,
@@ -145,8 +146,10 @@ export function ConversationHistorySheet({
                 const rel = relativeTime(c.updatedAt);
                 return (
                   <li key={c.id} role='listitem'>
-                    <button
+                    <Button
                       type='button'
+                      variant={null}
+                      size={null}
                       onClick={() => onPick(c.id)}
                       aria-current={isActive ? 'true' : undefined}
                       className={`flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-accent ${
@@ -173,7 +176,7 @@ export function ConversationHistorySheet({
                           {t(rel.key, rel.params)}
                         </span>
                       </span>
-                    </button>
+                    </Button>
                   </li>
                 );
               })
