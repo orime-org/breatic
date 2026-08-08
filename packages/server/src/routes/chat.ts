@@ -67,8 +67,11 @@ chat.use("*", requireAuth);
 /**
  * `POST /chat/message` — send a message and receive an SSE stream.
  *
- * Gets or creates a conversation, instantiates the MainAgent,
- * and streams SSE events from `agent.chat()` to the client.
+ * Takes the conversation the client names, instantiates the MainAgent, and
+ * streams SSE events from `agent.chat()` to the client. It never creates one:
+ * `POST /chat/open` is the single place a conversation appears on the user's
+ * behalf, so an id that no longer resolves is refused here rather than
+ * quietly replaced with a new conversation the client does not know about.
  * @param c - Hono context with validated `chatMessageSchema` body
  * @returns SSE text/event-stream response
  */

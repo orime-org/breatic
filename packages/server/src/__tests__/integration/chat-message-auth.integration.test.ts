@@ -14,11 +14,19 @@
  * report a boundary it never touched. The suite this replaces was exactly that
  * shape, which is why it went when the design it was written against did.
  *
- * The last case is the one that outlives the others. A member who was an editor
- * when they opened chat owns a conversation that genuinely lives in this
- * project, so the id checks all pass for them; only the project role check can
- * refuse them after the demotion, and removing it leaves every other test here
- * green.
+ * Three of the five witness the project guard, and two do not — measured, with
+ * `projectService.assertAccess` removed from the route:
+ *
+ * - signed out: the session middleware refuses it first, either way
+ * - a stranger's project_id: STILL GREEN. The conversation they send lives in
+ *   their own project, so the id check refuses them on its own
+ * - removed member, view-only member, demoted member: all three red. Each holds
+ *   an id that is theirs, in this project, and not deleted, so every id check
+ *   passes and only the project guard is left to turn them away
+ *
+ * So the stranger case is the weakest of the five, kept because item 49 words
+ * it that way, and the three that follow it are what actually hold the guard in
+ * place. Deleting them as duplicates would leave nothing pinning it.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -209,10 +217,14 @@ describe("POST /chat/message — who may say something", () => {
   });
 
   it("hides a project the caller has no part in, and writes nothing", async () => {
-    // Item 49. The caller sends a project they are a stranger to, with a
-    // conversation of their own that is perfectly valid elsewhere — so only
-    // the project check can refuse this, and it must refuse with 404: telling
-    // an outsider "403" would confirm the project exists.
+    // Item 49, worded the way the item words it: user A sends user B's
+    // project_id. What matters is the answer — 404, not 403, because telling
+    // an outsider "you may not" would confirm the project exists.
+    //
+    // Both guards refuse this one: the conversation the stranger sends lives
+    // in their own project, so the id check turns them away whether or not the
+    // project guard is there. Measured — with the guard removed this case
+    // stays green. The case below is the one that pins it.
     const stranger = await seedOwner();
     const target = await seedOwner();
     const before = await conversationCount(target.projectId);
@@ -308,11 +320,14 @@ describe("POST /chat/message — who may say something", () => {
   });
 
   it("refuses a member demoted after they already opened chat here", async () => {
-    // The demotion has to take effect on a tab that is already holding a
-    // conversation id. Every id check passes for that tab — the conversation
-    // is theirs, it is in this project, it is not deleted — so this is the
-    // case that fails the moment the project role check is gone, and the only
-    // one in this file that a check on the id alone cannot cover.
+    // A role can change under a tab that is already holding a conversation id,
+    // and the answer has to change with it. Every id check still passes for
+    // that tab — the conversation is theirs, it is in this project, it is not
+    // deleted — so, like the two cases above, only the project guard can
+    // refuse this, and it goes red the moment that guard is removed. What this
+    // one adds is that the role is checked per request rather than once: the
+    // view-only member above was never allowed to write, this one was, and the
+    // guard has to notice that it stopped being true.
     const { projectId, studioId } = await seedOwner();
     const member = await insertUser();
     await sql`
