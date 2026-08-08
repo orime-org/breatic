@@ -48,7 +48,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
         <EditorContent
           editor={editor}
           data-testid='document-editor-content'
-          className='mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
+          className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
         />
       </ScrollArea>
     </>

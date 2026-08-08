@@ -22,15 +22,15 @@
 
 import type { Extensions } from '@tiptap/core';
 import { Document } from '@tiptap/extension-document';
-import { Placeholder } from '@tiptap/extension-placeholder';
 import StarterKit from '@tiptap/starter-kit';
 import type * as Y from 'yjs';
 
-import { DOCUMENT_TITLE_NODE, t } from '@breatic/shared';
+import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { DocumentClickToWrite } from '@web/spaces/document/document-click-to-write';
+import { DocumentPlaceholders } from '@web/spaces/document/document-placeholders';
 import { DocumentTitle } from '@web/spaces/document/document-title';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
@@ -139,20 +139,14 @@ export function buildDocumentExtensions(
     }),
   );
 
-  // Resolved per render of the placeholder decoration rather than captured as
-  // a string, because the editor is built once per document and would
-  // otherwise keep whichever language was active at that moment. `t` is the
-  // shared engine — `useTranslation` returns this same function and exists
-  // only to re-render subscribers — so calling it here reads the live locale.
-  extensions.push(
-    Placeholder.configure({
-      placeholder: () => t('spaces.document.placeholder'),
-    }),
-    // Resolving the string per render (above) reads the live locale, but a
-    // decoration is only redrawn when something dispatches — and switching
-    // language dispatches nothing. This asks for the redraw.
-    LocaleRedraw,
-  );
+  // Both placeholders are drawn by `DocumentPlaceholders` rather than by the
+  // extension every other editor uses: that one decorates textblocks that
+  // exist and, by default, only the one holding the caret — so a body with no
+  // blocks could never show one, and a fresh document could not show both.
+  // Resolving the strings per decoration reads the live locale; `LocaleRedraw`
+  // asks for the redraw, since switching language dispatches nothing on its
+  // own.
+  extensions.push(DocumentPlaceholders, LocaleRedraw);
 
   return extensions;
 }

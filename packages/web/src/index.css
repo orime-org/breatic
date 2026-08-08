@@ -424,6 +424,55 @@ body {
   pointer-events: none;
   color: var(--color-muted-foreground);
 }
+/* ---- The document Space's title block ----
+   Size is twice the body baseline rather than a literal 30px: the baseline is
+   `calc(15px * var(--ts))` and `--ts` is the text scale the user can change,
+   so a literal would stop matching the body the moment they do. 30px at the
+   default scale, which is the size chosen against the mock. */
+.doc-body-editor .ProseMirror .doc-title {
+  font-size: calc(var(--font-size-base) * 2);
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  /* 28px, chosen against the mock. rem rather than a spacing token because the
+     token scale stops at 16px, and the page root is the browser's 16px — the
+     base font size is set on `body`, which rem does not follow. */
+  margin: 0 0 1.75rem;
+}
+
+/* ---- The document Space's two placeholders ----
+   Drawn here rather than by the placeholder extension: that one decorates
+   textblocks that EXIST and, by default, only the one holding the caret — so a
+   body with no blocks could never show one, and a fresh document could not
+   show both. `document-placeholders` marks the two states; this paints them.
+   The extension's own rule further up is untouched, because the generate
+   prompt still relies on it. */
+.doc-body-editor .ProseMirror .doc-title.doc-title-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--color-muted-foreground);
+}
+.doc-body-editor .ProseMirror.doc-body-empty::after {
+  content: attr(data-body-placeholder);
+  display: block;
+  pointer-events: none;
+  color: var(--color-muted-foreground);
+}
+
+/* ---- Room to click under the last block ----
+   A document Space is born with a title and no body blocks, so without space
+   below it there is nothing to click and `document-click-to-write` never
+   fires. It cannot be a percentage height: the scroll viewport wraps its
+   children in an auto-height block (see the `display: block !important` rule
+   above), and a percentage against `auto` collapses. Half the viewport always
+   leaves room and never outgrows the window, so an empty document does not
+   gain a scrollbar for no reason. */
+.doc-body-editor .ProseMirror {
+  min-height: 50vh;
+}
+
 /* Remote collaborator carets, shared by every collaborative editor — the
    document body and the generate prompt alike (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render

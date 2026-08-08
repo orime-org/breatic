@@ -544,6 +544,7 @@
       "readOnlyNotice": "이 문서는 지금 읽기 전용입니다 — 입력한 내용은 저장되지 않습니다.",
       "refusedNotice": "이 문서에 대한 연결이 거부되었습니다. 보고 있는 내용이 최신이 아닐 수 있으며 변경 사항도 저장되지 않습니다.",
       "placeholder": "작성을 시작하세요…",
+      "titlePlaceholder": "제목 없는 문서",
       "toolbar": {
         "undo": "실행 취소",
         "redo": "다시 실행",
