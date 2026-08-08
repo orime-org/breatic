@@ -205,10 +205,56 @@ describe("POST /chat/open — creating on first entry", () => {
     // Reading the list and creating when it is empty has a gap between the two
     // steps. Two tabs arriving together both see nothing and both create,
     // leaving the user looking at a list with two empty conversations in it.
-    const [a, b] = await Promise.all([open(projectId, cookie), open(projectId, cookie)]);
+    //
+    // Firing both with Promise.all does not reproduce that: the pool hands the
+    // second request the connection the first just gave back, so they run one
+    // after the other and the test passes with no lock at all — measured, both
+    // locks removed and this test stayed green. So the interleaving is built
+    // here instead. A gate holds the project row, which is what the creating
+    // branch reaches for last:
+    //
+    //   tab A  takes the advisory lock, finds nothing, parks on the project row
+    //   tab B  parks on the advisory lock A is holding
+    //
+    // Each lock therefore has its own observation: without the project lock A
+    // never parks, without the advisory lock B parks on the project row rather
+    // than on an advisory lock, and either way a probe below goes unanswered.
+    let announceHeld: () => void = () => {};
+    const gateHolds = new Promise<void>((r) => {
+      announceHeld = r;
+    });
+    let releaseGate: () => void = () => {};
+    const gateReleased = new Promise<void>((r) => {
+      releaseGate = r;
+    });
+
+    const gate = sql.begin(async (tx) => {
+      await tx`SELECT 1 FROM projects WHERE id = ${projectId} FOR UPDATE`;
+      announceHeld();
+      await gateReleased;
+    });
+    await gateHolds;
+
+    const tabA = open(projectId, cookie);
+    await waitUntilBlockedOn(sql, ["projects", "for update"]);
+
+    const tabB = open(projectId, cookie);
+    await waitUntilBlockedOn(sql, ["pg_advisory_xact_lock"]);
+
+    releaseGate();
+    await gate;
+
+    const [a, b] = await Promise.all([tabA, tabB]);
     expect([a.status, b.status]).toEqual([200, 200]);
 
+    const first = (await a.json()) as OpenResponse;
+    const second = (await b.json()) as OpenResponse;
     expect(await conversationCount(projectId)).toBe(1);
+    // The one that waited must hand back what the other created, not a second
+    // conversation and not nothing.
+    expect(second.data.current.conversation!.id).toBe(
+      first.data.current.conversation!.id,
+    );
   });
 });
 
@@ -357,7 +403,7 @@ describe("POST /chat/open — who may open it", () => {
     // creating a conversation while holding nothing, which is the defect: the
     // delete then sweeps past it and a live conversation is left on a dead
     // project, unreachable through chat and blocking its hard delete.
-    await waitUntilBlockedOn(sql, "projects");
+    await waitUntilBlockedOn(sql, ["projects", "for update"]);
 
     releaseGate();
     await gate;

@@ -363,7 +363,7 @@ describe("leaveStudio — concurrency invariants", () => {
     await new Promise((r) => setTimeout(r, 150));
 
     const leave = studioMemberService.leaveStudio(studio.slug, leaver.id);
-    await waitUntilBlockedOn(sql, "studio_members");
+    await waitUntilBlockedOn(sql, ["studio_members"]);
 
     openGate();
     await handover;
@@ -421,7 +421,7 @@ describe("leaveStudio — concurrency invariants", () => {
       transferId,
       member.id,
     );
-    await waitUntilBlockedOn(sql, "project_members");
+    await waitUntilBlockedOn(sql, ["project_members"]);
 
     const leave = studioMemberService.leaveStudio(studio.slug, member.id);
     // Give the leave time to either block (locked — the fix) or run start to

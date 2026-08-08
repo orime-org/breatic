@@ -89,27 +89,34 @@ export async function openChat(
 }> {
   await projectService.assertAccess(projectId, userId, "editor");
 
-  // Asking "is there one?" and then creating leaves a gap two tabs can both
-  // walk through, each leaving an empty conversation behind. The lock makes the
-  // pair one indivisible step per (user, project); whoever arrives second finds
-  // the first one's conversation and uses it.
+  // Two locks, each covering a race the other cannot see, taken in this order
+  // everywhere. Nothing else in the codebase takes the advisory lock, so no
+  // cycle with the paths that take the project row is possible.
   const conversation = await db.transaction(async (tx) => {
-    // Every path that adds a project-scoped row takes this lock first, and a
-    // conversation is one. Checking the project is alive without it does not
-    // work: the insert's own foreign key takes a weaker lock that does not
-    // conflict with a delete's, so the two run past each other and what
-    // commits is a live conversation on a deleted project — unreachable
-    // through chat forever, and holding the project's hard delete open through
-    // its restrict FK. `projectInvite`, `roleUpgradeRequest` and
-    // `projectTransfer` all do the same thing for the same reason.
-    if (!(await projectRepo.lockLiveProject(projectId, tx))) {
-      throw new NotFoundError(t("server.error.not_found"));
-    }
-
+    // 1. Asking "is there one?" and then creating leaves a gap two tabs of the
+    //    same user can both walk through, each leaving an empty conversation
+    //    behind. This makes the pair one indivisible step per (user, project);
+    //    whoever arrives second finds the first one's conversation and uses it.
+    //    Scoped to the pair rather than the project so two members opening the
+    //    same project never wait on each other.
     await conversationRepo.lockChatCreation(tx, userId, projectId);
 
     const existing = await conversationRepo.findMostRecentlyUsed(userId, projectId, tx);
     if (existing) return existing;
+
+    // 2. Only the branch that adds a row needs the project, which is why the
+    //    lock sits here and not above: an ordinary open reads and returns
+    //    without ever touching the project row. Checking the project is alive
+    //    without locking it does not work — the insert's own foreign key takes
+    //    FOR KEY SHARE, a delete's UPDATE takes FOR NO KEY UPDATE, and those
+    //    two do not conflict, so the pair runs past each other and what commits
+    //    is a live conversation on a deleted project: unreachable through chat
+    //    forever, and left behind by a delete that believed it had swept the
+    //    project clean. `projectInvite`, `roleUpgradeRequest` and
+    //    `projectTransfer` all take this lock before adding their own rows.
+    if (!(await projectRepo.lockLiveProject(projectId, tx))) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
 
     const created = await conversationRepo.createConversation(userId, NEW_TITLE, tx);
     await conversationRepo.setProjectId(created.id, projectId, tx);
@@ -134,8 +141,10 @@ export async function openChat(
  * an id while the user deletes that conversation from another, and the first
  * two checks pass for it.
  *
- * All three answer NotFound rather than Forbidden: which conversations exist is
- * not something a caller may learn by probing.
+ * All three answer NotFound, and they answer it identically on purpose: three
+ * distinguishable answers would make the status code itself report which check
+ * failed, so a caller holding a stranger's id could read "this one exists, it
+ * is simply not yours" straight off the response.
  * @param conversationId - Conversation id as supplied by the client
  * @param userId - The signed-in user
  * @param projectId - Project the request claims to be in

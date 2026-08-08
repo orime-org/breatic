@@ -155,13 +155,17 @@ describe("messages", () => {
     });
     await gateHoldsLock;
 
-    // Both appends must now be waiting on that row. If they are not, the
-    // append is computing its turn index without holding anything, which is
-    // exactly the race that lets two turns share a billing key.
+    // Both appends must be waiting on that row before the gate lets go. If
+    // they are not, the append is computing its turn index without holding
+    // anything, which is exactly the race that lets two turns share a billing
+    // key. The second wait asks for two parked backends, not just "somebody is
+    // parked" — the first append is still there, so a probe that stops at one
+    // would return before the second append had issued a single statement and
+    // the two would then run in sequence, passing for the wrong reason.
     const first = messageRepo.addMessage(conv.id, { role: "user", content: "p" });
-    await waitUntilBlockedOn(sql, "conversations");
+    await waitUntilBlockedOn(sql, ["conversations", "for update"], 1);
     const second = messageRepo.addMessage(conv.id, { role: "user", content: "q" });
-    await waitUntilBlockedOn(sql, "conversations");
+    await waitUntilBlockedOn(sql, ["conversations", "for update"], 2);
 
     releaseGate();
     await gate;
