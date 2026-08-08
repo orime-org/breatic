@@ -19,7 +19,7 @@ import {
   verifyRecoveryCode,
 } from "@server/modules/auth/recovery-code.service.js";
 import { getRedis } from "@breatic/core";
-import { sendMail, type SendMailResult } from "@server/infra/mailer.js";
+import { sendMail, type SendMailResult } from "@breatic/core";
 import { env } from "@breatic/core";
 import {
   setSession,

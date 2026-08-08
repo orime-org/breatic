@@ -39,10 +39,9 @@ const mockEnv: Record<string, unknown> = {
   SMTP_USER: "",
   SMTP_PASSWORD: "",
 };
-// mailer reads `env` from the @breatic/core barrel (config is injected
-// via initCore); the old `../config/env.js` module no longer exists, so
-// mock the barrel's `env` export here.
-vi.mock("@breatic/core", () => ({
+// mailer reads `env` from core's own config module (config is injected
+// via initCore), the same way every other module inside core does.
+vi.mock("@core/config/env.js", () => ({
   get env() { return mockEnv; },
 }));
 

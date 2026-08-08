@@ -55,6 +55,10 @@ vi.mock("@breatic/core", () => ({
   createRedisClient: vi.fn(() => ({ on: vi.fn() })),
   getRedis: vi.fn(() => ({ on: vi.fn() })),
   getCollabRedis: vi.fn(() => ({ on: vi.fn() })),
+  // The timed store's alert arm (#40) reaches operations through core's
+  // mailer, and its rescue directory resolves from the monorepo root.
+  sendMail: vi.fn(async () => ({ status: "skipped", reason: "backend_disabled" })),
+  MONOREPO_ROOT: "/tmp",
 }));
 
 vi.mock("@collab/services/persistence.js", () => ({

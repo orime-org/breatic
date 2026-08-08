@@ -371,6 +371,12 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     checkRateLimit: vi.fn().mockResolvedValue(true),
     publishNodeEvent: mocks.publishNodeEvent,
     getStorageAdapter: mocks.getStorageAdapter,
+    // The mailer lives in core again (#40): collab needs to alert ops on a
+    // failed store, and the package-ownership rule sends anything two
+    // backends share to core. Route tests keep asserting through
+    // `mocks.sendMail`, so it has to be overridden here rather than left
+    // to the real implementation that `...actual` would supply.
+    sendMail: mocks.sendMail,
     setSession: vi.fn(),
     getSession: vi.fn(),
     // Fixtures across this suite build cookie headers with the bare name;
@@ -489,12 +495,6 @@ export const domainMock = () => ({
  *   vi.mock("@server/modules/auth/user.repo.js", userRepoMock);
  */
 export const userRepoMock = () => mocks.userRepo;
-
-/**
- * Mock for `@server/infra/mailer.js` — the mailer moved from @breatic/core
- * to @server in PR4. Tests that send mail mock this path.
- */
-export const mailerMock = () => ({ sendMail: mocks.sendMail });
 
 /**
  * Mock for `@server/modules` — the server-private domain (auth /

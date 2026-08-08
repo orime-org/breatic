@@ -320,16 +320,27 @@ Without AI keys the server runs, but AIGC features won't work. Agent chat needs 
 
 > `local` mode stores files in `./uploads/` (mounted as Docker volume). Works for small deployments. For production, use S3 or OSS with CDN.
 
-#### Email (optional — for password reset)
+#### Email (password reset, and the collab store alert)
 
 | Variable | Description |
 |----------|-------------|
+| `EMAIL_BACKEND` | `disabled` by default, **including in both env templates**. Nothing is sent until this is switched on |
 | `SMTP_HOST` | SMTP server (e.g. `smtp.gmail.com`) |
 | `SMTP_PORT` | Default `587` (TLS) |
 | `SMTP_USER` | SMTP username |
 | `SMTP_PASSWORD` | SMTP password or app-specific password |
 
 Without SMTP, the forgot-password feature won't send emails (the API still returns success to avoid leaking whether an email exists).
+
+**Turn this on in production, and set `store_alert_email` in `config/collab.yaml`.**
+When collab cannot get a document into the database before it leaves memory, it
+writes that document's content to a file under `store_rescue_dir` and emails the
+address in `store_alert_email` to say where. Those files are never removed
+automatically, because each one is the only remaining copy of somebody's work —
+and with the mail arm off, the only record that one exists is a
+`collab_store_alert_undeliverable` line in collab's log. That is a file nobody
+knows about. Both settings are documented in
+[CONFIGURATION.md](./CONFIGURATION.md).
 
 #### Google OAuth (optional)
 
