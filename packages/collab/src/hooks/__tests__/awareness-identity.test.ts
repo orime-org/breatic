@@ -12,10 +12,13 @@
  * ## Why this needs more than "fill in the sender's id"
  *
  * The hook this feeds receives every client state decoded from one inbound
- * frame, not just the sender's own. A client re-broadcasts states it learned
- * about other people (their bug, #1887, but ours to live with), so a frame from
- * Alice routinely carries Bob's entry. Stamping the whole frame would put
- * Alice's id on Bob's caret and make Bob's cursor jump into Alice's name.
+ * frame, not just the sender's own, so stamping the whole frame would risk
+ * putting Alice's id on Bob's caret and making Bob's cursor jump into Alice's
+ * name. Until 2026-08-06 that was routine — a client re-broadcast everything
+ * it had learned about its peers, because the collaboration client forwarded
+ * remote changes as if they were its own (#1887). It no longer does; what a
+ * frame can still carry, and what that leaves this branch of the rule doing,
+ * is `awareness-identity.ts` and #1893.
  *
  * So each entry is judged separately, and the deciding question is whose
  * connection the Yjs client id belongs to:

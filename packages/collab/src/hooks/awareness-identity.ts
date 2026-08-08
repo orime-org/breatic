@@ -14,11 +14,24 @@
  *
  * ## Per entry, not per frame
  *
- * One inbound frame carries every client state it happened to decode, not just
- * the sender's own: clients re-broadcast what they have learned about their
- * peers. So a frame from one collaborator routinely contains another's entry,
- * and stamping the frame wholesale would put the sender's identity on somebody
- * else's caret.
+ * An inbound frame carries whatever client states it happened to decode, and
+ * that is not always only the sender's own — so stamping a frame wholesale
+ * would risk putting the sender's identity on somebody else's caret. The unit
+ * of the decision is therefore the entry, not the frame.
+ *
+ * Until 2026-08-06 the sender relayed peers back routinely, because hocuspocus
+ * 3.4.4 forwarded every local awareness change without looking at whether it
+ * had just arrived from the server. 4.5.0 reads that signal and stops the
+ * echo, measured in
+ * `web/src/data/yjs/__tests__/awareness-echo-not-relayed.test.ts` (#1887).
+ *
+ * A client's frame can still name a peer, in one case: a removal the client
+ * decided on its own, which carries a `'timeout'` origin rather than the
+ * provider and so is forwarded. That one arrives with a null state and is
+ * turned away by the first guard below, before whose-is-it is asked — so with
+ * the echo gone, what still reaches the whose-is-it question is a frame
+ * somebody built by hand. What that should mean for the relay branch is #1893,
+ * and it is not settled here.
  *
  * The Yjs client id decides. Ours, or not yet known to anyone — the sender's,
  * stamp it. Registered against a different connection — a relay, leave it.
@@ -63,8 +76,9 @@ export function stampConnectionIdentity(args: {
     // onto that would turn a departure into a caret nobody can remove.
     if (state === null || typeof state !== "object") continue;
 
-    // Registered to somebody else — this is the sender relaying what it knows
-    // about a peer, which is normal traffic and not ours to rewrite.
+    // Registered to somebody else. This was written for relayed traffic, which
+    // a client no longer produces (#1887) — what lands here now is examined in
+    // #1893. Leaving the entry alone is not a check: it passes through as sent.
     if (args.otherClientIds.has(clientId) && !args.ownClientIds.has(clientId)) {
       continue;
     }
