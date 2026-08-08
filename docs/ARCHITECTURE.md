@@ -91,7 +91,7 @@ config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 
 - **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。`memory_window`(默认 20)按 Turn 计数,超出时自动归纳旧 Turn 到记忆摘要
 - **Context 压缩**:最近 `full_detail_turns`(默认 3)个 Turn 保留完整 step(tool_call + tool_result),更早 Turn 只保留 user + assistant 最终回复。`thinking` 字段永远不发回 LLM
-- **消息存储**:`conversations.messages` JSONB 数组,含 `turnIndex`、`thinking?`、`tool_calls?: ToolCallInfo[]`。原始消息不删除,归纳只生成摘要
+- **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool-call` / `tool-result`)。顺序即 `(turn_index, seq)`,同名唯一索引兜底,回合号在事务内锁会话父行后取最大值加一(它是计费幂等键的一半,不能撞车也不能倒退)。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
 
 ### Worker 4 paths
 
