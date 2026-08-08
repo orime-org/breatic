@@ -1,5 +1,4 @@
--- Messages move out of a JSONB array into a row per message, and the server
--- gains somewhere to remember which conversation a user is writing to.
+-- Messages move out of a JSONB array into a row per message.
 --
 -- `conversations.messages` held the entire history in one column, so every
 -- appended message rewrote and re-compressed the whole document while holding a

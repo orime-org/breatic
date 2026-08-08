@@ -57,8 +57,8 @@ function toEntity(row: typeof conversations.$inferSelect): ConversationEntity {
  * Create a new conversation.
  * @param userId - Owner of the new conversation (conversations are user-scoped)
  * @param title - Display title; truncated to 200 chars before insert
- * @param tx - Optional transaction handle, so a caller can create the
- *   conversation and claim the current-conversation pointer as one unit
+ * @param tx - Optional transaction handle, so opening chat can create the
+ *   conversation and stamp its project as one unit under the locks it holds
  * @returns The newly created conversation entity
  */
 export async function createConversation(

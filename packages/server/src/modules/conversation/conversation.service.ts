@@ -11,6 +11,7 @@
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
+import * as projectRepo from "@server/modules/project/project.repo.js";
 import { t } from "@breatic/shared";
 import { db, NotFoundError, ForbiddenError } from "@breatic/core";
 import type { ConversationEntity, MessageData } from "@breatic/shared";
@@ -93,6 +94,18 @@ export async function openChat(
   // pair one indivisible step per (user, project); whoever arrives second finds
   // the first one's conversation and uses it.
   const conversation = await db.transaction(async (tx) => {
+    // Every path that adds a project-scoped row takes this lock first, and a
+    // conversation is one. Checking the project is alive without it does not
+    // work: the insert's own foreign key takes a weaker lock that does not
+    // conflict with a delete's, so the two run past each other and what
+    // commits is a live conversation on a deleted project — unreachable
+    // through chat forever, and holding the project's hard delete open through
+    // its restrict FK. `projectInvite`, `roleUpgradeRequest` and
+    // `projectTransfer` all do the same thing for the same reason.
+    if (!(await projectRepo.lockLiveProject(projectId, tx))) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+
     await conversationRepo.lockChatCreation(tx, userId, projectId);
 
     const existing = await conversationRepo.findMostRecentlyUsed(userId, projectId, tx);

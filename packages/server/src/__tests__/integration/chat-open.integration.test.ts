@@ -43,6 +43,7 @@ import {
   loadLocales,
 } from "@breatic/core";
 import type { Hono } from "hono";
+import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 
 try {
   initCore(process.env);
@@ -237,6 +238,12 @@ describe("POST /chat/open — what comes back", () => {
     });
     await said.text();
 
+    // Touch the quiet conversation's updated_at AFTER the message was sent.
+    // Ordering by updated_at would now pick it; ordering by "when did anyone
+    // last speak here" still picks the other. Renaming a conversation does
+    // exactly this, which is why the two are not interchangeable.
+    await sql`UPDATE conversations SET updated_at = now() WHERE id = ${quiet!.id}`;
+
     const payload = (await (await open(projectId, cookie)).json()) as OpenResponse;
     expect(payload.data.current.conversation!.id).toBe(spokenIn);
     expect(payload.data.current.conversation!.id).not.toBe(quiet!.id);
@@ -306,6 +313,58 @@ describe("POST /chat/open — who may open it", () => {
 
     expect(res.status).toBe(404);
     expect(await conversationCount(projectId)).toBe(before);
+  });
+
+  it("refuses to open chat in a project that has been deleted", async () => {
+    const { projectId, cookie } = await seedProject();
+
+    await sql`UPDATE projects SET deleted_at = now() WHERE id = ${projectId}`;
+
+    const res = await open(projectId, cookie);
+
+    expect(res.status).toBe(404);
+    expect(await conversationCount(projectId)).toBe(0);
+  });
+
+  it("creates nothing when the project is deleted while it is opening", async () => {
+    const { projectId, cookie } = await seedProject();
+
+    // The case above never reaches the lock: the project is already dead when
+    // the request arrives, so the access check turns it away. What the lock is
+    // for is the window AFTER that check — the project is alive when the
+    // caller looks, and gone by the time it would commit. Parking a lock on
+    // the project row holds that window open on purpose.
+    let announceHeld: () => void = () => {};
+    const gateHolds = new Promise<void>((r) => {
+      announceHeld = r;
+    });
+    let releaseGate: () => void = () => {};
+    const gateReleased = new Promise<void>((r) => {
+      releaseGate = r;
+    });
+
+    const gate = sql.begin(async (tx) => {
+      await tx`SELECT 1 FROM projects WHERE id = ${projectId} FOR UPDATE`;
+      announceHeld();
+      await gateReleased;
+      // The delete lands while the opener is parked behind this lock.
+      await tx`UPDATE projects SET deleted_at = now() WHERE id = ${projectId}`;
+    });
+    await gateHolds;
+
+    const opening = open(projectId, cookie);
+    // The opener must be waiting on the project row. If it is not, it is
+    // creating a conversation while holding nothing, which is the defect: the
+    // delete then sweeps past it and a live conversation is left on a dead
+    // project, unreachable through chat and blocking its hard delete.
+    await waitUntilBlockedOn(sql, "projects");
+
+    releaseGate();
+    await gate;
+
+    const res = await opening;
+    expect(res.status).toBe(404);
+    expect(await conversationCount(projectId)).toBe(0);
   });
 
   it("refuses a view-only member, and creates nothing", async () => {

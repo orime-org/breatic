@@ -9,15 +9,6 @@
  * only shows up when two statements race or when a row is soft-deleted
  * underneath a pointer:
  *
- *   - The pointer is what makes "the client never sends a conversation id"
- *     work. Resolving it twice must land on the same conversation; switching it
- *     must stay a single row.
- *
- *   - A conversation can be soft-deleted while the pointer still names it.
- *     Without a liveness predicate on the resolve path the user is stuck: every
- *     following message resolves to an invisible conversation and throws, and
- *     at this stage the UI has no way to pick a different one.
- *
  *   - Turn numbering is a billing key (`turn:${conversationId}:${turnIndex}`).
  *     Two concurrent user messages that compute the same turn index collide on
  *     the idempotency key, and one of the two turns goes unbilled.

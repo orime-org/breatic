@@ -50,26 +50,6 @@ async function columnsOf(table: string): Promise<string[]> {
 }
 
 /**
- * The columns making up a table's primary key, in key order.
- * @param table Table name in the public schema.
- * @returns Primary-key column names ordered by their position in the key.
- */
-async function primaryKeyOf(table: string): Promise<string[]> {
-  const rows = await sql<{ column_name: string }[]>`
-    SELECT kcu.column_name
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu
-      ON kcu.constraint_name = tc.constraint_name
-     AND kcu.table_schema = tc.table_schema
-    WHERE tc.table_schema = 'public'
-      AND tc.table_name = ${table}
-      AND tc.constraint_type = 'PRIMARY KEY'
-    ORDER BY kcu.ordinal_position
-  `;
-  return rows.map((r) => r.column_name);
-}
-
-/**
  * The ON DELETE rule of the foreign key sitting on one column.
  * @param table Referencing table name.
  * @param column Referencing column name.
