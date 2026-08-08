@@ -10,10 +10,12 @@
  * re-compressed the whole document while holding a lock on the conversation
  * row.
  *
- * These promises are invisible to unit tests: a unique index and an FK delete
- * rule exist only in the migration, so only a real Postgres can prove they are
- * there. The behaviour they support — turn numbering under concurrency, cascade
- * soft delete, the round trip through parts — lives in
+ * These promises are invisible to unit tests. A unique index and an FK delete
+ * rule are declared in the Drizzle schema, but migrations here are hand-written
+ * and `db:generate` is not run, so the declaration is documentation and the
+ * migration is what actually creates them — only a real Postgres can prove they
+ * are there. The behaviour they support — turn numbering under concurrency,
+ * cascade soft delete, the round trip through parts — lives in
  * chat-storage-behaviour.integration.test.ts.
  */
 

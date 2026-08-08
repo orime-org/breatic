@@ -9,10 +9,12 @@
  * shape. The mapping between the two lives here and nowhere else, so a caller
  * never has to know which form it is holding.
  *
- * Every read filters `deleted_at IS NULL` on both the message and its
- * conversation — a soft-deleted conversation takes its messages with it, and
- * the FK is RESTRICT, so that cascade is this layer's job rather than the
- * database's.
+ * Every query that RETURNS messages filters `deleted_at IS NULL` on both the
+ * message and its conversation — a soft-deleted conversation takes its
+ * messages with it, and the FK is RESTRICT, so that cascade is this layer's
+ * job rather than the database's. The reads that only ask for the highest turn
+ * index are deliberately not filtered that way, so the counter never steps back
+ * onto a number a deleted message already used; see the comment on that query.
  */
 
 import { and, asc, desc, eq, inArray, isNull, lte, gt, max } from "drizzle-orm";

@@ -193,10 +193,12 @@ describe("the conversation id is checked before anything is written", () => {
   it("refuses a fellow member's conversation in the same project", async () => {
     const owner = await seedOpenedProject();
 
-    // Both people are editors in ONE project, so "is it in this project?"
+    // Both people are members of ONE project, so "is it in this project?"
     // passes for both of them — only "is it yours?" can refuse this one. The
-    // earlier test does not reach that check, because those two users are in
-    // separate projects.
+    // earlier test does not PIN that check: its two users are in separate
+    // projects, so the project condition would refuse that request on its own.
+    // Measured — with the ownership condition removed, the earlier case stays
+    // green and this one turns red.
     const [mate] = await sql<{ id: string }[]>`
       INSERT INTO users (email, email_verified)
       VALUES (${`cid-mate-${seq++}@example.com`}, true) RETURNING id

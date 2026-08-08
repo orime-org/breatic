@@ -4,8 +4,8 @@
 /**
  * Behaviour of the chat storage layer (PR-3) against a real Postgres.
  *
- * The structural half (primary keys, unique index, FK delete rules) lives in
- * chat-storage-schema.integration.test.ts. This suite pins the behaviour that
+ * The structural half (columns, the unique index, the FK delete rules, the
+ * `parts` default) lives in chat-storage-schema.integration.test.ts. This suite pins the behaviour that
  * only shows up when two statements race or when a row is soft-deleted
  * underneath a pointer:
  *

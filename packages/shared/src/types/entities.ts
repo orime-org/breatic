@@ -55,8 +55,12 @@ export interface ToolCallInfo {
  * A message is not a single string: an assistant turn can carry reasoning,
  * visible prose and a tool call at once, and later work adds execution steps
  * and interactive cards to the same list. Storing the pieces as a list is the
- * shape the AI SDK itself uses for UI messages, so nothing has to be
- * reassembled on the way to the client.
+ * shape the AI SDK itself uses for UI messages.
+ *
+ * The wire is still flat: the repository folds these back into
+ * {@link MessageData} on every read, and nothing outside the repository has
+ * seen a part. Keeping the SDK's shape in storage is what lets a later batch
+ * send the pieces through as they are, without a second migration.
  */
 export type MessagePart =
   | { type: "text"; text: string }

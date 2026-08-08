@@ -299,10 +299,11 @@ describe("POST /chat/open — what comes back", () => {
   });
 
   it("lists only this user's conversations in this project", async () => {
-    const { projectId, cookie, studioId } = await seedProject();
-    await open(projectId, cookie);
+    const { projectId, cookie, studioId, userId } = await seedProject();
+    const mine = (await (await open(projectId, cookie)).json()) as OpenResponse;
 
     // Another member of the same studio, with their own conversation here.
+    // This is what the "only this user's" half is about.
     const other = await insertOutsider();
     await sql`
       INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${other}, 'maintainer')
@@ -313,10 +314,53 @@ describe("POST /chat/open — what comes back", () => {
     `;
     await open(projectId, await loginCookie(other));
 
+    // And the SAME user, in a second project of their own. This is the "in this
+    // project" half, and without it the name is wider than the test: measured,
+    // dropping the project condition from listConversations left every case in
+    // this file green, because no caller had a conversation anywhere else.
+    const [elsewhere] = await sql<{ id: string }[]>`
+      INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
+      VALUES (${studioId}, ${userId}, 'elsewhere', ${`elsewhere-${seq++}`}, 'private') RETURNING id
+    `;
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${elsewhere!.id}, ${userId}, 'owner', null)
+    `;
+    const away = (await (await open(elsewhere!.id, cookie)).json()) as OpenResponse;
+
     const payload = (await (await open(projectId, cookie)).json()) as OpenResponse;
-    // Two conversations exist in this project; this caller sees one.
+    // Two conversations exist in this project; this caller sees one of them,
+    // and none of their own from the other project.
     expect(await conversationCount(projectId)).toBe(2);
-    expect(payload.data.conversations).toHaveLength(1);
+    expect(payload.data.conversations.map((c) => c.id)).toEqual([
+      mine.data.current.conversation!.id,
+    ]);
+    expect(payload.data.conversations.map((c) => c.id)).not.toContain(
+      away.data.current.conversation!.id,
+    );
+  });
+
+  it("hands back the messages in the order they were written", async () => {
+    const { projectId, cookie } = await seedProject();
+    const opened = (await (await open(projectId, cookie)).json()) as OpenResponse;
+    const conversationId = opened.data.current.conversation!.id;
+
+    // Two turns, so the order is something an assertion can be wrong about.
+    // The repository reads newest-first and reverses; a single message never
+    // shows which way round that came out.
+    for (const text of ["first thing", "second thing"]) {
+      const res = await app.request("/api/v1/chat/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify({ message: text, project_id: projectId, conversation_id: conversationId }),
+      });
+      await res.text();
+    }
+
+    const payload = (await (await open(projectId, cookie)).json()) as OpenResponse;
+    expect(
+      payload.data.current.messages.filter((m) => m.role === "user").map((m) => m.content),
+    ).toEqual(["first thing", "second thing"]);
   });
 
   it("leaves a soft-deleted conversation out of the list", async () => {
@@ -402,7 +446,8 @@ describe("POST /chat/open — who may open it", () => {
     // The opener must be waiting on the project row. If it is not, it is
     // creating a conversation while holding nothing, which is the defect: the
     // delete then sweeps past it and a live conversation is left on a dead
-    // project, unreachable through chat and blocking its hard delete.
+    // project, unreachable through chat and left behind by a delete that
+    // believed it had swept the project clean.
     await waitUntilBlockedOn(sql, ["projects", "for update"]);
 
     releaseGate();

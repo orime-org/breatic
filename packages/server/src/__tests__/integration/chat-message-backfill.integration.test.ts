@@ -75,8 +75,9 @@ describe("the 0050 backfill", () => {
     const backfill = readBackfillStatement();
     let rows: BackfilledRow[] = [];
 
-    // The five shapes that ever reached the old column, in the order a real
-    // turn produces them. Handed over with `tx.json` rather than a stringified
+    // The four message shapes that ever reached the old column, in the order a
+    // real turn produces them, plus a second user message so the fixture spans
+    // a turn boundary. Handed over with `tx.json` rather than a stringified
     // literal: postgres.js encodes a plain string as a JSON string, so the
     // column would end up holding one scalar instead of an array of messages,
     // and the backfill would have nothing to explode.
