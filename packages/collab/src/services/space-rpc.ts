@@ -636,7 +636,7 @@ async function handleCreate(
   try {
     seeded = await yjsDocumentsRepo.seedInitialState(
       spaceContentDocName(projectId, spaceId, type),
-      encodeInitialSpaceContentState(),
+      encodeInitialSpaceContentState(type),
     );
   } catch (seedError) {
     logger.error(

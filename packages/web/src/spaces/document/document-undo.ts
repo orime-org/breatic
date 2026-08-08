@@ -24,7 +24,7 @@ import * as Y from 'yjs';
 
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 
 /**
  * What undo is allowed to delete.
@@ -162,8 +162,9 @@ export interface DocumentUndoManager extends Y.UndoManager {
  * text still comes out in every case.
  *
  * An earlier version of this file added a rule refusing to delete the body's
- * last child, to stop undo emptying the fragment; `seedEmptyBody` in
- * `document-yjs` removes the need by keeping a paragraph there from the start.
+ * last child, to stop undo emptying the fragment. The need went away when the
+ * body started arriving with a paragraph already in it — the backend writes
+ * one when the Space is created (`@breatic/shared`'s `document-body`).
  *
  * `captureTransaction` honours the `addToHistory: false` marker, so
  * machine-driven edits stay off the stack.

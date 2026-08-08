@@ -41,7 +41,7 @@ import * as Y from 'yjs';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import { createDocumentUndoManager } from '@web/spaces/document/document-undo';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 
 /**
  * Every block-level node the document can hold.

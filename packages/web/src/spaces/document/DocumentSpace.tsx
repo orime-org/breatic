@@ -93,14 +93,11 @@ export function DocumentSpace({
     // Only the ROLE decides this. A refused or read-only connection is reported
     // to the user, not enforced against them — see above.
     editable: !readOnly,
-    hasEverSynced,
   });
   // Nothing is offered until the document's real content is in. Editing before
   // that is not a lesser version of editing this document — it is editing a
   // different one: what gets typed ends up BESIDE the server's content when it
-  // arrives rather than in it, and undoing back to empty in that window
-  // destroys the redo stack, because the paragraph that keeps the two layers
-  // agreeing is only seeded once a sync has happened. Both measured.
+  // arrives rather than in it. Measured.
   //
   // The cost is that an unreachable collab service leaves the document
   // permanently unavailable rather than editable-but-doomed. That is the

@@ -26,8 +26,8 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import {
   documentBodyFragment,
-  seedEmptyBody,
-} from '@web/spaces/document/document-yjs';
+  encodeInitialSpaceContent,
+} from '@breatic/shared';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 /** Reads a fragment's plain text, paragraphs joined by a newline. */
@@ -51,7 +51,6 @@ function syncAsRemote(target: Y.Doc, source: Y.Doc): void {
   );
 }
 
-
 describe('useDocumentEditor', () => {
   let doc: Y.Doc;
   let awareness: Awareness;
@@ -59,6 +58,11 @@ describe('useDocumentEditor', () => {
 
   beforeEach(() => {
     doc = new Y.Doc();
+    // The shape a document has when it reaches a client: the backend wrote its
+    // body when the Space was created, so it already holds one paragraph. This
+    // hook no longer seeds anything, and a test that started from a body with
+    // nothing in it would be exercising a state production never produces.
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     awareness = new Awareness(doc);
   });
   afterEach(() => {
@@ -74,7 +78,6 @@ describe('useDocumentEditor', () => {
         doc,
         name,
         caretProvider: { awareness },
-        hasEverSynced: true,
       }),
     );
   }
@@ -117,143 +120,6 @@ describe('useDocumentEditor', () => {
       peer.destroy();
     });
 
-    it('waits for the content to arrive before seeding the body', async () => {
-      // A body can be empty for two very different reasons: the document is
-      // genuinely new, or it simply has not loaded yet. Seeding the second one
-      // adds a paragraph the server's real content then merges in behind,
-      // leaving a stray blank line at the top of everyone's document. Measured,
-      // not theorised — which is why the seed is gated rather than run on mount.
-      const rendered = renderHook(() =>
-        useDocumentEditor({
-          doc,
-          name: NAME,
-          caretProvider: { awareness },
-          hasEverSynced: false,
-        }),
-      );
-      await waitFor(() => expect(rendered.result.current).not.toBeNull());
-      expect(documentBodyFragment(doc).length).toBe(0);
-
-      // The server's content lands, and only then does the gate open.
-      const peer = new Y.Doc();
-      const para = new Y.XmlElement('paragraph');
-      para.insert(0, [new Y.XmlText('content that already existed')]);
-      peer.getXmlFragment('content').push([para]);
-      act(() => syncAsRemote(doc, peer));
-
-      rendered.rerender();
-      const fragment = documentBodyFragment(doc);
-      expect(fragment.length).toBe(1);
-      expect(textOf(fragment)).toBe('content that already existed');
-      peer.destroy();
-    });
-
-    it('seeds when the content arrives, not only when it was already there', async () => {
-      // THE production path for seeding, and the only one: seeding applies to a
-      // document nobody has opened before, and the first client to open one
-      // necessarily mounts before its content has arrived. So the flag turns
-      // true UNDERNEATH a mounted hook; it is never true at mount on the path
-      // that matters. (Later opens do mount with it already true — the latch is
-      // kept with the document in the provider registry — but by then the body
-      // has a paragraph and seeding is a no-op.)
-      //
-      // Every other seeding case here starts at `hasEverSynced: true`, which
-      // means dropping the flag from the effect's dependencies leaves them all
-      // green while new documents silently stop being seeded — and an unseeded
-      // document is the redo-stack-destroying data loss this whole mechanism
-      // exists to prevent.
-      const rendered = renderHook(
-        ({ hasEverSynced }: { hasEverSynced: boolean }) =>
-          useDocumentEditor({
-            doc,
-            name: NAME,
-            caretProvider: { awareness },
-            hasEverSynced,
-          }),
-        { initialProps: { hasEverSynced: false } },
-      );
-      await waitFor(() => expect(rendered.result.current).not.toBeNull());
-      expect(documentBodyFragment(doc).length).toBe(0);
-
-      // The socket syncs and reports an empty document — it really is new.
-      act(() => rendered.rerender({ hasEverSynced: true }));
-
-      const fragment = documentBodyFragment(doc);
-      expect(fragment.length).toBe(1);
-      expect(textOf(fragment)).toBe('');
-    });
-
-    it('seeds when a viewer is promoted, not only when they arrived writable', async () => {
-      // The same trap on the other gate: every other read-only case starts at
-      // `editable: true`, so dropping `editable` from the dependencies would
-      // leave a promoted viewer on an unseeded document for the rest of the
-      // session.
-      const rendered = renderHook(
-        ({ editable }: { editable: boolean }) =>
-          useDocumentEditor({
-            doc,
-            name: NAME,
-            caretProvider: { awareness },
-            hasEverSynced: true,
-            editable,
-          }),
-        { initialProps: { editable: false } },
-      );
-      await waitFor(() => expect(rendered.result.current).not.toBeNull());
-      expect(documentBodyFragment(doc).length).toBe(0);
-
-      act(() => rendered.rerender({ editable: true }));
-
-      expect(documentBodyFragment(doc).length).toBe(1);
-    });
-
-    it('does not seed from a read-only client', async () => {
-      // A viewer has no business writing to the shared document, and the
-      // server agrees: hocuspocus drops updates from a read-only connection.
-      // The write is therefore not merely impolite, it is one-sided — this
-      // client ends up a paragraph ahead of everyone else for the rest of the
-      // session, which is the stray-blank-line symptom the seed exists to
-      // prevent, arriving through the door the sync gate does not watch.
-      const rendered = renderHook(() =>
-        useDocumentEditor({
-          doc,
-          name: NAME,
-          caretProvider: { awareness },
-          hasEverSynced: true,
-          editable: false,
-        }),
-      );
-      await waitFor(() => expect(rendered.result.current).not.toBeNull());
-      expect(documentBodyFragment(doc).length).toBe(0);
-    });
-
-    it('seeds once and leaves an existing body alone', async () => {
-      const { editor } = await mountEditor();
-      const fragment = documentBodyFragment(doc);
-      expect(fragment.length).toBe(1);
-
-      act(() => {
-        editor.commands.setContent('<p>first</p><p>second</p>');
-      });
-      const before = fragment.length;
-      // Re-running the seed must not append to a body that already has content.
-      seedEmptyBody(doc);
-      expect(fragment.length).toBe(before);
-    });
-
-    it('does not put the seeded paragraph on the undo stack', async () => {
-      // The seed is not something the user did, so undo must never take it
-      // back — doing so would empty the body and reopen the very hole seeding
-      // exists to close.
-      const { rendered, editor } = await mountEditor();
-      const handle = rendered.result.current as NonNullable<
-        ReturnType<typeof useDocumentEditor>
-      >;
-      expect(handle.undoManager.undoStack.length).toBe(0);
-      expect(editor.can().undo()).toBe(false);
-      expect(documentBodyFragment(doc).length).toBe(1);
-    });
-
     it('stays absent until the caret wiring exists', () => {
       // Both the provider and the identity are baked in at construction, and
       // construction happens once — so an editor built without them would have
@@ -263,7 +129,6 @@ describe('useDocumentEditor', () => {
           doc,
           name: NAME,
           caretProvider: null,
-          hasEverSynced: true,
         }),
       );
       expect(result.current).toBeNull();

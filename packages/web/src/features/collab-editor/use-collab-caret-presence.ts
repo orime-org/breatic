@@ -88,9 +88,10 @@ export function useCollabCaretPresence(
   //
   // Empty is not the same as inert. `beforeTransaction` / `afterTransaction`
   // fire regardless, and `CollabUndoSelection` listens to them. What keeps the
-  // reconciliation itself harmless is `seedEmptyBody` in `document-yjs`, which
-  // removes the layer disagreement the write would otherwise be resolving —
-  // without it, a reconciliation after an undo destroys the redo stack.
+  // reconciliation itself harmless is that the body holds a paragraph from
+  // birth (`@breatic/shared`'s `document-body`), which removes the layer
+  // disagreement the write would otherwise be resolving — without it, a
+  // reconciliation after an undo destroys the redo stack.
   const awareness = caretProvider?.awareness ?? null;
 
   // Publish. Receivers dim on a literal `false` only, so a client that never

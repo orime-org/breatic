@@ -74,7 +74,7 @@ export async function lazySeedMeta(
   // deterministically named, so concurrent first-loads converge.
   await yjsDocumentsRepo.seedInitialState(
     spaceContentDocName(projectId, spaceId, kind),
-    encodeInitialSpaceContentState(),
+    encodeInitialSpaceContentState(kind),
   );
 
   const bytes = encodeInitialMetaState({

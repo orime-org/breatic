@@ -35,7 +35,7 @@ import {
   _resetDocumentEditorCacheForTests,
   getDocumentEditor,
 } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 const NAME = 'project-p/document-s';
@@ -83,7 +83,6 @@ describe('opening a document does not write to it', () => {
         doc,
         name: NAME,
         caretProvider: { awareness },
-        hasEverSynced: true,
         editable,
       }),
     );

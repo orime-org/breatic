@@ -16,6 +16,10 @@
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
 import {
+  documentBodyFragment,
+  encodeInitialSpaceContent,
+} from "@breatic/shared";
+import {
   defaultSpaceName,
   encodeInitialMetaState,
   encodeInitialSpaceContentState,
@@ -241,24 +245,50 @@ describe("writeSpaceEntry (shared Space-entry construction)", () => {
   });
 });
 
-describe("encodeInitialSpaceContentState (blank Space content doc seed)", () => {
-  it("encodes an EMPTY Yjs doc (a blank Space — editor builds structure on bind)", () => {
-    const update = encodeInitialSpaceContentState();
-    expect(update).toBeInstanceOf(Uint8Array);
+describe("encodeInitialSpaceContentState (a fresh Space's content doc seed)", () => {
+  /**
+   * Decode a seed into a doc so its shape can be read.
+   * @param update - Encoded initial state.
+   * @returns A Y.Doc holding that state.
+   */
+  function decode(update: Uint8Array): Y.Doc {
     const doc = new Y.Doc();
     Y.applyUpdate(doc, update);
-    // No top-level shared types: the canvas/document/timeline editor
-    // creates its own structure (nodes/edges, XmlFragment, …) on first
-    // bind. The seed only makes the content-doc row EXIST.
-    expect(doc.share.size).toBe(0);
+    return doc;
+  }
+
+  it("leaves a canvas empty — its editor builds nodes / edges on first bind", () => {
+    expect(decode(encodeInitialSpaceContentState("canvas")).share.size).toBe(0);
   });
 
-  it("is type-independent — the doc NAME carries the type, the content is the same empty doc", () => {
-    // Two calls produce equivalent empty content regardless of which
-    // Space type they back; only spaceContentDocName differs by type.
-    const a = encodeInitialSpaceContentState();
-    const b = encodeInitialSpaceContentState();
-    expect(a).toEqual(b);
+  it("leaves a timeline empty for the same reason", () => {
+    expect(decode(encodeInitialSpaceContentState("timeline")).share.size).toBe(
+      0,
+    );
+  });
+
+  it("gives a document the one block ProseMirror insists on", () => {
+    const body = documentBodyFragment(
+      decode(encodeInitialSpaceContentState("document")),
+    );
+    expect(body.length).toBe(1);
+  });
+
+  // The backend half of the contract bridge. Asserting "at least one block"
+  // here would hold for a `<p>`, for a paragraph carrying attributes the
+  // editor's schema does not know, and for a heading — all three of which the
+  // editor would repair on bind by deleting what it does not recognise, and
+  // broadcast as its own edit. Comparing against shared's encoder instead
+  // pins this end to the same function the browser consumes, so neither end
+  // can be checked against a copy of itself.
+  it("produces exactly what shared's encoder produces, byte structure and all", () => {
+    const ours = documentBodyFragment(
+      decode(encodeInitialSpaceContentState("document")),
+    );
+    const theirs = documentBodyFragment(
+      decode(encodeInitialSpaceContent("document")),
+    );
+    expect(ours.toJSON()).toBe(theirs.toJSON());
   });
 });
 

@@ -22,7 +22,7 @@ import { Awareness } from 'y-protocols/awareness';
 
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import {
   useDocumentHistory,
@@ -61,7 +61,6 @@ describe('DocumentEditor', () => {
         doc,
         name: NAME,
         caretProvider,
-        hasEverSynced: true,
       });
       return { handle, history: useDocumentHistory(handle?.undoManager ?? null) };
     });

@@ -48,7 +48,6 @@ describe('the document placeholder', () => {
         doc,
         name: 'project-p/document-locale',
         caretProvider: { awareness },
-        hasEverSynced: true,
       }),
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
