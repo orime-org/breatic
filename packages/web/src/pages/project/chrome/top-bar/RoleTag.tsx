@@ -154,7 +154,13 @@ function ClickableViewerRoleTag({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
+          // The chip carries its own resting fill (`bg-muted`), which keeps
+          // the default variant's fill from ever painting; `menu-item` is the
+          // auto-height size, so the ~20px pill the popover offset is tuned to
+          // survives.
+          variant='default'
+          size='menu-item'
           type='button'
           data-testid='role-tag'
           aria-label={
@@ -175,7 +181,7 @@ function ClickableViewerRoleTag({
           ) : (
             <ArrowUp className='h-3 w-3' aria-hidden='true' />
           )}
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         align='start'

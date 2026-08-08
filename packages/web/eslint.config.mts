@@ -333,6 +333,31 @@ export default [
     },
   },
   {
+    // Exempt by provenance, not by directory. `components/ui/` is where the
+    // shadcn primitives live, but it is not purely vendor — `password-input`
+    // is ours, and exempting the whole path left the one first-party control
+    // in the tree unguarded. Only the file that legitimately renders the
+    // element is excused: `Button` itself. The dev gallery is listed to keep
+    // this rule's scope identical to the other visual rules', not because it
+    // needs the escape — it renders `Button` throughout.
+    //
+    // `.ts` is in scope alongside `.tsx`: `createElement('button')` is the
+    // same element written without JSX, and that spelling lives in plain
+    // modules. Watching only `.tsx` would leave half of this rule unreachable.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/components/ui/button.tsx',
+      'src/pages/_dev/**',
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-raw-button': 'error',
+    },
+  },
+  {
     // The dev gallery renders native controls on purpose, to show what we
     // replaced. Tests assert on markup rather than shipping it.
     //

@@ -90,7 +90,7 @@ export function NodeGeneratePopover({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant='ghost'
+          variant='outline'
           size='sm'
           className='h-7 gap-1 px-2'
           data-testid='node-generate-trigger'

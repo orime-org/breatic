@@ -330,12 +330,16 @@ function SpaceDrawerRow({
         )}
         data-testid={`space-drawer-row-${space.id}`}
       >
-        <button
+        <Button
+          variant='ghost'
+          size='menu-item'
           type='button'
           onClick={onActivate}
           aria-label={t('spaces.drawer.openAria', { name: space.name })}
           aria-current={isActive ? 'true' : undefined}
-          className='flex min-w-0 flex-1 items-start gap-3 text-left'
+          // `justify-start` restates the left alignment the row had before the
+          // primitive's `justify-center` arrived with it.
+          className='flex min-w-0 flex-1 items-start justify-start gap-3 text-left'
         >
           <span className='mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome bg-muted text-muted-foreground'>
             <Icon className='h-4 w-4' />
@@ -366,7 +370,7 @@ function SpaceDrawerRow({
               {t(meta.labelKey)}
             </span>
           </span>
-        </button>
+        </Button>
         <div
           // `self-center` overrides the row's `items-start` for this one
           // child — the row keeps the icon + 2-line text top-aligned on
@@ -512,7 +516,9 @@ function RowAction({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
+        <Button
+          variant='ghost'
+          size='icon'
           type='button'
           aria-label={label}
           onClick={onClick}
@@ -528,7 +534,7 @@ function RowAction({
           )}
         >
           {children}
-        </button>
+        </Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>

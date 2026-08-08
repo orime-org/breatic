@@ -4,6 +4,7 @@
 import { Clock, FileText, Palette } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { Label } from '@web/components/ui/label';
 import { cn } from '@web/lib/utils';
 import { SPACE_TYPE_LIST, type SpaceType } from '@web/spaces';
@@ -113,8 +114,12 @@ export function SpaceKindPicker({
           const Icon = card.icon;
           const selected = value === card.type;
           return (
-            <button
+            <Button
               key={card.type}
+              variant='outline'
+              // `menu-item` is the only auto-height size — the card stacks an
+              // icon over two text lines, so a fixed `h-*` size would clip it.
+              size='menu-item'
               type='button'
               role='radio'
               aria-checked={selected}
@@ -123,7 +128,9 @@ export function SpaceKindPicker({
               onClick={() => card.available && onChange(card.type)}
               data-testid={`${idPrefix}-${card.type}`}
               className={cn(
-                'flex flex-1 flex-col items-center gap-2 rounded-chrome border px-3 py-3 text-center transition-colors',
+                // `whitespace-normal` re-enables wrapping: the Button base sets
+                // `whitespace-nowrap`, which the two-line card subtitle needs off.
+                'flex flex-1 flex-col items-center gap-2 whitespace-normal rounded-chrome border px-3 py-3 text-center',
                 selected
                   ? 'border-active-border bg-accent text-foreground'
                   : 'border-border bg-transparent text-foreground',
@@ -147,7 +154,7 @@ export function SpaceKindPicker({
                   {t('spaces.create.notAvailable')}
                 </span>
               ) : null}
-            </button>
+            </Button>
           );
         })}
       </div>

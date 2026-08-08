@@ -3,6 +3,7 @@
 
 import type * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { MODALITY_ICONS } from '@web/spaces/canvas/nodes/_shared/modality';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
@@ -29,7 +30,8 @@ interface NodePlaceholderProps {
  * Enter / Space on the focused button, fires `onActivate`. An explicit `hint`
  * (e.g. an in-progress status) overrides both lines with one line.
  *
- * The keyboard half is not a bonus feature — this is a `<button>`, so it is
+ * The keyboard half is not a bonus feature — `Button` renders a real
+ * `<button>`, so it is
  * focusable and clicking an empty node lands focus here
  * rather than on the node wrapper. Without a keyboard path the most common
  * sequence there (click the node, press Enter to start) would do nothing at
@@ -52,15 +54,23 @@ export function NodePlaceholder({
   const t = useTranslation();
   const Icon = MODALITY_ICONS[modality];
   return (
-    <button
+    <Button
       type='button'
+      // The node shell draws this control's frame, so a bordered variant would
+      // show a second edge a pixel inside the first. The 9th-slice system also
+      // fixes how a node body answers hover — it brightens its text rather
+      // than filling — and every filling variant of the primitive writes a
+      // hover background, hence `ghost` plus the neutralising
+      // `hover:bg-transparent` below. NodePlaceholder.test.tsx pins that.
+      variant='ghost'
+      size='sm'
       onDoubleClick={onActivate}
       onClick={(event) => {
         if (event.detail === 0) onActivate?.();
       }}
       data-testid='node-placeholder'
       data-modality={modality}
-      className='flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground hover:text-foreground'
+      className='flex h-full w-full flex-col gap-2 p-4 text-center text-muted-foreground hover:bg-transparent hover:text-foreground'
     >
       <Icon className='h-5 w-5 opacity-70' aria-hidden='true' />
       {hint ? (
@@ -73,6 +83,6 @@ export function NodePlaceholder({
           </span>
         </span>
       )}
-    </button>
+    </Button>
   );
 }

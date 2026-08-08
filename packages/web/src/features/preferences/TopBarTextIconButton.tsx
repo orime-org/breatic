@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
 
 interface TopBarTextIconButtonProps
@@ -32,7 +33,13 @@ export const TopBarTextIconButton = React.forwardRef<
   TopBarTextIconButtonProps
 >(({ className, icon, withChevron, children, ...props }, ref) => {
   return (
-    <button
+    <Button
+      // It renders as a labelled control — callers pass the label as children,
+      // and `ThemeToggle` keeps its label screen-reader-only — so the border is
+      // set here rather than per caller: an outlined control is the one shape a
+      // reader can tell is pressable, and both switchers should read alike.
+      variant='outline'
+      size='sm'
       ref={ref}
       type='button'
       className={cn(
@@ -50,7 +57,7 @@ export const TopBarTextIconButton = React.forwardRef<
       {icon}
       <span>{children}</span>
       {withChevron ? <ChevronDown /> : null}
-    </button>
+    </Button>
   );
 });
 TopBarTextIconButton.displayName = 'TopBarTextIconButton';

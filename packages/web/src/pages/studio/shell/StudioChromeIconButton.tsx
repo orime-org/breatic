@@ -4,6 +4,7 @@
 import type { LucideIcon } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
 
 interface StudioChromeIconButtonProps
@@ -27,19 +28,21 @@ export const StudioChromeIconButton = React.forwardRef<
   StudioChromeIconButtonProps
 >(({ icon: Icon, label, className, ...props }, ref) => {
   return (
-    <button
+    <Button
       ref={ref}
       type='button'
       aria-label={label}
       title={label}
+      variant='chrome-ghost'
+      size='chrome'
       className={cn(
-        'flex h-8 w-8 items-center justify-center rounded-chrome text-neutral-600 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        'flex h-8 w-8 rounded-chrome text-neutral-600 hover:bg-accent hover:text-foreground',
         className,
       )}
       {...props}
     >
       <Icon className='h-[18px] w-[18px]' />
-    </button>
+    </Button>
   );
 });
 StudioChromeIconButton.displayName = 'StudioChromeIconButton';

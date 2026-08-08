@@ -12,6 +12,7 @@
 import { Crop } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
@@ -121,14 +122,18 @@ export const ReferenceMentionList = React.forwardRef<
           // user 2026-07-12).
           const FallbackIcon = getNodeIcon(item.sourceNodeType);
           return (
-            <button
+            <Button
               key={item.sourceNodeId}
+              variant='ghost'
+              size='menu-item'
               type='button'
               data-testid={`reference-mention-option-${item.sourceNodeId}`}
               onClick={() => pick(i)}
               onMouseEnter={() => setSelected(i)}
+              // justify-start: the Button base centres its content, and these
+              // rows are left-aligned thumbnail → badge → name.
               className={
-                'flex w-full items-center gap-2 rounded-overlay px-2 py-1 text-left text-xs ' +
+                'flex w-full items-center justify-start gap-2 rounded-overlay px-2 py-1 text-left text-xs ' +
                 (i === selected
                   ? 'bg-accent text-accent-foreground'
                   : 'text-popover-foreground')
@@ -166,7 +171,7 @@ export const ReferenceMentionList = React.forwardRef<
               <span className='truncate'>
                 {item.sourceNodeName || t('canvas.generatePanel.reference')}
               </span>
-            </button>
+            </Button>
           );
         })}
       </div>
