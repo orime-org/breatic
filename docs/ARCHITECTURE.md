@@ -2,7 +2,7 @@
 
 breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架构(7 package + 3 服务)、**Frontend**(`packages/web`)、以及全栈**函数定义编码规范**。行为 mandate(头号原则 / DD / TDD / 红线 / 判定题)在仓库根 [`CLAUDE.md`](../CLAUDE.md);本文写"怎么做的细节"(技术栈 / 包依赖 / 数据流 / 命名 / 节点模型 / token / 函数注释格式),mandate 指向这里。
 
-- [Backend](#backend) — 技术栈 / 7 package / 3 服务 / 画布协作 / 三层记忆 / SubAgent / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志
+- [Backend](#backend) — 技术栈 / 7 package / 3 服务 / 画布协作 / 三层记忆 / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志
 - [Frontend](#frontend) — `packages/web` 技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由 / 源码布局
 - [Coding standards (function definition format)](#coding-standards-function-definition-format) — 函数注释 / 显式返回类型 / 异常类型格式 + CI 强制
 
@@ -39,12 +39,12 @@ packages/
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
 │              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
 │              db/(schema.ts 25 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
-├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费)· node-history · agent(loader/skills/tools/llm)· model-catalog · canvas-lock(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)
-├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/project-invitations/notifications/skills/tasks/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:auth〔含 user.repo + recovery-code〕/activity〔活动流写入 + 读取〕/conversation/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/role-upgrade-request/studio/skill/text-tool/yjs-doc,barrel index.ts re-export) + infra/(stripe/mailer) + config/(pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码,见 [CONFIGURATION.md](./CONFIGURATION.md)**)(healthz 走独立 :3001 进程,见 DEPLOY.md)
-├── worker/   # BullMQ 壳: handlers/(dispatch.ts=5 路分发 + local/{runtime,video} 本地 ffmpeg 执行) + providers/(image/video/audio/tts/three-d/understand) + 根(index 入口 / mini-tool-registry / bootstrap-config)
+├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费)· node-history · agent(skills-loader/agent-config〔模型+指令+工具的唯一装配点〕/skill-gate/skill-availability/turn-finalizer/tools/llm)· model-catalog · canvas-lock(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)
+├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/project-invitations/notifications/skills/tasks/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:activity〔活动流写入 + 读取〕/asset/auth〔含 user.repo + recovery-code〕/conversation/decision/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/recent/role-upgrade-request/skill/studio/text-tool,barrel index.ts re-export) + infra/(stripe/mailer) + config/(pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码,见 [CONFIGURATION.md](./CONFIGURATION.md)**)(healthz 走独立 :3001 进程,见 DEPLOY.md)
+├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + local/{runtime,video} 本地 ffmpeg 执行) + providers/(image/video/audio/tts/three-d/understand) + 根(index 入口 / mini-tool-registry / bootstrap-config)
 ├── collab/   # Hocuspocus 独立进程: hooks/(auth/meta-write-attempt-log/presence/awareness-identity/presence-wiring) + services/(persistence/event-stream/space-rpc/task-listener/members-sync/handling-sweeper/lazy-seed/lifecycle-listener/connection-registry/connection-tracking/space-delete-lock/yjs-documents.repo) + infra/(health-checks · connection-gate〔连接准入:升级阶段从原始对端地址裁决,回环豁免、非回环取 nginx 的 x-real-ip 否则 403;裁决本身随请求头传下去〕 · client-identity〔上面那条规则的纯判定〕 · socket-ceilings〔库里几个「超了就关整条 socket」的上限,从一个声明数推导〕) + 根(index/hocuspocus 装配/config)
 └── web/      # React app — see the [Frontend](#frontend) part
-config/ agents/ skills/ locales/ (git-tracked); uploads/ + sandbox/ (git-ignored; sandbox/ = agent file-tool sandbox root)
+config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 ```
 
 **包依赖方向:** `shared(零依赖,前后端共用) ← core(后端共享内核) ← {domain, collab}`;`domain(server+worker 共享 AIGC 业务) ← server / worker`;前端 `web ← shared` 不依赖 core/server。**二次调整(2026-05-31)新增 `@breatic/domain`**:server+worker 共享、collab 永不碰的 AIGC 业务(积分花 / 任务 / 节点历史 / agent / model-catalog / canvas-lock)单独成包,`lint:dependency-cruiser` 的 `collab-no-domain-import` 规则守卫 collab 不 import domain(**PR4 已自 core 迁入业务**:credit/task/node-history/agent/model-catalog/canvas-lock + 各自 repo;同期 user.repo/stripe/mailer/pricing/text-tools 迁 server,core 回归纯地基)。**严格边界**:server 不 import worker,worker 不 import server;**模块化单体(2026-05-31)+ 二次调整 PR4**:core 只放全后端共享内核(共享鉴权 + infra + schema + 跨服务事件协议;AIGC 业务钱/任务/节点历史/agent 等已迁 `@breatic/domain`),**服务私有领域逻辑归各自服务**(server 私有业务在 `server/src/modules`,经三层边界:路由层=接线员 → 业务 service 层 → core 共享内核;`lint:dependency-cruiser` 的 `library-no-app-import` 规则守卫 core/shared 不反向 import 服务包)。collab 历史上独立部署"不依赖 core",2026-05-27 PR `feat/2026-05-27-collab-infra-resilience` 修订为依赖 core infrastructure(`createRedisClient` / 日志 / 配置),production-safety 配置不再 raw 实例化漂离。**二次调整(2026-05-31)重定义**:鉴权 / 会话 / 成员事件这类**全后端(含 collab)必须一致**的逻辑属 core 共享内核,collab 用 core 的统一鉴权;**鉴权已统一(PR2 #179)**:collab `hooks/auth.ts` 调 core 的 `getSession` + `projectAuthService.loadProjectRole`,跟 server 共用同一套原语,不再手写裸 `redis.get(:session:)` / 裸 SQL `loadProjectRole`。旧「collab 只借 core infra、业务不引入」表述作废 —— 它把鉴权漂移当成了设计。**DB 适配统一(2026-06-02)**:collab 也不再手搓 postgres.js 连接池——`yjs_documents` 的持久化(`persistence`)/ 空间存在性读(`auth`)/ space-rpc 软删·恢复全走 core 的 `yjsDocumentsRepo`(那张共享表的**唯一 repo 家**),经 core 的 `db` 单例(per 进程自动建池,同 server/worker);健康探针走 `pingDb()`、boot 连通性走统一的 core `checkInfraReady(redisClients)`(各服务传自己依赖的 Redis 单例:server/worker `{general,queue,stream}`、collab `{general,stream}`;2026-06-03 收编 collab 旧的 `checkCollabInfraReady` + `checkPgReachable`,collab 也走单例式),`postgres` 直接依赖已从 collab 移除。**全项目 postgres.js 驱动只在 core,Drizzle 是唯一查询适配层**;CI 守卫 `breatic/no-postgres-outside-core`(驱动只许 core)+ `breatic/no-yjs-documents-outside-repo`(一表一 repo)+ `breatic/no-raw-sql-outside-repo`(现扫 collab,本包零裸 SQL)。**Redis 适配同理统一(2026-06-02)**:`ioredis` 驱动也只在 core(工厂 + 单例 + `pingRedis` + re-export `Redis` 类型),collab/domain 删直接依赖、`Redis` 类型从 core 拿;collab 会话查走 `getRedis()` 单例,**但订阅 / 阻塞流 / Hocuspocus pub-sub 等专用连接保持独立**(Redis 协议要求每角色独占 socket,连接数收不了,跟 postgres 单池本质不同);跨服务 stream key `:stream:task-events` 收成 core 的 `taskEventsStreamKey()` 单一来源(消灭 worker 发布侧 + collab 消费侧各造的静默断风险);CI 守卫 `breatic/no-ioredis-outside-core`。
@@ -68,7 +68,7 @@ config/ agents/ skills/ locales/ (git-tracked); uploads/ + sandbox/ (git-ignored
 - 事件总线:Redis Streams `${env}:stream:canvas-nodes`(`NodeStateUpdateEvent`,支持 `targetNodeIds: string[]` 1:N),Collab 消费后写 Yjs
 - 文档命名 v10 multi-doc:`project-{id}/meta`(含 spaces 列表)+ `project-{id}/canvas-{spaceId}`(每个 Canvas Space 一个)
 - 节点状态机:`idle` / `handling`(均在 Yjs);`localPending` 是本地 React state;失败 = `idle` + `errorMessage`(无第三态,`deriveStatus` 折出 error)
-- **handling 租约善后(#1569 + #1580 加固,2026-07-03)**:`handling` 是写进共享文档的易碎状态,驱动者(浏览器上传 / worker AIGC)可能悄无声息死掉。**善后 = 租约超时是唯一正确性保证,事件只是加速器**(业界收敛:Yjs awareness / BullMQ stalled / SQS visibility timeout);**断线不回收 handling**(#1580 片 4 Option A:presigned 直传对象存储对 collab 不可见且比 WS 活得久,任何连接活性信号都只是上传活性的替身 → **断线不动文档里的任何内容**,handling 靠主人自清 + 清扫器保底;#1889 把断线钩子里最后那点活〔剥 mini-tool 配置锁〕连同那个字段一起删了〔它的生产者早在 2026-05-18 web 重写时就没了〕,所以断线现在只剩把连接从跨实例注册表注销,meta 文档本就不计数、连这个也没有)。`HandlingActor` 带必填 `startedAt`(epoch ms,frontend 时钟由清扫器首次观察盖服务器戳 `serverStamped`)+ **必填 `gen`**;统一预算 `HANDLING_TIMEOUT_MS`=1h(shared 单一来源),排队/执行两阶段各自预算窗(`phase` + `renewLease` 续期)。**统一 gen fencing(#1580 #7)**:节点带永久只增计数器 `data.leaseGen`,每次开 handling(上传 / AIGC)领 `gen = leaseGen + 1` 写进 `handlingBy`(前端另带主人三件套 `gen+userId+clientId`,写回验主人 = 节点最终内容属于最终租约主人);AIGC 的 gen 由前端经 `POST /canvas/tasks` 的 `node_gens`(int32 上界)进 job,worker 每次写回(done / failed / renew / 崩溃网)回传,collab 单写者 CAS(开事件 `gen >= leaseGen` 才应用并推进计数器;关/续事件 `gen === 在飞 handlingBy.gen` 才应用,陈旧写回永久丢弃留日志)。**worker 重试协议**:失败 CLOSE 只在**终态** attempt 发(`isTerminalAttempt`,非终态发 CLOSE 会自围栏重试的同 gen 写回 = 扣钱不到货);overwrite 锁跨 attempt 用 `reacquireCanvasNodeLock` 续持;计费后崩溃的重投递补发 done(幂等 + gen 兜);**计费临界区前有僵尸围栏**(`verifyJobLockOwnership`:复活的 stalled 执行用 `job.extendLock(token)` 原子验活,0 = 已被判死,静默退出不碰钱不写任何状态)。**collab 清扫器**(`services/handling-sweeper.ts`)在 `afterLoadDocument`(jitter 500ms~3s 错峰防重启惊群)+ 5min 周期扫(直接 doc 引用、**不走 openDirectConnection**)把超预算 / 无 `handlingBy` 的 handling 节点打回 `idle + errorMessage:'Operation timed out'`,顺带自愈 idle 节点上的 CRDT 残留 handlingBy;写入带 origin `handling-lease-sweep` 只为给读日志的人指名写者,**它不是清扫不进用户撤销栈的原因** —— 事务 origin 从不过网线,画布 UndoManager 跟的是一个只含本地 Symbol 的白名单,服务端的字符串永远进不去。**worker 静默死兜底**:core `createQueueEvents` 的跨进程 `QueueEvents.on('failed')` 对**终态**失败(`job.finishedOn`)发失败事件(带 gen,双发由 CAS 天然去重)。**积分预检**:所有入队路由(`/canvas/tasks` / `/canvas/understand` / `/mini-tools/*`)共用 `precheckCredits`(余额 ≥ `estimateTaskCredits` 的 `cost_per_call` 估价,**不锁积分**软预检),worker 完成时按真实用量原子扣;overwrite 的开-handling 事件发布是**硬前提**(失败即 markFailed + 放锁 + 503,不 best-effort)。**成功写回清 errorMessage**(`errorMessage:null`)。**前后端分界**:租约解耦「可靠性」与「执行位置」→ 碰钱/密钥/重算力归后端,浏览器干得动的纯媒体变换可前端,两边 handling 同走租约善后;UI 有 busy 闸(handling 中拒绝二次上传/发起)
+- **handling 租约善后(#1569 + #1580 加固,2026-07-03)**:`handling` 是写进共享文档的易碎状态,驱动者(浏览器上传 / worker AIGC)可能悄无声息死掉。**善后 = 租约超时是唯一正确性保证,事件只是加速器**(业界收敛:Yjs awareness / BullMQ stalled / SQS visibility timeout);**断线不回收 handling**(#1580 片 4 Option A:presigned 直传对象存储对 collab 不可见且比 WS 活得久,任何连接活性信号都只是上传活性的替身 → 断线只清 operationLocks,handling 靠主人自清 + 清扫器保底)。`HandlingActor` 带必填 `startedAt`(epoch ms,frontend 时钟由清扫器首次观察盖服务器戳 `serverStamped`)+ **必填 `gen`**;统一预算 `HANDLING_TIMEOUT_MS`=1h(shared 单一来源),排队/执行两阶段各自预算窗(`phase` + `renewLease` 续期)。**统一 gen fencing(#1580 #7)**:节点带永久只增计数器 `data.leaseGen`,每次开 handling(上传 / AIGC)领 `gen = leaseGen + 1` 写进 `handlingBy`(前端另带主人三件套 `gen+userId+clientId`,写回验主人 = 节点最终内容属于最终租约主人);AIGC 的 gen 由前端经 `POST /canvas/tasks` 的 `node_gens`(int32 上界)进 job,worker 每次写回(done / failed / renew / 崩溃网)回传,collab 单写者 CAS(开事件 `gen >= leaseGen` 才应用并推进计数器;关/续事件 `gen === 在飞 handlingBy.gen` 才应用,陈旧写回永久丢弃留日志)。**worker 重试协议**:失败 CLOSE 只在**终态** attempt 发(`isTerminalAttempt`,非终态发 CLOSE 会自围栏重试的同 gen 写回 = 扣钱不到货);overwrite 锁跨 attempt 用 `reacquireCanvasNodeLock` 续持;计费后崩溃的重投递补发 done(幂等 + gen 兜);**计费临界区前有僵尸围栏**(`verifyJobLockOwnership`:复活的 stalled 执行用 `job.extendLock(token)` 原子验活,0 = 已被判死,静默退出不碰钱不写任何状态)。**collab 清扫器**(`services/handling-sweeper.ts`)在 `afterLoadDocument`(jitter 500ms~3s 错峰防重启惊群)+ 5min 周期扫(直接 doc 引用、**不走 openDirectConnection**)把超预算 / 无 `handlingBy` 的 handling 节点打回 `idle + errorMessage:'Operation timed out'`,顺带自愈 idle 节点上的 CRDT 残留 handlingBy;写入带 origin `handling-lease-sweep` 只为给读日志的人指名写者,**它不是清扫不进用户撤销栈的原因** —— 事务 origin 从不过网线,画布 UndoManager 跟的是一个只含本地 Symbol 的白名单,服务端的字符串永远进不去。**worker 静默死兜底**:core `createQueueEvents` 的跨进程 `QueueEvents.on('failed')` 对**终态**失败(`job.finishedOn`)发失败事件(带 gen,双发由 CAS 天然去重)。**积分预检**:所有入队路由(`/canvas/tasks` / `/canvas/understand` / `/mini-tools/*`)共用 `precheckCredits`(余额 ≥ `estimateTaskCredits` 的 `cost_per_call` 估价,**不锁积分**软预检),worker 完成时按真实用量原子扣;overwrite 的开-handling 事件发布是**硬前提**(失败即 markFailed + 放锁 + 503,不 best-effort)。**成功写回清 errorMessage**(`errorMessage:null`)。**前后端分界**:租约解耦「可靠性」与「执行位置」→ 碰钱/密钥/重算力归后端,浏览器干得动的纯媒体变换可前端,两边 handling 同走租约善后;UI 有 busy 闸(handling 中拒绝二次上传/发起)
 - **存储层:studio 内去重 + 下发记录防伪 + 只插不删(#1826,2026-07-26)** —— 四条铁律见 [CLAUDE.md](../CLAUDE.md#关键规范) 的「存储」条,这里是机制。**三张表**:`studio_assets`(资产账本,`(studio_id, content_hash)` 部分唯一 = 去重键 + 幂等锚,另有 `storage_key` 部分索引供反查)· `upload_grants`(**下发记录**,presign 每铸一个 key 写一行:user + 服务端解析的 owner studio + 声明的 hash + key)· `storage_reclaim_queue`(**待回收清单**,去重命中时把多出来的那份登记进来交离线处理)。**key 租户中立**(`{taskType}/{date}/{时间戳}_{uuid}{ext}`,不含 user/project 前缀,hash 不进 URL),归属判定因此从「看 key 前缀」改成「查下发记录这一行是不是你的」——顺带堵死路径穿越(key 是我们铸的,伪造的不在表里)。**下发记录的三个角色**:① 授权(谓词 = `storage_key + user_id + 未消费`,**不含 studio** —— local 上传是裸字节 PUT,请求里根本没有 project/studio)· ② 提供**权威 owner studio**(从行里读,绝不拿客户端这次报的 project_id 重推,否则跨 studio 成员可把存储成本转嫁给团队)· ③ 把报告**绑定到当初申请的那份内容**(报告的 hash 必须等于下发时声明的,否则并发两个报告能在一个 key 上登记两个不同 hash → 一个还活着的对象被当成重复份送去回收 → 404)。消费一次性(CAS 防重放),且在登记**之后**(消费前该物理对象有「未消费下发记录」这条 in-flight 线索,消费后由账本行认领,中间无空窗)。**类型 / 大小 / 上限一律后端从存下来的东西读**:cloud 走 `head()`,local 读文件头嗅探(magic bytes + SVG/文本内容感知回落)——这是 local 上传 kind 全成 `'file'` 那个老 bug 的真修;权威 size 拿到后**回头跟上限复核**(presign 时客户端声明的 size 只做 UX 预检,不当权威门)
 
 - **归属与去重范围 = project 所属的 studio(#1839,2026-07-28)** —— 推翻 2026-07-04 那条「个人 studio 的项目按**操作者**分流、每个协作者留自己的产出」。现在个人与团队一条路径:`resolveOwnerStudioId(projectId)` 只查 project 的 `studio_id`,**谁操作不进入判定**,去重范围随之变成「一个 studio 一个域」而不是「一个协作者一个域」——旧规则下同一个项目里同样的字节按人各存一份,项目主人还看不到协作者的产出。**归属与产出人拆成两列**:`studio_assets.produced_by_user_id` 记「谁**第一个**把这份内容带进来」(去重命中时保留原产出者,后来传同样字节的人不改写它);旧规则是把这两件事压在 `studio_id` 一列上隐式携带,删掉分支就会连带丢失,所以同批补列。**安全模型是产品决策、不是技术收口**:一个 studio 一个去重域意味着该 studio 下任意项目的 editor 共享它的 hash 命名空间,由此带来的内容存在性探测、跨用户 dedup 投毒(`/local-upload` 不验 hash、`/uploaded` 采信客户端 hash)、配额消耗、拿同 studio 他人的任意资产当自己视频节点的封面(`cover_hash` 残余,见 `routes/assets.ts`)四条风险,**明确由发出邀请的用户承担**(邀请是信任行为)。**告知面尚未建立** —— 用户手册与服务协议都还不存在(无路由、无文案、无文档),这条告知是**待办**、不随本次交付,归 operations。读代码时别把「已决策」当成「已修复」,也别把「计划告知」当成「已告知」
@@ -93,23 +93,14 @@ config/ agents/ skills/ locales/ (git-tracked); uploads/ + sandbox/ (git-ignored
 - **Context 压缩**:最近 `full_detail_turns`(默认 3)个 Turn 保留完整 step(tool_call + tool_result),更早 Turn 只保留 user + assistant 最终回复。`thinking` 字段永远不发回 LLM
 - **消息存储**:`conversations.messages` JSONB 数组,含 `turnIndex`、`thinking?`、`tool_calls?: ToolCallInfo[]`。原始消息不删除,归纳只生成摘要
 
-### SubAgent (spawn tool)
-
-SubAgent 通过 `spawn({ task, agent, skill? })` 调用。每个 Agent 是 `agents/*.md` 中定义的角色(frontmatter: name, description, tools, model, skills + body: system prompt)。Skill 是可选的知识补充(`skills/` 目录)。
-
-**Agent 定义角色(谁来做),Skill 定义知识(怎么做)。** 两者正交、可组合。
-
-内置 4 个 Agent:`researcher`(搜索参考)| `prompt_optimizer`(提示词优化)| `analyst`(多模态分析)| `planner`(项目规划)。
-
-Tools 取并集:Agent 声明的 tools ∪ Skill 声明的 tools,始终排除 spawn(防递归)。SubAgent 通过 `AsyncLocalStorage` 继承请求上下文(三层记忆 + 压缩对话历史 + userId),在内部直接扣费。
-
-### Worker 5 paths
+### Worker 4 paths
 
 1. **AIGC Mini-Tool**(source="mini_tool")→ toolName 查表 → provider 直调
 2. **Understand**(task_type="understand")→ 多模态理解 / ASR 转写
 3. **AIGC 直达**(image/audio/video/3d/tts)→ provider `generateAsync()`
 4. **Skill(显式)** → 指定 skillName → AI SDK Agent 执行
-5. **Skill(自动选)** → 按 category 合并 Skills → LLM 选
+
+以上都不匹配 → 直接抛错(`needs an explicit skill_name to run`)。原先还有第 5 路「按 category 合并 Skills 交 LLM 选」,它跟「一个 skill 的三样定死」不相容 —— 合并之后谁的模型算数?
 
 ### 一个 AIGC 任务的执行顺序,和「不归路」
 
@@ -151,17 +142,17 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Skill system
 
-**两区边界**:Agent(多轮对话,注入上下文)| Canvas(Worker 单次执行,必须生成)。文本编辑器(TipTap)独立运行,不使用 Skill。
+**skill 出现在哪由 `config/skill-routing.yaml` 的 `surfaces` 定**,取值是 `packages/core/src/config/skill-routing.ts` 的 `SKILL_SURFACES` 闭集:`chat`(多轮对话,注入上下文)/ `canvas` / `image_node` / `video_node` / `document`(各 node 面与画布是 Worker 单次执行,必须生成)。**今天实际被路由到的只有 `chat` 和 `canvas`** —— 后三个是已开放但还没有 skill 用的面,数各面上有几个 skill 一律现读那份 yaml。
 
-**metadata.json**:仅 `name` / `description` 必填;其他字段(`scope`/`category`/`tools`/`output_type`/`requires`/...)`skills-loader.ts` 都有 default 兜底(`scope` 默认 `["agent"]`,`category` 默认 `"default"`)。建议显式填 `scope`/`category` 避免读代码才知行为。完整字段表见 `packages/domain/src/agent/skills-loader.ts` 的 schema 定义。禁用 npm 字段(version/author/license/engines/files/main)。
+**metadata.json**:仅 `name` / `description` 必填;其他字段(`category`/`tools`/`output_type`/`requires`/...)`skills-loader.ts` 都有 default 兜底(`category` 默认 `"default"`)。建议显式填 `category` 避免读代码才知行为。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。完整字段表见 `packages/domain/src/agent/skills-loader.ts` 的 schema 定义。禁用 npm 字段(version/author/license/engines/files/main)。
 
-### Agent tools (12)
+### Agent tools (6)
 
-`run_script` | `read_file` | `write_file` | `edit_file` | `list_dir` | `web_search` | `web_fetch` | `ask_user_question` | `spawn`
+`web_search` | `web_fetch`
 
-**交互工具(3)**:`ask_user_choice` | `propose_canvas_action` | `show_search_results` —— LLM 调用它们发送结构化 payload 供前端渲染成 UI 组件,不执行动作;`main-agent` 检测 sentinel 前缀的结果后 yield 对应 SSE 事件。
+**交互工具(4)**:`ask_user_question` | `ask_user_choice` | `propose_canvas_action` | `show_search_results` —— LLM 调用它们发送结构化 payload 供前端渲染成 UI 组件,不执行动作;`main-agent` 检测 sentinel 前缀的结果后 yield 对应 SSE 事件。
 
-**无通用 shell 执行器**。`run_script` 只能执行 `skills/{name}/scripts/` 下的脚本,路径防穿越,按扩展名选解释器(.py → python3, .sh → sh, .js → node)。
+**无脚本执行能力**。第一版的 skill 只声明要用哪些工具,不带脚本 —— 「skill 带一个脚本、由 agent 执行它」是一整套要单独设计的东西(在哪跑 / 跑多久 / 能碰什么 / 失败怎么办 / 算不算钱),整块不做。
 
 ### Configuration files
 
@@ -175,8 +166,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/worker.yaml` | Worker 并发、重试、轮询 |
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制、单文档连接数上限(`max_connections_per_document`,默认 100;满了**降级只读**非拒绝) |
 | `config/pricing.yaml` | 积分**购买包**(5 档一次性购买,不是订阅/会员,test+live Stripe ID) |
+| `config/skill-routing.yaml` | 哪个 skill 能在哪用、谁能调起(`surfaces` / `user_invocable` / `model_invocable`)。**缺了它每个 skill 都哪儿都不许用**,两个服务启动时读一次、读不了就 `exit(1)`。加载器 `packages/core/src/config/skill-routing.ts` |
 | `config/limits.yaml` | 成员容量**业务软上限**(`studio_member_cap` / `project_collaborator_cap`,默认各 100;project 只数显式邀请的成员,owner + 自动 viewer 豁免)。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)|
-| `config/models/*.yaml` | AI 模型路由(46 文件,model-centric) |
+| `config/models/*.yaml` | AI 模型路由(按模态分目录,model-centric) |
 
 ### Logging
 

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check } from "#repo-lint/check";
+import { aiSdkWarningsBridged } from "#repo-lint/checks/ai-sdk-warnings-bridged";
 import { eofNewline } from "#repo-lint/checks/eof-newline";
 import { eslintRulesEnabled } from "#repo-lint/checks/eslint-rules-enabled";
 import { i18nKeysNamespaced } from "#repo-lint/checks/i18n-keys-namespaced";
@@ -15,11 +16,13 @@ import { noDisabledInvariant } from "#repo-lint/checks/no-disabled-invariant";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
 import { noSilentSkip } from "#repo-lint/checks/no-silent-skip";
+import { noSubagentResidue } from "#repo-lint/checks/no-subagent-residue";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
 import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
 import { noUnresolvedAliasInDist } from "#repo-lint/checks/no-unresolved-alias-in-dist";
 import { serviceEntriesPresent } from "#repo-lint/checks/service-entries-present";
 import { sharedDepsInCatalog } from "#repo-lint/checks/shared-deps-in-catalog";
+import { skillRoutingMatchesSkills } from "#repo-lint/checks/skill-routing-matches-skills";
 import { storageKeyPrefixHtml } from "#repo-lint/checks/storage-key-prefix-html";
 import { tokenValues } from "#repo-lint/checks/token-values";
 
@@ -31,6 +34,7 @@ import { tokenValues } from "#repo-lint/checks/token-values";
  * repository itself rather than any one file's contents.
  */
 export const CHECKS: readonly Check[] = [
+  aiSdkWarningsBridged,
   eofNewline,
   eslintRulesEnabled,
   i18nKeysNamespaced,
@@ -45,11 +49,13 @@ export const CHECKS: readonly Check[] = [
   noHardcodedSecrets,
   noPrivateRepoPath,
   noSilentSkip,
+  noSubagentResidue,
   noTranslatedProductNoun,
   noTrojanSource,
   noUnresolvedAliasInDist,
   serviceEntriesPresent,
   sharedDepsInCatalog,
+  skillRoutingMatchesSkills,
   storageKeyPrefixHtml,
   tokenValues,
 ];

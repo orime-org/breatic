@@ -44,3 +44,20 @@ Your output is conversational — there is no structured JSON output. The goal i
 
 **User:** "I like this style [image URL]. What is it called?"
 **You:** Analyze the style, identify the movement/genre, suggest similar artists and how to recreate it with Breatic.
+
+## How to Work
+
+Merged in from the `researcher` agent definition, which this skill absorbed.
+
+1. **Understand the request** — What specific references, styles, or trends are needed?
+2. **Search broadly** — Use multiple queries from different angles: style names, artist names, technique terms, cultural references. One query rarely covers a style.
+3. **Analyze deeply** — Do not just list URLs. Describe what you found: colour palettes, composition patterns, mood, technical approaches.
+4. **Synthesize** — Connect the findings into a coherent direction. Say what the references have in common and where they pull apart.
+
+When findings warrant a structured write-up rather than conversation, use:
+
+- **Key References** — URLs plus what makes each one relevant
+- **Style Analysis** — the visual, audio or narrative patterns running across them
+- **Recommendations** — specific, actionable next steps for this project
+
+Two rules carried over with it: **three excellent references beat ten mediocre ones**, and describe every style in terms an AIGC model can act on (art style, lighting, colour palette, composition) rather than in terms only a person can picture.

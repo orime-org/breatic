@@ -106,6 +106,23 @@ loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `llm_max_retries` | 2 | 每次 LLM 调用的重试次数(maxRetries),由 model-call wrapper 统一注入(#1625 Slice 3)|
+| `skill_agent_max_steps` | 15 | worker 跑一个 skill 时的步数上限。跟 `max_tool_iterations`(主对话 40)分开:主对话有人在等、可以多轮,worker 是一个有边界的后台任务 |
+
+## 7.1 `config/skill-routing.yaml` — 哪个 skill 能在哪儿用、谁能调
+
+loader:`packages/core/src/config/skill-routing.ts`。这三个答案原本在各 skill 自己的 `metadata.json` 里 —— 那等于让 skill 自己声明自己的权限。搬到宿主端的配置文件有两个好处:第三方 skill 原样拿来就能用(不往它的 frontmatter 里加字段),以及路由不再取决于谁写的这个 skill。
+
+**缺省方向按轴分开,这是关键**:
+
+| 字段 | 不写时 | 为什么 |
+|---|---|---|
+| `surfaces` | `[chat, canvas]` | 这是**可见性**。开着无非多显示一个入口 |
+| `user_invocable` | `false` | 这是**授权**。开着等于任何登录用户都能直接调 |
+| `model_invocable` | `false` | 同上,模型能不能自己调起也是授权 |
+
+`surfaces` 取值:`chat` · `canvas` · `image_node` · `video_node` · `document`,写错会在启动时报错而不是静默隐藏这个 skill。
+
+**没列进这个文件的 skill,哪儿都不能用** —— 沉默从不授予任何权限。
 
 ## 8. 连接 / 存储上传韧性(代码内,非 yaml)
 
@@ -125,6 +142,7 @@ loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 
 | `config/pricing.yaml` | `packages/server/src/config/pricing.ts` | 积分购买档位(Stripe test/live Price ID) |
 | `config/text-tools.yaml` | `packages/server/src/config/text-tools.ts` | 文本 mini-tool 模型 + 参数 |
 | `config/agent.yaml` | `packages/core/src/config/*` | MainAgent 行为 / 记忆 / 工具 / worker 限制 |
+| `config/skill-routing.yaml` | `packages/core/src/config/skill-routing.ts` | 哪个 skill 能在哪个面用、用户能不能直接调、模型能不能自己调起 |
 
 ## 10. 环境变量(部署级,非 yaml)
 

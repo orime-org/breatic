@@ -5,27 +5,17 @@
  * Tool registry — maps tool names to AI SDK tool definitions.
  */
 import type { Tool } from "ai";
+import { env } from "@breatic/core";
 
 import { askUser } from "@domain/agent/tools/ask-user.js";
 import { askUserChoice } from "@domain/agent/tools/ask-user-choice.js";
-import { editFileTool } from "@domain/agent/tools/edit-file.js";
-import { runScript } from "@domain/agent/tools/run-script.js";
-import { listDirTool } from "@domain/agent/tools/list-dir.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
-import { readFileTool } from "@domain/agent/tools/read-file.js";
 import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
 import { webFetch } from "@domain/agent/tools/web-fetch.js";
 import { webSearch } from "@domain/agent/tools/web-search.js";
-import { writeFileTool } from "@domain/agent/tools/write-file.js";
-import { spawnTool } from "@domain/agent/tools/spawn.js";
 
 /** Complete mapping of tool name to tool instance. */
 const TOOL_MAP: Readonly<Record<string, Tool>> = {
-  run_script: runScript,
-  read_file: readFileTool,
-  write_file: writeFileTool,
-  edit_file: editFileTool,
-  list_dir: listDirTool,
   web_search: webSearch,
   web_fetch: webFetch,
   ask_user_question: askUser,
@@ -36,32 +26,87 @@ const TOOL_MAP: Readonly<Record<string, Tool>> = {
   ask_user_choice: askUserChoice,
   propose_canvas_action: proposeCanvasAction,
   show_search_results: showSearchResults,
-  spawn: spawnTool,
 } as const;
 
-/** Names of the default tools available to every agent (including spawn). */
-export const DEFAULT_TOOLS: ReadonlySet<string> = new Set([
-  "run_script",
-  "read_file",
-  "write_file",
-  "edit_file",
-  "list_dir",
+/**
+ * Every tool a skill may ask for, in a stable order.
+ *
+ * This is what a caller that declares no tools of its own receives. Bare
+ * chat used to pass an empty array and end up with no tools at all — the
+ * model could not search, so it made things up instead.
+ *
+ * It happens to equal the whole of `TOOL_MAP` right now. That is arithmetic,
+ * not intent: PR-2 deleted six entries and six remain. The moment a tool
+ * arrives that is not for everyone, this list stops matching the map, and it
+ * is this list — not the map — that answers "what does a caller get by
+ * default".
+ */
+export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
   "web_fetch",
-  "spawn",
-]);
+  "ask_user_question",
+  "ask_user_choice",
+  "propose_canvas_action",
+  "show_search_results",
+];
+
+/**
+ * The tools whose result is a sentinel the caller has to decode.
+ *
+ * They do not do anything on their own — they hand back a marker that the
+ * SSE loop turns into an event the frontend draws. A caller with no such
+ * loop must not be offered them, or the model will ask a question nobody
+ * can see and read the raw sentinel back as its answer.
+ */
+export const INTERACTION_TOOLS: readonly string[] = [
+  "ask_user_question",
+  "ask_user_choice",
+  "propose_canvas_action",
+  "show_search_results",
+];
+
+/**
+ * What each tool needs configured before it can do anything.
+ *
+ * A tool missing its configuration is left out rather than offered and
+ * allowed to fail. That distinction is the whole point: a tool that returns
+ * "Error: key not configured" hands the model a string, and the model cannot
+ * tell a failed call from a call whose answer describes a failure — so it
+ * retries. A smoke run on a deployment without a search key had the model
+ * call web_search over and over until the step ceiling stopped it, and reply
+ * nothing at all.
+ *
+ * Only genuinely required configuration goes here. Something a tool merely
+ * prefers would silently remove the tool on a deployment that works fine.
+ */
+const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
+  web_search: "BRAVE_SEARCH_API_KEY",
+};
+
+/**
+ * Whether a tool has what it needs to run.
+ * @param name - The tool name to check.
+ * @returns True when the tool needs no configuration, or has it.
+ */
+function isConfigured(name: string): boolean {
+  const required = TOOL_REQUIREMENTS[name];
+  if (!required) return true;
+  const value = (env as unknown as Record<string, unknown>)[required];
+  return typeof value === "string" && value.length > 0;
+}
 
 /**
  * Build a tool set for the AI SDK from a list of tool names.
  *
- * Unknown names are silently skipped. Pass an empty array to get an
- * empty set — use `DEFAULT_TOOLS` for the standard set.
+ * Unknown names are silently skipped, which is what keeps a stale name in a
+ * skill's metadata from taking down the whole assembly. Tools whose required
+ * configuration is missing are skipped too — see `TOOL_REQUIREMENTS`.
  * @param toolNames - Array of tool name strings to include.
  * @returns A `Record<string, Tool>` suitable for the AI SDK `tools` option.
  * @example
  * ```ts
- * import { buildToolSet, DEFAULT_TOOLS } from "@domain/agent/tools/tools/index.js";
- * const tools = buildToolSet([...DEFAULT_TOOLS, "ask_user_question"]);
+ * import { buildToolSet, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
+ * const tools = buildToolSet(BASELINE_TOOLS);
  * ```
  */
 export function buildToolSet(
@@ -70,7 +115,7 @@ export function buildToolSet(
   const result: Record<string, Tool> = {};
   for (const name of toolNames) {
     const t = TOOL_MAP[name];
-    if (t) result[name] = t;
+    if (t && isConfigured(name)) result[name] = t;
   }
   return result;
 }
@@ -78,14 +123,8 @@ export function buildToolSet(
 export {
   askUser,
   askUserChoice,
-  editFileTool,
-  runScript,
-  listDirTool,
   proposeCanvasAction,
-  readFileTool,
   showSearchResults,
-  spawnTool,
   webFetch,
   webSearch,
-  writeFileTool,
 };

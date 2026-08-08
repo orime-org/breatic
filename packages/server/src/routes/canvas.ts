@@ -31,6 +31,7 @@ import {
   violatesReferenceCountForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
+import { assertSkillUsable } from "@breatic/domain";
 import { projectService, authService, precheckCredits } from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import {
@@ -165,6 +166,12 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   );
   if (insufficient) {
     return c.json({ error: { code: 402, message: insufficient } }, 402);
+  }
+
+  // Same gate the chat entry uses. This path had none: a skill_name went
+  // from the request body into the task row and the queue untouched.
+  if (body.skill_name) {
+    assertSkillUsable(body.skill_name, "canvas");
   }
 
   const task = await taskService.create(

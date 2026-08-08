@@ -6,6 +6,11 @@
 # Maximum number of tool-call round-trips the agent loop will execute.
 max_tool_iterations: 40
 
+# Step ceiling for a worker task running one skill. Separate from the number
+# above because the two are different situations: chat has someone waiting,
+# a worker task is a bounded job.
+skill_agent_max_steps: 15
+
 # ── Models ────────────────────────────────────────────────
 # Default model for MainAgent chat.
 default_model: anthropic/claude-sonnet-4-6

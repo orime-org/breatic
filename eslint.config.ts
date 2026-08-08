@@ -343,7 +343,6 @@ export default tseslint.config(
       "**/infra/**",
       "**/*-loader.ts",
       "**/model-catalog/**",
-      "**/agent/tools/fs-sandbox.ts",
       "**/providers/shared.ts",
     ],
     rules: {

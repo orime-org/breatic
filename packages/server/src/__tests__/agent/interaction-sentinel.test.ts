@@ -4,9 +4,9 @@
 /**
  * `parseInteractionSentinel` unit tests.
  *
- * Covers the three v13 interaction-tool sentinels, malformed-JSON
- * fallback, the unrelated `__ASK_USER__` sentinel (must return null),
- * and arbitrary tool output (must return null).
+ * Covers the three v13 interaction-tool sentinels, which of them stops the
+ * turn, malformed-JSON fallback, the unrelated `__ASK_USER__` sentinel (must
+ * return null), and arbitrary tool output (must return null).
  */
 
 import { describe, it, expect } from "vitest";
@@ -26,7 +26,11 @@ describe("parseInteractionSentinel", () => {
     const result = parseInteractionSentinel(
       `${ASK_USER_CHOICE_SENTINEL}${JSON.stringify(payload)}`,
     );
-    expect(result).toEqual({ event: SSEEventType.AGENT_CHOICE, payload });
+    expect(result).toEqual({
+      event: SSEEventType.AGENT_CHOICE,
+      payload,
+      blocking: true,
+    });
   });
 
   it("parses propose_canvas_action payload", () => {
@@ -38,7 +42,11 @@ describe("parseInteractionSentinel", () => {
     const result = parseInteractionSentinel(
       `${PROPOSE_CANVAS_ACTION_SENTINEL}${JSON.stringify(payload)}`,
     );
-    expect(result).toEqual({ event: SSEEventType.AGENT_CANVAS_ACTION, payload });
+    expect(result).toEqual({
+      event: SSEEventType.AGENT_CANVAS_ACTION,
+      payload,
+      blocking: false,
+    });
   });
 
   it("parses show_search_results payload", () => {
@@ -46,7 +54,11 @@ describe("parseInteractionSentinel", () => {
     const result = parseInteractionSentinel(
       `${SHOW_SEARCH_RESULTS_SENTINEL}${JSON.stringify(payload)}`,
     );
-    expect(result).toEqual({ event: SSEEventType.AGENT_SEARCH_RESULTS, payload });
+    expect(result).toEqual({
+      event: SSEEventType.AGENT_SEARCH_RESULTS,
+      payload,
+      blocking: false,
+    });
   });
 
   it("returns raw fallback when JSON malformed after a matched sentinel", () => {
@@ -55,7 +67,21 @@ describe("parseInteractionSentinel", () => {
     expect(result).toEqual({
       event: SSEEventType.AGENT_CHOICE,
       payload: { raw },
+      blocking: true,
     });
+  });
+
+  it("marks only the tool that asks a question as blocking", () => {
+    // The classification is the point of the field, so it is asserted on its
+    // own rather than only inside the three payload tests. A card the model
+    // draws -- search results, a proposed canvas edit -- does not need an
+    // answer, and stopping for one makes the first card a turn draws the
+    // last thing it says.
+    const blockingOf = (sentinel: string): boolean | undefined =>
+      parseInteractionSentinel(`${sentinel}{}`)?.blocking;
+    expect(blockingOf(ASK_USER_CHOICE_SENTINEL)).toBe(true);
+    expect(blockingOf(PROPOSE_CANVAS_ACTION_SENTINEL)).toBe(false);
+    expect(blockingOf(SHOW_SEARCH_RESULTS_SENTINEL)).toBe(false);
   });
 
   it("returns null for the unrelated __ASK_USER__ sentinel", () => {

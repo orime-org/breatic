@@ -13,9 +13,9 @@ import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, TextPart, ImagePart } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/domain";
-import { buildToolSet } from "@breatic/domain";
+import { buildAgentConfig, finalizeTurn } from "@breatic/domain";
+import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
-import { getSkillRegistry } from "@breatic/domain";
 import { getAgentConfig } from "@breatic/core";
 import { env } from "@breatic/core";
 import { creditService } from "@breatic/domain";
@@ -62,10 +62,15 @@ export class MainAgent {
       content: userMessage,
       ts: new Date().toISOString(),
     });
-    this.ctx.billing = { turnIndex, spawnCount: { value: 0 } };
+    this.ctx.billing = { turnIndex };
 
-    // Build system prompt (memory already loaded in route layer)
-    const system = buildSystemPrompt({ memoryContext });
+    // One factory decides model, instructions and tools — see
+    // domain/agent/agent-config.ts for why nothing else may assemble them.
+    const agentConfig = buildAgentConfig({
+      basePrompt: buildSystemPrompt(),
+      memoryContext,
+      interactive: true,
+    });
 
     // Build messages array from pre-compressed history
     const userContent = MainAgent.buildUserContent(userMessage, resources);
@@ -74,8 +79,7 @@ export class MainAgent {
       { role: "user", content: userContent },
     ] as ModelMessage[];
 
-    // Stream with AI SDK
-    yield* this.runStream(system, messages);
+    yield* this.runStream(agentConfig, messages);
   }
 
   /**
@@ -91,13 +95,12 @@ export class MainAgent {
     resources?: string[],
   ): AsyncGenerator<SSEEvent> {
     const { conversationId, memoryContext, compressedHistory } = this.ctx;
-    const registry = getSkillRegistry();
-    const skill = registry.get(skillName);
 
-    if (!skill) {
-      yield this.sse(SSEEventType.ERROR, { message: `Skill '${skillName}' not found` });
-      return;
-    }
+    // Whether the skill exists is not asked here. `assertSkillUsable` on
+    // the route has already answered it — with a 404 the client can act on,
+    // before a message was saved or a stream opened. Asking again would be a
+    // second answer to a settled question, which is how the two entry points
+    // drifted apart in the first place.
 
     // Save user command. Capture the assigned turnIndex for billing refKey,
     // same reason as `chat()` above.
@@ -106,12 +109,14 @@ export class MainAgent {
       content: `/skill ${skillName} ${userInput}`,
       ts: new Date().toISOString(),
     });
-    this.ctx.billing = { turnIndex, spawnCount: { value: 0 } };
+    this.ctx.billing = { turnIndex };
 
-    // Build system prompt with skill context (memory from request context)
-    const instructions = registry.loadSkillContent(skillName);
-    const basePrompt = buildSystemPrompt({ memoryContext });
-    const system = `${basePrompt}\n\n## Active Skill: ${skillName}\n${instructions}`;
+    const agentConfig = buildAgentConfig({
+      skillName,
+      basePrompt: buildSystemPrompt(),
+      memoryContext,
+      interactive: true,
+    });
 
     const userContent = MainAgent.buildUserContent(
       `/skill ${skillName} ${userInput}`,
@@ -122,177 +127,285 @@ export class MainAgent {
       { role: "user", content: userContent },
     ] as ModelMessage[];
 
-    // Use skill-declared tools instead of defaults
-    yield* this.runStream(system, messages, skill.tools);
+    yield* this.runStream(agentConfig, messages);
   }
 
   /**
    * Core streaming loop using AI SDK `streamText()`.
    *
    * AI SDK handles the tool-call iteration automatically via `maxSteps`.
-   * @param system - The assembled system prompt for this turn.
+   *
+   * The loop is wrapped in try/finally so the turn's obligations run however
+   * it ends. Which exits actually reach that finally today, and which one is
+   * written for but not yet reachable, is set out where `exit` is declared.
+   * @param agentConfig - Model, instructions and tools, from the one factory that decides them.
    * @param messages - Conversation history plus the current user message.
-   * @param toolNames - Tool names to expose to the model; defaults to the standard tool set when omitted.
-   * @yields SSE events (chat chunks, tool hints, interaction prompts, plan, done) for real-time frontend rendering.
+   * @yields SSE events — chat chunks, tool hints, interaction prompts, an error, and the ending.
    */
   private async *runStream(
-    system: string,
+    agentConfig: ResolvedAgentConfig,
     messages: ModelMessage[],
-    toolNames?: string[],
   ): AsyncGenerator<SSEEvent> {
     const { userId, conversationId, projectId } = this.ctx;
+    // Read with the others, not from inside the `finally`. `this.ctx` reaches
+    // into AsyncLocalStorage, which is only guaranteed to be there while the
+    // caller is still driving this generator — and the whole point of the
+    // cleanup below is to survive exits where that is not the case. Three
+    // context fields were already captured here and this was the odd one out.
+    const billingTurnIndex = this.ctx.billing?.turnIndex;
     const agentCfg = getAgentConfig();
-    const tools = buildToolSet(toolNames ?? []);
 
     const result = streamTextRetry({
-      model: getModel(agentCfg.default_model),
-      system,
+      model: getModel(agentConfig.modelId),
+      system: agentConfig.instructions,
       messages,
-      tools,
+      tools: agentConfig.tools,
       stopWhen: stepCountIs(agentCfg.max_tool_iterations),
       temperature: 0.2,
     });
 
     let fullResponse = "";
     let thinkingContent = "";
+    let creditsUsed = 0;
     const toolCallLog: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
 
-    for await (const part of result.fullStream) {
-      switch (part.type) {
-        case "text-delta":
-          fullResponse += part.text;
-          yield this.sse(SSEEventType.CHAT_CHUNK, { text: part.text });
-          break;
+    // Tokens are counted off the stream as it goes past, never from
+    // `result.usage`. That getter is not a passive read: it chains to
+    // `finalStep` to `steps`, and `steps` calls `consumeStream()`. On the
+    // exit that matters most — the user closing the page while the model
+    // loop is still mid-flight — reading it would drive the rest of that
+    // loop after everyone has gone, running real provider calls and real
+    // tool calls nobody asked for, then bill for them. Every step announces
+    // what it spent in a `finish-step` part, so adding those up as they
+    // arrive gives the figure with none of that, on every exit alike.
+    let tokensUsed = 0;
 
-        case "reasoning-delta":
-          thinkingContent += part.text;
-          break;
+    // Everything below runs inside try/finally so the turn's obligations are
+    // met however it ends. Both early exits used to skip them -- a blocking
+    // interaction tool returning, and a failure -- leaving the reply unsaved
+    // and the turn unbilled.
+    //
+    // A third exit, the client walking away, is written for but not yet
+    // reachable. It would arrive as `.return()` on this generator, which is
+    // what a consumer that breaks out of its loop does. Measured: today's SSE
+    // route never breaks, because hono's `StreamingApi.write` swallows the
+    // write error, so nothing tells the loop the reader is gone (probe: a
+    // client aborting after three chunks left the generator running, 358 more
+    // iterations two seconds later, `finally` never entered). Wiring that up
+    // is PR-3's, which owns cancellation; the finalizer is ready for it.
+    //
+    // How this turn ended, for the log. It starts at the exit nothing can
+    // announce from inside, and each of the other three says so on its way
+    // out. A default of "completed" is what would let a disconnect log itself
+    // as a clean finish once PR-3 makes disconnects arrive here at all.
+    let exit: "aborted" | "completed" | "blocked" | "failed" = "aborted";
 
-        case "tool-call":
-          toolCallLog.push({
-            id: part.toolCallId,
-            name: part.toolName,
-            arguments: part.input as Record<string, unknown>,
-          });
-          yield this.sse(SSEEventType.AGENT_TOOL_HINT, { hint: part.toolName });
-          break;
+    // Set when a blocking tool has fired: the turn is over, but not until the
+    // current step's `finish-step` goes by. That part carries the step's
+    // token count and arrives after its `tool-result` (measured against the
+    // real SDK: start-step, tool-call, tool-result, finish-step), so leaving
+    // at the tool-result threw away everything the step had spent.
+    let stopAfterStep = false;
 
-        case "tool-result": {
-          const toolCall = toolCallLog.find((tc) => tc.id === part.toolCallId);
+    try {
+      stream: for await (const part of result.fullStream) {
+        switch (part.type) {
+          case "text-delta":
+            fullResponse += part.text;
+            yield this.sse(SSEEventType.CHAT_CHUNK, { text: part.text });
+            break;
 
-          // Stringify output once; reused for sentinel detection,
-          // interaction-tool payload parse, and the `role: 'tool'`
-          // history message that the LLM sees on subsequent turns.
-          const output = "output" in part ? part.output : undefined;
-          const resultStr = typeof output === "string" ? output : JSON.stringify(output);
+          case "reasoning-delta":
+            thinkingContent += part.text;
+            break;
 
-          // Pre-parse interaction-tool payload BEFORE persisting so the
-          // structured result lands on the assistant `tool_calls[0].result`
-          // record. History reload reads that field directly — sentinel
-          // decoding stays a backend protocol concern and never leaks
-          // into the frontend persistence boundary.
-          const interaction = parseInteractionSentinel(resultStr);
+          case "finish-step":
+            tokensUsed += part.usage?.totalTokens ?? 0;
+            if (stopAfterStep) break stream;
+            break;
 
-          if (toolCall) {
-            await conversationRepo.addMessage(conversationId, {
-              role: "assistant",
-              content: "",
-              ts: new Date().toISOString(),
-              tool_calls: [
-                interaction ? { ...toolCall, result: interaction.payload } : toolCall,
-              ],
+          // The SDK does not throw when the provider fails -- it hands the
+          // failure back as a value and closes the stream. Measured on
+          // ai@6.0.141 with a model whose `doStream` throws: the loop saw
+          // ["start","error"] and did not throw. So an expired key, a 429 past
+          // the retry budget and a bad model id all arrive here, and the
+          // `catch` below never sees any of them.
+          case "error":
+            exit = "failed";
+            yield this.failed(part.error);
+            break stream;
+
+          case "tool-call":
+            toolCallLog.push({
+              id: part.toolCallId,
+              name: part.toolName,
+              arguments: part.input as Record<string, unknown>,
             });
-            await conversationRepo.addMessage(conversationId, {
-              role: "tool",
-              content: resultStr,
-              ts: new Date().toISOString(),
-              tool_call_id: part.toolCallId,
-              name: toolCall.name,
-            });
-          }
+            yield this.sse(SSEEventType.AGENT_TOOL_HINT, { hint: part.toolName });
+            break;
 
-          if (resultStr.startsWith(ASK_USER_SENTINEL)) {
-            try {
-              const payload = JSON.parse(resultStr.slice(ASK_USER_SENTINEL.length)) as Record<string, unknown>;
-              yield this.sse(SSEEventType.AGENT_ASK, payload);
-            } catch {
-              yield this.sse(SSEEventType.AGENT_ASK, { question: resultStr });
+          case "tool-result": {
+            const toolCall = toolCallLog.find((tc) => tc.id === part.toolCallId);
+
+            // Stringify output once; reused for sentinel detection,
+            // interaction-tool payload parse, and the `role: 'tool'`
+            // history message that the LLM sees on subsequent turns.
+            const output = "output" in part ? part.output : undefined;
+            const resultStr = typeof output === "string" ? output : JSON.stringify(output);
+
+            // Pre-parse interaction-tool payload BEFORE persisting so the
+            // structured result lands on the assistant `tool_calls[0].result`
+            // record. History reload reads that field directly — sentinel
+            // decoding stays a backend protocol concern and never leaks
+            // into the frontend persistence boundary.
+            const interaction = parseInteractionSentinel(resultStr);
+
+            if (toolCall) {
+              await conversationRepo.addMessage(conversationId, {
+                role: "assistant",
+                content: "",
+                ts: new Date().toISOString(),
+                tool_calls: [
+                  interaction ? { ...toolCall, result: interaction.payload } : toolCall,
+                ],
+              });
+              await conversationRepo.addMessage(conversationId, {
+                role: "tool",
+                content: resultStr,
+                ts: new Date().toISOString(),
+                tool_call_id: part.toolCallId,
+                name: toolCall.name,
+              });
             }
-            return;
-          }
 
-          if (interaction) {
-            yield this.sse(interaction.event, interaction.payload);
-            return;
+            if (resultStr.startsWith(ASK_USER_SENTINEL)) {
+              try {
+                const payload = JSON.parse(resultStr.slice(ASK_USER_SENTINEL.length)) as Record<string, unknown>;
+                yield this.sse(SSEEventType.AGENT_ASK, payload);
+              } catch {
+                yield this.sse(SSEEventType.AGENT_ASK, { question: resultStr });
+              }
+              // The turn stops here waiting for the user, but it still owes
+              // an ending, and it owes the charge for the step it just ran.
+              // So it leaves at this step's `finish-step` rather than here.
+              exit = "blocked";
+              stopAfterStep = true;
+              break;
+            }
+
+            if (interaction) {
+              yield this.sse(interaction.event, interaction.payload);
+              // Only the tools that asked the user something stop here. The
+              // ones that merely drew a card let the model write on around
+              // them, and let it draw more than one in a turn.
+              if (interaction.blocking) {
+                exit = "blocked";
+                stopAfterStep = true;
+              }
+            }
+            break;
           }
-          break;
         }
       }
-    }
+      // Two ways to arrive here: the stream ran out, or a blocking tool
+      // broke out of it. That one has already recorded itself, so only the
+      // untouched default counts as a clean finish.
+      if (exit === "aborted") exit = "completed";
+    } catch (err) {
+      // The other failure shape: our own code inside the loop threw, or the
+      // stream was torn down with `controller.error()`. A failing provider
+      // does not land here -- see `case "error"` above.
+      exit = "failed";
+      yield this.failed(err);
+    } finally {
+      // Memory consolidation is an LLM call of its own and nobody is waiting
+      // for it — the user is waiting for the turn to be over. Starting it
+      // here rather than awaiting it keeps it out from in front of
+      // `chat_done`, and starting it inside the finally means a disconnect
+      // still triggers it. Its failure is logged here because it has nobody
+      // left to return to.
+      void consolidateIfNeeded(userId, conversationId, projectId).catch((err: unknown) =>
+        logger.warn({ err, userId, conversationId }, "memory_consolidation_failed"),
+      );
 
-    // Save assistant final response (with thinking if present)
-    if (fullResponse) {
-      await conversationRepo.addMessage(conversationId, {
-        role: "assistant",
-        content: fullResponse,
-        ts: new Date().toISOString(),
-        ...(thinkingContent ? { thinking: thinkingContent } : {}),
-      });
-    }
+      const failures = await finalizeTurn({
+        steps: {
+          persist: fullResponse
+            ? async () => {
+                await conversationRepo.addMessage(conversationId, {
+                  role: "assistant",
+                  content: fullResponse,
+                  ts: new Date().toISOString(),
+                  ...(thinkingContent ? { thinking: thinkingContent } : {}),
+                });
+              }
+            : undefined,
+          bill: async () => {
+            if (tokensUsed === 0) return;
 
-    // Trigger memory consolidation (fire-and-forget, non-blocking)
-    consolidateIfNeeded(userId, conversationId, projectId)
-      .catch((err) => logger.warn({ err }, "Memory consolidation failed"));
-
-    // Deduct credits for MainAgent tokens only. SubAgents deduct their own
-    // via RequestStore.billing.spawnCount (see spawnTool). Using
-    // `deductOnce` with the turn-scoped refKey ensures this billing is
-    // idempotent: an SSE reconnect or handler re-entry on the same turn
-    // won't double-charge.
-    let creditsUsed = 0;
-    try {
-      const usage = await result.usage;
-      const mainTokens = usage?.totalTokens ?? 0;
-
-      if (mainTokens > 0) {
-        creditsUsed = Math.ceil((mainTokens / 1000) * env.CREDIT_MULTIPLIER);
-        const billingTurnIndex = this.ctx.billing?.turnIndex;
-        if (billingTurnIndex === undefined) {
-          // Should be set by chat()/handleSkillCommand() before we reach here.
-          throw new Error("MainAgent.runStream: billing.turnIndex not initialized");
-        }
-        await creditService.deductOnce(
-          userId,
-          `turn:${conversationId}:${billingTurnIndex}`,
-          creditsUsed,
-          "Agent chat",
-          {
-            tokensUsed: mainTokens,
-            model: agentCfg.default_model,
-            provider: resolveProvider(agentCfg.default_model),
+            creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
+            if (billingTurnIndex === undefined) {
+              throw new Error("MainAgent.runStream: billing.turnIndex not initialized");
+            }
+            // The turn-scoped refKey makes this idempotent: an SSE reconnect
+            // or a re-entry on the same turn will not double-charge.
+            await creditService.deductOnce(
+              userId,
+              `turn:${conversationId}:${billingTurnIndex}`,
+              creditsUsed,
+              "Agent chat",
+              {
+                tokensUsed,
+                model: agentConfig.modelId,
+                provider: resolveProvider(agentConfig.modelId),
+              },
+            );
           },
+        },
+      });
+
+      // The finalizer does not log — it is in domain, which has no logger.
+      // This is the layer that knows the user and the conversation.
+      for (const failure of failures) {
+        logger.error(
+          { err: failure.error, userId, conversationId, step: failure.step },
+          "turn_finalizer_step_failed",
         );
       }
-    } catch {
-      logger.warn({ userId, creditsUsed }, "Agent chat credit deduction failed");
+
+      logger.info({
+        userId,
+        conversationId,
+        responseLength: fullResponse.length,
+        creditsUsed,
+        exit,
+      }, "agent_response");
+
+      // Inside the finally so every exit emits it. A turn that ends without
+      // one leaves the frontend with nothing to switch out of its in-flight
+      // state — the stop button never clears.
+      yield this.sse(SSEEventType.CHAT_DONE, {
+        conversationId,
+        creditsUsed,
+      });
     }
+  }
 
-    logger.info({
-      userId,
-      conversationId,
-      responseLength: fullResponse.length,
-      creditsUsed,
-    }, "agent_response");
-
-    // Extract plan
-    const plan = MainAgent.extractPlan(fullResponse);
-    if (plan) {
-      yield this.sse(SSEEventType.CHAT_PLAN, plan);
-    }
-
-    yield this.sse(SSEEventType.CHAT_DONE, {
-      conversationId,
-      creditsUsed,
+  /**
+   * Log a turn that failed and produce the event its client gets.
+   *
+   * Written once because a turn can fail two ways that look nothing alike --
+   * a provider failure arrives as a value in the stream, our own code throws
+   * -- and both owe the user the same thing. The message is deliberately not
+   * the provider's: those carry endpoint URLs and key hints.
+   * @param err - Whatever failed, for the log.
+   * @returns The error event to send the client.
+   */
+  private failed(err: unknown): SSEEvent {
+    const { userId, conversationId } = this.ctx;
+    logger.error({ err, userId, conversationId }, "agent_turn_failed");
+    return this.sse(SSEEventType.ERROR, {
+      message: "The assistant could not finish this turn.",
     });
   }
 
@@ -337,25 +450,4 @@ export class MainAgent {
     return parts;
   }
 
-  /**
-   * Extract a JSON task plan from LLM response text.
-   *
-   * Looks for ```json ... ``` blocks containing a plan object.
-   * @param text - The LLM response text to scan for a fenced JSON plan block.
-   * @returns The parsed `plan` object when the block contains `ready: true` and a `plan` field; otherwise `null`.
-   */
-  static extractPlan(text: string): Record<string, unknown> | null {
-    const match = text.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-    if (!match?.[1]) return null;
-
-    try {
-      const data = JSON.parse(match[1]) as Record<string, unknown>;
-      if (data.ready && "plan" in data) {
-        return data.plan as Record<string, unknown>;
-      }
-    } catch {
-      // Invalid JSON — ignore
-    }
-    return null;
-  }
 }

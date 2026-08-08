@@ -41,20 +41,20 @@ breatic/                           # Turborepo monorepo
 │   │   ├── src/
 │   │   │   ├── routes/            #   Hono HTTP routes
 │   │   │   ├── middleware/        #   Auth, CORS, logging, error handler
-│   │   │   ├── agent/             #   AI core (MainAgent, spawn SubAgents, tools, skills)
-│   │   │   ├── providers/         #   AIGC providers (image/video/audio/tts/3d/understand)
-│   │   │   ├── worker/            #   BullMQ job handlers (5 execution paths)
+│   │   │   ├── agent/             #   Chat agent: streaming loop, prompt, SSE
 │   │   │   ├── modules/           #   Business modules (Repo + Service per domain)
-│   │   │   ├── db/                #   Drizzle schema + client
-│   │   │   ├── infra/             #   Redis, queues, session store, request context (AsyncLocalStorage)
-│   │   │   └── config/            #   Environment + YAML config loaders
+│   │   │   ├── infra/             #   Metrics and other server-local infrastructure
+│   │   │   └── config/            #   Server-local YAML config loaders
 │   │   └── vitest.config.ts
+│   ├── core/                      # Shared kernel: db, redis, queues, config, auth, logging
+│   ├── domain/                    # Business kernel shared by server + worker (agent, credit, tasks)
+│   ├── worker/                    # BullMQ service
+│   │   └── src/                   #   handlers/ (4 execution paths) + providers/ (image/video/audio/tts/3d/understand)
 │   ├── collab/                    # Hocuspocus service (COLLAB_PORT, default 1234)
 │   │   └── src/                   #   Yjs sync, auth, persistence, task result listener
-│   └── web/                       # Frontend (placeholder)
+│   └── web/                       # Frontend (React + Vite)
 ├── config/                        # YAML configs (agent, collab, worker, pricing, text-tools, models/)
-├── agents/                        # SubAgent role definitions (*.md with frontmatter)
-├── skills/                        # Built-in skill definitions (knowledge + scripts)
+├── skills/                        # Built-in skill definitions (knowledge + declared tools)
 ├── docker-compose.yml             # Deployment stack — pulls pre-built images from GHCR
 ├── Dockerfile                     # Backend image (API/Worker/Collab/Migrate shared, 357MB). Built by CI, published to ghcr.io/orime-org/breatic
 └── Dockerfile.web                 # Frontend image (Vite build → nginx:alpine, 73MB). Built by CI, published to ghcr.io/orime-org/breatic-web
@@ -90,18 +90,16 @@ Memory is automatically consolidated by the LLM when the conversation exceeds `m
 
 ### Agent & Skill System
 
-**Agents** define _who_ does the work (role, tools, model). **Skills** define _how_ to do the work (knowledge, instructions, scripts). The two are orthogonal and composable.
+**Skills** are the unit of work. A skill fixes three things — its knowledge (`SKILL.md`), the tools it may use, and the model it runs on — and one factory resolves all three, so every entry point that runs a skill runs it the same way. The model is the only optional one: a skill that names none takes the configured default, which is what every shipped skill does today. Where a skill may be used and who may fire it are the host's decision, and live in `config/skill-routing.yaml` rather than in the skill.
 
 ```
-agents/{name}.md      # SubAgent role definition (frontmatter: name, tools, model, skills + system prompt)
 skills/{name}/
 ├── SKILL.md          # Frontmatter (name, description) + LLM instructions
-├── metadata.json     # Runtime config: tools, category, output_type, scope, requires
-├── scripts/          # Self-contained scripts invoked via run_script tool (path-sandboxed)
+├── metadata.json     # Runtime config: model, tools, category, output_type, requires
 └── references/       # Optional reference docs loaded on demand
 ```
 
-Built-in agents: `researcher` | `prompt_optimizer` | `analyst` | `planner`. SubAgents inherit the request context (memory + compressed conversation history) via AsyncLocalStorage.
+A skill declares which tools it may use; the host assembles the tool set and the model calls them within one turn.
 
 ## Quick Start
 

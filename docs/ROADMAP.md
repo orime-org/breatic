@@ -112,12 +112,12 @@
 
 ### AI 能力
 
-- [ ] Canvas Skill：各模态智能模式 Skill（scope: canvas，单次执行，直接生成）
+- [ ] Canvas Skill：各模态智能模式 Skill（在 config/skill-routing.yaml 的 surfaces 里开 canvas，单次执行，直接生成）
 - [ ] 模型推荐引擎：Agent 根据用户意图自动选择最佳模型，不需要用户手动选
 
 ### 安全
 
-- [ ] Skill 安全分级：内置 Skill 可用 run_script，第三方禁止；未来按需开放 isolated-vm / Docker 沙箱 / Webhook
+- [ ] Skill 安全分级：第一版不做脚本执行（skill 只能声明工具、不能带脚本），所以暂无分级可言。将来要让 skill 带脚本时，「在哪跑 / 跑多久 / 能碰什么 / 失败怎么办 / 算不算钱」是一整套要单独设计的东西，届时连同 isolated-vm / 容器沙箱 / Webhook 一起定
 - [x] 上传改为 presigned URL：`GET /assets/presign` → 直传 S3/OSS/本地，前端不持有 credentials
 - [x] **资产归属统一到 studio 级（#1839）**：推翻 2026-07-04 定为 final 的「个人 studio 项目按操作者分流」规则。归属与去重范围一律看 **project 所属的 studio**，个人与团队一条路径、谁操作不进入判定——旧规则下 A 邀请 B 进自己项目协作，B 的产出落在 B 的 studio 下：A 在自己项目里看不到它，去重也形同虚设（一人一个域，同样的字节按人各存一份），没有个人 studio 的协作者更是直接传不了。同批新增 `studio_assets.produced_by_user_id` 把「归属」和「产出人」拆成两列（旧规则把产出人隐式压在 `studio_id` 里，删分支会连带丢失），去重命中保留**第一个**产出者。migration 0044 三步走（加 nullable → 从 `studios.created_by_user_id` 回填 → 置 NOT NULL），回填对个人 studio 行精确、对团队 studio 行是**近似值**且在 SQL 里明确标注。**安全模型是产品决策**：一个 studio 一个去重域 ⇒ 该 studio 下任意项目的 editor 共享其 hash 命名空间，内容存在性探测 / 跨用户 dedup 投毒 / 配额消耗 / 拿同 studio 他人的任意资产当自己视频节点的封面（`cover_hash` 残余）四条风险，由**发出邀请的用户承担**（邀请即信任），不做技术收口。**注意：告知面尚未建立**——用户手册与服务协议都还不存在，这条 `[x]` 只覆盖代码侧，告知本身是未完成的待办（归 operations）
 - [x] **存储层重构（#1826）**：承接上一条把归属从 key 里拆出来。**key 租户中立**（`{taskType}/{date}/{时间戳}_{uuid}{ext}`，不再把 `{userId}/{projectId}/` 焊进每个公开 URL、泄漏账号拓扑）；**新增 `upload_grants` 下发记录表**接管"这 key 是不是你的"（presign 每铸一个 key 写一行：user + 服务端解析的 owner studio + 声明 hash），取代靠前缀判定的 `isOwnedKey`——它同时提供**权威 owner studio**（不信客户端报的 project_id，否则跨 studio 成员能把个人存储成本转嫁给团队）并把报告**绑定到当初申请的那份内容**（否则并发两个报告能在一个 key 上登记两个 hash，把一个还活着的对象送进回收队列 → 404）。**新增 `storage_reclaim_queue`** 待回收清单：去重命中时多出来的物理份只**登记**、不删，交离线回收（runtime 零删除攻击面 + 离线有明确工单）。**四条铁律**：runtime 只插不删 · 消费方 URL 一律取自登记记录（绝不钉刚上传、可能成孤儿的 key）· 登记失败即上传失败**零例外**（封面是视频上传的一半，#1816 原子契约）· **没 hash 不许传**（前端算不出就不发起，后端 presign + `/uploaded` 都必填）。**类型 / 大小 / 上限全部后端从"存下来的东西"读**（cloud `head()`、local magic-bytes 嗅探 + SVG/文本内容感知回落）——这是 local 上传 kind 全成 `'file'` 那个老 bug 的真修；权威 size 拿到后回头复核上限，"声明 1KB 传 50GB"绕不过去。另含：账号存储用量 = 该账号管理的每个 studio 相加、视频封面登记为一等资产行、local 流式写入走临时文件 + 原子改名（半成品不会被当成已完成对象注册）、画布拒收 0 字节文件

@@ -12,10 +12,5 @@
     "OCR",
     "caption",
     "transcribe"
-  ],
-  "disable_model_invocation": true,
-  "scope": [
-    "agent",
-    "canvas"
   ]
 }

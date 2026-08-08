@@ -4,12 +4,15 @@
 /**
  * BullMQ job handlers for task execution.
  *
- * Implements 5 execution paths matching the Python worker:
+ * Four execution paths:
  * 1. Mini-tool → direct provider call
  * 2. Understand → media analysis / ASR
  * 3. AIGC Direct → provider call with explicit params
  * 4. Skill (explicit) → AI SDK agent loop
- * 5. Skill (auto-select) → merged skills, LLM chooses
+ *
+ * Anything else throws. There used to be a fifth path that picked skills by
+ * category and merged them, which cannot hold "a skill's three things are
+ * fixed" — merged, whose model wins?
  */
 
 import type { Job } from "bullmq";
@@ -19,9 +22,8 @@ import { resolveMiniToolEntry } from "@worker/mini-tool-registry.js";
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { runLocalHandler } from "@worker/handlers/local/index.js";
 import { getModel } from "@breatic/domain";
-import { buildToolSet } from "@breatic/domain";
-import { getSkillRegistry } from "@breatic/domain";
-import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
+import { buildAgentConfig } from "@breatic/domain";
+import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
 import { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { assetService } from "@breatic/domain";
@@ -616,14 +618,22 @@ async function runTaskBody(
       [providerResult, creditsUsed] = await runUnderstand(model, params, resume);
     } else if (taskType in AIGC_TASK_TYPES && !skillName) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, resume);
-    } else {
-      const [text, skills] = await runSkillAgent(taskType, skillName, params);
+    } else if (skillName) {
+      const [text, skills] = await runSkillAgent(skillName, params);
       resolvedSkills = skills;
       try {
         providerResult = JSON.parse(text) as Record<string, unknown>;
       } catch {
         providerResult = { content: text };
       }
+    } else {
+      // No explicit skill and not an AIGC task type: there is nothing to run.
+      // This used to fall through to picking skills by category and merging
+      // them, which cannot hold "a skill's three things are fixed" — merged,
+      // whose model wins? Saying so beats guessing.
+      throw new Error(
+        `Task type '${taskType}' needs an explicit skill_name to run`,
+      );
     }
   } catch (err) {
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
@@ -1693,63 +1703,36 @@ async function runAigcDirect(
 }
 
 /**
- * Execution paths 4 & 5: run an AI SDK agent loop driven by a skill.
- * Path 4 uses an explicit skill; path 5 auto-selects and merges all skills
- * registered for the task-type category and lets the LLM choose tools.
- * @param taskType - Task type, used as the skill category for auto-select
- * @param skillName - Explicit skill to run (path 4), or undefined to auto-select (path 5)
+ * Run an AI SDK agent loop driven by one named skill.
+ *
+ * Model, instructions and tools all come from `buildAgentConfig`, the same
+ * factory the chat path uses. This function used to resolve all three itself
+ * and disagreed with chat on every one of them.
+ * Exported for its tests, like the other internals of this file: the branch
+ * that reaches it needs a whole job, a database and a queue, and none of that
+ * is what these assertions are about.
+ * @param skillName - The skill to run; the caller has already checked it is set
  * @param params - Task params serialised into the user message for the agent
- * @returns A `[text, resolvedSkills]` tuple: the agent's final text and the skill names used
- * @throws {Error} when the explicit skill is missing, or no skills exist for the category
+ * @returns A `[text, resolvedSkills]` tuple: the agent's final text and the skill it ran
+ * @throws {Error} when the registry has no such skill
  */
-async function runSkillAgent(
-  taskType: string,
-  skillName: string | undefined,
+export async function runSkillAgent(
+  skillName: string,
   params: Record<string, unknown>,
 ): Promise<[string, string[]]> {
-  const registry = getSkillRegistry();
-  let skillContent: string;
-  let toolNames: string[];
-  let resolved: string[];
+  const agentConfig = buildAgentConfig({ skillName });
 
-  if (skillName) {
-    // Path 4: Explicit skill
-    const skill = registry.get(skillName);
-    if (!skill) throw new Error(`Skill not found: ${skillName}`);
-    skillContent = registry.loadSkillContent(skillName);
-    toolNames = skill.tools;
-    resolved = [skillName];
-  } else {
-    // Path 5: Auto-select by category
-    const categorySkills = registry.listByCategory(taskType);
-    if (categorySkills.length === 0) {
-      throw new Error(`No skills found for category '${taskType}'`);
-    }
-
-    const allToolNames: string[] = [];
-    const sections: string[] = [];
-    for (const s of categorySkills) {
-      allToolNames.push(...s.tools);
-      sections.push(`## Skill: ${s.name}\n${registry.loadSkillContent(s.name)}`);
-    }
-
-    // Deduplicate tools
-    toolNames = [...new Set(allToolNames)];
-    skillContent = `You have multiple skills available for [${taskType}] tasks.\n\n` + sections.join("\n\n---\n\n");
-    resolved = categorySkills.map((s) => s.name);
-  }
-
-  const tools = buildToolSet(toolNames);
   const result = await generateTextRetry({
-    model: getModel(),
-    system: skillContent,
+    model: getModel(agentConfig.modelId),
+    system: agentConfig.instructions,
     messages: [{ role: "user" as const, content: JSON.stringify(params) }],
-    tools,
-    stopWhen: stepCountIs(15),
+    tools: agentConfig.tools,
+    stopWhen: stepCountIs(getAgentConfig().skill_agent_max_steps),
   });
 
-  return [result.text || "Task completed.", resolved];
+  return [result.text || "Task completed.", [skillName]];
 }
+
 
 
 /**

@@ -15,7 +15,6 @@ export const SSEEventType = {
   // Chat / Main Agent
   CHAT_CHUNK: "chat_chunk",
   CHAT_DONE: "chat_done",
-  CHAT_PLAN: "chat_plan",
 
   // Agent progress
   AGENT_TOOL_HINT: "agent_tool_hint",
