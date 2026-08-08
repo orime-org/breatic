@@ -149,4 +149,84 @@ describe('DocumentEditor', () => {
       expect(markupOf(fragment)).toBe(before);
     });
   });
+  describe('with the caret in the title', () => {
+    // The title accepts no formatting at all, so a bold button that stays lit
+    // and does nothing is worse than no button: the user presses it, nothing
+    // happens, and there is no way to tell whether they missed or the feature
+    // is broken.
+    const FORMAT_TOOLS = [
+      'bold',
+      'italic',
+      'strike',
+      'bullet-list',
+      'ordered-list',
+      'quote',
+    ];
+
+    /**
+     * Put the caret in the title, then in the body's first block.
+     * @returns Nothing; it moves the caret.
+     */
+    function giveTheBodyABlock(): void {
+      act(() => {
+        editor.commands.setContent(
+          '<h1 class="doc-title">Storyboard v3</h1><p>written</p>',
+        );
+      });
+    }
+
+    it('every formatting button is disabled', () => {
+      giveTheBodyABlock();
+      act(() => {
+        editor.commands.setTextSelection(2);
+      });
+      render(<DocumentEditor editor={editor} history={history} />);
+      FORMAT_TOOLS.forEach((id) => {
+        expect(screen.getByTestId(`doc-tool-${id}`)).toBeDisabled();
+      });
+    });
+
+    it('and they come back the moment the caret leaves it', () => {
+      giveTheBodyABlock();
+      act(() => {
+        editor.commands.setTextSelection(2);
+      });
+      render(<DocumentEditor editor={editor} history={history} />);
+      expect(screen.getByTestId('doc-tool-bold')).toBeDisabled();
+
+      act(() => {
+        editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
+      });
+      expect(screen.getByTestId('doc-tool-bold')).not.toBeDisabled();
+    });
+
+    it('leaves undo and redo alone — they work in the title too', () => {
+      // Asserted as "the caret makes no difference" rather than "undo is
+      // enabled": whether there is anything to undo comes from the history
+      // state, and pinning that here would test the fixture instead of the
+      // rule. What must hold is that moving the caret into the title changes
+      // nothing about these two.
+      giveTheBodyABlock();
+      render(<DocumentEditor editor={editor} history={history} />);
+
+      act(() => {
+        editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
+      });
+      const inBody = ['undo', 'redo'].map((id) =>
+        (screen.getByTestId(`doc-tool-${id}`) as HTMLButtonElement).disabled,
+      );
+
+      act(() => {
+        editor.commands.setTextSelection(2);
+      });
+      const inTitle = ['undo', 'redo'].map((id) =>
+        (screen.getByTestId(`doc-tool-${id}`) as HTMLButtonElement).disabled,
+      );
+
+      expect(inTitle).toEqual(inBody);
+      // And the formatting buttons DID change, so the comparison above is not
+      // passing because nothing re-rendered.
+      expect(screen.getByTestId('doc-tool-bold')).toBeDisabled();
+    });
+  });
 });

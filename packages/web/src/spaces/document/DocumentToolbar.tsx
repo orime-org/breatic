@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 
+import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
+
 import { Button } from '@web/components/ui/button';
 import { Separator } from '@web/components/ui/separator';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -168,6 +170,24 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
   history,
   readOnly = false,
 }: DocumentToolbarProps): React.JSX.Element {
+  // The title takes no formatting at all, so with the caret in it every
+  // formatting control has to go inert. A button that stays lit and does
+  // nothing is worse than no button: the user presses it, nothing happens,
+  // and there is no way to tell whether they missed or the feature is broken.
+  //
+  // Subscribed rather than read during render: moving the caret is a
+  // transaction with no React render behind it, so a value computed in the
+  // render body would keep reporting wherever the caret was when this last
+  // happened to re-render.
+  const caretInTitle = useEditorState({
+    editor,
+    selector: ({ editor: e }) =>
+      e?.state.selection.$from.parent.type.name === DOCUMENT_TITLE_NODE,
+  });
+  // Undo and redo are deliberately NOT gated on this: they work in the title
+  // exactly as they do in the body.
+  const formattingOff = readOnly || caretInTitle === true;
+
   return (
     <div
       data-testid='document-toolbar'
@@ -183,11 +203,11 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {MARK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} editor={editor} disabled={readOnly} />
+        <ToolButton key={t.id} tool={t} editor={editor} disabled={formattingOff} />
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {BLOCK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} editor={editor} disabled={readOnly} />
+        <ToolButton key={t.id} tool={t} editor={editor} disabled={formattingOff} />
       ))}
     </div>
   );
