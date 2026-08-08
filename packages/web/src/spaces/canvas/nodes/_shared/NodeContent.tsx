@@ -73,8 +73,8 @@ export function NodeContent({
         {onRetry ? (
           <Button
             type='button'
-            variant='outline'
-            size='sm'
+            variant={null}
+            size={null}
             data-testid='node-content-retry'
             className='nodrag rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted focus-visible:outline-2'
             onClick={(event) => {

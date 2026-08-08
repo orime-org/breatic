@@ -45,16 +45,17 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
         />
         <Button
           type='button'
-          variant='ghost'
-          size='icon'
+          variant={null}
+          size={null}
           onClick={() => setVisible((v) => !v)}
           aria-label={visible ? hideLabel : showLabel}
           aria-pressed={visible}
           className={cn(
             'absolute top-1/2 right-2 -translate-y-1/2',
-            'h-6 w-6 rounded-sm',
-            'text-muted-foreground hover:bg-transparent',
+            'inline-flex h-6 w-6 items-center justify-center rounded-sm',
+            'text-muted-foreground transition-colors',
             'hover:text-foreground focus-visible:text-foreground',
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
           )}
         >
           {visible ? (

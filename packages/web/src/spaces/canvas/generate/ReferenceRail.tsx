@@ -123,8 +123,8 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 // metrics: it is the one size that imposes no height, leaving
                 // the chip's. `p-0` keeps the padding on the wrapper, where it
                 // was.
-                variant='ghost'
-                size='menu-item'
+                variant={null}
+                size={null}
                 data-testid={`generate-ref-insert-${ref.refId}`}
                 // The accessible name must carry the ROW identity + the crop
                 // tag (adversarial round-2): aria-label overrides
@@ -148,7 +148,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onInsert(ref)}
                 disabled={inert || !insertable}
-                className={`flex items-center justify-start gap-1.5 rounded-overlay p-0 text-xs disabled:cursor-not-allowed ${inert ? 'opacity-50' : ''}`}
+                className={`flex items-center gap-1.5 rounded-overlay disabled:cursor-not-allowed ${inert ? 'opacity-50' : ''}`}
               >
                 {ref.thumbnail ? (
                   <img
@@ -191,8 +191,8 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             </HoverPreview>
             <Button
               type='button'
-              variant='ghost'
-              size='icon'
+              variant={null}
+              size={null}
               data-testid={`generate-ref-remove-${ref.refId}`}
               // Same identity-carrying label as insert (round-3): the
               // destructive ✕ must not announce identically across
@@ -208,7 +208,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               )}
               onClick={() => onRemove(ref)}
               disabled={inert}
-              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed ${inert ? 'opacity-50' : ''}`}
+              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed ${inert ? 'opacity-50' : ''}`}
             >
               <X className='h-3 w-3' aria-hidden='true' />
             </Button>

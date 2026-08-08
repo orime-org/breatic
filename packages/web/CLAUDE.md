@@ -35,7 +35,13 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 
 **什么都没有牺牲**:`Button` 继承 `React.ButtonHTMLAttributes<HTMLButtonElement>` 并透传收到的一切,`type` / `role` / `aria-*` / `data-*` 和自定义 class 原样通过;触发器归别的 primitive 拥有时用 `asChild` 把元素交出去。裸 `<button>` 能做的,`<Button>` 都能做。
 
-**但 `className` 怎么跟变体类合并要弄清楚**:`cn()` 走 twMerge,**只在同一个 utility 组里让后写的赢** —— 你写的 `bg-muted` 盖得掉变体的 `bg-background`;但带 modifier 的自成一组,变体的 `hover:bg-accent` **不会**被一个无 modifier 的 `bg-*` 盖掉。所以**给了自定义底色就必须把 hover 一起重述**,否则鼠标一放上去你的底色就被变体的 hover 顶掉。选中态尤其容易踩:选中项的底色被 hover 顶掉之后,它跟一个被 hover 的未选中项长得一模一样。
+**换写法的时候不许顺手改外观(MANDATORY)**:把一个手写 `<button>` 改成 `Button` 是**换写法**,不是重新设计它。原来的 `className` **一个字都不动**,变体和尺寸一律 `variant={null} size={null}` —— cva 只在这两个属性是 `undefined` 时才套默认值,显式给 `null` 就一个变体类都不出,外观完全由这个按钮自己原来的样式决定。**别把原来写在 `className` 里的边框挪进变体**,那会让这个按钮从此依赖变体、换个变体就变样。
+
+判定题:**我这次是在换写法,还是在改这个按钮长什么样?换写法 → `variant={null} size={null}`,className 原样不动。**
+
+**这条是踩出来的**:82 处转换时我按「文字按钮该有边框」给每个按钮挑了变体,结果左侧栏、思考过程折叠头、生成面板等二十来处凭空多了边框和底色,还有若干处的高度被 `size` 改掉;user 逐一指出来才退回去(2026-08-08)。
+
+**真要给某个按钮定变体时,`className` 怎么跟变体类合并要弄清楚**:`cn()` 走 twMerge,**只在同一个 utility 组里让后写的赢** —— 你写的 `bg-muted` 盖得掉变体的 `bg-background`;但带 modifier 的自成一组,变体的 `hover:bg-accent` **不会**被一个无 modifier 的 `bg-*` 盖掉。所以**给了自定义底色就必须把 hover 一起重述**,否则鼠标一放上去你的底色就被变体的 hover 顶掉。选中态尤其容易踩:选中项的底色被 hover 顶掉之后,它跟一个被 hover 的未选中项长得一模一样。
 
 **CI 强制**:`breatic/no-raw-button`(ESLint),扫 `src/**/*.{ts,tsx}`(`.ts` 也扫 —— `createElement('button')` 这种写法就住在普通模块里)。**豁免按出身不按目录**:只放行 `components/ui/button.tsx` 一个文件(`Button` 自己要渲染这个元素),**不放行整个 `components/ui/`** —— 那个目录不是纯 vendor,`password-input` 是我们自己的。另豁免 `_dev` 陈列页(它的用途就是把被替换掉的原生控件并排展示)和测试。
 

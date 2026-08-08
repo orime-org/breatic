@@ -163,8 +163,8 @@ export function SpaceTab({
       // A tab strip, not a standalone labelled button: the active fill is the
       // affordance, and `menu-item` is the one size that leaves the tab's own
       // 32px chrome height alone.
-      variant='ghost'
-      size='menu-item'
+      variant={null}
+      size={null}
       type='button'
       role='tab'
       aria-selected={active}

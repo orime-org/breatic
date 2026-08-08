@@ -63,15 +63,17 @@ function BannerButton({
   return (
     <Button
       type='button'
-      variant='outline'
-      size='default'
+      variant={null}
+      size={null}
       onClick={onClick}
       data-testid={testId}
       className={cn(
-        'h-8 shrink-0 gap-1.5 rounded-md bg-transparent px-3 duration-150',
+        'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-3',
+        'text-sm font-medium transition-colors duration-150',
+        'focus-visible:outline-none focus-visible:ring-1',
         tone === 'error'
-          ? 'border-status-error-border text-status-error-foreground hover:bg-status-error-bg hover:text-status-error-foreground focus-visible:ring-status-error'
-          : 'border-status-warning-border text-status-warning-foreground hover:bg-status-warning-bg hover:text-status-warning-foreground focus-visible:ring-status-warning',
+          ? 'border-status-error-border text-status-error-foreground hover:bg-status-error-bg focus-visible:ring-status-error'
+          : 'border-status-warning-border text-status-warning-foreground hover:bg-status-warning-bg focus-visible:ring-status-warning',
       )}
     >
       {children}

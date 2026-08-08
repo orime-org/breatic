@@ -132,12 +132,12 @@ export function DocumentSpace({
             {t('spaces.document.unavailable.text')}
           </p>
           <Button
-            variant='outline'
-            size='default'
+            variant={null}
+            size={null}
             type='button'
             data-testid='document-space-unavailable-retry'
             onClick={() => window.location.reload()}
-            className='h-8 gap-1.5 rounded-md border-border px-3 duration-150 hover:bg-muted focus-visible:ring-active-border'
+            className='inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium transition-colors duration-150 hover:bg-muted focus-visible:ring-1 focus-visible:ring-active-border focus-visible:outline-none'
           >
             <RefreshCw className='h-3.5 w-3.5' aria-hidden />
             {t('spaces.document.unavailable.action')}

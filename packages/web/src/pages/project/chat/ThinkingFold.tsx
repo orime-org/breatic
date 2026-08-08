@@ -30,10 +30,10 @@ export function ThinkingFold({
     >
       <Button
         type='button'
-        variant='outline'
-        size='sm'
+        variant={null}
+        size={null}
         onClick={() => setOpen((o) => !o)}
-        className='flex w-full justify-start gap-1 px-2 py-1 text-muted-foreground hover:bg-accent'
+        className='flex w-full items-center gap-1 px-2 py-1 text-muted-foreground hover:bg-accent'
         aria-expanded={open}
         data-testid='thinking-fold-toggle'
       >

@@ -59,8 +59,8 @@ export const ScissorsEdge = React.memo(function ScissorsEdge(props: EdgeProps): 
       {shouldShowScissors(Boolean(selected), readOnly) ? (
         <EdgeLabelRenderer>
           <Button
-            variant='outline'
-            size='icon'
+            variant={null}
+            size={null}
             type='button'
             data-testid={`edge-scissors-${id}`}
             aria-label={t('canvas.edge.delete')}
@@ -75,7 +75,7 @@ export const ScissorsEdge = React.memo(function ScissorsEdge(props: EdgeProps): 
             }}
             // `nopan nodrag` so pressing the scissors never pans the canvas or
             // starts a drag; rounded chip matching the viewport toolbar buttons.
-            className='nopan nodrag h-6 w-6 rounded-full border-border bg-popover text-muted-foreground shadow hover:bg-accent hover:text-foreground'
+            className='nopan nodrag inline-flex h-6 w-6 items-center justify-center rounded-full border border-border bg-popover text-muted-foreground shadow transition-colors hover:bg-accent hover:text-foreground'
           >
             <Scissors className='h-3.5 w-3.5' aria-hidden='true' />
           </Button>

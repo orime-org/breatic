@@ -148,11 +148,11 @@ export function ConversationHistorySheet({
                   <li key={c.id} role='listitem'>
                     <Button
                       type='button'
-                      variant='ghost'
-                      size='menu-item'
+                      variant={null}
+                      size={null}
                       onClick={() => onPick(c.id)}
                       aria-current={isActive ? 'true' : undefined}
-                      className={`flex w-full items-start justify-start gap-3 border-b border-border px-4 py-3 text-left hover:bg-accent ${
+                      className={`flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-accent ${
                         isActive ? 'bg-muted' : ''
                       }`}
                       data-testid={`conversation-${c.id}`}

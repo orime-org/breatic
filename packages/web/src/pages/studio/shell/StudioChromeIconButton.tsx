@@ -33,10 +33,10 @@ export const StudioChromeIconButton = React.forwardRef<
       type='button'
       aria-label={label}
       title={label}
-      variant='chrome-ghost'
-      size='chrome'
+      variant={null}
+      size={null}
       className={cn(
-        'flex h-8 w-8 rounded-chrome text-neutral-600 hover:bg-accent hover:text-foreground',
+        'flex h-8 w-8 items-center justify-center rounded-chrome text-neutral-600 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
         className,
       )}
       {...props}

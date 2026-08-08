@@ -172,8 +172,8 @@ function CreditsPill({
       <Star className='h-3.5 w-3.5 text-muted-foreground' aria-hidden='true' />
       <span>{credits.toLocaleString()}</span>
       <Button
-        variant='ghost'
-        size='icon'
+        variant={null}
+        size={null}
         type='button'
         onClick={onAdd}
         aria-label={t('chrome.aria.addCredits')}

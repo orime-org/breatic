@@ -58,12 +58,12 @@ export function GroupBackgroundPicker({
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
-          variant='ghost'
-          size='icon'
+          variant={null}
+          size={null}
           type='button'
           data-testid='group-bg-trigger'
           aria-label={t('canvas.group.background')}
-          className='h-6 w-6 rounded-chrome hover:bg-accent'
+          className='flex h-6 w-6 items-center justify-center rounded-chrome hover:bg-accent'
         >
           <span
             className='h-3.5 w-3.5 rounded-full border border-border'

@@ -47,8 +47,8 @@ export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
       <PopoverTrigger asChild>
         <Button
           type='button'
-          variant='outline'
-          size='icon'
+          variant={null}
+          size={null}
           data-testid='empty-image-color-custom'
           aria-label={t('canvas.emptyImage.color.custom')}
           style={{ backgroundColor: value }}

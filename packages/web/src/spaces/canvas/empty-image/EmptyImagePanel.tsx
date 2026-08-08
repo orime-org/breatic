@@ -66,12 +66,12 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
         <span className='text-sm font-medium'>{t('canvas.emptyImage.title')}</span>
         <Button
           type='button'
-          variant='ghost'
-          size='icon'
+          variant={null}
+          size={null}
           data-testid='empty-image-exit'
           aria-label={t('canvas.emptyImage.exit')}
           onClick={onExit}
-          className='h-7 w-7 rounded-overlay text-muted-foreground'
+          className='flex h-7 w-7 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-4 w-4' aria-hidden='true' />
         </Button>
@@ -87,8 +87,8 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
             <Button
               key={r.key}
               type='button'
-              variant='outline'
-              size='sm'
+              variant={null}
+              size={null}
               data-testid={`empty-image-ratio-${r.key}`}
               aria-pressed={activeRatio === r.value}
               onClick={() => {
@@ -98,7 +98,7 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
                 setActiveRatio(r.value);
               }}
               className={
-                'rounded-content-sm border px-2 py-1 text-xs tabular-nums ' +
+                'rounded-content-sm border px-2 py-1 text-xs tabular-nums transition-colors ' +
               (activeRatio === r.value
                 ? 'border-border bg-accent text-accent-foreground'
                 : 'border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground')
@@ -162,8 +162,8 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
             <Button
               key={c.key}
               type='button'
-              variant='outline'
-              size='icon'
+              variant={null}
+              size={null}
               data-testid={`empty-image-color-${c.key}`}
               aria-label={t(`canvas.emptyImage.color.${c.key}`)}
               aria-pressed={color.toLowerCase() === c.hex.toLowerCase()}
@@ -186,8 +186,8 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
         <EmptyImageColorPicker value={color} onChange={setColor} />
         <Button
           type='button'
-          variant='default'
-          size='icon'
+          variant={null}
+          size={null}
           data-testid='empty-image-execute'
           aria-label={t('canvas.emptyImage.execute')}
           onClick={() =>
@@ -199,7 +199,7 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
               color,
             })
           }
-          className='h-8 w-8 shrink-0 rounded-full bg-primary text-primary-foreground hover:bg-primary-hover'
+          className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <ArrowUp className='h-4 w-4' aria-hidden='true' />
         </Button>

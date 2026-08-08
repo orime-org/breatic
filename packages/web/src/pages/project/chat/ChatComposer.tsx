@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ArrowUp, Square, SquareMousePointer, Wand2, X } from 'lucide-react';
+import { ArrowUp, Square, SquareMousePointer, Wand2 } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -103,16 +103,16 @@ export function ChatComposer({
       <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
         <Button
           type='button'
-          variant='chrome-ghost'
-          size='chrome'
+          variant={null}
+          size={null}
           aria-label={t('chat.composer.selectMode.label')}
           title={t('chat.composer.selectMode.title')}
           onClick={onToggleSelectMode}
           data-testid='chat-composer-select-mode'
           aria-pressed={selectMode}
-          className={`shrink-0 ${
+          className={`inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome transition-colors ${
             selectMode
-              ? 'bg-foreground text-background hover:bg-foreground hover:text-background'
+              ? 'bg-foreground text-background'
               : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
           }`}
         >
@@ -140,13 +140,13 @@ export function ChatComposer({
               {onRemoveChip ? (
                 <Button
                   type='button'
-                  variant='ghost'
-                  size='icon'
+                  variant={null}
+                  size={null}
                   aria-label={`Remove ${chip.label}`}
                   onClick={() => onRemoveChip(chip.id)}
-                  className='h-4 w-4 text-muted-foreground hover:bg-accent hover:text-foreground'
+                  className='inline-flex h-4 w-4 items-center justify-center rounded-chrome text-xs leading-none text-muted-foreground hover:bg-accent hover:text-foreground'
                 >
-                  <X className='h-3 w-3' aria-hidden='true' />
+                  ×
                 </Button>
               ) : null}
             </span>
@@ -171,15 +171,15 @@ export function ChatComposer({
       <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
         <Button
           type='button'
-          variant='outline'
-          size='sm'
+          variant={null}
+          size={null}
           aria-label={t('chat.composer.skill.label')}
           title={t('chat.composer.skill.title')}
           onClick={onPickSkill}
           data-testid='chat-composer-skill'
-          className={`gap-1.5 px-2 text-xs ${
+          className={`inline-flex h-[var(--btn-inline)] items-center gap-1.5 rounded-chrome border border-transparent px-2 text-xs font-medium transition-colors ${
             activeSkillLabel
-              ? 'border-foreground bg-foreground text-background hover:bg-foreground hover:text-background'
+              ? 'border-foreground bg-foreground text-background'
               : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
           }`}
         >
@@ -189,26 +189,26 @@ export function ChatComposer({
         {streaming ? (
           <Button
             type='button'
-            variant='destructive'
-            size='icon'
+            variant={null}
+            size={null}
             aria-label='Abort'
             onClick={onAbort}
             data-testid='chat-composer-abort'
-            className='h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0'
+            className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error'
           >
             <Square className='h-4 w-4' />
           </Button>
         ) : (
           <Button
             type='button'
-            variant='default'
-            size='icon'
+            variant={null}
+            size={null}
             aria-label={t('chat.composer.send')}
             title={t('chat.composer.send')}
             disabled={!ready}
             onClick={submit}
             data-testid='chat-composer-send'
-            className={`h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 transition-opacity ${
+            className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-opacity disabled:cursor-not-allowed ${
               ready
                 ? 'bg-foreground text-background transition-colors hover:bg-primary-hover'
                 : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'

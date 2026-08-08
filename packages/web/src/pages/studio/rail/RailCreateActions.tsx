@@ -24,7 +24,7 @@ interface RailCreateActionsProps {
 // `justify-start` because the Button primitive centres its content and these
 // are left-aligned rows.
 const ACTION =
-  'flex h-8 items-center justify-start gap-2.5 rounded-chrome px-2 text-sm font-medium leading-none';
+  'flex h-8 items-center gap-2.5 rounded-chrome px-2 text-sm font-medium leading-none transition-colors';
 
 /**
  * Rail create actions (spec §4.1 segments ① + ②): create project (enabled,
@@ -54,8 +54,8 @@ export function RailCreateActions({
     <div className='flex flex-col gap-0.5'>
       <Button
         type='button'
-        variant='outline'
-        size='sm'
+        variant={null}
+        size={null}
         onClick={onCreateProject}
         className={`${ACTION} text-foreground hover:bg-accent`}
       >
@@ -66,8 +66,8 @@ export function RailCreateActions({
         type='button'
         disabled
         title={comingSoonLabel}
-        variant='outline'
-        size='sm'
+        variant={null}
+        size={null}
         className={`${ACTION} cursor-not-allowed text-muted-foreground opacity-65`}
       >
         <Plus className='h-4 w-4' />
@@ -78,8 +78,8 @@ export function RailCreateActions({
 
       <Button
         type='button'
-        variant='outline'
-        size='sm'
+        variant={null}
+        size={null}
         onClick={onCreateStudio}
         className={`${ACTION} text-foreground hover:bg-accent`}
       >

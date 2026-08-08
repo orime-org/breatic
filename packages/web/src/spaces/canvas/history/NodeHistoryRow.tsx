@@ -251,11 +251,11 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
         ) : restorable ? (
           <Button
             type='button'
-            variant='default'
-            size='sm'
+            variant={null}
+            size={null}
             data-testid='node-history-restore'
             onClick={() => onRestore(entry)}
-            className='rounded-content-sm bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary-hover'
+            className='rounded-content-sm bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
           >
             {t('canvas.history.restore')}
           </Button>

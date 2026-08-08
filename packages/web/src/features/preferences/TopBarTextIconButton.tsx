@@ -38,8 +38,8 @@ export const TopBarTextIconButton = React.forwardRef<
       // and `ThemeToggle` keeps its label screen-reader-only — so the border is
       // set here rather than per caller: an outlined control is the one shape a
       // reader can tell is pressable, and both switchers should read alike.
-      variant='outline'
-      size='sm'
+      variant={null}
+      size={null}
       ref={ref}
       type='button'
       className={cn(

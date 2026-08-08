@@ -159,8 +159,8 @@ function ClickableViewerRoleTag({
           // the default variant's fill from ever painting; `menu-item` is the
           // auto-height size, so the ~20px pill the popover offset is tuned to
           // survives.
-          variant='default'
-          size='menu-item'
+          variant={null}
+          size={null}
           type='button'
           data-testid='role-tag'
           aria-label={

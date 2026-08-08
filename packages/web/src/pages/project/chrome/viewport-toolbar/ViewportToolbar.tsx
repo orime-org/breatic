@@ -265,8 +265,8 @@ function VtButton({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant='ghost'
-          size='icon'
+          variant={null}
+          size={null}
           type='button'
           {...rest}
           disabled={disabled}
@@ -275,10 +275,7 @@ function VtButton({
             disabled
               ? 'cursor-not-allowed bg-transparent text-muted-foreground/40'
               : active
-                ? // The hover pair restates the resting colours: the ghost
-              // variant would otherwise wash the pressed state out on
-              // hover and hide the glyph against its own fill.
-                'bg-foreground text-background hover:bg-foreground hover:text-background'
+                ? 'bg-foreground text-background'
                 : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
           )}
         >
@@ -361,8 +358,8 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <Button
-              variant='outline'
-              size='sm'
+              variant={null}
+              size={null}
               type='button'
               aria-label={t('viewportToolbar.zoomResetAria')}
               data-testid='zoom-readout-trigger'
@@ -391,18 +388,15 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
             return (
               <Button
                 key={preset}
-                variant='ghost'
-                size='menu-item'
+                variant={null}
+                size={null}
                 type='button'
                 onClick={() => apply(preset)}
                 data-testid={`zoom-preset-${Math.round(preset * 100)}`}
                 className={cn(
                   'inline-flex h-7 items-center justify-start rounded-chrome px-2 text-xs transition-colors',
                   isCurrent
-                    // Restate the hover on the selected row: the variant's
-                    // `hover:bg-accent` would otherwise paint over the
-                    // selection and make it read as any other row.
-                    ? 'bg-secondary text-secondary-foreground hover:bg-secondary hover:text-secondary-foreground'
+                    ? 'bg-secondary text-secondary-foreground'
                     : 'bg-transparent text-foreground hover:bg-accent',
                 )}
               >
