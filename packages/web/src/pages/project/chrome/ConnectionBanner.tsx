@@ -4,6 +4,7 @@
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import type { ConnectionStatus } from '@web/data/yjs/use-socket';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -20,10 +21,18 @@ interface ConnectionBannerProps {
 type BannerTone = 'error' | 'warning';
 
 /**
- * Banner-internal button. Self-styled (not the shadcn outline variant, whose
- * mode-aware hover tokens fight banner-local colors — 2026-05-26 user smoke)
- * and toned with the same status triple as the banner surface (#1549): the
- * identity color carries the text + border, hover recesses with the tint.
+ * Banner-internal button. It is the `Button` primitive at `outline`, toned
+ * with the same status triple as the banner surface (#1549): the identity
+ * color carries the text + border, hover recesses with the tint.
+ *
+ * Two of the variant's mode-aware tokens are overridden on purpose, because
+ * they fight the banner-local colors (2026-05-26 user smoke): `bg-transparent`
+ * replaces the variant's `bg-background`, which would otherwise paint an
+ * opaque page-colored box on top of the tinted banner, and a per-tone
+ * `hover:text-*` replaces `hover:text-accent-foreground`, which would drop the
+ * identity color on hover. Everything else the variant brings is what this
+ * button already wanted.
+ *
  * Tailwind classes are written out per tone — no template-assembled class
  * names (they would be purged).
  */
@@ -35,8 +44,8 @@ interface BannerButtonProps {
 }
 
 /**
- * Self-styled banner action button carrying the banner's status tone
- * (see the interface docstring above for why not shadcn outline).
+ * Banner action button carrying the banner's status tone (see the interface
+ * docstring above for which variant tokens are overridden and why).
  * @param root0 - Component props.
  * @param root0.tone - Status tone matching the banner surface.
  * @param root0.onClick - Click handler for the button action.
@@ -51,21 +60,21 @@ function BannerButton({
   children,
 }: BannerButtonProps): React.JSX.Element {
   return (
-    <button
+    <Button
       type='button'
+      variant='outline'
+      size='default'
       onClick={onClick}
       data-testid={testId}
       className={cn(
-        'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-3',
-        'text-sm font-medium transition-colors duration-150',
-        'focus-visible:outline-none focus-visible:ring-1',
+        'h-8 shrink-0 gap-1.5 rounded-md bg-transparent px-3 duration-150',
         tone === 'error'
-          ? 'border-status-error-border text-status-error-foreground hover:bg-status-error-bg focus-visible:ring-status-error'
-          : 'border-status-warning-border text-status-warning-foreground hover:bg-status-warning-bg focus-visible:ring-status-warning',
+          ? 'border-status-error-border text-status-error-foreground hover:bg-status-error-bg hover:text-status-error-foreground focus-visible:ring-status-error'
+          : 'border-status-warning-border text-status-warning-foreground hover:bg-status-warning-bg hover:text-status-warning-foreground focus-visible:ring-status-warning',
       )}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 

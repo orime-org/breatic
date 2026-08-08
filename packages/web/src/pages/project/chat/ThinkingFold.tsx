@@ -4,6 +4,8 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
+
 interface ThinkingFoldProps {
   thinking: string;
 }
@@ -26,10 +28,12 @@ export function ThinkingFold({
       data-testid='thinking-fold'
       className='mb-2 rounded border border-border bg-background/50 text-xs'
     >
-      <button
+      <Button
         type='button'
+        variant='outline'
+        size='sm'
         onClick={() => setOpen((o) => !o)}
-        className='flex w-full items-center gap-1 px-2 py-1 text-muted-foreground hover:bg-accent'
+        className='flex w-full justify-start gap-1 px-2 py-1 text-muted-foreground hover:bg-accent'
         aria-expanded={open}
         data-testid='thinking-fold-toggle'
       >
@@ -39,7 +43,7 @@ export function ThinkingFold({
           <ChevronRight className='h-3 w-3' />
         )}
         Thinking
-      </button>
+      </Button>
       {open ? (
         <pre
           data-testid='thinking-fold-body'

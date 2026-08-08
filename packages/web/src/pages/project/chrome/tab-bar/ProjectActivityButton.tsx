@@ -541,7 +541,9 @@ export function ProjectActivityButton({
                       </div>
                     </div>
                     {canRestore ? (
-                      <button
+                      <Button
+                        variant='outline'
+                        size='sm'
                         type='button'
                         onClick={() => m.spaceId && onClickRestore(m.spaceId)}
                         disabled={busyId === m.spaceId}
@@ -550,9 +552,11 @@ export function ProjectActivityButton({
                       >
                         <RotateCcw className='h-3 w-3' aria-hidden />
                         {t('activity.action.restore')}
-                      </button>
+                      </Button>
                     ) : showRestoredBadge ? (
-                      <button
+                      <Button
+                        variant='outline'
+                        size='sm'
                         type='button'
                         disabled
                         aria-disabled
@@ -561,7 +565,7 @@ export function ProjectActivityButton({
                       >
                         <RotateCcw className='h-3 w-3' aria-hidden />
                         {t('activity.action.restored')}
-                      </button>
+                      </Button>
                     ) : null}
                   </li>
                 );

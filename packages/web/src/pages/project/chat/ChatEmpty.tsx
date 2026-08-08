@@ -4,6 +4,7 @@
 import { Image, Music, PenTool } from 'lucide-react';
 import type * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { useCurrentUserStore } from '@web/stores';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -67,16 +68,18 @@ export function ChatEmpty({
           const Icon = qa.icon;
           const label = t(`chat.empty.quick.${qa.labelKey}`);
           return (
-            <button
+            <Button
               key={qa.id}
               type='button'
+              variant='outline'
+              size='menu-item'
               onClick={() => onQuickAction?.(label)}
-              className='flex items-center gap-2 rounded-md border border-border bg-transparent px-3 py-2 text-left text-xs text-foreground transition-colors hover:bg-accent'
+              className='flex justify-start gap-2 rounded-md bg-transparent px-3 py-2 text-left text-xs text-foreground hover:bg-accent'
               data-testid={`chat-empty-qa-${qa.id}`}
             >
               <Icon className='h-4 w-4 shrink-0 text-muted-foreground' />
               <span>{label}</span>
-            </button>
+            </Button>
           );
         })}
       </div>

@@ -350,6 +350,25 @@ export default [
     },
   },
   {
+    // The vendor directory is where the element is legitimately written —
+    // `Button` itself renders one. The dev gallery shows the primitive's own
+    // variants, so it has no reason to hand-roll a button either, but it is
+    // exempt for the same reason the other visual rules exempt it: it exists
+    // to display what we replaced.
+    files: ['src/**/*.tsx'],
+    ignores: [
+      'src/components/ui/**',
+      'src/pages/_dev/**',
+      '**/__tests__/**',
+      '**/*.test.tsx',
+      '**/*.spec.tsx',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-raw-button': 'error',
+    },
+  },
+  {
     // The dev gallery renders native controls on purpose, to show what we
     // replaced. Tests assert on markup rather than shipping it.
     //

@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { DisplayStatus } from '@web/spaces/canvas/types/node-view';
@@ -70,8 +71,10 @@ export function NodeContent({
       >
         <span>{errorMessage ?? 'Something went wrong.'}</span>
         {onRetry ? (
-          <button
+          <Button
             type='button'
+            variant='outline'
+            size='sm'
             data-testid='node-content-retry'
             className='nodrag rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted focus-visible:outline-2'
             onClick={(event) => {
@@ -80,7 +83,7 @@ export function NodeContent({
             }}
           >
             {t('canvas.upload.retry')}
-          </button>
+          </Button>
         ) : null}
       </div>
     );

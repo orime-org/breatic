@@ -3,6 +3,7 @@
 
 import type * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,17 +57,19 @@ export function GroupBackgroundPicker({
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
-        <button
+        <Button
+          variant='ghost'
+          size='icon'
           type='button'
           data-testid='group-bg-trigger'
           aria-label={t('canvas.group.background')}
-          className='flex h-6 w-6 items-center justify-center rounded-chrome hover:bg-accent'
+          className='h-6 w-6 rounded-chrome hover:bg-accent'
         >
           <span
             className='h-3.5 w-3.5 rounded-full border border-border'
             style={current ? { backgroundColor: current } : undefined}
           />
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align='start'

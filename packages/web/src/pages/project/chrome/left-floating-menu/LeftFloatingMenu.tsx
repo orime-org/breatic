@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -128,7 +129,10 @@ function toolButtonClassName(item: MenuItem): string {
   return cn(
     'inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50',
     item.featured
-      ? 'bg-foreground text-background shadow-sm hover:bg-primary-hover'
+      ? // `hover:text-background` restates the resting colour: the ghost
+    // variant contributes `hover:text-accent-foreground`, which on the
+    // solid featured fill would hide the icon.
+      'bg-foreground text-background shadow-sm hover:bg-primary-hover hover:text-background'
       : item.placeholder
         ? 'bg-transparent text-muted-foreground/50 hover:text-muted-foreground'
         : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -237,7 +241,9 @@ function MenuButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
+        <Button
+          variant='ghost'
+          size='icon'
           type='button'
           aria-label={label}
           onClick={() => onPick(item.id)}
@@ -246,7 +252,7 @@ function MenuButton({
           className={toolButtonClassName(item)}
         >
           <Icon className='h-5 w-5' />
-        </button>
+        </Button>
       </TooltipTrigger>
       <TooltipContent side='right'>{tooltipLabel}</TooltipContent>
     </Tooltip>
@@ -278,7 +284,9 @@ function NodesMenuButton({
   const label = t(item.labelKey);
   const tooltipLabel = disabled ? t('menu.disabledTooltip') : label;
   const button = (
-    <button
+    <Button
+      variant='ghost'
+      size='icon'
       type='button'
       aria-label={label}
       disabled={disabled}
@@ -287,7 +295,7 @@ function NodesMenuButton({
       onFocusCapture={suppressTooltipFocusOpen}
     >
       <Icon className='h-5 w-5' />
-    </button>
+    </Button>
   );
 
   // Viewers see the featured button but it never opens — render it without

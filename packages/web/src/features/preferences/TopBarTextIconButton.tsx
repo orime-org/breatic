@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
 
 interface TopBarTextIconButtonProps
@@ -32,7 +33,11 @@ export const TopBarTextIconButton = React.forwardRef<
   TopBarTextIconButtonProps
 >(({ className, icon, withChevron, children, ...props }, ref) => {
   return (
-    <button
+    <Button
+      // It shows a label (the language glyph), so it draws a border: an
+      // outlined word is the one shape a reader can tell is pressable.
+      variant='outline'
+      size='sm'
       ref={ref}
       type='button'
       className={cn(
@@ -50,7 +55,7 @@ export const TopBarTextIconButton = React.forwardRef<
       {icon}
       <span>{children}</span>
       {withChevron ? <ChevronDown /> : null}
-    </button>
+    </Button>
   );
 });
 TopBarTextIconButton.displayName = 'TopBarTextIconButton';

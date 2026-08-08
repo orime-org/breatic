@@ -5,6 +5,7 @@ import { ArrowLeft, Plus, Star } from 'lucide-react';
 import type * as React from 'react';
 import { Link } from 'react-router-dom';
 
+import { Button } from '@web/components/ui/button';
 import { Logo28 } from '@web/pages/project/chrome/top-bar/Logo28';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
@@ -170,7 +171,9 @@ function CreditsPill({
     >
       <Star className='h-3.5 w-3.5 text-muted-foreground' aria-hidden='true' />
       <span>{credits.toLocaleString()}</span>
-      <button
+      <Button
+        variant='ghost'
+        size='icon'
         type='button'
         onClick={onAdd}
         aria-label={t('chrome.aria.addCredits')}
@@ -178,7 +181,7 @@ function CreditsPill({
         data-testid='credits-add'
       >
         <Plus className='h-3.5 w-3.5' />
-      </button>
+      </Button>
     </span>
   );
 }

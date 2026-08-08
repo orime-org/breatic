@@ -71,11 +71,13 @@ export function ContainerToolbar({
       <div className='flex-1' />
       {showViewControls ? (
         <>
-          <button
+          <Button
             type='button'
             disabled
             aria-label={notAvailable}
-            className='inline-flex h-[30px] items-center gap-1.5 rounded-chrome border border-border px-2.5 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50'
+            variant='outline'
+            size='sm'
+            className='h-[30px] gap-1.5 rounded-chrome px-2.5 text-xs font-medium text-foreground'
           >
             <span className='font-normal text-muted-foreground'>
               {t('studio.container.toolbar.sortLabel')}
@@ -85,7 +87,7 @@ export function ContainerToolbar({
               className='h-3 w-3 text-muted-foreground'
               aria-hidden='true'
             />
-          </button>
+          </Button>
           <div
             className='inline-flex overflow-hidden rounded-chrome border border-border opacity-50'
             aria-hidden='true'

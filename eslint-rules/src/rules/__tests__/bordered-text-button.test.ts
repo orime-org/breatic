@@ -37,6 +37,16 @@ ruleTester.run("bordered-text-button", borderedTextButton, {
     {
       code: "export const R = () => <NodeResizeControl variant='ghost' size='sm' />;",
     },
+    // A size the rule cannot read is left alone, the same way an unreadable
+    // variant is. Guessing "default" here reported icon buttons that comply.
+    {
+      code: "export const S = () => <Button variant='ghost' size={compact ? 'icon' : 'chrome'}><X /></Button>;",
+    },
+    // A control framed by whatever encloses it says so on the line, the same
+    // way no-native-rendered-ui spells its exception.
+    {
+      code: "export const W = () => (\n  <Button\n    // bordered-button:allow — the node shell draws the frame\n    variant='ghost'\n    size='sm'\n  >\n    Drop a file\n  </Button>\n);",
+    },
   ],
   invalid: [
     // The shape this rule exists for: a word on a page with nothing around it.
@@ -64,6 +74,23 @@ ruleTester.run("bordered-text-button", borderedTextButton, {
     {
       code: "export const E = () => <Button variant='ghost' size='lg'>Continue</Button>;",
       errors: [{ messageId: "borderless", line: 1 }],
+    },
+    // `link` draws neither a border nor a fill either, so it belongs in the
+    // same set. Nothing uses it today, which is exactly why it would be the
+    // spelling someone reaches for once `ghost` starts failing CI.
+    {
+      code: "export const F = () => <Button variant='link' size='sm'>Cancel</Button>;",
+      errors: [{ messageId: "borderless", line: 1 }],
+    },
+    // One backtick with no holes is the same constant written differently.
+    {
+      code: "export const G = () => <Button variant={`ghost`} size='sm'>Revoke</Button>;",
+      errors: [{ messageId: "borderless", line: 1 }],
+    },
+    // A marker somewhere else in the file does not excuse this line.
+    {
+      code: "// bordered-button:allow\nexport const X = () => <Button variant='ghost' size='sm'>Revoke</Button>;",
+      errors: [{ messageId: "borderless", line: 2 }],
     },
   ],
 });

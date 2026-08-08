@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { GroupBackgroundPicker } from '@web/spaces/canvas/GroupBackgroundPicker';
 
@@ -68,24 +69,28 @@ export const GroupSelectionToolbar = React.memo(function GroupSelectionToolbar({
             value={bgValue}
             onPick={onPickBg}
           />
-          <button
+          <Button
+            variant='outline'
+            size='sm'
             type='button'
             data-testid='group-toolbar-ungroup'
             onClick={onUngroup}
             className='rounded-chrome px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
           >
             {t('canvas.group.ungroup')}
-          </button>
+          </Button>
         </>
       ) : (
-        <button
+        <Button
+          variant='outline'
+          size='sm'
           type='button'
           data-testid='group-toolbar-group'
           onClick={onGroup}
           className='rounded-chrome px-2 py-1 text-xs text-popover-foreground hover:bg-accent'
         >
           {t('canvas.group.group')}
-        </button>
+        </Button>
       )}
     </div>
   );
