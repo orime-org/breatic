@@ -18,8 +18,11 @@
  * it. Whether the text is actually painted is a CSS question and is checked in
  * the browser.
  *
- * The rule the generate prompt relies on is untouched; the case at the bottom
- * is here so that stays true.
+ * The generate prompt still uses the extension, and the stylesheet rule it
+ * relies on keys off what the extension marks (`p.is-editor-empty`). The last
+ * case below is what keeps this document out of its way: it asserts this
+ * editor installs no extension of that name, so it marks no paragraph as empty
+ * and there is nothing here that the prompt's rule can pick up.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -125,5 +128,28 @@ describe('both at once', () => {
     expect(titleEl(editor).getAttribute('data-placeholder')).not.toBe(
       editor.view.dom.getAttribute('data-body-placeholder'),
     );
+  });
+});
+
+describe('the generate prompt is left alone', () => {
+  it('this document installs no placeholder extension of its own', () => {
+    // The prompt's placeholder is drawn by a stylesheet rule keyed on what the
+    // extension marks — `p.is-editor-empty` with a `data-placeholder`. Install
+    // that extension here too and this document starts marking paragraphs the
+    // same way, which is how one editor's placeholder ends up painted in
+    // another. Nothing of this document reaches the prompt as long as this
+    // holds.
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document', ''));
+    const names = buildDocumentExtensions({
+      fragment: documentBodyFragment(doc),
+    }).map((extension) => extension.name);
+
+    expect(names).not.toContain('placeholder');
+  });
+
+  it('and marks no paragraph as the empty one', () => {
+    const editor = open('');
+    expect(editor.view.dom.querySelector('.is-editor-empty')).toBeNull();
   });
 });
