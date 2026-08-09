@@ -142,7 +142,6 @@ export {
   IMAGE_GENERATION_MODES,
   isImageGenerationMode,
   VIDEO_GENERATION_MODES,
-  isVideoGenerationMode,
 } from "@shared/types/index.js";
 
 export type {

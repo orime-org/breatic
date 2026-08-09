@@ -146,7 +146,7 @@ export function isImageGenerationMode(mode: string | string[]): boolean {
  * model tagged with several offerable modes qualifies through any of them.
  *
  * `first_last` is listed ahead of its config: no entry in
- * `config/models/video/*.yaml` declares it today (the two image-to-video
+ * `config/models/video/*.yaml` declares it today (all three image-to-video
  * models are plain `mode: "i2v"`), so narrowing to it yields nothing. The
  * first-last-frame slice adds it to the models that support an end frame, and
  * must add it to the backend's per-mode source map at the same time — a mode
@@ -174,16 +174,6 @@ export const VIDEO_GENERATION_MODES = [
   "ref",
   "talking_head",
 ] as const;
-
-/**
- * Whether a video model's `mode` makes it offerable in the video Generate
- * panel versus mini-tool work on an existing video.
- * @param mode - The model's `mode` (a single string or an array of modes).
- * @returns True when any of the model's modes is a video generation mode.
- */
-export function isVideoGenerationMode(mode: string | string[]): boolean {
-  return anyModeIn(mode, VIDEO_GENERATION_MODES);
-}
 
 /**
  * Whether any of a model's modes appears in an allowed list. A model declares

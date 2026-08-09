@@ -10,10 +10,13 @@
  * reader that only understands the first makes the second's group vanish:
  *
  * - a `values` list (every image parameter, and video aspect ratio /
- *   resolution / audio; `seedance-2.0` states duration this way too, as
- *   `[5, 10, 15]`)
- * - `min` + `max` bounds — how `kling-o3-pro` states duration (3 to 15
- *   seconds), and how the image-to-video entries state theirs
+ *   resolution / audio; four of the five text-to-video models state duration
+ *   this way too — `seedance-2.0` as `[5, 10, 15]`, the three `veo-3.1`
+ *   entries as `[4, 6, 8]`)
+ * - `min` + `max` bounds — `kling-o3-pro` states duration as 3 to 15 seconds.
+ *   It is the ONLY text-to-video model that does; two of the three
+ *   image-to-video entries follow suit (`kling-o3-pro-i2v` 3 to 15,
+ *   `seedance-1.5-pro-i2v` 4 to 12) while `veo-3.1-i2v` uses a list
  *
  * Ranges expand one step per second, matching how the reference design lists
  * durations one by one (user 2026-08-08). Seconds are the unit these bounds

@@ -311,6 +311,14 @@ function VideoGeneratePanelBody({
   // language until the panel is reopened.
   const promptPlaceholder = t('canvas.generatePanel.videoPromptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.videoMentionEmpty');
+  // A node made before video generation existed carries no prompt container,
+  // and #1880 ratified that those are NOT repaired — creating one when the
+  // panel opens is the exact race that decision removed (two people opening
+  // at once each mint one under the same key, and last-write-wins drops a
+  // container with everything typed into it). So the panel opens without an
+  // editor and its arrow can never light; saying why is what keeps that from
+  // reading as the feature being broken.
+  const noPromptNotice = t('canvas.generatePanel.videoNoPrompt');
   const promptSlot = React.useMemo(
     () =>
       fragment ? (
@@ -326,11 +334,19 @@ function VideoGeneratePanelBody({
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
         />
-      ) : null,
+      ) : (
+        <p
+          data-testid='generate-video-no-prompt'
+          className='px-1 py-2 text-xs text-muted-foreground'
+        >
+          {noPromptNotice}
+        </p>
+      ),
     [
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
+      noPromptNotice,
       handlePromptChange,
       handleAtMentionsChange,
       caretProvider,

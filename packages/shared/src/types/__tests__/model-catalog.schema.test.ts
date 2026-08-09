@@ -6,7 +6,8 @@ import { describe, it, expect } from "vitest";
 import {
   sanitizeModelCatalog,
   isImageGenerationMode,
-  isVideoGenerationMode,
+  IMAGE_GENERATION_MODES,
+  VIDEO_GENERATION_MODES,
 } from "@shared/types/model-catalog.js";
 import type { ModelCatalog, ModelEntry } from "@shared/types/model-catalog.js";
 
@@ -227,43 +228,34 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(isImageGenerationMode("t2v")).toBe(false); // a video mode, not image
   });
 
-  it("classifies video model modes: the six the panel offers vs mini-tool work (#1896)", () => {
-    // The six the video Generate panel offers. This list is a product decision
-    // (user 2026-08-08): a mode is here when it makes a NEW video from
-    // scratch, and in the mini-tool system when it works on an existing one.
-    expect(isVideoGenerationMode("t2v")).toBe(true); // text-to-video
-    expect(isVideoGenerationMode("i2v")).toBe(true); // image-to-video
-    expect(isVideoGenerationMode("first_last")).toBe(true); // first + last frame
-    expect(isVideoGenerationMode("animate")).toBe(true); // animate a character image
-    expect(isVideoGenerationMode("ref")).toBe(true); // reference images guide the result
-    expect(isVideoGenerationMode("talking_head")).toBe(true); // image + audio
+  it("lists the six video modes the panel offers, and no mini-tool mode (#1896)", () => {
+    // A product decision (user 2026-08-08): a mode belongs here when it makes
+    // a NEW video from scratch, and in the mini-tool system when it works on
+    // one that already exists. The panel narrows its picker to one of these
+    // six, which is what keeps a mini-tool entry out of the model list — so
+    // what this list contains IS the rule, and there is no separate predicate.
+    expect([...VIDEO_GENERATION_MODES]).toEqual([
+      "t2v",
+      "i2v",
+      "first_last",
+      "animate",
+      "ref",
+      "talking_head",
+    ]);
 
-    // Mini-tool territory — all four take an EXISTING video and work on it.
-    // Offering them in the Generate picker would let a user submit a
-    // text-to-video request against a model that needs a video source, which
-    // the backend's source gate then rejects with a 400.
-    expect(isVideoGenerationMode("extend")).toBe(false);
-    expect(isVideoGenerationMode("edit")).toBe(false);
-    expect(isVideoGenerationMode("motion")).toBe(false);
-    expect(isVideoGenerationMode("upscale")).toBe(false);
-    expect(isVideoGenerationMode("interpolate")).toBe(false);
+    // The five that work on an existing video. Offering one in the Generate
+    // picker would let a user submit a text-to-video request against a model
+    // that needs a video source, which the backend source gate rejects with a
+    // 400.
+    for (const miniTool of ["extend", "edit", "motion", "upscale", "interpolate"]) {
+      expect(VIDEO_GENERATION_MODES).not.toContain(miniTool);
+    }
 
-    // A model qualifies when ANY of its modes qualifies. No configured model
-    // carries two offerable video modes today, so this pins the rule on a
-    // pairing the first-last-frame slice is expected to create rather than on
-    // a shape the catalog already has.
-    expect(isVideoGenerationMode(["i2v", "first_last"])).toBe(true);
-    // ...but a model that only does mini-tool work never qualifies, however
-    // many modes it lists.
-    expect(isVideoGenerationMode(["extend", "upscale"])).toBe(false);
-
-    // Unknown / empty — not generatable.
-    expect(isVideoGenerationMode("")).toBe(false);
-    expect(isVideoGenerationMode([])).toBe(false);
-    // An image mode never qualifies as a video one, and vice versa: the two
-    // lists are independent product decisions that happen to share a shape.
-    expect(isVideoGenerationMode("t2i")).toBe(false);
-    expect(isVideoGenerationMode("i2i")).toBe(false);
+    // The image list is an independent product decision that happens to share
+    // a shape: neither list may leak into the other.
+    for (const imageMode of IMAGE_GENERATION_MODES) {
+      expect(VIDEO_GENERATION_MODES).not.toContain(imageMode);
+    }
   });
 
   // The source-image predicates (requiresSourceImage / supportsTextToImage)

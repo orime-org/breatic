@@ -6,11 +6,12 @@
  *
  * The image panel has always read these from a model's `values` list. Video
  * needs the same thing plus one more shape: some models express duration as a
- * RANGE rather than a list of allowed numbers — `kling-o3-pro` is 3 to 15
- * seconds, and the image-to-video entries state theirs the same way. Left
- * unhandled, the duration group would find nothing to show and disappear for
- * those models — the user could not pick a duration at all, and the panel
- * would give no hint why.
+ * RANGE rather than a list of allowed numbers. Among the five text-to-video
+ * models the panel offers, `kling-o3-pro` is the only one (3 to 15 seconds);
+ * two of the three image-to-video entries do the same. Left unhandled, the
+ * duration group would find nothing to show and disappear for those models —
+ * the user could not pick a duration at all, and the panel would give no hint
+ * why.
  *
  * Both panels share this reader. That is safe for the image side by evidence,
  * not by hope: `config/models/image/*.yaml` contains no `min:` at all, so every

@@ -14,8 +14,9 @@ import {
 /**
  * Builds a video ModelEntry fixture carrying only the fields the view model
  * reads. Defaults mirror a real t2v entry (`veo-3.1`): the four param groups
- * the video panel renders, one of which (`duration`) is a RANGE on two of the
- * four model families — see the per-case overrides.
+ * the video panel renders. One of them, `duration`, is stated as a RANGE by
+ * `kling-o3-pro` and as a list by everything else the panel offers — see the
+ * per-case override.
  * @param name - Model id.
  * @param over - Overrides (mode, tier, cost_per_call, params).
  * @returns A minimal video ModelEntry.
@@ -231,7 +232,7 @@ describe('buildVideoPanelViewModel', () => {
   });
 
   it('keeps a range-shaped duration the model declares as min/max', () => {
-    // `kling` and `seedance` state duration as bounds, not a list. The panel
+    // `kling-o3-pro` states duration as bounds, not a list. The panel
     // must still carry a duration value for them (the picker expands the
     // range) — dropping it would leave the submitted payload without one.
     const ranged = makeModel('kling-o3-pro', {

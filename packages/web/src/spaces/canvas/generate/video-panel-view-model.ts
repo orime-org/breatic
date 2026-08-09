@@ -13,7 +13,7 @@
  * param value reader all serve both.
  */
 
-import { isVideoGenerationMode, VIDEO_GENERATION_MODES } from '@breatic/shared';
+import { VIDEO_GENERATION_MODES } from '@breatic/shared';
 import type { ModelEntry } from '@breatic/shared';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
@@ -62,14 +62,17 @@ function asContentView(data: NodeView | undefined): ContentNodeView | undefined 
 }
 
 /**
- * Narrows the sanitized video catalog to the models offered under a panel mode.
+ * The video models the panel offers under one generation mode.
  *
- * Two narrowings, both required. First drop the non-generation entries — video
- * upscaling, frame interpolation, extension, editing and motion control all
- * ship in `catalog.video` but belong to the mini-tool system; offering them
- * here would put "Video Upscale Pro" in the text-to-video picker and the submit
- * would be refused by the backend source gate. Then narrow to the active mode
- * so the picker shows one clean list.
+ * `catalog.video` also ships the mini-tool entries — video upscaling, frame
+ * interpolation, extension, editing, motion control — and offering one of
+ * those here would put "Video Upscale Pro" in the text-to-video picker, where
+ * a submit is then refused by the backend source gate. Narrowing to the mode
+ * is by itself enough to keep them out: `mode` is one of the six generation
+ * modes, and a mini-tool entry declares none of them. A separate
+ * "is this generatable" pass would be dead weight — it can only remove models
+ * the mode filter removes anyway (verified by exhausting every one- and
+ * two-mode combination against every panel mode: 726 cases, zero differences).
  *
  * Exported so the container can memoize the SAME selection on [models, mode]
  * alone — the view model rebuilds on every canvas graph mutation, and a freshly
@@ -82,7 +85,7 @@ export function selectVideoModeModels(
   models: ModelEntry[],
   mode: VideoGenMode,
 ): ModelEntry[] {
-  return filterModelsByMode(models.filter((m) => isVideoGenerationMode(m.mode)), mode);
+  return filterModelsByMode(models, mode);
 }
 
 /**

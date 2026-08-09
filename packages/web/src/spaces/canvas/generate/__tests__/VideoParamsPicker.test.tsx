@@ -145,8 +145,9 @@ describe('VideoParamsPicker', () => {
   });
 
   it('expands a range-shaped duration into one option per second', () => {
-    // kling states 3 to 15 and seedance 4 to 12, with no values list. Without
-    // this the duration group would vanish for two of the four families.
+    // `kling-o3-pro` states 3 to 15 with no values list, and it is the only
+    // text-to-video model that does. Without this the duration group would
+    // vanish for it entirely and the user could not pick a duration.
     const ranged = model({
       aspect_ratio: RATIO,
       duration: { description: '', min: 4, max: 6, default: 5 },

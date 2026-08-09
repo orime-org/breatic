@@ -56,7 +56,6 @@ export {
   IMAGE_GENERATION_MODES,
   isImageGenerationMode,
   VIDEO_GENERATION_MODES,
-  isVideoGenerationMode,
 } from "@shared/types/model-catalog.js";
 
 export { ROLE_RANK } from "@shared/types/role.js";

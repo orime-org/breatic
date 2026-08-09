@@ -45,8 +45,9 @@ import { toast } from 'sonner';
 
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { addNode, getPromptFragment } from '@web/data/yjs/canvas-space';
+import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { canvasApi } from '@web/data/api/canvas';
-import { _resetForTests } from '@web/data/yjs/manager';
+
 import {
   CanvasContext,
   type CanvasContextValue,
@@ -282,6 +283,41 @@ describe('VideoGeneratePanelContainer', () => {
     });
     expect(useCanvasStore.getState().panelHostId).toBeNull();
     expect(screen.queryByTestId('generate-video-execute')).toBeNull();
+  });
+
+  it('explains itself on a node that predates prompt containers', async () => {
+    // Video nodes made before this feature shipped carry no prompt container,
+    // and #1880 ratified that they are not repaired — creating one on open is
+    // the very race that decision removed. So the panel opens without an
+    // editor and a dead arrow; without a line saying why, that reads as the
+    // feature being broken.
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+    addNode('p', 's', {
+      id: 'target',
+      type: 'video',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'V',
+        createdAt: 1000,
+        createdBy: 'u1',
+        locked: false,
+        state: 'idle',
+        attachments: [],
+      },
+    } as Parameters<typeof addNode>[2]);
+    // Strip the container the way a pre-#1880 node has it: absent entirely.
+    const doc = getDoc(docName.canvasSpace('p', 's'));
+    const node = doc.getMap<Y.Map<unknown>>('nodesMap').get('target');
+    (node?.get('data') as Y.Map<unknown>).delete('prompt');
+
+    mountContainer('video');
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'video');
+    });
+    const notice = await screen.findByTestId('generate-video-no-prompt');
+    expect(notice).toBeVisible();
+    expect(screen.queryByTestId('generate-prompt-editor')).toBeNull();
+    expect(screen.getByTestId('generate-video-execute')).toBeDisabled();
   });
 
   describe('submit', () => {
