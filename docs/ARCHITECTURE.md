@@ -93,6 +93,28 @@ config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 - **Context 压缩**:最近 `full_detail_turns`(默认 3)个 Turn 保留完整 step(tool_call + tool_result),更早 Turn 只保留 user + assistant 最终回复。`thinking` 字段永远不发回 LLM
 - **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool-call` / `tool-result`)。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
 
+### Chat conversation ownership
+
+**会话 ID 由客户端持有**,每个浏览器标签页各记各的。服务端不存「当前会话」—— 那是一个用户一个值,而一个用户可能同时开着两个标签页看两条会话,第二个一打开就把第一个的值盖掉,第一个标签页此后每一句都写进别人那条里。不需要并发,静态就错。
+
+| 端点 | 行为 |
+|---|---|
+| `POST /chat/open` | 入参只有 `project_id`。返回这个用户在这个 project 的会话列表 + **最近交互**那条的消息;这个 project 一条会话都没有时**当场建一个空的**再返回。**全系统唯一的自动创建点** |
+| `POST /chat/message` · `POST /chat/skill` | `conversation_id` **必填**,只写不建 |
+
+**「最近交互」= 该会话最后一条消息的时间**,空会话回落到会话创建时间,**排序带稳定的第二键**(会话 ID)。**故意不用 `conversations.updated_at`** —— 改个标题也会动它,那不是「最后说话」。
+
+**写入前三查,一律 404**(`conversationService.assertWritable`):这条会话属于这个用户 · 属于这个 project · 没被软删。第三样不是边角料 —— 一个标签页记着会话 7、用户在另一个标签页把它删了,前两样对它都成立。三种可区分的答案会让状态码自己交代是哪一条没过,所以答案必须一样。
+
+**打开时两把锁,各管一段,顺序固定**(先咨询锁后项目行锁,全仓只有这一处取那把咨询锁,不会成环):
+
+| 锁 | 作用域 | 挡什么 |
+|---|---|---|
+| `pg_advisory_xact_lock(hashtext(userId), hashtext(projectId))` | 一个 (用户, project) | 同一个人两个标签页同时打开空 project,各建一条 |
+| `projectRepo.lockLiveProject`(**只在要新建那条分支上取**) | 项目行 | 新建撞上删项目。插入的外键取 FOR KEY SHARE、软删的 UPDATE 取 FOR NO KEY UPDATE,两者不冲突,不加锁就会错身而过,提交出一条挂在已删 project 上的会话 |
+
+普通一次打开(已有会话)完全不碰项目行,因此不跟邀请 / 转让那些事务抢锁。
+
 ### Worker 4 paths
 
 1. **AIGC Mini-Tool**(source="mini_tool")→ toolName 查表 → provider 直调
