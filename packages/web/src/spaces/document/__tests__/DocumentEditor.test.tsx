@@ -200,6 +200,40 @@ describe('DocumentEditor', () => {
       expect(screen.getByTestId('doc-tool-bold')).not.toBeDisabled();
     });
 
+    it('stays disabled when the title is reached by selecting everything', () => {
+      // Cmd+A does not put the caret anywhere — it selects the whole document,
+      // and the resulting selection starts at the document rather than inside
+      // any block. Asking where the caret is therefore answered "not the
+      // title" and lit all six, while pressing them did nothing: the title
+      // takes no mark, and a list cannot wrap it. What decides a button is
+      // whether its command can run, not where the caret sits.
+      giveTheBodyABlock();
+      render(<DocumentEditor editor={editor} history={history} />);
+      act(() => {
+        editor.commands.selectAll();
+      });
+
+      // Bold reaches the body's paragraph, so it stays available and does
+      // something; the block tools cannot wrap a selection holding the title.
+      expect(screen.getByTestId('doc-tool-bold')).not.toBeDisabled();
+      ['bullet-list', 'ordered-list', 'quote'].forEach((id) => {
+        expect(screen.getByTestId(`doc-tool-${id}`)).toBeDisabled();
+      });
+    });
+
+    it('disables all six when everything selected is only the title', () => {
+      // The shape this PR ships: a Space opens with a title and no body block
+      // at all, so selecting everything selects only what takes no formatting.
+      render(<DocumentEditor editor={editor} history={history} />);
+      act(() => {
+        editor.commands.selectAll();
+      });
+
+      FORMAT_TOOLS.forEach((id) => {
+        expect(screen.getByTestId(`doc-tool-${id}`)).toBeDisabled();
+      });
+    });
+
     it('leaves undo and redo alone — they work in the title too', () => {
       // Asserted as "the caret makes no difference" rather than "undo is
       // enabled": whether there is anything to undo comes from the history

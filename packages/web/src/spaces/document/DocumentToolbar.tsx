@@ -15,8 +15,6 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 
-import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
-
 import { Button } from '@web/components/ui/button';
 import { Separator } from '@web/components/ui/separator';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -43,6 +41,17 @@ interface ToolDef {
   labelKey: string;
   Icon: typeof Bold;
   isActive: (e: Editor) => boolean;
+  /**
+   * Whether the command would do anything against the current selection.
+   *
+   * This is what decides whether the button is live, and it is deliberately
+   * the same command the button runs rather than a description of where the
+   * caret is. An earlier version asked "is the caret in the title", which is
+   * only ever an approximation of this: it answered "no" to Cmd+A — that
+   * selection starts at the document, not inside any block — and lit all six
+   * buttons on a document whose only block takes no formatting at all.
+   */
+  canRun: (e: Editor) => boolean;
   run: (e: Editor) => void;
 }
 
@@ -111,6 +120,7 @@ const MARK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.bold',
     Icon: Bold,
     isActive: (e) => e.isActive('bold'),
+    canRun: (e) => e.can().chain().toggleBold().run(),
     run: (e) => e.chain().focus().toggleBold().run(),
   },
   {
@@ -118,6 +128,7 @@ const MARK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.italic',
     Icon: Italic,
     isActive: (e) => e.isActive('italic'),
+    canRun: (e) => e.can().chain().toggleItalic().run(),
     run: (e) => e.chain().focus().toggleItalic().run(),
   },
   {
@@ -125,6 +136,7 @@ const MARK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.strike',
     Icon: Strikethrough,
     isActive: (e) => e.isActive('strike'),
+    canRun: (e) => e.can().chain().toggleStrike().run(),
     run: (e) => e.chain().focus().toggleStrike().run(),
   },
 ];
@@ -136,6 +148,7 @@ const BLOCK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.bulletList',
     Icon: List,
     isActive: (e) => e.isActive('bulletList'),
+    canRun: (e) => e.can().chain().toggleBulletList().run(),
     run: (e) => e.chain().focus().toggleBulletList().run(),
   },
   {
@@ -143,6 +156,7 @@ const BLOCK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.orderedList',
     Icon: ListOrdered,
     isActive: (e) => e.isActive('orderedList'),
+    canRun: (e) => e.can().chain().toggleOrderedList().run(),
     run: (e) => e.chain().focus().toggleOrderedList().run(),
   },
   {
@@ -150,6 +164,7 @@ const BLOCK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.quote',
     Icon: Quote,
     isActive: (e) => e.isActive('blockquote'),
+    canRun: (e) => e.can().chain().toggleBlockquote().run(),
     run: (e) => e.chain().focus().toggleBlockquote().run(),
   },
 ];
@@ -170,24 +185,10 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
   history,
   readOnly = false,
 }: DocumentToolbarProps): React.JSX.Element {
-  // The title takes no formatting at all, so with the caret in it every
-  // formatting control has to go inert. A button that stays lit and does
-  // nothing is worse than no button: the user presses it, nothing happens,
-  // and there is no way to tell whether they missed or the feature is broken.
-  //
-  // Subscribed rather than read during render: moving the caret is a
-  // transaction with no React render behind it, so a value computed in the
-  // render body would keep reporting wherever the caret was when this last
-  // happened to re-render.
-  const caretInTitle = useEditorState({
-    editor,
-    selector: ({ editor: e }) =>
-      e?.state.selection.$from.parent.type.name === DOCUMENT_TITLE_NODE,
-  });
-  // Undo and redo are deliberately NOT gated on this: they work in the title
-  // exactly as they do in the body.
-  const formattingOff = readOnly || caretInTitle === true;
-
+  // Whether each formatting control is live is decided by the control itself,
+  // against the command it runs — see `ToolDef.canRun` and `ToolButton`. Undo
+  // and redo are not part of that: they work in the title exactly as they do
+  // in the body, and their availability comes from the history state.
   return (
     <div
       data-testid='document-toolbar'
@@ -203,11 +204,11 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {MARK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} editor={editor} disabled={formattingOff} />
+        <ToolButton key={t.id} tool={t} editor={editor} readOnly={readOnly} />
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {BLOCK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} editor={editor} disabled={formattingOff} />
+        <ToolButton key={t.id} tool={t} editor={editor} readOnly={readOnly} />
       ))}
     </div>
   );
@@ -216,39 +217,52 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
 /**
  * A single toolbar toggle.
  *
- * Subscribes to just its own active flag rather than reading it during render.
- * That matters now the document is shared: a co-editor's change arrives as a
+ * Subscribes to its own two flags rather than reading them during render. That
+ * matters now the document is shared: a co-editor's change arrives as a
  * transaction with no React render behind it, so a value computed in the render
  * body would keep showing whatever was true when this component last happened
  * to re-render.
+ *
+ * The button is live when its command can run — asked of the editor, against
+ * the very command the button dispatches, so the two can never disagree. This
+ * is what keeps a button from staying lit over a selection it cannot touch,
+ * and it holds for selections nobody thought to enumerate.
  * @param root0 - Tool button props.
- * @param root0.tool - The tool definition (label, icon, active predicate, run command).
+ * @param root0.tool - The tool definition (label, icon, active predicate, availability, run command).
  * @param root0.editor - The editor the tool reads from and acts on.
- * @param root0.disabled - True to render the toggle inert (viewer).
+ * @param root0.readOnly - True for a viewer; the toggle is inert whatever the command says.
  * @returns The toggle button element for one document tool.
  */
 const ToolButton = React.memo(function ToolButton({
   tool,
   editor,
-  disabled = false,
+  readOnly = false,
 }: {
   tool: ToolDef;
   editor: Editor;
-  disabled?: boolean;
+  readOnly?: boolean;
 }): React.JSX.Element {
   const t = useTranslation();
-  const active = useEditorState({
+  const state = useEditorState({
     editor,
-    selector: ({ editor: e }) => (e ? tool.isActive(e) : false),
+    selector: ({ editor: e }) => ({
+      active: e ? tool.isActive(e) : false,
+      available: e ? tool.canRun(e) : false,
+    }),
+    // Compared field by field: the selector builds a fresh object on every
+    // transaction, so identity would report a change on every keystroke and
+    // re-render all six buttons for nothing.
+    equalityFn: (a, b) =>
+      b !== null && a.active === b.active && a.available === b.available,
   });
   const Icon = tool.Icon;
   return (
     <Button
-      variant={active ? 'secondary' : 'ghost'}
+      variant={state.active ? 'secondary' : 'ghost'}
       size='icon'
       aria-label={t(tool.labelKey)}
-      aria-pressed={active}
-      disabled={disabled}
+      aria-pressed={state.active}
+      disabled={readOnly || !state.available}
       onClick={() => tool.run(editor)}
       data-testid={`doc-tool-${tool.id}`}
       className={cn('h-7 w-7')}
