@@ -40,12 +40,9 @@ import type { Hocuspocus } from "@hocuspocus/server";
 
 // ── Mock `ai` BEFORE any other import ───────────────────────────────────────
 //
-// `ai` is stubbed so this suite needs no API key and makes no provider
-// request. Without the stub, CI — which sets no key anywhere — would get an
-// AI_LoadAPIKeyError delivered as an `error` stream part: the stream still
-// ends cleanly and every assertion still passes, so the suite would quietly
-// stop covering what it appears to cover. A machine that does have a key
-// would issue a real request instead. Of the four stubbed exports,
+// `ai` is stubbed: the real SDK is replaced with a double that reaches no
+// network, so this suite needs no API key and the SDK stays out of its
+// module graph. Of the four stubbed exports,
 // @breatic/domain's agent modules import generateText, streamText and tool;
 // the worker providers import stepCountIs. @breatic/core imports none of
 // them — it does not reach the SDK at all.

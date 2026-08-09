@@ -31,12 +31,9 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-// `ai` is stubbed so this suite needs no API key and makes no provider
-// request. Without the stub, CI — which sets no key anywhere — would get an
-// AI_LoadAPIKeyError delivered as an `error` stream part: the stream still
-// ends cleanly and every assertion still passes, so the suite would quietly
-// stop covering what it appears to cover. A machine that does have a key
-// would issue a real request instead.
+// `ai` is stubbed: the real SDK is replaced with a double that reaches no
+// network, so this suite needs no API key and the SDK stays out of its
+// module graph.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

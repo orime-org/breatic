@@ -27,8 +27,7 @@
  *
  * The canvas-row soft-delete / restore route through the shared core
  * `yjsDocumentsRepo`; it is mocked to no-ops here so the Yjs-mutation
- * invariants are exercised without a real PG (and so importing the
- * handler doesn't pull the real core barrel into vitest's ESM resolver).
+ * invariants are exercised without a real PG.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import * as fc from "fast-check";
