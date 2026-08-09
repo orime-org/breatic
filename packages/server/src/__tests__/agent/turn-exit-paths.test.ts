@@ -88,7 +88,7 @@ vi.mock("@server/modules", async (importOriginal) => {
   const { serverModulesMock } = await import("../helpers/mock-core.js");
   return serverModulesMock(importOriginal);
 });
-vi.mock("@server/modules/conversation/conversation.repo.js", () => ({ addMessage }));
+vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage }));
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 

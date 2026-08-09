@@ -18,6 +18,7 @@ import { generateTextRetry } from "@breatic/domain";
 import { getModel } from "@breatic/domain";
 import { getAgentConfig } from "@breatic/core";
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
+import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { memoryService } from "@server/modules";
 import * as memoryRepo from "@server/modules/memory/memory.repo.js";
 import { logger } from "@breatic/core";
@@ -67,7 +68,7 @@ export async function consolidateIfNeeded(
   const config = getAgentConfig();
 
   // Check if consolidation is needed (by turn count)
-  const unconsolidatedTurns = await conversationRepo.getUnconsolidatedTurnCount(conversationId);
+  const unconsolidatedTurns = await messageRepo.getUnconsolidatedTurnCount(conversationId);
   if (unconsolidatedTurns <= config.memory_window) {
     return; // Under threshold, nothing to do
   }
@@ -78,7 +79,7 @@ export async function consolidateIfNeeded(
   const lastTurn = conv.lastConsolidatedTurn;
 
   // Get messages to consolidate (old turns, excluding recent ones to keep)
-  const messagesToConsolidate = await conversationRepo.getMessagesForConsolidation(
+  const messagesToConsolidate = await messageRepo.getMessagesForConsolidation(
     conversationId,
     lastTurn,
     config.memory_keep_recent_turns,

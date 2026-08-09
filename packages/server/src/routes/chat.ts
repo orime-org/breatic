@@ -17,6 +17,7 @@ import {
   chatMessageSchema,
   skillCommandSchema,
   chatConversationsQuerySchema,
+  chatOpenSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -66,8 +67,11 @@ chat.use("*", requireAuth);
 /**
  * `POST /chat/message` — send a message and receive an SSE stream.
  *
- * Gets or creates a conversation, instantiates the MainAgent,
- * and streams SSE events from `agent.chat()` to the client.
+ * Takes the conversation the client names, instantiates the MainAgent, and
+ * streams SSE events from `agent.chat()` to the client. It never creates one:
+ * `POST /chat/open` is the single place a conversation appears on the user's
+ * behalf, so an id that no longer resolves is refused here rather than
+ * quietly replaced with a new conversation the client does not know about.
  * @param c - Hono context with validated `chatMessageSchema` body
  * @returns SSE text/event-stream response
  */
@@ -75,20 +79,17 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
-  // Cross-tenant guard: client-supplied project_id must belong to the
-  // authenticated user. `getOrCreate` also re-validates on conversation
-  // creation, but we check here first so that every downstream call
-  // (memory, history, SSE) runs against a confirmed-owned project.
-  if (body.project_id) {
-    // Chat is a creative-write action (v10 §7.2.1) — view-only
-    // members cannot send chat messages or invoke skills.
-    await projectService.assertAccess(body.project_id, user.id, "editor");
-  }
+  // Cross-tenant guard: the client-supplied project_id must belong to the
+  // authenticated user. Checked here first so every downstream call (memory,
+  // history, SSE) runs against a confirmed-owned project. Chat is a
+  // creative-write action (v10 §7.2.1) — view-only members are refused.
+  await projectService.assertAccess(body.project_id, user.id, "editor");
 
-  const conversation = await conversationService.getOrCreate(
-    user.id,
+  // The conversation id comes from the client, so it is checked before a word
+  // is written to it: this user's, this project's, and not deleted.
+  const conversation = await conversationService.assertWritable(
     body.conversation_id,
-    body.message,
+    user.id,
     body.project_id,
   );
 
@@ -144,16 +145,12 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
   assertSkillUsable(body.skill_name, "chat");
 
   // Cross-tenant guard (same rationale as /chat/message)
-  if (body.project_id) {
-    // Chat is a creative-write action (v10 §7.2.1) — view-only
-    // members cannot send chat messages or invoke skills.
-    await projectService.assertAccess(body.project_id, user.id, "editor");
-  }
+  await projectService.assertAccess(body.project_id, user.id, "editor");
 
-  const conversation = await conversationService.getOrCreate(
-    user.id,
+  // Same check as the message entrance — one client-supplied id, one rule.
+  const conversation = await conversationService.assertWritable(
     body.conversation_id,
-    body.input,
+    user.id,
     body.project_id,
   );
 
@@ -208,6 +205,28 @@ chat.get(
     return c.json({ data: conversations });
   },
 );
+
+/**
+ * `POST /chat/open` — everything the chat panel needs to render a project.
+ *
+ * Returns the user's conversations here plus the messages of whichever one
+ * they used last, creating one when the project has none. The client holds the
+ * conversation id from here on and sends it with every message, which is what
+ * lets two tabs sit on two different conversations at once.
+ *
+ * POST rather than GET because it creates. Access is judged as a write for the
+ * same reason — a view-only member must not leave a conversation behind in a
+ * project they may only look at.
+ * @param c - Hono context with a `project_id` body
+ * @returns The conversation list and the current conversation with its messages
+ * @throws {AppError} `404` if the caller is not a member, `403` if read-only
+ */
+chat.post("/open", zValidator("json", chatOpenSchema), async (c) => {
+  const user = c.get("user");
+  const { project_id: projectId } = c.req.valid("json");
+  const result = await conversationService.openChat(user.id, projectId);
+  return c.json({ data: result });
+});
 
 /**
  * `GET /chat/conversations/:id` — fetch a conversation with messages.

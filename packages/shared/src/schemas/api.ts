@@ -165,8 +165,16 @@ export type ChatAttachedChip = z.infer<typeof chatAttachedChipSchema>;
 export const chatMessageSchema = z.object({
   message: z.string().min(1),
   resource_list: z.array(z.string()).default([]),
-  conversation_id: z.string().optional(),
-  project_id: z.string().optional(),
+  project_id: z.string().uuid(),
+  /**
+   * Which conversation this message belongs to. The client holds it — that is
+   * what lets two browser tabs sit on two conversations without either one
+   * landing a message in the other. Required: opening chat always hands the
+   * client a conversation, so a message without one is a client that skipped
+   * that step. The server verifies the conversation is this user's, in this
+   * project, and not deleted, before writing anything to it.
+   */
+  conversation_id: z.string().uuid(),
   /**
    * V13 (spec §10.18.2): canvas-node snapshots the user attached to
    * this message via the chips bar. Required field but defaults to
@@ -195,8 +203,9 @@ export const skillCommandSchema = z.object({
   skill_name: z.string().min(1),
   input: z.string().min(1),
   resource_list: z.array(z.string()).default([]),
-  conversation_id: z.string().optional(),
-  project_id: z.string().optional(),
+  /** Same contract as `chatMessageSchema` — both entrances are checked alike. */
+  project_id: z.string().uuid(),
+  conversation_id: z.string().uuid(),
 });
 export type SkillCommandInput = z.infer<typeof skillCommandSchema>;
 
@@ -351,3 +360,15 @@ export const chatConversationsQuerySchema = paginationSchema.extend({
   project_id: z.string().uuid().optional(),
 });
 export type ChatConversationsQueryInput = z.infer<typeof chatConversationsQuerySchema>;
+
+/**
+ * Body for opening chat in a project.
+ *
+ * Names a project and nothing else: which conversation to show is the server's
+ * answer, computed from what the user said last, and it comes back in the
+ * response for the client to hold from then on.
+ */
+export const chatOpenSchema = z.object({
+  project_id: z.string().uuid(),
+});
+export type ChatOpenInput = z.infer<typeof chatOpenSchema>;
