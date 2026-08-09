@@ -32,6 +32,7 @@ import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-
 import { DocumentClickToWrite } from '@web/spaces/document/document-click-to-write';
 import { DocumentPlaceholders } from '@web/spaces/document/document-placeholders';
 import { DocumentTitle } from '@web/spaces/document/document-title';
+import { DocumentTitleIsPlainText } from '@web/spaces/document/document-title-plain-text';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
 /** The body fragment, plus the optional collaborative layers. */
@@ -88,6 +89,10 @@ export function buildDocumentExtensions(
     // `@breatic/shared`'s `document-body` carries the full reasoning.
     Document.extend({ content: `${DOCUMENT_TITLE_NODE} block*` }),
     DocumentTitle,
+    // The title holds text and nothing else, so a rule that would turn typed
+    // text into a block must not fire there — the divider rule does not check
+    // for itself and destroys what was typed.
+    DocumentTitleIsPlainText,
     // The body may hold no blocks at all, so the space under the title has to
     // be clickable or a fresh document cannot be written into.
     DocumentClickToWrite,
