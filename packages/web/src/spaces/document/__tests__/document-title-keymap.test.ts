@@ -117,6 +117,32 @@ describe('Enter inside the title', () => {
     expect(caret(editor)).toEqual({ block: 1, offset: 0 });
   });
 
+  it('with a selection, replaces it and then splits at the caret', () => {
+    // Selecting a run and pressing a key replaces it — that is what a key does
+    // everywhere. Requiring a collapsed cursor left this key doing nothing at
+    // all here, because every default handler the editor would fall back on
+    // stops at the title's isolating boundary.
+    const { editor } = open('ABCDE');
+    editor.commands.setTextSelection({ from: 1 + 1, to: 1 + 3 });
+    press(editor, 'Enter');
+
+    expect(editor.state.doc.child(0).textContent).toBe('A');
+    expect(editor.state.doc.child(1).type.name).toBe('paragraph');
+    expect(editor.state.doc.child(1).textContent).toBe('DE');
+    expect(caret(editor)).toEqual({ block: 1, offset: 0 });
+  });
+
+  it('with the whole title selected, empties it and moves the text down', () => {
+    const { editor } = open('ABCDE');
+    editor.commands.setTextSelection({ from: 1, to: 1 + 5 });
+    press(editor, 'Enter');
+
+    expect(editor.state.doc.child(0).type.name).toBe('title');
+    expect(editor.state.doc.child(0).textContent).toBe('');
+    expect(editor.state.doc.child(1).textContent).toBe('');
+    expect(editor.state.doc.childCount).toBe(2);
+  });
+
   it('puts the new block first, ahead of blocks that were already there', () => {
     const { editor } = open('ABCDE', '<p>already here</p>');
     editor.commands.setTextSelection(1 + 2);

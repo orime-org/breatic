@@ -109,30 +109,44 @@ function asShortcut(editor: Editor, command: Command): () => boolean {
 /**
  * Move the title's first block worth of text into the body, at the caret.
  *
- * Declines unless the caret is a plain cursor inside the title, so Enter keeps
- * its ordinary meaning everywhere else.
+ * A selection is replaced first, exactly as pressing any key over a selection
+ * replaces it, and the split then happens where it leaves the caret. Requiring
+ * a collapsed cursor left this key doing nothing whatsoever over a selection:
+ * the editor's own Enter has four fallbacks and every one of them stops at the
+ * title's isolating boundary, so nothing else was going to answer.
+ *
+ * Declines when the selection reaches out of the title, which is an ordinary
+ * range for the editor's own Enter to handle.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction; absent when the caller is only asking whether this would apply.
  * @returns True when this handled the key.
  */
 const splitTitleIntoBody: Command = (state, dispatch) => {
-  const { $from, empty } = state.selection;
-  if (!empty || $from.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
+  const { $from, $to } = state.selection;
+  if ($from.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
+  if ($to.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
 
-  const title = state.doc.child(0);
   const paragraph = state.schema.nodes['paragraph'];
   if (!paragraph) return false;
-
-  const tail = title.textBetween($from.parentOffset, title.content.size);
   if (!dispatch) return true;
 
   const tr = state.tr;
-  // Cut the tail out of the title first; the title sits at the front of the
-  // document, so this does not move the position the new block goes at once
-  // the mapping is applied.
-  if (tail) tr.delete($from.pos, 1 + title.content.size);
-  const insertAt = tr.mapping.map(title.nodeSize);
-  tr.insert(insertAt, paragraph.create(null, tail ? state.schema.text(tail) : null));
+  // A no-op for a collapsed cursor, so both cases run the same path from here.
+  tr.deleteSelection();
+
+  // The title is the document's first child, so it occupies positions 0 to its
+  // own size and the block after it starts exactly there. Read both back from
+  // the transaction rather than the original state — the deletion above moved
+  // them.
+  const cut = tr.selection.$from.parentOffset;
+  const title = tr.doc.child(0);
+  const tail = title.textBetween(cut, title.content.size);
+  if (tail) tr.delete(tr.selection.from, 1 + title.content.size);
+  const insertAt = tr.doc.child(0).nodeSize;
+  tr.insert(
+    insertAt,
+    paragraph.create(null, tail ? state.schema.text(tail) : null),
+  );
   tr.setSelection(TextSelection.create(tr.doc, insertAt + 1));
   dispatch(tr.scrollIntoView());
   return true;
@@ -272,11 +286,17 @@ const mergeBodyStartIntoTitle: Command = (state, dispatch) => {
  * Same join as the Backspace above, reached from the other side — and where
  * that one can decline and leave the key to the editor's own chain, this one
  * cannot: the caret is inside the isolating title, so every default handler
- * stops at the boundary and the press would do nothing whatsoever. Every shape
- * the first body block can take therefore needs an answer here, and the three
- * below are exhaustive over the schema: a block either holds text directly, or
- * holds no content at all, or holds other blocks. Each answers the way the body
+ * stops at the boundary and the press would do nothing whatsoever. So the three
+ * below cover the three shapes a block can take — holds text directly, holds no
+ * content at all, holds other blocks — and each answers the way the body
  * answers the same press.
+ *
+ * That is not the same as saying the press always does something. The third
+ * one declines when the container will not give its first textblock up: a list
+ * whose first item has a sub-list under it, for instance. The body does
+ * nothing there either — measured on this build, caret at the end of a
+ * paragraph followed by exactly that list — so matching it is the point rather
+ * than a gap in the ladder.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction.
  * @returns True when this handled the key.
