@@ -12,7 +12,6 @@ import {
   getPromptFragment,
   isNodeHandling,
   isNodeLocked,
-  nodeExists,
   readCanvasGraph,
   readNodeLeaseGen,
   setNodeModel,
@@ -237,7 +236,13 @@ function VideoGeneratePanelBody({
     // Every execute-critical value is read SYNCHRONOUSLY here, never from a
     // render closure that React batching and live collaboration make stale.
     if (submittingRef.current) return;
-    if (!nodeExists(projectId, spaceId, nodeId)) return;
+    // A node a collaborator deleted since the panel opened is refused by the
+    // execute gate below: it derives from a fresh graph read, so a vanished
+    // node has no status and `canExecuteGenerate` returns false. There is no
+    // separate existence check here — one would sit in front of a guard that
+    // already covers it, and a line that can never change the outcome reads
+    // to the next person as if it can.
+    //
     // A locked node — or one a task started writing since the panel opened —
     // cannot submit. Toast the reason so a clickable Execute is an actionable
     // message rather than a dead control; editing the prompt stays allowed.

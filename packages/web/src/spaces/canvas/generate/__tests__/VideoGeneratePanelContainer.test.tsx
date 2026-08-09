@@ -44,7 +44,11 @@ import * as Y from 'yjs';
 import { toast } from 'sonner';
 
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
-import { addNode, getPromptFragment } from '@web/data/yjs/canvas-space';
+import {
+  addNode,
+  getPromptFragment,
+  removeNode,
+} from '@web/data/yjs/canvas-space';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { canvasApi } from '@web/data/api/canvas';
 
@@ -74,6 +78,14 @@ const T2V: ModelEntry = {
   sourcesByMode: { t2v: [] },
 };
 
+/** A second text-to-video model, so a stored pick can differ from the default. */
+const T2V_LITE: ModelEntry = {
+  ...T2V,
+  name: 'veo-3.1-lite',
+  display_name: 'VEO 3.1 Lite',
+  cost_per_call: 21,
+};
+
 /** An image model, so "the video panel offers video models" is a real claim. */
 const T2I: ModelEntry = {
   ...T2V,
@@ -91,12 +103,12 @@ const T2I: ModelEntry = {
 function catalog(): ModelCatalog {
   return {
     image: [T2I],
-    video: [T2V],
+    video: [T2V, T2V_LITE],
     audio: [],
     tts: [],
     three_d: [],
     understand: [],
-    total: 2,
+    total: 3,
   };
 }
 
@@ -108,9 +120,10 @@ function catalog(): ModelCatalog {
  * @param kind - The node's modality.
  * @returns The render result.
  */
-function mountContainer(kind: 'video' | 'image' = 'video'): ReturnType<
-  typeof render
-> {
+function mountContainer(
+  kind: 'video' | 'image' = 'video',
+  reactNodeData?: Record<string, unknown>,
+): ReturnType<typeof render> {
   const canvas: CanvasContextValue = {
     projectId: 'p',
     spaceId: 's',
@@ -131,7 +144,17 @@ function mountContainer(kind: 'video' | 'image' = 'video'): ReturnType<
           <VideoGeneratePanelContainer
             projectId='p'
             spaceId='s'
-            nodes={[{ id: 'target', data: { kind, status: 'idle' } }]}
+            nodes={[
+              {
+                id: 'target',
+                data: { kind, status: 'idle', ...reactNodeData } as Parameters<
+                  typeof VideoGeneratePanelContainer
+                >[0]['nodes'][number]['data'],
+              },
+              // A second node on the board, so a case that moves the panel
+              // elsewhere does not trip the node-is-gone close first.
+              { id: 'other', data: { kind: 'video', status: 'idle' } },
+            ]}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -363,6 +386,37 @@ describe('VideoGeneratePanelContainer', () => {
       expect(payload.node_gens).toEqual({ target: 4 });
     });
 
+    it('builds the payload from live Yjs, not from the render closure', async () => {
+      // The file's central claim is that every write-callback re-derives from
+      // live Yjs at click time, because the render closure freezes the moment
+      // onExecute is created and a collaborator's edit after that would be
+      // clobbered. The other submit tests cannot see the difference: their
+      // React node and their Yjs node say the same thing. Here they disagree
+      // the way they do when someone else changed the model while my panel was
+      // open — the payload must carry what Yjs says, not what my closure
+      // captured.
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const create = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue({ id: 't1' } as Awaited<
+          ReturnType<typeof canvasApi.createTask>
+        >);
+      seedVideoNode({ model: 'veo-3.1-lite', params: { duration: 4 } });
+      typePrompt('a drone shot over a canyon at dawn');
+      // The React view still carries the pre-edit pick.
+      mountContainer('video', { model: 'veo-3.1', params: { duration: 8 } });
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const execute = await screen.findByTestId('generate-video-execute');
+      await waitFor(() => expect(execute).not.toBeDisabled());
+      fireEvent.click(execute);
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      const payload = create.mock.calls[0]![0];
+      expect(payload.model).toBe('veo-3.1-lite');
+      expect(payload.params.duration).toBe(4);
+    });
+
     it('closes the panel once the task is accepted', async () => {
       vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as Awaited<
         ReturnType<typeof canvasApi.createTask>
@@ -404,6 +458,102 @@ describe('VideoGeneratePanelContainer', () => {
       await act(async () => {
         release({ id: 't1' } as Task);
       });
+    });
+
+    it('submits the prompt as of the click, not as of the last render', async () => {
+      // A collaborator's keystroke can land between the render that created
+      // onExecute and the click. React has not flushed it into state yet, but
+      // the editor already reported it — so the ref carries it and the state
+      // does not. Both writes happen in ONE act batch here, which is the only
+      // way that window exists in a test.
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const create = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue({ id: 't1' } as Awaited<
+          ReturnType<typeof canvasApi.createTask>
+        >);
+      seedVideoNode();
+      typePrompt('first draft');
+      mountContainer('video');
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const execute = await screen.findByTestId('generate-video-execute');
+      await waitFor(() => expect(execute).not.toBeDisabled());
+      act(() => {
+        const fragment = getPromptFragment('p', 's', 'target');
+        const paragraph = new Y.XmlElement('paragraph');
+        paragraph.insert(0, [new Y.XmlText(' and a second line')]);
+        fragment?.insert(fragment.length, [paragraph]);
+        execute.click();
+      });
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect(create.mock.calls[0]![0].params.prompt).toContain('second line');
+    });
+
+    it('refuses to submit against a node a task is already writing', async () => {
+      // The arrow stays clickable while a generation runs (a greyed control
+      // explains nothing), so the gate is the only thing between a busy node
+      // and a second overwrite task landing on it.
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const create = vi.spyOn(canvasApi, 'createTask');
+      seedVideoNode({ state: 'handling' });
+      typePrompt('a drone shot over a canyon at dawn');
+      mountContainer('video');
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const execute = await screen.findByTestId('generate-video-execute');
+      await waitFor(() => expect(execute).not.toBeDisabled());
+      fireEvent.click(execute);
+      await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('refuses to submit against a node a collaborator just deleted', async () => {
+      // The node can go between the panel opening and the click. Reading the
+      // React prop would still see it; only a fresh Yjs read does not.
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const create = vi.spyOn(canvasApi, 'createTask');
+      seedVideoNode();
+      typePrompt('a drone shot over a canyon at dawn');
+      mountContainer('video');
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const execute = await screen.findByTestId('generate-video-execute');
+      await waitFor(() => expect(execute).not.toBeDisabled());
+      // Gone from the document, still in this render's props — the exact
+      // window the fresh read exists for.
+      act(() => {
+        removeNode('p', 's', 'target');
+      });
+      fireEvent.click(execute);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('does not close a panel that has since moved to another node', async () => {
+      // Submit, then open the panel on a different node before the request
+      // settles. Closing on success without checking would shut the panel the
+      // user is now looking at.
+      type Task = Awaited<ReturnType<typeof canvasApi.createTask>>;
+      let release: (task: Task) => void = () => {};
+      vi.spyOn(canvasApi, 'createTask').mockImplementation(
+        () =>
+          new Promise<Task>((resolve) => {
+            release = resolve;
+          }),
+      );
+      const execute = await openReadyPanel();
+      fireEvent.click(execute);
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('other', 'video');
+      });
+      await act(async () => {
+        release({ id: 't1' } as Task);
+      });
+      expect(useCanvasStore.getState().panelHostId).toBe('other');
     });
 
     it('refuses to submit against a locked node and says why', async () => {
