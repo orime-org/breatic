@@ -13,7 +13,7 @@
  * the user was entitled to. A first block nobody can issue a delete for closes
  * that gap by construction, so no merge of concurrent edits can produce one.
  *
- * Three properties do the work, and each is load-bearing:
+ * Two properties do the work, and each is load-bearing:
  *
  * `group` is absent. The document's content rule is `title block*`, and the
  * body half of that only accepts nodes in the `block` group — so a title
@@ -24,9 +24,20 @@
  * `marks: ''` refuses every mark the body accepts. Bold on the title is not
  * "allowed but discouraged", it does not apply.
  *
- * `isolating` keeps operations that span the boundary from reaching in and
- * dissolving the node — a whole-document range delete clears the body and
- * leaves the title standing.
+ * **`isolating` is deliberately NOT set**, and this is worth stating because it
+ * was, for three rounds of review. The claim was that it kept a boundary-
+ * spanning operation from dissolving the node. Measured both ways, it does
+ * nothing of the sort: select-all-and-delete, a whole-document range delete, a
+ * delete across the boundary and a node selection on the title itself all leave
+ * the title standing either way. The content rule above is what keeps it there.
+ *
+ * What `isolating` did do was make every one of ProseMirror's own boundary
+ * handlers bail before reaching this node — `deleteBarrier`, `joinForward`,
+ * `splitBlock`, the arrow-key handlers, all of them. Each gesture that hit the
+ * boundary then had to be written out by hand, and the ones nobody had written
+ * yet did nothing at all: Enter over a selection reaching into the body was
+ * dead, and the left arrow at the title's start dropped the caret into a gap
+ * cursor with nowhere to type. Both work by themselves without it.
  *
  * The content is `text*` rather than `inline*`: the title holds text, not
  * inline atoms. A reference chip or an inline image in a title has no meaning
@@ -62,7 +73,6 @@ export const DocumentTitle = Node.create({
   content: 'text*',
   marks: '',
   defining: true,
-  isolating: true,
   parseHTML: () => [{ tag: `h1.${DOCUMENT_TITLE_CLASS}` }],
   renderHTML: () => ['h1', { class: DOCUMENT_TITLE_CLASS }, 0],
 
@@ -109,14 +119,15 @@ function asShortcut(editor: Editor, command: Command): () => boolean {
 /**
  * Move the title's first block worth of text into the body, at the caret.
  *
- * A selection is replaced first, exactly as pressing any key over a selection
- * replaces it, and the split then happens where it leaves the caret. Requiring
- * a collapsed cursor left this key doing nothing whatsoever over a selection:
- * the editor's own Enter has four fallbacks and every one of them stops at the
- * title's isolating boundary, so nothing else was going to answer.
+ * A selection wholly inside the title is replaced first, exactly as pressing
+ * any key over a selection replaces it, and the split then happens where that
+ * leaves the caret.
  *
- * Declines when the selection reaches out of the title, which is an ordinary
- * range for the editor's own Enter to handle.
+ * Declines when the selection reaches out of the title: that is an ordinary
+ * range, and the editor's own Enter deletes it — which joins the two blocks —
+ * and splits at the caret. It really does answer, now that the title is not
+ * isolating; while it was, that path bailed at the boundary and the key did
+ * nothing at all.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction; absent when the caller is only asking whether this would apply.
  * @returns True when this handled the key.

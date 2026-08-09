@@ -132,7 +132,7 @@ describe('Enter inside the title', () => {
     expect(caret(editor)).toEqual({ block: 1, offset: 0 });
   });
 
-  it('with the whole title selected, empties it and moves the text down', () => {
+  it('with the whole title selected, empties it and opens a blank first block', () => {
     const { editor } = open('ABCDE');
     editor.commands.setTextSelection({ from: 1, to: 1 + 5 });
     press(editor, 'Enter');
@@ -141,6 +141,21 @@ describe('Enter inside the title', () => {
     expect(editor.state.doc.child(0).textContent).toBe('');
     expect(editor.state.doc.child(1).textContent).toBe('');
     expect(editor.state.doc.childCount).toBe(2);
+  });
+
+  it('with a selection reaching into the body, replaces it and splits there', () => {
+    // The editor's own Enter answers this one — deleting the selection joins
+    // the two blocks and then splits at the caret. It only stopped answering
+    // when the title was `isolating`, which made every default bail at the
+    // boundary; nothing else picked the key up and it did nothing at all.
+    const { editor } = open('ABCDE', '<p>12345</p>');
+    const titleSize = editor.state.doc.child(0).nodeSize;
+    editor.commands.setTextSelection({ from: 1 + 2, to: titleSize + 1 + 2 });
+    press(editor, 'Enter');
+
+    expect(editor.state.doc.child(0).textContent).toBe('AB');
+    expect(editor.state.doc.child(1).type.name).toBe('paragraph');
+    expect(editor.state.doc.child(1).textContent).toBe('345');
   });
 
   it('puts the new block first, ahead of blocks that were already there', () => {

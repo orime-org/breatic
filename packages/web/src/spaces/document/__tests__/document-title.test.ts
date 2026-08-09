@@ -146,3 +146,20 @@ describe('the title block survives every gesture that could remove it', () => {
     expect(editor.state.doc.childCount).toBe(1);
   });
 });
+
+describe('the caret cannot fall out of the front of the document', () => {
+  it('the left arrow at the title’s start leaves a text selection, not a gap', () => {
+    // A gap cursor sits BETWEEN blocks and holds no text. There is nothing
+    // before the title for one to sit in, so landing there means the caret is
+    // somewhere the user cannot type — it looks like an ordinary caret and
+    // swallows what they write. ProseMirror only offers that position next to
+    // a node it cannot enter, which `isolating` made the title into.
+    const { editor } = openSeeded('ABCDE');
+    editor.commands.setTextSelection(1);
+    editor.view.someProp('handleKeyDown', (f) =>
+      f(editor.view, new KeyboardEvent('keydown', { key: 'ArrowLeft' })),
+    );
+
+    expect(editor.state.selection.constructor.name).toBe('TextSelection');
+  });
+});
