@@ -14,18 +14,12 @@ import {
 } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 
-import en from '../../../../../locales/en.json';
-import zhCN from '../../../../../locales/zh-CN.json';
-import zhTW from '../../../../../locales/zh-TW.json';
-import ja from '../../../../../locales/ja.json';
-import ko from '../../../../../locales/ko.json';
+import { LOCALE_CATALOGS } from '@web/test-utils/locale-catalogs';
 
 function bootstrap() {
-  setLocaleMessages('en', en as Record<string, unknown>);
-  setLocaleMessages('zh-CN', zhCN as Record<string, unknown>);
-  setLocaleMessages('zh-TW', zhTW as Record<string, unknown>);
-  setLocaleMessages('ja', ja as Record<string, unknown>);
-  setLocaleMessages('ko', ko as Record<string, unknown>);
+  for (const [tag, catalog] of LOCALE_CATALOGS) {
+    setLocaleMessages(tag, catalog as Record<string, unknown>);
+  }
   setLocale('en');
 }
 
