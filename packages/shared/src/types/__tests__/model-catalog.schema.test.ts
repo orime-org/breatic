@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   sanitizeModelCatalog,
   isImageGenerationMode,
+  isVideoGenerationMode,
 } from "@shared/types/model-catalog.js";
 import type { ModelCatalog, ModelEntry } from "@shared/types/model-catalog.js";
 
@@ -224,6 +225,43 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(isImageGenerationMode("")).toBe(false);
     expect(isImageGenerationMode([])).toBe(false);
     expect(isImageGenerationMode("t2v")).toBe(false); // a video mode, not image
+  });
+
+  it("classifies video model modes: the six the panel offers vs mini-tool work (#1896)", () => {
+    // The six the video Generate panel offers. This list is a product decision
+    // (user 2026-08-08): a mode is here when it makes a NEW video from
+    // scratch, and in the mini-tool system when it works on an existing one.
+    expect(isVideoGenerationMode("t2v")).toBe(true); // text-to-video
+    expect(isVideoGenerationMode("i2v")).toBe(true); // image-to-video
+    expect(isVideoGenerationMode("first_last")).toBe(true); // first + last frame
+    expect(isVideoGenerationMode("animate")).toBe(true); // animate a character image
+    expect(isVideoGenerationMode("ref")).toBe(true); // reference images guide the result
+    expect(isVideoGenerationMode("talking_head")).toBe(true); // image + audio
+
+    // Mini-tool territory — all four take an EXISTING video and work on it.
+    // Offering them in the Generate picker would let a user submit a
+    // text-to-video request against a model that needs a video source, which
+    // the backend's source gate then rejects with a 400.
+    expect(isVideoGenerationMode("extend")).toBe(false);
+    expect(isVideoGenerationMode("edit")).toBe(false);
+    expect(isVideoGenerationMode("motion")).toBe(false);
+    expect(isVideoGenerationMode("upscale")).toBe(false);
+    expect(isVideoGenerationMode("interpolate")).toBe(false);
+
+    // A model qualifies when ANY of its modes qualifies — the two image-to-video
+    // models gain `first_last` alongside `i2v`, so both spellings must hold.
+    expect(isVideoGenerationMode(["i2v", "first_last"])).toBe(true);
+    // ...but a model that only does mini-tool work never qualifies, however
+    // many modes it lists.
+    expect(isVideoGenerationMode(["extend", "upscale"])).toBe(false);
+
+    // Unknown / empty — not generatable.
+    expect(isVideoGenerationMode("")).toBe(false);
+    expect(isVideoGenerationMode([])).toBe(false);
+    // An image mode never qualifies as a video one, and vice versa: the two
+    // lists are independent product decisions that happen to share a shape.
+    expect(isVideoGenerationMode("t2i")).toBe(false);
+    expect(isVideoGenerationMode("i2i")).toBe(false);
   });
 
   // The source-image predicates (requiresSourceImage / supportsTextToImage)

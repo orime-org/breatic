@@ -13,6 +13,7 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
+import { paramValues } from '@web/spaces/canvas/generate/param-values';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
@@ -28,20 +29,6 @@ interface RatioResolutionPickerProps {
   value: RatioResolutionValue;
   /** Called with the changed field ({ aspect_ratio } or { resolution }). */
   onChange: (partial: RatioResolutionValue) => void;
-}
-
-/**
- * Reads a param's allowed values as strings, or an empty list when the model
- * does not define that param.
- * @param model - The current model.
- * @param key - The param key (`aspect_ratio` / `resolution`).
- * @returns The allowed values as strings.
- */
-function paramValues(model: ModelEntry, key: string): string[] {
-  // model.params is trusted (the catalog is sanitized at the API boundary):
-  // `values` is a readonly array or undefined, so a truthiness check suffices.
-  const values = model.params?.[key]?.values;
-  return values ? values.map((v) => String(v)) : [];
 }
 
 /**
