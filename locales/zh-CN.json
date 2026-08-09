@@ -205,7 +205,11 @@
       "videoParams": "参数",
       "videoPromptPlaceholder": "描述你想生成的视频",
       "videoMentionEmpty": "还没有可引用的参考",
-      "videoNoPrompt": "这个节点建得比视频生成早，没有提示词。新建一个视频节点就能生成。"
+      "videoNoPrompt": "这个节点建得比视频生成早，没有提示词。新建一个视频节点就能生成。",
+      "firstFrame": "首帧",
+      "firstFrameTip": "挑一张图作为视频的第一帧",
+      "removeFirstFrame": "移除首帧",
+      "errorNoFirstFrame": "先挑一张首帧 —— 这个模式要从一张图开始生成"
     },
     "nodeMenu": {
       "generate": "生成",

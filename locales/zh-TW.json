@@ -205,7 +205,11 @@
       "videoParams": "參數",
       "videoPromptPlaceholder": "描述你想生成的影片",
       "videoMentionEmpty": "還沒有可引用的參考",
-      "videoNoPrompt": "這個節點建得比影片生成早，沒有提示詞。新建一個影片節點就能生成。"
+      "videoNoPrompt": "這個節點建得比影片生成早，沒有提示詞。新建一個影片節點就能生成。",
+      "firstFrame": "首幀",
+      "firstFrameTip": "挑一張圖作為影片的第一幀",
+      "removeFirstFrame": "移除首幀",
+      "errorNoFirstFrame": "先挑一張首幀 —— 這個模式要從一張圖開始生成"
     },
     "nodeMenu": {
       "generate": "生成",

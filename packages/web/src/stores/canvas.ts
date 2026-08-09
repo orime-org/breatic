@@ -186,6 +186,8 @@ interface CanvasState {
   startReferencePick: (nodeId: string) => void;
   /** Enter a STYLE pick (#1664, copies one image URL into the slot) for a generative node. */
   startStylePick: (nodeId: string) => void;
+  /** Enter the first-frame pick for a video node (#1896). */
+  startFirstFramePick: (nodeId: string) => void;
   /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
   startFocusPick: (nodeId: string) => void;
   /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
@@ -377,6 +379,10 @@ export const useCanvasStore = create<CanvasState>()(
     startStylePick: (nodeId) =>
       set((s) => {
         s.pickSession = { nodeId, purpose: 'style' };
+      }),
+    startFirstFramePick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'firstFrame' };
       }),
     startFocusPick: (nodeId) =>
       set((s) => {
