@@ -94,7 +94,7 @@ async function mountWithChip(): Promise<{
       onTextChange={vi.fn()}
       onAtMentionsChange={vi.fn()}
       references={[imgRef]}
-      mode='i2i'
+      imageRefsDisabled={false}
       mentionEmptyLabel='No references'
     />,
   );
@@ -256,7 +256,7 @@ async function mountWithTwoChips(): Promise<{
       onTextChange={vi.fn()}
       onAtMentionsChange={vi.fn()}
       references={[imgRef, chipRefB]}
-      mode='i2i'
+      imageRefsDisabled={false}
       mentionEmptyLabel='No references'
     />,
   );

@@ -673,6 +673,9 @@ function GeneratePanelBody({
   // switch re-creates the element and PromptEditor rebuilds with the new copy.
   const promptPlaceholder = t('canvas.generatePanel.promptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
+  // Text-to-image generates from scratch and ignores source images, so an
+  // image `@` chip contributes nothing and the editor greys it (§2.4 C).
+  const imageRefsOff = vm.mode === 't2i';
   const promptSlot = React.useMemo(
     () =>
       fragment ? (
@@ -683,7 +686,7 @@ function GeneratePanelBody({
           onTextChange={handlePromptChange}
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
-          mode={vm.mode}
+          imageRefsDisabled={imageRefsOff}
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
         />
@@ -695,7 +698,7 @@ function GeneratePanelBody({
       handlePromptChange,
       handleAtMentionsChange,
       stableReferences,
-      vm.mode,
+      imageRefsOff,
       caretProvider,
     ],
   );
