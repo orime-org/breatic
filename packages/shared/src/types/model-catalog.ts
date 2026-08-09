@@ -142,9 +142,16 @@ export function isImageGenerationMode(mode: string | string[]): boolean {
 
 /**
  * Video model `mode` values that make a model offerable in the video Generate
- * panel (#1896). A model qualifies when ANY of its modes is one of these, so
- * the image-to-video models — which carry `["i2v", "first_last"]` — qualify
- * through either.
+ * panel (#1896). A model qualifies when ANY of its modes is one of these, so a
+ * model tagged with several offerable modes qualifies through any of them.
+ *
+ * `first_last` is listed ahead of its config: no entry in
+ * `config/models/video/*.yaml` declares it today (the two image-to-video
+ * models are plain `mode: "i2v"`), so narrowing to it yields nothing. The
+ * first-last-frame slice adds it to the models that support an end frame, and
+ * must add it to the backend's per-mode source map at the same time — a mode
+ * missing from that map is treated as needing no source, which would switch
+ * the execute gate off for that model in every one of its modes.
  *
  * The line between this list and the mini-tool system is what the mode DOES,
  * not how hard it is: these six make a NEW video, while `extend` / `edit` /

@@ -248,8 +248,10 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(isVideoGenerationMode("upscale")).toBe(false);
     expect(isVideoGenerationMode("interpolate")).toBe(false);
 
-    // A model qualifies when ANY of its modes qualifies — the two image-to-video
-    // models gain `first_last` alongside `i2v`, so both spellings must hold.
+    // A model qualifies when ANY of its modes qualifies. No configured model
+    // carries two offerable video modes today, so this pins the rule on a
+    // pairing the first-last-frame slice is expected to create rather than on
+    // a shape the catalog already has.
     expect(isVideoGenerationMode(["i2v", "first_last"])).toBe(true);
     // ...but a model that only does mini-tool work never qualifies, however
     // many modes it lists.

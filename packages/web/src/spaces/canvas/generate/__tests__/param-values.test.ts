@@ -5,11 +5,12 @@
  * The options a parameter offers, read off whichever model is active (#1896).
  *
  * The image panel has always read these from a model's `values` list. Video
- * needs the same thing plus one more shape: two of the four model families
- * express duration as a RANGE (`kling` is 3 to 15 seconds, `seedance` 4 to 12)
- * rather than a list of allowed numbers. Left unhandled, the duration group
- * would find nothing to show and disappear for those models — the user could
- * not pick a duration at all, and the panel would give no hint why.
+ * needs the same thing plus one more shape: some models express duration as a
+ * RANGE rather than a list of allowed numbers — `kling-o3-pro` is 3 to 15
+ * seconds, and the image-to-video entries state theirs the same way. Left
+ * unhandled, the duration group would find nothing to show and disappear for
+ * those models — the user could not pick a duration at all, and the panel
+ * would give no hint why.
  *
  * Both panels share this reader. That is safe for the image side by evidence,
  * not by hope: `config/models/image/*.yaml` contains no `min:` at all, so every
@@ -81,8 +82,9 @@ describe('paramValues', () => {
   });
 
   it('expands a range one step per second', () => {
-    // Kling's duration. Without this the whole duration group vanishes for
-    // every Kling model.
+    // `kling-o3-pro`'s duration. Without this the whole duration group
+    // vanishes for it — and it is the only text-to-video model stating a
+    // range, so the group would be missing from exactly one of the five.
     const model = modelWith('duration', { min: 3, max: 15 });
     expect(paramValues(model, 'duration')).toEqual([
       3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
@@ -90,8 +92,8 @@ describe('paramValues', () => {
   });
 
   it('expands the other range family too', () => {
-    // Seedance's duration — a different span, so the expansion cannot be
-    // hardcoded to one model's numbers.
+    // A different span (`seedance-1.5-pro-i2v`'s 4 to 12), so the expansion
+    // cannot be hardcoded to one model's numbers.
     const model = modelWith('duration', { min: 4, max: 12 });
     expect(paramValues(model, 'duration')).toEqual([
       4, 5, 6, 7, 8, 9, 10, 11, 12,

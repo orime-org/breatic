@@ -10,9 +10,10 @@
  * reader that only understands the first makes the second's group vanish:
  *
  * - a `values` list (every image parameter, and video aspect ratio /
- *   resolution / audio)
- * - `min` + `max` bounds — how `kling` (3 to 15 seconds) and `seedance` (4 to
- *   12) express duration
+ *   resolution / audio; `seedance-2.0` states duration this way too, as
+ *   `[5, 10, 15]`)
+ * - `min` + `max` bounds — how `kling-o3-pro` states duration (3 to 15
+ *   seconds), and how the image-to-video entries state theirs
  *
  * Ranges expand one step per second, matching how the reference design lists
  * durations one by one (user 2026-08-08). Seconds are the unit these bounds
