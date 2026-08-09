@@ -18,13 +18,17 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-// `ai` is stubbed so this suite needs no API key and reaches no network.
-// `llm.ts` falls back to OpenRouter whenever no direct provider key is set,
-// so a suite that does call a model would otherwise issue a real request
-// from CI. This one does call a model: the three POSTs to /chat/message
-// below each run `agent.chat()`, which reaches `streamText`. Removing the
-// stub here would put a live request in CI, and every assertion would still
-// pass — so nothing but this comment would tell you.
+// `ai` is stubbed so this suite needs no API key and makes no provider
+// request. Without the stub, CI — which sets no key anywhere — would get an
+// AI_LoadAPIKeyError delivered as an `error` stream part: the stream still
+// ends cleanly and every assertion still passes, so the suite would quietly
+// stop covering what it appears to cover. A machine that does have a key
+// would issue a real request instead.
+//
+// This suite is one that does call a model: the three POSTs to /chat/message
+// below each run `agent.chat()`, which reaches `streamText`. So the stub here
+// is load-bearing, and nothing but this comment says so — every assertion
+// passes with or without it.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

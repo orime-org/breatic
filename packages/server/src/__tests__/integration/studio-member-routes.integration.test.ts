@@ -38,10 +38,12 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-// `ai` is stubbed so this suite needs no API key and reaches no network.
-// `llm.ts` falls back to OpenRouter whenever no direct provider key is set,
-// so a suite that does call a model would otherwise issue a real request
-// from CI.
+// `ai` is stubbed so this suite needs no API key and makes no provider
+// request. Without the stub, CI — which sets no key anywhere — would get an
+// AI_LoadAPIKeyError delivered as an `error` stream part: the stream still
+// ends cleanly and every assertion still passes, so the suite would quietly
+// stop covering what it appears to cover. A machine that does have a key
+// would issue a real request instead.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
@@ -65,8 +67,10 @@ import {
 import { studioMembersRepo } from "@breatic/domain";
 import type { Hono } from "hono";
 
-// integration-setup.ts injects the container URLs into process.env but cannot
-// call initCore itself (importing the core barrel pulls the `ai` SDK → otel).
+// integration-setup.ts injects the container URLs into process.env but
+// deliberately does not call initCore itself — a setup file runs for every
+// suite, so importing the core barrel there would pull the application into
+// every module graph.
 // Inject the validated config so every env-bound singleton (db / Redis) the
 // app touches resolves to the testcontainers. Guarded because the worker
 // process is shared (singleFork) with sibling suites that may have inited.

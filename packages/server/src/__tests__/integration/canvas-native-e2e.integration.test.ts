@@ -40,11 +40,15 @@ import type { Hocuspocus } from "@hocuspocus/server";
 
 // ── Mock `ai` BEFORE any other import ───────────────────────────────────────
 //
-// `ai` is stubbed so this suite needs no API key and reaches no network.
-// `llm.ts` falls back to OpenRouter whenever no direct provider key is set,
-// so a suite that does call a model would otherwise issue a real request
-// from CI. The four stubbed exports — generateText, streamText, stepCountIs
-// and tool — are the ones @breatic/core and the worker providers import.
+// `ai` is stubbed so this suite needs no API key and makes no provider
+// request. Without the stub, CI — which sets no key anywhere — would get an
+// AI_LoadAPIKeyError delivered as an `error` stream part: the stream still
+// ends cleanly and every assertion still passes, so the suite would quietly
+// stop covering what it appears to cover. A machine that does have a key
+// would issue a real request instead. Of the four stubbed exports,
+// @breatic/domain's agent modules import generateText, streamText and tool;
+// the worker providers import stepCountIs. @breatic/core imports none of
+// them — it does not reach the SDK at all.
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -54,7 +58,7 @@ vi.mock("ai", () => ({
     usage: Promise.resolve({ totalTokens: 0 }),
   }),
   stepCountIs: (_n: number) => () => false,
-  // tool() is used by @breatic/core/agent/tools/* — return a minimal stub
+  // tool() is used by @breatic/domain/agent/tools/* — return a minimal stub
   tool: (config: Record<string, unknown>) => config,
 }));
 

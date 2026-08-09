@@ -19,12 +19,15 @@
  *    postgres.js does not expose live pool stats, so this is the honest
  *    db signal: a drifted pool surfaces as `db_up 0` / failing queries.
  *
- * Pinned to prom-client v14, which has NO `@opentelemetry/api` dependency.
- * v15 added that dep (for exemplars), and `@opentelemetry/api@1.9.0`'s ESM
- * build breaks vitest's Node resolver (`baggage/utils` imported without an
- * extension) — which would cascade-fail every test that loads `createApp`.
- * Nothing else in the dependency graph imports that package, so v14 is what
- * keeps it that way.
+ * Pinned to prom-client v14, which has no `@opentelemetry/api` dependency;
+ * v15 added one, for exemplars. Nothing else in the graph depends on that
+ * package, so the pin is what keeps it out. Its ESM build does omit the .js
+ * extension on its own relative imports, which Node's native ESM resolver
+ * rejects — but Node never selects that build: the package's exports map
+ * declares `module` / `esnext` / `types` / `default` and no `import`
+ * condition, so a bare import lands on the CJS build and succeeds (measured
+ * with a linked copy: 30 exports). The pin therefore keeps a package out of
+ * the graph rather than avoiding a measured incompatibility.
  */
 
 import type { MiddlewareHandler } from "hono";

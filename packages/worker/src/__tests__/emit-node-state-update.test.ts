@@ -40,8 +40,8 @@ vi.mock("@breatic/core", () => ({
 // ── Mock @breatic/domain (AIGC business handlers/dispatch.ts calls) ──────────
 // PR4 moved task / credit / node-history / agent / canvas-lock here.
 // Mocked so loading handlers never pulls the real domain barrel (→ agent
-// llm → `ai` SDK → otel ESM chain, plus the MONOREPO_ROOT cascade back
-// into core). Only the symbols handlers/dispatch.ts imports at top level.
+// llm → the `ai` SDK, plus the MONOREPO_ROOT cascade back into core).
+// Only the symbols handlers/dispatch.ts imports at top level.
 vi.mock("@breatic/domain", () => ({
   taskService: {
     getByIdInternal: vi.fn(),
