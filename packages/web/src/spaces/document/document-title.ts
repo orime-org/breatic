@@ -166,7 +166,10 @@ function mergeFirstBodyBlock(
   const titleContentEnd = 1 + title.content.size;
   const tr = state.tr;
   tr.delete(title.nodeSize, title.nodeSize + first.nodeSize);
-  const text = first.textContent;
+  // A soft line break has no text of its own, so plain `textContent` would run
+  // the lines either side of it into one word. The title cannot hold the break
+  // — its content is text and nothing else — so a space is what it becomes.
+  const text = first.textBetween(0, first.content.size, undefined, ' ');
   if (text) tr.insert(titleContentEnd, state.schema.text(text));
   tr.setSelection(TextSelection.create(tr.doc, titleContentEnd));
   dispatch(tr.scrollIntoView());
@@ -200,15 +203,45 @@ function liftFirstBodyTextblock(
   const boundary = state.doc.child(0).nodeSize;
   const container = state.doc.child(1);
   const inside = Selection.findFrom(state.doc.resolve(boundary), 1);
-  // Nothing to lift unless the position found is INSIDE that first block. An
-  // atom at the front of the body (a divider) has no interior, and without
-  // this the search would run past it and lift a block the key never touched.
+  // `findFrom` searches the whole document forward, not just the block the key
+  // is aimed at, so a container with nothing selectable inside it would send it
+  // into a LATER block and lift one the press never touched. No node type in
+  // today's schema is like that — every container bottoms out in a textblock —
+  // and this comparison is what keeps that from having to be re-derived each
+  // time a type is added.
   if (!inside || inside.$from.pos >= boundary + container.nodeSize) return false;
   const range = inside.$from.blockRange(inside.$to);
   const target = range ? liftTarget(range) : null;
   if (!range || target === null) return false;
   if (!dispatch) return true;
   dispatch(state.tr.lift(range, target).scrollIntoView());
+  return true;
+}
+
+/**
+ * Remove a body-leading block that has no interior at all — a divider.
+ *
+ * There is no text to fold into the title and nothing inside to lift out, so
+ * without this the press lands on nothing and the key is dead at this boundary
+ * for as long as that block is there. Removing it is what the body does with
+ * the same press: caret at the end of a paragraph, a divider next, Delete, and
+ * the divider goes. Measured on this build.
+ * @param state - Current editor state.
+ * @param dispatch - Applies the transaction.
+ * @returns True when this handled the key.
+ */
+function removeLeadingLeafBlock(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
+  if (state.doc.childCount < 2) return false;
+  const boundary = state.doc.child(0).nodeSize;
+  const first = state.doc.child(1);
+  if (!first.isLeaf) return false;
+  if (!dispatch) return true;
+  dispatch(
+    state.tr.delete(boundary, boundary + first.nodeSize).scrollIntoView(),
+  );
   return true;
 }
 
@@ -239,9 +272,11 @@ const mergeBodyStartIntoTitle: Command = (state, dispatch) => {
  * Same join as the Backspace above, reached from the other side — and where
  * that one can decline and leave the key to the editor's own chain, this one
  * cannot: the caret is inside the isolating title, so every default handler
- * stops at the boundary and the press would do nothing whatsoever. A first body
- * block that cannot be folded in therefore gets its first textblock lifted out
- * instead, which is what this same press does everywhere else in the body.
+ * stops at the boundary and the press would do nothing whatsoever. Every shape
+ * the first body block can take therefore needs an answer here, and the three
+ * below are exhaustive over the schema: a block either holds text directly, or
+ * holds no content at all, or holds other blocks. Each answers the way the body
+ * answers the same press.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction.
  * @returns True when this handled the key.
@@ -252,6 +287,7 @@ const pullBodyIntoTitleEnd: Command = (state, dispatch) => {
   if ($from.parentOffset !== $from.parent.content.size) return false;
   return (
     mergeFirstBodyBlock(state, dispatch) ||
+    removeLeadingLeafBlock(state, dispatch) ||
     liftFirstBodyTextblock(state, dispatch)
   );
 };

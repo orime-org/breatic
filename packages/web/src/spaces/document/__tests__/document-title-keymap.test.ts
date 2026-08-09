@@ -283,6 +283,53 @@ describe('when the body’s first block is not a plain textblock', () => {
     expect(editor.state.doc.child(0).textContent).toBe('ABsection');
     expect(editor.state.doc.childCount).toBe(1);
   });
+
+  it('a divider, having no interior at all, is removed', () => {
+    // Measured in the body on this build: caret at the end of a paragraph
+    // followed by a divider, Delete pressed, and the divider goes. There is
+    // nothing to fold in and nothing to lift out, so removing it is the only
+    // reading of the key that leaves it doing anything at all.
+    const { editor } = open('AB', '<hr><p>after</p>');
+    editor.commands.setTextSelection(1 + 2);
+    press(editor, 'Delete');
+
+    expect(editor.state.doc.child(0).textContent).toBe('AB');
+    expect(editor.state.doc.childCount).toBe(2);
+    expect(editor.state.doc.child(1).type.name).toBe('paragraph');
+    expect(editor.state.doc.child(1).textContent).toBe('after');
+  });
+
+  it('a divider that is the only body block goes too, leaving the title alone', () => {
+    const { body, editor } = open('AB', '<hr>');
+    editor.commands.setTextSelection(1 + 2);
+    press(editor, 'Delete');
+
+    expect(editor.state.doc.childCount).toBe(1);
+    expect(editor.state.doc.child(0).type.name).toBe('title');
+    expect(body.length).toBe(1);
+  });
+});
+
+describe('a soft line break in the block being merged', () => {
+  it('becomes a space rather than vanishing', () => {
+    // The title holds text and nothing else, so a line break cannot survive the
+    // merge — but dropping it silently runs the two lines into one word. The
+    // body keeps the break outright when merging paragraph into paragraph, so
+    // losing the word boundary as well is ours alone.
+    const { editor } = open('AB', '<p>one<br>two</p>');
+    editor.commands.setTextSelection(1 + 2);
+    press(editor, 'Delete');
+
+    expect(editor.state.doc.child(0).textContent).toBe('ABone two');
+  });
+
+  it('the same from the Backspace side', () => {
+    const { editor } = open('AB', '<p>one<br>two</p>');
+    editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
+    press(editor, 'Backspace');
+
+    expect(editor.state.doc.child(0).textContent).toBe('ABone two');
+  });
 });
 
 describe('a selection that spans the boundary', () => {
