@@ -90,7 +90,8 @@
       "yesterday": "어제",
       "daysAgo": "{count, plural, one {#일 전} other {#일 전}}",
       "weeksAgo": "{count, plural, one {#주 전} other {#주 전}}",
-      "monthsAgo": "{count, plural, one {#개월 전} other {#개월 전}}"
+      "monthsAgo": "{count, plural, one {#개월 전} other {#개월 전}}",
+      "isoDate": "{date}"
     }
   },
   "canvas": {

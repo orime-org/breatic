@@ -90,7 +90,8 @@
       "yesterday": "昨日",
       "daysAgo": "{count, plural, other {# 日前}}",
       "weeksAgo": "{count, plural, other {# 週間前}}",
-      "monthsAgo": "{count, plural, other {# ヶ月前}}"
+      "monthsAgo": "{count, plural, other {# ヶ月前}}",
+      "isoDate": "{date}"
     }
   },
   "canvas": {
