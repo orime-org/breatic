@@ -48,6 +48,33 @@ export interface VideoPanelViewModel {
   creditEstimate: number;
   /** The target node's display status — gates execute (no submit while handling). */
   nodeStatus: string | undefined;
+  /**
+   * Whether the active mode needs a source asset — read off the model's
+   * precomputed `sourcesByMode` (backend-computed, on the wire), never
+   * re-derived here. `t2v` is `[]`; `i2v` is `["image"]`. No model resolved
+   * (empty catalog) means no gate: a requirement the user cannot satisfy is
+   * worse than none, and the model gate already stops that submit.
+   */
+  requiresSource: boolean;
+  /** The picked first-frame image (pick-time copy), or undefined when empty. */
+  firstFrameUrl: string | undefined;
+}
+
+/**
+ * The mode a video node's panel opens in.
+ *
+ * The node stores ONE `mode` field, shared with the image panel's own mode set
+ * (a node can only ever be one modality, so they never collide in practice) —
+ * but a value this panel does not offer must not be honoured: opening on `t2i`
+ * or on a mini-tool video mode would narrow the model list to nothing and
+ * leave the panel with no model to submit.
+ * @param stored - The node's stored `mode`, if any.
+ * @returns The stored mode when this panel offers it, else text-to-video.
+ */
+export function resolveVideoMode(stored: string | undefined): VideoGenMode {
+  return VIDEO_GENERATION_MODES.includes(stored as VideoGenMode)
+    ? (stored as VideoGenMode)
+    : 't2v';
 }
 
 /**
@@ -128,5 +155,11 @@ export function buildVideoPanelViewModel(input: {
     // model); when current is found, cost_per_call is a trusted number.
     creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
+    // Execute gate (#1675, cross-modality): the ACTIVE PANEL MODE decides what
+    // the submission needs, and the model carries the answer precomputed. The
+    // rule itself lives backend-side (domain/source-requirement.ts); the panel
+    // only reads the wire field.
+    requiresSource: current ? (current.sourcesByMode[mode]?.length ?? 0) > 0 : false,
+    firstFrameUrl: content?.firstFrameUrl,
   };
 }

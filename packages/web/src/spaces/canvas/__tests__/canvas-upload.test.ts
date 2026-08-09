@@ -923,6 +923,28 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     expect(assetUrlSurvives(url('ghost'), nodes)).toBe(false);
   });
 
+  it('assetUrlSurvives sees the first-frame slot too (#1896 slice 2)', () => {
+    // The video panel's first frame is a pick-time COPY held on the node, the
+    // same shape as the style slot — and the survival set is a hand-kept list,
+    // so a new slot does NOT get counted just by looking like an existing one.
+    // Missing here, deleting the node the frame was picked FROM reports an
+    // asset that is still in use.
+    const nodes = [{ id: 'v', data: { firstFrameUrl: url('ff') } }];
+    expect(assetUrlSurvives(url('ff'), nodes)).toBe(true);
+  });
+
+  it('does not report a first frame still held by a surviving video node', () => {
+    // Delete the image the frame was picked from: the copy on the video node
+    // keeps that asset alive, so nothing may be reported.
+    const shared = url('picked');
+    const deleted = [{ id: 'img', type: 'image', data: { content: shared } }];
+    const all = [
+      { id: 'img', type: 'image', data: { content: shared } },
+      { id: 'vid', type: 'video', data: { firstFrameUrl: shared } },
+    ];
+    expect(computeDeletedAssetEntries(deleted, all, 'sp-1')).toEqual([]);
+  });
+
   it('does NOT report a URL still referenced by a surviving node (pasted duplicate)', () => {
     const shared = url('shared');
     const deleted = [{ id: 'a', type: 'image', data: { content: shared } }];

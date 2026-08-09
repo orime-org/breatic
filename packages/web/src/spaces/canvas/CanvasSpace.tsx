@@ -40,6 +40,7 @@ import {
   type NodeHistoryEntry,
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
+import { pickedSlotImageUrl } from '@web/spaces/canvas/generate/slot-pick';
 import {
   FocusCropOverlay,
   handOffFocusToPickBanner,
@@ -51,6 +52,7 @@ import {
   addEdge,
   addNodeFocusImage,
   addNode,
+  setNodeFirstFrame,
   setNodeStyleImage,
   createGroup,
   expandGroup,
@@ -1657,6 +1659,26 @@ function CanvasSpaceInner({
         return;
       }
 
+      if (session.purpose === 'firstFrame') {
+        // First frame (#1896): COPY the clicked image's URL onto the video
+        // node, same terms as Style — a pick-time snapshot with no
+        // relationship to the source, so deleting or regenerating that node
+        // never changes what this video generates from. `pickedSlotImageUrl`
+        // is the one predicate both slots share; a click it refuses is a
+        // no-op (dimming already says so, this backstops an insisting click).
+        //
+        // This branch must come BEFORE the reference fallthrough at the end:
+        // `purpose` carries no exhaustive check, so a missing branch does not
+        // fail the build — it silently wires an EDGE instead of filling the
+        // slot.
+        const picked = pickedSlotImageUrl({ type: node.type, data: node.data });
+        if (picked === null) return;
+        setNodeFirstFrame(projectId, spaceId, target, picked);
+        // One slot, one pick — the session completes on selection.
+        endPick();
+        return;
+      }
+
       if (session.purpose === 'style') {
         // Copy semantics (#1664, user decision 2026-07-16): snapshot the
         // clicked image's asset URL onto the target node — NO relationship to
@@ -3186,9 +3208,14 @@ function CanvasSpaceInner({
         };
       });
 
-    if (pickSession.purpose === 'style' || pickSession.purpose === 'focus') {
-      // Style and Focus share the candidate rule: any non-empty image node
-      // except the pick target itself (#1664 / #1782). Focus additionally
+    if (
+      pickSession.purpose === 'style' ||
+      pickSession.purpose === 'focus' ||
+      pickSession.purpose === 'firstFrame'
+    ) {
+      // Style, Focus and First frame share the candidate rule: any non-empty
+      // image node except the pick target itself (#1664 / #1782 / #1896).
+      // Focus additionally
       // needs a RENDERED <img> to anchor the marquee, so a handling / error
       // node (skeleton / error box, no img) is not a candidate (round-4:
       // clicking one was a silent no-op).

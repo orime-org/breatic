@@ -8,6 +8,7 @@ import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 import {
   buildVideoPanelViewModel,
+  resolveVideoMode,
   selectVideoModeModels,
 } from '@web/spaces/canvas/generate/video-panel-view-model';
 
@@ -287,5 +288,65 @@ describe('buildVideoPanelViewModel', () => {
     expect(vm.model).toBe('');
     expect(vm.creditEstimate).toBe(0);
     expect(vm.params).toEqual({});
+  });
+});
+
+describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () => {
+  const models = [
+    makeModel('veo-3.1', { mode: 't2v' }),
+    makeModel('kling-o3-pro-i2v', { mode: 'i2v' }),
+  ];
+
+  it('reads whether the active mode needs a source off the wire, not a local rule', () => {
+    // `sourcesByMode` is computed backend-side (domain/source-requirement.ts)
+    // and ships on the catalog entry, so the panel never re-derives the rule.
+    // Text-to-video needs nothing; image-to-video needs an image.
+    const nodes = [node('n1', videoView())];
+    expect(
+      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 't2v' })
+        .requiresSource,
+    ).toBe(false);
+    expect(
+      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'i2v' })
+        .requiresSource,
+    ).toBe(true);
+  });
+
+  it('says no source is required when no model resolves', () => {
+    // An empty catalog leaves no model to read the requirement off. Claiming a
+    // source IS required would block execute for a reason the user cannot act
+    // on; the model gate already stops the submit.
+    const nodes = [node('n1', videoView())];
+    expect(
+      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models: [], mode: 'i2v' })
+        .requiresSource,
+    ).toBe(false);
+  });
+
+  it('carries the picked first frame through from node data', () => {
+    const nodes = [node('n1', videoView({ firstFrameUrl: 'https://cdn/f.png' }))];
+    expect(
+      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'i2v' })
+        .firstFrameUrl,
+    ).toBe('https://cdn/f.png');
+  });
+
+  it('leaves the first frame undefined when the node has none', () => {
+    const nodes = [node('n1', videoView())];
+    expect(
+      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'i2v' })
+        .firstFrameUrl,
+    ).toBeUndefined();
+  });
+
+  it('reads the stored mode off the node, defaulting to text-to-video', () => {
+    // The node stores ONE `mode` field shared with the image panel's own mode
+    // set, so a video node opened for the first time has none — and a value
+    // this panel does not offer (an image mode, or a mini-tool video mode)
+    // must not be honoured either.
+    expect(resolveVideoMode(undefined)).toBe('t2v');
+    expect(resolveVideoMode('i2v')).toBe('i2v');
+    expect(resolveVideoMode('t2i')).toBe('t2v');
+    expect(resolveVideoMode('upscale')).toBe('t2v');
   });
 });
