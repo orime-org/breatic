@@ -2,6 +2,41 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { fetchEventSource } from '@microsoft/fetch-event-source';
+import { getLocale, t } from '@breatic/shared';
+
+/** What the server sends when it answers instead of streaming. */
+const EVENT_STREAM = 'text/event-stream';
+
+/**
+ * Decide what a non-streaming response means for the caller.
+ *
+ * The library's own `defaultOnOpen` looks at `content-type` and throws a
+ * hardcoded English Error without reading the body — so the localised
+ * `{error:{code,message}}` the server produced for a rejected body was being
+ * discarded unread, and the user saw "Expected content-type to be
+ * text/event-stream" instead of what was actually wrong.
+ * @param response - The response that opened the stream.
+ * @throws {Error} When the response is not a stream, carrying the server's
+ *   own message when it sent one.
+ */
+async function readEnvelopeOrOpen(response: Response): Promise<void> {
+  const contentType = response.headers.get('content-type');
+  if (contentType?.startsWith(EVENT_STREAM)) return;
+
+  let message: string | undefined;
+  try {
+    const body = (await response.json()) as
+      | { error?: { message?: string } }
+      | undefined;
+    message = body?.error?.message;
+  } catch {
+    // A proxy answering with plain text, or a truncated body — there is
+    // nothing of ours to read, so fall through to the generic message.
+  }
+  // Never the library's string: it is hardcoded English and names transport
+  // details the user has no use for.
+  throw new Error(message ?? t('server.error.internal'));
+}
 
 interface SseOptions<TEvent> {
   /** Endpoint relative to `/api` (or absolute URL). */
@@ -62,11 +97,16 @@ export async function sseStream<TEvent>({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        // This wrapper does not go through the axios instance, so the header
+        // that instance adds is not here — without it the server negotiates
+        // from the browser's language rather than the one the user picked.
+        'Accept-Language': getLocale(),
       },
       credentials: 'include',
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal,
       openWhenHidden: true,
+      onopen: readEnvelopeOrOpen,
       onmessage(msg) {
         if (!msg.data) return;
         const parsed = parseEvent(msg.data);
