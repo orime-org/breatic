@@ -35,9 +35,9 @@ vi.mock("@server/modules/activity/projectActivity.service.js", () => ({
 }));
 
 // `db` (transaction), `projectMembersRepo` and the error classes all come from
-// `@breatic/core`. The whole barrel is mocked — not spread from actual —
-// because importing the real one pulls the `ai` SDK and opentelemetry deps
-// vitest's ESM resolver chokes on. `db.transaction` runs its callback inline so
+// `@breatic/core`. The whole barrel is replaced so each of those is under the
+// test's control and no real database connection is ever opened.
+// `db.transaction` runs its callback inline so
 // the transactional paths execute without a PG connection. The error classes
 // are defined in the factory so the service's `throw` and the test's
 // `toBeInstanceOf` share one constructor.

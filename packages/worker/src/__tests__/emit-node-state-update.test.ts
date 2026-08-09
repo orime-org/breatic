@@ -15,9 +15,9 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
 // ── Mock @breatic/core ──────────────────────────────────────────────
-// Use a hoisted mock so the actual module (which depends on opentelemetry,
-// ioredis, etc.) is never loaded. Only the symbols that handlers/dispatch.ts
-// actually needs at import time are declared here.
+// Use a hoisted mock so the actual module (which reaches ioredis, postgres
+// and the rest of the infrastructure) is never loaded. Only the symbols that
+// handlers/dispatch.ts actually needs at import time are declared here.
 const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", () => ({

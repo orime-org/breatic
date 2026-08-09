@@ -41,16 +41,14 @@ import { resolve } from "node:path";
 // config reader). Two pieces make that work under vitest:
 // 1. alias @breatic/domain → its SOURCE entry, so tests never depend on a
 //    stale dist build and the whole chain goes through vite's resolver;
-// 2. inline the Vercel AI SDK + @opentelemetry (domain's agent chain):
-//    @opentelemetry/api's ESM build uses extensionless relative imports
-//    (`./baggage/utils`), which Node's native ESM loader rejects when the
-//    package is externalized. Inlining routes it through vite instead.
+// 2. inline the Vercel AI SDK (domain's agent chain), so the whole chain is
+//    transformed by vite rather than loaded as native Node ESM externals.
 export default defineConfig({
   test: {
     testTimeout: 15_000,
     server: {
       deps: {
-        inline: [/@opentelemetry/, /node_modules\/ai\//, /@ai-sdk\//, /@breatic\/domain/],
+        inline: [/node_modules\/ai\//, /@ai-sdk\//, /@breatic\/domain/],
       },
     },
     pool: "forks",

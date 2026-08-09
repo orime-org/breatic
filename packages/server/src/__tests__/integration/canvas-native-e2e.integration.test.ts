@@ -40,14 +40,11 @@ import type { Hocuspocus } from "@hocuspocus/server";
 
 // ── Mock `ai` BEFORE any other import ───────────────────────────────────────
 //
-// This suite never reaches a model, so `ai` is stubbed to keep the SDK out of
-// its module graph. It used to say the stub was load-bearing — that `ai`
-// pulled in @opentelemetry/api, whose ESM build Node rejects. AI SDK 7 does
-// not depend on that package at all (v6 did) and both versions import cleanly
-// under Node ESM, so this is a choice, not a necessity. We only
-// need generateText, streamText, stepCountIs, and tool — used by @breatic/core
-// and worker providers — but our tests only exercise the mini-tool path where
-// runLocalHandler is mocked. Providing stubs is sufficient; they are never called.
+// `ai` is stubbed so this suite needs no API key and reaches no network.
+// `llm.ts` falls back to OpenRouter whenever no direct provider key is set,
+// so a suite that does call a model would otherwise issue a real request
+// from CI. The four stubbed exports — generateText, streamText, stepCountIs
+// and tool — are the ones @breatic/core and the worker providers import.
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),

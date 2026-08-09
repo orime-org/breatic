@@ -20,11 +20,11 @@
  *    db signal: a drifted pool surfaces as `db_up 0` / failing queries.
  *
  * Pinned to prom-client v14, which has NO `@opentelemetry/api` dependency.
- * v15 added that dep (for exemplars), and its ESM build breaks vitest's
- * Node resolver (`baggage/utils` imported without an extension) — which
- * would cascade-fail every test that loads `createApp`. v14 keeps the
- * metrics path otel-free, matching the unit tests that deliberately mock
- * `ai` to avoid loading otel at all.
+ * v15 added that dep (for exemplars), and `@opentelemetry/api@1.9.0`'s ESM
+ * build breaks vitest's Node resolver (`baggage/utils` imported without an
+ * extension) — which would cascade-fail every test that loads `createApp`.
+ * Nothing else in the dependency graph imports that package, so v14 is what
+ * keeps it that way.
  */
 
 import type { MiddlewareHandler } from "hono";

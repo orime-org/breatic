@@ -48,8 +48,10 @@ import {
 } from "vitest";
 
 // `assetUpload.service` reaches @breatic/domain, whose barrel pulls in the AI
-// SDK (and transitively an OpenTelemetry build vitest cannot resolve). Stub it
-// exactly as the sibling integration suites do — nothing here calls a model.
+// SDK. `ai` is stubbed so this suite needs no API key and reaches no network:
+// `llm.ts` falls back to OpenRouter whenever no direct provider key is set,
+// so a suite that does call a model would otherwise issue a real request
+// from CI.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

@@ -16,8 +16,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // project.service imports @breatic/domain (studioAuthService), whose barrel
-// pulls agent/llm → the `ai` SDK → @opentelemetry/api (ESM Node rejects). This
-// suite never calls any ai function; the stub keeps that chain from loading.
+// reaches agent/llm and therefore the `ai` SDK. `ai` is stubbed so this suite
+// needs no API key and reaches no network: `llm.ts` falls back to OpenRouter
+// whenever no direct provider key is set, so a suite that does call a model
+// would otherwise issue a real request from CI.
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(),
