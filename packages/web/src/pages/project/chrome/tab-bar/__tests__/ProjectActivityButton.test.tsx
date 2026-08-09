@@ -24,7 +24,9 @@ import {
   relativeTime,
   entryMessage,
   entryMedia,
+  type RelativeTime,
 } from '@web/pages/project/chrome/tab-bar/ProjectActivityButton';
+import { expectEveryLocaleRenders } from '@web/test-utils/i18n-keys';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores/ui';
 
@@ -370,14 +372,52 @@ describe('activity feed: failure icon + trigger icon (#1820 polish)', () => {
 });
 
 describe('relativeTime', () => {
+  const NOW = 1_780_900_000_000;
+
   it('buckets minutes / hours / days', () => {
-    const now = 1_780_900_000_000;
-    expect(relativeTime(now - 30_000, now).key).toBe('activity.relative.justNow');
-    expect(relativeTime(now - 5 * 60_000, now)).toEqual({
+    expect(relativeTime(NOW - 30_000, NOW).key).toBe('activity.relative.justNow');
+    expect(relativeTime(NOW - 5 * 60_000, NOW)).toEqual({
       key: 'activity.relative.minutesAgo',
       params: { count: 5 },
     });
-    expect(relativeTime(now - 3 * 3_600_000, now).key).toBe('activity.relative.hoursAgo');
-    expect(relativeTime(now - 3 * 86_400_000, now).key).toBe('activity.relative.daysAgo');
+    expect(relativeTime(NOW - 3 * 3_600_000, NOW).key).toBe('activity.relative.hoursAgo');
+    expect(relativeTime(NOW - 3 * 86_400_000, NOW).key).toBe('activity.relative.daysAgo');
+  });
+
+  // The same guard the conversation list carries, for the same reason: this
+  // function hands its caller a key as data, and nothing static can see keys
+  // that never appear inside a `t("literal")` call. The chat copy of this
+  // function shipped naming `chat.relative.isoDate` with no catalog answering
+  // it; these keys all resolve today, and this is what says so tomorrow.
+  it('renders to real text in every locale, in every branch', () => {
+    const EVERY_KEY: Record<RelativeTime['key'], true> = {
+      'activity.relative.justNow': true,
+      'activity.relative.minutesAgo': true,
+      'activity.relative.hoursAgo': true,
+      'activity.relative.yesterday': true,
+      'activity.relative.daysAgo': true,
+      'activity.relative.weeksAgo': true,
+      'activity.relative.monthsAgo': true,
+      'activity.relative.isoDate': true,
+    };
+    const branches = [
+      relativeTime(NOW - 30_000, NOW),
+      relativeTime(NOW - 5 * 60_000, NOW),
+      relativeTime(NOW - 3 * 3_600_000, NOW),
+      relativeTime(NOW - 26 * 3_600_000, NOW),
+      relativeTime(NOW - 3 * 86_400_000, NOW),
+      relativeTime(NOW - 10 * 86_400_000, NOW),
+      relativeTime(NOW - 60 * 86_400_000, NOW),
+      relativeTime(NOW - 400 * 86_400_000, NOW),
+      // Nine return sites, eight keys: this one and the 400-day case both name
+      // `isoDate`, with different params. Walking only one of them would leave
+      // the other free to name a param the catalogs do not carry.
+      relativeTime(Number.NaN, NOW),
+    ];
+    expect(new Set(branches.map((b) => b.key))).toEqual(
+      new Set(Object.keys(EVERY_KEY)),
+    );
+
+    expectEveryLocaleRenders(branches);
   });
 });
