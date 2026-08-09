@@ -9,8 +9,10 @@ import {
   ConversationHistorySheet,
   relativeTime,
   type ConversationSummary,
+  type RelativeTime,
 } from '@web/pages/project/chat/ConversationHistorySheet';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import { expectEveryLocaleRenders } from '@web/test-utils/i18n-keys';
 
 const CONVS: ConversationSummary[] = [
   {
@@ -54,6 +56,48 @@ describe('relativeTime', () => {
     expect(
       relativeTime(new Date(NOW - 3 * 86_400_000).toISOString(), NOW),
     ).toEqual({ key: 'chat.relative.daysAgo', params: { count: 3 } });
+  });
+
+  // Every branch, including the two that name `isoDate` — the one past a year
+  // and the one for a timestamp that will not parse. Those two shipped naming
+  // a key no catalog had. Nobody read `chat.relative.isoDate` off a screen,
+  // because nothing feeds this sheet yet: ProjectPage renders ChatPanel with
+  // no `conversations`, so the list is always empty and this function is never
+  // called in the product. A latent miss, waiting for that wiring.
+  it('renders to real text in every locale, in every branch', () => {
+    // One entry per member of `RelativeTime['key']`. Widening that union
+    // without adding the key here is a type error, which is the only
+    // mechanical tie between the branches this test walks and the branches the
+    // function can take — a hand-written count of distinct keys cannot notice
+    // a ninth one arriving.
+    const EVERY_KEY: Record<RelativeTime['key'], true> = {
+      'chat.relative.justNow': true,
+      'chat.relative.minutesAgo': true,
+      'chat.relative.hoursAgo': true,
+      'chat.relative.yesterday': true,
+      'chat.relative.daysAgo': true,
+      'chat.relative.weeksAgo': true,
+      'chat.relative.monthsAgo': true,
+      'chat.relative.isoDate': true,
+    };
+    const branches = [
+      relativeTime(new Date(NOW - 30_000).toISOString(), NOW),
+      relativeTime(new Date(NOW - 5 * 60_000).toISOString(), NOW),
+      relativeTime(new Date(NOW - 3 * 3_600_000).toISOString(), NOW),
+      relativeTime(new Date(NOW - 26 * 3_600_000).toISOString(), NOW),
+      relativeTime(new Date(NOW - 3 * 86_400_000).toISOString(), NOW),
+      relativeTime(new Date(NOW - 10 * 86_400_000).toISOString(), NOW),
+      relativeTime(new Date(NOW - 60 * 86_400_000).toISOString(), NOW),
+      relativeTime(new Date(NOW - 400 * 86_400_000).toISOString(), NOW),
+      relativeTime('not a timestamp', NOW),
+    ];
+    // The list above is only as good as its coverage of the branches, so pin
+    // that it does reach every key the return type allows.
+    expect(new Set(branches.map((b) => b.key))).toEqual(
+      new Set(Object.keys(EVERY_KEY)),
+    );
+
+    expectEveryLocaleRenders(branches);
   });
 });
 

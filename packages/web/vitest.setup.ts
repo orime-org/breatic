@@ -33,19 +33,21 @@ import { cleanup } from '@testing-library/react';
 import { onlineManager } from '@tanstack/react-query';
 import { setLocale, setLocaleMessages } from '@breatic/shared';
 
-import en from '../../locales/en.json';
-import zhCN from '../../locales/zh-CN.json';
-import zhTW from '../../locales/zh-TW.json';
-import ja from '../../locales/ja.json';
+import { LOCALE_CATALOGS } from '@web/test-utils/locale-catalogs';
 
-// Register all four locale catalogs once so components rendered via
-// `useTranslation` return real strings in tests. Default to English —
-// suites that exercise localization explicitly call setLocale().
+// Register every locale we ship, once, so components rendered through
+// `useTranslation` return real strings in tests. Default to English — suites
+// that exercise localization call setLocale() themselves.
+//
+// Driven off LOCALE_CATALOGS rather than a list written out here, because a
+// list written out here is a list that gets missed: this file named four of
+// the five and never registered `ko`, so anything rendered under
+// `setLocale('ko')` quietly fell back to English and passed for the wrong
+// reason. The next locale we add should not need anyone to remember this file.
 beforeAll(() => {
-  setLocaleMessages('en', en as Record<string, unknown>);
-  setLocaleMessages('zh-CN', zhCN as Record<string, unknown>);
-  setLocaleMessages('zh-TW', zhTW as Record<string, unknown>);
-  setLocaleMessages('ja', ja as Record<string, unknown>);
+  for (const [tag, catalog] of LOCALE_CATALOGS) {
+    setLocaleMessages(tag, catalog as Record<string, unknown>);
+  }
   setLocale('en');
 });
 

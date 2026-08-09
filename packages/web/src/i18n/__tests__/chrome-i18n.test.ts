@@ -6,20 +6,16 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import en from '../../../../../locales/en.json';
-import zhCN from '../../../../../locales/zh-CN.json';
-import zhTW from '../../../../../locales/zh-TW.json';
-import ja from '../../../../../locales/ja.json';
-import ko from '../../../../../locales/ko.json';
+import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
-/**
- * Project-chrome i18n (#1339): every icon-button / menu aria-label must
- * resolve through i18n instead of being hardcoded English, so a
- * non-English screen-reader user is announced the UI in their own
- * language. Frozen product nouns (Studio / Space) stay English inside the
- * translated phrase ("返回 Studio").
- */
-const CATALOGS = { en, 'zh-CN': zhCN, 'zh-TW': zhTW, ja, ko } as const;
+/** The catalogs this suite asserts about one at a time. */
+const BY_TAG = new Map(LOCALE_CATALOGS);
+
+// Project-chrome i18n (#1339): every icon-button / menu aria-label must
+// resolve through i18n instead of being hardcoded English, so a non-English
+// screen-reader user is announced the UI in their own language. Frozen product
+// nouns (Studio / Space) stay English inside the translated phrase
+// ("返回 Studio").
 
 /** Every new chrome i18n key paired with its English value (existence + en). */
 const NEW_KEYS_EN: ReadonlyArray<readonly [string, string]> = [
@@ -46,24 +42,6 @@ const TRANSLATED_ZH_CN: ReadonlyArray<readonly [string, string]> = [
   ['spaces.lockedAria', '已锁定'],
 ];
 
-/**
- * Resolve a dotted key path against a parsed locale object.
- * @param catalog - Parsed locale JSON.
- * @param path - Dotted key path.
- * @returns The value at the path, or undefined if missing.
- */
-function readPath(catalog: unknown, path: string): unknown {
-  return path
-    .split('.')
-    .reduce<unknown>(
-      (node, seg) =>
-        node && typeof node === 'object'
-          ? (node as Record<string, unknown>)[seg]
-          : undefined,
-      catalog,
-    );
-}
-
 /** Chrome source files whose aria-labels were de-hardcoded by #1339. */
 const SCANNED_FILES: readonly string[] = [
   'src/pages/project/chrome/top-bar/TopBar.tsx',
@@ -89,7 +67,7 @@ const TERNARY_PHRASES: readonly string[] = [
 
 describe('project-chrome i18n (#1339)', () => {
   describe('new keys exist in every locale', () => {
-    for (const [locale, catalog] of Object.entries(CATALOGS)) {
+    for (const [locale, catalog] of LOCALE_CATALOGS) {
       for (const [key] of NEW_KEYS_EN) {
         it(`${locale}: ${key} present`, () => {
           const v = readPath(catalog, key);
@@ -103,7 +81,7 @@ describe('project-chrome i18n (#1339)', () => {
   describe('English values are the original strings', () => {
     for (const [key, value] of NEW_KEYS_EN) {
       it(`en: ${key} → "${value}"`, () => {
-        expect(readPath(en, key)).toBe(value);
+        expect(readPath(BY_TAG.get('en'), key)).toBe(value);
       });
     }
   });
@@ -111,13 +89,13 @@ describe('project-chrome i18n (#1339)', () => {
   describe('action labels are actually translated (zh-CN ≠ English)', () => {
     for (const [key, zh] of TRANSLATED_ZH_CN) {
       it(`zh-CN: ${key} → "${zh}"`, () => {
-        expect(readPath(zhCN, key)).toBe(zh);
+        expect(readPath(BY_TAG.get('zh-CN'), key)).toBe(zh);
       });
     }
   });
 
   it('frozen noun aria stays English in every locale (Spaces)', () => {
-    for (const catalog of Object.values(CATALOGS)) {
+    for (const [, catalog] of LOCALE_CATALOGS) {
       expect(readPath(catalog, 'chrome.aria.spacesToolbar')).toBe('Spaces');
     }
   });
