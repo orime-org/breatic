@@ -6,11 +6,10 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import {
-  LOCALE_CATALOGS,
-  catalogFor,
-  readPath,
-} from '@web/test-utils/locale-catalogs';
+import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
+
+/** The catalogs this suite asserts about one at a time. */
+const BY_TAG = new Map(LOCALE_CATALOGS);
 
 // Project-chrome i18n (#1339): every icon-button / menu aria-label must
 // resolve through i18n instead of being hardcoded English, so a non-English
@@ -82,7 +81,7 @@ describe('project-chrome i18n (#1339)', () => {
   describe('English values are the original strings', () => {
     for (const [key, value] of NEW_KEYS_EN) {
       it(`en: ${key} → "${value}"`, () => {
-        expect(readPath(catalogFor('en'), key)).toBe(value);
+        expect(readPath(BY_TAG.get('en'), key)).toBe(value);
       });
     }
   });
@@ -90,7 +89,7 @@ describe('project-chrome i18n (#1339)', () => {
   describe('action labels are actually translated (zh-CN ≠ English)', () => {
     for (const [key, zh] of TRANSLATED_ZH_CN) {
       it(`zh-CN: ${key} → "${zh}"`, () => {
-        expect(readPath(catalogFor('zh-CN'), key)).toBe(zh);
+        expect(readPath(BY_TAG.get('zh-CN'), key)).toBe(zh);
       });
     }
   });

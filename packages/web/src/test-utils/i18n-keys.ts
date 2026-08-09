@@ -67,7 +67,14 @@ export function expectEveryLocaleRenders(
           );
           continue;
         }
-        if (rendered.trim() === '') problems.push(`${tag}: ${branch.key} — empty`);
+        // `t()` echoes the key back when nothing resolves, so this is what a
+        // locale that was never registered looks like — without it the render
+        // half reports zero problems in exactly the state it exists to catch.
+        if (rendered === branch.key) {
+          problems.push(`${tag}: ${branch.key} — resolved to the key itself`);
+        } else if (rendered.trim() === '') {
+          problems.push(`${tag}: ${branch.key} — empty`);
+        }
       }
     }
   } finally {

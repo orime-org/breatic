@@ -417,6 +417,9 @@ describe('relativeTime', () => {
     expect(new Set(branches.map((b) => b.key))).toEqual(
       new Set(Object.keys(EVERY_KEY)),
     );
+    // The Set is blind to a duplicate being deleted: drop the NaN case and the
+    // eight keys still all appear. The count is what notices.
+    expect(branches).toHaveLength(9);
 
     expectEveryLocaleRenders(branches);
   });

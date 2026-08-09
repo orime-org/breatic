@@ -5,14 +5,18 @@
  * The five shipped locale catalogs, plus the one way to read a key out of
  * them.
  *
- * Five files had each written the list out by hand — four suites importing the
- * JSON by hand-counted relative path, three of them also carrying a `readPath`
- * (two byte-identical, the third inlined into a loop), plus `vitest.setup.ts`,
- * which named four of the five and never registered `ko`. That last one is why
- * this is a single list rather than a convention: a hand-written list is a list
- * that gets missed, and the miss is silent — anything rendered under
- * `setLocale('ko')` fell back to English and passed for the wrong reason.
- * Adding a sixth locale should mean editing this array and nothing else.
+ * Four suites had each imported the JSON by hand-counted relative path; two of
+ * them carried byte-identical `readPath` helpers and a third inlined the same
+ * walk into a loop. `vitest.setup.ts` wrote its own list too, named four of the
+ * five, and never registered `ko` — anything rendered under `setLocale('ko')`
+ * fell back to English and passed for the wrong reason, with nothing going red.
+ * A hand-written list is a list that gets missed, and the miss is silent.
+ *
+ * This is the list for tests. Production keeps its own, in
+ * `web/src/i18n/locale-bootstrap.ts` (imports, `SUPPORTED_LOCALES`, the
+ * registration calls, and a prefix-matching `if` chain) and in the server's
+ * `middleware/i18n.ts`. Adding a sixth locale still means editing those by
+ * hand; collapsing them onto one source is tracked separately.
  */
 
 import type { Locale } from '@breatic/shared';
@@ -45,21 +49,6 @@ export const LOCALE_CATALOGS = [
 
 /** The tags above, as a union — a mistyped locale is a compile error. */
 export type LocaleTag = (typeof LOCALE_CATALOGS)[number][0];
-
-/**
- * The catalog for one locale, for suites that assert about a single language.
- * @param locale - A locale tag from {@link LocaleTag}.
- * @returns That locale's parsed catalog.
- * @throws {Error} never, for a caller that typechecks — `LocaleTag` is derived
- *   from the list, so the lookup always hits. The branch exists because `find`
- *   is typed as possibly missing, and a named error beats a non-null assertion
- *   if the parameter type is ever bypassed.
- */
-export function catalogFor(locale: LocaleTag): unknown {
-  const found = LOCALE_CATALOGS.find(([tag]) => tag === locale);
-  if (!found) throw new Error(`no such locale: ${locale}`);
-  return found[1];
-}
 
 /**
  * Resolve a dotted key path against a parsed locale catalog.
