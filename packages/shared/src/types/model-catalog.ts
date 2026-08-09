@@ -183,8 +183,8 @@ export const VIDEO_GENERATION_MODES = [
 
 /**
  * Whether any of a model's modes appears in an allowed list. A model declares
- * `mode` as either one string or an array of them, so both callers above have
- * to normalise before testing.
+ * `mode` as either one string or an array of them, so testing membership means
+ * normalising first — which is the only thing this helper exists to hold.
  * @param mode - The model's `mode` (a single string or an array of modes).
  * @param allowed - The modes that qualify for the caller's purpose.
  * @returns True when at least one of the model's modes is allowed.

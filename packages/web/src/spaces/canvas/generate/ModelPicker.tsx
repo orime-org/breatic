@@ -18,7 +18,7 @@ import { ModelIcon } from '@web/spaces/canvas/generate/ModelIcon';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 interface ModelPickerProps {
-  /** The available image models from the catalog. */
+  /** The catalog models this picker offers (image or video, per panel). */
   models: ModelEntry[];
   /** The currently selected model id. */
   value: string;
@@ -34,7 +34,7 @@ interface ModelPickerProps {
  * on-screen). Falls back to the raw model id on the trigger when the current
  * value is not in the catalog.
  * @param root0 - Component props.
- * @param root0.models - The catalog image models.
+ * @param root0.models - The catalog models to offer.
  * @param root0.value - The current model id.
  * @param root0.onChange - Called with the picked model id.
  * @returns The model picker.

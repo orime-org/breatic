@@ -310,10 +310,11 @@ function VideoGeneratePanelBody({
     }
   }, [nodeId, projectId, spaceId, freshVm, closeActivePanel, t]);
 
-  // The two localized strings are depended on BY VALUE, not via `t`: `t` is a
+  // EVERY localized string below is depended on BY VALUE, not via `t`: `t` is a
   // stable module-level function whose identity never changes on an in-session
   // locale switch, so depending on it alone would freeze this copy in the old
-  // language until the panel is reopened.
+  // language until the panel is reopened. The rule covers the whole group — a
+  // string added here goes in the dependency array too.
   const promptPlaceholder = t('canvas.generatePanel.videoPromptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.videoMentionEmpty');
   // A node made before video generation existed carries no prompt container,

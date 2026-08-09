@@ -10,11 +10,11 @@
  * answers true here must be usable end to end, because a node created under a
  * true answer carries a prompt container forever after.
  *
- * These cases pin the list itself. They are deliberately exhaustive over
- * `NodeType`: a new modality added to the union without a decision here would
- * otherwise slip in untested, and "does this modality generate" is a product
- * decision, not something a reader should have to infer from the absence of a
- * case.
+ * These cases pin the list itself, and the last one makes them exhaustive over
+ * `NodeType` in a way the compiler enforces: a new modality added to the union
+ * without a decision here fails to build, because "does this modality
+ * generate" is a product decision and not something a reader should have to
+ * infer from the absence of a case.
  */
 
 import { describe, it, expect } from "vitest";
@@ -43,11 +43,13 @@ describe("canGenerate", () => {
   });
 
   it("covers every node type, so a new modality cannot slip in undecided", () => {
-    // Not a restatement of the two lists above: it fails when `NodeType` grows
-    // and nobody decided which list the new modality belongs to. Without it,
-    // adding a modality silently lands in neither and stays untested.
-    const decided = [...GENERATES, ...DOES_NOT];
-    const everyType: readonly NodeType[] = [
+    // `as const` is what makes this more than a restatement of the two lists
+    // above. A plain `readonly NodeType[]` annotation only checks that each
+    // element IS a NodeType, so a hand-written array stays valid — and this
+    // assertion stays green — after the union grows. Narrowed to its literals
+    // instead, `Uncovered` names whatever the union has that this array does
+    // not, and the line after it stops compiling with that name in the error.
+    const everyType = [
       "text",
       "image",
       "audio",
@@ -56,7 +58,15 @@ describe("canGenerate", () => {
       "web",
       "annotation",
       "group",
-    ];
+    ] as const satisfies readonly NodeType[];
+
+    type Uncovered = Exclude<NodeType, (typeof everyType)[number]>;
+    // Wrapped in a tuple so `never` is compared, not distributed over (a bare
+    // `Uncovered extends never` resolves to `never`, which nothing satisfies).
+    const uncovered: [Uncovered] extends [never] ? "none" : Uncovered = "none";
+    expect(uncovered).toBe("none");
+
+    const decided = [...GENERATES, ...DOES_NOT];
     expect([...decided].sort()).toEqual([...everyType].sort());
   });
 

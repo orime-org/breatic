@@ -3576,10 +3576,11 @@ function CanvasSpaceInner({
           // one's: the store maps the node's modality to a panel kind.
           // INCLUDING a locked or handling node, so the user can open the panel
           // to view / edit the prompt (bug 2). The panel is a read surface for
-          // the recipe; EXECUTE is what the gate stops (onExecute toasts for
-          // locked, and the button is disabled while handling). Groups /
-          // non-generating modalities / read-only get no handler (a disabled
-          // placeholder item).
+          // the recipe; EXECUTE is what the gate stops — the arrow stays
+          // clickable and `onExecute` answers with a toast saying why, rather
+          // than greying out with no explanation. Groups / non-generating
+          // modalities / read-only get no handler (a disabled placeholder
+          // item).
           onGenerate={(() => {
             const genNode = nodes.find((n) => n.id === nodeMenu.nodeId);
             // Held in a const so the narrowing survives into the closure below,

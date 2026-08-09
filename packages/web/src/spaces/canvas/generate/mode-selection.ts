@@ -21,7 +21,12 @@ import type { ModelEntry } from '@breatic/shared';
  * The mode is a plain string here on purpose: each panel owns its own closed
  * mode union and narrows before calling, so this function does not need to
  * know which modality it is serving.
- * @param models - The catalog models, already narrowed to generation entries.
+ *
+ * A whole modality bucket is a valid input: naming a generation mode is itself
+ * the test, so a mini-tool entry in the bucket simply fails to match. Callers
+ * that pre-filter (the image panel does, for its own reasons) are welcome to,
+ * but this function does not require it.
+ * @param models - Catalog models to narrow — a whole modality bucket is fine.
  * @param mode - The active generation mode.
  * @returns The models matching the mode, in input order.
  */

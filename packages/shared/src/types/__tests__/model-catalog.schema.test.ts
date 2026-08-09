@@ -229,11 +229,13 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
   });
 
   it("lists the six video modes the panel offers, and no mini-tool mode (#1896)", () => {
-    // A product decision (user 2026-08-08): a mode belongs here when it makes
-    // a NEW video from scratch, and in the mini-tool system when it works on
-    // one that already exists. The panel narrows its picker to one of these
-    // six, which is what keeps a mini-tool entry out of the model list — so
-    // what this list contains IS the rule, and there is no separate predicate.
+    // A product decision (user 2026-08-08), not a formula: what this list
+    // contains IS the rule, and there is no separate predicate. Most of what
+    // was left out works on a video that already exists, which is the shape of
+    // the decision — but `motion` takes a character image and is out anyway,
+    // so a reader who re-derives the list from that shape gets it wrong. The
+    // panel narrows its picker to these six, which is what keeps a mini-tool
+    // entry out of the model list.
     expect([...VIDEO_GENERATION_MODES]).toEqual([
       "t2v",
       "i2v",
@@ -243,10 +245,10 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
       "talking_head",
     ]);
 
-    // The five that work on an existing video. Offering one in the Generate
-    // picker would let a user submit a text-to-video request against a model
-    // that needs a video source, which the backend source gate rejects with a
-    // 400.
+    // The five that belong to the mini-tool system. Offering one in the
+    // Generate picker would let a user submit a text-to-video request against
+    // a model that needs a source this panel does not collect, which the
+    // backend source gate rejects with a 400.
     for (const miniTool of ["extend", "edit", "motion", "upscale", "interpolate"]) {
       expect(VIDEO_GENERATION_MODES).not.toContain(miniTool);
     }

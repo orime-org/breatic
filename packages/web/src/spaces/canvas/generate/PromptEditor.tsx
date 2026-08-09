@@ -137,8 +137,8 @@ export const PromptEditor = React.forwardRef<
   imageRefsDisabledRef.current = imageRefsDisabled;
   // The open `@` popup registers a refresh() here (collaboration residual 2): a
   // REMOTE mode / pool change fires no editor transaction, so the visible popup's
-  // list would stay stale. The effect below calls it when `mode` / `references`
-  // change, refreshing a visible popup's content from the live pool + mode.
+  // list would stay stale. The effect below calls it when `imageRefsDisabled` /
+  // `references` change, refreshing a visible popup's content from the live pool.
   const suggestionRefreshRef = React.useRef<(() => void) | null>(null);
   const editor = useEditor(
     {
@@ -258,8 +258,8 @@ export const PromptEditor = React.forwardRef<
 
   // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
   // residual 2): a REMOTE peer toggling this node's mode or editing its
-  // references updates `mode` / `references` here but fires NO prompt-doc
-  // transaction, so @tiptap/suggestion never re-runs items() and a VISIBLE popup
+  // references updates `imageRefsDisabled` / `references` here but fires NO
+  // prompt-doc transaction, so @tiptap/suggestion never re-runs items() and a VISIBLE popup
   // keeps its pre-change list. The popup registers a refresh() (a no-op while
   // hidden) that recomputes its content from the live pool + mode. A LOCAL mode
   // change hides the popup first (clicking the picker), so this only bites the

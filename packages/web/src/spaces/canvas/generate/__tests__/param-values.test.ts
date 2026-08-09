@@ -14,9 +14,11 @@
  * why.
  *
  * Both panels share this reader. That is safe for the image side by evidence,
- * not by hope: `config/models/image/*.yaml` contains no `min:` at all, so every
- * image parameter is a list and never reaches the range branch. The last case
- * below pins that.
+ * not by hope: `config/models/image/*.yaml` contains no `min:` at all, so the
+ * range branch can never produce an option for an image parameter. It is still
+ * REACHED by the image params that declare neither shape (`style_images`,
+ * `prompt`, `seed`) — those already yielded nothing before this change and
+ * still do. The last case below pins the list path winning.
  *
  * Ranges expand one step per second (user 2026-08-08, from the reference
  * screenshot where 4s through 12s are listed one by one).
@@ -148,9 +150,9 @@ describe('paramValues', () => {
 
   it('leaves image parameters on the list path, so the image panel is unchanged', () => {
     // The reason sharing this reader is safe: image models declare no ranges
-    // (`config/models/image/*.yaml` has no `min:`), so they never reach the
-    // branch this change adds. Asserting the list path still wins when a
-    // range is absent is what keeps that true.
+    // (`config/models/image/*.yaml` has no `min:`), so the branch this change
+    // adds can never hand an image parameter an option it did not have before.
+    // Asserting the list path still wins is what keeps that true.
     const model = modelWith('resolution', { values: ['1K', '2K', '4K'] });
     expect(paramValues(model, 'resolution')).toEqual(['1K', '2K', '4K']);
   });

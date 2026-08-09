@@ -328,11 +328,13 @@ export const useCanvasStore = create<CanvasState>()(
         // store: a third generative modality is one more entry in the map,
         // not a new branch wherever Generate is opened from.
         const kind = GENERATE_PANEL_BY_TYPE[type];
-        // A modality with no panel opens nothing. Falling back to the image
-        // panel would put a video node's host id under an image body — an
-        // unreachable path through the menu (canGenerate gates it), so
-        // reaching it means a caller is wrong and should show as nothing
-        // happening rather than as the wrong panel.
+        // A modality with no panel opens nothing. The unmapped modalities are
+        // the ones with no Generate panel yet (text / audio / 3d / web /
+        // annotation / group), and the menu never offers Generate on them
+        // (canGenerate gates it) — so arriving here means a caller is wrong.
+        // Falling back to the image panel would put such a node's host id
+        // under an image body, which reads as a working panel operating on
+        // the wrong thing; nothing happening is the honest outcome.
         if (!kind) return;
         s.panelHostId = nodeId;
         s.panelKind = kind;

@@ -63,7 +63,8 @@ interface CatalogGatedFrameProps {
  * execute permanently disabled), so a failed fetch EXPLAINS itself with a
  * toast and the panel never opens — no silent fail. Mounted only while a panel
  * is open, so the always-rendered container never touches react-query: a closed
- * panel needs no QueryClient, and the canvas subtree has none.
+ * panel needs no QueryClient, and never asking for one keeps the catalog's
+ * single fetch tied to a panel actually being on screen.
  *
  * The gate fires on "errored AND nothing cached": a BACKGROUND refetch failure
  * keeps the previously-fetched catalog, and the panel keeps working off it —
