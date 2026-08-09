@@ -8,7 +8,7 @@
  * Uses {@link safeFetch} to block SSRF against internal / metadata
  * endpoints on every hop (including redirects).
  */
-import { tool } from "ai";
+import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { safeFetch, SsrfError } from "@domain/agent/tools/safe-fetch.js";
 
@@ -60,19 +60,21 @@ function normalize(text: string): string {
  * blocks any hop resolving to a private / loopback / link-local /
  * reserved / metadata IP — closing SSRF against internal services.
  */
-export const webFetch = tool({
+const inputSchema = z.object({
+  url: z.string().url().describe("URL to fetch"),
+  maxChars: z
+    .number()
+    .int()
+    .min(100)
+    .optional()
+    .describe("Max characters to return"),
+});
+
+export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "Fetch a URL and extract readable content (HTML to plain text). " +
     "Only public (non-private, non-loopback) HTTP/HTTPS hosts are permitted.",
-  inputSchema: z.object({
-    url: z.string().url().describe("URL to fetch"),
-    maxChars: z
-      .number()
-      .int()
-      .min(100)
-      .optional()
-      .describe("Max characters to return"),
-  }),
+  inputSchema,
   execute: async ({ url, maxChars }): Promise<string> => {
     const limit = maxChars ?? DEFAULT_MAX_CHARS;
 

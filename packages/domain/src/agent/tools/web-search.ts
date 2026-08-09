@@ -6,7 +6,7 @@
  *
  * Ported from backend/agent/tools/builtin/web.py (WebSearchTool).
  */
-import { tool } from "ai";
+import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { env } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
@@ -17,18 +17,20 @@ import { httpRequest } from "@breatic/shared";
  * Returns formatted results containing titles, URLs, and descriptions.
  * Requires the `BRAVE_SEARCH_API_KEY` environment variable.
  */
-export const webSearch = tool({
+const inputSchema = z.object({
+  query: z.string().describe("Search query"),
+  count: z
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .optional()
+    .describe("Number of results (1-10)"),
+});
+
+export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
   description: "Search the web. Returns titles, URLs, and snippets.",
-  inputSchema: z.object({
-    query: z.string().describe("Search query"),
-    count: z
-      .number()
-      .int()
-      .min(1)
-      .max(10)
-      .optional()
-      .describe("Number of results (1-10)"),
-  }),
+  inputSchema,
   execute: async ({ query, count }): Promise<string> => {
     // BRAVE_SEARCH_API_KEY is a typed config field (defaults to "");
     // read via the injected config Proxy, not process.env directly.

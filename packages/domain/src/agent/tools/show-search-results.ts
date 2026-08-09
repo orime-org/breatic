@@ -18,7 +18,7 @@
  * search): web_search returns raw results to the LLM; this tool packages
  * a curated subset back to the frontend for visual presentation.
  */
-import { tool } from "ai";
+import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 /** Sentinel detected by main-agent to interrupt the loop and yield AGENT_SEARCH_RESULTS SSE event. */
@@ -46,7 +46,7 @@ const inputSchema = z.object({
     ),
 });
 
-export const showSearchResults = tool({
+export const showSearchResults: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "Display search results (images / videos / audios / links) to " +
     "the user as a thumbnail grid. Each thumbnail has '+ Add to " +

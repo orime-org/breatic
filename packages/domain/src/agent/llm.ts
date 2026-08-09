@@ -11,6 +11,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import type { LanguageModel } from "ai";
 import { env } from "@breatic/core";
 
 // Providers are built LAZILY (on first use), not at module import:
@@ -81,10 +82,17 @@ function getOpenai(): OpenAIProvider {
  *
  * Supports `provider/model` format (e.g. `"anthropic/claude-sonnet-4-6"`)
  * or plain model names (routed through OpenRouter by default).
+ * The return type is `LanguageModel`, the type the SDK itself declares for the
+ * `model` option of `generateText` / `streamText` — which is where all six
+ * callers send it. It used to say `ReturnType<OpenAIProvider>`, borrowing one
+ * branch's type to describe a function that returns a model from four
+ * providers. That held only while the four returned the same type: AI SDK 7
+ * gave the OpenAI provider batch support and widened its return type, and the
+ * borrowed type stopped covering Anthropic and Google.
  * @param modelString - Model identifier. Defaults to OpenRouter Claude.
  * @returns AI SDK LanguageModel instance
  */
-export function getModel(modelString?: string): ReturnType<OpenAIProvider> {
+export function getModel(modelString?: string): LanguageModel {
   const model = modelString ?? "anthropic/claude-sonnet-4-6";
 
   // Route to direct provider if API key is configured, otherwise fall back to OpenRouter
