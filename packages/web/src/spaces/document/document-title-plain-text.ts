@@ -23,15 +23,35 @@
  * produced this bug. Here the title's own rule is stated once: text typed into
  * it is inserted as text, and nothing gets a chance to transform it.
  *
- * ## Why a plugin, and why the priority
+ * ## Two halves, because the rules have more than one way in
  *
- * `handleTextInput` is the editor's own hook for this — it is the hook the
- * transforming rules themselves listen on, and the first handler to claim an
- * input wins. So claiming it first is not a workaround; it is the mechanism.
+ * `handleTextInput` is the door for typing, and claiming it first is the
+ * editor's own mechanism — it is the hook the transforming rules listen on,
+ * and the first handler to claim an input wins. The priority is what puts this
+ * ahead of them: TipTap builds each extension's input rules into a plugin of
+ * its own and orders the result by extension priority.
  *
- * The priority is what puts this first. TipTap builds each extension's input
- * rules into a plugin of its own and orders the result by extension priority,
- * so without one this would sit behind StarterKit's rules and never be asked.
+ * That door is not the only one. TipTap's input-rule plugin also runs the
+ * rules from `handleKeyDown` on Enter (as the text `"\n"`), from
+ * `compositionend` after an input method commits, and from an `applyInputRules`
+ * meta that `insertContent` can set. Measured: with only the typing door
+ * claimed, `***` in the title followed by Enter left the title EMPTY and
+ * swallowed the Enter, and the same text committed through an input method did
+ * the same.
+ *
+ * Claiming each door in turn is not available and would be the wrong shape
+ * anyway — returning true from `compositionend` would cancel the editor's own
+ * composition handling, and a fourth door added upstream would arrive
+ * unguarded. All four doors end in the same place: a transaction the rule
+ * built, dispatched into the document. So the second half below rejects that
+ * transaction rather than the doors, which is one statement about the title
+ * instead of one per entry point.
+ *
+ * Enter needs one thing more, and it is not here: the rule plugin reports the
+ * key as handled whether or not its transaction survives, so the title's own
+ * Enter would be swallowed by a rule that achieved nothing. That is settled by
+ * ordering, in `document-title` — the title's keys are decided before the
+ * editing feature set is asked.
  *
  * ## The other half: a mark the caret's block refuses is not armed
  *
@@ -104,6 +124,36 @@ export const DocumentTitleIsPlainText = Extension.create({
           // no marks", which is a state of its own, while `null` means nothing
           // is armed — which is the truth once the refused ones are gone.
           return newState.tr.setStoredMarks(kept.length > 0 ? kept : null);
+        },
+
+        /**
+         * Refuse a transaction an input rule built, when it lands in the title.
+         *
+         * Recognised the way the editor recognises its own: the rule plugins
+         * carry `isInputRules` on their spec and stamp each transaction they
+         * dispatch with their own key — which is the pair TipTap's
+         * `undoInputRule` reads to find the rule to undo. The stamp is on
+         * every one of them; a rule can opt out of being undoable and none of
+         * the rules this editor loads does.
+         *
+         * The state here is the one BEFORE the transaction, so the selection
+         * read is where the caret was when the rule fired, which is where the
+         * rule was going to act.
+         * @param tr - The transaction awaiting application.
+         * @param state - The state it would apply to.
+         * @returns False to drop it.
+         */
+        filterTransaction(tr, state) {
+          if (
+            state.selection.$from.parent.type.name !== DOCUMENT_TITLE_NODE
+          ) {
+            return true;
+          }
+          return !state.plugins.some(
+            (p) =>
+              (p.spec as { isInputRules?: boolean }).isInputRules === true &&
+              tr.getMeta(p) !== undefined,
+          );
         },
       }),
     ];

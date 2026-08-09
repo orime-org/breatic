@@ -73,6 +73,21 @@ export const DocumentTitle = Node.create({
   content: 'text*',
   marks: '',
   defining: true,
+
+  /**
+   * Ahead of the editing feature set, so the title's keys are decided first.
+   *
+   * The keys below all decline outside the title, so what this changes is one
+   * thing: inside it, they are asked before StarterKit is. That matters for
+   * Enter, because TipTap's input-rule plugin also handles Enter — it runs the
+   * rules with the text `"\n"` — and it reports the key as handled whether or
+   * not its transaction survives. Measured with the default ordering: `***` in
+   * the title followed by Enter emptied the title AND swallowed the Enter, and
+   * with the title guard rejecting the rule's transaction the title survived
+   * but the Enter was still swallowed. Deciding the title's keys first is what
+   * makes the press do what the title says it does.
+   */
+  priority: 1000,
   parseHTML: () => [{ tag: `h1.${DOCUMENT_TITLE_CLASS}` }],
   renderHTML: () => ['h1', { class: DOCUMENT_TITLE_CLASS }, 0],
 

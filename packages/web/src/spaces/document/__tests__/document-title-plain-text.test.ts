@@ -109,6 +109,51 @@ describe('typing a block-making sequence into the title', () => {
   });
 });
 
+describe('the rules have more than one way in, and none of them works', () => {
+  // Typing is one door. TipTap's input-rule plugin opens three more: Enter
+  // (which it runs the rules for, as the text "\n"), an input method
+  // committing, and a programmatic insert asking for rules to apply. Measured
+  // with only the typing door guarded: `***` then Enter left the title EMPTY.
+  const DESTRUCTIVE: readonly string[] = ['***', '___', '---'];
+
+  DESTRUCTIVE.forEach((typed) => {
+    it(`keeps ${typed} in the title when Enter follows it`, () => {
+      const editor = open();
+      editor.commands.setTextSelection(1);
+      type(editor, typed);
+      editor.view.someProp('handleKeyDown', (f) =>
+        f(editor.view, new KeyboardEvent('keydown', { key: 'Enter' })),
+      );
+
+      expect(editor.state.doc.child(0).textContent).toBe(typed);
+      // And the Enter did its own job rather than being eaten: the caret left
+      // the title for a new, empty body block.
+      expect(editor.state.doc.child(1).type.name).toBe('paragraph');
+      expect(editor.state.doc.child(1).textContent).toBe('');
+      expect(editor.state.selection.$from.parent.type.name).toBe('paragraph');
+    });
+
+    it(`keeps ${typed} in the title when an input method commits after it`, async () => {
+      const editor = open();
+      editor.commands.setTextSelection(1);
+      // An input method's text arrives already committed, then the event
+      // fires — it does not come through `handleTextInput` at all.
+      editor.commands.insertContent(`${typed} `);
+      editor.view.someProp('handleDOMEvents', (handlers) => {
+        handlers['compositionend']?.(
+          editor.view,
+          new CompositionEvent('compositionend'),
+        );
+        return false;
+      });
+      // The plugin schedules the run rather than performing it inline.
+      await new Promise((resolve) => setTimeout(resolve, 5));
+
+      expect(editor.state.doc.child(0).textContent).toBe(`${typed} `);
+    });
+  });
+});
+
 describe('the body still transforms what is typed into it', () => {
   it('three dashes in a body paragraph still make a divider', () => {
     // The guard is about the title, not about turning the editor's own rules

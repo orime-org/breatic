@@ -18,15 +18,23 @@
  *
  * Both questions are asserted here against every shape a selection can take in
  * this document, and each case says what actually happens as well as what the
- * button claims. Two earlier answers were each wrong somewhere in this table:
- * "is the caret in the title" lit all six for a select-all that could do
- * nothing, and asking the editor to dry-run the command darkened the list
- * buttons over a heading or a code block, where the command works perfectly
- * well — its first step clears the block type, and a dry run performs no steps.
+ * button claims. Three earlier answers were each wrong somewhere in this table,
+ * and the table grew after each: "is the caret in the title" lit all six for a
+ * select-all that could do nothing; asking the editor to dry-run the command
+ * darkened the list buttons over a heading or a code block, where the command
+ * works perfectly well, because its first step clears the block type and a dry
+ * run performs no steps; and "is the selection all body" lit the list buttons
+ * over a selected divider and over a gap cursor, where nothing happens at all.
+ *
+ * The lists and the quote are asked separately because they genuinely differ —
+ * a selected divider CAN be quoted and cannot be listed — and a table that
+ * lumped them together is what hid the divider case for a round.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
+import { GapCursor } from '@tiptap/pm/gapcursor';
+import { NodeSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -65,7 +73,9 @@ interface Case {
   readonly body: string;
   readonly place: (e: Editor) => void;
   readonly marks: boolean;
-  readonly blocks: boolean;
+  /** Both list buttons. */
+  readonly lists: boolean;
+  readonly quote: boolean;
 }
 
 const CASES: readonly Case[] = [
@@ -74,21 +84,24 @@ const CASES: readonly Case[] = [
     body: '<p>body</p>',
     place: (e) => e.commands.setTextSelection(3),
     marks: false,
-    blocks: false,
+    lists: false,
+    quote: false,
   },
   {
     name: 'the caret in a body paragraph',
     body: '<p>body</p>',
     place: (e) => e.commands.setTextSelection(e.state.doc.child(0).nodeSize + 2),
     marks: true,
-    blocks: true,
+    lists: true,
+    quote: true,
   },
   {
     name: 'the caret in a body heading',
     body: '<h2>sec</h2>',
     place: (e) => e.commands.setTextSelection(e.state.doc.child(0).nodeSize + 2),
     marks: true,
-    blocks: true,
+    lists: true,
+    quote: true,
   },
   {
     name: 'the caret in a code block',
@@ -97,14 +110,16 @@ const CASES: readonly Case[] = [
     // A code block refuses marks, which is the editor's own rule and nothing
     // to do with the title.
     marks: false,
-    blocks: true,
+    lists: true,
+    quote: true,
   },
   {
     name: 'everything selected, with only a title to select',
     body: '',
     place: (e) => e.commands.selectAll(),
     marks: false,
-    blocks: false,
+    lists: false,
+    quote: false,
   },
   {
     name: 'everything selected, title and body',
@@ -113,7 +128,8 @@ const CASES: readonly Case[] = [
     // Bold reaches the body's text; a list cannot wrap a range holding the
     // title.
     marks: true,
-    blocks: false,
+    lists: false,
+    quote: false,
   },
   {
     name: 'a selection running from the title into the body',
@@ -124,7 +140,57 @@ const CASES: readonly Case[] = [
         to: e.state.doc.child(0).nodeSize + 3,
       }),
     marks: true,
-    blocks: false,
+    lists: false,
+    quote: false,
+  },
+  {
+    // Clicking a divider selects the node itself. It cannot be listed — a list
+    // item must start with a paragraph — but it can be quoted, which is why
+    // the two are asked separately.
+    name: 'a body divider selected as a node',
+    body: '<hr><p>body</p>',
+    place: (e) => {
+      const pos = e.state.doc.child(0).nodeSize;
+      e.view.dispatch(
+        e.state.tr.setSelection(NodeSelection.create(e.state.doc, pos)),
+      );
+    },
+    marks: false,
+    lists: false,
+    quote: true,
+  },
+  {
+    // The caret can also sit BESIDE a divider rather than on it, where there
+    // is no textblock to work with and every block command declines.
+    name: 'a gap cursor after a body divider',
+    body: '<hr>',
+    place: (e) => {
+      const $pos = e.state.doc.resolve(e.state.doc.content.size);
+      e.view.dispatch(e.state.tr.setSelection(new GapCursor($pos)));
+    },
+    marks: false,
+    lists: false,
+    quote: false,
+  },
+  {
+    // A plain list item takes the list commands (they toggle it off) and not
+    // the quote — the other way round from the divider above.
+    name: 'the caret in a plain list item',
+    body: '<ul><li><p>a</p></li></ul>',
+    place: (e) => e.commands.setTextSelection(e.state.doc.content.size - 3),
+    marks: true,
+    lists: true,
+    quote: false,
+  },
+  {
+    // The clearing step again, one level down: the heading is inside a quote,
+    // and the list command still works because it clears the heading first.
+    name: 'the caret in a heading inside a quote',
+    body: '<blockquote><h2>h</h2></blockquote>',
+    place: (e) => e.commands.setTextSelection(e.state.doc.content.size - 2),
+    marks: true,
+    lists: true,
+    quote: true,
   },
 ];
 
@@ -138,7 +204,8 @@ describe('what the buttons claim', () => {
         expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${c.marks}`);
       });
       BLOCK_TOOLS.forEach((tool) => {
-        expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${c.blocks}`);
+        const expected = tool.id === 'quote' ? c.quote : c.lists;
+        expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${expected}`);
       });
     });
   });

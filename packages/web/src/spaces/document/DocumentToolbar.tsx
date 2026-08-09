@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { EditorState } from '@tiptap/pm/state';
+import type { ChainedCommands } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import {
@@ -143,36 +143,45 @@ export const MARK_TOOLS: ToolDef[] = [
 ];
 
 /**
- * Whether every top-level block the selection touches is a body block.
+ * Whether a list command would do anything against the current selection.
  *
- * This is what decides the block wrappers below. They replace structure: a
- * list or a quote has to WRAP the blocks under the selection, and the title
- * cannot be wrapped — it is deliberately outside the `block` group, which is
- * what stops one being created in the body in the first place. So a selection
- * that reaches the title cannot become a list or a quote, and one that does
- * not always can: each of these commands clears the block type before
- * wrapping, so a heading or a code block becomes a paragraph on the way.
+ * Asked of the command, in two parts, because a dry run cannot see one of its
+ * steps. `toggleBulletList` clears the block type before wrapping — a heading
+ * or a code block becomes a paragraph on the way — and `editor.can()` performs
+ * no steps at all, so the wrap is judged against the block as it still stands.
+ * Over a heading it therefore answers no while the command works. Asking
+ * `setParagraph` separately is asking that skipped step on its own, of the
+ * command that performs it.
  *
- * Asking the editor to dry-run the command instead gives the wrong answer for
- * exactly that reason — a dry run performs no steps, so the clearing never
- * happens and the wrap is judged against the original heading. Measured: over
- * a heading or a code block it says no, and the command works.
- * @param state - The editor state to read the selection from.
- * @returns True when nothing the selection touches is the title.
+ * Measured across sixteen selection shapes against what the commands actually
+ * do: this pair matches in every one. The dry run alone is wrong in six — a
+ * heading, a code block and a heading inside a quote, for both list commands —
+ * and it is wrong in the safe direction, leaving a working button dark.
+ * @param editor - The editor to ask.
+ * @param toggle - Applies the list command to a dry-run chain.
+ * @returns True when running the command would change the document.
  */
-function selectionIsAllBody(state: EditorState): boolean {
-  const { $from, $to } = state.selection;
-  return $from.index(0) > 0 && $to.index(0) > 0;
+function canListify(
+  editor: Editor,
+  toggle: (chain: ChainedCommands) => ChainedCommands,
+): boolean {
+  return toggle(editor.can().chain()).run() || editor.can().setParagraph();
 }
 
-/** Block-level formatting, likewise unchanged. */
+/**
+ * Block-level formatting, likewise unchanged.
+ *
+ * The quote asks the dry run and nothing else, because `toggleBlockquote`
+ * wraps without clearing first — there is no skipped step to ask about, and
+ * measured over the same sixteen shapes the dry run is right in all of them.
+ */
 export const BLOCK_TOOLS: ToolDef[] = [
   {
     id: 'bullet-list',
     labelKey: 'spaces.document.toolbar.bulletList',
     Icon: List,
     isActive: (e) => e.isActive('bulletList'),
-    canRun: (e) => selectionIsAllBody(e.state),
+    canRun: (e) => canListify(e, (c) => c.toggleBulletList()),
     run: (e) => e.chain().focus().toggleBulletList().run(),
   },
   {
@@ -180,7 +189,7 @@ export const BLOCK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.orderedList',
     Icon: ListOrdered,
     isActive: (e) => e.isActive('orderedList'),
-    canRun: (e) => selectionIsAllBody(e.state),
+    canRun: (e) => canListify(e, (c) => c.toggleOrderedList()),
     run: (e) => e.chain().focus().toggleOrderedList().run(),
   },
   {
@@ -188,7 +197,7 @@ export const BLOCK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.quote',
     Icon: Quote,
     isActive: (e) => e.isActive('blockquote'),
-    canRun: (e) => selectionIsAllBody(e.state),
+    canRun: (e) => e.can().chain().toggleBlockquote().run(),
     run: (e) => e.chain().focus().toggleBlockquote().run(),
   },
 ];
