@@ -425,10 +425,13 @@ body {
   color: var(--color-muted-foreground);
 }
 /* ---- The document Space's title block ----
-   Size is twice the body baseline rather than a literal 30px: the baseline is
-   `calc(15px * var(--ts))` and `--ts` is the text scale the user can change,
-   so a literal would stop matching the body the moment they do. 30px at the
-   default scale, which is the size chosen against the mock. */
+   Size is twice the body baseline rather than a literal 30px, so the title
+   stays in proportion to the text under it if that baseline ever moves. The
+   baseline is `calc(15px * var(--ts))`; `--ts` is a single scale hook declared
+   once in `theme/tokens.css` as `1`, and nothing in the app changes it today,
+   so this is about keeping one number derived from another rather than about
+   a setting a user can reach. 30px as it stands, which is the size chosen
+   against the mock. */
 .doc-body-editor .ProseMirror .doc-title {
   font-size: calc(var(--font-size-base) * 2);
   line-height: 1.25;
