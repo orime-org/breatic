@@ -280,7 +280,7 @@ export const CameraPicker = React.memo(function CameraPicker({
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side='top'>
-          {enabled ? t('canvas.generatePanel.cameraOn') : t('canvas.generatePanel.cameraOff')}
+          {enabled ? t('canvas.generatePanel.switchOn') : t('canvas.generatePanel.switchOff')}
         </TooltipContent>
       </Tooltip>
       <PopoverContent
@@ -297,7 +297,7 @@ export const CameraPicker = React.memo(function CameraPicker({
           <span className='text-xs text-muted-foreground'>{t('canvas.generatePanel.camera')}</span>
           <label className='flex cursor-pointer items-center gap-2'>
             <span className='text-xs text-muted-foreground'>
-              {enabled ? t('canvas.generatePanel.cameraOn') : t('canvas.generatePanel.cameraOff')}
+              {enabled ? t('canvas.generatePanel.switchOn') : t('canvas.generatePanel.switchOff')}
             </span>
             <Switch
               data-testid='generate-camera-toggle'

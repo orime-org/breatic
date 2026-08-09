@@ -178,8 +178,8 @@
       "lens": "Lens",
       "focalLength": "Focal length",
       "aperture": "Aperture",
-      "cameraOn": "On",
-      "cameraOff": "Off",
+      "switchOn": "On",
+      "switchOff": "Off",
       "online": "Web search",
       "translate": "Translate prompt",
       "execute": "Generate",
@@ -206,7 +206,12 @@
       "focusExportFailed": "Could not crop the image — please try again.",
       "focusUploadFailed": "Could not upload the focus crop — please try again.",
       "focusSourceChanged": "Source image changed — draw the marquee again.",
-      "focusCropDiscarded": "The node was deleted — the focus crop was discarded."
+      "focusCropDiscarded": "The node was deleted — the focus crop was discarded.",
+      "duration": "Duration",
+      "durationSeconds": "{n}s",
+      "generateAudio": "Generate audio",
+      "videoParams": "Parameters",
+      "videoPromptPlaceholder": "Describe the video you want to generate, @ to add a reference"
     },
     "edge": {
       "delete": "Delete connection"

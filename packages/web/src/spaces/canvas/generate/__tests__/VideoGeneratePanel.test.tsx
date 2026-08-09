@@ -1,0 +1,115 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import type { ModelEntry } from '@breatic/shared';
+
+import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
+
+/**
+ * Builds a video model for the panel tests.
+ * @param name - Model id.
+ * @param cost - Credits per call.
+ * @returns A model entry.
+ */
+function model(name: string, cost = 88): ModelEntry {
+  return {
+    name,
+    display_name: name.toUpperCase(),
+    modality: 'video',
+    mode: 't2v',
+    description: '',
+    guide: '',
+    tier: 'recommended',
+    cost_per_call: cost,
+    generation_time: 120,
+    params: {
+      aspect_ratio: { description: '', values: ['16:9', '9:16'], default: '16:9' },
+      duration: { description: '', values: [4, 8], default: 8 },
+    },
+    providers: [],
+    sourcesByMode: { t2v: [] },
+  };
+}
+
+const MODELS = [model('veo-3.1'), model('veo-3.1-lite', 21)];
+
+/**
+ * Renders the panel with defaults, overridable per case.
+ * @param over - Prop overrides.
+ * @returns The render result plus the spies the case may assert on.
+ */
+function renderPanel(
+  over: Partial<React.ComponentProps<typeof VideoGeneratePanel>> = {},
+): { onExecute: ReturnType<typeof vi.fn>; onExit: ReturnType<typeof vi.fn> } {
+  const onExecute = vi.fn();
+  const onExit = vi.fn();
+  render(
+    <VideoGeneratePanel
+      models={MODELS}
+      model='veo-3.1'
+      params={{ aspect_ratio: '16:9', duration: 8 }}
+      creditEstimate={88}
+      canExecute
+      promptSlot={<div data-testid='prompt-slot' />}
+      onExit={onExit}
+      onSelectModel={() => {}}
+      onChangeParams={() => {}}
+      onExecute={onExecute}
+      {...over}
+    />,
+  );
+  return { onExecute, onExit };
+}
+
+describe('VideoGeneratePanel', () => {
+  it('renders the prompt the container injects', () => {
+    renderPanel();
+    expect(screen.getByTestId('prompt-slot')).toBeInTheDocument();
+  });
+
+  it('shows the credit estimate — video costs several times an image', () => {
+    renderPanel({ creditEstimate: 56 });
+    expect(screen.getByTestId('generate-video-credit')).toHaveTextContent('56');
+  });
+
+  it('submits through an up-arrow button, not a labelled one', () => {
+    // The same control the image panel ends with (user 2026-08-08: do not
+    // invent a second submit affordance).
+    const { onExecute } = renderPanel();
+    const execute = screen.getByTestId('generate-video-execute');
+    expect(execute).not.toHaveTextContent(/[a-z]/i);
+    fireEvent.click(execute);
+    expect(onExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses to submit when the container says it cannot', () => {
+    const { onExecute } = renderPanel({ canExecute: false });
+    const execute = screen.getByTestId('generate-video-execute');
+    expect(execute).toBeDisabled();
+    fireEvent.click(execute);
+    expect(onExecute).not.toHaveBeenCalled();
+  });
+
+  it('closes without generating', () => {
+    const { onExit, onExecute } = renderPanel();
+    fireEvent.click(screen.getByTestId('generate-video-exit'));
+    expect(onExit).toHaveBeenCalledTimes(1);
+    expect(onExecute).not.toHaveBeenCalled();
+  });
+
+  it('offers the model picker and the params picker', () => {
+    renderPanel();
+    expect(screen.getByTestId('generate-model-trigger')).toBeVisible();
+    expect(screen.getByTestId('generate-video-params-trigger')).toBeVisible();
+  });
+
+  it('drops the params picker when no model resolved', () => {
+    // An empty catalog leaves nothing to read param options off; the panel
+    // still renders so the user sees why they cannot generate.
+    renderPanel({ models: [], model: '', creditEstimate: 0 });
+    expect(screen.queryByTestId('generate-video-params-trigger')).toBeNull();
+    expect(screen.getByTestId('prompt-slot')).toBeInTheDocument();
+  });
+});
