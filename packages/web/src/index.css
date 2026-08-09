@@ -493,9 +493,24 @@ body {
   display: flex;
   flex-direction: column;
   flex: 1 0 auto;
+  /* A flex item with an auto margin on the cross axis does not stretch, and
+     this one centres itself with `mx-auto` — so without a width of its own it
+     shrinks to fit its content and the whole column collapses to the width of
+     its longest line, moving as the user types. Measured before this line
+     existed: 63px wide, centred, in an 880px scroller. `max-w-3xl` still caps
+     it and `mx-auto` still centres it; all this does is give the cross size a
+     definite value to be capped from. */
+  width: 100%;
 }
 .doc-body-editor .ProseMirror {
   flex: 1 0 auto;
+  /* The document's top and bottom breathing room, on the editable element
+     itself rather than on the scroll viewport around it. On the viewport it
+     sat OUTSIDE the editor, so the bottom strip of it answered no clicks —
+     `document-click-to-write` listens on this element, and a press in that
+     strip reports the viewport as its target. Here the same 16px is interior,
+     and the editable surface reaches the scroller's own edge. */
+  padding-block: 1rem;
 }
 
 /* Remote collaborator carets, shared by every collaborative editor — the
