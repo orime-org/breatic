@@ -240,8 +240,15 @@ describe('DocumentEditor', () => {
       // state, and pinning that here would test the fixture instead of the
       // rule. What must hold is that moving the caret into the title changes
       // nothing about these two.
+      //
+      // Both are handed in AVAILABLE on purpose. With the real fixture they are
+      // both disabled — nothing has been undone yet — and then the comparison
+      // below holds no matter what the component does with the caret, which is
+      // a test that cannot fail. Handing in a state where they are live makes
+      // the comparison mean something: gate them on the caret and it goes red.
+      const live: DocumentHistoryState = { canUndo: true, canRedo: true };
       giveTheBodyABlock();
-      render(<DocumentEditor editor={editor} history={history} />);
+      render(<DocumentEditor editor={editor} history={live} />);
 
       act(() => {
         editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
