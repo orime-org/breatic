@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { CanvasNodeFields } from '@breatic/shared';
+import type { CanvasNodeFields, NodeType } from '@breatic/shared';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
@@ -117,7 +117,7 @@ interface CanvasState {
    * host + kind is the correct abstraction for N mutually-exclusive node-
    * anchored panels — cheaper and inherently exclusive versus parallel states.
    */
-  panelKind: 'generate' | 'resetEmpty' | 'history' | null;
+  panelKind: 'generate' | 'generateVideo' | 'resetEmpty' | 'history' | null;
   /**
    * The in-progress canvas node-pick session (reference or style), or null.
    * When set, the canvas is in pick mode for `pickSession.nodeId`: clicking
@@ -163,8 +163,15 @@ interface CanvasState {
   consumePendingRename: () => void;
   /** Mirror the canvas undo manager's availability flags for the toolbar. */
   setHistoryAvailability: (canUndo: boolean, canRedo: boolean) => void;
-  /** Open the Generate panel for a node (replaces any currently open panel). */
-  openGeneratePanel: (nodeId: string) => void;
+  /**
+   * Open the Generate panel for a node (replaces any currently open panel).
+   *
+   * Image and video have separate panels (#1896), and this decides which one
+   * from the node's modality so callers never have to know how many exist:
+   * adding text generation (#1778) is one more case here, not a branch at
+   * every call site.
+   */
+  openGeneratePanel: (nodeId: string, type: NodeType) => void;
   /** Open the reset-empty-image panel for a node (replaces any open panel). */
   openEmptyImagePanel: (nodeId: string) => void;
   /** Open the node-history panel for a node (#1619, replaces any open panel). */
@@ -192,6 +199,21 @@ interface CanvasState {
    */
   reset: () => void;
 }
+
+/**
+ * Which Generate panel a modality opens (#1896). Image and video have separate
+ * panels, so this map — not the call site — decides which body renders.
+ *
+ * It is deliberately partial: a modality absent here has no Generate panel,
+ * and `openGeneratePanel` opens nothing for it. Adding text generation (#1778)
+ * means one entry here and no change anywhere else.
+ */
+const GENERATE_PANEL_BY_TYPE: Partial<
+  Record<NodeType, 'generate' | 'generateVideo'>
+> = {
+  image: 'generate',
+  video: 'generateVideo',
+};
 
 export const useCanvasStore = create<CanvasState>()(
   immer((set) => ({
@@ -299,10 +321,21 @@ export const useCanvasStore = create<CanvasState>()(
         s.canUndo = canUndo;
         s.canRedo = canRedo;
       }),
-    openGeneratePanel: (nodeId) =>
+    openGeneratePanel: (nodeId, type) =>
       set((s) => {
+        // Image and video have separate panels (#1896). Deciding here rather
+        // than at the call site keeps the number of panels a detail of this
+        // store: a third generative modality is one more entry in the map,
+        // not a new branch wherever Generate is opened from.
+        const kind = GENERATE_PANEL_BY_TYPE[type];
+        // A modality with no panel opens nothing. Falling back to the image
+        // panel would put a video node's host id under an image body — an
+        // unreachable path through the menu (canGenerate gates it), so
+        // reaching it means a caller is wrong and should show as nothing
+        // happening rather than as the wrong panel.
+        if (!kind) return;
         s.panelHostId = nodeId;
-        s.panelKind = 'generate';
+        s.panelKind = kind;
         // Switching the panel to another node (or from the reset panel) must
         // exit any in-progress pick — otherwise a stale pick would wire the
         // next click to the PREVIOUS node (closeActivePanel clears it too).

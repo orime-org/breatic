@@ -3571,10 +3571,14 @@ function CanvasSpaceInner({
           // placeholder item).
           onGenerate={(() => {
             const genNode = nodes.find((n) => n.id === nodeMenu.nodeId);
+            // Held in a const so the narrowing survives into the closure below,
+            // which needs the modality to pick which Generate panel opens
+            // (#1896) — image and video have separate panels.
+            const genType = genNode?.type;
             return !nodeMenu.isGroup &&
               !readOnly &&
-              genNode?.type !== undefined &&
-              canGenerate(genNode.type)
+              genType !== undefined &&
+              canGenerate(genType)
               ? () => {
                 // Open + assert in one gesture: the machine's fresh-binding
                 // assert covers id CHANGES, but a same-host reopen (store id
@@ -3582,7 +3586,7 @@ function CanvasSpaceInner({
                 // open after Cmd-adding a co-selection) is invisible to it —
                 // the action layer asserts unconditionally; both writes are
                 // idempotent.
-                openGeneratePanel(nodeMenu.nodeId);
+                openGeneratePanel(nodeMenu.nodeId, genType);
                 selectOnlyNode(nodeMenu.nodeId);
               }
               : undefined;
