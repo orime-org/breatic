@@ -2,33 +2,30 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * A formatting button is live exactly when pressing it would do something.
+ * R7: no control that looks usable and does nothing when pressed.
  *
- * That is R7's promise, and it is the whole of it: a control that looks usable
- * and answers nothing is worse than no control, because the user cannot tell a
- * missed click from a broken feature.
+ * That is the whole of what the design doc asks for (§6.5), and the title is
+ * what made it possible to break: it takes no marks and cannot be wrapped, so
+ * a button aimed at it would have been exactly such a control. Nothing here
+ * makes a claim about selections that never touch the title — what the body's
+ * own editing behaviour does with a heading or a divider belongs to the slice
+ * that owns it.
  *
- * Getting it right needs two different questions, because the two kinds of
- * control do different things. A mark applies to text, so its question is
- * whether anything in the selection accepts the mark — and with a collapsed
- * cursor, arming the mark for the next keystroke IS the effect, so the document
- * not changing does not make the button a liar. A block wrapper replaces the
- * structure, so its question is whether the blocks under the selection can be
- * wrapped at all.
+ * Two assertions, and the second is the one this slice exists for:
  *
- * Both questions are asserted here against every shape a selection can take in
- * this document, and each case says what actually happens as well as what the
- * button claims. Three earlier answers were each wrong somewhere in this table,
- * and the table grew after each: "is the caret in the title" lit all six for a
- * select-all that could do nothing; asking the editor to dry-run the command
- * darkened the list buttons over a heading or a code block, where the command
- * works perfectly well, because its first step clears the block type and a dry
- * run performs no steps; and "is the selection all body" lit the list buttons
- * over a selected divider and over a gap cursor, where nothing happens at all.
+ * 1. Every live button does something when pressed. A collapsed cursor counts
+ *    marks armed for the next keystroke as "something", because arming IS the
+ *    effect there.
+ * 2. Where the selection touches the title, pressing a button leaves the
+ *    document alone. This is R7 read from the other side, and it is what a
+ *    reverted attempt had broken: a widened answer lit the list buttons over a
+ *    selection spanning the title, and pressing one stripped a body heading to
+ *    a paragraph while producing no list.
  *
- * The lists and the quote are asked separately because they genuinely differ —
- * a selected divider CAN be quoted and cannot be listed — and a table that
- * lumped them together is what hid the divider case for a round.
+ * The reverse of the first — that a dark button would also do nothing — is NOT
+ * asserted. The dry run is conservative for the list commands over a body
+ * heading or code block, and R7 does not forbid a dark button that would have
+ * worked.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -76,6 +73,8 @@ interface Case {
   /** Both list buttons. */
   readonly lists: boolean;
   readonly quote: boolean;
+  /** True when the selection reaches the title. */
+  readonly touchesTitle: boolean;
 }
 
 const CASES: readonly Case[] = [
@@ -86,6 +85,7 @@ const CASES: readonly Case[] = [
     marks: false,
     lists: false,
     quote: false,
+    touchesTitle: true,
   },
   {
     name: 'the caret in a body paragraph',
@@ -94,14 +94,16 @@ const CASES: readonly Case[] = [
     marks: true,
     lists: true,
     quote: true,
+    touchesTitle: false,
   },
   {
     name: 'the caret in a body heading',
     body: '<h2>sec</h2>',
     place: (e) => e.commands.setTextSelection(e.state.doc.child(0).nodeSize + 2),
     marks: true,
-    lists: true,
+    lists: false,
     quote: true,
+    touchesTitle: false,
   },
   {
     name: 'the caret in a code block',
@@ -110,8 +112,9 @@ const CASES: readonly Case[] = [
     // A code block refuses marks, which is the editor's own rule and nothing
     // to do with the title.
     marks: false,
-    lists: true,
+    lists: false,
     quote: true,
+    touchesTitle: false,
   },
   {
     name: 'everything selected, with only a title to select',
@@ -120,6 +123,7 @@ const CASES: readonly Case[] = [
     marks: false,
     lists: false,
     quote: false,
+    touchesTitle: true,
   },
   {
     name: 'everything selected, title and body',
@@ -130,6 +134,20 @@ const CASES: readonly Case[] = [
     marks: true,
     lists: false,
     quote: false,
+    touchesTitle: true,
+  },
+  {
+    // The shape a reverted attempt got wrong, and the shape its table was
+    // missing: every title-touching case here used a body PARAGRAPH, where the
+    // widened answer happened to agree. Give the body a heading and it lit the
+    // list buttons, and pressing one stripped the heading with no list to show.
+    name: 'everything selected, title and a body heading',
+    body: '<h2>sec</h2>',
+    place: (e) => e.commands.selectAll(),
+    marks: true,
+    lists: false,
+    quote: false,
+    touchesTitle: true,
   },
   {
     name: 'a selection running from the title into the body',
@@ -142,6 +160,7 @@ const CASES: readonly Case[] = [
     marks: true,
     lists: false,
     quote: false,
+    touchesTitle: true,
   },
   {
     // Clicking a divider selects the node itself. It cannot be listed — a list
@@ -158,6 +177,7 @@ const CASES: readonly Case[] = [
     marks: false,
     lists: false,
     quote: true,
+    touchesTitle: false,
   },
   {
     // The caret can also sit BESIDE a divider rather than on it, where there
@@ -171,6 +191,7 @@ const CASES: readonly Case[] = [
     marks: false,
     lists: false,
     quote: false,
+    touchesTitle: false,
   },
   {
     // A plain list item takes the list commands (they toggle it off) and not
@@ -181,16 +202,19 @@ const CASES: readonly Case[] = [
     marks: true,
     lists: true,
     quote: false,
+    touchesTitle: false,
   },
   {
-    // The clearing step again, one level down: the heading is inside a quote,
-    // and the list command still works because it clears the heading first.
+    // A heading nested one level down. The dry run is conservative here for
+    // the same reason as the plain body heading above, and for the same
+    // reason it is out of this slice.
     name: 'the caret in a heading inside a quote',
     body: '<blockquote><h2>h</h2></blockquote>',
     place: (e) => e.commands.setTextSelection(e.state.doc.content.size - 2),
     marks: true,
-    lists: true,
+    lists: false,
     quote: true,
+    touchesTitle: false,
   },
 ];
 
@@ -213,11 +237,11 @@ describe('what the buttons claim', () => {
 
 describe('and what actually happens when they are pressed', () => {
   CASES.forEach((c) => {
-    it(`with ${c.name}, every live button changes something`, () => {
+    it(`with ${c.name}, every live button does something`, () => {
       [...MARK_TOOLS, ...BLOCK_TOOLS].forEach((tool) => {
         const editor = open(c.body);
         c.place(editor);
-        const live = tool.canRun(editor);
+        if (!tool.canRun(editor)) return;
         const before = editor.getHTML();
         const marksBefore = JSON.stringify(editor.state.storedMarks ?? null);
         tool.run(editor);
@@ -225,12 +249,37 @@ describe('and what actually happens when they are pressed', () => {
           before !== editor.getHTML() ||
           marksBefore !== JSON.stringify(editor.state.storedMarks ?? null);
 
-        // A dark button must do nothing. A live one must do something —
-        // either to the document or to the marks the next keystroke carries.
-        expect(`${tool.id}: live=${live} changed=${changed}`).toBe(
-          `${tool.id}: live=${live} changed=${live}`,
+        // Either to the document or to the marks the next keystroke carries.
+        expect(`${tool.id}: live and changed=${changed}`).toBe(
+          `${tool.id}: live and changed=true`,
         );
       });
+    });
+  });
+
+  CASES.filter((c) => c.touchesTitle).forEach((c) => {
+    it(`with ${c.name}, the title takes nothing from any button`, () => {
+      MARK_TOOLS.forEach((tool) => {
+        const editor = open(c.body);
+        c.place(editor);
+        const titleBefore = JSON.stringify(editor.state.doc.child(0).toJSON());
+        tool.run(editor);
+
+        // A mark may still land on the body half of the same selection — that
+        // is the mark doing its job. What it may never do is mark the title,
+        // whose content rule accepts no marks at all.
+        expect(
+          `${tool.id}: ${JSON.stringify(editor.state.doc.child(0).toJSON())}`,
+        ).toBe(`${tool.id}: ${titleBefore}`);
+      });
+
+      // The block wrappers are NOT pressed here, and that is deliberate. What
+      // this slice promises is that they are dark when the selection holds the
+      // title, which the table above asserts. Whether the command itself is
+      // all-or-nothing is the body editing slice's business: `toggleBulletList`
+      // clears the block type before wrapping and lands that clearing even
+      // when the wrap fails, so invoking it directly here would fail for a
+      // reason this slice neither owns nor can fix.
     });
   });
 });

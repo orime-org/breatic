@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { ChainedCommands } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import {
@@ -43,14 +42,22 @@ export interface ToolDef {
   Icon: typeof Bold;
   isActive: (e: Editor) => boolean;
   /**
-   * Whether the command would do anything against the current selection.
+   * Whether the command can run against the current selection.
    *
-   * This is what decides whether the button is live, and it is deliberately
-   * the same command the button runs rather than a description of where the
-   * caret is. An earlier version asked "is the caret in the title", which is
-   * only ever an approximation of this: it answered "no" to Cmd+A — that
-   * selection starts at the document, not inside any block — and lit all six
-   * buttons on a document whose only block takes no formatting at all.
+   * Asked of the command the button runs, never of where the caret is. R7 asks
+   * for one thing — no control that looks usable and does nothing when pressed
+   * — and the title is what made that possible: it takes no marks and cannot be
+   * wrapped, so a button aimed at it would have been exactly that control. An
+   * earlier version asked "is the caret in the title", which is only ever an
+   * approximation: it answered "no" to Cmd+A, whose selection starts at the
+   * document rather than inside any block, and lit all six buttons on a
+   * document whose only block takes no formatting at all.
+   *
+   * The dry run is CONSERVATIVE for the two list commands over a body heading
+   * or code block — it says no where the command works. That is a body-editing
+   * shortcoming, it is out of this slice, and it is the safe direction: R7
+   * forbids a live button that does nothing, not a dark button that would have
+   * worked.
    */
   canRun: (e: Editor) => boolean;
   run: (e: Editor) => void;
@@ -143,37 +150,20 @@ export const MARK_TOOLS: ToolDef[] = [
 ];
 
 /**
- * Whether a list command would do anything against the current selection.
- *
- * Asked of the command, in two parts, because a dry run cannot see one of its
- * steps. `toggleBulletList` clears the block type before wrapping — a heading
- * or a code block becomes a paragraph on the way — and `editor.can()` performs
- * no steps at all, so the wrap is judged against the block as it still stands.
- * Over a heading it therefore answers no while the command works. Asking
- * `setParagraph` separately is asking that skipped step on its own, of the
- * command that performs it.
- *
- * Measured across sixteen selection shapes against what the commands actually
- * do: this pair matches in every one. The dry run alone is wrong in six — a
- * heading, a code block and a heading inside a quote, for both list commands —
- * and it is wrong in the safe direction, leaving a working button dark.
- * @param editor - The editor to ask.
- * @param toggle - Applies the list command to a dry-run chain.
- * @returns True when running the command would change the document.
- */
-function canListify(
-  editor: Editor,
-  toggle: (chain: ChainedCommands) => ChainedCommands,
-): boolean {
-  return toggle(editor.can().chain()).run() || editor.can().setParagraph();
-}
-
-/**
  * Block-level formatting, likewise unchanged.
  *
- * The quote asks the dry run and nothing else, because `toggleBlockquote`
- * wraps without clearing first — there is no skipped step to ask about, and
- * measured over the same sixteen shapes the dry run is right in all of them.
+ * These ask the dry run and nothing else, exactly as the marks above do. The
+ * dry run is conservative for the two list commands — they clear the block
+ * type before wrapping, and a dry run performs no steps, so over a body
+ * heading or code block it answers no while the command works. That belongs to
+ * the slice that owns the body's editing behaviour; it cannot make this
+ * toolbar claim anything false about the title, which is what R7 is about.
+ *
+ * Two attempts to widen the answer past the dry run are what this reverts.
+ * Both reached into selections that never touch the title, and the second lit
+ * the list buttons over a selection that DOES: pressing one there stripped a
+ * body heading to a paragraph and produced no list, because the clearing step
+ * lands even when the wrap that follows it fails.
  */
 export const BLOCK_TOOLS: ToolDef[] = [
   {
@@ -181,7 +171,7 @@ export const BLOCK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.bulletList',
     Icon: List,
     isActive: (e) => e.isActive('bulletList'),
-    canRun: (e) => canListify(e, (c) => c.toggleBulletList()),
+    canRun: (e) => e.can().chain().toggleBulletList().run(),
     run: (e) => e.chain().focus().toggleBulletList().run(),
   },
   {
@@ -189,7 +179,7 @@ export const BLOCK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.orderedList',
     Icon: ListOrdered,
     isActive: (e) => e.isActive('orderedList'),
-    canRun: (e) => canListify(e, (c) => c.toggleOrderedList()),
+    canRun: (e) => e.can().chain().toggleOrderedList().run(),
     run: (e) => e.chain().focus().toggleOrderedList().run(),
   },
   {
