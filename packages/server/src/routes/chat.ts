@@ -11,7 +11,7 @@
 
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 
 import {
   chatMessageSchema,
@@ -75,7 +75,7 @@ chat.use("*", requireAuth);
  * @param c - Hono context with validated `chatMessageSchema` body
  * @returns SSE text/event-stream response
  */
-chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
+chat.post("/message", validate("json", chatMessageSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
@@ -134,7 +134,7 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
  * @param c - Hono context with validated `skillCommandSchema` body
  * @returns SSE text/event-stream response
  */
-chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
+chat.post("/skill", validate("json", skillCommandSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
@@ -193,7 +193,7 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
  */
 chat.get(
   "/conversations",
-  zValidator("query", chatConversationsQuerySchema),
+  validate("query", chatConversationsQuerySchema),
   async (c) => {
     const user = c.get("user");
     const { limit, offset, project_id: projectId } = c.req.valid("query");
@@ -221,7 +221,7 @@ chat.get(
  * @returns The conversation list and the current conversation with its messages
  * @throws {AppError} `404` if the caller is not a member, `403` if read-only
  */
-chat.post("/open", zValidator("json", chatOpenSchema), async (c) => {
+chat.post("/open", validate("json", chatOpenSchema), async (c) => {
   const user = c.get("user");
   const { project_id: projectId } = c.req.valid("json");
   const result = await conversationService.openChat(user.id, projectId);

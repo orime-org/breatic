@@ -22,7 +22,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { createTeamStudioSchema, updateStudioSchema } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
@@ -128,12 +128,12 @@ studios.get(
  * existing studio); per-user rate limited (10/hour) to bound abuse, and capped
  * at a per-user soft limit of active team studios.
  * @returns `201` with `{ data: Studio }`; `409` taken slug / per-user limit
- *   reached, `400` invalid body (zValidator), `429` rate limited
+ *   reached, `422` invalid body, `429` rate limited
  */
 studios.post(
   "/",
   rateLimitFor("studio-create", "user"),
-  zValidator("json", createTeamStudioSchema),
+  validate("json", createTeamStudioSchema),
   async (c) => {
     const user = c.get("user");
     const { name, slug } = c.req.valid("json");
@@ -162,7 +162,7 @@ studio.get("/:slug", async (c) => {
 /**
  * `PATCH /api/v1/studio/:slug` — edit the studio's display name, URL slug,
  * and/or bio. Admin-only; every field is optional so the settings form sends
- * only what changed, and an entirely empty patch is a `400` rather than a
+ * only what changed, and an entirely empty patch is a `422` rather than a
  * successful no-op.
  *
  * Changing the slug frees the old one immediately — no redirect, no alias
@@ -173,7 +173,7 @@ studio.get("/:slug", async (c) => {
  *
  * Rate limited per user: a rename churns every link to the studio, and the
  * slug-availability probe next to it is already limited.
- * @returns `200` with `{ data: Studio }`; `400` invalid or empty patch,
+ * @returns `200` with `{ data: Studio }`; `422` invalid or empty patch,
  *   `403` not the admin, `404` no such studio, `409` slug taken,
  *   `429` rate limited
  */
@@ -181,7 +181,7 @@ studio.patch(
   "/:slug",
   requireStudioRole("admin"),
   rateLimitFor("studio-update", "user"),
-  zValidator("json", updateStudioSchema),
+  validate("json", updateStudioSchema),
   async (c) => {
     const slug = c.req.param("slug");
     const data = await studioService.updateStudio(slug, c.req.valid("json"));
@@ -288,21 +288,26 @@ studio.get("/:slug/members", async (c) => {
  *   `403` personal studio / caller not admin, `409` already a member or already
  *   invited
  */
-studio.post("/:slug/members", requireStudioRole("admin"), async (c) => {
-  const user = c.get("user");
-  const slug = c.req.param("slug");
-  const body = inviteMemberSchema.parse(await c.req.json());
-  // The optional best-effort invite email is sent inside the service (the bell
-  // notification is the always-delivered path); the route only passes the Origin.
-  await studioInviteService.createInvite(
-    slug,
-    user.id,
-    body.email,
-    body.role,
-    c.req.header("Origin") ?? "http://localhost:8000",
-  );
-  return c.json({ data: { ok: true } }, 201);
-});
+studio.post(
+  "/:slug/members",
+  requireStudioRole("admin"),
+  validate("json", inviteMemberSchema),
+  async (c) => {
+    const user = c.get("user");
+    const slug = c.req.param("slug");
+    const body = c.req.valid("json");
+    // The optional best-effort invite email is sent inside the service (the bell
+    // notification is the always-delivered path); the route only passes the Origin.
+    await studioInviteService.createInvite(
+      slug,
+      user.id,
+      body.email,
+      body.role,
+      c.req.header("Origin") ?? "http://localhost:8000",
+    );
+    return c.json({ data: { ok: true } }, 201);
+  },
+);
 
 /**
  * `DELETE /api/v1/studio/:slug/members/:userId` — remove (kick) a member.
@@ -354,13 +359,18 @@ studio.delete("/:slug/membership", requireStudioRole("guest"), async (c) => {
  * @returns `200` with `{ data: { ok: true } }`; `403` personal / not admin,
  *   `404` not a member, `409` target is the admin (demote via transfer)
  */
-studio.patch("/:slug/members/:userId", requireStudioRole("admin"), async (c) => {
-  const slug = c.req.param("slug");
-  const targetUserId = c.req.param("userId");
-  const body = changeRoleSchema.parse(await c.req.json());
-  await studioMemberService.updateMemberRole(slug, targetUserId, body.role);
-  return c.json({ data: { ok: true } });
-});
+studio.patch(
+  "/:slug/members/:userId",
+  requireStudioRole("admin"),
+  validate("json", changeRoleSchema),
+  async (c) => {
+    const slug = c.req.param("slug");
+    const targetUserId = c.req.param("userId");
+    const body = c.req.valid("json");
+    await studioMemberService.updateMemberRole(slug, targetUserId, body.role);
+    return c.json({ data: { ok: true } });
+  },
+);
 
 /**
  * `POST /api/v1/studio/:slug/transfer-admin` — the admin asks an existing
@@ -372,20 +382,25 @@ studio.patch("/:slug/members/:userId", requireStudioRole("admin"), async (c) => 
  * @returns `201` with `{ data: { ok: true } }`; `403` personal / not admin,
  *   `404` recipient not a member, `422` recipient is the acting admin
  */
-studio.post("/:slug/transfer-admin", requireStudioRole("admin"), async (c) => {
-  const user = c.get("user");
-  const slug = c.req.param("slug");
-  const body = transferAdminSchema.parse(await c.req.json());
-  // The service sends the best-effort transfer email itself (needs the recipient
-  // + profile repos); the route only forwards the request Origin for the link.
-  await studioTransferService.requestTransfer(
-    slug,
-    user.id,
-    body.toUserId,
-    c.req.header("Origin") ?? "http://localhost:8000",
-  );
-  return c.json({ data: { ok: true } }, 201);
-});
+studio.post(
+  "/:slug/transfer-admin",
+  requireStudioRole("admin"),
+  validate("json", transferAdminSchema),
+  async (c) => {
+    const user = c.get("user");
+    const slug = c.req.param("slug");
+    const body = c.req.valid("json");
+    // The service sends the best-effort transfer email itself (needs the recipient
+    // + profile repos); the route only forwards the request Origin for the link.
+    await studioTransferService.requestTransfer(
+      slug,
+      user.id,
+      body.toUserId,
+      c.req.header("Origin") ?? "http://localhost:8000",
+    );
+    return c.json({ data: { ok: true } }, 201);
+  },
+);
 
 /**
  * `GET /api/v1/studio/:slug/transfer` — the studio's outstanding adminship
@@ -420,7 +435,7 @@ studio.delete(
   // Registered BEFORE the role middleware, the same way the project routes do
   // it: a validator behind a middleware that already reads the param cannot
   // stop what the middleware does with it.
-  zValidator(
+  validate(
     "param",
     z.object({ slug: z.string(), transferId: z.string().uuid() }),
   ),

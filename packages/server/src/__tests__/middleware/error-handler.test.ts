@@ -35,7 +35,7 @@ const logged = vi.hoisted(() => ({
 vi.mock("@breatic/core", async (importOriginal) => {
   // Everything real except the logger: the error family, `runWithLocale` and
   // `loadLocales` are what this suite is asserting against.
-  const actual = await importOriginal<typeof import("@breatic/core")>();
+  const actual = (await importOriginal()) as Record<string, unknown>;
   return { ...actual, logger: logged };
 });
 

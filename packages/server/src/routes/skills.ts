@@ -10,7 +10,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { skillMarketQuerySchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -50,7 +50,7 @@ skills.delete("/mine/:id", async (c) => {
 /** `GET /skills/market` — browse published marketplace skills. */
 skills.get(
   "/market",
-  zValidator("query", skillMarketQuerySchema),
+  validate("query", skillMarketQuerySchema),
   async (c) => {
     const { tags, offset, limit } = c.req.valid("query");
     const list = await skillService.listMarketSkills(tags, offset, limit);

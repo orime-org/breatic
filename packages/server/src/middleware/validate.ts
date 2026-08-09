@@ -15,7 +15,6 @@
  * So we keep the parsing and take back the answering. The failure hook
  * throws; `errorHandler` decides the status, the shape and the language, the
  * same way it does for every other error in the product.
- *
  * @see packages/server/src/middleware/error-handler.ts
  */
 
@@ -41,6 +40,11 @@ type ValidatorArgs = Parameters<typeof zValidator>;
  * parameter is the failure hook, which is the very thing this function
  * exists to fix in one place; passing another one here has no effect,
  * because this hook throws before any hook of yours could answer.
+ * @param target - Which part of the request to read: `json`, `query`,
+ *   `param`, and the rest of hono's validation targets.
+ * @param schema - The zod schema that part must satisfy.
+ * @returns Middleware that parses the target and hands the result to the
+ *   route through `c.req.valid(target)`.
  * @throws {ValidationError} 422 when the value does not satisfy the schema.
  *   A body that could not be parsed at all never reaches here — hono throws
  *   `HTTPException` from inside the validator first, which the error handler

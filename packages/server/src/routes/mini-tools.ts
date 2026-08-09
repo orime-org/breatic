@@ -11,7 +11,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 
 import {
   imageToolSchema,
@@ -112,7 +112,7 @@ async function enqueueMiniTool(
  * @param c - Hono context with validated `imageToolSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
-miniTools.post("/image", zValidator("json", imageToolSchema), async (c) => {
+miniTools.post("/image", validate("json", imageToolSchema), async (c) => {
   const user = c.get("user");
   const err = await precheckCredits(user.id, MIN_TASK_CREDIT_COST);
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
@@ -141,7 +141,7 @@ miniTools.post("/image", zValidator("json", imageToolSchema), async (c) => {
  * @param c - Hono context with validated `videoToolSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
-miniTools.post("/video", zValidator("json", videoToolSchema), async (c) => {
+miniTools.post("/video", validate("json", videoToolSchema), async (c) => {
   const user = c.get("user");
   const err = await precheckCredits(user.id, MIN_TASK_CREDIT_COST);
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
@@ -171,7 +171,7 @@ miniTools.post("/video", zValidator("json", videoToolSchema), async (c) => {
  * @param c - Hono context with validated `audioToolSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
-miniTools.post("/audio", zValidator("json", audioToolSchema), async (c) => {
+miniTools.post("/audio", validate("json", audioToolSchema), async (c) => {
   const user = c.get("user");
   const err = await precheckCredits(user.id, MIN_TASK_CREDIT_COST);
   if (err) return c.json({ error: { code: 402, message: err } }, 402);

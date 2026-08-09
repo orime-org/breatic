@@ -28,7 +28,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -62,7 +62,7 @@ const requestBodySchema = z.object({
 projectRoleUpgradeRequests.post(
   "/",
   requireRole("viewer"),
-  zValidator("json", requestBodySchema),
+  validate("json", requestBodySchema),
   async (c) => {
     const user = c.get("user");
     const role = c.get("role");
@@ -152,7 +152,7 @@ const requestParamSchema = z.object({ requestId: z.string().uuid() });
  */
 withdrawRoute.delete(
   "/:requestId",
-  zValidator("param", requestParamSchema),
+  validate("param", requestParamSchema),
   async (c) => {
     const user = c.get("user");
     await roleUpgradeRequestService.cancel(c.req.param("requestId"), user.id);

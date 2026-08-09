@@ -13,7 +13,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -33,7 +33,7 @@ const listQuerySchema = z.object({
 activities.get(
   "/:projectId/activities",
   requireAuth,
-  zValidator("query", listQuerySchema),
+  validate("query", listQuerySchema),
   async (c) => {
     const user = c.get("user");
     const projectId = c.req.param("projectId");

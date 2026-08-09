@@ -9,7 +9,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { OAuth2Client } from "google-auth-library";
 import type { TokenPayload } from "google-auth-library";
 
@@ -99,7 +99,7 @@ function getGoogleClient(): OAuth2Client {
  * @returns `201` with `{ user, recoveryCode }` on success + Set-Cookie
  * @throws {AppError} `409` if email is already registered
  */
-auth.post("/register", rateLimitFor("register"), zValidator("json", registerSchema), async (c) => {
+auth.post("/register", rateLimitFor("register"), validate("json", registerSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const { user, recoveryCode } = await authService.register(email, password);
   const { token } = await authService.loginEmail(email, password);
@@ -134,7 +134,7 @@ auth.post("/register", rateLimitFor("register"), zValidator("json", registerSche
  * @throws {AppError} `409` if the slug is already taken (or the user
  *   already has a personal studio)
  */
-auth.post("/setup-studio", requireAuth, zValidator("json", setupStudioSchema), async (c) => {
+auth.post("/setup-studio", requireAuth, validate("json", setupStudioSchema), async (c) => {
   const user = c.get("user");
   const { slug } = c.req.valid("json");
   const studio = await studioService.createPersonalStudio(user.id, slug);
@@ -155,7 +155,7 @@ auth.post("/setup-studio", requireAuth, zValidator("json", setupStudioSchema), a
  * @returns `200` with `{ user: { ...user, personalStudio } }` + Set-Cookie
  * @throws {AppError} `401` if credentials are invalid
  */
-auth.post("/login", rateLimitFor("login"), zValidator("json", loginSchema), async (c) => {
+auth.post("/login", rateLimitFor("login"), validate("json", loginSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const { user, token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
@@ -204,7 +204,7 @@ const googleAuthSchema = z.object({
  * @throws {AppError} `401` if the credential is invalid, expired, or unverified
  * @throws {AppError} `503` if Google OAuth is not configured on this server
  */
-auth.post("/google", rateLimitFor("google"), zValidator("json", googleAuthSchema), async (c) => {
+auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema), async (c) => {
   if (!env.GOOGLE_CLIENT_ID) {
     logger.warn("google_oauth_unconfigured");
     return c.json({ error: { code: 503, message: t("server.auth.google_oauth_unconfigured") } }, 503);
@@ -295,7 +295,7 @@ const forgotPasswordSchema = z.object({
 auth.post(
   "/forgot-password",
   rateLimitFor("forgot"),
-  zValidator("json", forgotPasswordSchema),
+  validate("json", forgotPasswordSchema),
   async (c) => {
     const { email } = c.req.valid("json");
     const resetBaseUrl = c.req.header("Origin")
@@ -330,7 +330,7 @@ const resetPasswordSchema = z.object({
 auth.post(
   "/reset-password",
   rateLimitFor("reset"),
-  zValidator("json", resetPasswordSchema),
+  validate("json", resetPasswordSchema),
   async (c) => {
     const { token, password } = c.req.valid("json");
     await authService.resetPassword(token, password);
@@ -372,7 +372,7 @@ const resetWithRecoveryCodeSchema = z.object({
 auth.post(
   "/reset-password-with-recovery-code",
   rateLimitFor("reset-recovery"),
-  zValidator("json", resetWithRecoveryCodeSchema),
+  validate("json", resetWithRecoveryCodeSchema),
   async (c) => {
     const { email, recoveryCode, newPassword } = c.req.valid("json");
     const { newRecoveryCode, userId } = await authService.resetPasswordWithRecoveryCode(
@@ -408,7 +408,7 @@ const verifyEmailSchema = z.object({
 auth.post(
   "/verify-email",
   rateLimitFor("verify-email"),
-  zValidator("json", verifyEmailSchema),
+  validate("json", verifyEmailSchema),
   async (c) => {
     const { token } = c.req.valid("json");
     const { userId } = await authService.verifyEmail(token);

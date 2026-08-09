@@ -10,7 +10,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 
 import { z } from "zod";
 import {
@@ -82,7 +82,7 @@ canvas.get("/limits", (c) => {
  * @param c - Hono context with validated `taskCreateSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
-canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
+canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
@@ -335,7 +335,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
  * @param c - Hono context with validated `understandSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
-canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
+canvas.post("/understand", validate("json", understandSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
@@ -396,7 +396,7 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
  * @param c - Hono context with optional pagination query params
  * @returns Paginated array of task entities
  */
-canvas.get("/tasks", zValidator("query", paginationSchema), async (c) => {
+canvas.get("/tasks", validate("query", paginationSchema), async (c) => {
   const user = c.get("user");
   const { limit, offset } = c.req.valid("query");
   const tasks = await taskService.list(user.id, limit, offset);
@@ -421,8 +421,8 @@ const nodeHistoryQuerySchema = z.object({
 
 canvas.get(
   "/nodes/:nodeId/history",
-  zValidator("param", z.object({ nodeId: z.string().uuid() })),
-  zValidator("query", nodeHistoryQuerySchema),
+  validate("param", z.object({ nodeId: z.string().uuid() })),
+  validate("query", nodeHistoryQuerySchema),
   async (c) => {
     const user = c.get("user");
     // nodeId is a canvas node UUID (node_history.node_id is uuid) — validated

@@ -26,7 +26,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -83,7 +83,7 @@ const notificationParamSchema = z.object({ id: z.string().uuid() });
 
 route.patch(
   "/:id/read",
-  zValidator("param", notificationParamSchema),
+  validate("param", notificationParamSchema),
   async (c) => {
     const user = c.get("user");
     const id = c.req.param("id");

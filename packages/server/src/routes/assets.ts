@@ -17,7 +17,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -140,7 +140,7 @@ assets.get(
   "/presign",
   requireAuth,
   rateLimitFor("presign", "user"),
-  zValidator("query", presignSchema),
+  validate("query", presignSchema),
   async (c) => {
     const user = c.get("user");
     const { filename, content_type, project_id, size, hash } =
@@ -404,7 +404,7 @@ assets.post(
   "/uploaded",
   requireAuth,
   rateLimitFor("asset-report", "user"),
-  zValidator("json", uploadedSchema),
+  validate("json", uploadedSchema),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -748,7 +748,7 @@ assets.post(
   "/deleted",
   requireAuth,
   rateLimitFor("asset-report", "user"),
-  zValidator("json", deletedSchema),
+  validate("json", deletedSchema),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
