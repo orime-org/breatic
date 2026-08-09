@@ -4,6 +4,7 @@
 import { Clock, FileText, Palette } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { Label } from '@web/components/ui/label';
 import { cn } from '@web/lib/utils';
 import { SPACE_TYPE_LIST, type SpaceType } from '@web/spaces';
@@ -113,8 +114,12 @@ export function SpaceKindPicker({
           const Icon = card.icon;
           const selected = value === card.type;
           return (
-            <button
+            <Button
               key={card.type}
+              variant={null}
+              // `menu-item` is the only auto-height size — the card stacks an
+              // icon over two text lines, so a fixed `h-*` size would clip it.
+              size={null}
               type='button'
               role='radio'
               aria-checked={selected}
@@ -147,7 +152,7 @@ export function SpaceKindPicker({
                   {t('spaces.create.notAvailable')}
                 </span>
               ) : null}
-            </button>
+            </Button>
           );
         })}
       </div>

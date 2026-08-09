@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { cn } from '@web/lib/utils';
 
@@ -42,12 +43,13 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
           // text. 36px = 24px button width + 6px gap on each side.
           className={cn('pr-9', className)}
         />
-        <button
+        <Button
           type='button'
+          variant={null}
+          size={null}
           onClick={() => setVisible((v) => !v)}
           aria-label={visible ? hideLabel : showLabel}
           aria-pressed={visible}
-          tabIndex={-1}
           className={cn(
             'absolute top-1/2 right-2 -translate-y-1/2',
             'inline-flex h-6 w-6 items-center justify-center rounded-sm',
@@ -61,7 +63,7 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
           ) : (
             <Eye className='h-4 w-4' aria-hidden />
           )}
-        </button>
+        </Button>
       </div>
     );
   },

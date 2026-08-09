@@ -49,9 +49,11 @@ export function StudioAccountMenu(): React.JSX.Element {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type='button'
           aria-label={t('studio.topBar.account')}
+          variant={null}
+          size={null}
           // Hover dims rather than tinting the background: with an avatar set
           // the background is covered by the image, so a background hover is
           // invisible. Opacity also leaves the element's box untouched — this
@@ -67,7 +69,7 @@ export function StudioAccountMenu(): React.JSX.Element {
             avatarUrl={user?.avatarUrl ?? null}
             size='sm'
           />
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         align='end'

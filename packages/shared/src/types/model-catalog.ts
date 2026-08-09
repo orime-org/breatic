@@ -137,9 +137,64 @@ export const IMAGE_GENERATION_MODES = ["t2i", "i2i"] as const;
  * @returns True when any of the model's modes is a generation mode.
  */
 export function isImageGenerationMode(mode: string | string[]): boolean {
+  return anyModeIn(mode, IMAGE_GENERATION_MODES);
+}
+
+/**
+ * Video model `mode` values that make a model offerable in the video Generate
+ * panel (#1896). A model qualifies when ANY of its modes is one of these, so a
+ * model tagged with several offerable modes qualifies through any of them.
+ *
+ * `first_last` is listed ahead of its config: no entry in
+ * `config/models/video/*.yaml` declares it today (all three image-to-video
+ * models are plain `mode: "i2v"`), so narrowing to it yields nothing. The
+ * first-last-frame slice adds it to the models that support an end frame, and
+ * must add it to the backend's per-mode source map at the same time — a mode
+ * missing from that map is treated as needing no source, which would switch
+ * the execute gate off for that model in every one of its modes.
+ *
+ * Which modes belong here is the user's decision (2026-08-08), not a formula:
+ * these six go in the Generate panel and `extend` / `edit` / `motion` /
+ * `upscale` / `interpolate` go to the mini-tool system. Four of those five do
+ * work on a video that already exists, which is the shape of the decision —
+ * but `motion` does not: `kling-v3-pro-motion` takes a character image
+ * (`config/models/video/kling.yaml:186`, and `MODE_REQUIRED_SOURCES.video`
+ * lists it as `["image"]`), and it is out because the user put it out. Do not
+ * re-derive the list from a rule; the list IS the rule.
+ *
+ * Offering a mini-tool mode here would put a model in the picker that needs a
+ * source this panel does not collect, and the backend's cross-modality source
+ * gate then rejects the submit with a 400.
+ *
+ * This is a separate list from `IMAGE_GENERATION_MODES` on purpose, not a
+ * duplication to be merged: the two are independent product decisions that
+ * happen to share a shape. Changing which image modes are generatable says
+ * nothing about video, and the agent's image-plan skill reads the image list
+ * without wanting a video decision attached to it.
+ */
+export const VIDEO_GENERATION_MODES = [
+  "t2v",
+  "i2v",
+  "first_last",
+  "animate",
+  "ref",
+  "talking_head",
+] as const;
+
+/**
+ * Whether any of a model's modes appears in an allowed list. A model declares
+ * `mode` as either one string or an array of them, so testing membership means
+ * normalising first — which is the only thing this helper exists to hold.
+ * @param mode - The model's `mode` (a single string or an array of modes).
+ * @param allowed - The modes that qualify for the caller's purpose.
+ * @returns True when at least one of the model's modes is allowed.
+ */
+function anyModeIn(
+  mode: string | string[],
+  allowed: readonly string[],
+): boolean {
   const modes = Array.isArray(mode) ? mode : [mode];
-  const generatable: readonly string[] = IMAGE_GENERATION_MODES;
-  return modes.some((m) => generatable.includes(m));
+  return modes.some((m) => allowed.includes(m));
 }
 
 // The source-image predicates (SOURCE_IMAGE_MODES / requiresSourceImage /

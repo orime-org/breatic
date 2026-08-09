@@ -4,6 +4,7 @@
 import { History, Loader2, RotateCw, X } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
@@ -122,15 +123,17 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
             </span>
           ) : null}
         </div>
-        <button
+        <Button
           type='button'
+          variant={null}
+          size={null}
           data-testid='node-history-close'
           aria-label={t('canvas.history.close')}
           onClick={onClose}
           className='flex h-6 w-6 items-center justify-center rounded-content-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-3.5 w-3.5' aria-hidden='true' />
-        </button>
+        </Button>
       </div>
 
       {isLoading ? (
@@ -166,15 +169,17 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
           <span className='text-xs text-status-error'>
             {t('canvas.history.loadError')}
           </span>
-          <button
+          <Button
             type='button'
+            variant={null}
+            size={null}
             data-testid='node-history-retry'
             onClick={onRetry}
             className='inline-flex items-center gap-1 rounded-content-sm border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
           >
             <RotateCw className='h-3 w-3' aria-hidden='true' />
             {t('canvas.history.retry')}
-          </button>
+          </Button>
         </div>
       ) : entries.length === 0 ? (
         <div

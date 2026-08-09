@@ -3,6 +3,7 @@
 
 import type * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { MODALITY_ICONS } from '@web/spaces/canvas/nodes/_shared/modality';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
@@ -29,7 +30,8 @@ interface NodePlaceholderProps {
  * Enter / Space on the focused button, fires `onActivate`. An explicit `hint`
  * (e.g. an in-progress status) overrides both lines with one line.
  *
- * The keyboard half is not a bonus feature — this is a `<button>`, so it is
+ * The keyboard half is not a bonus feature — `Button` renders a real
+ * `<button>`, so it is
  * focusable and clicking an empty node lands focus here
  * rather than on the node wrapper. Without a keyboard path the most common
  * sequence there (click the node, press Enter to start) would do nothing at
@@ -52,8 +54,16 @@ export function NodePlaceholder({
   const t = useTranslation();
   const Icon = MODALITY_ICONS[modality];
   return (
-    <button
+    <Button
       type='button'
+      // No variant, no size: the node shell already draws this control's
+      // frame and the 9th-slice system fixes how a node body answers hover
+      // (it brightens its text rather than filling), so every chrome the
+      // primitive could add would be a second edge or a wrong hover. The
+      // classes below are the whole appearance. NodePlaceholder.test.tsx
+      // pins the hover behaviour.
+      variant={null}
+      size={null}
       onDoubleClick={onActivate}
       onClick={(event) => {
         if (event.detail === 0) onActivate?.();
@@ -73,6 +83,6 @@ export function NodePlaceholder({
           </span>
         </span>
       )}
-    </button>
+    </Button>
   );
 }

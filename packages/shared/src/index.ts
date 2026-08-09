@@ -28,6 +28,8 @@ export type {
   UserEntity,
   ConversationEntity,
   MessageData,
+  MessageInput,
+  MessagePart,
   ToolCallInfo,
   TaskEntity,
   NodeHistoryEntity,
@@ -141,6 +143,7 @@ export {
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   isImageGenerationMode,
+  VIDEO_GENERATION_MODES,
 } from "@shared/types/index.js";
 
 export type {
@@ -168,6 +171,7 @@ export {
   checkoutSchema,
   paginationSchema,
   chatConversationsQuerySchema,
+  chatOpenSchema,
 } from "@shared/schemas/index.js";
 
 export type {

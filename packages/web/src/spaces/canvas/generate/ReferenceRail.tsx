@@ -4,6 +4,7 @@
 import { Crop, Loader2, X } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
@@ -114,8 +115,16 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               dimmed={inert}
               followCanvas
             >
-              <button
+              <Button
                 type='button'
+                // The chip's own border (on the row wrapper) is what makes this
+                // read as pressable, and the ✕ shares that frame — so this
+                // button draws none of its own. `menu-item` is picked for its
+                // metrics: it is the one size that imposes no height, leaving
+                // the chip's. `p-0` keeps the padding on the wrapper, where it
+                // was.
+                variant={null}
+                size={null}
                 data-testid={`generate-ref-insert-${ref.refId}`}
                 // The accessible name must carry the ROW identity + the crop
                 // tag (adversarial round-2): aria-label overrides
@@ -178,10 +187,12 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 <span className='max-w-[7rem] truncate text-xs text-foreground'>
                   {ref.sourceNodeName}
                 </span>
-              </button>
+              </Button>
             </HoverPreview>
-            <button
+            <Button
               type='button'
+              variant={null}
+              size={null}
               data-testid={`generate-ref-remove-${ref.refId}`}
               // Same identity-carrying label as insert (round-3): the
               // destructive ✕ must not announce identically across
@@ -200,7 +211,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed ${inert ? 'opacity-50' : ''}`}
             >
               <X className='h-3 w-3' aria-hidden='true' />
-            </button>
+            </Button>
           </div>
         );
       })}

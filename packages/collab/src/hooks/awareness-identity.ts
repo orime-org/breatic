@@ -2,53 +2,72 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The server decides whose caret is whose (#1886).
+ * The server decides whose caret is whose (#1886, #1887).
  *
  * A caret shows a name and a colour, and both are derived from one field: the
  * user id on its awareness state. Whoever writes that field decides whose name
- * appears on screen. Until now the browser wrote it and the server checked it,
- * which meant maintaining a check at all — and the check could only ever be as
- * good as our ability to tell a forged frame from an honest one. The server
- * already resolved this connection's user from its credential at the handshake,
- * so it writes the field and the question disappears.
+ * appears on screen. It is the server, from the credential it validated at the
+ * handshake, and it writes it onto every entry a client hands over.
  *
- * ## Per entry, not per frame
+ * ## Every entry, and no judgement about whose it is
  *
- * One inbound frame carries every client state it happened to decode, not just
- * the sender's own: clients re-broadcast what they have learned about their
- * peers. So a frame from one collaborator routinely contains another's entry,
- * and stamping the frame wholesale would put the sender's identity on somebody
- * else's caret.
+ * An inbound frame is a list of entries keyed by Yjs client id, and that key is
+ * a number the browser chose for itself — so a hand-built frame can key an
+ * entry to somebody else's. This rule used to recognise exactly that case and
+ * pass the entry through unchanged, which is what made writing a caret under
+ * another member's name possible at all (#1887).
  *
- * The Yjs client id decides. Ours, or not yet known to anyone — the sender's,
- * stamp it. Registered against a different connection — a relay, leave it.
+ * It does not ask any more. Asking needs an answer to "whose client id is
+ * this", and the server has no trustworthy source for it: the connection
+ * registry the library keeps is empty for a reconnecting client, because a
+ * connection's client set only grows from `added` and an id the document has
+ * seen before never lands there again (`y-protocols/awareness.js` classifies it
+ * as `updated`, since a remote client's `meta` is never cleared). y-protocols
+ * takes the same position in its own hook for this: `modifyAwarenessUpdate`
+ * hands the callback the states and deliberately not the client ids.
  *
- * "Not yet known" is the first frame of a connection: the library registers a
- * connection's client ids while handling the awareness update, so the very
- * first one arrives unregistered. It cannot belong to anyone else, because
- * every id the server already knows about is registered somewhere.
+ * So every entry is stamped. A frame that names a peer cannot impersonate
+ * them — it arrives carrying the sender's identity, exactly like the rest.
+ *
+ * ## What this rule does not do
+ *
+ * It never removes an entry. Emptying a frame would cost its sender their
+ * presence heartbeat: a frame that names nobody applies nothing, so awareness
+ * emits no update event, and that event is the one the heartbeat hangs off —
+ * ninety seconds of silence reads as offline. What the event does NOT require
+ * is that anything changed: a heartbeat is the same state sent again, and it
+ * is `change`, not `update`, that filters those out.
+ *
+ * It never sees a removal, either. A client does forward one kind of frame
+ * naming a peer — a removal it decided on its own, on the timeout its copy of
+ * the protocol keeps. But the server builds a scratch awareness per frame and
+ * hands this hook its `getStates()`, and a removal carries a null state, which
+ * never puts an entry into a scratch that never had one. Nothing is deleted;
+ * there is simply nothing to hand over.
+ *
+ * And it does not really reach an entry whose state is an array. An array is
+ * an object, so the identity is written onto it here, but re-encoding runs the
+ * state through `JSON.stringify`, which keeps only the indexed elements — that
+ * entry leaves exactly as it arrived. Harmless rather than a hole: what leaves
+ * carries no identity at all, so it cannot pass for anyone. Only a hand-built
+ * frame produces one.
  */
 
 /** Field the identity is written to. Only the server ever writes it. */
 const USER_FIELD = "user";
 
 /**
- * Write the connection's authenticated user id onto the entries that belong to
- * it, leaving relayed entries alone.
+ * Write the connection's authenticated user id onto every entry of one frame.
  *
  * Mutates `states` in place — that is the contract of the hook this serves:
  * whatever the map holds afterwards is what peers receive.
- * @param args - The decoded frame and what is known about its client ids.
- * @param args.states - Per-client awareness states from one inbound frame, keyed by Yjs client id. Mutated in place.
- * @param args.ownClientIds - Client ids the library has registered against this connection.
- * @param args.otherClientIds - Client ids registered against any other connection on this document.
+ * @param args - The decoded frame and who sent it.
+ * @param args.states - The awareness map the server hands this hook, keyed by Yjs client id and mutated in place. It holds the entries decoded from one inbound frame AND one more: the scratch awareness's own local entry, an empty object at clock zero, which is why the returned list always carries an id the sender never sent. That entry is stamped like any other and then refused by the document as stale, so it goes nowhere.
  * @param args.userId - The authenticated user behind this frame; undefined when the frame came from another collab instance rather than a client connection, in which case nothing is touched.
  * @returns The client ids that were stamped.
  */
 export function stampConnectionIdentity(args: {
   states: Map<number, Record<string, unknown>>;
-  ownClientIds: ReadonlySet<number>;
-  otherClientIds: ReadonlySet<number>;
   userId: string | undefined;
 }): number[] {
   // No connection behind this frame: it was relayed from another instance,
@@ -59,15 +78,10 @@ export function stampConnectionIdentity(args: {
   const stamped: number[] = [];
 
   for (const [clientId, state] of args.states) {
-    // Awareness clears a peer by setting its state to null. Stamping an id
-    // onto that would turn a departure into a caret nobody can remove.
+    // A state is an object in every frame our own client sends. One that is
+    // not cannot carry a field, so it is left exactly as it arrived rather
+    // than removed — removing is what would cost the sender their heartbeat.
     if (state === null || typeof state !== "object") continue;
-
-    // Registered to somebody else — this is the sender relaying what it knows
-    // about a peer, which is normal traffic and not ours to rewrite.
-    if (args.otherClientIds.has(clientId) && !args.ownClientIds.has(clientId)) {
-      continue;
-    }
 
     // The server decides what this field contains, keeping exactly one thing
     // the client sent: whether its window has focus. That is the client's to

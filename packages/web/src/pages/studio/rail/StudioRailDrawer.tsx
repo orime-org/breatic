@@ -5,6 +5,7 @@ import * as React from 'react';
 import { Menu } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
+import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Sheet,
@@ -60,13 +61,15 @@ export function StudioRailDrawer({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <button
+        <Button
           type='button'
           aria-label={t('studio.rail.openNav')}
+          variant={null}
+          size={null}
           className='flex h-7 w-7 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:hidden'
         >
           <Menu className='h-[18px] w-[18px]' />
-        </button>
+        </Button>
       </SheetTrigger>
       <SheetContent
         side='left'

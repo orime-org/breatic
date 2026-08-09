@@ -6,11 +6,16 @@ import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
+import { Button } from '@web/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { Switch } from '@web/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
+import {
+  paramValues,
+  type ParamOptionValue,
+} from '@web/spaces/canvas/generate/param-values';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The camera-cluster params this control edits (all on `data.params`, #1788). */
@@ -24,8 +29,6 @@ export interface CameraValue {
   enable_camera?: boolean;
 }
 
-type ParamValue = string | number;
-
 /** Column config: which param each wheel edits + how its glyph renders. */
 const COLUMNS = [
   { key: 'camera', capKey: 'cameraBody', glyph: 'camera' },
@@ -34,21 +37,9 @@ const COLUMNS = [
   { key: 'aperture', capKey: 'aperture', glyph: 'iris' },
 ] as const;
 
-/**
- * A param's allowed values, preserving numbers (focal_length) vs strings.
- * @param model - The current model.
- * @param key - The camera-cluster param key.
- * @returns The catalog values, or an empty list when the model omits the param.
- */
-function paramValues(model: ModelEntry, key: string): ParamValue[] {
-  const values = model.params?.[key]?.values;
-  if (!values) return [];
-  return values.map((v) => (typeof v === 'number' ? v : String(v)));
-}
-
 interface GlyphProps {
   glyph: (typeof COLUMNS)[number]['glyph'];
-  value: ParamValue;
+  value: ParamOptionValue;
 }
 
 /**
@@ -133,10 +124,10 @@ function Glyph({ glyph, value }: GlyphProps): React.JSX.Element {
 interface CameraWheelProps {
   cap: string;
   glyph: (typeof COLUMNS)[number]['glyph'];
-  values: ParamValue[];
-  value: ParamValue | undefined;
+  values: ParamOptionValue[];
+  value: ParamOptionValue | undefined;
   unit?: string;
-  onSelect: (value: ParamValue) => void;
+  onSelect: (value: ParamOptionValue) => void;
   prevLabel: string;
   nextLabel: string;
 }
@@ -181,15 +172,20 @@ function CameraWheel({
   const nameLabel = value === undefined ? '' : `${value}${unit ?? ''}`;
   return (
     <div className='flex flex-col items-center'>
-      <button
+      <Button
         type='button'
+        variant={null}
+        size={null}
+        // Icon-only, but a 20px sliver far shorter than the square icon size and
+        // wider than it is tall — the bespoke h-5 / w-auto / px-3 in className
+        // win over the size's, keeping the wheel's own proportions.
         aria-label={`${cap} ▲`}
         disabled={idx <= 0}
         onClick={() => move(-1)}
         className='rounded-content-xs px-3 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30'
       >
         <ChevronUp className='h-4 w-4' aria-hidden='true' />
-      </button>
+      </Button>
       <span className='h-[18px] max-w-full truncate text-2xs text-muted-foreground/70'>{prevLabel}</span>
       <div className='my-0.5 flex min-h-[112px] w-full flex-col items-center justify-center gap-2 rounded-content-sm border border-border bg-card px-2 py-3'>
         <span className='text-xs text-muted-foreground'>{cap}</span>
@@ -201,15 +197,17 @@ function CameraWheel({
         </div>
       </div>
       <span className='h-[18px] max-w-full truncate text-2xs text-muted-foreground/70'>{nextLabel}</span>
-      <button
+      <Button
         type='button'
+        variant={null}
+        size={null}
         aria-label={`${cap} ▼`}
         disabled={idx >= values.length - 1}
         onClick={() => move(1)}
         className='rounded-content-xs px-3 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30'
       >
         <ChevronDown className='h-4 w-4' aria-hidden='true' />
-      </button>
+      </Button>
       <span className='mt-1.5 min-h-[16px] max-w-full truncate text-center text-xs text-foreground'>{nameLabel}</span>
     </div>
   );
@@ -263,8 +261,10 @@ export const CameraPicker = React.memo(function CameraPicker({
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <button
+            <Button
               type='button'
+              variant={null}
+              size={null}
               data-testid='generate-camera'
               aria-label={t('canvas.generatePanel.camera')}
               // This button is BOTH a TooltipTrigger and a PopoverTrigger:
@@ -276,11 +276,11 @@ export const CameraPicker = React.memo(function CameraPicker({
               className={triggerClass}
             >
               <Camera className='h-4 w-4' aria-hidden='true' />
-            </button>
+            </Button>
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side='top'>
-          {enabled ? t('canvas.generatePanel.cameraOn') : t('canvas.generatePanel.cameraOff')}
+          {enabled ? t('canvas.generatePanel.switchOn') : t('canvas.generatePanel.switchOff')}
         </TooltipContent>
       </Tooltip>
       <PopoverContent
@@ -297,7 +297,7 @@ export const CameraPicker = React.memo(function CameraPicker({
           <span className='text-xs text-muted-foreground'>{t('canvas.generatePanel.camera')}</span>
           <label className='flex cursor-pointer items-center gap-2'>
             <span className='text-xs text-muted-foreground'>
-              {enabled ? t('canvas.generatePanel.cameraOn') : t('canvas.generatePanel.cameraOff')}
+              {enabled ? t('canvas.generatePanel.switchOn') : t('canvas.generatePanel.switchOff')}
             </span>
             <Switch
               data-testid='generate-camera-toggle'

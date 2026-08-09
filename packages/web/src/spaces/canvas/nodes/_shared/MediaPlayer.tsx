@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
 import { Slider } from '@web/components/ui/slider';
 import {
   Popover,
@@ -85,28 +86,36 @@ export function MediaPlayer({
 
   // Video controls sit on a dark scrim (light-on-video); audio controls sit on
   // the themed node surface.
+  // `hover:text-white` on the video branch is not decoration: the `ghost`
+  // variant ships `hover:text-accent-foreground`, which would pull the glyph
+  // off white on the dark scrim. Restating white keeps the control bar as it
+  // renders today.
   const btnCls = `inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome ${
     isVideo ? 'hover:bg-white/20' : 'hover:bg-accent hover:text-accent-foreground'
   }`;
   const volumePct = Math.round((p.muted ? 0 : p.volume) * 100);
 
   const playButton = (
-    <button
+    <Button
       type='button'
+      variant={null}
+      size={null}
       onClick={p.togglePlay}
       aria-label={p.playing ? 'Pause' : 'Play'}
       data-testid='play-toggle'
       className={btnCls}
     >
       {p.playing ? <Pause className='h-4 w-4' /> : <Play className='h-4 w-4' />}
-    </button>
+    </Button>
   );
 
   const volumeControl = (
     <Popover>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type='button'
+          variant={null}
+          size={null}
           aria-label={p.muted ? 'Unmute' : 'Mute'}
           data-testid='volume-button'
           className={btnCls}
@@ -116,7 +125,7 @@ export function MediaPlayer({
           ) : (
             <Volume2 className='h-4 w-4' />
           )}
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         side='top'
@@ -194,15 +203,17 @@ export function MediaPlayer({
           </span>
           {showVolume ? volumeControl : null}
           {showFullscreen ? (
-            <button
+            <Button
               type='button'
+              variant={null}
+              size={null}
               onClick={p.requestFullscreen}
               aria-label='Fullscreen'
               data-testid='fullscreen'
               className={btnCls}
             >
               <Maximize className='h-4 w-4' />
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>

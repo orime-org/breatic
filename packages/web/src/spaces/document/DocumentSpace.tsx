@@ -4,6 +4,7 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { toast } from '@web/lib/toast';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
@@ -127,7 +128,9 @@ export function DocumentSpace({
           <p className='max-w-md text-sm text-muted-foreground'>
             {t('spaces.document.unavailable.text')}
           </p>
-          <button
+          <Button
+            variant={null}
+            size={null}
             type='button'
             data-testid='document-space-unavailable-retry'
             onClick={() => window.location.reload()}
@@ -135,7 +138,7 @@ export function DocumentSpace({
           >
             <RefreshCw className='h-3.5 w-3.5' aria-hidden />
             {t('spaces.document.unavailable.action')}
-          </button>
+          </Button>
         </div>
       ) : editor ? (
         <DocumentEditor

@@ -6,12 +6,18 @@ import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
+import { Button } from '@web/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
+import {
+  ParamOptionGroup,
+  type ParamOption,
+} from '@web/spaces/canvas/generate/ParamOptionGroup';
+import { paramValues } from '@web/spaces/canvas/generate/param-values';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
@@ -27,20 +33,6 @@ interface RatioResolutionPickerProps {
   value: RatioResolutionValue;
   /** Called with the changed field ({ aspect_ratio } or { resolution }). */
   onChange: (partial: RatioResolutionValue) => void;
-}
-
-/**
- * Reads a param's allowed values as strings, or an empty list when the model
- * does not define that param.
- * @param model - The current model.
- * @param key - The param key (`aspect_ratio` / `resolution`).
- * @returns The allowed values as strings.
- */
-function paramValues(model: ModelEntry, key: string): string[] {
-  // model.params is trusted (the catalog is sanitized at the API boundary):
-  // `values` is a readonly array or undefined, so a truthiness check suffices.
-  const values = model.params?.[key]?.values;
-  return values ? values.map((v) => String(v)) : [];
 }
 
 /**
@@ -64,21 +56,32 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   // Keep the popover glued to its trigger as the canvas pans / zooms, matching
   // the generate panel (a ReactFlow NodeToolbar that tracks its node).
   useFollowCanvasViewport(open);
-  const ratios = paramValues(model, 'aspect_ratio');
-  const resolutions = paramValues(model, 'resolution');
+  // Image ratios / resolutions are strings in the catalog; String() is a
+  // no-op for them and keeps this control honest if one ever is not.
+  const ratios: ParamOption[] = paramValues(model, 'aspect_ratio').map((v) => ({
+    value: String(v),
+    label: String(v),
+  }));
+  const resolutions: ParamOption[] = paramValues(model, 'resolution').map((v) => ({
+    value: String(v),
+    label: String(v),
+  }));
   const label = [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ');
-  // max-w + truncate: catalog values carry no length cap at the sanitize
-  // boundary — a verbose value must clip inside the w-64 popover, not overflow
-  // it (same class as the ModelPicker display_name fix).
-  const optionClass =
-    'max-w-full truncate rounded-overlay border border-border px-2 py-1 text-xs text-foreground transition-colors ' +
-    'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
-    'aria-[current=true]:border-active-border aria-[current=true]:bg-accent';
+  const onSelectRatio = React.useCallback(
+    (v: string | number) => onChange({ aspect_ratio: String(v) }),
+    [onChange],
+  );
+  const onSelectResolution = React.useCallback(
+    (v: string | number) => onChange({ resolution: String(v) }),
+    [onChange],
+  );
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type='button'
+          variant={null}
+          size={null}
           data-testid='generate-ratio-trigger'
           className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
@@ -91,7 +94,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
             className='h-3.5 w-3.5 shrink-0 opacity-60'
             aria-hidden='true'
           />
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         side='top'
@@ -102,48 +105,21 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
         aria-label={t('canvas.generatePanel.ratio')}
         className='w-64 p-3'
       >
-        {resolutions.length > 0 ? (
-          <div className='mb-3'>
-            <p className='mb-1.5 text-xs font-medium text-muted-foreground'>
-              {t('canvas.generatePanel.resolution')}
-            </p>
-            <div className='flex flex-wrap gap-1.5'>
-              {resolutions.map((r) => (
-                <button
-                  key={r}
-                  type='button'
-                  data-testid={`generate-resolution-option-${r}`}
-                  aria-current={value.resolution === r}
-                  onClick={() => onChange({ resolution: r })}
-                  className={optionClass}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        {ratios.length > 0 ? (
-          <div>
-            <p className='mb-1.5 text-xs font-medium text-muted-foreground'>
-              {t('canvas.generatePanel.ratio')}
-            </p>
-            <div className='flex flex-wrap gap-1.5'>
-              {ratios.map((r) => (
-                <button
-                  key={r}
-                  type='button'
-                  data-testid={`generate-ratio-option-${r}`}
-                  aria-current={value.aspect_ratio === r}
-                  onClick={() => onChange({ aspect_ratio: r })}
-                  className={optionClass}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
+        <ParamOptionGroup
+          label={t('canvas.generatePanel.resolution')}
+          options={resolutions}
+          value={value.resolution}
+          onSelect={onSelectResolution}
+          testIdPrefix='generate-resolution-option'
+          className='mb-3'
+        />
+        <ParamOptionGroup
+          label={t('canvas.generatePanel.ratio')}
+          options={ratios}
+          value={value.aspect_ratio}
+          onSelect={onSelectRatio}
+          testIdPrefix='generate-ratio-option'
+        />
       </PopoverContent>
     </Popover>
   );

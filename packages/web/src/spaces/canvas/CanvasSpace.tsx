@@ -28,6 +28,7 @@ import * as React from 'react';
 import { toast } from '@web/lib/toast';
 import { canGenerate, newId } from '@breatic/shared';
 
+import { Button } from '@web/components/ui/button';
 import { assetsApi, canvasApi } from '@web/data/api';
 import {
   MAX_FOCUS_ENTRIES,
@@ -170,6 +171,7 @@ import {
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
+import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
 import type { HistoryModality } from '@web/spaces/canvas/history/NodeHistoryRow';
@@ -3432,6 +3434,13 @@ function CanvasSpaceInner({
             projectId={projectId}
             spaceId={spaceId}
           />
+          {/* Video Generate panel: its own panel kind, so only one of the two
+              is ever open on a node — a video node opens this one. */}
+          <VideoGeneratePanelContainer
+            nodes={nodes}
+            projectId={projectId}
+            spaceId={spaceId}
+          />
           {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its
               node via NodeToolbar. */}
@@ -3480,7 +3489,9 @@ function CanvasSpaceInner({
                     : 'canvas.generatePanel.selectFromCanvas',
               )}
             </span>
-            <button
+            <Button
+              variant={null}
+              size={null}
               type='button'
               data-testid='reference-pick-locate'
               aria-label={t('canvas.generatePanel.locateSource')}
@@ -3488,15 +3499,17 @@ function CanvasSpaceInner({
               className='flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground'
             >
               <LocateFixed className='h-4 w-4' aria-hidden='true' />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant={null}
+              size={null}
               type='button'
               data-testid='reference-pick-exit'
               onClick={onExitPick}
               className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
             >
               {t('canvas.generatePanel.exitSelect')}
-            </button>
+            </Button>
           </div>
         ) : null}
         {pickSession?.purpose === 'focus' && focusCropTargetId !== null ? (
@@ -3557,19 +3570,27 @@ function CanvasSpaceInner({
           // for editors (onNodeContextMenu returns early when read-only), and
           // activateNodeUpload no-ops for read-only / pickerless modalities.
           onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
-          // Generate opens on any editable image node (the AIGC "generate into
-          // self" flow) — INCLUDING a locked or handling one, so the user can
-          // open the panel to view / edit the prompt (bug 2). The panel is a
-          // read surface for the recipe; EXECUTE is what the gate stops
-          // (onExecute toasts for locked, and the button is disabled while
-          // handling). Groups / non-image / read-only get no handler (a disabled
-          // placeholder item).
+          // Generate opens on any editable node of a modality that generates
+          // (`canGenerate` — image and video today), the AIGC "generate into
+          // self" flow. Which PANEL opens is the opener's decision, not this
+          // one's: the store maps the node's modality to a panel kind.
+          // INCLUDING a locked or handling node, so the user can open the panel
+          // to view / edit the prompt (bug 2). The panel is a read surface for
+          // the recipe; EXECUTE is what the gate stops — the arrow stays
+          // clickable and `onExecute` answers with a toast saying why, rather
+          // than greying out with no explanation. Groups / non-generating
+          // modalities / read-only get no handler (a disabled placeholder
+          // item).
           onGenerate={(() => {
             const genNode = nodes.find((n) => n.id === nodeMenu.nodeId);
+            // Held in a const so the narrowing survives into the closure below,
+            // which needs the modality to pick which Generate panel opens
+            // (#1896) — image and video have separate panels.
+            const genType = genNode?.type;
             return !nodeMenu.isGroup &&
               !readOnly &&
-              genNode?.type !== undefined &&
-              canGenerate(genNode.type)
+              genType !== undefined &&
+              canGenerate(genType)
               ? () => {
                 // Open + assert in one gesture: the machine's fresh-binding
                 // assert covers id CHANGES, but a same-host reopen (store id
@@ -3577,7 +3598,7 @@ function CanvasSpaceInner({
                 // open after Cmd-adding a co-selection) is invisible to it —
                 // the action layer asserts unconditionally; both writes are
                 // idempotent.
-                openGeneratePanel(nodeMenu.nodeId);
+                openGeneratePanel(nodeMenu.nodeId, genType);
                 selectOnlyNode(nodeMenu.nodeId);
               }
               : undefined;

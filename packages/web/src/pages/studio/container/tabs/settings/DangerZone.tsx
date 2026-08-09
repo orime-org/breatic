@@ -13,6 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@web/components/ui/alert-dialog';
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { ChangeSlugSection } from '@web/pages/studio/container/tabs/settings/ChangeSlugSection';
 import { DANGER_BUTTON } from '@web/pages/studio/container/tabs/settings/danger-button';
@@ -102,13 +103,15 @@ export function DangerZone({
         {canGovern ? (
           <>
             <TransferStudioSection slug={studio.slug} members={members} />
-            <button
+            <Button
               type='button'
+              variant={null}
+              size={null}
               className={DANGER_BUTTON}
               data-testid='settings-delete'
             >
               {t('studio.container.settings.delete')}
-            </button>
+            </Button>
           </>
         ) : null}
         {canChangeSlug ? (
@@ -120,15 +123,17 @@ export function DangerZone({
           />
         ) : null}
         {canLeave ? (
-          <button
+          <Button
             type='button'
+            variant={null}
+            size={null}
             className={DANGER_BUTTON}
             disabled={leaving}
             onClick={() => setConfirmingLeave(true)}
             data-testid='settings-leave-open'
           >
             {t('studio.container.settings.leave')}
-          </button>
+          </Button>
         ) : null}
       </div>
 

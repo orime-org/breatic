@@ -5,6 +5,7 @@ import * as React from 'react';
 import { useStore } from '@xyflow/react';
 import { toast } from '@web/lib/toast';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CapturedResize } from '@web/spaces/canvas/focus/crop-math';
 import {
@@ -784,9 +785,11 @@ export function FocusCropOverlay({
             }}
           >
             {CROP_RATIOS.map(({ key, value }) => (
-              <button
+              <Button
                 key={key}
                 type='button'
+                variant={null}
+                size={null}
                 data-testid={`focus-ratio-${key}`}
                 aria-pressed={ratio === value}
                 onClick={() => onRatioClick(value)}
@@ -802,26 +805,30 @@ export function FocusCropOverlay({
                 }
               >
                 {key}
-              </button>
+              </Button>
             ))}
             <span aria-hidden='true' className='mx-1 h-4 w-px bg-border' />
-            <button
+            <Button
               type='button'
+              variant={null}
+              size={null}
               data-testid='focus-crop-cancel'
               onClick={backToPick}
               className='shrink-0 whitespace-nowrap rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             >
               {t('canvas.generatePanel.focusCancel')}
-            </button>
-            <button
+            </Button>
+            <Button
               type='button'
+              variant={null}
+              size={null}
               data-testid='focus-crop-confirm'
               onClick={onConfirmClick}
               disabled={confirmDisabled}
               className='shrink-0 whitespace-nowrap rounded-sm bg-foreground px-2 py-0.5 text-background disabled:cursor-not-allowed disabled:opacity-50'
             >
               {t('canvas.generatePanel.focusConfirm')}
-            </button>
+            </Button>
           </div>
         </>
       )}

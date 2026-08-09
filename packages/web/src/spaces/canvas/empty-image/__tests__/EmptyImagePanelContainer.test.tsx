@@ -39,7 +39,7 @@ describe('EmptyImagePanelContainer', () => {
   it('renders nothing when a Generate panel (not reset) is open on the host', () => {
     mountContainer(vi.fn());
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target');
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
     });
     // Same host, but panelKind='generate' → this container stays closed.
     expect(screen.queryByTestId('empty-image-execute')).not.toBeInTheDocument();

@@ -40,7 +40,11 @@ export const chatApi = {
    * Use an `AbortController` (`signal`) to let the user click Abort.
    * @param body - The message request payload.
    * @param body.projectId - Project the conversation belongs to.
-   * @param body.conversationId - Existing conversation to append to; omitted to start a new one.
+   * @param body.conversationId - Conversation to append to. The server requires
+   *   one and refuses a request without it: `POST /chat/open` is the only place
+   *   a conversation is created, so a client always has an id before it can
+   *   speak. This call still sends the wrong field names and the wrong URL
+   *   prefix; wiring it up is PR-3 batch 6.
    * @param body.content - The user's message text.
    * @param body.references - Canvas entities (nodes / spaces) attached as context.
    * @param handlers - Stream lifecycle callbacks.

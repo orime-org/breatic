@@ -82,12 +82,14 @@ export function CreditsTab({
                   })}
                 </p>
                 {isAdmin && lot.isRefundable && lot.amountRemaining > 0 ? (
-                  <button
+                  <Button
                     type='button'
+                    variant={null}
+                    size={null}
                     className='text-xs text-status-error-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
                   >
                     {t('studio.container.credits.refund')}
-                  </button>
+                  </Button>
                 ) : null}
               </li>
             ))}

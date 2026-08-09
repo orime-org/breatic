@@ -4,6 +4,7 @@
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import type { ConnectionStatus } from '@web/data/yjs/use-socket';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -20,10 +21,19 @@ interface ConnectionBannerProps {
 type BannerTone = 'error' | 'warning';
 
 /**
- * Banner-internal button. Self-styled (not the shadcn outline variant, whose
- * mode-aware hover tokens fight banner-local colors — 2026-05-26 user smoke)
- * and toned with the same status triple as the banner surface (#1549): the
- * identity color carries the text + border, hover recesses with the tint.
+ * Banner-internal button. It is the `Button` primitive at `outline`, toned
+ * with the same status triple as the banner surface (#1549): the identity
+ * color carries the text + border, hover recesses with the tint.
+ *
+ * Only the variant's bare `border` survives; every coloured token it brings is
+ * replaced, because they fight the banner-local colors (2026-05-26 user
+ * smoke). `bg-transparent` replaces `bg-background`, which would otherwise
+ * paint an opaque page-colored box on top of the tinted banner; the per-tone
+ * border replaces `border-border`; and the per-tone `hover:bg-*` /
+ * `hover:text-*` replace `hover:bg-accent` / `hover:text-accent-foreground`,
+ * which would drop the identity color on hover. The variant is still the right
+ * one to start from — it is the bordered, unfilled shape this button wants.
+ *
  * Tailwind classes are written out per tone — no template-assembled class
  * names (they would be purged).
  */
@@ -35,8 +45,8 @@ interface BannerButtonProps {
 }
 
 /**
- * Self-styled banner action button carrying the banner's status tone
- * (see the interface docstring above for why not shadcn outline).
+ * Banner action button carrying the banner's status tone (see the interface
+ * docstring above for which variant tokens are overridden and why).
  * @param root0 - Component props.
  * @param root0.tone - Status tone matching the banner surface.
  * @param root0.onClick - Click handler for the button action.
@@ -51,8 +61,10 @@ function BannerButton({
   children,
 }: BannerButtonProps): React.JSX.Element {
   return (
-    <button
+    <Button
       type='button'
+      variant={null}
+      size={null}
       onClick={onClick}
       data-testid={testId}
       className={cn(
@@ -65,7 +77,7 @@ function BannerButton({
       )}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 

@@ -76,7 +76,7 @@ config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 - **频道命名空间是 `REDIS_KEY_PREFIX`(默认 = `ENV`),不是 DB 号** —— Redis 的 `SUBSCRIBE` 是实例级的、不认 `SELECT`,所以 DB3 这层隔离对普通 key 有效、对 pub/sub 频道**无效**。两套部署共用一个 Redis 实例(典型:同机多 worktree 并行开发)必须给不同前缀,否则双方持有同 UUID 文档时会互相收到对方的更新、写进对方的库。跨服务 stream key(`taskEventsStreamKey()` 等)不走这个前缀、仍从 `ENV` 派生,因为那是三服务必须一致的契约
 - Space 删除是跨实例 read-modify-write(「项目至少留一个 space」守卫):走 `REDIS_COLLAB_URL` 分布式锁(fencing 唯一 token + Lua check-and-del,TTL 30s 兜底)串行化 + 锁内读 PG 权威 space 数(数 `project-{id}/` 内容文档行、排 meta),防多实例并发删除把项目 space 删到 0(DD 2026-07-01,单靠最终一致的 CRDT 内存判断会被击穿)
 - 单文档连接数上限(`max_connections_per_document`,默认 100,满了**降级只读**非拒绝)是**跨实例**计数(#1421,2026-07-01):每连接在 `REDIS_COLLAB_URL`(DB3)一个 sorted set(key `{env}:collab:conncount:{docName}`,member `{instanceId}:{socketId}`,score = 心跳时间戳)登记,`onAuthenticate` 读 cluster-wide `ZCARD`(剪枝过期后)判 `>= cap` → 降级 + 永久日志 `connection_cap_degraded`;本地 `getConnectionsCount()` 只数本实例、多实例部署会到 N×cap 才触发,故不用。心跳每 10s 续期、TTL 30s 崩溃自愈;Redis 抖动 fail-open(计数返回 0 不误锁);**meta 文档豁免**(项目基础设施人人必连)。**登记绑 `connected` 生命周期钩子**(非 `onAuthenticate`)——`connected` 只在 Hocuspocus 建好 Connection 对象(已挂 `onClose → onDisconnect`)后触发,与 `onDisconnect` 注销对称,避免 auth 通过但文档加载失败的连接漏注销、被心跳永久续期成幽灵计数(DD 2026-07-01 对抗验证发现并修)
-- **协作身份由连接权威确定(#1886,2026-08-06)** —— 服务端在 `onAuthenticate` 就从凭证解出了这条连接是谁,之后**它写、浏览器不报**。两处落地:**① 在场名单**存 meta 文档的 `users`,只有 `id` / `online` / `lastSeenAt` 三个字段(**没有名字头像** —— 各端自己拿 id 去项目成员名册拉,名字改了不会有陈旧副本)。**② 光标身份**在 `beforeHandleAwareness` 逐条盖章:一个入站帧里既有发送方自己的状态、也有它转发的别人的状态(上游库的疏忽,#1887),所以按 Yjs client id 判归属 —— 自己的、或还没登记的(连接的第一帧)盖上,登记在别人名下的原样放行。**服务端整个 `user` 字段说了算,只保留客户端的 `focused`**(只有浏览器知道窗口有没有焦点)。**这个模型让「验证」这件事整个消失了**:此前浏览器自报、服务端设了道守卫查它,而守卫在那一层根本做不成 —— 转发和伪造在帧里长得一模一样,它把真实用户踢下线过。
+- **协作身份由连接权威确定(#1886,2026-08-06)** —— 服务端在 `onAuthenticate` 就从凭证解出了这条连接是谁,之后**它写、浏览器不报**。两处落地:**① 在场名单**存 meta 文档的 `users`,只有 `id` / `online` / `lastSeenAt` 三个字段(**没有名字头像** —— 各端自己拿 id 去项目成员名册拉,名字改了不会有陈旧副本)。**② 光标身份**在 `beforeHandleAwareness` **逐条盖章、不判归属**(#1887):一个入站帧是一串按 Yjs client id 编键的条目,而那个键是浏览器自己取的数字,所以手工构造的帧能把条目编到别人的键上 —— 服务端**不问「这一条归谁」**,每一条都盖上这条连接在握手时认证出来的那个人。不问是因为那个问题没有可信答案:协作库的连接名单对**重连**的客户端是空的(连接的 client 集合只从 `added` 长,而文档见过的 id 之后一律归 `updated`,远端客户端的 `meta` 永不清),而 y-protocols 自己给这件事留的钩子 `modifyAwarenessUpdate` 只把状态交给回调、**故意不传 client id**。**这道规则从不删条目** —— 把一帧删空会连带掐掉发送方的心跳:一帧什么都没落地就不发 `update` 事件,而心跳搭在那个事件上,90 秒沉默即判离线。**注意 `update` 不要求状态有变化** —— 心跳正是原样重发同一份状态,按内容过滤的是 `change` 事件、不是 `update`。**服务端整个 `user` 字段说了算,只保留客户端的 `focused`**(只有浏览器知道窗口有没有焦点)。**这个模型让「验证」这件事整个消失了**:此前浏览器自报、服务端设了道守卫查它,而守卫在那一层根本做不成 —— 转发和伪造在帧里长得一模一样,它把真实用户踢下线过。
 - **在场状态只被断言、从不被否认(#1886 修订,2026-08-07)** —— **写「在线」只有两处**:连接建立时,以及每次心跳。**socket 关闭时什么都不写** —— 一条 socket 结束不等于它的主人走了(一个人同时握着好几条连接,多实例下有些还在这台机器看不见的地方),所以「不在」从不被宣布,而是由清扫**推断**出来:一条**没有任何人在刷新**的记录才被关掉。**它跨实例正确而不需要任何协调**:记录在共享的 meta 文档里,握着连接的那台机器负责刷时间戳、刷新同步给所有实例,所以「时间戳没人碰过」就等于「全集群没有任何机器握着这个人」。**崩溃重启也不需要特殊处理**:崩溃留下的记录只是不再被刷新,重启后第一个进来的人就带动起清扫。**清扫搭在心跳上,不搭在文档载入上** —— 载入那一刻恰恰是记录最新的时候(崩溃后客户端几十秒就自动重连,幽灵看起来全是活的),而只要还有人在,文档就永不卸载、载入钩子再不会触发;搭在心跳上,门槛就变成一个延迟而不是一次错过。同理,**心跳会把一条已经离线的记录写回在线** —— 清扫持续在跑,可能把还连着的人翻掉(隐藏的浏览器标签页定时器被节流到每分钟一次,而 socket 一直开着),心跳是这个人还在的证据,必须能推翻那个推断:错误地复活会被下一轮清扫纠正,错误地离线则是永久的。**meta 文档的 awareness 通道上只有心跳,不传光标**(光标只在 canvas / document 这类空间文档上,谁往 meta 的 awareness 上发光标都是 bug;meta 的 socket 上另跑着 space / tab 的 stateless RPC,走别的钩子、不碰在场状态),所以每个心跳都写、没有任何限流,两次写之间的最大间隔就是浏览器的心跳间隔;门槛 90 秒必须盖过其中最慢的一档(后台标签页每分钟一次),推导和守卫见 `docs/CONFIGURATION.md` 与 `presence-config.test.ts`。**定性是二类问题**:我们保障「他离线了一定能确认到」,不保障「精确在什么时刻通知别人」。
 - **页面被浏览器收起来再恢复,必须把协作本地状态设回去(#1886,2026-08-07)** —— 浏览器对「暂存后恢复」的页面有两半约定:`pagehide` 拆、`pageshow` 装。协作库替我们做了前一半(它自己的 `pagehide` 处理器把本客户端的 awareness 状态**删掉**),后一半留给应用,而我们一直没写。少这一半,**同一处会静默坏掉两样东西**:① 心跳永久停(y-protocols 只在 `getLocalState() !== null` 时续时钟,条件读的正是被删掉的那个东西,定时器照跑但什么都不做),于是在场清扫把一个连着的人关掉、而且再也回不来(复活要靠心跳);② 光标对所有人消失(`setLocalStateField` 在状态为 null 时是空操作,而它是本客户端发布光标和焦点的唯一途径)。**这个状态只有一处来源**:`Awareness` 构造函数最后一行 `setLocalState({})`,只在建 provider 时跑一次;恢复的页面把整个 JS 环境原样搬回来,那一行不会再跑,重连也只恢复连接、不恢复它。所以恢复动作放在统一管理 provider 的那一处(`data/yjs/collab-socket.tsx`),监听 `pageshow` 且 `persisted` 为真时,把还是 null 的那些设回 `{}`。判定题:**这个东西的初值是不是只在「创建时」设过一次?是 → 页面被恢复时它不会自己回来**。
 - 节点结构 + 字段归属 + 状态机详细规范跟 `@breatic/shared/types/canvas-node.ts` 类型定义保持一致
@@ -91,7 +91,29 @@ config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 
 - **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。`memory_window`(默认 20)按 Turn 计数,超出时自动归纳旧 Turn 到记忆摘要
 - **Context 压缩**:最近 `full_detail_turns`(默认 3)个 Turn 保留完整 step(tool_call + tool_result),更早 Turn 只保留 user + assistant 最终回复。`thinking` 字段永远不发回 LLM
-- **消息存储**:`conversations.messages` JSONB 数组,含 `turnIndex`、`thinking?`、`tool_calls?: ToolCallInfo[]`。原始消息不删除,归纳只生成摘要
+- **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool-call` / `tool-result`)。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
+
+### Chat conversation ownership
+
+**会话 ID 由客户端持有**,每个浏览器标签页各记各的。服务端不存「当前会话」—— 那是一个用户一个值,而一个用户可能同时开着两个标签页看两条会话,第二个一打开就把第一个的值盖掉,第一个标签页此后每一句都写进别人那条里。不需要并发,静态就错。
+
+| 端点 | 行为 |
+|---|---|
+| `POST /chat/open` | 入参只有 `project_id`。返回这个用户在这个 project 的会话列表 + **最近交互**那条的消息;这个 project 一条会话都没有时**当场建一个空的**再返回。**全系统唯一的自动创建点** |
+| `POST /chat/message` · `POST /chat/skill` | `conversation_id` **必填**,只写不建 |
+
+**「最近交互」= 该会话最后一条消息的时间**,空会话回落到会话创建时间,**排序带稳定的第二键**(会话 ID)。**故意不用 `conversations.updated_at`** —— 改个标题也会动它,那不是「最后说话」。
+
+**写入前三查,一律 404**(`conversationService.assertWritable`):这条会话属于这个用户 · 属于这个 project · 没被软删。第三样不是边角料 —— 一个标签页记着会话 7、用户在另一个标签页把它删了,前两样对它都成立。三种可区分的答案会让状态码自己交代是哪一条没过,所以答案必须一样。
+
+**打开时两把锁,各管一段,顺序固定**(先咨询锁后项目行锁,全仓只有这一处取那把咨询锁,不会成环):
+
+| 锁 | 作用域 | 挡什么 |
+|---|---|---|
+| `pg_advisory_xact_lock(hashtext(userId), hashtext(projectId))` | 一个 (用户, project) | 同一个人两个标签页同时打开空 project,各建一条 |
+| `projectRepo.lockLiveProject`(**只在要新建那条分支上取**) | 项目行 | 新建撞上删项目。插入的外键取 FOR KEY SHARE、软删的 UPDATE 取 FOR NO KEY UPDATE,两者不冲突,不加锁就会错身而过,提交出一条挂在已删 project 上的会话 |
+
+普通一次打开(已有会话)完全不碰项目行,因此不跟邀请 / 转让那些事务抢锁。
 
 ### Worker 4 paths
 
@@ -142,7 +164,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Skill system
 
-**skill 出现在哪由 `config/skill-routing.yaml` 的 `surfaces` 定**,取值是 `packages/core/src/config/skill-routing.ts` 的 `SKILL_SURFACES` 闭集:`chat`(多轮对话,注入上下文)/ `canvas` / `image_node` / `video_node` / `document`(各 node 面与画布是 Worker 单次执行,必须生成)。**今天实际被路由到的只有 `chat` 和 `canvas`** —— 后三个是已开放但还没有 skill 用的面,数各面上有几个 skill 一律现读那份 yaml。
+**skill 出现在哪由 `config/skill-routing.yaml` 的 `surfaces` 定**,取值是 `packages/core/src/config/skill-routing.ts` 的 `SKILL_SURFACES` 闭集:`chat`(多轮对话,注入上下文)/ `canvas` / `image_node` / `video_node` / `document`(各 node 面与画布是 Worker 单次执行,必须生成)。**当前实际被路由到的只有 `chat` 和 `canvas`** —— 后三个是已开放但还没有 skill 用的面,数各面上有几个 skill 一律现读那份 yaml。
 
 **metadata.json**:仅 `name` / `description` 必填;其他字段(`category`/`tools`/`output_type`/`requires`/...)`skills-loader.ts` 都有 default 兜底(`category` 默认 `"default"`)。建议显式填 `category` 避免读代码才知行为。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。完整字段表见 `packages/domain/src/agent/skills-loader.ts` 的 schema 定义。禁用 npm 字段(version/author/license/engines/files/main)。
 
@@ -233,7 +255,7 @@ v14 全新重写已于 2026-05-19 合入 `main`(PR #103)。对齐 design-baselin
 | 音频 / 视频 | 原生 `<audio>` / `<video>` + 自建统一 `MediaPlayer`(装饰波形,零第三方播放器库) |
 | 3D | Three.js + @react-three/fiber |
 | 数据请求 | Axios + @microsoft/fetch-event-source(SSE)+ React Query |
-| i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja / ko);8 产品名词 + 角色名走「不翻译表」全语言英文,见 [packages/web/CLAUDE.md](../packages/web/CLAUDE.md)「产品术语「不翻译表」」。**每条文案必须活在命名空间里**——`locales/*.json` 顶层只许放命名空间对象,不许直接放文案(共用的进 `common`,其余进各功能自己的命名空间);**调用点同样如此**,`t('cancel')` 这种无点 id 一律当场报错。两侧都由 repo-lint 的 `i18n-keys-namespaced` CI 强制。理由是死键守卫 `i18n-no-dead-keys` 靠「在源码里找这个 key 的点分全名」判断有没有人用,**无点的 id 没有形状可找**:放宽成裸词匹配会让 `cancel` / `loading` 这类普通英文词满仓命中(`z.enum(["confirm","cancel"])` / `phase === 'loading'`)、守卫等于作废。**调用点那一半是 2026-08-06 才补上的**,补之前源码写了无点 id 三个守卫全都不响——catalog 装不下它、死键守卫方向相反碰不到它、缺失文案守卫的形状认不出它,于是用户屏幕上直接显示 `cancel` 这串字。**判在形状上、不绕道查 catalog**:查不到虽然也能得出「错了」,但报错信息会指向 catalog(读的人会去 catalog 里加一条,而那条加不进去),而且那条推导依赖「catalog 里绝不会有无点 id」这个由另一个守卫维持的前提,那个守卫一改这里就静默失效。**「key 长什么样」在 `repo-lint/src/message-keys.ts` 一处定义**:`KEY_SEGMENT` 给段的形状(**允许数字开头**,2026-08-06 放宽 —— 此前 `canvas.nodePlaceholder.3d` 五个 catalog 都有却没有任何守卫看得见它),`spelledOutKeys()` 给「怎么在源码里找出一个文案调用、取出括号里的 id」,命名空间守卫和缺失文案守卫共用它、各自套自己的规则。**反方向的守卫是 `i18n-no-missing-keys`**:死键守卫问「catalog 里的文案有没有人读」,它问「源码点名的文案 catalog 答不答得上来」——两个方向都会坏,而早先只看着一个,`t("server.error.notFound")` 就这么发出去过(catalog 里写的是 `not_found`)。它只认「整个参数就是写全的 id」这一种写法,拼接和变量传参一律看不见,边界写在它自己的 docstring 里 |
+| i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja / ko);8 产品名词 + 角色名走「不翻译表」全语言英文,见 [packages/web/CLAUDE.md](../packages/web/CLAUDE.md)「产品术语「不翻译表」」。**每条文案必须活在命名空间里**——`locales/*.json` 顶层只许放命名空间对象,不许直接放文案(共用的进 `common`,其余进各功能自己的命名空间);**调用点同样如此**,`t('cancel')` 这种无点 id 一律当场报错。两侧都由 repo-lint 的 `i18n-keys-namespaced` CI 强制。理由是死键守卫 `i18n-no-dead-keys` 靠「在源码里找这个 key 的点分全名」判断有没有人用,**无点的 id 没有形状可找**:放宽成裸词匹配会让 `cancel` / `loading` 这类普通英文词满仓命中(`z.enum(["confirm","cancel"])` / `phase === 'loading'`)、守卫等于作废。**调用点那一半是 2026-08-06 才补上的**,补之前源码写了无点 id 三个守卫全都不响——catalog 装不下它、死键守卫方向相反碰不到它、缺失文案守卫的形状认不出它,于是用户屏幕上直接显示 `cancel` 这串字。**判在形状上、不绕道查 catalog**:查不到虽然也能得出「错了」,但报错信息会指向 catalog(读的人会去 catalog 里加一条,而那条加不进去),而且那条推导依赖「catalog 里绝不会有无点 id」这个由另一个守卫维持的前提,那个守卫一改这里就静默失效。**「key 长什么样」在 `repo-lint/src/message-keys.ts` 一处定义**:`KEY_SEGMENT` 给段的形状(**允许数字开头**,2026-08-06 放宽 —— 此前 `canvas.nodePlaceholder.3d` 五个 catalog 都有却没有任何守卫看得见它),`spelledOutKeys()` 给「怎么在源码里找出一个文案调用、取出括号里的 id」,命名空间守卫和缺失文案守卫共用它、各自套自己的规则。**反方向的守卫是 `i18n-no-missing-keys`**:死键守卫问「catalog 里的文案有没有人读」,它问「源码点名的文案 catalog 答不答得上来」——两个方向都会坏,而早先只看着一个,`t("server.error.notFound")` 就这么发出去过(catalog 里写的是 `not_found`)。它只认「整个参数就是写全的 id」这一种写法,拼接和变量传参一律看不见,边界写在它自己的 docstring 里。**那个边界之外的一类由测试守**:有些函数把文案键当**返回值**交给调用方、自己不调 `t()`(会话列表和活动面板各有一份 `relativeTime`,活动面板还有 `entryMessage`),这种键永远不出现在 `t("字面量")` 里、三个守卫全看不见 —— `chat.relative.isoDate` 就是这么带着「五个 catalog 都没有」发出去的。补法是 `packages/web/src/test-utils/i18n-keys.ts` 的 `expectEveryLocaleRenders`:走遍每条分支,**逐本 catalog 问两个问题** —— 键在不在(直接问 catalog,**不经过 `t()`**,因为 `resolveMessage` 找不到当前语言就回退 en、一本目录缺键会渲染成英文而看不出来),以及带参数的能不能渲染出来(经过 `t()`,因为占位符被改名会从组件渲染里抛出去)。catalog 列表来自 `test-utils/locale-catalogs.ts`,`vitest.setup.ts` 循环它注册 —— 此前那里手写四门语言漏了 `ko`,于是任何在韩文下渲染的测试都拿英文回退、绿得没有意义 |
 | 路由 | React Router 7 |
 | 测试 | Vitest + Playwright + @testing-library + fast-check |
 | 监控 | Sentry |

@@ -4,6 +4,7 @@
 import { ArrowUp, X } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { EmptyImageColorPicker } from '@web/spaces/canvas/empty-image/EmptyImageColorPicker';
 import { CROP_RATIOS } from '@web/spaces/canvas/focus/crop-math';
@@ -63,15 +64,17 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
     <div className='flex w-[min(340px,92vw)] flex-col gap-3 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
       <div className='flex items-center justify-between'>
         <span className='text-sm font-medium'>{t('canvas.emptyImage.title')}</span>
-        <button
+        <Button
           type='button'
+          variant={null}
+          size={null}
           data-testid='empty-image-exit'
           aria-label={t('canvas.emptyImage.exit')}
           onClick={onExit}
           className='flex h-7 w-7 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-4 w-4' aria-hidden='true' />
-        </button>
+        </Button>
       </div>
 
       {/* Ratio presets — clicking one derives a concrete W/H (D3). */}
@@ -81,9 +84,11 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
         </span>
         <div className='flex flex-wrap gap-1'>
           {CROP_RATIOS.map((r) => (
-            <button
+            <Button
               key={r.key}
               type='button'
+              variant={null}
+              size={null}
               data-testid={`empty-image-ratio-${r.key}`}
               aria-pressed={activeRatio === r.value}
               onClick={() => {
@@ -100,7 +105,7 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
               }
             >
               {r.key}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -154,9 +159,11 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
         </span>
         <div className='flex flex-wrap items-center gap-1.5'>
           {EMPTY_IMAGE_COLORS.map((c) => (
-            <button
+            <Button
               key={c.key}
               type='button'
+              variant={null}
+              size={null}
               data-testid={`empty-image-color-${c.key}`}
               aria-label={t(`canvas.emptyImage.color.${c.key}`)}
               aria-pressed={color.toLowerCase() === c.hex.toLowerCase()}
@@ -177,8 +184,10 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
           react-colorful popover that follows the canvas) + Execute (right). */}
       <div className='flex items-center justify-between'>
         <EmptyImageColorPicker value={color} onChange={setColor} />
-        <button
+        <Button
           type='button'
+          variant={null}
+          size={null}
           data-testid='empty-image-execute'
           aria-label={t('canvas.emptyImage.execute')}
           onClick={() =>
@@ -193,7 +202,7 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
           className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <ArrowUp className='h-4 w-4' aria-hidden='true' />
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@
 import { HexColorInput, HexColorPicker } from 'react-colorful';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import {
   Popover,
   PopoverContent,
@@ -44,8 +45,10 @@ export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type='button'
+          variant={null}
+          size={null}
           data-testid='empty-image-color-custom'
           aria-label={t('canvas.emptyImage.color.custom')}
           style={{ backgroundColor: value }}

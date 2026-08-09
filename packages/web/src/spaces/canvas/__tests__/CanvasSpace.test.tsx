@@ -1718,7 +1718,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
     // Reopen on the same host (context menu → Generate): clears the pick.
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target');
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
     });
     expect(useCanvasStore.getState().pickSession).toBeNull();
     await waitFor(() =>
