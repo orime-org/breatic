@@ -107,6 +107,19 @@ export const DocumentClickToWrite = Extension.create({
           handleDOMEvents: {
             mousedown: (view, event) => {
               if (event.button !== 0) return false;
+              // A modifier turns a click into a different gesture — Shift
+              // extends the selection, and the others carry their own
+              // meanings. None of them says "start writing here", so acting on
+              // one would both lose the gesture and write a block nobody asked
+              // for into a document other people are in.
+              if (
+                event.shiftKey ||
+                event.ctrlKey ||
+                event.altKey ||
+                event.metaKey
+              ) {
+                return false;
+              }
               if (event.target !== view.dom) return false;
               if (!isBelowTheLastLine(view, event.clientY)) return false;
               return openABlockToTypeIn(view);

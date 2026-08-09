@@ -90,8 +90,13 @@ function pinLastLineBottom(editor: Editor, bottom: number): void {
  * Press the editor's own element — the space around the blocks, not a block.
  * @param editor - The editor to click in.
  * @param clientY - Where the press landed vertically.
+ * @param modifiers - Modifier keys held down, if any.
  */
-function pressEditorAt(editor: Editor, clientY: number): void {
+function pressEditorAt(
+  editor: Editor,
+  clientY: number,
+  modifiers: MouseEventInit = {},
+): void {
   editor.view.dom.dispatchEvent(
     new MouseEvent('mousedown', {
       bubbles: true,
@@ -99,6 +104,7 @@ function pressEditorAt(editor: Editor, clientY: number): void {
       button: 0,
       clientX: 40,
       clientY,
+      ...modifiers,
     }),
   );
 }
@@ -181,6 +187,28 @@ describe('clicking under the last block', () => {
 
     pinLastLineBottom(editor, 400);
     pressEditorAt(editor, 120);
+
+    expect(editor.state.doc.childCount).toBe(before.blocks);
+    expect(body.toString()).toBe(before.yjs);
+  });
+
+  it('leaves a press with a modifier held alone', () => {
+    // Shift and a click is how a selection gets extended, and the other
+    // modifiers carry meanings of their own too. None of them says "start
+    // writing here", so acting on one both loses the gesture and writes an
+    // unasked-for block into a document other people are in.
+    const { body, editor } = open('<p>written</p>');
+    const before = { blocks: editor.state.doc.childCount, yjs: body.toString() };
+
+    for (const held of [
+      { shiftKey: true },
+      { ctrlKey: true },
+      { altKey: true },
+      { metaKey: true },
+    ]) {
+      pinLastLineBottom(editor, 100);
+      pressEditorAt(editor, 300, held);
+    }
 
     expect(editor.state.doc.childCount).toBe(before.blocks);
     expect(body.toString()).toBe(before.yjs);
