@@ -387,3 +387,105 @@ describe('a selection that spans the boundary', () => {
     expect(editor.getText()).toContain('keep me');
   });
 });
+
+describe('when the title is empty', () => {
+  // An empty title is a state the product supports on purpose — the
+  // placeholder exists for it — and it changes which default handler answers
+  // the key. `deleteCurrentNode` runs before `joinForward` and takes an empty
+  // block as its own: it tries to delete the title, the schema refuses, and it
+  // reports the key handled with nothing done. So this side of the boundary
+  // has to be answered here, where the non-empty case can be left to the
+  // editor.
+  const BODIES: readonly { name: string; html: string; after: string }[] = [
+    { name: 'a paragraph', html: '<p>CDE</p>', after: 'CDE' },
+    { name: 'a heading', html: '<h2>section</h2>', after: 'section' },
+    { name: 'a code block', html: '<pre><code>code</code></pre>', after: 'code' },
+  ];
+
+  BODIES.forEach(({ name, html, after }) => {
+    it(`Delete pulls up ${name}, exactly as it does with a title that has text`, () => {
+      const { editor } = open('', html);
+      editor.commands.setTextSelection(1);
+      press(editor, 'Delete');
+
+      expect(editor.state.doc.child(0).textContent).toBe(after);
+      expect(editor.state.doc.childCount).toBe(1);
+    });
+  });
+
+  it('Delete removes a leading divider, leaving what follows it', () => {
+    const { editor } = open('', '<hr><p>after</p>');
+    editor.commands.setTextSelection(1);
+    press(editor, 'Delete');
+
+    expect(editor.state.doc.child(1).type.name).toBe('paragraph');
+    expect(editor.state.doc.child(1).textContent).toBe('after');
+    expect(editor.state.doc.childCount).toBe(2);
+  });
+
+  it('Delete lifts a list\'s first item out, leaving the rest standing', () => {
+    const { editor } = open('', '<ul><li><p>one</p></li><li><p>two</p></li></ul>');
+    editor.commands.setTextSelection(1);
+    press(editor, 'Delete');
+
+    expect(editor.state.doc.child(1).type.name).toBe('paragraph');
+    expect(editor.state.doc.child(1).textContent).toBe('one');
+    expect(editor.state.doc.child(2).type.name).toBe('bulletList');
+  });
+
+  it('Delete does nothing when there is no body at all', () => {
+    const { editor } = open('');
+    editor.commands.setTextSelection(1);
+    const before = editor.getHTML();
+    press(editor, 'Delete');
+
+    expect(editor.getHTML()).toBe(before);
+  });
+});
+
+describe('a soft line break that is not between two words', () => {
+  // The break becomes a space so the lines either side of it do not run
+  // together. Where there is nothing on one side, there is nothing to keep
+  // apart, and a space the user never typed would be left in the title.
+  it('at the start of the block leaves no space in front', () => {
+    const { editor } = open('T', '<p><br>b</p>');
+    editor.commands.setTextSelection(2);
+    press(editor, 'Delete');
+
+    expect(editor.state.doc.child(0).textContent).toBe('Tb');
+  });
+
+  it('at the end of the block leaves no space behind', () => {
+    const { editor } = open('T', '<p>a<br></p>');
+    editor.commands.setTextSelection(2);
+    press(editor, 'Delete');
+
+    expect(editor.state.doc.child(0).textContent).toBe('Ta');
+  });
+
+  it('between two words still becomes a space', () => {
+    const { editor } = open('T', '<p>a<br>b</p>');
+    editor.commands.setTextSelection(2);
+    press(editor, 'Delete');
+
+    expect(editor.state.doc.child(0).textContent).toBe('Ta b');
+  });
+});
+
+describe('Enter with a selection that starts in the title and ends in the body', () => {
+  // The editor's own split throws on this shape — measured:
+  // "Inserted content deeper than insertion position" — so the key has to be
+  // answered here even though the caret is only half in the title.
+  it('replaces the selection and opens a block, without throwing', () => {
+    const { editor } = open('AB', '<p>cd</p>');
+    editor.commands.setTextSelection({
+      from: 1,
+      to: editor.state.doc.child(0).nodeSize + 1,
+    });
+
+    expect(() => {
+      press(editor, 'Enter');
+    }).not.toThrow();
+    expect(editor.state.doc.child(0).type.name).toBe('title');
+  });
+});

@@ -127,33 +127,43 @@ export const DocumentTitleIsPlainText = Extension.create({
         },
 
         /**
-         * Refuse a transaction an input rule built, when it lands in the title.
+         * Refuse a transaction an input rule built, when it acted on the title.
          *
          * Recognised the way the editor recognises its own: the rule plugins
          * carry `isInputRules` on their spec and stamp each transaction they
-         * dispatch with their own key — which is the pair TipTap's
-         * `undoInputRule` reads to find the rule to undo. The stamp is on
-         * every one of them; a rule can opt out of being undoable and none of
-         * the rules this editor loads does.
+         * dispatch with their own key, and that stamp records the position the
+         * rule matched at. TipTap's `undoInputRule` reads the same pair. The
+         * stamp is on every rule transaction; a rule can opt out of being
+         * undoable, and none of the ones this editor loads does.
          *
-         * The state here is the one BEFORE the transaction, so the selection
-         * read is where the caret was when the rule fired, which is where the
-         * rule was going to act.
+         * Judged by that recorded position rather than by where the caret is.
+         * The two agree for everything a user can type — a rule fires where the
+         * caret is — but they part company for the fourth door, the
+         * `applyInputRules` meta an insert can set: that one names its own
+         * position, which may be in the body while the caret rests in the
+         * title. Refusing by caret would drop a rule the body was entitled to.
+         *
+         * The state here is the one BEFORE the transaction, so the position
+         * resolves against the same document the rule matched against.
          * @param tr - The transaction awaiting application.
          * @param state - The state it would apply to.
          * @returns False to drop it.
          */
         filterTransaction(tr, state) {
-          if (
-            state.selection.$from.parent.type.name !== DOCUMENT_TITLE_NODE
-          ) {
-            return true;
+          for (const plugin of state.plugins) {
+            const spec = plugin.spec as { isInputRules?: boolean };
+            if (spec.isInputRules !== true) continue;
+            const stamp = tr.getMeta(plugin) as { from?: number } | undefined;
+            if (stamp === undefined) continue;
+            const at =
+              typeof stamp.from === 'number' ? stamp.from : state.selection.from;
+            if (
+              state.doc.resolve(at).parent.type.name === DOCUMENT_TITLE_NODE
+            ) {
+              return false;
+            }
           }
-          return !state.plugins.some(
-            (p) =>
-              (p.spec as { isInputRules?: boolean }).isInputRules === true &&
-              tr.getMeta(p) !== undefined,
-          );
+          return true;
         },
       }),
     ];

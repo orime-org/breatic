@@ -20,6 +20,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
+import type { Plugin } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -166,5 +167,52 @@ describe('the body still transforms what is typed into it', () => {
     type(editor, '---');
 
     expect(editor.getHTML()).toContain('<hr');
+  });
+});
+
+describe('what the guard judges by', () => {
+  /**
+   * The editor's input-rule plugins, found the way the guard finds them.
+   * @param editor - The editor to look in.
+   * @returns Those plugins.
+   */
+  function inputRulePlugins(editor: Editor): Plugin[] {
+    return editor.state.plugins.filter(
+      (p) => (p.spec as { isInputRules?: boolean }).isInputRules === true,
+    );
+  }
+
+  it('refuses a rule that acted on the title', () => {
+    const editor = open();
+    editor.commands.insertContentAt(1, 'AB');
+    editor.commands.setTextSelection(3);
+    const plugin = inputRulePlugins(editor)[0];
+    expect(plugin).toBeDefined();
+
+    const tr = editor.state.tr;
+    tr.delete(1, 3);
+    tr.setMeta(plugin!, { from: 1, to: 3, text: '' });
+    editor.view.dispatch(tr);
+
+    expect(editor.state.doc.child(0).textContent).toBe('AB');
+  });
+
+  it('lets through a rule that acted on the body, caret in the title or not', () => {
+    // The position the rule recorded is what decides it, not where the caret
+    // happens to rest. Nothing sets `applyInputRules` in this editor today, so
+    // this pins the criterion rather than a path a user can walk.
+    const editor = open();
+    editor.commands.insertContentAt(1, 'AB');
+    editor.commands.setTextSelection(3);
+    const bodyStart = editor.state.doc.child(0).nodeSize + 1;
+    const plugin = inputRulePlugins(editor)[0];
+
+    const tr = editor.state.tr;
+    tr.insertText('X', bodyStart);
+    tr.setMeta(plugin!, { from: bodyStart, to: bodyStart, text: 'X' });
+    editor.view.dispatch(tr);
+
+    expect(editor.state.doc.child(1).textContent).toBe('Xbody');
+    expect(editor.state.doc.child(0).textContent).toBe('AB');
   });
 });

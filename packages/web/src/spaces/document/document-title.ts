@@ -53,9 +53,9 @@
 import type { Editor } from '@tiptap/core';
 import { Node } from '@tiptap/core';
 import type { Command, EditorState, Transaction } from '@tiptap/pm/state';
-import { TextSelection } from '@tiptap/pm/state';
+import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { splitBlock } from '@tiptap/pm/commands';
+import { joinForward, splitBlock } from '@tiptap/pm/commands';
 import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 
 /**
@@ -100,15 +100,22 @@ export const DocumentTitle = Node.create({
   /**
    * The keys that cross the line between the title and the body.
    *
-   * All three are thin, and each is thin for its own reason. Enter claims the
-   * key and hands it straight back to the editor, because something else wants
-   * it first. Backspace and Delete decline unless the fold would lose a soft
-   * line break. Everything else about this boundary — the cut, the fold from
-   * either side, lifting a list's first item out, removing a divider — is the
-   * editor's own and needs nothing from here.
+   * All three are thin, and each is thin for its own reason. Everything else
+   * about this boundary — the cut, the fold from either side, lifting a list's
+   * first item out, removing a divider — is the editor's own and needs nothing
+   * from here. That is a measurement, not a reading: with all three removed,
+   * 26 of the 35 cases in `document-title-keymap.test` still pass.
    *
-   * That is a measurement, not a reading: with all three removed, 23 of the 25
-   * cases in `document-title-keymap.test` still pass.
+   * What each one is for, and what goes red without it:
+   *
+   * Enter claims the key so that something else cannot, and hands the work
+   * straight back to the editor. It also answers a selection that ends outside
+   * the title, where the editor's own split throws.
+   *
+   * Backspace and Delete decline unless the fold would lose a soft line break.
+   * Delete answers one thing more: with the title empty, the editor never gets
+   * the chance, because `deleteCurrentNode` runs ahead of `joinForward` and
+   * takes an empty block as its own.
    *
    * Vertical arrows are not here. Moving the caret up and down in a
    * contenteditable is the browser's own behaviour, not something key handling
@@ -145,48 +152,76 @@ function asShortcut(editor: Editor, command: Command): () => boolean {
  * Claim Enter while the caret is in the title, and split the way the editor
  * would have.
  *
- * What it does is not ours — `splitBlock` is the editor's own, and the title
- * needs no help from it: the document's content rule is `title block*`, so a
- * split of the first block cannot produce a second title and falls to a
- * paragraph, and `defining` keeps the title's own text where it is. Measured by
- * removing this binding: all seven of the boundary suite's Enter cases pass
- * without it.
+ * What it does with a plain cursor is not ours — `splitBlock` is the editor's
+ * own, and the title needs no help from it: the document's content rule is
+ * `title block*`, so a split of the first block cannot produce a second title
+ * and falls to a paragraph, and `defining` keeps the title's own text where it
+ * is. Every one of the boundary suite's cursor cases passes with this binding
+ * removed.
  *
- * What IS ours is the claim. TipTap's input-rule plugin handles Enter too — it
+ * Two things are ours. The first is the claim. TipTap's input-rule plugin handles Enter too — it
  * runs the rules with the text `"\n"` — and it reports the key as handled
  * whether or not its transaction survives. So with Enter unclaimed here,
  * typing `***` in the title and pressing Enter does nothing at all: the rule
  * matches, the title guard rejects what it built, and the press is gone with
  * it. Claiming the key at this node's priority is what settles that, which is
  * why this exists and why it is this thin.
+ *
+ * The second is the selection that ends outside the title, below.
+ *
+ * Measured by removing this binding: three cases go red — the cross-boundary
+ * selection here, and `***` or `___` in the title followed by Enter.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction.
  * @returns True when this handled the key.
  */
 const claimEnterInsideTitle: Command = (state, dispatch) => {
-  const { $from, $to } = state.selection;
+  const { $from } = state.selection;
   if ($from.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
-  // A selection reaching out of the title is an ordinary range and the editor
-  // handles it whole. The rule plugin cannot damage that case either: it acts
-  // only on a collapsed cursor.
-  if ($to.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
-  return splitBlock(state, dispatch);
+  if (state.selection.empty) return splitBlock(state, dispatch);
+  if (!dispatch) return true;
+
+  // A selection that ends outside the title cannot be left to the editor: its
+  // own split throws on that shape — measured, "Inserted content deeper than
+  // insertion position" — and the press does nothing at all. Replacing the
+  // selection first is what any key does over one, and it leaves a caret the
+  // editor's own split then handles.
+  const tr = state.tr;
+  tr.deleteSelection();
+  const afterDelete = state.apply(tr);
+  splitBlock(afterDelete, (splitTr) => {
+    splitTr.steps.forEach((step) => {
+      tr.step(step);
+    });
+    tr.setSelection(Selection.fromJSON(tr.doc, splitTr.selection.toJSON()));
+  });
+  dispatch(tr.scrollIntoView());
+  return true;
 };
 
 /**
- * Whether a block holds anything that is not text.
+ * The block's text, with a space wherever something that is not text separated
+ * two runs of it.
  *
- * A soft line break is the one that turns up here today. It carries no text of
- * its own, so a merge that copies only text runs the lines either side of it
- * into one word.
- * @param block - The block to look inside.
- * @returns True when some child is not a text node.
+ * A soft line break carries no text of its own, so copying only text would run
+ * the lines either side of it into one word. A break with nothing on one side
+ * separates nothing, and a space there would be one the user never typed.
+ * @param block - The block to flatten.
+ * @returns The text the title would receive.
  */
-function holdsSomethingOtherThanText(block: ProseMirrorNode): boolean {
-  for (let i = 0; i < block.content.childCount; i += 1) {
-    if (!block.content.child(i).isText) return true;
-  }
-  return false;
+function flattenToTitleText(block: ProseMirrorNode): string {
+  let text = '';
+  let separated = false;
+  block.content.forEach((child) => {
+    if (!child.isText) {
+      separated = true;
+      return;
+    }
+    if (separated && text.length > 0) text += ' ';
+    separated = false;
+    text += child.text ?? '';
+  });
+  return text;
 }
 
 /**
@@ -223,13 +258,15 @@ function mergeAcrossSoftBreak(
   // every one of them. The editor lifts its first textblock out instead, and
   // declining is what lets it.
   if (!first.isTextblock) return false;
-  if (!holdsSomethingOtherThanText(first)) return false;
+  const text = flattenToTitleText(first);
+  // Nothing to add: the editor's own merge produces this already, and letting
+  // it do so keeps every case it handles better than this could.
+  if (text === first.textContent) return false;
   if (!dispatch) return true;
 
   const titleContentEnd = 1 + title.content.size;
   const tr = state.tr;
   tr.delete(title.nodeSize, title.nodeSize + first.nodeSize);
-  const text = first.textBetween(0, first.content.size, undefined, ' ');
   if (text) tr.insert(titleContentEnd, state.schema.text(text));
   tr.setSelection(TextSelection.create(tr.doc, titleContentEnd));
   dispatch(tr.scrollIntoView());
@@ -266,5 +303,14 @@ const pullBodyIntoTitleEnd: Command = (state, dispatch) => {
   const { $from, empty } = state.selection;
   if (!empty || $from.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
   if ($from.parentOffset !== $from.parent.content.size) return false;
-  return mergeAcrossSoftBreak(state, dispatch);
+  if (mergeAcrossSoftBreak(state, dispatch)) return true;
+  // With text in the title the editor answers this key correctly on its own.
+  // With none, it does not get the chance: `deleteCurrentNode` runs ahead of
+  // `joinForward` and takes an empty block as its own — it tries to delete the
+  // title, the schema refuses, and it reports the key handled with nothing
+  // done. An empty title is a state the product supports (the placeholder
+  // exists for it), so the key is answered here by running the step that was
+  // skipped.
+  if ($from.parent.content.size === 0) return joinForward(state, dispatch);
+  return false;
 };
