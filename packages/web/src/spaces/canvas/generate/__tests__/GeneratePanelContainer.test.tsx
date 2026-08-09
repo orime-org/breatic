@@ -136,7 +136,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       .mockRejectedValue(new Error('boom'));
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target');
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
     });
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledTimes(1);
@@ -171,7 +171,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     });
     mountContainer();
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target');
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
     });
     await waitFor(() => {
       expect(useCanvasStore.getState().panelHostId).toBe('target');
@@ -230,7 +230,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     });
     const { rerender } = render(modeTree(client, 'i2i'));
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target');
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
       useCanvasStore.getState().startReferencePick('target');
     });
     await waitFor(() =>
@@ -258,7 +258,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     });
     const { rerender } = render(modeTree(client, 'i2i'));
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target');
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
       useCanvasStore.getState().startFocusPick('target');
     });
     await waitFor(() =>
@@ -344,7 +344,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     );
     const { rerender } = render(tree('styled'));
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target');
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
     });
     // Wait for the catalog to resolve (Style button enabled = capability read).
     await waitFor(() =>
@@ -407,7 +407,7 @@ describe('GeneratePanelContainer — body subscription set', () => {
       ],
     });
     act(() => {
-      useCanvasStore.getState().openGeneratePanel('target');
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
     });
     await waitFor(() => {
       expect(vi.mocked(useTextBodies)).toHaveBeenCalled();

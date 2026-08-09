@@ -19,7 +19,7 @@ import { useUIStore } from '@web/stores/ui';
 describe('resetProjectUiStores (#1771)', () => {
   beforeEach(() => {
     // Start each case from a known-dirty state exercising all five stores.
-    useCanvasStore.getState().openGeneratePanel('node-1');
+    useCanvasStore.getState().openGeneratePanel('node-1', 'image');
     useCanvasStore.getState().startReferencePick('node-1');
     useCanvasStore.getState().setSelectedNodeIds(['node-1', 'node-2']);
     useCanvasStore.getState().setMinimapVisible(false); // preference

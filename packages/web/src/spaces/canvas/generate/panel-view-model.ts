@@ -22,11 +22,11 @@ import {
 } from '@web/spaces/canvas/generate/derive-references';
 import { validFocusImages } from '@web/data/focus-images';
 import {
-  filterModelsByMode,
   resolveMode,
   resolveModelForMode,
   type ImageGenMode,
 } from '@web/spaces/canvas/generate/image-mode-selection';
+import { filterModelsByMode } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import type {
   ContentNodeView,

@@ -90,7 +90,8 @@
       "yesterday": "昨天",
       "daysAgo": "{count, plural, other {# 天前}}",
       "weeksAgo": "{count, plural, other {# 週前}}",
-      "monthsAgo": "{count, plural, other {# 月前}}"
+      "monthsAgo": "{count, plural, other {# 月前}}",
+      "isoDate": "{date}"
     }
   },
   "canvas": {
@@ -169,8 +170,8 @@
       "lens": "鏡頭",
       "focalLength": "焦距",
       "aperture": "光圈",
-      "cameraOn": "已開啟",
-      "cameraOff": "已關閉",
+      "switchOn": "已開啟",
+      "switchOff": "已關閉",
       "online": "聯網搜尋",
       "translate": "翻譯提示詞",
       "execute": "生成",
@@ -197,7 +198,14 @@
       "focusExportFailed": "無法裁剪圖片——請重試。",
       "focusUploadFailed": "聚焦圖上傳失敗——請重試。",
       "focusSourceChanged": "來源圖片已變更——請重新框選。",
-      "focusCropDiscarded": "節點已被刪除——聚焦圖已丟棄。"
+      "focusCropDiscarded": "節點已被刪除——聚焦圖已丟棄。",
+      "duration": "生成時長",
+      "durationSeconds": "{n} 秒",
+      "generateAudio": "生成音訊",
+      "videoParams": "參數",
+      "videoPromptPlaceholder": "描述你想生成的影片",
+      "videoMentionEmpty": "還沒有可引用的參考",
+      "videoNoPrompt": "這個節點建得比影片生成早，沒有提示詞。新建一個影片節點就能生成。"
     },
     "nodeMenu": {
       "generate": "生成",

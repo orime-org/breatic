@@ -447,17 +447,35 @@ describe("role-upgrade requests repo", () => {
       expiresAt: nextWeek(),
     })).id;
 
-    const before = Date.now();
     await db.transaction(async (tx) =>
       roleUpgradeRequestsRepo.settleIfPending(premiseGone, "expired", null, tx),
     );
 
-    const rows = await sql<{ expires_at: Date }[]>`
-      SELECT expires_at FROM role_upgrade_requests WHERE id = ${premiseGone}
+    // Both questions are asked of the database, because the deadline is a
+    // database clock reading: the repo writes `LEAST(expires_at, now())`. An
+    // earlier version compared it against this process's `Date.now()`, which
+    // made the test fail whenever the container's clock sat a millisecond
+    // ahead of the runner's — a real intermittent failure with nothing wrong
+    // in the code under test. Nothing below reaches for this process's clock,
+    // so that failure mode is gone rather than narrowed.
+    const [row] = await sql<{ ended: boolean; recent: boolean }[]>`
+      SELECT expires_at <= now()                      AS ended,
+             expires_at >  now() - interval '1 minute' AS recent
+        FROM role_upgrade_requests
+       WHERE id = ${premiseGone}
     `;
-    const deadline = rows[0]!.expires_at.getTime();
-    expect(deadline).toBeLessThanOrEqual(Date.now());
-    expect(deadline).toBeGreaterThanOrEqual(before - 1000);
+    // Not in the future any more — the window is closed. The row was created
+    // a week out, so this alone says the deadline moved; a third assertion
+    // spelling out "it is earlier than a week from now" cannot fail once this
+    // one passes, and would only be one more clock to disagree with.
+    expect(row!.ended).toBe(true);
+    // …and closed just now rather than at some stale value: a pull-back to a
+    // long-past instant would satisfy `ended` on its own. A minute, because
+    // the gap being measured is one statement round trip. The hour this
+    // started out as was picked when the question first moved into SQL and was
+    // simply too loose — it let the deadline be 59 minutes wrong about "just
+    // now" without anything noticing.
+    expect(row!.recent).toBe(true);
   });
 
   it("leaves a deadline that already passed exactly where it was", async () => {

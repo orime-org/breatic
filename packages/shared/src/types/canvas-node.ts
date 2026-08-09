@@ -34,16 +34,36 @@ export type NodeType =
   | 'group';
 
 /**
- * The modalities that offer Generate. Today that is image alone; text is
- * planned but not built. Two places must agree on this — the canvas gates the
- * Generate menu item on it, and node creation seeds a prompt container only
- * for nodes that can use one — so it lives here, the one package both of them
- * sit above.
+ * The modalities that offer Generate — image and video (#1896). Text is
+ * planned (#1778) but not built, so it stays out: a node created while this
+ * said yes would carry a prompt container forever after, and the menu item
+ * would open nothing.
+ *
+ * This list IS the product decision. `canGenerate` reads it rather than
+ * comparing against literals, so its body answers the question its name asks
+ * and a third modality is one more entry here rather than another clause
+ * somewhere.
+ */
+const GENERATIVE_MODALITIES: readonly NodeType[] = ['image', 'video'];
+
+/**
+ * Whether a node of this modality offers Generate.
+ *
+ * Two places must agree on this — the canvas gates the Generate menu item on
+ * it, and node creation seeds a prompt container only for nodes that can use
+ * one — so it lives here, the one package both of them sit above.
+ *
+ * It answers ONLY whether a modality generates. **It never says which panel
+ * opens**, even though image and video have separate panels (user 2026-08-08):
+ * this package is shared with the backend and must not know what a frontend
+ * panel is, and the consumer that seeds prompt containers does not care which
+ * one would open. That routing lives in the panel opener, which takes the node
+ * type and decides there.
  * @param type - The node's modality.
  * @returns True when a node of this modality offers Generate.
  */
 export function canGenerate(type: NodeType): boolean {
-  return type === 'image';
+  return GENERATIVE_MODALITIES.includes(type);
 }
 
 /**
