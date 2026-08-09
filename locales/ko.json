@@ -202,7 +202,8 @@
       "durationSeconds": "{n}초",
       "generateAudio": "오디오 생성",
       "videoParams": "매개변수",
-      "videoPromptPlaceholder": "생성할 영상을 설명하세요. @로 참조를 추가합니다"
+      "videoPromptPlaceholder": "생성할 영상을 설명하세요. @로 참조를 추가합니다",
+      "videoMentionEmpty": "연결된 참조가 없습니다. 먼저 노드를 연결하세요"
     },
     "nodeMenu": {
       "generate": "생성",

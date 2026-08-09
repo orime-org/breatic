@@ -171,6 +171,7 @@ import {
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
+import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
 import type { HistoryModality } from '@web/spaces/canvas/history/NodeHistoryRow';
@@ -3430,6 +3431,13 @@ function CanvasSpaceInner({
           <GeneratePanelContainer
             nodes={nodes}
             edges={edges}
+            projectId={projectId}
+            spaceId={spaceId}
+          />
+          {/* Video Generate panel: its own panel kind, so only one of the two
+              is ever open on a node — a video node opens this one. */}
+          <VideoGeneratePanelContainer
+            nodes={nodes}
             projectId={projectId}
             spaceId={spaceId}
           />

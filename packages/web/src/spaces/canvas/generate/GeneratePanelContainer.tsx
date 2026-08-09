@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { NodeToolbar, Position } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 import { toast } from '@web/lib/toast';
@@ -36,7 +35,12 @@ import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
+import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
+import {
+  CatalogGatedFrame,
+  useOpenPanelNode,
+} from '@web/spaces/canvas/generate/generate-panel-frame';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
@@ -97,29 +101,6 @@ function asStr(value: unknown): string | undefined {
  */
 function asNum(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined;
-}
-
-/**
- * Maps a failed execute request to a user-facing message. Credit / lock /
- * outage are the meaningful task-create failures (server `AppError`s).
- * @param status - The HTTP status, or undefined for a non-API error.
- * @param translate - The i18n translate function.
- * @returns A localized error message.
- */
-function executeErrorMessage(
-  status: number | undefined,
-  translate: (key: string) => string,
-): string {
-  switch (status) {
-    case 402:
-      return translate('canvas.generatePanel.errorCredits');
-    case 409:
-      return translate('canvas.generatePanel.errorBusy');
-    case 503:
-      return translate('canvas.generatePanel.errorUnavailable');
-    default:
-      return translate('canvas.generatePanel.errorFailed');
-  }
 }
 
 /**
@@ -738,78 +719,23 @@ function GeneratePanelBody({
 
 /**
  * The Generate panel's canvas integration point. Rendered once inside the
- * ReactFlow subtree; shows nothing until a node's Generate panel is opened
- * (store `panelHostId` with `panelKind === 'generate'` — the reset-empty panel
- * shares the host but renders its own container), then floats
- * {@link GeneratePanel} below that node via ReactFlow's `NodeToolbar` (which
- * tracks the node without changing the viewport — panel open never zooms).
+ * ReactFlow subtree; shows nothing until an image node's Generate panel is
+ * opened, then floats {@link GeneratePanel} below that node.
  * @param props - Live nodes / edges and the project / space ids.
  * @returns The floating Generate panel, or null when none is open.
  */
 export function GeneratePanelContainer(
   props: GeneratePanelContainerProps,
 ): React.JSX.Element | null {
-  const host = useCanvasStore((s) => s.panelHostId);
-  const kind = useCanvasStore((s) => s.panelKind);
-  // Only this container's kind; the reset-empty panel shares `panelHostId`.
-  const nodeId = kind === 'generate' ? host : null;
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
-  // Close the panel + end any reference pick when the target node disappears
-  // (e.g. a collaborator deletes it) so we never render a stale panel or leave
-  // pick mode pointing at a node that no longer exists.
-  const nodeGone = nodeId != null && !props.nodes.some((n) => n.id === nodeId);
-  React.useEffect(() => {
-    if (nodeGone) closeActivePanel();
-  }, [nodeGone, closeActivePanel]);
-  if (nodeId == null || nodeGone) return null;
-  return <CatalogGatedPanel {...props} nodeId={nodeId} />;
-}
-
-/**
- * Model-catalog failure gate (spec §9.3, user-ratified): a panel without a
- * catalog is a dead end (blank model pill, no ratio picker, execute
- * permanently disabled), so a failed fetch EXPLAINS itself with a toast and
- * the panel never opens — no silent fail. Mounted only while a panel is OPEN
- * (inside the nodeId gate), so the always-rendered container never touches
- * react-query — a closed panel needs no QueryClient. Same queryKey as the
- * body's query (one cache entry); remounting per open attempt re-fires the
- * effect, so re-trying the right-click keeps telling the user while the API
- * is down.
- * @param props - The container props + the open panel's node id.
- * @returns The floating panel, or null while the catalog is failed.
- */
-function CatalogGatedPanel(
-  props: GeneratePanelContainerProps & { nodeId: string },
-): React.JSX.Element | null {
-  const t = useTranslation();
-  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
-  const { isError, data } = useQuery({
-    queryKey: ['models'],
-    queryFn: () => modelsApi.list(),
-  });
-  // Gate on "errored AND nothing cached": a BACKGROUND refetch failure keeps
-  // the previously-fetched catalog in `data`, and the panel keeps working off
-  // it — closing a fully-functional panel over a refresh hiccup would be
-  // worse than the silent failure this gate fixes (round-2 adversarial).
-  const catalogError = isError && data === undefined;
-  React.useEffect(() => {
-    if (catalogError) {
-      // A fixed toast id de-duplicates the StrictMode double-effect and rapid
-      // re-open attempts while the API stays down (sonner replaces in place).
-      toast.error(t('canvas.generatePanel.catalogUnavailable'), {
-        id: 'generate-catalog-unavailable',
-      });
-      closeActivePanel();
-    }
-  }, [catalogError, closeActivePanel, t]);
-  if (catalogError) return null;
+  const nodeId = useOpenPanelNode('generate', props.nodes);
+  if (nodeId == null) return null;
   return (
-    <NodeToolbar nodeId={props.nodeId} isVisible position={Position.Bottom}>
+    <CatalogGatedFrame nodeId={nodeId}>
       {/* key={nodeId} makes switching the panel to another node a full REMOUNT:
           promptText / promptTextRef / submittingRef all reset to the new node's
           fresh state, so a prompt typed for node A can never be submitted to
           node B (nor can the execute button show A's enabled state on B). */}
-      <GeneratePanelBody {...props} key={props.nodeId} />
-    </NodeToolbar>
+      <GeneratePanelBody {...props} nodeId={nodeId} key={nodeId} />
+    </CatalogGatedFrame>
   );
 }

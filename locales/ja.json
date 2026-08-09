@@ -202,7 +202,8 @@
       "durationSeconds": "{n}秒",
       "generateAudio": "音声を生成",
       "videoParams": "パラメータ",
-      "videoPromptPlaceholder": "生成したい動画を説明してください。@ で参照を追加"
+      "videoPromptPlaceholder": "生成したい動画を説明してください。@ で参照を追加",
+      "videoMentionEmpty": "接続された参照がありません。まずノードをこれに接続してください"
     },
     "nodeMenu": {
       "generate": "生成",

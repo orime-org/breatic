@@ -211,7 +211,8 @@
       "durationSeconds": "{n}s",
       "generateAudio": "Generate audio",
       "videoParams": "Parameters",
-      "videoPromptPlaceholder": "Describe the video you want to generate, @ to add a reference"
+      "videoPromptPlaceholder": "Describe the video you want to generate, @ to add a reference",
+      "videoMentionEmpty": "No connected references — connect a node to this one first"
     },
     "edge": {
       "delete": "Delete connection"
