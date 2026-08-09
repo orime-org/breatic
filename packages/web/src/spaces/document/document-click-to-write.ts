@@ -15,7 +15,14 @@
  *
  * ## How the click is recognised
  *
- * Two questions, and both have to answer yes.
+ * Three questions, and all have to answer yes.
+ *
+ * Was it a click at all? Pressing below the last block and dragging upwards is
+ * how a selection gets made from there, and at the moment of the press those
+ * two are the same event. So this is decided on release, and a release that
+ * left something selected was a drag — the earlier version acted on the press
+ * and turned every such selection into an unasked-for paragraph in a document
+ * other people are in.
  *
  * Did it land on the editor rather than on a block? ProseMirror gives every
  * block its own element inside the editor's, so an event whose target is the
@@ -93,10 +100,12 @@ export const DocumentClickToWrite = Extension.create({
   name: 'documentClickToWrite',
 
   /**
-   * Watch for a press that landed on the editor, below the last line.
+   * Watch for a click that landed on the editor, below the last line.
    *
-   * `mousedown` rather than `click`, because the caret has to be in place
-   * before the browser starts its own selection from wherever the press was.
+   * `click` rather than `mousedown`: a press is not yet a click, and by the
+   * time this fires the editor has resolved what the pointer did — including
+   * the selection a drag left behind, which is the one signal that separates
+   * the two.
    * @returns The plugin carrying that handler.
    */
   addProseMirrorPlugins() {
@@ -105,7 +114,7 @@ export const DocumentClickToWrite = Extension.create({
         key: new PluginKey('documentClickToWrite'),
         props: {
           handleDOMEvents: {
-            mousedown: (view, event) => {
+            click: (view, event) => {
               if (event.button !== 0) return false;
               // A modifier turns a click into a different gesture — Shift
               // extends the selection, and the others carry their own
@@ -121,6 +130,9 @@ export const DocumentClickToWrite = Extension.create({
                 return false;
               }
               if (event.target !== view.dom) return false;
+              // Something got selected, so the pointer dragged rather than
+              // clicked. The user was reading, not asking to write.
+              if (!view.state.selection.empty) return false;
               if (!isBelowTheLastLine(view, event.clientY)) return false;
               return openABlockToTypeIn(view);
             },

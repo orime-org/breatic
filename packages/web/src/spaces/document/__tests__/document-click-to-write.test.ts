@@ -98,7 +98,7 @@ function pressEditorAt(
   modifiers: MouseEventInit = {},
 ): void {
   editor.view.dom.dispatchEvent(
-    new MouseEvent('mousedown', {
+    new MouseEvent('click', {
       bubbles: true,
       cancelable: true,
       button: 0,
@@ -172,10 +172,32 @@ describe('clicking under the last block', () => {
 
     // A block's own element, not the editor's.
     editor.view.dom.firstElementChild?.dispatchEvent(
-      new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }),
+      new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
     );
 
     expect(editor.state.doc.childCount).toBe(before);
+  });
+
+  it('leaves a drag that selected something alone', () => {
+    // Pressing below the last block and dragging up is how a selection gets
+    // made from there. The press alone cannot tell that apart from a click —
+    // which is why this is decided on release, by whether anything ended up
+    // selected. Acting on it would both lose the selection and write a block
+    // into a document other people are in.
+    const { body, editor } = open('<p>written</p>');
+    const before = { blocks: editor.state.doc.childCount, yjs: body.toString() };
+    const titleSize = editor.state.doc.child(0).nodeSize;
+    editor.commands.setTextSelection({
+      from: titleSize + 1,
+      to: titleSize + 1 + 'written'.length,
+    });
+
+    pinLastLineBottom(editor, 100);
+    pressEditorAt(editor, 300);
+
+    expect(editor.state.doc.childCount).toBe(before.blocks);
+    expect(body.toString()).toBe(before.yjs);
+    expect(editor.state.selection.empty).toBe(false);
   });
 
   it('leaves the gap BETWEEN two blocks alone, target notwithstanding', () => {
