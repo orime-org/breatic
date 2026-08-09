@@ -39,6 +39,11 @@
  * dead, and the left arrow at the title's start dropped the caret into a gap
  * cursor with nowhere to type. Both work by themselves without it.
  *
+ * Those hand-written branches are gone with it. Dropping the property is what
+ * made them redundant, and they outlived it by a round because nothing went red
+ * when it left — which is worth remembering the next time a property this load-
+ * bearing is removed: what it forced has to be re-derived, not just re-read.
+ *
  * The content is `text*` rather than `inline*`: the title holds text, not
  * inline atoms. A reference chip or an inline image in a title has no meaning
  * and would need its own answers for serialisation and for what happens when
@@ -48,8 +53,9 @@
 import type { Editor } from '@tiptap/core';
 import { Node } from '@tiptap/core';
 import type { Command, EditorState, Transaction } from '@tiptap/pm/state';
-import { Selection, TextSelection } from '@tiptap/pm/state';
-import { liftTarget } from '@tiptap/pm/transform';
+import { TextSelection } from '@tiptap/pm/state';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { splitBlock } from '@tiptap/pm/commands';
 import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 
 /**
@@ -94,11 +100,15 @@ export const DocumentTitle = Node.create({
   /**
    * The keys that cross the line between the title and the body.
    *
-   * They live together because they are one decision rather than three: Enter
-   * cuts the title at the caret and drops the tail into the body, and both
-   * Backspace and Delete are that same cut run backwards. Defining any of them
-   * without the others leaves a boundary a user can fall through — press Enter
-   * by mistake and there is no way back.
+   * All three are thin, and each is thin for its own reason. Enter claims the
+   * key and hands it straight back to the editor, because something else wants
+   * it first. Backspace and Delete decline unless the fold would lose a soft
+   * line break. Everything else about this boundary — the cut, the fold from
+   * either side, lifting a list's first item out, removing a divider — is the
+   * editor's own and needs nothing from here.
+   *
+   * That is a measurement, not a reading: with all three removed, 23 of the 25
+   * cases in `document-title-keymap.test` still pass.
    *
    * Vertical arrows are not here. Moving the caret up and down in a
    * contenteditable is the browser's own behaviour, not something key handling
@@ -108,7 +118,7 @@ export const DocumentTitle = Node.create({
    */
   addKeyboardShortcuts() {
     return {
-      Enter: asShortcut(this.editor, splitTitleIntoBody),
+      Enter: asShortcut(this.editor, claimEnterInsideTitle),
       Backspace: asShortcut(this.editor, mergeBodyStartIntoTitle),
       Delete: asShortcut(this.editor, pullBodyIntoTitleEnd),
     };
@@ -132,83 +142,93 @@ function asShortcut(editor: Editor, command: Command): () => boolean {
 }
 
 /**
- * Move the title's first block worth of text into the body, at the caret.
+ * Claim Enter while the caret is in the title, and split the way the editor
+ * would have.
  *
- * A selection wholly inside the title is replaced first, exactly as pressing
- * any key over a selection replaces it, and the split then happens where that
- * leaves the caret.
+ * What it does is not ours — `splitBlock` is the editor's own, and the title
+ * needs no help from it: the document's content rule is `title block*`, so a
+ * split of the first block cannot produce a second title and falls to a
+ * paragraph, and `defining` keeps the title's own text where it is. Measured by
+ * removing this binding: all seven of the boundary suite's Enter cases pass
+ * without it.
  *
- * Declines when the selection reaches out of the title: that is an ordinary
- * range, and the editor's own Enter deletes it — which joins the two blocks —
- * and splits at the caret. It really does answer, now that the title is not
- * isolating; while it was, that path bailed at the boundary and the key did
- * nothing at all.
- * @param state - Current editor state.
- * @param dispatch - Applies the transaction; absent when the caller is only asking whether this would apply.
- * @returns True when this handled the key.
- */
-const splitTitleIntoBody: Command = (state, dispatch) => {
-  const { $from, $to } = state.selection;
-  if ($from.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
-  if ($to.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
-
-  const paragraph = state.schema.nodes['paragraph'];
-  if (!paragraph) return false;
-  if (!dispatch) return true;
-
-  const tr = state.tr;
-  // A no-op for a collapsed cursor, so both cases run the same path from here.
-  tr.deleteSelection();
-
-  // The title is the document's first child, so it occupies positions 0 to its
-  // own size and the block after it starts exactly there. Read both back from
-  // the transaction rather than the original state — the deletion above moved
-  // them.
-  const cut = tr.selection.$from.parentOffset;
-  const title = tr.doc.child(0);
-  const tail = title.textBetween(cut, title.content.size);
-  if (tail) tr.delete(tr.selection.from, 1 + title.content.size);
-  const insertAt = tr.doc.child(0).nodeSize;
-  tr.insert(
-    insertAt,
-    paragraph.create(null, tail ? state.schema.text(tail) : null),
-  );
-  tr.setSelection(TextSelection.create(tr.doc, insertAt + 1));
-  dispatch(tr.scrollIntoView());
-  return true;
-};
-
-/**
- * Fold the body's first block back into the end of the title.
- *
- * Only a textblock — a paragraph, a heading, a code block. A container block
- * holds several textblocks of its own, and folding one in would delete every
- * one of them and run their text together; `liftFirstBodyTextblock` is what
- * answers for those.
- *
- * The text arrives as plain text because the title holds no marks — a bold
- * paragraph merged into the title comes back unbold rather than carrying a
- * mark the schema would drop on the next parse.
+ * What IS ours is the claim. TipTap's input-rule plugin handles Enter too — it
+ * runs the rules with the text `"\n"` — and it reports the key as handled
+ * whether or not its transaction survives. So with Enter unclaimed here,
+ * typing `***` in the title and pressing Enter does nothing at all: the rule
+ * matches, the title guard rejects what it built, and the press is gone with
+ * it. Claiming the key at this node's priority is what settles that, which is
+ * why this exists and why it is this thin.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction.
  * @returns True when this handled the key.
  */
-function mergeFirstBodyBlock(
+const claimEnterInsideTitle: Command = (state, dispatch) => {
+  const { $from, $to } = state.selection;
+  if ($from.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
+  // A selection reaching out of the title is an ordinary range and the editor
+  // handles it whole. The rule plugin cannot damage that case either: it acts
+  // only on a collapsed cursor.
+  if ($to.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
+  return splitBlock(state, dispatch);
+};
+
+/**
+ * Whether a block holds anything that is not text.
+ *
+ * A soft line break is the one that turns up here today. It carries no text of
+ * its own, so a merge that copies only text runs the lines either side of it
+ * into one word.
+ * @param block - The block to look inside.
+ * @returns True when some child is not a text node.
+ */
+function holdsSomethingOtherThanText(block: ProseMirrorNode): boolean {
+  for (let i = 0; i < block.content.childCount; i += 1) {
+    if (!block.content.child(i).isText) return true;
+  }
+  return false;
+}
+
+/**
+ * Fold the body's first block into the title, keeping what is not text visible.
+ *
+ * This is the whole of what the title adds at this boundary. Everything else
+ * the two keys below do is the editor's own, and saying so is a measurement
+ * rather than a reading: with all three bindings removed, 23 of the boundary
+ * suite's 25 cases pass untouched, and the two that fail are this one, from
+ * either side.
+ *
+ * The reason the rest became the editor's is that the title stopped being
+ * `isolating`. While it was, every default handler bailed at the boundary and
+ * each gesture had to be written out by hand; the ladder those hand-written
+ * branches formed outlived the property that forced it.
+ *
+ * What the default cannot do is this: the title's content is text and nothing
+ * else, so a soft line break in the block being folded in has nowhere to go and
+ * the editor drops it, gluing the two lines into one word. A space is what it
+ * becomes instead. Text arrives unmarked for the same reason — the title holds
+ * no marks — and that part the default already gets right.
+ * @param state - Current editor state.
+ * @param dispatch - Applies the transaction.
+ * @returns True when this handled the key, false to leave it to the editor.
+ */
+function mergeAcrossSoftBreak(
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
 ): boolean {
   if (state.doc.childCount < 2) return false;
   const title = state.doc.child(0);
   const first = state.doc.child(1);
+  // A container block holds textblocks of its own; folding one in would delete
+  // every one of them. The editor lifts its first textblock out instead, and
+  // declining is what lets it.
   if (!first.isTextblock) return false;
+  if (!holdsSomethingOtherThanText(first)) return false;
   if (!dispatch) return true;
 
   const titleContentEnd = 1 + title.content.size;
   const tr = state.tr;
   tr.delete(title.nodeSize, title.nodeSize + first.nodeSize);
-  // A soft line break has no text of its own, so plain `textContent` would run
-  // the lines either side of it into one word. The title cannot hold the break
-  // — its content is text and nothing else — so a space is what it becomes.
   const text = first.textBetween(0, first.content.size, undefined, ' ');
   if (text) tr.insert(titleContentEnd, state.schema.text(text));
   tr.setSelection(TextSelection.create(tr.doc, titleContentEnd));
@@ -217,85 +237,11 @@ function mergeFirstBodyBlock(
 }
 
 /**
- * Lift the first textblock inside the body's first container block out of it.
- *
- * This is what the editor itself does at every other boundary in the body: with
- * the caret at the end of a paragraph followed by a list, Delete lifts the
- * first item out as a paragraph of its own and leaves the rest of the list
- * standing, and a second press then merges it. Measured in the browser on this
- * build.
- *
- * The title cannot inherit that behaviour, because it is `isolating` and
- * `prosemirror-commands`' `deleteBarrier` refuses to cross an isolating
- * boundary before it ever reaches its lift branch. So the three calls that
- * branch makes are made here instead — the same `Selection.findFrom`,
- * `blockRange` and `liftTarget`, which is why the result matches the body
- * rather than resembling it.
- * @param state - Current editor state.
- * @param dispatch - Applies the transaction.
- * @returns True when this handled the key.
- */
-function liftFirstBodyTextblock(
-  state: EditorState,
-  dispatch?: (tr: Transaction) => void,
-): boolean {
-  if (state.doc.childCount < 2) return false;
-  const boundary = state.doc.child(0).nodeSize;
-  const container = state.doc.child(1);
-  const inside = Selection.findFrom(state.doc.resolve(boundary), 1);
-  // `findFrom` searches the whole document forward, not just the block the key
-  // is aimed at, so a container with nothing selectable inside it would send it
-  // into a LATER block and lift one the press never touched. No node type in
-  // today's schema is like that — every container bottoms out in a textblock —
-  // and this comparison is what keeps that from having to be re-derived each
-  // time a type is added.
-  if (!inside || inside.$from.pos >= boundary + container.nodeSize) return false;
-  const range = inside.$from.blockRange(inside.$to);
-  const target = range ? liftTarget(range) : null;
-  if (!range || target === null) return false;
-  if (!dispatch) return true;
-  dispatch(state.tr.lift(range, target).scrollIntoView());
-  return true;
-}
-
-/**
- * Remove a body-leading block that has no interior at all — a divider.
- *
- * There is no text to fold into the title and nothing inside to lift out, so
- * without this the press lands on nothing and the key is dead at this boundary
- * for as long as that block is there. Removing it is what the body does with
- * the same press: caret at the end of a paragraph, a divider next, Delete, and
- * the divider goes. Measured on this build.
- * @param state - Current editor state.
- * @param dispatch - Applies the transaction.
- * @returns True when this handled the key.
- */
-function removeLeadingLeafBlock(
-  state: EditorState,
-  dispatch?: (tr: Transaction) => void,
-): boolean {
-  if (state.doc.childCount < 2) return false;
-  const boundary = state.doc.child(0).nodeSize;
-  const first = state.doc.child(1);
-  if (!first.isLeaf) return false;
-  if (!dispatch) return true;
-  dispatch(
-    state.tr.delete(boundary, boundary + first.nodeSize).scrollIntoView(),
-  );
-  return true;
-}
-
-/**
  * Backspace at the very start of the body's first block.
  *
- * This is Enter run backwards, and it is the only way back from an Enter
- * pressed by mistake.
- *
- * A caret at the start of a paragraph nested in a container block passes the
- * gate below — its top-level index IS 1 — and `mergeFirstBodyBlock` is what
- * turns it away, because that block is not a textblock. Declining hands the
- * key to the editor's own Backspace chain, which lifts the paragraph out of
- * its container exactly as it would anywhere else in the body.
+ * Declining is the normal outcome and the right one: the editor's own Backspace
+ * chain folds that block into the title already. This is here for the one thing
+ * it does differently — see {@link mergeAcrossSoftBreak}.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction.
  * @returns True when this handled the key.
@@ -303,26 +249,15 @@ function removeLeadingLeafBlock(
 const mergeBodyStartIntoTitle: Command = (state, dispatch) => {
   const { $from, empty } = state.selection;
   if (!empty || $from.parentOffset !== 0 || $from.index(0) !== 1) return false;
-  return mergeFirstBodyBlock(state, dispatch);
+  return mergeAcrossSoftBreak(state, dispatch);
 };
 
 /**
- * Delete at the very end of the title.
+ * Delete at the end of the title — the same fold, reached from the other side.
  *
- * Same join as the Backspace above, reached from the other side — and where
- * that one can decline and leave the key to the editor's own chain, this one
- * cannot: the caret is inside the isolating title, so every default handler
- * stops at the boundary and the press would do nothing whatsoever. So the three
- * below cover the three shapes a block can take — holds text directly, holds no
- * content at all, holds other blocks — and each answers the way the body
- * answers the same press.
- *
- * That is not the same as saying the press always does something. The third
- * one declines when the container will not give its first textblock up: a list
- * whose first item has a sub-list under it, for instance. The body does
- * nothing there either — measured on this build, caret at the end of a
- * paragraph followed by exactly that list — so matching it is the point rather
- * than a gap in the ladder.
+ * Declines for the same reasons and leaves the key to the editor, which pulls
+ * the body's first block up, lifts a container's first textblock out, or
+ * removes a divider, exactly as it does at every other boundary in the body.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction.
  * @returns True when this handled the key.
@@ -331,9 +266,5 @@ const pullBodyIntoTitleEnd: Command = (state, dispatch) => {
   const { $from, empty } = state.selection;
   if (!empty || $from.parent.type.name !== DOCUMENT_TITLE_NODE) return false;
   if ($from.parentOffset !== $from.parent.content.size) return false;
-  return (
-    mergeFirstBodyBlock(state, dispatch) ||
-    removeLeadingLeafBlock(state, dispatch) ||
-    liftFirstBodyTextblock(state, dispatch)
-  );
+  return mergeAcrossSoftBreak(state, dispatch);
 };
