@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
 import type { ModelCatalog, ModelEntry } from '@breatic/shared';
 import type { ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn() },
+  // `warning` is the node gate's outlet (a locked or mid-generation node),
+  // so it has to be stubbed alongside the failure and success channels.
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }));
 
 // Real Radix Tooltip throws without the app-level provider (App.tsx mounts
@@ -38,9 +40,13 @@ vi.mock('@web/data/yjs/use-socket', () => ({
   ),
 }));
 
+import * as Y from 'yjs';
 import { toast } from 'sonner';
 
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
+import { addNode, getPromptFragment } from '@web/data/yjs/canvas-space';
+import { canvasApi } from '@web/data/api/canvas';
+import { _resetForTests } from '@web/data/yjs/manager';
 import {
   CanvasContext,
   type CanvasContextValue,
@@ -132,9 +138,52 @@ function mountContainer(kind: 'video' | 'image' = 'video'): ReturnType<
   );
 }
 
+/**
+ * Seeds a real video node in the canvas-space doc so the panel gets a prompt
+ * fragment and the collaborative editor actually mounts. Without this the
+ * container renders no editor, the prompt stays empty and execute is
+ * unreachable — which is exactly how the submit path went untested.
+ * @param over - Node data overrides (e.g. `locked`).
+ */
+function seedVideoNode(over: Record<string, unknown> = {}): void {
+  addNode('p', 's', {
+    id: 'target',
+    type: 'video',
+    position: { x: 0, y: 0 },
+    data: {
+      name: 'V',
+      createdAt: 1000,
+      createdBy: 'u1',
+      locked: false,
+      state: 'idle',
+      attachments: [],
+      // A non-zero lease so the gen fence assertion can tell a real read from
+      // a hardcoded 0 — with an absent lease both produce gen 1 and the
+      // assertion proves nothing.
+      leaseGen: 3,
+      ...over,
+    },
+  } as Parameters<typeof addNode>[2]);
+}
+
+/**
+ * Writes a prompt into the seeded node's fragment. The editor is bound to it,
+ * so this is what a collaborator typing would produce.
+ * @param text - The prompt body.
+ */
+function typePrompt(text: string): void {
+  const fragment = getPromptFragment('p', 's', 'target');
+  if (!fragment) throw new Error('seedVideoNode must run first');
+  const paragraph = new Y.XmlElement('paragraph');
+  paragraph.insert(0, [new Y.XmlText(text)]);
+  fragment.insert(0, [paragraph]);
+}
+
 describe('VideoGeneratePanelContainer', () => {
   beforeEach(() => {
     vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.warning).mockClear();
+    _resetForTests();
     useCanvasStore.setState({
       panelHostId: null,
       panelKind: null,
@@ -233,5 +282,131 @@ describe('VideoGeneratePanelContainer', () => {
     });
     expect(useCanvasStore.getState().panelHostId).toBeNull();
     expect(screen.queryByTestId('generate-video-execute')).toBeNull();
+  });
+
+  describe('submit', () => {
+    /**
+     * Opens the panel on a seeded node with a prompt already in it and waits
+     * for the submit arrow to become live.
+     * @returns The submit button.
+     */
+    async function openReadyPanel(): Promise<HTMLElement> {
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      seedVideoNode();
+      typePrompt('a drone shot over a canyon at dawn');
+      mountContainer('video');
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const execute = await screen.findByTestId('generate-video-execute');
+      await waitFor(() => expect(execute).not.toBeDisabled());
+      return execute;
+    }
+
+    it('sends a VIDEO task carrying the model, params, prompt and gen fence', async () => {
+      // The one path the whole panel exists to reach. Every field here is one
+      // a mutation could quietly change with no other test noticing: the task
+      // type routes to the worker pipeline, duration must stay a number, and
+      // the gen fence is what stops a stale panel overwriting a newer result.
+      const create = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue({ id: 't1' } as Awaited<
+          ReturnType<typeof canvasApi.createTask>
+        >);
+      const execute = await openReadyPanel();
+      fireEvent.click(execute);
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      const payload = create.mock.calls[0]![0];
+      expect(payload.task_type).toBe('video');
+      expect(payload.model).toBe('veo-3.1');
+      expect(payload.params.prompt).toBe('a drone shot over a canyon at dawn');
+      expect(payload.params.duration).toBe(8);
+      expect(typeof payload.params.duration).toBe('number');
+      expect(payload.target_node_id).toBe('target');
+      expect(payload.mode).toBe('overwrite');
+      expect(payload.node_gens).toEqual({ target: 4 });
+    });
+
+    it('closes the panel once the task is accepted', async () => {
+      vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as Awaited<
+        ReturnType<typeof canvasApi.createTask>
+      >);
+      const execute = await openReadyPanel();
+      fireEvent.click(execute);
+      await waitFor(() =>
+        expect(useCanvasStore.getState().panelHostId).toBeNull(),
+      );
+    });
+
+    it('submits once however fast the arrow is double-clicked', async () => {
+      // The button's disabled state lags a frame behind the click, so the
+      // latch has to be a synchronous ref. A second task here means the user
+      // is charged twice for one generation.
+      type Task = Awaited<ReturnType<typeof canvasApi.createTask>>;
+      let release: (task: Task) => void = () => {};
+      const create = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockImplementation(
+          () =>
+            new Promise<Task>((resolve) => {
+              release = resolve;
+            }),
+        );
+      const execute = await openReadyPanel();
+      // Both clicks in ONE act batch: React flushes state at the end of a
+      // batch, so `isSubmitting` has not disabled the button yet when the
+      // second click lands. That is the real race — dispatching them
+      // separately lets React grey the button in between and the handler is
+      // never re-entered, so the latch would look covered while being absent.
+      act(() => {
+        execute.click();
+        execute.click();
+        execute.click();
+      });
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect(create).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        release({ id: 't1' } as Task);
+      });
+    });
+
+    it('refuses to submit against a locked node and says why', async () => {
+      // The button stays clickable on a locked node on purpose: a greyed
+      // control explains nothing. The gate blocks the submit and toasts the
+      // reason instead.
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const create = vi.spyOn(canvasApi, 'createTask');
+      seedVideoNode({ locked: true });
+      typePrompt('a drone shot over a canyon at dawn');
+      mountContainer('video');
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const execute = await screen.findByTestId('generate-video-execute');
+      await waitFor(() => expect(execute).not.toBeDisabled());
+      fireEvent.click(execute);
+      await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+      expect(create).not.toHaveBeenCalled();
+      expect(useCanvasStore.getState().panelHostId).toBe('target');
+    });
+
+    it('explains a rejected submit and lets the user try again', async () => {
+      // A refused task (no credits, node already busy, upstream down) must
+      // both say so and release the latch — otherwise the arrow stays dead
+      // for the rest of the panel's life.
+      const create = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValueOnce({ id: 't1' } as Awaited<
+          ReturnType<typeof canvasApi.createTask>
+        >);
+      const execute = await openReadyPanel();
+      fireEvent.click(execute);
+      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      expect(useCanvasStore.getState().panelHostId).toBe('target');
+      await waitFor(() => expect(execute).not.toBeDisabled());
+      fireEvent.click(execute);
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+    });
   });
 });

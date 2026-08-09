@@ -136,15 +136,23 @@ describe('buildVideoPanelViewModel', () => {
     makeModel('video-upscale-pro', { mode: 'upscale', cost_per_call: 4 }),
   ];
 
-  it('offers exactly the models the active mode narrows to', () => {
+  it('picks from the active mode only, never from another mode or a mini-tool entry', () => {
+    // The list itself is `selectVideoModeModels`, covered above. What this
+    // pins is that the effective model comes out of that narrowing: the
+    // i2v and upscale entries sit earlier and later in the catalog and
+    // neither may win.
     const nodes = [node('n1', videoView())];
     const vm = buildVideoPanelViewModel({
       nodeId: 'n1',
       nodes,
-      models,
+      models: [
+        makeModel('video-upscale-pro', { mode: 'upscale', cost_per_call: 4 }),
+        makeModel('kling-o3-pro-i2v', { mode: 'i2v', cost_per_call: 56 }),
+        ...models,
+      ],
       mode: 't2v',
     });
-    expect(vm.models.map((m) => m.name)).toEqual(['veo-3.1', 'veo-3.1-lite']);
+    expect(vm.model).toBe('veo-3.1');
   });
 
   it('uses the stored model when the active mode offers it', () => {
@@ -265,27 +273,18 @@ describe('buildVideoPanelViewModel', () => {
     expect(vm.model).toBe('veo-3.1');
   });
 
-  it('reports an empty catalog when nothing generatable is configured', () => {
+  it('resolves nothing when the catalog holds no generatable video model', () => {
+    // A catalog of mini-tool entries only. Nothing to pick, nothing to price,
+    // and no params to reconcile against — the panel's execute gate reads the
+    // empty model and stays shut.
     const vm = buildVideoPanelViewModel({
       nodeId: 'n1',
       nodes: [node('n1', videoView())],
       models: [makeModel('video-upscale-pro', { mode: 'upscale' })],
       mode: 't2v',
     });
-    expect(vm.catalogEmpty).toBe(true);
-    expect(vm.models).toEqual([]);
-  });
-
-  it('does not call the catalog empty when only the ACTIVE mode has no model', () => {
-    // The two are distinct: an empty active mode still leaves the panel with
-    // a populated catalog, so the mode control must stay usable.
-    const vm = buildVideoPanelViewModel({
-      nodeId: 'n1',
-      nodes: [node('n1', videoView())],
-      models,
-      mode: 'talking_head',
-    });
-    expect(vm.catalogEmpty).toBe(false);
-    expect(vm.models).toEqual([]);
+    expect(vm.model).toBe('');
+    expect(vm.creditEstimate).toBe(0);
+    expect(vm.params).toEqual({});
   });
 });

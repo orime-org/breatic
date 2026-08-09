@@ -36,6 +36,13 @@ interface ParamOptionGroupProps {
  * An empty option list renders nothing at all, which is how "the model does not
  * declare this parameter" reaches the user: the group is absent rather than
  * present and empty.
+ *
+ * Deliberately NOT wrapped in `React.memo`: both callers build `options` from
+ * the active model during render, so the array identity changes every time and
+ * a memo could never bail. Leaving one on would advertise a saving that does
+ * not exist and send the next person profiling this panel looking elsewhere.
+ * The pickers that own these groups ARE memoized, which is where the bail
+ * actually happens.
  * @param root0 - Component props.
  * @param root0.label - Section heading.
  * @param root0.options - The offered options.
@@ -45,7 +52,7 @@ interface ParamOptionGroupProps {
  * @param root0.className - Extra classes on the wrapper.
  * @returns The option group, or null when there is nothing to offer.
  */
-export const ParamOptionGroup = React.memo(function ParamOptionGroup({
+export function ParamOptionGroup({
   label,
   options,
   value,
@@ -81,4 +88,4 @@ export const ParamOptionGroup = React.memo(function ParamOptionGroup({
       </div>
     </div>
   );
-});
+}

@@ -33,10 +33,13 @@ import type {
  */
 export type VideoGenMode = (typeof VIDEO_GENERATION_MODES)[number];
 
-/** The render inputs the video Generate panel needs, derived from live node data. */
+/**
+ * The render inputs the video Generate panel needs, derived from live node
+ * data. Only what the panel actually renders: the model list it shows comes
+ * from `selectVideoModeModels`, memoized separately by the container so a
+ * canvas mutation cannot rebuild it and defeat the pickers' memo.
+ */
 export interface VideoPanelViewModel {
-  /** Catalog video models offered by the picker under the active mode. */
-  models: ModelEntry[];
   /** Effective model id (stored, else the first offered). Empty when the mode offers none. */
   model: string;
   /** Effective params, reconciled against the current model. */
@@ -45,14 +48,6 @@ export interface VideoPanelViewModel {
   creditEstimate: number;
   /** The target node's display status — gates execute (no submit while handling). */
   nodeStatus: string | undefined;
-  /**
-   * Whether the GLOBAL generatable-video catalog is empty (still loading,
-   * failed to load, or nothing configured). Distinct from `models.length`,
-   * which is the ACTIVE-mode subset: a mode with no model must not read as a
-   * broken catalog, or the mode control would disable itself out of the only
-   * mode the user can get back from.
-   */
-  catalogEmpty: boolean;
 }
 
 /**
@@ -110,10 +105,7 @@ export function buildVideoPanelViewModel(input: {
   const { nodeId, nodes, mode } = input;
   const content = asContentView(nodes.find((n) => n.id === nodeId)?.data);
 
-  // Kept separate from `models`: the wide filter answers "is there any video
-  // model at all", the narrow one answers "what does this mode offer".
-  const generatable = input.models.filter((m) => isVideoGenerationMode(m.mode));
-  const models = filterModelsByMode(generatable, mode);
+  const models = selectVideoModeModels(input.models, mode);
 
   // The stored model wins only while this mode still offers it. A stale pick
   // (another mode's, or one dropped from the catalog) falls back to the first
@@ -127,13 +119,11 @@ export function buildVideoPanelViewModel(input: {
   const current = models.find((m) => m.name === model);
 
   return {
-    models,
     model,
     params: current ? resolveParamsForModel(current, content?.params ?? {}) : {},
     // `?? 0` covers only the model-not-found case (empty catalog / stale
     // model); when current is found, cost_per_call is a trusted number.
     creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
-    catalogEmpty: generatable.length === 0,
   };
 }
