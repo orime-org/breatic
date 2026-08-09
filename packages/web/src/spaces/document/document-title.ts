@@ -37,7 +37,9 @@
  * boundary then had to be written out by hand, and the ones nobody had written
  * yet did nothing at all: Enter over a selection reaching into the body was
  * dead, and the left arrow at the title's start dropped the caret into a gap
- * cursor with nowhere to type. Both work by themselves without it.
+ * cursor with nowhere to type. The left arrow works by itself without it. The
+ * cross-boundary Enter does not — it throws on its own, and is answered by
+ * hand in `claimEnterInsideTitle` below.
  *
  * Those hand-written branches are gone with it. Dropping the property is what
  * made them redundant, and they outlived it by a round because nothing went red
@@ -227,11 +229,9 @@ function flattenToTitleText(block: ProseMirrorNode): string {
 /**
  * Fold the body's first block into the title, keeping what is not text visible.
  *
- * This is the whole of what the title adds at this boundary. Everything else
- * the two keys below do is the editor's own, and saying so is a measurement
- * rather than a reading: with all three bindings removed, 23 of the boundary
- * suite's 25 cases pass untouched, and the two that fail are this one, from
- * either side.
+ * This is one of the two things the two keys below add; the other is the
+ * empty-title Delete, in `pullBodyIntoTitleEnd`. Everything else they do is
+ * the editor's own — see the binding list above for the measurement.
  *
  * The reason the rest became the editor's is that the title stopped being
  * `isolating`. While it was, every default handler bailed at the boundary and

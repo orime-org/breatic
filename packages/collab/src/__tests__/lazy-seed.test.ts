@@ -10,7 +10,7 @@
  *     `fetchDocData` are vi.fn() stubs so we can assert WHICH docs are
  *     seeded and in WHAT order without a real PG.
  *   - @breatic/core — partial mock: real encoders (encodeInitialMetaState
- *     / encodeInitialSpaceContentState / defaultSpaceName) stay, only the
+ *     / encodeInitialSpaceContent / defaultSpaceName) stay, only the
  *     DB read `loadInitialSpaceType` is stubbed to drive the chosen type.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";

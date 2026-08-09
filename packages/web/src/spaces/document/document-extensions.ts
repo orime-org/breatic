@@ -16,8 +16,10 @@
  * and nothing else counts.
  *
  * Three of StarterKit's defaults are switched off, each for its own reason
- * stated where it happens. `document-extensions.test` pins both lists —
- * additions and switches — so neither can grow quietly.
+ * stated where it happens. `document-extensions.test` pins the NODES the
+ * schema gains and the StarterKit switches, so neither of those can change
+ * quietly. An extension that contributes no node is not pinned by it — the bar
+ * stated above is the only thing holding that line.
  */
 
 import type { Extensions } from '@tiptap/core';
@@ -104,7 +106,8 @@ export function buildDocumentExtensions(
       // history in place gives the editor a second, client-blind undo stack:
       // a peer's edit arrives as a local transaction there, so one Cmd+Z
       // deletes their paragraph. Verified by mutation — switching this back on
-      // turns the document to an empty string in the per-client undo test.
+      // wipes the body in the per-client undo tests: the peer's paragraph goes
+      // and the title is all that is left.
       undoRedo: false,
       // TrailingNode appends a paragraph whenever the body's last block is not
       // one. Harmless in a private editor; in a shared document that append is

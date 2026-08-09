@@ -71,7 +71,7 @@ vi.mock("@collab/services/space-delete-lock.js", () => ({
   SpaceDeleteLockBusyError: FakeLockBusyError,
 }));
 
-// Real `writeSpaceEntry` / `encodeInitialSpaceContentState` — the entry shape
+// Real `writeSpaceEntry` / `encodeInitialSpaceContent` — the entry shape
 // is part of what the broadcast carries, so it must not be stubbed.
 vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();

@@ -6,21 +6,26 @@
  *
  * That is the whole of what the design doc asks for (§6.5), and the title is
  * what made it possible to break: it takes no marks and cannot be wrapped, so
- * a button aimed at it would have been exactly such a control. Nothing here
- * makes a claim about selections that never touch the title — what the body's
- * own editing behaviour does with a heading or a divider belongs to the slice
- * that owns it.
+ * a button aimed at it would have been exactly such a control.
  *
- * Two assertions, and the second is the one this slice exists for:
+ * The table below covers selections that never touch the title as well. Those
+ * rows RECORD what the buttons say there today; they are not a judgement on
+ * how the body ought to behave, which belongs to the slice that owns it.
  *
- * 1. Every live button does something when pressed. A collapsed cursor counts
+ * Three assertions, and the third is the one this slice exists for:
+ *
+ * 1. Each shape of cursor or selection gets the exact answer the table names,
+ *    for all six buttons.
+ * 2. Every live button does something when pressed. A collapsed cursor counts
  *    marks armed for the next keystroke as "something", because arming IS the
  *    effect there.
- * 2. Where the selection touches the title, pressing a button leaves the
- *    document alone. This is R7 read from the other side, and it is what a
- *    reverted attempt had broken: a widened answer lit the list buttons over a
- *    selection spanning the title, and pressing one stripped a body heading to
- *    a paragraph while producing no list.
+ * 3. Where the selection touches the title, pressing a MARK button leaves the
+ *    title block untouched — the body half of the same selection may well be
+ *    marked, which is the mark doing its job. The block buttons are only
+ *    asserted dark there, not pressed. This is R7 read from the other side,
+ *    and the dark half is what a reverted attempt had broken: a widened answer
+ *    lit the list buttons over a selection spanning the title, and pressing one
+ *    stripped a body heading to a paragraph while producing no list.
  *
  * The reverse of the first — that a dark button would also do nothing — is NOT
  * asserted. The dry run is conservative for the list commands over a body

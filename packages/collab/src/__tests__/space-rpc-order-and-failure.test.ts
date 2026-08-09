@@ -91,7 +91,7 @@ vi.mock("@collab/services/space-delete-lock.js", () => ({
   SpaceDeleteLockBusyError: FakeLockBusyError,
 }));
 
-// Spread the real core barrel (writeSpaceEntry / encodeInitialSpaceContentState
+// Spread the real core barrel (writeSpaceEntry / encodeInitialSpaceContent
 // keep the real impls the Yjs assertions depend on) and override the logger
 // with STABLE mocks — several assertions below are about what a swallowed
 // failure logs, which a fresh no-op stub per call cannot answer.

@@ -4,11 +4,15 @@
 /**
  * The keys that cross the line between the title and the body.
  *
- * The title is a node type nothing else in the schema resembles, so every
- * gesture at that boundary lands in a branch the editor's defaults were not
- * written for. They are pinned together rather than one at a time because they
- * are one decision: what Enter does dictates what Backspace has to undo, and
- * changing either alone leaves the pair inconsistent.
+ * Most of what happens here is the editor's own doing, and correct: with all
+ * three of the title's key bindings removed, 26 of the 35 cases below still
+ * pass. Only three things need writing by hand — the soft line break when a
+ * block is folded into the title, Delete while the title is empty, and Enter,
+ * which has to be claimed before the input rules see it.
+ *
+ * They are pinned together rather than one at a time because they are one
+ * decision: what Enter does dictates what Backspace has to undo, and changing
+ * either alone leaves the pair inconsistent.
  *
  * NOT covered here, deliberately: the up and down arrows. Vertical caret
  * movement in a contenteditable is the browser's own, not something the

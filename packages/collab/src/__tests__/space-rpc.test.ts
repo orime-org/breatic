@@ -58,7 +58,7 @@ vi.mock("@collab/services/space-delete-lock.js", () => ({
   SpaceDeleteLockBusyError: FakeLockBusyError,
 }));
 
-// Spread the real core barrel (encodeInitialSpaceContentState /
+// Spread the real core barrel (encodeInitialSpaceContent /
 // writeSpaceEntry keep their real impls the Yjs-mutation assertions
 // depend on) and override createLogger (no initCore under test) plus
 // projectActivitiesRepo (no business DB under test).
