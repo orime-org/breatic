@@ -3570,12 +3570,15 @@ function CanvasSpaceInner({
           // for editors (onNodeContextMenu returns early when read-only), and
           // activateNodeUpload no-ops for read-only / pickerless modalities.
           onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
-          // Generate opens on any editable image node (the AIGC "generate into
-          // self" flow) — INCLUDING a locked or handling one, so the user can
-          // open the panel to view / edit the prompt (bug 2). The panel is a
-          // read surface for the recipe; EXECUTE is what the gate stops
-          // (onExecute toasts for locked, and the button is disabled while
-          // handling). Groups / non-image / read-only get no handler (a disabled
+          // Generate opens on any editable node of a modality that generates
+          // (`canGenerate` — image and video today), the AIGC "generate into
+          // self" flow. Which PANEL opens is the opener's decision, not this
+          // one's: the store maps the node's modality to a panel kind.
+          // INCLUDING a locked or handling node, so the user can open the panel
+          // to view / edit the prompt (bug 2). The panel is a read surface for
+          // the recipe; EXECUTE is what the gate stops (onExecute toasts for
+          // locked, and the button is disabled while handling). Groups /
+          // non-generating modalities / read-only get no handler (a disabled
           // placeholder item).
           onGenerate={(() => {
             const genNode = nodes.find((n) => n.id === nodeMenu.nodeId);

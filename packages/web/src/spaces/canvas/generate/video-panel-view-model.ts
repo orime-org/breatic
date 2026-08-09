@@ -26,7 +26,7 @@ import type {
 
 /**
  * The generation modes the video panel offers — the six the user decided
- * belong here (2026-08-08); the other four video modes (extend / edit /
+ * belong here (2026-08-08); the other five video modes (extend / edit /
  * motion-control / upscale / interpolate) belong to the mini-tool system.
  * Derived from the shared list so the panel and the catalog classifier can
  * never disagree on what counts as generation.

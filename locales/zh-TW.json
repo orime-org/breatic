@@ -202,7 +202,7 @@
       "durationSeconds": "{n} 秒",
       "generateAudio": "生成音訊",
       "videoParams": "參數",
-      "videoPromptPlaceholder": "描述你想生成的影片，輸入 @ 新增參考",
+      "videoPromptPlaceholder": "描述你想生成的影片",
       "videoMentionEmpty": "還沒有連接的參考 —— 先把一個節點連到這裡",
       "videoNoPrompt": "這個節點建得比影片生成早，沒有提示詞。新建一個影片節點就能生成。"
     },

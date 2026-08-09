@@ -153,12 +153,18 @@ export function isImageGenerationMode(mode: string | string[]): boolean {
  * missing from that map is treated as needing no source, which would switch
  * the execute gate off for that model in every one of its modes.
  *
- * The line between this list and the mini-tool system is what the mode DOES,
- * not how hard it is: these six make a NEW video, while `extend` / `edit` /
- * `motion` / `upscale` / `interpolate` all work on a video that already
- * exists (user 2026-08-08). Offering a mini-tool mode here would let a user
- * submit a text-to-video request against a model that needs a video source,
- * which the backend's cross-modality source gate then rejects with a 400.
+ * Which modes belong here is the user's decision (2026-08-08), not a formula:
+ * these six go in the Generate panel and `extend` / `edit` / `motion` /
+ * `upscale` / `interpolate` go to the mini-tool system. Four of those five do
+ * work on a video that already exists, which is the shape of the decision —
+ * but `motion` does not: `kling-v3-pro-motion` takes a character image
+ * (`config/models/video/kling.yaml:186`, and `MODE_REQUIRED_SOURCES.video`
+ * lists it as `["image"]`), and it is out because the user put it out. Do not
+ * re-derive the list from a rule; the list IS the rule.
+ *
+ * Offering a mini-tool mode here would put a model in the picker that needs a
+ * source this panel does not collect, and the backend's cross-modality source
+ * gate then rejects the submit with a 400.
  *
  * This is a separate list from `IMAGE_GENERATION_MODES` on purpose, not a
  * duplication to be merged: the two are independent product decisions that

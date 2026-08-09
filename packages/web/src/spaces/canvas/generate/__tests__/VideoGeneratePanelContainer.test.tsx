@@ -343,6 +343,43 @@ describe('VideoGeneratePanelContainer', () => {
     expect(screen.getByTestId('generate-video-execute')).toBeDisabled();
   });
 
+  it('never flashes the too-old notice on a node that has a prompt container', async () => {
+    // The notice states a fact about the node. Resolving the fragment in a
+    // passive effect meant the first committed frame said it about EVERY node,
+    // including one created a second ago, and the editor only replaced it on a
+    // later task — a visible flash of a false sentence plus a height jump.
+    // A MutationObserver is the only way to see that: by the time any
+    // assertion runs, the editor has already won.
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+    seedVideoNode();
+    typePrompt('a drone shot over a canyon at dawn');
+    const seen: string[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const added of Array.from(record.addedNodes)) {
+          if (!(added instanceof HTMLElement)) continue;
+          if (
+            added.dataset.testid === 'generate-video-no-prompt' ||
+            added.querySelector('[data-testid="generate-video-no-prompt"]')
+          ) {
+            seen.push('notice');
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    mountContainer('video');
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'video');
+    });
+    await screen.findByTestId('generate-prompt-editor');
+    observer.takeRecords();
+    observer.disconnect();
+    // eslint-disable-next-line no-console
+    console.log('OBSERVED:', JSON.stringify(seen));
+    expect(seen).toEqual([]);
+  });
+
   describe('submit', () => {
     /**
      * Opens the panel on a seeded node with a prompt already in it and waits

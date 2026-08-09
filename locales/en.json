@@ -211,7 +211,7 @@
       "durationSeconds": "{n}s",
       "generateAudio": "Generate audio",
       "videoParams": "Parameters",
-      "videoPromptPlaceholder": "Describe the video you want to generate, @ to add a reference",
+      "videoPromptPlaceholder": "Describe the video you want to generate",
       "videoMentionEmpty": "No connected references — connect a node to this one first",
       "videoNoPrompt": "This node was made before videos could be generated, so it has no prompt. Create a new video node to generate one."
     },
