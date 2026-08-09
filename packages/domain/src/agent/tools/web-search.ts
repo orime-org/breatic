@@ -11,12 +11,7 @@ import { z } from "zod";
 import { env } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
 
-/**
- * Search the web using the Brave Search API.
- *
- * Returns formatted results containing titles, URLs, and descriptions.
- * Requires the `BRAVE_SEARCH_API_KEY` environment variable.
- */
+/** What the model may ask this tool to search for. */
 const inputSchema = z.object({
   query: z.string().describe("Search query"),
   count: z
@@ -28,6 +23,12 @@ const inputSchema = z.object({
     .describe("Number of results (1-10)"),
 });
 
+/**
+ * Search the web using the Brave Search API.
+ *
+ * Returns formatted results containing titles, URLs, and descriptions.
+ * Requires the `BRAVE_SEARCH_API_KEY` environment variable.
+ */
 export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
   description: "Search the web. Returns titles, URLs, and snippets.",
   inputSchema,

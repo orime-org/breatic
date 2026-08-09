@@ -30,10 +30,12 @@
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 import type * as LimitsModule from "@server/config/limits.js";
 
-// Mock `ai` BEFORE importing @breatic/core — the core barrel pulls
-// agent/llm → the `ai` SDK → @opentelemetry/api, whose ESM build breaks
-// Node's native loader. This suite never calls any ai function; the stubs
-// keep that chain from loading (same guard the sibling studio suites use).
+// These suites never reach a model, so `ai` is stubbed to keep the SDK out
+// of their module graph. It used to say the stub was load-bearing — that
+// `ai` pulled in @opentelemetry/api, whose ESM build Node rejects. AI SDK 7
+// does not depend on that package at all (v6 did), both versions import
+// cleanly under Node ESM, and one suite passed with the stub removed. So
+// this is a choice, not a necessity.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

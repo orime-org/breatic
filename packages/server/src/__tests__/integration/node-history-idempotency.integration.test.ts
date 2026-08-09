@@ -18,10 +18,12 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-// Importing from the @breatic/domain barrel pulls in the agent/llm side,
-// which imports the real `ai` package (and @opentelemetry/api's ESM build
-// that Node's native ESM rejects). Mock `ai` so the barrel loads — same
-// guard the project_activities integration suite uses.
+// These suites never reach a model, so `ai` is stubbed to keep the SDK out
+// of their module graph. It used to say the stub was load-bearing — that
+// `ai` pulled in @opentelemetry/api, whose ESM build Node rejects. AI SDK 7
+// does not depend on that package at all (v6 did), both versions import
+// cleanly under Node ESM, and one suite passed with the stub removed. So
+// this is a choice, not a necessity.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

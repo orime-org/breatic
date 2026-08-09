@@ -85,10 +85,12 @@ function getOpenai(): OpenAIProvider {
  * The return type is `LanguageModel`, the type the SDK itself declares for the
  * `model` option of `generateText` / `streamText` — which is where all six
  * callers send it. It used to say `ReturnType<OpenAIProvider>`, borrowing one
- * branch's type to describe a function that returns a model from four
- * providers. That held only while the four returned the same type: AI SDK 7
- * gave the OpenAI provider batch support and widened its return type, and the
- * borrowed type stopped covering Anthropic and Google.
+ * branch's type to describe a function that returns a model from four branches.
+ * That held only while all four agreed. In AI SDK 7 the OpenAI and Anthropic
+ * providers both return `Experimental_BatchLanguageModelV4` while Google still
+ * returns plain `LanguageModelV4`, so exactly one branch — Google — stopped
+ * fitting the borrowed type (measured: assigning each provider's callable
+ * result to `ReturnType<OpenAIProvider>` errors on Google alone).
  * @param modelString - Model identifier. Defaults to OpenRouter Claude.
  * @returns AI SDK LanguageModel instance
  */

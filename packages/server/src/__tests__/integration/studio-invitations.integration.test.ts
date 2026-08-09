@@ -27,8 +27,12 @@ import {
   inject,
 } from "vitest";
 
-// `ai` (Vercel AI SDK) pulls @opentelemetry/api whose ESM build crashes the
-// vitest loader — mock it before importing the real @breatic/core barrel.
+// These suites never reach a model, so `ai` is stubbed to keep the SDK out
+// of their module graph. It used to say the stub was load-bearing — that
+// `ai` pulled in @opentelemetry/api, whose ESM build Node rejects. AI SDK 7
+// does not depend on that package at all (v6 did), both versions import
+// cleanly under Node ESM, and one suite passed with the stub removed. So
+// this is a choice, not a necessity.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

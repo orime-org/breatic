@@ -40,11 +40,11 @@ import type { Hocuspocus } from "@hocuspocus/server";
 
 // ── Mock `ai` BEFORE any other import ───────────────────────────────────────
 //
-// `ai` (Vercel AI SDK) imports @opentelemetry/api whose ESM build
-// (build/esm/index.js) uses bare relative imports (e.g. './baggage/utils')
-// that Node.js native ESM rejects (strict ESM requires .js extensions).
-//
-// Mocking `ai` here prevents the broken ESM chain from loading. We only
+// This suite never reaches a model, so `ai` is stubbed to keep the SDK out of
+// its module graph. It used to say the stub was load-bearing — that `ai`
+// pulled in @opentelemetry/api, whose ESM build Node rejects. AI SDK 7 does
+// not depend on that package at all (v6 did) and both versions import cleanly
+// under Node ESM, so this is a choice, not a necessity. We only
 // need generateText, streamText, stepCountIs, and tool — used by @breatic/core
 // and worker providers — but our tests only exercise the mini-tool path where
 // runLocalHandler is mocked. Providing stubs is sufficient; they are never called.
@@ -192,9 +192,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 // before test file evaluation). @breatic/core no longer reads process.env
 // itself — it reads injected config via the env Proxy after initCore runs —
 // so we call initCore(process.env) below before any real-core access (e.g.
-// the `db` Proxy in waitForCondition). `ai` is mocked above, so importing
-// the real core barrel here does NOT pull @opentelemetry/api (whose broken
-// ESM build crashes the vitest loader); that is why initCore lives here and
+// the `db` Proxy in waitForCondition). That is why initCore lives here and
 // not in the shared setupFile.
 
 import { runTask } from "@breatic/worker/src/handlers/dispatch.js";

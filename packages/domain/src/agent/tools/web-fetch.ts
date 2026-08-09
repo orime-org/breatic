@@ -50,16 +50,7 @@ function normalize(text: string): string {
     .trim();
 }
 
-/**
- * Fetch a URL and extract readable text content.
- *
- * Returns a JSON object with url, status, text length, and the
- * extracted content. HTML pages are stripped to plain text.
- *
- * The URL is validated and followed via {@link safeFetch}, which
- * blocks any hop resolving to a private / loopback / link-local /
- * reserved / metadata IP — closing SSRF against internal services.
- */
+/** What the model may ask this tool to fetch. */
 const inputSchema = z.object({
   url: z.string().url().describe("URL to fetch"),
   maxChars: z
@@ -70,6 +61,16 @@ const inputSchema = z.object({
     .describe("Max characters to return"),
 });
 
+/**
+ * Fetch a URL and extract readable text content.
+ *
+ * Returns a JSON object with url, status, text length, and the
+ * extracted content. HTML pages are stripped to plain text.
+ *
+ * The URL is validated and followed via {@link safeFetch}, which
+ * blocks any hop resolving to a private / loopback / link-local /
+ * reserved / metadata IP — closing SSRF against internal services.
+ */
 export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "Fetch a URL and extract readable content (HTML to plain text). " +
