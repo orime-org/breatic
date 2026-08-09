@@ -432,6 +432,26 @@ export default tseslint.config(
     },
   },
   {
+    // Routes hand their body to `validate`; they never parse it themselves.
+    // The three routes that did answered 500 for a request the caller simply
+    // got wrong — a bare ZodError is not an AppError, so it fell past the
+    // error handler's typed branches, and a truncated body threw a native
+    // SyntaxError that nothing recognised either.
+    //
+    // The whole package rather than just routes/: the defect is reading a
+    // parsed body outside the one wrapper, and that is wrong wherever it is
+    // written. `req.text()` stays allowed and is what payment.ts uses — a
+    // Stripe signature is computed over the bytes as sent, so parsing first
+    // would destroy the thing being verified.
+    //
+    // Tests are exempt: they build requests rather than handle them.
+    files: ["packages/server/src/**/*.ts"],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
+    rules: {
+      "breatic/no-raw-body-parse": "error",
+    },
+  },
+  {
     // Only test files, and deliberately not excluding them: this is the one
     // rule whose subject IS the test file. It reads the path rather than the
     // contents, so the block only has to put it in front of the right files.
