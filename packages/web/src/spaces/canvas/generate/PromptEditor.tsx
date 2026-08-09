@@ -25,7 +25,6 @@ import {
   type ChipDisplaySnapshot,
 } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
   MENTION_LABEL_ATTR,
   MENTION_THUMBNAIL_ATTR,
@@ -71,8 +70,13 @@ interface PromptEditorProps {
   onAtMentionsChange: (sourceIds: string[]) => void;
   /** Current reference pool (incoming edges) — the `@` picker's options. */
   references: ReferenceRailItem[];
-  /** Active generation sub-mode; t2i greys out existing `@` mentions (design §2.4 C). */
-  mode: ImageGenMode;
+  /**
+   * Whether image `@` mentions are inert for the current generation mode —
+   * image-to-image sources are ignored under text-to-image (design §2.4 C).
+   * A boolean rather than the mode itself: this is the only thing the editor
+   * ever asked the mode, and every panel that mounts it answers it its own way.
+   */
+  imageRefsDisabled: boolean;
   /** Localized empty-state text for the `@` picker popup. */
   mentionEmptyLabel: string;
   /**
@@ -96,7 +100,7 @@ interface PromptEditorProps {
  * @param root0.onTextChange - Receives the current plain-text prompt.
  * @param root0.onAtMentionsChange - Receives the `@`-picked source node ids.
  * @param root0.references - The current reference pool (the `@` picker options).
- * @param root0.mode - Active generation sub-mode (t2i greys out `@` chips).
+ * @param root0.imageRefsDisabled - Whether image `@` chips are inert (greyed).
  * @param root0.mentionEmptyLabel - Localized empty-state text for the `@` popup.
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
@@ -112,7 +116,7 @@ export const PromptEditor = React.forwardRef<
     onTextChange,
     onAtMentionsChange,
     references,
-    mode,
+    imageRefsDisabled,
     mentionEmptyLabel,
     caretProvider = null,
   }: PromptEditorProps,
@@ -126,14 +130,15 @@ export const PromptEditor = React.forwardRef<
   // the CURRENT pool without recreating the editor.
   const poolRef = React.useRef(references);
   poolRef.current = references;
-  // Live mode ref (same pattern as poolRef): the `@` suggestion reads it to
-  // exclude image references in t2i without rebuilding the editor on toggle.
-  const modeRef = React.useRef(mode);
-  modeRef.current = mode;
+  // Live flag ref (same pattern as poolRef): the `@` suggestion reads it to
+  // exclude image references when they are inert, without rebuilding the
+  // editor on a mode toggle.
+  const imageRefsDisabledRef = React.useRef(imageRefsDisabled);
+  imageRefsDisabledRef.current = imageRefsDisabled;
   // The open `@` popup registers a refresh() here (collaboration residual 2): a
   // REMOTE mode / pool change fires no editor transaction, so the visible popup's
-  // list would stay stale. The effect below calls it when `mode` / `references`
-  // change, refreshing a visible popup's content from the live pool + mode.
+  // list would stay stale. The effect below calls it when `imageRefsDisabled` /
+  // `references` change, refreshing a visible popup's content from the live pool.
   const suggestionRefreshRef = React.useRef<(() => void) | null>(null);
   const editor = useEditor(
     {
@@ -164,14 +169,14 @@ export const PromptEditor = React.forwardRef<
             getPool: () => poolRef.current,
             emptyLabel: mentionEmptyLabel,
             // t2i ignores source images → exclude image refs from the `@` picker.
-            imageRefsDisabled: () => modeRef.current === 't2i',
+            imageRefsDisabled: () => imageRefsDisabledRef.current,
             refreshRef: suggestionRefreshRef,
           }),
           // The chip's text-reference hover resolves live content through the
           // same pool ref (spec §9.1).
           getPool: () => poolRef.current,
           // t2i → an image chip's hover preview greys out (unavailable).
-          getImageRefsDisabled: () => modeRef.current === 't2i',
+          getImageRefsDisabled: () => imageRefsDisabledRef.current,
         }),
       ],
       immediatelyRender: false,
@@ -253,15 +258,15 @@ export const PromptEditor = React.forwardRef<
 
   // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
   // residual 2): a REMOTE peer toggling this node's mode or editing its
-  // references updates `mode` / `references` here but fires NO prompt-doc
-  // transaction, so @tiptap/suggestion never re-runs items() and a VISIBLE popup
+  // references updates `imageRefsDisabled` / `references` here but fires NO
+  // prompt-doc transaction, so @tiptap/suggestion never re-runs items() and a VISIBLE popup
   // keeps its pre-change list. The popup registers a refresh() (a no-op while
   // hidden) that recomputes its content from the live pool + mode. A LOCAL mode
   // change hides the popup first (clicking the picker), so this only bites the
   // remote case.
   React.useEffect(() => {
     suggestionRefreshRef.current?.();
-  }, [mode, references]);
+  }, [imageRefsDisabled, references]);
 
   // Cascade-clear stale @-mention chips: when a reference edge is removed the
   // pool shrinks, so any @-mention pointing at a now-disconnected source must
@@ -349,10 +354,9 @@ export const PromptEditor = React.forwardRef<
   // referenceUrls=[] in t2i). TEXT chips stay full-strength — their
   // substitution still feeds the prompt string and the submitted payload in
   // every mode (round-2 adversarial: dimming them lied about their effect).
-  const dimReferences =
-    mode === 't2i'
-      ? ' [&_.reference-mention[data-kind=image]]:opacity-40 [&_.reference-mention[data-kind=image]]:grayscale'
-      : '';
+  const dimReferences = imageRefsDisabled
+    ? ' [&_.reference-mention[data-kind=image]]:opacity-40 [&_.reference-mention[data-kind=image]]:grayscale'
+    : '';
   return (
     // ScrollArea (#1773): the prompt scrolls behind a custom OVERLAY scrollbar
     // (appears only while scrolling, no layout space, hover changes color

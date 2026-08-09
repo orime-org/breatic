@@ -6,6 +6,8 @@ import { describe, it, expect } from "vitest";
 import {
   sanitizeModelCatalog,
   isImageGenerationMode,
+  IMAGE_GENERATION_MODES,
+  VIDEO_GENERATION_MODES,
 } from "@shared/types/model-catalog.js";
 import type { ModelCatalog, ModelEntry } from "@shared/types/model-catalog.js";
 
@@ -224,6 +226,38 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(isImageGenerationMode("")).toBe(false);
     expect(isImageGenerationMode([])).toBe(false);
     expect(isImageGenerationMode("t2v")).toBe(false); // a video mode, not image
+  });
+
+  it("lists the six video modes the panel offers, and no mini-tool mode (#1896)", () => {
+    // A product decision (user 2026-08-08), not a formula: what this list
+    // contains IS the rule, and there is no separate predicate. Most of what
+    // was left out works on a video that already exists, which is the shape of
+    // the decision — but `motion` takes a character image and is out anyway,
+    // so a reader who re-derives the list from that shape gets it wrong. The
+    // panel narrows its picker to these six, which is what keeps a mini-tool
+    // entry out of the model list.
+    expect([...VIDEO_GENERATION_MODES]).toEqual([
+      "t2v",
+      "i2v",
+      "first_last",
+      "animate",
+      "ref",
+      "talking_head",
+    ]);
+
+    // The five that belong to the mini-tool system. Offering one in the
+    // Generate picker would let a user submit a text-to-video request against
+    // a model that needs a source this panel does not collect, which the
+    // backend source gate rejects with a 400.
+    for (const miniTool of ["extend", "edit", "motion", "upscale", "interpolate"]) {
+      expect(VIDEO_GENERATION_MODES).not.toContain(miniTool);
+    }
+
+    // The image list is an independent product decision that happens to share
+    // a shape: neither list may leak into the other.
+    for (const imageMode of IMAGE_GENERATION_MODES) {
+      expect(VIDEO_GENERATION_MODES).not.toContain(imageMode);
+    }
   });
 
   // The source-image predicates (requiresSourceImage / supportsTextToImage)

@@ -55,7 +55,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
         onTextChange={onTextChange}
         onAtMentionsChange={onAtMentionsChange}
         references={[]}
-        mode='t2i'
+        imageRefsDisabled
         mentionEmptyLabel='No references'
       />,
     );
@@ -77,7 +77,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       onTextChange: vi.fn(),
       onAtMentionsChange: vi.fn(),
       references: [],
-      mode: 't2i' as const,
+      imageRefsDisabled: true,
       mentionEmptyLabel: 'No references',
     };
 
@@ -110,7 +110,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
         onTextChange={vi.fn()}
         onAtMentionsChange={vi.fn()}
         references={[]}
-        mode='t2i'
+        imageRefsDisabled
         mentionEmptyLabel='No references'
       />,
     );
@@ -149,7 +149,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       placeholder: 'Describe',
       onTextChange,
       onAtMentionsChange: vi.fn(),
-      mode: 'i2i' as const,
+      imageRefsDisabled: false,
       mentionEmptyLabel: 'No references',
     };
     const { rerender } = render(
@@ -192,7 +192,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       placeholder: 'Describe',
       onTextChange,
       onAtMentionsChange: vi.fn(),
-      mode: 'i2i' as const,
+      imageRefsDisabled: false,
       mentionEmptyLabel: 'No references',
     };
     const { rerender } = render(
@@ -253,7 +253,7 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
           onTextChange={vi.fn()}
           onAtMentionsChange={vi.fn()}
           references={[]}
-          mode='t2i'
+          imageRefsDisabled
           mentionEmptyLabel='none'
           caretProvider={withProvider ? { awareness } : null}
         />
@@ -567,7 +567,7 @@ describe('PromptEditor — effects after the editor is rebuilt', () => {
         onTextChange={vi.fn()}
         onAtMentionsChange={vi.fn()}
         references={[]}
-        mode='t2i'
+        imageRefsDisabled
         mentionEmptyLabel='none'
       />
     );

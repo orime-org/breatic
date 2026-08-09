@@ -170,8 +170,8 @@
       "lens": "镜头",
       "focalLength": "焦距",
       "aperture": "光圈",
-      "cameraOn": "已开启",
-      "cameraOff": "已关闭",
+      "switchOn": "已开启",
+      "switchOff": "已关闭",
       "online": "联网搜索",
       "translate": "翻译提示词",
       "execute": "生成",
@@ -198,7 +198,14 @@
       "focusExportFailed": "无法裁剪图片——请重试。",
       "focusUploadFailed": "聚焦图上传失败——请重试。",
       "focusSourceChanged": "源图片已变更——请重新框选。",
-      "focusCropDiscarded": "节点已被删除——聚焦图已丢弃。"
+      "focusCropDiscarded": "节点已被删除——聚焦图已丢弃。",
+      "duration": "生成时长",
+      "durationSeconds": "{n} 秒",
+      "generateAudio": "生成音频",
+      "videoParams": "参数",
+      "videoPromptPlaceholder": "描述你想生成的视频",
+      "videoMentionEmpty": "还没有可引用的参考",
+      "videoNoPrompt": "这个节点建得比视频生成早，没有提示词。新建一个视频节点就能生成。"
     },
     "nodeMenu": {
       "generate": "生成",

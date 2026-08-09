@@ -54,9 +54,11 @@ interface NodeContextMenuProps {
    */
   onUpload?: () => void;
   /**
-   * Open the Generate panel for this node. Passed for content nodes that
-   * support generation (image); when absent the Generate item stays a disabled
-   * placeholder (non-image content nodes, until their slice ships).
+   * Open the Generate panel for this node. Passed for content nodes of a
+   * modality that generates (`canGenerate` — image and video today); when
+   * absent the Generate item stays a disabled placeholder (the modalities
+   * whose slice has not shipped). Which PANEL opens is decided downstream by
+   * the modality, so this stays one handler however many panels exist.
    */
   onGenerate?: () => void;
   /**

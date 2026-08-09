@@ -14,6 +14,8 @@
 
 import type { TaskCreateInput } from '@breatic/shared';
 
+import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
+
 /** Image-node generation task type (AIGC_TASK_TYPES key on the worker). */
 const IMAGE_TASK_TYPE = 'image';
 
@@ -52,9 +54,11 @@ export interface GenerateTaskInput {
 export function buildGenerateTaskPayload(
   input: GenerateTaskInput,
 ): TaskCreateInput {
-  const gen = (input.leaseGen ?? 0) + 1;
-  return {
-    task_type: IMAGE_TASK_TYPE,
+  return buildOverwriteTaskPayload({
+    taskType: IMAGE_TASK_TYPE,
+    nodeId: input.nodeId,
+    projectId: input.projectId,
+    spaceId: input.spaceId,
     model: input.model,
     // Model params spread FIRST so the user's prompt + reference images always
     // win over any same-named key a (malformed / untrusted) model catalog might
@@ -67,12 +71,6 @@ export function buildGenerateTaskPayload(
         : {}),
       ...(input.styleImageUrl ? { style_images: [input.styleImageUrl] } : {}),
     },
-    node_ids: [input.nodeId],
-    project_id: input.projectId,
-    space_id: input.spaceId,
-    source: 'canvas',
-    target_node_id: input.nodeId,
-    mode: 'overwrite',
-    node_gens: { [input.nodeId]: gen },
-  };
+    leaseGen: input.leaseGen,
+  });
 }

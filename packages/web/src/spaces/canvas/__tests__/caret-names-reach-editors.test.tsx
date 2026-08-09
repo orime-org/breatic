@@ -78,7 +78,7 @@ const EDITORS = [
         caretProvider={caretProvider}
         placeholder='p'
         mentionEmptyLabel='none'
-        mode='t2i'
+        imageRefsDisabled
         references={[]}
         onTextChange={vi.fn()}
         onAtMentionsChange={vi.fn()}

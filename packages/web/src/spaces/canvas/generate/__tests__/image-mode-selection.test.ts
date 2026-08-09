@@ -6,7 +6,6 @@ import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
 import {
-  filterModelsByMode,
   resolveMode,
   resolveModelForMode,
   type ImageGenMode,
@@ -37,48 +36,6 @@ function model(name: string, mode: string | string[]): ModelEntry {
 
 const T2I = model('t2i-a', 't2i');
 const T2I_B = model('t2i-b', 't2i');
-const I2I = model('i2i-a', 'i2i');
-const EDIT = model('edit-a', ['i2i', 'edit']); // qualifies as i2i via its i2i mode
-const MODELS = [T2I, I2I, T2I_B, EDIT];
-
-describe('filterModelsByMode', () => {
-  it('t2i mode keeps only models whose mode includes t2i', () => {
-    expect(filterModelsByMode(MODELS, 't2i').map((m) => m.name)).toEqual([
-      't2i-a',
-      't2i-b',
-    ]);
-  });
-
-  it('i2i mode keeps models whose mode includes i2i (incl. multi-mode edit)', () => {
-    expect(filterModelsByMode(MODELS, 'i2i').map((m) => m.name)).toEqual([
-      'i2i-a',
-      'edit-a',
-    ]);
-  });
-
-  it('preserves the input order within a mode', () => {
-    const reordered = [T2I_B, T2I];
-    expect(filterModelsByMode(reordered, 't2i').map((m) => m.name)).toEqual([
-      't2i-b',
-      't2i-a',
-    ]);
-  });
-
-  it('returns [] when no model matches the mode', () => {
-    expect(filterModelsByMode([T2I, T2I_B], 'i2i')).toEqual([]);
-  });
-
-  it('excludes a pure-edit model from i2i — edit is not a generation mode', () => {
-    // The generate panel routes on i2i; a model with only the `edit`
-    // capability belongs to the future image-editing mini-tool, not here.
-    // (In practice such a model is already excluded upstream by slice-1's
-    // isImageGenerationMode; this locks the invariant at the mode filter too.)
-    const pureEdit = model('edit-only', ['edit']);
-    expect(filterModelsByMode([I2I, pureEdit], 'i2i').map((m) => m.name)).toEqual([
-      'i2i-a',
-    ]);
-  });
-});
 
 describe('resolveModelForMode', () => {
   const t2iModels = [T2I, T2I_B];

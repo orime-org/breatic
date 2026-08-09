@@ -170,8 +170,8 @@
       "lens": "レンズ",
       "focalLength": "焦点距離",
       "aperture": "絞り",
-      "cameraOn": "オン",
-      "cameraOff": "オフ",
+      "switchOn": "オン",
+      "switchOff": "オフ",
       "online": "ウェブ検索",
       "translate": "プロンプトを翻訳",
       "execute": "生成",
@@ -198,7 +198,14 @@
       "focusExportFailed": "画像を切り抜けませんでした——もう一度お試しください。",
       "focusUploadFailed": "フォーカス画像をアップロードできませんでした——もう一度お試しください。",
       "focusSourceChanged": "元画像が変更されました——もう一度範囲を選択してください。",
-      "focusCropDiscarded": "ノードが削除されたため、フォーカス画像は破棄されました。"
+      "focusCropDiscarded": "ノードが削除されたため、フォーカス画像は破棄されました。",
+      "duration": "長さ",
+      "durationSeconds": "{n}秒",
+      "generateAudio": "音声を生成",
+      "videoParams": "パラメータ",
+      "videoPromptPlaceholder": "生成したい動画を説明してください",
+      "videoMentionEmpty": "参照できるものがまだありません",
+      "videoNoPrompt": "このノードは動画生成より前に作られたため、プロンプトがありません。新しい動画ノードを作成すると生成できます。"
     },
     "nodeMenu": {
       "generate": "生成",
