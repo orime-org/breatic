@@ -52,8 +52,10 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   // Keep the popover glued to its trigger as the canvas pans / zooms, matching
   // the generate panel (a ReactFlow NodeToolbar that tracks its node).
   useFollowCanvasViewport(open);
-  const ratios = paramValues(model, 'aspect_ratio');
-  const resolutions = paramValues(model, 'resolution');
+  // Image ratios / resolutions are strings in the catalog; String() is a
+  // no-op for them and keeps this control honest if one ever is not.
+  const ratios = paramValues(model, 'aspect_ratio').map(String);
+  const resolutions = paramValues(model, 'resolution').map(String);
   const label = [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ');
   // max-w + truncate: catalog values carry no length cap at the sanitize
   // boundary — a verbose value must clip inside the w-64 popover, not overflow

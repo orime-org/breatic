@@ -12,6 +12,10 @@ import { Switch } from '@web/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
+import {
+  paramValues,
+  type ParamOptionValue,
+} from '@web/spaces/canvas/generate/param-values';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The camera-cluster params this control edits (all on `data.params`, #1788). */
@@ -25,8 +29,6 @@ export interface CameraValue {
   enable_camera?: boolean;
 }
 
-type ParamValue = string | number;
-
 /** Column config: which param each wheel edits + how its glyph renders. */
 const COLUMNS = [
   { key: 'camera', capKey: 'cameraBody', glyph: 'camera' },
@@ -35,21 +37,9 @@ const COLUMNS = [
   { key: 'aperture', capKey: 'aperture', glyph: 'iris' },
 ] as const;
 
-/**
- * A param's allowed values, preserving numbers (focal_length) vs strings.
- * @param model - The current model.
- * @param key - The camera-cluster param key.
- * @returns The catalog values, or an empty list when the model omits the param.
- */
-function paramValues(model: ModelEntry, key: string): ParamValue[] {
-  const values = model.params?.[key]?.values;
-  if (!values) return [];
-  return values.map((v) => (typeof v === 'number' ? v : String(v)));
-}
-
 interface GlyphProps {
   glyph: (typeof COLUMNS)[number]['glyph'];
-  value: ParamValue;
+  value: ParamOptionValue;
 }
 
 /**
@@ -134,10 +124,10 @@ function Glyph({ glyph, value }: GlyphProps): React.JSX.Element {
 interface CameraWheelProps {
   cap: string;
   glyph: (typeof COLUMNS)[number]['glyph'];
-  values: ParamValue[];
-  value: ParamValue | undefined;
+  values: ParamOptionValue[];
+  value: ParamOptionValue | undefined;
   unit?: string;
-  onSelect: (value: ParamValue) => void;
+  onSelect: (value: ParamOptionValue) => void;
   prevLabel: string;
   nextLabel: string;
 }

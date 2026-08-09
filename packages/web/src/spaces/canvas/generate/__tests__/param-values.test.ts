@@ -52,7 +52,7 @@ function modelWith(
 describe('paramValues', () => {
   it('reads a list of allowed values, as the image panel always has', () => {
     const model = modelWith('duration', { values: [4, 6, 8] });
-    expect(paramValues(model, 'duration')).toEqual(['4', '6', '8']);
+    expect(paramValues(model, 'duration')).toEqual([4, 6, 8]);
   });
 
   it('keeps string values as they are', () => {
@@ -60,12 +60,32 @@ describe('paramValues', () => {
     expect(paramValues(model, 'aspect_ratio')).toEqual(['16:9', '9:16']);
   });
 
+  it('hands back the catalog type, not a display string', () => {
+    // What the user picks is what gets stored and submitted. Duration and
+    // focal length are numbers in the catalog, so a reader that stringified
+    // everything would put "5" in the payload where the provider expects 5,
+    // and would make the current value unrecognizable to the control drawing
+    // it (`'5' === 5` is false, so nothing reads as selected).
+    const numeric = modelWith('duration', { values: [4, 6, 8] });
+    expect(paramValues(numeric, 'duration').map((v) => typeof v)).toEqual([
+      'number',
+      'number',
+      'number',
+    ]);
+    const ranged = modelWith('duration', { min: 4, max: 6 });
+    expect(paramValues(ranged, 'duration').map((v) => typeof v)).toEqual([
+      'number',
+      'number',
+      'number',
+    ]);
+  });
+
   it('expands a range one step per second', () => {
     // Kling's duration. Without this the whole duration group vanishes for
     // every Kling model.
     const model = modelWith('duration', { min: 3, max: 15 });
     expect(paramValues(model, 'duration')).toEqual([
-      '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15',
+      3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     ]);
   });
 
@@ -74,7 +94,7 @@ describe('paramValues', () => {
     // hardcoded to one model's numbers.
     const model = modelWith('duration', { min: 4, max: 12 });
     expect(paramValues(model, 'duration')).toEqual([
-      '4', '5', '6', '7', '8', '9', '10', '11', '12',
+      4, 5, 6, 7, 8, 9, 10, 11, 12,
     ]);
   });
 
@@ -83,12 +103,12 @@ describe('paramValues', () => {
     // include. Deriving from the range instead would offer 5s and 7s on a
     // model that only accepts 4, 6 and 8.
     const model = modelWith('duration', { values: [4, 6, 8], min: 4, max: 8 });
-    expect(paramValues(model, 'duration')).toEqual(['4', '6', '8']);
+    expect(paramValues(model, 'duration')).toEqual([4, 6, 8]);
   });
 
   it('yields a single option when the range has one point', () => {
     const model = modelWith('duration', { min: 5, max: 5 });
-    expect(paramValues(model, 'duration')).toEqual(['5']);
+    expect(paramValues(model, 'duration')).toEqual([5]);
   });
 
   it('yields nothing for a half-declared range', () => {
@@ -114,7 +134,7 @@ describe('paramValues', () => {
     // No catalog writes this today; it is defined rather than left to chance
     // because the option labels are seconds and half a second is not one.
     const model = modelWith('duration', { min: 3.5, max: 6.5 });
-    expect(paramValues(model, 'duration')).toEqual(['4', '5', '6']);
+    expect(paramValues(model, 'duration')).toEqual([4, 5, 6]);
   });
 
   it('yields nothing when the parameter is absent or its list is empty', () => {
