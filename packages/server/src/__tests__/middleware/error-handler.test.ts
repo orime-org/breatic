@@ -32,12 +32,17 @@ const logged = vi.hoisted(() => ({
   debug: vi.fn(),
 }));
 
-vi.mock("@breatic/core", async (importOriginal) => {
-  // Everything real except the logger: the error family, `runWithLocale` and
-  // `loadLocales` are what this suite is asserting against.
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return { ...actual, logger: logged };
-});
+vi.mock(
+  "@breatic/core",
+  // The parameter is typed the way `helpers/mock-core.ts` types it, which is
+  // what makes the result spreadable without an assertion.
+  async (importOriginal: () => Promise<Record<string, unknown>>) => {
+    // Everything real except the logger: the error family, `runWithLocale`
+    // and `loadLocales` are what this suite asserts against.
+    const actual = await importOriginal();
+    return { ...actual, logger: logged };
+  },
+);
 
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
