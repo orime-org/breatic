@@ -351,6 +351,13 @@
       "when": 1786060800000,
       "tag": "0049_projects_visibility_all_studio",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1786492800000,
+      "tag": "0050_chat_message_store",
+      "breakpoints": true
     }
   ]
 }

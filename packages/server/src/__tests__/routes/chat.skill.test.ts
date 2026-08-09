@@ -42,13 +42,20 @@ import { createApp } from "../../app.js";
 
 const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 
+// Every chat write now names both a project and the conversation it belongs
+// to: the client holds the conversation id, which is what lets two tabs sit on
+// two conversations. Requests here carry both so they reach the skill gate
+// rather than being turned away by validation.
+const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
+const CONVERSATION_ID = "22222222-2222-4222-8222-222222222222";
+
 describe("POST /chat/skill — skill enforcement", () => {
   it("rejects a skill that is not user-invocable with 403", async () => {
     const app = createApp();
     const res = await app.request("/api/v1/chat/skill", {
       method: "POST",
       headers: AUTH,
-      body: JSON.stringify({ skill_name: "gated_fixture", input: "go" }),
+      body: JSON.stringify({ skill_name: "gated_fixture", input: "go", project_id: PROJECT_ID, conversation_id: CONVERSATION_ID }),
     });
     expect(res.status).toBe(403);
   });
@@ -58,7 +65,7 @@ describe("POST /chat/skill — skill enforcement", () => {
     const res = await app.request("/api/v1/chat/skill", {
       method: "POST",
       headers: AUTH,
-      body: JSON.stringify({ skill_name: "nonexistent", input: "hi" }),
+      body: JSON.stringify({ skill_name: "nonexistent", input: "hi", project_id: PROJECT_ID, conversation_id: CONVERSATION_ID }),
     });
     expect(res.status).toBe(404);
   });

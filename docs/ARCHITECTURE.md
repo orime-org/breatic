@@ -91,7 +91,29 @@ config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 
 - **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。`memory_window`(默认 20)按 Turn 计数,超出时自动归纳旧 Turn 到记忆摘要
 - **Context 压缩**:最近 `full_detail_turns`(默认 3)个 Turn 保留完整 step(tool_call + tool_result),更早 Turn 只保留 user + assistant 最终回复。`thinking` 字段永远不发回 LLM
-- **消息存储**:`conversations.messages` JSONB 数组,含 `turnIndex`、`thinking?`、`tool_calls?: ToolCallInfo[]`。原始消息不删除,归纳只生成摘要
+- **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool-call` / `tool-result`)。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
+
+### Chat conversation ownership
+
+**会话 ID 由客户端持有**,每个浏览器标签页各记各的。服务端不存「当前会话」—— 那是一个用户一个值,而一个用户可能同时开着两个标签页看两条会话,第二个一打开就把第一个的值盖掉,第一个标签页此后每一句都写进别人那条里。不需要并发,静态就错。
+
+| 端点 | 行为 |
+|---|---|
+| `POST /chat/open` | 入参只有 `project_id`。返回这个用户在这个 project 的会话列表 + **最近交互**那条的消息;这个 project 一条会话都没有时**当场建一个空的**再返回。**全系统唯一的自动创建点** |
+| `POST /chat/message` · `POST /chat/skill` | `conversation_id` **必填**,只写不建 |
+
+**「最近交互」= 该会话最后一条消息的时间**,空会话回落到会话创建时间,**排序带稳定的第二键**(会话 ID)。**故意不用 `conversations.updated_at`** —— 改个标题也会动它,那不是「最后说话」。
+
+**写入前三查,一律 404**(`conversationService.assertWritable`):这条会话属于这个用户 · 属于这个 project · 没被软删。第三样不是边角料 —— 一个标签页记着会话 7、用户在另一个标签页把它删了,前两样对它都成立。三种可区分的答案会让状态码自己交代是哪一条没过,所以答案必须一样。
+
+**打开时两把锁,各管一段,顺序固定**(先咨询锁后项目行锁,全仓只有这一处取那把咨询锁,不会成环):
+
+| 锁 | 作用域 | 挡什么 |
+|---|---|---|
+| `pg_advisory_xact_lock(hashtext(userId), hashtext(projectId))` | 一个 (用户, project) | 同一个人两个标签页同时打开空 project,各建一条 |
+| `projectRepo.lockLiveProject`(**只在要新建那条分支上取**) | 项目行 | 新建撞上删项目。插入的外键取 FOR KEY SHARE、软删的 UPDATE 取 FOR NO KEY UPDATE,两者不冲突,不加锁就会错身而过,提交出一条挂在已删 project 上的会话 |
+
+普通一次打开(已有会话)完全不碰项目行,因此不跟邀请 / 转让那些事务抢锁。
 
 ### Worker 4 paths
 
@@ -233,7 +255,7 @@ v14 全新重写已于 2026-05-19 合入 `main`(PR #103)。对齐 design-baselin
 | 音频 / 视频 | 原生 `<audio>` / `<video>` + 自建统一 `MediaPlayer`(装饰波形,零第三方播放器库) |
 | 3D | Three.js + @react-three/fiber |
 | 数据请求 | Axios + @microsoft/fetch-event-source(SSE)+ React Query |
-| i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja / ko);8 产品名词 + 角色名走「不翻译表」全语言英文,见 [packages/web/CLAUDE.md](../packages/web/CLAUDE.md)「产品术语「不翻译表」」。**每条文案必须活在命名空间里**——`locales/*.json` 顶层只许放命名空间对象,不许直接放文案(共用的进 `common`,其余进各功能自己的命名空间);**调用点同样如此**,`t('cancel')` 这种无点 id 一律当场报错。两侧都由 repo-lint 的 `i18n-keys-namespaced` CI 强制。理由是死键守卫 `i18n-no-dead-keys` 靠「在源码里找这个 key 的点分全名」判断有没有人用,**无点的 id 没有形状可找**:放宽成裸词匹配会让 `cancel` / `loading` 这类普通英文词满仓命中(`z.enum(["confirm","cancel"])` / `phase === 'loading'`)、守卫等于作废。**调用点那一半是 2026-08-06 才补上的**,补之前源码写了无点 id 三个守卫全都不响——catalog 装不下它、死键守卫方向相反碰不到它、缺失文案守卫的形状认不出它,于是用户屏幕上直接显示 `cancel` 这串字。**判在形状上、不绕道查 catalog**:查不到虽然也能得出「错了」,但报错信息会指向 catalog(读的人会去 catalog 里加一条,而那条加不进去),而且那条推导依赖「catalog 里绝不会有无点 id」这个由另一个守卫维持的前提,那个守卫一改这里就静默失效。**「key 长什么样」在 `repo-lint/src/message-keys.ts` 一处定义**:`KEY_SEGMENT` 给段的形状(**允许数字开头**,2026-08-06 放宽 —— 此前 `canvas.nodePlaceholder.3d` 五个 catalog 都有却没有任何守卫看得见它),`spelledOutKeys()` 给「怎么在源码里找出一个文案调用、取出括号里的 id」,命名空间守卫和缺失文案守卫共用它、各自套自己的规则。**反方向的守卫是 `i18n-no-missing-keys`**:死键守卫问「catalog 里的文案有没有人读」,它问「源码点名的文案 catalog 答不答得上来」——两个方向都会坏,而早先只看着一个,`t("server.error.notFound")` 就这么发出去过(catalog 里写的是 `not_found`)。它只认「整个参数就是写全的 id」这一种写法,拼接和变量传参一律看不见,边界写在它自己的 docstring 里 |
+| i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja / ko);8 产品名词 + 角色名走「不翻译表」全语言英文,见 [packages/web/CLAUDE.md](../packages/web/CLAUDE.md)「产品术语「不翻译表」」。**每条文案必须活在命名空间里**——`locales/*.json` 顶层只许放命名空间对象,不许直接放文案(共用的进 `common`,其余进各功能自己的命名空间);**调用点同样如此**,`t('cancel')` 这种无点 id 一律当场报错。两侧都由 repo-lint 的 `i18n-keys-namespaced` CI 强制。理由是死键守卫 `i18n-no-dead-keys` 靠「在源码里找这个 key 的点分全名」判断有没有人用,**无点的 id 没有形状可找**:放宽成裸词匹配会让 `cancel` / `loading` 这类普通英文词满仓命中(`z.enum(["confirm","cancel"])` / `phase === 'loading'`)、守卫等于作废。**调用点那一半是 2026-08-06 才补上的**,补之前源码写了无点 id 三个守卫全都不响——catalog 装不下它、死键守卫方向相反碰不到它、缺失文案守卫的形状认不出它,于是用户屏幕上直接显示 `cancel` 这串字。**判在形状上、不绕道查 catalog**:查不到虽然也能得出「错了」,但报错信息会指向 catalog(读的人会去 catalog 里加一条,而那条加不进去),而且那条推导依赖「catalog 里绝不会有无点 id」这个由另一个守卫维持的前提,那个守卫一改这里就静默失效。**「key 长什么样」在 `repo-lint/src/message-keys.ts` 一处定义**:`KEY_SEGMENT` 给段的形状(**允许数字开头**,2026-08-06 放宽 —— 此前 `canvas.nodePlaceholder.3d` 五个 catalog 都有却没有任何守卫看得见它),`spelledOutKeys()` 给「怎么在源码里找出一个文案调用、取出括号里的 id」,命名空间守卫和缺失文案守卫共用它、各自套自己的规则。**反方向的守卫是 `i18n-no-missing-keys`**:死键守卫问「catalog 里的文案有没有人读」,它问「源码点名的文案 catalog 答不答得上来」——两个方向都会坏,而早先只看着一个,`t("server.error.notFound")` 就这么发出去过(catalog 里写的是 `not_found`)。它只认「整个参数就是写全的 id」这一种写法,拼接和变量传参一律看不见,边界写在它自己的 docstring 里。**那个边界之外的一类由测试守**:有些函数把文案键当**返回值**交给调用方、自己不调 `t()`(会话列表和活动面板各有一份 `relativeTime`,活动面板还有 `entryMessage`),这种键永远不出现在 `t("字面量")` 里、三个守卫全看不见 —— `chat.relative.isoDate` 就是这么带着「五个 catalog 都没有」发出去的。补法是 `packages/web/src/test-utils/i18n-keys.ts` 的 `expectEveryLocaleRenders`:走遍每条分支,**逐本 catalog 问两个问题** —— 键在不在(直接问 catalog,**不经过 `t()`**,因为 `resolveMessage` 找不到当前语言就回退 en、一本目录缺键会渲染成英文而看不出来),以及带参数的能不能渲染出来(经过 `t()`,因为占位符被改名会从组件渲染里抛出去)。catalog 列表来自 `test-utils/locale-catalogs.ts`,`vitest.setup.ts` 循环它注册 —— 此前那里手写四门语言漏了 `ko`,于是任何在韩文下渲染的测试都拿英文回退、绿得没有意义 |
 | 路由 | React Router 7 |
 | 测试 | Vitest + Playwright + @testing-library + fast-check |
 | 监控 | Sentry |

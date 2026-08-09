@@ -528,7 +528,7 @@ describe("confirmProjectTransfer — concurrency invariants", () => {
       req!.transfer_id,
       recipientId,
     );
-    await waitUntilBlockedOn(sql, "project_members");
+    await waitUntilBlockedOn(sql, ["project_members"]);
 
     const removal = projectMembersService.remove(projectId, recipientId, ownerId);
     await new Promise((r) => setTimeout(r, 300));
@@ -572,7 +572,7 @@ describe("confirmProjectTransfer — concurrency invariants", () => {
       req!.transfer_id,
       recipientId,
     );
-    await waitUntilBlockedOn(sql, "project_members");
+    await waitUntilBlockedOn(sql, ["project_members"]);
 
     const demotion = projectMembersService.changeRole(
       projectId,

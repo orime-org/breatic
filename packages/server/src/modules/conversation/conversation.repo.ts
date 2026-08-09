@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Conversation repository — data access for conversations table.
+ * Conversation repository — data access for the conversations table.
  *
- * Messages are stored inline as a JSONB array (not a separate table).
- * Supports consolidation-aware message slicing for the memory system.
+ * Messages live in their own table; see conversation-message.repo.ts.
  *
  * Every read/write filters on `deleted_at IS NULL` — soft-deleted
  * conversations are invisible to the rest of the app. Cascade deletion
@@ -16,13 +15,14 @@ import { and, eq, desc, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import {
   conversations,
+  conversationMessages,
   conversationAttachments,
   conversationMemories,
   memoryHistoryEntries,
 } from "@breatic/core";
-import { NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import type { ConversationEntity, MessageData } from "@breatic/shared";
+import { cascadeDeleteMessages } from "@server/modules/conversation/conversation-message.repo.js";
+import type { ConversationEntity } from "@breatic/shared";
 
 /**
  * Transaction handle type, inferred from {@link db.transaction}'s callback.
@@ -34,8 +34,6 @@ import type { ConversationEntity, MessageData } from "@breatic/shared";
 // Re-exported so the 5 server repos/services that compose a caller-
 // provided `tx` keep importing DbTx from here (it now lives in core).
 export type { DbTx };
-
-const MAX_HISTORY = 50;
 
 /**
  * Convert a Drizzle row to a ConversationEntity.
@@ -59,13 +57,16 @@ function toEntity(row: typeof conversations.$inferSelect): ConversationEntity {
  * Create a new conversation.
  * @param userId - Owner of the new conversation (conversations are user-scoped)
  * @param title - Display title; truncated to 200 chars before insert
+ * @param tx - Optional transaction handle, so opening chat can create the
+ *   conversation and stamp its project as one unit under the locks it holds
  * @returns The newly created conversation entity
  */
 export async function createConversation(
   userId: string,
   title = "New conversation",
+  tx?: DbTx,
 ): Promise<ConversationEntity> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .insert(conversations)
     .values({ userId, title: title.slice(0, 200) })
     .returning();
@@ -119,10 +120,88 @@ export async function listConversations(
 }
 
 /**
+ * Take the right to create this user's first conversation in this project.
+ *
+ * Held until the surrounding transaction ends. Two tabs opening the same empty
+ * project both ask "is there a conversation here?", both hear no, and both
+ * create one — leaving the user looking at a list with two empty conversations
+ * in it. This makes the ask-then-create pair one indivisible step per (user,
+ * project); the second caller waits, then finds the first one's conversation.
+ *
+ * An advisory lock rather than a row lock, because at this moment there is no
+ * row to lock — that is the whole problem. The two ids are hashed into the
+ * lock's two integer halves; a collision between unrelated pairs costs a brief
+ * wait and nothing else, since the lock guards a check that is repeated inside
+ * it anyway.
+ * @param tx - Transaction handle; the lock lives as long as it does
+ * @param userId - Owner the lock is scoped to
+ * @param projectId - Project the lock is scoped to
+ */
+export async function lockChatCreation(
+  tx: DbTx,
+  userId: string,
+  projectId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${userId}), hashtext(${projectId}))`,
+  );
+}
+
+/**
+ * The conversation this user spoke in most recently in this project.
+ *
+ * Ordered by the newest message in each conversation, falling back to the
+ * conversation's own creation time for one that has never been spoken in.
+ * `conversations.updated_at` is deliberately not used: renaming a conversation
+ * touches it, and renaming is not speaking.
+ *
+ * The id is the final ordering key so the answer never wobbles between two
+ * conversations whose newest messages share a timestamp — without it, the same
+ * user refreshing twice could land somewhere different each time.
+ * @param userId - Owner whose conversations to consider
+ * @param projectId - Project to look in
+ * @param tx - Optional transaction handle, so the caller can read inside the
+ *   same transaction that holds the creation lock
+ * @returns The most recently used conversation, or null when there is none
+ */
+export async function findMostRecentlyUsed(
+  userId: string,
+  projectId: string,
+  tx?: DbTx,
+): Promise<ConversationEntity | null> {
+  const rows = await (tx ?? db)
+    .select({ conversation: conversations })
+    .from(conversations)
+    .leftJoin(
+      conversationMessages,
+      and(
+        eq(conversationMessages.conversationId, conversations.id),
+        isNull(conversationMessages.deletedAt),
+      ),
+    )
+    .where(
+      and(
+        eq(conversations.userId, userId),
+        eq(conversations.projectId, projectId),
+        isNull(conversations.deletedAt),
+      ),
+    )
+    .groupBy(conversations.id)
+    .orderBy(
+      sql`COALESCE(max(${conversationMessages.createdAt}), ${conversations.createdAt}) DESC`,
+      desc(conversations.id),
+    )
+    .limit(1);
+
+  return rows[0] ? toEntity(rows[0].conversation) : null;
+}
+
+/**
  * Cascade soft-delete: mark N conversations and their owned children as
  * deleted inside the caller-provided transaction.
  *
  * Owned children (FK `onDelete: restrict`) that are cascaded:
+ *   - `conversation_messages`
  *   - `conversation_attachments`
  *   - `conversation_memories`
  *   - `memory_history_entries`
@@ -153,6 +232,23 @@ export async function cascadeDeleteConversations(
   if (convIds.length === 0) return;
 
   const ids = [...convIds];
+
+  // Lock the parents FIRST. An append holds this same row FOR UPDATE while it
+  // computes a turn index and inserts, and it touches a different table — so
+  // without this, the delete stamps the messages that exist at that instant,
+  // the append then inserts a live one, and the conversation ends up deleted
+  // with a live message under it. Measured at 39 of 40 attempts, because the
+  // delete's own parent UPDATE parks behind the append's lock and therefore
+  // lands after it. Taking the lock up front makes the two serialise: the
+  // append either finishes first and gets stamped with the rest, or finds the
+  // conversation gone and refuses.
+  await tx
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(inArray(conversations.id, ids))
+    .for("update");
+
+  await cascadeDeleteMessages(tx, ids, now);
 
   await tx
     .update(conversationAttachments)
@@ -225,180 +321,17 @@ export async function updateTitle(id: string, title: string): Promise<void> {
  * Set the project_id on a conversation. No-op if soft-deleted.
  * @param id - Conversation UUID to link
  * @param projectId - Project UUID to associate the conversation with
+ * @param tx - Optional transaction handle; see {@link createConversation}
  */
-export async function setProjectId(id: string, projectId: string): Promise<void> {
-  await db
+export async function setProjectId(
+  id: string,
+  projectId: string,
+  tx?: DbTx,
+): Promise<void> {
+  await (tx ?? db)
     .update(conversations)
     .set({ projectId, updatedAt: new Date() })
     .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
-}
-
-/**
- * Append a message to the JSONB messages array.
- *
- * Automatically computes turnIndex:
- * - role="user" → previous turnIndex + 1 (new turn)
- * - role="assistant" or "tool" → same turnIndex as current turn
- *
- * Returns the `turnIndex` assigned to the message — callers billing by
- * turn (deductOnce with `turn:${conversationId}:${turnIndex}` refKey)
- * need this stable number, and computing it again via a second DB roundtrip
- * would race against concurrent appends.
- *
- * Uses PostgreSQL `||` operator for atomic JSONB append.
- * @param id - Conversation UUID to append to
- * @param message - Message to append; `turnIndex` is computed when omitted
- * @returns The `turnIndex` assigned to the appended message
- * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
- *   This surfaces deletion-mid-stream cleanly to callers — `main-agent.ts`
- *   relies on this to abort billing when the conversation was deleted
- *   during a chat turn.
- */
-export async function addMessage(
-  id: string,
-  message: Omit<MessageData, "turnIndex"> & { turnIndex?: number },
-): Promise<number> {
-  let turnIndex: number;
-
-  if (message.turnIndex !== undefined) {
-    turnIndex = message.turnIndex;
-  } else {
-    // SELECT with soft-delete guard so we both compute the next turn
-    // AND detect "conversation gone" in a single roundtrip. The filter
-    // matters when a user-owned conversation is soft-deleted mid-stream
-    // — without it we would bill a turn on an invisible conversation.
-    const rows = await db
-      .select({ messages: conversations.messages })
-      .from(conversations)
-      .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
-      .limit(1);
-    if (!rows[0]) {
-      throw new NotFoundError(`Conversation not found or deleted: ${id}`);
-    }
-    const msgs = (rows[0].messages ?? []) as MessageData[];
-    const currentTurn =
-      msgs.length > 0 ? msgs[msgs.length - 1]!.turnIndex ?? 0 : 0;
-    turnIndex = message.role === "user" ? currentTurn + 1 : currentTurn;
-  }
-
-  const fullMessage: MessageData = { ...message, turnIndex };
-
-  // RETURNING id + length check detects a conversation that vanished
-  // between the SELECT above and the UPDATE, or was soft-deleted when
-  // the caller supplied `message.turnIndex` directly (skipping the SELECT).
-  const result = await db.execute(
-    sql`UPDATE conversations
-        SET messages = COALESCE(messages, '[]'::jsonb) || ${JSON.stringify([fullMessage])}::jsonb,
-            updated_at = NOW()
-        WHERE id = ${id} AND deleted_at IS NULL
-        RETURNING id`,
-  );
-
-  if ((result as unknown[]).length === 0) {
-    throw new NotFoundError(`Conversation not found or deleted: ${id}`);
-  }
-
-  return turnIndex;
-}
-
-/**
- * Get the last N messages from a conversation (empty array if deleted).
- * @param id - Conversation UUID to read
- * @param limit - Maximum number of trailing messages to return (defaults to 50)
- * @returns The last `limit` messages, or an empty array if not found / deleted
- */
-export async function getMessages(id: string, limit = MAX_HISTORY): Promise<MessageData[]> {
-  const rows = await db
-    .select({ messages: conversations.messages })
-    .from(conversations)
-    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
-    .limit(1);
-
-  const msgs = (rows[0]?.messages ?? []) as MessageData[];
-  return msgs.slice(-limit);
-}
-
-/**
- * Get messages formatted for LLM context.
- *
- * Skips already-consolidated turns and strips internal fields
- * (ts, turnIndex, thinking) that the LLM doesn't need.
- * @param id - Conversation ID
- * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
- * @returns Unconsolidated messages with internal-only fields stripped for the LLM
- */
-export async function getMessagesForLlm(
-  id: string,
-  lastConsolidatedTurn = 0,
-): Promise<MessageData[]> {
-  const rows = await db
-    .select({ messages: conversations.messages })
-    .from(conversations)
-    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
-    .limit(1);
-
-  const all = (rows[0]?.messages ?? []) as MessageData[];
-
-  // Only include messages from turns after the consolidated boundary
-  const unconsolidated = all.filter((m) => m.turnIndex > lastConsolidatedTurn);
-
-  // Strip internal fields not needed by LLM
-  return unconsolidated.map(({ ts: _ts, turnIndex: _ti, thinking: _th, ...rest }) => rest as MessageData);
-}
-
-/**
- * Get count of unconsolidated turns.
- * @param id - Conversation UUID to inspect
- * @returns Number of turns past the last consolidated boundary (0 if not found)
- */
-export async function getUnconsolidatedTurnCount(id: string): Promise<number> {
-  const rows = await db
-    .select({
-      messages: conversations.messages,
-      lastConsolidatedTurn: conversations.lastConsolidatedTurn,
-    })
-    .from(conversations)
-    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
-    .limit(1);
-
-  if (!rows[0]) return 0;
-  const msgs = (rows[0].messages ?? []) as MessageData[];
-  const maxTurn = msgs.length > 0 ? msgs[msgs.length - 1]!.turnIndex : 0;
-  return maxTurn - rows[0].lastConsolidatedTurn;
-}
-
-/**
- * Get messages eligible for consolidation (by turn range).
- *
- * Returns all messages from turns after lastConsolidatedTurn up to
- * (maxTurn - keepTurns). The full step detail is preserved for
- * high-quality LLM summarization.
- * @param id - Conversation ID
- * @param lastConsolidatedTurn - Turn index already consolidated
- * @param keepTurns - Number of recent turns to keep unconsolidated
- * @returns Messages in the consolidatable turn range (empty when nothing is eligible)
- */
-export async function getMessagesForConsolidation(
-  id: string,
-  lastConsolidatedTurn: number,
-  keepTurns: number,
-): Promise<MessageData[]> {
-  const rows = await db
-    .select({ messages: conversations.messages })
-    .from(conversations)
-    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
-    .limit(1);
-
-  const all = (rows[0]?.messages ?? []) as MessageData[];
-  if (all.length === 0) return [];
-
-  const maxTurn = all[all.length - 1]!.turnIndex;
-  const consolidateUpToTurn = maxTurn - keepTurns;
-  if (consolidateUpToTurn <= lastConsolidatedTurn) return [];
-
-  return all.filter(
-    (m) => m.turnIndex > lastConsolidatedTurn && m.turnIndex <= consolidateUpToTurn,
-  );
 }
 
 /**

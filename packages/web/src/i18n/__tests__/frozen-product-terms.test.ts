@@ -5,31 +5,18 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { resetLocales, setLocale, setLocaleMessages, t } from '@breatic/shared';
 
-import en from '../../../../../locales/en.json';
-import zhCN from '../../../../../locales/zh-CN.json';
-import zhTW from '../../../../../locales/zh-TW.json';
-import ja from '../../../../../locales/ja.json';
-import ko from '../../../../../locales/ko.json';
+import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
-/**
- * Frozen product terms (#1336): a fixed set of product vocabulary that must
- * render as the SAME English string in every locale — roles as Title Case
- * (Owner / Editor / Viewer / Admin / Maintainer / Guest), entity + space-type
- * nouns as Title Case (Studio / Project / Space / Canvas / Document /
- * Timeline). These are deliberate brand-vocabulary terms, never localized.
- *
- * The catalog is duplicated across several key namespaces (role.* /
- * badge.role* / recent.role.* / members.role* / share.role.*); freezing every
- * copy to the same English value also removes the pre-existing zh-CN drift
- * (e.g. role.editor='编辑' vs badge.roleEditor='编辑者').
- */
-const LOCALE_CATALOGS = [
-  ['en', en],
-  ['zh-CN', zhCN],
-  ['zh-TW', zhTW],
-  ['ja', ja],
-  ['ko', ko],
-] as const;
+// Frozen product terms (#1336): a fixed set of product vocabulary that must
+// render as the SAME English string in every locale — roles as Title Case
+// (Owner / Editor / Viewer / Admin / Maintainer / Guest), entity + space-type
+// nouns as Title Case (Studio / Project / Space / Canvas / Document /
+// Timeline). These are deliberate brand-vocabulary terms, never localized.
+//
+// The catalog is duplicated across several key namespaces (role.* /
+// badge.role* / recent.role.* / members.role* / share.role.*); freezing every
+// copy to the same English value also removes the pre-existing zh-CN drift
+// (e.g. role.editor='编辑' vs badge.roleEditor='编辑者').
 
 /** Each frozen i18n key paired with its required English value (all locales). */
 const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
@@ -110,24 +97,6 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   'server.email.welcome_subject',
   'editor.accept',
 ];
-
-/**
- * Resolve a dotted key path against a parsed locale object.
- * @param catalog - Parsed locale JSON.
- * @param path - Dotted key path (e.g. `studio.container.badge.roleOwner`).
- * @returns The value at the path, or undefined if any segment is missing.
- */
-function readPath(catalog: unknown, path: string): unknown {
-  return path
-    .split('.')
-    .reduce<unknown>(
-      (node, seg) =>
-        node && typeof node === 'object'
-          ? (node as Record<string, unknown>)[seg]
-          : undefined,
-      catalog,
-    );
-}
 
 describe('frozen product terms (#1336)', () => {
   beforeEach(() => {

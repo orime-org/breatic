@@ -23,29 +23,51 @@ const BLOCK_TIMEOUT_MS = 10_000;
 const POLL_INTERVAL_MS = 25;
 
 /**
- * Block until some backend is parked waiting on a row lock over the given
- * table.
+ * Block until `expected` backends are parked waiting on a lock, each running a
+ * statement that matches every one of `queryLike`.
  *
+ * Two parameters exist because a probe that answers "is anyone blocked?" cannot
+ * be called twice in a row: the first parked backend keeps answering yes, so
+ * the second call returns whether or not the second party ever arrived, and the
+ * test claims an interleaving it never observed. Waiting for a count instead
+ * makes each call name how many parties must be in the queue by then.
+ *
+ * `queryLike` is a set of substrings that must ALL appear, because a table name
+ * on its own does not identify a statement: an append parked on
+ * `SELECT ... FROM conversations ... FOR UPDATE` and one parked on
+ * `UPDATE conversations SET updated_at` are the same string match but different
+ * facts, and only one of them is the lock a test is pinning.
  * @param sql - a connection separate from the ones under test
- * @param table - substring matched against the waiting backend's query text
- * @throws {Error} when nothing blocks within {@link BLOCK_TIMEOUT_MS} — the
- *   interleaving the caller depends on never happened, so letting it continue
- *   would produce a meaningless pass
+ * @param queryLike - substrings that must all appear in the waiting backend's
+ *   query text
+ * @param expected - how many backends must be parked before returning
+ * @throws {Error} when the count is not reached within {@link BLOCK_TIMEOUT_MS}
+ *   — the interleaving the caller depends on never happened, so letting it
+ *   continue would produce a meaningless pass
  */
 export async function waitUntilBlockedOn(
   sql: Sql,
-  table: string,
+  queryLike: readonly string[],
+  expected = 1,
 ): Promise<void> {
+  const needles = queryLike.map((s) => s.toLowerCase());
   const deadline = Date.now() + BLOCK_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const rows = await sql<{ n: string }[]>`
-      SELECT count(*)::text AS n FROM pg_stat_activity
-      WHERE wait_event_type = 'Lock'
-        AND state = 'active'
-        AND query ILIKE ${"%" + table + "%"}
+    // Filtered here rather than in SQL: matching a set of substrings is a
+    // multi-pattern ILIKE, and spelling that as a parameterised array buys
+    // nothing over reading the handful of parked statements back.
+    const rows = await sql<{ query: string }[]>`
+      SELECT query FROM pg_stat_activity
+      WHERE wait_event_type = 'Lock' AND state = 'active'
     `;
-    if (Number(rows[0]!.n) > 0) return;
+    const parked = rows.filter((r) => {
+      const q = r.query.toLowerCase();
+      return needles.every((n) => q.includes(n));
+    });
+    if (parked.length >= expected) return;
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
-  throw new Error(`no backend ever blocked on a ${table} row lock`);
+  throw new Error(
+    `only fewer than ${expected} backend(s) ever blocked on a statement matching ${queryLike.join(" + ")}`,
+  );
 }

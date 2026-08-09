@@ -5,6 +5,8 @@ export type {
   UserEntity,
   ConversationEntity,
   MessageData,
+  MessageInput,
+  MessagePart,
   ToolCallInfo,
   TaskEntity,
   NodeHistoryEntity,
