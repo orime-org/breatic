@@ -35,6 +35,29 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
       .withDatabase("breatic_test")
       .withUsername("breatic")
       .withPassword("breatic")
+      // Postgres defaults to `max_connections=100`, which this suite outgrew.
+      // Measured across a full run: it peaks at 106 connections, so the last
+      // files to run were failing to open one at all — `FATAL 53300` out of
+      // `InitProcess`, on whichever test happened to be there.
+      //
+      // 106 is not a leak. Vitest isolates each test file in its own module
+      // registry (`isolate` defaults to true), so core's process-wide
+      // `_pgClient` singleton is built once PER FILE, each with its own pool
+      // of up to `DB_POOL_SIZE` (10). `idle_timeout` is 30s and the whole run
+      // takes ~35s, so barely any of them are reclaimed before the end. That
+      // is what per-file isolation costs, and it is also what makes the files
+      // independent — the number is the price of a property we want.
+      //
+      // So the mismatch is on this side: 100 is the default for one
+      // application with one pool, and this container serves ~58 module
+      // registries. 300 leaves room for roughly 19 more db-touching test
+      // files before this needs revisiting.
+      //
+      // NOT by shrinking the pool: `DB_POOL_SIZE=3` was tried and the suite
+      // stopped finishing at all (>10 min, normally 35s). A transaction holds
+      // a connection while its inner queries ask the pool for more, and with
+      // a single fork and a small pool those waits stack up.
+      .withCommand(["postgres", "-c", "max_connections=300"])
       .start(),
     new GenericContainer("redis:7-alpine")
       .withExposedPorts(6379)
