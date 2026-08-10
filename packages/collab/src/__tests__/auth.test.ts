@@ -33,11 +33,11 @@
  * Session and role resolution are delegated to `@breatic/core`
  * (`getSession` + `projectAuthService.loadProjectRole`) — the same shared
  * kernel the API server uses, so the two cannot drift. The Yjs
- * space-existence check reads this process's own in-memory documents
- * (staged here as a plain Map) and falls back to collab's
- * `yjsDocumentsRepo.fetchDocData` only when this process holds no meta doc
- * for the project. All three are mocked so the test is hermetic; collab
- * issues no raw SQL of its own.
+ * space-existence check answers from the meta doc this process holds
+ * (staged here as a plain Map) and, when it holds none, loads one through
+ * `createDocument` (staged here as a spy). Both are under the test's
+ * control, so the test is hermetic and no database is ever reached; the
+ * hook itself no longer touches `yjs_documents` at all (#26).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -61,12 +61,10 @@ const {
 
 // `@breatic/core` is replaced wholesale so every export auth.ts touches is
 // under the test's control and no real session store or database connection
-// is ever opened. auth.ts uses exactly five exports — substitute each:
+// is ever opened. auth.ts uses exactly four of them — substitute each:
 //   - getSession / loadProjectRole: the shared auth kernel, mocked
 //   - createLogger: the unified core logger factory, mocked to expose
 //     the warn/error spies the log-trail assertions below check
-//   - yjsDocumentsRepo.fetchDocData: the single home for `yjs_documents`
-//     SQL (the space-existence read), mocked to return a meta blob
 //   - sessionCookieName(): the per-deployment cookie name
 vi.mock("@breatic/core", () => ({
   getSession: getSessionMock,
