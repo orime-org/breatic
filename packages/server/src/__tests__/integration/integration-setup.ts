@@ -63,27 +63,48 @@ process.env.ENV = "dev";
 process.env.STORAGE_PROVIDER = "local";
 process.env.ALLOWED_ORIGINS = "http://localhost:8000";
 
-// Each test file hands back the pools it opened.
+// Each test file hands back the connections it opened.
 //
 // This file is a setupFile, so it is evaluated once per test file, inside
-// that file's own module registry. Core's `_pgClient` singleton is therefore
-// built once PER FILE — the pools are per-file whether or not anyone closes
-// them, and the suite runs single-fork, so at any moment only one file's
-// pools are in use. Without this hook the other ~57 sets just sit there
-// holding connections until `idle_timeout` (30s), which is longer than the
-// whole run: they accumulate to a measured 106 connections and the last
-// files to run cannot open one at all (`FATAL 53300`).
+// that file's own module registry. Core's connection singletons — the two
+// Postgres pools and the four Redis clients — are therefore built once PER
+// FILE, and the suite runs single-fork, so at any moment only one file's
+// connections are in use. Without this hook the other ~57 sets just sit
+// there: the Postgres pools until `idle_timeout` (30s), the Redis clients
+// until the process exits. The whole run takes ~35s, so almost nothing is
+// reclaimed on its own.
+//
+// Measured over a full run, that accumulation was 106 Postgres connections
+// and 52 Redis clients. Postgres is the one that broke: its container
+// ceiling is 100, so the last files to run could not open a connection at
+// all (`FATAL 53300`). Redis has a default `maxclients` of 10000 and never
+// hit a wall — it is closed here because a file that is finished should not
+// be holding anything, not because anything was failing.
+//
+// With this hook the peaks are 12 and about 25. The Redis remainder was not
+// traced further: those clients belong to things with their own lifecycles
+// (BullMQ's own connections, the Hocuspocus Redis extension in the
+// cross-instance test), not to the singletons this file opened, and at that
+// scale against a 10000 ceiling there is nothing to chase. Closing the four
+// Redis singletons costs the run about 2-3 seconds.
 //
 // Registered here rather than in each test file: `afterAll` from a setupFile
 // applies to the file being set up, so one registration covers all of them
 // and no test file has to remember.
 //
-// `closeDb` / `closeYjsDb` are no-ops when this file never touched a
-// database, and core is imported lazily inside the hook so that merely
+// Every close is a no-op when this file never opened that kind of
+// connection, and core is imported lazily inside the hook so that merely
 // loading this setup file still pulls in no part of the application (the
 // property the header above describes).
 afterAll(async () => {
   const core = await import("@breatic/core").catch(() => null);
   if (!core) return;
-  await Promise.allSettled([core.closeDb(), core.closeYjsDb()]);
+  await Promise.allSettled([
+    core.closeDb(),
+    core.closeYjsDb(),
+    core.closeRedis(),
+    core.closeQueueRedis(),
+    core.closeStreamRedis(),
+    core.closeCollabRedis(),
+  ]);
 });
