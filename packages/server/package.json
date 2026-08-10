@@ -34,6 +34,7 @@
   "devDependencies": {
     "@breatic/collab": "workspace:*",
     "@breatic/worker": "workspace:*",
+    "@hocuspocus/extension-redis": "^4.5.0",
     "@hocuspocus/server": "catalog:",
     "@testcontainers/postgresql": "^11.14.0",
     "@types/bcryptjs": "catalog:",

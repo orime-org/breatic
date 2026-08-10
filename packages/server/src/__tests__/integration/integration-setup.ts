@@ -31,6 +31,7 @@ declare module "vitest" {
     REDIS_URL: string;
     REDIS_QUEUE_URL: string;
     REDIS_STREAM_URL: string;
+    REDIS_COLLAB_URL: string;
   }
 }
 
@@ -41,6 +42,7 @@ const urls = inject("DATABASE_URL")
       REDIS_URL: inject("REDIS_URL"),
       REDIS_QUEUE_URL: inject("REDIS_QUEUE_URL"),
       REDIS_STREAM_URL: inject("REDIS_STREAM_URL"),
+      REDIS_COLLAB_URL: inject("REDIS_COLLAB_URL"),
     }
   : null;
 
@@ -50,6 +52,7 @@ if (urls) {
   process.env.REDIS_URL = urls.REDIS_URL;
   process.env.REDIS_QUEUE_URL = urls.REDIS_QUEUE_URL;
   process.env.REDIS_STREAM_URL = urls.REDIS_STREAM_URL;
+  process.env.REDIS_COLLAB_URL = urls.REDIS_COLLAB_URL;
 }
 
 // Required env vars that @breatic/core validates at import time.
