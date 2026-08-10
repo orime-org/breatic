@@ -558,7 +558,7 @@ function VideoGeneratePanelBody({
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
           // Same value, same reason as the rail's — see VideoGeneratePanel:
-          // an image `@` chip contributes nothing in either mode this panel
+          // an image `@` chip contributes nothing in any mode this panel
           // offers, and dimming carries a cost of its own. #1903.
           imageRefsDisabled={false}
           mentionEmptyLabel={mentionEmptyLabel}
