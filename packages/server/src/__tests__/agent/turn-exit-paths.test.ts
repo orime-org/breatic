@@ -200,15 +200,15 @@ describe("what a plain chat turn hands the model", () => {
     ]);
   });
 
-  it("keeps at least one interaction tool in the set it hands the model", async () => {
-    // Named for what it observes, which is the set of tools -- not the
-    // `interactive` flag that produced it. The flag itself is nowhere in this
-    // assertion, so a filter that stopped applying and left the same six tools
-    // in place would not be told apart here.
+  it("marks the turn interactive, which is what keeps the interaction tools in", async () => {
+    // The reason rather than the outcome, and the two are not the same test:
+    // the interaction tools would still be in that set if the filter stopped
+    // applying altogether, so asserting on the set cannot tell the two apart.
+    // The flag is observable because the factory is wrapped rather than
+    // replaced -- what goes in is visible, and what comes out is still real.
     streamTextRetry.mockReturnValue(streamOf([{ type: "text-delta", text: "hi" }]));
     await runTurn();
-    const call = streamTextRetry.mock.calls[0]?.[0] as { tools: Record<string, unknown> };
-    expect(Object.keys(call.tools)).toContain("ask_user_question");
+    expect(buildAgentConfig.mock.calls[0]?.[0]).toMatchObject({ interactive: true });
   });
 });
 
