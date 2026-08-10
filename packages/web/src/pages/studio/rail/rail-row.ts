@@ -6,8 +6,8 @@
  *
  * The rail holds two levels: destinations and actions at the top, and the
  * studios belonging to a group one level under its heading. The 2026-06-07
- * rail spec drew that tree (§4.3, "二级展开"), and its §4.1 sketch already
- * showed the studios indented beneath their heading.
+ * rail spec drew that tree in its §4.3 "two-level expand" section, and its
+ * §4.1 sketch already showed the studios indented beneath their heading.
  *
  * The indent is the whole of how the second level reads — heights match, the
  * type matches, only the left edge moves. Keeping that in one file is the
