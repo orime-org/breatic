@@ -30,12 +30,14 @@
  * (`sessionCookieName()`, #1831); the core mock below pins it to the
  * bare `breatic_session` so these fixtures stay independent of env.
  *
- * Session + role resolution AND the Yjs space-existence read are all
- * delegated to `@breatic/core` (`getSession` +
- * `projectAuthService.loadProjectRole` + `yjsDocumentsRepo.fetchDocData`)
- * — the same shared kernel + single `yjs_documents` repo home the API
- * server uses, so the services cannot drift. All three are mocked here
- * so the test is hermetic; collab issues no raw SQL of its own.
+ * Session and role resolution are delegated to `@breatic/core`
+ * (`getSession` + `projectAuthService.loadProjectRole`) — the same shared
+ * kernel the API server uses, so the two cannot drift. The Yjs
+ * space-existence check reads this process's own in-memory documents
+ * (staged here as a plain Map) and falls back to collab's
+ * `yjsDocumentsRepo.fetchDocData` only when this process holds no meta doc
+ * for the project. All three are mocked so the test is hermetic; collab
+ * issues no raw SQL of its own.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -113,6 +115,24 @@ function encodeMetaWithSpaces(ids: string[]): Uint8Array {
   return Y.encodeStateAsUpdate(doc);
 }
 
+/**
+ * Build a live meta doc — the in-memory object Hocuspocus keeps in
+ * `instance.documents`, as opposed to the encoded bytes Postgres stores.
+ * Used to stage the in-memory route of the space-existence check.
+ * @param ids - Space ids to place in `meta.spaces`.
+ * @returns The meta `Y.Doc`.
+ */
+function liveMetaWithSpaces(ids: string[]): Y.Doc {
+  const doc = new Y.Doc();
+  const spaces = doc.getMap("spaces");
+  for (const id of ids) {
+    const entry = new Y.Map();
+    spaces.set(id, entry);
+    entry.set("id", id);
+  }
+  return doc;
+}
+
 const mockRedis = {} as unknown as Redis;
 
 const PID = "11111111-1111-4111-8111-111111111111";
@@ -136,6 +156,14 @@ describe("createAuthHook", () => {
   const buildHook = (capacity?: {
     maxConnectionsPerDoc?: number;
     countConnections?: (documentName: string) => Promise<number>;
+    /**
+     * Documents this process holds in memory, keyed by document name — the
+     * table Hocuspocus hands the hook as `instance.documents`. Empty by
+     * default, so every pre-existing case below keeps exercising the
+     * Postgres fallback it was written against; cases that pin the
+     * in-memory route stage their own meta doc.
+     */
+    documents?: Map<string, Y.Doc>;
   }) => {
     const hook = createAuthHook({
       redis: mockRedis,
@@ -143,15 +171,17 @@ describe("createAuthHook", () => {
       countConnections: capacity?.countConnections ?? (async () => 0),
     });
     type HookArgs = Parameters<typeof hook>[0];
+    const documents = capacity?.documents ?? new Map<string, Y.Doc>();
     // Tests may omit `connectionConfig`; default it so only cap tests that
     // assert the read-only side effect need to supply their own.
     return (
-      args: Omit<HookArgs, "connectionConfig"> &
+      args: Omit<HookArgs, "connectionConfig" | "instance"> &
         Partial<Pick<HookArgs, "connectionConfig">>,
     ): ReturnType<typeof hook> =>
       hook({
         ...args,
         connectionConfig: args.connectionConfig ?? { readOnly: false },
+        instance: { documents },
       });
   };
 
@@ -546,6 +576,141 @@ describe("createAuthHook", () => {
         requestHeaders: withCookie("tok"),
       }),
     ).rejects.toThrow(/does not exist/);
+  });
+
+  // ── Space-exists check reads THIS PROCESS'S meta doc first (#26) ──
+  //
+  // The client only asks for a Space's content doc because it was told the
+  // Space exists — and what told it is the in-memory meta doc this process
+  // broadcast. Answering "does it exist" from Postgres instead reads a
+  // different copy of the same thing: `space:create` writes the in-memory doc
+  // and broadcasts it, while the Postgres row trails behind by up to one
+  // `store_interval_ms` tick. The connection is then refused for a Space this
+  // very process just announced.
+  //
+  // So the check reads the in-memory doc whenever this process holds one, and
+  // falls back to Postgres only when it holds none (nobody here has been told
+  // anything about this project, so there is nothing newer to read).
+
+  it("accepts a just-created Space from the in-memory meta doc without touching Postgres", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    // Postgres is staged as still NOT having the Space — this is exactly the
+    // window `space:create` opens. Reading it would refuse the connection.
+    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([]));
+    const hook = buildHook({
+      documents: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID])]]),
+    });
+
+    const ctx = await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/document-${SID}`,
+      requestHeaders: withCookie("tok"),
+    });
+
+    expect(ctx.user.id).toBe("user-1");
+    expect(fetchDocDataMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a deleted Space from the in-memory meta doc without touching Postgres", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    // The mirror image: `space:delete` removed the id from the in-memory doc
+    // and the Postgres row has not caught up yet, so Postgres would still
+    // admit the connection for up to one store tick.
+    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
+    const hook = buildHook({
+      documents: new Map([
+        [`project-${PID}/meta`, liveMetaWithSpaces(["other-space-id"])],
+      ]),
+    });
+
+    await expect(
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/document-${SID}`,
+        requestHeaders: withCookie("tok"),
+      }),
+    ).rejects.toThrow(/does not exist/);
+    expect(fetchDocDataMock).not.toHaveBeenCalled();
+  });
+
+  it("treats an in-memory meta doc with no Spaces as an answer, not as absence", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("owner");
+    // The one way to write this wrong: an empty Set is falsy-looking and easy
+    // to collapse into "nothing in memory", which would quietly restore the
+    // Postgres read for the very project whose last Space was just deleted.
+    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
+    const hook = buildHook({
+      documents: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([])]]),
+    });
+
+    await expect(
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/document-${SID}`,
+        requestHeaders: withCookie("tok"),
+      }),
+    ).rejects.toThrow(/does not exist/);
+    expect(fetchDocDataMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to Postgres when this process holds no meta doc for the project", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
+    const hook = buildHook({ documents: new Map() });
+
+    const ctx = await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/document-${SID}`,
+      requestHeaders: withCookie("tok"),
+    });
+
+    expect(ctx.user.id).toBe("user-1");
+    expect(fetchDocDataMock).toHaveBeenCalledWith(`project-${PID}/meta`);
+  });
+
+  it("looks up the meta doc of the project the document belongs to, not any other", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
+    // This process holds a meta doc — for a DIFFERENT project, and one that
+    // happens to list the requested Space. Keying the lookup on anything but
+    // the requested project's own meta doc name would let it answer here.
+    const otherPid = "33333333-3333-4333-8333-333333333333";
+    const hook = buildHook({
+      documents: new Map([
+        [`project-${otherPid}/meta`, liveMetaWithSpaces([SID])],
+      ]),
+    });
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/document-${SID}`,
+      requestHeaders: withCookie("tok"),
+    });
+
+    expect(fetchDocDataMock).toHaveBeenCalledWith(`project-${PID}/meta`);
+  });
+
+  it("does not consult the in-memory table for the meta doc itself", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("owner");
+    // The meta doc carries no spaceId to check. Staging a copy that lists no
+    // Spaces would refuse the connection if the check ran for it at all.
+    const hook = buildHook({
+      documents: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([])]]),
+    });
+
+    const ctx = await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/meta`,
+      requestHeaders: withCookie("tok"),
+    });
+
+    expect(ctx.user.id).toBe("user-1");
   });
 
   it("skips the space-exists fetch for the meta doc itself", async () => {

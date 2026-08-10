@@ -115,11 +115,15 @@ interface MutableConnectionConfig {
 /**
  * Options required to build the auth hook.
  *
- * Only Redis is needed: the session lookup uses it (through core's
- * shared session store), while the role lookup and the `yjs_documents`
- * space-existence read route through core (`loadProjectRole` /
- * `yjsDocumentsRepo`) over the shared `db` singleton — no collab-owned
- * Postgres pool.
+ * Only Redis is needed. The session lookup uses it (through core's shared
+ * session store) and the role lookup routes through core
+ * (`projectAuthService.loadProjectRole`) over the shared `db` singleton —
+ * no collab-owned Postgres pool. The space-existence check needs nothing
+ * here at all: it reads this process's own in-memory documents, which
+ * Hocuspocus hands the hook on every handshake, and reaches
+ * `yjsDocumentsRepo` (collab's own `yjs_documents` home, over the `yjsDb`
+ * singleton) only when this process holds no meta doc for the project.
+ * See {@link loadProjectSpaceIds}.
  */
 export interface CreateAuthHookOptions {
   redis: Redis;
@@ -142,6 +146,17 @@ export interface CreateAuthHookOptions {
 }
 
 /**
+ * The slice of the Hocuspocus instance this hook reads: its table of
+ * documents currently held in this process's memory. Hocuspocus hands the
+ * whole instance to `onAuthenticate`; naming only what is read keeps the
+ * hook out of the rest of the framework's surface and lets a test stand in
+ * a plain Map.
+ */
+interface LoadedDocuments {
+  documents: { get(documentName: string): Y.Doc | undefined };
+}
+
+/**
  * Load the set of Space ids currently listed in the project's meta
  * Yjs doc. Used to refuse a WebSocket connection to a
  * `project-{pid}/canvas-{deletedSpaceId}` after the Space has been
@@ -155,21 +170,47 @@ export interface CreateAuthHookOptions {
  *     `meta.spaces`. New WebSocket connections to that doc name must
  *     be refused so a stale tab cannot resurrect the data.
  *
- * Returns an empty set when the meta row does not exist (a freshly
- * created project's meta doc is always seeded by `yjs-bootstrap`, so
- * the empty-set path is a defensive fallback rather than a real
- * expected state).
+ * THIS PROCESS'S COPY ANSWERS FIRST (#26). `space:create` writes the
+ * new id into the in-memory meta doc and broadcasts that doc; the
+ * `yjs_documents` row trails behind by up to one `store_interval_ms`
+ * tick (the create path triggers no store of its own). Reading Postgres
+ * here would therefore refuse a connection to a Space this very process
+ * had just announced — two copies of the same thing contradicting each
+ * other inside one process. `space:delete` is the mirror image: the id
+ * leaves memory immediately while Postgres keeps admitting connections
+ * until the next tick.
  *
- * The `yjs_documents` read goes through the shared core repo — the
- * single home for that table's SQL — over the process-wide `db`
- * singleton, so collab keeps no private pool of its own.
+ * Whether the in-memory copy is itself up to date does not enter into
+ * it: whatever it holds is what the clients on this process were told,
+ * so answering from it is what keeps the answer consistent with the
+ * announcement. Keeping that copy current is `@hocuspocus/extension-redis`'s
+ * job, not this check's.
+ *
+ * Postgres is read only when this process holds no meta doc for the
+ * project — nobody here has been told anything about it, so there is
+ * nothing newer to answer from. That read returns an empty set when the
+ * meta row does not exist (a freshly created project's meta doc is always
+ * seeded by `yjs-bootstrap`, so the empty-set path is a defensive fallback
+ * rather than a real expected state), and goes through the collab-owned
+ * repo — the single home for that table's SQL — over the process-wide
+ * `yjsDb` singleton, so collab keeps no private pool of its own.
  * @param projectId - Project whose meta Yjs doc holds the authoritative `meta.spaces` set.
- * @returns The set of Space ids currently listed in `meta.spaces`, or an empty set when the meta row is missing.
+ * @param loaded - This process's table of in-memory documents, consulted before Postgres.
+ * @returns The set of Space ids currently listed in `meta.spaces`, or an empty set when this process holds no copy and the meta row is missing.
  */
 async function loadProjectSpaceIds(
   projectId: string,
+  loaded: LoadedDocuments,
 ): Promise<Set<string>> {
   const docName = projectMetaDocName(projectId);
+
+  // Only "this process holds no copy" sends the read to Postgres. A copy
+  // holding zero Spaces is a verdict, not an absence — collapsing the two
+  // would bring the Postgres read back for exactly the project whose last
+  // Space was just deleted.
+  const live = loaded.documents.get(docName);
+  if (live) return new Set(live.getMap("spaces").keys());
+
   const data = await yjsDocumentsRepo.fetchDocData(docName);
   if (!data) return new Set();
 
@@ -201,11 +242,14 @@ export function createAuthHook({
     documentName,
     requestHeaders,
     connectionConfig,
+    instance,
   }: {
     token: string;
     documentName: string;
     requestHeaders: Headers;
     connectionConfig: MutableConnectionConfig;
+    /** The running Hocuspocus server, for the in-memory documents it holds. */
+    instance: LoadedDocuments;
   }): Promise<AuthContext> => {
     // Every decision below - accept or reject - logs structured
     // context (no PII beyond userId + documentName). The previous
@@ -292,7 +336,7 @@ export function createAuthHook({
       // meta.spaces; PG row stays for recovery but new connections cannot
       // load it" (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5).
       if (parsed.kind !== "meta") {
-        const ids = await loadProjectSpaceIds(parsed.projectId);
+        const ids = await loadProjectSpaceIds(parsed.projectId, instance);
         if (!ids.has(parsed.spaceId)) {
           logger.warn(
             {
