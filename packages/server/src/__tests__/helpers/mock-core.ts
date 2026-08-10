@@ -423,7 +423,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  *   vi.mock("@server/modules", serverModulesMock);
  *
  * Explicit (no importOriginal) so loading it never pulls the real agent
- * llm → `ai` SDK → otel ESM chain. Per-test overrides go through the
+ * llm and the `ai` SDK behind it. Per-test overrides go through the
  * shared `mocks` refs (creditService / taskService / canvasLock / ...).
  */
 export const domainMock = () => ({

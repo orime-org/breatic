@@ -38,11 +38,9 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-// Mock `ai` BEFORE importing @breatic/core / the app (the core + domain
-// barrels pull agent/llm → the `ai` SDK → @opentelemetry/api, whose ESM build
-// Node's native ESM rejects). This suite never calls any ai function; the
-// stubs keep that broken ESM chain from loading at import time — the same
-// guard every other studio integration suite uses.
+// `ai` is stubbed: the real SDK is replaced with a double that reaches no
+// network, so this suite needs no API key and the SDK stays out of its
+// module graph.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
@@ -66,8 +64,10 @@ import {
 import { studioMembersRepo } from "@breatic/domain";
 import type { Hono } from "hono";
 
-// integration-setup.ts injects the container URLs into process.env but cannot
-// call initCore itself (importing the core barrel pulls the `ai` SDK → otel).
+// integration-setup.ts injects the container URLs into process.env but
+// deliberately does not call initCore itself — a setup file runs for every
+// suite, so importing the core barrel there would pull the application into
+// every module graph.
 // Inject the validated config so every env-bound singleton (db / Redis) the
 // app touches resolves to the testcontainers. Guarded because the worker
 // process is shared (singleFork) with sibling suites that may have inited.

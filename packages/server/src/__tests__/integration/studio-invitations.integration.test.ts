@@ -27,8 +27,9 @@ import {
   inject,
 } from "vitest";
 
-// `ai` (Vercel AI SDK) pulls @opentelemetry/api whose ESM build crashes the
-// vitest loader — mock it before importing the real @breatic/core barrel.
+// `ai` is stubbed: the real SDK is replaced with a double that reaches no
+// network, so this suite needs no API key and the SDK stays out of its
+// module graph.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

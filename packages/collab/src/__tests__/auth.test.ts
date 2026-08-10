@@ -59,10 +59,9 @@ const {
   fetchDocDataMock: vi.fn(),
 }));
 
-// `@breatic/core` is mocked wholesale (not spread-from-actual) because
-// importing the real barrel pulls the `ai` SDK + opentelemetry
-// transitive deps that vitest's ESM resolver chokes on. auth.ts uses
-// exactly five exports — substitute each:
+// `@breatic/core` is replaced wholesale so every export auth.ts touches is
+// under the test's control and no real session store or database connection
+// is ever opened. auth.ts uses exactly five exports — substitute each:
 //   - getSession / loadProjectRole: the shared auth kernel, mocked
 //   - createLogger: the unified core logger factory, mocked to expose
 //     the warn/error spies the log-trail assertions below check

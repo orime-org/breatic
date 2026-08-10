@@ -38,7 +38,7 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
 });
 
 // Explicit (no importOriginal) so loading @breatic/domain never pulls the
-// real agent llm → `ai` SDK → otel ESM chain (crashes under vitest).
+// real agent llm and the `ai` SDK behind it.
 // `vi.hoisted` keeps the spy reference valid inside the hoisted factory.
 const { mockInsertAdmin, mockLoadStudioRole } = vi.hoisted(() => ({
   mockInsertAdmin: vi.fn().mockResolvedValue(undefined),

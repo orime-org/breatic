@@ -6,7 +6,7 @@
  *
  * Ported from backend/agent/tools/builtin/ask_user.py.
  */
-import { tool } from "ai";
+import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 /** Sentinel prefix detected by the tool-call runner to interrupt the loop. */
@@ -29,7 +29,7 @@ const inputSchema = z.object({
     ),
 });
 
-export const askUser = tool({
+export const askUser: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "Ask the user a clarifying question. Use when you need more " +
     "information to proceed. You can optionally provide a list of " +
