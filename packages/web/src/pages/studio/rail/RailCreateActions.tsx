@@ -5,50 +5,49 @@ import type * as React from 'react';
 import { Plus } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import {
+  RAIL_ICON,
+  RAIL_ROW_IDLE,
+  RAIL_ROW_TOP,
+} from '@web/pages/studio/rail/rail-row';
 
 interface RailCreateActionsProps {
   /** Label for the create-project action (resolved i18n). */
   createProjectLabel: string;
   /** Label for the create-collection action (disabled — backend deferred). */
   createCollectionLabel: string;
-  /** Label for the create-studio action. */
-  createStudioLabel: string;
-  /** Tooltip on the disabled actions (e.g. "coming soon"). */
+  /** Tooltip on the disabled action (e.g. "coming soon"). */
   comingSoonLabel: string;
   /** Opens the create-project dialog (with its studio selector, slice §7). */
   onCreateProject: () => void;
-  /** Opens the create-team-studio dialog (rail segment ③). */
-  onCreateStudio: () => void;
 }
 
-// `justify-start` because the Button primitive centres its content and these
-// are left-aligned rows.
-const ACTION =
-  'flex h-8 items-center gap-2.5 rounded-chrome px-2 text-sm font-medium leading-none transition-colors';
-
 /**
- * Rail create actions (spec §4.1 segments ① + ②): create project (enabled,
- * opens the dialog) + create collection / create studio (disabled placeholders
- * — their backends don't exist yet, so they are present-but-disabled, not
- * hidden, keeping the rail structure stable until those backends land). The
- * disabled actions use the HTML `disabled` attribute + `cursor-not-allowed`
- * (never `pointer-events: none`).
+ * Rail create actions (spec §4.1 segment ①): create project (enabled, opens
+ * the dialog) + create collection (a disabled placeholder — its backend does
+ * not exist yet, so it is present-but-disabled rather than hidden, keeping the
+ * rail's structure stable until that backend lands). The disabled action uses
+ * the HTML `disabled` attribute + `cursor-not-allowed` (never
+ * `pointer-events: none`, which would swallow the hover that explains why it
+ * cannot be used).
+ *
+ * Create-studio used to sit here behind a rule of its own. It creates a
+ * Studio rather than something inside the Studio you are already in, so it
+ * moved to the rail's footer (`RailCreateStudioAction`) where that difference
+ * is what the layout says, instead of a rule mid-list leaving the reader to
+ * guess.
  * @param props the action labels, the coming-soon tooltip and the create handler.
  * @param props.createProjectLabel the create-project label.
  * @param props.createCollectionLabel the create-collection label (disabled).
- * @param props.createStudioLabel the create-studio label.
- * @param props.comingSoonLabel the tooltip shown on the disabled actions.
+ * @param props.comingSoonLabel the tooltip shown on the disabled action.
  * @param props.onCreateProject opens the create-project dialog.
- * @param props.onCreateStudio opens the create-team-studio dialog.
- * @returns the rail's create-action segments.
+ * @returns the rail's create-action segment.
  */
 export function RailCreateActions({
   createProjectLabel,
   createCollectionLabel,
-  createStudioLabel,
   comingSoonLabel,
   onCreateProject,
-  onCreateStudio,
 }: RailCreateActionsProps): React.JSX.Element {
   return (
     <div className='flex flex-col gap-0.5'>
@@ -57,9 +56,9 @@ export function RailCreateActions({
         variant={null}
         size={null}
         onClick={onCreateProject}
-        className={`${ACTION} text-foreground hover:bg-accent`}
+        className={`${RAIL_ROW_TOP} ${RAIL_ROW_IDLE}`}
       >
-        <Plus className='h-4 w-4 text-foreground' />
+        <Plus className={RAIL_ICON} />
         {createProjectLabel}
       </Button>
       <Button
@@ -68,23 +67,10 @@ export function RailCreateActions({
         title={comingSoonLabel}
         variant={null}
         size={null}
-        className={`${ACTION} cursor-not-allowed text-muted-foreground opacity-65`}
+        className={`${RAIL_ROW_TOP} cursor-not-allowed text-muted-foreground opacity-65`}
       >
-        <Plus className='h-4 w-4' />
+        <Plus className={RAIL_ICON} />
         {createCollectionLabel}
-      </Button>
-
-      <hr className='mx-1.5 my-1.5 border-border' />
-
-      <Button
-        type='button'
-        variant={null}
-        size={null}
-        onClick={onCreateStudio}
-        className={`${ACTION} text-foreground hover:bg-accent`}
-      >
-        <Plus className='h-4 w-4 text-foreground' />
-        {createStudioLabel}
       </Button>
     </div>
   );

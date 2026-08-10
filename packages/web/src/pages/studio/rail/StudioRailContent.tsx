@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type * as React from 'react';
-import { Briefcase, User, Users } from 'lucide-react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
@@ -19,82 +18,82 @@ interface StudioRailContentProps {
   activeSlug: string | null;
   /** Opens the create-project dialog (rail segment ①). */
   onCreateProject: () => void;
-  /** Opens the create-team-studio dialog (rail segment ③). */
-  onCreateStudio: () => void;
 }
 
 /**
- * The studio rail's inner content — create actions, Recent, and the viewer's
- * studios split into three groups (#1661) via `splitStudios`: Personal Studio,
- * My Team Studios, and Joined Studios. Shared by the persistent desktop rail
- * (`StudioRail`) and the narrow-screen drawer (`StudioRailDrawer`) so the two
- * never drift. This is layout-only inner content; the outer container (width /
- * border / scroll) belongs to each host.
+ * The studio rail's scrolling content — what you can do, then where you can
+ * go: Recent and the create actions above, the viewer's studios below, split
+ * into three groups (#1661) via `splitStudios` — Personal Studio, My Team
+ * Studios, Joined Studios.
+ *
+ * One rule separates those two halves, and it is the only one here. Five used
+ * to cut this column into six pieces while every group already carried a
+ * heading saying where it began, so the rules, the headings and the group
+ * icons were three devices doing one job. The groups are told apart by their
+ * headings and the space between them; the rule is kept for the one boundary
+ * a heading does not describe — the change from acting to navigating.
+ *
+ * Create-studio is not here: it creates a Studio rather than something inside
+ * the Studio you are already in, so each host pins it to the rail's foot,
+ * outside this scrolling area.
+ *
+ * Shared by the persistent desktop rail (`StudioRail`) and the narrow-screen
+ * drawer (`StudioRailDrawer`) so the two never drift. This is layout-only
+ * inner content; the outer container (width / border / scroll) belongs to
+ * each host.
  * @param props the viewer's studios, active slug and create handler.
  * @param props.studios the viewer's studios.
  * @param props.activeSlug the active studio slug, or null on Recent.
  * @param props.onCreateProject opens the create-project dialog.
- * @param props.onCreateStudio opens the create-team-studio dialog.
  * @returns the rail content segments.
  */
 export function StudioRailContent({
   studios,
   activeSlug,
   onCreateProject,
-  onCreateStudio,
 }: StudioRailContentProps): React.JSX.Element {
   const t = useTranslation();
   const { personal, myTeam, joined } = splitStudios(studios);
   return (
     <>
-      <RailRecentLink
-        label={t('studio.rail.recent')}
-        active={activeSlug === null}
-      />
+      <div className='flex flex-col gap-0.5 p-2'>
+        <RailRecentLink
+          label={t('studio.rail.recent')}
+          active={activeSlug === null}
+        />
+        <RailCreateActions
+          createProjectLabel={t('studio.rail.createProject')}
+          createCollectionLabel={t('studio.rail.createCollection')}
+          comingSoonLabel={t('studio.rail.comingSoon')}
+          onCreateProject={onCreateProject}
+        />
+      </div>
 
-      <hr className='mx-1.5 my-1.5 border-border' />
+      <hr className='border-border' />
 
-      <RailCreateActions
-        createProjectLabel={t('studio.rail.createProject')}
-        createCollectionLabel={t('studio.rail.createCollection')}
-        createStudioLabel={t('studio.rail.createStudio')}
-        comingSoonLabel={t('studio.rail.comingSoon')}
-        onCreateProject={onCreateProject}
-        onCreateStudio={onCreateStudio}
-      />
-
-      <hr className='mx-1.5 my-1.5 border-border' />
-
-      <RailStudioGroup
-        title={t('studio.rail.personalStudio')}
-        studios={personal}
-        activeSlug={activeSlug}
-        emptyText={t('studio.rail.personalStudioEmpty')}
-        collapseKey={STORAGE_KEYS.railPersonalStudios}
-        Icon={User}
-      />
-
-      <hr className='mx-1.5 my-1.5 border-border' />
-
-      <RailStudioGroup
-        title={t('studio.rail.myStudios')}
-        studios={myTeam}
-        activeSlug={activeSlug}
-        emptyText={t('studio.rail.myStudiosEmpty')}
-        collapseKey={STORAGE_KEYS.railMyStudios}
-        Icon={Briefcase}
-      />
-
-      <hr className='mx-1.5 my-1.5 border-border' />
-
-      <RailStudioGroup
-        title={t('studio.rail.joinedStudios')}
-        studios={joined}
-        activeSlug={activeSlug}
-        emptyText={t('studio.rail.joinedEmpty')}
-        collapseKey={STORAGE_KEYS.railJoinedStudios}
-        Icon={Users}
-      />
+      <div className='flex flex-col gap-3 p-2'>
+        <RailStudioGroup
+          title={t('studio.rail.personalStudio')}
+          studios={personal}
+          activeSlug={activeSlug}
+          emptyText={t('studio.rail.personalStudioEmpty')}
+          collapseKey={STORAGE_KEYS.railPersonalStudios}
+        />
+        <RailStudioGroup
+          title={t('studio.rail.myStudios')}
+          studios={myTeam}
+          activeSlug={activeSlug}
+          emptyText={t('studio.rail.myStudiosEmpty')}
+          collapseKey={STORAGE_KEYS.railMyStudios}
+        />
+        <RailStudioGroup
+          title={t('studio.rail.joinedStudios')}
+          studios={joined}
+          activeSlug={activeSlug}
+          emptyText={t('studio.rail.joinedEmpty')}
+          collapseKey={STORAGE_KEYS.railJoinedStudios}
+        />
+      </div>
     </>
   );
 }

@@ -5,6 +5,13 @@ import type * as React from 'react';
 import { Link } from 'react-router-dom';
 import { Clock } from 'lucide-react';
 
+import {
+  RAIL_ICON,
+  RAIL_ROW_CURRENT,
+  RAIL_ROW_IDLE,
+  RAIL_ROW_TOP,
+} from '@web/pages/studio/rail/rail-row';
+
 interface RailRecentLinkProps {
   /** Label for the Recent entry (resolved i18n). */
   label: string;
@@ -29,11 +36,9 @@ export function RailRecentLink({
     <Link
       to='/studio'
       aria-current={active ? 'page' : undefined}
-      className={`flex h-8 items-center gap-2.5 rounded-chrome px-2 text-sm font-medium leading-none transition-colors ${
-        active ? 'bg-accent text-foreground' : 'text-foreground hover:bg-accent'
-      }`}
+      className={`${RAIL_ROW_TOP} ${active ? RAIL_ROW_CURRENT : RAIL_ROW_IDLE}`}
     >
-      <Clock className='h-4 w-4 text-muted-foreground' />
+      <Clock className={RAIL_ICON} />
       {label}
     </Link>
   );
