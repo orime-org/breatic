@@ -185,7 +185,8 @@ describe('buildVideoPanelViewModel', () => {
   it('falls back to the first offered model when the stored one is not offered here', () => {
     // A model the panel does not offer under this mode (another mode's pick,
     // or one dropped from the catalog) must never be the effective model:
-    // submitting it would be refused by the backend source gate.
+    // submitting it would generate from the prompt alone, ignoring the source
+    // the mode is named after.
     const nodes = [node('n1', videoView({ model: 'kling-o3-pro-i2v' }))];
     const vm = buildVideoPanelViewModel({
       nodeId: 'n1',
@@ -419,8 +420,9 @@ describe('resolveVideoModeSwitch', () => {
 
   it('never carries the outgoing mode’s model across', () => {
     // `veo` is the current pick and belongs to t2v alone. Carrying it into
-    // i2v would submit a model the mode does not offer, which the backend
-    // source gate refuses.
+    // i2v would submit a model that ignores the first frame and generates
+    // from the prompt alone — and the backend would NOT stop it, because its
+    // source gate passes any model with a source-less mode.
     const content = { modelByMode: { t2v: 'veo' }, params: {} };
     expect(resolveVideoModeSwitch(content, 'i2v', [t2v, both, i2v]).model).toBe(
       'kling',

@@ -698,8 +698,9 @@ describe('VideoGeneratePanelContainer', () => {
 
     it('writes the switch to Yjs with the target mode’s model', async () => {
       // The outgoing mode's model must NOT ride along: `veo-3.1` belongs to
-      // t2v alone, and submitting it under i2v is refused by the backend
-      // source gate.
+      // t2v alone, and submitting it under i2v would ignore the first frame
+      // and generate from the prompt alone — the backend does not catch this
+      // one (its source gate passes any model with a source-less mode).
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
       seedVideoNode();
       mountContainer('video');

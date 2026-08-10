@@ -365,8 +365,9 @@ function VideoGeneratePanelBody({
   }, [startFirstFramePick, endPick, nodeId]);
   // A running first-frame pick outlives the slot that started it when the mode
   // changes (locally or via a collaborator's setNodeMode): the slot stops
-  // rendering, and the pick would be left running with no way to see or leave
-  // it — the canvas would still be dimming candidates for a slot that is gone.
+  // rendering, so the pick loses the control that started it — the banner's
+  // Exit would be the only way out, while the canvas kept dimming candidates
+  // for a slot that is gone.
   React.useEffect(() => {
     const session = useCanvasStore.getState().pickSession;
     if (

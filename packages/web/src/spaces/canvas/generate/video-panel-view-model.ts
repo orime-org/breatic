@@ -116,8 +116,12 @@ export function nodeVideoMode(
  * Resolves the model + params a mode switch should write.
  *
  * The outgoing mode's model is deliberately NOT carried over — it belongs to
- * that mode, and submitting it under the new one is refused by the backend
- * source gate. What survives instead is the per-mode memory: the model last
+ * that mode, and the panel would otherwise offer, and submit, a model that
+ * cannot do what the mode promises — a text-to-video model ignores a first
+ * frame and generates from the prompt alone. The backend does not catch that
+ * for us: its source gate lets through any model with one source-less mode
+ * (domain/model-catalog/source-requirement.ts), and the payload carries no
+ * mode at all. What survives instead is the per-mode memory: the model last
  * chosen in the TARGET mode, if the catalog still offers it.
  *
  * An empty model means the target mode offers nothing (the catalog is still
@@ -195,8 +199,9 @@ export function buildVideoPanelViewModel(input: {
 
   // The stored model wins only while this mode still offers it. A stale pick
   // (another mode's, or one dropped from the catalog) falls back to the first
-  // offered model — submitting a model the mode does not offer would be
-  // refused by the backend source gate.
+  // offered model — submitting a model the mode does not offer would generate
+  // something else entirely, and the backend catches only part of that (its
+  // source gate passes any model with one source-less mode).
   const stored = content?.model;
   const model =
     stored && models.some((m) => m.name === stored)

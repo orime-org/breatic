@@ -22,10 +22,10 @@ import {
 } from '@web/components/ui/tooltip';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 
-// Shared layout / disabled classes; color + hover applied per-state. `h-auto`
-// keeps the two-line (icon over label) footprint the Button size ladder has no
-// entry for — it overrides the height of the implicit `size='default'`, which
-// is what these tools fall back to since they pass no size.
+// Shared layout / disabled classes; color + hover applied per-state. The tools
+// pass `size={null}` and lay themselves out here (icon over label, two lines) —
+// the Button size ladder has no entry for that footprint, and an explicit null
+// keeps cva from imposing one.
 const TOOL_BASE =
   'flex flex-col items-center gap-1 rounded-overlay px-2 py-1.5 text-xs ' +
   'transition-colors focus-visible:outline-none focus-visible:ring-1 ' +
@@ -34,9 +34,9 @@ const TOOL_INACTIVE =
   ' text-muted-foreground enabled:hover:bg-accent enabled:hover:text-accent-foreground';
 // Active toggle = the minimap's white fill (ViewportToolbar VtButton), a solid
 // `bg-foreground text-background` with NO accent hover — every toggle in the
-// panel must read identically (I4, user 2026-07-12). The hover pair repeats the
-// resting fill so the `outline` variant's own `hover:bg-accent` cannot flip an
-// active toggle to grey mid-hover.
+// panel must read identically (I4, user 2026-07-12). No hover pair is needed
+// because no variant is in play: `variant={null}` leaves this fill as the whole
+// appearance, so nothing can flip an active toggle to grey mid-hover.
 const TOOL_ACTIVE = ' bg-foreground text-background';
 
 interface ToggleToolProps {
@@ -77,8 +77,9 @@ export function ToggleTool({
     <ToolTip tip={tip}>
       <Button
         type='button'
-        // The tool carries a visible word, so it takes a border (`outline`) —
-        // a borderless label does not read as a button.
+        // Styled by hand (TOOL_BASE plus the active / inactive pair) rather
+        // than through a Button variant: `variant={null}` opts out of the cva
+        // defaults entirely, so these classes are the whole appearance.
         variant={null}
         size={null}
         data-testid={testId}
@@ -197,7 +198,7 @@ export function SlotTool({
       <ToolTip tip={tip}>
         <Button
           type='button'
-          // Same word-carrying tool as ToggleTool — bordered for the same reason.
+          // Hand-styled like ToggleTool, and for the same reason.
           variant={null}
           size={null}
           data-testid={testId}
