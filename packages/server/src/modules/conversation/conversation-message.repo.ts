@@ -68,6 +68,14 @@ function toParts(input: MessageInput): MessagePart[] {
       ...(call.result !== undefined ? { output: call.result } : {}),
     });
   }
+  // Last, and outside every condition above: a turn stopped before it wrote
+  // anything has no text, no reasoning and no tool call, and this is the only
+  // part it leaves behind. Fold it into one of the branches above and the row
+  // for that turn stores an empty list, which reads back as nothing having
+  // happened -- the thing storing a stopped turn exists to prevent.
+  if (input.interrupted) {
+    parts.push({ type: "interrupted" });
+  }
   return parts;
 }
 
@@ -115,6 +123,7 @@ function toMessageData(row: StoredRow): MessageData {
     content: text,
     ...(reasoning ? { thinking: reasoning.text } : {}),
     ...(calls.length > 0 ? { tool_calls: calls } : {}),
+    ...(parts.some((p) => p.type === "interrupted") ? { interrupted: true as const } : {}),
   };
 }
 

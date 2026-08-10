@@ -49,9 +49,15 @@ export class MainAgent {
    * Run a streaming chat turn with the user.
    * @param userMessage - The user's text message
    * @param resources - Optional attached resource URLs (images, files)
+   * @param signal - Raised when the user stops the turn or the client goes
+   *   away. Absent means this caller has no way to stop the turn.
    * @yields SSE events for real-time frontend rendering
    */
-  async *chat(userMessage: string, resources?: string[]): AsyncGenerator<SSEEvent> {
+  async *chat(
+    userMessage: string,
+    resources?: string[],
+    signal?: AbortSignal,
+  ): AsyncGenerator<SSEEvent> {
     const { conversationId, memoryContext, compressedHistory } = this.ctx;
 
     // Save user message. Capture the assigned turnIndex so billing can
@@ -78,7 +84,7 @@ export class MainAgent {
       { role: "user", content: userContent },
     ] as ModelMessage[];
 
-    yield* this.runStream(agentConfig, messages);
+    yield* this.runStream(agentConfig, messages, signal);
   }
 
   /**
@@ -86,12 +92,15 @@ export class MainAgent {
    * @param skillName - Name of the skill to invoke
    * @param userInput - User's input text for the skill
    * @param resources - Optional attached resources
+   * @param signal - Raised when the user stops the turn or the client goes
+   *   away. Absent means this caller has no way to stop the turn.
    * @yields SSE events
    */
   async *handleSkillCommand(
     skillName: string,
     userInput: string,
     resources?: string[],
+    signal?: AbortSignal,
   ): AsyncGenerator<SSEEvent> {
     const { conversationId, memoryContext, compressedHistory } = this.ctx;
 
@@ -125,7 +134,7 @@ export class MainAgent {
       { role: "user", content: userContent },
     ] as ModelMessage[];
 
-    yield* this.runStream(agentConfig, messages);
+    yield* this.runStream(agentConfig, messages, signal);
   }
 
   /**
@@ -134,15 +143,17 @@ export class MainAgent {
    * AI SDK handles the tool-call iteration automatically via `maxSteps`.
    *
    * The loop is wrapped in try/finally so the turn's obligations run however
-   * it ends. Which exits actually reach that finally today, and which one is
-   * written for but not yet reachable, is set out where `exit` is declared.
+   * it ends. How each ending is recorded, and why one of them cannot record
+   * itself, is set out where `announced` is declared.
    * @param agentConfig - Model, instructions and tools, from the one factory that decides them.
    * @param messages - Conversation history plus the current user message.
+   * @param signal - Raised when the user stops the turn or the client goes away.
    * @yields SSE events — chat chunks, tool hints, interaction prompts, an error, and the ending.
    */
   private async *runStream(
     agentConfig: ResolvedAgentConfig,
     messages: ModelMessage[],
+    signal?: AbortSignal,
   ): AsyncGenerator<SSEEvent> {
     const { userId, conversationId, projectId } = this.ctx;
     // Read with the others, not from inside the `finally`. `this.ctx` reaches
@@ -160,6 +171,12 @@ export class MainAgent {
       tools: agentConfig.tools,
       stopWhen: stepCountIs(agentCfg.max_tool_iterations),
       temperature: 0.2,
+      // The middle ring of the stop chain. Without it the route can notice the
+      // client leaving and the loop can watch for the announcement, and the
+      // model keeps running regardless: measured on ai@7.0.58, a signal handed
+      // in here ends the stream within milliseconds and no further model call
+      // is made, and the SDK passes it on to every tool it invokes.
+      abortSignal: signal,
     });
 
     let fullResponse = "";
@@ -183,20 +200,21 @@ export class MainAgent {
     // interaction tool returning, and a failure -- leaving the reply unsaved
     // and the turn unbilled.
     //
-    // A third exit, the client walking away, is written for but not yet
-    // reachable. It would arrive as `.return()` on this generator, which is
-    // what a consumer that breaks out of its loop does. Measured: today's SSE
-    // route never breaks, because hono's `StreamingApi.write` swallows the
-    // write error, so nothing tells the loop the reader is gone (probe: a
-    // client aborting after three chunks left the generator running, 358 more
-    // iterations two seconds later, `finally` never entered). Wiring that up
-    // is PR-3's, which owns cancellation; the finalizer is ready for it.
+    // How this turn ended. Four endings can say so from inside the loop, and
+    // one cannot, which is why this starts out as nothing rather than as a
+    // value: the consumer walking away arrives as `.return()` on this
+    // generator, which resumes it at whichever `yield` it was suspended on and
+    // goes straight to the `finally`, so no line in the loop gets to run. That
+    // ending is read off the absence, in the `finally`.
     //
-    // How this turn ended, for the log. It starts at the exit nothing can
-    // announce from inside, and each of the other three says so on its way
-    // out. A default of "completed" is what would let a disconnect log itself
-    // as a clean finish once PR-3 makes disconnects arrive here at all.
-    let exit: "aborted" | "completed" | "blocked" | "failed" = "aborted";
+    // It used to start at "aborted" and be rewritten to "completed" after the
+    // loop, which worked while that was the only silent ending. It stopped
+    // working the moment a stop could announce itself: a labelled `break`
+    // resumes on the line after the loop, so the announcement was overwritten
+    // on the way out and every stop was recorded as a clean finish. The two
+    // older `break`s survived that only because the values they set are not
+    // the one being rewritten.
+    let announced: "aborted" | "completed" | "blocked" | "failed" | undefined;
 
     // Set when a blocking tool has fired: the turn is over, but not until the
     // current step's `finish-step` goes by. That part carries the step's
@@ -224,13 +242,23 @@ export class MainAgent {
 
           // The SDK does not throw when the provider fails -- it hands the
           // failure back as a value and closes the stream. Measured on
-          // ai@6.0.141 with a model whose `doStream` throws: the loop saw
+          // ai@7.0.58 with a model whose `doStream` throws: the loop saw
           // ["start","error"] and did not throw. So an expired key, a 429 past
           // the retry budget and a bad model id all arrive here, and the
           // `catch` below never sees any of them.
           case "error":
-            exit = "failed";
+            announced = "failed";
             yield this.failed(part.error);
+            break stream;
+
+          // A stop arrives the same way, as a part on the stream rather than
+          // as an exception. Measured on ai@7.0.58: once the signal is raised
+          // the SDK emits this, makes no further model call, and delivers no
+          // tool-result or tool-error for whatever was in flight -- so this is
+          // the last thing the loop will ever see, and reading it is the only
+          // way the turn learns it was stopped.
+          case "abort":
+            announced = "aborted";
             break stream;
 
           case "tool-call":
@@ -284,7 +312,7 @@ export class MainAgent {
               // The turn stops here waiting for the user, but it still owes
               // an ending, and it owes the charge for the step it just ran.
               // So it leaves at this step's `finish-step` rather than here.
-              exit = "blocked";
+              announced = "blocked";
               stopAfterStep = true;
               break;
             }
@@ -295,7 +323,7 @@ export class MainAgent {
               // ones that merely drew a card let the model write on around
               // them, and let it draw more than one in a turn.
               if (interaction.blocking) {
-                exit = "blocked";
+                announced = "blocked";
                 stopAfterStep = true;
               }
             }
@@ -303,15 +331,15 @@ export class MainAgent {
           }
         }
       }
-      // Two ways to arrive here: the stream ran out, or a blocking tool
-      // broke out of it. That one has already recorded itself, so only the
-      // untouched default counts as a clean finish.
-      if (exit === "aborted") exit = "completed";
+      // Reached by the stream running out and by all three `break`s, so it
+      // must not overwrite what a `break` just recorded -- assigning here is
+      // for the one arrival that has nothing to say for itself.
+      announced ??= "completed";
     } catch (err) {
       // The other failure shape: our own code inside the loop threw, or the
       // stream was torn down with `controller.error()`. A failing provider
       // does not land here -- see `case "error"` above.
-      exit = "failed";
+      announced = "failed";
       yield this.failed(err);
     } finally {
       // Memory consolidation is an LLM call of its own and nobody is waiting
@@ -324,17 +352,31 @@ export class MainAgent {
         logger.warn({ err, userId, conversationId }, "memory_consolidation_failed"),
       );
 
+      // Nothing announced means no line in the loop ran on the way out, which
+      // happens for exactly one ending: the consumer walked away and resumed
+      // this generator with `.return()`.
+      const exit = announced ?? "aborted";
+      const stopped = exit === "aborted";
+
       const failures = await finalizeTurn({
         steps: {
-          persist: fullResponse
-            ? async () => {
-                await messageRepo.addMessage(conversationId, {
-                  role: "assistant",
-                  content: fullResponse,
-                  ...(thinkingContent ? { thinking: thinkingContent } : {}),
-                });
-              }
-            : undefined,
+          // A stopped turn is stored whether or not it got a word out. The
+          // guard used to be the reply alone, which is right for every other
+          // ending -- nothing generated, nothing to keep -- and wrong for this
+          // one: a turn stopped after a tool call and before any prose would
+          // leave no trace at all, so coming back to the conversation would
+          // show no sign the turn had ever happened.
+          persist:
+            fullResponse || stopped
+              ? async () => {
+                  await messageRepo.addMessage(conversationId, {
+                    role: "assistant",
+                    content: fullResponse,
+                    ...(thinkingContent ? { thinking: thinkingContent } : {}),
+                    ...(stopped ? { interrupted: true as const } : {}),
+                  });
+                }
+              : undefined,
           bill: async () => {
             if (tokensUsed === 0) return;
 
@@ -379,9 +421,15 @@ export class MainAgent {
       // Inside the finally so every exit emits it. A turn that ends without
       // one leaves the frontend with nothing to switch out of its in-flight
       // state — the stop button never clears.
+      //
+      // A stop is told apart by a field on this event rather than by an event
+      // of its own, so there stays exactly one ending to handle. A second
+      // terminal event would be a second place for a client to forget, and
+      // forgetting it looks like a turn that never ends.
       yield this.sse(SSEEventType.CHAT_DONE, {
         conversationId,
         creditsUsed,
+        ...(stopped ? { aborted: true } : {}),
       });
     }
   }
