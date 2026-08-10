@@ -266,6 +266,17 @@ function VideoGeneratePanelBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS the input, serialized
     [referencesKey],
   );
+  // The picked slot URLs are a fresh object per view-model build, on the same
+  // terms as the references above — at most one short string per slot, so a
+  // stringify key is cheap and exact. Before the slots were collected into one
+  // object the panel got a plain string and bailed on its own; keying on the
+  // content keeps that.
+  const slotUrlsKey = JSON.stringify(vm.slotUrls);
+  const stableSlotUrls = React.useMemo(
+    () => vm.slotUrls,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: slotUrlsKey IS the input, serialized
+    [slotUrlsKey],
+  );
   // Whether ANY mode this panel offers has a model to switch to. Deliberately
   // not the active mode's subset: a node sitting in a mode the catalog no
   // longer serves must still be able to switch back to one that works.
@@ -587,11 +598,10 @@ function VideoGeneratePanelBody({
       referencePicking={referencePicking}
       onRemoveReference={onRemoveReference}
       onInsertReference={handleInsertReference}
-      // The slot appears exactly when the active mode needs a source asset,
       // The mode states which slots it collects, so a mode that takes no
       // source shows none rather than offering a pick the submit ignores.
       slots={vm.slots}
-      slotUrls={vm.slotUrls}
+      slotUrls={stableSlotUrls}
       activeSlot={activeSlot}
       onPickSlot={onPickSlot}
       onClearSlot={onClearSlot}
