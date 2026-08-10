@@ -40,7 +40,6 @@ import { startMembersSync } from "@collab/services/members-sync.js";
 // to the lazy default ("api") logger instead of the collab one.
 initLogger("collab");
 
-
 const logger = createLogger("main");
 
 /**
