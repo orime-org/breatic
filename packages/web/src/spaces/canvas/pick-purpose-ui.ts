@@ -9,10 +9,19 @@
  * adding the first-frame pick (#1902) extended the candidate-dimming rule and
  * the click handler but silently missed the banner and the focus hand-off, so
  * a first-frame pick told the user to "select a reference" and exited into
- * nowhere. The end frame (#1904) was the first slot to arrive after that. `satisfies Record<PickPurpose, …>` turns the next omission into a
- * compile error instead of a wrong sentence on screen.
+ * nowhere. The end frame (#1904) was the first slot to arrive after that.
+ * `satisfies Record<PickPurpose, …>` turns the next omission into a compile
+ * error instead of a wrong sentence on screen.
+ *
+ * A slot pick's trigger id is READ from the slot registry rather than written
+ * again here. The toolbar renders that same entry, so the id this table
+ * searches for and the id on screen are one string: written twice they agreed
+ * by luck, and a typo in either was invisible — every canvas suite stayed
+ * green while Exit dropped a keyboard user on the canvas container, which is
+ * the miss above happening a second time.
  */
 
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { PickPurpose } from '@web/stores/canvas';
 
 /** The panel kinds that own pick tools (the other panel kinds start none). */
@@ -49,10 +58,10 @@ export const PICK_PURPOSE_UI = {
   },
   firstFrame: {
     banner: 'canvas.generatePanel.selectFirstFrameFromCanvas',
-    trigger: { generateVideo: 'generate-video-tool-first-frame' },
+    trigger: { generateVideo: VIDEO_SLOTS.firstFrame.testId },
   },
   endFrame: {
     banner: 'canvas.generatePanel.selectEndFrameFromCanvas',
-    trigger: { generateVideo: 'generate-video-tool-end-frame' },
+    trigger: { generateVideo: VIDEO_SLOTS.endFrame.testId },
   },
 } as const satisfies Record<PickPurpose, PickPurposeUi>;

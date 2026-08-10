@@ -57,6 +57,7 @@ import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import * as blankPng from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { serializeNodes } from '@web/spaces/canvas/node-clipboard';
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import { useCanvasStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -860,6 +861,38 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     document.body.appendChild(tool);
     act(() => {
       useCanvasStore.getState().startFirstFramePick('target');
+    });
+    fireEvent.click(screen.getByTestId('reference-pick-exit'));
+    expect(document.activeElement).toBe(tool);
+    tool.remove();
+  });
+
+  it('hands focus back to the end-frame tool the toolbar actually renders', () => {
+    // The same handoff for the second slot (#1904), and the reason it is a
+    // case of its own: the id the toolbar renders and the id this lookup
+    // searches for are read here from the SAME registry entry the toolbar
+    // reads. Written as two literals they agreed by luck, and a typo in
+    // either one was invisible — every canvas suite stayed green while a
+    // keyboard user pressing Exit landed on the canvas container instead of
+    // back in the panel, which is the #1902 regression again.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'video',
+            position: { x: 0, y: 0 },
+            data: { kind: 'video', status: 'idle', mode: 'first_last' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const tool = document.createElement('button');
+    tool.setAttribute('data-testid', VIDEO_SLOTS.endFrame.testId);
+    document.body.appendChild(tool);
+    act(() => {
+      useCanvasStore.getState().startEndFramePick('target');
     });
     fireEvent.click(screen.getByTestId('reference-pick-exit'));
     expect(document.activeElement).toBe(tool);
