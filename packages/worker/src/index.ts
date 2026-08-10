@@ -32,10 +32,18 @@ import {
 } from "@breatic/core";
 
 initLogger("worker");
-// i18n: register the catalogs before anything can throw. `t()` returns the
-// KEY when no catalog is loaded, so without this a user reads
-// `server.project.not_found` where a sentence belongs — @breatic/domain is
-// shared with the server, and its errors surface on the canvas from here.
+// i18n: register the catalogs before anything can throw. `t()` echoes the key
+// back when no catalog is loaded, so without this a failed node reads
+// `server.skill.not_available_on_deployment` where a sentence belongs —
+// `dispatch.ts` reaches that throw through `buildAgentConfig` ->
+// `assertSkillModelRunnable`.
+//
+// The sentence is English whoever is looking, and deliberately so. A job has
+// no request behind it, so nothing pins a locale the way `localeMiddleware`
+// does for the server; and a node's `errorMessage` goes into the Yjs doc every
+// collaborator reads, which must not carry one person's language — the same
+// rule `CanvasSpace.tsx` states for the upload path. Loading the catalogs buys
+// a sentence instead of a key, not a translated one.
 loadLocales();
 
 

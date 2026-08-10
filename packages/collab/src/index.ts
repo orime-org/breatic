@@ -21,7 +21,6 @@ import {
   getCollabRedis,
   closeCollabRedis,
   initLogger,
-  loadLocales,
   pingDb,
   pingRedis,
   yjsRawPg,
@@ -40,11 +39,6 @@ import { startMembersSync } from "@collab/services/members-sync.js";
 // (`createLogger("main")` below) is created — otherwise children would bind
 // to the lazy default ("api") logger instead of the collab one.
 initLogger("collab");
-// i18n: register the catalogs before anything can throw. `t()` returns the
-// KEY when no catalog is loaded, so without this a user reads
-// `server.project.not_found` where a sentence belongs — @breatic/domain is
-// shared with the server, and its errors surface on the canvas from here.
-loadLocales();
 
 
 const logger = createLogger("main");
