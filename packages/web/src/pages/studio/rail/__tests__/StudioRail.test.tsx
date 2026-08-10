@@ -152,6 +152,70 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
     );
   });
 
+  // ---- Visual rework, direction D (user 2026-08-10) ---------------------
+
+  it('draws one rule inside the scroll area, not one between every segment', () => {
+    // Five rules used to cut a 240px column into six pieces while every group
+    // already carried a heading that said where it began. One rule is left,
+    // and it separates two different kinds of thing: what you can do from
+    // where you can go.
+    const { container } = render(
+      <MemoryRouter>
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(container.querySelectorAll('hr')).toHaveLength(1);
+  });
+
+  it('pins create-studio to the foot of the rail, outside the scrolling area', () => {
+    // Creating a Studio is not the same act as creating something inside the
+    // one you are in, and it must stay reachable however long the list grows.
+    const { container } = render(
+      <MemoryRouter>
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const footer = screen.getByRole('button', { name: 'New Studio' }).closest('div');
+    expect(footer?.className).toContain('border-t');
+    // The scroll viewport must not contain it, or it would scroll away.
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]');
+    expect(viewport).not.toBeNull();
+    expect(viewport).not.toContainElement(
+      screen.getByRole('button', { name: 'New Studio' }),
+    );
+  });
+
+  it('paints every rail icon in the same secondary grey', () => {
+    // Three greys used to share the column: the clock quiet, the plus signs at
+    // full strength, the group icons following their heading. An icon louder
+    // than the words beside it is the thing that read as noise.
+    const { container } = render(
+      <MemoryRouter>
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const icons = [...container.querySelectorAll('svg')];
+    expect(icons.length).toBeGreaterThan(0);
+    for (const icon of icons) {
+      expect(icon.getAttribute('class')).toContain('text-muted-foreground');
+    }
+  });
+
   it('renders Recent at the TOP, above the create actions (visual spec 2026-06-08)', () => {
     render(
       <MemoryRouter>

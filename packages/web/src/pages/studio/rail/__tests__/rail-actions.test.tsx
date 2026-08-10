@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 import { RailCreateActions } from '@web/pages/studio/rail/RailCreateActions';
 import { RailRecentLink } from '@web/pages/studio/rail/RailRecentLink';
+import { RAIL_ROW_TOP } from '@web/pages/studio/rail/rail-row';
 
 describe('RailCreateActions (spec §4.1 ①②)', () => {
   it('fires onCreateProject when create-project is clicked', () => {
@@ -15,10 +16,8 @@ describe('RailCreateActions (spec §4.1 ①②)', () => {
       <RailCreateActions
         createProjectLabel='New project'
         createCollectionLabel='New collection'
-        createStudioLabel='New studio'
         comingSoonLabel='Coming soon'
         onCreateProject={onCreateProject}
-        onCreateStudio={vi.fn()}
       />,
     );
 
@@ -26,38 +25,60 @@ describe('RailCreateActions (spec §4.1 ①②)', () => {
     expect(onCreateProject).toHaveBeenCalledTimes(1);
   });
 
-  it('fires onCreateStudio when create-studio is clicked', () => {
-    const onCreateStudio = vi.fn();
-    render(
-      <RailCreateActions
-        createProjectLabel='New project'
-        createCollectionLabel='New collection'
-        createStudioLabel='New studio'
-        comingSoonLabel='Coming soon'
-        onCreateProject={vi.fn()}
-        onCreateStudio={onCreateStudio}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'New studio' }));
-    expect(onCreateStudio).toHaveBeenCalledTimes(1);
-  });
-
   it('renders create-collection as a disabled placeholder (backend deferred)', () => {
     render(
       <RailCreateActions
         createProjectLabel='New project'
         createCollectionLabel='New collection'
-        createStudioLabel='New studio'
         comingSoonLabel='Coming soon'
         onCreateProject={vi.fn()}
-        onCreateStudio={vi.fn()}
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'New collection' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'New studio' })).toBeEnabled();
+    // Disabled through the HTML attribute — never `pointer-events: none`,
+    // which would swallow the hover that explains why it cannot be used.
+    const collection = screen.getByRole('button', { name: 'New collection' });
+    expect(collection).toBeDisabled();
+    expect(collection.className).toContain('cursor-not-allowed');
     expect(screen.getByRole('button', { name: 'New project' })).toBeEnabled();
+  });
+
+  it('no longer carries the create-studio action (it lives in the rail footer)', () => {
+    render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+  });
+
+  it('draws no separator of its own', () => {
+    const { container } = render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    expect(container.querySelectorAll('hr')).toHaveLength(0);
+  });
+
+  it('builds both actions from the one top-level row definition', () => {
+    render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    for (const name of ['New project', 'New collection']) {
+      expect(screen.getByRole('button', { name }).className).toContain(RAIL_ROW_TOP);
+    }
   });
 });
 
@@ -82,6 +103,17 @@ describe('RailRecentLink (spec §4.1 ③)', () => {
     );
     expect(screen.getByRole('link', { name: /Recent/ })).not.toHaveAttribute(
       'aria-current',
+    );
+  });
+
+  it('is a top-level rail row, from the one definition', () => {
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: /Recent/ }).className).toContain(
+      RAIL_ROW_TOP,
     );
   });
 });

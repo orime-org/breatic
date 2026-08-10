@@ -4,9 +4,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { Briefcase } from 'lucide-react';
 
 import { RailStudioGroup } from '@web/pages/studio/rail/RailStudioGroup';
+import { RAIL_ROW_NESTED } from '@web/pages/studio/rail/rail-row';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 
 function studio(id: string, name: string): StudioSummary {
@@ -24,22 +24,32 @@ function studio(id: string, name: string): StudioSummary {
 
 const STUDIOS = [studio('acme', 'Acme'), studio('nova', 'Nova Lab')];
 
-describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §0.1)', () => {
+/**
+ * Render the group with the standard props, so each test states only what it
+ * is about.
+ * @param over - Props to override for this test.
+ * @returns The render result.
+ */
+function renderGroup(over: Partial<React.ComponentProps<typeof RailStudioGroup>> = {}) {
+  return render(
+    <MemoryRouter>
+      <RailStudioGroup
+        title='My Studios'
+        studios={STUDIOS}
+        activeSlug={null}
+        emptyText='none yet'
+        collapseKey='rail.test.group'
+        {...over}
+      />
+    </MemoryRouter>,
+  );
+}
+
+describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
   beforeEach(() => window.localStorage.clear());
 
   it('renders each studio as a /studio/{slug} link and highlights the active one', () => {
-    render(
-      <MemoryRouter>
-        <RailStudioGroup
-          title='My Studios'
-          studios={STUDIOS}
-          activeSlug='nova'
-          emptyText='none yet'
-          collapseKey='rail.test.my'
-          Icon={Briefcase}
-        />
-      </MemoryRouter>,
-    );
+    renderGroup({ activeSlug: 'nova' });
 
     const acme = screen.getByRole('link', { name: /Acme/ });
     expect(acme).toHaveAttribute('href', '/studio/acme');
@@ -51,47 +61,95 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §0.1)', () => {
   });
 
   it('shows the empty text (never hides) when the group has no studios (§0.1 data-driven)', () => {
-    render(
-      <MemoryRouter>
-        <RailStudioGroup
-          title='Joined Studios'
-          studios={[]}
-          activeSlug={null}
-          emptyText='还没加入任何 studio'
-          collapseKey='rail.test.joined'
-          Icon={Briefcase}
-        />
-      </MemoryRouter>,
-    );
+    renderGroup({ title: 'Joined Studios', studios: [], emptyText: '还没加入任何 studio' });
 
     // The section header stays AND the empty text is shown — not hidden.
     expect(screen.getByText('Joined Studios')).toBeInTheDocument();
     expect(screen.getByText('还没加入任何 studio')).toBeInTheDocument();
   });
 
-  it('collapses the list on header click (Discord-style), keeping the title', () => {
-    render(
-      <MemoryRouter>
-        <RailStudioGroup
-          title='My Studios'
-          studios={STUDIOS}
-          activeSlug={null}
-          emptyText='none yet'
-          collapseKey='rail.test.collapse'
-          Icon={Briefcase}
-        />
-      </MemoryRouter>,
-    );
+  // ---- The collapse contract (user 2026-08-10) --------------------------
+  // Collapsing answers to the chevron alone. The title is a label, not a
+  // control: a whole row that lights up on hover reads as "this row goes
+  // somewhere", and this one only opens and closes.
 
+  it('does NOT collapse when the group title text is clicked', () => {
+    renderGroup();
+
+    fireEvent.click(screen.getByText('My Studios'));
+
+    // Still expanded: the studios are all still there.
     expect(screen.getByRole('link', { name: /Acme/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Nova Lab/ })).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: /My Studios/ }));
+  it('collapses and expands when the chevron button is clicked', () => {
+    renderGroup();
+    const toggle = screen.getByRole('button', { name: 'My Studios' });
 
-    // Collapsed: the list is gone, the title remains, aria-expanded flips.
+    fireEvent.click(toggle);
     expect(screen.queryByRole('link', { name: /Acme/ })).toBeNull();
     expect(screen.getByText('My Studios')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /My Studios/ }),
-    ).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(toggle);
+    expect(screen.getByRole('link', { name: /Acme/ })).toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('names the chevron button after the group it controls, and points at the list', () => {
+    const { container } = renderGroup();
+    const toggle = screen.getByRole('button', { name: 'My Studios' });
+
+    // The accessible name comes from the title element, so there is one
+    // translated string and no second copy to keep in sync.
+    const labelledBy = toggle.getAttribute('aria-labelledby');
+    expect(labelledBy).toBeTruthy();
+    expect(container.querySelector(`#${CSS.escape(labelledBy!)}`)).toHaveTextContent(
+      'My Studios',
+    );
+
+    const controls = toggle.getAttribute('aria-controls');
+    expect(controls).toBeTruthy();
+    expect(container.querySelector(`#${CSS.escape(controls!)}`)).toContainElement(
+      screen.getByRole('link', { name: /Acme/ }),
+    );
+  });
+
+  it('gives the chevron a 24px hit area of its own', () => {
+    renderGroup();
+    const toggle = screen.getByRole('button', { name: 'My Studios' });
+    // --btn-compact, the smallest step on the chrome ladder.
+    expect(toggle.className).toContain('h-6');
+    expect(toggle.className).toContain('w-6');
+  });
+
+  // ---- The two-level hierarchy (spec 2026-06-07 §4.3) -------------------
+  // A studio row sits one level under its group header, and the indent is the
+  // whole of how that reads: 14px against the top level's 8px. Heights match.
+  // A later "let's make every row line up" would flatten a deliberate tree.
+
+  it('indents studio rows one level in, at the same height as a top-level row', () => {
+    renderGroup();
+    const row = screen.getByRole('link', { name: /Acme/ });
+    expect(row.className).toContain(RAIL_ROW_NESTED);
+    expect(row.className).toContain('pl-3.5');
+    expect(row.className).toContain('h-8');
+    expect(row.className).not.toContain('pl-2 ');
+  });
+
+  it('indents the empty text to the same level as a studio row', () => {
+    renderGroup({ studios: [], emptyText: 'none yet' });
+    expect(screen.getByText('none yet').className).toContain('pl-3.5');
+  });
+
+  it('renders the group header as a quiet label, not a full-size row', () => {
+    renderGroup();
+    const title = screen.getByText('My Studios');
+    // 11px + wider tracking: the studio names stay the loudest thing here.
+    expect(title.className).toContain('text-2xs');
+    expect(title.className).toContain('tracking-wider');
+    // 28px header row against the 32px top-level rows.
+    expect(title.closest('div')?.className).toContain('h-7');
   });
 });
