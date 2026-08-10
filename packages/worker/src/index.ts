@@ -13,6 +13,7 @@ import "@worker/bootstrap-config.js";
 import {
   env,
   initLogger,
+  loadLocales,
   createWorker,
   createQueue,
   createQueueEvents,
@@ -31,6 +32,12 @@ import {
 } from "@breatic/core";
 
 initLogger("worker");
+// i18n: register the catalogs before anything can throw. `t()` returns the
+// KEY when no catalog is loaded, so without this a user reads
+// `server.project.not_found` where a sentence belongs — @breatic/domain is
+// shared with the server, and its errors surface on the canvas from here.
+loadLocales();
+
 
 // Route the AI SDK's warnings into our logger. Without this the SDK writes
 // them to console, and our logs are JSON on disk — console output lands

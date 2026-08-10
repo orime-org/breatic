@@ -78,7 +78,8 @@
       "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
       "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual} 个",
       "stream_unavailable": "任务事件流暂时不可用，请重试。",
-      "history_entry_not_found": "找不到这条历史记录"
+      "history_entry_not_found": "找不到这条历史记录",
+      "node_locked": "这个节点正在被其他人生成"
     },
     "memory": {
       "version_conflict": "有人同时修改了它，请重试。"

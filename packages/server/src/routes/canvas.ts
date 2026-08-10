@@ -161,13 +161,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   // the billing source of truth; concurrent passes may drive the balance
   // negative, the accepted trade-off of a soft pre-check. Same shared
   // helper and 402 shape as the /mini-tools routes.
-  const insufficient = await precheckCredits(
-    user.id,
-    estimateTaskCredits(body.model),
-  );
-  if (insufficient) {
-    return c.json({ error: { code: 402, message: insufficient } }, 402);
-  }
+  await precheckCredits(user.id, estimateTaskCredits(body.model));
 
   // Same gate the chat entry uses. This path had none: a skill_name went
   // from the request body into the task row and the queue untouched.
@@ -346,13 +340,7 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
   // #1580 adversarial fix: understand tasks invoke real vision/ASR models
   // and are billed at completion like every other task — this route was the
   // only enqueue path without the shared credit pre-check.
-  const insufficientUnderstand = await precheckCredits(
-    user.id,
-    estimateTaskCredits(body.model),
-  );
-  if (insufficientUnderstand) {
-    return c.json({ error: { code: 402, message: insufficientUnderstand } }, 402);
-  }
+  await precheckCredits(user.id, estimateTaskCredits(body.model));
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,

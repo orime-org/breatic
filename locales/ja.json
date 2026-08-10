@@ -78,7 +78,8 @@
       "model_requires_source": "このモデルにはソース入力が必要です。画像・動画・音声のノードを接続してください",
       "too_many_inputs": "このモデルはこの種類の入力を最大 {limit} 件まで受け付けますが、{actual} 件が指定されました",
       "stream_unavailable": "タスクイベントストリームを利用できません。もう一度お試しください。",
-      "history_entry_not_found": "履歴が見つかりません"
+      "history_entry_not_found": "履歴が見つかりません",
+      "node_locked": "このノードは他の人が生成中です"
     },
     "memory": {
       "version_conflict": "同時に他の人が更新しました。もう一度お試しください。"

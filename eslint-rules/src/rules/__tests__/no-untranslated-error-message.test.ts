@@ -19,6 +19,7 @@ ruleTester.run("no-untranslated-error-message", noUntranslatedErrorMessage, {
     // ConflictLockedError builds its own message from a structured detail —
     // a caller has no message argument to get wrong.
     { code: "throw new ConflictLockedError({ holdingBy, holdingByName, taskId, startedAt, estimatedSeconds });" },
+    { code: "class NodeLocked extends AppError { constructor(d) { super(409, t('server.canvas.node_locked')); } }" },
     // Not our error family.
     { code: 'throw new Error("internal invariant broken");' },
     { code: 'throw new TypeError("expected a number");' },
@@ -46,6 +47,13 @@ ruleTester.run("no-untranslated-error-message", noUntranslatedErrorMessage, {
     // Concatenation is the same literal with extra steps.
     {
       code: 'throw new ValidationError("Skill " + name + " not found");',
+      errors: [{ messageId: "untranslatedMessage", line: 1 }],
+    },
+    // A subclass hardcoding its own message. `ConflictLockedError` shipped
+    // exactly this way — its caller passes only a structured detail, so
+    // watching callers alone said nothing about the sentence on the wire.
+    {
+      code: "class NodeLocked extends AppError { constructor(d) { super(409, 'Node is locked'); } }",
       errors: [{ messageId: "untranslatedMessage", line: 1 }],
     },
   ],
