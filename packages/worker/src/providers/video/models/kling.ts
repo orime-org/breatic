@@ -5,15 +5,14 @@
  * Kling model family -- KwaiVGI video generation (O3, O1, V3 Motion).
  *
  * Handles all Kling video models across generations and modes (t2v, i2v,
- * ref, edit, motion).  {@link buildRequest} branches on `providerName`
- * to convert user-facing params to each provider's API format.
- *
- * Parameter mapping (YAML user-facing vs API):
- * - wavespeed: generate_audio -> sound
- * - klingai: image -> image_url, end_image -> tail_image_url,
- *   element_list -> elements, video -> video_url, duration -> string
+ * first_last, ref, edit, motion).  {@link buildRequest} branches on
+ * `providerName` to convert our param names into the ones that provider
+ * takes -- see {@link applyFieldNames} for why a mapping is stated even when
+ * the two names agree.
  */
 
+import { applyFieldNames } from "@worker/providers/field-mapping.js";
+import type { FieldNames } from "@worker/providers/field-mapping.js";
 import type { ModelFamily } from "@worker/providers/shared.js";
 
 /** Set of model names belonging to this family. */
@@ -26,87 +25,86 @@ export const MODELS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Build WaveSpeed API params for Kling models.
+ * Names this family has always used, for the models that have not been mapped
+ * one by one yet (#1908). Every one of these is inherited, not verified: the
+ * KlingAI column is what sent `kling-o3-pro-i2v`'s first frame under a name
+ * the vendor does not accept, until #1904 gave that model its own entry below.
+ */
+const FAMILY_FIELDS: Readonly<Record<string, FieldNames>> = {
+  klingai: {
+    image: "image_url",
+    end_image: "tail_image_url",
+    element_list: "elements",
+    video: "video_url",
+  },
+  wavespeed: {
+    generate_audio: "sound",
+  },
+};
+
+/**
+ * What one model calls its fields on one provider. Merged over
+ * {@link FAMILY_FIELDS}, so a model states only what is its own.
  *
- * WaveSpeed naming:
- * - `generate_audio` -> `sound`
- * - Other params pass-through
+ * `kling-o3-pro-i2v` (#1904): KlingAI's `/v1/videos/image2video` takes `image`
+ * and `image_tail`; WaveSpeed's `kwaivgi/kling-video-o3-pro/image-to-video`
+ * takes `image` and `end_image`. The first frame agrees on both and is written
+ * out on both.
+ */
+const MODEL_FIELDS: Readonly<Record<string, Readonly<Record<string, FieldNames>>>> = {
+  "kling-o3-pro-i2v": {
+    klingai: { image: "image", end_image: "image_tail" },
+    wavespeed: { image: "image", end_image: "end_image" },
+  },
+};
+
+/**
+ * The field names one model uses on one provider: what the family has always
+ * done, overridden by whatever the model states for itself.
+ * @param modelName - Resolved model name.
+ * @param providerName - Provider the request is going to.
+ * @returns The merged name table.
+ */
+function fieldNamesFor(modelName: string, providerName: string): FieldNames {
+  return {
+    ...(FAMILY_FIELDS[providerName] ?? {}),
+    ...(MODEL_FIELDS[modelName]?.[providerName] ?? {}),
+  };
+}
+
+/**
+ * Build WaveSpeed API params for Kling models.
  * @param prompt - User's video description, returned unchanged
- * @param _modelName - Resolved model name (unused; WaveSpeed mapping is model-agnostic)
+ * @param modelName - Resolved model name, which picks the name table
  * @param params - Validated params to map into WaveSpeed naming
  * @returns Tuple of [prompt, apiParams] in WaveSpeed format
  */
 function buildWavespeed(
   prompt: string,
-  _modelName: string,
+  modelName: string,
   params: Record<string, unknown>,
 ): [string, Record<string, unknown>] {
-  const api = { ...params };
-
-  // Rename: generate_audio -> sound
-  const generateAudio = api.generate_audio;
-  delete api.generate_audio;
-  if (generateAudio != null) {
-    api.sound = generateAudio;
-  }
-
-  return [prompt, api];
+  return [prompt, applyFieldNames(params, fieldNamesFor(modelName, "wavespeed"))];
 }
 
 /**
  * Build Kling official API params.
  *
- * Official naming:
- * - `image` -> `image_url`
- * - `end_image` -> `tail_image_url`
- * - `element_list` -> `elements`
- * - `video` -> `video_url`
- * - `duration` -> string ("5")
+ * Beyond the name table, the official API wants the duration as a string.
  * @param prompt - User's video description, returned unchanged
- * @param _modelName - Resolved model name (unused; Kling official mapping is model-agnostic)
+ * @param modelName - Resolved model name, which picks the name table
  * @param params - Validated params to map into Kling official naming
  * @returns Tuple of [prompt, apiParams] in Kling official format
  */
 function buildKlingai(
   prompt: string,
-  _modelName: string,
+  modelName: string,
   params: Record<string, unknown>,
 ): [string, Record<string, unknown>] {
-  const api = { ...params };
-
-  // Rename: image -> image_url
-  const image = api.image;
-  delete api.image;
-  if (image != null) {
-    api.image_url = image;
-  }
-
-  // Rename: end_image -> tail_image_url
-  const endImage = api.end_image;
-  delete api.end_image;
-  if (endImage != null) {
-    api.tail_image_url = endImage;
-  }
-
-  // Rename: element_list -> elements
-  const elementList = api.element_list;
-  delete api.element_list;
-  if (elementList != null) {
-    api.elements = elementList;
-  }
-
-  // Rename: video -> video_url (edit mode)
-  const video = api.video;
-  delete api.video;
-  if (video != null) {
-    api.video_url = video;
-  }
-
-  // Duration must be string for official API
+  const api = applyFieldNames(params, fieldNamesFor(modelName, "klingai"));
   if (api.duration != null) {
     api.duration = String(api.duration);
   }
-
   return [prompt, api];
 }
 
