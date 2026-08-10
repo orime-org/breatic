@@ -5,6 +5,7 @@ import type * as React from 'react';
 import { Link } from 'react-router-dom';
 import { Clock } from 'lucide-react';
 
+import { cn } from '@web/lib/utils';
 import {
   RAIL_ICON,
   RAIL_ROW_CURRENT,
@@ -36,7 +37,10 @@ export function RailRecentLink({
     <Link
       to='/studio'
       aria-current={active ? 'page' : undefined}
-      className={`${RAIL_ROW_TOP} ${active ? RAIL_ROW_CURRENT : RAIL_ROW_IDLE}`}
+      // cn() rather than a template string: the current state names a weight
+      // the base already set, and twMerge is what makes the later one win
+      // rather than the stylesheet's ordering.
+      className={cn(RAIL_ROW_TOP, active ? RAIL_ROW_CURRENT : RAIL_ROW_IDLE)}
     >
       <Clock className={RAIL_ICON} />
       {label}

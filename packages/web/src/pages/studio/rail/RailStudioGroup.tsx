@@ -6,7 +6,10 @@ import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { cn } from '@web/lib/utils';
 import {
+  RAIL_INDENT_NESTED,
+  RAIL_INDENT_TOP,
   RAIL_LIST,
   RAIL_ROW_CURRENT,
   RAIL_ROW_IDLE,
@@ -29,8 +32,11 @@ interface RailStudioGroupProps {
   collapseKey: string;
 }
 
-/** The group heading: a quiet label, one step below the rows it names. */
-const HEADING = 'flex h-7 items-center gap-2 pl-2 pr-1';
+/**
+ * The group heading: a quiet label, one step below the rows it names. It sits
+ * at the top level's indent, taken from there rather than typed again.
+ */
+const HEADING = `flex h-7 items-center gap-2 ${RAIL_INDENT_TOP} pr-1`;
 
 /** The heading's text — 11px with wider tracking, so studio names stay loudest. */
 const HEADING_TEXT =
@@ -100,7 +106,9 @@ export function RailStudioGroup({
       {collapsed ? null : (
         <div id={listId}>
           {studios.length === 0 ? (
-            <p className='py-1.5 pl-3.5 pr-2 text-xs text-muted-foreground'>
+            <p
+              className={`py-1.5 ${RAIL_INDENT_NESTED} pr-2 text-xs text-muted-foreground`}
+            >
               {emptyText}
             </p>
           ) : (
@@ -112,11 +120,12 @@ export function RailStudioGroup({
                     aria-current={
                       studio.slug === activeSlug ? 'page' : undefined
                     }
-                    className={`${RAIL_ROW_NESTED} ${
+                    className={cn(
+                      RAIL_ROW_NESTED,
                       studio.slug === activeSlug
                         ? RAIL_ROW_CURRENT
-                        : RAIL_ROW_IDLE
-                    }`}
+                        : RAIL_ROW_IDLE,
+                    )}
                   >
                     <StudioAvatar
                       name={studio.name}

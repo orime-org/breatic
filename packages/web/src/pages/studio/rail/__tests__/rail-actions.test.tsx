@@ -43,6 +43,27 @@ describe('RailCreateActions (spec §4.1 ①②)', () => {
     expect(screen.getByRole('button', { name: 'New project' })).toBeEnabled();
   });
 
+  it('does not answer the pointer at all on the disabled action', () => {
+    // `group` is what lets a row's icon come up under the pointer, so a row
+    // that cannot be used must not carry it. It kept `cursor-not-allowed`
+    // rather than `pointer-events: none` precisely so the hover still explains
+    // itself — that hover must not then light the icon brighter than the label
+    // it sits next to.
+    render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    const collection = screen.getByRole('button', { name: 'New collection' });
+    expect(collection.className).not.toMatch(/(^|\s)group(\s|$)/);
+    expect(screen.getByRole('button', { name: 'New project' }).className).toMatch(
+      /(^|\s)group(\s|$)/,
+    );
+  });
+
   it('no longer carries the create-studio action (it lives in the rail footer)', () => {
     render(
       <RailCreateActions

@@ -216,6 +216,49 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
     }
   });
 
+  it('gives every top-level row the same weight, whatever element it is built on', () => {
+    // Recent is a Link and the create actions are Buttons, and the Button
+    // primitive's base carries font-medium. Unless the row definition names a
+    // weight of its own, twMerge has nothing to override it with and the three
+    // buttons render bolder than the link beside them — at exactly the weight
+    // that marks the row you are currently on.
+    render(
+      <MemoryRouter>
+        <StudioRail
+          studios={[]}
+          activeSlug='somewhere-else'
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    for (const name of ['New project', 'New collection', 'New Studio']) {
+      expect(screen.getByRole('button', { name }).className).not.toContain(
+        'font-medium',
+      );
+    }
+    expect(screen.getByRole('link', { name: /Recent/ }).className).not.toContain(
+      'font-medium',
+    );
+  });
+
+  it('keeps the bold weight for the row you are actually on', () => {
+    render(
+      <MemoryRouter>
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    // activeSlug null means Recent is the current destination.
+    expect(screen.getByRole('link', { name: /Recent/ }).className).toContain(
+      'font-medium',
+    );
+  });
+
   it('renders Recent at the TOP, above the create actions (visual spec 2026-06-08)', () => {
     render(
       <MemoryRouter>

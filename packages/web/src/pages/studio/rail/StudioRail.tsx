@@ -5,6 +5,7 @@ import type * as React from 'react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
+import { RAIL_SEGMENT } from '@web/pages/studio/rail/rail-row';
 import { RailCreateStudioAction } from '@web/pages/studio/rail/RailCreateStudioAction';
 import { StudioRailContent } from '@web/pages/studio/rail/StudioRailContent';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
@@ -63,7 +64,7 @@ export function StudioRail({
           onCreateProject={onCreateProject}
         />
       </ScrollArea>
-      <div className='shrink-0 border-t border-border p-2'>
+      <div className={`shrink-0 border-t border-border ${RAIL_SEGMENT}`}>
         <RailCreateStudioAction
           label={t('studio.rail.createStudio')}
           onCreateStudio={onCreateStudio}

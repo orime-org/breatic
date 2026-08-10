@@ -16,24 +16,37 @@
  * where the rail's mismatched heights, indents and gaps came from.
  */
 
+/** The padding a rail segment insets its contents by. */
+export const RAIL_SEGMENT = 'p-2';
+
+/** How far in a top-level row sits. */
+export const RAIL_INDENT_TOP = 'pl-2';
+
+/**
+ * How far in a row one level under a heading sits. The 6px between this and
+ * {@link RAIL_INDENT_TOP} is the whole of how the second level reads, so both
+ * live here rather than being typed out wherever a row happens to be built.
+ */
+export const RAIL_INDENT_NESTED = 'pl-3.5';
+
 /**
  * Build a rail row's classes at a given indent.
  *
- * A row carries its own width and alignment rather than borrowing them from
- * whatever contains it, because both had already gone wrong that way. A
+ * A row carries its own width, alignment and weight rather than borrowing them
+ * from whatever contains it, because each had already gone wrong that way. A
  * `<button>` sizes to its content whatever its `display` is, so the create
- * actions only filled the rail while their parent happened to be a flex
- * column stretching them; moving create-studio into the footer, where nothing
- * stretches it, left it 111px wide against the 223px rows it should match.
- * And `justify-start` undoes the `Button` primitive's centring — a comment in
- * `RailCreateActions` claimed that class was applied, but it never was, so the
- * three create actions had been sitting centred, icons 45–54px right of
- * Recent's.
+ * actions only filled the rail while their parent happened to be a flex column
+ * stretching them. `justify-start` undoes the `Button` primitive's centring — a
+ * comment in `RailCreateActions` claimed that class was applied, but it never
+ * was, so the three create actions had been sitting centred. And `font-normal`
+ * is here to be overridden: without a weight of its own the primitive's
+ * `font-medium` came through, leaving the three buttons permanently at the
+ * weight {@link RAIL_ROW_CURRENT} uses to mark where the viewer is.
  * @param paddingLeft - The left-padding class that places this level.
  * @returns The row's class string, indent included.
  */
 function railRow(paddingLeft: string): string {
-  return `group flex h-8 w-full items-center justify-start gap-2.5 rounded-chrome ${paddingLeft} pr-2 text-sm transition-colors`;
+  return `flex h-8 w-full items-center justify-start gap-2.5 rounded-chrome ${paddingLeft} pr-2 text-sm font-normal transition-colors`;
 }
 
 /**
@@ -47,24 +60,36 @@ function railRow(paddingLeft: string): string {
 export const RAIL_LIST = 'flex flex-col gap-0.5';
 
 /** A top-level row: Recent, the create actions, create-studio in the footer. */
-export const RAIL_ROW_TOP = railRow('pl-2');
+export const RAIL_ROW_TOP = railRow(RAIL_INDENT_TOP);
 
 /** A row one level in, under a group heading: a studio the viewer belongs to. */
-export const RAIL_ROW_NESTED = railRow('pl-3.5');
+export const RAIL_ROW_NESTED = railRow(RAIL_INDENT_NESTED);
 
 /**
  * How a row reads when it is the destination the viewer is currently on.
  * Applied on top of a level's classes, so both levels highlight alike.
  */
-export const RAIL_ROW_CURRENT = 'bg-accent font-medium text-foreground';
+export const RAIL_ROW_CURRENT = 'group bg-accent font-medium text-foreground';
 
 /** How a row reads when it is not the current destination. */
-export const RAIL_ROW_IDLE = 'text-foreground hover:bg-accent';
+export const RAIL_ROW_IDLE = 'group text-foreground hover:bg-accent';
 
 /**
- * A rail icon. One secondary grey for all of them: an icon painted louder
- * than the words beside it is what made the column read as noise. It comes up
- * with its row on hover, which is why the row carries `group`.
+ * How a row reads when it cannot be used. It keeps `cursor-not-allowed` rather
+ * than `pointer-events: none` so the hover still explains itself — and it does
+ * NOT carry `group`, which is what would otherwise let the pointer light its
+ * icon brighter than its own dimmed label.
+ */
+export const RAIL_ROW_DISABLED =
+  'cursor-not-allowed text-muted-foreground opacity-65';
+
+/**
+ * A rail icon. One secondary grey for all of them: an icon painted louder than
+ * the words beside it is what made the column read as noise. It comes up with
+ * its row under the pointer, and on the row the viewer is actually on — that
+ * second half matters because without it, hovering a row you are not on lights
+ * it brighter than the one you are. Both reach the icon through the `group` its
+ * row carries, which is why a disabled row does not carry one.
  */
 export const RAIL_ICON =
-  'h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground';
+  'h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground group-aria-[current=page]:text-foreground';

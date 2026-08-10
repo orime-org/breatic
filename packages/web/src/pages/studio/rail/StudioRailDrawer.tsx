@@ -14,6 +14,7 @@ import {
   SheetTrigger,
 } from '@web/components/ui/sheet';
 import { useTranslation } from '@web/i18n/use-translation';
+import { RAIL_SEGMENT } from '@web/pages/studio/rail/rail-row';
 import { RailCreateStudioAction } from '@web/pages/studio/rail/RailCreateStudioAction';
 import { StudioRailContent } from '@web/pages/studio/rail/StudioRailContent';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
@@ -85,7 +86,10 @@ export function StudioRailDrawer({
         <SheetTitle className='sr-only'>{t('studio.rail.navLabel')}</SheetTitle>
         {/* Drawer header — brand on the left; the vendor Sheet close (X,
             absolute right-3 top-3) lands in the pr-10 gap on the right, so it
-            gets its own row instead of overlapping the first rail item. */}
+            gets its own row instead of overlapping the first rail item.
+            Its pl-3.5 places the brand mark and is not the rail's nested
+            indent — the two happen to be the same number and are free to
+            diverge. */}
         <div className='flex h-9 shrink-0 items-center pl-3.5 pr-10 pt-2'>
           <Link
             to='/studio'
@@ -107,7 +111,7 @@ export function StudioRailDrawer({
             onCreateProject={onCreateProject}
           />
         </ScrollArea>
-        <div className='shrink-0 border-t border-border p-2'>
+        <div className={`shrink-0 border-t border-border ${RAIL_SEGMENT}`}>
           <RailCreateStudioAction
             label={t('studio.rail.createStudio')}
             onCreateStudio={onCreateStudio}

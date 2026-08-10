@@ -8,6 +8,7 @@ import { Button } from '@web/components/ui/button';
 import {
   RAIL_ICON,
   RAIL_LIST,
+  RAIL_ROW_DISABLED,
   RAIL_ROW_IDLE,
   RAIL_ROW_TOP,
 } from '@web/pages/studio/rail/rail-row';
@@ -68,7 +69,7 @@ export function RailCreateActions({
         title={comingSoonLabel}
         variant={null}
         size={null}
-        className={`${RAIL_ROW_TOP} cursor-not-allowed text-muted-foreground opacity-65`}
+        className={`${RAIL_ROW_TOP} ${RAIL_ROW_DISABLED}`}
       >
         <Plus className={RAIL_ICON} />
         {createCollectionLabel}

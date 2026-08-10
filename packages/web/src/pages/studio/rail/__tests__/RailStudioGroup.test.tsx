@@ -6,7 +6,13 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 import { RailStudioGroup } from '@web/pages/studio/rail/RailStudioGroup';
-import { RAIL_LIST, RAIL_ROW_NESTED } from '@web/pages/studio/rail/rail-row';
+import {
+  RAIL_ICON,
+  RAIL_INDENT_NESTED,
+  RAIL_INDENT_TOP,
+  RAIL_LIST,
+  RAIL_ROW_NESTED,
+} from '@web/pages/studio/rail/rail-row';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 
 function studio(id: string, name: string): StudioSummary {
@@ -147,8 +153,25 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
   });
 
   it('indents the empty text to the same level as a studio row', () => {
+    // Standing in for the rows that are not there, it reads at their indent —
+    // and takes that indent from the one place that owns it, so a later change
+    // to the nesting cannot leave this line behind.
     renderGroup({ studios: [], emptyText: 'none yet' });
-    expect(screen.getByText('none yet').className).toContain('pl-3.5');
+    expect(screen.getByText('none yet').className).toContain(RAIL_INDENT_NESTED);
+  });
+
+  it('aligns the heading with the top level it names, from the one indent', () => {
+    renderGroup();
+    expect(screen.getByText('My Studios').closest('div')?.className).toContain(
+      RAIL_INDENT_TOP,
+    );
+  });
+
+  it('brightens the current row’s icon rather than leaving it the quiet grey', () => {
+    // Icons come up under the pointer; the row you are on has to read at least
+    // as bright, or hovering a row you are not on lights it more than the one
+    // you are.
+    expect(RAIL_ICON).toContain('group-aria-[current=page]:text-foreground');
   });
 
   it('renders the group header as a quiet label, not a full-size row', () => {
