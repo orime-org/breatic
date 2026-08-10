@@ -6,16 +6,16 @@
  * actually runs (#26).
  *
  * The Space-existence check answers from the meta doc this process holds, and
- * loads it when it holds none. Everything about whether that is correct across
- * instances lives in what the load produces: Postgres hands back a row that
- * may be a store tick behind, and `@hocuspocus/extension-redis` then asks the
- * peers for anything newer. Reading the library and reasoning about the window
- * is not the same as running it, so this runs it.
+ * loads one when it holds none. Whether that is right across instances lives
+ * entirely in what the load produces: Postgres hands back a row that may be a
+ * store tick behind, and `@hocuspocus/extension-redis` then asks the peers for
+ * anything newer. Reading the library and reasoning about the window is not
+ * the same as running it, so this runs it.
  *
  * The shape under test is the one the logs show (2026-08-10 11:13:21): an
- * instance restarts, a browser that has already synced reconnects every open
- * document at once, and the content-doc handshakes arrive before the meta doc
- * is loaded here.
+ * instance comes up, a browser that has already synced reconnects every open
+ * document at once, and the content-doc handshakes arrive on an instance that
+ * holds nothing for this project.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -31,10 +31,10 @@ import { createChangeTrackingExtension } from "@breatic/collab/src/services/chan
 
 const PID = "44444444-4444-4444-8444-444444444444";
 const META_DOC = `project-${PID}/meta`;
-/** Already in Postgres before anything starts. */
-const OLD_SPACE = "55555555-5555-4555-8555-555555555555";
+/** Written to Postgres before anything starts. */
+const STORED_SPACE = "55555555-5555-4555-8555-555555555555";
 /** Created in one instance's memory only — never stored. */
-const NEW_SPACE = "66666666-6666-4666-8666-666666666666";
+const MEMORY_ONLY_SPACE = "66666666-6666-4666-8666-666666666666";
 
 let instanceA: Hocuspocus;
 let instanceB: Hocuspocus;
@@ -44,12 +44,15 @@ const servers: Array<{ destroy: () => Promise<void> }> = [];
  * Build one collab instance wired the way production wires it: the change
  * tracker, the persistence extension, and the Redis extension over the
  * instance-coordination database.
- * @param name - Used only to tell the two apart in a Redis client name.
+ * @param name - Distinguishes the two instances' Redis clients.
  * @returns The running server's Hocuspocus instance.
+ * @throws {Error} When the integration environment has no `REDIS_COLLAB_URL`.
  */
 async function startInstance(name: string): Promise<Hocuspocus> {
   const collabUrl = process.env.REDIS_COLLAB_URL;
-  if (!collabUrl) throw new Error("REDIS_COLLAB_URL missing from the integration env");
+  if (!collabUrl) {
+    throw new Error("REDIS_COLLAB_URL missing from the integration env");
+  }
   const wsServer = new Server({
     port: 0,
     quiet: true,
@@ -71,11 +74,11 @@ async function startInstance(name: string): Promise<Hocuspocus> {
 }
 
 /**
- * Put a meta row in Postgres listing exactly the given Spaces — the state the
- * fallback would decide from.
+ * Put a meta row in Postgres listing exactly the given Spaces — the state a
+ * load starts from before the peers get a say.
  * @param ids - Space ids the stored row claims exist.
  */
-async function seedPersistedMeta(ids: string[]): Promise<void> {
+async function seedStoredMeta(ids: string[]): Promise<void> {
   const doc = new Y.Doc();
   const spaces = doc.getMap("spaces");
   for (const id of ids) {
@@ -87,11 +90,13 @@ async function seedPersistedMeta(ids: string[]): Promise<void> {
 }
 
 /**
- * The Space ids a freshly loaded meta doc reports on this instance.
+ * What the Space-existence check would answer on this instance: the ids in
+ * the meta doc it holds, loading one when it holds none. Mirrors
+ * `loadProjectSpaceIds` in `packages/collab/src/hooks/auth.ts`.
  * @param instance - The collab instance to ask.
- * @returns The ids, and how long getting them took.
+ * @returns The ids it answers with, and how long answering took.
  */
-async function readSpacesVia(
+async function spaceIdsSeenBy(
   instance: Hocuspocus,
 ): Promise<{ ids: string[]; ms: number }> {
   const started = process.hrtime.bigint();
@@ -102,12 +107,11 @@ async function readSpacesVia(
       META_DOC,
       new Request("http://localhost"),
       "space-existence-check",
-      { readOnly: true },
+      { isAuthenticated: true, readOnly: true },
       {},
     ));
   const ids = [...doc.getMap("spaces").keys()];
-  const ms = Number(process.hrtime.bigint() - started) / 1e6;
-  return { ids, ms };
+  return { ids, ms: Number(process.hrtime.bigint() - started) / 1e6 };
 }
 
 beforeAll(async () => {
@@ -122,7 +126,7 @@ afterAll(async () => {
 
 describe("Space existence across two collab instances", () => {
   it("sees a Space that only the other instance's memory knows about", async () => {
-    await seedPersistedMeta([OLD_SPACE]);
+    await seedStoredMeta([STORED_SPACE]);
 
     // Instance A holds the meta doc and gains a Space the way `space:create`
     // does: in memory, broadcast, with nothing written to Postgres.
@@ -131,47 +135,32 @@ describe("Space existence across two collab instances", () => {
     });
     await onA.transact((live: Y.Doc) => {
       const entry = new Y.Map<unknown>();
-      live.getMap("spaces").set(NEW_SPACE, entry);
-      entry.set("id", NEW_SPACE);
+      live.getMap("spaces").set(MEMORY_ONLY_SPACE, entry);
+      entry.set("id", MEMORY_ONLY_SPACE);
     });
 
-    // Give the pub/sub a beat — this is the propagation the design leans on.
-    await new Promise((r) => setTimeout(r, 300));
+    // Instance B holds nothing for this project — the reconnect shape. If it
+    // decided from the stored row it would miss the new Space entirely, which
+    // is what #26 was.
+    const seenOnB = await spaceIdsSeenBy(instanceB);
 
-    // Instance B holds nothing for this project. This is the reconnect shape.
-    const seenOnB = await readSpacesVia(instanceB);
+    expect(seenOnB.ids).toContain(STORED_SPACE);
+    expect(seenOnB.ids).toContain(MEMORY_ONLY_SPACE);
+    // Answering is on the handshake path, so it has to be fast. Loose enough
+    // not to be flaky on a loaded CI box, tight enough to catch the second a
+    // connection-based load would have cost.
+    expect(seenOnB.ms).toBeLessThan(500);
 
-    // eslint-disable-next-line no-console
-    console.log("MEASURED B:", JSON.stringify(seenOnB));
-
-    expect(seenOnB.ids).toContain(OLD_SPACE);
-    expect(seenOnB.ids).toContain(NEW_SPACE);
-
-    // A document loaded with no connection is never unloaded on its own:
-    // `unloadDocument` is only reached from a closing client connection or a
-    // finishing store, and neither happens here. Whoever loads it has to put
-    // it back, or `getDocumentsCount()` never returns to zero — which is also
-    // what `Server.destroy()` waits for.
-    const strandedOnB = instanceB.documents.get(META_DOC);
-    expect(strandedOnB).toBeDefined();
-    expect(strandedOnB?.getConnectionsCount()).toBe(0);
-    const unloadStarted = process.hrtime.bigint();
-    if (strandedOnB) await instanceB.unloadDocument(strandedOnB);
-    // eslint-disable-next-line no-console
-    console.log(
-      "MEASURED unload ms:",
-      Number(process.hrtime.bigint() - unloadStarted) / 1e6,
-      "| documents left on B:",
-      instanceB.getDocumentsCount(),
-    );
+    // A document loaded with no connection is never unloaded on its own, so
+    // whoever loads one puts it back. Doing that here is not tidiness: it is
+    // the same return the check schedules, and without it `destroy()` — which
+    // waits for the document count to reach zero — never finishes.
+    const borrowed = instanceB.documents.get(META_DOC);
+    expect(borrowed).toBeDefined();
+    expect(borrowed?.getConnectionsCount()).toBe(0);
+    if (borrowed) await instanceB.unloadDocument(borrowed);
     expect(instanceB.documents.has(META_DOC)).toBe(false);
 
-    const disconnectStarted = process.hrtime.bigint();
     await onA.disconnect();
-    // eslint-disable-next-line no-console
-    console.log(
-      "MEASURED openDirectConnection disconnect ms:",
-      Number(process.hrtime.bigint() - disconnectStarted) / 1e6,
-    );
   }, 60_000);
 });

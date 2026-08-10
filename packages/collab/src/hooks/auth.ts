@@ -47,7 +47,7 @@ import {
   projectAuthService,
   sessionCookieName,
 } from "@breatic/core";
-import * as Y from "yjs";
+import type * as Y from "yjs";
 import { parseDocName, projectMetaDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
 
