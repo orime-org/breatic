@@ -414,7 +414,7 @@ export interface CanvasNodeFields {
     /**
      * End-frame image URL for the first-last frame mode (#1904, wire
      * `data.endFrameUrl`) — a pick-time COPY on the same terms as
-     * {@link firstFrameUrl}, sent as `params.end_image` at execute time.
+     * `firstFrameUrl`, sent as `params.end_image` at execute time.
      *
      * Independent of the first frame: either can be picked or replaced at any
      * time and neither waits for the other, because only execute asks for both
