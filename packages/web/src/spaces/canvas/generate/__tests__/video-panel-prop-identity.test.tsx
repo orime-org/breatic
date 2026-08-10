@@ -185,6 +185,12 @@ describe('the container keeps its memoized children bail-able', () => {
       expect(seenSlotUrls.length).toBeGreaterThan(0);
     });
     const before = seenSlotUrls.at(-1);
+    // Counted HERE, not from mount: by now the panel has already rendered
+    // more than once (mount, then the catalog query settling), so an absolute
+    // `length > 1` below would be satisfied before the rerender it is meant to
+    // witness — and the case would pass while comparing one render against
+    // itself, which `Object.is` says are the same however unstable the prop is.
+    const rendersBefore = seenSlotUrls.length;
 
     // What a board mutation looks like from here: a brand-new nodes array
     // carrying identical slot URLs.
@@ -211,7 +217,7 @@ describe('the container keeps its memoized children bail-able', () => {
     );
 
     const after = seenSlotUrls.at(-1);
-    expect(seenSlotUrls.length).toBeGreaterThan(1);
+    expect(seenSlotUrls.length).toBeGreaterThan(rendersBefore);
     expect(Object.is(before, after)).toBe(true);
   });
 
