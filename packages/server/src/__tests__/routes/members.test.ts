@@ -85,7 +85,7 @@ describe("PATCH /projects/:pid/members/:userId — change role", () => {
     expect(mocks.projectMembersService.changeRole).toHaveBeenCalledWith(PID, TARGET, "viewer", "user-1");
   });
 
-  it("rejects role='owner' in patch body with 400", async () => {
+  it("rejects role='owner' in patch body with 422", async () => {
     const app = createApp();
     const res = await app.request(`/api/v1/projects/${PID}/members/${TARGET}`, {
       method: "PATCH",
@@ -93,7 +93,7 @@ describe("PATCH /projects/:pid/members/:userId — change role", () => {
       body: JSON.stringify({ role: "owner" }),
     });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   it("non-owner cannot PATCH — 403", async () => {

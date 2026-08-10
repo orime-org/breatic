@@ -26,7 +26,10 @@
       "reset_success": "密码重置成功,请登录。",
       "reset_recovery_success": "密码重置成功,请保存新的恢复码。",
       "email_verified": "邮箱已验证。",
-      "verify_email_sent": "验证邮件已发送,请查收。"
+      "verify_email_sent": "验证邮件已发送,请查收。",
+      "invalid_reset_token": "这个密码重置链接无效或已过期",
+      "invalid_recovery_code": "邮箱或恢复码不正确",
+      "invalid_verification_token": "这个验证链接无效或已过期"
     },
     "studio": {
       "slug_taken": "该 Slug 已被使用，请换一个。",
@@ -45,11 +48,44 @@
       "email_not_registered": "该邮箱未注册。",
       "already_member": "该用户已有访问权限。",
       "already_invited": "该用户已有一个待确认的邀请。",
-      "collaborator_limit_reached": "该 Project 已达到协作者数上限。"
+      "collaborator_limit_reached": "该 Project 已达到协作者数上限。",
+      "only_viewer_can_request_upgrade": "只有 Viewer 可以申请角色升级",
+      "no_active_owner": "这个 Project 没有在任的 Owner",
+      "not_found": "找不到这个 Project"
     },
     "payment": {
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
       "price_not_configured": "套餐 {tier} 的价格未配置"
+    },
+    "skill": {
+      "not_found": "找不到这个 Skill",
+      "name_taken": "你已经有一个同名的 Skill",
+      "not_published": "这个 Skill 还没有发布",
+      "cannot_install_own": "不能安装自己的 Skill",
+      "already_installed": "这个 Skill 已经安装过了",
+      "not_available_here": "Skill「{skill}」在这里不可用",
+      "not_user_invocable": "Skill「{skill}」不能直接调用",
+      "not_available_on_deployment": "Skill「{skill}」在当前服务器上不可用",
+      "not_found_named": "找不到 Skill「{skill}」"
+    },
+    "conversation": {
+      "not_found": "找不到这个会话",
+      "attachment_not_found": "找不到这个附件",
+      "attachment_not_yours": "这个附件不属于你",
+      "attachment_limit_reached": "这个会话的附件已达上限 {limit} 个，请先删除一些再上传。"
+    },
+    "canvas": {
+      "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
+      "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual} 个",
+      "stream_unavailable": "任务事件流暂时不可用，请重试。",
+      "history_entry_not_found": "找不到这条历史记录",
+      "node_locked": "这个节点正在被其他人生成"
+    },
+    "memory": {
+      "version_conflict": "有人同时修改了它，请重试。"
+    },
+    "asset": {
+      "direct_upload_unavailable": "当前服务器不支持直接上传"
     }
   },
   "chat": {
@@ -160,6 +196,7 @@
       "mentionEmpty": "还没有可引用的图 — 先从一张图连线过来",
       "selectFromCanvas": "从画布选择参考",
       "selectStyleFromCanvas": "从画布选择风格参考",
+      "selectFirstFrameFromCanvas": "在画布上选一张图片作为首帧",
       "removeStyle": "移除风格参考",
       "returnToNode": "返回节点",
       "exitSelect": "退出",
@@ -205,7 +242,11 @@
       "videoParams": "参数",
       "videoPromptPlaceholder": "描述你想生成的视频",
       "videoMentionEmpty": "还没有可引用的参考",
-      "videoNoPrompt": "这个节点建得比视频生成早，没有提示词。新建一个视频节点就能生成。"
+      "videoNoPrompt": "这个节点建得比视频生成早，没有提示词。新建一个视频节点就能生成。",
+      "firstFrame": "首帧",
+      "firstFrameTip": "挑一张图作为视频的第一帧",
+      "removeFirstFrame": "移除首帧",
+      "errorNoFirstFrame": "先挑一张首帧 —— 这个模式要从一张图开始生成"
     },
     "nodeMenu": {
       "generate": "生成",

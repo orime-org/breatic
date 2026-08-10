@@ -401,7 +401,7 @@ describe("POST /assets/uploaded — handshake verification", () => {
 });
 
 describe("POST /assets/deleted — report guards", () => {
-  it("400 for an over-long file_url (feed-bloat cap)", async () => {
+  it("422 for an over-long file_url (feed-bloat cap)", async () => {
     const { userId } = await insertUserWithStudio("Deleter");
     const projectId = await insertProject(userId);
     const res = await app.request("/api/v1/assets/deleted", {
@@ -415,7 +415,7 @@ describe("POST /assets/deleted — report guards", () => {
         entries: [{ file_url: `http://x/${"A".repeat(4000)}`, kind: "image" }],
       }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   it("rate-limits a report flood (429 before the window resets)", async () => {

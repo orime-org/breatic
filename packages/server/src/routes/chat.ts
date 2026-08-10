@@ -11,7 +11,7 @@
 
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 
 import {
   chatMessageSchema,
@@ -75,7 +75,7 @@ chat.use("*", requireAuth);
  * @param c - Hono context with validated `chatMessageSchema` body
  * @returns SSE text/event-stream response
  */
-chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
+chat.post("/message", validate("json", chatMessageSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
@@ -113,12 +113,27 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
   // affect the chat history.
   const messageWithChips = formatChipsForLLM(body.attached_chips, body.message);
 
+  // The first ring of the stop chain, and the only one that can hear the
+  // client leave. It cannot be inferred from the writes: `StreamingApi.write`
+  // catches and discards the error a dead socket produces, so a loop that only
+  // watched its writes would stream into nothing for as long as the model kept
+  // talking. See `routes/text-tools.ts`, which does the same for its own
+  // stream.
+  const stopped = new AbortController();
+
   return stream(c, async (s) => {
+    s.onAbort(() => {
+      stopped.abort();
+    });
     await runWithContext(
       { userId: user.id, conversationId: conversation.id, projectId: body.project_id, memoryContext, compressedHistory },
       async () => {
         const agent = new MainAgent();
-        for await (const event of agent.chat(messageWithChips, body.resource_list)) {
+        for await (const event of agent.chat(
+          messageWithChips,
+          body.resource_list,
+          stopped.signal,
+        )) {
           await s.write(serializeSSE(event));
         }
       },
@@ -134,7 +149,7 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
  * @param c - Hono context with validated `skillCommandSchema` body
  * @returns SSE text/event-stream response
  */
-chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
+chat.post("/skill", validate("json", skillCommandSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
@@ -168,13 +183,20 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
   c.header("Cache-Control", "no-cache");
   c.header("Connection", "keep-alive");
 
+  // Same first ring as `/message`. A stop wired to only one of the two
+  // entrances is a way in the user cannot get out of.
+  const stopped = new AbortController();
+
   return stream(c, async (s) => {
+    s.onAbort(() => {
+      stopped.abort();
+    });
     await runWithContext(
       { userId: user.id, conversationId: conversation.id, projectId: body.project_id, memoryContext, compressedHistory },
       async () => {
         const agent = new MainAgent();
         for await (const event of agent.handleSkillCommand(
-          body.skill_name, body.input, body.resource_list,
+          body.skill_name, body.input, body.resource_list, stopped.signal,
         )) {
           await s.write(serializeSSE(event));
         }
@@ -193,7 +215,7 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
  */
 chat.get(
   "/conversations",
-  zValidator("query", chatConversationsQuerySchema),
+  validate("query", chatConversationsQuerySchema),
   async (c) => {
     const user = c.get("user");
     const { limit, offset, project_id: projectId } = c.req.valid("query");
@@ -221,7 +243,7 @@ chat.get(
  * @returns The conversation list and the current conversation with its messages
  * @throws {AppError} `404` if the caller is not a member, `403` if read-only
  */
-chat.post("/open", zValidator("json", chatOpenSchema), async (c) => {
+chat.post("/open", validate("json", chatOpenSchema), async (c) => {
   const user = c.get("user");
   const { project_id: projectId } = c.req.valid("json");
   const result = await conversationService.openChat(user.id, projectId);

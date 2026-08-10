@@ -65,14 +65,14 @@ describe("Assets routes", () => {
       expect(res.status).toBe(401);
     });
 
-    it("rejects missing params with 400", async () => {
+    it("rejects missing params with 422", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/assets/presign", { headers: AUTH });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
     });
 
-    it("requires the content hash (400 without it — no hash, no upload)", async () => {
+    it("requires the content hash (422 without it — no hash, no upload)", async () => {
       // User decision 2026-07-26: the hash is the ticket. Refusing at PRESIGN
       // means a hashless client never even gets an upload grant, so it cannot
       // burn bandwidth PUTting bytes that /uploaded would have to reject.
@@ -82,10 +82,10 @@ describe("Assets routes", () => {
         { headers: AUTH },
       );
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
     });
 
-    it("rejects a filename with a path separator or control char (400)", async () => {
+    it("rejects a filename with a path separator or control char (422)", async () => {
       const app = createApp();
       const proj = "a0000000-0000-4000-8000-000000000001";
       for (const bad of ["a/b.png", "a\\b.png", "a\u0001b.png"]) {
@@ -93,7 +93,7 @@ describe("Assets routes", () => {
           `/api/v1/assets/presign?filename=${encodeURIComponent(bad)}&content_type=image/png&project_id=${proj}&size=1&hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`,
           { headers: AUTH },
         );
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(422);
       }
     });
 
@@ -105,18 +105,18 @@ describe("Assets routes", () => {
         { headers: AUTH },
       );
       // Passes the filename validator (any later failure is the mocked
-      // storage adapter, never a 400 from the character check).
-      expect(res.status).not.toBe(400);
+      // storage adapter, never a 422 from the character check).
+      expect(res.status).not.toBe(422);
     });
 
-    it("requires the declared size (400 without it)", async () => {
+    it("requires the declared size (422 without it)", async () => {
       const app = createApp();
       const res = await app.request(
         "/api/v1/assets/presign?filename=test.png&content_type=image/png&project_id=a0000000-0000-4000-8000-000000000001&hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         { headers: AUTH },
       );
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
     });
 
     it("rejects a size over the upload cap with 413 (authoritative gate)", async () => {
@@ -141,14 +141,14 @@ describe("Assets routes", () => {
       expect(res.status).not.toBe(413);
     });
 
-    it("rejects a malformed hash with 400", async () => {
+    it("rejects a malformed hash with 422", async () => {
       const app = createApp();
       const res = await app.request(
         "/api/v1/assets/presign?filename=test.png&content_type=image/png&project_id=a0000000-0000-4000-8000-000000000001&size=1&hash=nothex",
         { headers: AUTH },
       );
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
     });
   });
 
@@ -204,7 +204,7 @@ describe("Assets routes", () => {
   });
 
   describe("POST /assets/uploaded — dedup report schema (#1609)", () => {
-    it("rejects a dedup report without a hash (400 — the hash is mandatory for every report)", async () => {
+    it("rejects a dedup report without a hash (422 — the hash is mandatory for every report)", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/assets/uploaded", {
         method: "POST",
@@ -216,15 +216,15 @@ describe("Assets routes", () => {
         }),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
     });
 
-    it("rejects a regular report without a key (400)", async () => {
+    it("rejects a regular report without a key (422)", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/assets/uploaded", {
         method: "POST",
         headers: { ...AUTH, "Content-Type": "application/json" },
-        // Carries a hash so the 400 can only come from the MISSING KEY —
+        // Carries a hash so the 422 can only come from the MISSING KEY —
         // otherwise the (now mandatory) hash check would mask this assertion.
         body: JSON.stringify({
           project_id: "a0000000-0000-4000-8000-000000000001",
@@ -233,7 +233,7 @@ describe("Assets routes", () => {
         }),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
     });
   });
 
@@ -650,7 +650,7 @@ describe("Assets routes", () => {
         headers: { ...AUTH, "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: PROJ, key: KEY, kind: "image" }),
       });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
       expect(mocks.assetService.register).not.toHaveBeenCalled();
       expect(mocks.assetUploadService.consumeUploadGrant).not.toHaveBeenCalled();
     });

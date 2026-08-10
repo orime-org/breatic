@@ -8,7 +8,7 @@
  * Verifies that:
  *  - Mini-tool endpoints return 402 when user has insufficient credits.
  *  - target_node_id is forwarded to the BullMQ job payload as targetNodeIds.
- *  - Missing or invalid target_node_id is rejected with 400.
+ *  - Missing or invalid target_node_id is rejected with 422.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -190,7 +190,7 @@ describe("Mini-tools target_node_id forwarding (Phase 2 forward-fix A.4)", () =>
     expect(queueNames).not.toContain("mini-tools");
   });
 
-  it("rejects with 400 when target_node_id is missing", async () => {
+  it("rejects with 422 when target_node_id is missing", async () => {
     const app = createApp();
     const res = await app.request("/api/v1/mini-tools/image", {
       method: "POST",
@@ -202,12 +202,12 @@ describe("Mini-tools target_node_id forwarding (Phase 2 forward-fix A.4)", () =>
       }),
     });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     // No job should be queued
     expect(mockQueueAdd).not.toHaveBeenCalled();
   });
 
-  it("rejects with 400 when target_node_id is not a valid UUID", async () => {
+  it("rejects with 422 when target_node_id is not a valid UUID", async () => {
     const app = createApp();
     const res = await app.request("/api/v1/mini-tools/image", {
       method: "POST",
@@ -219,7 +219,7 @@ describe("Mini-tools target_node_id forwarding (Phase 2 forward-fix A.4)", () =>
       }),
     });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     expect(mockQueueAdd).not.toHaveBeenCalled();
   });
 });

@@ -648,13 +648,96 @@ export function setNodeStyleImage(
   nodeId: string,
   url: string,
 ): void {
+  setNodeSlotUrl(projectId, spaceId, nodeId, 'styleImageUrl', url);
+}
+
+/**
+ * Set a video node's first-frame image URL (#1896) — a pick-time COPY on the
+ * same terms as the style slot: one image, no relationship to the node it came
+ * from. Sent as `params.image` at execute time, which is what the backend
+ * source gate reads for image-to-video. No-op when the node or its data map is
+ * missing.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the video node whose first frame to set.
+ * @param url - The copied image URL.
+ */
+export function setNodeFirstFrame(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  url: string,
+): void {
+  setNodeSlotUrl(projectId, spaceId, nodeId, 'firstFrameUrl', url);
+}
+
+/**
+ * Clear a video node's first-frame image (the slot's ✕). Deletes the key so
+ * "none picked" is the field's natural absent state.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the video node whose first frame to clear.
+ */
+export function clearNodeFirstFrame(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): void {
+  clearNodeSlotUrl(projectId, spaceId, nodeId, 'firstFrameUrl');
+}
+
+/**
+ * Write one scalar slot URL onto a node's data map.
+ *
+ * Shared by every image slot (style, first frame): they differ only in which
+ * key they own, and the guard sequence around the write — resolve the doc,
+ * find the node, confirm the data map is a `Y.Map` — is the same question
+ * every time. Scalar last-write-wins, so setting overwrites a previous pick.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node whose slot to fill.
+ * @param key - The data-map key this slot owns.
+ * @param url - The copied image URL.
+ */
+function setNodeSlotUrl(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  key: string,
+  url: string,
+): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const node = nodesMap.get(nodeId);
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => data.set('styleImageUrl', url), CANVAS_UNDO);
+  doc.transact(() => data.set(key, url), CANVAS_UNDO);
+}
+
+/**
+ * Delete one scalar slot URL from a node's data map. Deleting rather than
+ * writing an empty string keeps "none picked" as the key's absent state, which
+ * is what every reader tests for.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node whose slot to clear.
+ * @param key - The data-map key this slot owns.
+ */
+function clearNodeSlotUrl(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  key: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  if (!data.has(key)) return;
+  doc.transact(() => data.delete(key), CANVAS_UNDO);
 }
 
 /**
@@ -670,14 +753,7 @@ export function clearNodeStyleImage(
   spaceId: string,
   nodeId: string,
 ): void {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
-  if (!data.has('styleImageUrl')) return;
-  doc.transact(() => data.delete('styleImageUrl'), CANVAS_UNDO);
+  clearNodeSlotUrl(projectId, spaceId, nodeId, 'styleImageUrl');
 }
 
 /**

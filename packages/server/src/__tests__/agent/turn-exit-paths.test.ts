@@ -5,22 +5,23 @@
  * Every way a turn can end emits an ending, and none of them keeps paying.
  *
  * The exits covered here: the stream finishing, a blocking interaction tool
- * stopping to ask, a provider failure, and the stream being torn down. Every
- * one owes the frontend a `chat_done` -- without it the UI has nothing to
- * switch out of its in-flight state. (One more exit, the client walking away,
- * lives in turn-cleanup-on-abort.test.ts along with what is measured about
- * how reachable it currently is.)
+ * stopping to ask, a provider failure, the user pressing stop, and the stream
+ * being torn down. Every one owes the frontend a `chat_done` -- without it the
+ * UI has nothing to switch out of its in-flight state. (One more exit, a
+ * consumer abandoning the generator with `.return()`, lives in
+ * turn-cleanup-on-abort.test.ts: it is the only ending no line in the loop
+ * gets to announce, so it is read off the absence instead.)
  *
  * Two of these are subtler than they look, for different reasons.
  *
- * Reading `result.usage` is not a passive read: in AI SDK 6.0.141 the getter
- * chains `usage` to `finalStep` to `steps`, and `steps` calls
- * `consumeStream()`. Awaiting it in a finally that a blocking tool just
- * returned through drives the model loop to completion -- the exact opposite
- * of what the sentinel exists to do, and billable output nobody asked for.
- * That one this PR introduced and then had to undo.
+ * Reading `result.usage` is not a passive read: on ai@7.0.58 `usage` returns
+ * `totalUsage`, which calls `consumeStream()` itself. Awaiting it in a finally
+ * that a blocking tool just returned through drives the model loop to
+ * completion -- the exact opposite of what the sentinel exists to do, and
+ * billable output nobody asked for. That one this PR introduced and then had
+ * to undo.
  *
- * And a failing provider does not throw. Measured on ai@6.0.141 with a model
+ * And a failing provider does not throw. Measured on ai@7.0.58 with a model
  * whose `doStream` throws, the loop saw ["start","error"] and did not throw,
  * so a loop watching only for exceptions calls a dead turn a clean finish.
  * That one was never handled at all, here or on main.
@@ -126,11 +127,18 @@ async function runSkillTurn(skillName: string): Promise<string[]> {
   return events;
 }
 
-/** Drive one turn to completion and collect its events. */
-async function runTurn(): Promise<string[]> {
+/** One SSE event as the route would see it. */
+type Emitted = { event: string; data: Record<string, unknown> };
+
+/**
+ * Drive one turn and collect its events with their payloads.
+ * @param signal - Handed to the turn as the caller's cancellation signal.
+ * @returns Every event the turn emitted, in order.
+ */
+async function runTurnFull(signal?: AbortSignal): Promise<Emitted[]> {
   const { MainAgent } = await import("@server/agent/main-agent.js");
   const { runWithContext } = await import("@breatic/core");
-  const events: string[] = [];
+  const events: Emitted[] = [];
   await runWithContext(
     {
       userId: "u1",
@@ -139,12 +147,32 @@ async function runTurn(): Promise<string[]> {
       compressedHistory: [],
     },
     async () => {
-      for await (const e of new MainAgent().chat("hi")) {
-        events.push((e as { event: string }).event);
+      for await (const e of new MainAgent().chat("hi", undefined, signal)) {
+        events.push(e as Emitted);
       }
     },
   );
   return events;
+}
+
+/** Drive one turn to completion and collect its event names. */
+async function runTurn(): Promise<string[]> {
+  return (await runTurnFull()).map((e) => e.event);
+}
+
+/**
+ * The assistant messages a turn wrote as its wrap-up, excluding tool traces.
+ *
+ * Both go in through the same `addMessage`, and telling them apart is a
+ * property of the argument rather than of the call site: a tool trace is
+ * written with an empty `content` and a `tool_calls` array (main-agent's
+ * `tool-result` branch), a wrap-up carries the reply and no `tool_calls`.
+ * @returns The wrap-up messages, in the order they were written.
+ */
+function wrapUpMessages(): Array<Record<string, unknown>> {
+  return addMessage.mock.calls
+    .map(([, msg]) => msg)
+    .filter((msg) => msg.role === "assistant" && msg.tool_calls === undefined);
 }
 
 beforeEach(() => {
@@ -172,13 +200,15 @@ describe("what a plain chat turn hands the model", () => {
     ]);
   });
 
-  it("marks the turn interactive, which is what keeps those four in", async () => {
-    // The same six could arrive with `interactive` unset if the filter ever
-    // stopped applying; this pins the reason rather than the outcome.
+  it("marks the turn interactive, which is what keeps the interaction tools in", async () => {
+    // The reason rather than the outcome, and the two are not the same test:
+    // the interaction tools would still be in that set if the filter stopped
+    // applying altogether, so asserting on the set cannot tell the two apart.
+    // The flag is observable because the factory is wrapped rather than
+    // replaced -- what goes in is visible, and what comes out is still real.
     streamTextRetry.mockReturnValue(streamOf([{ type: "text-delta", text: "hi" }]));
     await runTurn();
-    const call = streamTextRetry.mock.calls[0]?.[0] as { tools: Record<string, unknown> };
-    expect(Object.keys(call.tools)).toContain("ask_user_question");
+    expect(buildAgentConfig.mock.calls[0]?.[0]).toMatchObject({ interactive: true });
   });
 });
 
@@ -333,7 +363,7 @@ describe("how a turn ends", () => {
   });
 
   it("reports a provider failure the SDK hands back as a stream part", async () => {
-    // The SDK does not throw when the provider fails. Measured on ai@6.0.141
+    // The SDK does not throw when the provider fails. Measured on ai@7.0.58
     // with a model whose `doStream` throws: the loop saw ["start","error"]
     // and did not throw. So an expired key, a 429 past the retry budget or a
     // bad model id all arrive here as a value, and a loop that only watches
@@ -363,5 +393,195 @@ describe("how a turn ends", () => {
     const events = await runTurn();
     expect(events).toContain("error");
     expect(events).toContain("chat_done");
+  });
+});
+
+/**
+ * The four ways a turn ends, and the promise that each of them settles up once.
+ *
+ * `finally` plus an early exit is the combination that pays twice: the exit
+ * runs the wrap-up, then the finally runs it again, and the turn ends with two
+ * endings, two stored replies and two charges. Counting is the whole point --
+ * `toContain` is green either way, which is why the acceptance item spells out
+ * `toHaveLength(1)`.
+ *
+ * Each fixture deliberately completes one step before it exits, so a charge is
+ * owed on every path. The step's `finish-step` is what carries its token count,
+ * so a fixture without one owes nothing and would assert nothing about billing.
+ */
+describe("every exit settles up exactly once", () => {
+  /** A stream that ends the given way, after one step worth 300 tokens. */
+  const EXITS = [
+    {
+      name: "the stream running out",
+      parts: [
+        { type: "text-delta", text: "all done" },
+        { type: "finish-step", usage: { totalTokens: 300 } },
+      ],
+    },
+    {
+      name: "a blocking tool stopping to ask",
+      parts: [
+        { type: "tool-call", toolCallId: "t1", toolName: "ask_user_question", input: {} },
+        { type: "tool-result", toolCallId: "t1", output: "__ASK_USER__{}" },
+        { type: "finish-step", usage: { totalTokens: 300 } },
+      ],
+    },
+    {
+      name: "the provider failing",
+      parts: [
+        { type: "text-delta", text: "half a s" },
+        { type: "finish-step", usage: { totalTokens: 300 } },
+        { type: "error", error: new Error("401 expired key") },
+      ],
+    },
+    {
+      name: "the user pressing stop",
+      parts: [
+        { type: "text-delta", text: "half a s" },
+        { type: "finish-step", usage: { totalTokens: 300 } },
+        { type: "abort" },
+      ],
+    },
+  ];
+
+  for (const exit of EXITS) {
+    it(`ends once, stores once and charges once after ${exit.name}`, async () => {
+      streamTextRetry.mockReturnValue(streamOf(exit.parts));
+      const events = await runTurnFull();
+      expect(events.filter((e) => e.event === "chat_done")).toHaveLength(1);
+      expect(wrapUpMessages().length).toBeLessThanOrEqual(1);
+      expect(deductOnce).toHaveBeenCalledTimes(1);
+    });
+  }
+});
+
+/**
+ * What the client is told, and what is kept, when the user presses stop.
+ *
+ * The SDK announces the stop as an `abort` part on the stream -- measured on
+ * ai@7.0.58 with a real `streamText` and an aborted signal: the parts seen were
+ * start, start-step, text-delta..., abort, and no further model call was made.
+ * So the turn learns it was stopped the same way it learns anything else, by
+ * reading the stream, and these fixtures say `abort` for the same reason the
+ * ones above say `error`.
+ */
+describe("a turn the user stopped", () => {
+  it("tells the client this ending was a stop", async () => {
+    // One ending event, not two: the frontend clears its in-flight state in
+    // exactly one place, and a separate event name would give it a second
+    // place to forget about.
+    streamTextRetry.mockReturnValue(
+      streamOf([
+        { type: "text-delta", text: "half a s" },
+        { type: "finish-step", usage: { totalTokens: 300 } },
+        { type: "abort" },
+      ]),
+    );
+    const done = (await runTurnFull()).filter((e) => e.event === "chat_done");
+    expect(done).toHaveLength(1);
+    expect(done[0]?.data).toMatchObject({ aborted: true });
+  });
+
+  it("does not mark a turn that finished on its own", async () => {
+    streamTextRetry.mockReturnValue(
+      streamOf([
+        { type: "text-delta", text: "all done" },
+        { type: "finish-step", usage: { totalTokens: 300 } },
+      ]),
+    );
+    const done = (await runTurnFull()).filter((e) => e.event === "chat_done");
+    expect(done[0]?.data.aborted).not.toBe(true);
+  });
+
+  it("charges for the steps that finished, and only those", async () => {
+    // 300 exactly, not "more than zero": the step that was cut off never sent
+    // its `finish-step`, so its tokens are not ours to charge for, and a
+    // `> 0` assertion would pass on any figure the code happened to produce.
+    streamTextRetry.mockReturnValue(
+      streamOf([
+        { type: "text-delta", text: "first step" },
+        { type: "finish-step", usage: { totalTokens: 300 } },
+        { type: "text-delta", text: "second step, cut off" },
+        { type: "abort" },
+      ]),
+    );
+    await runTurnFull();
+    expect(deductOnce.mock.calls[0]?.[4]).toMatchObject({ tokensUsed: 300 });
+  });
+
+  it("keeps what was generated even when no prose was streamed yet", async () => {
+    // The turn called a tool and was stopped before writing a word, so the
+    // reply is empty. Storing nothing here is what makes a stop look, to the
+    // user coming back, exactly like a turn that never happened.
+    streamTextRetry.mockReturnValue(
+      streamOf([
+        { type: "tool-call", toolCallId: "t1", toolName: "web_search", input: { query: "x" } },
+        { type: "tool-result", toolCallId: "t1", output: "{}" },
+        { type: "finish-step", usage: { totalTokens: 300 } },
+        { type: "abort" },
+      ]),
+    );
+    await runTurnFull();
+    const wrapUps = wrapUpMessages();
+    expect(wrapUps).toHaveLength(1);
+    expect(wrapUps[0]).toMatchObject({ interrupted: true });
+  });
+
+  it("marks the stored reply when there was prose", async () => {
+    streamTextRetry.mockReturnValue(
+      streamOf([
+        { type: "text-delta", text: "half a s" },
+        { type: "finish-step", usage: { totalTokens: 300 } },
+        { type: "abort" },
+      ]),
+    );
+    await runTurnFull();
+    expect(wrapUpMessages()[0]).toMatchObject({
+      content: "half a s",
+      interrupted: true,
+    });
+  });
+
+  it("survives a stop that lands before any step finished", async () => {
+    // The earliest possible stop. `result.totalUsage` rejects with an
+    // AbortError in this case -- measured on ai@7.0.58 -- so a turn that
+    // awaited it anywhere would end on an unhandled rejection instead of an
+    // ending. Nothing here reads it, and this is what says so.
+    const unhandled: unknown[] = [];
+    const onUnhandled = (err: unknown): void => {
+      unhandled.push(err);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      streamTextRetry.mockReturnValue(streamOf([{ type: "abort" }]));
+      const events = await runTurnFull();
+      expect(events.filter((e) => e.event === "chat_done")).toHaveLength(1);
+      expect(events.at(-1)?.data).toMatchObject({ aborted: true });
+      // Nothing finished, so nothing is owed.
+      expect(deductOnce).not.toHaveBeenCalled();
+      // Still a record: the turn happened, and it was stopped.
+      expect(wrapUpMessages()).toHaveLength(1);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("hands the caller's cancellation signal to the model", async () => {
+    // The middle ring. The route can subscribe to the disconnect and the loop
+    // can watch for the abort part, and between them nothing happens at all
+    // unless the signal actually reaches the SDK.
+    const controller = new AbortController();
+    streamTextRetry.mockReturnValue(
+      streamOf([
+        { type: "text-delta", text: "hi" },
+        { type: "finish-step", usage: { totalTokens: 300 } },
+      ]),
+    );
+    await runTurnFull(controller.signal);
+    const call = streamTextRetry.mock.calls[0]?.[0] as { abortSignal?: AbortSignal };
+    expect(call.abortSignal).toBe(controller.signal);
   });
 });

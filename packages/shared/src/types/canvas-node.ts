@@ -399,6 +399,19 @@ export interface CanvasNodeFields {
      */
     styleImageUrl?: string;
     /**
+     * First-frame image URL for a video node's image-to-video generation
+     * (#1896) — a pick-time COPY of the clicked image's URL, on the same
+     * terms as `styleImageUrl`: no relationship to the node it came from, so
+     * deleting or regenerating that node leaves this one alone. The video
+     * panel renders it in its first-frame slot and sends it as `params.image`
+     * at execute time, which is what the backend source gate reads for `i2v`.
+     *
+     * A slot, not a reference: the reference rail is derived from edges and
+     * feeds the prompt's `@` mentions, while this is one image with one
+     * meaning to the model. Scalar last-write-wins. Absent = none picked.
+     */
+    firstFrameUrl?: string;
+    /**
      * Focus crops created on this node's generate panel (#1782) — maintained
      * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the
      * plain-values convention of the web `buildDataMap`): concurrent appends

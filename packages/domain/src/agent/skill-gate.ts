@@ -30,6 +30,7 @@ import { AppError, getSkillRouting } from "@breatic/core";
 import type { SkillSurface } from "@breatic/core";
 import { assertSkillModelRunnable } from "@domain/agent/skill-availability.js";
 import { getSkillRegistry } from "@domain/agent/skills-loader.js";
+import { t } from "@breatic/shared";
 
 /**
  * Check that this skill can be used, by this user, from this surface, here.
@@ -43,16 +44,16 @@ export function assertSkillUsable(
 ): void {
   const skill = getSkillRegistry().getInternal(skillName);
   if (!skill) {
-    throw new AppError(404, `Skill '${skillName}' not found`);
+    throw new AppError(404, t("server.skill.not_found_named", { skill: skillName }));
   }
 
   // Absent from the config means allowed nowhere — silence grants nothing.
   const route = getSkillRouting().skills[skillName];
   if (!route?.surfaces.includes(surface)) {
-    throw new AppError(403, `Skill '${skillName}' is not available here`);
+    throw new AppError(403, t("server.skill.not_available_here", { skill: skillName }));
   }
   if (!route.user_invocable) {
-    throw new AppError(403, `Skill '${skillName}' is not user-invocable`);
+    throw new AppError(403, t("server.skill.not_user_invocable", { skill: skillName }));
   }
 
   assertSkillModelRunnable(skillName, skill.model);

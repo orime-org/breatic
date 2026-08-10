@@ -55,7 +55,13 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, string> = to
     "draft nodes'). DO NOT call for Document or Timeline Spaces — " +
     "those Space types are not yet supported by this protocol.",
   inputSchema,
-  execute: async (input: z.infer<typeof inputSchema>): Promise<string> => {
+  execute: async (
+    input: z.infer<typeof inputSchema>,
+    // Unused: this tool assembles a value and returns it, so there is nothing
+    // to abandon. Declared so the shape is the same across every tool — the
+    // reasoning lives in tools/__tests__/tool-cancellation.test.ts.
+    _options: { abortSignal?: AbortSignal },
+  ): Promise<string> => {
     return `${PROPOSE_CANVAS_ACTION_SENTINEL}${JSON.stringify(input)}`;
   },
 });

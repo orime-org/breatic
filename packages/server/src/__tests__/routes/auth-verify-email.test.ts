@@ -55,14 +55,14 @@ describe("POST /auth/verify-email", () => {
     expect(mocks.authService.verifyEmail).toHaveBeenCalledWith("abcdef0123456789".repeat(4));
   });
 
-  it("rejects empty token with 400", async () => {
+  it("rejects empty token with 422", async () => {
     const app = createApp();
     const res = await app.request("/api/v1/auth/verify-email", {
       method: "POST",
       headers: JSON_HEADERS,
       body: JSON.stringify({ token: "" }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   it("surfaces UnauthorizedError as 401 on invalid/expired token", async () => {

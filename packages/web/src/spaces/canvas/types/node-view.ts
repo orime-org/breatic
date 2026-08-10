@@ -96,6 +96,13 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   styleImageUrl?: string;
   /**
+   * First-frame image URL for image-to-video (#1896, wire
+   * `data.firstFrameUrl`) — a pick-time COPY of the clicked image's URL, no
+   * relationship to the upstream node. The video panel renders it in its
+   * first-frame slot and sends it as `params.image` at execute time.
+   */
+  firstFrameUrl?: string;
+  /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
    * as the reference rail's focus entries and offers them in the @ mention
@@ -255,6 +262,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     mode: data.mode,
     modelByMode: data.modelByMode,
     styleImageUrl: data.styleImageUrl,
+    firstFrameUrl: data.firstFrameUrl,
     focusImages: data.focusImages,
   };
   switch (type) {

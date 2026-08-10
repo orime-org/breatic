@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import { t } from "@breatic/shared";
 /**
  * Application error hierarchy.
  *
@@ -119,7 +120,11 @@ export class ConflictLockedError extends AppError {
    * @param detail - lock-holder identity and timing used to render the conflict toast
    */
   constructor(detail: ConflictLockedDetail) {
-    super(409, "Node is locked by another in-flight task");
+    // The client renders `detail` into its toast, but `message` is what
+    // any other consumer reads — and `errorHandler` puts it on the wire
+    // verbatim, so it has to be the caller's language like every other
+    // message this family carries.
+    super(409, t("server.canvas.node_locked"));
     this.name = "ConflictLockedError";
     this.detail = detail;
   }

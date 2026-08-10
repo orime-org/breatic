@@ -9,7 +9,9 @@
  * When the user switches model, the previously chosen params may no longer be
  * valid for the new model, so they are reconciled: a still-valid value is
  * kept, an invalid one falls back to the new model's default, and a param the
- * new model does not define is dropped.
+ * new model does not define is preserved untouched (user 2026-07-18 — see
+ * {@link resolveParamsForModel} for why, and where such a param is dropped
+ * instead).
  */
 
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';

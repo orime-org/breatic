@@ -46,6 +46,7 @@
 
 import { lookup as dnsLookup } from "node:dns/promises";
 import ipaddr from "ipaddr.js";
+import { getAgentConfig } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
 
 /** Error thrown when a URL would reach a forbidden host or IP. */
@@ -91,13 +92,21 @@ const BLOCKED_HOSTNAMES: ReadonlySet<string> = new Set([
 const MAX_REDIRECTS = 5;
 
 /**
- * Default per-DELIVERY deadline in milliseconds.
+ * The default per-DELIVERY deadline in milliseconds, from configuration.
  *
  * Not per hop: the transport may deliver a hop more than once and gives each
- * of them this full figure. The name stays short; the unit is stated here
- * because this is where a reader meets the number.
+ * of them this full figure. The unit is stated here because this is where a
+ * reader meets the number.
+ *
+ * Configuration rather than a literal because how long a page may take is not
+ * a fact about this code, and because it is a knob operations may want to turn
+ * without a deploy. Read per call rather than at import, so that a caller
+ * reaching this module before the config is loaded does not freeze a default.
+ * @returns The configured deadline for one delivery.
  */
-const DEFAULT_TIMEOUT_MS = 30_000;
+function defaultTimeoutMs(): number {
+  return getAgentConfig().web_fetch_timeout_ms;
+}
 
 /**
  * Resolve a hostname and throw {@link SsrfError} if any resolved
@@ -169,6 +178,14 @@ function assertIpAllowed(ip: string): void {
 export interface SafeFetchOptions {
   headers?: Record<string, string>;
   timeoutMs?: number;
+  /**
+   * Raised when the caller no longer wants the result.
+   *
+   * Checked once per hop as well as handed to the transport, because the two
+   * cover different ground: the transport can end a delivery that is under
+   * way, and only this loop can decline to start the next hop.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -198,10 +215,19 @@ export async function safeFetch(
   opts: SafeFetchOptions = {},
 ): Promise<Response> {
   let current = url;
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = opts.timeoutMs ?? defaultTimeoutMs();
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    // Asked at the top of every hop, not once before the loop. Following a
+    // redirect chain means coming back here, and a caller that gave up during
+    // the first hop must not have the second one started on its behalf — the
+    // work is real (a DNS resolution and a request) and nobody is waiting for
+    // the answer. The resolution below is the reason it goes first: once a
+    // lookup is under way it cannot be called off, because `dns.lookup`
+    // ignores an abort signal outright.
+    opts.signal?.throwIfAborted();
+
     const parsed = new URL(current);
 
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -230,7 +256,7 @@ export async function safeFetch(
     const res = await httpRequest(
       current,
       { headers, redirect: "manual" },
-      { replaySafe: true, timeoutMs },
+      { replaySafe: true, timeoutMs, ...(opts.signal ? { signal: opts.signal } : {}) },
     );
 
     // Not a redirect — return to caller.

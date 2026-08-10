@@ -17,7 +17,10 @@ import { VIDEO_GENERATION_MODES } from '@breatic/shared';
 import type { ModelEntry } from '@breatic/shared';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { filterModelsByMode } from '@web/spaces/canvas/generate/mode-selection';
+import {
+  filterModelsByMode,
+  resolveModelForMode,
+} from '@web/spaces/canvas/generate/mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import type {
   ContentNodeView,
@@ -48,6 +51,33 @@ export interface VideoPanelViewModel {
   creditEstimate: number;
   /** The target node's display status — gates execute (no submit while handling). */
   nodeStatus: string | undefined;
+  /**
+   * Whether the active mode needs a source asset — read off the model's
+   * precomputed `sourcesByMode` (backend-computed, on the wire), never
+   * re-derived here. `t2v` is `[]`; `i2v` is `["image"]`. No model resolved
+   * (empty catalog) means no gate: a requirement the user cannot satisfy is
+   * worse than none, and the model gate already stops that submit.
+   */
+  requiresSource: boolean;
+  /** The picked first-frame image (pick-time copy), or undefined when empty. */
+  firstFrameUrl: string | undefined;
+}
+
+/**
+ * Sanitizes a node's stored `mode` into one this panel offers.
+ *
+ * The node stores ONE `mode` field, shared with the image panel's own mode set
+ * (a node can only ever be one modality, so they never collide in practice) —
+ * but a value this panel does not offer must not be honoured: opening on `t2i`
+ * or on a mini-tool video mode would narrow the model list to nothing and
+ * leave the panel with no model to submit.
+ * @param stored - The node's stored `mode`, if any.
+ * @returns The stored mode when this panel offers it, else text-to-video.
+ */
+function resolveVideoMode(stored: string | undefined): VideoGenMode {
+  return VIDEO_GENERATION_MODES.includes(stored as VideoGenMode)
+    ? (stored as VideoGenMode)
+    : 't2v';
 }
 
 /**
@@ -59,6 +89,63 @@ export interface VideoPanelViewModel {
  */
 function asContentView(data: NodeView | undefined): ContentNodeView | undefined {
   return data && 'status' in data ? data : undefined;
+}
+
+/**
+ * The mode the panel shows for one node, read off its live view.
+ *
+ * The panel reads this rather than storing a mode of its own: the switch is
+ * collaborative (a mode a collaborator picks has to show up here), and every
+ * write-callback re-reads it at click time so a switch that landed after the
+ * last render cannot be built over.
+ * @param nodes - Current canvas node views.
+ * @param nodeId - The node whose panel is open.
+ * @returns The mode this panel opens in — text-to-video for anything it does
+ *   not offer, a node with no stored mode, or a node that is gone.
+ */
+export function nodeVideoMode(
+  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>,
+  nodeId: string,
+): VideoGenMode {
+  return resolveVideoMode(
+    asContentView(nodes.find((n) => n.id === nodeId)?.data)?.mode,
+  );
+}
+
+/**
+ * Resolves the model + params a mode switch should write.
+ *
+ * The outgoing mode's model is deliberately NOT carried over — it belongs to
+ * that mode, and the panel would otherwise offer, and submit, a model that
+ * cannot do what the mode promises — a text-to-video model ignores a first
+ * frame and generates from the prompt alone. The backend does not catch that
+ * for us: its source gate lets through any model with one source-less mode
+ * (domain/model-catalog/source-requirement.ts), and the payload carries no
+ * mode at all. What survives instead is the per-mode memory: the model last
+ * chosen in the TARGET mode, if the catalog still offers it.
+ *
+ * An empty model means the target mode offers nothing (the catalog is still
+ * loading, failed, or genuinely has no entry). The caller must not write that:
+ * an empty model with empty params clobbers what the node had stored, and
+ * params do not self-heal.
+ * @param content - The node's live content view (mode memory + current params).
+ * @param mode - The mode being switched TO.
+ * @param models - Catalog video models (the `video` bucket, unfiltered).
+ * @returns The model to select and the params reconciled against it.
+ */
+export function resolveVideoModeSwitch(
+  content: Pick<ContentNodeView, 'modelByMode' | 'params'> | undefined,
+  mode: VideoGenMode,
+  models: ModelEntry[],
+): { model: string; params: Record<string, unknown> } {
+  const modeModels = selectVideoModeModels(models, mode);
+  const model =
+    resolveModelForMode(mode, content?.modelByMode ?? {}, modeModels) ?? '';
+  const picked = modeModels.find((m) => m.name === model);
+  return {
+    model,
+    params: picked ? resolveParamsForModel(picked, content?.params ?? {}) : {},
+  };
 }
 
 /**
@@ -112,8 +199,9 @@ export function buildVideoPanelViewModel(input: {
 
   // The stored model wins only while this mode still offers it. A stale pick
   // (another mode's, or one dropped from the catalog) falls back to the first
-  // offered model — submitting a model the mode does not offer would be
-  // refused by the backend source gate.
+  // offered model — submitting a model the mode does not offer would generate
+  // something else entirely, and the backend catches only part of that (its
+  // source gate passes any model with one source-less mode).
   const stored = content?.model;
   const model =
     stored && models.some((m) => m.name === stored)
@@ -128,5 +216,19 @@ export function buildVideoPanelViewModel(input: {
     // model); when current is found, cost_per_call is a trusted number.
     creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
+    // Execute gate (#1675, cross-modality): the ACTIVE PANEL MODE decides what
+    // the submission needs, and the model carries the answer precomputed. The
+    // rule itself lives backend-side (domain/source-requirement.ts); the panel
+    // only reads the wire field.
+    requiresSource: current ? (current.sourcesByMode[mode]?.length ?? 0) > 0 : false,
+    // The slot's value is collaborative Yjs data — untrusted, whatever the
+    // type says. A malformed one would ride the payload as `params.image` and
+    // be refused upstream AFTER the task was accepted and billed; an empty
+    // string is a string and no URL. Same guard the style slot carries.
+    firstFrameUrl:
+      typeof content?.firstFrameUrl === 'string' &&
+      content.firstFrameUrl.length > 0
+        ? content.firstFrameUrl
+        : undefined,
   };
 }

@@ -89,7 +89,7 @@ describe("Projects routes", () => {
       expect(mocks.projectService.create.mock.calls[0]?.[4]).toBe("studio");
     });
 
-    it("rejects missing name with 400", async () => {
+    it("rejects missing name with 422", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/projects", {
         method: "POST",
@@ -97,7 +97,7 @@ describe("Projects routes", () => {
         body: JSON.stringify({}),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
     });
   });
 

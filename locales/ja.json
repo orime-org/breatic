@@ -23,7 +23,10 @@
       "reset_success": "パスワードをリセットしました。サインインしてください。",
       "reset_recovery_success": "パスワードをリセットしました。新しいリカバリーコードを保存してください。",
       "email_verified": "メールアドレスを確認しました。",
-      "verify_email_sent": "確認メールを送信しました。受信トレイをご確認ください。"
+      "verify_email_sent": "確認メールを送信しました。受信トレイをご確認ください。",
+      "invalid_reset_token": "このパスワード再設定リンクは無効か、有効期限が切れています",
+      "invalid_recovery_code": "メールアドレスまたはリカバリーコードが正しくありません",
+      "invalid_verification_token": "この確認リンクは無効か、有効期限が切れています"
     },
     "studio": {
       "slug_taken": "その Slug はすでに使用されています。別のものを選んでください。",
@@ -42,7 +45,10 @@
       "email_not_registered": "そのメールアドレスは登録されていません。",
       "already_member": "そのユーザーはすでにアクセス権を持っています。",
       "already_invited": "そのユーザーには保留中の招待があります。",
-      "collaborator_limit_reached": "この Project はコラボレーター数の上限に達しています。"
+      "collaborator_limit_reached": "この Project はコラボレーター数の上限に達しています。",
+      "only_viewer_can_request_upgrade": "ロールの昇格を申請できるのは Viewer だけです",
+      "no_active_owner": "この Project には現任の Owner がいません",
+      "not_found": "Project が見つかりません"
     },
     "payment": {
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
@@ -50,6 +56,36 @@
     },
     "text_tool": {
       "already_running": "別のテキストツールが実行中です。お待ちください。"
+    },
+    "skill": {
+      "not_found": "Skill が見つかりません",
+      "name_taken": "同じ名前の Skill がすでにあります",
+      "not_published": "この Skill はまだ公開されていません",
+      "cannot_install_own": "自分の Skill はインストールできません",
+      "already_installed": "この Skill はインストール済みです",
+      "not_available_here": "Skill「{skill}」はここでは利用できません",
+      "not_user_invocable": "Skill「{skill}」は直接呼び出せません",
+      "not_available_on_deployment": "Skill「{skill}」はこのサーバーでは利用できません",
+      "not_found_named": "Skill「{skill}」が見つかりません"
+    },
+    "conversation": {
+      "not_found": "会話が見つかりません",
+      "attachment_not_found": "添付ファイルが見つかりません",
+      "attachment_not_yours": "この添付ファイルは他の人のものです",
+      "attachment_limit_reached": "この会話の添付ファイルは上限の {limit} 件に達しています。いくつか削除してからアップロードしてください。"
+    },
+    "canvas": {
+      "model_requires_source": "このモデルにはソース入力が必要です。画像・動画・音声のノードを接続してください",
+      "too_many_inputs": "このモデルはこの種類の入力を最大 {limit} 件まで受け付けますが、{actual} 件が指定されました",
+      "stream_unavailable": "タスクイベントストリームを利用できません。もう一度お試しください。",
+      "history_entry_not_found": "履歴が見つかりません",
+      "node_locked": "このノードは他の人が生成中です"
+    },
+    "memory": {
+      "version_conflict": "同時に他の人が更新しました。もう一度お試しください。"
+    },
+    "asset": {
+      "direct_upload_unavailable": "このサーバーでは直接アップロードを利用できません"
     }
   },
   "chat": {
@@ -160,6 +196,7 @@
       "mentionEmpty": "参照できる画像がありません — まず画像から線をつないでください",
       "selectFromCanvas": "キャンバスから参照を選択",
       "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
+      "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
       "removeStyle": "スタイル参照を削除",
       "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
@@ -205,7 +242,11 @@
       "videoParams": "パラメータ",
       "videoPromptPlaceholder": "生成したい動画を説明してください",
       "videoMentionEmpty": "参照できるものがまだありません",
-      "videoNoPrompt": "このノードは動画生成より前に作られたため、プロンプトがありません。新しい動画ノードを作成すると生成できます。"
+      "videoNoPrompt": "このノードは動画生成より前に作られたため、プロンプトがありません。新しい動画ノードを作成すると生成できます。",
+      "firstFrame": "最初のフレーム",
+      "firstFrameTip": "動画の最初のフレームにする画像を選ぶ",
+      "removeFirstFrame": "最初のフレームを削除",
+      "errorNoFirstFrame": "最初のフレームを選んでください。このモードは画像から生成します"
     },
     "nodeMenu": {
       "generate": "生成",

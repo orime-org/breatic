@@ -9,7 +9,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { paginationSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -20,7 +20,7 @@ const tasks = new Hono<{ Variables: AuthVariables }>();
 tasks.use(requireAuth);
 
 /** `GET /tasks` — list the authenticated user's tasks. */
-tasks.get("/", zValidator("query", paginationSchema), async (c) => {
+tasks.get("/", validate("query", paginationSchema), async (c) => {
   const user = c.get("user");
   const { limit, offset } = c.req.valid("query");
   const list = await taskService.list(user.id, limit, offset);

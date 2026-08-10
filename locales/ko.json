@@ -23,7 +23,10 @@
       "reset_success": "비밀번호를 재설정했습니다. 로그인해 주세요.",
       "reset_recovery_success": "비밀번호를 재설정했습니다. 새 복구 코드를 저장하세요.",
       "email_verified": "이메일이 확인되었습니다.",
-      "verify_email_sent": "확인 이메일을 보냈습니다. 받은편지함을 확인하세요."
+      "verify_email_sent": "확인 이메일을 보냈습니다. 받은편지함을 확인하세요.",
+      "invalid_reset_token": "이 비밀번호 재설정 링크는 유효하지 않거나 만료되었습니다",
+      "invalid_recovery_code": "이메일 또는 복구 코드가 올바르지 않습니다",
+      "invalid_verification_token": "이 인증 링크는 유효하지 않거나 만료되었습니다"
     },
     "studio": {
       "slug_taken": "이미 사용 중인 Slug입니다. 다른 것을 선택하세요.",
@@ -42,7 +45,10 @@
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
       "already_member": "해당 사용자는 이미 접근 권한을 가지고 있습니다.",
       "already_invited": "해당 사용자에게 이미 대기 중인 초대가 있습니다.",
-      "collaborator_limit_reached": "이 Project는 협업자 수 한도에 도달했습니다."
+      "collaborator_limit_reached": "이 Project는 협업자 수 한도에 도달했습니다.",
+      "only_viewer_can_request_upgrade": "역할 승급은 Viewer만 신청할 수 있습니다",
+      "no_active_owner": "이 Project에는 현재 Owner가 없습니다",
+      "not_found": "Project를 찾을 수 없습니다"
     },
     "text_tool": {
       "already_running": "다른 텍스트 도구가 이미 실행 중입니다. 잠시 기다려 주세요."
@@ -50,6 +56,36 @@
     "payment": {
       "tier_not_found": "알 수 없는 요금제: {tier}. 사용 가능: {available}",
       "price_not_configured": "{tier} 요금제의 가격이 설정되지 않았습니다"
+    },
+    "skill": {
+      "not_found": "Skill을 찾을 수 없습니다",
+      "name_taken": "같은 이름의 Skill이 이미 있습니다",
+      "not_published": "이 Skill은 아직 게시되지 않았습니다",
+      "cannot_install_own": "자신의 Skill은 설치할 수 없습니다",
+      "already_installed": "이 Skill은 이미 설치되어 있습니다",
+      "not_available_here": "Skill ‘{skill}’은(는) 여기에서 사용할 수 없습니다",
+      "not_user_invocable": "Skill ‘{skill}’은(는) 직접 호출할 수 없습니다",
+      "not_available_on_deployment": "Skill ‘{skill}’은(는) 이 서버에서 사용할 수 없습니다",
+      "not_found_named": "Skill ‘{skill}’을(를) 찾을 수 없습니다"
+    },
+    "conversation": {
+      "not_found": "대화를 찾을 수 없습니다",
+      "attachment_not_found": "첨부 파일을 찾을 수 없습니다",
+      "attachment_not_yours": "이 첨부 파일은 다른 사람의 것입니다",
+      "attachment_limit_reached": "이 대화의 첨부 파일이 최대 {limit}개에 도달했습니다. 일부를 삭제한 후 업로드하세요."
+    },
+    "canvas": {
+      "model_requires_source": "이 모델에는 소스 입력이 필요합니다. 이미지, 동영상 또는 오디오 노드를 연결하세요",
+      "too_many_inputs": "이 모델은 이런 종류의 입력을 최대 {limit}개까지 받지만 {actual}개가 전달되었습니다",
+      "stream_unavailable": "작업 이벤트 스트림을 사용할 수 없습니다. 다시 시도해 주세요.",
+      "history_entry_not_found": "기록을 찾을 수 없습니다",
+      "node_locked": "이 노드는 다른 사람이 생성 중입니다"
+    },
+    "memory": {
+      "version_conflict": "다른 사람이 동시에 수정했습니다. 다시 시도해 주세요."
+    },
+    "asset": {
+      "direct_upload_unavailable": "이 서버에서는 직접 업로드를 사용할 수 없습니다"
     }
   },
   "chat": {
@@ -160,6 +196,7 @@
       "mentionEmpty": "참조할 이미지가 없습니다 — 먼저 이미지에서 선을 연결하세요",
       "selectFromCanvas": "캔버스에서 참조 선택",
       "selectStyleFromCanvas": "캔버스에서 스타일 참조 선택",
+      "selectFirstFrameFromCanvas": "캔버스에서 첫 프레임으로 쓸 이미지 선택",
       "removeStyle": "스타일 참조 제거",
       "returnToNode": "노드로 돌아가기",
       "exitSelect": "종료",
@@ -205,7 +242,11 @@
       "videoParams": "매개변수",
       "videoPromptPlaceholder": "생성할 영상을 설명하세요",
       "videoMentionEmpty": "아직 언급할 참조가 없습니다",
-      "videoNoPrompt": "이 노드는 영상 생성 기능보다 먼저 만들어져 프롬프트가 없습니다. 새 영상 노드를 만들면 생성할 수 있습니다."
+      "videoNoPrompt": "이 노드는 영상 생성 기능보다 먼저 만들어져 프롬프트가 없습니다. 새 영상 노드를 만들면 생성할 수 있습니다.",
+      "firstFrame": "첫 프레임",
+      "firstFrameTip": "영상의 첫 프레임으로 쓸 이미지를 고르세요",
+      "removeFirstFrame": "첫 프레임 제거",
+      "errorNoFirstFrame": "첫 프레임을 고르세요. 이 모드는 이미지에서 생성합니다"
     },
     "nodeMenu": {
       "generate": "생성",

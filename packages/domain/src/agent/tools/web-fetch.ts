@@ -76,12 +76,16 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
     "Fetch a URL and extract readable content (HTML to plain text). " +
     "Only public (non-private, non-loopback) HTTP/HTTPS hosts are permitted.",
   inputSchema,
-  execute: async ({ url, maxChars }): Promise<string> => {
+  execute: async (
+    { url, maxChars },
+    { abortSignal }: { abortSignal?: AbortSignal },
+  ): Promise<string> => {
     const limit = maxChars ?? DEFAULT_MAX_CHARS;
 
     try {
       const res = await safeFetch(url, {
         headers: { "User-Agent": USER_AGENT },
+        ...(abortSignal ? { signal: abortSignal } : {}),
       });
 
       if (!res.ok) {
@@ -91,6 +95,11 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
         });
       }
 
+      // Read plainly. The signal handed to `safeFetch` above is still attached
+      // to this response's body — the transport composes it into the request
+      // and that link outlives the call, which is a guarantee its own boundary
+      // doc now states. So a stop ends this read too, and a reader taken here
+      // to cancel it would be a second mechanism for something already done.
       const contentType = res.headers.get("content-type") ?? "";
       const body = await res.text();
 
