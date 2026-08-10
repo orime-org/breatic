@@ -6,7 +6,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 import { RailStudioGroup } from '@web/pages/studio/rail/RailStudioGroup';
-import { RAIL_ROW_NESTED } from '@web/pages/studio/rail/rail-row';
+import { RAIL_LIST, RAIL_ROW_NESTED } from '@web/pages/studio/rail/rail-row';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 
 function studio(id: string, name: string): StudioSummary {
@@ -136,6 +136,14 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     expect(row.className).toContain('pl-3.5');
     expect(row.className).toContain('h-8');
     expect(row.className).not.toContain('pl-2 ');
+  });
+
+  it('stacks studio rows with the same gap the top-level rows use', () => {
+    // With no gap the filled backgrounds touch, so a selected row and the row
+    // being hovered next to it read as one block rather than two.
+    const { container } = renderGroup();
+    const list = container.querySelector('ul');
+    expect(list?.className).toContain(RAIL_LIST);
   });
 
   it('indents the empty text to the same level as a studio row', () => {

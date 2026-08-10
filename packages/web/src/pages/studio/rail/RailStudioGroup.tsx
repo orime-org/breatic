@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import {
+  RAIL_LIST,
   RAIL_ROW_CURRENT,
   RAIL_ROW_IDLE,
   RAIL_ROW_NESTED,
@@ -103,7 +104,7 @@ export function RailStudioGroup({
               {emptyText}
             </p>
           ) : (
-            <ul className='flex flex-col'>
+            <ul className={RAIL_LIST}>
               {studios.map((studio) => (
                 <li key={studio.id}>
                   <Link

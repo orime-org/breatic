@@ -34,4 +34,15 @@ describe('RailCreateStudioAction (rail footer)', () => {
       RAIL_ROW_TOP,
     );
   });
+
+  it('fills its container without needing one to stretch it', () => {
+    // A <button> sizes to its content whatever its display, so the three rows
+    // above only fill the rail because their parent is a flex column. This one
+    // sits in the footer, where nothing stretches it — the row has to carry its
+    // own width or it comes out half as wide as the rows it should match.
+    render(<RailCreateStudioAction label='New studio' onCreateStudio={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'New studio' }).className).toContain(
+      'w-full',
+    );
+  });
 });

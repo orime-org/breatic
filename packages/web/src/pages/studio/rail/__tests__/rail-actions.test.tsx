@@ -7,7 +7,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 import { RailCreateActions } from '@web/pages/studio/rail/RailCreateActions';
 import { RailRecentLink } from '@web/pages/studio/rail/RailRecentLink';
-import { RAIL_ROW_TOP } from '@web/pages/studio/rail/rail-row';
+import { RAIL_LIST, RAIL_ROW_TOP } from '@web/pages/studio/rail/rail-row';
 
 describe('RailCreateActions (spec §4.1 ①②)', () => {
   it('fires onCreateProject when create-project is clicked', () => {
@@ -65,6 +65,18 @@ describe('RailCreateActions (spec §4.1 ①②)', () => {
       />,
     );
     expect(container.querySelectorAll('hr')).toHaveLength(0);
+  });
+
+  it('stacks its actions with the one list definition', () => {
+    const { container } = render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    expect(container.firstElementChild?.className).toContain(RAIL_LIST);
   });
 
   it('builds both actions from the one top-level row definition', () => {

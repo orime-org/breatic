@@ -7,6 +7,7 @@ import { Plus } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import {
   RAIL_ICON,
+  RAIL_LIST,
   RAIL_ROW_IDLE,
   RAIL_ROW_TOP,
 } from '@web/pages/studio/rail/rail-row';
@@ -50,7 +51,7 @@ export function RailCreateActions({
   onCreateProject,
 }: RailCreateActionsProps): React.JSX.Element {
   return (
-    <div className='flex flex-col gap-0.5'>
+    <div className={RAIL_LIST}>
       <Button
         type='button'
         variant={null}

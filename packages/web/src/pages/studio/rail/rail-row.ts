@@ -19,17 +19,32 @@
 /**
  * Build a rail row's classes at a given indent.
  *
- * `justify-start` is here because the `Button` primitive centres its content,
- * and a rail row reads left to right from its indent. The previous version of
- * this rule was a comment in `RailCreateActions` saying the class was applied;
- * it never was, so the three create actions had been sitting centred, their
- * icons 45–54px right of where Recent's starts.
+ * A row carries its own width and alignment rather than borrowing them from
+ * whatever contains it, because both had already gone wrong that way. A
+ * `<button>` sizes to its content whatever its `display` is, so the create
+ * actions only filled the rail while their parent happened to be a flex
+ * column stretching them; moving create-studio into the footer, where nothing
+ * stretches it, left it 111px wide against the 223px rows it should match.
+ * And `justify-start` undoes the `Button` primitive's centring — a comment in
+ * `RailCreateActions` claimed that class was applied, but it never was, so the
+ * three create actions had been sitting centred, icons 45–54px right of
+ * Recent's.
  * @param paddingLeft - The left-padding class that places this level.
  * @returns The row's class string, indent included.
  */
 function railRow(paddingLeft: string): string {
-  return `group flex h-8 items-center justify-start gap-2.5 rounded-chrome ${paddingLeft} pr-2 text-sm transition-colors`;
+  return `group flex h-8 w-full items-center justify-start gap-2.5 rounded-chrome ${paddingLeft} pr-2 text-sm transition-colors`;
 }
+
+/**
+ * How rail rows stack, wherever they stack: one column, one gap.
+ *
+ * The gap belongs to the container, so a row cannot carry it — which is how
+ * the studio lists ended up with none while the top-level rows had 2px. With
+ * the rows touching, a selected row and the row hovered beside it merge into
+ * one filled block instead of reading as two.
+ */
+export const RAIL_LIST = 'flex flex-col gap-0.5';
 
 /** A top-level row: Recent, the create actions, create-studio in the footer. */
 export const RAIL_ROW_TOP = railRow('pl-2');
