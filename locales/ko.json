@@ -211,11 +211,11 @@
       "firstFrame": "첫 프레임",
       "firstFrameTip": "영상의 첫 프레임으로 쓸 이미지를 고르세요",
       "removeFirstFrame": "첫 프레임 제거",
-      "errorNoFirstFrame": "첫 프레임을 고르세요. 이 모드는 이미지에서 생성합니다",
+      "errorNoFirstFrame": "첫 프레임을 고르세요",
       "endFrame": "마지막 프레임",
       "endFrameTip": "영상의 마지막 프레임으로 쓸 이미지를 고르세요",
       "removeEndFrame": "마지막 프레임 제거",
-      "errorNoEndFrame": "마지막 프레임을 고르세요. 이 모드는 두 이미지 사이를 생성합니다"
+      "errorNoEndFrame": "마지막 프레임을 고르세요"
     },
     "nodeMenu": {
       "generate": "생성",

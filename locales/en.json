@@ -220,11 +220,11 @@
       "firstFrame": "First frame",
       "firstFrameTip": "Pick an image to start the video from",
       "removeFirstFrame": "Remove first frame",
-      "errorNoFirstFrame": "Pick a first frame — this mode generates from one",
+      "errorNoFirstFrame": "Pick a first frame",
       "endFrame": "End frame",
       "endFrameTip": "Pick an image for the video to end on",
       "removeEndFrame": "Remove end frame",
-      "errorNoEndFrame": "Pick an end frame — this mode generates between two images"
+      "errorNoEndFrame": "Pick an end frame"
     },
     "edge": {
       "delete": "Delete connection"

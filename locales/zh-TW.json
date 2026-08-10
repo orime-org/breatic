@@ -211,11 +211,11 @@
       "firstFrame": "首幀",
       "firstFrameTip": "挑一張圖作為影片的第一幀",
       "removeFirstFrame": "移除首幀",
-      "errorNoFirstFrame": "先挑一張首幀 —— 這個模式要從一張圖開始生成",
+      "errorNoFirstFrame": "先挑一張首幀",
       "endFrame": "尾幀",
       "endFrameTip": "挑一張圖作為影片的最後一幀",
       "removeEndFrame": "移除尾幀",
-      "errorNoEndFrame": "先挑一張尾幀 —— 這個模式要在兩張圖之間生成"
+      "errorNoEndFrame": "先挑一張尾幀"
     },
     "nodeMenu": {
       "generate": "生成",

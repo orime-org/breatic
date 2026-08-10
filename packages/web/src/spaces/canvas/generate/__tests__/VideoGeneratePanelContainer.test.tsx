@@ -869,7 +869,7 @@ describe('VideoGeneratePanelContainer', () => {
       // message itself — which slot it names is the point of this case.
       await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
       expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toBe(
-        'Pick an end frame — this mode generates between two images',
+        'Pick an end frame',
       );
       expect(createTask).not.toHaveBeenCalled();
       createTask.mockRestore();
@@ -883,7 +883,7 @@ describe('VideoGeneratePanelContainer', () => {
       // message itself — which slot it names is the point of this case.
       await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
       expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toBe(
-        'Pick a first frame — this mode generates from one',
+        'Pick a first frame',
       );
       expect(createTask).not.toHaveBeenCalled();
       createTask.mockRestore();

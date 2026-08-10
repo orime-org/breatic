@@ -211,11 +211,11 @@
       "firstFrame": "最初のフレーム",
       "firstFrameTip": "動画の最初のフレームにする画像を選ぶ",
       "removeFirstFrame": "最初のフレームを削除",
-      "errorNoFirstFrame": "最初のフレームを選んでください。このモードは画像から生成します",
+      "errorNoFirstFrame": "最初のフレームを選んでください",
       "endFrame": "最後のフレーム",
       "endFrameTip": "動画の最後のフレームにする画像を選ぶ",
       "removeEndFrame": "最後のフレームを削除",
-      "errorNoEndFrame": "最後のフレームを選んでください。このモードは2枚の画像の間を生成します"
+      "errorNoEndFrame": "最後のフレームを選んでください"
     },
     "nodeMenu": {
       "generate": "生成",
