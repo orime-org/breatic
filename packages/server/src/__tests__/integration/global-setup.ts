@@ -57,6 +57,11 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
     REDIS_URL: `${redisBase}/0`,
     REDIS_QUEUE_URL: `${redisBase}/1`,
     REDIS_STREAM_URL: `${redisBase}/2`,
+    // DB3 is collab's instance-coordination database (Hocuspocus pub/sub, the
+    // Space-delete lock, the connection registry). A test that runs two collab
+    // instances needs it to be the same Redis for both, which is what makes
+    // cross-instance behaviour observable at all.
+    REDIS_COLLAB_URL: `${redisBase}/3`,
   };
 
   // Inject into THIS process's env so any synchronous module imports
@@ -66,6 +71,7 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   process.env.REDIS_URL = urls.REDIS_URL;
   process.env.REDIS_QUEUE_URL = urls.REDIS_QUEUE_URL;
   process.env.REDIS_STREAM_URL = urls.REDIS_STREAM_URL;
+  process.env.REDIS_COLLAB_URL = urls.REDIS_COLLAB_URL;
   // ENV must be "dev" | "staging" | "prod" (see core/config/env.ts)
   process.env.ENV = "dev";
   process.env.STORAGE_PROVIDER = "local";
@@ -105,6 +111,7 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   provide("REDIS_URL", urls.REDIS_URL);
   provide("REDIS_QUEUE_URL", urls.REDIS_QUEUE_URL);
   provide("REDIS_STREAM_URL", urls.REDIS_STREAM_URL);
+  provide("REDIS_COLLAB_URL", urls.REDIS_COLLAB_URL);
 }
 
 export async function teardown(): Promise<void> {

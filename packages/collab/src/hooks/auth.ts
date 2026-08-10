@@ -4,7 +4,7 @@
 /**
  * Hocuspocus authentication hook (v10 multi-doc).
  *
- * Performs three checks before a client is allowed to open or
+ * Performs four checks before a client is allowed to open or
  * subscribe to a document:
  *
  *   1. The supplied session cookie resolves to a user id (delegated to
@@ -20,6 +20,10 @@
  *      the hook MUTATES `connectionConfig.readOnly = true` (the field
  *      Hocuspocus reads when it builds the Connection), so every incoming
  *      Yjs sync-update is rejected at the protocol level — no UI trust.
+ *   4. For a Space content doc, the spaceId is still listed in the
+ *      project's `meta.spaces` (delegated to `readProjectSpaceIds`); a
+ *      Space that has left the list refuses new connections. The meta doc
+ *      itself skips this check — it is the list.
  *
  * Cross-tenant probing is impossible by design: any doc whose
  * projectId the caller is not a member of is rejected with the
@@ -31,22 +35,24 @@
  * be identical across every backend service. collab used to hand-roll
  * its own copies (raw `redis.get` for the session, raw SQL for the
  * role), which drifted from the server's path; both now call the one
- * shared kernel. The Yjs space-existence read also routes through core
- * (`yjsDocumentsRepo.fetchDocData`, the single home for `yjs_documents`
- * SQL) over the shared `db` singleton — collab issues no raw SQL of its
- * own.
+ * shared kernel. The Yjs space-existence check reads the meta doc this
+ * process holds, and loads one when it holds none — there is no second
+ * source and this file issues no SQL for it. See `readProjectSpaceIds` in
+ * `@collab/services/project-space-list.js`.
  */
 
 import type { Redis } from "@breatic/core";
+import {
+  readProjectSpaceIds,
+  type DocumentRegistry,
+} from "@collab/services/project-space-list.js";
 import {
   createLogger,
   getSession,
   projectAuthService,
   sessionCookieName,
 } from "@breatic/core";
-import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
-import * as Y from "yjs";
-import { parseDocName, projectMetaDocName } from "@breatic/shared";
+import { parseDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
 
 /**
@@ -115,11 +121,13 @@ interface MutableConnectionConfig {
 /**
  * Options required to build the auth hook.
  *
- * Only Redis is needed: the session lookup uses it (through core's
- * shared session store), while the role lookup and the `yjs_documents`
- * space-existence read route through core (`loadProjectRole` /
- * `yjsDocumentsRepo`) over the shared `db` singleton — no collab-owned
- * Postgres pool.
+ * Redis is the only backing store handed in — the other two fields configure
+ * the connection cap rather than reaching a store. The session lookup uses
+ * Redis (through core's shared session store) and the role lookup routes
+ * through core (`projectAuthService.loadProjectRole`) over the shared `db`
+ * singleton — no collab-owned Postgres pool. The space-existence check needs
+ * nothing here at all: it works off the running Hocuspocus server, which the
+ * framework hands the hook on every handshake.
  */
 export interface CreateAuthHookOptions {
   redis: Redis;
@@ -142,55 +150,18 @@ export interface CreateAuthHookOptions {
 }
 
 /**
- * Load the set of Space ids currently listed in the project's meta
- * Yjs doc. Used to refuse a WebSocket connection to a
- * `project-{pid}/canvas-{deletedSpaceId}` after the Space has been
- * removed from `meta.spaces` (per ADR 2026-05-23-yjs-collab-only-write-authz
- * §"bootstrap boundary exception" and §"recoverable deletion"):
- *
- *   - `meta.spaces[id] = {...}` is the source of truth for "this
- *     Space exists right now". A soft-deleted `yjs_documents` row for
- *     `canvas-{id}` may still hold the old binary blob for recovery,
- *     but the Space is considered gone the moment its id leaves
- *     `meta.spaces`. New WebSocket connections to that doc name must
- *     be refused so a stale tab cannot resurrect the data.
- *
- * Returns an empty set when the meta row does not exist (a freshly
- * created project's meta doc is always seeded by `yjs-bootstrap`, so
- * the empty-set path is a defensive fallback rather than a real
- * expected state).
- *
- * The `yjs_documents` read goes through the shared core repo — the
- * single home for that table's SQL — over the process-wide `db`
- * singleton, so collab keeps no private pool of its own.
- * @param projectId - Project whose meta Yjs doc holds the authoritative `meta.spaces` set.
- * @returns The set of Space ids currently listed in `meta.spaces`, or an empty set when the meta row is missing.
- */
-async function loadProjectSpaceIds(
-  projectId: string,
-): Promise<Set<string>> {
-  const docName = projectMetaDocName(projectId);
-  const data = await yjsDocumentsRepo.fetchDocData(docName);
-  if (!data) return new Set();
-
-  const doc = new Y.Doc();
-  Y.applyUpdate(doc, new Uint8Array(data));
-  const spaces = doc.getMap("spaces");
-  return new Set(spaces.keys());
-}
-
-/**
  * Create the onAuthenticate hook for Hocuspocus.
  *
  * Returns a function that Hocuspocus calls on every WS handshake.
  * Throwing rejects the connection (4401 / 4403). Returning sets
- * `c.context.user` for downstream `onChange` / `broadcastStateless`
- * consumers.
+ * `c.context.user` for the handlers that read it downstream —
+ * `onStateless` (the caller's id and role on every `space:*` / `tab:*` RPC),
+ * `connected` and `onDisconnect` (presence), and `beforeHandleMessage`.
  * @param root0 - Hook construction options.
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
  * @param root0.maxConnectionsPerDoc - Per-document concurrent-connection cap (0 = unlimited); at the cap, extra connections degrade to read-only. The meta doc is exempt.
  * @param root0.countConnections - Counts a document's live connections cluster-wide (this connection not included) to evaluate the cap.
- * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` for view-only members or at-capacity documents, and returns the user context — or throws to reject the connection.
+ * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` — always for the meta doc, and for view-only members or at-capacity documents — and returns the user context, or throws to reject the connection.
  */
 export function createAuthHook({
   redis,
@@ -201,11 +172,20 @@ export function createAuthHook({
     documentName,
     requestHeaders,
     connectionConfig,
+    instance,
+    request,
+    socketId,
   }: {
     token: string;
     documentName: string;
     requestHeaders: Headers;
     connectionConfig: MutableConnectionConfig;
+    /** The running Hocuspocus server, for the meta doc it holds or can load. */
+    instance: DocumentRegistry;
+    /** The upgrade request, passed through when a meta doc has to be loaded. */
+    request: Request;
+    /** This connection's socket id, passed through on the same path. */
+    socketId: string;
   }): Promise<AuthContext> => {
     // Every decision below - accept or reject - logs structured
     // context (no PII beyond userId + documentName). The previous
@@ -292,7 +272,12 @@ export function createAuthHook({
       // meta.spaces; PG row stays for recovery but new connections cannot
       // load it" (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5).
       if (parsed.kind !== "meta") {
-        const ids = await loadProjectSpaceIds(parsed.projectId);
+        const ids = await readProjectSpaceIds(
+          parsed.projectId,
+          instance,
+          request,
+          socketId,
+        );
         if (!ids.has(parsed.spaceId)) {
           logger.warn(
             {

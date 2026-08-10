@@ -16,7 +16,7 @@
     "@breatic/core": "workspace:*",
     "@breatic/shared": "workspace:*",
     "@hocuspocus/extension-database": "^4.5.0",
-    "@hocuspocus/extension-redis": "^4.5.0",
+    "@hocuspocus/extension-redis": "catalog:",
     "@hocuspocus/extension-throttle": "^4.5.0",
     "@hocuspocus/server": "catalog:",
     "dotenv": "catalog:",
