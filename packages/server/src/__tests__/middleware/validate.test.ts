@@ -216,3 +216,23 @@ describe("a body that could not be read at all", () => {
     expect(status).toBe(422);
   });
 });
+
+describe("an extra argument", () => {
+  it("is refused at mount time rather than dropped", () => {
+    // `typeof zValidator` is what carries the inference every route depends
+    // on, and it advertises a third parameter this function does not
+    // forward. Silently discarding a hook someone wrote would send them
+    // hunting through the library; failing here fails at process start.
+    // No `@ts-expect-error` here, and that absence is the point: the
+    // annotation genuinely accepts a third argument, so the type system
+    // cannot be the one to catch this. Adding the directive fails typecheck
+    // with "Unused '@ts-expect-error' directive" — measured, 2026-08-10.
+    expect(() =>
+      validate("json", bodySchema, () => undefined),
+    ).toThrow(/takes a target and a schema only/);
+  });
+
+  it("still builds middleware for the two-argument call", () => {
+    expect(() => validate("json", bodySchema)).not.toThrow();
+  });
+});

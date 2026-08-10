@@ -36,15 +36,20 @@ type ValidatorArgs = Parameters<typeof zValidator>;
  * `c.req.valid(target)` keeps its type — differing only in what a rejection
  * produces.
  *
- * Takes a target and a schema and nothing else. `zValidator`'s third
- * parameter is the failure hook, which is the very thing this function
- * exists to fix in one place; passing another one here has no effect,
- * because this hook throws before any hook of yours could answer.
+ * Takes a target and a schema and nothing else. The annotation is
+ * `typeof zValidator` because that is what carries the inference every route
+ * depends on — `c.req.valid(target)` keeps its exact type — but that
+ * signature also advertises `zValidator`'s third and fourth parameters,
+ * which this function does not forward. Rather than dropping them silently,
+ * a call that passes them fails at mount time, which is process start.
  * @param target - Which part of the request to read: `json`, `query`,
  *   `param`, and the rest of hono's validation targets.
  * @param schema - The zod schema that part must satisfy.
+ * @param rest - Nothing. Present only so an extra argument is refused
+ *   loudly instead of being discarded; see above.
  * @returns Middleware that parses the target and hands the result to the
  *   route through `c.req.valid(target)`.
+ * @throws {Error} at mount time when given more than a target and a schema.
  * @throws {ValidationError} 422 when the value does not satisfy the schema.
  *   A body that could not be parsed at all never reaches here — hono throws
  *   `HTTPException` from inside the validator first, which the error handler
@@ -53,11 +58,18 @@ type ValidatorArgs = Parameters<typeof zValidator>;
 export const validate: typeof zValidator = (
   target: ValidatorArgs[0],
   schema: ValidatorArgs[1],
-) =>
-  zValidator(target, schema, (result) => {
+  ...rest: unknown[]
+) => {
+  if (rest.length > 0) {
+    throw new Error(
+      "validate() takes a target and a schema only. A failure hook passed here would never run — what a rejection answers is decided in error-handler.ts, for every route at once.",
+    );
+  }
+  return zValidator(target, schema, (result) => {
     if (!result.success) {
       // Built here, inside the request, so `t()` reads the locale
       // `localeMiddleware` pinned for this caller.
       throw new ValidationError(t("server.error.validation"));
     }
   });
+};

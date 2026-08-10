@@ -31,10 +31,24 @@ const PARSED_BODY_READERS = new Set(["json", "parseBody", "formData"]);
  * reads the call instead, which is exactly the thing that went wrong and is
  * visible in one file with nothing standing in for it.
  *
- * What it does NOT claim: that every body is validated. `JSON.parse(await
- * c.req.text())` still gets through, and no single-file check can see whether
- * a given handler's route mounted `validate`. It closes the shape that
- * shipped, and says only that.
+ * What it matches, exactly: a call whose receiver is a member expression
+ * named `req` — `c.req.json()`, `ctx.req.parseBody()`. The context parameter
+ * can be named anything; the access chain cannot.
+ *
+ * What it does NOT match, measured with the rule itself rather than reasoned
+ * about (2026-08-10):
+ *
+ *   c.req.raw.json()          the receiver's property is `raw`, not `req`
+ *   const { req } = c         the receiver is a plain identifier
+ *   const r = c.req           likewise
+ *   JSON.parse(await c.req.text())   not a body-reading call at all
+ *
+ * So it closes the shape that shipped and nothing wider. It is not a proof
+ * that every body is validated — no single-file check can see whether a
+ * given handler's route mounted `validate`, and the exit answers 500 with a
+ * log for anything that gets past here, which is the correct outcome for a
+ * guard that was circumvented. Widening the matcher to the chains above is
+ * filed separately rather than done here.
  */
 export const noRawBodyParse = createRule<[], "rawBodyParse">({
   name: "no-raw-body-parse",
