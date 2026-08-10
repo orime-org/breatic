@@ -14,7 +14,9 @@
 models:
   - name: "seedance-1.5-pro-i2v"
     display_name: "Seedance 1.5 Pro I2V"
-    mode: "i2v"
+    # Both frames ride the same request; the end frame is optional to the
+    # vendor, required by the first-last mode (#1904).
+    mode: ["i2v", "first_last"]
     tier: optional
     description: "Seedance 1.5 image-to-video"
     guide: "Animate an image into a video using Seedance 1.5 Pro. Supports end frame guidance, camera lock, and audio generation. Duration 4-12s, up to 1080p."

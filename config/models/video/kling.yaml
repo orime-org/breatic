@@ -56,7 +56,9 @@ models:
 
   - name: "kling-o3-pro-i2v"
     display_name: "Kling O3 Pro I2V"
-    mode: "i2v"
+    # Both frames ride the same request; the end frame is optional to the
+    # vendor, required by the first-last mode (#1904).
+    mode: ["i2v", "first_last"]
     tier: recommended
     description: "Kling O3 image-to-video"
     guide: "Animate an image into a video using Kling O3 Pro. Supports end frame guidance and AI sound. Duration 3-15s."
