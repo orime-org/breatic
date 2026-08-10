@@ -13,10 +13,9 @@
  * entry injects validated config via initCore(process.env). This setup
  * file only *applies* the env vars (container URLs from inject() + the
  * required fixed vars) — it deliberately does NOT import @breatic/core
- * to call initCore here, because the core barrel pulls the `ai` SDK
- * (→ @opentelemetry/api, whose broken ESM build crashes the vitest
- * loader). Each test that exercises real core mocks `ai` first, then
- * calls initCore(process.env) itself (see canvas-native-e2e). Tests
+ * to call initCore here, so that importing this setup file pulls in no part
+ * of the application. Each test that exercises real core calls
+ * initCore(process.env) itself (see canvas-native-e2e). Tests
  * that never touch the env Proxy (e.g. v10-schema-invariants, which
  * only uses createTestDb with an explicit URL) need neither.
  */

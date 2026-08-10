@@ -18,10 +18,9 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-// Importing from the @breatic/domain barrel pulls in the agent/llm side,
-// which imports the real `ai` package (and @opentelemetry/api's ESM build
-// that Node's native ESM rejects). Mock `ai` so the barrel loads — same
-// guard the project_activities integration suite uses.
+// `ai` is stubbed: the real SDK is replaced with a double that reaches no
+// network, so this suite needs no API key and the SDK stays out of its
+// module graph.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

@@ -4,28 +4,37 @@
 /**
  * The document editor's extension list.
  *
- * **This slice connects the document to a shared Yjs document. It does not
- * change what a user can write into it.** StarterKit is left as it was — every
- * heading, list, quote, code block and mark it ships stays exactly as it
- * behaved before, because the editing feature set is a separate body of work
+ * **What a user can write into the body is StarterKit's, unchanged.** Every
+ * heading, list, quote, code block and mark it ships behaves exactly as it
+ * would on its own, because the editing feature set is a separate body of work
  * with its own slice.
  *
- * Two of StarterKit's defaults ARE switched off, and both for the same reason:
- * they are safe in a private editor and unsafe in a shared one. Each is
- * explained where it is switched off. If a third ever joins them, it needs the
- * same justification — "connecting this document to a shared one broke it" —
- * and nothing else qualifies.
+ * What IS ours is the document's outer shape — a title that cannot be removed,
+ * followed by a body that may hold nothing — and the handful of behaviours that
+ * shape forces. Each is added below with the reason it qualifies, and the bar
+ * for another is the same: the shared, title-first document broke something,
+ * and nothing else counts.
+ *
+ * Three of StarterKit's defaults are switched off, each for its own reason
+ * stated where it happens. `document-extensions.test` pins the NODES the
+ * schema gains and the StarterKit switches, so neither of those can change
+ * quietly. An extension that contributes no node is not pinned by it — the bar
+ * stated above is the only thing holding that line.
  */
 
 import type { Extensions } from '@tiptap/core';
-import { Placeholder } from '@tiptap/extension-placeholder';
+import { Document } from '@tiptap/extension-document';
 import StarterKit from '@tiptap/starter-kit';
 import type * as Y from 'yjs';
 
-import { t } from '@breatic/shared';
+import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
+import { DocumentClickToWrite } from '@web/spaces/document/document-click-to-write';
+import { DocumentPlaceholders } from '@web/spaces/document/document-placeholders';
+import { DocumentTitle } from '@web/spaces/document/document-title';
+import { DocumentTitleIsPlainText } from '@web/spaces/document/document-title-plain-text';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
 /** The body fragment, plus the optional collaborative layers. */
@@ -73,13 +82,32 @@ export function buildDocumentExtensions(
     options;
 
   const extensions: Extensions = [
+    // `title block*` — one title, always first, then any number of body
+    // blocks INCLUDING none. Both halves are load-bearing and neither works
+    // alone: the title is what keeps the shared fragment inhabited, and once
+    // it does, requiring a body block would re-open the very gap the title
+    // closes (two people deleting different body blocks merge into a body
+    // with none, and the editor's repair for that counts as a user edit).
+    // `@breatic/shared`'s `document-body` carries the full reasoning.
+    Document.extend({ content: `${DOCUMENT_TITLE_NODE} block*` }),
+    DocumentTitle,
+    // The title holds text and nothing else, so a rule that would turn typed
+    // text into a block must not fire there — the divider rule does not check
+    // for itself and destroys what was typed.
+    DocumentTitleIsPlainText,
+    // The body may hold no blocks at all, so the space under the title has to
+    // be clickable or a fresh document cannot be written into.
+    DocumentClickToWrite,
     StarterKit.configure({
+      // StarterKit's own Document is `block+`, which is both halves wrong.
+      document: false,
       // Collaboration owns history through the shared Yjs undo manager, which
       // tracks only this client's transactions. Leaving StarterKit's own
       // history in place gives the editor a second, client-blind undo stack:
       // a peer's edit arrives as a local transaction there, so one Cmd+Z
       // deletes their paragraph. Verified by mutation — switching this back on
-      // turns the document to an empty string in the per-client undo test.
+      // wipes the body in the per-client undo tests: the peer's paragraph goes
+      // and the title is all that is left.
       undoRedo: false,
       // TrailingNode appends a paragraph whenever the body's last block is not
       // one. Harmless in a private editor; in a shared document that append is
@@ -94,11 +122,10 @@ export function buildDocumentExtensions(
       // appended paragraph, click once, and it is re-appended as a fresh local
       // edit — clearing the redo stack and stranding the text just undone.
       //
-      // What is lost is the convenience of always having a paragraph to click
-      // after a trailing block. Building that back has to happen without
-      // writing to the document — a rendered affordance that inserts only when
-      // the user actually puts the caret in it — and belongs with the editing
-      // slice, not here.
+      // What that costs is the convenience of always having a paragraph to
+      // click after a trailing block. `DocumentClickToWrite` above gives it
+      // back on the only terms a shared document allows: it writes when the
+      // user actually clicks the space, and never for a viewer.
       trailingNode: false,
     }),
   ];
@@ -120,20 +147,14 @@ export function buildDocumentExtensions(
     }),
   );
 
-  // Resolved per render of the placeholder decoration rather than captured as
-  // a string, because the editor is built once per document and would
-  // otherwise keep whichever language was active at that moment. `t` is the
-  // shared engine — `useTranslation` returns this same function and exists
-  // only to re-render subscribers — so calling it here reads the live locale.
-  extensions.push(
-    Placeholder.configure({
-      placeholder: () => t('spaces.document.placeholder'),
-    }),
-    // Resolving the string per render (above) reads the live locale, but a
-    // decoration is only redrawn when something dispatches — and switching
-    // language dispatches nothing. This asks for the redraw.
-    LocaleRedraw,
-  );
+  // Both placeholders are drawn by `DocumentPlaceholders` rather than by the
+  // extension every other editor uses: that one decorates textblocks that
+  // exist and, by default, only the one holding the caret — so a body with no
+  // blocks could never show one, and a fresh document could not show both.
+  // Resolving the strings per decoration reads the live locale; `LocaleRedraw`
+  // asks for the redraw, since switching language dispatches nothing on its
+  // own.
+  extensions.push(DocumentPlaceholders, LocaleRedraw);
 
   return extensions;
 }

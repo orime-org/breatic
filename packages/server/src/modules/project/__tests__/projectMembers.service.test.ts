@@ -12,10 +12,9 @@
  *
  * `db`, `projectMembersRepo`, `publishMembersChanged`, and the error
  * classes all come from `@breatic/core` (the repo moved there in the
- * auth-unification PR). The whole barrel is mocked rather than
- * spread-from-actual because importing real `@breatic/core` pulls the
- * `ai` SDK + opentelemetry transitive deps that vitest's ESM resolver
- * chokes on — the same hermetic-test constraint as collab/auth.test.
+ * auth-unification PR). The whole barrel is replaced so every one of those
+ * four is under the test's control and no real database connection is ever
+ * opened — the same hermetic-test shape as collab/auth.test.
  * The error classes are defined inside the factory so the service's
  * `throw new ConflictError()` and the test's `toBeInstanceOf` resolve
  * to the same constructor.

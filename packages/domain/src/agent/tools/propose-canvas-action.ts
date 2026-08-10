@@ -13,7 +13,7 @@
  * frontend's job per spec §12.3 (user-driven control) + memory canvas
  * architecture (frontend owns node creation).
  */
-import { tool } from "ai";
+import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 /** Sentinel detected by main-agent to interrupt the loop and yield AGENT_CANVAS_ACTION SSE event. */
@@ -46,7 +46,7 @@ const inputSchema = z.object({
     .describe("Brief explanation shown to the user for why this action is proposed"),
 });
 
-export const proposeCanvasAction = tool({
+export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "Propose creating / updating / deleting nodes on the user's " +
     "active canvas Space. The user sees a button + rationale and " +

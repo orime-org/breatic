@@ -24,9 +24,9 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-// Mock `ai` BEFORE importing anything that reaches the domain barrel — it
-// pulls agent/llm → the `ai` SDK → @opentelemetry/api, whose ESM build Node
-// rejects. This suite never calls an ai function.
+// `ai` is stubbed: the real SDK is replaced with a double that reaches no
+// network, so this suite needs no API key and the SDK stays out of its
+// module graph.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

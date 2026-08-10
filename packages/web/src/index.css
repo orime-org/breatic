@@ -424,6 +424,98 @@ body {
   pointer-events: none;
   color: var(--color-muted-foreground);
 }
+/* ---- The document Space's title block ----
+   Size is twice the body baseline rather than a literal 30px, so the title
+   stays in proportion to the text under it if that baseline ever moves. The
+   baseline is `calc(15px * var(--ts))`; `--ts` is a single scale hook declared
+   once in `theme/tokens.css` as `1`, and nothing in the app changes it today,
+   so this is about keeping one number derived from another rather than about
+   a setting a user can reach. 30px as it stands, which is the size chosen
+   against the mock. */
+.doc-body-editor .ProseMirror .doc-title {
+  font-size: calc(var(--font-size-base) * 2);
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  /* 28px, chosen against the mock. rem rather than a spacing token because the
+     token scale stops at 16px, and the page root is the browser's 16px — the
+     base font size is set on `body`, which rem does not follow. */
+  margin: 0 0 1.75rem;
+}
+
+/* ---- The document Space's two placeholders ----
+   Drawn here rather than by the placeholder extension: that one decorates
+   textblocks that EXIST and, by default, only the one holding the caret — so a
+   body with no blocks could never show one, and a fresh document could not
+   show both. `document-placeholders` marks the two states; this paints them.
+   The extension's own rule further up is untouched, because the generate
+   prompt still relies on it. */
+.doc-body-editor .ProseMirror .doc-title.doc-title-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--color-muted-foreground);
+}
+.doc-body-editor .ProseMirror.doc-body-empty::after {
+  content: attr(data-body-placeholder);
+  display: block;
+  pointer-events: none;
+  color: var(--color-muted-foreground);
+}
+
+/* ---- Room to click under the last block ----
+   A document Space is born with a title and no body blocks, so the editable
+   surface has to reach the bottom of the scroll viewport: below where it stops
+   there is nothing for `document-click-to-write` to receive, and a click there
+   does nothing at all.
+
+   The chain is three flex hops rather than percentage heights. Only the
+   FIRST hop can use a percentage: the viewport has a definite height
+   (`h-full`), so `min-height: 100%` on the wrapper Radix puts around its
+   children resolves. Below that, nothing does — the wrapper's own `height`
+   stays `auto`, and a percentage against `auto` computes to nothing — so the
+   remaining two hops grow by flex instead. `min-height` rather than `height`
+   throughout, so a document longer than the viewport still scrolls.
+
+   The wrapper's `display` is overridden back to flex here, undoing the
+   `display: block !important` rule further up for this one scroller. That rule
+   exists so a table wrapper cannot break the width chain `truncate` needs; a
+   column flex container keeps that chain intact, because a column's items
+   stretch to its width. The selector carries `[data-scrollbars='vertical']` as
+   well as the class purely to outrank that rule by specificity rather than by
+   source order, which would be a silent thing to depend on. */
+[data-scrollbars='vertical'].doc-body-scroller
+  > [data-radix-scroll-area-viewport]
+  > div {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 100%;
+}
+.doc-body-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  /* A flex item with an auto margin on the cross axis does not stretch, and
+     this one centres itself with `mx-auto` — so without a width of its own it
+     shrinks to fit its content and the whole column collapses to the width of
+     its longest line, moving as the user types. Measured before this line
+     existed: 63px wide, centred, in an 880px scroller. `max-w-3xl` still caps
+     it and `mx-auto` still centres it; all this does is give the cross size a
+     definite value to be capped from. */
+  width: 100%;
+}
+.doc-body-editor .ProseMirror {
+  flex: 1 0 auto;
+  /* The document's top and bottom breathing room, on the editable element
+     itself rather than on the scroll viewport around it. On the viewport it
+     sat OUTSIDE the editor, so the bottom strip of it answered no clicks —
+     `document-click-to-write` listens on this element, and a press in that
+     strip reports the viewport as its target. Here the same 16px is interior,
+     and the editable surface reaches the scroller's own edge. */
+  padding-block: 1rem;
+}
+
 /* Remote collaborator carets, shared by every collaborative editor — the
    document body and the generate prompt alike (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render

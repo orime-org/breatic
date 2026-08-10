@@ -15,9 +15,9 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
 // ── Mock @breatic/core ──────────────────────────────────────────────
-// Use a hoisted mock so the actual module (which depends on opentelemetry,
-// ioredis, etc.) is never loaded. Only the symbols that handlers/dispatch.ts
-// actually needs at import time are declared here.
+// Use a hoisted mock so the actual module (which reaches ioredis, postgres
+// and the rest of the infrastructure) is never loaded. Only the symbols that
+// handlers/dispatch.ts actually needs at import time are declared here.
 const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", () => ({
@@ -40,8 +40,8 @@ vi.mock("@breatic/core", () => ({
 // ── Mock @breatic/domain (AIGC business handlers/dispatch.ts calls) ──────────
 // PR4 moved task / credit / node-history / agent / canvas-lock here.
 // Mocked so loading handlers never pulls the real domain barrel (→ agent
-// llm → `ai` SDK → otel ESM chain, plus the MONOREPO_ROOT cascade back
-// into core). Only the symbols handlers/dispatch.ts imports at top level.
+// llm → the `ai` SDK, plus the MONOREPO_ROOT cascade back into core).
+// Only the symbols handlers/dispatch.ts imports at top level.
 vi.mock("@breatic/domain", () => ({
   taskService: {
     getByIdInternal: vi.fn(),

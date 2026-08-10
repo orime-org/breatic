@@ -66,7 +66,7 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
 
 // creditRepo.createBalanceRow moved to @breatic/domain (PR4). Mock it
 // EXPLICITLY (no importOriginal) so loading it never pulls the real agent
-// llm → `ai` SDK → otel ESM chain (which crashes under vitest).
+// llm and the `ai` SDK behind it.
 const mockCreateBalanceRow = vi.fn().mockResolvedValue(undefined);
 vi.mock("@breatic/domain", () => ({
   creditRepo: {

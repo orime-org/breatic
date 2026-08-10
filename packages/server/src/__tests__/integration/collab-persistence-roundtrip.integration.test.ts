@@ -19,8 +19,9 @@
  *   - soft-delete → reload sees nothing (the deleted_at filter is
  *     load-bearing — a stale client can't recover a deleted doc).
  *
- * The persistence extension imports the real core barrel — fine under
- * this config's otel→CJS alias (the `ai` SDK moved to @breatic/domain).
+ * The persistence extension imports the real core barrel, which is safe
+ * here: core's source imports neither `ai` nor any @ai-sdk package — the
+ * SDK lives in @breatic/domain.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
