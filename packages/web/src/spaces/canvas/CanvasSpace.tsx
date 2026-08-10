@@ -52,7 +52,7 @@ import {
   addEdge,
   addNodeFocusImage,
   addNode,
-  setNodeFirstFrame,
+  setNodeSlotUrl,
   setNodeStyleImage,
   createGroup,
   expandGroup,
@@ -153,6 +153,10 @@ import {
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
+import {
+  VIDEO_SLOTS,
+  slotForPurpose,
+} from '@web/spaces/canvas/generate/video-slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
@@ -1667,21 +1671,29 @@ function CanvasSpaceInner({
         return;
       }
 
-      if (session.purpose === 'firstFrame') {
-        // First frame (#1896): COPY the clicked image's URL onto the video
-        // node, same terms as Style — a pick-time snapshot with no
-        // relationship to the source, so deleting or regenerating that node
-        // never changes what this video generates from. `pickedSlotImageUrl`
-        // is the one predicate both slots share; a click it refuses is a
-        // no-op (dimming already says so, this backstops an insisting click).
+      const videoSlot = slotForPurpose(session.purpose);
+      if (videoSlot) {
+        // A video slot (#1896 first frame, #1904 end frame): COPY the clicked
+        // image's URL onto the video node, same terms as Style — a pick-time
+        // snapshot with no relationship to the source, so deleting or
+        // regenerating that node never changes what this video generates from.
+        // `pickedSlotImageUrl` is the one predicate every slot shares; a click
+        // it refuses is a no-op (dimming already says so, this backstops an
+        // insisting click).
         //
-        // This branch must come BEFORE the reference fallthrough at the end:
-        // `purpose` carries no exhaustive check, so a missing branch does not
-        // fail the build — it silently wires an EDGE instead of filling the
-        // slot.
+        // Dispatched from the slot registry rather than a branch per slot: the
+        // branches below carry no exhaustive check, so a missing one does not
+        // fail the build — it silently wires an EDGE (the reference
+        // fallthrough at the end) instead of filling the slot.
         const picked = pickedSlotImageUrl({ type: node.type, data: node.data });
         if (picked === null) return;
-        setNodeFirstFrame(projectId, spaceId, target, picked);
+        setNodeSlotUrl(
+          projectId,
+          spaceId,
+          target,
+          VIDEO_SLOTS[videoSlot].field,
+          picked,
+        );
         // One slot, one pick — the session completes on selection.
         endPick();
         return;
@@ -3212,22 +3224,26 @@ function CanvasSpaceInner({
         };
       });
 
+    const paintingSlot = slotForPurpose(pickSession.purpose);
     if (
       pickSession.purpose === 'style' ||
       pickSession.purpose === 'focus' ||
-      pickSession.purpose === 'firstFrame'
+      paintingSlot
     ) {
-      // Style, Focus and First frame share the candidate rule: any non-empty
-      // image node except the pick target itself (#1664 / #1782 / #1896).
-      // Focus additionally
-      // needs a RENDERED <img> to anchor the marquee, so a handling / error
-      // node (skeleton / error box, no img) is not a candidate (round-4:
-      // clicking one was a silent no-op).
+      // Style, Focus and every video slot share the candidate rule: any
+      // non-empty node of the type the slot accepts, except the pick target
+      // itself (#1664 / #1782 / #1896 / #1904). A video slot states the type
+      // it takes, so a slot for another kind of asset dims the right nodes
+      // without another branch here. Focus additionally needs a RENDERED
+      // <img> to anchor the marquee, so a handling / error node (skeleton /
+      // error box, no img) is not a candidate (round-4: clicking one was a
+      // silent no-op).
+      const accepts = paintingSlot ? VIDEO_SLOTS[paintingSlot].accepts : 'image';
       return paint((node) => {
         const data = node.data as { content?: unknown; status?: unknown };
         return (
           node.id === target ||
-          node.type !== 'image' ||
+          node.type !== accepts ||
           typeof data.content !== 'string' ||
           data.content.length === 0 ||
           (pickSession.purpose === 'focus' && data.status !== 'idle')

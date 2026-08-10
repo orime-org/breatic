@@ -933,6 +933,26 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     expect(assetUrlSurvives(url('ff'), nodes)).toBe(true);
   });
 
+  it('assetUrlSurvives sees the end-frame slot too (#1904)', () => {
+    // Second slot, same hand-kept list: resembling the first frame counts for
+    // nothing here, so the end frame needs its own line or deleting the image
+    // it was picked from reports an asset that is still in use.
+    const nodes = [{ id: 'v', data: { endFrameUrl: url('ef') } }];
+    expect(assetUrlSurvives(url('ef'), nodes)).toBe(true);
+  });
+
+  it('does not report an end frame still held by a surviving video node', () => {
+    // The other half of the same list: the deletion report is computed from
+    // the surviving set, which is a second hand-kept copy of it.
+    const shared = url('picked-last');
+    const deleted = [{ id: 'img', type: 'image', data: { content: shared } }];
+    const all = [
+      { id: 'img', type: 'image', data: { content: shared } },
+      { id: 'vid', type: 'video', data: { endFrameUrl: shared } },
+    ];
+    expect(computeDeletedAssetEntries(deleted, all, 'sp-1')).toEqual([]);
+  });
+
   it('does not report a first frame still held by a surviving video node', () => {
     // Delete the image the frame was picked from: the copy on the video node
     // keeps that asset alive, so nothing may be reported.

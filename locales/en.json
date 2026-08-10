@@ -170,6 +170,7 @@
       "selectFromCanvas": "Select a reference from the canvas",
       "selectStyleFromCanvas": "Select a style reference from the canvas",
       "selectFirstFrameFromCanvas": "Pick an image on the canvas to be the first frame",
+      "selectEndFrameFromCanvas": "Pick an image on the canvas to be the end frame",
       "removeStyle": "Remove style reference",
       "returnToNode": "Return to node",
       "exitSelect": "Exit",
@@ -219,7 +220,11 @@
       "firstFrame": "First frame",
       "firstFrameTip": "Pick an image to start the video from",
       "removeFirstFrame": "Remove first frame",
-      "errorNoFirstFrame": "Pick a first frame — this mode generates from one"
+      "errorNoFirstFrame": "Pick a first frame — this mode generates from one",
+      "endFrame": "End frame",
+      "endFrameTip": "Pick an image for the video to end on",
+      "removeEndFrame": "Remove end frame",
+      "errorNoEndFrame": "Pick an end frame — this mode generates between two images"
     },
     "edge": {
       "delete": "Delete connection"

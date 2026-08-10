@@ -9,7 +9,7 @@
  * adding the first-frame pick (#1902) extended the candidate-dimming rule and
  * the click handler but silently missed the banner and the focus hand-off, so
  * a first-frame pick told the user to "select a reference" and exited into
- * nowhere. `satisfies Record<PickPurpose, …>` turns the next omission into a
+ * nowhere. The end frame (#1904) was the first slot to arrive after that. `satisfies Record<PickPurpose, …>` turns the next omission into a
  * compile error instead of a wrong sentence on screen.
  */
 
@@ -50,5 +50,9 @@ export const PICK_PURPOSE_UI = {
   firstFrame: {
     banner: 'canvas.generatePanel.selectFirstFrameFromCanvas',
     trigger: { generateVideo: 'generate-video-tool-first-frame' },
+  },
+  endFrame: {
+    banner: 'canvas.generatePanel.selectEndFrameFromCanvas',
+    trigger: { generateVideo: 'generate-video-tool-end-frame' },
   },
 } as const satisfies Record<PickPurpose, PickPurposeUi>;

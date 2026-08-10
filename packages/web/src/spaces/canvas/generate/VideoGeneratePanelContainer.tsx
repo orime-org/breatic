@@ -9,7 +9,7 @@ import { canvasApi } from '@web/data/api/canvas';
 import { modelsApi } from '@web/data/api/models';
 import { ApiException } from '@web/data/api/types';
 import {
-  clearNodeFirstFrame,
+  clearNodeSlotUrl,
   getPromptFragment,
   isNodeHandling,
   isNodeLocked,
@@ -46,6 +46,11 @@ import {
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 import type { VideoParamsValue } from '@web/spaces/canvas/generate/VideoParamsPicker';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
+import {
+  VIDEO_SLOTS,
+  slotForPurpose,
+} from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 import { buildVideoTaskPayload } from '@web/spaces/canvas/generate/video-task-payload';
 import {
   buildVideoPanelViewModel,
@@ -338,14 +343,22 @@ function VideoGeneratePanelBody({
   const endPick = useCanvasStore((s) => s.endPick);
   const startReferencePick = useCanvasStore((s) => s.startReferencePick);
   const startFirstFramePick = useCanvasStore((s) => s.startFirstFramePick);
+  const startEndFramePick = useCanvasStore((s) => s.startEndFramePick);
   const referencePicking = useCanvasStore(
     (s) =>
       s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
   );
-  const firstFramePicking = useCanvasStore(
-    (s) =>
-      s.pickSession?.nodeId === nodeId &&
-      s.pickSession?.purpose === 'firstFrame',
+  // One starter per slot. `Record<VideoSlot, …>` is what makes a new slot
+  // impossible to half-wire: leaving it out here does not compile.
+  const startSlotPick: Record<VideoSlot, (id: string) => void> = React.useMemo(
+    () => ({ firstFrame: startFirstFramePick, endFrame: startEndFramePick }),
+    [startFirstFramePick, startEndFramePick],
+  );
+  /** The slot whose pick is running on this node, if any. */
+  const activeSlot = useCanvasStore((s) =>
+    s.pickSession?.nodeId === nodeId
+      ? slotForPurpose(s.pickSession.purpose)
+      : undefined,
   );
   const onAddReference = React.useCallback(() => {
     const session = useCanvasStore.getState().pickSession;
@@ -355,29 +368,35 @@ function VideoGeneratePanelBody({
       startReferencePick(nodeId);
     }
   }, [startReferencePick, endPick, nodeId]);
-  const onFirstFrame = React.useCallback(() => {
-    const session = useCanvasStore.getState().pickSession;
-    if (session?.nodeId === nodeId && session.purpose === 'firstFrame') {
-      endPick();
-    } else {
-      startFirstFramePick(nodeId);
-    }
-  }, [startFirstFramePick, endPick, nodeId]);
-  // A running first-frame pick outlives the slot that started it when the mode
+  const onPickSlot = React.useCallback(
+    (slot: VideoSlot) => {
+      const session = useCanvasStore.getState().pickSession;
+      if (
+        session?.nodeId === nodeId &&
+        session.purpose === VIDEO_SLOTS[slot].purpose
+      ) {
+        endPick();
+      } else {
+        startSlotPick[slot](nodeId);
+      }
+    },
+    [startSlotPick, endPick, nodeId],
+  );
+  // A running slot pick outlives the control that started it when the mode
   // changes (locally or via a collaborator's setNodeMode): the slot stops
   // rendering, so the pick loses the control that started it — the banner's
   // Exit would be the only way out, while the canvas kept dimming candidates
-  // for a slot that is gone.
+  // for a slot that is gone. Keyed on the mode's slot list, so it covers every
+  // slot rather than the one it was first written for.
+  const slotsKey = vm.slots.join(',');
   React.useEffect(() => {
     const session = useCanvasStore.getState().pickSession;
-    if (
-      !vm.requiresSource &&
-      session?.nodeId === nodeId &&
-      session.purpose === 'firstFrame'
-    ) {
+    if (!session || session.nodeId !== nodeId) return;
+    const running = slotForPurpose(session.purpose);
+    if (running && !slotsKey.split(',').includes(running)) {
       endPick();
     }
-  }, [vm.requiresSource, nodeId, endPick]);
+  }, [slotsKey, nodeId, endPick]);
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {
@@ -388,15 +407,16 @@ function VideoGeneratePanelBody({
     },
     [projectId, spaceId],
   );
-  // The slot's ✕: clears the node's pick-time copy. Available whenever the
-  // slot is — which is only in a mode that takes a first frame. A copy left
-  // behind by a switch to text-to-video is out of reach until the user
-  // switches back; it does not ride the wire meanwhile (see the payload's
-  // mode gate), so what it costs is the asset staying alive, not a wrong
-  // generation. Deliberately NOT cleared on the switch: that would throw away
-  // a pick the user may be coming back to.
-  const onClearFirstFrame = React.useCallback(
-    () => clearNodeFirstFrame(projectId, spaceId, nodeId),
+  // A slot's ✕: clears the node's pick-time copy. Available whenever the slot
+  // is — which is only in a mode that collects it. A copy left behind by a
+  // mode switch is out of reach until the user switches back; it does not ride
+  // the wire meanwhile (the payload is built from the mode's own field set),
+  // so what it costs is the asset staying alive, not a wrong generation.
+  // Deliberately NOT cleared on the switch: that would throw away a pick the
+  // user may be coming back to.
+  const onClearSlot = React.useCallback(
+    (slot: VideoSlot) =>
+      clearNodeSlotUrl(projectId, spaceId, nodeId, VIDEO_SLOTS[slot].field),
     [projectId, spaceId, nodeId],
   );
 
@@ -442,14 +462,18 @@ function VideoGeneratePanelBody({
     ) {
       return;
     }
-    // Source gate (#1675, same shape as the image panel's): image-to-video
-    // needs a first frame. Without one the provider refuses the call, and the
-    // user is left with an upstream error about a control nobody told them to
-    // fill. Reject with a toast BEFORE the submitting latch — the button stays
-    // clickable (not disabled), so this is an actionable message rather than a
-    // dead control. The server re-checks before billing (defence in depth).
-    if (fresh.requiresSource && !fresh.firstFrameUrl) {
-      toast.error(t('canvas.generatePanel.errorNoFirstFrame'));
+    // The one check the mode's field set cannot make for itself: the fields
+    // are built from the mode, but whether the user filled them is a question
+    // only asked here (user 2026-08-10 — "one check at execute time is
+    // enough"). Without a slot the provider refuses the call and the user is
+    // left with an upstream error about a control nobody told them to fill.
+    // Each slot names its own message, so the refusal says which one is
+    // missing. Reject BEFORE the submitting latch — the button stays clickable
+    // (not disabled), so this is an actionable message rather than a dead
+    // control. The server re-checks before billing (defence in depth).
+    const emptySlot = fresh.slots.find((slot) => !fresh.slotUrls[slot]);
+    if (emptySlot) {
+      toast.error(t(VIDEO_SLOTS[emptySlot].errorKey));
       return;
     }
     submittingRef.current = true;
@@ -464,11 +488,10 @@ function VideoGeneratePanelBody({
         model: fresh.model,
         params: fresh.params,
         promptText: freshPrompt,
-        // Mode gate: the copy rides the payload only while the active mode
-        // takes a source. A frame picked in image-to-video and left behind
-        // after a switch to text-to-video must not travel — the provider reads
-        // the key's PRESENCE, so it would change what gets generated.
-        firstFrameUrl: fresh.requiresSource ? fresh.firstFrameUrl : undefined,
+        // The payload's source fields are built FROM the mode, so a pick left
+        // behind by a mode switch has no way in and needs no gate here.
+        mode: fresh.mode,
+        slotUrls: fresh.slotUrls,
         leaseGen: readNodeLeaseGen(projectId, spaceId, nodeId),
       });
       await canvasApi.createTask(payload);
@@ -565,15 +588,13 @@ function VideoGeneratePanelBody({
       onRemoveReference={onRemoveReference}
       onInsertReference={handleInsertReference}
       // The slot appears exactly when the active mode needs a source asset,
-      // which for the two modes this panel offers means a first frame — the
-      // model states it per mode (`sourcesByMode`) and the view model reads it
-      // off the wire. Showing it under text-to-video would offer a pick the
-      // submit then ignores.
-      firstFrameSupported={vm.requiresSource}
-      onFirstFrame={onFirstFrame}
-      firstFramePicking={firstFramePicking}
-      firstFrameUrl={vm.firstFrameUrl}
-      onClearFirstFrame={onClearFirstFrame}
+      // The mode states which slots it collects, so a mode that takes no
+      // source shows none rather than offering a pick the submit ignores.
+      slots={vm.slots}
+      slotUrls={vm.slotUrls}
+      activeSlot={activeSlot}
+      onPickSlot={onPickSlot}
+      onClearSlot={onClearSlot}
       canExecute={canExecuteGenerate({
         promptText,
         model: vm.model,

@@ -1157,6 +1157,191 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-image')).toContain('canvas-pick-selectable'); // has an asset
   });
 
+  // #1904 acceptance 3: an end-frame pick takes an image and nothing else.
+  // The click handler dispatches on the pick's purpose and the branches carry
+  // no exhaustive check, so a slot with no branch of its own falls through to
+  // the reference fallthrough at the end — which wires an EDGE. That failure
+  // is silent: it compiles, and the user sees a connection appear instead of
+  // the slot filling.
+  it('end-frame pick: clicking a non-image node fills nothing and wires no edge', () => {
+    const setSlot = vi
+      .spyOn(canvasSpace, 'setNodeSlotUrl')
+      .mockImplementation(() => {});
+    const addEdgeSpy = vi.spyOn(canvasSpace, 'addEdge');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'video',
+            position: { x: 0, y: 0 },
+            data: { kind: 'video', status: 'idle', mode: 'first_last' },
+          },
+          {
+            id: 'src-audio',
+            type: 'audio',
+            position: { x: 600, y: 0 },
+            data: { kind: 'audio', content: 'https://cdn/a.m4a', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startEndFramePick('target');
+    });
+    act(() => {
+      document
+        .querySelector('.react-flow__node[data-id="src-audio"]')
+        ?.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true }),
+        );
+    });
+    expect(setSlot).not.toHaveBeenCalled();
+    expect(addEdgeSpy).not.toHaveBeenCalled();
+    // Still picking: the click was refused, not consumed.
+    expect(useCanvasStore.getState().pickSession).toEqual({
+      nodeId: 'target',
+      purpose: 'endFrame',
+    });
+    setSlot.mockRestore();
+    addEdgeSpy.mockRestore();
+    act(() => {
+      useCanvasStore.setState({ pickSession: null });
+    });
+  });
+
+  it('end-frame pick: clicking an image fills the end-frame field, not the first', () => {
+    const setSlot = vi
+      .spyOn(canvasSpace, 'setNodeSlotUrl')
+      .mockImplementation(() => {});
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'video',
+            position: { x: 0, y: 0 },
+            data: { kind: 'video', status: 'idle', mode: 'first_last' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 600, y: 0 },
+            data: { kind: 'image', content: 'https://cdn/l.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startEndFramePick('target');
+    });
+    act(() => {
+      document
+        .querySelector('.react-flow__node[data-id="src-image"]')
+        ?.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true }),
+        );
+    });
+    expect(setSlot).toHaveBeenCalledWith(
+      'p',
+      's',
+      'target',
+      'endFrameUrl',
+      'https://cdn/l.png',
+    );
+    // One slot, one pick — the session completes on selection.
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+    setSlot.mockRestore();
+  });
+
+  // #1904 acceptance 4: the visual half of the same rule. The candidate
+  // highlighting is a list of purposes too, so a slot missing from it falls
+  // through to the reference painting and everything looks pickable.
+  it('end-frame pick marks only image nodes as candidates', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'video',
+            position: { x: 0, y: 0 },
+            data: { kind: 'video', status: 'idle', mode: 'first_last' },
+          },
+          {
+            id: 'src-empty',
+            type: 'image',
+            position: { x: 300, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-text',
+            type: 'text',
+            position: { x: 600, y: 0 },
+            data: { kind: 'text', status: 'idle' },
+          },
+          {
+            id: 'src-audio',
+            type: 'audio',
+            position: { x: 900, y: 0 },
+            data: { kind: 'audio', content: 'https://cdn/a.m4a', status: 'idle' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 1200, y: 0 },
+            data: { kind: 'image', content: 'https://cdn/l.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startEndFramePick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    expect(cls('target')).toContain('canvas-pick-dimmed');
+    expect(cls('src-empty')).toContain('canvas-pick-dimmed');
+    expect(cls('src-text')).toContain('canvas-pick-dimmed');
+    expect(cls('src-audio')).toContain('canvas-pick-dimmed');
+    expect(cls('src-image')).toContain('canvas-pick-selectable');
+    expect(cls('src-image')).not.toContain('canvas-pick-dimmed');
+    act(() => {
+      useCanvasStore.setState({ pickSession: null });
+    });
+  });
+
+  it('names the end-frame pick in the banner, not the first-frame one', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'video',
+            position: { x: 0, y: 0 },
+            data: { kind: 'video', status: 'idle', mode: 'first_last' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startEndFramePick('target');
+    });
+    expect(
+      screen.getByText('Pick an image on the canvas to be the end frame'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Pick an image on the canvas to be the first frame'),
+    ).toBeNull();
+    act(() => {
+      useCanvasStore.setState({ pickSession: null });
+    });
+  });
+
   // Unified pick-session Esc (user 2026-07-17 #8): EVERY pick purpose exits on
   // Escape with the same guard set — reference and style had no listener at
   // all (only focus did), so their banners showed Exit but Esc was dead.

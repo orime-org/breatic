@@ -96,8 +96,10 @@ const I2V: ModelEntry = {
   ...T2V,
   name: 'kling-i2v',
   display_name: 'Kling I2V',
-  mode: 'i2v',
-  sourcesByMode: { i2v: ['image'] },
+  // Both modes, as config/models/video/kling.yaml declares them since #1904:
+  // the same model runs image-to-video and first-last frame.
+  mode: ['i2v', 'first_last'],
+  sourcesByMode: { i2v: ['image'], first_last: ['image'] },
 };
 
 /** An image model, so "the video panel offers video models" is a real claim. */
@@ -793,6 +795,115 @@ describe('VideoGeneratePanelContainer', () => {
       });
       fireEvent.click(tool);
       expect(useCanvasStore.getState().pickSession).toBeNull();
+    });
+  });
+
+  describe('first-last frame (#1904)', () => {
+    /**
+     * Opens the panel on a first-last frame node, waiting for both slots.
+     * @param over - Node data overrides (e.g. picked frames).
+     */
+    async function openFirstLastPanel(
+      over: Record<string, unknown> = {},
+    ): Promise<void> {
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const stored = { mode: 'first_last', model: 'kling-i2v', ...over };
+      seedVideoNode(stored);
+      typePrompt('drift from dusk to dawn');
+      mountContainer('video', stored);
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      await screen.findByTestId('generate-video-execute');
+      await screen.findByTestId('generate-video-tool-end-frame');
+    }
+
+    it('offers both slots, and only in this mode', async () => {
+      await openFirstLastPanel();
+      expect(
+        screen.getByTestId('generate-video-tool-first-frame'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId('generate-video-tool-end-frame'),
+      ).toBeInTheDocument();
+    });
+
+    it('each slot picks into its own field, neither overwriting the other', async () => {
+      // The two are independent: either can be picked or replaced whenever,
+      // and nothing waits for the other (user 2026-08-10). Sharing a write
+      // would make the second pick replace the first.
+      await openFirstLastPanel();
+      fireEvent.click(screen.getByTestId('generate-video-tool-first-frame'));
+      expect(useCanvasStore.getState().pickSession).toEqual({
+        nodeId: 'target',
+        purpose: 'firstFrame',
+      });
+      fireEvent.click(screen.getByTestId('generate-video-tool-end-frame'));
+      expect(useCanvasStore.getState().pickSession).toEqual({
+        nodeId: 'target',
+        purpose: 'endFrame',
+      });
+    });
+
+    it('each slot shows its own picture', async () => {
+      await openFirstLastPanel({
+        firstFrameUrl: 'https://cdn/first.png',
+        endFrameUrl: 'https://cdn/last.png',
+      });
+      expect(
+        screen.getByTestId('generate-video-first-frame-thumbnail'),
+      ).toHaveAttribute('src', 'https://cdn/first.png');
+      expect(
+        screen.getByTestId('generate-video-end-frame-thumbnail'),
+      ).toHaveAttribute('src', 'https://cdn/last.png');
+    });
+
+    it('refuses to submit with the end frame empty, and says which one', async () => {
+      // Naming the missing slot is the whole point of refusing here: telling
+      // someone who already picked a first frame to "pick a first frame"
+      // sends them to check a control that is already filled.
+      await openFirstLastPanel({ firstFrameUrl: 'https://cdn/first.png' });
+      const createTask = vi.spyOn(canvasApi, 'createTask');
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+      // The wrapper adds a dedup id as a second argument, so assert the
+      // message itself — which slot it names is the point of this case.
+      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toBe(
+        'Pick an end frame — this mode generates between two images',
+      );
+      expect(createTask).not.toHaveBeenCalled();
+      createTask.mockRestore();
+    });
+
+    it('refuses to submit with the first frame empty, and says which one', async () => {
+      await openFirstLastPanel({ endFrameUrl: 'https://cdn/last.png' });
+      const createTask = vi.spyOn(canvasApi, 'createTask');
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+      // The wrapper adds a dedup id as a second argument, so assert the
+      // message itself — which slot it names is the point of this case.
+      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toBe(
+        'Pick a first frame — this mode generates from one',
+      );
+      expect(createTask).not.toHaveBeenCalled();
+      createTask.mockRestore();
+    });
+
+    it('sends both frames under their own params once both are picked', async () => {
+      await openFirstLastPanel({
+        firstFrameUrl: 'https://cdn/first.png',
+        endFrameUrl: 'https://cdn/last.png',
+      });
+      const createTask = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue({ taskId: 't1' } as never);
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+      await waitFor(() => expect(createTask).toHaveBeenCalled());
+      expect(createTask.mock.calls[0]?.[0]?.params).toMatchObject({
+        image: 'https://cdn/first.png',
+        end_image: 'https://cdn/last.png',
+      });
+      createTask.mockRestore();
     });
   });
 

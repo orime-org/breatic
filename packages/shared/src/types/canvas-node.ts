@@ -412,6 +412,17 @@ export interface CanvasNodeFields {
      */
     firstFrameUrl?: string;
     /**
+     * End-frame image URL for the first-last frame mode (#1904, wire
+     * `data.endFrameUrl`) — a pick-time COPY on the same terms as
+     * {@link firstFrameUrl}, sent as `params.end_image` at execute time.
+     *
+     * Independent of the first frame: either can be picked or replaced at any
+     * time and neither waits for the other, because only execute asks for both
+     * (user 2026-08-10). It stays on the node across a mode switch, and the
+     * payload simply does not build it under a mode that has no end frame.
+     */
+    endFrameUrl?: string;
+    /**
      * Focus crops created on this node's generate panel (#1782) — maintained
      * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the
      * plain-values convention of the web `buildDataMap`): concurrent appends
