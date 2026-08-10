@@ -56,7 +56,13 @@ export const showSearchResults: Tool<z.infer<typeof inputSchema>, string> = tool
     "results inside your prose response — call this tool so the " +
     "frontend renders the grid.",
   inputSchema,
-  execute: async (input: z.infer<typeof inputSchema>): Promise<string> => {
+  execute: async (
+    input: z.infer<typeof inputSchema>,
+    // Unused: this tool assembles a value and returns it, so there is nothing
+    // to abandon. Declared so the shape is the same across every tool — the
+    // reasoning lives in tools/__tests__/tool-cancellation.test.ts.
+    _options: { abortSignal?: AbortSignal },
+  ): Promise<string> => {
     return `${SHOW_SEARCH_RESULTS_SENTINEL}${JSON.stringify(input)}`;
   },
 });

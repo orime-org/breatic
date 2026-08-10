@@ -116,6 +116,8 @@ loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 
 |---|---|---|
 | `llm_max_retries` | 2 | 每次 LLM 调用的重试次数(maxRetries),由 model-call wrapper 统一注入(#1625 Slice 3)|
 | `skill_agent_max_steps` | 15 | worker 跑一个 skill 时的步数上限。跟 `max_tool_iterations`(主对话 40)分开:主对话有人在等、可以多轮,worker 是一个有边界的后台任务 |
+| `web_fetch_timeout_ms` | 30000 | `web_fetch` **一次投递**的时长上限,不是整次抓取的:统一 HTTP 传输层最多投递 3 次,每次都拿这个数;跟着重定向走时每一跳还要再乘一遍。上界是定时器能装下的最大延迟(2147483647),超了定时器会把它悄悄改写成 1 毫秒,所以在配置加载时就拒 |
+| `web_search_timeout_ms` | 10000 | 同上,给 `web_search`。它是一次请求、没有重定向,所以给得比抓网页短:搜索接口要么答要么不答,而一个网页可能因为自己的原因慢 |
 
 ## 7.1 `config/skill-routing.yaml` — 哪个 skill 能在哪儿用、谁能调
 

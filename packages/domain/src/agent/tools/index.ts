@@ -14,8 +14,16 @@ import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
 import { webFetch } from "@domain/agent/tools/web-fetch.js";
 import { webSearch } from "@domain/agent/tools/web-search.js";
 
-/** Complete mapping of tool name to tool instance. */
-const TOOL_MAP: Readonly<Record<string, Tool>> = {
+/**
+ * Complete mapping of tool name to tool instance.
+ *
+ * Exported so a guard can hold every registered tool to the same rules. It is
+ * this map that `buildToolSet` reads, and a tool reaches a turn by being in it
+ * — the re-export block at the foot of this file is a convenience for
+ * importers and nothing consults it, so a guard standing on that list would
+ * miss any tool registered here without also being re-exported.
+ */
+export const TOOL_MAP: Readonly<Record<string, Tool>> = {
   web_search: webSearch,
   web_fetch: webFetch,
   ask_user_question: askUser,
