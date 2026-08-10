@@ -202,18 +202,24 @@ describe("Space existence over a live server", () => {
     expect(fetchDocDataMock).not.toHaveBeenCalled();
   });
 
-  it("admits a reconnecting client whose content docs handshake before the meta doc loads", async () => {
-    // The shape the logs show (2026-08-10 11:13:21): an instance restarts, a
+  it("admits a reconnecting client whose content docs handshake alongside the meta doc", async () => {
+    // The shape the logs show (2026-08-10 11:13:21): an instance comes up, a
     // browser that has already synced reconnects every open document at once,
-    // and the content-doc handshake runs before the meta doc is loaded here.
-    // Storage is a tick behind and does not list the Space — so a check that
-    // decided from storage would refuse, exactly as it did that day.
-    stored.set(META_DOC, storedMetaWith([]));
-    // Put the Space in the copy the peers hold, which is what the load
-    // produces: seed storage for the load, then have memory disagree.
+    // and the content-doc handshakes arrive with — not after — the meta doc's.
+    // Before #26 that is where nearly every refusal came from: the content
+    // handshake ran while this process still held no meta doc, and the answer
+    // came from a private copy decoded out of storage.
+    //
+    // What this pins is the CONCURRENCY: nothing here is holding the meta doc,
+    // both handshakes go out together, and the content doc is still admitted.
+    // The other half — that the answer comes from the list rather than from
+    // storage when the two disagree — cannot be staged in one instance: making
+    // memory disagree with storage means writing to the in-memory doc, and
+    // writing to it means loading it, which removes the very precondition.
+    // That half is pinned across two real instances in
+    // `packages/server/src/__tests__/integration/collab-space-existence-multi-instance.integration.test.ts`.
     stored.set(META_DOC, storedMetaWith([SID]));
 
-    // Both handshakes at once, meta NOT awaited first.
     const [metaClient, contentClient] = await Promise.all([
       connect(META_DOC),
       connect(DOCUMENT_DOC),
@@ -253,21 +259,56 @@ describe("Space existence over a live server", () => {
     );
   });
 
-  it("keeps a loaded meta doc that a client connected to while the return was pending", async () => {
-    // The return must not take a document out from under a client that
-    // arrived in the meantime — which, on a reconnect, is the normal case.
+  it("runs the whole load chain, seeding included, when nothing is stored yet", async () => {
+    // The load is the real one, so everything hanging off `onLoadDocument`
+    // runs on this path — including `lazySeedMeta`, which creates a project's
+    // first Space when there is no stored row yet. Nothing here defends
+    // against that: it is the same seed the project's own first meta-doc load
+    // would perform, it is idempotent, and a member reaching this path could
+    // have triggered it by opening the project. What matters is that it is
+    // KNOWN to happen, so this pins it rather than leaving it to be
+    // rediscovered.
+    const seeded: string[] = [];
+    server = createLiveServer({
+      extensions: [
+        createPersistenceExtension({
+          fetch: async ({ documentName }: { documentName: string }) => {
+            seeded.push(documentName);
+            return stored.get(documentName) ?? null;
+          },
+        }),
+      ],
+      onAuthenticate: createAuthHook({
+        redis: {} as never,
+        maxConnectionsPerDoc: 0,
+        countConnections: async (): Promise<number> => 0,
+      }),
+    });
+
+    await connect(DOCUMENT_DOC);
+
+    // The check reached the storage read for the META doc — the same entry
+    // point `lazySeedMeta` hangs off in production.
+    expect(seeded).toContain(META_DOC);
+  });
+
+  it("answers the handshake without waiting for the unload to finish", async () => {
+    // The unload costs about a second (`@hocuspocus/extension-redis` delays
+    // its `beforeUnloadDocument` by `disconnectDelay`), and that is
+    // housekeeping — the person waiting on a handshake must not pay for it.
+    //
+    // Whether an arriving client cancels a pending unload is Hocuspocus's
+    // guarantee, not ours: `unloadDocument` re-checks `shouldUnloadDocument`
+    // at the start and again mid-flight. What IS ours is that the answer does
+    // not wait, and that is what this measures.
     stored.set(META_DOC, storedMetaWith([SID]));
 
-    const contentClient = await connect(DOCUMENT_DOC);
-    expect(contentClient.authenticated).toBe(true);
-    const metaClient = await connect(META_DOC);
-    expect(metaClient.authenticated).toBe(true);
+    const started = process.hrtime.bigint();
+    const client = await connect(DOCUMENT_DOC);
+    const answeredInMs = Number(process.hrtime.bigint() - started) / 1e6;
 
-    // Long enough for a pending return to have fired had it been going to.
-    await new Promise((r) => setTimeout(r, 300));
-
-    const held = server.documents.get(META_DOC);
-    expect(held).toBeDefined();
-    expect([...(held?.getMap("spaces").keys() ?? [])]).toContain(SID);
+    expect(client.authenticated).toBe(true);
+    // Well under the unload's own cost, so an awaited unload would fail this.
+    expect(answeredInMs).toBeLessThan(500);
   });
 });

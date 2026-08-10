@@ -18,7 +18,7 @@
  * holds nothing for this project.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
@@ -27,6 +27,7 @@ import * as Y from "yjs";
 import { initCore, createRedisClient } from "@breatic/core";
 import * as yjsRepo from "@breatic/collab/src/services/yjs-documents.repo.js";
 import { createPersistenceExtension } from "@breatic/collab/src/services/persistence.js";
+import { readProjectSpaceIds } from "@breatic/collab/src/services/project-space-list.js";
 import { createChangeTrackingExtension } from "@breatic/collab/src/services/change-tracking.js";
 
 const PID = "44444444-4444-4444-8444-444444444444";
@@ -90,9 +91,9 @@ async function seedStoredMeta(ids: string[]): Promise<void> {
 }
 
 /**
- * What the Space-existence check would answer on this instance: the ids in
- * the meta doc it holds, loading one when it holds none. Mirrors
- * `loadProjectSpaceIds` in `packages/collab/src/hooks/auth.ts`.
+ * What the Space-existence check answers on this instance. Calls the real
+ * `readProjectSpaceIds` rather than restating it, so a change to how the
+ * check gets its list is a change this test sees.
  * @param instance - The collab instance to ask.
  * @returns The ids it answers with, and how long answering took.
  */
@@ -100,18 +101,16 @@ async function spaceIdsSeenBy(
   instance: Hocuspocus,
 ): Promise<{ ids: string[]; ms: number }> {
   const started = process.hrtime.bigint();
-  const held = instance.documents.get(META_DOC);
-  const doc =
-    held ??
-    (await instance.createDocument(
-      META_DOC,
-      new Request("http://localhost"),
-      "space-existence-check",
-      { isAuthenticated: true, readOnly: true },
-      {},
-    ));
-  const ids = [...doc.getMap("spaces").keys()];
-  return { ids, ms: Number(process.hrtime.bigint() - started) / 1e6 };
+  const ids = await readProjectSpaceIds(
+    PID,
+    instance,
+    new Request("http://localhost"),
+    "space-existence-check",
+  );
+  return {
+    ids: [...ids],
+    ms: Number(process.hrtime.bigint() - started) / 1e6,
+  };
 }
 
 beforeAll(async () => {
@@ -151,15 +150,16 @@ describe("Space existence across two collab instances", () => {
     // connection-based load would have cost.
     expect(seenOnB.ms).toBeLessThan(500);
 
-    // A document loaded with no connection is never unloaded on its own, so
-    // whoever loads one puts it back. Doing that here is not tidiness: it is
-    // the same return the check schedules, and without it `destroy()` — which
-    // waits for the document count to reach zero — never finishes.
-    const borrowed = instanceB.documents.get(META_DOC);
-    expect(borrowed).toBeDefined();
-    expect(borrowed?.getConnectionsCount()).toBe(0);
-    if (borrowed) await instanceB.unloadDocument(borrowed);
-    expect(instanceB.documents.has(META_DOC)).toBe(false);
+    // `readProjectSpaceIds` unloads what it loaded, scheduled rather than
+    // awaited. Waiting for it here is not tidiness: without the unload,
+    // `destroy()` — which waits for the document count to reach zero — never
+    // finishes, so this assertion is also what keeps `afterAll` from hanging.
+    await vi.waitFor(
+      () => {
+        expect(instanceB.documents.has(META_DOC)).toBe(false);
+      },
+      { timeout: 10_000 },
+    );
 
     await onA.disconnect();
   }, 60_000);

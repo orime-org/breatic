@@ -731,7 +731,7 @@ describe("createAuthHook", () => {
     expect(unloadDocumentSpy).not.toHaveBeenCalled();
   });
 
-  it("logs rather than swallows a failed return", async () => {
+  it("logs rather than swallows a failed unload", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
     unloadDocumentSpy.mockRejectedValue(new Error("unload blew up"));
@@ -752,7 +752,7 @@ describe("createAuthHook", () => {
     await vi.waitFor(() => {
       expect(loggerWarn).toHaveBeenCalledWith(
         expect.objectContaining({ documentName: `project-${PID}/meta` }),
-        "meta_doc_return_failed",
+        "meta_doc_unload_after_read_failed",
       );
     });
   });

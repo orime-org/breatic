@@ -31,24 +31,24 @@
  * be identical across every backend service. collab used to hand-roll
  * its own copies (raw `redis.get` for the session, raw SQL for the
  * role), which drifted from the server's path; both now call the one
- * shared kernel. The Yjs space-existence check does NOT go to a database:
- * it reads the meta doc this process already holds in memory, which is the
- * same copy the clients here were told about. Only when this process holds
- * no meta doc for the project does it fall back to `yjs_documents`, through
- * collab's own `yjsDocumentsRepo` (the single home for that table's SQL)
- * over the `yjsDb` singleton — collab issues no raw SQL of its own. See
- * {@link loadProjectSpaceIds}.
+ * shared kernel. The Yjs space-existence check reads the meta doc this
+ * process holds, and loads one when it holds none — there is no second
+ * source and this file issues no SQL for it. See `readProjectSpaceIds` in
+ * `@collab/services/project-space-list.js`.
  */
 
 import type { Redis } from "@breatic/core";
+import {
+  readProjectSpaceIds,
+  type DocumentRegistry,
+} from "@collab/services/project-space-list.js";
 import {
   createLogger,
   getSession,
   projectAuthService,
   sessionCookieName,
 } from "@breatic/core";
-import type * as Y from "yjs";
-import { parseDocName, projectMetaDocName } from "@breatic/shared";
+import { parseDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
 
 /**
@@ -121,11 +121,8 @@ interface MutableConnectionConfig {
  * session store) and the role lookup routes through core
  * (`projectAuthService.loadProjectRole`) over the shared `db` singleton —
  * no collab-owned Postgres pool. The space-existence check needs nothing
- * here at all: it reads this process's own in-memory documents, which
- * Hocuspocus hands the hook on every handshake, and reaches
- * `yjsDocumentsRepo` (collab's own `yjs_documents` home, over the `yjsDb`
- * singleton) only when this process holds no meta doc for the project.
- * See {@link loadProjectSpaceIds}.
+ * here at all: it works off the running Hocuspocus server, which the
+ * framework hands the hook on every handshake.
  */
 export interface CreateAuthHookOptions {
   redis: Redis;
@@ -145,126 +142,6 @@ export interface CreateAuthHookOptions {
    * Redis round-trip.
    */
   countConnections: (documentName: string) => Promise<number>;
-}
-
-/**
- * The slice of the Hocuspocus instance this hook uses: the table of
- * documents this process holds, and the two calls that put one in it and
- * take it back out. Hocuspocus hands the whole instance to
- * `onAuthenticate`; naming only what is used keeps the hook out of the
- * rest of the framework's surface. Written with method syntax so a real
- * `Hocuspocus`, whose documents are `Document` rather than bare `Y.Doc`,
- * satisfies it.
- */
-interface DocumentRegistry {
-  documents: { get(documentName: string): Y.Doc | undefined };
-  createDocument(
-    documentName: string,
-    request: Request,
-    socketId: string,
-    connection: { isAuthenticated: boolean; readOnly: boolean },
-  ): Promise<Y.Doc>;
-  unloadDocument(document: Y.Doc): Promise<unknown>;
-}
-
-/**
- * Put back a meta doc this check loaded, after the handshake has been
- * answered.
- *
- * A document loaded without a connection is never unloaded on its own —
- * `unloadDocument` is only reached from a closing client connection or a
- * finishing store — so whoever loads one has to return it, or every project
- * whose check had to load one leaks a document and `Server.destroy()` never
- * finishes (it waits for the document count to reach zero). Measured, not
- * reasoned: an integration test hung on exactly that.
- *
- * NOT awaited. The return costs about a second (the Redis extension holds
- * the document's save mutex for its `disconnectDelay` on the way out), and
- * that is our housekeeping, not something the person waiting on a handshake
- * should pay for. Hocuspocus re-checks whether the document is still
- * unloadable at the start and again mid-flight, so a client connecting in
- * the meantime — the normal case on a reconnect — cancels it.
- * @param instance - The running Hocuspocus server.
- * @param document - The document this check loaded.
- * @param documentName - Name of that document, for the log line.
- */
-function returnBorrowedDocument(
-  instance: DocumentRegistry,
-  document: Y.Doc,
-  documentName: string,
-): void {
-  void instance.unloadDocument(document).catch((err: unknown) => {
-    logger.warn({ err, documentName }, "meta_doc_return_failed");
-  });
-}
-
-/**
- * The Space ids this project currently has, read from the meta doc this
- * process holds — making sure it holds one first.
- *
- * The check exists to refuse a connection to a Space that has been removed
- * from `meta.spaces` (ADR 2026-05-23-yjs-collab-only-write-authz, sections
- * "bootstrap boundary exception" and "recoverable deletion"): a soft-deleted
- * `yjs_documents` row may still hold the old bytes for recovery, but the
- * Space is gone the moment its id leaves `meta.spaces`, and a stale tab must
- * not be able to bring the data back.
- *
- * IT ANSWERS FROM THE LIST ITSELF, NOT FROM A COPY OF IT (#26). `space:create`
- * writes the new id into the in-memory meta doc and broadcasts that doc; the
- * `yjs_documents` row trails behind by up to one `store_interval_ms` tick,
- * because the create path triggers no store of its own. Deciding from storage
- * therefore refused connections to Spaces this very process had just
- * announced. `space:delete` is the mirror image: the id leaves memory at once
- * while storage keeps admitting connections until the next tick.
- *
- * Whether the in-memory list is itself up to date does not enter into it:
- * whatever it holds is what the clients here were told, so answering from it
- * is what keeps the answer consistent with the announcement. Keeping it
- * current is `@hocuspocus/extension-redis`'s job, not this check's.
- *
- * WHEN THIS PROCESS HOLDS NONE, IT LOADS ONE. That is not a fallback, it is
- * the same answer reached the same way: `createDocument` runs the persistence
- * extension (which reads `yjs_documents`) and then the Redis extension (which
- * asks the peers for anything newer), and hands back the one copy everyone
- * else on this process uses — deduplicated by document name, so a burst of
- * content-doc handshakes loads it once. Measured across two instances: 9-16ms,
- * and it saw a Space that existed only in the other instance's memory.
- *
- * The reason this matters is the RECONNECT: a client that has already synced
- * holds the meta doc in its own memory, so when the socket comes back it asks
- * for every open Space's content doc in the same millisecond as the meta doc,
- * and those handshakes run before the meta doc is loaded here. That is where
- * nearly every refusal in the logs came from.
- *
- * A loaded list holding zero Spaces is a verdict, not an absence — this
- * project has no Spaces right now. There is no second source to fall through
- * to, which is the point: one list, one answer.
- * @param projectId - Project whose meta Yjs doc holds the authoritative `meta.spaces` set.
- * @param instance - The running Hocuspocus server, for the document it holds or can load.
- * @param request - The upgrade request, passed through to the load hooks.
- * @param socketId - This connection's socket id, passed through to the load hooks.
- * @returns The Space ids currently listed in `meta.spaces`.
- */
-async function loadProjectSpaceIds(
-  projectId: string,
-  instance: DocumentRegistry,
-  request: Request,
-  socketId: string,
-): Promise<Set<string>> {
-  const docName = projectMetaDocName(projectId);
-
-  const held = instance.documents.get(docName);
-  if (held) return new Set(held.getMap("spaces").keys());
-
-  // Read-only: this check never writes, and the flag travels into the load
-  // hooks as the reason the document is being opened.
-  const loaded = await instance.createDocument(docName, request, socketId, {
-    isAuthenticated: true,
-    readOnly: true,
-  });
-  const ids = new Set(loaded.getMap("spaces").keys());
-  returnBorrowedDocument(instance, loaded, docName);
-  return ids;
 }
 
 /**
@@ -389,7 +266,7 @@ export function createAuthHook({
       // meta.spaces; PG row stays for recovery but new connections cannot
       // load it" (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5).
       if (parsed.kind !== "meta") {
-        const ids = await loadProjectSpaceIds(
+        const ids = await readProjectSpaceIds(
           parsed.projectId,
           instance,
           request,
