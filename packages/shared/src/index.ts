@@ -230,6 +230,15 @@ export type { AdjustValue } from "@shared/adjust-value.js";
 
 export { newId, deriveId } from "@shared/ids.js";
 
+// The agent chat stream's wire contract — the one place its event names and
+// envelope are written, for the server that sends them and the browser that
+// reads them. Sentinels are not here on purpose; see the file's own note.
+export {
+  SSE_EVENT_NAMES,
+  SSE_EVENTS_DECLARED_NOT_EMITTED,
+} from "@shared/agent/sse-events.js";
+export type { SSEEventName, SSEEventEnvelope } from "@shared/agent/sse-events.js";
+
 // The one HTTP transport with retries — backend services and browser alike.
 // Anything aimed at OUR OWN backend keeps using the browser's axios singleton;
 // anything aimed outward (cloud storage, vendor APIs, arbitrary URLs) comes
