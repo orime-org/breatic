@@ -16,8 +16,11 @@
  * operator-written yaml inside a request, and any `await response.json()` on
  * an upstream returning an HTML error page raises the same type — both were
  * being blamed on a user who had typed nothing wrong, with the log dropped.
- * The tests below at "an error we do not recognise" are what keeps that
- * shortcut from coming back.
+ * The "a parse failure the handler must NOT blame on the caller" block below
+ * is what keeps that shortcut from coming back: it throws each of those two
+ * types and asserts 500 plus a log. The unrecognised-error test further down
+ * would not catch it — a plain `Error` matches neither branch, so restoring
+ * them leaves it green.
  *
  * @see packages/server/src/middleware/error-handler.ts
  */

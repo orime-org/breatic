@@ -380,7 +380,7 @@ const uploadedSchema = z
     // authoritative kind comes from detectKind(head().contentType) at
     // registration), so gating on it would be security theatre: a caller who
     // wanted to attach a cover to a non-video would simply report
-    // kind='video'. It would also 400 legitimate reports whose bytes sniff to
+    // kind='video'. It would also 422 legitimate reports whose bytes sniff to
     // something other than video/* — the failure mode #1824 actually hit.
     // A cover's integrity is bounded instead by verifyDedupUpload (#1826 §4.5:
     // cover_hash must resolve to a studio_assets row in this report's owner

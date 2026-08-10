@@ -114,7 +114,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   // Banana Edit needs an image; a video-edit needs a video). Reject BEFORE
   // enqueue so a doomed submission never creates a task row, burns a worker
   // slot, or leaves the user waiting for a node that can only fail — the client
-  // gets an immediate 400 instead. This is NOT a billing guard: billing is
+  // gets an immediate 422 instead. This is NOT a billing guard: billing is
   // post-success (markCompletedAndBill), so a source-less run that reached the
   // worker would fail and never bill anyway — the gate saves the doomed attempt,
   // not the credits. Defence in depth behind the Generate panel's frontend gate;
@@ -415,7 +415,7 @@ canvas.get(
   async (c) => {
     const user = c.get("user");
     // nodeId is a canvas node UUID (node_history.node_id is uuid) — validated
-    // here so a malformed id is a 400, not a uuid-cast 500 inside the query.
+    // here so a malformed id is a 422, not a uuid-cast 500 inside the query.
     const { nodeId } = c.req.valid("param");
     const { project_id, limit, offset, status } = c.req.valid("query");
 

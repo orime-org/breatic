@@ -4,7 +4,7 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { getLocale, t } from '@breatic/shared';
 
-/** What the server sends when it answers instead of streaming. */
+/** The content-type of a stream that opened. Anything else is an answer. */
 const EVENT_STREAM = 'text/event-stream';
 
 /**

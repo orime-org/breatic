@@ -14,8 +14,10 @@ const APP_ERRORS = new Set([
 ]);
 
 /**
- * `AppError` takes the status first and the message second; every subclass
- * takes the message first.
+ * `AppError` takes the status first and the message second; each subclass in
+ * {@link APP_ERRORS} takes the message first. `ConflictLockedError` follows
+ * neither — it takes a structured detail and writes its own message — which is
+ * why it is absent from that list and reached through `super()` instead.
  */
 const MESSAGE_INDEX: Readonly<Record<string, number>> = { AppError: 1 };
 
@@ -28,16 +30,25 @@ const MESSAGE_INDEX: Readonly<Record<string, number>> = { AppError: 1 };
  * picked Japanese then reads an English sentence, and the language they chose
  * stops meaning anything at the first failure that matters.
  *
- * This is what a check can see: whether the message argument is a call to
- * `t`. It cannot see whether the key exists or reads well in every catalog —
+ * This is what a check can see: whether the message argument is written out
+ * here as a literal — a string, a template, or a `+` chain of them. It reports
+ * those and nothing else, so any call passes, `t()` among them; a message
+ * assembled elsewhere is out of one file's sight and is left alone. It also
+ * cannot see whether a key exists or reads well in every catalog —
  * `i18n-no-missing-keys` covers the first, and nothing covers the second.
  *
  * `ConflictLockedError` is absent from the class list because a caller passes
  * it a structured `detail` and no message at all. That covers the caller and
  * not the class: the message is written once, inside its own constructor, as
- * `super(409, …)`. So the rule reads `super()` too — a subclass of this family
- * hardcoding its message there is the same defect one level down, and it
- * shipped exactly that way until Gate 2 found it.
+ * `super(409, …)`. So the rule reads `super()` too, and it shipped a hardcoded
+ * English message there until Gate 2 found it.
+ *
+ * The `super()` half is coarser than it looks: the rule has no view of what
+ * the enclosing class extends, so it treats every `super()` in the linted
+ * packages as the `AppError` shape and reads the second argument. Today that
+ * misses nothing and reports nothing wrongly — the nine `super()` calls in
+ * server, domain and core are this family's own plus two single-argument
+ * calls — but a message-first subclass would slip past it. Task #76.
  */
 export const noUntranslatedErrorMessage = createRule<[], "untranslatedMessage">(
   {
@@ -61,10 +72,11 @@ export const noUntranslatedErrorMessage = createRule<[], "untranslatedMessage">(
           report(node.callee.name, node.arguments);
         },
 
-        // `super(status, message)` inside a subclass of this family.
+        // Every `super()` in the linted packages, whatever the class extends —
+        // the selector cannot reach the `extends` clause, so it assumes the
+        // `AppError` shape and reads the second argument. See the note on that
+        // gap in this file's docstring.
         "CallExpression[callee.type='Super']"(node: TSESTree.CallExpression): void {
-          // A subclass reaching `super` with a status first is the AppError
-          // shape; the message is the second argument, as it is for AppError.
           report("AppError", node.arguments);
         },
       };
