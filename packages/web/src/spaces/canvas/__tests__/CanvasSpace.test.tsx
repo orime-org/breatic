@@ -803,6 +803,69 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-image')).toContain('canvas-pick-selectable');
   });
 
+  // The banner is the ONLY on-canvas instruction during a pick, so it has to
+  // name the pick that is actually running (#1902 Gate 2): a first-frame pick
+  // wearing the reference wording tells the user to do a different thing —
+  // wire a source, keep picking until Exit — while the session takes one image
+  // and ends.
+  it('names the running pick in the banner, not the reference default', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'video',
+            position: { x: 0, y: 0 },
+            data: { kind: 'video', status: 'idle', mode: 'i2v' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startFirstFramePick('target');
+    });
+    expect(
+      screen.getByText('Pick an image on the canvas to be the first frame'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Select a reference from the canvas'),
+    ).toBeNull();
+  });
+
+  // Keyboard handoff (#1902 Gate 2): Exit unmounts the banner, so focus has to
+  // be handed back to the tool that started the pick. The lookup named the
+  // IMAGE toolbar's ids only, so a pick started from the VIDEO panel found
+  // nothing and fell through to the orphan catch-all — which lands on the
+  // canvas container, not back in the panel the user was working in.
+  it('hands focus back to the video panel’s tool when a video pick exits', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'video',
+            position: { x: 0, y: 0 },
+            data: { kind: 'video', status: 'idle', mode: 'i2v' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    // Stand in for the panel's tool row: the real panel needs a QueryClient
+    // this mount does not have, and what is under test is the handoff, not
+    // the panel. The id is the one the video toolbar renders.
+    const tool = document.createElement('button');
+    tool.setAttribute('data-testid', 'generate-video-tool-first-frame');
+    document.body.appendChild(tool);
+    act(() => {
+      useCanvasStore.getState().startFirstFramePick('target');
+    });
+    fireEvent.click(screen.getByTestId('reference-pick-exit'));
+    expect(document.activeElement).toBe(tool);
+    tool.remove();
+  });
+
   it('pick mode on a t2i target keeps IMAGE sources selectable — same as i2i (#1797)', () => {
     // Reference pick is ONE flow for both modes (user 2026-07-19): t2i no longer
     // dims / blocks image sources during pick — you can connect an image node in

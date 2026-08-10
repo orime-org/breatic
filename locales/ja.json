@@ -160,6 +160,7 @@
       "mentionEmpty": "参照できる画像がありません — まず画像から線をつないでください",
       "selectFromCanvas": "キャンバスから参照を選択",
       "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
+      "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
       "removeStyle": "スタイル参照を削除",
       "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
@@ -205,7 +206,11 @@
       "videoParams": "パラメータ",
       "videoPromptPlaceholder": "生成したい動画を説明してください",
       "videoMentionEmpty": "参照できるものがまだありません",
-      "videoNoPrompt": "このノードは動画生成より前に作られたため、プロンプトがありません。新しい動画ノードを作成すると生成できます。"
+      "videoNoPrompt": "このノードは動画生成より前に作られたため、プロンプトがありません。新しい動画ノードを作成すると生成できます。",
+      "firstFrame": "最初のフレーム",
+      "firstFrameTip": "動画の最初のフレームにする画像を選ぶ",
+      "removeFirstFrame": "最初のフレームを削除",
+      "errorNoFirstFrame": "最初のフレームを選んでください。このモードは画像から生成します"
     },
     "nodeMenu": {
       "generate": "生成",

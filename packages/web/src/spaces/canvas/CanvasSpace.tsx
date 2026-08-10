@@ -40,6 +40,7 @@ import {
   type NodeHistoryEntry,
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
+import { pickedSlotImageUrl } from '@web/spaces/canvas/generate/slot-pick';
 import {
   FocusCropOverlay,
   handOffFocusToPickBanner,
@@ -51,6 +52,7 @@ import {
   addEdge,
   addNodeFocusImage,
   addNode,
+  setNodeFirstFrame,
   setNodeStyleImage,
   createGroup,
   expandGroup,
@@ -150,6 +152,7 @@ import {
   NODE_GATE_TOAST_KEY,
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
+import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
@@ -544,20 +547,27 @@ function CanvasSpaceInner({
   // the banner, dropping keyboard focus to <body>. Hand focus to the panel's
   // pick trigger — still mounted, because the pick keeps the panel open. The
   // trigger is in the DOM right now (setState re-renders later), so the
-  // synchronous focus lands before the banner unmounts. The trigger is the
-  // Style or Reference tool button per the active pick's purpose.
+  // synchronous focus lands before the banner unmounts. WHICH trigger depends
+  // on WHICH PANEL is showing it: each panel carries its own tool row, and
+  // only the reference tool exists in both (#1902). The two panels are never
+  // mounted together (a node's panel is one kind), so trying the purpose's
+  // candidate ids and taking whichever is on screen resolves it without
+  // asking the store a second question. Nothing on screen — a pick that
+  // outlived its panel — falls through to the orphan catch-all below, which
+  // returns focus to the canvas container.
   const onExitPick = React.useCallback((): void => {
     const purpose = useCanvasStore.getState().pickSession?.purpose;
     endPick();
-    const triggerTestId =
-      purpose === 'style'
-        ? 'generate-tool-style'
-        : purpose === 'focus'
-          ? 'generate-tool-focus'
-          : 'generate-tool-reference';
-    document
-      .querySelector<HTMLElement>(`[data-testid="${triggerTestId}"]`)
-      ?.focus();
+    if (purpose === undefined) return;
+    for (const testId of Object.values(PICK_PURPOSE_UI[purpose].trigger)) {
+      const trigger = document.querySelector<HTMLElement>(
+        `[data-testid="${testId}"]`,
+      );
+      if (trigger) {
+        trigger.focus();
+        return;
+      }
+    }
   }, [endPick]);
   /**
    * Return the focus session to its PICK state (user 2026-07-17 A): drop
@@ -1657,23 +1667,39 @@ function CanvasSpaceInner({
         return;
       }
 
+      if (session.purpose === 'firstFrame') {
+        // First frame (#1896): COPY the clicked image's URL onto the video
+        // node, same terms as Style — a pick-time snapshot with no
+        // relationship to the source, so deleting or regenerating that node
+        // never changes what this video generates from. `pickedSlotImageUrl`
+        // is the one predicate both slots share; a click it refuses is a
+        // no-op (dimming already says so, this backstops an insisting click).
+        //
+        // This branch must come BEFORE the reference fallthrough at the end:
+        // `purpose` carries no exhaustive check, so a missing branch does not
+        // fail the build — it silently wires an EDGE instead of filling the
+        // slot.
+        const picked = pickedSlotImageUrl({ type: node.type, data: node.data });
+        if (picked === null) return;
+        setNodeFirstFrame(projectId, spaceId, target, picked);
+        // One slot, one pick — the session completes on selection.
+        endPick();
+        return;
+      }
+
       if (session.purpose === 'style') {
         // Copy semantics (#1664, user decision 2026-07-16): snapshot the
         // clicked image's asset URL onto the target node — NO relationship to
         // the source node (deleting / regenerating it never changes the copy).
         // Only a non-empty image can be copied (dimming enforces it; this
-        // backstops an insisting click on a dimmed candidate). The setter
+        // backstops an insisting click on a dimmed candidate) — the same
+        // predicate the first-frame slot uses, from the same function, so the
+        // two slots cannot come to disagree on what is pickable. The setter
         // no-ops if the target vanished (the panel auto-closes on host
         // deletion), so no failure toast is needed.
-        const content = (node.data as { content?: unknown }).content;
-        if (
-          node.type !== 'image' ||
-          typeof content !== 'string' ||
-          content.length === 0
-        ) {
-          return;
-        }
-        setNodeStyleImage(projectId, spaceId, target, content);
+        const picked = pickedSlotImageUrl({ type: node.type, data: node.data });
+        if (picked === null) return;
+        setNodeStyleImage(projectId, spaceId, target, picked);
         // One slot, one pick: the session completes on selection (unlike the
         // continuous reference pick, which runs until Exit).
         endPick();
@@ -3186,9 +3212,14 @@ function CanvasSpaceInner({
         };
       });
 
-    if (pickSession.purpose === 'style' || pickSession.purpose === 'focus') {
-      // Style and Focus share the candidate rule: any non-empty image node
-      // except the pick target itself (#1664 / #1782). Focus additionally
+    if (
+      pickSession.purpose === 'style' ||
+      pickSession.purpose === 'focus' ||
+      pickSession.purpose === 'firstFrame'
+    ) {
+      // Style, Focus and First frame share the candidate rule: any non-empty
+      // image node except the pick target itself (#1664 / #1782 / #1896).
+      // Focus additionally
       // needs a RENDERED <img> to anchor the marquee, so a handling / error
       // node (skeleton / error box, no img) is not a candidate (round-4:
       // clicking one was a silent no-op).
@@ -3438,6 +3469,7 @@ function CanvasSpaceInner({
               is ever open on a node — a video node opens this one. */}
           <VideoGeneratePanelContainer
             nodes={nodes}
+            edges={edges}
             projectId={projectId}
             spaceId={spaceId}
           />
@@ -3482,11 +3514,9 @@ function CanvasSpaceInner({
           >
             <span>
               {t(
-                pickSession?.purpose === 'style'
-                  ? 'canvas.generatePanel.selectStyleFromCanvas'
-                  : pickSession?.purpose === 'focus'
-                    ? 'canvas.generatePanel.selectFocusFromCanvas'
-                    : 'canvas.generatePanel.selectFromCanvas',
+                pickSession
+                  ? PICK_PURPOSE_UI[pickSession.purpose].banner
+                  : 'canvas.generatePanel.selectFromCanvas',
               )}
             </span>
             <Button
