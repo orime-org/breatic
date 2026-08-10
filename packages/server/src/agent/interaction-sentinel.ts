@@ -15,12 +15,13 @@
  * Keeping sentinel decode out of `main-agent.ts` lets us unit-test the
  * parse logic in isolation without mocking the AI SDK stream.
  */
-import { SSEEventType } from "@server/agent/types.js";
+import {
+  ASK_USER_CHOICE_SENTINEL,
+  PROPOSE_CANVAS_ACTION_SENTINEL,
+  SHOW_SEARCH_RESULTS_SENTINEL,
+} from "@breatic/domain";
 
-export const ASK_USER_SENTINEL = "__ASK_USER__";
-export const ASK_USER_CHOICE_SENTINEL = "__ASK_USER_CHOICE__";
-export const PROPOSE_CANVAS_ACTION_SENTINEL = "__PROPOSE_CANVAS_ACTION__";
-export const SHOW_SEARCH_RESULTS_SENTINEL = "__SHOW_SEARCH_RESULTS__";
+import { SSEEventType } from "@server/agent/types.js";
 
 export type InteractionEvent =
   | typeof SSEEventType.AGENT_CHOICE

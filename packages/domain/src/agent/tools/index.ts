@@ -136,3 +136,11 @@ export {
   webFetch,
   webSearch,
 };
+
+// The sentinels, forwarded from the tools that write them. A service running
+// the agent loop needs them to recognise what a tool just returned, and each
+// string stays declared in exactly one file — its own tool.
+export { ASK_USER_SENTINEL } from "@domain/agent/tools/ask-user.js";
+export { ASK_USER_CHOICE_SENTINEL } from "@domain/agent/tools/ask-user-choice.js";
+export { PROPOSE_CANVAS_ACTION_SENTINEL } from "@domain/agent/tools/propose-canvas-action.js";
+export { SHOW_SEARCH_RESULTS_SENTINEL } from "@domain/agent/tools/show-search-results.js";
