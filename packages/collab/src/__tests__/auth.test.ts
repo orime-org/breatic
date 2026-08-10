@@ -116,6 +116,28 @@ function encodeMetaWithSpaces(ids: string[]): Uint8Array {
 }
 
 /**
+ * Stand-in for the table of in-memory documents Hocuspocus hands the hook.
+ * A plain `Map` is the usual one; a case that needs to see WHETHER the table
+ * was consulted passes {@link watchedDocuments} instead.
+ */
+type LoadedDocumentsStub = { get(documentName: string): Y.Doc | undefined };
+
+/**
+ * A documents table that records every lookup, for the cases whose subject is
+ * whether the in-memory route was taken at all rather than what it answered.
+ * @param entries - Documents the table holds, keyed by document name.
+ * @returns The table plus the spy standing in for its `get`.
+ */
+function watchedDocuments(entries: ReadonlyArray<[string, Y.Doc]>): {
+  documents: LoadedDocumentsStub;
+  get: ReturnType<typeof vi.fn>;
+} {
+  const backing = new Map(entries);
+  const get = vi.fn((name: string) => backing.get(name));
+  return { documents: { get }, get };
+}
+
+/**
  * Build a live meta doc — the in-memory object Hocuspocus keeps in
  * `instance.documents`, as opposed to the encoded bytes Postgres stores.
  * Used to stage the in-memory route of the space-existence check.
@@ -153,7 +175,7 @@ describe("createAuthHook", () => {
   // the read-only side effect pass their OWN connectionConfig object and check
   // it was mutated. The production hook type keeps connectionConfig required,
   // so the protocol-level read-only contract stays enforced.
-  const buildHook = (capacity?: {
+  const buildHook = (overrides?: {
     maxConnectionsPerDoc?: number;
     countConnections?: (documentName: string) => Promise<number>;
     /**
@@ -163,15 +185,15 @@ describe("createAuthHook", () => {
      * Postgres fallback it was written against; cases that pin the
      * in-memory route stage their own meta doc.
      */
-    documents?: Map<string, Y.Doc>;
+    documents?: LoadedDocumentsStub;
   }) => {
     const hook = createAuthHook({
       redis: mockRedis,
-      maxConnectionsPerDoc: capacity?.maxConnectionsPerDoc ?? 100,
-      countConnections: capacity?.countConnections ?? (async () => 0),
+      maxConnectionsPerDoc: overrides?.maxConnectionsPerDoc ?? 100,
+      countConnections: overrides?.countConnections ?? (async () => 0),
     });
     type HookArgs = Parameters<typeof hook>[0];
-    const documents = capacity?.documents ?? new Map<string, Y.Doc>();
+    const documents = overrides?.documents ?? new Map<string, Y.Doc>();
     // Tests may omit `connectionConfig`; default it so only cap tests that
     // assert the read-only side effect need to supply their own.
     return (
@@ -698,11 +720,15 @@ describe("createAuthHook", () => {
   it("does not consult the in-memory table for the meta doc itself", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("owner");
-    // The meta doc carries no spaceId to check. Staging a copy that lists no
-    // Spaces would refuse the connection if the check ran for it at all.
-    const hook = buildHook({
-      documents: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([])]]),
-    });
+    // The meta doc carries no spaceId to check, so the lookup must not happen
+    // at all. Asserting only that the connection is accepted would not say
+    // that: the check could run, read this copy, and have its verdict thrown
+    // away by the `kind !== "meta"` guard — indistinguishable from the
+    // outside. The spy is what tells the two apart.
+    const watched = watchedDocuments([
+      [`project-${PID}/meta`, liveMetaWithSpaces([])],
+    ]);
+    const hook = buildHook({ documents: watched.documents });
 
     const ctx = await hook({
       token: PLACEHOLDER_TOKEN,
@@ -711,6 +737,8 @@ describe("createAuthHook", () => {
     });
 
     expect(ctx.user.id).toBe("user-1");
+    expect(watched.get).not.toHaveBeenCalled();
+    expect(fetchDocDataMock).not.toHaveBeenCalled();
   });
 
   it("skips the space-exists fetch for the meta doc itself", async () => {
