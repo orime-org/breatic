@@ -84,10 +84,14 @@ function authHeaders(apiKey: string): Record<string, string> {
  * The kind of job decides the URL, so this is keyed by mode rather than by
  * model: another model doing the same kind of job posts to the same place.
  *
- * `text2video` / `image2video` / `multi-image2video` are the three paths four
- * independent KlingAI clients agree on. `video2video` and the entry for motion
- * control are **inherited, not verified** — neither vendor endpoint list
- * carries `video2video`, and motion control's path could not be established.
+ * `image2video` is the one path four independent KlingAI clients agree on —
+ * that is where the evidence is strongest, and it is where both frames ride.
+ * `text2video` comes off the same lists; `multi-image2video` rests on a
+ * narrower base (one client names it for reference jobs, several others
+ * reference the path), and one of those four endpoint lists does not carry it
+ * at all. `video2video` and the entry for motion control are **inherited, not
+ * verified** — neither vendor endpoint list carries `video2video`, and motion
+ * control's path could not be established.
  * Both keep exactly what the old param-name chain produced, so nothing moves
  * for the models that use them; #1910 tracks establishing the truth.
  */

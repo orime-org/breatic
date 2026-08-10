@@ -8,9 +8,10 @@
  * `VideoGeneratePanel` and `VideoGenerateToolbar` are both `React.memo`, and
  * the view model behind them rebuilds on every canvas mutation — every frame
  * of any node drag. A prop rebuilt with it defeats both memos, which is the
- * same as not having them. The panel shipped that way once: the first-frame
- * URL was a string and bailed, and collecting the slots into an object
- * (#1904) made it a fresh object per render.
+ * same as not having them — the image panel shipped exactly that and had to be
+ * repaired. Here the first-frame URL travelled as a string and bailed on its
+ * own until #1904 collected the slots into one object, which is a fresh object
+ * per render; this case is what keeps the container stabilising it.
  *
  * Asserted on the object the container hands down rather than on a render
  * count: a render count would also go up for an unrelated reason and pass for

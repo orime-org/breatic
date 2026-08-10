@@ -30,7 +30,7 @@ describe("kling buildRequest — source field names per provider (#1904)", () =>
     expect(prompt).toBe("a lantern drifts");
     expect(api.image).toBe(FIRST);
     expect(api.image_tail).toBe(LAST);
-    // The names we used to send. KlingAI accepts neither.
+    // The names the family table would have sent. KlingAI accepts neither.
     expect("image_url" in api).toBe(false);
     expect("tail_image_url" in api).toBe(false);
     // Our own name never reaches the vendor.

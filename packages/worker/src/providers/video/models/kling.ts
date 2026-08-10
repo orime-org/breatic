@@ -27,8 +27,11 @@ export const MODELS: ReadonlySet<string> = new Set([
 /**
  * Names this family has always used, for the models that have not been mapped
  * one by one yet (#1908). Every one of these is inherited, not verified: the
- * KlingAI column is what sent `kling-o3-pro-i2v`'s first frame under a name
- * the vendor does not accept, until #1904 gave that model its own entry below.
+ * KlingAI column would have carried `kling-o3-pro-i2v`'s first frame under a
+ * name the vendor does not accept, until #1904 gave that model its own entry
+ * below. Would have, not did: that provider is never selected at all, because
+ * the key name it declares is not one the config schema knows (#1912), so
+ * every model here falls through to WaveSpeed.
  */
 const FAMILY_FIELDS: Readonly<Record<string, FieldNames>> = {
   klingai: {
