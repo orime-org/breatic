@@ -10,6 +10,7 @@
 
 import * as repo from "@domain/node-history/node-history.repo.js";
 import { NotFoundError } from "@breatic/core";
+import { t } from "@breatic/shared";
 import type { NodeHistoryEntity } from "@breatic/shared";
 
 /**
@@ -162,7 +163,7 @@ export async function listByNode(
 export async function getById(id: string): Promise<NodeHistoryEntity> {
   const entry = await repo.getById(id);
   if (!entry) {
-    throw new NotFoundError(`History entry not found: ${id}`);
+    throw new NotFoundError(t("server.canvas.history_entry_not_found"));
   }
   return entry;
 }

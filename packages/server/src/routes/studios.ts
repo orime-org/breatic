@@ -23,6 +23,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { validate } from "@server/middleware/validate.js";
+import { t } from "@breatic/shared";
 import { createTeamStudioSchema, updateStudioSchema } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
@@ -114,7 +115,7 @@ studios.get(
       excludeStudioId !== undefined &&
       !z.string().uuid().safeParse(excludeStudioId).success
     ) {
-      throw new ValidationError("excludeStudioId must be a uuid");
+      throw new ValidationError(t("server.error.validation"));
     }
     const data = await studioService.checkStudioSlug(slug, excludeStudioId);
     return c.json({ data });

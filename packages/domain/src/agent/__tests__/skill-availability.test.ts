@@ -26,6 +26,12 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import { AppError, initCore } from "@breatic/core";
+import { loadLocales } from "@breatic/core";
+
+// `t()` echoes the key back when no catalog is loaded, so without this
+// the assertions below would measure a key name rather than the
+// sentence a user reads. `server/src/index.ts` does the same at boot.
+loadLocales();
 import {
   assertSkillModelRunnable,
   checkSkillModelRunnable,
@@ -217,7 +223,7 @@ describe("who asks it", () => {
   it("the factory refuses to assemble a run on an unreachable model", async () => {
     const { buildAgentConfig } = await import("@domain/agent/agent-config.js");
     expect(() => buildAgentConfig({ skillName: "unreachable" })).toThrow(
-      /not available on this deployment/,
+      /is not available on this server/,
     );
   });
 
@@ -232,7 +238,7 @@ describe("who asks it", () => {
   it("the gate refuses before a request gets any further", async () => {
     const { assertSkillUsable } = await import("@domain/agent/skill-gate.js");
     expect(() => assertSkillUsable("unreachable", "chat")).toThrow(
-      /not available on this deployment/,
+      /is not available on this server/,
     );
   });
 

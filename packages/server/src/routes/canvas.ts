@@ -43,6 +43,7 @@ import {
   logger,
 } from "@breatic/core";
 import { acquireCanvasNodeLock, readCanvasNodeLockHolder, releaseCanvasNodeLock } from "@breatic/domain";
+import { t } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
@@ -99,7 +100,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   // required in the schema, but keep the assertion as defense in depth
   // — schemas can drift, this branch should never hit at runtime.
   if (nodeIds.length > 0 && !projectId) {
-    throw new ValidationError("node_ids requires project_id");
+    throw new ValidationError(t("server.error.validation"));
   }
 
   // Cross-tenant guard: never trust body.project_id. Without this,
@@ -127,7 +128,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
       "execute_gate_rejected",
     );
     throw new ValidationError(
-      "This model requires a source input (e.g. params.images / video_url / audio_url).",
+      t("server.canvas.model_requires_source"),
     );
   }
 
@@ -150,7 +151,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
       "execute_gate_rejected",
     );
     throw new ValidationError(
-      `This model accepts at most ${countViolation.limit} '${countViolation.field}'; ${countViolation.actual} were provided.`,
+      t("server.canvas.too_many_inputs", { limit: countViolation.limit, actual: countViolation.actual }),
     );
   }
 
@@ -194,7 +195,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
     if (!targetNodeId) {
       // Should never reach here; schema validation rejects this case.
       throw new ValidationError(
-        "target_node_id is required for overwrite mode",
+        t("server.error.validation"),
       );
     }
     const acquired = await acquireCanvasNodeLock(
@@ -291,7 +292,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
       );
       // Free the node for a retry — this task will never run.
       await releaseCanvasNodeLock(projectId, targetNodeId, task.id);
-      throw new AppError(503, "Task event stream unavailable; please retry");
+      throw new AppError(503, t("server.canvas.stream_unavailable"));
     }
   }
 

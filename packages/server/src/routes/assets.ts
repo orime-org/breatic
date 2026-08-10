@@ -245,7 +245,7 @@ assets.put("/local-upload/*", requireAuth, async (c) => {
 
   if (env.STORAGE_PROVIDER !== "local") {
     throw new ValidationError(
-      "Direct upload endpoint is only available when STORAGE_PROVIDER=local",
+      t("server.asset.direct_upload_unavailable"),
     );
   }
 

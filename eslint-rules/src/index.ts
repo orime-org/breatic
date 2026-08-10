@@ -16,6 +16,7 @@ import { noLibraryProcessExit } from "#rules/rules/no-library-process-exit";
 import { noMissingLicenseHeader } from "#rules/rules/no-missing-license-header";
 import { noNativeRenderedUi } from "#rules/rules/no-native-rendered-ui";
 import { noRawBodyParse } from "#rules/rules/no-raw-body-parse";
+import { noUntranslatedErrorMessage } from "#rules/rules/no-untranslated-error-message";
 import { noRawButton } from "#rules/rules/no-raw-button";
 import { noParamAsString } from "#rules/rules/no-param-as-string";
 import { noPostgresOutsideCore } from "#rules/rules/no-postgres-outside-core";
@@ -62,6 +63,7 @@ export const breaticPlugin = {
     "no-missing-license-header": noMissingLicenseHeader,
     "no-native-rendered-ui": noNativeRenderedUi,
     "no-raw-body-parse": noRawBodyParse,
+    "no-untranslated-error-message": noUntranslatedErrorMessage,
     "no-raw-button": noRawButton,
     "no-param-as-string": noParamAsString,
     "no-postgres-outside-core": noPostgresOutsideCore,

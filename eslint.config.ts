@@ -452,6 +452,22 @@ export default tseslint.config(
     },
   },
   {
+    // A client-facing error message is built with t(), never written inline.
+    // `errorHandler` puts an AppError's message on the wire verbatim, so a
+    // literal written at the throw site is a literal the user reads — in
+    // English, whatever language they picked.
+    //
+    // All three packages that throw this family: domain and core reach a
+    // client through the same handler as server does.
+    //
+    // Tests are exempt: they construct errors to assert on, not to send.
+    files: ["packages/{server,domain,core}/src/**/*.ts"],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
+    rules: {
+      "breatic/no-untranslated-error-message": "error",
+    },
+  },
+  {
     // Only test files, and deliberately not excluding them: this is the one
     // rule whose subject IS the test file. It reads the path rather than the
     // contents, so the block only has to put it in front of the right files.

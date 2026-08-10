@@ -41,6 +41,7 @@
  * no text key would be approved here and fail at the call. Both have to hold.
  */
 import { AppError, getRawEnvVar } from "@breatic/core";
+import { t } from "@breatic/shared";
 import {
   MODALITIES,
   getFullModelConfig,
@@ -166,6 +167,6 @@ export function assertSkillModelRunnable(
   // nothing does that yet, and this throw deliberately does not.
   throw new AppError(
     503,
-    `Skill '${skillName}' is not available on this deployment.`,
+    t("server.skill.not_available_on_deployment", { skill: skillName }),
   );
 }

@@ -23,7 +23,10 @@
       "reset_success": "密碼重設成功,請登入。",
       "reset_recovery_success": "密碼重設成功,請保存新的復原碼。",
       "email_verified": "電子郵件已驗證。",
-      "verify_email_sent": "驗證郵件已寄送,請查收。"
+      "verify_email_sent": "驗證郵件已寄送,請查收。",
+      "invalid_reset_token": "這個密碼重設連結無效或已過期",
+      "invalid_recovery_code": "電子郵件或復原碼不正確",
+      "invalid_verification_token": "這個驗證連結無效或已過期"
     },
     "studio": {
       "slug_taken": "該 Slug 已被使用，請換一個。",
@@ -42,7 +45,10 @@
       "email_not_registered": "該信箱尚未註冊。",
       "already_member": "該使用者已有存取權限。",
       "already_invited": "該使用者已有一個待確認的邀請。",
-      "collaborator_limit_reached": "該 Project 已達到協作者數上限。"
+      "collaborator_limit_reached": "該 Project 已達到協作者數上限。",
+      "only_viewer_can_request_upgrade": "只有 Viewer 可以申請角色升級",
+      "no_active_owner": "這個 Project 沒有在任的 Owner",
+      "not_found": "找不到這個 Project"
     },
     "payment": {
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
@@ -50,6 +56,35 @@
     },
     "text_tool": {
       "already_running": "另一個文字工具正在執行,請稍候。"
+    },
+    "skill": {
+      "not_found": "找不到這個 Skill",
+      "name_taken": "你已經有一個同名的 Skill",
+      "not_published": "這個 Skill 還沒有發佈",
+      "cannot_install_own": "不能安裝自己的 Skill",
+      "already_installed": "這個 Skill 已經安裝過了",
+      "not_available_here": "Skill「{skill}」在這裡不可用",
+      "not_user_invocable": "Skill「{skill}」不能直接呼叫",
+      "not_available_on_deployment": "Skill「{skill}」在目前的伺服器上不可用",
+      "not_found_named": "找不到 Skill「{skill}」"
+    },
+    "conversation": {
+      "not_found": "找不到這個對話",
+      "attachment_not_found": "找不到這個附件",
+      "attachment_not_yours": "這個附件不屬於你",
+      "attachment_limit_reached": "這個對話的附件已達上限 {limit} 個，請先刪除一些再上傳。"
+    },
+    "canvas": {
+      "model_requires_source": "這個模型需要來源輸入，請先連接一個圖片、影片或音訊節點",
+      "too_many_inputs": "這個模型這類輸入最多接受 {limit} 個，實際給了 {actual} 個",
+      "stream_unavailable": "任務事件流暫時不可用，請重試。",
+      "history_entry_not_found": "找不到這筆歷史記錄"
+    },
+    "memory": {
+      "version_conflict": "有人同時修改了它，請重試。"
+    },
+    "asset": {
+      "direct_upload_unavailable": "目前的伺服器不支援直接上傳"
     }
   },
   "chat": {

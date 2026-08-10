@@ -18,6 +18,12 @@ import { getAgentConfig, initCore } from "@breatic/core";
 import type * as CoreModule from "@breatic/core";
 import type * as SkillsLoaderModule from "@domain/agent/skills-loader.js";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
+import { loadLocales } from "@breatic/core";
+
+// `t()` echoes the key back when no catalog is loaded, so without this
+// the assertions below would measure a key name rather than the
+// sentence a user reads. `server/src/index.ts` does the same at boot.
+loadLocales();
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
