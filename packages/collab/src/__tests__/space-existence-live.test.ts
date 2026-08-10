@@ -212,11 +212,16 @@ describe("Space existence over a live server", () => {
     //
     // What this pins is the CONCURRENCY: nothing here is holding the meta doc,
     // both handshakes go out together, and the content doc is still admitted.
+    //
     // The other half — that the answer comes from the list rather than from
-    // storage when the two disagree — cannot be staged in one instance: making
-    // memory disagree with storage means writing to the in-memory doc, and
-    // writing to it means loading it, which removes the very precondition.
-    // That half is pinned across two real instances in
+    // storage when the two disagree — cannot be staged ON THIS PATH. Here
+    // nothing holds the meta doc, so the list is produced by the load itself,
+    // out of the very storage it would have to disagree with. Making them
+    // disagree means writing to the in-memory doc, and writing to it means
+    // loading it, which removes the precondition this case is about. (The two
+    // cases above are not counter-examples: they do hold the meta doc, which
+    // is exactly why they can stage the disagreement.) That half is pinned
+    // across two real instances in
     // `packages/server/src/__tests__/integration/collab-space-existence-multi-instance.integration.test.ts`.
     stored.set(META_DOC, storedMetaWith([SID]));
 
@@ -259,15 +264,20 @@ describe("Space existence over a live server", () => {
     );
   });
 
-  it("runs the whole load chain, seeding included, when nothing is stored yet", async () => {
-    // The load is the real one, so everything hanging off `onLoadDocument`
-    // runs on this path — including `lazySeedMeta`, which creates a project's
-    // first Space when there is no stored row yet. Nothing here defends
-    // against that: it is the same seed the project's own first meta-doc load
-    // would perform, it is idempotent, and a member reaching this path could
-    // have triggered it by opening the project. What matters is that it is
-    // KNOWN to happen, so this pins it rather than leaving it to be
-    // rediscovered.
+  it("reaches the real storage read for the meta doc — what seeding hangs off", async () => {
+    // The load is the real one, so the check's path runs through
+    // `onLoadDocument` and out to the storage read. In production that read is
+    // `fetchDoc`, and `lazySeedMeta` hangs off it: when there is no stored row
+    // it creates the project's first Space. Nothing defends against that — it
+    // is the same seed the project's own first meta-doc load would perform, it
+    // is idempotent, and a member reaching this path could have triggered it by
+    // opening the project. What matters is that it is KNOWN to happen.
+    //
+    // What is pinned here is that the check does reach that entry point. The
+    // seeding itself does NOT run in this case and cannot: injecting `fetch`
+    // replaces `fetchDoc` wholesale (`persistence.ts`: `deps.fetch ?? fetchDoc`),
+    // and `lazySeedMeta` lives inside the replaced function. Asserting on the
+    // seed would need the real repo and a database.
     const seeded: string[] = [];
     server = createLiveServer({
       extensions: [
@@ -293,14 +303,44 @@ describe("Space existence over a live server", () => {
   });
 
   it("answers the handshake without waiting for the unload to finish", async () => {
-    // The unload costs about a second (`@hocuspocus/extension-redis` delays
-    // its `beforeUnloadDocument` by `disconnectDelay`), and that is
+    // In production the unload costs about a second: the check's own
+    // `unloadDocument` call runs `beforeUnloadDocument`, and
+    // `@hocuspocus/extension-redis` delays that hook by `disconnectDelay`
+    // (1000ms, `hocuspocus-redis.cjs:48`) so peers get the last sync. That is
     // housekeeping — the person waiting on a handshake must not pay for it.
+    //
+    // THE COST HAS TO BE STAGED HERE, or this case cannot fail. The server
+    // built in `beforeEach` carries no Redis extension, so its unload is
+    // instantaneous and awaiting it would cost nothing measurable — the
+    // assertion would hold either way. Verified by mutation: with the shared
+    // server, changing `unloadAfterReading` into `await instance.unload…`
+    // left all eight cases green. So this case builds its own server with an
+    // extension that makes the unload take a second, which is what the Redis
+    // extension does in production.
     //
     // Whether an arriving client cancels a pending unload is Hocuspocus's
     // guarantee, not ours: `unloadDocument` re-checks `shouldUnloadDocument`
     // at the start and again mid-flight. What IS ours is that the answer does
     // not wait, and that is what this measures.
+    const UNLOAD_COST_MS = 1000;
+    server = createLiveServer({
+      extensions: [
+        createPersistenceExtension({
+          fetch: async ({ documentName }: { documentName: string }) =>
+            stored.get(documentName) ?? null,
+        }),
+        {
+          beforeUnloadDocument: async (): Promise<void> => {
+            await new Promise((resolve) => setTimeout(resolve, UNLOAD_COST_MS));
+          },
+        },
+      ],
+      onAuthenticate: createAuthHook({
+        redis: {} as never,
+        maxConnectionsPerDoc: 0,
+        countConnections: async (): Promise<number> => 0,
+      }),
+    });
     stored.set(META_DOC, storedMetaWith([SID]));
 
     const started = process.hrtime.bigint();
@@ -308,7 +348,7 @@ describe("Space existence over a live server", () => {
     const answeredInMs = Number(process.hrtime.bigint() - started) / 1e6;
 
     expect(client.authenticated).toBe(true);
-    // Well under the unload's own cost, so an awaited unload would fail this.
-    expect(answeredInMs).toBeLessThan(500);
+    // Half the unload's own cost: an awaited unload cannot come in under this.
+    expect(answeredInMs).toBeLessThan(UNLOAD_COST_MS / 2);
   });
 });

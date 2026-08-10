@@ -4,7 +4,7 @@
 /**
  * Hocuspocus authentication hook (v10 multi-doc).
  *
- * Performs three checks before a client is allowed to open or
+ * Performs four checks before a client is allowed to open or
  * subscribe to a document:
  *
  *   1. The supplied session cookie resolves to a user id (delegated to
@@ -20,6 +20,10 @@
  *      the hook MUTATES `connectionConfig.readOnly = true` (the field
  *      Hocuspocus reads when it builds the Connection), so every incoming
  *      Yjs sync-update is rejected at the protocol level — no UI trust.
+ *   4. For a Space content doc, the spaceId is still listed in the
+ *      project's `meta.spaces` (delegated to `readProjectSpaceIds`); a
+ *      Space that has left the list refuses new connections. The meta doc
+ *      itself skips this check — it is the list.
  *
  * Cross-tenant probing is impossible by design: any doc whose
  * projectId the caller is not a member of is rejected with the
@@ -117,11 +121,12 @@ interface MutableConnectionConfig {
 /**
  * Options required to build the auth hook.
  *
- * Only Redis is needed. The session lookup uses it (through core's shared
- * session store) and the role lookup routes through core
- * (`projectAuthService.loadProjectRole`) over the shared `db` singleton —
- * no collab-owned Postgres pool. The space-existence check needs nothing
- * here at all: it works off the running Hocuspocus server, which the
+ * Redis is the only backing store handed in — the other two fields configure
+ * the connection cap rather than reaching a store. The session lookup uses
+ * Redis (through core's shared session store) and the role lookup routes
+ * through core (`projectAuthService.loadProjectRole`) over the shared `db`
+ * singleton — no collab-owned Postgres pool. The space-existence check needs
+ * nothing here at all: it works off the running Hocuspocus server, which the
  * framework hands the hook on every handshake.
  */
 export interface CreateAuthHookOptions {
@@ -149,13 +154,14 @@ export interface CreateAuthHookOptions {
  *
  * Returns a function that Hocuspocus calls on every WS handshake.
  * Throwing rejects the connection (4401 / 4403). Returning sets
- * `c.context.user` for downstream `onChange` / `broadcastStateless`
- * consumers.
+ * `c.context.user` for the handlers that read it downstream —
+ * `onStateless` (the caller's id and role on every `space:*` / `tab:*` RPC),
+ * `connected` and `onDisconnect` (presence), and `beforeHandleMessage`.
  * @param root0 - Hook construction options.
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
  * @param root0.maxConnectionsPerDoc - Per-document concurrent-connection cap (0 = unlimited); at the cap, extra connections degrade to read-only. The meta doc is exempt.
  * @param root0.countConnections - Counts a document's live connections cluster-wide (this connection not included) to evaluate the cap.
- * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` for view-only members or at-capacity documents, and returns the user context — or throws to reject the connection.
+ * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` — always for the meta doc, and for view-only members or at-capacity documents — and returns the user context, or throws to reject the connection.
  */
 export function createAuthHook({
   redis,

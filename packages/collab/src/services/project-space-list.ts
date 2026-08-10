@@ -37,15 +37,22 @@ export interface DocumentRegistry {
 }
 
 /**
- * Unload a meta doc this read loaded, after the caller has its answer.
+ * Hand back a meta doc this read obtained, after the caller has its answer.
  *
- * Loading and unloading are paired here: this function loaded the document,
- * so this function takes it back out. A document loaded without a connection
- * is never unloaded on its own — `unloadDocument` is only reached from a
- * closing client connection or a finishing store — so skipping this leaks a
- * document per project, and `Server.destroy()`, which waits for the document
- * count to reach zero, never finishes. Measured, not reasoned: an
- * integration test hung on exactly that.
+ * Asking and releasing are paired here: this read asked for the document, so
+ * this read hands it back. Note it may not be the one that loaded it —
+ * `createDocument` deduplicates by name and returns a concurrent load's
+ * in-flight promise (`hocuspocus-server.cjs:1451`), so a burst of handshakes
+ * loads once and every one of them still owes a release.
+ *
+ * Nothing on this read path unloads it otherwise: every unload the library
+ * performs hangs off something this read does not do — a client connection
+ * closing (`:1407`), a store finishing (`:1564`, `:1572`), a load failing
+ * (`:1504`), a direct connection disconnecting (`:1192`). Skip this and the
+ * document sits in memory until some unrelated caller happens to take it out,
+ * and `Server.destroy()`, which waits for the document count to reach zero,
+ * never finishes. Measured, not reasoned: an integration test hung on exactly
+ * that.
  *
  * NOT awaited. The unload costs about a second — `@hocuspocus/extension-redis`
  * delays its `beforeUnloadDocument` by `disconnectDelay` (1000ms by default,
@@ -54,10 +61,10 @@ export interface DocumentRegistry {
  * should pay for. Hocuspocus re-checks whether the document is still
  * unloadable at the start (`shouldUnloadDocument`) and again mid-flight, so a
  * client connecting in the meantime — the normal case on a reconnect —
- * cancels it. Two concurrent reads that both loaded do not double-unload
- * either: the second call returns the first one's in-flight promise.
+ * cancels it. Two concurrent reads do not double-unload either: the second
+ * call returns the first one's in-flight promise.
  * @param instance - The running Hocuspocus server.
- * @param document - The document this read loaded.
+ * @param document - The document this read obtained.
  * @param documentName - Name of that document, for the log line.
  */
 function unloadAfterReading(
@@ -76,11 +83,16 @@ function unloadAfterReading(
  *
  * IT ANSWERS FROM THE LIST ITSELF, NOT FROM A COPY OF IT (#26). `space:create`
  * writes the new id into the in-memory meta doc and broadcasts that doc; the
- * `yjs_documents` row trails behind by up to one `store_interval_ms` tick,
- * because the create path triggers no store of its own. Deciding from storage
- * therefore refused connections to Spaces this very process had just
- * announced. `space:delete` is the mirror image: the id leaves memory at once
- * while storage keeps admitting connections until the next tick.
+ * `yjs_documents` row trails behind by up to one `store_interval_ms` tick.
+ * Not because nothing tries to store — `space-rpc.ts` ends every RPC with
+ * `conn.disconnect()`, which runs the framework's store hooks right there
+ * (`hocuspocus-server.cjs:1170`, debounce 0) — but because our own gate turns
+ * that store away: `persistence.ts` returns unless `consumeTimedStoreArm`
+ * grants a pass, and only the timed loop and the unload gate ever grant one.
+ * Deciding from storage therefore refused connections to Spaces this very
+ * process had just announced. `space:delete` is the mirror image: the id
+ * leaves memory at once while storage keeps admitting connections until the
+ * next tick.
  *
  * Whether the in-memory list is itself up to date does not enter into it:
  * whatever it holds is what the clients here were told, so answering from it

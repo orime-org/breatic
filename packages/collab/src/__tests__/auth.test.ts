@@ -310,8 +310,8 @@ describe("createAuthHook", () => {
   it("accepts an active owner; connection stays writable (readOnly = false)", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("owner");
-    // The space-existence read is the only `yjs_documents` access the
-    // hook makes — staged through the core repo mock.
+    // Existence is staged by `buildHook`'s default `documents` map; the hook
+    // makes no `yjs_documents` access at all (#26).
     const hook = buildHook();
     // Hocuspocus passes a mutable connectionConfig (default readOnly:false).
     // The hook flips it as a SIDE EFFECT; Hocuspocus reads THIS — not the
@@ -411,7 +411,8 @@ describe("createAuthHook", () => {
   // counts against its own check, and a rejected one never counts at
   // all). Boundary is `>= cap`: the doc already holding `cap` connections
   // means this one is the extra and degrades. Capacity tests use a canvas
-  // doc and stage the space-exists read (meta blob listing SID).
+  // doc; existence is staged by `buildHook`'s default in-memory meta doc,
+  // which lists SID.
 
   it("degrades an at-capacity space doc to read-only even for an editor", async () => {
     getSessionMock.mockResolvedValue("user-1");
