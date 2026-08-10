@@ -1692,18 +1692,14 @@ function CanvasSpaceInner({
         // clicked image's asset URL onto the target node — NO relationship to
         // the source node (deleting / regenerating it never changes the copy).
         // Only a non-empty image can be copied (dimming enforces it; this
-        // backstops an insisting click on a dimmed candidate). The setter
+        // backstops an insisting click on a dimmed candidate) — the same
+        // predicate the first-frame slot uses, from the same function, so the
+        // two slots cannot come to disagree on what is pickable. The setter
         // no-ops if the target vanished (the panel auto-closes on host
         // deletion), so no failure toast is needed.
-        const content = (node.data as { content?: unknown }).content;
-        if (
-          node.type !== 'image' ||
-          typeof content !== 'string' ||
-          content.length === 0
-        ) {
-          return;
-        }
-        setNodeStyleImage(projectId, spaceId, target, content);
+        const picked = pickedSlotImageUrl({ type: node.type, data: node.data });
+        if (picked === null) return;
+        setNodeStyleImage(projectId, spaceId, target, picked);
         // One slot, one pick: the session completes on selection (unlike the
         // continuous reference pick, which runs until Exit).
         endPick();

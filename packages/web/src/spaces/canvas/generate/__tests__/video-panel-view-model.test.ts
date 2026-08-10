@@ -332,6 +332,32 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     ).toBe('https://cdn/f.png');
   });
 
+  it('drops a first frame that is not a usable URL', () => {
+    // The slot's value is collaborative Yjs data — untrusted. A malformed
+    // one reaching the payload sends `params.image` as something the provider
+    // rejects AFTER the task is accepted and billed; an empty string passes
+    // `typeof === 'string'` but is no URL either. Same guard the style slot
+    // has carried since #1664.
+    const bad = (value: unknown): unknown =>
+      buildVideoPanelViewModel({
+        nodeId: 'n1',
+        nodes: [
+          node(
+            'n1',
+            videoView({ firstFrameUrl: value } as Partial<
+              Extract<NodeView, { kind: 'video' }>
+            >),
+          ),
+        ],
+        models,
+        mode: 'i2v',
+      }).firstFrameUrl;
+    expect(bad('')).toBeUndefined();
+    expect(bad(42)).toBeUndefined();
+    expect(bad({ url: 'https://cdn/f.png' })).toBeUndefined();
+    expect(bad(null)).toBeUndefined();
+  });
+
   it('leaves the first frame undefined when the node has none', () => {
     const nodes = [node('n1', videoView())];
     expect(

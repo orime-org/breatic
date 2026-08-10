@@ -216,6 +216,14 @@ export function buildVideoPanelViewModel(input: {
     // rule itself lives backend-side (domain/source-requirement.ts); the panel
     // only reads the wire field.
     requiresSource: current ? (current.sourcesByMode[mode]?.length ?? 0) > 0 : false,
-    firstFrameUrl: content?.firstFrameUrl,
+    // The slot's value is collaborative Yjs data — untrusted, whatever the
+    // type says. A malformed one would ride the payload as `params.image` and
+    // be refused upstream AFTER the task was accepted and billed; an empty
+    // string is a string and no URL. Same guard the style slot carries.
+    firstFrameUrl:
+      typeof content?.firstFrameUrl === 'string' &&
+      content.firstFrameUrl.length > 0
+        ? content.firstFrameUrl
+        : undefined,
   };
 }
