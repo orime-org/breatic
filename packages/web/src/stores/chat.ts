@@ -7,11 +7,16 @@ import { immer } from 'zustand/middleware/immer';
 /**
  * Chat composer + streaming store — per-user agent chat session UI state.
  *
- * Per memory `project_chat_private_no_yjs`: chat content is private and
- * does NOT enter Yjs. This store holds the composer draft, current
- * conversation id, and SSE streaming flag.
+ * Chat content is private and does NOT enter Yjs. This store holds the
+ * composer draft, the current conversation id, and the SSE streaming flag.
  *
- * Message history itself lives in REST cache (React Query), not here.
+ * Where the messages themselves live is not settled here. The line that used
+ * to sit at the foot of this comment answered it — history belongs to the
+ * REST cache, not this store — and that answer was written before there was
+ * anything to hold: nothing renders a message from a server response today.
+ * PR-3 batch 6 decides it, and it has to end up as one source, because the
+ * reply being streamed and the reply read back from the server are the same
+ * message and the screen must not show it twice or lose it at the handover.
  */
 interface ChatState {
   composerDraft: string;

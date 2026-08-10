@@ -20,7 +20,11 @@ export { studiosApi } from '@web/data/api/studios';
 // Space lifecycle (create / delete / lock / restore) now routes through
 // `sendSpaceRpc` in `@/data/yjs/space-rpc-client`.
 export { membersApi, type Member, type MemberRole, type ProjectMembership } from '@web/data/api/members';
-export { chatApi, type ChatStreamEvent, type ConversationSummary, type ConversationDetail } from '@web/data/api/chat';
+// The chat stream's event type is not re-exported here: it is the shared
+// contract (`SSEEventEnvelope` from `@breatic/shared`), so a second name for
+// it in this barrel would be exactly the duplicate that let the two sides
+// drift in the first place.
+export { chatApi, type ConversationSummary, type ConversationDetail } from '@web/data/api/chat';
 export { canvasApi, type CanvasTask } from '@web/data/api/canvas';
 export { miniToolsApi } from '@web/data/api/mini-tools';
 export { textToolsApi, type TextStreamEvent } from '@web/data/api/text-tools';
