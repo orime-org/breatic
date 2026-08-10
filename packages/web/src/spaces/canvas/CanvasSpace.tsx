@@ -152,6 +152,7 @@ import {
   NODE_GATE_TOAST_KEY,
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
+import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
@@ -546,20 +547,27 @@ function CanvasSpaceInner({
   // the banner, dropping keyboard focus to <body>. Hand focus to the panel's
   // pick trigger — still mounted, because the pick keeps the panel open. The
   // trigger is in the DOM right now (setState re-renders later), so the
-  // synchronous focus lands before the banner unmounts. The trigger is the
-  // Style or Reference tool button per the active pick's purpose.
+  // synchronous focus lands before the banner unmounts. WHICH trigger depends
+  // on WHICH PANEL is showing it: each panel carries its own tool row, and
+  // only the reference tool exists in both (#1902). The two panels are never
+  // mounted together (a node's panel is one kind), so trying the purpose's
+  // candidate ids and taking whichever is on screen resolves it without
+  // asking the store a second question. Nothing on screen — a pick that
+  // outlived its panel — falls through to the orphan catch-all below, which
+  // returns focus to the canvas container.
   const onExitPick = React.useCallback((): void => {
     const purpose = useCanvasStore.getState().pickSession?.purpose;
     endPick();
-    const triggerTestId =
-      purpose === 'style'
-        ? 'generate-tool-style'
-        : purpose === 'focus'
-          ? 'generate-tool-focus'
-          : 'generate-tool-reference';
-    document
-      .querySelector<HTMLElement>(`[data-testid="${triggerTestId}"]`)
-      ?.focus();
+    if (purpose === undefined) return;
+    for (const testId of Object.values(PICK_PURPOSE_UI[purpose].trigger)) {
+      const trigger = document.querySelector<HTMLElement>(
+        `[data-testid="${testId}"]`,
+      );
+      if (trigger) {
+        trigger.focus();
+        return;
+      }
+    }
   }, [endPick]);
   /**
    * Return the focus session to its PICK state (user 2026-07-17 A): drop
@@ -3510,11 +3518,9 @@ function CanvasSpaceInner({
           >
             <span>
               {t(
-                pickSession?.purpose === 'style'
-                  ? 'canvas.generatePanel.selectStyleFromCanvas'
-                  : pickSession?.purpose === 'focus'
-                    ? 'canvas.generatePanel.selectFocusFromCanvas'
-                    : 'canvas.generatePanel.selectFromCanvas',
+                pickSession
+                  ? PICK_PURPOSE_UI[pickSession.purpose].banner
+                  : 'canvas.generatePanel.selectFromCanvas',
               )}
             </span>
             <Button

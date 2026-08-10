@@ -142,9 +142,16 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        // Video reference images are never inert: every video mode that takes
-        // them uses them, unlike text-to-image where an image source is
-        // ignored and the rail dims it.
+        // Not dimmed, and that is NOT the same as "these count": neither mode
+        // this panel offers feeds a reference IMAGE to the model — text-to-
+        // video takes nothing, and image-to-video takes its picture from the
+        // first-frame slot. An image `@` chip therefore contributes nothing
+        // today (a non-text chip serializes to an empty string). Dimming is
+        // how the image panel says that, but here it would also disable the
+        // row's ✕ — `inert` gates removal too — leaving a reference the rail
+        // cannot take back. Which of the two costs to pay is a product call
+        // and belongs with the slice that gives video references a job
+        // (reference-to-video, #1896); tracked as #1903.
         imageRefsDisabled={false}
       />
 

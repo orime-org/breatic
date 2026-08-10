@@ -387,8 +387,13 @@ function VideoGeneratePanelBody({
     },
     [projectId, spaceId],
   );
-  // The slot's ✕: clears the node's pick-time copy. Always available — even
-  // when the active mode takes no first frame, a stale copy must be removable.
+  // The slot's ✕: clears the node's pick-time copy. Available whenever the
+  // slot is — which is only in a mode that takes a first frame. A copy left
+  // behind by a switch to text-to-video is out of reach until the user
+  // switches back; it does not ride the wire meanwhile (see the payload's
+  // mode gate), so what it costs is the asset staying alive, not a wrong
+  // generation. Deliberately NOT cleared on the switch: that would throw away
+  // a pick the user may be coming back to.
   const onClearFirstFrame = React.useCallback(
     () => clearNodeFirstFrame(projectId, spaceId, nodeId),
     [projectId, spaceId, nodeId],
@@ -517,8 +522,9 @@ function VideoGeneratePanelBody({
           onTextChange={handlePromptChange}
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
-          // Video reference images are never inert: every video mode that
-          // takes them uses them.
+          // Same value, same reason as the rail's — see VideoGeneratePanel:
+          // an image `@` chip contributes nothing in either mode this panel
+          // offers, and dimming carries a cost of its own. #1903.
           imageRefsDisabled={false}
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}

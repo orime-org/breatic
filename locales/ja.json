@@ -160,6 +160,7 @@
       "mentionEmpty": "参照できる画像がありません — まず画像から線をつないでください",
       "selectFromCanvas": "キャンバスから参照を選択",
       "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
+      "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
       "removeStyle": "スタイル参照を削除",
       "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
