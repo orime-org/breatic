@@ -216,15 +216,22 @@ describe("a stopped turn stops the model", () => {
 
     turnTools = buildToolSet(["web_fetch"]);
     providerParts = () => callsTool("web_fetch");
-    fetchMock.mockResolvedValue(
-      new Response(
-        new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode("the beginning of a page"));
-            // Never closed.
-          },
-        }),
-        { status: 200, headers: { "content-type": "text/plain" } },
+    // The body errors when the request's signal is raised, which is what a
+    // real `fetch` does. A stub that leaves that out would have the read hang
+    // forever and would say nothing about whether the chain works.
+    fetchMock.mockImplementation((_url: string, init: { signal?: AbortSignal }) =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("the beginning of a page"));
+              init.signal?.addEventListener("abort", () => {
+                controller.error(init.signal?.reason ?? new Error("aborted"));
+              });
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/plain" } },
+        ),
       ),
     );
 

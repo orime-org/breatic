@@ -185,8 +185,8 @@ export class MainAgent {
     const toolCallLog: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
 
     // Tokens are counted off the stream as it goes past, never from
-    // `result.usage`. That getter is not a passive read: it chains to
-    // `finalStep` to `steps`, and `steps` calls `consumeStream()`. On the
+    // `result.usage`. That getter is not a passive read: on ai@7.0.58 it
+    // returns `totalUsage`, and `totalUsage` calls `consumeStream()`. On the
     // exit that matters most — the user closing the page while the model
     // loop is still mid-flight — reading it would drive the rest of that
     // loop after everyone has gone, running real provider calls and real

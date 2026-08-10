@@ -58,13 +58,26 @@ const toolOptions = (signal: AbortSignal): Record<string, unknown> => ({
   messages: [],
 });
 
-/** A response whose headers are through and whose body never finishes. */
-function stalledBody(): Response {
+/**
+ * A response whose headers are through and whose body never finishes.
+ *
+ * The body errors when the request's signal is raised, which is what a real
+ * `fetch` does and what a stub that leaves it out gets wrong. An earlier draft
+ * of this file left it out, and the omission mattered: it made the tool look
+ * as though it needed a reader of its own to stop a stalled read, when the
+ * transport's own composed signal already ends it.
+ * @param signal - The one the transport composed into this request.
+ * @returns A response that stalls until the signal says otherwise.
+ */
+function stalledBody(signal?: AbortSignal): Response {
   return new Response(
     new ReadableStream({
       start(controller) {
         controller.enqueue(new TextEncoder().encode("the beginning of a page"));
-        // And never closed: the read that follows has nothing to wait for.
+        // Never closed. The only thing that ends this is the signal.
+        signal?.addEventListener("abort", () => {
+          controller.error(signal.reason ?? new Error("aborted"));
+        });
       },
     }),
     { status: 200, headers: { "content-type": "text/plain" } },
@@ -133,13 +146,15 @@ describe("safeFetch when the caller has given up", () => {
 
 describe("web_fetch when the turn is stopped", () => {
   it("stops while the body is still arriving", async () => {
-    // The waiting place the transport cannot see: it has handed back the
-    // Response and cleared its own deadline, and the read that follows is
-    // ours. Without this, a server that stalls after its headers holds the
-    // turn until the read gives up on its own — undici's body timeout, which
-    // is measured in minutes.
+    // A page that answers 200 and then stalls. The tool reads the body plainly
+    // and carries no cancellation code of its own: what ends this read is the
+    // signal the transport composed into the request, which stays attached to
+    // the response after the transport has handed it over. That is a promise
+    // the transport's boundary doc states, and this is the tool's side of it.
     const gaveUp = new AbortController();
-    fetchMock.mockResolvedValue(stalledBody());
+    fetchMock.mockImplementation((_url: string, init: { signal?: AbortSignal }) =>
+      Promise.resolve(stalledBody(init.signal)),
+    );
     setTimeout(() => gaveUp.abort(new Error("user stopped")), 80);
 
     const started = Date.now();

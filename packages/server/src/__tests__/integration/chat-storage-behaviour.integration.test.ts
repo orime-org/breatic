@@ -266,6 +266,12 @@ describe("a message survives the round trip through parts", () => {
       tool_call_id: fc.uuid(),
       name: fc.string({ minLength: 1 }),
     }),
+    // A turn the user stopped, with whatever it had written by then.
+    fc.record({
+      role: fc.constant("assistant" as const),
+      content: fc.string(),
+      interrupted: fc.constant(true as const),
+    }),
   );
 
   it("comes back with every field it went in with", async () => {
@@ -289,6 +295,26 @@ describe("a message survives the round trip through parts", () => {
       }),
       { numRuns: 25 },
     );
+  });
+
+  it("keeps a stopped turn that got no words out distinguishable from nothing", async () => {
+    // The one case the marker exists for, pinned on its own rather than left
+    // to the generator above to stumble on: a turn stopped after a tool call
+    // and before any prose has no text, no reasoning and no tool call of its
+    // own, so the marker is the only piece it leaves. Store it in a way that
+    // drops the marker and the row is an empty list — which reads back as a
+    // turn that never happened.
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+
+    await messageRepo.addMessage(conv.id, {
+      role: "assistant",
+      content: "",
+      interrupted: true,
+    });
+    const [stored] = await messageRepo.getMessages(conv.id, 1);
+
+    expect(stored).toMatchObject({ role: "assistant", content: "", interrupted: true });
   });
 });
 

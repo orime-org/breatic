@@ -27,49 +27,48 @@
  */
 
 import { describe, it, expect } from "vitest";
-import * as toolBarrel from "@domain/agent/tools/index.js";
-
-/** Anything the barrel exports, seen only through the field that matters. */
-type MaybeTool = { execute?: unknown };
+import { TOOL_MAP } from "@domain/agent/tools/index.js";
 
 /** What a tool's `execute` looks like when all this guard reads is its arity. */
 type ExecuteFn = (...args: unknown[]) => unknown;
 
 /**
- * Every tool the barrel exports, paired with its `execute`.
+ * Every registered tool, paired with its `execute`.
  *
- * The barrel also exports lists and functions; a tool is recognised by having
- * an `execute`, which is the only thing this guard has an opinion about.
- * @returns Each exported tool's name and its `execute`.
+ * The registry rather than the file's re-export block, because the registry is
+ * what `buildToolSet` reads and therefore what decides whether a tool can reach
+ * a turn at all. Nothing consults the re-export block, so a tool registered
+ * without being re-exported would slip past a guard standing on that list —
+ * and a tool that misses the options argument never sees the abort signal,
+ * which is the ceiling on how long a stop takes.
+ * @returns Each registered tool's name and its `execute`.
  */
-function exportedTools(): Array<[string, ExecuteFn]> {
-  const found: Array<[string, ExecuteFn]> = [];
-  for (const [name, value] of Object.entries(toolBarrel as Record<string, MaybeTool>)) {
-    if (typeof value?.execute === "function") {
-      found.push([name, value.execute as ExecuteFn]);
-    }
-  }
-  return found;
+function registeredTools(): Array<[string, ExecuteFn]> {
+  return Object.entries(TOOL_MAP).map(([name, tool]) => [
+    name,
+    (tool as { execute?: unknown }).execute as ExecuteFn,
+  ]);
 }
 
 describe("tools accept the cancellation signal", () => {
-  it("covers every tool the barrel exports", () => {
+  it("covers every registered tool", () => {
     // A count, so that adding a seventh tool fails here and its author has to
     // come and look at what this file is guarding. Without it a new tool could
     // be added and simply not be checked, which is the failure this guard
     // exists to prevent.
-    expect(exportedTools().map(([name]) => name).sort()).toEqual([
-      "askUser",
-      "askUserChoice",
-      "proposeCanvasAction",
-      "showSearchResults",
-      "webFetch",
-      "webSearch",
+    expect(registeredTools().map(([name]) => name).sort()).toEqual([
+      "ask_user_choice",
+      "ask_user_question",
+      "propose_canvas_action",
+      "show_search_results",
+      "web_fetch",
+      "web_search",
     ]);
   });
 
-  for (const [name, execute] of exportedTools()) {
+  for (const [name, execute] of registeredTools()) {
     it(`${name} declares the options argument`, () => {
+      expect(typeof execute).toBe("function");
       expect(execute.length).toBeGreaterThanOrEqual(2);
     });
   }

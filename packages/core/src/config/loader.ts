@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
+import { MAX_TIMER_MS } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const agentConfigSchema = z.object({
@@ -35,14 +36,16 @@ const agentConfigSchema = z.object({
   /**
    * How long ONE DELIVERY of a `web_fetch` request may take, in milliseconds.
    *
-   * The upper bound is the largest delay a timer can hold; past it a timer
-   * quietly rewrites the value to one millisecond, turning "wait as long as
-   * this needs" into "give up at once". Refused here rather than at the point
-   * of use, so a bad figure is caught when the config loads.
+   * The range is the transport's own, not a second opinion: it refuses
+   * anything below 1 or above `MAX_TIMER_MS`, because a timer quietly rewrites
+   * a figure it cannot hold to one millisecond — turning "wait as long as this
+   * needs" into "give up at once". Stating it here is what makes a bad figure
+   * fail when the config loads instead of on every call. `.positive()` would
+   * not do: it admits 0.5, which the transport then refuses every time.
    */
-  web_fetch_timeout_ms: z.number().positive().max(2147483647).default(30000),
+  web_fetch_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(30000),
   /** The same, for one `web_search` request. */
-  web_search_timeout_ms: z.number().positive().max(2147483647).default(10000),
+  web_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
 });

@@ -63,6 +63,25 @@ async function silentServer(onHit?: (hit: number) => void): Promise<Stub> {
   return { url: `http://127.0.0.1:${port}/`, hits: (): number => hit };
 }
 
+/**
+ * Start a server that answers, then stalls forever without finishing the body.
+ * @returns Its URL and how many requests it took.
+ */
+async function stallingBodyServer(): Promise<Stub> {
+  let hit = 0;
+  const server = createServer((req, res) => {
+    hit += 1;
+    req.resume();
+    res.writeHead(200, { "content-type": "text/plain", "transfer-encoding": "chunked" });
+    res.write("the beginning of a page");
+    // And never `end()`: the headers are through, the body never completes.
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  running = server;
+  const { port } = server.address() as AddressInfo;
+  return { url: `http://127.0.0.1:${port}/`, hits: (): number => hit };
+}
+
 /** Start a server that drops every connection, so every delivery fails. */
 async function droppingServer(onHit?: (hit: number) => void): Promise<Stub> {
   let hit = 0;
@@ -116,19 +135,46 @@ describe("a call the caller gave up on", () => {
     // wait the call still ends, just not until the backoff it was already in
     // has run its course — which is the delay the user sees after pressing
     // stop, for no work at all.
-    const stub = await droppingServer();
+    //
+    // The stop is fired from the moment the first delivery fails rather than
+    // at a chosen number of milliseconds, because the backoff is drawn at
+    // random from a window up to a second: any fixed figure is sometimes
+    // longer than the wait it is meant to land inside, and the test then fails
+    // for a reason that has nothing to do with the code. Written that way it
+    // failed about one run in eight, measured.
     const gaveUp = new AbortController();
-    // Well after the first delivery fails, so the call is in the backoff.
-    setTimeout(() => gaveUp.abort(new Error("user stopped")), 120);
+    const stub = await droppingServer((hit) => {
+      // The failure has not surfaced yet — the socket has only just been
+      // destroyed — so the call is entering its backoff about now.
+      if (hit === 1) setTimeout(() => gaveUp.abort(new Error("user stopped")), 20);
+    });
 
     const started = Date.now();
     await expect(
       httpRequest(stub.url, {}, { replaySafe: true, timeoutMs: 30_000, signal: gaveUp.signal }),
     ).rejects.toThrow();
     const elapsed = Date.now() - started;
-    // The first backoff is drawn from a window up to a second, so a wait that
-    // ran to completion would land well past this.
-    expect(elapsed).toBeLessThan(600);
+    // Comfortably inside the shortest backoff this could have drawn, so a wait
+    // that ran to completion would land past it.
+    expect(elapsed).toBeLessThan(500);
+    expect(stub.hits()).toBe(1);
+  });
+
+  it("reports the stop, not a retry failure", async () => {
+    // What the caller is handed matters as much as when. Ending the wait but
+    // then going round the loop once more produced a delivery that could not
+    // succeed and a count of two, so the caller was told the request "failed
+    // after 2 attempts" — a network story — while the real reason sat
+    // underneath in `cause`. `web_search` hands that sentence straight back to
+    // the model.
+    const gaveUp = new AbortController();
+    const stub = await droppingServer((hit) => {
+      if (hit === 1) setTimeout(() => gaveUp.abort(new Error("user stopped")), 20);
+    });
+
+    await expect(
+      httpRequest(stub.url, {}, { replaySafe: true, timeoutMs: 30_000, signal: gaveUp.signal }),
+    ).rejects.toThrow("user stopped");
     expect(stub.hits()).toBe(1);
   });
 
@@ -150,6 +196,31 @@ describe("a call the caller gave up on", () => {
       httpRequest(stub.url, {}, { replaySafe: true, timeoutMs: 500, signal: gaveUp.signal }),
     ).rejects.toThrow();
     expect(attached()).toBe(0);
+  });
+
+  it("stops the body of the response it already handed back", async () => {
+    // The fourth thing the stop reaches, and the one that outlives the call.
+    // `fetch` returns when the HEADERS arrive, so a response is handed over
+    // while its body is still streaming; the signal composed into that request
+    // stays attached to it. This is a promise rather than an accident —
+    // `web_fetch` and `web_search` both read their bodies plainly and neither
+    // carries a line of cancellation code, so they depend on it.
+    const stub = await stallingBodyServer();
+    const gaveUp = new AbortController();
+
+    const res = await httpRequest(
+      stub.url,
+      {},
+      { replaySafe: true, timeoutMs: 30_000, signal: gaveUp.signal },
+    );
+    expect(res.status).toBe(200);
+
+    setTimeout(() => gaveUp.abort(new Error("user stopped")), 60);
+    const started = Date.now();
+    await expect(res.text()).rejects.toThrow("user stopped");
+    // Ended by the caller, not by the deadline the transport already cleared,
+    // and not by the client's own body timeout, which runs into minutes.
+    expect(Date.now() - started).toBeLessThan(1_000);
   });
 
   it("is not needed for a call that was never given one", async () => {

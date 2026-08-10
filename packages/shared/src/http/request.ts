@@ -345,6 +345,20 @@ export async function httpRequest(
   // that could disagree with it.
   for (let index = 0; ; index++) {
     const attempts = index + 1;
+
+    // Asked before anything is built, because everything below counts as a
+    // delivery. Arriving here already given up on happens after an
+    // interrupted backoff, and going on regardless produced a delivery that
+    // could not succeed and a count of two — so the caller was told the
+    // request "failed after 2 attempts" when what happened was that it
+    // stopped, with the real reason buried underneath. Nothing left this
+    // process either way; the count and the message were the damage.
+    if (options.signal?.aborted) {
+      throw options.signal.reason instanceof Error
+        ? options.signal.reason
+        : new Error(`http request to ${safeUrl} was cancelled by its caller`);
+    }
+
     // A fresh deadline per delivery is the whole point. An `AbortSignal` is
     // single-shot, so one signal reused across a retry loop aborts every later
     // delivery before it leaves the ground. Ours is created and cleared inside
