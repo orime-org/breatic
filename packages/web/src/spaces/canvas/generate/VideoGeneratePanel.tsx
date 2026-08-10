@@ -8,7 +8,12 @@ import type { ModelEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
+import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
+import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
+import { VideoGenerateToolbar } from '@web/spaces/canvas/generate/VideoGenerateToolbar';
+import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import {
   VideoParamsPicker,
   type VideoParamsValue,
@@ -23,6 +28,32 @@ interface VideoGeneratePanelProps {
   params: VideoParamsValue;
   /** Estimated credit cost of one generation (current model's cost_per_call). */
   creditEstimate: number;
+  /** The active generation mode. */
+  mode: string;
+  /** Switch generation mode. */
+  onToggleMode: (mode: string) => void;
+  /** Disable the mode switch while the catalog is empty (no model to switch TO). */
+  catalogEmpty: boolean;
+  /** Reference rows derived from this node's incoming edges. */
+  references: ReferenceRailItem[];
+  /** Enter / exit the canvas reference pick. */
+  onAddReference: () => void;
+  /** Whether the reference pick is running. */
+  referencePicking: boolean;
+  /** Remove one reference (deletes its edge). */
+  onRemoveReference: (item: ReferenceRailItem) => void;
+  /** Insert one reference as an `@` chip in the prompt. */
+  onInsertReference: (item: ReferenceRailItem) => void;
+  /** Whether the active mode takes a first frame (slot shown only then). */
+  firstFrameSupported: boolean;
+  /** Enter / exit the first-frame pick. */
+  onFirstFrame: () => void;
+  /** Whether the first-frame pick is running. */
+  firstFramePicking: boolean;
+  /** The picked first-frame URL, if any. */
+  firstFrameUrl?: string;
+  /** Clear the picked first frame. */
+  onClearFirstFrame: () => void;
   /** Whether execute is allowed (the container owns the reasons). */
   canExecute: boolean;
   /** The collaborative prompt editor, injected by the container (TipTap + Yjs). */
@@ -60,6 +91,19 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   model,
   params,
   creditEstimate,
+  mode,
+  onToggleMode,
+  catalogEmpty,
+  references,
+  onAddReference,
+  referencePicking,
+  onRemoveReference,
+  onInsertReference,
+  firstFrameSupported,
+  onFirstFrame,
+  firstFramePicking,
+  firstFrameUrl,
+  onClearFirstFrame,
   canExecute,
   promptSlot,
   onExit,
@@ -71,7 +115,16 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   const currentModel = models.find((m) => m.name === model);
   return (
     <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
-      <div className='flex items-start justify-end'>
+      <div className='flex items-start justify-between'>
+        <VideoGenerateToolbar
+          onReference={onAddReference}
+          referenceActive={referencePicking}
+          firstFrameSupported={firstFrameSupported}
+          onFirstFrame={onFirstFrame}
+          firstFrameActive={firstFramePicking}
+          firstFrameUrl={firstFrameUrl}
+          onClearFirstFrame={onClearFirstFrame}
+        />
         <Button
           type='button'
           variant={null}
@@ -85,9 +138,33 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         </Button>
       </div>
 
+      <ReferenceRail
+        references={references}
+        onRemove={onRemoveReference}
+        onInsert={onInsertReference}
+        // Not dimmed, and that is NOT the same as "these count": neither mode
+        // this panel offers feeds a reference IMAGE to the model — text-to-
+        // video takes nothing, and image-to-video takes its picture from the
+        // first-frame slot. An image `@` chip therefore contributes nothing
+        // today (a non-text chip serializes to an empty string). Dimming is
+        // how the image panel says that, but here it would also disable the
+        // row's ✕ — `inert` gates removal too — leaving a reference the rail
+        // cannot take back. Which of the two costs to pay is a product call
+        // and belongs with the slice that gives video references a job
+        // (reference-to-video, #1896); tracked as #1903.
+        imageRefsDisabled={false}
+      />
+
       {promptSlot}
 
       <div className='flex items-center gap-1.5'>
+        <ModeToggle
+          value={mode}
+          options={VIDEO_MODE_OPTIONS}
+          onChange={onToggleMode}
+          triggerTestId='generate-video-mode-trigger'
+          disabled={catalogEmpty}
+        />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
         {currentModel ? (
           <VideoParamsPicker

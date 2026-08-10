@@ -36,6 +36,21 @@ describe('buildVideoTaskPayload', () => {
     });
   });
 
+  it('sends the first-frame slot as the `image` param', () => {
+    // Image-to-video needs a first frame, and the backend source gate reads it
+    // from `params.image` (source-requirement.ts maps `i2v` to `["image"]`).
+    // It travels as its OWN param, never folded into the reference array — the
+    // reference array is the @-picked pool and means something different.
+    const out = buildVideoTaskPayload({ ...BASE, firstFrameUrl: 'https://cdn/first.png' });
+    expect(out.params).toMatchObject({ image: 'https://cdn/first.png' });
+  });
+
+  it('omits `image` entirely when no first frame is picked', () => {
+    // Text-to-video takes no source. Sending `image: undefined` would put the
+    // key on the wire, and the upstream provider reads presence, not value.
+    expect(buildVideoTaskPayload(BASE).params).not.toHaveProperty('image');
+  });
+
   it('routes to the video task type, not the image one', () => {
     // The worker keys its handler off this; sending 'image' would run a video
     // generation through the image pipeline.

@@ -40,8 +40,12 @@ export type HistoryCommand = 'undo' | 'redo';
  *     `focusImages` (no edge, no source relationship). Continuous like
  *     reference — the user may crop several regions on the SAME node and
  *     across nodes — until manual Exit.
+ *   - `firstFrame` — COPIES the clicked image node's asset URL into a video
+ *     node's `firstFrameUrl` (#1896), the image-to-video first frame. Same
+ *     copy semantics and same single-slot auto-exit as `style`; they differ
+ *     only in which field they fill and what it means to the model.
  */
-export type PickPurpose = 'reference' | 'style' | 'focus';
+export type PickPurpose = 'reference' | 'style' | 'focus' | 'firstFrame';
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a
@@ -182,6 +186,8 @@ interface CanvasState {
   startReferencePick: (nodeId: string) => void;
   /** Enter a STYLE pick (#1664, copies one image URL into the slot) for a generative node. */
   startStylePick: (nodeId: string) => void;
+  /** Enter the first-frame pick for a video node (#1896). */
+  startFirstFramePick: (nodeId: string) => void;
   /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
   startFocusPick: (nodeId: string) => void;
   /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
@@ -373,6 +379,10 @@ export const useCanvasStore = create<CanvasState>()(
     startStylePick: (nodeId) =>
       set((s) => {
         s.pickSession = { nodeId, purpose: 'style' };
+      }),
+    startFirstFramePick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'firstFrame' };
       }),
     startFocusPick: (nodeId) =>
       set((s) => {

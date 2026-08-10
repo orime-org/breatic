@@ -689,6 +689,7 @@ export interface AssetNodeLike {
     coverUrl?: unknown;
     focusImages?: unknown;
     styleImageUrl?: unknown;
+    firstFrameUrl?: unknown;
   };
 }
 
@@ -755,6 +756,13 @@ export function computeDeletedAssetEntries(
     if (typeof n.data?.styleImageUrl === 'string') {
       survivingUrls.add(n.data.styleImageUrl);
     }
+    // The video panel's first-frame slot (#1896) holds a copied URL on the
+    // same terms as the style slot. This set is a hand-kept list, so a new
+    // slot is NOT covered by resembling an existing one — leaving it out
+    // reports an asset the video node is still generating from.
+    if (typeof n.data?.firstFrameUrl === 'string') {
+      survivingUrls.add(n.data.firstFrameUrl);
+    }
     // Focus crops (#1782) are uploaded assets too — a crop URL held by a
     // surviving node keeps the asset alive (adversarial round-2).
     for (const crop of validFocusImages(n.data?.focusImages)) {
@@ -809,7 +817,8 @@ export function assetUrlSurvives(
     if (
       data?.content === url ||
       data?.coverUrl === url ||
-      data?.styleImageUrl === url
+      data?.styleImageUrl === url ||
+      data?.firstFrameUrl === url
     ) {
       return true;
     }
