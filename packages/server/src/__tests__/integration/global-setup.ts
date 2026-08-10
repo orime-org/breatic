@@ -50,14 +50,18 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
       //
       // So the mismatch is on this side: 100 is the default for one
       // application with one pool, and this container serves ~58 module
-      // registries. 300 leaves room for roughly 19 more db-touching test
-      // files before this needs revisiting.
+      // registries. 200 is a little under twice the measured peak — room for
+      // roughly nine more db-touching test files. Past that, the thing to
+      // revisit is whether these files still need separate module registries,
+      // not this number. The headroom is close to free: measured on
+      // postgres:16-alpine, raising the ceiling costs about 7 MiB of resident
+      // memory (20.7 MiB at 100, 27.4 MiB at 300).
       //
       // NOT by shrinking the pool: `DB_POOL_SIZE=3` was tried and the suite
       // stopped finishing at all (>10 min, normally 35s). A transaction holds
       // a connection while its inner queries ask the pool for more, and with
       // a single fork and a small pool those waits stack up.
-      .withCommand(["postgres", "-c", "max_connections=300"])
+      .withCommand(["postgres", "-c", "max_connections=200"])
       .start(),
     new GenericContainer("redis:7-alpine")
       .withExposedPorts(6379)
