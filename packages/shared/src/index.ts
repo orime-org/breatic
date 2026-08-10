@@ -236,9 +236,9 @@ export { newId, deriveId } from "@shared/ids.js";
 // through here, on both sides of the wire (decided 2026-08-02).
 //
 // Two symbols for what it does, plus one for what it demands of a caller (see
-// below). It does six things — send, judge, wait, cap at three deliveries,
-// hand over or throw, hold nothing — and no seventh, so there is nothing else
-// worth naming here. Everything the loop needs internally (the judgement, its
+// below). It does seven things — send, judge, wait, cap at three deliveries,
+// hand over or throw, hold nothing, stop when the caller says so — and no
+// eighth, so there is nothing else worth naming here. Everything the loop needs internally (the judgement, its
 // vocabulary, the sleep) stays inside: an export is a promise to somebody, and
 // nobody outside this package needs those. Not even the options type: a caller
 // writes the object inline and TypeScript's structural typing does the rest,
@@ -251,10 +251,13 @@ export { newId, deriveId } from "@shared/ids.js";
 // stays unexported — nobody outside calls that one. See below.
 //
 // It hands back the platform's own `Response` and holds nothing afterwards.
-// Reading it — how long a read may stall, how large it may be, how to stop
-// one — belongs to the caller: the HTTP client underneath already times a
+// Reading it — how long a read may stall, how large it may be, how to parse
+// it — belongs to the caller: the HTTP client underneath already times a
 // stalled read, and a second timer on top would be a duplicate with worse
-// information (decided 2026-08-02).
+// information (decided 2026-08-02). The one thing the transport does still
+// answer for after handing over is the seventh item above: a caller who says
+// it no longer wants the answer stops that read too, because the signal
+// composed into the request stays attached to the body.
 //
 // The delivery count rides with the failure and never with the response: a
 // caller holding a 200 has no use for "and it took two tries", while a caller
@@ -266,7 +269,7 @@ export { httpRequest, HttpRetryError } from "@shared/http/request.js";
 // message is only half a contract. A caller whose deadline comes from config
 // (`size / rate`) has to be able to refuse an unusable pair where the operator
 // can still read the complaint, rather than at the moment someone uploads.
-// This is not a seventh thing the transport does — it is the bound the second
+// This is not an eighth thing the transport does — it is the bound the second
 // parameter already had, said out loud.
 export { MAX_TIMER_MS } from "@shared/http/constants.js";
 

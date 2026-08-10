@@ -12,14 +12,17 @@
  * Every query that RETURNS messages filters `deleted_at IS NULL` on both the
  * message and its conversation — a soft-deleted conversation takes its
  * messages with it, and the FK is RESTRICT, so that cascade is this layer's
- * job rather than the database's. The reads that only ask for the highest turn
- * index are deliberately not filtered that way, so the counter never steps back
- * onto a number a deleted message already used; see the comment on that query.
+ * job rather than the database's. One read is deliberately not filtered that
+ * way -- the one inside `addMessage` that assigns the next turn index, so the
+ * counter never steps back onto a number a deleted message already used; see
+ * the comment on that query. The other reads of the highest turn index report
+ * progress rather than hand out a number, and they do filter.
  */
 
 import { and, asc, desc, eq, inArray, isNull, lte, gt, max } from "drizzle-orm";
 import { db, conversations, conversationMessages, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import { t } from "@breatic/shared";
 import type { MessageData, MessageInput, MessagePart, ToolCallInfo } from "@breatic/shared";
 
 const MAX_HISTORY = 50;
@@ -68,6 +71,14 @@ function toParts(input: MessageInput): MessagePart[] {
       ...(call.result !== undefined ? { output: call.result } : {}),
     });
   }
+  // Last, and outside every condition above: a turn stopped before it wrote
+  // anything has no text, no reasoning and no tool call, and this is the only
+  // part it leaves behind. Fold it into one of the branches above and the row
+  // for that turn stores an empty list, which reads back as nothing having
+  // happened -- the thing storing a stopped turn exists to prevent.
+  if (input.interrupted) {
+    parts.push({ type: "interrupted" });
+  }
   return parts;
 }
 
@@ -115,6 +126,7 @@ function toMessageData(row: StoredRow): MessageData {
     content: text,
     ...(reasoning ? { thinking: reasoning.text } : {}),
     ...(calls.length > 0 ? { tool_calls: calls } : {}),
+    ...(parts.some((p) => p.type === "interrupted") ? { interrupted: true as const } : {}),
   };
 }
 
@@ -135,8 +147,11 @@ function toMessageData(row: StoredRow): MessageData {
  * @returns The turn index assigned to this message — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
- *   `main-agent.ts` relies on this to abort billing when the conversation was
- *   deleted mid-turn.
+ *   `main-agent.ts` writes the user's own message through here before a turn
+ *   starts, so a conversation that is already gone fails the turn before any
+ *   billing state exists. Later in the turn this throw does not stop the
+ *   billing: a failure there is recorded and the turn still settles, having
+ *   already spent whatever its finished steps spent.
  */
 export async function addMessage(id: string, message: MessageInput): Promise<number> {
   return db.transaction(async (tx) => {
@@ -148,7 +163,7 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
       .limit(1);
 
     if (!owner[0]) {
-      throw new NotFoundError(`Conversation not found or deleted: ${id}`);
+      throw new NotFoundError(t("server.conversation.not_found"));
     }
 
     // Deliberately NOT filtered on `deleted_at`: the turn index is a

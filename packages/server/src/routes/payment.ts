@@ -10,7 +10,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { checkoutSchema, paginationSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -34,7 +34,7 @@ payment.get("/tiers", async (c) => {
 payment.post(
   "/checkout",
   requireAuth,
-  zValidator("json", checkoutSchema),
+  validate("json", checkoutSchema),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -116,7 +116,7 @@ payment.post("/webhook", async (c) => {
 payment.get(
   "/history",
   requireAuth,
-  zValidator("query", paginationSchema),
+  validate("query", paginationSchema),
   async (c) => {
     const user = c.get("user");
     const { limit, offset } = c.req.valid("query");

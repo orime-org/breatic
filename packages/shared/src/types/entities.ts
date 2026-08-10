@@ -73,7 +73,19 @@ export type MessagePart =
       /** Present only for tools whose output drives a frontend render. */
       output?: Record<string, unknown>;
     }
-  | { type: "tool-result"; toolCallId: string; toolName: string; output: string };
+  | { type: "tool-result"; toolCallId: string; toolName: string; output: string }
+  /**
+   * The turn this message belongs to was stopped before it finished.
+   *
+   * A part rather than a column because the row has nowhere else to put it:
+   * `conversation_messages` stores role, turn index, sequence and this list,
+   * and a message-level flag would otherwise need a migration to say something
+   * the list can already carry. It is also the only piece a stopped turn is
+   * guaranteed to have — a turn cut off before it wrote a word produces no
+   * text, no reasoning and no tool call, and a row with an empty list is
+   * indistinguishable from nothing having happened.
+   */
+  | { type: "interrupted" };
 
 /**
  * Single message within a conversation, as the rest of the app handles it.
@@ -93,6 +105,13 @@ export interface MessageData {
   tool_calls?: ToolCallInfo[];
   tool_call_id?: string;
   name?: string;
+  /**
+   * The turn was stopped before it finished, so `content` is as far as it got.
+   *
+   * Only ever `true`: its absence is the ordinary case, and a `false` would
+   * have to be written on every message that ever completed normally.
+   */
+  interrupted?: true;
 }
 
 /** A message as callers hand it in: the store assigns `ts` and `turnIndex`. */

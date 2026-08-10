@@ -8,6 +8,7 @@
 
 import * as repo from "@server/modules/conversation/conversation-attachment.repo.js";
 import { ConflictError, NotFoundError, ForbiddenError } from "@breatic/core";
+import { t } from "@breatic/shared";
 import type { ConversationAttachmentEntity, AssetKind } from "@breatic/shared";
 
 /** Maximum active attachments per conversation. */
@@ -40,7 +41,7 @@ export async function create(data: {
   const activeCount = await repo.countActive(data.conversationId);
   if (activeCount >= MAX_ATTACHMENTS_PER_CONVERSATION) {
     throw new ConflictError(
-      `Conversation has reached the ${MAX_ATTACHMENTS_PER_CONVERSATION} attachment limit. Delete some before uploading more.`,
+      t("server.conversation.attachment_limit_reached", { limit: MAX_ATTACHMENTS_PER_CONVERSATION }),
     );
   }
   return repo.create(data);
@@ -67,10 +68,10 @@ export async function listByConversation(
 export async function softDelete(id: string, userId: string): Promise<void> {
   const existing = await repo.getById(id);
   if (!existing) {
-    throw new NotFoundError(`Attachment not found: ${id}`);
+    throw new NotFoundError(t("server.conversation.attachment_not_found"));
   }
   if (existing.userId !== userId) {
-    throw new ForbiddenError("Cannot delete another user's attachment");
+    throw new ForbiddenError(t("server.conversation.attachment_not_yours"));
   }
   if (existing.deletedAt) {
     return; // idempotent
@@ -92,10 +93,10 @@ export async function getById(
 ): Promise<ConversationAttachmentEntity> {
   const entry = await repo.getById(id);
   if (!entry) {
-    throw new NotFoundError(`Attachment not found: ${id}`);
+    throw new NotFoundError(t("server.conversation.attachment_not_found"));
   }
   if (entry.userId !== userId) {
-    throw new ForbiddenError("Cannot access another user's attachment");
+    throw new ForbiddenError(t("server.conversation.attachment_not_yours"));
   }
   return entry;
 }

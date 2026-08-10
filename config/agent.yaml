@@ -41,6 +41,17 @@ memory_user_max_size: 2048
 # Maximum characters returned from web_fetch tool output.
 web_fetch_max_chars: 50000
 
+# How long ONE DELIVERY of a web_fetch request may take, in milliseconds.
+# Not the whole fetch: the shared HTTP transport may deliver a request up to
+# three times, and each delivery gets this figure. A redirect chain multiplies
+# it again, once per hop.
+web_fetch_timeout_ms: 30000
+
+# The same figure for web_search, which is one request with no redirects.
+# Lower because a search API answers or does not; a page can be slow for
+# reasons of its own.
+web_search_timeout_ms: 10000
+
 # ── LLM resilience ────────────────────────────────────────
 # Retry budget (maxRetries) for every LLM call, injected by the model-call
 # wrapper (generateTextRetry / streamTextRetry). AI SDK default is 2 (#1625).

@@ -35,7 +35,13 @@ export const askUser: Tool<z.infer<typeof inputSchema>, string> = tool({
     "information to proceed. You can optionally provide a list of " +
     "suggested options for the user to choose from.",
   inputSchema,
-  execute: async (input: z.infer<typeof inputSchema>): Promise<string> => {
+  execute: async (
+    input: z.infer<typeof inputSchema>,
+    // Unused: this tool assembles a value and returns it, so there is nothing
+    // to abandon. Declared so the shape is the same across every tool — the
+    // reasoning lives in tools/__tests__/tool-cancellation.test.ts.
+    _options: { abortSignal?: AbortSignal },
+  ): Promise<string> => {
     const payload = { question: input.question, options: input.options ?? [] };
     return `${ASK_USER_SENTINEL}${JSON.stringify(payload)}`;
   },

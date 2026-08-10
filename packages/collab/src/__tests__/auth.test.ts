@@ -30,12 +30,14 @@
  * (`sessionCookieName()`, #1831); the core mock below pins it to the
  * bare `breatic_session` so these fixtures stay independent of env.
  *
- * Session + role resolution AND the Yjs space-existence read are all
- * delegated to `@breatic/core` (`getSession` +
- * `projectAuthService.loadProjectRole` + `yjsDocumentsRepo.fetchDocData`)
- * — the same shared kernel + single `yjs_documents` repo home the API
- * server uses, so the services cannot drift. All three are mocked here
- * so the test is hermetic; collab issues no raw SQL of its own.
+ * Session and role resolution are delegated to `@breatic/core`
+ * (`getSession` + `projectAuthService.loadProjectRole`) — the same shared
+ * kernel the API server uses, so the two cannot drift. The Yjs
+ * space-existence check answers from the meta doc this process holds
+ * (staged here as a plain Map) and, when it holds none, loads one through
+ * `createDocument` (staged here as a spy). Both are under the test's
+ * control, so the test is hermetic and no database is ever reached; the
+ * hook itself no longer touches `yjs_documents` at all (#26).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -50,23 +52,19 @@ const {
   loggerError,
   getSessionMock,
   loadProjectRoleMock,
-  fetchDocDataMock,
 } = vi.hoisted(() => ({
   loggerWarn: vi.fn(),
   loggerError: vi.fn(),
   getSessionMock: vi.fn(),
   loadProjectRoleMock: vi.fn(),
-  fetchDocDataMock: vi.fn(),
 }));
 
 // `@breatic/core` is replaced wholesale so every export auth.ts touches is
 // under the test's control and no real session store or database connection
-// is ever opened. auth.ts uses exactly five exports — substitute each:
+// is ever opened. auth.ts uses exactly four of them — substitute each:
 //   - getSession / loadProjectRole: the shared auth kernel, mocked
 //   - createLogger: the unified core logger factory, mocked to expose
 //     the warn/error spies the log-trail assertions below check
-//   - yjsDocumentsRepo.fetchDocData: the single home for `yjs_documents`
-//     SQL (the space-existence read), mocked to return a meta blob
 //   - sessionCookieName(): the per-deployment cookie name
 vi.mock("@breatic/core", () => ({
   getSession: getSessionMock,
@@ -79,13 +77,6 @@ vi.mock("@breatic/core", () => ({
     debug: vi.fn(),
   }),
 }));
-// The yjs-store repo moved to collab; the auth hook now imports it
-// locally. Mock the local repo (so its core `yjsDb` dependency never
-// loads under test).
-vi.mock("@collab/services/yjs-documents.repo.js", () => ({
-  fetchDocData: fetchDocDataMock,
-}));
-
 import { createAuthHook } from "../hooks/auth.js";
 
 /** Helper — build the headers stub with `breatic_session={token}`. */
@@ -94,23 +85,43 @@ function withCookie(token: string): Headers {
 }
 
 /**
- * Build a binary blob of a meta doc whose `spaces` Y.Map already
- * contains the given ids. Mirrors what `yjs-bootstrap.encodeInitialMetaState`
- * writes at project creation. Used to stage the
- * `yjsDocumentsRepo.fetchDocData` return in the space-existence test
- * cases below.
- * @param ids - Space ids to seed into `meta.spaces`.
- * @returns The encoded meta-doc bytes.
+ * Stand-in for the table of in-memory documents Hocuspocus hands the hook.
+ * A plain `Map` is the usual one; a case that needs to see WHETHER the table
+ * was consulted passes {@link watchedDocuments} instead.
  */
-function encodeMetaWithSpaces(ids: string[]): Uint8Array {
+type LoadedDocumentsStub = { get(documentName: string): Y.Doc | undefined };
+
+/**
+ * A documents table that records every lookup, for the cases whose subject is
+ * whether the in-memory route was taken at all rather than what it answered.
+ * @param entries - Documents the table holds, keyed by document name.
+ * @returns The table plus the spy standing in for its `get`.
+ */
+function watchedDocuments(entries: ReadonlyArray<[string, Y.Doc]>): {
+  documents: LoadedDocumentsStub;
+  get: ReturnType<typeof vi.fn>;
+} {
+  const backing = new Map(entries);
+  const get = vi.fn((name: string) => backing.get(name));
+  return { documents: { get }, get };
+}
+
+/**
+ * Build a live meta doc — the in-memory object Hocuspocus keeps in
+ * `instance.documents`, as opposed to the encoded bytes Postgres stores.
+ * Used to stage the in-memory route of the space-existence check.
+ * @param ids - Space ids to place in `meta.spaces`.
+ * @returns The meta `Y.Doc`.
+ */
+function liveMetaWithSpaces(ids: string[]): Y.Doc {
   const doc = new Y.Doc();
   const spaces = doc.getMap("spaces");
   for (const id of ids) {
     const entry = new Y.Map();
-    entry.set("id", id);
     spaces.set(id, entry);
+    entry.set("id", id);
   }
-  return Y.encodeStateAsUpdate(doc);
+  return doc;
 }
 
 const mockRedis = {} as unknown as Redis;
@@ -120,10 +131,16 @@ const SID = "22222222-2222-4222-9222-222222222222";
 const PLACEHOLDER_TOKEN = "__cookie_auth__";
 
 describe("createAuthHook", () => {
+  /** Records every load the check asks for, and every one it puts back. */
+  const createDocumentSpy = vi.fn();
+  const unloadDocumentSpy = vi.fn(async () => undefined);
+
   beforeEach(() => {
+    createDocumentSpy.mockReset();
+    unloadDocumentSpy.mockReset();
+    unloadDocumentSpy.mockResolvedValue(undefined);
     getSessionMock.mockReset();
     loadProjectRoleMock.mockReset();
-    fetchDocDataMock.mockReset();
     loggerWarn.mockReset();
     loggerError.mockReset();
   });
@@ -133,25 +150,61 @@ describe("createAuthHook", () => {
   // the read-only side effect pass their OWN connectionConfig object and check
   // it was mutated. The production hook type keeps connectionConfig required,
   // so the protocol-level read-only contract stays enforced.
-  const buildHook = (capacity?: {
+  const buildHook = (overrides?: {
     maxConnectionsPerDoc?: number;
     countConnections?: (documentName: string) => Promise<number>;
+    /**
+     * Documents this process already holds, keyed by document name — the
+     * table Hocuspocus hands the hook as `instance.documents`. Empty by
+     * default, so a case that says nothing about it exercises the load.
+     */
+    documents?: LoadedDocumentsStub;
+    /**
+     * What a load produces, keyed by document name. Stands in for the
+     * persistence extension plus the peer sync; a name that is absent loads
+     * as an empty document, which is what the framework does.
+     */
+    loadable?: Map<string, Y.Doc>;
   }) => {
     const hook = createAuthHook({
       redis: mockRedis,
-      maxConnectionsPerDoc: capacity?.maxConnectionsPerDoc ?? 100,
-      countConnections: capacity?.countConnections ?? (async () => 0),
+      maxConnectionsPerDoc: overrides?.maxConnectionsPerDoc ?? 100,
+      countConnections: overrides?.countConnections ?? (async () => 0),
     });
     type HookArgs = Parameters<typeof hook>[0];
+    // Default: this process already holds the project's list, and it has the
+    // Space these fixtures use. That is the precondition the pre-existing
+    // content-doc cases staged through the storage read before #26 — the
+    // subject of those cases is roles and caps, not existence.
+    const documents =
+      overrides?.documents ??
+      new Map<string, Y.Doc>([
+        [`project-${PID}/meta`, liveMetaWithSpaces([SID])],
+      ]);
+    const loadable = overrides?.loadable ?? new Map<string, Y.Doc>();
+    const registry = {
+      documents,
+      createDocument: createDocumentSpy.mockImplementation(
+        async (documentName: string) =>
+          loadable.get(documentName) ?? new Y.Doc(),
+      ),
+      unloadDocument: unloadDocumentSpy,
+    };
     // Tests may omit `connectionConfig`; default it so only cap tests that
     // assert the read-only side effect need to supply their own.
     return (
-      args: Omit<HookArgs, "connectionConfig"> &
+      args: Omit<
+        HookArgs,
+        "connectionConfig" | "instance" | "request" | "socketId"
+      > &
         Partial<Pick<HookArgs, "connectionConfig">>,
     ): ReturnType<typeof hook> =>
       hook({
         ...args,
         connectionConfig: args.connectionConfig ?? { readOnly: false },
+        instance: registry,
+        request: new Request("http://localhost/"),
+        socketId: "socket-1",
       });
   };
 
@@ -257,9 +310,8 @@ describe("createAuthHook", () => {
   it("accepts an active owner; connection stays writable (readOnly = false)", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("owner");
-    // The space-existence read is the only `yjs_documents` access the
-    // hook makes — staged through the core repo mock.
-    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
+    // Existence is staged by `buildHook`'s default `documents` map; the hook
+    // makes no `yjs_documents` access at all (#26).
     const hook = buildHook();
     // Hocuspocus passes a mutable connectionConfig (default readOnly:false).
     // The hook flips it as a SIDE EFFECT; Hocuspocus reads THIS — not the
@@ -312,7 +364,6 @@ describe("createAuthHook", () => {
     expect(ctx).toEqual({ user: { id: "user-1", role: "editor" } });
     expect(connectionConfig.readOnly).toBe(true);
     // The meta doc never triggers the space-exists read.
-    expect(fetchDocDataMock).not.toHaveBeenCalled();
   });
 
   it("makes the meta doc read-only for an owner too", async () => {
@@ -339,7 +390,6 @@ describe("createAuthHook", () => {
     // must not touch the docs people actually create in.
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
-    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     const hook = buildHook();
     const connectionConfig = { readOnly: false };
 
@@ -361,12 +411,12 @@ describe("createAuthHook", () => {
   // counts against its own check, and a rejected one never counts at
   // all). Boundary is `>= cap`: the doc already holding `cap` connections
   // means this one is the extra and degrades. Capacity tests use a canvas
-  // doc and stage the space-exists read (meta blob listing SID).
+  // doc; existence is staged by `buildHook`'s default in-memory meta doc,
+  // which lists SID.
 
   it("degrades an at-capacity space doc to read-only even for an editor", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
-    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     // The doc already holds 2 connections (this one excluded from the
     // count) and the cap is 2 → `2 >= 2` → degrade to read-only instead
     // of rejecting. The editor would otherwise be writable.
@@ -389,7 +439,6 @@ describe("createAuthHook", () => {
   it("keeps an editor writable when the space doc is below its connection cap", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
-    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     // The doc holds 1 connection (this one excluded); cap 2 → `1 >= 2` is
     // false → writable.
     const hook = buildHook({
@@ -437,7 +486,6 @@ describe("createAuthHook", () => {
   it("skips the cluster-wide count for a viewer (already read-only, no wasted Redis round-trip)", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("viewer");
-    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     const countSpy = vi.fn(async () => 0);
     const hook = buildHook({ maxConnectionsPerDoc: 2, countConnections: countSpy });
     const connectionConfig = { readOnly: false };
@@ -457,7 +505,6 @@ describe("createAuthHook", () => {
   it("logs `connection_cap_degraded` warn when an editor drops to read-only at cap", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
-    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     const hook = buildHook({
       maxConnectionsPerDoc: 2,
       countConnections: async () => 2,
@@ -491,7 +538,6 @@ describe("createAuthHook", () => {
   it("accepts an active viewer; connection forced read-only (connectionConfig.readOnly mutated — the property Hocuspocus enforces)", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("viewer");
-    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     const hook = buildHook();
     const connectionConfig = { readOnly: false };
 
@@ -513,56 +559,227 @@ describe("createAuthHook", () => {
     expect(connectionConfig.readOnly).toBe(true);
   });
 
-  // ── Space-exists check (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5) ──
+  // ── Space existence: the check answers from the list this process holds ──
+  //
+  // The client only asks for a Space's content doc because it was told the
+  // Space exists, and what told it is the in-memory meta doc this process
+  // broadcast. So the check reads that list — and makes sure this process
+  // holds one before it answers. There is no second source: `space:create`
+  // writes the in-memory doc and broadcasts it while the stored row trails
+  // by up to one store tick, so deciding from storage refused connections to
+  // Spaces this very process had just announced.
 
-  it("rejects a canvas connection when the spaceId is not in meta.spaces (deleted Space)", async () => {
+  it("accepts a Space the held list knows about, without loading anything", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
-    // meta.spaces lists a different Space — the requested one has been
-    // removed (soft-deleted; PG row may still hold the binary for owner
-    // recovery, but the connection must be refused).
-    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces(["other-space-id"]));
-    const hook = buildHook();
+    const hook = buildHook({
+      documents: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID])]]),
+    });
+
+    const ctx = await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/document-${SID}`,
+      requestHeaders: withCookie("tok"),
+    });
+
+    expect(ctx.user.id).toBe("user-1");
+    expect(createDocumentSpy).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Space the held list has dropped", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const hook = buildHook({
+      documents: new Map([
+        [`project-${PID}/meta`, liveMetaWithSpaces(["other-space-id"])],
+      ]),
+    });
 
     await expect(
       hook({
         token: PLACEHOLDER_TOKEN,
-        documentName: `project-${PID}/canvas-${SID}`,
+        documentName: `project-${PID}/document-${SID}`,
         requestHeaders: withCookie("tok"),
       }),
     ).rejects.toThrow(/does not exist/);
+    expect(createDocumentSpy).not.toHaveBeenCalled();
   });
 
-  it("rejects when the meta doc itself is missing in PG (defensive — bootstrap should always seed it)", async () => {
+  it("treats a held list with no Spaces as an answer, not as absence", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("owner");
-    fetchDocDataMock.mockResolvedValue(null); // meta row gone — empty Set treats any spaceId as missing
-    const hook = buildHook();
+    // The one way to write this wrong: an empty list is easy to collapse into
+    // "nothing here", which would send the check off to load a second copy of
+    // a document it is already holding — for the very project whose last
+    // Space was just deleted.
+    const hook = buildHook({
+      documents: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([])]]),
+    });
 
     await expect(
       hook({
         token: PLACEHOLDER_TOKEN,
-        documentName: `project-${PID}/canvas-${SID}`,
+        documentName: `project-${PID}/document-${SID}`,
         requestHeaders: withCookie("tok"),
       }),
     ).rejects.toThrow(/does not exist/);
+    expect(createDocumentSpy).not.toHaveBeenCalled();
   });
 
-  it("skips the space-exists fetch for the meta doc itself", async () => {
+  it("loads the list when this process holds none, and answers from what it loaded", async () => {
     getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("owner");
-    const hook = buildHook();
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const hook = buildHook({
+      documents: new Map(),
+      loadable: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID])]]),
+    });
+
+    const ctx = await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/document-${SID}`,
+      requestHeaders: withCookie("tok"),
+    });
+
+    expect(ctx.user.id).toBe("user-1");
+    expect(createDocumentSpy).toHaveBeenCalledWith(
+      `project-${PID}/meta`,
+      expect.anything(),
+      "socket-1",
+      { isAuthenticated: true, readOnly: true },
+    );
+  });
+
+  it("loads the meta doc of the project the document belongs to, not any other", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const otherPid = "33333333-3333-4333-8333-333333333333";
+    // A held list for a DIFFERENT project, listing the requested Space.
+    // Keying the lookup on anything but this project's own meta doc name
+    // would let it answer here.
+    const hook = buildHook({
+      documents: new Map([
+        [`project-${otherPid}/meta`, liveMetaWithSpaces([SID])],
+      ]),
+      loadable: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID])]]),
+    });
 
     await hook({
       token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/meta`,
+      documentName: `project-${PID}/document-${SID}`,
       requestHeaders: withCookie("tok"),
-      connectionConfig: { readOnly: false },
     });
-    expect(fetchDocDataMock).not.toHaveBeenCalled();
+
+    expect(createDocumentSpy).toHaveBeenCalledWith(
+      `project-${PID}/meta`,
+      expect.anything(),
+      "socket-1",
+      expect.anything(),
+    );
   });
 
-  // ── Cookie parser robustness ───────────────────────────────────
+  it("refuses when the loaded list turns out to be empty", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("owner");
+    // Nothing held and nothing to load: the framework hands back an empty
+    // document, so this project has no Spaces.
+    const hook = buildHook({ documents: new Map(), loadable: new Map() });
+
+    await expect(
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/document-${SID}`,
+        requestHeaders: withCookie("tok"),
+      }),
+    ).rejects.toThrow(/does not exist/);
+  });
+
+  it("puts back a list it loaded, and only one it loaded", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const loaded = liveMetaWithSpaces([SID]);
+    const hook = buildHook({
+      documents: new Map(),
+      loadable: new Map([[`project-${PID}/meta`, loaded]]),
+    });
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/document-${SID}`,
+      requestHeaders: withCookie("tok"),
+    });
+
+    // Scheduled rather than awaited, so give the microtask queue a turn.
+    await Promise.resolve();
+    expect(unloadDocumentSpy).toHaveBeenCalledWith(loaded);
+  });
+
+  it("does not put back a list it found already held", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const hook = buildHook({
+      documents: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID])]]),
+    });
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/document-${SID}`,
+      requestHeaders: withCookie("tok"),
+    });
+
+    await Promise.resolve();
+    expect(unloadDocumentSpy).not.toHaveBeenCalled();
+  });
+
+  it("logs rather than swallows a failed unload", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    unloadDocumentSpy.mockRejectedValue(new Error("unload blew up"));
+    const hook = buildHook({
+      documents: new Map(),
+      loadable: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID])]]),
+    });
+
+    // The handshake still succeeds: housekeeping failing is not the caller's
+    // problem, but it must not disappear either.
+    const ctx = await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/document-${SID}`,
+      requestHeaders: withCookie("tok"),
+    });
+    expect(ctx.user.id).toBe("user-1");
+
+    await vi.waitFor(() => {
+      expect(loggerWarn).toHaveBeenCalledWith(
+        expect.objectContaining({ documentName: `project-${PID}/meta` }),
+        "meta_doc_unload_after_read_failed",
+      );
+    });
+  });
+
+  it("does not consult the document table for the meta doc itself", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("owner");
+    // The meta doc carries no spaceId to check, so the lookup must not happen
+    // at all. Asserting only that the connection is accepted would not say
+    // that: the check could run, read this copy, and have its verdict thrown
+    // away by the `kind !== "meta"` guard — indistinguishable from outside.
+    const watched = watchedDocuments([
+      [`project-${PID}/meta`, liveMetaWithSpaces([])],
+    ]);
+    const hook = buildHook({ documents: watched.documents });
+
+    const ctx = await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/meta`,
+      requestHeaders: withCookie("tok"),
+    });
+
+    expect(ctx.user.id).toBe("user-1");
+    expect(watched.get).not.toHaveBeenCalled();
+    expect(createDocumentSpy).not.toHaveBeenCalled();
+  });
+
+
 
   it("parses the session value when other cookies appear before it", async () => {
     getSessionMock.mockResolvedValue("user-1");

@@ -28,7 +28,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -40,6 +40,7 @@ import {
   projectMembersService,
 } from "@server/modules";
 import { ForbiddenError, NotFoundError } from "@breatic/core";
+import { t } from "@breatic/shared";
 
 // ── Per-project endpoints (the requester's side) ───────────────────
 
@@ -62,12 +63,12 @@ const requestBodySchema = z.object({
 projectRoleUpgradeRequests.post(
   "/",
   requireRole("viewer"),
-  zValidator("json", requestBodySchema),
+  validate("json", requestBodySchema),
   async (c) => {
     const user = c.get("user");
     const role = c.get("role");
     if (role !== "viewer") {
-      throw new ForbiddenError("only viewers can request a role upgrade");
+      throw new ForbiddenError(t("server.project.only_viewer_can_request_upgrade"));
     }
     const projectId = getProjectId(c);
     const body = c.req.valid("json");
@@ -77,7 +78,7 @@ projectRoleUpgradeRequests.post(
       projectMembersService.getOwner(projectId),
     ]);
     if (!ownerUserId) {
-      throw new NotFoundError("project has no active owner");
+      throw new NotFoundError(t("server.project.no_active_owner"));
     }
 
     // The service sends the best-effort email itself (it needs the owner + the
@@ -152,7 +153,7 @@ const requestParamSchema = z.object({ requestId: z.string().uuid() });
  */
 withdrawRoute.delete(
   "/:requestId",
-  zValidator("param", requestParamSchema),
+  validate("param", requestParamSchema),
   async (c) => {
     const user = c.get("user");
     await roleUpgradeRequestService.cancel(c.req.param("requestId"), user.id);

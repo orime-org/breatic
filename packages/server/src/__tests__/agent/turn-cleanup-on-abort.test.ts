@@ -9,15 +9,19 @@
  * suspended, skipping every line after the loop. That is the defect the
  * turn-finalizer exists for, and this asserts the cleanup runs anyway.
  *
- * What this does NOT yet reproduce is a real browser disconnect. Measured on
- * this stack: hono's `StreamingApi.write` catches and discards the write
- * error, so when the client aborts the SSE route's `for await` keeps going
- * and never calls `.return()` at all. A probe on the repo's own hono
- * 4.12.23 + @hono/node-server 2.0.4 had the generator 358 iterations further
- * along two seconds after the client left, with `finally` never entered.
- * Wiring cancellation through is the job of the PR that owns it; this test
- * covers the mechanism that PR will trigger, and is honest that today
- * nothing triggers it.
+ * This is not how a browser disconnect arrives, and never was. Measured on the
+ * repo's own hono 4.12.23 and @hono/node-server 2.0.4: `StreamingApi.write`
+ * catches and discards the error a dead socket produces, so the route's
+ * `for await` keeps going and never calls `.return()` — a probe had the
+ * generator 357 iterations further along two seconds after the client left,
+ * with `finally` never entered. A disconnect now travels the other way, by
+ * `s.onAbort` raising the turn's signal so the SDK ends the stream and the
+ * loop leaves through its own `abort` branch; `routes/chat.stop.test.ts`
+ * covers that ring and `turn-exit-paths.test.ts` covers what the turn then
+ * owes.
+ *
+ * What is left here is the language's own mechanism, which any consumer that
+ * stops reading still triggers, and which no route wiring can rule out.
  *
  * MainAgent had no tests at all before this one, which is how the original
  * defect survived -- every test was green the whole time.
@@ -107,12 +111,14 @@ beforeEach(() => {
 describe("a turn cut short by the client", () => {
   it("still saves, consolidates and bills — without touching `usage`", async () => {
     // The billing figure has to come off the stream as it goes past, not
-    // from `result.usage` at the end. That getter is not a passive read: in
-    // AI SDK 6.0.141 it chains to `finalStep` to `steps`, and `steps` calls
-    // `consumeStream()`. Reading it here -- the one exit where the model
-    // loop is still mid-flight -- would drive the rest of that loop after
-    // the user has gone, running real provider calls and real tool calls
-    // nobody asked for, and bill for all of it.
+    // from `result.usage` at the end. That getter is not a passive read: on
+    // ai@7.0.58 `usage` returns `totalUsage`, and `totalUsage` calls
+    // `consumeStream()` itself. Reading it here -- the one exit where the
+    // model loop is still mid-flight -- would drive the rest of that loop
+    // after the user has gone, running real provider calls and real tool
+    // calls nobody asked for, and bill for all of it. (The route to
+    // `consumeStream()` changed with the v7 upgrade; on 6.0.141 `usage`
+    // reached it through `finalStep` and `steps`. The hazard did not.)
     //
     // Each step announces what it spent in a `finish-step` part, so adding
     // those up as they arrive gives the same number with none of that.

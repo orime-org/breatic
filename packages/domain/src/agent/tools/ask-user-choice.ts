@@ -49,7 +49,13 @@ export const askUserChoice: Tool<z.infer<typeof inputSchema>, string> = tool({
     "list (e.g. 'which color palette?'). DO NOT use for free-form " +
     "questions (use ask_user_question) or simple yes/no (use plain text).",
   inputSchema,
-  execute: async (input: z.infer<typeof inputSchema>): Promise<string> => {
+  execute: async (
+    input: z.infer<typeof inputSchema>,
+    // Unused: this tool assembles a value and returns it, so there is nothing
+    // to abandon. Declared so the shape is the same across every tool — the
+    // reasoning lives in tools/__tests__/tool-cancellation.test.ts.
+    _options: { abortSignal?: AbortSignal },
+  ): Promise<string> => {
     return `${ASK_USER_CHOICE_SENTINEL}${JSON.stringify(input)}`;
   },
 });

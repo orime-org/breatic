@@ -8,7 +8,7 @@
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";
-import { env } from "@breatic/core";
+import { env, getAgentConfig } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
 
 /** What the model may ask this tool to search for. */
@@ -32,7 +32,10 @@ const inputSchema = z.object({
 export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
   description: "Search the web. Returns titles, URLs, and snippets.",
   inputSchema,
-  execute: async ({ query, count }): Promise<string> => {
+  execute: async (
+    { query, count },
+    { abortSignal }: { abortSignal?: AbortSignal },
+  ): Promise<string> => {
     // BRAVE_SEARCH_API_KEY is a typed config field (defaults to "");
     // read via the injected config Proxy, not process.env directly.
     const apiKey = env.BRAVE_SEARCH_API_KEY;
@@ -60,8 +63,15 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       //
       // That figure bounds ONE DELIVERY, not the whole search — the transport
       // may deliver this request more than once and gives each of them the
-      // full 10s. Same unit as safe-fetch.ts states for web_fetch; said here
-      // too because a reader of this file meets the number here.
+      // full budget. Same unit as safe-fetch.ts states for web_fetch; said
+      // here too because a reader of this file meets the number here. It is
+      // configuration rather than a literal because it is a knob operations
+      // may want to turn without a deploy, and because how long a search may
+      // take is not a fact about this code.
+      //
+      // The signal is separate from that budget and does not replace it: the
+      // budget says how long one delivery may take, the signal says the answer
+      // is no longer wanted at all.
       const res = await httpRequest(
         url.toString(),
         {
@@ -70,7 +80,11 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
             "X-Subscription-Token": apiKey,
           },
         },
-        { replaySafe: true, timeoutMs: 10_000 },
+        {
+          replaySafe: true,
+          timeoutMs: getAgentConfig().web_search_timeout_ms,
+          ...(abortSignal ? { signal: abortSignal } : {}),
+        },
       );
 
       if (!res.ok) {

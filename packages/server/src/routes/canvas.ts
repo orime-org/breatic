@@ -10,7 +10,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 
 import { z } from "zod";
 import {
@@ -43,6 +43,7 @@ import {
   logger,
 } from "@breatic/core";
 import { acquireCanvasNodeLock, readCanvasNodeLockHolder, releaseCanvasNodeLock } from "@breatic/domain";
+import { t } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
@@ -82,7 +83,7 @@ canvas.get("/limits", (c) => {
  * @param c - Hono context with validated `taskCreateSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
-canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
+canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
@@ -99,7 +100,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // required in the schema, but keep the assertion as defense in depth
   // — schemas can drift, this branch should never hit at runtime.
   if (nodeIds.length > 0 && !projectId) {
-    throw new ValidationError("node_ids requires project_id");
+    throw new ValidationError(t("server.error.validation"));
   }
 
   // Cross-tenant guard: never trust body.project_id. Without this,
@@ -113,7 +114,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // Banana Edit needs an image; a video-edit needs a video). Reject BEFORE
   // enqueue so a doomed submission never creates a task row, burns a worker
   // slot, or leaves the user waiting for a node that can only fail — the client
-  // gets an immediate 400 instead. This is NOT a billing guard: billing is
+  // gets an immediate 422 instead. This is NOT a billing guard: billing is
   // post-success (markCompletedAndBill), so a source-less run that reached the
   // worker would fail and never bill anyway — the gate saves the doomed attempt,
   // not the credits. Defence in depth behind the Generate panel's frontend gate;
@@ -127,7 +128,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
       "execute_gate_rejected",
     );
     throw new ValidationError(
-      "This model requires a source input (e.g. params.images / video_url / audio_url).",
+      t("server.canvas.model_requires_source"),
     );
   }
 
@@ -150,7 +151,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
       "execute_gate_rejected",
     );
     throw new ValidationError(
-      `This model accepts at most ${countViolation.limit} '${countViolation.field}'; ${countViolation.actual} were provided.`,
+      t("server.canvas.too_many_inputs", { limit: countViolation.limit, actual: countViolation.actual }),
     );
   }
 
@@ -160,13 +161,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // the billing source of truth; concurrent passes may drive the balance
   // negative, the accepted trade-off of a soft pre-check. Same shared
   // helper and 402 shape as the /mini-tools routes.
-  const insufficient = await precheckCredits(
-    user.id,
-    estimateTaskCredits(body.model),
-  );
-  if (insufficient) {
-    return c.json({ error: { code: 402, message: insufficient } }, 402);
-  }
+  await precheckCredits(user.id, estimateTaskCredits(body.model));
 
   // Same gate the chat entry uses. This path had none: a skill_name went
   // from the request body into the task row and the queue untouched.
@@ -194,7 +189,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     if (!targetNodeId) {
       // Should never reach here; schema validation rejects this case.
       throw new ValidationError(
-        "target_node_id is required for overwrite mode",
+        t("server.error.validation"),
       );
     }
     const acquired = await acquireCanvasNodeLock(
@@ -291,7 +286,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
       );
       // Free the node for a retry — this task will never run.
       await releaseCanvasNodeLock(projectId, targetNodeId, task.id);
-      throw new AppError(503, "Task event stream unavailable; please retry");
+      throw new AppError(503, t("server.canvas.stream_unavailable"));
     }
   }
 
@@ -335,7 +330,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
  * @param c - Hono context with validated `understandSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
-canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
+canvas.post("/understand", validate("json", understandSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
@@ -345,13 +340,7 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
   // #1580 adversarial fix: understand tasks invoke real vision/ASR models
   // and are billed at completion like every other task — this route was the
   // only enqueue path without the shared credit pre-check.
-  const insufficientUnderstand = await precheckCredits(
-    user.id,
-    estimateTaskCredits(body.model),
-  );
-  if (insufficientUnderstand) {
-    return c.json({ error: { code: 402, message: insufficientUnderstand } }, 402);
-  }
+  await precheckCredits(user.id, estimateTaskCredits(body.model));
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,
@@ -396,7 +385,7 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
  * @param c - Hono context with optional pagination query params
  * @returns Paginated array of task entities
  */
-canvas.get("/tasks", zValidator("query", paginationSchema), async (c) => {
+canvas.get("/tasks", validate("query", paginationSchema), async (c) => {
   const user = c.get("user");
   const { limit, offset } = c.req.valid("query");
   const tasks = await taskService.list(user.id, limit, offset);
@@ -421,12 +410,12 @@ const nodeHistoryQuerySchema = z.object({
 
 canvas.get(
   "/nodes/:nodeId/history",
-  zValidator("param", z.object({ nodeId: z.string().uuid() })),
-  zValidator("query", nodeHistoryQuerySchema),
+  validate("param", z.object({ nodeId: z.string().uuid() })),
+  validate("query", nodeHistoryQuerySchema),
   async (c) => {
     const user = c.get("user");
     // nodeId is a canvas node UUID (node_history.node_id is uuid) — validated
-    // here so a malformed id is a 400, not a uuid-cast 500 inside the query.
+    // here so a malformed id is a 422, not a uuid-cast 500 inside the query.
     const { nodeId } = c.req.valid("param");
     const { project_id, limit, offset, status } = c.req.valid("query");
 
