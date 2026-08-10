@@ -113,12 +113,27 @@ chat.post("/message", zValidator("json", chatMessageSchema), async (c) => {
   // affect the chat history.
   const messageWithChips = formatChipsForLLM(body.attached_chips, body.message);
 
+  // The first ring of the stop chain, and the only one that can hear the
+  // client leave. It cannot be inferred from the writes: `StreamingApi.write`
+  // catches and discards the error a dead socket produces, so a loop that only
+  // watched its writes would stream into nothing for as long as the model kept
+  // talking. See `routes/text-tools.ts`, which does the same for its own
+  // stream.
+  const stopped = new AbortController();
+
   return stream(c, async (s) => {
+    s.onAbort(() => {
+      stopped.abort();
+    });
     await runWithContext(
       { userId: user.id, conversationId: conversation.id, projectId: body.project_id, memoryContext, compressedHistory },
       async () => {
         const agent = new MainAgent();
-        for await (const event of agent.chat(messageWithChips, body.resource_list)) {
+        for await (const event of agent.chat(
+          messageWithChips,
+          body.resource_list,
+          stopped.signal,
+        )) {
           await s.write(serializeSSE(event));
         }
       },
@@ -168,13 +183,20 @@ chat.post("/skill", zValidator("json", skillCommandSchema), async (c) => {
   c.header("Cache-Control", "no-cache");
   c.header("Connection", "keep-alive");
 
+  // Same first ring as `/message`. A stop wired to only one of the two
+  // entrances is a way in the user cannot get out of.
+  const stopped = new AbortController();
+
   return stream(c, async (s) => {
+    s.onAbort(() => {
+      stopped.abort();
+    });
     await runWithContext(
       { userId: user.id, conversationId: conversation.id, projectId: body.project_id, memoryContext, compressedHistory },
       async () => {
         const agent = new MainAgent();
         for await (const event of agent.handleSkillCommand(
-          body.skill_name, body.input, body.resource_list,
+          body.skill_name, body.input, body.resource_list, stopped.signal,
         )) {
           await s.write(serializeSSE(event));
         }

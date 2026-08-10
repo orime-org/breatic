@@ -13,14 +13,14 @@
  *
  * Two of these are subtler than they look, for different reasons.
  *
- * Reading `result.usage` is not a passive read: in AI SDK 6.0.141 the getter
- * chains `usage` to `finalStep` to `steps`, and `steps` calls
- * `consumeStream()`. Awaiting it in a finally that a blocking tool just
- * returned through drives the model loop to completion -- the exact opposite
- * of what the sentinel exists to do, and billable output nobody asked for.
- * That one this PR introduced and then had to undo.
+ * Reading `result.usage` is not a passive read: on ai@7.0.58 `usage` returns
+ * `totalUsage`, which calls `consumeStream()` itself. Awaiting it in a finally
+ * that a blocking tool just returned through drives the model loop to
+ * completion -- the exact opposite of what the sentinel exists to do, and
+ * billable output nobody asked for. That one this PR introduced and then had
+ * to undo.
  *
- * And a failing provider does not throw. Measured on ai@6.0.141 with a model
+ * And a failing provider does not throw. Measured on ai@7.0.58 with a model
  * whose `doStream` throws, the loop saw ["start","error"] and did not throw,
  * so a loop watching only for exceptions calls a dead turn a clean finish.
  * That one was never handled at all, here or on main.
@@ -360,7 +360,7 @@ describe("how a turn ends", () => {
   });
 
   it("reports a provider failure the SDK hands back as a stream part", async () => {
-    // The SDK does not throw when the provider fails. Measured on ai@6.0.141
+    // The SDK does not throw when the provider fails. Measured on ai@7.0.58
     // with a model whose `doStream` throws: the loop saw ["start","error"]
     // and did not throw. So an expired key, a 429 past the retry budget or a
     // bad model id all arrive here as a value, and a loop that only watches
