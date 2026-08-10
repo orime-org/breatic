@@ -40,7 +40,7 @@ import {
   type NodeHistoryEntry,
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
-import { pickedSlotImageUrl } from '@web/spaces/canvas/generate/slot-pick';
+import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
 import {
   FocusCropOverlay,
   handOffFocusToPickBanner,
@@ -1677,15 +1677,20 @@ function CanvasSpaceInner({
         // image's URL onto the video node, same terms as Style — a pick-time
         // snapshot with no relationship to the source, so deleting or
         // regenerating that node never changes what this video generates from.
-        // `pickedSlotImageUrl` is the one predicate every slot shares; a click
-        // it refuses is a no-op (dimming already says so, this backstops an
-        // insisting click).
+        // `pickedSlotUrl` is the one predicate every slot shares, and the type
+        // it judges against comes off the registry — the same field the
+        // candidate dimming reads, so what looks selectable and what a click
+        // accepts cannot disagree. A click it refuses is a no-op (dimming
+        // already says so, this backstops an insisting click).
         //
         // Dispatched from the slot registry rather than a branch per slot: the
         // branches below carry no exhaustive check, so a missing one does not
         // fail the build — it silently wires an EDGE (the reference
         // fallthrough at the end) instead of filling the slot.
-        const picked = pickedSlotImageUrl({ type: node.type, data: node.data });
+        const picked = pickedSlotUrl(
+          { type: node.type, data: node.data },
+          VIDEO_SLOTS[videoSlot].accepts,
+        );
         if (picked === null) return;
         setNodeSlotUrl(
           projectId,
@@ -1709,7 +1714,13 @@ function CanvasSpaceInner({
         // two slots cannot come to disagree on what is pickable. The setter
         // no-ops if the target vanished (the panel auto-closes on host
         // deletion), so no failure toast is needed.
-        const picked = pickedSlotImageUrl({ type: node.type, data: node.data });
+        const picked = pickedSlotUrl(
+          { type: node.type, data: node.data },
+          // The style slot is not in the video registry; it states its own
+          // type here, which is the same thing a video slot does one branch
+          // up — just read off the registry there.
+          'image',
+        );
         if (picked === null) return;
         setNodeStyleImage(projectId, spaceId, target, picked);
         // One slot, one pick: the session completes on selection (unlike the

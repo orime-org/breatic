@@ -33,7 +33,10 @@ export interface VideoSlotSpec {
   param: string;
   /** The pick this slot starts; the canvas dispatches on it. */
   purpose: PickPurpose;
-  /** The node type a click may fill this slot from. */
+  /**
+   * The node type this slot takes. Read by both the candidate highlighting
+   * and the click that fills the slot, so the two cannot disagree.
+   */
   accepts: NodeType;
   /** Icon shown while the slot is empty. */
   Icon: LucideIcon;
