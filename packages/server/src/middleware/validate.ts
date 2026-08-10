@@ -51,9 +51,13 @@ type ValidatorArgs = Parameters<typeof zValidator>;
  *   route through `c.req.valid(target)`.
  * @throws {Error} at mount time when given more than a target and a schema.
  * @throws {ValidationError} 422 when the value does not satisfy the schema.
- *   A body that could not be parsed at all never reaches here — hono throws
- *   `HTTPException` from inside the validator first, which the error handler
- *   answers with 400.
+ *   Malformed JSON never reaches here, but only when the request declared
+ *   itself JSON: hono attempts the parse on that Content-Type alone, and a
+ *   failed attempt throws `HTTPException` from inside the validator, which
+ *   the error handler answers with 400. The same broken body sent without
+ *   that Content-Type is never parsed — the schema runs against `{}` and
+ *   rejects it as a 422, which is the honest answer, since every field is
+ *   missing as far as the server was allowed to look.
  */
 export const validate: typeof zValidator = (
   target: ValidatorArgs[0],
