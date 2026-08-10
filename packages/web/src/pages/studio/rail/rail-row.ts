@@ -18,11 +18,17 @@
 
 /**
  * Build a rail row's classes at a given indent.
+ *
+ * `justify-start` is here because the `Button` primitive centres its content,
+ * and a rail row reads left to right from its indent. The previous version of
+ * this rule was a comment in `RailCreateActions` saying the class was applied;
+ * it never was, so the three create actions had been sitting centred, their
+ * icons 45–54px right of where Recent's starts.
  * @param paddingLeft - The left-padding class that places this level.
  * @returns The row's class string, indent included.
  */
 function railRow(paddingLeft: string): string {
-  return `group flex h-8 items-center gap-2.5 rounded-chrome ${paddingLeft} pr-2 text-sm transition-colors`;
+  return `group flex h-8 items-center justify-start gap-2.5 rounded-chrome ${paddingLeft} pr-2 text-sm transition-colors`;
 }
 
 /** A top-level row: Recent, the create actions, create-studio in the footer. */
