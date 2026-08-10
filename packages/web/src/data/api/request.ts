@@ -21,8 +21,9 @@ import { API_BASE_PATH } from '@web/data/api/base-path';
  * That removes the XSS exfiltration surface entirely (a JS payload
  * cannot read an httpOnly cookie).
  *
- * - `baseURL` defaults to `/api` so production nginx routes everything
- *   under one origin; dev uses Vite proxy.
+ * - `baseURL` is `API_BASE_PATH`, the one prefix this app and the streaming
+ *   transport share, so production nginx routes everything under one origin;
+ *   dev uses the Vite proxy.
  * - Request interceptor: send the language the user picked, so the server
  *   can answer in it.
  * - Response interceptor: unwrap backend error envelope into `ApiException`.

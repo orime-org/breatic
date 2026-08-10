@@ -24,11 +24,19 @@
  */
 
 /**
- * Every event name the agent chat stream may carry.
+ * Every event name the agent chat stream carries.
  *
- * Closed set: an event the server can emit that is not here is a break in the
- * contract, and `packages/server/src/__tests__/agent/sse-contract.test.ts`
- * reads the emit sites to say so.
+ * Closed set, and closed on what actually runs: a name is here because the
+ * server emits it today, not because someone means to emit it later. The
+ * server cannot send anything else — `sse()` takes an `SSEEventName`, so an
+ * undeclared name does not compile.
+ *
+ * The other direction is kept true by not writing names down early. A
+ * contract listing an event nothing sends tells the browser to wait for
+ * something that never arrives, and no amount of annotation makes that
+ * sentence true; `agent_thinking` is the live example — the thinking stream
+ * is a feature PR-3 batch 6 builds, and its name joins this list in the
+ * change that emits it.
  */
 export const SSE_EVENT_NAMES = {
   // Chat / Main Agent
@@ -37,7 +45,6 @@ export const SSE_EVENT_NAMES = {
 
   // Agent progress
   AGENT_TOOL_HINT: "agent_tool_hint",
-  AGENT_THINKING: "agent_thinking",
   AGENT_ASK: "agent_ask",
 
   // Interaction tools — the model calls these "tools" not to run something
@@ -51,21 +58,6 @@ export const SSE_EVENT_NAMES = {
 } as const;
 
 export type SSEEventName = (typeof SSE_EVENT_NAMES)[keyof typeof SSE_EVENT_NAMES];
-
-/**
- * Names the contract declares that nothing emits yet, each with the reason.
- *
- * Declaring an event before anything sends it is fine; leaving that fact
- * unsaid is not, because then "the contract lists nine, the server sends
- * eight" reads as a defect to whoever counts next. Every entry here is
- * checked both ways by the contract test: an unemitted name missing from this
- * list fails, and a name listed here that something does emit fails too, so
- * an entry cannot outlive its reason.
- */
-export const SSE_EVENTS_DECLARED_NOT_EMITTED: Partial<Record<SSEEventName, string>> = {
-  [SSE_EVENT_NAMES.AGENT_THINKING]:
-    "The model's reasoning is collected during a turn but never streamed; PR-3 batch 6 decides how it reaches the screen.",
-};
 
 /**
  * One event as it appears on the wire.

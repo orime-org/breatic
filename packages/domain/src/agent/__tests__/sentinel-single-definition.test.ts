@@ -35,26 +35,53 @@ const SENTINELS: ReadonlyArray<{ literal: string; owner: string }> = [
 ];
 
 /**
+ * Strip comments, so that writing about a sentinel is not writing one.
+ *
+ * Same approach the repo's brand-token check takes: judge the code, not the
+ * prose around it. Crude by design — it does not know a `//` inside a string
+ * from a real line comment — which can only ever make this guard stricter
+ * about what it strips, never more permissive about a real copy.
+ * @param source - The file's text.
+ * @returns The text with block and line comments removed.
+ */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+}
+
+/**
  * Whether a source spells a sentinel out.
  *
- * `__ASK_USER__` is a prefix of nothing, but `__ASK_USER_CHOICE__` contains
- * neither — the underscores make each literal self-delimiting, so a plain
- * substring test is exact here. Checked by the samples below.
+ * Any occurrence in code counts, whatever quotes surround it. The first
+ * version looked for the literal wrapped in `"` or `'`, which missed the two
+ * forms a real copy is most likely to take: these tools build their results
+ * as `` `${SENTINEL}${JSON.stringify(payload)}` ``, so backticks are the local
+ * idiom, and inside a template the literal is followed by `${`, not by a
+ * closing quote. Neither wrapped form matches that.
+ *
+ * Importing the constant does not count, because an import names the symbol
+ * and never the string.
+ *
+ * `__ASK_USER__` is not a substring of `__ASK_USER_CHOICE__` — they diverge
+ * at the twelfth character — so a plain substring test stays exact across all
+ * four. Checked by the samples below.
  * @param source - The file's text.
  * @param literal - The sentinel string.
- * @returns True when the file writes that string out.
+ * @returns True when the file writes that string out in code.
  */
 function spells(source: string, literal: string): boolean {
-  return source.includes(`"${literal}"`) || source.includes(`'${literal}'`);
+  return stripComments(source).includes(literal);
 }
 
 /** Sources the matcher must catch, and sources it must leave alone. */
 const SAMPLES: ReadonlyArray<{ source: string; literal: string; flagged: boolean; why: string }> = [
   { source: `export const ASK_USER_SENTINEL = "__ASK_USER__";`, literal: "__ASK_USER__", flagged: true, why: "a declaration" },
   { source: `if (s.startsWith('__ASK_USER__')) return;`, literal: "__ASK_USER__", flagged: true, why: "single quotes" },
+  { source: "const LOCAL = `__ASK_USER__`;", literal: "__ASK_USER__", flagged: true, why: "backticks, the way these tools are written" },
+  { source: "return `__ASK_USER__${JSON.stringify(p)}`;", literal: "__ASK_USER__", flagged: true, why: "backticks opening a template with an expression after it" },
   { source: `export const X = "__ASK_USER_CHOICE__";`, literal: "__ASK_USER__", flagged: false, why: "a longer sentinel is not the shorter one" },
   { source: `import { ASK_USER_SENTINEL } from "@breatic/domain";`, literal: "__ASK_USER__", flagged: false, why: "importing the name is the point" },
-  { source: `// the __ASK_USER__ prefix marks a question`, literal: "__ASK_USER__", flagged: false, why: "prose about it, unquoted, is not a spelling" },
+  { source: `// the __ASK_USER__ prefix marks a question`, literal: "__ASK_USER__", flagged: false, why: "a line comment about it is not a copy of it" },
+  { source: `/**\n * Results start with __ASK_USER__.\n */\nexport const x = 1;`, literal: "__ASK_USER__", flagged: false, why: "the same, in a docstring" },
 ];
 
 /**
