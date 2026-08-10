@@ -4,38 +4,25 @@
 /**
  * One HTTP request, replayed when a replay is warranted.
  *
- * The whole of it: the caller says where to connect, what to send, and the two
- * things this layer cannot work out for itself — whether sending the same
- * request twice costs anything, and how long one delivery may take. Everything
- * after that is this layer's own business. Network trouble is handled here. If
- * it cannot be handled, the caller is told what went wrong. If it can, the
- * caller gets the response.
+ * The whole of it: the caller says where to connect, what to send, and the
+ * three things this layer cannot work out for itself — whether sending the
+ * same request twice costs anything, how long one delivery may take, and
+ * whether anyone still wants the answer. Everything after that is this layer's
+ * own business. Network trouble is handled here. If it cannot be handled, the
+ * caller is told what went wrong. If it can, the caller gets the response.
  *
  * The test for what is a parameter and what is not: could this layer work it
  * out from a url and some bytes? Replay cost, no — only the caller knows the
  * endpoint bills. Timeout, no — it comes from the model being called or the
- * size of the file being sent. Retry count and backoff, yes, so they are
- * compiled in.
+ * size of the file being sent. Still wanted, no — only the caller knows the
+ * user pressed stop or closed the page. Retry count and backoff, yes, so they
+ * are compiled in.
  *
  * Every other knob is gone, and each removal took a pile of machinery with it:
  *
  *   - No injected fetch, so the global one is always what runs. It honours a
  *     signal, so nothing has to race it; it returns a real Response, so nothing
  *     has to check the shape of what came back.
- *   - No caller cancellation. The deadline below is the only thing that can
- *     abort a delivery, so there is one abort source instead of two composed
- *     ones, and nothing to detach afterwards. A caller that no longer wants the
- *     answer stops holding the promise, and what nobody holds is collected.
- *     Be exact about what that does NOT do: a loop already running finishes on
- *     its own, so walking away can still cost two more deliveries and both
- *     backoffs. Measured at the server, relative to the moment the caller let
- *     go, four runs against an always-503 server: the second delivery landed
- *     between 0.3s and 0.9s, the third between 0.4s and 2.6s. No fixed pair of
- *     figures can be stated, because both waits are drawn uniformly at random
- *     below a ceiling (1s, then 2s) — only the bound is statable. What bounds
- *     the whole thing is item 4 rather than the caller: three deliveries and
- *     it is over, which is why an unbounded transport could not have made this
- *     trade and this one can.
  *   - No injected wait and no label. The first was a test seam on a production
  *     surface; the second was something this layer can answer for itself.
  *
@@ -130,6 +117,19 @@ export interface HttpRequestOptions {
    *
    * Optional because most callers have no way to be stopped. Passing nothing
    * leaves the behaviour exactly as it was: the call ends when it ends.
+   *
+   * There was no such option at first, on the reasoning that a caller who no
+   * longer wants the answer stops holding the promise, and what nobody holds
+   * is collected. That reasoning was never wrong about memory and always wrong
+   * about time: a loop already running finishes on its own, so walking away
+   * can still cost two more deliveries and both backoffs. Measured at the
+   * server, relative to the moment the caller let go, four runs against an
+   * always-503 server: the second delivery landed between 0.3s and 0.9s, the
+   * third between 0.4s and 2.6s. No fixed pair of figures can be stated,
+   * because both waits are drawn uniformly at random below a ceiling (1s, then
+   * 2s) — only the bound is statable. For a caller with nobody waiting, the
+   * three-delivery cap is bound enough; for one with a person watching a
+   * screen, it is not, and this is what that caller passes.
    */
   signal?: AbortSignal;
 }
@@ -314,9 +314,11 @@ function usableDeadline(asked: number | undefined): number {
  * layer keeps no reference and no expectation either way.
  * @param url - Absolute http or https URL.
  * @param init - Standard fetch init (method, headers, body). Any `signal` on
- *   it is replaced by this call's own deadline.
+ *   it is replaced — by this delivery's deadline, composed with the caller's
+ *   own signal when `options.signal` was given.
  * @param options - What only the caller can know: whether a replay costs
- *   anything, and optionally how long this delivery may take.
+ *   anything, and optionally how long this delivery may take and whether the
+ *   answer is still wanted.
  * @returns The final response, exactly as `fetch` produced it.
  * @throws {HttpRetryError} When replays happened and the LAST of them produced
  *   no response. Not "none of them" — an earlier delivery may well have brought

@@ -76,7 +76,11 @@ vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }
 /** One thing a stream can say. */
 type Part = Record<string, unknown>;
 
-/** The five kinds of part a turn reacts to, in the shapes the SDK sends. */
+/**
+ * The six kinds of part a turn reacts to, in the shapes the SDK sends — seven
+ * arbitraries, because a tool-result is drawn both plain and carrying the
+ * sentinel that makes it a blocking interaction.
+ */
 const partArbitrary = fc.oneof(
   fc.string({ minLength: 1, maxLength: 4 }).map((text) => ({ type: "text-delta", text })),
   fc

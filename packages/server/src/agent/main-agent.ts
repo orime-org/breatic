@@ -5,7 +5,7 @@
  * Main Agent — streaming chat with AI SDK.
  *
  * Replaces the Python ToolCallRunner with AI SDK's built-in
- * `streamText()` + `maxSteps` for automatic tool-call looping.
+ * `streamText()`, whose tool-call loop is bounded by `stopWhen`.
  */
 
 import { stepCountIs } from "ai";
@@ -140,7 +140,8 @@ export class MainAgent {
   /**
    * Core streaming loop using AI SDK `streamText()`.
    *
-   * AI SDK handles the tool-call iteration automatically via `maxSteps`.
+   * AI SDK handles the tool-call iteration automatically; the step budget is
+   * `stopWhen: stepCountIs(agentCfg.max_tool_iterations)`.
    *
    * The loop is wrapped in try/finally so the turn's obligations run however
    * it ends. How each ending is recorded, and why one of them cannot record
@@ -200,9 +201,12 @@ export class MainAgent {
     // interaction tool returning, and a failure -- leaving the reply unsaved
     // and the turn unbilled.
     //
-    // How this turn ended. Four endings can say so from inside the loop, and
-    // one cannot, which is why this starts out as nothing rather than as a
-    // value: the consumer walking away arrives as `.return()` on this
+    // How this turn ended. Three of the four endings say so from inside the
+    // loop -- a provider failure, a stop, and a blocking tool -- and the
+    // fourth, a clean finish, is filled in on the line just after it. One
+    // ending says nothing at all, which is why this starts out as nothing
+    // rather than as a value: the consumer walking away arrives as `.return()`
+    // on this
     // generator, which resumes it at whichever `yield` it was suspended on and
     // goes straight to the `finally`, so no line in the loop gets to run. That
     // ending is read off the absence, in the `finally`.

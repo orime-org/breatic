@@ -5,11 +5,12 @@
  * Every way a turn can end emits an ending, and none of them keeps paying.
  *
  * The exits covered here: the stream finishing, a blocking interaction tool
- * stopping to ask, a provider failure, and the stream being torn down. Every
- * one owes the frontend a `chat_done` -- without it the UI has nothing to
- * switch out of its in-flight state. (One more exit, the client walking away,
- * lives in turn-cleanup-on-abort.test.ts along with what is measured about
- * how reachable it currently is.)
+ * stopping to ask, a provider failure, the user pressing stop, and the stream
+ * being torn down. Every one owes the frontend a `chat_done` -- without it the
+ * UI has nothing to switch out of its in-flight state. (One more exit, a
+ * consumer abandoning the generator with `.return()`, lives in
+ * turn-cleanup-on-abort.test.ts: it is the only ending no line in the loop
+ * gets to announce, so it is read off the absence instead.)
  *
  * Two of these are subtler than they look, for different reasons.
  *
@@ -199,9 +200,11 @@ describe("what a plain chat turn hands the model", () => {
     ]);
   });
 
-  it("marks the turn interactive, which is what keeps those four in", async () => {
-    // The same six could arrive with `interactive` unset if the filter ever
-    // stopped applying; this pins the reason rather than the outcome.
+  it("keeps at least one interaction tool in the set it hands the model", async () => {
+    // Named for what it observes, which is the set of tools -- not the
+    // `interactive` flag that produced it. The flag itself is nowhere in this
+    // assertion, so a filter that stopped applying and left the same six tools
+    // in place would not be told apart here.
     streamTextRetry.mockReturnValue(streamOf([{ type: "text-delta", text: "hi" }]));
     await runTurn();
     const call = streamTextRetry.mock.calls[0]?.[0] as { tools: Record<string, unknown> };

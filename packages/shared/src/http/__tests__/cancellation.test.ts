@@ -18,8 +18,12 @@
  * what keeps a single-shot signal from aborting every later delivery before it
  * leaves the ground.
  *
- * Stopping cleanly takes three separate things, and the tests below are one
- * per thing, because any one of them alone leaves the call running.
+ * Stopping cleanly takes four separate guards inside the loop — refuse to
+ * start another delivery, abort the one in flight, skip the retry decision,
+ * cut the backoff short — and any one of them missing leaves the call running.
+ * There is one test below per guard, plus one for what the stop reaches after
+ * the call has already returned, one for the listener it must not leave
+ * behind, and one for a caller that passed no signal at all.
  */
 
 import { describe, it, expect, afterEach } from "vitest";

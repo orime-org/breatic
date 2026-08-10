@@ -52,10 +52,11 @@ function registeredTools(): Array<[string, ExecuteFn]> {
 
 describe("tools accept the cancellation signal", () => {
   it("covers every registered tool", () => {
-    // A count, so that adding a seventh tool fails here and its author has to
-    // come and look at what this file is guarding. Without it a new tool could
-    // be added and simply not be checked, which is the failure this guard
-    // exists to prevent.
+    // A named list rather than a count of what happens to be there. The loop
+    // below already gives a seventh tool its own case, so this is not what
+    // catches an unchecked tool; what it catches is the other direction -- a
+    // tool vanishing from the registry, which the loop cannot see -- and it
+    // makes the author of a new tool stop here and read why the arity matters.
     expect(registeredTools().map(([name]) => name).sort()).toEqual([
       "ask_user_choice",
       "ask_user_question",
