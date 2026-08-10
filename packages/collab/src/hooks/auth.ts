@@ -190,13 +190,26 @@ interface LoadedDocuments {
  * job, not this check's.
  *
  * Postgres is read only when this process holds no meta doc for the
- * project — nobody here has been told anything about it, so there is
- * nothing newer to answer from. That read returns an empty set when the
- * meta row does not exist (a freshly created project's meta doc is always
- * seeded by `yjs-bootstrap`, so the empty-set path is a defensive fallback
- * rather than a real expected state), and goes through the collab-owned
- * repo — the single home for that table's SQL — over the process-wide
- * `yjsDb` singleton, so collab keeps no private pool of its own.
+ * project. Two situations reach that, and they are not equally benign.
+ * The quiet one is a first visit: nobody here has been told anything
+ * about this project, so there is nothing newer to answer from. The other
+ * is a RECONNECT, and it is a live gap rather than a hypothetical
+ * (measured 2026-08-10): a client that has already synced holds the meta
+ * doc in its own memory, so when the socket comes back it asks for every
+ * open Space's content doc in the same millisecond as the meta doc — the
+ * content handshakes run while the meta doc is still inside
+ * `loadingDocuments`, and this check answers from Postgres. That is
+ * correct whenever the row is current and wrong when it is not, which is
+ * the same window #26 is about, reached by a different route. Closing it
+ * is its own task; this function is not where the decision to wait for
+ * the meta doc would live.
+ *
+ * The Postgres read returns an empty set when the meta row does not exist
+ * (a freshly created project's meta doc is always seeded by
+ * `yjs-bootstrap`, so the empty-set path is a defensive fallback rather
+ * than a real expected state), and goes through the collab-owned repo —
+ * the single home for that table's SQL — over the process-wide `yjsDb`
+ * singleton, so collab keeps no private pool of its own.
  * @param projectId - Project whose meta Yjs doc holds the authoritative `meta.spaces` set.
  * @param loaded - This process's table of in-memory documents, consulted before Postgres.
  * @returns The set of Space ids currently listed in `meta.spaces`, or an empty set when this process holds no copy and the meta row is missing.
