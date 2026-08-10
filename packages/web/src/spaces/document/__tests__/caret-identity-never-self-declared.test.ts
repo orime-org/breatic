@@ -52,7 +52,6 @@ describe('our own caret identity', () => {
         doc,
         name: 'project-p/document-identity',
         caretProvider: { awareness },
-        hasEverSynced: true,
       }),
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
@@ -96,7 +95,6 @@ describe('our own caret identity', () => {
         doc,
         name: 'project-p/document-every-frame',
         caretProvider: { awareness },
-        hasEverSynced: true,
       }),
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());

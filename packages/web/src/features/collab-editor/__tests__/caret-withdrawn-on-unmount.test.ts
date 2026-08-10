@@ -21,7 +21,7 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 
@@ -40,7 +40,6 @@ describe('this client caret', () => {
         doc,
         name: 'project-p/document-leave',
         caretProvider: { awareness },
-        hasEverSynced: true,
       }),
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());

@@ -31,9 +31,9 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-// Mock `ai` BEFORE importing @breatic/core / the app (the barrels pull
-// agent/llm → the `ai` SDK → @opentelemetry/api, whose ESM build Node's native
-// ESM rejects). Every request here is refused before any model is reached.
+// `ai` is stubbed: the real SDK is replaced with a double that reaches no
+// network, so this suite needs no API key and the SDK stays out of its
+// module graph.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

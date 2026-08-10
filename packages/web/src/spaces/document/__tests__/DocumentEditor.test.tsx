@@ -22,7 +22,7 @@ import { Awareness } from 'y-protocols/awareness';
 
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import {
   useDocumentHistory,
@@ -61,7 +61,6 @@ describe('DocumentEditor', () => {
         doc,
         name: NAME,
         caretProvider,
-        hasEverSynced: true,
       });
       return { handle, history: useDocumentHistory(handle?.undoManager ?? null) };
     });
@@ -148,6 +147,127 @@ describe('DocumentEditor', () => {
       // the shared document that the server will then refuse — leaving this
       // viewer looking at a private fork.
       expect(markupOf(fragment)).toBe(before);
+    });
+  });
+  describe('with the caret in the title', () => {
+    // The title accepts no formatting at all, so a bold button that stays lit
+    // and does nothing is worse than no button: the user presses it, nothing
+    // happens, and there is no way to tell whether they missed or the feature
+    // is broken.
+    const FORMAT_TOOLS = [
+      'bold',
+      'italic',
+      'strike',
+      'bullet-list',
+      'ordered-list',
+      'quote',
+    ];
+
+    /**
+     * Put the caret in the title, then in the body's first block.
+     * @returns Nothing; it moves the caret.
+     */
+    function giveTheBodyABlock(): void {
+      act(() => {
+        editor.commands.setContent(
+          '<h1 class="doc-title">Storyboard v3</h1><p>written</p>',
+        );
+      });
+    }
+
+    it('every formatting button is disabled', () => {
+      giveTheBodyABlock();
+      act(() => {
+        editor.commands.setTextSelection(2);
+      });
+      render(<DocumentEditor editor={editor} history={history} />);
+      FORMAT_TOOLS.forEach((id) => {
+        expect(screen.getByTestId(`doc-tool-${id}`)).toBeDisabled();
+      });
+    });
+
+    it('and they come back the moment the caret leaves it', () => {
+      giveTheBodyABlock();
+      act(() => {
+        editor.commands.setTextSelection(2);
+      });
+      render(<DocumentEditor editor={editor} history={history} />);
+      expect(screen.getByTestId('doc-tool-bold')).toBeDisabled();
+
+      act(() => {
+        editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
+      });
+      expect(screen.getByTestId('doc-tool-bold')).not.toBeDisabled();
+    });
+
+    it('stays disabled when the title is reached by selecting everything', () => {
+      // Cmd+A does not put the caret anywhere — it selects the whole document,
+      // and the resulting selection starts at the document rather than inside
+      // any block. Asking where the caret is therefore answered "not the
+      // title" and lit all six, while pressing them did nothing: the title
+      // takes no mark, and a list cannot wrap it. What decides a button is
+      // whether its command can run, not where the caret sits.
+      giveTheBodyABlock();
+      render(<DocumentEditor editor={editor} history={history} />);
+      act(() => {
+        editor.commands.selectAll();
+      });
+
+      // Bold reaches the body's paragraph, so it stays available and does
+      // something; the block tools cannot wrap a selection holding the title.
+      expect(screen.getByTestId('doc-tool-bold')).not.toBeDisabled();
+      ['bullet-list', 'ordered-list', 'quote'].forEach((id) => {
+        expect(screen.getByTestId(`doc-tool-${id}`)).toBeDisabled();
+      });
+    });
+
+    it('disables all six when everything selected is only the title', () => {
+      // The shape this PR ships: a Space opens with a title and no body block
+      // at all, so selecting everything selects only what takes no formatting.
+      render(<DocumentEditor editor={editor} history={history} />);
+      act(() => {
+        editor.commands.selectAll();
+      });
+
+      FORMAT_TOOLS.forEach((id) => {
+        expect(screen.getByTestId(`doc-tool-${id}`)).toBeDisabled();
+      });
+    });
+
+    it('leaves undo and redo alone — they work in the title too', () => {
+      // Asserted as "the caret makes no difference" rather than "undo is
+      // enabled": whether there is anything to undo comes from the history
+      // state, and pinning that here would test the fixture instead of the
+      // rule. What must hold is that moving the caret into the title changes
+      // nothing about these two.
+      //
+      // Both are handed in AVAILABLE on purpose. With the real fixture they are
+      // both disabled — nothing has been undone yet — and then the comparison
+      // below holds no matter what the component does with the caret, which is
+      // a test that cannot fail. Handing in a state where they are live makes
+      // the comparison mean something: gate them on the caret and it goes red.
+      const live: DocumentHistoryState = { canUndo: true, canRedo: true };
+      giveTheBodyABlock();
+      render(<DocumentEditor editor={editor} history={live} />);
+
+      act(() => {
+        editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
+      });
+      const inBody = ['undo', 'redo'].map((id) =>
+        (screen.getByTestId(`doc-tool-${id}`) as HTMLButtonElement).disabled,
+      );
+
+      act(() => {
+        editor.commands.setTextSelection(2);
+      });
+      const inTitle = ['undo', 'redo'].map((id) =>
+        (screen.getByTestId(`doc-tool-${id}`) as HTMLButtonElement).disabled,
+      );
+
+      expect(inTitle).toEqual(inBody);
+      // And the formatting buttons DID change, so the comparison above is not
+      // passing because nothing re-rendered.
+      expect(screen.getByTestId('doc-tool-bold')).toBeDisabled();
     });
   });
 });

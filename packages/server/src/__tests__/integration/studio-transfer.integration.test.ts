@@ -30,10 +30,9 @@
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 import type * as LimitsModule from "@server/config/limits.js";
 
-// Mock `ai` BEFORE importing @breatic/core — the core barrel pulls
-// agent/llm → the `ai` SDK → @opentelemetry/api, whose ESM build breaks
-// Node's native loader. This suite never calls any ai function; the stubs
-// keep that chain from loading (same guard the sibling studio suites use).
+// `ai` is stubbed: the real SDK is replaced with a double that reaches no
+// network, so this suite needs no API key and the SDK stays out of its
+// module graph.
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

@@ -24,7 +24,7 @@ import * as Y from 'yjs';
 
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 
 /**
  * What undo is allowed to delete.
@@ -161,9 +161,10 @@ export interface DocumentUndoManager extends Y.UndoManager {
  * came back as an h1. {@link isDeletableByUndo} covers those too. Alice's own
  * text still comes out in every case.
  *
- * An earlier version of this file added a rule refusing to delete the body's
- * last child, to stop undo emptying the fragment; `seedEmptyBody` in
- * `document-yjs` removes the need by keeping a paragraph there from the start.
+ * Nothing here guards against the body running out of blocks. It cannot run
+ * out: the document's first block is a `title` the schema does not allow to be
+ * deleted, and the blocks after it are optional. See
+ * `@breatic/shared`'s `document-body` for that structure.
  *
  * `captureTransaction` honours the `addToHistory: false` marker, so
  * machine-driven edits stay off the stack.

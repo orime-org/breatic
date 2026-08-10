@@ -160,6 +160,27 @@ if (typeof Element !== 'undefined') {
   }
 }
 
+// jsdom implements no ClipboardEvent at all (checked against jsdom 29:
+// `new ClipboardEvent('paste')` throws "ClipboardEvent is not defined").
+// ProseMirror's own `view.pasteHTML(html)` constructs one when the caller does
+// not supply an event, so without this the editor's real clipboard pipeline is
+// unreachable from a test and paste behaviour could only be checked in a
+// browser. The stub carries `clipboardData` because that is the field a paste
+// event is defined by; ProseMirror does not read it on this path — the HTML
+// comes in as an argument — so nothing here decides what gets pasted.
+(globalThis as unknown as { ClipboardEvent?: unknown }).ClipboardEvent ??= class
+  extends Event {
+  readonly clipboardData: DataTransfer | null;
+
+  constructor(
+    type: string,
+    init?: EventInit & { clipboardData?: DataTransfer | null },
+  ) {
+    super(type, init);
+    this.clipboardData = init?.clipboardData ?? null;
+  }
+};
+
 if (typeof window !== 'undefined' && !window.matchMedia) {
   window.matchMedia = (query: string) => ({
     matches: false,

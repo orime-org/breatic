@@ -27,8 +27,7 @@
  *
  * The canvas-row soft-delete / restore route through the shared core
  * `yjsDocumentsRepo`; it is mocked to no-ops here so the Yjs-mutation
- * invariants are exercised without a real PG (and so importing the
- * handler doesn't pull the real core barrel into vitest's ESM resolver).
+ * invariants are exercised without a real PG.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import * as fc from "fast-check";
@@ -74,7 +73,7 @@ vi.mock("@collab/services/space-delete-lock.js", () => ({
 
 // `createLogger` now comes from `@breatic/core` (the unified logger), which
 // reads the injected config at call time. Spread the real core barrel (so
-// `encodeInitialSpaceContentState` / `writeSpaceEntry` keep their real impls
+// `encodeInitialSpaceContent` / `writeSpaceEntry` keep their real impls
 // the invariants depend on) and override only `createLogger` with a no-op
 // stub so the module-level `createLogger("space-rpc")` doesn't require
 // initCore under test.

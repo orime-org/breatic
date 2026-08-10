@@ -69,7 +69,7 @@ vi.mock("@breatic/shared", () => ({
 
 // mini-tool-registry + local handlers + ai are pulled in transitively by
 // handlers/dispatch.ts (which we import for emitNodeStateFailed) — mock
-// them so the otel / provider chains never load (same as
+// them so the provider chains never load (same as
 // emit-node-state-update.test.ts).
 vi.mock("@worker/mini-tool-registry.js", () => ({
   resolveMiniToolEntry: vi.fn(),

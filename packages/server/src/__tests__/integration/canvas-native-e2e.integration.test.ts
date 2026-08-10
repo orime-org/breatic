@@ -40,14 +40,12 @@ import type { Hocuspocus } from "@hocuspocus/server";
 
 // ── Mock `ai` BEFORE any other import ───────────────────────────────────────
 //
-// `ai` (Vercel AI SDK) imports @opentelemetry/api whose ESM build
-// (build/esm/index.js) uses bare relative imports (e.g. './baggage/utils')
-// that Node.js native ESM rejects (strict ESM requires .js extensions).
-//
-// Mocking `ai` here prevents the broken ESM chain from loading. We only
-// need generateText, streamText, stepCountIs, and tool — used by @breatic/core
-// and worker providers — but our tests only exercise the mini-tool path where
-// runLocalHandler is mocked. Providing stubs is sufficient; they are never called.
+// `ai` is stubbed: the real SDK is replaced with a double that reaches no
+// network, so this suite needs no API key and the SDK stays out of its
+// module graph. Of the four stubbed exports,
+// @breatic/domain's agent modules import generateText, streamText and tool;
+// the worker providers import stepCountIs. @breatic/core imports none of
+// them — it does not reach the SDK at all.
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -57,7 +55,7 @@ vi.mock("ai", () => ({
     usage: Promise.resolve({ totalTokens: 0 }),
   }),
   stepCountIs: (_n: number) => () => false,
-  // tool() is used by @breatic/core/agent/tools/* — return a minimal stub
+  // tool() is used by @breatic/domain/agent/tools/* — return a minimal stub
   tool: (config: Record<string, unknown>) => config,
 }));
 
@@ -192,9 +190,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 // before test file evaluation). @breatic/core no longer reads process.env
 // itself — it reads injected config via the env Proxy after initCore runs —
 // so we call initCore(process.env) below before any real-core access (e.g.
-// the `db` Proxy in waitForCondition). `ai` is mocked above, so importing
-// the real core barrel here does NOT pull @opentelemetry/api (whose broken
-// ESM build crashes the vitest loader); that is why initCore lives here and
+// the `db` Proxy in waitForCondition). That is why initCore lives here and
 // not in the shared setupFile.
 
 import { runTask } from "@breatic/worker/src/handlers/dispatch.js";

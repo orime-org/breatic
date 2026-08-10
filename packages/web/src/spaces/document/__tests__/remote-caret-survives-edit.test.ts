@@ -27,7 +27,7 @@ import * as Y from 'yjs';
 
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 const REMOTE_CLIENT_ID = 4242;
@@ -49,7 +49,6 @@ describe('a collaborator caret', () => {
           doc,
           name: 'project-p/document-carets',
           caretProvider: { awareness },
-          hasEverSynced: true,
         }),
       {
         // The name is resolved from the roster now (#1882), not published by

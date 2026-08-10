@@ -6,9 +6,7 @@
  *
  * Pins the `#894` contract: a `/metrics` scrape renders `http_requests_total`
  * (request counter) + `db_up` (live SELECT-1 gauge) + prom-client default
- * process metrics. Also doubles as the otel-safety check — importing this
- * module loads `prom-client → @opentelemetry/api`, so a green run proves
- * that pull does not break vitest.
+ * process metrics.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

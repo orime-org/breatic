@@ -15,7 +15,7 @@
  * this when the agent has a discrete set of options the user should pick
  * from. DO NOT call for simple yes/no — use plain text for those.
  */
-import { tool } from "ai";
+import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 /** Sentinel prefix detected by main-agent to interrupt the loop and yield AGENT_CHOICE SSE event. */
@@ -42,7 +42,7 @@ const inputSchema = z.object({
     .describe("When true, user can select multiple choices; defaults to single-select"),
 });
 
-export const askUserChoice = tool({
+export const askUserChoice: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "Ask the user to pick from a discrete set of options. Use when " +
     "you need disambiguation or preference selection from a known " +

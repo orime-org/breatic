@@ -49,7 +49,7 @@ import {
   createDocumentUndoManager,
   type DocumentUndoManager,
 } from '@web/spaces/document/document-undo';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 
 /** The editor plus the handles a caller needs alongside it. */
 export interface DocumentEditorHandle {
