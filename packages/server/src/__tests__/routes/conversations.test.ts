@@ -76,14 +76,14 @@ describe("Conversation routes", () => {
       });
     });
 
-    it("rejects a malformed project_id with 400", async () => {
+    it("rejects a malformed project_id with 422", async () => {
       const app = createApp();
       const res = await app.request(
         "/api/v1/chat/conversations?project_id=not-a-uuid",
         { headers: AUTH },
       );
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
       expect(mocks.conversationService.list).not.toHaveBeenCalled();
     });
   });

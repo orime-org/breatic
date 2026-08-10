@@ -18,8 +18,10 @@
  * and /mini-tools/* share ONE pre-check that can never drift.
  */
 
+import { AppError } from "@breatic/core";
 import { env } from "@breatic/core";
 import { creditService } from "@breatic/domain";
+import { t } from "@breatic/shared";
 
 /**
  * Reject a task-enqueue request whose owner cannot cover `required`
@@ -27,17 +29,23 @@ import { creditService } from "@breatic/domain";
  * @param userId - The authenticated user whose balance is checked.
  * @param required - Credits the caller must at least hold (the model's
  *   `cost_per_call` estimate, or `MIN_TASK_CREDIT_COST` for flat checks).
- * @returns An error message when the balance is below `required`, or
- *   `null` when affordable (or payments are disabled).
+ * Throws rather than returning a message, so the answer is built where every
+ * other error answer is built. Returning a string meant each caller wrote its
+ * own `c.json({error:{code:402,message}})`, which skipped `errorHandler`
+ * entirely — the sentence never passed through `t()` and reached a Japanese
+ * user in English, on the most frequent failure a paid product has.
+ * @throws {AppError} 402 when the balance is below `required`.
  */
 export async function precheckCredits(
   userId: string,
   required: number,
-): Promise<string | null> {
-  if (!env.PAYMENT_ENABLED) return null;
+): Promise<void> {
+  if (!env.PAYMENT_ENABLED) return;
   const balance = await creditService.getBalance(userId);
   if (balance < required) {
-    return `Insufficient credits. Required: ${required}, available: ${balance}`;
+    throw new AppError(
+      402,
+      t("server.error.insufficient_credits", { required, available: balance }),
+    );
   }
-  return null;
 }

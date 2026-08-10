@@ -15,6 +15,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import { assertSkillUsable } from "@domain/agent/skill-gate.js";
+import { loadLocales } from "@breatic/core";
+
+// `t()` echoes the key back when no catalog is loaded, so without this
+// the assertions below would measure a key name rather than the
+// sentence a user reads. `server/src/index.ts` does the same at boot.
+loadLocales();
 
 const routing = {
   skills: {
@@ -54,7 +60,7 @@ describe("assertSkillUsable", () => {
   });
 
   it("rejects a skill the user may not fire directly", () => {
-    expect(() => assertSkillUsable("model_only", "chat")).toThrow(/not user-invocable/);
+    expect(() => assertSkillUsable("model_only", "chat")).toThrow(/cannot be invoked directly/);
   });
 
   it("rejects a skill absent from the routing config", () => {

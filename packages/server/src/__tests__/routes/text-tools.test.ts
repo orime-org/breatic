@@ -42,7 +42,7 @@ describe("Text tools routes", () => {
     expect(res.status).toBe(401);
   });
 
-  it("POST /mini-tools/text rejects invalid tool with 400", async () => {
+  it("POST /mini-tools/text rejects invalid tool with 422", async () => {
     const app = createApp();
     const res = await app.request("/api/v1/mini-tools/text", {
       method: "POST",
@@ -50,6 +50,6 @@ describe("Text tools routes", () => {
       body: JSON.stringify({ tool: "nonexistent-tool", document: "hello" }),
     });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 });

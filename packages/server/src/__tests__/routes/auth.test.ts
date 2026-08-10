@@ -114,7 +114,7 @@ describe("Auth routes", () => {
       expect(body.data.user.personalStudio).toBeNull();
     });
 
-    it("rejects invalid email with 400", async () => {
+    it("rejects invalid email with 422", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/auth/register", {
         method: "POST",
@@ -122,10 +122,10 @@ describe("Auth routes", () => {
         body: JSON.stringify({ email: "not-an-email", password: "password123" }),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
     });
 
-    it("rejects short password with 400", async () => {
+    it("rejects short password with 422", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/auth/register", {
         method: "POST",
@@ -133,7 +133,7 @@ describe("Auth routes", () => {
         body: JSON.stringify({ email: "valid@test.com", password: "123" }),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
     });
   });
 
@@ -177,14 +177,14 @@ describe("Auth routes", () => {
       expect(res.status).toBe(401);
     });
 
-    it("rejects a malformed slug with 400 (uppercase / too short — schema guard)", async () => {
+    it("rejects a malformed slug with 422 (uppercase / too short — schema guard)", async () => {
       const app = createApp();
       const bad = await app.request("/api/v1/auth/setup-studio", {
         method: "POST",
         headers: { ...SESSION_COOKIE, ...JSON_HEADERS },
         body: JSON.stringify({ slug: "AB" }),
       });
-      expect(bad.status).toBe(400);
+      expect(bad.status).toBe(422);
       expect(mocks.studioService.createPersonalStudio).not.toHaveBeenCalled();
     });
   });

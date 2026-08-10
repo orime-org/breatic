@@ -10,6 +10,7 @@
 
 import * as skillRepo from "@server/modules/skill/skill.repo.js";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
+import { t } from "@breatic/shared";
 import type { SkillMeta } from "@breatic/shared";
 
 /**
@@ -42,7 +43,7 @@ export async function createUserSkill(
   tags?: string[],
 ): Promise<unknown> {
   const existing = await skillRepo.getSkillByOwnerAndName(ownerUserId, name);
-  if (existing) throw new ConflictError("Skill with this name already exists");
+  if (existing) throw new ConflictError(t("server.skill.name_taken"));
   return skillRepo.createSkill({ ownerUserId, name, description, files, version, tags });
 }
 
@@ -65,8 +66,8 @@ export async function updateUserSkill(
   version?: string,
 ): Promise<unknown> {
   const skill = await skillRepo.getSkillById(skillId);
-  if (!skill) throw new NotFoundError("Skill not found");
-  if (skill.ownerUserId !== userId) throw new ForbiddenError("Access denied");
+  if (!skill) throw new NotFoundError(t("server.skill.not_found"));
+  if (skill.ownerUserId !== userId) throw new ForbiddenError(t("server.error.forbidden"));
   return skillRepo.updateSkill(skillId, { files, description, version });
 }
 
@@ -79,8 +80,8 @@ export async function updateUserSkill(
  */
 export async function deleteUserSkill(skillId: string, userId: string): Promise<void> {
   const skill = await skillRepo.getSkillById(skillId);
-  if (!skill) throw new NotFoundError("Skill not found");
-  if (skill.ownerUserId !== userId) throw new ForbiddenError("Access denied");
+  if (!skill) throw new NotFoundError(t("server.skill.not_found"));
+  if (skill.ownerUserId !== userId) throw new ForbiddenError(t("server.error.forbidden"));
   await skillRepo.softDeleteSkill(skillId);
 }
 
@@ -103,8 +104,8 @@ export async function listUserSkills(userId: string): Promise<unknown[]> {
  */
 export async function publishSkill(skillId: string, userId: string): Promise<unknown> {
   const skill = await skillRepo.getSkillById(skillId);
-  if (!skill) throw new NotFoundError("Skill not found");
-  if (skill.ownerUserId !== userId) throw new ForbiddenError("Access denied");
+  if (!skill) throw new NotFoundError(t("server.skill.not_found"));
+  if (skill.ownerUserId !== userId) throw new ForbiddenError(t("server.error.forbidden"));
   return skillRepo.setPublished(skillId, true);
 }
 
@@ -118,8 +119,8 @@ export async function publishSkill(skillId: string, userId: string): Promise<unk
  */
 export async function unpublishSkill(skillId: string, userId: string): Promise<unknown> {
   const skill = await skillRepo.getSkillById(skillId);
-  if (!skill) throw new NotFoundError("Skill not found");
-  if (skill.ownerUserId !== userId) throw new ForbiddenError("Access denied");
+  if (!skill) throw new NotFoundError(t("server.skill.not_found"));
+  if (skill.ownerUserId !== userId) throw new ForbiddenError(t("server.error.forbidden"));
   return skillRepo.setPublished(skillId, false);
 }
 
@@ -149,12 +150,12 @@ export async function listMarketSkills(
  */
 export async function installSkill(skillId: string, userId: string): Promise<unknown> {
   const skill = await skillRepo.getSkillById(skillId);
-  if (!skill) throw new NotFoundError("Skill not found");
-  if (!skill.isPublished) throw new ForbiddenError("Skill is not published");
-  if (skill.ownerUserId === userId) throw new ConflictError("Cannot install your own skill");
+  if (!skill) throw new NotFoundError(t("server.skill.not_found"));
+  if (!skill.isPublished) throw new ForbiddenError(t("server.skill.not_published"));
+  if (skill.ownerUserId === userId) throw new ConflictError(t("server.skill.cannot_install_own"));
 
   const existing = await skillRepo.getInstall(userId, skillId);
-  if (existing) throw new ConflictError("Skill already installed");
+  if (existing) throw new ConflictError(t("server.skill.already_installed"));
 
   const install = await skillRepo.createInstall(userId, skillId);
   await skillRepo.incrementInstallCount(skillId);

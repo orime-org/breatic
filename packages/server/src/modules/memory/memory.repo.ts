@@ -21,6 +21,7 @@ import {
   projectMemoryEntries,
 } from "@breatic/core";
 import { ConflictError } from "@breatic/core";
+import { t } from "@breatic/shared";
 
 // ── Conversation Memory ──────────────────────────────────────────────
 
@@ -122,7 +123,7 @@ export async function upsertUserMemory(
   );
 
   if ((result as unknown[]).length === 0) {
-    throw new ConflictError("User memory version conflict — concurrent update detected");
+    throw new ConflictError(t("server.memory.version_conflict"));
   }
 }
 
@@ -199,7 +200,7 @@ export async function upsertProjectMemory(
   );
 
   if ((result as unknown[]).length === 0) {
-    throw new ConflictError("Project memory version conflict — concurrent update detected");
+    throw new ConflictError(t("server.memory.version_conflict"));
   }
 }
 

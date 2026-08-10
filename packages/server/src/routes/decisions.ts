@@ -16,7 +16,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -53,7 +53,7 @@ route.get("/:token", async (c) => {
  * this exchange worth keeping out of request logs and referrers, and a body is
  * where the two existing invite endpoints already put it.
  */
-route.post("/respond", zValidator("json", respondSchema), async (c) => {
+route.post("/respond", validate("json", respondSchema), async (c) => {
   const user = c.get("user");
   const { token, action } = c.req.valid("json");
   const result = await decisionService.respond(token, user.id, action);

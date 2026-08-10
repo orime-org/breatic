@@ -14,7 +14,7 @@ import { db } from "@breatic/core";
 import { env } from "@breatic/core";
 import { getRedis } from "@breatic/core";
 import { t } from "@breatic/shared";
-import { AppError, ValidationError } from "@breatic/core";
+import { AppError } from "@breatic/core";
 
 /**
  * refKey format contract: ASCII alphanumerics plus a small punctuation
@@ -176,7 +176,9 @@ export async function add(
  * @param options.model - Model identifier that consumed the credits.
  * @param options.provider - Provider name behind the model.
  * @returns `{ deducted: true, creditsAfter }` on first use; `{ deducted: false }` if the refKey was already billed for this user.
- * @throws {ValidationError} if refKey doesn't match REFKEY_PATTERN.
+ * @throws {Error} if refKey doesn't match REFKEY_PATTERN — a caller of
+ *   ours built it, so this is our fault and reaches the handler's 500
+ *   branch, where it is logged.
  *
  * Use for non-task-level billing: text stream, agent turn.
  */
@@ -188,7 +190,14 @@ export async function deductOnce(
   options?: { tokensUsed?: number; model?: string; provider?: string },
 ): Promise<{ deducted: boolean; creditsAfter?: number }> {
   if (!REFKEY_PATTERN.test(refKey)) {
-    throw new ValidationError(
+    // A caller of ours built this key, not a user — the pattern is internal
+    // and no request carries it. This was a `ValidationError`, which told the
+    // user their input was invalid and, being an AppError, was answered
+    // without a log line: our own mistake, blamed on them, and invisible
+    // afterwards. A plain Error reaches the handler's last branch instead —
+    // 500 with `t("server.error.internal")` for the caller, and the offending
+    // key in `Unhandled error` where an operator can find it.
+    throw new Error(
       `deductOnce: refKey must match ${REFKEY_PATTERN} (got ${JSON.stringify(refKey)})`,
     );
   }

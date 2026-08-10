@@ -160,7 +160,7 @@ describe("the conversation id is required", () => {
     // without one is a client that skipped that step, not a first-ever message.
     const res = await send({ message: "hello", project_id: projectId }, cookie);
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   it("refuses a skill invocation with no conversation id", async () => {
@@ -172,7 +172,7 @@ describe("the conversation id is required", () => {
       body: JSON.stringify({ skill_name: CHAT_SKILL, input: "go", project_id: projectId }),
     });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 });
 

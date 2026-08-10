@@ -22,6 +22,7 @@
 import { and, asc, desc, eq, inArray, isNull, lte, gt, max } from "drizzle-orm";
 import { db, conversations, conversationMessages, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import { t } from "@breatic/shared";
 import type { MessageData, MessageInput, MessagePart, ToolCallInfo } from "@breatic/shared";
 
 const MAX_HISTORY = 50;
@@ -162,7 +163,7 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
       .limit(1);
 
     if (!owner[0]) {
-      throw new NotFoundError(`Conversation not found or deleted: ${id}`);
+      throw new NotFoundError(t("server.conversation.not_found"));
     }
 
     // Deliberately NOT filtered on `deleted_at`: the turn index is a
