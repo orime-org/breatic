@@ -4,33 +4,38 @@
 /**
  * Global error handler middleware.
  *
- * The single place that decides what a client is told, so it has to
- * recognise every exception type that can reach it. Anything it does not
- * recognise becomes a 500 — which, for the three shapes a client can trigger
- * by sending a bad request, means telling the caller the server broke when it
- * did not, and writing an incident-shaped log line every time.
+ * The single place that decides what a client is told. It answers on its own
+ * terms for the two things it can recognise as the caller's doing, and
+ * everything else is ours: a 500 plus `Unhandled error`, which is what makes
+ * a fault reconstructable afterwards.
  *
- * Which exception arrives depends on who parsed the body:
+ * Recognising a rejected request by the TYPE of exception does not work, and
+ * a first version of this handler tried it. `ZodError` and `SyntaxError` say
+ * that a parse failed, not whose input failed — our own config loaders parse
+ * operator-written yaml inside a request (`config/rate-limits.ts` and three
+ * siblings, lazily, on first use), and any `await response.json()` on an
+ * upstream that answered with an HTML error page raises the same type. Both
+ * were being answered "your input is invalid", to a user who had typed
+ * nothing wrong, with the log line dropped.
  *
- *   the validator middleware   bad field -> ZodError, converted by our hook
- *                              bad body  -> HTTPException(400), it catches
- *   a hand-written parse       bad field -> bare ZodError
- *   in a route handler         bad body  -> native SyntaxError
+ * So the rule is provenance, not type. Two exceptions reach here already
+ * carrying the fact that a client caused them:
  *
- * The wording is always ours and always localised: a library's own message is
- * hardcoded English and names our internals, so it never reaches the wire.
+ *   AppError        thrown by our own service and route layer, including the
+ *                   ValidationError that `validate` raises for a bad field
+ *   HTTPException   thrown by hono when it cannot read the request body
+ *
+ * A library's own wording never reaches the wire — it is hardcoded English
+ * and names our internals — so what a client reads for those two is built
+ * here, in the caller's language. An `AppError` carries whatever message its
+ * thrower built, which is that thrower's business, not this file's.
  */
 
 import type { ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { ZodError } from "zod";
 import { AppError, ConflictLockedError } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { t } from "@breatic/shared";
-
-/** A rejected request is the client's error; the status says which kind. */
-const BODY_UNREADABLE = 400;
-const INPUT_INVALID = 422;
 
 /**
  * Global error handler for the Hono app.
@@ -95,34 +100,10 @@ export const errorHandler: ErrorHandler = (err, c) => {
     );
   }
 
-  // A hand-written `schema.parse(...)` in a route throws this bare, with no
-  // middleware to convert it. zod 4 packs its whole report — including the
-  // pattern it tested against — into `message`, so none of it goes on the
-  // wire: the caller is told the input was rejected, not how we check it.
-  if (err instanceof ZodError) {
-    return c.json(
-      {
-        error: { code: INPUT_INVALID, message: t("server.error.validation") },
-      },
-      INPUT_INVALID,
-    );
-  }
-
-  // `await c.req.json()` called directly in a route handler throws the native
-  // parser error. The body could not be read at all, which is a different
-  // failure from a body we read and rejected.
-  if (err instanceof SyntaxError) {
-    return c.json(
-      {
-        error: {
-          code: BODY_UNREADABLE,
-          message: t("server.error.validation"),
-        },
-      },
-      BODY_UNREADABLE,
-    );
-  }
-
+  // Everything else is ours until proven otherwise, including a bare
+  // `ZodError` or `SyntaxError` — those name a failed parse without naming
+  // whose input failed, and the ones that actually occur here come from our
+  // own config loaders and upstream calls. They belong in the log.
   logger.error({ err }, "Unhandled error");
   return c.json(
     { error: { code: 500, message: t("server.error.internal") } },

@@ -4,19 +4,20 @@
 /**
  * What the exit answers for every kind of error that can reach it.
  *
- * This is the one place that decides what a client is told, so it has to
- * recognise every exception type that can arrive. It recognised two, and
- * everything else — including three shapes a client can trigger by sending a
- * bad request — fell into the branch that answers 500 and writes
- * `Unhandled error`, telling the caller the server broke when it did not.
+ * Two exceptions arrive already carrying the fact that a client caused them —
+ * an `AppError` we threw ourselves, and the `HTTPException` hono throws when
+ * it cannot read the request body. Those get an answer built here. Everything
+ * else is ours: 500 plus `Unhandled error`.
  *
- * Which exception arrives depends on WHO parsed the body, measured with a
- * probe rather than assumed:
- *
- *   the validator middleware   bad field -> ZodError, caught by our hook
- *                              bad body  -> HTTPException(400), it catches
- *   a hand-written parse       bad field -> bare ZodError
- *   in a route handler         bad body  -> native SyntaxError
+ * The suite pins the second half as hard as the first, because a first
+ * version of this handler recognised `ZodError` and `SyntaxError` by type and
+ * answered them 400/422 "your input is invalid". The type says a parse
+ * failed; it does not say whose input failed. Our own config loaders parse
+ * operator-written yaml inside a request, and any `await response.json()` on
+ * an upstream returning an HTML error page raises the same type — both were
+ * being blamed on a user who had typed nothing wrong, with the log dropped.
+ * The tests below at "an error we do not recognise" are what keeps that
+ * shortcut from coming back.
  *
  * @see packages/server/src/middleware/error-handler.ts
  */
@@ -157,56 +158,44 @@ describe("a body the validator middleware could not read", () => {
   });
 });
 
-describe("a bare ZodError, as a hand-written parse throws", () => {
-  it("answers 422, the status this repo already gives a failed check", async () => {
+describe("a parse failure the handler must NOT blame on the caller", () => {
+  // These two types were briefly recognised and answered "your input is
+  // invalid". A parse failure says a parse failed — it does not say whose
+  // input failed, and the ones that actually reach here are ours.
+
+  it("answers 500 for a ZodError, the shape our config loaders raise", async () => {
+    // `config/rate-limits.ts` and three siblings parse operator-written yaml
+    // lazily, inside the first request that needs them. A typo there is our
+    // outage, not the caller's typo.
     const { status } = await answerFor(zodErrorForBadEmail());
-    expect(status).toBe(422);
+    expect(status).toBe(500);
   });
 
-  it("answers in our envelope, never zod's report", async () => {
-    const { body } = await answerFor(zodErrorForBadEmail());
-    expect(body.error).toMatchObject({ code: 422 });
-    // zod 4 puts its whole report — including the email regex — in
-    // `error.message`. None of that may reach a client.
-    expect(JSON.stringify(body)).not.toContain("ZodError");
-    expect(JSON.stringify(body)).not.toContain("invalid_format");
-  });
-
-  it("answers in the caller's language", async () => {
-    const err = zodErrorForBadEmail();
-    expect((await answerFor(err, "ja")).body.error?.message).toBe(
-      INVALID_INPUT.ja,
-    );
-    expect((await answerFor(err, "en")).body.error?.message).toBe(
-      INVALID_INPUT.en,
-    );
-  });
-
-  it("does not write an error log", async () => {
+  it("logs the ZodError, so the yaml typo is findable", async () => {
     await answerFor(zodErrorForBadEmail());
-    expect(logged.error).not.toHaveBeenCalled();
+    expect(logged.error).toHaveBeenCalled();
   });
-});
 
-describe("a native SyntaxError, as `await c.req.json()` throws in a route", () => {
-  it("answers 400 — the body could not be read at all", async () => {
+  it("answers 500 for a SyntaxError, the shape an upstream HTML page raises", async () => {
+    // `await someResponse.json()` on a provider that answered with an error
+    // page. Telling the user their input was invalid would be a lie, and a
+    // lie that hides the outage.
     const { status } = await answerFor(syntaxErrorForTruncatedJson());
-    expect(status).toBe(400);
+    expect(status).toBe(500);
   });
 
-  it("answers in our envelope, in the caller's language", async () => {
-    const { body } = await answerFor(syntaxErrorForTruncatedJson(), "zh-CN");
-    expect(body.error).toMatchObject({
-      code: 400,
-      message: INVALID_INPUT["zh-CN"],
-    });
+  it("logs the SyntaxError", async () => {
+    await answerFor(syntaxErrorForTruncatedJson());
+    expect(logged.error).toHaveBeenCalled();
   });
 
-  it("does not leak the parser's own message", async () => {
-    // V8 writes things like `Unexpected end of JSON input` — an internal
-    // detail, and English regardless of the caller.
+  it("still says nothing about the parse in the response", async () => {
+    // 500 is honest about who is at fault; the wording stays ours, and the
+    // parser's own text (`Unexpected end of JSON input`) is an internal
+    // detail, English regardless of the caller.
     const { body } = await answerFor(syntaxErrorForTruncatedJson(), "zh-CN");
     expect(String(body.error?.message)).not.toContain("JSON");
+    expect(JSON.stringify(body)).not.toContain("ZodError");
   });
 });
 
