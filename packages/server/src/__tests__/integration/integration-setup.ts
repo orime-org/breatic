@@ -106,5 +106,10 @@ afterAll(async () => {
     core.closeQueueRedis(),
     core.closeStreamRedis(),
     core.closeCollabRedis(),
+    // Nothing in the suite builds queues through core's factories today, so
+    // this closes an empty registry. It is here because the list is meant to
+    // be "everything core hands out that has to come back" — leaving one out
+    // is how the next test to call `createQueue` silently starts leaking.
+    core.closeQueues(),
   ]);
 });
