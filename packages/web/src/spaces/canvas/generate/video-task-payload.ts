@@ -30,6 +30,14 @@ export interface VideoTaskInput {
   params: Record<string, unknown>;
   /** Plain-text prompt (extracted from the rich-text prompt). */
   promptText: string;
+  /**
+   * The picked first frame (image-to-video). Travels as its OWN param, never
+   * folded into the reference array: the array is the `@`-picked pool and
+   * means something else to the model. Absent when nothing is picked — the
+   * key is then left OFF the wire entirely, because the upstream provider
+   * reads its presence, not its value.
+   */
+  firstFrameUrl?: string;
   /** The node's current persistent lease counter; gen = leaseGen + 1. Absent = 0. */
   leaseGen?: number;
 }
@@ -49,7 +57,11 @@ export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
     // Model params spread FIRST so the user's prompt always wins over any
     // same-named key a (malformed / untrusted) model catalog might carry —
     // never let model params silently overwrite what the user typed.
-    params: { ...input.params, prompt: input.promptText },
+    params: {
+      ...input.params,
+      prompt: input.promptText,
+      ...(input.firstFrameUrl ? { image: input.firstFrameUrl } : {}),
+    },
     leaseGen: input.leaseGen,
   });
 }

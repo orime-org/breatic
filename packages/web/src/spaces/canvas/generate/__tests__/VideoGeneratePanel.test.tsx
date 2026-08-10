@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import type { ModelEntry } from '@breatic/shared';
 
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 
 /**
@@ -40,25 +41,42 @@ const MODELS = [model('veo-3.1'), model('veo-3.1-lite', 21)];
  * @param over - Prop overrides.
  * @returns The render result plus the spies the case may assert on.
  */
-function renderPanel(
-  over: Partial<React.ComponentProps<typeof VideoGeneratePanel>> = {},
-): { onExecute: ReturnType<typeof vi.fn>; onExit: ReturnType<typeof vi.fn> } {
+function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePanel>> = {}): {
+  onExecute: ReturnType<typeof vi.fn>;
+  onExit: ReturnType<typeof vi.fn>;
+} {
   const onExecute = vi.fn();
   const onExit = vi.fn();
+  // The tool row's tips need the provider App.tsx mounts once for the whole
+  // app (single-provider mandate) — standing in for it is what a test does.
   render(
-    <VideoGeneratePanel
-      models={MODELS}
-      model='veo-3.1'
-      params={{ aspect_ratio: '16:9', duration: 8 }}
-      creditEstimate={88}
-      canExecute
-      promptSlot={<div data-testid='prompt-slot' />}
-      onExit={onExit}
-      onSelectModel={() => {}}
-      onChangeParams={() => {}}
-      onExecute={onExecute}
-      {...over}
-    />,
+    <TooltipProvider>
+      <VideoGeneratePanel
+        models={MODELS}
+        model='veo-3.1'
+        params={{ aspect_ratio: '16:9', duration: 8 }}
+        creditEstimate={88}
+        mode='t2v'
+        onToggleMode={() => {}}
+        catalogEmpty={false}
+        references={[]}
+        onAddReference={() => {}}
+        referencePicking={false}
+        onRemoveReference={() => {}}
+        onInsertReference={() => {}}
+        firstFrameSupported={false}
+        onFirstFrame={() => {}}
+        firstFramePicking={false}
+        onClearFirstFrame={() => {}}
+        canExecute
+        promptSlot={<div data-testid='prompt-slot' />}
+        onExit={onExit}
+        onSelectModel={() => {}}
+        onChangeParams={() => {}}
+        onExecute={onExecute}
+        {...over}
+      />
+    </TooltipProvider>,
   );
   return { onExecute, onExit };
 }
@@ -111,5 +129,50 @@ describe('VideoGeneratePanel', () => {
     renderPanel({ models: [], model: '', creditEstimate: 0 });
     expect(screen.queryByTestId('generate-video-params-trigger')).toBeNull();
     expect(screen.getByTestId('prompt-slot')).toBeInTheDocument();
+  });
+
+  it('names the active mode and offers the other one', () => {
+    renderPanel({ mode: 'i2v' });
+    const trigger = screen.getByTestId('generate-video-mode-trigger');
+    expect(trigger).toHaveTextContent('Image to Video');
+    fireEvent.click(trigger);
+    expect(screen.getByTestId('generate-video-mode-t2v')).toBeInTheDocument();
+  });
+
+  it('cannot switch mode while no mode has a model to switch to', () => {
+    // A switch then resolves nothing and would clobber the node's stored
+    // model and params, which do not self-heal.
+    renderPanel({ catalogEmpty: true });
+    expect(screen.getByTestId('generate-video-mode-trigger')).toBeDisabled();
+  });
+
+  it('always offers the reference tool, in every mode', () => {
+    // Reference is the one source every video mode has (design §3.4): a
+    // connected node feeds the prompt's `@` mentions whatever is generated.
+    renderPanel({ mode: 't2v' });
+    expect(screen.getByTestId('generate-video-tool-reference')).toBeInTheDocument();
+  });
+
+  it('shows the first-frame slot only when the mode takes one', () => {
+    renderPanel({ firstFrameSupported: false });
+    expect(screen.queryByTestId('generate-video-tool-first-frame')).toBeNull();
+    cleanup();
+    renderPanel({ firstFrameSupported: true });
+    expect(screen.getByTestId('generate-video-tool-first-frame')).toBeInTheDocument();
+  });
+
+  it('renders the reference rail rows the container derives', () => {
+    renderPanel({
+      references: [
+        {
+          refId: 'e1',
+          sourceNodeId: 'src',
+          sourceNodeType: 'image',
+          sourceNodeName: 'A still',
+          thumbnail: 'https://cdn/a.png',
+        },
+      ],
+    });
+    expect(screen.getByTestId('generate-ref-e1')).toBeInTheDocument();
   });
 });
