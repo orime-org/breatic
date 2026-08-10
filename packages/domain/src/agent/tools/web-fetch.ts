@@ -75,6 +75,7 @@ async function readBody(res: Response, signal?: AbortSignal): Promise<string> {
   signal.throwIfAborted();
 
   const reader = res.body.getReader();
+  /** Tear the body down, so the pending read resolves instead of hanging. */
   const stopReading = (): void => {
     void reader.cancel().catch(() => undefined);
   };

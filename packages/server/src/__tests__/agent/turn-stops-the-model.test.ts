@@ -36,8 +36,8 @@ vi.mock("node:dns/promises", () => ({
 
 /** How many times the provider was asked to produce a step. */
 let providerCalls = 0;
-/** The stream the provider hands back, set per test. */
-let providerStream: () => ReadableStream<unknown>;
+/** What the provider says for each step, set per test. */
+let providerParts: () => readonly Record<string, unknown>[];
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const consolidateIfNeeded = vi.fn(async () => undefined);
@@ -76,7 +76,21 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       new MockLanguageModelV4({
         doStream: async () => {
           providerCalls += 1;
-          return { stream: providerStream() };
+          return {
+            stream: new ReadableStream({
+              start(controller) {
+                for (const part of providerParts()) {
+                  // The parts are written out by hand below, in the shapes the
+                  // SDK sends. Its own union of those shapes is not re-exported
+                  // from `ai`, and reaching into `@ai-sdk/provider` for it
+                  // would mean this package declaring a dependency it does not
+                  // have — for a type, in a test.
+                  controller.enqueue(part as never);
+                }
+                controller.close();
+              },
+            }),
+          };
         },
       }),
     resolveProvider: () => "test",
@@ -96,24 +110,21 @@ vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }
 const fetchMock = vi.fn();
 
 /** A first step that calls one tool and would be followed by a second step. */
-function callsTool(toolName: string): ReadableStream<unknown> {
-  return new ReadableStream({
-    start(controller) {
-      controller.enqueue({ type: "stream-start", warnings: [] });
-      controller.enqueue({
-        type: "tool-call",
-        toolCallId: "call-1",
-        toolName,
-        input: JSON.stringify({ url: "https://public.example/page" }),
-      });
-      controller.enqueue({
-        type: "finish",
-        finishReason: "tool-calls",
-        usage: { inputTokens: 5, outputTokens: 5, totalTokens: 300 },
-      });
-      controller.close();
+function callsTool(toolName: string): readonly Record<string, unknown>[] {
+  return [
+    { type: "stream-start", warnings: [] },
+    {
+      type: "tool-call",
+      toolCallId: "call-1",
+      toolName,
+      input: JSON.stringify({ url: "https://public.example/page" }),
     },
-  });
+    {
+      type: "finish",
+      finishReason: "tool-calls",
+      usage: { inputTokens: 5, outputTokens: 5, totalTokens: 300 },
+    },
+  ];
 }
 
 /**
@@ -144,6 +155,7 @@ async function timeTurn(signal: AbortSignal): Promise<number> {
 
 beforeEach(() => {
   providerCalls = 0;
+  providerParts = () => [];
   turnTools = {};
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
@@ -180,7 +192,7 @@ describe("a stopped turn stops the model", () => {
           }),
       }),
     };
-    providerStream = () => callsTool("slow_tool");
+    providerParts = () => callsTool("slow_tool");
 
     setTimeout(() => stopped.abort(new Error("user pressed stop")), 100);
     await timeTurn(stopped.signal);
@@ -203,7 +215,7 @@ describe("a stopped turn stops the model", () => {
     const stopped = new AbortController();
 
     turnTools = buildToolSet(["web_fetch"]);
-    providerStream = () => callsTool("web_fetch");
+    providerParts = () => callsTool("web_fetch");
     fetchMock.mockResolvedValue(
       new Response(
         new ReadableStream({
@@ -234,7 +246,7 @@ describe("a stopped turn stops the model", () => {
     const stopped = new AbortController();
 
     turnTools = buildToolSet(["web_fetch"]);
-    providerStream = () => callsTool("web_fetch");
+    providerParts = () => callsTool("web_fetch");
     fetchMock.mockImplementation(
       (_url: string, init: { signal?: AbortSignal }) =>
         new Promise((_resolve, reject) => {

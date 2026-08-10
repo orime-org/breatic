@@ -197,7 +197,7 @@ describe("two turns in one conversation are billed apart", () => {
     // read the conversation's highest turn number before either had written
     // its own.
     const { userId, projectId, conversationId, cookie } = await seed();
-    const send = (): Promise<Response> =>
+    const send = async (): Promise<Response> =>
       app.request("/api/v1/chat/message", {
         method: "POST",
         headers: { Cookie: cookie, "Content-Type": "application/json" },

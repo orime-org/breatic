@@ -259,6 +259,7 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   if (!signal) return new Promise<void>((resolve) => setTimeout(resolve, ms));
   if (signal.aborted) return Promise.resolve();
   return new Promise<void>((resolve) => {
+    /** End the wait, and leave nothing of it behind on the caller's signal. */
     const done = (): void => {
       clearTimeout(timer);
       signal.removeEventListener("abort", done);
