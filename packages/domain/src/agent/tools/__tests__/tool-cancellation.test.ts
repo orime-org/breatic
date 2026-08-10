@@ -29,18 +29,27 @@
 import { describe, it, expect } from "vitest";
 import * as toolBarrel from "@domain/agent/tools/index.js";
 
-/** An AI SDK tool, as far as this guard needs to recognise one. */
-type ExecutableTool = { execute: (...args: unknown[]) => unknown };
+/** Anything the barrel exports, seen only through the field that matters. */
+type MaybeTool = { execute?: unknown };
+
+/** What a tool's `execute` looks like when all this guard reads is its arity. */
+type ExecuteFn = (...args: unknown[]) => unknown;
 
 /**
- * Every tool the barrel exports, by the name it is exported under.
- * @returns Each exported tool paired with its export name.
+ * Every tool the barrel exports, paired with its `execute`.
+ *
+ * The barrel also exports lists and functions; a tool is recognised by having
+ * an `execute`, which is the only thing this guard has an opinion about.
+ * @returns Each exported tool's name and its `execute`.
  */
-function exportedTools(): Array<[string, ExecutableTool]> {
-  return Object.entries(toolBarrel).filter(
-    (entry): entry is [string, ExecutableTool] =>
-      typeof (entry[1] as { execute?: unknown })?.execute === "function",
-  );
+function exportedTools(): Array<[string, ExecuteFn]> {
+  const found: Array<[string, ExecuteFn]> = [];
+  for (const [name, value] of Object.entries(toolBarrel as Record<string, MaybeTool>)) {
+    if (typeof value?.execute === "function") {
+      found.push([name, value.execute as ExecuteFn]);
+    }
+  }
+  return found;
 }
 
 describe("tools accept the cancellation signal", () => {
@@ -59,9 +68,9 @@ describe("tools accept the cancellation signal", () => {
     ]);
   });
 
-  for (const [name, tool] of exportedTools()) {
+  for (const [name, execute] of exportedTools()) {
     it(`${name} declares the options argument`, () => {
-      expect(tool.execute.length).toBeGreaterThanOrEqual(2);
+      expect(execute.length).toBeGreaterThanOrEqual(2);
     });
   }
 });

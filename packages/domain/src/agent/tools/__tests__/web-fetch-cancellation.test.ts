@@ -1,0 +1,168 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * How long a stopped turn waits on `web_fetch`.
+ *
+ * The turn cannot end before its tools do. Measured with a real `streamText`
+ * on ai@7.0.58: with the signal raised while a tool was running, the stream
+ * produced nothing further until that tool returned of its own accord — 4
+ * seconds for a tool that ignored its signal, 8 milliseconds for one that did
+ * not. So the promise that a stop takes about a second is kept here or nowhere.
+ *
+ * A fetch is not one waiting place but several, and the transport only owns
+ * the middle ones. Two lie outside it, and they are what this file is about:
+ *
+ *   - before each hop, `safeFetch` resolves the host and decides whether it is
+ *     allowed. A redirect chain walks that loop once per hop, and without a
+ *     check it keeps walking after the caller has gone.
+ *   - after the transport hands back a `Response`, reading its body is the
+ *     application's own business — the package boundary says so outright and
+ *     names `response.body?.cancel()` as the way to stop it. A server that
+ *     sends 200 and its headers and then stalls leaves that read hanging, and
+ *     the transport's deadline is already cleared by then.
+ *
+ * The seam is DNS plus the global `fetch`, the same one `safe-fetch-retry`
+ * uses and for the same reason: the transport takes no injected fetch, so the
+ * global is the only place to stand. A real local server cannot be used here
+ * at all — `safeFetch` refuses loopback addresses by design, so every request
+ * to one is rejected before a socket is opened. An earlier draft of this file
+ * did exactly that and all of its cases passed against the unfixed code,
+ * because nothing was ever being cancelled: nothing was ever being sent.
+ *
+ * One place is genuinely uninterruptible and is stated rather than tested:
+ * `node:dns/promises` `lookup` ignores an abort signal outright — measured, it
+ * resolved an address from a signal that was already raised. It goes through
+ * the system resolver on a thread pool and, unlike `Resolver.resolve4`, offers
+ * no cancel. So a lookup already under way runs to its end, and the bound
+ * carries that much slack.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+const dnsLookupMock = vi.fn();
+
+vi.mock("node:dns/promises", () => ({
+  lookup: (...args: unknown[]) => dnsLookupMock(...args),
+}));
+
+import { safeFetch } from "@domain/agent/tools/safe-fetch.js";
+import { webFetch } from "@domain/agent/tools/web-fetch.js";
+
+const fetchMock = vi.fn();
+
+/** The options shape the SDK hands a tool's `execute`. */
+const toolOptions = (signal: AbortSignal): Record<string, unknown> => ({
+  abortSignal: signal,
+  toolCallId: "t1",
+  messages: [],
+});
+
+/** A response whose headers are through and whose body never finishes. */
+function stalledBody(): Response {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("the beginning of a page"));
+        // And never closed: the read that follows has nothing to wait for.
+      },
+    }),
+    { status: 200, headers: { "content-type": "text/plain" } },
+  );
+}
+
+beforeEach(() => {
+  vi.stubGlobal("fetch", fetchMock);
+  fetchMock.mockReset();
+  dnsLookupMock.mockReset();
+  dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("safeFetch when the caller has given up", () => {
+  it("does not start a hop, and does not even resolve the host", async () => {
+    const gaveUp = new AbortController();
+    gaveUp.abort(new Error("user stopped"));
+
+    await expect(
+      safeFetch("https://public.example/page", { signal: gaveUp.signal }),
+    ).rejects.toThrow();
+
+    expect(dnsLookupMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not walk on to the next hop", async () => {
+    // The check has to be inside the loop, not before it. A redirect chain is
+    // where the difference shows: the first hop was already under way when the
+    // caller gave up, and it is the SECOND that must not happen.
+    const gaveUp = new AbortController();
+    fetchMock.mockImplementationOnce(() => {
+      gaveUp.abort(new Error("user stopped"));
+      return Promise.resolve(
+        new Response(null, { status: 302, headers: { location: "https://public.example/next" } }),
+      );
+    });
+
+    await expect(
+      safeFetch("https://public.example/page", { signal: gaveUp.signal }),
+    ).rejects.toThrow();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands the signal down to the transport", async () => {
+    // The transport composes it with each delivery's deadline. Asserting on
+    // the signal `fetch` was given is the only place that composition is
+    // visible from outside.
+    const gaveUp = new AbortController();
+    fetchMock.mockResolvedValue(new Response("ok", { status: 200 }));
+
+    await safeFetch("https://public.example/page", { signal: gaveUp.signal });
+
+    const passed = (fetchMock.mock.calls[0]?.[1] as { signal?: AbortSignal }).signal;
+    expect(passed).toBeInstanceOf(AbortSignal);
+    expect(passed?.aborted).toBe(false);
+    gaveUp.abort(new Error("user stopped"));
+    expect(passed?.aborted).toBe(true);
+  });
+});
+
+describe("web_fetch when the turn is stopped", () => {
+  it("stops while the body is still arriving", async () => {
+    // The waiting place the transport cannot see: it has handed back the
+    // Response and cleared its own deadline, and the read that follows is
+    // ours. Without this, a server that stalls after its headers holds the
+    // turn until the read gives up on its own — undici's body timeout, which
+    // is measured in minutes.
+    const gaveUp = new AbortController();
+    fetchMock.mockResolvedValue(stalledBody());
+    setTimeout(() => gaveUp.abort(new Error("user stopped")), 80);
+
+    const started = Date.now();
+    await webFetch.execute?.(
+      { url: "https://public.example/page", maxChars: 1000 },
+      toolOptions(gaveUp.signal) as never,
+    );
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it("reads the body normally when nobody gave up", async () => {
+    // The other half of the same change: racing the read against a signal must
+    // not cost the read. A tool that returned early on every fetch would pass
+    // the test above and be useless.
+    const never = new AbortController();
+    fetchMock.mockResolvedValue(
+      new Response("hello world", { status: 200, headers: { "content-type": "text/plain" } }),
+    );
+
+    const out = await webFetch.execute?.(
+      { url: "https://public.example/page", maxChars: 1000 },
+      toolOptions(never.signal) as never,
+    );
+    expect(JSON.parse(out as string)).toMatchObject({ text: "hello world", status: 200 });
+  });
+});

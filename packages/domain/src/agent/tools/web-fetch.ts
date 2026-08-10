@@ -50,6 +50,68 @@ function normalize(text: string): string {
     .trim();
 }
 
+/**
+ * Read a response body, giving up if the caller stops wanting it.
+ *
+ * The transport hands back a `Response` and is done: its deadline covered
+ * getting the headers, and reading what follows is this layer's business —
+ * the transport's own boundary says so outright, and names cancelling the body
+ * as the way to stop it. Without that, a server that answers 200 and then
+ * stalls holds the whole turn until the client underneath gives up on its own,
+ * which it measures in minutes.
+ *
+ * The read is done through a reader taken here rather than through
+ * `res.text()`, because `text()` locks the body for itself: cancelling it from
+ * the outside throws "the stream is locked" and the read goes on waiting. The
+ * decoding is unchanged by that — measured, `text()` decodes as UTF-8 whatever
+ * charset the response declares, byte for byte what `TextDecoder` gives.
+ * @param res - The response to read.
+ * @param signal - The caller's, when it has one.
+ * @returns The body as text.
+ * @throws {Error} the reason the caller gave up, when it did.
+ */
+async function readBody(res: Response, signal?: AbortSignal): Promise<string> {
+  if (!signal || !res.body) return res.text();
+  signal.throwIfAborted();
+
+  const reader = res.body.getReader();
+  const stopReading = (): void => {
+    void reader.cancel().catch(() => undefined);
+  };
+  signal.addEventListener("abort", stopReading, { once: true });
+  try {
+    const chunks: Uint8Array[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
+    // A cancel ends the read by resolving it as finished, not by rejecting, so
+    // without this the caller would be handed however much had arrived as
+    // though that were the whole page.
+    signal.throwIfAborted();
+    return new TextDecoder().decode(concatenate(chunks));
+  } finally {
+    signal.removeEventListener("abort", stopReading);
+  }
+}
+
+/**
+ * Join the chunks a body arrived in.
+ * @param chunks - The pieces, in arrival order.
+ * @returns One buffer holding all of them.
+ */
+function concatenate(chunks: readonly Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const joined = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, at);
+    at += chunk.length;
+  }
+  return joined;
+}
+
 /** What the model may ask this tool to fetch. */
 const inputSchema = z.object({
   url: z.string().url().describe("URL to fetch"),
@@ -76,12 +138,16 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
     "Fetch a URL and extract readable content (HTML to plain text). " +
     "Only public (non-private, non-loopback) HTTP/HTTPS hosts are permitted.",
   inputSchema,
-  execute: async ({ url, maxChars }): Promise<string> => {
+  execute: async (
+    { url, maxChars },
+    { abortSignal }: { abortSignal?: AbortSignal },
+  ): Promise<string> => {
     const limit = maxChars ?? DEFAULT_MAX_CHARS;
 
     try {
       const res = await safeFetch(url, {
         headers: { "User-Agent": USER_AGENT },
+        ...(abortSignal ? { signal: abortSignal } : {}),
       });
 
       if (!res.ok) {
@@ -92,7 +158,7 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
       }
 
       const contentType = res.headers.get("content-type") ?? "";
-      const body = await res.text();
+      const body = await readBody(res, abortSignal);
 
       let text: string;
       if (contentType.includes("application/json")) {

@@ -32,6 +32,17 @@ const agentConfigSchema = z.object({
   memory_project_max_size: z.number().int().positive().default(3072),
   memory_user_max_size: z.number().int().positive().default(2048),
   web_fetch_max_chars: z.number().int().positive().default(50000),
+  /**
+   * How long ONE DELIVERY of a `web_fetch` request may take, in milliseconds.
+   *
+   * The upper bound is the largest delay a timer can hold; past it a timer
+   * quietly rewrites the value to one millisecond, turning "wait as long as
+   * this needs" into "give up at once". Refused here rather than at the point
+   * of use, so a bad figure is caught when the config loads.
+   */
+  web_fetch_timeout_ms: z.number().positive().max(2147483647).default(30000),
+  /** The same, for one `web_search` request. */
+  web_search_timeout_ms: z.number().positive().max(2147483647).default(10000),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
 });
