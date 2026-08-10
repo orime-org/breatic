@@ -31,10 +31,13 @@
  * be identical across every backend service. collab used to hand-roll
  * its own copies (raw `redis.get` for the session, raw SQL for the
  * role), which drifted from the server's path; both now call the one
- * shared kernel. The Yjs space-existence read also routes through core
- * (`yjsDocumentsRepo.fetchDocData`, the single home for `yjs_documents`
- * SQL) over the shared `db` singleton — collab issues no raw SQL of its
- * own.
+ * shared kernel. The Yjs space-existence check does NOT go to a database:
+ * it reads the meta doc this process already holds in memory, which is the
+ * same copy the clients here were told about. Only when this process holds
+ * no meta doc for the project does it fall back to `yjs_documents`, through
+ * collab's own `yjsDocumentsRepo` (the single home for that table's SQL)
+ * over the `yjsDb` singleton — collab issues no raw SQL of its own. See
+ * {@link loadProjectSpaceIds}.
  */
 
 import type { Redis } from "@breatic/core";
