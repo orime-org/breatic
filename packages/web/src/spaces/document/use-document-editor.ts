@@ -23,7 +23,6 @@ import {
   getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import { seedEmptyBody } from '@web/spaces/document/document-yjs';
 
 /** Inputs for {@link useDocumentEditor}. */
 export interface UseDocumentEditorOptions {
@@ -39,24 +38,6 @@ export interface UseDocumentEditorOptions {
   caretProvider: { awareness: unknown } | null;
   /** False puts the editor in read-only mode (viewer role, history preview). */
   editable?: boolean;
-  /**
-   * Whether this document's real content has arrived at least once.
-   *
-   * Gates the seeding in {@link seedEmptyBody}: a body that is empty because
-   * it has not loaded yet must not be seeded, or the server's real content
-   * merges in behind the seeded paragraph and leaves a stray blank line.
-   *
-   * EVER, not currently. A live "is the socket in sync" flag drops to false on
-   * every routine reconnect, and by then the content is already here — read it
-   * from `useSocket`, which is the one place this is tracked.
-   *
-   * Required, and deliberately without a default. Either default is wrong for
-   * somebody: `true` seeds into a document that may not have loaded, `false`
-   * withholds an editor forever from a caller with no socket. A caller that
-   * cannot answer it does not yet know whether it is safe to show this
-   * document at all.
-   */
-  hasEverSynced: boolean;
 }
 
 /**
@@ -72,7 +53,6 @@ export interface UseDocumentEditorOptions {
  * @param options.name - The canonical document name (cache key).
  * @param options.caretProvider - Provider whose awareness carries carets.
  * @param options.editable - False for read-only.
- * @param options.hasEverSynced - Whether content has ever arrived; gates seeding.
  * @returns The editor and its undo manager, or null while the wiring is absent.
  */
 export function useDocumentEditor({
@@ -80,26 +60,19 @@ export function useDocumentEditor({
   name,
   caretProvider,
   editable = true,
-  hasEverSynced,
 }: UseDocumentEditorOptions): DocumentEditorHandle | null {
   // From context, not from a prop: the roster is a project-level fact and every
   // layer between here and the project page used to have to forward it.
   const collaboratorNames = useCollaboratorNames();
-  // Once the real content is known to be in, and only from a client whose ROLE
-  // allows writing. A viewer's seed is refused by the server, which would
-  // leave it a paragraph ahead of everyone else — the stray blank line this
-  // exists to prevent, arriving from the other side. Seeding is idempotent, so
-  // a re-run is free.
-  //
-  // `editable` is the ROLE, and only the role — a refused or read-only
-  // connection is reported to the user rather than enforced against them
-  // (decision 2026-08-02). So a client the server has quietly degraded to
-  // read-only WILL still seed, and the server will drop that one update. It
-  // costs a stray paragraph in that client's local copy until the next reload,
-  // which is a smaller price than a document that mysteriously goes dead.
-  React.useEffect(() => {
-    if (hasEverSynced && editable) seedEmptyBody(doc);
-  }, [doc, hasEverSynced, editable]);
+  // This hook used to seed an empty body with the one paragraph ProseMirror
+  // insists on, behind two guards: only after the content had arrived, and
+  // only from a client whose role allows writing. Both are gone with the seed
+  // itself — the fragment now holds a title from the moment the backend
+  // creates the Space, and nothing a user can do removes that block, so there
+  // is nothing here to repair. The body under it may hold no blocks at all;
+  // it is the title, not a paragraph, that keeps the fragment inhabited.
+  // `@breatic/shared`'s `document-body` carries the invariant and why it
+  // belongs there.
 
   // Get-or-create, so the repeat calls a re-render causes are free and a
   // StrictMode double-invoke cannot produce a second editor.

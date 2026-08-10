@@ -36,11 +36,30 @@ interface DocumentToolbarProps {
 }
 
 /** A toggle whose pressed state mirrors what is under the cursor. */
-interface ToolDef {
+export interface ToolDef {
   id: string;
   labelKey: string;
   Icon: typeof Bold;
   isActive: (e: Editor) => boolean;
+  /**
+   * Whether the command can run against the current selection.
+   *
+   * Asked of the command the button runs, never of where the caret is. R7 asks
+   * for one thing — no control that looks usable and does nothing when pressed
+   * — and the title is what made that possible: it takes no marks and cannot be
+   * wrapped, so a button aimed at it would have been exactly that control. An
+   * earlier version asked "is the caret in the title", which is only ever an
+   * approximation: it answered "no" to Cmd+A, whose selection starts at the
+   * document rather than inside any block, and lit all six buttons on a
+   * document whose only block takes no formatting at all.
+   *
+   * The dry run is CONSERVATIVE for the two list commands over a body heading
+   * or code block — it says no where the command works. That is a body-editing
+   * shortcoming, it is out of this slice, and it is the safe direction: R7
+   * forbids a live button that does nothing, not a dark button that would have
+   * worked.
+   */
+  canRun: (e: Editor) => boolean;
   run: (e: Editor) => void;
 }
 
@@ -103,12 +122,13 @@ const HISTORY_TOOLS: ActionDef[] = [
  *    redo could not be hard-coded, and a toolbar half translated is worse than
  *    either.
  */
-const MARK_TOOLS: ToolDef[] = [
+export const MARK_TOOLS: ToolDef[] = [
   {
     id: 'bold',
     labelKey: 'spaces.document.toolbar.bold',
     Icon: Bold,
     isActive: (e) => e.isActive('bold'),
+    canRun: (e) => e.can().chain().toggleBold().run(),
     run: (e) => e.chain().focus().toggleBold().run(),
   },
   {
@@ -116,6 +136,7 @@ const MARK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.italic',
     Icon: Italic,
     isActive: (e) => e.isActive('italic'),
+    canRun: (e) => e.can().chain().toggleItalic().run(),
     run: (e) => e.chain().focus().toggleItalic().run(),
   },
   {
@@ -123,17 +144,34 @@ const MARK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.strike',
     Icon: Strikethrough,
     isActive: (e) => e.isActive('strike'),
+    canRun: (e) => e.can().chain().toggleStrike().run(),
     run: (e) => e.chain().focus().toggleStrike().run(),
   },
 ];
 
-/** Block-level formatting, likewise unchanged. */
-const BLOCK_TOOLS: ToolDef[] = [
+/**
+ * Block-level formatting, likewise unchanged.
+ *
+ * These ask the dry run and nothing else, exactly as the marks above do. The
+ * dry run is conservative for the two list commands — they clear the block
+ * type before wrapping, and a dry run performs no steps, so over a body
+ * heading or code block it answers no while the command works. That belongs to
+ * the slice that owns the body's editing behaviour; it cannot make this
+ * toolbar claim anything false about the title, which is what R7 is about.
+ *
+ * Two attempts to widen the answer past the dry run are what this reverts.
+ * Both reached into selections that never touch the title, and the second lit
+ * the list buttons over a selection that DOES: pressing one there stripped a
+ * body heading to a paragraph and produced no list, because the clearing step
+ * lands even when the wrap that follows it fails.
+ */
+export const BLOCK_TOOLS: ToolDef[] = [
   {
     id: 'bullet-list',
     labelKey: 'spaces.document.toolbar.bulletList',
     Icon: List,
     isActive: (e) => e.isActive('bulletList'),
+    canRun: (e) => e.can().chain().toggleBulletList().run(),
     run: (e) => e.chain().focus().toggleBulletList().run(),
   },
   {
@@ -141,6 +179,7 @@ const BLOCK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.orderedList',
     Icon: ListOrdered,
     isActive: (e) => e.isActive('orderedList'),
+    canRun: (e) => e.can().chain().toggleOrderedList().run(),
     run: (e) => e.chain().focus().toggleOrderedList().run(),
   },
   {
@@ -148,6 +187,7 @@ const BLOCK_TOOLS: ToolDef[] = [
     labelKey: 'spaces.document.toolbar.quote',
     Icon: Quote,
     isActive: (e) => e.isActive('blockquote'),
+    canRun: (e) => e.can().chain().toggleBlockquote().run(),
     run: (e) => e.chain().focus().toggleBlockquote().run(),
   },
 ];
@@ -168,6 +208,10 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
   history,
   readOnly = false,
 }: DocumentToolbarProps): React.JSX.Element {
+  // Whether each formatting control is live is decided by the control itself,
+  // against the command it runs — see `ToolDef.canRun` and `ToolButton`. Undo
+  // and redo are not part of that: they work in the title exactly as they do
+  // in the body, and their availability comes from the history state.
   return (
     <div
       data-testid='document-toolbar'
@@ -183,11 +227,11 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {MARK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} editor={editor} disabled={readOnly} />
+        <ToolButton key={t.id} tool={t} editor={editor} readOnly={readOnly} />
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {BLOCK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} editor={editor} disabled={readOnly} />
+        <ToolButton key={t.id} tool={t} editor={editor} readOnly={readOnly} />
       ))}
     </div>
   );
@@ -196,39 +240,52 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
 /**
  * A single toolbar toggle.
  *
- * Subscribes to just its own active flag rather than reading it during render.
- * That matters now the document is shared: a co-editor's change arrives as a
+ * Subscribes to its own two flags rather than reading them during render. That
+ * matters now the document is shared: a co-editor's change arrives as a
  * transaction with no React render behind it, so a value computed in the render
  * body would keep showing whatever was true when this component last happened
  * to re-render.
+ *
+ * The button is live when its command can run — asked of the editor, against
+ * the very command the button dispatches, so the two can never disagree. This
+ * is what keeps a button from staying lit over a selection it cannot touch,
+ * and it holds for selections nobody thought to enumerate.
  * @param root0 - Tool button props.
- * @param root0.tool - The tool definition (label, icon, active predicate, run command).
+ * @param root0.tool - The tool definition (label, icon, active predicate, availability, run command).
  * @param root0.editor - The editor the tool reads from and acts on.
- * @param root0.disabled - True to render the toggle inert (viewer).
+ * @param root0.readOnly - True for a viewer; the toggle is inert whatever the command says.
  * @returns The toggle button element for one document tool.
  */
 const ToolButton = React.memo(function ToolButton({
   tool,
   editor,
-  disabled = false,
+  readOnly = false,
 }: {
   tool: ToolDef;
   editor: Editor;
-  disabled?: boolean;
+  readOnly?: boolean;
 }): React.JSX.Element {
   const t = useTranslation();
-  const active = useEditorState({
+  const state = useEditorState({
     editor,
-    selector: ({ editor: e }) => (e ? tool.isActive(e) : false),
+    selector: ({ editor: e }) => ({
+      active: e ? tool.isActive(e) : false,
+      available: e ? tool.canRun(e) : false,
+    }),
+    // Compared field by field: the selector builds a fresh object on every
+    // transaction, so identity would report a change on every keystroke and
+    // re-render all six buttons for nothing.
+    equalityFn: (a, b) =>
+      b !== null && a.active === b.active && a.available === b.available,
   });
   const Icon = tool.Icon;
   return (
     <Button
-      variant={active ? 'secondary' : 'ghost'}
+      variant={state.active ? 'secondary' : 'ghost'}
       size='icon'
       aria-label={t(tool.labelKey)}
-      aria-pressed={active}
-      disabled={disabled}
+      aria-pressed={state.active}
+      disabled={readOnly || !state.available}
       onClick={() => tool.run(editor)}
       data-testid={`doc-tool-${tool.id}`}
       className={cn('h-7 w-7')}

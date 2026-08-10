@@ -132,11 +132,11 @@ export function writePlainTextIntoBody(body: Y.XmlFragment, text: string): void 
  * key; answering it again in here would be a second, weaker guard on the same
  * fact.
  *
- * Not to be confused with the document Space's `seedEmptyBody`
- * (`spaces/document/document-yjs.ts`), which repairs an already-attached body
- * and carries its own origin. Its comment is worth reading: a local emptiness
- * check cannot converge across clients, and the fix is to seed from the one
- * writer that runs exactly once. For a text node that writer is node creation.
+ * A document Space's body holds the same invariant, established the same way:
+ * by the one writer that runs exactly once. There that writer is the backend
+ * creating the Space (`@breatic/shared`'s `document-body`, worth reading for
+ * why a client-side emptiness check cannot converge); here it is node
+ * creation.
  * @param text - The plain text the new body should hold. The empty string gives
  *   the single empty block a body must never be without: the editor's schema
  *   wants at least one, and a body that disagrees loses the redo stack the first

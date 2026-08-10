@@ -58,7 +58,7 @@ vi.mock("@collab/services/space-delete-lock.js", () => ({
   SpaceDeleteLockBusyError: FakeLockBusyError,
 }));
 
-// Spread the real core barrel (encodeInitialSpaceContentState /
+// Spread the real core barrel (encodeInitialSpaceContent /
 // writeSpaceEntry keep their real impls the Yjs-mutation assertions
 // depend on) and override createLogger (no initCore under test) plus
 // projectActivitiesRepo (no business DB under test).
@@ -86,7 +86,11 @@ import {
   handleSpaceRpc,
   type SpaceRpcCaller,
 } from "../services/space-rpc.js";
-import { spaceContentDocName, ACTIVITY_NEW_SIGNAL } from "@breatic/shared";
+import {
+  spaceContentDocName,
+  documentBodyFragment,
+  ACTIVITY_NEW_SIGNAL,
+} from "@breatic/shared";
 
 const PID = "11111111-1111-4111-8111-111111111111";
 const SID = "22222222-2222-4222-9222-222222222222";
@@ -253,6 +257,50 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
     expect(fakeMetaDoc.broadcastStateless).toHaveBeenCalledWith(
       JSON.stringify({ t: ACTIVITY_NEW_SIGNAL, projectId: PID }),
     );
+  });
+
+  // The assertion above only says bytes were passed. Which bytes matters: a
+  // document Space whose body arrives empty costs the first person who undoes
+  // back to nothing both their text and their redo stack. Hardcoding the kind
+  // at this call site left the whole suite green while every document Space
+  // created here shipped that way.
+  it("space:create gives a document Space a body, and a canvas none", async () => {
+    /**
+     * Create a Space of one kind and decode the content bytes it seeded.
+     * @param type - The Space kind to create.
+     * @returns The Y.Doc the seeded bytes decode to.
+     */
+    async function seededContentDoc(type: 'canvas' | 'document'): Promise<Y.Doc> {
+      seedInitialStateMock.mockClear();
+      const res = await handleSpaceRpc(
+        { hocuspocus: makeHocuspocus() },
+        PID,
+        { userId: "u-1", role: "editor" },
+        {
+          id: "r-seed",
+          type: "space:create",
+          payload: { type, name: "S", claimToken: TOKEN },
+        },
+      );
+      expect(res.ok).toBe(true);
+      const id = res.ok ? res.result?.spaceId : undefined;
+      const name = spaceContentDocName(PID, id!, type);
+      const call = seedInitialStateMock.mock.calls.find((c) => c[0] === name);
+      expect(call).toBeDefined();
+      const doc = new Y.Doc();
+      Y.applyUpdate(doc, call?.[1] as Uint8Array);
+      return doc;
+    }
+
+    const body = documentBodyFragment(await seededContentDoc("document"));
+    expect(body.length).toBe(1);
+    // A title carrying the name the caller typed — this is the path that HAS
+    // one (`space:create` payload), unlike a project's first Space.
+    const title = body.get(0) as Y.XmlElement;
+    expect(title.nodeName).toBe("title");
+    expect(title.toString()).toBe("<title>S</title>");
+
+    expect((await seededContentDoc("canvas")).share.size).toBe(0);
   });
 
   it("space:create puts the caller's claim token on the entry", async () => {

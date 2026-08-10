@@ -21,7 +21,7 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { useDocumentHistory } from '@web/spaces/document/use-document-history';
 
@@ -65,7 +65,6 @@ describe('useDocumentHistory', () => {
         doc,
         name: NAME,
         caretProvider: { awareness },
-        hasEverSynced: true,
       });
       const history = useDocumentHistory(handle?.undoManager ?? null);
       return { handle, history };

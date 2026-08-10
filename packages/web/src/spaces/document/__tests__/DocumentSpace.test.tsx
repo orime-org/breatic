@@ -10,7 +10,7 @@ import { toast } from '@web/lib/toast';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 // The editor is only built once its caret wiring exists — both the provider and

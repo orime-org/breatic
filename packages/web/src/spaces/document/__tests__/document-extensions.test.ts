@@ -2,21 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Connecting this document to a shared one must not change what can be written
- * into it.
+ * Nothing changes what can be written into this document except on purpose.
  *
  * The editing feature set — which blocks and marks exist, what the toolbar
  * offers, how the body is styled — is a separate body of work with its own
- * slice. This slice only makes the document collaborative, and a schema change
- * smuggled in alongside that is both out of scope and dangerous: y-tiptap
- * deletes any node, mark or attribute its schema does not recognise, and
- * commits that deletion as an ordinary local change, so it syncs to every peer
- * and persists. A client on an older bundle would erase what a newer one wrote.
+ * slice. A schema change smuggled in alongside anything else is both out of
+ * scope and dangerous: y-tiptap deletes any node, mark or attribute its schema
+ * does not recognise, and commits that deletion as an ordinary local change,
+ * so it syncs to every peer and persists. A client on an older bundle would
+ * erase what a newer one wrote.
  *
- * So the schema here is asserted to be IDENTICAL to plain StarterKit's, and the
- * only configuration allowed is the two switches that a shared document
- * genuinely requires. Both are named below with the reason they qualify; a
- * third needs the same kind of justification, not just a good idea.
+ * So the schema is asserted to be plain StarterKit's PLUS exactly the named
+ * additions below, and the configuration to differ by exactly the named
+ * switches below. Each entry carries the reason it qualifies; a further one
+ * needs the same kind of justification, not just a good idea.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -34,6 +33,9 @@ import { buildDocumentExtensions } from '@web/spaces/document/document-extension
  * travels with the entry and a future addition has to state one.
  */
 const ALLOWED_STARTERKIT_OVERRIDES: Readonly<Record<string, string>> = {
+  // StarterKit's own Document is `block+`, which is wrong on both halves: it
+  // has no title, and it forbids the empty body the title makes safe.
+  document: 'the document opens with a title and may hold no body block',
   // A second, client-blind undo stack: a peer's edit arrives as a local
   // transaction there, so one Cmd+Z deletes their paragraph.
   undoRedo: 'collaboration owns history through the shared undo manager',
@@ -41,6 +43,16 @@ const ALLOWED_STARTERKIT_OVERRIDES: Readonly<Record<string, string>> = {
   // broadcasts, lands on the opener's undo stack, and fires for a viewer whose
   // update the server then silently drops.
   trailingNode: 'its append is a write to a document everyone shares',
+};
+
+/**
+ * Nodes this document has that plain StarterKit does not, and why.
+ *
+ * Same contract as the switches above: the reason travels with the entry, so
+ * a further addition has to state one rather than slip in as a name.
+ */
+const ADDED_NODES: Readonly<Record<string, string>> = {
+  title: 'the undeletable first block that keeps the shared fragment inhabited',
 };
 
 /**
@@ -54,16 +66,23 @@ function schemaFragment(): Y.XmlFragment {
 }
 
 describe('the document schema', () => {
-  it('registers exactly what plain StarterKit registers — no more, no less', () => {
+  it('registers what plain StarterKit registers plus exactly the named additions', () => {
     // Written as a set comparison rather than a hard-coded list so it keeps
     // working when StarterKit itself gains or loses something in an upgrade:
-    // what is pinned is "we did not change it", not "it contains these names".
+    // what is pinned is "we changed it by exactly this much", not "it contains
+    // these names".
     const ours = getSchema(buildDocumentExtensions({ fragment: schemaFragment() }));
     const stock = getSchema([
       StarterKit.configure({ undoRedo: false, trailingNode: false }),
     ]);
 
-    expect(Object.keys(ours.nodes).sort()).toEqual(Object.keys(stock.nodes).sort());
+    const expected = [
+      ...Object.keys(stock.nodes),
+      ...Object.keys(ADDED_NODES),
+    ].sort();
+    expect(Object.keys(ours.nodes).sort()).toEqual(expected);
+    // Marks are untouched: the title refuses all of them rather than adding
+    // one of its own.
     expect(Object.keys(ours.marks).sort()).toEqual(Object.keys(stock.marks).sort());
   });
 
@@ -79,10 +98,11 @@ describe('the document schema', () => {
 
     const attrsOf = (schema: typeof ours): Record<string, string[]> =>
       Object.fromEntries(
-        Object.entries(schema.nodes).map(([name, node]) => [
-          name,
-          Object.keys(node.spec.attrs ?? {}).sort(),
-        ]),
+        Object.entries(schema.nodes)
+          // The added nodes have no StarterKit counterpart to compare against;
+          // what they declare is pinned where they are defined.
+          .filter(([name]) => !(name in ADDED_NODES))
+          .map(([name, node]) => [name, Object.keys(node.spec.attrs ?? {}).sort()]),
       );
 
     expect(attrsOf(ours)).toEqual(attrsOf(stock));

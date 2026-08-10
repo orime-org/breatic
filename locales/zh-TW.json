@@ -552,6 +552,7 @@
       "readOnlyNotice": "這個文件現在只能檢視 —— 你輸入的內容不會被儲存。",
       "refusedNotice": "與這個文件的連線被拒絕了。你看到的內容可能不是最新的，變更也不會被儲存。",
       "placeholder": "開始寫作…",
+      "titlePlaceholder": "未命名文件",
       "toolbar": {
         "undo": "復原",
         "redo": "重做",

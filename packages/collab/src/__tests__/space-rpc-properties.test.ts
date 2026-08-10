@@ -73,7 +73,7 @@ vi.mock("@collab/services/space-delete-lock.js", () => ({
 
 // `createLogger` now comes from `@breatic/core` (the unified logger), which
 // reads the injected config at call time. Spread the real core barrel (so
-// `encodeInitialSpaceContentState` / `writeSpaceEntry` keep their real impls
+// `encodeInitialSpaceContent` / `writeSpaceEntry` keep their real impls
 // the invariants depend on) and override only `createLogger` with a no-op
 // stub so the module-level `createLogger("space-rpc")` doesn't require
 // initCore under test.

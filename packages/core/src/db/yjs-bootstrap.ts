@@ -113,14 +113,15 @@ export function writeSpaceEntry(
  * that loads the meta doc will see `spaces[spaceId] = { ...entry }`
  * and nothing else.
  *
- * Determinism note: this constructs a fresh `Y.Doc()` each call. Yjs
- * assigns a random `clientID`, so two calls with identical args
- * produce different binary outputs by default. We pin clientID to a
- * fixed sentinel (0x100000000n masked into the legal 32-bit range) so
- * inserts are reproducible — important for migration replay and for
- * the name-keyed single-row UPSERT that persists a seeded doc (collab's
- * `yjs-documents.repo.ts` does `onConflictDoUpdate` on the document
- * name, so re-seeding the same doc must produce the same bytes).
+ * Determinism note: this constructs a fresh `Y.Doc()` each call, and yjs
+ * assigns it a random `clientID`, so two calls with identical args would
+ * otherwise produce different bytes. Pinning the id to 1 makes them
+ * reproducible, which is what migration replay wants.
+ *
+ * It is not what persistence wants, though — `seedInitialState` writes with
+ * `onConflictDoNothing`, so a second seed of the same document name never
+ * reaches the row and the bytes are never compared. Reproducibility here is
+ * for the replay case alone.
  * @param args - the single Space entry plus actor / creator / timestamp fields to seed the meta doc
  * @returns the encoded Yjs update bytes, ready to persist as the doc's initial state
  */
@@ -136,10 +137,11 @@ export function encodeInitialMetaState(
   } = args;
 
   const doc = new Y.Doc();
-  // Stable clientID makes the encoded update deterministic across
-  // calls with the same args. Picked outside the auto-assigned random
-  // range so collisions with live editors are vanishingly unlikely
-  // even before the first observe.
+  // Stable clientID makes the encoded update deterministic across calls with
+  // the same args. It is NOT outside the range yjs draws from — that range is
+  // the whole of `random.uint32()`, which includes 1. Collisions with a live
+  // editor stay vanishingly unlikely for the ordinary reason: a client would
+  // have to draw 1 out of 2^32.
   doc.clientID = 1;
 
   const spaces = doc.getMap("spaces");
@@ -175,14 +177,19 @@ export function encodeInitialMetaState(
   // been here", so a row invented at project creation would be a person the
   // presence rules believe is already known.
 
-  // Seed `meta.perUser[creator]` with the first space opened +
-  // active. The frontend `readMetaState` fallback used to derive
-  // this from `spaces.map(s => s.id)` for first-time visitors,
-  // but the fallback only fires when the userMap is missing
-  // entirely — once any tab is opened the entry is created and
-  // the fallback no longer applies. Seeding makes the behavior
-  // explicit and consistent: creator joins, sees the first space
-  // already in their tab bar + active.
+  // Seed a `meta.perUser` entry with the first space opened + active.
+  //
+  // This does not reach anybody today, and the comment here used to claim it
+  // did. The only caller is collab's lazy seed, which passes `createdBy:
+  // "system"` — a placeholder, not the creator's user id. So the entry lands
+  // under a user nobody signs in as, and a real first-time visitor still has
+  // no entry of their own, which is exactly the case the frontend's
+  // `readMetaState` fallback handles by opening every Space.
+  //
+  // `activeSpaceId` has no reader either: which tab is active is local window
+  // state (2026-07-11), and the frontend projection deliberately ignores the
+  // key. Removing both is its own task; leaving the description wrong was
+  // not an option.
   const perUser = doc.getMap("perUser");
   const creatorPerUser = new Y.Map<unknown>();
   const openTabIds = new Y.Array<string>();
@@ -194,28 +201,11 @@ export function encodeInitialMetaState(
   return Y.encodeStateAsUpdate(doc);
 }
 
-/**
- * Encode the initial state for a fresh Space's CONTENT doc (e.g.
- * `project-{pid}/canvas-{sid}`, `…/document-{sid}`, `…/timeline-{sid}`).
- *
- * A new Space starts EMPTY — a blank canvas / document / timeline — so
- * the initial content is an empty `Y.Doc`. Seeding it makes the
- * content-doc ROW exist the moment the Space becomes visible in `meta`
- * (the invariant `lazySeedMeta` + the `space:create` RPC uphold), while
- * each type's editor builds its own structure (canvas `nodes`/`edges`,
- * document XmlFragment, …) on first bind. The state is independent of
- * the Space TYPE — only the doc NAME carries the type (shared
- * `spaceContentDocName`), so one encoder serves every kind.
- *
- * `seedInitialState` converges concurrent first-seeds by doc NAME (`ON
- * CONFLICT DO NOTHING`), so the bytes need not be deterministic; an
- * empty doc is trivially identical across calls regardless.
- * @returns The encoded empty-content Yjs update, ready to persist as a
- *   Space content doc's initial state.
- */
-export function encodeInitialSpaceContentState(): Uint8Array {
-  return Y.encodeStateAsUpdate(new Y.Doc());
-}
+// A Space's CONTENT doc is seeded from `@breatic/shared`'s
+// `encodeInitialSpaceContent`, which callers reach directly — the editor in
+// the browser consumes that same function, and one shared definition is the
+// point. core briefly wrapped it under a second name; the wrapper only
+// renamed, and a rename is not worth a hop.
 
 /**
  * Default display name for a freshly-seeded Space of a given kind.

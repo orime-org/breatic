@@ -42,13 +42,16 @@ export const DocumentEditor = React.memo(function DocumentEditor({
         readOnly={readOnly}
       />
       {/* Overlay scrollbar (#1773): appears only while scrolling, takes no
-          layout space. The viewport is the real scroller, so the body's
-          padding lives on it — padding has to scroll with the content. */}
-      <ScrollArea className='flex-1' viewportClassName='px-6 py-4'>
+          layout space. The side gutters live on the viewport — they are the
+          margin OUTSIDE the page, and a click there is outside the document.
+          The top and bottom breathing room does not: it belongs to the
+          editable surface itself, or the strip of it below the last block
+          answers no clicks (see `index.css`, `.doc-body-editor .ProseMirror`). */}
+      <ScrollArea className='doc-body-scroller flex-1' viewportClassName='px-6'>
         <EditorContent
           editor={editor}
           data-testid='document-editor-content'
-          className='mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
+          className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
         />
       </ScrollArea>
     </>

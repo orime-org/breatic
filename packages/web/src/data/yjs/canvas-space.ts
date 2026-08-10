@@ -444,7 +444,8 @@ function buildDataMap(
   if (!focusSeeded) map.set('focusImages', new Y.Array<unknown>());
   // Non-empty from birth: the editor's schema wants at least one block, and a
   // body that disagrees loses the redo stack the first time an undo empties it
-  // (`document-yjs.ts` states the same invariant for document bodies).
+  // (`@breatic/shared`'s `document-body` states the same invariant for
+  // document Space bodies).
   if (type === 'text') {
     const text = typeof data.content === 'string' ? data.content : '';
     map.set('body', bodyFromText(text));

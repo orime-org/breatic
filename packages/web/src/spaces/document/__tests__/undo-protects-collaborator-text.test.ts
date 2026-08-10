@@ -41,7 +41,7 @@ import * as Y from 'yjs';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import { createDocumentUndoManager } from '@web/spaces/document/document-undo';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { documentBodyFragment } from '@breatic/shared';
 
 /**
  * Every block-level node the document can hold.
@@ -52,7 +52,10 @@ function blockNodeNames(): string[] {
     buildDocumentExtensions({ fragment: new Y.Doc().getXmlFragment('probe') }),
   );
   return Object.values(schema.nodes)
-    .filter((node) => node.isBlock && node.name !== 'doc')
+    // `title` is a block by ProseMirror's reckoning but never a BODY block —
+    // it exists once, at the front, and cannot be created anywhere these
+    // cases would put one. Its own protections live in `document-title`.
+    .filter((node) => node.isBlock && node.name !== 'doc' && node.name !== 'title')
     .map((node) => node.name)
     .sort();
 }
@@ -113,14 +116,19 @@ async function undoThroughRealEditor(
     extensions: buildDocumentExtensions({ fragment: body, undoManager }),
   });
   try {
-    editor.commands.setContent(html);
+    // The document opens with a title, so the block under test is the SECOND
+    // child. Set both in one go: handing `setContent` a bare block would let
+    // the schema fold it into the title slot instead.
+    editor.commands.setContent(
+      `<h1 class="doc-title">Storyboard v3</h1>${html}`,
+    );
     await new Promise((r) => setTimeout(r, 40));
     // Close the undo unit, so the peer's edit and the local one cannot be
     // merged into a single entry by the capture timeout.
     undoManager.stopCapturing();
 
     doc.transact(() => {
-      const block = body.get(0) as Y.XmlElement;
+      const block = body.get(1) as Y.XmlElement;
       const text = block.get(0) as Y.XmlText;
       text.insert(text.length, peerText);
     }, 'remote-peer');
@@ -191,17 +199,22 @@ describe('undo in a shared document', () => {
         extensions: buildDocumentExtensions({ fragment: body, undoManager }),
       });
       try {
-        editor.commands.setContent('<h1>Plan</h1>');
+        editor.commands.setContent(
+          '<h1 class="doc-title">Storyboard v3</h1><h1>Plan</h1>',
+        );
         await new Promise((r) => setTimeout(r, 40));
         undoManager.stopCapturing();
 
+        editor.commands.setTextSelection(
+          editor.state.doc.child(0).nodeSize + 1,
+        );
         editor.chain().focus().setNode('heading', { level: 3 }).run();
         await new Promise((r) => setTimeout(r, 40));
         expect(body.toString()).toContain('level="3"');
         undoManager.stopCapturing();
 
         doc.transact(() => {
-          const block = body.get(0) as Y.XmlElement;
+          const block = body.get(1) as Y.XmlElement;
           const text = block.get(0) as Y.XmlText;
           text.insert(text.length, ' BOB');
         }, 'remote-peer');
