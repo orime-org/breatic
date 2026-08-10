@@ -66,7 +66,7 @@
  * The rule below is not about the title: a stored mark that the caret's block
  * refuses could never be applied by anyone, so it is not a stored mark. Stating
  * it that way covers the shortcut, the button, and any entry point added later,
- * rather than naming the three shortcuts that exist today.
+ * rather than naming the three shortcuts this editor happens to bind.
  */
 
 import { Extension } from '@tiptap/core';
