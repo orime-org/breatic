@@ -38,3 +38,33 @@ export function filterModelsByMode(
     (Array.isArray(m.mode) ? m.mode : [m.mode]).includes(mode),
   );
 }
+
+/**
+ * Picks which model a mode should open with, in priority order (user
+ * 2026-07-11): the one the user last chose in that mode if it is still in the
+ * catalog, else the first model the mode offers. The `recommended` tier is
+ * deliberately NOT consulted — it is a curation BADGE (a mode may carry
+ * several recommended models), not a default-selection rule; an earlier
+ * resolution misread it as one.
+ *
+ * Alongside {@link filterModelsByMode} because it is the same kind of rule:
+ * one answer to "which model does this mode open with", shared by both panels
+ * rather than one copy per modality that can drift on the memory semantics.
+ * The mode is a plain string for the same reason — each panel owns its own
+ * closed mode union and narrows before calling.
+ * @param mode - The active generation mode.
+ * @param modelByMode - Per-mode memory of the last-chosen model name.
+ * @param filteredModels - The models this mode offers (from {@link filterModelsByMode}).
+ * @returns The model name to select, or undefined when the mode offers none.
+ */
+export function resolveModelForMode(
+  mode: string,
+  modelByMode: Partial<Record<string, string>>,
+  filteredModels: ModelEntry[],
+): string | undefined {
+  const remembered = modelByMode[mode];
+  if (remembered && filteredModels.some((m) => m.name === remembered)) {
+    return remembered;
+  }
+  return filteredModels[0]?.name;
+}

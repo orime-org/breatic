@@ -8,7 +8,8 @@ import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 import {
   buildVideoPanelViewModel,
-  resolveVideoMode,
+  nodeVideoMode,
+  resolveVideoModeSwitch,
   selectVideoModeModels,
 } from '@web/spaces/canvas/generate/video-panel-view-model';
 
@@ -339,14 +340,90 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     ).toBeUndefined();
   });
 
+});
+
+describe('nodeVideoMode', () => {
   it('reads the stored mode off the node, defaulting to text-to-video', () => {
     // The node stores ONE `mode` field shared with the image panel's own mode
     // set, so a video node opened for the first time has none — and a value
     // this panel does not offer (an image mode, or a mini-tool video mode)
-    // must not be honoured either.
-    expect(resolveVideoMode(undefined)).toBe('t2v');
-    expect(resolveVideoMode('i2v')).toBe('i2v');
-    expect(resolveVideoMode('t2i')).toBe('t2v');
-    expect(resolveVideoMode('upscale')).toBe('t2v');
+    // must not be honoured either: it would narrow the model list to nothing
+    // and leave the panel with no model to submit.
+    expect(nodeVideoMode([node('n1', videoView())], 'n1')).toBe('t2v');
+    expect(nodeVideoMode([node('n1', videoView({ mode: 'i2v' }))], 'n1')).toBe(
+      'i2v',
+    );
+    expect(nodeVideoMode([node('n1', videoView({ mode: 't2i' }))], 'n1')).toBe(
+      't2v',
+    );
+    expect(
+      nodeVideoMode([node('n1', videoView({ mode: 'upscale' }))], 'n1'),
+    ).toBe('t2v');
+  });
+
+  it('defaults for a node that is not on the board', () => {
+    // A collaborator can delete the node under an open panel; the read has to
+    // answer something the panel can render rather than throw.
+    expect(nodeVideoMode([], 'gone')).toBe('t2v');
+  });
+
+  it('defaults for a node kind that carries no generate inputs', () => {
+    // Annotations and groups have no `mode` at all.
+    expect(nodeVideoMode([node('n1', { kind: 'group' })], 'n1')).toBe('t2v');
+  });
+});
+
+describe('resolveVideoModeSwitch', () => {
+  const t2v = makeModel('veo', { mode: 't2v' });
+  const both = makeModel('kling', { mode: ['t2v', 'i2v'] });
+  const i2v = makeModel('wan', { mode: 'i2v' });
+
+  it('restores the model remembered under the TARGET mode', () => {
+    const content = { modelByMode: { i2v: 'wan' }, params: {} };
+    expect(resolveVideoModeSwitch(content, 'i2v', [t2v, both, i2v]).model).toBe(
+      'wan',
+    );
+  });
+
+  it('falls back to the first model the target mode offers', () => {
+    expect(resolveVideoModeSwitch(undefined, 'i2v', [t2v, both, i2v]).model).toBe(
+      'kling',
+    );
+  });
+
+  it('never carries the outgoing mode’s model across', () => {
+    // `veo` is the current pick and belongs to t2v alone. Carrying it into
+    // i2v would submit a model the mode does not offer, which the backend
+    // source gate refuses.
+    const content = { modelByMode: { t2v: 'veo' }, params: {} };
+    expect(resolveVideoModeSwitch(content, 'i2v', [t2v, both, i2v]).model).toBe(
+      'kling',
+    );
+  });
+
+  it('reconciles params against the resolved model', () => {
+    // A value the target model still allows survives the switch; one it does
+    // not falls back to that model's default. A param the model never declares
+    // is preserved rather than dropped (user 2026-07-18): the param set lives
+    // on the node independently of which model is active, and the worker drops
+    // undeclared params at generation time, so nothing leaks upstream.
+    const content = {
+      modelByMode: {},
+      params: { aspect_ratio: '9:16', resolution: '4k', keptForLater: 'x' },
+    };
+    const { params } = resolveVideoModeSwitch(content, 'i2v', [both]);
+    expect(params.aspect_ratio).toBe('9:16');
+    expect(params.resolution).toBe('720p');
+    expect(params.keptForLater).toBe('x');
+  });
+
+  it('returns an empty model when the target mode offers none', () => {
+    // The container bails on this rather than writing it: an empty model plus
+    // empty params would clobber what the node had stored, and params do not
+    // self-heal.
+    expect(resolveVideoModeSwitch(undefined, 'i2v', [t2v])).toEqual({
+      model: '',
+      params: {},
+    });
   });
 });

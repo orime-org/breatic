@@ -45,8 +45,10 @@ import { toast } from 'sonner';
 
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import {
+  addEdge,
   addNode,
   getPromptFragment,
+  readCanvasGraph,
   removeNode,
 } from '@web/data/yjs/canvas-space';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
@@ -86,6 +88,18 @@ const T2V_LITE: ModelEntry = {
   cost_per_call: 21,
 };
 
+/**
+ * An image-to-video model. Its `sourcesByMode` says the mode needs an image,
+ * which is what turns on the first-frame slot and the execute-time gate.
+ */
+const I2V: ModelEntry = {
+  ...T2V,
+  name: 'kling-i2v',
+  display_name: 'Kling I2V',
+  mode: 'i2v',
+  sourcesByMode: { i2v: ['image'] },
+};
+
 /** An image model, so "the video panel offers video models" is a real claim. */
 const T2I: ModelEntry = {
   ...T2V,
@@ -103,13 +117,23 @@ const T2I: ModelEntry = {
 function catalog(): ModelCatalog {
   return {
     image: [T2I],
-    video: [T2V, T2V_LITE],
+    video: [T2V, T2V_LITE, I2V],
     audio: [],
     tts: [],
     three_d: [],
     understand: [],
-    total: 3,
+    total: 4,
   };
+}
+
+/** Extra board nodes + edges a case needs (reference sources and their wires). */
+interface BoardOverrides {
+  /** Nodes to put on the board beside the target and `other`. */
+  nodes?: ReadonlyArray<
+    Parameters<typeof VideoGeneratePanelContainer>[0]['nodes'][number]
+  >;
+  /** Edges the container derives the reference rail from. */
+  edges?: Parameters<typeof VideoGeneratePanelContainer>[0]['edges'];
 }
 
 /**
@@ -118,11 +142,15 @@ function catalog(): ModelCatalog {
  * since the panel mounts inside a NodeToolbar which renders children only for
  * a node ReactFlow knows about.
  * @param kind - The node's modality.
+ * @param reactNodeData - Extra data on the target's REACT view (which a case
+ *   can deliberately let disagree with Yjs).
+ * @param board - Extra reference-source nodes and the edges wiring them in.
  * @returns The render result.
  */
 function mountContainer(
   kind: 'video' | 'image' = 'video',
   reactNodeData?: Record<string, unknown>,
+  board: BoardOverrides = {},
 ): ReturnType<typeof render> {
   const canvas: CanvasContextValue = {
     projectId: 'p',
@@ -144,6 +172,7 @@ function mountContainer(
           <VideoGeneratePanelContainer
             projectId='p'
             spaceId='s'
+            edges={board.edges ?? []}
             nodes={[
               {
                 id: 'target',
@@ -154,6 +183,7 @@ function mountContainer(
               // A second node on the board, so a case that moves the panel
               // elsewhere does not trip the node-is-gone close first.
               { id: 'other', data: { kind: 'video', status: 'idle' } },
+              ...(board.nodes ?? []),
             ]}
           />
         </CanvasContext.Provider>
@@ -282,7 +312,12 @@ describe('VideoGeneratePanelContainer', () => {
               caretProvider: null,
             }}
           >
-            <VideoGeneratePanelContainer projectId='p' spaceId='s' nodes={[]} />
+            <VideoGeneratePanelContainer
+              projectId='p'
+              spaceId='s'
+              nodes={[]}
+              edges={[]}
+            />
           </CanvasContext.Provider>
         </ReactFlow>
       </QueryClientProvider>,
@@ -630,6 +665,260 @@ describe('VideoGeneratePanelContainer', () => {
       await waitFor(() => expect(execute).not.toBeDisabled());
       fireEvent.click(execute);
       await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+    });
+  });
+
+  describe('mode', () => {
+    it('opens in the mode the node stored', async () => {
+      // The mode is collaborative state on the node, not panel-local: reopening
+      // — or a collaborator switching — has to land on the same mode, with that
+      // mode's model.
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const stored = { mode: 'i2v', model: 'kling-i2v' };
+      // Both sides of the same node: Yjs is what the write-callbacks re-read,
+      // the React view is what production projects onto the board from it.
+      seedVideoNode(stored);
+      mountContainer('video', stored);
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('generate-video-mode-trigger'),
+        ).toHaveTextContent('Image to Video');
+      });
+      // The model list narrows to the mode, so the pill can only name an
+      // image-to-video model — and only once the catalog has resolved.
+      await waitFor(() => {
+        expect(screen.getByTestId('generate-model-trigger')).toHaveTextContent(
+          'Kling I2V',
+        );
+      });
+    });
+
+    it('writes the switch to Yjs with the target mode’s model', async () => {
+      // The outgoing mode's model must NOT ride along: `veo-3.1` belongs to
+      // t2v alone, and submitting it under i2v is refused by the backend
+      // source gate.
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      seedVideoNode();
+      mountContainer('video');
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const trigger = await screen.findByTestId('generate-video-mode-trigger');
+      // The panel renders one frame before the catalog resolves, and the
+      // switch is disabled until it does (nothing to switch TO yet).
+      await waitFor(() => expect(trigger).not.toBeDisabled());
+      fireEvent.click(trigger);
+      fireEvent.click(await screen.findByTestId('generate-video-mode-i2v'));
+      await waitFor(() => {
+        const data = readCanvasGraph('p', 's').nodes.find(
+          (n) => n.id === 'target',
+        )?.data;
+        expect(data && 'mode' in data ? data.mode : undefined).toBe('i2v');
+      });
+      const data = readCanvasGraph('p', 's').nodes.find(
+        (n) => n.id === 'target',
+      )?.data;
+      expect(data && 'model' in data ? data.model : undefined).toBe('kling-i2v');
+    });
+  });
+
+  describe('reference rail', () => {
+    /** An image node on the board, wired into the target as a reference. */
+    const SOURCE = {
+      id: 'src',
+      data: {
+        kind: 'image' as const,
+        status: 'idle' as const,
+        name: 'A still',
+        content: 'https://cdn/a.png',
+      },
+    };
+    const WIRE = [{ id: 'e1', source: 'src', target: 'target' }];
+
+    it('shows one row per incoming edge', async () => {
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      seedVideoNode();
+      mountContainer('video', undefined, { nodes: [SOURCE], edges: WIRE });
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      expect(await screen.findByTestId('generate-ref-e1')).toBeInTheDocument();
+    });
+
+    it('ignores an edge pointing at another node', async () => {
+      // The rail is this node's incoming edges — not the board's.
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      seedVideoNode();
+      mountContainer('video', undefined, {
+        nodes: [SOURCE],
+        edges: [{ id: 'e9', source: 'src', target: 'other' }],
+      });
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      await screen.findByTestId('generate-video-execute');
+      expect(screen.queryByTestId('generate-ref-e9')).toBeNull();
+    });
+
+    it('the row’s ✕ deletes the edge', async () => {
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      seedVideoNode();
+      addEdge('p', 's', { id: 'e1', source: 'src', target: 'target' });
+      mountContainer('video', undefined, { nodes: [SOURCE], edges: WIRE });
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      fireEvent.click(await screen.findByTestId('generate-ref-remove-e1'));
+      await waitFor(() => {
+        expect(readCanvasGraph('p', 's').edges).toEqual([]);
+      });
+    });
+
+    it('“add reference” toggles the canvas pick on this node', async () => {
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      seedVideoNode();
+      mountContainer('video');
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const tool = await screen.findByTestId('generate-video-tool-reference');
+      fireEvent.click(tool);
+      expect(useCanvasStore.getState().pickSession).toEqual({
+        nodeId: 'target',
+        purpose: 'reference',
+      });
+      fireEvent.click(tool);
+      expect(useCanvasStore.getState().pickSession).toBeNull();
+    });
+  });
+
+  describe('first frame', () => {
+    /**
+     * Opens the panel on an image-to-video node.
+     * @param over - Node data overrides (e.g. a picked first frame).
+     */
+    async function openI2vPanel(
+      over: Record<string, unknown> = {},
+    ): Promise<void> {
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const stored = { mode: 'i2v', model: 'kling-i2v', ...over };
+      seedVideoNode(stored);
+      typePrompt('make it drift toward the sea');
+      mountContainer('video', stored);
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      await screen.findByTestId('generate-video-execute');
+      // The first frame renders before the catalog resolves, and the slot only
+      // appears once the model says this mode needs a source.
+      await screen.findByTestId('generate-video-tool-first-frame');
+    }
+
+    it('offers the slot only in a mode that takes a source', async () => {
+      // Text-to-video ignores a first frame, so a slot there would offer a
+      // pick the submit then drops on the floor.
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      seedVideoNode();
+      mountContainer('video');
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      await screen.findByTestId('generate-video-execute');
+      expect(
+        screen.queryByTestId('generate-video-tool-first-frame'),
+      ).toBeNull();
+    });
+
+    it('shows the slot in image-to-video', async () => {
+      await openI2vPanel();
+      expect(
+        screen.getByTestId('generate-video-tool-first-frame'),
+      ).toBeInTheDocument();
+    });
+
+    it('the slot toggles a first-frame pick on this node', async () => {
+      await openI2vPanel();
+      const slot = screen.getByTestId('generate-video-tool-first-frame');
+      fireEvent.click(slot);
+      expect(useCanvasStore.getState().pickSession).toEqual({
+        nodeId: 'target',
+        purpose: 'firstFrame',
+      });
+      fireEvent.click(slot);
+      expect(useCanvasStore.getState().pickSession).toBeNull();
+    });
+
+    it('shows the picked copy and clears it on ✕', async () => {
+      await openI2vPanel({ firstFrameUrl: 'https://cdn/a.png' });
+      expect(
+        screen.getByTestId('generate-video-first-frame-thumbnail'),
+      ).toHaveAttribute('src', 'https://cdn/a.png');
+      fireEvent.click(screen.getByTestId('generate-video-first-frame-clear'));
+      await waitFor(() => {
+        const data = readCanvasGraph('p', 's').nodes.find(
+          (n) => n.id === 'target',
+        )?.data;
+        expect(
+          data && 'firstFrameUrl' in data ? data.firstFrameUrl : undefined,
+        ).toBeUndefined();
+      });
+    });
+
+    it('refuses to submit a source-needing mode with an empty slot, and says why', async () => {
+      // The arrow stays clickable (a greyed control explains nothing, user
+      // 2026-07-18): without this the submit reaches the provider, which
+      // rejects it, and the user is left with an error from upstream about a
+      // control they were never told to fill.
+      const create = vi.spyOn(canvasApi, 'createTask');
+      await openI2vPanel();
+      const execute = screen.getByTestId('generate-video-execute');
+      await waitFor(() => expect(execute).not.toBeDisabled());
+      fireEvent.click(execute);
+      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      expect(create).not.toHaveBeenCalled();
+      expect(useCanvasStore.getState().panelHostId).toBe('target');
+    });
+
+    it('sends the picked frame as the image param', async () => {
+      const create = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue({ id: 't1' } as Awaited<
+          ReturnType<typeof canvasApi.createTask>
+        >);
+      await openI2vPanel({ firstFrameUrl: 'https://cdn/a.png' });
+      const execute = screen.getByTestId('generate-video-execute');
+      await waitFor(() => expect(execute).not.toBeDisabled());
+      fireEvent.click(execute);
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      const payload = create.mock.calls[0]![0];
+      expect(payload.model).toBe('kling-i2v');
+      expect(payload.params.image).toBe('https://cdn/a.png');
+    });
+
+    it('leaves the image param off the wire in text-to-video', async () => {
+      // A stale copy from an earlier i2v session must not ride along: the
+      // provider reads the key's PRESENCE, so an ignored first frame would
+      // change what gets generated.
+      const create = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue({ id: 't1' } as Awaited<
+          ReturnType<typeof canvasApi.createTask>
+        >);
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      seedVideoNode({ firstFrameUrl: 'https://cdn/a.png' });
+      typePrompt('a drone shot over a canyon at dawn');
+      mountContainer('video');
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const execute = await screen.findByTestId('generate-video-execute');
+      await waitFor(() => expect(execute).not.toBeDisabled());
+      fireEvent.click(execute);
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect(create.mock.calls[0]![0].params.image).toBeUndefined();
     });
   });
 });

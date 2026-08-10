@@ -17,7 +17,10 @@ import { VIDEO_GENERATION_MODES } from '@breatic/shared';
 import type { ModelEntry } from '@breatic/shared';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { filterModelsByMode } from '@web/spaces/canvas/generate/mode-selection';
+import {
+  filterModelsByMode,
+  resolveModelForMode,
+} from '@web/spaces/canvas/generate/mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import type {
   ContentNodeView,
@@ -61,7 +64,7 @@ export interface VideoPanelViewModel {
 }
 
 /**
- * The mode a video node's panel opens in.
+ * Sanitizes a node's stored `mode` into one this panel offers.
  *
  * The node stores ONE `mode` field, shared with the image panel's own mode set
  * (a node can only ever be one modality, so they never collide in practice) —
@@ -71,7 +74,7 @@ export interface VideoPanelViewModel {
  * @param stored - The node's stored `mode`, if any.
  * @returns The stored mode when this panel offers it, else text-to-video.
  */
-export function resolveVideoMode(stored: string | undefined): VideoGenMode {
+function resolveVideoMode(stored: string | undefined): VideoGenMode {
   return VIDEO_GENERATION_MODES.includes(stored as VideoGenMode)
     ? (stored as VideoGenMode)
     : 't2v';
@@ -86,6 +89,59 @@ export function resolveVideoMode(stored: string | undefined): VideoGenMode {
  */
 function asContentView(data: NodeView | undefined): ContentNodeView | undefined {
   return data && 'status' in data ? data : undefined;
+}
+
+/**
+ * The mode the panel shows for one node, read off its live view.
+ *
+ * The panel reads this rather than storing a mode of its own: the switch is
+ * collaborative (a mode a collaborator picks has to show up here), and every
+ * write-callback re-reads it at click time so a switch that landed after the
+ * last render cannot be built over.
+ * @param nodes - Current canvas node views.
+ * @param nodeId - The node whose panel is open.
+ * @returns The mode this panel opens in — text-to-video for anything it does
+ *   not offer, a node with no stored mode, or a node that is gone.
+ */
+export function nodeVideoMode(
+  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>,
+  nodeId: string,
+): VideoGenMode {
+  return resolveVideoMode(
+    asContentView(nodes.find((n) => n.id === nodeId)?.data)?.mode,
+  );
+}
+
+/**
+ * Resolves the model + params a mode switch should write.
+ *
+ * The outgoing mode's model is deliberately NOT carried over — it belongs to
+ * that mode, and submitting it under the new one is refused by the backend
+ * source gate. What survives instead is the per-mode memory: the model last
+ * chosen in the TARGET mode, if the catalog still offers it.
+ *
+ * An empty model means the target mode offers nothing (the catalog is still
+ * loading, failed, or genuinely has no entry). The caller must not write that:
+ * an empty model with empty params clobbers what the node had stored, and
+ * params do not self-heal.
+ * @param content - The node's live content view (mode memory + current params).
+ * @param mode - The mode being switched TO.
+ * @param models - Catalog video models (the `video` bucket, unfiltered).
+ * @returns The model to select and the params reconciled against it.
+ */
+export function resolveVideoModeSwitch(
+  content: Pick<ContentNodeView, 'modelByMode' | 'params'> | undefined,
+  mode: VideoGenMode,
+  models: ModelEntry[],
+): { model: string; params: Record<string, unknown> } {
+  const modeModels = selectVideoModeModels(models, mode);
+  const model =
+    resolveModelForMode(mode, content?.modelByMode ?? {}, modeModels) ?? '';
+  const picked = modeModels.find((m) => m.name === model);
+  return {
+    model,
+    params: picked ? resolveParamsForModel(picked, content?.params ?? {}) : {},
+  };
 }
 
 /**

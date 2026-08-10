@@ -9,15 +9,20 @@ import { canvasApi } from '@web/data/api/canvas';
 import { modelsApi } from '@web/data/api/models';
 import { ApiException } from '@web/data/api/types';
 import {
+  clearNodeFirstFrame,
   getPromptFragment,
   isNodeHandling,
   isNodeLocked,
   readCanvasGraph,
   readNodeLeaseGen,
+  removeEdge,
+  setNodeMode,
   setNodeModel,
   setNodeParams,
+  type CanvasEdge,
   type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
+import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -27,15 +32,25 @@ import {
   CatalogGatedFrame,
   useOpenPanelNode,
 } from '@web/spaces/canvas/generate/generate-panel-frame';
+import {
+  deriveReferences,
+  type ReferenceRailItem,
+} from '@web/spaces/canvas/generate/derive-references';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
+import { filterModelsByMode } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
-import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import {
+  PromptEditor,
+  type PromptEditorHandle,
+} from '@web/spaces/canvas/generate/PromptEditor';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 import type { VideoParamsValue } from '@web/spaces/canvas/generate/VideoParamsPicker';
+import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import { buildVideoTaskPayload } from '@web/spaces/canvas/generate/video-task-payload';
 import {
   buildVideoPanelViewModel,
+  nodeVideoMode,
+  resolveVideoModeSwitch,
   selectVideoModeModels,
   type VideoGenMode,
 } from '@web/spaces/canvas/generate/video-panel-view-model';
@@ -43,23 +58,18 @@ import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 
 /**
- * The only generation mode this slice offers. The mode control and the five
- * remaining modes arrive with the slices that give them something to work with
- * (sources, slots); until then the panel is text-to-video and says so by
- * having nothing to switch.
+ * For the reference derivation that deliberately wants no body text. Shared so
+ * it does not allocate a map per call. Not frozen — `ReadonlyMap` is a
+ * compile-time view and `Object.freeze` would not stop `.set()` on a Map
+ * anyway; nothing downstream writes to it, and the type says they may not.
  */
-const VIDEO_PANEL_MODE: VideoGenMode = 't2v';
-
-/**
- * The prompt editor's reference pool, empty until the reference rail lands.
- * Module-level so it keeps one identity — a fresh `[]` each render would
- * rebuild the memoized editor element every time the canvas moves.
- */
-const NO_REFERENCES: ReferenceRailItem[] = [];
+const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
 
 interface VideoGeneratePanelContainerProps {
-  /** Live canvas node views. */
+  /** Live canvas node views (target + reference sources). */
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+  /** Live canvas edges (incoming = references). */
+  edges: ReadonlyArray<CanvasEdge>;
   /** Project the canvas space belongs to. */
   projectId: string;
   /** Canvas space id. */
@@ -91,6 +101,7 @@ function asNum(value: unknown): number | undefined {
  * @param root0 - Component props.
  * @param root0.nodeId - The node whose video Generate panel is open.
  * @param root0.nodes - Live canvas node views.
+ * @param root0.edges - Live canvas edges.
  * @param root0.projectId - Project id.
  * @param root0.spaceId - Canvas space id.
  * @returns The video Generate panel.
@@ -98,6 +109,7 @@ function asNum(value: unknown): number | undefined {
 function VideoGeneratePanelBody({
   nodeId,
   nodes,
+  edges,
   projectId,
   spaceId,
 }: VideoGeneratePanelContainerProps & {
@@ -127,9 +139,18 @@ function VideoGeneratePanelBody({
     setPromptText(text);
   }, []);
   // Required by the editor so that forgetting it can never be an accident.
-  // Nothing to report yet: this slice has no reference pool, so no `@` mention
-  // can exist to be picked.
+  // Nothing in this panel's submit reads the picked ids: a text chip
+  // substitutes its source's words INSIDE the serialized prompt, and an image
+  // chip becomes a model input only in reference-to-video, a mode this panel
+  // does not offer yet. When it arrives, this is where the ids it needs come
+  // from.
   const handleAtMentionsChange = React.useCallback(() => {}, []);
+  // Click a reference-rail chip → insert its `@` mention at the prompt cursor
+  // (user 2026-07-10 item 8); the editor places it at the caret or the end.
+  const promptEditorRef = React.useRef<PromptEditorHandle>(null);
+  const handleInsertReference = React.useCallback((item: ReferenceRailItem) => {
+    promptEditorRef.current?.insertReference(item);
+  }, []);
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
@@ -153,38 +174,70 @@ function VideoGeneratePanelBody({
     setFragment(getPromptFragment(projectId, spaceId, nodeId));
   }, [projectId, spaceId, nodeId]);
 
+  // The mode lives on the NODE, not in panel state: the switch is
+  // collaborative, so a mode someone else picked has to show up here, and
+  // reopening the panel has to land where it was left.
+  const mode = nodeVideoMode(nodes, nodeId);
+
+  // A referenced text node's body is a shared fragment the node view does not
+  // carry (#1774), so the panel follows the ones it can reference. This is the
+  // only source of what a text reference SAYS: the rail's previews read it,
+  // and the editor's reference pool — which is what the prompt serializer
+  // substitutes a text chip with at execute time — is built from it. Without
+  // it every text chip would serialize to nothing.
+  //
+  // "The ones it can reference" is literal, BY CONSTRUCTION: the ids come off
+  // `deriveReferences` itself, the only consumer of the map this feeds, so the
+  // two sets cannot drift. Following every text node on the board instead
+  // would attach observers to all of them and rebuild this on every keystroke
+  // anyone types anywhere.
+  const textNodeIds = React.useMemo(
+    () => [
+      ...new Set(
+        // Empty map on purpose: this call wants the ROWS (which sources, of
+        // what type), and what they say is the very thing being subscribed to
+        // below. It has to be said out loud — the parameter is required
+        // precisely so that omitting it can never be an accident.
+        deriveReferences(nodeId, nodes, edges, EMPTY_TEXT)
+          .filter((row) => row.sourceNodeType === 'text')
+          .map((row) => row.sourceNodeId),
+      ),
+    ],
+    [nodeId, nodes, edges],
+  );
+  const textById = useTextBodies(projectId, spaceId, textNodeIds);
+  const references = React.useMemo(
+    () => deriveReferences(nodeId, nodes, edges, textById),
+    [nodeId, nodes, edges, textById],
+  );
+
   const vm = React.useMemo(
-    () =>
-      buildVideoPanelViewModel({
-        nodeId,
-        nodes,
-        models,
-        mode: VIDEO_PANEL_MODE,
-      }),
-    [nodeId, nodes, models],
+    () => buildVideoPanelViewModel({ nodeId, nodes, models, mode }),
+    [nodeId, nodes, models, mode],
   );
 
   // Every write-callback re-derives from live Yjs at click time instead of
   // reading the render closure: that closure goes stale the moment a
   // collaborator edits the node, and building a task or a param write off it
-  // would clobber their edit.
-  const freshVm = React.useCallback(
-    () =>
-      buildVideoPanelViewModel({
-        nodeId,
-        nodes: readCanvasGraph(projectId, spaceId).nodes,
-        models,
-        mode: VIDEO_PANEL_MODE,
-      }),
-    [projectId, spaceId, nodeId, models],
-  );
+  // would clobber their edit. The MODE is re-read too — a collaborator can
+  // switch it between this render and the click, and it decides both the model
+  // and whether the submission needs a source.
+  const freshVm = React.useCallback(() => {
+    const graph = readCanvasGraph(projectId, spaceId);
+    return buildVideoPanelViewModel({
+      nodeId,
+      nodes: graph.nodes,
+      models,
+      mode: nodeVideoMode(graph.nodes, nodeId),
+    });
+  }, [projectId, spaceId, nodeId, models]);
 
   // Stable identities for the memoized children: the view model rebuilds on
   // every canvas mutation, so a freshly-filtered array or a rebuilt params
   // object would defeat their React.memo on each frame of any node drag.
   const stableModels = React.useMemo(
-    () => selectVideoModeModels(models, VIDEO_PANEL_MODE),
-    [models],
+    () => selectVideoModeModels(models, mode),
+    [models, mode],
   );
   const aspectRatio = asStr(vm.params.aspect_ratio);
   const resolution = asStr(vm.params.resolution);
@@ -199,6 +252,25 @@ function VideoGeneratePanelBody({
     }),
     [aspectRatio, resolution, duration, generateAudio],
   );
+  // References change identity on every derive; key the memo on their CONTENT
+  // (a small array — a stringify key is cheap and exact), or the rail's memo
+  // would be defeated on every frame of any node drag.
+  const referencesKey = JSON.stringify(references);
+  const stableReferences = React.useMemo(
+    () => references,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS the input, serialized
+    [referencesKey],
+  );
+  // Whether ANY mode this panel offers has a model to switch to. Deliberately
+  // not the active mode's subset: a node sitting in a mode the catalog no
+  // longer serves must still be able to switch back to one that works.
+  const catalogEmpty = React.useMemo(
+    () =>
+      !VIDEO_MODE_OPTIONS.some(
+        (option) => filterModelsByMode(models, option.value).length > 0,
+      ),
+    [models],
+  );
 
   const onSelectModel = React.useCallback(
     (modelId: string) => {
@@ -209,17 +281,43 @@ function VideoGeneratePanelBody({
         toast.error(t('canvas.generatePanel.modelUnavailable'));
         return;
       }
-      const fresh = freshVm();
+      const graph = readCanvasGraph(projectId, spaceId);
+      // Record the pick under the mode that is ACTIVE right now, so a later
+      // switch back to it restores this model rather than the default.
       setNodeModel(
         projectId,
         spaceId,
         nodeId,
-        VIDEO_PANEL_MODE,
+        nodeVideoMode(graph.nodes, nodeId),
         modelId,
-        resolveParamsForModel(picked, fresh.params),
+        resolveParamsForModel(picked, freshVm().params),
       );
     },
     [models, projectId, spaceId, nodeId, freshVm, t],
+  );
+
+  const onToggleMode = React.useCallback(
+    (next: string) => {
+      // The picker only ever offers modes from VIDEO_MODE_OPTIONS, so the cast
+      // narrows a string the component types loosely (one picker serves both
+      // panels) back to what this one offers.
+      const target = next as VideoGenMode;
+      // Read the node fresh — a collaborator may have changed its per-mode
+      // model memory or its params since this render — and write the switch in
+      // one transaction.
+      const graph = readCanvasGraph(projectId, spaceId);
+      const data = graph.nodes.find((n) => n.id === nodeId)?.data;
+      const content = data && 'status' in data ? data : undefined;
+      const { model, params } = resolveVideoModeSwitch(content, target, models);
+      // Never persist an empty model: the catalog may still be loading / have
+      // failed, or the target mode may offer nothing. Writing model='' plus
+      // params={} would clobber the node's stored model AND params, and params
+      // do not self-heal. (The toggle is also disabled while no offered mode
+      // has a model; this backstops the target-mode-empty case.)
+      if (!model) return;
+      setNodeMode(projectId, spaceId, nodeId, target, model, params);
+    },
+    [models, projectId, spaceId, nodeId],
   );
 
   const onChangeParams = React.useCallback(
@@ -230,6 +328,70 @@ function VideoGeneratePanelBody({
       });
     },
     [projectId, spaceId, nodeId, freshVm],
+  );
+
+  // Reference and first frame are TOGGLES: start the pick when this node is not
+  // already in it, else leave. Both flags are read reactively so a button
+  // un-highlights when a collaborator, a mode switch or Exit ends the pick —
+  // not only on a local click. A pick is a single session, so starting one
+  // purpose replaces the other.
+  const endPick = useCanvasStore((s) => s.endPick);
+  const startReferencePick = useCanvasStore((s) => s.startReferencePick);
+  const startFirstFramePick = useCanvasStore((s) => s.startFirstFramePick);
+  const referencePicking = useCanvasStore(
+    (s) =>
+      s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
+  );
+  const firstFramePicking = useCanvasStore(
+    (s) =>
+      s.pickSession?.nodeId === nodeId &&
+      s.pickSession?.purpose === 'firstFrame',
+  );
+  const onAddReference = React.useCallback(() => {
+    const session = useCanvasStore.getState().pickSession;
+    if (session?.nodeId === nodeId && session.purpose === 'reference') {
+      endPick();
+    } else {
+      startReferencePick(nodeId);
+    }
+  }, [startReferencePick, endPick, nodeId]);
+  const onFirstFrame = React.useCallback(() => {
+    const session = useCanvasStore.getState().pickSession;
+    if (session?.nodeId === nodeId && session.purpose === 'firstFrame') {
+      endPick();
+    } else {
+      startFirstFramePick(nodeId);
+    }
+  }, [startFirstFramePick, endPick, nodeId]);
+  // A running first-frame pick outlives the slot that started it when the mode
+  // changes (locally or via a collaborator's setNodeMode): the slot stops
+  // rendering, and the pick would be left running with no way to see or leave
+  // it — the canvas would still be dimming candidates for a slot that is gone.
+  React.useEffect(() => {
+    const session = useCanvasStore.getState().pickSession;
+    if (
+      !vm.requiresSource &&
+      session?.nodeId === nodeId &&
+      session.purpose === 'firstFrame'
+    ) {
+      endPick();
+    }
+  }, [vm.requiresSource, nodeId, endPick]);
+
+  const onRemoveReference = React.useCallback(
+    (item: ReferenceRailItem) => {
+      // A rail row IS an incoming edge here (video nodes carry no focus crops,
+      // which is the image panel's other row source), so removing one is
+      // removing that connection.
+      removeEdge(projectId, spaceId, item.refId);
+    },
+    [projectId, spaceId],
+  );
+  // The slot's ✕: clears the node's pick-time copy. Always available — even
+  // when the active mode takes no first frame, a stale copy must be removable.
+  const onClearFirstFrame = React.useCallback(
+    () => clearNodeFirstFrame(projectId, spaceId, nodeId),
+    [projectId, spaceId, nodeId],
   );
 
   const onExecute = React.useCallback(async () => {
@@ -257,7 +419,12 @@ function VideoGeneratePanelBody({
       warnNodeGate(t(gateBlock.toastKey));
       return;
     }
-    const freshPrompt = promptTextRef.current;
+    // Serialize the backend prompt AT CLICK TIME: a text chip substitutes its
+    // source node's CURRENT words, and that node may have been edited since
+    // the last prompt keystroke — the ref would carry the stale substitution.
+    // Falls back to the ref when the editor is gone (unmounting).
+    const freshPrompt =
+      promptEditorRef.current?.serializePrompt() ?? promptTextRef.current;
     const fresh = freshVm();
     if (
       !canExecuteGenerate({
@@ -267,6 +434,16 @@ function VideoGeneratePanelBody({
         isSubmitting: false,
       })
     ) {
+      return;
+    }
+    // Source gate (#1675, same shape as the image panel's): image-to-video
+    // needs a first frame. Without one the provider refuses the call, and the
+    // user is left with an upstream error about a control nobody told them to
+    // fill. Reject with a toast BEFORE the submitting latch — the button stays
+    // clickable (not disabled), so this is an actionable message rather than a
+    // dead control. The server re-checks before billing (defence in depth).
+    if (fresh.requiresSource && !fresh.firstFrameUrl) {
+      toast.error(t('canvas.generatePanel.errorNoFirstFrame'));
       return;
     }
     submittingRef.current = true;
@@ -281,6 +458,11 @@ function VideoGeneratePanelBody({
         model: fresh.model,
         params: fresh.params,
         promptText: freshPrompt,
+        // Mode gate: the copy rides the payload only while the active mode
+        // takes a source. A frame picked in image-to-video and left behind
+        // after a switch to text-to-video must not travel — the provider reads
+        // the key's PRESENCE, so it would change what gets generated.
+        firstFrameUrl: fresh.requiresSource ? fresh.firstFrameUrl : undefined,
         leaseGen: readNodeLeaseGen(projectId, spaceId, nodeId),
       });
       await canvasApi.createTask(payload);
@@ -329,11 +511,12 @@ function VideoGeneratePanelBody({
     () =>
       fragment ? (
         <PromptEditor
+          ref={promptEditorRef}
           fragment={fragment}
           placeholder={promptPlaceholder}
           onTextChange={handlePromptChange}
           onAtMentionsChange={handleAtMentionsChange}
-          references={NO_REFERENCES}
+          references={stableReferences}
           // Video reference images are never inert: every video mode that
           // takes them uses them.
           imageRefsDisabled={false}
@@ -353,6 +536,7 @@ function VideoGeneratePanelBody({
       promptPlaceholder,
       mentionEmptyLabel,
       noPromptNotice,
+      stableReferences,
       handlePromptChange,
       handleAtMentionsChange,
       caretProvider,
@@ -365,6 +549,24 @@ function VideoGeneratePanelBody({
       model={vm.model}
       params={stableParams}
       creditEstimate={vm.creditEstimate}
+      mode={mode}
+      onToggleMode={onToggleMode}
+      catalogEmpty={catalogEmpty}
+      references={stableReferences}
+      onAddReference={onAddReference}
+      referencePicking={referencePicking}
+      onRemoveReference={onRemoveReference}
+      onInsertReference={handleInsertReference}
+      // The slot appears exactly when the active mode needs a source asset,
+      // which for the two modes this panel offers means a first frame — the
+      // model states it per mode (`sourcesByMode`) and the view model reads it
+      // off the wire. Showing it under text-to-video would offer a pick the
+      // submit then ignores.
+      firstFrameSupported={vm.requiresSource}
+      onFirstFrame={onFirstFrame}
+      firstFramePicking={firstFramePicking}
+      firstFrameUrl={vm.firstFrameUrl}
+      onClearFirstFrame={onClearFirstFrame}
       canExecute={canExecuteGenerate({
         promptText,
         model: vm.model,
@@ -384,7 +586,7 @@ function VideoGeneratePanelBody({
  * The video Generate panel's canvas integration point. Rendered once inside
  * the ReactFlow subtree; shows nothing until a video node's Generate panel is
  * opened, then floats {@link VideoGeneratePanel} below that node.
- * @param props - Live nodes and the project / space ids.
+ * @param props - Live nodes and edges, and the project / space ids.
  * @returns The floating panel, or null when none is open.
  */
 export function VideoGeneratePanelContainer(

@@ -5,7 +5,10 @@ import { describe, it, expect } from 'vitest';
 
 import type { ModelEntry } from '@breatic/shared';
 
-import { filterModelsByMode } from '@web/spaces/canvas/generate/mode-selection';
+import {
+  filterModelsByMode,
+  resolveModelForMode,
+} from '@web/spaces/canvas/generate/mode-selection';
 
 /**
  * Minimal ModelEntry fixture — only the fields the mode filter reads.
@@ -92,5 +95,59 @@ describe('filterModelsByMode', () => {
     expect(
       filterModelsByMode([t2v, hybrid, upscale], 'i2v').map((m) => m.name),
     ).toEqual(['kling']);
+  });
+});
+
+describe('resolveModelForMode', () => {
+  const t2iModels = [T2I, T2I_B];
+
+  it('restores the remembered model for the mode when still available', () => {
+    expect(resolveModelForMode('t2i', { t2i: 't2i-b' }, t2iModels)).toBe(
+      't2i-b',
+    );
+  });
+
+  it('falls back to the first model when the mode was never chosen', () => {
+    expect(resolveModelForMode('t2i', {}, t2iModels)).toBe('t2i-a');
+  });
+
+  it('ignores the recommended TIER for defaulting — first model wins (user 2026-07-11)', () => {
+    // `tier: recommended` is a curation BADGE (a mode may carry several), not
+    // a default-selection rule — the earlier recommended-first resolution
+    // misread it (corrected 2026-07-11). With no remembered pick, the first
+    // offered model is the default even when a later one is recommended.
+    const rec: ModelEntry = { ...T2I_B, tier: 'recommended' };
+    expect(resolveModelForMode('t2i', {}, [T2I, rec])).toBe('t2i-a');
+  });
+
+  it('remembered model always wins', () => {
+    const rec: ModelEntry = { ...T2I_B, tier: 'recommended' };
+    expect(resolveModelForMode('t2i', { t2i: 't2i-b' }, [T2I, rec])).toBe(
+      't2i-b',
+    );
+  });
+
+  it('falls back to the first model when the remembered one is gone', () => {
+    expect(resolveModelForMode('t2i', { t2i: 'removed' }, t2iModels)).toBe(
+      't2i-a',
+    );
+  });
+
+  it('returns undefined when there are no models for the mode', () => {
+    expect(resolveModelForMode('i2i', { i2i: 'anything' }, [])).toBeUndefined();
+  });
+
+  it('remembers per video mode too, keyed by the mode string', () => {
+    // The reason this lives beside the mode filter rather than in the image
+    // module (#1896): the memory is per mode, and a node carrying picks for
+    // several modes must get the right one back in each — including the video
+    // ones, which the image-typed signature could not even express.
+    const veo = model('veo', 't2v', 'video');
+    const kling = model('kling', ['t2v', 'i2v'], 'video');
+    const memory = { t2v: 'kling', i2v: 'kling' };
+    expect(resolveModelForMode('t2v', memory, [veo, kling])).toBe('kling');
+    expect(resolveModelForMode('i2v', memory, [kling])).toBe('kling');
+    // A pick remembered under ANOTHER mode never leaks into this one.
+    expect(resolveModelForMode('t2v', { i2v: 'kling' }, [veo])).toBe('veo');
   });
 });

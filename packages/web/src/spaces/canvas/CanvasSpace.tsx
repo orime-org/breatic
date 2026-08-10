@@ -3465,6 +3465,7 @@ function CanvasSpaceInner({
               is ever open on a node — a video node opens this one. */}
           <VideoGeneratePanelContainer
             nodes={nodes}
+            edges={edges}
             projectId={projectId}
             spaceId={spaceId}
           />
