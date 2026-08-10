@@ -20,7 +20,7 @@
  * only uses createTestDb with an explicit URL) need neither.
  */
 
-import { inject } from "vitest";
+import { inject, afterAll } from "vitest";
 
 // Declare the shape of values provided by globalSetup.setup() via provide().
 // Vitest uses declaration merging on this interface to type inject() calls.
@@ -62,3 +62,28 @@ if (urls) {
 process.env.ENV = "dev";
 process.env.STORAGE_PROVIDER = "local";
 process.env.ALLOWED_ORIGINS = "http://localhost:8000";
+
+// Each test file hands back the pools it opened.
+//
+// This file is a setupFile, so it is evaluated once per test file, inside
+// that file's own module registry. Core's `_pgClient` singleton is therefore
+// built once PER FILE — the pools are per-file whether or not anyone closes
+// them, and the suite runs single-fork, so at any moment only one file's
+// pools are in use. Without this hook the other ~57 sets just sit there
+// holding connections until `idle_timeout` (30s), which is longer than the
+// whole run: they accumulate to a measured 106 connections and the last
+// files to run cannot open one at all (`FATAL 53300`).
+//
+// Registered here rather than in each test file: `afterAll` from a setupFile
+// applies to the file being set up, so one registration covers all of them
+// and no test file has to remember.
+//
+// `closeDb` / `closeYjsDb` are no-ops when this file never touched a
+// database, and core is imported lazily inside the hook so that merely
+// loading this setup file still pulls in no part of the application (the
+// property the header above describes).
+afterAll(async () => {
+  const core = await import("@breatic/core").catch(() => null);
+  if (!core) return;
+  await Promise.allSettled([core.closeDb(), core.closeYjsDb()]);
+});
