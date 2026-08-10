@@ -84,10 +84,10 @@ describe("GET /api/v1/users", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects empty ids query — 400", async () => {
+  it("rejects empty ids query — 422", async () => {
     const app = createApp();
     const res = await app.request("/api/v1/users?ids=", { headers: AUTH });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   it("caps incoming ids at 100 — 101st id is dropped before repo call", async () => {

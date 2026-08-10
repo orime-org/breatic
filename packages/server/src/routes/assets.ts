@@ -17,7 +17,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -140,7 +140,7 @@ assets.get(
   "/presign",
   requireAuth,
   rateLimitFor("presign", "user"),
-  zValidator("query", presignSchema),
+  validate("query", presignSchema),
   async (c) => {
     const user = c.get("user");
     const { filename, content_type, project_id, size, hash } =
@@ -245,7 +245,7 @@ assets.put("/local-upload/*", requireAuth, async (c) => {
 
   if (env.STORAGE_PROVIDER !== "local") {
     throw new ValidationError(
-      "Direct upload endpoint is only available when STORAGE_PROVIDER=local",
+      t("server.asset.direct_upload_unavailable"),
     );
   }
 
@@ -380,7 +380,7 @@ const uploadedSchema = z
     // authoritative kind comes from detectKind(head().contentType) at
     // registration), so gating on it would be security theatre: a caller who
     // wanted to attach a cover to a non-video would simply report
-    // kind='video'. It would also 400 legitimate reports whose bytes sniff to
+    // kind='video'. It would also 422 legitimate reports whose bytes sniff to
     // something other than video/* — the failure mode #1824 actually hit.
     // A cover's integrity is bounded instead by verifyDedupUpload (#1826 §4.5:
     // cover_hash must resolve to a studio_assets row in this report's owner
@@ -404,7 +404,7 @@ assets.post(
   "/uploaded",
   requireAuth,
   rateLimitFor("asset-report", "user"),
-  zValidator("json", uploadedSchema),
+  validate("json", uploadedSchema),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -748,7 +748,7 @@ assets.post(
   "/deleted",
   requireAuth,
   rateLimitFor("asset-report", "user"),
-  zValidator("json", deletedSchema),
+  validate("json", deletedSchema),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");

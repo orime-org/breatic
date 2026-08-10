@@ -66,7 +66,7 @@ describe("POST /auth/reset-password-with-recovery-code", () => {
     );
   });
 
-  it("rejects invalid email format with 400", async () => {
+  it("rejects invalid email format with 422", async () => {
     const app = createApp();
     const res = await app.request("/api/v1/auth/reset-password-with-recovery-code", {
       method: "POST",
@@ -78,10 +78,10 @@ describe("POST /auth/reset-password-with-recovery-code", () => {
       }),
     });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
-  it("rejects password shorter than 8 chars with 400", async () => {
+  it("rejects password shorter than 8 chars with 422", async () => {
     const app = createApp();
     const res = await app.request("/api/v1/auth/reset-password-with-recovery-code", {
       method: "POST",
@@ -93,7 +93,7 @@ describe("POST /auth/reset-password-with-recovery-code", () => {
       }),
     });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   it("surfaces UnauthorizedError as 401 (uniform error — service throws on wrong email / used code / mismatch)", async () => {

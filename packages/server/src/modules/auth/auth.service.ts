@@ -288,7 +288,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
   const userId = await redis.get(key);
 
   if (!userId) {
-    throw new UnauthorizedError("Invalid or expired reset token");
+    throw new UnauthorizedError(t("server.auth.invalid_reset_token"));
   }
 
   const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
@@ -336,17 +336,17 @@ export async function resetPasswordWithRecoveryCode(
 ): Promise<{ newRecoveryCode: string; userId: string }> {
   const user = await userRepo.getUserByEmail(email);
   if (!user) {
-    throw new UnauthorizedError("Invalid email or recovery code");
+    throw new UnauthorizedError(t("server.auth.invalid_recovery_code"));
   }
 
   const stored = await userRepo.getRecoveryCode(user.id);
   if (!stored || stored.usedAt !== null) {
-    throw new UnauthorizedError("Invalid email or recovery code");
+    throw new UnauthorizedError(t("server.auth.invalid_recovery_code"));
   }
 
   const valid = await verifyRecoveryCode(code, stored.hash);
   if (!valid) {
-    throw new UnauthorizedError("Invalid email or recovery code");
+    throw new UnauthorizedError(t("server.auth.invalid_recovery_code"));
   }
 
   // 1. Update password (bcrypt cost 12).
@@ -404,7 +404,7 @@ export async function verifyEmail(token: string): Promise<{ userId: string }> {
   const key = `${env.ENV}:email-verify:${token}`;
   const userId = await redis.get(key);
   if (!userId) {
-    throw new UnauthorizedError("Invalid or expired verification token");
+    throw new UnauthorizedError(t("server.auth.invalid_verification_token"));
   }
   await userRepo.updateUser(userId, { emailVerified: true });
   await redis.del(key);

@@ -43,6 +43,7 @@ import {
   registerWithDedup,
   type RegisterAssetInput,
 } from "@domain/asset/asset.repo.js";
+import { t } from "@breatic/shared";
 import type { StudioAssetEntity } from "@breatic/shared";
 import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
 
@@ -61,7 +62,7 @@ import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
 export async function resolveOwnerStudioId(projectId: string): Promise<string> {
   const studioId = await projectsRepo.findOwnerStudioId(projectId);
   if (studioId === undefined) {
-    throw new NotFoundError(`Project ${projectId} not found`);
+    throw new NotFoundError(t("server.project.not_found"));
   }
   return studioId;
 }

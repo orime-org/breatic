@@ -15,7 +15,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { projectCreateSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -42,7 +42,7 @@ projects.use(requireAuth);
  * the first space of that type on first open (B.2).
  * @returns `201` with `{ data: ProjectEntity }`
  */
-projects.post("/", zValidator("json", projectCreateSchema), async (c) => {
+projects.post("/", validate("json", projectCreateSchema), async (c) => {
   const user = c.get("user");
   const { studioId, name, slug, visibility, spaceType, description } =
     c.req.valid("json");
@@ -75,7 +75,7 @@ const transferOwnerSchema = z.object({ toUserId: z.string().uuid() });
 projects.post(
   "/:id/transfer-owner",
   requireRoleOnParam("id", "owner"),
-  zValidator("json", transferOwnerSchema),
+  validate("json", transferOwnerSchema),
   async (c) => {
     const user = c.get("user");
     const id = c.req.param("id");
@@ -102,7 +102,7 @@ projects.post(
  */
 projects.get(
   "/:id/transfer",
-  zValidator("param", z.object({ id: z.string().uuid() })),
+  validate("param", z.object({ id: z.string().uuid() })),
   requireRoleOnParam("id", "owner"),
   async (c) => {
     const live = await projectTransferService.findLiveProjectTransfer(
@@ -131,7 +131,7 @@ projects.delete(
   // straight into a uuid comparison of its own — a validator behind it would
   // never see a bad `:id`, and the 500 it exists to prevent would happen in
   // the middleware instead.
-  zValidator(
+  validate(
     "param",
     z.object({ id: z.string().uuid(), transferId: z.string().uuid() }),
   ),
@@ -232,7 +232,7 @@ const projectUpdateSchema = z
 membershipScoped.patch(
   "/:id",
   requireRoleOnParam("id", "editor"),
-  zValidator("json", projectUpdateSchema),
+  validate("json", projectUpdateSchema),
   async (c) => {
     const user = c.get("user");
     const id = c.req.param("id");

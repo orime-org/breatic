@@ -17,7 +17,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -48,7 +48,7 @@ const querySchema = z.object({
  * @returns `200` with
  *   `{ data: Array<{ id, email, username, avatar_url }> }`
  */
-users.get("/", zValidator("query", querySchema), async (c) => {
+users.get("/", validate("query", querySchema), async (c) => {
   const { ids: rawIds } = c.req.valid("query");
   const idList = rawIds
     .split(",")

@@ -9,11 +9,11 @@
  * The service-layer data invariants (atomic team+admin, slug-unique 409, the
  * per-user limit) are pinned in team-studio-create. THIS suite verifies the
  * HTTP boundary those cannot: auth gate (real `requireAuth`), body validation
- * (`zValidator`), the JSON envelope + status codes, and the slug-check endpoint.
+ * (`validate`), the JSON envelope + status codes, and the slug-check endpoint.
  *
  *   - POST /studios authenticated      → 201, creator is the studio admin
  *   - POST /studios NO session         → the real requireAuth status (pinned)
- *   - POST /studios malformed slug     → the real zValidator status (pinned)
+ *   - POST /studios malformed slug     → the real validate status (pinned)
  *   - POST /studios taken slug         → 409
  *   - GET  /slug-available fresh/taken → { available } envelope
  */
@@ -117,14 +117,14 @@ describe("team studio create routes (real PG + Redis)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("POST /api/v1/studios → 400 for a malformed slug (real zValidator)", async () => {
+  it("POST /api/v1/studios → 422 for a malformed slug (real validate)", async () => {
     const user = await insertUser();
     const res = await app.request("/api/v1/studios", {
       method: "POST",
       headers: { ...JSON_HEADERS, Cookie: await loginCookie(user) },
       body: JSON.stringify({ name: "X", slug: "Bad Slug!" }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   it("POST /api/v1/studios → 409 for a taken slug", async () => {

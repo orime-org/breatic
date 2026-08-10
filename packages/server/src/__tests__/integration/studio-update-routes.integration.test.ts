@@ -276,7 +276,7 @@ describe("PATCH /studio/:slug — refusals", () => {
 
     const res = await patchStudio(studio.slug, cookie, { slug: "settings" });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     expect((await readStudio(studio.id)).slug).toBe(studio.slug);
   });
 
@@ -317,7 +317,7 @@ describe("PATCH /studio/:slug — refusals", () => {
 
     const res = await patchStudio(studio.slug, cookie, { slug: "Has Capitals" });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   it("refuses an empty patch rather than reporting a successful no-op", async () => {
@@ -327,7 +327,7 @@ describe("PATCH /studio/:slug — refusals", () => {
 
     const res = await patchStudio(studio.slug, cookie, {});
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   it("refuses a maintainer — editing the studio is admin-only", async () => {

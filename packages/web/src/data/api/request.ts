@@ -6,6 +6,7 @@ import axios, {
   type AxiosRequestConfig,
   AxiosError,
 } from 'axios';
+import { getLocale } from '@breatic/shared';
 
 import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/types';
 
@@ -21,8 +22,10 @@ import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/typ
  *
  * - `baseURL` defaults to `/api` so production nginx routes everything
  *   under one origin; dev uses Vite proxy.
+ * - Request interceptor: send the language the user picked, so the server
+ *   can answer in it.
  * - Response interceptor: unwrap backend error envelope into `ApiException`.
- * @returns A configured axios instance with the error-normalizing interceptor attached.
+ * @returns A configured axios instance with the locale and error-normalizing interceptors attached.
  */
 function createClient(): AxiosInstance {
   const instance = axios.create({
@@ -34,6 +37,24 @@ function createClient(): AxiosInstance {
     timeout: 30_000,
     headers: { 'Content-Type': 'application/json' },
     withCredentials: true,
+  });
+
+  // The server negotiates its reply language from `Accept-Language`, which
+  // the browser fills from the OS setting. That is not the language the user
+  // picked in our switcher — `changeLocale` writes localStorage and swaps the
+  // UI catalog without touching the network. Sending it here is what joins
+  // the two, and it is read per request because the user can switch at any
+  // time while this singleton lives for the life of the page.
+  instance.interceptors.request.use((config) => {
+    // An explicit header from the caller wins; nothing sets one today, but
+    // silently overwriting one would be a surprise if anything ever did.
+    if (config.headers.get('Accept-Language') === undefined) {
+      // The exact locale, not a prefix: the server prefix-matches `zh-*` to
+      // the first supported `zh-` entry, so a `zh-TW` UI would otherwise be
+      // answered in simplified Chinese.
+      config.headers.set('Accept-Language', getLocale());
+    }
+    return config;
   });
 
   instance.interceptors.response.use(

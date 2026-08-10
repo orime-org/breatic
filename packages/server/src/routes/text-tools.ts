@@ -12,7 +12,7 @@
 import { newId } from "@breatic/shared";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { textToolSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -34,7 +34,7 @@ textTools.use(requireAuth);
  */
 textTools.post(
   "/",
-  zValidator("json", textToolSchema),
+  validate("json", textToolSchema),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");

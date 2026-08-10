@@ -16,7 +16,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireRole, getProjectId } from "@server/middleware/role.js";
@@ -50,7 +50,7 @@ projectInvites.use(requireAuth);
 projectInvites.post(
   "/",
   requireRole("owner"),
-  zValidator("json", inviteCreateSchema),
+  validate("json", inviteCreateSchema),
   async (c) => {
     const user = c.get("user");
     const projectId = getProjectId(c);

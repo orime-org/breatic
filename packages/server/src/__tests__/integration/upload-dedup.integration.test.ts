@@ -17,7 +17,7 @@
  *     one dedup domain no matter who uploads;
  *   - the authoritative upload cap (413) with the boundary allowed;
  *   - "no hash, no upload" (#1826 §0 rule 4): an unhashed report is REFUSED
- *     (400) and lands no ledger row — replacing the retired availability-first
+ *     (422) and lands no ledger row — replacing the retired availability-first
  *     degrade that let it through as "stored but untracked";
  *   - attribution comes from the GRANT, not the report's project_id (§2.2 v15):
  *     reporting with another studio's project cannot shift the storage cost;
@@ -132,7 +132,7 @@ async function loginCookie(userId: string): Promise<string> {
  * GET /assets/presign for `user` with declared size. The hash is MANDATORY on
  * the wire now ("no hash, no upload"), so it defaults to a well-formed filler
  * here: a caller that only cares about the size gate still gets past schema
- * validation, and nothing silently 400s for the wrong reason.
+ * validation, and nothing silently 422s for the wrong reason.
  */
 async function presign(
   cookie: string,
@@ -368,7 +368,7 @@ describe("upload cap (authoritative) + hash degrade", () => {
       kind: "image",
     });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     expect(await ledgerCount(personalStudioId, hash)).toBe(0);
   });
 });

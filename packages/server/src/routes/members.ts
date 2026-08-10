@@ -14,7 +14,7 @@
  */
 
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireRole } from "@server/middleware/role.js";
@@ -68,7 +68,7 @@ const patchBodySchema = z.object({
 members.patch(
   "/:userId",
   requireRole("owner"),
-  zValidator("json", patchBodySchema),
+  validate("json", patchBodySchema),
   async (c) => {
     const projectId = c.get("projectId");
     const targetUserId = c.req.param("userId");
