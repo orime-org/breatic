@@ -118,6 +118,20 @@ export interface HttpRequestOptions {
    * this API offers is an abort signal and aborting ends the whole operation.
    */
   timeoutMs?: number;
+
+  /**
+   * Raised when the caller no longer wants the result at all.
+   *
+   * Not a shorter deadline, and it does not replace one. A deadline says how
+   * long ONE delivery may take and is renewed for each; this says the answer
+   * is no longer wanted, and it holds for the whole call. The two are composed
+   * per delivery, which is what keeps a single-shot signal from aborting every
+   * later delivery before it leaves the ground.
+   *
+   * Optional because most callers have no way to be stopped. Passing nothing
+   * leaves the behaviour exactly as it was: the call ends when it ends.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -228,15 +242,31 @@ function isDetached(buffer: ArrayBufferLike): boolean {
 }
 
 /**
- * Wait, then let the loop try again.
+ * Wait, then let the loop try again — unless the caller gives up first.
  *
- * A bare timer, and that is the point. There is no signal to honour and
- * nothing to detach: the only thing that ends a wait is the wait finishing.
+ * The subscription is torn down on both ways out, which matters more here than
+ * anywhere else in this file: everything else a delivery creates dies with the
+ * delivery, while this signal belongs to the caller and outlives the call. One
+ * left attached per call is a leak that grows for as long as the caller keeps
+ * making them.
  * @param ms - How long to wait.
- * @returns A promise that resolves once the delay has elapsed.
+ * @param signal - The caller's, when it has one. An already-raised signal
+ *   returns without waiting at all.
+ * @returns A promise that resolves once the delay has elapsed or the caller
+ *   gave up, whichever happens first.
  */
-function wait(ms: number): Promise<void> {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise<void>((resolve) => setTimeout(resolve, ms));
+  if (signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+  });
 }
 
 /**
@@ -327,7 +357,16 @@ export async function httpRequest(
     let failure: unknown = null;
 
     try {
-      response = await fetch(url, { ...init, signal: controller.signal });
+      // Composed per delivery, never reused: the deadline's controller is
+      // created fresh above, and the caller's is the same object every time
+      // round. A composite made once and kept would carry the first delivery's
+      // expiry into the second.
+      response = await fetch(url, {
+        ...init,
+        signal: options.signal
+          ? AbortSignal.any([options.signal, controller.signal])
+          : controller.signal,
+      });
       if (response.ok) return response;
     } catch (error) {
       failure = error;
@@ -335,7 +374,16 @@ export async function httpRequest(
       clearTimeout(timer);
     }
 
-    const decision = decideRetry({
+    // Asked ahead of the retry policy rather than inside it, because it is a
+    // different kind of question and the policy has no way to answer it. A
+    // delivery cut short by the caller produces no response, so the policy
+    // sees no status, falls past every status-based exit, and lands on the
+    // branch for a dropped connection — where a replay-safe request is told to
+    // try again. What the policy decides is whether a replay would be correct;
+    // what is asked here is whether anyone still wants the answer.
+    const decision = options.signal?.aborted
+      ? { retry: false as const }
+      : decideRetry({
       ...(response !== null && { status: response.status }),
       ...(response !== null && {
         retryAfterMs: parseRetryAfter(response.headers.get("retry-after"), Date.now()),
@@ -367,6 +415,11 @@ export async function httpRequest(
     // bodies used two connections, but past undici's 64 KiB buffering
     // threshold reuse collapses. A caller discarding large ones should cancel
     // them (`response.body?.cancel()`).
-    await wait(decision.delayMs);
+    // The caller's signal ends the wait as well as the delivery. Ending only
+    // the delivery leaves a call that has already decided to stop sitting out
+    // a backoff it will do nothing with — a delay the user watches for no work
+    // at all. The next pass round the loop finds the signal raised and takes
+    // the exit above.
+    await wait(decision.delayMs, options.signal);
   }
 }
