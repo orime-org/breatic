@@ -146,10 +146,10 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        // Not dimmed, and that is NOT the same as "these count": neither mode
-        // this panel offers feeds a reference IMAGE to the model — text-to-
-        // video takes nothing, and image-to-video takes its picture from the
-        // first-frame slot. An image `@` chip therefore contributes nothing
+        // Not dimmed, and that is NOT the same as "these count": no mode this
+        // panel offers feeds a reference IMAGE to the model — text-to-video
+        // takes nothing, and image-to-video and first-last frame take their
+        // pictures from the slots. An image `@` chip therefore contributes nothing
         // today (a non-text chip serializes to an empty string). Dimming is
         // how the image panel says that, but here it would also disable the
         // row's ✕ — `inert` gates removal too — leaving a reference the rail
