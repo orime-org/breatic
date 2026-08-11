@@ -23,6 +23,7 @@ vi.mock('@web/data/api/chat', () => ({
 }));
 
 import { chatApi } from '@web/data/api/chat';
+import { StreamRefusedError } from '@web/data/stream/sse';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 import { useChatStore } from '@web/stores';
 
@@ -197,6 +198,66 @@ describe('sending a message', () => {
     // The server's ending never arrives on this path: the connection is gone
     // before it is written, so nothing but this clears the flag.
     expect(useChatStore.getState().streaming).toBe(false);
+  });
+});
+
+describe('when the conversation it was writing to is gone', () => {
+  it('opens a new one and says the same thing again', async () => {
+    // Another tab deleted this conversation. The user has already typed,
+    // pressed enter, and watched their words appear — losing them here would
+    // be losing something they did nothing wrong to lose.
+    openChatAnswers([]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(new StreamRefusedError(404, 'Resource not found'));
+    });
+
+    await act(async () => {
+      await result.current.send('find me references');
+    });
+
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalledTimes(2));
+    expect(chatApi.streamMessage).toHaveBeenCalledTimes(2);
+    expect(result.current.messages.map((m) => m.content)).toContain('find me references');
+  });
+
+  it('gives up rather than looping when the new one is refused too', async () => {
+    openChatAnswers([]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+
+    vi.mocked(chatApi.streamMessage).mockImplementation(async (_input, h) => {
+      h.onError?.(new StreamRefusedError(404, 'Resource not found'));
+    });
+
+    await act(async () => {
+      await result.current.send('hi');
+    });
+
+    // A conversation refused the moment it was made is not a stale id, and
+    // asking again would only ask again.
+    expect(chatApi.streamMessage).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.messages.at(-1)?.failed).toBe(true));
+  });
+
+  it('shows the failure for a refusal it cannot recover from', async () => {
+    openChatAnswers([]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(new StreamRefusedError(403, 'Forbidden'));
+    });
+
+    await act(async () => {
+      await result.current.send('hi');
+    });
+
+    // Being refused for lack of permission is not fixed by trying again.
+    expect(chatApi.openChat).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(result.current.messages.at(-1)?.failed).toBe(true));
   });
 });
 

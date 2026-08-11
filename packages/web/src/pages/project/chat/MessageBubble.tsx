@@ -4,6 +4,7 @@
 import type * as React from 'react';
 
 import { cn } from '@web/lib/utils';
+import { useTranslation } from '@web/i18n/use-translation';
 
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { ToolCallCard } from '@web/pages/project/chat/ToolCallCard';
@@ -24,6 +25,7 @@ interface MessageBubbleProps {
 export function MessageBubble({
   message,
 }: MessageBubbleProps): React.JSX.Element {
+  const t = useTranslation();
   const isUser = message.role === 'user';
   return (
     <div
@@ -45,17 +47,32 @@ export function MessageBubble({
         {message.thinking ? (
           <ThinkingFold thinking={message.thinking} />
         ) : null}
-        <div
-          className='whitespace-pre-wrap'
-          data-testid='message-bubble-content'
-        >
-          {message.content}
-          {message.streaming ? (
-            <span aria-label='streaming' className='ml-1 animate-pulse'>
-              ▌
-            </span>
-          ) : null}
-        </div>
+        {message.content || message.streaming ? (
+          <div
+            className='whitespace-pre-wrap'
+            data-testid='message-bubble-content'
+          >
+            {message.content}
+            {message.streaming ? (
+              <span aria-label='streaming' className='ml-1 animate-pulse'>
+                ▌
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        {message.failed ? (
+          // On the turn it belongs to rather than as a banner: what failed is
+          // this reply, and a bar at the top of the panel would say the whole
+          // conversation had. The wording is ours — what the server sends on
+          // this path is a hardcoded English sentence.
+          <div
+            role='alert'
+            data-testid='message-bubble-error'
+            className='rounded-content-sm border border-status-error-border bg-status-error-bg px-2 py-1 text-xs text-status-error-foreground'
+          >
+            {t('chat.error.turnFailed')}
+          </div>
+        ) : null}
         {message.toolCalls?.map((tc) => (
           <ToolCallCard key={tc.id} toolCall={tc} />
         ))}

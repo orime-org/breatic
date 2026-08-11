@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Image, Music, PenTool } from 'lucide-react';
+import { Images, PencilLine, Sparkles } from 'lucide-react';
 import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -10,14 +10,22 @@ import { useTranslation } from '@web/i18n/use-translation';
 
 interface QuickAction {
   id: string;
-  icon: typeof Image;
-  labelKey: 'image' | 'music' | 'writing';
+  icon: typeof Images;
+  labelKey: 'findReference' | 'writePrompt' | 'refinePrompt';
 }
 
+/**
+ * What the agent is for, said as three things a user can click.
+ *
+ * They follow the two lines the product is built around: gathering material,
+ * and writing the prompts that turn it into something. Generating the image
+ * itself is not among them — that happens on the canvas, and an agent that
+ * offers to do it here is offering something it does not do.
+ */
 const QUICK_ACTIONS: ReadonlyArray<QuickAction> = [
-  { id: 'image', icon: Image, labelKey: 'image' },
-  { id: 'music', icon: Music, labelKey: 'music' },
-  { id: 'pen', icon: PenTool, labelKey: 'writing' },
+  { id: 'find-reference', icon: Images, labelKey: 'findReference' },
+  { id: 'write-prompt', icon: Sparkles, labelKey: 'writePrompt' },
+  { id: 'refine-prompt', icon: PencilLine, labelKey: 'refinePrompt' },
 ];
 
 interface ChatEmptyProps {

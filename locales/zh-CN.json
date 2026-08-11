@@ -109,9 +109,9 @@
       "hintNodes": "试试 @ 节点提问",
       "hintDirect": "或直接在下方输入对话 ↓",
       "quick": {
-        "image": "生成一张赛博朋克风格图",
-        "music": "配一段 lo-fi 背景音乐",
-        "writing": "帮我写一段产品描述"
+        "findReference": "帮我找赛博朋克风格的参考图",
+        "writePrompt": "帮我写一个生成插画的提示词",
+        "refinePrompt": "帮我把这段提示词改得更具体"
       }
     },
     "history": {
@@ -128,6 +128,9 @@
       "weeksAgo": "{count, plural, other {# 周前}}",
       "monthsAgo": "{count, plural, other {# 月前}}",
       "isoDate": "{date}"
+    },
+    "error": {
+      "turnFailed": "这条回复没能完成，可以再发一次。"
     }
   },
   "canvas": {

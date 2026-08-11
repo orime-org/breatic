@@ -109,9 +109,9 @@
       "hintNodes": "@ でノードに質問してみよう",
       "hintDirect": "または下に直接プロンプトを入力 ↓",
       "quick": {
-        "image": "サイバーパンク風の画像を生成",
-        "music": "lo-fi な BGM を作る",
-        "writing": "プロダクトの説明文を書く"
+        "findReference": "サイバーパンク風の参考画像を探して",
+        "writePrompt": "イラスト生成のプロンプトを書いて",
+        "refinePrompt": "このプロンプトをもっと具体的にして"
       }
     },
     "history": {
@@ -128,6 +128,9 @@
       "weeksAgo": "{count, plural, other {# 週間前}}",
       "monthsAgo": "{count, plural, other {# ヶ月前}}",
       "isoDate": "{date}"
+    },
+    "error": {
+      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。"
     }
   },
   "canvas": {

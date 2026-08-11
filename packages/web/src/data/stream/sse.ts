@@ -10,6 +10,29 @@ import { API_BASE_PATH } from '@web/data/api/base-path';
 const EVENT_STREAM = 'text/event-stream';
 
 /**
+ * A stream that was refused before it opened.
+ *
+ * The status is what tells the caller which refusal this is, and some of them
+ * are recoverable — a conversation that is gone can be replaced, where a
+ * permission failure cannot. Without it every refusal reads the same and the
+ * only thing a caller can do is show the message.
+ */
+export class StreamRefusedError extends Error {
+  /**
+   * Build a refusal from what the server answered with.
+   * @param status - The HTTP status the server answered with
+   * @param message - What to tell the user, from the server when it said
+   */
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'StreamRefusedError';
+  }
+}
+
+/**
  * Decide what a non-streaming response means for the caller.
  *
  * The library's own `defaultOnOpen` looks at `content-type` and throws a
@@ -18,8 +41,8 @@ const EVENT_STREAM = 'text/event-stream';
  * discarded unread, and the user saw "Expected content-type to be
  * text/event-stream" instead of what was actually wrong.
  * @param response - The response that opened the stream.
- * @throws {Error} When the response is not a stream, carrying the server's
- *   own message when it sent one.
+ * @throws {StreamRefusedError} When the response is not a stream, carrying the
+ *   status and the server's own message when it sent one.
  */
 async function readEnvelopeOrOpen(response: Response): Promise<void> {
   const contentType = response.headers.get('content-type');
@@ -37,7 +60,7 @@ async function readEnvelopeOrOpen(response: Response): Promise<void> {
   }
   // Never the library's string: it is hardcoded English and names transport
   // details the user has no use for.
-  throw new Error(message ?? t('server.error.internal'));
+  throw new StreamRefusedError(response.status, message ?? t('server.error.internal'));
 }
 
 interface SseOptions<TEvent> {

@@ -7,6 +7,7 @@ import type { MessageData, SSEEventEnvelope } from '@breatic/shared';
 import { SSE_EVENT_NAMES } from '@breatic/shared';
 
 import { chatApi } from '@web/data/api/chat';
+import { StreamRefusedError } from '@web/data/stream/sse';
 import type { OpenChatResult } from '@web/data/api/chat';
 import { useChatStore } from '@web/stores';
 import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
@@ -30,6 +31,9 @@ type CachedChat = Omit<OpenChatResult, 'current'> & {
  * @returns The cache key both the fetch and every write to it use
  */
 const chatKey = (projectId: string): readonly unknown[] => ['chat-open', projectId];
+
+/** The one refusal a second attempt can do anything about. */
+const NOT_FOUND = 404;
 
 export interface ChatSession {
   /** Every message to show, history and the reply in flight alike. */
@@ -154,6 +158,51 @@ export function useChatSession(projectId: string): ChatSession {
     [queryClient, projectId],
   );
 
+  /**
+   * Drop one message from the cache.
+   * @param id - The message to drop
+   */
+  const removeMessage = React.useCallback(
+    (id: string): void => {
+      queryClient.setQueryData<CachedChat>(chatKey(projectId), (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          current: {
+            ...prev.current,
+            messages: prev.current.messages.filter((m) => m.id !== id),
+          },
+        };
+      });
+    },
+    [queryClient, projectId],
+  );
+
+  /**
+   * The last thing the user said, as the cache holds it.
+   * @returns That message, or undefined when they have not said anything
+   */
+  const lastUserMessage = React.useCallback((): CachedMessage | undefined => {
+    const messages = queryClient.getQueryData<CachedChat>(chatKey(projectId))?.current.messages;
+    return messages?.filter((m) => m.role === 'user').at(-1);
+  }, [queryClient, projectId]);
+
+  /** Leave a failed reply where the answer would have gone. */
+  const appendFailedReply = React.useCallback((): void => {
+    const last = queryClient.getQueryData<CachedChat>(chatKey(projectId))?.current.messages.at(-1);
+    appendMessages([
+      {
+        id: `local-reply-${crypto.randomUUID()}`,
+        role: 'assistant',
+        parts: [],
+        content: '',
+        ts: new Date().toISOString(),
+        turnIndex: last?.turnIndex ?? 1,
+        failed: true,
+      },
+    ]);
+  }, [queryClient, projectId, appendMessages]);
+
   /** End the turn in flight, however it ended. */
   const finishTurn = React.useCallback((): void => {
     inFlight.current = null;
@@ -165,32 +214,49 @@ export function useChatSession(projectId: string): ChatSession {
     finishTurn();
   }, [finishTurn]);
 
-  const send = React.useCallback(
-    async (text: string): Promise<void> => {
-      if (!conversationId) return;
-
+  /**
+   * Run one turn against one conversation.
+   * @param text - What the user said
+   * @param conversation - The conversation to write it to
+   * @param userMessage - The message already on screen for it, when this is a
+   *   second attempt after the first conversation turned out to be gone
+   * @returns The refusal that ended it, when one did
+   */
+  const runTurn = React.useCallback(
+    async (
+      text: string,
+      conversation: string,
+      userMessage?: CachedMessage,
+    ): Promise<StreamRefusedError | undefined> => {
       const now = new Date().toISOString();
       const replyId = `local-reply-${crypto.randomUUID()}`;
-      const turnIndex = (query.data?.current.messages.at(-1)?.turnIndex ?? 0) + 1;
+      const turnIndex =
+        (queryClient.getQueryData<CachedChat>(chatKey(projectId))?.current.messages.at(-1)
+          ?.turnIndex ?? 0) + 1;
 
-      appendMessages([
-        {
-          id: `local-user-${crypto.randomUUID()}`,
-          role: 'user',
-          parts: [{ type: 'text', text }],
-          content: text,
-          ts: now,
-          turnIndex,
-        },
-        { id: replyId, role: 'assistant', parts: [], content: '', ts: now, turnIndex },
-      ]);
+      const said: CachedMessage = userMessage ?? {
+        id: `local-user-${crypto.randomUUID()}`,
+        role: 'user',
+        parts: [{ type: 'text', text }],
+        content: text,
+        ts: now,
+        turnIndex,
+      };
+
+      appendMessages(
+        userMessage
+          ? [{ id: replyId, role: 'assistant', parts: [], content: '', ts: now, turnIndex }]
+          : [said, { id: replyId, role: 'assistant', parts: [], content: '', ts: now, turnIndex }],
+      );
 
       const controller = new AbortController();
       inFlight.current = controller;
       setStreaming(true);
 
+      let refusal: StreamRefusedError | undefined;
+
       await chatApi.streamMessage(
-        { projectId, conversationId, message: text },
+        { projectId, conversationId: conversation, message: text },
         {
           signal: controller.signal,
           onEvent: (event: SSEEventEnvelope) => {
@@ -236,22 +302,58 @@ export function useChatSession(projectId: string): ChatSession {
             }
           },
           onClose: finishTurn,
-          onError: () => {
-            patchMessage(replyId, (m) => ({ ...m, failed: true }));
+          onError: (err: unknown) => {
+            if (err instanceof StreamRefusedError) {
+              refusal = err;
+            } else {
+              patchMessage(replyId, (m) => ({ ...m, failed: true }));
+            }
             finishTurn();
           },
         },
       );
+
+      // The reply that was never going to arrive goes, whether this attempt
+      // is the end of it or the start of a second one.
+      if (refusal) removeMessage(replyId);
+      return refusal;
     },
-    [
-      projectId,
-      conversationId,
-      query.data,
-      appendMessages,
-      patchMessage,
-      setStreaming,
-      finishTurn,
-    ],
+    [projectId, queryClient, appendMessages, patchMessage, removeMessage, setStreaming, finishTurn],
+  );
+
+  const send = React.useCallback(
+    async (text: string): Promise<void> => {
+      if (!conversationId) return;
+
+      const refusal = await runTurn(text, conversationId);
+      if (!refusal) return;
+
+      // Only one refusal is worth a second try. A conversation can be deleted
+      // from another tab while this one still holds its id, and that is not
+      // something the user did or can act on; every other refusal — no
+      // permission, a project that is gone — says trying again is pointless.
+      if (refusal.status !== NOT_FOUND) {
+        appendFailedReply();
+        return;
+      }
+
+      const fresh = await chatApi.openChat(projectId);
+      const said = lastUserMessage();
+
+      // The new conversation arrives with what the user said already on it,
+      // so their words do not blink out for the frame between the two.
+      queryClient.setQueryData<CachedChat>(chatKey(projectId), {
+        ...fresh,
+        current: {
+          ...fresh.current,
+          messages: said ? [...fresh.current.messages, said] : fresh.current.messages,
+        },
+      });
+
+      const secondRefusal = await runTurn(text, fresh.current.conversation.id, said);
+      if (secondRefusal) appendFailedReply();
+    },
+    [conversationId, projectId, queryClient, runTurn, appendFailedReply, lastUserMessage],
   );
 
   const messages = React.useMemo(
