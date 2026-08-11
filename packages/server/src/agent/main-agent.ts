@@ -28,6 +28,7 @@ import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { parseInteractionSentinel, stripSentinel } from "@server/agent/interaction-sentinel.js";
+import { toModelMessages } from "@server/agent/model-messages.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"]);
 
@@ -81,10 +82,10 @@ export class MainAgent {
 
     // Build messages array from pre-compressed history
     const userContent = MainAgent.buildUserContent(userMessage, resources);
-    const messages = [
-      ...compressedHistory.map((m) => ({ role: m.role, content: m.content })),
+    const messages: ModelMessage[] = [
+      ...toModelMessages(compressedHistory),
       { role: "user", content: userContent },
-    ] as ModelMessage[];
+    ];
 
     yield* this.runStream(agentConfig, messages, signal);
   }
@@ -131,10 +132,10 @@ export class MainAgent {
       `/skill ${skillName} ${userInput}`,
       resources,
     );
-    const messages = [
-      ...compressedHistory.map((m) => ({ role: m.role, content: m.content })),
+    const messages: ModelMessage[] = [
+      ...toModelMessages(compressedHistory),
       { role: "user", content: userContent },
-    ] as ModelMessage[];
+    ];
 
     yield* this.runStream(agentConfig, messages, signal);
   }
