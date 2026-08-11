@@ -6,10 +6,6 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
-import {
-  RAIL_ROW_NESTED,
-  RAIL_ROW_TOP,
-} from '@web/pages/studio/rail/rail-row';
 import { StudioRailDrawer } from '@web/pages/studio/rail/StudioRailDrawer';
 
 function setup() {
@@ -54,11 +50,11 @@ describe('StudioRailDrawer (narrow-screen rail)', () => {
     expect(screen.getByText('Breatic')).toBeInTheDocument();
   });
 
-  // The two hosts share StudioRailContent so they cannot drift, but the parts
-  // each host owns — the single rule, the pinned footer, the icon colour — are
-  // written twice. Asserting them only on the desktop rail would let the
-  // drawer's copy change with every desktop test still green, which is the
-  // drift that sharing the content was meant to rule out.
+  // The content and the foot are the same components the desktop rail renders,
+  // so what is left for this host to get wrong is only what it writes itself:
+  // the brand header, the hamburger, and where it puts the shared pieces. The
+  // rule count below is not about drift — it is a cheap check that the shared
+  // content actually mounted inside the drawer.
 
   it('offsets its header from outside the box, not from inside it', async () => {
     // The header is a fixed h-9 and the Sheet's own close button is absolutely
@@ -70,8 +66,8 @@ describe('StudioRailDrawer (narrow-screen rail)', () => {
     setup();
     await user.click(screen.getByRole('button', { name: 'Open navigation' }));
     const header = screen.getByText('Breatic').closest('div');
-    expect(header?.className).toContain('mt-2');
-    expect(header?.className).not.toContain('pt-2');
+    expect(header?.className).toMatch(/(^|\s)mt-2(\s|$)/);
+    expect(header?.className).not.toMatch(/(^|\s)pt-2(\s|$)/);
   });
 
   it('draws the same two rules the desktop rail does', async () => {
@@ -95,23 +91,18 @@ describe('StudioRailDrawer (narrow-screen rail)', () => {
     expect(viewport).not.toContainElement(footerButton);
   });
 
-  it('paints every rail icon in the same secondary grey, as the desktop rail does', async () => {
-    const user = userEvent.setup();
+  it('paints the hamburger the same secondary grey the rail paints its icons', () => {
+    // Only the parts this host owns are worth asserting here: the content and
+    // the foot are the same components the desktop rail renders, and the
+    // desktop tests check those. What is written twice is the hamburger — and
+    // like every other icon-only chrome button in the rail, it takes that grey
+    // from `chrome-ghost` rather than naming it.
     setup();
-    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
-    const drawer = screen.getByTestId('studio-rail-drawer');
-    // The rail's own rows only, found by the shared row definition. The brand
-    // mark keeps its colours on purpose and the close X belongs to the vendor
-    // Sheet — neither is a rail row, so neither is this rule's business.
-    const rows = [...drawer.querySelectorAll('a, button')].filter(
-      (el) =>
-        el.className.includes(RAIL_ROW_TOP) ||
-        el.className.includes(RAIL_ROW_NESTED),
+    const hamburger = screen.getByRole('button', { name: 'Open navigation' });
+    expect(hamburger.className).toContain('text-muted-foreground');
+    expect(hamburger.className).toContain('hover:text-foreground');
+    expect(hamburger.querySelector('svg')?.getAttribute('class')).not.toMatch(
+      /(^|\s)text-[a-z][\w-]*(\s|$)/,
     );
-    const icons = rows.flatMap((row) => [...row.querySelectorAll('svg')]);
-    expect(icons.length).toBeGreaterThan(0);
-    for (const icon of icons) {
-      expect(icon.getAttribute('class')).toContain('text-muted-foreground');
-    }
   });
 });

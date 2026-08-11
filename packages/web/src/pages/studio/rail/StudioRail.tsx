@@ -6,6 +6,7 @@ import type * as React from 'react';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 import { RailFooter } from '@web/pages/studio/rail/RailFooter';
+import { RAIL_SCROLLER } from '@web/pages/studio/rail/rail-row';
 import { StudioRailContent } from '@web/pages/studio/rail/StudioRailContent';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 
@@ -56,7 +57,7 @@ export function StudioRail({
       {/* ScrollArea (#1773): overlay scrollbar — appears only while
           scrolling, no layout space, hover changes color only. `min-h-0`
           lets it shrink inside the column so the footer keeps its height. */}
-      <ScrollArea className='min-h-0 flex-1'>
+      <ScrollArea className={RAIL_SCROLLER}>
         <StudioRailContent
           studios={studios}
           activeSlug={activeSlug}

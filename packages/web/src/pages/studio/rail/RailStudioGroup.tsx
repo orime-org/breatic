@@ -8,7 +8,6 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
 import {
-  railIconButton,
   RAIL_INDENT_NESTED,
   RAIL_INDENT_TOP,
   RAIL_LIST,
@@ -46,8 +45,20 @@ const HEADING_TEXT =
 /**
  * The chevron's own hit area — `--btn-compact`, the smallest step on the
  * chrome ladder. Small, but far larger than the 12px glyph inside it.
+ *
+ * Everything else about how it looks comes from the `chrome-ghost` variant,
+ * which is the description of exactly this: an icon-only chrome button, muted
+ * at rest, accent fill and full foreground under the pointer. Written out by
+ * hand it takes fourteen classes, eleven of which the `Button` base hands out
+ * unconditionally — a copy that is inert as well as duplicated.
+ *
+ * The glyph inside takes no colour of its own. `currentColor` resolves against
+ * the nearest element that sets one, so a glyph naming its own colour makes
+ * the button's `text-*` and `hover:text-*` dead and needs a `group-hover:`
+ * variant to win the effect back. Leaving the colour to the button is one rule
+ * instead of three.
  */
-const TOGGLE = `shrink-0 ${railIconButton('h-6 w-6')}`;
+const TOGGLE = 'h-6 w-6 shrink-0';
 
 /**
  * A rail studio group (spec §4.2 / §4.3 — Discord-style two-level expand): a
@@ -100,7 +111,7 @@ export function RailStudioGroup({
           // life pointing at an element that is not in the document — which
           // ARIA does not allow and `aria-expanded` already covers.
           aria-controls={collapsed ? undefined : listId}
-          variant={null}
+          variant='chrome-ghost'
           size={null}
           className={TOGGLE}
         >

@@ -45,13 +45,36 @@ describe('RailFooter (the rail’s pinned foot)', () => {
     render(<RailFooter onCreateStudio={vi.fn()} />);
     expect(
       screen.getByRole('button', { name: 'New Studio' }).className,
-    ).toContain('w-full');
+    ).toMatch(/(^|\s)w-full(\s|$)/);
   });
 
   it('carries its own rule and padding, so a host cannot draw a second version', () => {
     const { container } = render(<RailFooter onCreateStudio={vi.fn()} />);
     expect(container.firstElementChild?.className).toContain('border-t');
     expect(container.firstElementChild?.className).toContain('shrink-0');
+  });
+
+  it('is pinned by a scroller that will give way, in both hosts', () => {
+    // `shrink-0` only pins the foot if something above it shrinks, and a flex
+    // child refuses to go below its content without `min-h-0` — so a long
+    // studio list would push the foot out of view. The two halves of that fact
+    // sit in different components, and asserting one without the other leaves
+    // the pinning resting on a class no test names.
+    const railTree = render(
+      <MemoryRouter>
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const railScroller = railTree.container.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    )?.parentElement;
+    expect(railScroller?.className).toMatch(/(^|\s)min-h-0(\s|$)/);
+    expect(railScroller?.className).toMatch(/(^|\s)flex-1(\s|$)/);
   });
 
   it('renders identically in both hosts, down to the markup', async () => {

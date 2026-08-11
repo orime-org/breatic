@@ -141,8 +141,22 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     renderGroup();
     const toggle = screen.getByRole('button', { name: 'My Studios' });
     // --btn-compact, the smallest step on the chrome ladder.
-    expect(toggle.className).toContain('h-6');
-    expect(toggle.className).toContain('w-6');
+    expect(toggle.className).toMatch(/(^|\s)h-6(\s|$)/);
+    expect(toggle.className).toMatch(/(^|\s)w-6(\s|$)/);
+  });
+
+  it('takes its chrome look from the variant that already describes it', () => {
+    // An icon-only chrome button — muted at rest, accent fill and full
+    // foreground under the pointer — is what `chrome-ghost` is. Spelling those
+    // classes out by hand produces a copy of a variant that already exists,
+    // and eleven of the classes such a copy needs are ones the `Button` base
+    // hands out unconditionally, so the copy is inert as well as duplicated.
+    renderGroup();
+    const toggle = screen.getByRole('button', { name: 'My Studios' });
+    expect(toggle.className).toContain('text-muted-foreground');
+    expect(toggle.className).toContain('hover:bg-accent');
+    expect(toggle.className).toContain('hover:text-foreground');
+    expect(toggle.className).toContain('focus-visible:ring-1');
   });
 
   // ---- The two-level hierarchy (spec 2026-06-07 §4.3) -------------------
@@ -154,9 +168,9 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     renderGroup();
     const row = screen.getByRole('link', { name: /Acme/ });
     expect(row.className).toContain(RAIL_ROW_NESTED);
-    expect(row.className).toContain('pl-3.5');
-    expect(row.className).toContain('h-8');
-    expect(row.className).not.toContain('pl-2 ');
+    expect(row.className).toMatch(/(^|\s)pl-3\.5(\s|$)/);
+    expect(row.className).toMatch(/(^|\s)h-8(\s|$)/);
+    expect(row.className).not.toMatch(/(^|\s)pl-2(\s|$)/);
   });
 
   it('keeps the top level at 8px, the other half of that same step', () => {
@@ -167,8 +181,8 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     // compared a rendered row against the constant that produced it.
     renderGroup();
     const heading = screen.getByText('My Studios').closest('div');
-    expect(heading?.className).toContain('pl-2');
-    expect(heading?.className).not.toContain('pl-3.5');
+    expect(heading?.className).toMatch(/(^|\s)pl-2(\s|$)/);
+    expect(heading?.className).not.toMatch(/(^|\s)pl-3\.5(\s|$)/);
   });
 
   it('stacks studio rows with the same gap the top-level rows use', () => {
@@ -221,6 +235,6 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     expect(title.className).toContain('text-2xs');
     expect(title.className).toContain('tracking-wider');
     // 28px header row against the 32px top-level rows.
-    expect(title.closest('div')?.className).toContain('h-7');
+    expect(title.closest('div')?.className).toMatch(/(^|\s)h-7(\s|$)/);
   });
 });

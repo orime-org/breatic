@@ -19,6 +19,17 @@
 /** The padding a rail segment insets its contents by. */
 export const RAIL_SEGMENT = 'p-2';
 
+/**
+ * The scrolling half of the rail's column, in either host.
+ *
+ * `shrink-0` on the foot only pins it if something above it will give way, and
+ * this is what gives way: without `min-h-0` a flex child refuses to shrink
+ * below its content, so a long studio list pushes the foot out of view instead
+ * of scrolling. The two classes are one fact stated from the other end of the
+ * same column, which is why they are not left to each host to remember.
+ */
+export const RAIL_SCROLLER = 'min-h-0 flex-1';
+
 /** How far in a top-level row sits. */
 export const RAIL_INDENT_TOP = 'pl-2';
 
@@ -55,28 +66,6 @@ export const RAIL_INDENT_NESTED = 'pl-3.5';
  */
 function railRow(paddingLeft: string): string {
   return `flex h-8 w-full items-center justify-start gap-2 whitespace-nowrap rounded-chrome ${paddingLeft} pr-2 text-sm font-normal transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`;
-}
-
-/**
- * An icon-only button in the rail's chrome at a given size — the group
- * chevron, the narrow-screen hamburger.
- *
- * These two were written out separately and came out identical in all thirteen
- * classes, including the focus ring {@link railRow} names as its own. That is
- * not a coincidence to leave standing: the chevron sits in the same tab order
- * as the rows, so the reason the ring is stated in one place applies to it too.
- * Only the size ever differs.
- *
- * The glyph inside takes no colour of its own. `currentColor` resolves against
- * the nearest element that sets one, so a glyph that names its own colour
- * makes the button's `text-*` and `hover:text-*` dead classes and needs a
- * `group-hover:` variant to get the effect back. Leaving the colour to the
- * button is one rule instead of three.
- * @param size - The height and width classes for this button.
- * @returns The button's class string.
- */
-export function railIconButton(size: string): string {
-  return `flex ${size} items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`;
 }
 
 /**

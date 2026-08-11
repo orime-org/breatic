@@ -211,8 +211,13 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
       </MemoryRouter>,
     );
     for (const rule of container.querySelectorAll('hr')) {
-      expect(rule.previousElementSibling?.className).toContain('pb-1.5');
-      expect(rule.nextElementSibling?.className).toContain('pt-3');
+      // Four of those six numbers are the segment's own 8px inset. Naming only
+      // the two that differ would leave the other four to a constant nothing
+      // asserts, and the sentence above claims all six.
+      expect(rule.previousElementSibling?.className).toMatch(/(^|\s)p-2(\s|$)/);
+      expect(rule.previousElementSibling?.className).toMatch(/(^|\s)pb-1\.5(\s|$)/);
+      expect(rule.nextElementSibling?.className).toMatch(/(^|\s)p-2(\s|$)/);
+      expect(rule.nextElementSibling?.className).toMatch(/(^|\s)pt-3(\s|$)/);
     }
   });
 
@@ -273,6 +278,14 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
     expect(icons.length).toBeGreaterThan(0);
     for (const icon of icons) {
       expect(painterOf(icon)).toBe('text-muted-foreground');
+      // Walking up to find the painter would skip right over a glyph that
+      // named some third colour of its own and report an ancestor's grey as
+      // this glyph's. So a glyph may either name the same grey or name none
+      // and inherit it, and nothing else.
+      const own = (icon.getAttribute('class') ?? '').match(
+        /(^|\s)(text-[a-z][\w-]*)(\s|$)/,
+      );
+      expect(own?.[2] ?? 'text-muted-foreground').toBe('text-muted-foreground');
     }
   });
 

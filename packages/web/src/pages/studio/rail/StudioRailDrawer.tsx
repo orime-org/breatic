@@ -14,8 +14,8 @@ import {
   SheetTrigger,
 } from '@web/components/ui/sheet';
 import { useTranslation } from '@web/i18n/use-translation';
-import { railIconButton } from '@web/pages/studio/rail/rail-row';
 import { RailFooter } from '@web/pages/studio/rail/RailFooter';
+import { RAIL_SCROLLER } from '@web/pages/studio/rail/rail-row';
 import { StudioRailContent } from '@web/pages/studio/rail/StudioRailContent';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 import { BrandMark } from '@web/ui/BrandMark';
@@ -70,9 +70,9 @@ export function StudioRailDrawer({
         <Button
           type='button'
           aria-label={t('studio.rail.openNav')}
-          variant={null}
+          variant='chrome-ghost'
           size={null}
-          className={`${railIconButton('h-7 w-7')} md:hidden`}
+          className='h-7 w-7 md:hidden'
         >
           <Menu className='h-[18px] w-[18px]' />
         </Button>
@@ -110,7 +110,7 @@ export function StudioRailDrawer({
         </div>
         {/* ScrollArea (#1773): overlay scrollbar — appears only while
             scrolling, no layout space, hover changes color only. */}
-        <ScrollArea className='min-h-0 flex-1'>
+        <ScrollArea className={RAIL_SCROLLER}>
           <StudioRailContent
             studios={studios}
             activeSlug={activeSlug}

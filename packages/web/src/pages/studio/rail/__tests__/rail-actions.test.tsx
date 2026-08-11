@@ -214,10 +214,10 @@ describe('RailRecentLink (spec §4.1 ③)', () => {
     const svg = screen
       .getByRole('link', { name: /Recent/ })
       .querySelector('svg');
-    expect(svg?.getAttribute('class')).toContain('h-3.5');
-    expect(svg?.getAttribute('class')).toContain('w-3.5');
-    expect(svg?.parentElement?.className).toContain('h-5');
-    expect(svg?.parentElement?.className).toContain('w-5');
+    expect(svg?.getAttribute('class')).toMatch(/(^|\s)h-3\.5(\s|$)/);
+    expect(svg?.getAttribute('class')).toMatch(/(^|\s)w-3\.5(\s|$)/);
+    expect(svg?.parentElement?.className).toMatch(/(^|\s)h-5(\s|$)/);
+    expect(svg?.parentElement?.className).toMatch(/(^|\s)w-5(\s|$)/);
   });
 
   it('separates a row’s glyph from its label by the grid’s 8px', () => {
