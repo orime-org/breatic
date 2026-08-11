@@ -5,7 +5,7 @@ import type * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
-import { RAIL_LIST, RAIL_SEGMENT } from '@web/pages/studio/rail/rail-row';
+import { RAIL_SEGMENT } from '@web/pages/studio/rail/rail-row';
 import { RailCreateActions } from '@web/pages/studio/rail/RailCreateActions';
 import { RailRecentLink } from '@web/pages/studio/rail/RailRecentLink';
 import { RailStudioGroup } from '@web/pages/studio/rail/RailStudioGroup';
@@ -57,14 +57,21 @@ export function StudioRailContent({
   const { personal, myTeam, joined } = splitStudios(studios);
   return (
     <>
-      {/* The rule sits closer to the segment it closes than to the one it
-          opens (pb-1.5 above, pt-3 below), so it reads as belonging to what
-          came before rather than floating between two equal blocks. */}
-      <div className={`${RAIL_LIST} ${RAIL_SEGMENT} pb-1.5`}>
+      {/* A rule sits closer to the segment it closes than to the one it opens
+          (pb-1.5 above, pt-3 below), so it reads as belonging to what came
+          before rather than floating between two equal blocks. Both rules
+          follow it, so the column has one rhythm rather than one per
+          boundary. */}
+      <div className={`${RAIL_SEGMENT} pb-1.5`}>
         <RailRecentLink
           label={t('studio.rail.recent')}
           active={activeSlug === null}
         />
+      </div>
+
+      <hr className='border-border' />
+
+      <div className={`${RAIL_SEGMENT} pb-1.5 pt-3`}>
         <RailCreateActions
           createProjectLabel={t('studio.rail.createProject')}
           createCollectionLabel={t('studio.rail.createCollection')}

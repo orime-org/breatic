@@ -74,13 +74,13 @@ describe('StudioRailDrawer (narrow-screen rail)', () => {
     expect(header?.className).not.toContain('pt-2');
   });
 
-  it('draws the same single rule the desktop rail does', async () => {
+  it('draws the same two rules the desktop rail does', async () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByRole('button', { name: 'Open navigation' }));
     expect(
       screen.getByTestId('studio-rail-drawer').querySelectorAll('hr'),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
   it('pins create-studio outside the scrolling area, as the desktop rail does', async () => {

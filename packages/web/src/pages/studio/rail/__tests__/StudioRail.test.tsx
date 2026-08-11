@@ -154,11 +154,13 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
 
   // ---- Visual rework, direction D (user 2026-08-10) ---------------------
 
-  it('draws one rule inside the scroll area, not one between every segment', () => {
+  it('draws a rule at each of the two boundaries, and nowhere else', () => {
     // Five rules used to cut a 240px column into six pieces while every group
-    // already carried a heading that said where it began. One rule is left,
-    // and it separates two different kinds of thing: what you can do from
-    // where you can go.
+    // already carried a heading that said where it began. Two are left, and
+    // each separates a different kind of thing from the next: where you can
+    // go (Recent), what you can make (the two create actions), and where your
+    // studios are. Recent and the create actions sat in one block with 2px
+    // between them, which read as one list of four unrelated things.
     const { container } = render(
       <MemoryRouter>
         <StudioRail
@@ -169,14 +171,12 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
         />
       </MemoryRouter>,
     );
-    expect(container.querySelectorAll('hr')).toHaveLength(1);
+    expect(container.querySelectorAll('hr')).toHaveLength(2);
   });
 
-  it('breathes less above that rule than below it, as the demo does', () => {
-    // The ratified demo pads the acting segment 8/8/6 and the navigating one
-    // 12/8/8: the rule sits closer to what it closes than to what it opens.
-    // With both segments on a flat 8 the rule reads as centred between two
-    // equal blocks, which is not what was signed off.
+  it('puts Recent and the create actions on opposite sides of the first rule', () => {
+    // Going somewhere and making something are different acts. They shared a
+    // block, two pixels apart, which read as one list.
     const { container } = render(
       <MemoryRouter>
         <StudioRail
@@ -187,9 +187,33 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
         />
       </MemoryRouter>,
     );
-    const rule = container.querySelector('hr');
-    expect(rule?.previousElementSibling?.className).toContain('pb-1.5');
-    expect(rule?.nextElementSibling?.className).toContain('pt-3');
+    const [firstRule] = [...container.querySelectorAll('hr')];
+    const recent = screen.getByRole('link', { name: /Recent/ });
+    const create = screen.getByRole('button', { name: 'New project' });
+    expect(firstRule.previousElementSibling).toContainElement(recent);
+    expect(firstRule.nextElementSibling).toContainElement(create);
+  });
+
+  it('breathes less above each rule than below it, as the demo does', () => {
+    // The ratified demo pads the segment above a rule 8/8/6 and the one below
+    // it 12/8/8: a rule sits closer to what it closes than to what it opens.
+    // With flat 8 on both sides a rule reads as centred between two equal
+    // blocks, which is not what was signed off. Both rules follow it, so the
+    // column has one rhythm rather than one per boundary.
+    const { container } = render(
+      <MemoryRouter>
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    for (const rule of container.querySelectorAll('hr')) {
+      expect(rule.previousElementSibling?.className).toContain('pb-1.5');
+      expect(rule.nextElementSibling?.className).toContain('pt-3');
+    }
   });
 
   it('pins create-studio to the foot of the rail, outside the scrolling area', () => {
@@ -333,7 +357,8 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
         />
       </MemoryRouter>,
     );
-    const groups = container.querySelector('hr')?.nextElementSibling;
+    const rules = [...container.querySelectorAll('hr')];
+    const groups = rules[rules.length - 1]?.nextElementSibling;
     expect(groups?.className).toMatch(/(^|\s)gap-3(\s|$)/);
   });
 
