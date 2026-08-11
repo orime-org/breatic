@@ -330,6 +330,69 @@ describe('when the chat never opened', () => {
   });
 });
 
+describe('when the turn is over', () => {
+  it('replaces the local copy of the reply with what was actually stored', async () => {
+    openChatAnswers([]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await act(async () => {
+      void result.current.send('search for something');
+    });
+
+    // The panel builds its own copy of the reply as the pieces arrive, and
+    // that copy only ever carries prose. What the server stores is the whole
+    // of it — the tool it reached for, the reasoning, its real id.
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'Found two.' } });
+    });
+
+    vi.mocked(chatApi.openChat).mockResolvedValue({
+      conversations: [{ id: 'c-1' }],
+      current: {
+        conversation: { id: 'c-1' },
+        messages: [
+          {
+            id: 'stored-user',
+            role: 'user',
+            parts: [{ type: 'text', text: 'search for something' }],
+            content: 'search for something',
+            ts: '2026-08-11T00:00:00Z',
+            turnIndex: 1,
+          },
+          {
+            id: 'stored-reply',
+            role: 'assistant',
+            parts: [
+              { type: 'text', text: 'Found two.' },
+              {
+                type: 'tool',
+                toolCallId: 'tc-1',
+                toolName: 'web_search',
+                input: {},
+                status: 'success',
+                output: 'two links',
+              },
+            ],
+            content: 'Found two.',
+            ts: '2026-08-11T00:00:01Z',
+            turnIndex: 1,
+          },
+        ],
+      },
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_DONE, data: {} });
+    });
+
+    // Without this the tool the agent used is missing from the reply until
+    // the panel is opened again, and the message on screen keeps an id the
+    // server has never heard of.
+    await waitFor(() => expect(result.current.messages.at(-1)?.id).toBe('stored-reply'));
+    expect(result.current.messages.at(-1)?.toolCalls ?? []).toHaveLength(1);
+  });
+});
+
 describe('when reopening the chat also fails', () => {
   it('still says the turn failed instead of leaving the screen bare', async () => {
     openChatAnswers([]);
