@@ -3,9 +3,9 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
@@ -118,7 +118,17 @@ beforeEach(() => {
   });
 });
 
-function setup(slug = 'acme-studio', strict = false) {
+/**
+ * Report the current path, so a test can assert that a redirect happened and
+ * where it went — the address itself is part of what the page promises.
+ * @returns An element carrying the current pathname.
+ */
+function LocationProbe(): React.JSX.Element {
+  const location = useLocation();
+  return <div data-testid='location'>{location.pathname}</div>;
+}
+
+function setup(slug = 'acme-studio', strict = false, tab?: string) {
   // A non-zero gcTime so StrictMode's transient unmount/remount reuses the
   // cached query (proving the shell fetches once, not twice).
   const client = new QueryClient({
@@ -126,10 +136,16 @@ function setup(slug = 'acme-studio', strict = false) {
   });
   const ui = (
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/studio/${slug}`]}>
+      <MemoryRouter
+        initialEntries={[
+          tab === undefined ? `/studio/${slug}` : `/studio/${slug}/${tab}`,
+        ]}
+      >
         <Routes>
           <Route path='/studio/:slug' element={<StudioContainerPage />} />
+          <Route path='/studio/:slug/:tab' element={<StudioContainerPage />} />
         </Routes>
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -251,5 +267,73 @@ describe('StudioContainerPage', () => {
     setup('acme-studio');
     await user.click(await screen.findByRole('tab', { name: 'Works' }));
     expect(screen.getByText('No works yet')).toBeInTheDocument();
+  });
+
+  // ── the tab is in the address (task #82) ────────────────────────────────
+  // A tab is a place, not a mood: it holds a different set of things, and
+  // each set is worth sending someone a link to. Keeping it in component
+  // state made every one of them the same address, so a link could only ever
+  // say "that studio", a refresh dropped you back to Projects, and Back did
+  // nothing.
+
+  it('opens the tab the address names', async () => {
+    setup('acme-studio', false, 'settings');
+    // The tab strip is the visible proof: `aria-selected` names the one tab
+    // the page considers current.
+    const settings = await screen.findByRole('tab', { name: 'Settings' });
+    expect(settings).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('opens Projects when the address names no tab', async () => {
+    setup('acme-studio');
+    const projects = await screen.findByRole('tab', { name: 'Projects' });
+    expect(projects).toHaveAttribute('aria-selected', 'true');
+    // The bare studio address is not rewritten to spell out its default —
+    // /studio/{slug} stays what a user typed and what we hand out.
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/studio/acme-studio',
+    );
+  });
+
+  it('sends an address naming no such tab back to the studio', async () => {
+    setup('acme-studio', false, 'nonsense');
+    // Not a blank page, and not left sitting in the bar: a wrong address
+    // resolves to the one address that is certainly right.
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/studio/acme-studio',
+      ),
+    );
+    expect(await screen.findByRole('tab', { name: 'Projects' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('sends a non-member back to the studio even when the tab name is real', async () => {
+    // A non-member gets the public façade, which renders no tabs at all — so
+    // `settings` is a perfectly spelled address for something not on the
+    // page. Somebody pasting their own settings link to a stranger is the
+    // ordinary way to arrive here.
+    setup('stranger-studio', false, 'settings');
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/studio/stranger-studio',
+      ),
+    );
+    expect(screen.queryByRole('tablist')).toBeNull();
+  });
+
+  it('keeps the address in step when the user switches tab by clicking', async () => {
+    // The address is the state, so it has to be what changes — otherwise the
+    // page and the bar disagree and Back goes somewhere nobody asked for.
+    const user = userEvent.setup();
+    setup('acme-studio');
+    await user.click(await screen.findByRole('tab', { name: 'Members' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/studio/acme-studio/members',
+      ),
+    );
   });
 });
