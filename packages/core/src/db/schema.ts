@@ -54,10 +54,14 @@ export const users = pgTable(
     hashedPassword: varchar("hashed_password", { length: 255 }),
     emailVerified: boolean("email_verified").default(false).notNull(),
     googleId: varchar("google_id", { length: 255 }),
-    // Breatic is credits-only. No subscription tiers, no membership
-    // levels - every user has the same feature set and pays per-use by
-    // deducting credits. The old `membership_type` / `membership_expires_at`
-    // columns were removed in the 0010_* migration.
+    // No membership column here, and that is not the same statement it used
+    // to be. The old `membership_type` / `membership_expires_at` pair was
+    // removed in the 0010_* migration back when the product carried no tiers
+    // at all; the ratified membership decision of 2026-07-30 brought tiers
+    // back (four of them), and none of it is built yet. So this table holds
+    // no tier because the tier work has not started, NOT because the product
+    // has decided against tiers. Credits are a separate leg and live in
+    // `credit_balances`, never on the account row.
     // Recovery code (GitHub backup-codes pattern, PR-a 2026-05-26):
     // bcrypt-hashed single-use code shown once at registration so users
     // can reset their password without an SMTP backend (self-host
