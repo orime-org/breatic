@@ -742,7 +742,11 @@
     "topBar": {
       "home": "Studio 首頁",
       "account": "帳號",
-      "signOut": "登出"
+      "signOut": "登出",
+      "credits": "點數",
+      "membership": "會員",
+      "accountSettings": "帳號設定",
+      "notOpenYet": "未開放"
     },
     "container": {
       "shell": {

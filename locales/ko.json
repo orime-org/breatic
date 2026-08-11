@@ -742,7 +742,11 @@
     "topBar": {
       "home": "Studio 홈",
       "account": "계정",
-      "signOut": "로그아웃"
+      "signOut": "로그아웃",
+      "credits": "크레딧",
+      "membership": "멤버십",
+      "accountSettings": "계정 설정",
+      "notOpenYet": "미제공"
     },
     "container": {
       "shell": {

@@ -742,7 +742,11 @@
     "topBar": {
       "home": "Studio ホーム",
       "account": "アカウント",
-      "signOut": "ログアウト"
+      "signOut": "ログアウト",
+      "credits": "クレジット",
+      "membership": "メンバーシップ",
+      "accountSettings": "アカウント設定",
+      "notOpenYet": "未提供"
     },
     "container": {
       "shell": {
