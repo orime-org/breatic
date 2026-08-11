@@ -14,13 +14,13 @@
   "devDependencies": {
     "@breatic/eslint-rules": "workspace:*",
     "@types/node": "catalog:",
-    "anti-trojan-source": "^1.11.3",
+    "anti-trojan-source": "^1.12.1",
     "eslint": "catalog:",
-    "plpgsql-parser": "^18.2.2",
-    "minimatch": "^10.2.5",
+    "minimatch": "^10.2.6",
+    "plpgsql-parser": "^18.5.7",
     "tsx": "catalog:",
-    "yaml": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "yaml": "catalog:"
   }
 }
