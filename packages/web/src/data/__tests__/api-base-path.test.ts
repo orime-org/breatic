@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Every request to our own backend is built on one prefix.
+ * Every API request to our own backend is built on one prefix. (Locally
+ * stored assets are served outside it and arrive as complete URLs from the
+ * storage layer, so they never pass through either transport below.)
  *
  * The two transports reach the same server by different routes — axios for
  * ordinary calls, `fetchEventSource` for the streams — and each used to spell

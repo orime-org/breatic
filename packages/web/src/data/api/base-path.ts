@@ -11,7 +11,10 @@
  * to an address the server does not serve. Nothing complained, because
  * neither had a caller yet.
  *
- * The server mounts every route under this prefix (`packages/server/src/app.ts`);
- * nginx does the same in production.
+ * The server mounts every API route under this prefix
+ * (`packages/server/src/app.ts`); nginx does the same in production. Not every
+ * path it serves: with local storage it also serves `/uploads/*` outside the
+ * prefix, which the dev proxy forwards as its own entry. Asset URLs come from
+ * the storage layer already formed and do not go through here.
  */
 export const API_BASE_PATH = '/api/v1';

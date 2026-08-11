@@ -15,12 +15,20 @@
  * that was written first. Anything else would be asking a working stream to
  * accommodate a spelling nothing has ever spoken.
  *
- * Sentinels are deliberately absent. Those live in `@breatic/domain`, because
- * they never reach a browser: a tool glues one onto its return value, the
- * agent loop recognises it and slices it back off, and what goes out is an
- * event name and a payload. The two protocols stay apart — sentinels are how
- * the loop and its tools talk, these names are how the server and the browser
- * talk.
+ * Sentinels are deliberately absent. Those live in `@breatic/domain` because
+ * they belong to a different conversation: a tool glues one onto its return
+ * value and the agent loop recognises it, so they are how the loop and its
+ * tools talk. These names are how the server and the browser talk. What a
+ * browser has to understand to render a turn is the event name, never the
+ * prefix — the loop slices it off before the event goes out, and the result
+ * also re-enters the model's own context on the next request, which is the
+ * other reason its home is the package the tools live in.
+ *
+ * Not to be read as "a browser never sees those strings": the tool message is
+ * persisted with the prefix intact (`main-agent.ts`), and the conversation
+ * history endpoint returns it verbatim, so a client rendering history today
+ * does receive it. Whether history should carry the prefix is a separate
+ * question from where the constants live.
  */
 
 /**

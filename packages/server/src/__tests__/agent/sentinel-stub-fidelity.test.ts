@@ -14,8 +14,10 @@
  * those tests still passes, because they are asserting against the same
  * drifted stub.
  *
- * This file is the one place that does not mock the module, so it can see
- * both values at once and hold them together.
+ * This file is the one place that imports the stub and the real module side
+ * by side, so it can see both values at once and hold them together. (Plenty
+ * of tests resolve the real `@breatic/domain` — the integration suite does
+ * throughout — but none of them also reaches for `domainMock`.)
  */
 import { describe, it, expect } from "vitest";
 
