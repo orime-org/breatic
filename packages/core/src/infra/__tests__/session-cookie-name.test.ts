@@ -17,7 +17,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 const { envMock } = vi.hoisted(() => ({
-  envMock: { REDIS_KEY_PREFIX: "dev" } as { REDIS_KEY_PREFIX: string },
+  envMock: { REDIS_KEY_PREFIX: "dev" },
 }));
 
 vi.mock("@core/config/env.js", () => ({ env: envMock }));

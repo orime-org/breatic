@@ -15,7 +15,7 @@ catalog:
   # Node typings: every one of our packages links the same major. It only ever
   # types test code — nothing under any src/ imports node: — so the major is
   # what matters and patch-level fixes are worth taking.
-  "@types/node": ^22.0.0
+  "@types/node": ^22.20.1
 
   # The editor stack moves as one unit — a mixed set produces unmet
   # peer ranges and, historically, two copies of the same extension.
@@ -34,32 +34,31 @@ catalog:
 
   # The AI SDK and its providers move together — a provider built against a
   # different core version fails at the call site, not at install.
-  "@ai-sdk/anthropic": ^4.0.36
-  "@ai-sdk/google": ^4.0.39
-  "@ai-sdk/openai": ^4.0.36
-  "ai": ^7.0.58
+  "@ai-sdk/anthropic": ^4.0.37
+  "@ai-sdk/google": ^4.0.41
+  "@ai-sdk/openai": ^4.0.37
+  "ai": ^7.0.59
 
   # Collaboration: the Yjs stack is shared by web, collab and the server, and a
   # split here means two clients speaking different wire formats.
-  "@hocuspocus/extension-redis": ^4.5.0
-  "@hocuspocus/server": ^4.5.0
+  "@hocuspocus/extension-redis": ^4.6.0
+  "@hocuspocus/server": ^4.6.0
   "y-protocols": ^1.0.7
-  "yjs": ^13.6.30
+  "yjs": ^13.6.32
 
   # Backend infrastructure every service reaches for.
-  "@types/bcryptjs": ^3.0.0
-  "@types/nodemailer": ^8.0.0
+  "@types/nodemailer": ^8.0.1
   "ali-oss": ^6.23.0
   "bcryptjs": ^3.0.3
-  "bullmq": ^5.30.0
-  "dotenv": ^16.4.0
+  "bullmq": ^5.81.3
+  "dotenv": ^16.6.1
   "drizzle-orm": ^0.45.2
-  "google-auth-library": ^10.6.2
-  "ipaddr.js": ^2.3.0
-  "nodemailer": ^8.0.5
-  "pino": ^9.6.0
-  "postgres": ^3.4.0
-  "zod": ^4.3.6
+  "google-auth-library": ^10.9.1
+  "ipaddr.js": ^2.5.0
+  "nodemailer": ^8.0.11
+  "pino": ^9.14.0
+  "postgres": ^3.4.9
+  "zod": ^4.4.3
 
   # Toolchain: linting and type-checking must agree across packages or the
   # same source reads as clean in one package and broken in another.
@@ -69,19 +68,19 @@ catalog:
   # latest, still does), and web needs it. The root had drifted to 10 —
   # nothing there required it, and pointing both at 10 breaks web's lint
   # outright with "contextOrFilename.getFilename is not a function".
-  "@eslint/js": ^9.39.2
-  "eslint": ^9.39.2
-  "eslint-plugin-jsdoc": ^63.0.1
-  "fast-check": ^4.8.0
+  "@eslint/js": ^9.39.5
+  "eslint": ^9.39.5
+  "eslint-plugin-jsdoc": ^63.3.3
+  "fast-check": ^4.9.0
   "globals": ^16.5.0
-  "tsup": ^8.3.0
-  "tsx": ^4.19.0
-  "typescript": ~5.8.0
-  "typescript-eslint": ^8.58.0
-  "vitest": ^3.0.0
+  "tsup": ^8.5.1
+  "tsx": ^4.23.12
+  "typescript": ~5.8.3
+  "typescript-eslint": ^8.67.0
+  "vitest": ^3.2.7
 
   # Everything else two or more packages share.
   "lib0": ^0.2.117
-  "pino-pretty": ^13.0.0
+  "pino-pretty": ^13.1.3
   "stripe": ^21.0.1
-  "yaml": ^2.7.0
+  "yaml": ^2.9.0

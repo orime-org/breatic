@@ -103,7 +103,7 @@ export function compressForContext(
 
   if (turnIndices.length <= fullDetailTurns) {
     // All turns fit within the full-detail window — strip thinking only
-    return messages.map(({ thinking: _th, ...rest }) => rest as MessageData);
+    return messages.map(({ thinking: _th, ...rest }) => rest);
   }
 
   const cutoff = turnIndices[turnIndices.length - fullDetailTurns]!;
@@ -119,7 +119,7 @@ export function compressForContext(
       // Recent turn — keep full detail, strip thinking
       for (const msg of turnMsgs) {
         const { thinking: _th, ...rest } = msg;
-        result.push(rest as MessageData);
+        result.push(rest);
       }
     }
   }

@@ -14,8 +14,8 @@
   "devDependencies": {
     "eslint": "catalog:",
     "@types/node": "catalog:",
-    "@typescript-eslint/rule-tester": "8.58.0",
-    "@typescript-eslint/utils": "8.58.0",
+    "@typescript-eslint/rule-tester": "8.67.0",
+    "@typescript-eslint/utils": "8.67.0",
     "globals": "catalog:",
     "vitest": "catalog:"
   },

@@ -59,7 +59,7 @@ import {
   listByStudioForViewer,
   listByStudioSlug,
 } from "@server/modules/project/project.service.js";
-import type { ProjectEntity, ProjectVisibility } from "@breatic/shared";
+import type { ProjectEntity } from "@breatic/shared";
 
 /** Build a project fixture with overridable visibility / studio. */
 function makeProject(over: Partial<ProjectEntity> = {}): ProjectEntity {
@@ -71,7 +71,7 @@ function makeProject(over: Partial<ProjectEntity> = {}): ProjectEntity {
     description: null,
     thumbnailUrl: null,
     slug: "project",
-    visibility: "studio" as ProjectVisibility,
+    visibility: "studio",
     createdAt: new Date("2026-06-07T00:00:00Z"),
     updatedAt: new Date("2026-06-07T00:00:00Z"),
     deletedAt: null,

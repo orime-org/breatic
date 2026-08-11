@@ -26,7 +26,6 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@types/sharp": "^0.32.0",
     "tsup": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"

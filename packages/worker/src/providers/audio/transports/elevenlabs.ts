@@ -36,7 +36,7 @@ export async function generate(
 
   // Build ElevenLabs request body
   const body: Record<string, unknown> = {
-    text: (params.prompt ?? params.text ?? "") as string,
+    text: (params.prompt ?? params.text ?? ""),
     model_id: resolved.modelId,
   };
   if (params.duration_seconds !== undefined) {

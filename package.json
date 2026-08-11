@@ -27,17 +27,17 @@
   "devDependencies": {
     "@breatic/eslint-rules": "workspace:*",
     "@eslint/js": "catalog:",
-    "@secretlint/secretlint-rule-preset-recommend": "^13.0.2",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.4",
     "dependency-cruiser": "^17.4.3",
     "eslint": "catalog:",
-    "globals": "catalog:",
     "eslint-plugin-drizzle": "^0.2.3",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jsdoc": "catalog:",
-    "secretlint": "^13.0.2",
+    "globals": "catalog:",
+    "secretlint": "^13.0.4",
     "tsx": "catalog:",
-    "turbo": "^2.4.0",
-    "typedoc": "^0.28.18",
+    "turbo": "^2.10.9",
+    "typedoc": "^0.28.20",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:"
   },
@@ -47,7 +47,7 @@
   },
   "pnpm": {
     "overrides": {
-      "ioredis": "5.10.1"
+      "ioredis": "5.11.1"
     }
   }
 }

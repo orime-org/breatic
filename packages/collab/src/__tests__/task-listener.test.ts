@@ -225,7 +225,7 @@ describe("handleNodeStateUpdateEvent", () => {
       },
     };
 
-    await handleNodeStateUpdateEvent(hocuspocus, event as NodeStateUpdateEvent);
+    await handleNodeStateUpdateEvent(hocuspocus, event);
 
     const dataMap = getDataMap(doc, NODE_ID);
     // Allowed key applied

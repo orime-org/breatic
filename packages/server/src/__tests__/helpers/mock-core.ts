@@ -318,7 +318,7 @@ export const mocks = {
   sendMail: vi.fn().mockResolvedValue({
     status: "skipped",
     reason: "backend_disabled",
-  } as { status: "skipped"; reason: "backend_disabled" }),
+  }),
   studioService: {
     createPersonalStudio: vi.fn().mockResolvedValue({
       id: "studio-1",

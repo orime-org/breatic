@@ -81,7 +81,7 @@ async function eventsFrom(parts: unknown[]): Promise<Array<{ event: string; data
       // The turn yields events as objects; turning them into wire frames is
       // the route's job, further out.
       for await (const event of new MainAgent().chat("think about this")) {
-        raised.push(event as unknown as { event: string; data: unknown });
+        raised.push(event);
       }
     },
   );
