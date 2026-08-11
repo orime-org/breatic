@@ -482,12 +482,12 @@ body {
    coefficients are fractions rather than decimals because 15 × 1.333 is
    19.995px, not 20. The hard ceiling is the title's 30px: the largest body
    heading has to stay under it or the hierarchy inverts. */
+/* Only the line height. Long words and URLs already wrap: prosemirror-view's
+   own stylesheet sets `word-wrap: break-word` on `.ProseMirror`. Measured with
+   a 180-character URL — two lines, no horizontal overflow, with and without an
+   `overflow-wrap` of our own. */
 .doc-body-editor .ProseMirror {
   line-height: 1.65;
-  /* A long URL or an unbroken word overflows the 768px column, and the scroll
-     viewport only has a vertical axis — so what overflows is not scrollable,
-     it is clipped. */
-  overflow-wrap: anywhere;
 }
 
 .doc-body-editor .ProseMirror p {
@@ -563,9 +563,11 @@ body {
   border-radius: var(--radius-content-xs);
 }
 
-/* No `white-space` here on purpose. A long line still gets clipped, which is
-   what it does today — the fix is a code-block NodeView with its own scroller
-   and a per-block wrap toggle, and that is a slice of its own. */
+/* No `white-space` here on purpose: prosemirror-view's stylesheet already sets
+   `.ProseMirror pre { white-space: pre-wrap }`, so a long line wraps rather
+   than being clipped. Overriding that to scroll horizontally instead is a
+   slice of its own — it needs a NodeView to hold a scroller and a per-block
+   toggle. */
 .doc-body-editor .ProseMirror pre {
   font-size: 0.9em;
   line-height: 1.6;
