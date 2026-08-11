@@ -35,9 +35,8 @@ interface RailCreateActionsProps {
  *
  * Create-studio used to sit here behind a rule of its own. It creates a
  * Studio rather than something inside the Studio you are already in, so it
- * moved to the rail's footer (`RailCreateStudioAction`) where that difference
- * is what the layout says, instead of a rule mid-list leaving the reader to
- * guess.
+ * moved to `RailFooter`, where that difference is what the layout says instead
+ * of a rule mid-list leaving the reader to guess.
  * @param props the action labels, the coming-soon tooltip and the create handler.
  * @param props.createProjectLabel the create-project label.
  * @param props.createCollectionLabel the create-collection label (disabled).

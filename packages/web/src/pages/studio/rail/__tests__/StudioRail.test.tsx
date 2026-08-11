@@ -245,9 +245,10 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
   });
 
   it('paints every rail icon in the same secondary grey', () => {
-    // Three greys used to share the column: the clock quiet, the plus signs at
-    // full strength, the group icons following their heading. An icon louder
-    // than the words beside it is the thing that read as noise.
+    // Three greys used to share the column: the clock quiet, the two enabled
+    // plus signs at full strength, the group icons following their heading.
+    // (The third plus, on the disabled action, was already muted.) An icon
+    // louder than the words beside it is the thing that read as noise.
     const { container } = render(
       <MemoryRouter>
         <StudioRail

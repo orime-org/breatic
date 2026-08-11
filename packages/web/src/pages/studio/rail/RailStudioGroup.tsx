@@ -107,9 +107,14 @@ export function RailStudioGroup({
           aria-expanded={!collapsed}
           aria-labelledby={titleId}
           // Named only while the list is mounted. Collapsing unmounts it, and
-          // the collapse is persisted, so a fixed value would spend most of its
-          // life pointing at an element that is not in the document — which
-          // ARIA does not allow and `aria-expanded` already covers.
+          // the collapse is persisted, so a fixed value would go on naming an
+          // element that is not in the document for as long as the group stays
+          // shut. ARIA permits that — user agents are told to ignore an ID
+          // reference that matches nothing — and the attribute is optional on
+          // a disclosure to begin with. It is dropped because the combobox
+          // pattern, the one place ARIA does require the reference to resolve,
+          // resolves it by only naming the listbox while the listbox exists;
+          // and because `aria-expanded` already carries the state either way.
           aria-controls={collapsed ? undefined : listId}
           variant='chrome-ghost'
           size={null}

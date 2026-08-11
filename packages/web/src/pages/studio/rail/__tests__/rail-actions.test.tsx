@@ -162,11 +162,13 @@ describe('RailRecentLink (spec §4.1 ③)', () => {
   });
 
   it('answers the keyboard with the same ring the buttons show', () => {
-    // A rail row is reached by tab as often as by pointer, and half these rows
-    // are links while half are buttons. With the ring left to the `Button`
-    // primitive, only the buttons had one and the links fell back to whatever
-    // ring the browser draws — so the focus you see moving down the rail
-    // changed shape halfway. The definition owns it, so every row shows one.
+    // A rail row is reached by tab as often as by pointer, and these rows are
+    // a mix of links and buttons — three buttons, and one link per studio plus
+    // Recent, so the links are the majority and grow with the data. With the
+    // ring left to the `Button` primitive only the buttons had one, and the
+    // links fell back to whatever ring the browser draws, so the focus you saw
+    // moving down the column kept changing shape. The definition owns it now,
+    // and every row shows the same one.
     render(
       <MemoryRouter>
         <RailRecentLink label='Recent' active={false} />

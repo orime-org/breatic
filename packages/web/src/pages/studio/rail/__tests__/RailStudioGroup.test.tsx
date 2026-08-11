@@ -123,11 +123,12 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
 
   it('drops aria-controls once the list it points at is gone', () => {
     // The collapsed list is not hidden, it is unmounted, and the collapse is
-    // persisted — so the attribute would spend most of its life naming an
-    // element that is not in the document. ARIA requires the value to be an
-    // IDREF resolving in the same document, and the practice for a target that
-    // comes and goes is to add the attribute when the target appears and drop
-    // it when it leaves. `aria-expanded` carries the state either way.
+    // persisted — so a fixed value would go on naming an element that is not
+    // in the document for as long as the group stays shut. ARIA permits that,
+    // and the attribute is optional on a disclosure anyway; it is dropped
+    // because that is how the one pattern ARIA does hold to a resolvable
+    // reference — the combobox — keeps it resolvable, and because
+    // `aria-expanded` carries the state either way.
     renderGroup();
     const toggle = screen.getByRole('button', { name: 'My Studios' });
     expect(toggle).toHaveAttribute('aria-controls');

@@ -10,10 +10,11 @@
  * §4.1 sketch already showed the studios indented beneath their heading.
  *
  * The indent is the whole of how the second level reads — heights match, the
- * type matches, only the left edge moves. Keeping that in one file is the
- * point: when the shape lived in four hand-copied strings, two were
- * byte-identical and the other two had each drifted a different way, which is
- * where the rail's mismatched heights, indents and gaps came from.
+ * type matches, only the left edge moves. That 6px step is deliberate and is
+ * kept; what this file exists to stop is everything else drifting around it.
+ * When the shape lived in four hand-copied strings the two levels had
+ * different heights (32 against 30) and different gaps (10 against 8), and
+ * nothing said which differences were meant.
  */
 
 /** The padding a rail segment insets its contents by. */
@@ -43,24 +44,23 @@ export const RAIL_INDENT_NESTED = 'pl-3.5';
 /**
  * Build a rail row's classes at a given indent.
  *
- * A row carries its own width, alignment, weight and focus ring rather than
- * borrowing them from whatever contains it, because each had already gone wrong
- * that way. A `<button>` sizes to its content whatever its `display` is, so the
- * create actions only filled the rail while their parent happened to be a flex
- * column stretching them. `justify-start` undoes the `Button` primitive's
- * centring — a comment in `RailCreateActions` claimed that class was applied,
- * but it never was, so the three create actions had been sitting centred. And
- * `font-normal` is here to be overridden: without a weight of its own the
- * primitive's `font-medium` came through, leaving the three buttons permanently
- * at the weight {@link RAIL_ROW_CURRENT} uses to mark where the viewer is.
+ * A row names its own width, alignment, weight, focus ring and wrapping rather
+ * than letting any of them be decided elsewhere. Two of those were decided by
+ * the container: a `<button>` sizes to its content whatever its `display` is,
+ * so the create actions only filled the rail while their parent happened to be
+ * a flex column stretching them. And `justify-start` undoes the `Button`
+ * primitive's centring — a comment in `RailCreateActions` claimed that class
+ * was applied when it never was, so those actions sat centred for as long as
+ * the comment did.
  *
- * The focus ring and the wrapping are the same story told by the element type.
- * The rail's rows are a mix of `<Link>` and `<Button>`; `variant={null}
- * size={null}` suppresses the primitive's variants but never its cva base, and
- * that base carries both a focus ring and `whitespace-nowrap`. So the buttons
- * had a ring the links did not, and refused to wrap where the links were free
- * to. Naming both here is what makes a row a row rather than whichever element
- * it happens to be built on.
+ * The rest were decided by the element type. The rail's rows are a mix of
+ * `<Link>` and `<Button>`; `variant={null} size={null}` suppresses the
+ * primitive's variants but never its cva base, and that base carries a weight,
+ * a focus ring and `whitespace-nowrap`. So the buttons rendered at the weight
+ * {@link RAIL_ROW_CURRENT} uses to mark where the viewer is, had a ring the
+ * links did not, and refused to wrap where the links were free to. Naming all
+ * of it here is what makes a row a row rather than whichever element it
+ * happens to be built on.
  * @param paddingLeft - The left-padding class that places this level.
  * @returns The row's class string, indent included.
  */
