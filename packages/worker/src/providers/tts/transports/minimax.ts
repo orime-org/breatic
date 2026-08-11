@@ -35,7 +35,7 @@ export async function generate(
   const headers = bearerHeaders(resolved.apiKey);
 
   const voiceSetting: Record<string, unknown> = {
-    voice_id: (params.voice_id ?? "Friendly_Person") as string,
+    voice_id: (params.voice_id ?? "Friendly_Person"),
   };
 
   // Optional voice settings
@@ -48,7 +48,7 @@ export async function generate(
 
   const body: Record<string, unknown> = {
     model: resolved.modelId,
-    text: (params.text ?? "") as string,
+    text: (params.text ?? ""),
     voice_setting: voiceSetting,
     audio_setting: {
       format: "mp3",

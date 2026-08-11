@@ -56,7 +56,7 @@ export function compressTurn(turnMessages: readonly MessageData[]): MessageData[
   const userMsg = turnMessages.find((m) => m.role === "user");
   if (userMsg) {
     const { thinking: _th, tool_calls: _tc, ...clean } = userMsg;
-    result.push(clean as MessageData);
+    result.push(clean);
   }
 
   // Keep the last assistant message with actual text content
@@ -64,7 +64,7 @@ export function compressTurn(turnMessages: readonly MessageData[]): MessageData[
     const msg = turnMessages[i]!;
     if (msg.role === "assistant" && msg.content.trim().length > 0) {
       const { thinking: _th, tool_calls: _tc, ...clean } = msg;
-      result.push(clean as MessageData);
+      result.push(clean);
       break;
     }
   }
@@ -105,7 +105,7 @@ export function compressForContext(
       // Recent turn — keep full detail, strip thinking
       for (const msg of turnMsgs) {
         const { thinking: _th, ...rest } = msg;
-        result.push(rest as MessageData);
+        result.push(rest);
       }
     }
   }

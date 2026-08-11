@@ -60,10 +60,17 @@ function blankToUndefined(v: unknown): unknown {
  * throws: that is a genuine misconfiguration, and quietly booting on the
  * default while the operator believes they set something is worse than a loud
  * failure at startup.
+ * The return type is derived from `z.preprocess` rather than spelled out.
+ * Naming the shape by hand meant copying a type Zod owns, and 4.4 renamed it
+ * (`ZodPipe<ZodTransform<...>, T>` became `ZodPreprocess<T>`) — a rename that
+ * broke this line while the runtime behaviour was untouched. Deriving it means
+ * the next rename lands here for free.
  * @param schema - The underlying numeric schema (with its own default / bounds).
  * @returns A schema that maps blank input to undefined before parsing.
  */
-function numeric<T extends z.ZodTypeAny>(schema: T): z.ZodPipe<z.ZodTransform<unknown, unknown>, T> {
+function numeric<T extends z.ZodTypeAny>(
+  schema: T,
+): ReturnType<typeof z.preprocess<unknown, T, unknown>> {
   return z.preprocess(blankToUndefined, schema);
 }
 

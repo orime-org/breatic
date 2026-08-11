@@ -21,7 +21,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { publishMock, envMock } = vi.hoisted(() => ({
   publishMock: vi.fn(async () => 0),
-  envMock: { REDIS_KEY_PREFIX: "dev" } as { REDIS_KEY_PREFIX: string },
+  envMock: { REDIS_KEY_PREFIX: "dev" },
 }));
 
 vi.mock("@core/infra/redis.js", () => ({

@@ -32,7 +32,7 @@ export async function generate(
   params: Record<string, unknown>,
 ): Promise<{ buffer: Buffer; contentType: string; model: string; cost: number }> {
   const body: Record<string, unknown> = {
-    text: (params.text ?? "") as string,
+    text: (params.text ?? ""),
     model: resolved.modelId,
     format: "mp3",
   };

@@ -57,7 +57,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
       web_search_timeout_ms: 10_000,
       web_fetch_max_chars: 50_000,
     }),
-    env: new Proxy({} as Record<string, unknown>, {
+    env: new Proxy({}, {
       get: (_t, p: string) => (p === "CREDIT_MULTIPLIER" ? 1 : undefined),
     }),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

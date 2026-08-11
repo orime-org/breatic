@@ -21,6 +21,7 @@ import {
   type NodeChange,
   type OnConnectEnd,
   type OnConnectStart,
+  type OnNodeDrag,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
@@ -1174,8 +1175,12 @@ function CanvasSpaceInner({
   // children relative to their Group), so there is no manual member-carry ref or
   // drag-start snapshot — onNodeDragStop alone resolves the whole result
   // (reparent + position + Group auto-expand). See planGroupDrag.
-  const onNodeDragStop = React.useCallback(
-    (_event: React.MouseEvent, _node: Node, nodes: Node[]): void => {
+  // Typed by ReactFlow's own `OnNodeDrag` rather than by spelling the
+  // parameters out: the hand-written version named `React.MouseEvent`, and
+  // 12.11 started handing these callbacks the native event instead, so the
+  // annotation stopped matching a signature we never call ourselves.
+  const onNodeDragStop = React.useCallback<OnNodeDrag<Node>>(
+    (_event, _node, nodes): void => {
       if (readOnly) return;
       const byId = new Map(flowNodes.map((item) => [item.id, item]));
       /**
