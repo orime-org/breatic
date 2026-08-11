@@ -39,7 +39,7 @@ export type VideoSlotField =
 
 /** What one slot is made of. */
 export interface VideoSlotSpec {
-  /** Node data field holding the picked URL. */
+  /** Node data field holding this slot's pick — a URL, or `{url, cover}` when `storesCover`. */
   field: VideoSlotField;
   /**
    * Whether this slot stores `{url, cover}` rather than a bare URL string.
@@ -139,7 +139,12 @@ export const VIDEO_SLOTS = {
   },
 } as const satisfies Record<VideoSlot, VideoSlotSpec>;
 
-/** URLs picked into slots, by slot. Absent means the slot is empty. */
+/**
+ * One URL per slot. Absent means this map has nothing for that slot — which
+ * does NOT by itself mean the slot is empty: the panel builds two of these,
+ * one for the picked assets and one for the pictures to show, and a filled
+ * slot whose asset an `<img>` cannot paint is absent from the second.
+ */
 export type VideoSlotUrls = Partial<Record<VideoSlot, string>>;
 
 /**

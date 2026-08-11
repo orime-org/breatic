@@ -90,9 +90,15 @@ describe('what a slot takes, and what it can show for it (#1918)', () => {
     }
   });
 
-  it('gives every slot its own node field, param and test ids', () => {
+  it('gives every slot its own node field, purpose and test ids', () => {
     // Two slots writing one node field would overwrite each other; two
-    // sharing a test id would make the suites below address the wrong one.
+    // sharing a test id would make the suites below address the wrong one;
+    // two sharing a purpose would make `slotForPurpose` answer with the
+    // wrong slot, since that lookup is what dispatches a click.
+    //
+    // `param` is deliberately NOT in here: the first frame and the character
+    // image both travel upstream as `image`, and only the mode decides which
+    // one is being sent.
     const fields = slots.map((s) => VIDEO_SLOTS[s].field);
     const testIds = slots.map((s) => VIDEO_SLOTS[s].testId);
     const purposes = slots.map((s) => VIDEO_SLOTS[s].purpose);

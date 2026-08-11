@@ -159,12 +159,14 @@ interface SlotToolProps {
 }
 
 /**
- * An image slot tool (#1664 style, #1896 first frame): an icon + label button
- * while empty (click enters the pick); once an image is picked the thumbnail
+ * A slot tool (#1664 style, #1896 first frame, #1918 driving video): an icon +
+ * label button while empty (click enters the pick); once the slot has a picture
+ * to show for its pick, that picture
  * COVERS the button as an absolute overlay while the original icon + label keep
  * laying out invisibly underneath — so the button footprint is IDENTICAL in both
  * states, in every locale, and picking never shifts the toolbar (user
- * 2026-07-16). Clicking the filled slot re-enters the pick (the next selection
+ * 2026-07-16). A slot that is filled but has no picture to show keeps its icon
+ * and label — see `filled`. Clicking the filled slot re-enters the pick (the next selection
  * REPLACES the copy). A ✕ badge at the top-right clears it; the ✕ is a SIBLING
  * button positioned over the corner — never nested inside the main button
  * (button-in-button reparents silently). The ✕ stays active even when picking
@@ -179,9 +181,9 @@ interface SlotToolProps {
  * @param root0.Icon - The icon shown while the slot is empty.
  * @param root0.onPick - Enter / exit the pick.
  * @param root0.active - Whether this slot's pick is running.
- * @param root0.thumbnail - The picked image URL, if any.
+ * @param root0.thumbnail - The picture to show for the pick, if any.
  * @param root0.filled - Whether the slot holds a pick.
- * @param root0.onClear - Clear the picked image.
+ * @param root0.onClear - Clear the pick.
  * @param root0.disabled - Whether picking is unavailable.
  * @param root0.clearLabel - Localized ✕ aria-label.
  * @param root0.label - Localized tool label.

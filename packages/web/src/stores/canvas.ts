@@ -54,7 +54,8 @@ export type HistoryCommand = 'undo' | 'redo';
  *     switch and these two mean different things.
  *   - `drivingVideo` — the same, into `drivingVideo` (#1918), but from a
  *     VIDEO node: the performance whose motion is transferred onto the
- *     character. The first pick that takes something other than an image, so
+ *     character. The first SLOT pick that takes something other than an image
+ *     (`reference` has always taken any node the edge rules allow), so
  *     it copies the node's poster alongside the asset — the toolbar shows a
  *     pick with an `<img>` and a video URL would paint nothing.
  */
