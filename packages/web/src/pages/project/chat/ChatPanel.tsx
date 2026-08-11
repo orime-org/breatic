@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { useChatStore } from '@web/stores';
+import { useTranslation } from '@web/i18n/use-translation';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import {
@@ -52,7 +53,8 @@ export function ChatPanel({
   onQuickAction,
   disabled = false,
 }: ChatPanelProps): React.JSX.Element {
-  const { messages, isPending, send, abort } = useChatSession(projectId);
+  const { messages, isPending, failedToOpen, send, abort } = useChatSession(projectId);
+  const t = useTranslation();
   const draft = useChatStore((s) => s.composerDraft);
   const setDraft = useChatStore((s) => s.setComposerDraft);
   const clearDraft = useChatStore((s) => s.clearComposerDraft);
@@ -70,8 +72,15 @@ export function ChatPanel({
   const submit = (): void => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
-    void send(trimmed);
-    clearDraft();
+    // The draft is only cleared once the message is on its way. Clearing it
+    // first is what made a failed send look like a successful one, with the
+    // user's words gone and nothing said about it.
+    void send(trimmed)
+      .then(clearDraft)
+      .catch(() => {
+        // Whatever went wrong is already on screen: either the panel says it
+        // could not open, or the reply itself is marked as failed.
+      });
   };
 
   return (
@@ -87,9 +96,18 @@ export function ChatPanel({
           : undefined
       }
     >
+      {failedToOpen ? (
+        <div
+          role='alert'
+          data-testid='chat-open-failed'
+          className='m-2.5 rounded-content-sm border border-status-error-border bg-status-error-bg px-3 py-2 text-xs text-status-error-foreground'
+        >
+          {t('chat.error.openFailed')}
+        </div>
+      ) : null}
       <MessageList
         messages={messages}
-        loading={isPending}
+        loading={isPending || failedToOpen}
         onQuickAction={(label) => {
           if (onQuickAction) onQuickAction(label);
           else setDraft(label);

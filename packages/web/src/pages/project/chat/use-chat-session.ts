@@ -40,7 +40,18 @@ export interface ChatSession {
   messages: ChatMessage[];
   /** True until the server has answered — not the same as an empty chat. */
   isPending: boolean;
-  /** Send one message and stream the reply into the list. */
+  /**
+   * Opening the chat failed, so there is no conversation to write to.
+   *
+   * Distinct from an empty chat, which invites the user to start one. Showing
+   * that here is what let a message be typed, sent, and silently dropped.
+   */
+  failedToOpen: boolean;
+  /**
+   * Send one message and stream the reply into the list.
+   * @throws {Error} When there is no conversation to send to — the caller
+   *   must not treat that as sent, or the text is gone with nothing said.
+   */
   send: (text: string) => Promise<void>;
   /** Stop the turn in flight. */
   abort: () => void;
@@ -118,8 +129,13 @@ export function useChatSession(projectId: string): ChatSession {
     return () => {
       inFlight.current?.abort();
       inFlight.current = null;
+      // The store outlives this component, and an aborted request reports
+      // nothing back — so this is the only place that can say the turn is
+      // over. Left set, the composer shows a stop button for a turn that
+      // ended and refuses to send anything until it is clicked.
+      setStreaming(false);
     };
-  }, []);
+  }, [setStreaming]);
 
   /**
    * Rewrite one message in the cache.
@@ -333,7 +349,12 @@ export function useChatSession(projectId: string): ChatSession {
 
   const send = React.useCallback(
     async (text: string): Promise<void> => {
-      if (!conversationId) return;
+      // Not a silent return: the composer clears the draft on the strength of
+      // this call, so failing quietly means the user's words disappear with no
+      // reply, no error and nothing to retry.
+      if (!conversationId) {
+        throw new Error('chat is not open');
+      }
 
       const refusal = await runTurn(text, conversationId);
       if (!refusal) return;
@@ -371,5 +392,5 @@ export function useChatSession(projectId: string): ChatSession {
     [query.data],
   );
 
-  return { messages, isPending: query.isPending, send, abort };
+  return { messages, isPending: query.isPending, failedToOpen: query.isError, send, abort };
 }

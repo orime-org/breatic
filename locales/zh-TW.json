@@ -130,7 +130,8 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "這則回覆沒能完成，可以再發一次。"
+      "turnFailed": "這則回覆沒能完成，可以再發一次。",
+      "openFailed": "這個對話沒能開啟，重新整理頁面可以再試一次。"
     },
     "message": {
       "interrupted": "已停止"

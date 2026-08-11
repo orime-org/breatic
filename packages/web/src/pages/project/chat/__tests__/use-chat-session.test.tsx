@@ -280,6 +280,48 @@ describe('when the conversation it was writing to is gone', () => {
   });
 });
 
+describe('when the chat never opened', () => {
+  it('says so rather than looking like an empty conversation', async () => {
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('server said no'));
+    const { result } = render();
+
+    // An empty chat invites the user to start one. A chat that failed to open
+    // must not look like that, or every message they send disappears into it.
+    await waitFor(() => expect(result.current.failedToOpen).toBe(true));
+  });
+
+  it('does not swallow what the user typed', async () => {
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('server said no'));
+    const { result } = render();
+    await waitFor(() => expect(result.current.failedToOpen).toBe(true));
+
+    // `send` resolving as if it worked is what let the composer clear the
+    // draft: the user pressed enter, their words vanished, nothing was sent.
+    await expect(result.current.send('please do not eat this')).rejects.toThrow();
+  });
+});
+
+describe('when the panel goes away mid-stream', () => {
+  it('leaves nothing claiming a turn is still running', async () => {
+    openChatAnswers([]);
+    const { result, unmount } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await act(async () => {
+      void result.current.send('hi');
+    });
+    expect(useChatStore.getState().streaming).toBe(true);
+
+    // Collapsing the chat column unmounts the panel. The store outlives it,
+    // so a flag left on strands the composer showing a stop button for a turn
+    // that ended, and nothing can be sent until it is clicked.
+    act(() => {
+      unmount();
+    });
+
+    expect(useChatStore.getState().streaming).toBe(false);
+  });
+});
+
 describe('the model thinking out loud', () => {
   it('collects the thinking onto the reply it belongs to', async () => {
     openChatAnswers([]);

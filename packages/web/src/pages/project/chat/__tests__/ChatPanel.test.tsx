@@ -103,4 +103,19 @@ describe('ChatPanel', () => {
     );
     expect(useChatStore.getState().composerDraft).toBe('');
   });
+
+  it('keeps what the user typed when the chat could not be opened', async () => {
+    const user = userEvent.setup();
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('server said no'));
+    renderPanel();
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+
+    useChatStore.getState().setComposerDraft('please do not eat this');
+    await user.click(screen.getByTestId('chat-composer-send'));
+
+    // Clearing the draft on a send that never happened is how the words were
+    // lost: nothing was sent, and there was nothing left to send again.
+    expect(useChatStore.getState().composerDraft).toBe('please do not eat this');
+  });
 });

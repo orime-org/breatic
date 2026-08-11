@@ -130,7 +130,8 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "This reply could not be finished. Try sending it again."
+      "turnFailed": "This reply could not be finished. Try sending it again.",
+      "openFailed": "This chat could not be opened. Reload the page to try again."
     },
     "message": {
       "interrupted": "Stopped"

@@ -130,7 +130,8 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요."
+      "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요.",
+      "openFailed": "이 대화를 열지 못했습니다. 페이지를 새로고침하고 다시 시도해 주세요."
     },
     "message": {
       "interrupted": "중지됨"
