@@ -55,7 +55,7 @@ describe('the API prefix has one definition', () => {
 
   it('the agent chat stream opens under it', async () => {
     await chatApi.streamMessage(
-      { projectId: 'p1', content: 'hi' },
+      { projectId: 'p1', conversationId: 'c1', message: 'hi' },
       { onEvent: () => undefined },
     );
     expect(lastStreamUrl()).toBe(`${API_BASE_PATH}/chat/message`);
