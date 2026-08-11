@@ -9,6 +9,7 @@ import axios, {
 import { getLocale } from '@breatic/shared';
 
 import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/types';
+import { API_BASE_PATH } from '@web/data/api/base-path';
 
 /**
  * Singleton axios instance configured for the breatic API.
@@ -20,8 +21,9 @@ import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/typ
  * That removes the XSS exfiltration surface entirely (a JS payload
  * cannot read an httpOnly cookie).
  *
- * - `baseURL` defaults to `/api` so production nginx routes everything
- *   under one origin; dev uses Vite proxy.
+ * - `baseURL` is `API_BASE_PATH`, the one prefix this app and the streaming
+ *   transport share, so production nginx routes everything under one origin;
+ *   dev uses the Vite proxy.
  * - Request interceptor: send the language the user picked, so the server
  *   can answer in it.
  * - Response interceptor: unwrap backend error envelope into `ApiException`.
@@ -29,11 +31,9 @@ import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/typ
  */
 function createClient(): AxiosInstance {
   const instance = axios.create({
-    // Server mounts every route under `/api/v1/*` (see packages/server/src/app.ts).
-    // Vite proxy `/api/*` → :3000/api/* in dev; nginx in prod. Client
-    // therefore points at `/api/v1` so per-resource paths stay `/projects`,
-    // `/chat` etc. without `v1` smeared everywhere.
-    baseURL: '/api/v1',
+    // The one prefix, shared with the streaming transport. Per-resource paths
+    // stay `/projects`, `/chat` etc. without `v1` smeared across them.
+    baseURL: API_BASE_PATH,
     timeout: 30_000,
     headers: { 'Content-Type': 'application/json' },
     withCredentials: true,

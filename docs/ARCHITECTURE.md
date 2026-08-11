@@ -175,11 +175,19 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **交互工具(4)**:`ask_user_question` | `ask_user_choice` | `propose_canvas_action` | `show_search_results` —— LLM 调用它们发送结构化 payload 供前端渲染成 UI 组件,不执行动作;`main-agent` 检测 sentinel 前缀的结果后 yield 对应 SSE 事件。
 
+**四个 sentinel 前缀各只在写它的那个工具文件里声明一次**(`packages/domain/src/agent/tools/`),读它的 server 从 `@breatic/domain` import。它们是**工具返回值与 agent 循环之间**的记号,SSE 事件名才是前后端协议;走 SSE 出去的事件已经把前缀切掉了(**但落库那条路没切,读会话历史的客户端今天仍收得到,见任务 #84**)。守卫 `packages/domain/src/agent/__tests__/sentinel-single-definition.test.ts` 扫 domain / server / worker 的**非测试源码**(`__tests__/` 目录与 `*.test.ts` 整个跳过 —— 守卫自己要写出这四个串来验匹配器),这些文件里任何一处写出它们(含注释)即 fail;要在文字里提它们,写常量名。
+
 **六个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。四个交互工具不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
 
 **两个联网工具的时长走 `config/agent.yaml`**:`web_fetch_timeout_ms`(30 秒)· `web_search_timeout_ms`(10 秒),上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字。它管一次投递不管整次抓取,登记见 `docs/CONFIGURATION.md`。
 
 **无脚本执行能力**。第一版的 skill 只声明要用哪些工具,不带脚本 —— 「skill 带一个脚本、由 agent 执行它」是一整套要单独设计的东西(在哪跑 / 跑多久 / 能碰什么 / 失败怎么办 / 算不算钱),整块不做。
+
+### Agent 聊天的 SSE 事件契约
+
+**事件名与信封只在 `packages/shared/src/agent/sse-events.ts` 定义一次**,web 和 server 共用:server 的 `SSEEventType` **就是**那个对象(不是内容相同的拷贝),`serializeSSE` 产出的信封类型也来自它。这条流上的每个事件都由 `MainAgent.sse()` 构造,而它的入参类型就是这份契约 —— 所以经这条路发一个契约里没有的名字直接编译不过,这个方向不需要测试。**编译器管的是这条路、不是 socket**:路由拿的 `StreamingApi` 的 `write` 收任意字符串(text mini-tool 的路由就是手工拼帧的),chat 两处今天都走 `serializeSSE`,那是路由的写法、不是类型给的保证。
+
+**契约只列今天真的在跑的事件**。声明一个还没人发的名字,等于告诉前端去等一个永远不来的东西;要新增事件,在**让它真正发出来的那次改动里**加进契约。`agent_thinking` 就是这么处理的:它是 PR-3 批⑥ 要做的思考流,在那之前不进契约。
 
 ### Configuration files
 

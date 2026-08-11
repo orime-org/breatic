@@ -2,40 +2,34 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * SSE event types for agent chat communication.
+ * How this service puts an agent chat event on the wire.
  *
- * These types define the wire format for Server-Sent Events
- * flowing from the backend to the frontend. Task lifecycle
- * events are delivered via Yjs document sync through the
- * Hocuspocus collab server.
+ * The names and the envelope are not decided here — they are the shared
+ * contract, so the browser reading them and the server writing them work off
+ * one declaration. What is decided here is the serialisation: the SSE framing
+ * and the camelCase-to-snake_case turn the wire format asks for. Task
+ * lifecycle events do not come through here at all; they reach the browser as
+ * Yjs document sync via the collab server.
  */
+import { SSE_EVENT_NAMES } from "@breatic/shared";
+import type { SSEEventName, SSEEventEnvelope } from "@breatic/shared";
 
-/** SSE event type enum. */
-export const SSEEventType = {
-  // Chat / Main Agent
-  CHAT_CHUNK: "chat_chunk",
-  CHAT_DONE: "chat_done",
+/**
+ * The shared event names, under the name this service has always called them.
+ *
+ * Re-exported rather than re-declared: a second list is a second thing to
+ * keep in step, and the last time there were two they had nothing in common.
+ */
+export const SSEEventType = SSE_EVENT_NAMES;
 
-  // Agent progress
-  AGENT_TOOL_HINT: "agent_tool_hint",
-  AGENT_THINKING: "agent_thinking",
-  AGENT_ASK: "agent_ask",
+export type SSEEventType = SSEEventName;
 
-  // Interaction tools (spec §10.18.4 v13) — Agent rich output protocol.
-  // LLM calls these "tools" not for execution but as structured-data
-  // carriers; the frontend identifies tool_call.name and renders the
-  // matching UI component (ChoicePicker / CanvasActionButton / SearchResultsGrid).
-  AGENT_CHOICE: "agent_choice",                  // ask_user_choice
-  AGENT_CANVAS_ACTION: "agent_canvas_action",    // propose_canvas_action
-  AGENT_SEARCH_RESULTS: "agent_search_results",  // show_search_results
-
-  // System
-  ERROR: "error",
-} as const;
-
-export type SSEEventType = (typeof SSEEventType)[keyof typeof SSEEventType];
-
-/** A single Server-Sent Event payload. */
+/**
+ * A single Server-Sent Event, as this service holds it before serialising.
+ *
+ * `taskId` is camelCase here and `task_id` on the wire; `serializeSSE` is
+ * where that turn happens.
+ */
 export interface SSEEvent {
   event: SSEEventType;
   taskId?: string;
@@ -48,10 +42,12 @@ export interface SSEEvent {
  * @returns Formatted SSE string: `event: ...\ndata: ...\n\n`
  */
 export function serializeSSE(event: SSEEvent): string {
-  const data = JSON.stringify({
+  // Typed as the contract's envelope so the wire shape is checked against the
+  // declaration both sides read, rather than being whatever this line builds.
+  const envelope: SSEEventEnvelope = {
     event: event.event,
     task_id: event.taskId,
     data: event.data,
-  });
-  return `event: ${event.event}\ndata: ${data}\n\n`;
+  };
+  return `event: ${event.event}\ndata: ${JSON.stringify(envelope)}\n\n`;
 }
