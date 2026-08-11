@@ -14,7 +14,7 @@ export interface ToolCall {
   name: string;
   args: Record<string, unknown>;
   result?: unknown;
-  /** Pending when the worker hasn't returned yet. */
+  /** How far this use of the tool got, as the store recorded it. */
   status: 'pending' | 'success' | 'error';
   errorMessage?: string;
 }
@@ -29,4 +29,13 @@ export interface ChatMessage {
   toolCalls?: ToolCall[];
   /** Streaming = the bubble is still receiving tokens. */
   streaming?: boolean;
+  /** The turn was stopped before it finished, so this is as far as it got. */
+  interrupted?: true;
+  /**
+   * The turn failed and this reply is as much of it as there is.
+   *
+   * Local only: the server has no such field, and no stored message carries
+   * it. What failed is this attempt, not anything that was written down.
+   */
+  failed?: boolean;
 }
