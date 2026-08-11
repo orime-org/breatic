@@ -181,6 +181,20 @@ export class MainAgent {
       // in here ends the stream within milliseconds and no further model call
       // is made, and the SDK passes it on to every tool it invokes.
       abortSignal: signal,
+      // Both fields carry weight. Anthropic leaves extended thinking off
+      // unless asked, so without `type` there is no reasoning to forward at
+      // all; and on the adaptive tier the blocks arrive with empty text unless
+      // the summary is asked for by name, so without `display` the loop would
+      // forward nothing while looking like it works. `adaptive` leaves it to
+      // the model whether a given question needs thinking through, which is
+      // why this is not a cost paid on every turn.
+      ...(agentCfg.thinking_enabled
+        ? {
+            providerOptions: {
+              anthropic: { thinking: { type: "adaptive", display: "summarized" } },
+            },
+          }
+        : {}),
     });
 
     let fullResponse = "";
@@ -267,6 +281,15 @@ export class MainAgent {
           case "reasoning-delta":
             thinkingContent += part.text;
             pendingReasoning += part.text;
+            // `@ai-sdk/anthropic` raises one of these with no text when it
+            // forwards the block's signature; sending those on would be a
+            // stream of empty events for the panel to learn to ignore.
+            if (part.text) {
+              yield this.sse(SSEEventType.AGENT_THINKING, {
+                text: part.text,
+                blockId: part.id,
+              });
+            }
             break;
 
           case "finish-step":

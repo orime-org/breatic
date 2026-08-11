@@ -127,7 +127,7 @@ async function turn(
       userId: "u1",
       conversationId: "c1",
       projectId: "p1",
-      memoryContext: "",
+      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
       compressedHistory: HISTORY,
     },
     async () => {

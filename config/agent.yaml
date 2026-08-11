@@ -52,6 +52,15 @@ web_fetch_timeout_ms: 30000
 # reasons of its own.
 web_search_timeout_ms: 10000
 
+# ── Thinking ──────────────────────────────────────────────
+# Whether the model shows its working while it answers.
+#
+# The model decides per question whether a given one needs thinking through,
+# so this is not a cost paid on every turn. Turning it off stops the provider
+# producing any reasoning at all — the panel then simply has no thinking to
+# fold open, with nothing else changing.
+thinking_enabled: true
+
 # ── LLM resilience ────────────────────────────────────────
 # Retry budget (maxRetries) for every LLM call, injected by the model-call
 # wrapper (generateTextRetry / streamTextRetry). AI SDK default is 2 (#1625).

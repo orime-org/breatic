@@ -53,9 +53,9 @@
  * The other direction is kept true by not writing names down early. A
  * contract listing an event nothing sends tells the browser to wait for
  * something that never arrives, and no amount of annotation makes that
- * sentence true; `agent_thinking` is the live example — the thinking stream
- * is a feature PR-3 batch 6 builds, and its name joins this list in the
- * change that emits it.
+ * sentence true. `agent_thinking` was the live example while it was still
+ * unbuilt; PR-3 batch 6 built it, so it joined the list in the same change
+ * that started emitting it.
  */
 export const SSE_EVENT_NAMES = {
   // Chat / Main Agent
@@ -65,6 +65,10 @@ export const SSE_EVENT_NAMES = {
   // Agent progress
   AGENT_TOOL_HINT: "agent_tool_hint",
   AGENT_ASK: "agent_ask",
+
+  // The model's own working, while it works. Each piece names the block it
+  // belongs to, so a turn that thinks twice does not read as one long thought.
+  AGENT_THINKING: "agent_thinking",
 
   // Interaction tools — the model calls these "tools" not to run something
   // but to carry structured data, and the browser renders a widget per name.

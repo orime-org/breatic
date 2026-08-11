@@ -46,6 +46,15 @@ const agentConfigSchema = z.object({
   web_fetch_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(30000),
   /** The same, for one `web_search` request. */
   web_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
+  /**
+   * Whether the model shows its working while it answers.
+   *
+   * Off at the provider unless asked for, so this is what decides whether
+   * there is any reasoning to stream at all. The tier we run on lets the
+   * model judge per question whether thinking is warranted, which is why it
+   * is not a cost on every turn.
+   */
+  thinking_enabled: z.boolean().default(true),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
 });
