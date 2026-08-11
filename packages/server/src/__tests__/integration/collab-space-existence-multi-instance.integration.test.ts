@@ -16,9 +16,27 @@
  * instance comes up, a browser that has already synced reconnects every open
  * document at once, and the content-doc handshakes arrive on an instance that
  * holds nothing for this project.
+ *
+ * WHAT THIS TEST DOES NOT ASSERT: how long the answer takes. It used to, with
+ * a 500ms ceiling, and that assertion was wrong on both counts. It matched no
+ * promise we make — we say a Space works once it is open, never that it opens
+ * within any particular time — and it could not tell the two cases apart that
+ * it existed to separate. `@hocuspocus/extension-redis` waits up to a second
+ * for a peer that also holds the document to send its state
+ * (`awaitInitialSyncTimeout`, default 1000ms), so a correct answer sometimes
+ * takes just as long as the wrong implementation it was watching for. It cost
+ * two red CI runs on unrelated branches before anyone read it closely.
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
@@ -40,6 +58,18 @@ const MEMORY_ONLY_SPACE = "66666666-6666-4666-8666-666666666666";
 let instanceA: Hocuspocus;
 let instanceB: Hocuspocus;
 const servers: Array<{ destroy: () => Promise<void> }> = [];
+
+/**
+ * Direct connections opened by the body of a test, closed by `afterEach`.
+ *
+ * They are tracked here rather than closed at the end of the test body because
+ * a failing assertion skips everything after it. An unclosed direct connection
+ * keeps its document loaded — `getConnectionsCount()` counts direct connections
+ * alongside websockets — and `destroy()` waits for the document count to reach
+ * zero, so one skipped close turns a failed assertion into a hook that hangs
+ * until the runner kills it.
+ */
+const openConnections: Array<{ disconnect: () => Promise<unknown> }> = [];
 
 /**
  * Build one collab instance wired the way production wires it: the change
@@ -95,22 +125,16 @@ async function seedStoredMeta(ids: string[]): Promise<void> {
  * `readProjectSpaceIds` rather than restating it, so a change to how the
  * check gets its list is a change this test sees.
  * @param instance - The collab instance to ask.
- * @returns The ids it answers with, and how long answering took.
+ * @returns The ids it answers with.
  */
-async function spaceIdsSeenBy(
-  instance: Hocuspocus,
-): Promise<{ ids: string[]; ms: number }> {
-  const started = process.hrtime.bigint();
+async function spaceIdsSeenBy(instance: Hocuspocus): Promise<string[]> {
   const ids = await readProjectSpaceIds(
     PID,
     instance,
     new Request("http://localhost"),
     "space-existence-check",
   );
-  return {
-    ids: [...ids],
-    ms: Number(process.hrtime.bigint() - started) / 1e6,
-  };
+  return [...ids];
 }
 
 beforeAll(async () => {
@@ -119,9 +143,15 @@ beforeAll(async () => {
   instanceB = await startInstance("itest-b");
 }, 60_000);
 
+afterEach(async () => {
+  for (const c of openConnections.splice(0)) {
+    await c.disconnect().catch(() => undefined);
+  }
+});
+
 afterAll(async () => {
   for (const s of servers) await s.destroy();
-});
+}, 60_000);
 
 describe("Space existence across two collab instances", () => {
   it("sees a Space that only the other instance's memory knows about", async () => {
@@ -132,6 +162,7 @@ describe("Space existence across two collab instances", () => {
     const onA = await instanceA.openDirectConnection(META_DOC, {
       context: { user: { id: "system" } },
     });
+    openConnections.push(onA);
     await onA.transact((live: Y.Doc) => {
       const entry = new Y.Map<unknown>();
       live.getMap("spaces").set(MEMORY_ONLY_SPACE, entry);
@@ -143,24 +174,17 @@ describe("Space existence across two collab instances", () => {
     // is what #26 was.
     const seenOnB = await spaceIdsSeenBy(instanceB);
 
-    expect(seenOnB.ids).toContain(STORED_SPACE);
-    expect(seenOnB.ids).toContain(MEMORY_ONLY_SPACE);
-    // Answering is on the handshake path, so it has to be fast. Loose enough
-    // not to be flaky on a loaded CI box, tight enough to catch the second a
-    // connection-based load would have cost.
-    expect(seenOnB.ms).toBeLessThan(500);
+    expect(seenOnB).toContain(STORED_SPACE);
+    expect(seenOnB).toContain(MEMORY_ONLY_SPACE);
 
     // `readProjectSpaceIds` unloads what it loaded, scheduled rather than
-    // awaited. Waiting for it here is not tidiness: without the unload,
-    // `destroy()` — which waits for the document count to reach zero — never
-    // finishes, so this assertion is also what keeps `afterAll` from hanging.
+    // awaited. Waiting for it here keeps the next test from starting against a
+    // half-unloaded document.
     await vi.waitFor(
       () => {
         expect(instanceB.documents.has(META_DOC)).toBe(false);
       },
       { timeout: 10_000 },
     );
-
-    await onA.disconnect();
   }, 60_000);
 });
