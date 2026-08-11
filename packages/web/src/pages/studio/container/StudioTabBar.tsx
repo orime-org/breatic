@@ -5,6 +5,7 @@ import type * as React from 'react';
 import { Link } from 'react-router-dom';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
 import {
   studioTabPath,
@@ -82,11 +83,17 @@ export function StudioTabBar({
             // `aria-current` rather than a selected state: the reader is not
             // choosing among options, they are somewhere, and this says where.
             aria-current={isCurrent ? 'page' : undefined}
-            className={
-              isCurrent
-                ? `${LINK_BASE} border-active-border text-foreground`
-                : LINK_BASE
-            }
+            // `cn` and not a template literal. Both halves of each pair are
+            // plain utilities of equal specificity, so with concatenation the
+            // one that happens to sit later in the compiled sheet wins — which
+            // is `border-transparent` and `text-muted-foreground`, the two this
+            // is trying to override. The current section then paints exactly
+            // like the five it is meant to be told apart from. twMerge drops
+            // the loser instead of leaving the outcome to file order.
+            className={cn(
+              LINK_BASE,
+              isCurrent && 'border-active-border text-foreground',
+            )}
           >
             {t(tab.labelKey)}
             {count !== undefined ? (

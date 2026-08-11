@@ -47,12 +47,17 @@ export const DEFAULT_STUDIO_TAB: StudioTabKey = 'projects';
 /**
  * The address of one of a studio's sections.
  *
- * One place builds these, because the product navigates to them from four:
- * the section strip, the account menu, the rename redirect, and the redirect
- * away from an address that named no section. Hand-assembling the scheme at
- * each site is how `'settings'` becomes a bare string that `StudioTabKey`
- * never checked — the tab list stays the single source of truth for what is
- * addressable only if it is also the source of the addresses.
+ * One place builds these, because the product navigates to a section from
+ * three: the section strip, the account menu, and the rename redirect.
+ * Hand-assembling the scheme at each site is how `'settings'` becomes a bare
+ * string that `StudioTabKey` never checked — the tab list stays the single
+ * source of truth for what is addressable only if it is also the source of the
+ * addresses.
+ *
+ * The redirect in `StudioContainerPage` is deliberately NOT one of them: it
+ * answers an address that named no section at all, so it goes to the studio
+ * rather than to a section of it, and routing it through here would be a claim
+ * about which section it meant.
  *
  * The default section has ONE address, the studio's own. Giving it two — the
  * bare one and an explicit `/projects` — would mean the strip's first link

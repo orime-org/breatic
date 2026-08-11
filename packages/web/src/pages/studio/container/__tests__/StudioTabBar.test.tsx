@@ -46,20 +46,22 @@ function setup(
  * @returns A reader for the current location.
  */
 function setupWithLocation(studioType: StudioType): {
-  location: () => { pathname: string; historyLength: number };
+  location: () => { pathname: string; entryKey: string };
 } {
-  let read: () => { pathname: string; historyLength: number } = () => ({
+  let read: () => { pathname: string; entryKey: string } = () => ({
     pathname: '',
-    historyLength: 0,
+    entryKey: '',
   });
   function Probe(): React.JSX.Element {
     const loc = useLocation();
     const nav = useNavigationType();
     read = () => ({
       pathname: loc.pathname,
-      // MemoryRouter's index is the number of entries behind the current one,
-      // so an entry added by focus movement would show up here.
-      historyLength: window.history.length,
+      // NOT `window.history.length`: MemoryRouter keeps its stack in memory and
+      // never writes to the browser's, so that number stays 1 whatever happens
+      // and an assertion on it can never fail. `key` changes on every entry
+      // the router pushes, so it does move when a navigation occurs.
+      entryKey: loc.key,
     });
     // `nav` is read so the probe re-renders on every navigation.
     return <span data-testid='nav-type'>{nav}</span>;
@@ -122,6 +124,32 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
     );
   });
 
+  it('marks the current section so it LOOKS different, not only reads different', () => {
+    // `aria-current` is for the machine. A sighted reader needs the strip to
+    // show which section they are in, and asserting the attribute cannot see
+    // whether anything paints — which is how the indicator went missing: the
+    // classes were concatenated, so `border-transparent` and
+    // `text-muted-foreground` from the shared base beat the overrides on
+    // source order and every link rendered identically.
+    setup('team', { current: 'members' });
+    const links = screen.getAllByRole('link');
+    const current = links.find(
+      (l) => l.getAttribute('aria-current') === 'page',
+    );
+    const others = links.filter((l) => l !== current);
+
+    // The override must have survived the merge, and its loser must be gone.
+    expect(current?.className).toContain('border-active-border');
+    expect(current?.className).not.toContain('border-transparent');
+    expect(current?.className).toContain('text-foreground');
+    expect(current?.className).not.toContain('text-muted-foreground');
+    // And the others must still carry what the current one dropped.
+    for (const other of others) {
+      expect(other.className).toContain('border-transparent');
+      expect(other.className).toContain('text-muted-foreground');
+    }
+  });
+
   it('sits in a labelled nav landmark', () => {
     setup('team');
     // A landmark is how a screen-reader user jumps straight to this strip
@@ -144,13 +172,15 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
     const user = userEvent.setup();
     const { location } = setupWithLocation('team');
     const links = screen.getAllByRole('link');
+    const keyBefore = location().entryKey;
     links[0]?.focus();
 
     await user.tab();
 
     expect(document.activeElement).toBe(links[1]);
     expect(location().pathname).toBe('/studio/acme-studio');
-    expect(location().historyLength).toBe(1);
+    // Same history entry as before the keypress — no navigation happened.
+    expect(location().entryKey).toBe(keyBefore);
   });
 
   it('navigates on Enter, once', async () => {
