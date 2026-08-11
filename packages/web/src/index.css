@@ -464,6 +464,138 @@ body {
   color: var(--color-muted-foreground);
 }
 
+/* ---- The document Space's body typography ----
+   Tailwind's preflight resets `h1..h6` to inherit their size and weight, and
+   strips `list-style` off `ol, ul`. TipTap renders those as bare elements, so
+   there is nowhere to hang a utility class: without the rules below, pressing
+   the quote button changes the document and nothing on screen.
+
+   EVERY SELECTOR EXCLUDES `.doc-title`, because the document's title IS an
+   `h1` — `document-title.ts` renders `['h1', { class: 'doc-title' }]` into this
+   same `.ProseMirror`. So `h1` alone matches the title too, and `:first-child`
+   matches ONLY the title (it is always the first block). Leaving the exclusion
+   out happens to work today, since the title rule above declares every property
+   the h1 rule sets and outranks it — but add one property here that the title
+   does not declare and it lands on the title.
+
+   Sizes derive from `--font-size-base` the way the title does, and the
+   coefficients are fractions rather than decimals because 15 × 1.333 is
+   19.995px, not 20. The hard ceiling is the title's 30px: the largest body
+   heading has to stay under it or the hierarchy inverts. */
+.doc-body-editor .ProseMirror {
+  line-height: 1.65;
+  /* A long URL or an unbroken word overflows the 768px column, and the scroll
+     viewport only has a vertical axis — so what overflows is not scrollable,
+     it is clipped. */
+  overflow-wrap: anywhere;
+}
+
+.doc-body-editor .ProseMirror p {
+  margin: 0.85em 0;
+}
+
+.doc-body-editor .ProseMirror h1:not(.doc-title) {
+  font-size: calc(var(--font-size-base) * 8 / 5); /* 24px */
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 1.9em 0 0.55em;
+}
+
+.doc-body-editor .ProseMirror h2:not(.doc-title) {
+  font-size: calc(var(--font-size-base) * 4 / 3); /* 20px */
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1.7em 0 0.5em;
+}
+
+.doc-body-editor .ProseMirror h3:not(.doc-title) {
+  font-size: calc(var(--font-size-base) * 17 / 15); /* 17px */
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 1.5em 0 0.45em;
+}
+
+/* Only 400/500/600/700/800 of Inter are loaded (`index.tsx`), and the CSS
+   font-matching rules round a weight above 500 UP to the next face — so 650
+   would render as 700 and h2 would weigh exactly what h1 does. The three levels
+   separate by size; h1 alone is heavier. `strong` is left out entirely: the
+   browser already renders it at 700. */
+
+.doc-body-editor .ProseMirror ul,
+.doc-body-editor .ProseMirror ol {
+  margin: 0.85em 0;
+  padding-inline-start: 1.5em;
+}
+
+.doc-body-editor .ProseMirror ul {
+  list-style-type: disc;
+}
+
+.doc-body-editor .ProseMirror ol {
+  list-style-type: decimal;
+}
+
+/* A list item always wraps its text in a paragraph — `listItem`'s content is
+   `paragraph block*` — so the paragraph margin above would land inside every
+   item and swallow the spacing set on the item itself. */
+.doc-body-editor .ProseMirror li > p {
+  margin: 0;
+}
+
+.doc-body-editor .ProseMirror li {
+  margin-top: 0.3em;
+}
+
+.doc-body-editor .ProseMirror blockquote {
+  margin: 1.1em 0;
+  padding-inline-start: 1em;
+  border-inline-start: 2px solid var(--color-border);
+  color: var(--color-muted-foreground);
+}
+
+/* `:not(pre)` keeps this off the code inside a code block: TipTap renders that
+   as `pre > code`, and two nested 0.9em multiply to 0.81em. */
+.doc-body-editor .ProseMirror :not(pre) > code {
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  background: var(--color-muted);
+  border-radius: var(--radius-content-xs);
+}
+
+/* No `white-space` here on purpose. A long line still gets clipped, which is
+   what it does today — the fix is a code-block NodeView with its own scroller
+   and a per-block wrap toggle, and that is a slice of its own. */
+.doc-body-editor .ProseMirror pre {
+  font-size: 0.9em;
+  line-height: 1.6;
+  margin: 1.1em 0;
+  padding: 0.75em 1em;
+  background: var(--color-muted);
+  border-radius: var(--radius-content-sm);
+}
+
+.doc-body-editor .ProseMirror pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.doc-body-editor .ProseMirror hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+/* The product has no coloured link: `notification-headline` styles its links
+   with `text-foreground` and reveals the underline on hover. A link sitting
+   inside a paragraph has no such affordance, so the underline stays on. */
+.doc-body-editor .ProseMirror a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* ---- Room to click under the last block ----
    A document Space is born with a title and no body blocks, so the editable
    surface has to reach the bottom of the scroll viewport: below where it stops
