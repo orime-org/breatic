@@ -525,7 +525,7 @@ describe("a turn the user stopped", () => {
     await runTurnFull();
     const wrapUps = wrapUpMessages();
     expect(wrapUps).toHaveLength(1);
-    expect(wrapUps[0]).toMatchObject({ interrupted: true });
+    expect(wrapUps[0]?.parts).toContainEqual({ type: "interrupted" });
   });
 
   it("marks the stored reply when there was prose", async () => {
@@ -537,10 +537,9 @@ describe("a turn the user stopped", () => {
       ]),
     );
     await runTurnFull();
-    expect(wrapUpMessages()[0]).toMatchObject({
-      content: "half a s",
-      interrupted: true,
-    });
+    const stored = wrapUpMessages()[0];
+    expect(stored?.parts).toContainEqual({ type: "text", text: "half a s" });
+    expect(stored?.parts).toContainEqual({ type: "interrupted" });
   });
 
   it("survives a stop that lands before any step finished", async () => {
