@@ -1176,9 +1176,12 @@ function CanvasSpaceInner({
   // drag-start snapshot — onNodeDragStop alone resolves the whole result
   // (reparent + position + Group auto-expand). See planGroupDrag.
   // Typed by ReactFlow's own `OnNodeDrag` rather than by spelling the
-  // parameters out: the hand-written version named `React.MouseEvent`, and
-  // 12.11 started handing these callbacks the native event instead, so the
-  // annotation stopped matching a signature we never call ourselves.
+  // parameters out. The hand-written version named `React.MouseEvent`, which
+  // was never what arrives: the callback is handed d3's `sourceEvent`, a
+  // native one, and it always was — 12.10 and 12.11 dispatch identical code.
+  // What 12.11 changed is the TYPE, from `React.MouseEvent` to
+  // `MouseEvent | TouchEvent`, which is what made a long-wrong annotation
+  // finally fail to compile.
   const onNodeDragStop = React.useCallback<OnNodeDrag<Node>>(
     (_event, _node, nodes): void => {
       if (readOnly) return;
