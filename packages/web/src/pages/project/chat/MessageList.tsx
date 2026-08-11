@@ -48,26 +48,41 @@ export function MessageList({
   onQuickAction,
 }: MessageListProps): React.JSX.Element {
   const bottomRef = React.useRef<HTMLDivElement>(null);
+  // Whether the reader was at the end last time they moved. Recorded as they
+  // scroll rather than measured when new content arrives, because by then the
+  // content has already made the column taller and there is no way left to
+  // tell "the reader scrolled away" from "the reply grew". Measuring after
+  // the fact reads a reader who never moved as one who left, and since the
+  // gap only widens from there, following never starts again for that turn.
+  const stickToBottom = React.useRef(true);
   const count = messages.length;
   // A streaming reply arrives as pieces appended to the message already at
   // the end, so the count sits still for the whole turn. Following its length
   // as well is what keeps the answer in view while it is being written.
   const lastLength = messages.at(-1)?.content.length ?? 0;
+
   React.useEffect(() => {
-    const anchor = bottomRef.current;
-    if (!anchor) return;
+    const viewport = bottomRef.current?.closest('[data-radix-scroll-area-viewport]');
+    if (!viewport) return;
 
-    // Only follow a reader who is already at the end. Scrolling them back
-    // down on every token — which is what following unconditionally means —
-    // makes the column unreadable for the whole turn, exactly when a long
-    // answer is worth reading. Standard sticky-bottom behaviour.
-    const viewport = anchor.closest('[data-radix-scroll-area-viewport]');
-    if (viewport) {
+    /** Record where the reader put themselves, while it is still true. */
+    const remember = (): void => {
       const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-      if (distance > AT_BOTTOM_SLACK_PX) return;
-    }
+      stickToBottom.current = distance <= AT_BOTTOM_SLACK_PX;
+    };
 
-    anchor.scrollIntoView({ behavior: 'smooth' });
+    viewport.addEventListener('scroll', remember, { passive: true });
+    return () => viewport.removeEventListener('scroll', remember);
+    // The anchor only exists once there are messages, so this has to be able
+    // to run again when the first one arrives.
+  }, [count]);
+
+  React.useEffect(() => {
+    if (!stickToBottom.current) return;
+    // Instant, not smooth. A smooth scroll raises scroll events all the way
+    // down, and every one of them is read above as "the reader is far from
+    // the end" until it lands — which would switch following off mid-turn.
+    bottomRef.current?.scrollIntoView();
   }, [count, lastLength]);
 
   return (

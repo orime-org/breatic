@@ -41,6 +41,22 @@ describe('ToolCallCard', () => {
     expect(screen.getByTestId('tool-call-unfinished')).toBeInTheDocument();
   });
 
+  it('does not draw a stopped call with the failure icon either', () => {
+    // The caption and the icon are two ways of saying the same thing. Fixing
+    // only the words leaves the louder one still calling it a failure.
+    const { container } = render(<ToolCallCard toolCall={call({ status: 'error' })} />);
+    expect(screen.getByTestId('tool-call-card').getAttribute('data-status')).toBe('unfinished');
+    expect(container.querySelector('.text-status-error')).toBeNull();
+  });
+
+  it('does draw a real failure with the failure icon', () => {
+    const { container } = render(
+      <ToolCallCard toolCall={call({ status: 'error', errorMessage: 'the site refused' })} />,
+    );
+    expect(screen.getByTestId('tool-call-card').getAttribute('data-status')).toBe('error');
+    expect(container.querySelector('.text-status-error')).not.toBeNull();
+  });
+
   it('shows nothing extra for a tool that came back normally', () => {
     render(<ToolCallCard toolCall={call({ status: 'success', result: 'two links' })} />);
     expect(screen.queryByTestId('tool-call-error')).toBeNull();
