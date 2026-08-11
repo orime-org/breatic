@@ -759,7 +759,8 @@
         "works": "Works",
         "members": "成员",
         "credits": "积分",
-        "settings": "设置"
+        "settings": "设置",
+        "navLabel": "Studio 分区"
       },
       "works": {
         "emptyHint": "Works 是从 Project 发布出来的独立成品(完整视频 / 小游戏…),是 Studio 对外的门面。功能上线后,已发布的成品会在这里展示。",

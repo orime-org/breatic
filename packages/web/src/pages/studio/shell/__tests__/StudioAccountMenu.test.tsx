@@ -68,6 +68,26 @@ describe('StudioAccountMenu', () => {
     );
   });
 
+  it('shows the account itself, not just its name', async () => {
+    // Acceptance item 1 asks for the avatar in the MENU. The trigger has one
+    // too, but that one is present whether the menu is open or not — it is the
+    // button, not the identity block. A header that names an account without
+    // showing its face is the thing this item exists to prevent, and reading
+    // the menu's text cannot tell the two apart, which is how it slipped
+    // through the first time.
+    const user = userEvent.setup();
+    useCurrentUserStore.getState().setUser(ALEX);
+    setup();
+    await openMenu(user);
+
+    const menu = screen.getByRole('menu');
+    // StudioAvatar renders the initial when there is no image; either way it
+    // is an element of its own inside the menu, not text on the label.
+    expect(
+      menu.querySelector('[data-testid="account-menu-avatar"]'),
+    ).not.toBeNull();
+  });
+
   it('names who is signed in, by display name and handle', async () => {
     // The handle is the personal studio's slug — the identifier other people
     // use to find this account — so seeing it is the point, not decoration.
@@ -101,6 +121,27 @@ describe('StudioAccountMenu', () => {
       expect(entry).toHaveAttribute('aria-disabled', 'true');
       expect(entry).not.toHaveAttribute('disabled');
       expect(entry).not.toHaveAttribute('data-disabled');
+    },
+  );
+
+  it.each([['Credits'], ['Membership']])(
+    'shows %s where focus is, not only to the machine',
+    async (name) => {
+      // Reachable and invisible is the same outcome as unreachable for the
+      // person looking at the screen: they arrow down, nothing appears to
+      // happen, and the entry reads as skipped. The menu primitive expresses
+      // its highlight as a focus background, so an entry that cancels that
+      // background has no way left to say where focus is.
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+
+      const entry = screen.getByRole('menuitem', { name: new RegExp(name) });
+      // It must not cancel the primitive's own highlight...
+      expect(entry.className).not.toContain('focus:bg-transparent');
+      // ...and it must carry a focus treatment of its own.
+      expect(entry.className).toMatch(/focus:/);
     },
   );
 

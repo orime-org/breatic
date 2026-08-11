@@ -3,31 +3,116 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 
-import { Tabs } from '@web/components/ui/tabs';
 import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
+import type { StudioTabKey } from '@web/pages/studio/container/studio-tabs';
 import type { StudioType } from '@web/pages/studio/shared/studio-types';
 
 function setup(
   studioType: StudioType,
-  counts?: Partial<Record<'projects' | 'collections' | 'members', number>>,
+  {
+    counts,
+    current = 'projects',
+    slug = 'acme-studio',
+  }: {
+    counts?: Partial<Record<StudioTabKey, number>>;
+    current?: StudioTabKey;
+    slug?: string;
+  } = {},
 ) {
-  // Tabs Root provides the Radix tablist context StudioTabBar renders into.
   return render(
-    <Tabs value='projects'>
-      <StudioTabBar studioType={studioType} counts={counts} />
-    </Tabs>,
+    <MemoryRouter>
+      <StudioTabBar
+        studioType={studioType}
+        counts={counts}
+        current={current}
+        slug={slug}
+      />
+    </MemoryRouter>,
   );
 }
 
-describe('StudioTabBar', () => {
-  it('renders all 6 tabs for a team studio, in spec order', () => {
+// Each of these sections is a place with its own address — you can link to it,
+// refresh into it, and walk back out of it. That makes the strip navigation,
+// and navigation is links in a nav, not the ARIA tabs widget. The widget is
+// for swapping panels inside one page: it moves focus with the arrow keys and
+// activates whatever focus lands on, which is right when activating costs
+// nothing and wrong when it writes a history entry. Both W3C's own tabs
+// guidance (automatic activation is recommended precisely because panels are
+// free to show) and the products shaped like this one point the same way —
+// GitHub's organisation strip has no role="tab" on the page at all, just a
+// <nav> of links.
+describe('StudioTabBar — a nav of links, not a tablist', () => {
+  it('renders no tab widget roles at all', () => {
     setup('team');
-    const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(6);
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryAllByRole('tab')).toHaveLength(0);
+  });
+
+  it('renders every section as a link to its own address', () => {
+    setup('team');
+    const links = screen.getAllByRole('link');
+    expect(links.map((l) => l.getAttribute('href'))).toEqual([
+      '/studio/acme-studio/projects',
+      '/studio/acme-studio/collections',
+      '/studio/acme-studio/works',
+      '/studio/acme-studio/members',
+      '/studio/acme-studio/credits',
+      '/studio/acme-studio/settings',
+    ]);
+  });
+
+  it('names the current section with aria-current, and only that one', () => {
+    setup('team', { current: 'members' });
+    const current = screen
+      .getAllByRole('link')
+      .filter((l) => l.getAttribute('aria-current') === 'page');
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveAttribute(
+      'href',
+      '/studio/acme-studio/members',
+    );
+  });
+
+  it('sits in a labelled nav landmark', () => {
+    setup('team');
+    // A landmark is how a screen-reader user jumps straight to this strip
+    // instead of walking the page; unlabelled, several navs are
+    // indistinguishable from one another.
+    const nav = screen.getByRole('navigation', { name: 'Studio sections' });
+    expect(nav).toBeInTheDocument();
+  });
+
+  it('moves focus between sections WITHOUT activating any of them', async () => {
+    // This is the whole reason the widget was wrong. In a tablist the arrow
+    // keys move focus and activate in one motion, so a keyboard user looking
+    // along the strip left a history entry at every stop and had to press Back
+    // once per keystroke to get out. Links do not activate on focus.
+    const user = userEvent.setup();
+    setup('team');
+    const links = screen.getAllByRole('link');
+    links[0]?.focus();
+    await user.tab();
+    expect(document.activeElement).toBe(links[1]);
+    // Still exactly one current section, and still the first one — moving
+    // focus changed nothing about where the user is.
+    const current = screen
+      .getAllByRole('link')
+      .filter((l) => l.getAttribute('aria-current') === 'page');
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveAttribute(
+      'href',
+      '/studio/acme-studio/projects',
+    );
+  });
+
+  it('renders all 6 sections for a team studio, in spec order', () => {
+    setup('team');
     // Test boot locale is English (vitest.setup seeds en + setLocale('en')).
     // Works sits at the 3rd position (spec §6.1), not the end.
-    expect(tabs.map((t) => t.textContent)).toEqual([
+    expect(screen.getAllByRole('link').map((l) => l.textContent)).toEqual([
       'Projects',
       'Collections',
       'Works',
@@ -37,66 +122,26 @@ describe('StudioTabBar', () => {
     ]);
   });
 
-  it('shows all 6 tabs for a personal studio (Members read-only, A 方案)', () => {
+  it('shows all 6 sections for a personal studio (Members read-only, A 方案)', () => {
     setup('personal');
-    const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(6);
+    expect(screen.getAllByRole('link')).toHaveLength(6);
     expect(
-      screen.getByRole('tab', { name: 'Members' }),
-    ).toBeInTheDocument();
-    expect(tabs.map((t) => t.textContent)).toEqual([
-      'Projects',
-      'Collections',
-      'Works',
-      'Members',
-      'Credits',
-      'Settings',
-    ]);
-  });
-
-  it('marks the active tab with aria-selected', () => {
-    setup('team');
-    expect(screen.getByRole('tab', { name: 'Projects' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    expect(screen.getByRole('tab', { name: 'Collections' })).toHaveAttribute(
-      'aria-selected',
-      'false',
-    );
-  });
-
-  it('shows a count chip on projects / collections / members when counts are given', () => {
-    setup('team', { projects: 6, collections: 2, members: 4 });
-    expect(screen.getByRole('tab', { name: /Projects/ })).toHaveTextContent('6');
-    expect(screen.getByRole('tab', { name: /Collections/ })).toHaveTextContent(
-      '2',
-    );
-    expect(screen.getByRole('tab', { name: /Members/ })).toHaveTextContent('4');
-    // Credits / Settings never carry a count (mock定稿).
-    expect(screen.getByRole('tab', { name: 'Credits' })).toBeInTheDocument();
-  });
-
-  it('omits the count chip for a tab whose count is absent', () => {
-    setup('team', { projects: 6 });
-    expect(screen.getByRole('tab', { name: /Projects/ })).toHaveTextContent('6');
-    // Collections count not provided → exact label, no trailing number.
-    expect(
-      screen.getByRole('tab', { name: 'Collections' }),
+      screen.getByRole('link', { name: 'Members' }),
     ).toBeInTheDocument();
   });
 
-  it('underlines the active tab with border-active-border (neutral activation border rule)', () => {
-    // User ruling 2026-07-11: a NEUTRAL border expressing activation must be
-    // border-active-border — the tab underline is part of that system, not an
-    // exempt text-colour indicator (breatic/active-border scans data-[state=active]).
-    setup('team');
-    const active = screen.getByRole('tab', { name: 'Projects' });
-    expect(active.className).toContain(
-      'data-[state=active]:border-active-border',
+  it('shows a count chip only for the sections given one', () => {
+    setup('team', { counts: { projects: 3, members: 12 } });
+    // The chip is a sibling element inside the link, so the computed name runs
+    // the two together ("Projects3") — matched on the label, with the number
+    // asserted separately below.
+    expect(screen.getByRole('link', { name: /Projects/ })).toHaveTextContent(
+      'Projects3',
     );
-    expect(active.className).not.toContain(
-      'data-[state=active]:border-foreground',
+    expect(screen.getByRole('link', { name: /Members/ })).toHaveTextContent(
+      'Members12',
     );
+    // Settings was given no count, so it carries no chip.
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
   });
 });

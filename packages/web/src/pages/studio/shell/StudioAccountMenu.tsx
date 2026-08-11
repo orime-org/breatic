@@ -60,7 +60,7 @@ function ComingEntry({
     <DropdownMenuItem
       aria-disabled='true'
       onSelect={(event) => event.preventDefault()}
-      className='cursor-not-allowed opacity-50 focus:bg-transparent'
+      className='cursor-not-allowed opacity-50 focus:bg-accent/60'
     >
       {icon}
       {label}
@@ -160,15 +160,24 @@ export function StudioAccountMenu(): React.JSX.Element {
         className='w-60'
         data-testid='account-menu'
       >
-        <DropdownMenuLabel className='flex flex-col gap-0.5'>
-          <span className='truncate text-sm font-medium'>{user?.name}</span>
-          {personalStudio === null ? null : (
-            // The handle is how other people find this account, so it is worth
-            // being able to read off without going anywhere.
-            <span className='truncate text-xs font-normal text-muted-foreground'>
-              @{personalStudio.slug}
-            </span>
-          )}
+        <DropdownMenuLabel className='flex items-center gap-2'>
+          <StudioAvatar
+            name={user?.name ?? '?'}
+            type='personal'
+            avatarUrl={user?.avatarUrl ?? null}
+            size='sm'
+            data-testid='account-menu-avatar'
+          />
+          <span className='flex min-w-0 flex-col gap-0.5'>
+            <span className='truncate text-sm font-medium'>{user?.name}</span>
+            {personalStudio === null ? null : (
+              // The handle is how other people find this account, so it is
+              // worth being able to read off without going anywhere.
+              <span className='truncate text-xs font-normal text-muted-foreground'>
+                @{personalStudio.slug}
+              </span>
+            )}
+          </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <ComingEntry

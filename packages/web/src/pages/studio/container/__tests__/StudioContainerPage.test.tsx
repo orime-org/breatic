@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -161,27 +161,24 @@ describe('StudioContainerPage', () => {
     // credits / settings — Works added at the 3rd position, spec §6.1).
     expect(await screen.findByText('Acme Studio')).toBeInTheDocument();
     expect(screen.getByText('Team')).toBeInTheDocument();
-    expect(screen.getAllByRole('tab')).toHaveLength(6);
+    // Scoped to the section nav: the project cards below are links too, and
+    // counting every link on the page would count them.
+    const nav = screen.getByRole('navigation', { name: 'Studio sections' });
+    expect(within(nav).getAllByRole('link')).toHaveLength(6);
   });
 
   it('defaults to the Projects tab panel', async () => {
     setup('acme-studio');
     // The tab's accessible name now includes its count chip ("Projects 1"),
     // so match by substring.
-    expect(await screen.findByRole('tab', { name: /Projects/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(await screen.findByRole('link', { name: /Projects/ })).toHaveAttribute('aria-current', 'page');
   });
 
   it('switches the visible panel when another tab is clicked', async () => {
     const user = userEvent.setup();
     setup('acme-studio');
-    await user.click(await screen.findByRole('tab', { name: 'Credits' }));
-    expect(screen.getByRole('tab', { name: 'Credits' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await user.click(await screen.findByRole('link', { name: 'Credits' }));
+    expect(screen.getByRole('link', { name: 'Credits' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('renders all 6 tabs for a personal studio (Members read-only, A 方案)', async () => {
@@ -189,9 +186,11 @@ describe('StudioContainerPage', () => {
     // Personal studios now show all 6 tabs; the Members tab is read-only
     // (A 方案 2026-06-08): projects / collections / works / members / credits /
     // settings.
-    expect(await screen.findAllByRole('tab')).toHaveLength(6);
-    expect(screen.getByRole('tab', { name: /Members/ })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Works' })).toBeInTheDocument();
+    await screen.findByRole('navigation', { name: 'Studio sections' });
+    const nav = screen.getByRole('navigation', { name: 'Studio sections' });
+    expect(within(nav).getAllByRole('link')).toHaveLength(6);
+    expect(screen.getByRole('link', { name: /Members/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Works' })).toBeInTheDocument();
   });
 
   it('shows the error state when the studio cannot be loaded', async () => {
@@ -249,13 +248,13 @@ describe('StudioContainerPage', () => {
     expect(
       screen.getByText('This Studio has no published works.'),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('tablist')).toBeNull();
-    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Studio sections' })).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('renders tabs (member view) when myStudioRole is non-null', async () => {
     setup('acme-studio');
-    expect(await screen.findByRole('tablist')).toBeInTheDocument();
+    expect(await screen.findByRole('navigation', { name: 'Studio sections' })).toBeInTheDocument();
     // No non-member empty state leaks into the member view.
     expect(
       screen.queryByText('This studio has no published works.'),
@@ -265,7 +264,7 @@ describe('StudioContainerPage', () => {
   it('shows the Works tab empty state when the Works tab is selected', async () => {
     const user = userEvent.setup();
     setup('acme-studio');
-    await user.click(await screen.findByRole('tab', { name: 'Works' }));
+    await user.click(await screen.findByRole('link', { name: 'Works' }));
     expect(screen.getByText('No works yet')).toBeInTheDocument();
   });
 
@@ -280,19 +279,22 @@ describe('StudioContainerPage', () => {
     setup('acme-studio', false, 'settings');
     // The tab strip is the visible proof: `aria-selected` names the one tab
     // the page considers current.
-    const settings = await screen.findByRole('tab', { name: 'Settings' });
-    expect(settings).toHaveAttribute('aria-selected', 'true');
+    const settings = await screen.findByRole('link', { name: 'Settings' });
+    expect(settings).toHaveAttribute('aria-current', 'page');
   });
 
   it('opens Projects when the address names no tab', async () => {
     setup('acme-studio');
     // Projects / Collections / Members carry a count chip, so the accessible
     // name is the label plus the number — matched loosely on the label.
-    const projects = await screen.findByRole('tab', { name: /Projects/ });
-    expect(projects).toHaveAttribute('aria-selected', 'true');
+    const projects = await screen.findByRole('link', { name: /Projects/ });
+    expect(projects).toHaveAttribute('aria-current', 'page');
     // The bare studio address is not rewritten to spell out its default —
     // /studio/{slug} stays what a user typed and what we hand out.
-    expect(screen.getByTestId('location')).toHaveTextContent(
+    // Exact, not substring: `/studio/acme-studio` is a prefix of every tab
+    // address under it, so a substring assertion here would hold whatever the
+    // page did.
+    expect(screen.getByTestId('location').textContent).toBe(
       '/studio/acme-studio',
     );
   });
@@ -302,14 +304,14 @@ describe('StudioContainerPage', () => {
     // Not a blank page, and not left sitting in the bar: a wrong address
     // resolves to the one address that is certainly right.
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent(
+      // Exact: the address under test is `/studio/acme-studio/nonsense`, which
+      // CONTAINS `/studio/acme-studio` — a substring assertion is satisfied
+      // before the redirect and could never fail.
+      expect(screen.getByTestId('location').textContent).toBe(
         '/studio/acme-studio',
       ),
     );
-    expect(await screen.findByRole('tab', { name: /Projects/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(await screen.findByRole('link', { name: /Projects/ })).toHaveAttribute('aria-current', 'page');
   });
 
   it('sends a non-member back to the studio even when the tab name is real', async () => {
@@ -319,11 +321,12 @@ describe('StudioContainerPage', () => {
     // ordinary way to arrive here.
     setup('stranger-studio', false, 'settings');
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent(
+      // Exact, for the same reason as the test above.
+      expect(screen.getByTestId('location').textContent).toBe(
         '/studio/stranger-studio',
       ),
     );
-    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Studio sections' })).toBeNull();
   });
 
   it('keeps the address in step when the user switches tab by clicking', async () => {
@@ -331,9 +334,9 @@ describe('StudioContainerPage', () => {
     // page and the bar disagree and Back goes somewhere nobody asked for.
     const user = userEvent.setup();
     setup('acme-studio');
-    await user.click(await screen.findByRole('tab', { name: /Members/ }));
+    await user.click(await screen.findByRole('link', { name: /Members/ }));
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent(
+      expect(screen.getByTestId('location').textContent).toBe(
         '/studio/acme-studio/members',
       ),
     );

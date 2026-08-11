@@ -759,7 +759,8 @@
         "works": "Works",
         "members": "Members",
         "credits": "Credits",
-        "settings": "Settings"
+        "settings": "Settings",
+        "navLabel": "Studio sections"
       },
       "works": {
         "emptyHint": "Works are the finished products a project publishes (a complete video, a mini-game…) — your Studio's public face. Once publishing ships, your published works will appear here.",

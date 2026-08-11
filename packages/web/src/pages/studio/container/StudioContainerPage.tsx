@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import type { ProjectSummary } from '@breatic/shared';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { Tabs, TabsContent } from '@web/components/ui/tabs';
 import { studiosApi } from '@web/data/api/studios';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
@@ -27,7 +26,6 @@ import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
 import {
   isStudioTabKey,
   studioTabFromParam,
-  type StudioTabKey,
 } from '@web/pages/studio/container/studio-tabs';
 import { CollectionsTab } from '@web/pages/studio/container/tabs/CollectionsTab';
 import { CreditsTab } from '@web/pages/studio/container/tabs/CreditsTab';
@@ -77,7 +75,6 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
  */
 export default function StudioContainerPage(): React.JSX.Element {
   const { slug = '', tab: tabParam } = useParams();
-  const navigate = useNavigate();
   const t = useTranslation();
   const studioQuery = useQuery({
     queryKey: ['studio', slug],
@@ -108,19 +105,6 @@ export default function StudioContainerPage(): React.JSX.Element {
   // the user had made. So the segment is read here rather than mirrored — one
   // value, no chance of the page and the address bar disagreeing.
   const tab = studioTabFromParam(tabParam);
-  /**
-   * Switch tab by going to its address.
-   *
-   * `navigate` rather than `replace`: each switch is a place the user chose to
-   * be, so Back should walk them out of it.
-   * @param next - The tab to switch to.
-   */
-  const setTab = React.useCallback(
-    (next: StudioTabKey): void => {
-      navigate(`/studio/${slug}/${next}`);
-    },
-    [navigate, slug],
-  );
 
   const studio = studioQuery.data;
   // Projects (slice 2) + members (slice 3) come from the real API; the other
@@ -191,14 +175,12 @@ export default function StudioContainerPage(): React.JSX.Element {
           </ScrollArea>
         </div>
       ) : (
-        <Tabs
-          value={tab}
-          onValueChange={(value) => setTab(value as StudioTabKey)}
-          className='flex w-full min-h-0 flex-1 flex-col'
-        >
+        <div className='flex w-full min-h-0 flex-1 flex-col'>
           <StudioHeader studio={view.studio} />
           <StudioTabBar
             studioType={view.studio.type}
+            current={tab}
+            slug={slug}
             counts={{
               projects: projects.length,
               collections: view.collections.length,
@@ -207,7 +189,7 @@ export default function StudioContainerPage(): React.JSX.Element {
           />
           <ScrollArea className='min-h-0 flex-1'>
             <div className={`${CENTER_COLUMN} pt-[18px] pb-12`}>
-              <TabsContent value='projects'>
+              {tab === 'projects' ? (
                 <ProjectsTab
                   projects={projects}
                   studioRole={view.studio.myStudioRole}
@@ -215,17 +197,15 @@ export default function StudioContainerPage(): React.JSX.Element {
                   creatableStudios={creatable}
                   defaultStudioId={defaultStudioId}
                 />
-              </TabsContent>
-              <TabsContent value='collections'>
+              ) : null}
+              {tab === 'collections' ? (
                 <CollectionsTab
                   collections={view.collections}
                   studioRole={view.studio.myStudioRole}
                 />
-              </TabsContent>
-              <TabsContent value='works'>
-                <WorksTab />
-              </TabsContent>
-              <TabsContent value='members'>
+              ) : null}
+              {tab === 'works' ? <WorksTab /> : null}
+              {tab === 'members' ? (
                 <MembersTab
                   slug={slug}
                   members={members}
@@ -233,19 +213,19 @@ export default function StudioContainerPage(): React.JSX.Element {
                   studioRole={view.studio.myStudioRole}
                   studioType={view.studio.type}
                 />
-              </TabsContent>
-              <TabsContent value='credits'>
+              ) : null}
+              {tab === 'credits' ? (
                 <CreditsTab
                   wallet={view.wallet}
                   studioRole={view.studio.myStudioRole}
                 />
-              </TabsContent>
-              <TabsContent value='settings'>
+              ) : null}
+              {tab === 'settings' ? (
                 <SettingsTab studio={view.studio} members={members} />
-              </TabsContent>
+              ) : null}
             </div>
           </ScrollArea>
-        </Tabs>
+        </div>
       )}
     </div>
   );
