@@ -21,6 +21,7 @@ import {
   type NodeChange,
   type OnConnectEnd,
   type OnConnectStart,
+  type OnNodeDrag,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
@@ -41,6 +42,7 @@ import {
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
+import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
 import {
   FocusCropOverlay,
   handOffFocusToPickBanner,
@@ -52,7 +54,6 @@ import {
   addEdge,
   addNodeFocusImage,
   addNode,
-  setNodeSlotUrl,
   setNodeStyleImage,
   createGroup,
   expandGroup,
@@ -1174,8 +1175,15 @@ function CanvasSpaceInner({
   // children relative to their Group), so there is no manual member-carry ref or
   // drag-start snapshot — onNodeDragStop alone resolves the whole result
   // (reparent + position + Group auto-expand). See planGroupDrag.
-  const onNodeDragStop = React.useCallback(
-    (_event: React.MouseEvent, _node: Node, nodes: Node[]): void => {
+  // Typed by ReactFlow's own `OnNodeDrag` rather than by spelling the
+  // parameters out. The hand-written version named `React.MouseEvent`, which
+  // was never what arrives: the callback is handed d3's `sourceEvent`, a
+  // native one, and it always was — 12.10 and 12.11 dispatch identical code.
+  // What 12.11 changed is the TYPE, from `React.MouseEvent` to
+  // `MouseEvent | TouchEvent`, which is what made a long-wrong annotation
+  // finally fail to compile.
+  const onNodeDragStop = React.useCallback<OnNodeDrag<Node>>(
+    (_event, _node, nodes): void => {
       if (readOnly) return;
       const byId = new Map(flowNodes.map((item) => [item.id, item]));
       /**
@@ -1673,32 +1681,23 @@ function CanvasSpaceInner({
 
       const videoSlot = slotForPurpose(session.purpose);
       if (videoSlot) {
-        // A video slot (#1896 first frame, #1904 end frame): COPY the clicked
-        // image's URL onto the video node, same terms as Style — a pick-time
-        // snapshot with no relationship to the source, so deleting or
-        // regenerating that node never changes what this video generates from.
-        // `pickedSlotUrl` is the one predicate every slot shares, and the type
-        // it judges against comes off the registry — the same field the
-        // candidate dimming reads, so what looks selectable and what a click
-        // accepts cannot disagree. A click it refuses is a no-op (dimming
-        // already says so, this backstops an insisting click).
+        // A video slot (first frame, end frame, character image, driving
+        // video): COPY the clicked node's asset onto the video node, same
+        // terms as Style — a pick-time snapshot with no relationship to the
+        // source, so deleting or regenerating that node never changes what
+        // this video generates from. `fillSlot` decides what a slot copies:
+        // the asset alone, or the asset plus the node's poster for a slot
+        // holding something an `<img>` cannot paint (#1918). The node type it
+        // accepts comes off the registry — the same field the candidate
+        // dimming reads, so what looks selectable and what a click accepts
+        // cannot disagree; a click it refuses is a no-op (dimming already
+        // says so, this backstops an insisting click).
         //
         // Dispatched from the slot registry rather than a branch per slot: the
         // branches below carry no exhaustive check, so a missing one does not
         // fail the build — it silently wires an EDGE (the reference
         // fallthrough at the end) instead of filling the slot.
-        const picked = pickedSlotUrl(
-          { type: node.type, data: node.data },
-          VIDEO_SLOTS[videoSlot].accepts,
-        );
-        if (picked === null) return;
-        setNodeSlotUrl(
-          projectId,
-          spaceId,
-          target,
-          VIDEO_SLOTS[videoSlot].field,
-          picked,
-        );
+        if (!fillSlot(projectId, spaceId, target, videoSlot, node)) return;
         // One slot, one pick — the session completes on selection.
         endPick();
         return;

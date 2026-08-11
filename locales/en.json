@@ -207,6 +207,8 @@
       "selectStyleFromCanvas": "Select a style reference from the canvas",
       "selectFirstFrameFromCanvas": "Pick an image on the canvas to be the first frame",
       "selectEndFrameFromCanvas": "Pick an image on the canvas to be the end frame",
+      "selectCharacterImageFromCanvas": "Pick an image on the canvas to be the character",
+      "selectDrivingVideoFromCanvas": "Pick a video on the canvas to drive the motion",
       "removeStyle": "Remove style reference",
       "returnToNode": "Return to node",
       "exitSelect": "Exit",
@@ -260,7 +262,15 @@
       "endFrame": "End frame",
       "endFrameTip": "Pick an image for the video to end on",
       "removeEndFrame": "Remove end frame",
-      "errorNoEndFrame": "Pick an end frame"
+      "errorNoEndFrame": "Pick an end frame",
+      "characterImage": "Character",
+      "characterImageTip": "Pick the image to animate",
+      "removeCharacterImage": "Remove character",
+      "errorNoCharacterImage": "Pick a character image",
+      "drivingVideo": "Driving video",
+      "drivingVideoTip": "Pick the video whose motion is copied",
+      "removeDrivingVideo": "Remove driving video",
+      "errorNoDrivingVideo": "Pick a driving video"
     },
     "edge": {
       "delete": "Delete connection"

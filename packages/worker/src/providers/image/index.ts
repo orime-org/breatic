@@ -71,11 +71,11 @@ for (const family of ALL_FAMILIES) {
 
 /** Provider name -> transport module. */
 const _TRANSPORTS = new Map<string, Transport>([
-  ["wavespeed", wavespeedTransport as Transport],
-  ["google", googleTransport as Transport],
-  ["byteplus", byteplusTransport as Transport],
-  ["dashscope", dashscopeTransport as Transport],
-  ["topaz", topazTransport as Transport],
+  ["wavespeed", wavespeedTransport],
+  ["google", googleTransport],
+  ["byteplus", byteplusTransport],
+  ["dashscope", dashscopeTransport],
+  ["topaz", topazTransport],
 ]);
 
 /**

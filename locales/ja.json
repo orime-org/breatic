@@ -198,6 +198,8 @@
       "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
       "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
       "selectEndFrameFromCanvas": "キャンバスで最後のフレームにする画像を選択",
+      "selectCharacterImageFromCanvas": "キャンバスでキャラクターにする画像を選択",
+      "selectDrivingVideoFromCanvas": "キャンバスで動きの元にする動画を選択",
       "removeStyle": "スタイル参照を削除",
       "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
@@ -251,7 +253,15 @@
       "endFrame": "最後のフレーム",
       "endFrameTip": "動画の最後のフレームにする画像を選ぶ",
       "removeEndFrame": "最後のフレームを削除",
-      "errorNoEndFrame": "最後のフレームを選んでください"
+      "errorNoEndFrame": "最後のフレームを選んでください",
+      "characterImage": "キャラクター",
+      "characterImageTip": "動かす画像を選ぶ",
+      "removeCharacterImage": "キャラクターを削除",
+      "errorNoCharacterImage": "キャラクター画像を選んでください",
+      "drivingVideo": "動きの元の動画",
+      "drivingVideoTip": "動きをコピーする動画を選ぶ",
+      "removeDrivingVideo": "動きの元の動画を削除",
+      "errorNoDrivingVideo": "動きの元になる動画を選んでください"
     },
     "nodeMenu": {
       "generate": "生成",

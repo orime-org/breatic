@@ -47,7 +47,7 @@ const RESOLVED: ResolvedModel = {
   litellmModel: undefined,
   tokenPrice: undefined,
   creditPrice: undefined,
-} as unknown as ResolvedModel;
+};
 
 const SUCCEEDED_RESULT = {
   output: {

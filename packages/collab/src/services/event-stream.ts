@@ -75,7 +75,7 @@ export function startStreamConsumer<T>(opts: {
 
     while (!stopped) {
       try {
-        const result = (await redis.xread(
+        const result = await redis.xread(
           "COUNT",
           COUNT,
           "BLOCK",
@@ -83,7 +83,7 @@ export function startStreamConsumer<T>(opts: {
           "STREAMS",
           streamKey,
           lastId,
-        )) as [string, [string, string[]][]][] | null;
+        );
 
         if (!result) continue; // Timeout, loop again
 

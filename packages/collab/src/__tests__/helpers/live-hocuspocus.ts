@@ -340,8 +340,7 @@ export async function connectLiveClient(
     headers: options.cookie ? { cookie: options.cookie } : {},
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const clientConnection = hocuspocus.handleConnection(socket as any, request);
+  const clientConnection = hocuspocus.handleConnection(socket, request);
   clientConnection.handleMessage(authFrame(docName, COOKIE_AUTH_TOKEN));
 
   /**
@@ -373,7 +372,7 @@ export async function connectLiveClient(
     },
     close: (): void => {
       socket.close();
-      clientConnection.handleClose({ code: 1000, reason: "" } as CloseEvent);
+      clientConnection.handleClose({ code: 1000, reason: "" });
     },
     authenticated,
     authorizedScope: authFrameReceived?.authDetail,

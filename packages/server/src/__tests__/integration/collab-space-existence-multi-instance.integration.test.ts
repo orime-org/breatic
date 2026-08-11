@@ -189,10 +189,11 @@ describe("Space existence across two collab instances", () => {
   it("answers from the doc this instance already holds, without loading", async () => {
     await seedStoredMeta([STORED_SPACE]);
 
-    // The other half of #26, and the half that matters most: `space:create`
-    // writes the new id into THIS instance's meta doc, and the existence check
-    // that follows runs on that same instance. Deciding from storage there
-    // refuses a Space this very process just announced.
+    // The other half of #26: `space:create` writes the new id into THIS
+    // instance's meta doc, and the existence check that follows runs on that
+    // same instance. Deciding from storage there refuses a Space this very
+    // process just announced. (Which half produced more refusals in the logs is
+    // the other one — the reconnect, covered by the test above.)
     const onA = await instanceA.openDirectConnection(META_DOC, {
       context: { user: { id: "system" } },
     });
@@ -204,9 +205,13 @@ describe("Space existence across two collab instances", () => {
     });
     expect(instanceA.documents.has(META_DOC)).toBe(true);
 
-    // Loading again would be a different code path — and a slower one — so the
-    // spy is the assertion, not decoration: it pins that the held doc is the
-    // source, which a revert to storage could not satisfy while staying quiet.
+    // The spy pins the path, not the answer. Loading again would return this
+    // very document — `createDocument` resolves a held one without running a
+    // single load hook (`hocuspocus-server.cjs:1453`) — so the two paths agree
+    // on what they answer, and the assertions below would pass either way.
+    // Where they differ is the end of the loading path: it schedules an unload
+    // of what it read. Taking that path for a document someone else is using
+    // hands their document to `unloadDocument`, and that is what this pins.
     const load = vi.spyOn(instanceA, "createDocument");
     const seenOnA = await spaceIdsSeenBy(instanceA);
     expect(load).not.toHaveBeenCalled();

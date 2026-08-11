@@ -198,6 +198,8 @@
       "selectStyleFromCanvas": "캔버스에서 스타일 참조 선택",
       "selectFirstFrameFromCanvas": "캔버스에서 첫 프레임으로 쓸 이미지 선택",
       "selectEndFrameFromCanvas": "캔버스에서 마지막 프레임으로 쓸 이미지 선택",
+      "selectCharacterImageFromCanvas": "캔버스에서 캐릭터로 쓸 이미지 선택",
+      "selectDrivingVideoFromCanvas": "캔버스에서 동작을 가져올 영상 선택",
       "removeStyle": "스타일 참조 제거",
       "returnToNode": "노드로 돌아가기",
       "exitSelect": "종료",
@@ -251,7 +253,15 @@
       "endFrame": "마지막 프레임",
       "endFrameTip": "영상의 마지막 프레임으로 쓸 이미지를 고르세요",
       "removeEndFrame": "마지막 프레임 제거",
-      "errorNoEndFrame": "마지막 프레임을 고르세요"
+      "errorNoEndFrame": "마지막 프레임을 고르세요",
+      "characterImage": "캐릭터",
+      "characterImageTip": "움직이게 할 이미지를 고르세요",
+      "removeCharacterImage": "캐릭터 제거",
+      "errorNoCharacterImage": "캐릭터 이미지를 고르세요",
+      "drivingVideo": "동작 영상",
+      "drivingVideoTip": "동작을 가져올 영상을 고르세요",
+      "removeDrivingVideo": "동작 영상 제거",
+      "errorNoDrivingVideo": "동작을 가져올 영상을 고르세요"
     },
     "nodeMenu": {
       "generate": "생성",

@@ -64,4 +64,12 @@ export const PICK_PURPOSE_UI = {
     banner: 'canvas.generatePanel.selectEndFrameFromCanvas',
     trigger: { generateVideo: VIDEO_SLOTS.endFrame.testId },
   },
+  characterImage: {
+    banner: 'canvas.generatePanel.selectCharacterImageFromCanvas',
+    trigger: { generateVideo: VIDEO_SLOTS.characterImage.testId },
+  },
+  drivingVideo: {
+    banner: 'canvas.generatePanel.selectDrivingVideoFromCanvas',
+    trigger: { generateVideo: VIDEO_SLOTS.drivingVideo.testId },
+  },
 } as const satisfies Record<PickPurpose, PickPurposeUi>;

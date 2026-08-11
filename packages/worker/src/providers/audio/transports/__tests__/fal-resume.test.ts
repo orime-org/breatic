@@ -43,7 +43,7 @@ const RESOLVED: ResolvedModel = {
   litellmModel: undefined,
   tokenPrice: undefined,
   creditPrice: undefined,
-} as unknown as ResolvedModel;
+};
 
 const RESULT_PAYLOAD = { audio: { url: "https://cdn.fal.test/a.mp3" } };
 

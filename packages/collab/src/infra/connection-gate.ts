@@ -156,7 +156,7 @@ export function createConnectionGate(
   deps: { throttle?: ThrottleLike } = {},
 ): ConnectionGate {
   const throttle: ThrottleLike =
-    deps.throttle ?? (new Throttle(config) as unknown as ThrottleLike);
+    deps.throttle ?? new Throttle(config);
 
   return {
     onUpgrade: (data: UpgradeHookPayload): Promise<void> => {
