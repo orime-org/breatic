@@ -16,6 +16,7 @@ import {
 } from '@web/components/ui/dropdown-menu';
 import { authApi } from '@web/data/api/auth';
 import { useTranslation } from '@web/i18n/use-translation';
+import { studioTabPath } from '@web/pages/studio/container/studio-tabs';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 
@@ -45,6 +46,15 @@ interface ComingEntryProps {
  * `onSelect` is prevented rather than omitted: Radix closes the menu after a
  * select, and a menu that shuts on the press would read as though something
  * happened. Nothing did.
+ *
+ * The dimming goes on the CONTENT, not on the row. `opacity` composites the
+ * whole element against what is behind it — its background included — so a
+ * dimmed row dims its own focus fill along with its text. At 50% over the
+ * primitive's accent that leaves a step of five levels out of 255 (1.05:1),
+ * which is no indicator at all, and the row is then focusable and invisible:
+ * the same outcome as the `disabled` attribute this is written to avoid.
+ * Dimming the label and icon instead leaves the row free to take the
+ * primitive's own full-strength focus fill, identical to every other entry.
  * @param props - The entry's label, note and icon.
  * @param props.label - The entry's label.
  * @param props.note - The muted note saying it is not available.
@@ -60,13 +70,13 @@ function ComingEntry({
     <DropdownMenuItem
       aria-disabled='true'
       onSelect={(event) => event.preventDefault()}
-      className='cursor-not-allowed opacity-50 focus:bg-accent/60'
+      className='cursor-not-allowed'
     >
-      {icon}
-      {label}
-      <span className='ml-auto pl-4 text-2xs text-muted-foreground'>
-        {note}
+      <span className='flex flex-1 items-center gap-2 opacity-50'>
+        {icon}
+        {label}
       </span>
+      <span className='pl-4 text-2xs text-muted-foreground'>{note}</span>
     </DropdownMenuItem>
   );
 }
@@ -127,7 +137,7 @@ export function StudioAccountMenu(): React.JSX.Element {
    */
   const handleAccountSettings = (): void => {
     if (personalStudio === null) return;
-    navigate(`/studio/${personalStudio.slug}/settings`);
+    navigate(studioTabPath(personalStudio.slug, 'settings'));
   };
 
   return (

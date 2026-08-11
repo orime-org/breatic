@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
 import {
+  studioTabPath,
   visibleStudioTabs,
   type StudioTabKey,
 } from '@web/pages/studio/container/studio-tabs';
@@ -77,7 +78,7 @@ export function StudioTabBar({
         return (
           <Link
             key={tab.key}
-            to={`/studio/${slug}/${tab.key}`}
+            to={studioTabPath(slug, tab.key)}
             // `aria-current` rather than a selected state: the reader is not
             // choosing among options, they are somewhere, and this says where.
             aria-current={isCurrent ? 'page' : undefined}

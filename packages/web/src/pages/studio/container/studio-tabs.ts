@@ -45,6 +45,29 @@ export const STUDIO_TABS: readonly StudioTabDef[] = [
 export const DEFAULT_STUDIO_TAB: StudioTabKey = 'projects';
 
 /**
+ * The address of one of a studio's sections.
+ *
+ * One place builds these, because the product navigates to them from four:
+ * the section strip, the account menu, the rename redirect, and the redirect
+ * away from an address that named no section. Hand-assembling the scheme at
+ * each site is how `'settings'` becomes a bare string that `StudioTabKey`
+ * never checked — the tab list stays the single source of truth for what is
+ * addressable only if it is also the source of the addresses.
+ *
+ * The default section has ONE address, the studio's own. Giving it two — the
+ * bare one and an explicit `/projects` — would mean the strip's first link
+ * pointed away from the page the reader is already on.
+ * @param slug - The studio.
+ * @param tab - The section.
+ * @returns The path to that section.
+ */
+export function studioTabPath(slug: string, tab: StudioTabKey): string {
+  return tab === DEFAULT_STUDIO_TAB
+    ? `/studio/${slug}`
+    : `/studio/${slug}/${tab}`;
+}
+
+/**
  * Whether a URL segment names one of the tabs.
  *
  * Asked of `STUDIO_TABS` rather than of a second list written out here: a tab

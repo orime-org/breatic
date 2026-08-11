@@ -20,6 +20,7 @@ import { studiosApi } from '@web/data/api/studios';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { studioTabPath } from '@web/pages/studio/container/studio-tabs';
 import {
   applyPersonalStudio,
   useCurrentUserStore,
@@ -126,7 +127,7 @@ export function useStudioSettings(
       // address now — so dropping the segment would move them somewhere they
       // did not ask to go, as the last step of an edit they did ask for.
       if (renamed) {
-        navigate(`/studio/${next.slug}/settings`, { replace: true });
+        navigate(studioTabPath(next.slug, 'settings'), { replace: true });
       }
     },
     [navigate, queryClient, studio.slug, studio.type],

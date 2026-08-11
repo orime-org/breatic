@@ -138,10 +138,19 @@ describe('StudioAccountMenu', () => {
       await openMenu(user);
 
       const entry = screen.getByRole('menuitem', { name: new RegExp(name) });
-      // It must not cancel the primitive's own highlight...
+      // The row must not dim ITSELF. `opacity` composites the whole element
+      // against its backdrop, background included, so a dimmed row dims its own
+      // focus fill: at 50% over the primitive's accent that is a five-level
+      // step out of 255, which is no indicator at all. The row is then
+      // focusable and invisible — the outcome the `disabled` attribute was
+      // rejected for. The dimming belongs on the label and icon.
+      expect(entry.className).not.toMatch(/(^|\s)opacity-/);
+      // And it must not cancel the primitive's own focus fill either.
       expect(entry.className).not.toContain('focus:bg-transparent');
-      // ...and it must carry a focus treatment of its own.
-      expect(entry.className).toMatch(/focus:/);
+      // The dimming is on the content instead.
+      const dimmed = entry.querySelector('[class*="opacity-"]');
+      expect(dimmed).not.toBeNull();
+      expect(dimmed?.textContent).toContain(name);
     },
   );
 

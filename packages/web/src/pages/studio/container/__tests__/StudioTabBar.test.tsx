@@ -1,10 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import * as React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import {
+  MemoryRouter,
+  useLocation,
+  useNavigationType,
+} from 'react-router-dom';
 
 import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
 import type { StudioTabKey } from '@web/pages/studio/container/studio-tabs';
@@ -34,6 +39,44 @@ function setup(
   );
 }
 
+/**
+ * Render the strip inside a router that reports where it is, so a test can
+ * assert that focus movement did not navigate.
+ * @param studioType - Whether the studio is personal or team.
+ * @returns A reader for the current location.
+ */
+function setupWithLocation(studioType: StudioType): {
+  location: () => { pathname: string; historyLength: number };
+} {
+  let read: () => { pathname: string; historyLength: number } = () => ({
+    pathname: '',
+    historyLength: 0,
+  });
+  function Probe(): React.JSX.Element {
+    const loc = useLocation();
+    const nav = useNavigationType();
+    read = () => ({
+      pathname: loc.pathname,
+      // MemoryRouter's index is the number of entries behind the current one,
+      // so an entry added by focus movement would show up here.
+      historyLength: window.history.length,
+    });
+    // `nav` is read so the probe re-renders on every navigation.
+    return <span data-testid='nav-type'>{nav}</span>;
+  }
+  render(
+    <MemoryRouter initialEntries={['/studio/acme-studio']}>
+      <StudioTabBar
+        studioType={studioType}
+        current='projects'
+        slug='acme-studio'
+      />
+      <Probe />
+    </MemoryRouter>,
+  );
+  return { location: () => read() };
+}
+
 // Each of these sections is a place with its own address — you can link to it,
 // refresh into it, and walk back out of it. That makes the strip navigation,
 // and navigation is links in a nav, not the ARIA tabs widget. The widget is
@@ -55,7 +98,10 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
     setup('team');
     const links = screen.getAllByRole('link');
     expect(links.map((l) => l.getAttribute('href'))).toEqual([
-      '/studio/acme-studio/projects',
+      // The default section's address IS the studio's, not a second spelling
+      // of it — otherwise the strip's first link points away from the page the
+      // reader is already on.
+      '/studio/acme-studio',
       '/studio/acme-studio/collections',
       '/studio/acme-studio/works',
       '/studio/acme-studio/members',
@@ -85,27 +131,39 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
     expect(nav).toBeInTheDocument();
   });
 
-  it('moves focus between sections WITHOUT activating any of them', async () => {
+  it('moves focus between sections WITHOUT navigating', async () => {
     // This is the whole reason the widget was wrong. In a tablist the arrow
     // keys move focus and activate in one motion, so a keyboard user looking
     // along the strip left a history entry at every stop and had to press Back
     // once per keystroke to get out. Links do not activate on focus.
+    //
+    // What this asserts is the ADDRESS, not `aria-current`: that attribute is
+    // computed from the `current` prop, which this test sets and never
+    // changes, so asserting it stayed put would hold no matter what the strip
+    // did on focus. The address is the thing a regression would move.
     const user = userEvent.setup();
-    setup('team');
+    const { location } = setupWithLocation('team');
     const links = screen.getAllByRole('link');
     links[0]?.focus();
+
     await user.tab();
+
     expect(document.activeElement).toBe(links[1]);
-    // Still exactly one current section, and still the first one — moving
-    // focus changed nothing about where the user is.
-    const current = screen
-      .getAllByRole('link')
-      .filter((l) => l.getAttribute('aria-current') === 'page');
-    expect(current).toHaveLength(1);
-    expect(current[0]).toHaveAttribute(
-      'href',
-      '/studio/acme-studio/projects',
-    );
+    expect(location().pathname).toBe('/studio/acme-studio');
+    expect(location().historyLength).toBe(1);
+  });
+
+  it('navigates on Enter, once', async () => {
+    // The other half of the same fact: focus moves without going anywhere, and
+    // going somewhere takes a deliberate press. Together they are what a
+    // tablist could not give.
+    const user = userEvent.setup();
+    const { location } = setupWithLocation('team');
+    screen.getAllByRole('link')[1]?.focus();
+
+    await user.keyboard('{Enter}');
+
+    expect(location().pathname).toBe('/studio/acme-studio/collections');
   });
 
   it('renders all 6 sections for a team studio, in spec order', () => {

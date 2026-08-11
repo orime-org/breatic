@@ -59,17 +59,18 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
  * Studio container page (`/studio/{slug}`, spec §6) — the per-studio
  * workspace. The rail + top bar live in the layout route; this page renders
  * the studio header + center area, forking on the viewer's role:
- * - **member** (`myStudioRole !== null`): a 6-tab body (projects / collections
- *   / works / members / credits / settings; 5 for personal studios, which drop
- *   the team-only Members tab). Works sits at the 3rd position (spec §6.1).
+ * - **member** (`myStudioRole !== null`): six sections (projects / collections
+ *   / works / members / credits / settings), the same six for personal studios
+ *   — their Members section is read-only rather than absent (decision A,
+ *   2026-06-08). Works sits at the 3rd position (spec §6.1).
  * - **non-member** (`myStudioRole === null`, decision A: 200 + null): the
- *   header + `NonMemberView` (a "Works" empty state), with NO tabs — no studio
- *   data is rendered, so private content cannot leak (spec §6.3).
+ *   header + `NonMemberView` (a "Works" empty state), with NO sections — no
+ *   studio data is rendered, so private content cannot leak (spec §6.3).
  *
  * The studio header comes from the real API (`GET /studio/:slug`, with the
  * viewer's role); projects come from `GET /studio/:slug/projects` (slice 2).
- * The other tab **contents** stay on stub until their own slices build their
- * backends. A missing slug renders the error state (the service returns 404);
+ * The other sections' **contents** stay on stub until their own slices build
+ * their backends. A missing slug renders the error state (the service returns 404);
  * React Query dedupes the queries so StrictMode's double mount fetches once.
  * @returns the studio container page.
  */

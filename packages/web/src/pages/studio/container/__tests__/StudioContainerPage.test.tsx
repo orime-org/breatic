@@ -329,6 +329,25 @@ describe('StudioContainerPage', () => {
     expect(screen.queryByRole('navigation', { name: 'Studio sections' })).toBeNull();
   });
 
+  it('puts the section the address names ON the page, not just in the strip', async () => {
+    // The strip and the panel are two halves and only the second one is what
+    // the reader came for. Asserting the strip alone let the whole Settings
+    // panel be deleted with every test still green — /studio/{slug}/settings
+    // and the account menu would both land on a page with no avatar editor and
+    // no slug editor, and nothing would have said so.
+    setup('acme-studio', false, 'settings');
+    expect(
+      await screen.findByRole('button', { name: /Change slug/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('puts the Credits section on the page too, so the pairing is the rule', async () => {
+    // A second section, so the assertion above reads as "the address decides
+    // what is rendered" rather than as one special case for Settings.
+    setup('acme-studio', false, 'credits');
+    expect(await screen.findByTestId('wallet-balance')).toBeInTheDocument();
+  });
+
   it('keeps the address in step when the user switches tab by clicking', async () => {
     // The address is the state, so it has to be what changes — otherwise the
     // page and the bar disagree and Back goes somewhere nobody asked for.
