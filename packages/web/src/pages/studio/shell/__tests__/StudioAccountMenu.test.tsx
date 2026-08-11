@@ -99,6 +99,11 @@ describe('StudioAccountMenu', () => {
     const menu = screen.getByRole('menu');
     expect(menu).toHaveTextContent('Alex');
     expect(menu).toHaveTextContent('@alex');
+    // The name is the account's own, so it takes the foreground; the label
+    // wrapping it is muted, and a name that does not say otherwise inherits
+    // that and paints identically to the handle beneath it.
+    const name = screen.getByText('Alex');
+    expect(name.className).toContain('text-foreground');
   });
 
   it.each([
@@ -119,7 +124,10 @@ describe('StudioAccountMenu', () => {
 
       const entry = screen.getByRole('menuitem', { name: new RegExp(name) });
       expect(entry).toHaveAttribute('aria-disabled', 'true');
-      expect(entry).not.toHaveAttribute('disabled');
+      // `data-disabled` is what Radix stamps when the `disabled` PROP is
+      // passed; its absence is the assertion that carries weight here. (There
+      // is no point checking for an HTML `disabled` attribute: the item is a
+      // div, which cannot carry one, so that check can never fail.)
       expect(entry).not.toHaveAttribute('data-disabled');
     },
   );
@@ -167,7 +175,9 @@ describe('StudioAccountMenu', () => {
 
       await user.click(screen.getByRole('menuitem', { name: new RegExp(name) }));
 
-      expect(screen.getByTestId('location')).toHaveTextContent('/studio');
+      // Exact: every address this menu can reach starts with `/studio`, so a
+      // substring assertion would hold whatever the entry did.
+      expect(screen.getByTestId('location').textContent).toBe('/studio');
       expect(screen.getByRole('menu')).toBeInTheDocument();
     },
   );

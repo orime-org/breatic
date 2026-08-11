@@ -179,7 +179,15 @@ export function StudioAccountMenu(): React.JSX.Element {
             data-testid='account-menu-avatar'
           />
           <span className='flex min-w-0 flex-col gap-0.5'>
-            <span className='truncate text-sm font-medium'>{user?.name}</span>
+            {/* `text-foreground` explicitly: DropdownMenuLabel sets
+                `text-muted-foreground` on the whole block, so a name that only
+                overrides size and weight inherits it — and then the handle's
+                own muted class says nothing, because both halves paint the
+                same grey. Whose account this is should be the loudest thing in
+                the header, not the quietest. */}
+            <span className='truncate text-sm font-medium text-foreground'>
+              {user?.name}
+            </span>
             {personalStudio === null ? null : (
               // The handle is how other people find this account, so it is
               // worth being able to read off without going anywhere.
