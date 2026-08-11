@@ -61,33 +61,7 @@ export class MainAgent {
     resources?: string[],
     signal?: AbortSignal,
   ): AsyncGenerator<SSEEvent> {
-    const { conversationId, memoryContext, compressedHistory } = this.ctx;
-
-    // Save user message. Capture the assigned turnIndex so billing can
-    // build a stable refKey (`turn:${conversationId}:${turnIndex}`) that
-    // survives retries — see core/src/modules/credit.service.ts `deductOnce`.
-    const turnIndex = await messageRepo.addMessage(conversationId, {
-      role: "user",
-      parts: [{ type: "text", text: userMessage }],
-    });
-    this.ctx.billing = { turnIndex };
-
-    // One factory decides model, instructions and tools — see
-    // domain/agent/agent-config.ts for why nothing else may assemble them.
-    const agentConfig = buildAgentConfig({
-      basePrompt: buildSystemPrompt(),
-      memoryContext,
-      interactive: true,
-    });
-
-    // Build messages array from pre-compressed history
-    const userContent = MainAgent.buildUserContent(userMessage, resources);
-    const messages: ModelMessage[] = [
-      ...toModelMessages(compressedHistory),
-      { role: "user", content: userContent },
-    ];
-
-    yield* this.runStream(agentConfig, messages, signal);
+    yield* this.runTurn(userMessage, resources, signal);
   }
 
   /**
@@ -105,36 +79,60 @@ export class MainAgent {
     resources?: string[],
     signal?: AbortSignal,
   ): AsyncGenerator<SSEEvent> {
-    const { conversationId, memoryContext, compressedHistory } = this.ctx;
-
     // Whether the skill exists is not asked here. `assertSkillUsable` on
     // the route has already answered it — with a 404 the client can act on,
     // before a message was saved or a stream opened. Asking again would be a
     // second answer to a settled question, which is how the two entry points
     // drifted apart in the first place.
+    yield* this.runTurn(`/skill ${skillName} ${userInput}`, resources, signal, skillName);
+  }
 
-    // Save user command. Capture the assigned turnIndex for billing refKey,
-    // same reason as `chat()` above.
+  /**
+   * Everything a turn does before the model is called, for either entry point.
+   *
+   * Both ways in — a message and a skill command — save what the user said,
+   * assemble the same config and the same history, and hand off to the same
+   * loop. They differ in one word: which skill, if any, scopes the tools.
+   *
+   * This exists as one function because the two used to be one copy each, and
+   * that is exactly how the prompt assembly drifted into the bug this batch
+   * fixed (task #75): a line changed on one side and not the other, with
+   * nothing to say so.
+   * @param said - What to record and send as the user's turn
+   * @param resources - Attached resource URLs, if any
+   * @param signal - Raised when the user stops the turn or the client leaves
+   * @param skillName - The skill scoping this turn, when it is a command
+   * @yields SSE events for the turn
+   */
+  private async *runTurn(
+    said: string,
+    resources: string[] | undefined,
+    signal: AbortSignal | undefined,
+    skillName?: string,
+  ): AsyncGenerator<SSEEvent> {
+    const { conversationId, memoryContext, compressedHistory } = this.ctx;
+
+    // Save what the user said. Capture the assigned turnIndex so billing can
+    // build a stable refKey (`turn:${conversationId}:${turnIndex}`) that
+    // survives retries — see core/src/modules/credit.service.ts `deductOnce`.
     const turnIndex = await messageRepo.addMessage(conversationId, {
       role: "user",
-      parts: [{ type: "text", text: `/skill ${skillName} ${userInput}` }],
+      parts: [{ type: "text", text: said }],
     });
     this.ctx.billing = { turnIndex };
 
+    // One factory decides model, instructions and tools — see
+    // domain/agent/agent-config.ts for why nothing else may assemble them.
     const agentConfig = buildAgentConfig({
-      skillName,
+      ...(skillName !== undefined ? { skillName } : {}),
       basePrompt: buildSystemPrompt(),
       memoryContext,
       interactive: true,
     });
 
-    const userContent = MainAgent.buildUserContent(
-      `/skill ${skillName} ${userInput}`,
-      resources,
-    );
     const messages: ModelMessage[] = [
       ...toModelMessages(compressedHistory),
-      { role: "user", content: userContent },
+      { role: "user", content: MainAgent.buildUserContent(said, resources) },
     ];
 
     yield* this.runStream(agentConfig, messages, signal);
