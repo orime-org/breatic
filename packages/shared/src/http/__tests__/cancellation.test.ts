@@ -26,7 +26,7 @@
  * behind, and one for a caller that passed no signal at all.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { getEventListeners } from "node:events";
@@ -39,6 +39,9 @@ afterEach(async () => {
     await new Promise<void>((resolve) => running?.close(() => resolve()));
     running = null;
   }
+  // Two tests below pin `Math.random`, which the backoff draws from. Left in
+  // place it would follow them into every later file in the run.
+  vi.restoreAllMocks();
 });
 
 /** Count of requests the server has accepted so far. */
@@ -146,6 +149,21 @@ describe("a call the caller gave up on", () => {
     // longer than the wait it is meant to land inside, and the test then fails
     // for a reason that has nothing to do with the code. Written that way it
     // failed about one run in eight, measured.
+    //
+    // Firing it from the failure fixed the LEFT edge of that window and left
+    // the right one where it was. The stop has to land after the failure
+    // surfaces and before the replay goes out, and the replay is due after a
+    // wait drawn uniformly from [0, 1000] — so a stop 20ms in is late whenever
+    // the draw comes in under 20, about one run in fifty. Seen on CI as
+    // `expected 2 to be 1`; pinning the draw to 0 reproduces it as
+    // `expected 3 to be 1`, both replays going out inside the 20ms.
+    //
+    // Pinning the source to its top instead makes the window a whole second,
+    // which no scheduling delay is going to close. It also gives the elapsed
+    // assertion below something to catch: against a 50ms draw, a backoff that
+    // ran to completion would still come in under 500 and the check would pass
+    // while the thing it guards was broken.
+    vi.spyOn(Math, "random").mockReturnValue(1);
     const gaveUp = new AbortController();
     const stub = await droppingServer((hit) => {
       // The failure has not surfaced yet — the socket has only just been
@@ -171,6 +189,12 @@ describe("a call the caller gave up on", () => {
     // after 2 attempts" — a network story — while the real reason sat
     // underneath in `cause`. `web_search` hands that sentence straight back to
     // the model.
+    //
+    // Same pinned draw as the test above, for the same reason: the stop has to
+    // land inside the wait before the replay, and an unpinned draw is under
+    // 20ms about one run in fifty. Unpinned and unlucky, this test fails by
+    // reporting exactly the sentence it exists to rule out.
+    vi.spyOn(Math, "random").mockReturnValue(1);
     const gaveUp = new AbortController();
     const stub = await droppingServer((hit) => {
       if (hit === 1) setTimeout(() => gaveUp.abort(new Error("user stopped")), 20);
