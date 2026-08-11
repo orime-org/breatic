@@ -38,7 +38,7 @@ export async function generate(
   const voiceId = (params.voice_id ?? "Alice") as string;
 
   const body: Record<string, unknown> = {
-    text: (params.text ?? "") as string,
+    text: (params.text ?? ""),
     model_id: resolved.modelId,
   };
 

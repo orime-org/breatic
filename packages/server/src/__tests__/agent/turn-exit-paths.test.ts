@@ -57,7 +57,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // The search key, so web_search is not dropped for want of one. That
     // rule is real and has its own tests; here it would just quietly turn
     // "six baseline tools" into five.
-    env: new Proxy(base.env as object, {
+    env: new Proxy(base.env, {
       get: (t, p: string) =>
         p === "BRAVE_SEARCH_API_KEY" ? "test-key" : Reflect.get(t, p),
     }),
@@ -148,7 +148,7 @@ async function runTurnFull(signal?: AbortSignal): Promise<Emitted[]> {
     },
     async () => {
       for await (const e of new MainAgent().chat("hi", undefined, signal)) {
-        events.push(e as Emitted);
+        events.push(e);
       }
     },
   );

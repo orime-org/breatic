@@ -318,7 +318,7 @@ describe("auth.service invariant — Google OAuth is pure auth (#1808, INV-4)", 
     vi.mocked(userRepo.getUserByGoogleId).mockResolvedValue(existing);
     let capturedUpdate: Record<string, unknown> | undefined;
     vi.mocked(userRepo.updateUser).mockImplementation(async (_id, data) => {
-      capturedUpdate = data as Record<string, unknown>;
+      capturedUpdate = data;
       return existing;
     });
 

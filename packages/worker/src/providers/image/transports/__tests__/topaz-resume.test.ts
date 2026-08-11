@@ -52,7 +52,7 @@ const RESOLVED: ResolvedModel = {
   litellmModel: undefined,
   tokenPrice: undefined,
   creditPrice: 0.01,
-} as unknown as ResolvedModel;
+};
 
 const COMPLETED_RESULT = {
   status: "completed",

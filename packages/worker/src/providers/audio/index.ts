@@ -53,10 +53,10 @@ for (const family of ALL_FAMILIES) {
 
 /** Provider name -> transport module. */
 const _TRANSPORTS = new Map<string, Transport>([
-  ["wavespeed", wavespeedTransport as Transport],
-  ["minimax", minimaxTransport as Transport],
-  ["elevenlabs", elevenlabsTransport as Transport],
-  ["fal", falTransport as Transport],
+  ["wavespeed", wavespeedTransport],
+  ["minimax", minimaxTransport],
+  ["elevenlabs", elevenlabsTransport],
+  ["fal", falTransport],
 ]);
 
 /**

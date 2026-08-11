@@ -97,7 +97,7 @@ export function buildServiceLogger(
   }
 
   if (opts.console === "pretty") {
-    streams.push({ level, stream: pretty({ colorize: true }) as pino.DestinationStream });
+    streams.push({ level, stream: pretty({ colorize: true }) });
   } else if (opts.console === "json") {
     streams.push({ level, stream: pino.destination({ dest: 1, sync: true }) });
   }

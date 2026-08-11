@@ -199,7 +199,7 @@ async function recordSpaceActivity(
  * @returns The Y.Map's contents as a plain JS object suitable for a snapshot field.
  */
 function snapshotMap(m: Y.Map<unknown>): Record<string, unknown> {
-  return m.toJSON() as Record<string, unknown>;
+  return m.toJSON();
 }
 
 /**
