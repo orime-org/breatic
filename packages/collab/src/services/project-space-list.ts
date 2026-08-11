@@ -108,14 +108,13 @@ function unloadAfterReading(
  * instances: 9-16ms, and it saw a Space that existed only in the other
  * instance's memory.
  *
- * THE WORST CASE IS ABOUT A SECOND, and it is normal. When another instance
- * also holds this document, `@hocuspocus/extension-redis` asks it for anything
- * newer and blocks until it answers — or until `awaitInitialSyncTimeout`
- * (default 1000ms, `hocuspocus-redis.cjs:49`) runs out. The 9-16ms above is
- * the peer answering promptly; a loaded box that misses the window makes the
- * same correct call take ~1007ms. No peer holding it means no wait at all.
- * Recorded because a measurement of 1007ms was read as a fault and cost
- * another line an investigation.
+ * A LOAD CAN TAKE ABOUT A SECOND LONGER. When another instance also holds this
+ * document, `@hocuspocus/extension-redis` asks it for anything newer and waits
+ * for the reply, giving up after `awaitInitialSyncTimeout` (default 1000ms).
+ * That wait is a compromise, not a guarantee: it makes a fresher answer likely,
+ * it does not promise one. Giving up early is harmless here — the peer's state
+ * arrives over the same subscription moments later and the client syncs on. No
+ * peer holding the document means no wait at all.
  *
  * That load runs the whole chain, and one link on it writes: `lazySeedMeta`
  * creates a project's first Space when no row is stored yet. Nothing defends

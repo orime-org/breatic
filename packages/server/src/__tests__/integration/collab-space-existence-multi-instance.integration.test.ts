@@ -18,14 +18,11 @@
  * holds nothing for this project.
  *
  * WHAT THIS TEST DOES NOT ASSERT: how long the answer takes. It used to, with
- * a 500ms ceiling, and that assertion was wrong on both counts. It matched no
- * promise we make — we say a Space works once it is open, never that it opens
- * within any particular time — and it could not tell the two cases apart that
- * it existed to separate. `@hocuspocus/extension-redis` waits up to a second
- * for a peer that also holds the document to send its state
- * (`awaitInitialSyncTimeout`, default 1000ms), so a correct answer sometimes
- * takes just as long as the wrong implementation it was watching for. It cost
- * two red CI runs on unrelated branches before anyone read it closely.
+ * a 500ms ceiling. That matched no promise we make — a Space is expected to
+ * work once it is open, not to open within any particular time — and loading a
+ * document another instance holds involves a wait that is a compromise rather
+ * than a guarantee, so the number it measured was never a verdict on the code.
+ * Two unrelated branches went red before anyone read it closely.
  */
 
 import {
@@ -122,8 +119,9 @@ async function seedStoredMeta(ids: string[]): Promise<void> {
 
 /**
  * What the Space-existence check answers on this instance. Calls the real
- * `readProjectSpaceIds` rather than restating it, so a change to how the
- * check gets its list is a change this test sees.
+ * `readProjectSpaceIds` rather than restating it, so the two tests below cover
+ * both of its branches: the instance that holds the meta doc, and the one that
+ * has to load it.
  * @param instance - The collab instance to ask.
  * @returns The ids it answers with.
  */
@@ -186,5 +184,37 @@ describe("Space existence across two collab instances", () => {
       },
       { timeout: 10_000 },
     );
+  }, 60_000);
+
+  it("answers from the doc this instance already holds, without loading", async () => {
+    await seedStoredMeta([STORED_SPACE]);
+
+    // The other half of #26, and the half that matters most: `space:create`
+    // writes the new id into THIS instance's meta doc, and the existence check
+    // that follows runs on that same instance. Deciding from storage there
+    // refuses a Space this very process just announced.
+    const onA = await instanceA.openDirectConnection(META_DOC, {
+      context: { user: { id: "system" } },
+    });
+    openConnections.push(onA);
+    await onA.transact((live: Y.Doc) => {
+      const entry = new Y.Map<unknown>();
+      live.getMap("spaces").set(MEMORY_ONLY_SPACE, entry);
+      entry.set("id", MEMORY_ONLY_SPACE);
+    });
+    expect(instanceA.documents.has(META_DOC)).toBe(true);
+
+    // Loading again would be a different code path — and a slower one — so the
+    // spy is the assertion, not decoration: it pins that the held doc is the
+    // source, which a revert to storage could not satisfy while staying quiet.
+    const load = vi.spyOn(instanceA, "createDocument");
+    const seenOnA = await spaceIdsSeenBy(instanceA);
+    expect(load).not.toHaveBeenCalled();
+    load.mockRestore();
+
+    expect(seenOnA).toContain(STORED_SPACE);
+    expect(seenOnA).toContain(MEMORY_ONLY_SPACE);
+    // Still held: this path has nothing to unload, so it must not have.
+    expect(instanceA.documents.has(META_DOC)).toBe(true);
   }, 60_000);
 });
