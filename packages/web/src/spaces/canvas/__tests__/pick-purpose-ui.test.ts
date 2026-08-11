@@ -23,6 +23,22 @@ import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
 import type { PickPurpose } from '@web/stores/canvas';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
+describe('every pick says what IT is asking for (#1918)', () => {
+  const purposes = Object.keys(PICK_PURPOSE_UI) as PickPurpose[];
+
+  it('gives every purpose its own banner, never a borrowed one', () => {
+    // Resolving in all five catalogs (below) only proves a key exists. It
+    // says nothing about the key being the RIGHT one: point the character
+    // image at `selectFirstFrameFromCanvas` — a real key, translated
+    // everywhere — and the suite below stays green while the user picking a
+    // character reads "select the first frame". That is the exact shape of
+    // the bug #1902 shipped, where a first-frame pick said "select a
+    // reference".
+    const banners = purposes.map((p) => PICK_PURPOSE_UI[p].banner);
+    expect(new Set(banners).size).toBe(banners.length);
+  });
+});
+
 describe('the pick table names only banners the catalogs answer', () => {
   const purposes = Object.keys(PICK_PURPOSE_UI) as PickPurpose[];
 

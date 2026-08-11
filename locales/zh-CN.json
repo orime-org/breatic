@@ -198,6 +198,8 @@
       "selectStyleFromCanvas": "从画布选择风格参考",
       "selectFirstFrameFromCanvas": "在画布上选一张图片作为首帧",
       "selectEndFrameFromCanvas": "在画布上选一张图片作为尾帧",
+      "selectCharacterImageFromCanvas": "在画布上选一张图片作为角色",
+      "selectDrivingVideoFromCanvas": "在画布上选一段视频来驱动动作",
       "removeStyle": "移除风格参考",
       "returnToNode": "返回节点",
       "exitSelect": "退出",
@@ -251,7 +253,15 @@
       "endFrame": "尾帧",
       "endFrameTip": "挑一张图作为视频的最后一帧",
       "removeEndFrame": "移除尾帧",
-      "errorNoEndFrame": "先挑一张尾帧"
+      "errorNoEndFrame": "先挑一张尾帧",
+      "characterImage": "角色图",
+      "characterImageTip": "挑一张要让它动起来的图",
+      "removeCharacterImage": "移除角色图",
+      "errorNoCharacterImage": "先挑一张角色图",
+      "drivingVideo": "驱动视频",
+      "drivingVideoTip": "挑一段视频，它的动作会被套到角色上",
+      "removeDrivingVideo": "移除驱动视频",
+      "errorNoDrivingVideo": "先挑一段驱动视频"
     },
     "nodeMenu": {
       "generate": "生成",

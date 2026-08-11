@@ -423,6 +423,29 @@ export interface CanvasNodeFields {
      */
     endFrameUrl?: string;
     /**
+     * Character image URL for the image-animation mode (#1918, wire
+     * `data.characterImageUrl`) — a pick-time COPY on the same terms as
+     * `firstFrameUrl`, sent as `params.image` at execute time.
+     *
+     * Its own field although it travels under the same param as the first
+     * frame: a pick survives a mode switch, so one shared field would turn
+     * the frame chosen for image-to-video into the figure animation drives.
+     */
+    characterImageUrl?: string;
+    /**
+     * The driving video for the image-animation mode (#1918, wire
+     * `data.drivingVideo`) — the performance whose motion is transferred onto
+     * the character. `url` is sent as `params.video` at execute time; `cover`
+     * is the poster copied from the picked node at the same moment, ours to
+     * show and never sent upstream (the toolbar draws a filled slot with an
+     * `<img>`, and a video URL there paints nothing at all).
+     *
+     * Both inside ONE field on purpose: two fields are two independent
+     * last-writer-wins registers, so two clients picking at once converge
+     * per-field and one client's video can end up wearing the other's poster.
+     */
+    drivingVideo?: { url: string; cover?: string };
+    /**
      * Focus crops created on this node's generate panel (#1782) — maintained
      * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the
      * plain-values convention of the web `buildDataMap`): concurrent appends

@@ -67,6 +67,44 @@ describe('buildVideoTaskPayload', () => {
     });
   });
 
+  it('sends image animation the character image and the driving video', () => {
+    // The upstream needs both: the motion comes from the video and is
+    // transferred onto the character, so the server gate asks for both too
+    // (source-requirement maps `animate` to `["image", "video"]`).
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'animate',
+      slotUrls: {
+        characterImage: 'https://cdn/character.png',
+        drivingVideo: 'https://cdn/driving.mp4',
+      },
+    });
+    expect(out.params).toMatchObject({
+      image: 'https://cdn/character.png',
+      video: 'https://cdn/driving.mp4',
+    });
+    // The poster is ours, for showing the pick on the toolbar. The upstream
+    // takes the video itself and knows nothing about a cover.
+    expect(out.params).not.toHaveProperty('cover');
+    expect(out.params).not.toHaveProperty('end_image');
+  });
+
+  it('does not let a first frame picked elsewhere stand in as the character', () => {
+    // A pick survives a mode switch, so a node arriving in image animation
+    // can still be holding the first frame it was given in image-to-video.
+    // The two are separate slots; that one is not this mode's character.
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'animate',
+      slotUrls: {
+        firstFrame: 'https://cdn/first.png',
+        drivingVideo: 'https://cdn/driving.mp4',
+      },
+    });
+    expect(out.params).not.toHaveProperty('image');
+    expect(out.params).toMatchObject({ video: 'https://cdn/driving.mp4' });
+  });
+
   it('carries only what the active mode collects, whatever else was picked', () => {
     // Switching back to image-to-video leaves the end frame on the node: the
     // slot stops rendering but the pick is not thrown away (user 2026-08-10,

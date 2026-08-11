@@ -7,7 +7,7 @@
  * Its own builder rather than a flag on the image one: the two share the task
  * envelope (which they get from `buildOverwriteTaskPayload`) and nothing else.
  * What goes in `params` is where they differ, and video's list grows with each
- * generation mode — first frame, end frame, character image, driving audio —
+ * generation mode — first frame, end frame, character image, driving video —
  * none of which mean anything to an image task.
  */
 

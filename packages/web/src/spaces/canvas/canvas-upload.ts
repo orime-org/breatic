@@ -7,6 +7,11 @@ import {
   retryTransient,
   type UploadClientConfig,
 } from '@web/data/upload/upload-retry';
+import {
+  VIDEO_SLOTS,
+  readSlotPick,
+} from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlotSpec } from '@web/spaces/canvas/generate/video-slots';
 import { videoCoverFile } from '@web/spaces/canvas/video-cover-extract';
 
 /**
@@ -689,9 +694,32 @@ export interface AssetNodeLike {
     coverUrl?: unknown;
     focusImages?: unknown;
     styleImageUrl?: unknown;
-    firstFrameUrl?: unknown;
-    endFrameUrl?: unknown;
   };
+}
+
+/**
+ * Every asset URL a node holds in its video slots.
+ *
+ * Both halves of the delete accounting read this: the set of URLs a surviving
+ * node keeps alive, and the question "does any node still hold this URL".
+ * Deriving them from the slot registry is what keeps the two in step with each
+ * other and with the slots themselves.
+ *
+ * A slot's poster counts too — it is a second uploaded asset, copied into the
+ * slot at pick time on the same terms as the asset it stands for.
+ * @param data - A node's data map, whatever shape it is in.
+ * @returns Every URL this node's slots hold.
+ */
+function videoSlotUrls(data: unknown): string[] {
+  const bag = data as Record<string, unknown> | undefined;
+  const urls: string[] = [];
+  for (const spec of Object.values(VIDEO_SLOTS) as VideoSlotSpec[]) {
+    const pick = readSlotPick(spec, bag?.[spec.field]);
+    if (!pick) continue;
+    urls.push(pick.url);
+    if (pick.thumbnail && pick.thumbnail !== pick.url) urls.push(pick.thumbnail);
+  }
+  return urls;
 }
 
 /** One asset-delete report entry (activity feed). */
@@ -757,17 +785,12 @@ export function computeDeletedAssetEntries(
     if (typeof n.data?.styleImageUrl === 'string') {
       survivingUrls.add(n.data.styleImageUrl);
     }
-    // The video panel's first-frame slot (#1896) holds a copied URL on the
-    // same terms as the style slot. This set is a hand-kept list, so a new
-    // slot is NOT covered by resembling an existing one — leaving it out
-    // reports an asset the video node is still generating from.
-    if (typeof n.data?.firstFrameUrl === 'string') {
-      survivingUrls.add(n.data.firstFrameUrl);
-    }
-    // The end-frame slot (#1904), on the same terms.
-    if (typeof n.data?.endFrameUrl === 'string') {
-      survivingUrls.add(n.data.endFrameUrl);
-    }
+    // Every video-panel slot (#1896 onward) holds a copied URL on the same
+    // terms as the style slot. Read off the registry rather than listed here:
+    // the first two were added one PR at a time, and a slot left out of a
+    // hand-kept list reports an asset the video node is still generating from
+    // — silently, until someone deletes the node it was picked from (#1918).
+    for (const url of videoSlotUrls(n.data)) survivingUrls.add(url);
     // Focus crops (#1782) are uploaded assets too — a crop URL held by a
     // surviving node keeps the asset alive (adversarial round-2).
     for (const crop of validFocusImages(n.data?.focusImages)) {
@@ -802,10 +825,11 @@ export function computeDeletedAssetEntries(
 
 /**
  * Whether an asset URL is still referenced by any node — content, cover,
- * style slot (#333, round-12), or focus crop (#1782). The rail's crop ✕
- * reports the asset deleted only when this is false; call it AFTER the
- * removal write so the removed instance is naturally excluded (adversarial
- * round-2).
+ * style slot (#333, round-12), focus crop (#1782), or anything held in a
+ * video-panel slot (#1896 onward, read off the registry rather than listed
+ * here). The rail's crop ✕ reports the asset deleted only when this is
+ * false; call it AFTER the removal write so the removed instance is
+ * naturally excluded (adversarial round-2).
  * @param url - The asset URL to check.
  * @param nodes - The current canvas nodes (post-removal).
  * @returns True when any node still references the URL.
@@ -822,10 +846,14 @@ export function assetUrlSurvives(
     if (
       data?.content === url ||
       data?.coverUrl === url ||
-      data?.styleImageUrl === url ||
-      data?.firstFrameUrl === url ||
-      data?.endFrameUrl === url
+      data?.styleImageUrl === url
     ) {
+      return true;
+    }
+    // Same registry, same reason as the surviving-set above: the two lists
+    // are each other's other half, and a slot missing from either one lets
+    // its asset be reported as unused.
+    if (videoSlotUrls(data).includes(url)) {
       return true;
     }
     if (validFocusImages(data?.focusImages).some((c) => c.url === url)) {

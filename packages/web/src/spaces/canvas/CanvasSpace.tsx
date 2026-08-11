@@ -42,6 +42,7 @@ import {
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
+import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
 import {
   FocusCropOverlay,
   handOffFocusToPickBanner,
@@ -53,7 +54,6 @@ import {
   addEdge,
   addNodeFocusImage,
   addNode,
-  setNodeSlotUrl,
   setNodeStyleImage,
   createGroup,
   expandGroup,
@@ -1681,32 +1681,23 @@ function CanvasSpaceInner({
 
       const videoSlot = slotForPurpose(session.purpose);
       if (videoSlot) {
-        // A video slot (#1896 first frame, #1904 end frame): COPY the clicked
-        // image's URL onto the video node, same terms as Style — a pick-time
-        // snapshot with no relationship to the source, so deleting or
-        // regenerating that node never changes what this video generates from.
-        // `pickedSlotUrl` is the one predicate every slot shares, and the type
-        // it judges against comes off the registry — the same field the
-        // candidate dimming reads, so what looks selectable and what a click
-        // accepts cannot disagree. A click it refuses is a no-op (dimming
-        // already says so, this backstops an insisting click).
+        // A video slot (first frame, end frame, character image, driving
+        // video): COPY the clicked node's asset onto the video node, same
+        // terms as Style — a pick-time snapshot with no relationship to the
+        // source, so deleting or regenerating that node never changes what
+        // this video generates from. `fillSlot` decides what a slot copies:
+        // the asset alone, or the asset plus the node's poster for a slot
+        // holding something an `<img>` cannot paint (#1918). The node type it
+        // accepts comes off the registry — the same field the candidate
+        // dimming reads, so what looks selectable and what a click accepts
+        // cannot disagree; a click it refuses is a no-op (dimming already
+        // says so, this backstops an insisting click).
         //
         // Dispatched from the slot registry rather than a branch per slot: the
         // branches below carry no exhaustive check, so a missing one does not
         // fail the build — it silently wires an EDGE (the reference
         // fallthrough at the end) instead of filling the slot.
-        const picked = pickedSlotUrl(
-          { type: node.type, data: node.data },
-          VIDEO_SLOTS[videoSlot].accepts,
-        );
-        if (picked === null) return;
-        setNodeSlotUrl(
-          projectId,
-          spaceId,
-          target,
-          VIDEO_SLOTS[videoSlot].field,
-          picked,
-        );
+        if (!fillSlot(projectId, spaceId, target, videoSlot, node)) return;
         // One slot, one pick — the session completes on selection.
         endPick();
         return;

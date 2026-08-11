@@ -1,0 +1,85 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * Filling and clearing a video slot — the only place that knows which node
+ * fields one slot owns.
+ *
+ * A slot owns exactly one node field, and the whole pick lives inside it: a
+ * slot taking something an `<img>` cannot paint stores `{url, cover}` rather
+ * than putting the poster in a field of its own (#1918). Two fields would be
+ * two independent last-writer-wins registers, and two clients picking at once
+ * would converge per-field — one client's video wearing the other's poster.
+ *
+ * Kept apart from the registry itself: that table is data every layer reads,
+ * including the toolbar and the payload builder, while this reaches the
+ * document. Kept apart from `slot-pick` too — that answers "can this node fill
+ * the slot", which the image panel's style slot asks as well, and this writes
+ * fields only the video registry names.
+ */
+
+import { setNodeSlotValue } from '@web/data/yjs/canvas-space';
+import {
+  pickedSlotCover,
+  pickedSlotUrl,
+} from '@web/spaces/canvas/generate/slot-pick';
+import type { ClickedNode } from '@web/spaces/canvas/generate/slot-pick';
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import type {
+  VideoSlot,
+  VideoSlotSpec,
+} from '@web/spaces/canvas/generate/video-slots';
+
+/**
+ * Copies a clicked node into a slot.
+ *
+ * Refuses the click when the node cannot fill the slot — the candidate
+ * dimming already says so, and this backstops an insisting click. A node with
+ * no poster clears the poster key rather than leaving the previous pick's
+ * frame under the new asset.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing both nodes.
+ * @param nodeId - The generative node whose slot is being filled.
+ * @param slot - Which slot the running pick fills.
+ * @param clicked - The node the user clicked.
+ * @returns True when the slot was filled, false when the click was refused.
+ */
+export function fillSlot(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  slot: VideoSlot,
+  clicked: ClickedNode,
+): boolean {
+  const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
+  const url = pickedSlotUrl(clicked, spec.accepts);
+  if (url === null) return false;
+  const cover = spec.storesCover ? pickedSlotCover(clicked) : null;
+  setNodeSlotValue(
+    projectId,
+    spaceId,
+    nodeId,
+    spec.field,
+    spec.storesCover ? (cover ? { url, cover } : { url }) : url,
+  );
+  return true;
+}
+
+/**
+ * Empties a slot.
+ *
+ * One key holds the whole pick, so clearing it takes the poster with it — a
+ * poster left behind would keep painting a video the slot no longer holds.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The generative node whose slot is being cleared.
+ * @param slot - Which slot to empty.
+ */
+export function clearSlot(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  slot: VideoSlot,
+): void {
+  setNodeSlotValue(projectId, spaceId, nodeId, VIDEO_SLOTS[slot].field, null);
+}
