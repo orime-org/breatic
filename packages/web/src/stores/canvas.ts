@@ -44,8 +44,17 @@ export type HistoryCommand = 'undo' | 'redo';
  *     node's `firstFrameUrl` (#1896), the image-to-video first frame. Same
  *     copy semantics and same single-slot auto-exit as `style`; they differ
  *     only in which field they fill and what it means to the model.
+ *   - `endFrame` — the same, into `endFrameUrl` (#1904): where the first-last
+ *     frame mode ends. Independent of the first frame in every way — either
+ *     one can be picked or replaced at any time, and only execute asks for
+ *     both (user 2026-08-10).
  */
-export type PickPurpose = 'reference' | 'style' | 'focus' | 'firstFrame';
+export type PickPurpose =
+  | 'reference'
+  | 'style'
+  | 'focus'
+  | 'firstFrame'
+  | 'endFrame';
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a
@@ -188,6 +197,8 @@ interface CanvasState {
   startStylePick: (nodeId: string) => void;
   /** Enter the first-frame pick for a video node (#1896). */
   startFirstFramePick: (nodeId: string) => void;
+  /** Enter the end-frame pick for a video node (#1904). */
+  startEndFramePick: (nodeId: string) => void;
   /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
   startFocusPick: (nodeId: string) => void;
   /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
@@ -383,6 +394,10 @@ export const useCanvasStore = create<CanvasState>()(
     startFirstFramePick: (nodeId) =>
       set((s) => {
         s.pickSession = { nodeId, purpose: 'firstFrame' };
+      }),
+    startEndFramePick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'endFrame' };
       }),
     startFocusPick: (nodeId) =>
       set((s) => {

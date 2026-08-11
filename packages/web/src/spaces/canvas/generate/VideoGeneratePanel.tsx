@@ -13,6 +13,10 @@ import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import { VideoGenerateToolbar } from '@web/spaces/canvas/generate/VideoGenerateToolbar';
+import type {
+  VideoSlot,
+  VideoSlotUrls,
+} from '@web/spaces/canvas/generate/video-slots';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import {
   VideoParamsPicker,
@@ -44,16 +48,16 @@ interface VideoGeneratePanelProps {
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert one reference as an `@` chip in the prompt. */
   onInsertReference: (item: ReferenceRailItem) => void;
-  /** Whether the active mode takes a first frame (slot shown only then). */
-  firstFrameSupported: boolean;
-  /** Enter / exit the first-frame pick. */
-  onFirstFrame: () => void;
-  /** Whether the first-frame pick is running. */
-  firstFramePicking: boolean;
-  /** The picked first-frame URL, if any. */
-  firstFrameUrl?: string;
-  /** Clear the picked first frame. */
-  onClearFirstFrame: () => void;
+  /** The source slots the active mode collects, in display order. */
+  slots: readonly VideoSlot[];
+  /** What is picked, by slot. */
+  slotUrls: VideoSlotUrls;
+  /** The slot whose pick is running, if any. */
+  activeSlot?: VideoSlot;
+  /** Enter / exit a slot's pick. */
+  onPickSlot: (slot: VideoSlot) => void;
+  /** Clear a slot. */
+  onClearSlot: (slot: VideoSlot) => void;
   /** Whether execute is allowed (the container owns the reasons). */
   canExecute: boolean;
   /** The collaborative prompt editor, injected by the container (TipTap + Yjs). */
@@ -99,11 +103,11 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   referencePicking,
   onRemoveReference,
   onInsertReference,
-  firstFrameSupported,
-  onFirstFrame,
-  firstFramePicking,
-  firstFrameUrl,
-  onClearFirstFrame,
+  slots,
+  slotUrls,
+  activeSlot,
+  onPickSlot,
+  onClearSlot,
   canExecute,
   promptSlot,
   onExit,
@@ -119,11 +123,11 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         <VideoGenerateToolbar
           onReference={onAddReference}
           referenceActive={referencePicking}
-          firstFrameSupported={firstFrameSupported}
-          onFirstFrame={onFirstFrame}
-          firstFrameActive={firstFramePicking}
-          firstFrameUrl={firstFrameUrl}
-          onClearFirstFrame={onClearFirstFrame}
+          slots={slots}
+          slotUrls={slotUrls}
+          activeSlot={activeSlot}
+          onPickSlot={onPickSlot}
+          onClearSlot={onClearSlot}
         />
         <Button
           type='button'
@@ -142,10 +146,10 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        // Not dimmed, and that is NOT the same as "these count": neither mode
-        // this panel offers feeds a reference IMAGE to the model — text-to-
-        // video takes nothing, and image-to-video takes its picture from the
-        // first-frame slot. An image `@` chip therefore contributes nothing
+        // Not dimmed, and that is NOT the same as "these count": no mode this
+        // panel offers feeds a reference IMAGE to the model — text-to-video
+        // takes nothing, and image-to-video and first-last frame take their
+        // pictures from the slots. An image `@` chip therefore contributes nothing
         // today (a non-text chip serializes to an empty string). Dimming is
         // how the image panel says that, but here it would also disable the
         // row's ✕ — `inert` gates removal too — leaving a reference the rail

@@ -69,6 +69,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 import { createAuthHook } from "@collab/hooks/auth.js";
+import { createPersistenceExtension } from "@collab/services/persistence.js";
 import { handleSpaceRpc } from "@collab/services/space-rpc.js";
 import {
   projectMetaDocName,
@@ -203,6 +204,16 @@ function contentDocUpdate(): Uint8Array {
  */
 function makeServer(): Hocuspocus {
   const instance = createLiveServer({
+    // The real load path, with only its storage read injected. The
+    // space-existence check makes sure this process holds the project's list
+    // before it answers (#26), so a server with no way to load one would
+    // refuse every content doc here.
+    extensions: [
+      createPersistenceExtension({
+        fetch: async ({ documentName }: { documentName: string }) =>
+          documentName === META_DOC ? await fetchDocDataMock() : null,
+      }),
+    ],
     onAuthenticate: createAuthHook({
       // The hook only forwards this to core's session store, which is mocked.
       redis: {} as never,
@@ -367,7 +378,10 @@ describe("meta doc — a client write never lands", () => {
     );
 
     expect(spaces.has(forgedId)).toBe(false);
-    expect(Array.from(spaces.keys())).toEqual([]);
+    // Unchanged, not empty: the server loads this project's seeded list
+    // (`persistedMetaState`), so "nothing landed" means the list still reads
+    // exactly as it was seeded.
+    expect(Array.from(spaces.keys())).toEqual([SID]);
     const status = client.frames().filter((f) => f.type === WIRE.syncStatus);
     expect(status.at(-1)?.syncStatusOk).toBe(false);
   });
@@ -379,7 +393,10 @@ describe("meta doc — a client write never lands", () => {
     );
 
     expect(spaces.has(forgedId)).toBe(false);
-    expect(Array.from(spaces.keys())).toEqual([]);
+    // Unchanged, not empty: the server loads this project's seeded list
+    // (`persistedMetaState`), so "nothing landed" means the list still reads
+    // exactly as it was seeded.
+    expect(Array.from(spaces.keys())).toEqual([SID]);
     const status = client.frames().filter((f) => f.type === WIRE.syncStatus);
     expect(status.at(-1)?.syncStatusOk).toBe(false);
   });
@@ -391,7 +408,10 @@ describe("meta doc — a client write never lands", () => {
     );
 
     expect(spaces.has(forgedId)).toBe(false);
-    expect(Array.from(spaces.keys())).toEqual([]);
+    // Unchanged, not empty: the server loads this project's seeded list
+    // (`persistedMetaState`), so "nothing landed" means the list still reads
+    // exactly as it was seeded.
+    expect(Array.from(spaces.keys())).toEqual([SID]);
     const status = client.frames().filter((f) => f.type === WIRE.syncStatus);
     expect(status.at(-1)?.syncStatusOk).toBe(false);
   });

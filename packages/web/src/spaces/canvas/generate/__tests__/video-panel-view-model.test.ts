@@ -6,6 +6,7 @@ import type { ModelEntry } from '@breatic/shared';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
+import type { VideoGenMode } from '@web/spaces/canvas/generate/video-panel-view-model';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
@@ -299,74 +300,90 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     makeModel('kling-o3-pro-i2v', { mode: 'i2v' }),
   ];
 
-  it('reads whether the active mode needs a source off the wire, not a local rule', () => {
-    // `sourcesByMode` is computed backend-side (domain/source-requirement.ts)
-    // and ships on the catalog entry, so the panel never re-derives the rule.
-    // Text-to-video needs nothing; image-to-video needs an image.
+  it('collects the slots the active mode states, not a rule of its own', () => {
+    // What a mode sends upstream is a fixed set of fields, and it states that
+    // set itself (#1904). Text-to-video collects nothing; image-to-video the
+    // first frame; first-last frame both, in the order they are shown.
+    const nodes = [node('n1', videoView())];
+    const slotsIn = (mode: VideoGenMode): readonly string[] =>
+      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode }).slots;
+    expect(slotsIn('t2v')).toEqual([]);
+    expect(slotsIn('i2v')).toEqual(['firstFrame']);
+    expect(slotsIn('first_last')).toEqual(['firstFrame', 'endFrame']);
+  });
+
+  it('echoes the mode back, so the payload is built from the same one', () => {
     const nodes = [node('n1', videoView())];
     expect(
-      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 't2v' })
-        .requiresSource,
-    ).toBe(false);
+      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'first_last' })
+        .mode,
+    ).toBe('first_last');
+  });
+
+  it('carries both picked frames through from node data', () => {
+    const nodes = [
+      node(
+        'n1',
+        videoView({
+          firstFrameUrl: 'https://cdn/f.png',
+          endFrameUrl: 'https://cdn/l.png',
+        }),
+      ),
+    ];
+    expect(
+      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'first_last' })
+        .slotUrls,
+    ).toEqual({
+      firstFrame: 'https://cdn/f.png',
+      endFrame: 'https://cdn/l.png',
+    });
+  });
+
+  it('keeps reading a slot the active mode does not collect', () => {
+    // A pick survives a mode switch — either frame can be changed whenever
+    // (user 2026-08-10) — so the panel still sees it. What the mode decides is
+    // which of these reach the payload, and that decision is made there.
+    const nodes = [
+      node('n1', videoView({ endFrameUrl: 'https://cdn/l.png' })),
+    ];
     expect(
       buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'i2v' })
-        .requiresSource,
-    ).toBe(true);
+        .slotUrls.endFrame,
+    ).toBe('https://cdn/l.png');
   });
 
-  it('says no source is required when no model resolves', () => {
-    // An empty catalog leaves no model to read the requirement off. Claiming a
-    // source IS required would block execute for a reason the user cannot act
-    // on; the model gate already stops the submit.
-    const nodes = [node('n1', videoView())];
-    expect(
-      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models: [], mode: 'i2v' })
-        .requiresSource,
-    ).toBe(false);
-  });
-
-  it('carries the picked first frame through from node data', () => {
-    const nodes = [node('n1', videoView({ firstFrameUrl: 'https://cdn/f.png' }))];
-    expect(
-      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'i2v' })
-        .firstFrameUrl,
-    ).toBe('https://cdn/f.png');
-  });
-
-  it('drops a first frame that is not a usable URL', () => {
-    // The slot's value is collaborative Yjs data — untrusted. A malformed
-    // one reaching the payload sends `params.image` as something the provider
-    // rejects AFTER the task is accepted and billed; an empty string passes
-    // `typeof === 'string'` but is no URL either. Same guard the style slot
-    // has carried since #1664.
+  it('drops a slot value that is not a usable URL', () => {
+    // Slot values are collaborative Yjs data — untrusted. A malformed one
+    // reaching the payload sends a source param the provider rejects AFTER the
+    // task is accepted and billed; an empty string passes `typeof === 'string'`
+    // but is no URL either. Same guard the style slot has carried since #1664.
     const bad = (value: unknown): unknown =>
       buildVideoPanelViewModel({
         nodeId: 'n1',
         nodes: [
           node(
             'n1',
-            videoView({ firstFrameUrl: value } as Partial<
+            videoView({ endFrameUrl: value } as Partial<
               Extract<NodeView, { kind: 'video' }>
             >),
           ),
         ],
         models,
-        mode: 'i2v',
-      }).firstFrameUrl;
+        mode: 'first_last',
+      }).slotUrls.endFrame;
     expect(bad('')).toBeUndefined();
     expect(bad(42)).toBeUndefined();
     expect(bad({ url: 'https://cdn/f.png' })).toBeUndefined();
     expect(bad(null)).toBeUndefined();
   });
 
-  it('leaves the first frame undefined when the node has none', () => {
+  it('reports an empty slot map when the node has no picks', () => {
     const nodes = [node('n1', videoView())];
     expect(
-      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'i2v' })
-        .firstFrameUrl,
-    ).toBeUndefined();
+      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'first_last' })
+        .slotUrls,
+    ).toEqual({});
   });
-
 });
 
 describe('nodeVideoMode', () => {

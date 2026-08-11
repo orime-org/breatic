@@ -13,6 +13,8 @@ const BASE = {
   params: { aspect_ratio: '16:9', resolution: '720p', duration: 8 },
   promptText: 'a drone shot over a canyon at dawn',
   leaseGen: 3,
+  mode: 't2v',
+  slotUrls: {},
 };
 
 describe('buildVideoTaskPayload', () => {
@@ -36,19 +38,63 @@ describe('buildVideoTaskPayload', () => {
     });
   });
 
-  it('sends the first-frame slot as the `image` param', () => {
-    // Image-to-video needs a first frame, and the backend source gate reads it
-    // from `params.image` (source-requirement.ts maps `i2v` to `["image"]`).
-    // It travels as its OWN param, never folded into the reference array — the
-    // reference array is the @-picked pool and means something different.
-    const out = buildVideoTaskPayload({ ...BASE, firstFrameUrl: 'https://cdn/first.png' });
+  it('sends image-to-video the first frame, as the `image` param', () => {
+    // The backend source gate reads it from `params.image`
+    // (source-requirement.ts maps `i2v` to `["image"]`). It travels as its OWN
+    // param, never folded into the reference array — that array is the
+    // @-picked pool and means something different.
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'i2v',
+      slotUrls: { firstFrame: 'https://cdn/first.png' },
+    });
     expect(out.params).toMatchObject({ image: 'https://cdn/first.png' });
+    expect(out.params).not.toHaveProperty('end_image');
   });
 
-  it('omits `image` entirely when no first frame is picked', () => {
-    // Text-to-video takes no source. Sending `image: undefined` would put the
-    // key on the wire, and the upstream provider reads presence, not value.
+  it('sends first-last frame both frames, under their own params', () => {
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'first_last',
+      slotUrls: {
+        firstFrame: 'https://cdn/first.png',
+        endFrame: 'https://cdn/last.png',
+      },
+    });
+    expect(out.params).toMatchObject({
+      image: 'https://cdn/first.png',
+      end_image: 'https://cdn/last.png',
+    });
+  });
+
+  it('carries only what the active mode collects, whatever else was picked', () => {
+    // Switching back to image-to-video leaves the end frame on the node: the
+    // slot stops rendering but the pick is not thrown away (user 2026-08-10,
+    // "change either one whenever you like"). It cannot ride the payload,
+    // because image-to-video's field set does not contain it — the mode
+    // decides what is built, so nothing has to guard against it afterwards.
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'i2v',
+      slotUrls: {
+        firstFrame: 'https://cdn/first.png',
+        endFrame: 'https://cdn/left-behind.png',
+      },
+    });
+    expect(out.params).toMatchObject({ image: 'https://cdn/first.png' });
+    expect(out.params).not.toHaveProperty('end_image');
+  });
+
+  it('omits a slot the mode collects but nobody filled', () => {
+    // The upstream provider reads a source field's presence, not its value, so
+    // an empty slot must leave no key behind.
+    const out = buildVideoTaskPayload({ ...BASE, mode: 'i2v', slotUrls: {} });
+    expect(out.params).not.toHaveProperty('image');
+  });
+
+  it('sends text-to-video no source field at all', () => {
     expect(buildVideoTaskPayload(BASE).params).not.toHaveProperty('image');
+    expect(buildVideoTaskPayload(BASE).params).not.toHaveProperty('end_image');
   });
 
   it('routes to the video task type, not the image one', () => {

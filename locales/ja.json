@@ -197,6 +197,7 @@
       "selectFromCanvas": "キャンバスから参照を選択",
       "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
       "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
+      "selectEndFrameFromCanvas": "キャンバスで最後のフレームにする画像を選択",
       "removeStyle": "スタイル参照を削除",
       "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
@@ -246,7 +247,11 @@
       "firstFrame": "最初のフレーム",
       "firstFrameTip": "動画の最初のフレームにする画像を選ぶ",
       "removeFirstFrame": "最初のフレームを削除",
-      "errorNoFirstFrame": "最初のフレームを選んでください。このモードは画像から生成します"
+      "errorNoFirstFrame": "最初のフレームを選んでください",
+      "endFrame": "最後のフレーム",
+      "endFrameTip": "動画の最後のフレームにする画像を選ぶ",
+      "removeEndFrame": "最後のフレームを削除",
+      "errorNoEndFrame": "最後のフレームを選んでください"
     },
     "nodeMenu": {
       "generate": "生成",

@@ -9,9 +9,10 @@
  *
  * KlingAI API pattern:
  *
- *     POST {base_url}/videos/text2video      (t2v / ref)
- *     POST {base_url}/videos/image2video      (i2v)
- *     POST {base_url}/videos/video2video      (edit)
+ *     POST {base_url}/videos/text2video           (t2v)
+ *     POST {base_url}/videos/image2video          (i2v / first_last)
+ *     POST {base_url}/videos/multi-image2video    (ref)
+ *     POST {base_url}/videos/video2video          (edit -- see MODE_ENDPOINTS)
  *     Body: {"model_name": "{model_id}", "prompt": "...", ...extra_params}
  *     Response: {"code": 0, "data": {"task_id": "..."}}
  *
@@ -78,14 +79,68 @@ function authHeaders(apiKey: string): Record<string, string> {
 }
 
 /**
- * Infer the API endpoint from request params.
- * @param params - API-ready params (after model family conversion)
- * @returns Endpoint suffix (e.g. `"text2video"`)
+ * Which endpoint serves each generation mode (#1904).
+ *
+ * The kind of job decides the URL, so this is keyed by mode rather than by
+ * model: another model doing the same kind of job posts to the same place.
+ *
+ * `image2video` is the one path four independent KlingAI clients agree on —
+ * that is where the evidence is strongest, and it is where both frames ride.
+ * `text2video` comes off the same lists; `multi-image2video` rests on a
+ * narrower base (one client names it for reference jobs, several others
+ * reference the path), and one of those four endpoint lists does not carry it
+ * at all. `video2video` and the entry for motion control are **inherited, not
+ * verified** — neither vendor endpoint list carries `video2video`, and motion
+ * control's path could not be established.
+ * Both keep exactly what the old param-name chain produced, so nothing moves
+ * for the models that use them; #1910 tracks establishing the truth.
  */
-function inferEndpoint(params: Record<string, unknown>): string {
-  if ("video_url" in params) return "video2video";
-  if ("image_url" in params) return "image2video";
-  return "text2video";
+const MODE_ENDPOINTS: Readonly<Record<string, string>> = {
+  t2v: "text2video",
+  i2v: "image2video",
+  first_last: "image2video",
+  ref: "multi-image2video",
+  edit: "video2video",
+  motion: "image2video",
+};
+
+/**
+ * The endpoint a model's declared mode calls for.
+ *
+ * The mode is the model's own (`ResolvedModel.mode`): the job carries no
+ * generation mode of its own — `job.data.mode` is the node's append/overwrite
+ * write mode. A model may declare several modes, which is fine while they
+ * agree on where to post; a model that declared two kinds of job could not be
+ * routed from what the worker holds, and picking one silently would post to an
+ * endpoint nobody asked for.
+ * @param mode - The resolved model's declared mode, one or several.
+ * @returns The endpoint suffix, e.g. `"image2video"`.
+ * @throws {Error} when the model declares no mode, declares one with no
+ *   endpoint, or declares modes that call for different endpoints.
+ */
+export function endpointForMode(mode: string | string[]): string {
+  const modes = Array.isArray(mode) ? mode : [mode];
+  if (modes.length === 0) {
+    throw new Error("KlingAI: the model declares no mode, so no endpoint fits");
+  }
+
+  const endpoints = new Set(
+    modes.map((m) => {
+      const endpoint = MODE_ENDPOINTS[m];
+      if (!endpoint) {
+        throw new Error(`KlingAI: no endpoint is known for mode "${m}"`);
+      }
+      return endpoint;
+    }),
+  );
+
+  if (endpoints.size > 1) {
+    throw new Error(
+      `KlingAI: the model's modes call for different endpoints: ${modes.join(", ")}`,
+    );
+  }
+
+  return [...endpoints][0]!;
 }
 
 /**
@@ -124,7 +179,7 @@ export async function generate(
   params: Record<string, unknown>,
   resume?: ResumeContext,
 ): Promise<{ url: string; model: string; cost: number }> {
-  const endpoint = inferEndpoint(params);
+  const endpoint = endpointForMode(resolved.mode ?? []);
   const headers = authHeaders(resolved.apiKey);
 
   /**

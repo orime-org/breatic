@@ -22,6 +22,12 @@ import {
   resolveModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { slotsForMode } from '@web/spaces/canvas/generate/video-mode-options';
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import type {
+  VideoSlot,
+  VideoSlotUrls,
+} from '@web/spaces/canvas/generate/video-slots';
 import type {
   ContentNodeView,
   NodeView,
@@ -52,15 +58,25 @@ export interface VideoPanelViewModel {
   /** The target node's display status — gates execute (no submit while handling). */
   nodeStatus: string | undefined;
   /**
-   * Whether the active mode needs a source asset — read off the model's
-   * precomputed `sourcesByMode` (backend-computed, on the wire), never
-   * re-derived here. `t2v` is `[]`; `i2v` is `["image"]`. No model resolved
-   * (empty catalog) means no gate: a requirement the user cannot satisfy is
-   * worse than none, and the model gate already stops that submit.
+   * The mode this view model was built for. Echoed back because the payload is
+   * built from the mode, and the container must send the same one the slots
+   * came from rather than reading the graph a second time.
    */
-  requiresSource: boolean;
-  /** The picked first-frame image (pick-time copy), or undefined when empty. */
-  firstFrameUrl: string | undefined;
+  mode: VideoGenMode;
+  /**
+   * The source slots the active mode collects, in the order the toolbar shows
+   * them. This is what a mode sends upstream: the toolbar renders one control
+   * per slot, execute checks these are filled, and the payload is built from
+   * them (#1904). A mode that collects nothing gets an empty list.
+   */
+  slots: readonly VideoSlot[];
+  /**
+   * What is currently picked, by slot — for EVERY slot, not just the active
+   * mode's. A pick survives a mode switch (user 2026-08-10, either frame can
+   * be changed whenever), so the panel keeps reading it; what the mode
+   * decides is which of these get built into the payload.
+   */
+  slotUrls: VideoSlotUrls;
 }
 
 /**
@@ -89,6 +105,25 @@ function resolveVideoMode(stored: string | undefined): VideoGenMode {
  */
 function asContentView(data: NodeView | undefined): ContentNodeView | undefined {
   return data && 'status' in data ? data : undefined;
+}
+
+/**
+ * Reads every slot's picked URL off the node.
+ *
+ * Slot values are collaborative Yjs data — untrusted, whatever the type says.
+ * A malformed one would ride the payload as a source param and be refused
+ * upstream AFTER the task was accepted and billed; an empty string is a string
+ * and no URL. Same guard the style slot carries.
+ * @param content - The node's content view, if it has one.
+ * @returns The URLs that are really there, by slot.
+ */
+function readSlotUrls(content: ContentNodeView | undefined): VideoSlotUrls {
+  const urls: VideoSlotUrls = {};
+  for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
+    const value = content?.[VIDEO_SLOTS[slot].field];
+    if (typeof value === 'string' && value.length > 0) urls[slot] = value;
+  }
+  return urls;
 }
 
 /**
@@ -216,19 +251,8 @@ export function buildVideoPanelViewModel(input: {
     // model); when current is found, cost_per_call is a trusted number.
     creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
-    // Execute gate (#1675, cross-modality): the ACTIVE PANEL MODE decides what
-    // the submission needs, and the model carries the answer precomputed. The
-    // rule itself lives backend-side (domain/source-requirement.ts); the panel
-    // only reads the wire field.
-    requiresSource: current ? (current.sourcesByMode[mode]?.length ?? 0) > 0 : false,
-    // The slot's value is collaborative Yjs data — untrusted, whatever the
-    // type says. A malformed one would ride the payload as `params.image` and
-    // be refused upstream AFTER the task was accepted and billed; an empty
-    // string is a string and no URL. Same guard the style slot carries.
-    firstFrameUrl:
-      typeof content?.firstFrameUrl === 'string' &&
-      content.firstFrameUrl.length > 0
-        ? content.firstFrameUrl
-        : undefined,
+    mode,
+    slots: slotsForMode(mode),
+    slotUrls: readSlotUrls(content),
   };
 }
