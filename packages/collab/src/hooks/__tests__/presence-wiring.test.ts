@@ -114,7 +114,7 @@ async function connect(
 function metaDoc(): Y.Doc {
   const doc = server.documents.get(META_DOC);
   if (!doc) throw new Error("meta document not loaded");
-  return doc as unknown as Y.Doc;
+  return doc;
 }
 
 /**
@@ -274,7 +274,7 @@ describe("presence wiring — a heartbeat refreshes and sweeps", () => {
         documentName: META_DOC,
         instance: { documents: new Map([[META_DOC, doc]]) },
         context: { user: { id: ALICE } },
-      } as never,
+      },
       { now: () => clock, ...POLICY },
     );
 

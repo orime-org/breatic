@@ -546,7 +546,7 @@ import { listAvailableModels } from "@domain/model-catalog/model-catalog.js";
  * @returns The modality's available models.
  */
 function getModelsForModality(modality: string): ModelInfo[] {
-  return listAvailableModels(modality) as ModelInfo[];
+  return listAvailableModels(modality);
 }
 
 // ── Dynamic skill builders ──────────────────────────────────────────

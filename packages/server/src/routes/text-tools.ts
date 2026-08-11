@@ -66,7 +66,7 @@ textTools.post(
       for await (const event of textToolService.executeTextTool(
         user.id,
         tool,
-        params as Record<string, unknown>,
+        params,
         abortController.signal,
         idempotencyKey,
       )) {

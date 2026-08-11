@@ -23,17 +23,11 @@
 export function isUniqueViolation(err: unknown): boolean {
   let cur: unknown = err;
   for (let depth = 0; cur != null && depth < 5; depth++) {
-    if (
-      typeof cur === "object" &&
-      "code" in cur &&
-      (cur as { code: unknown }).code === "23505"
-    ) {
+    if (typeof cur === "object" && "code" in cur && cur.code === "23505") {
       return true;
     }
     cur =
-      typeof cur === "object" && "cause" in cur
-        ? (cur as { cause: unknown }).cause
-        : null;
+      typeof cur === "object" && "cause" in cur ? cur.cause : null;
   }
   return false;
 }

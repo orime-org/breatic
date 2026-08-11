@@ -26,16 +26,23 @@ import { StudioAvatar } from '@web/ui/StudioAvatar';
  * so Radix's Avatar reaches its `loaded` state and mounts the `<img>`.
  *
  * The shape is dictated by what Radix's `useImageLoadingStatus` actually
- * touches (read from `@radix-ui/react-avatar` dist, not assumed): it reads
- * `src` back before assigning, subscribes through `addEventListener`, and
- * short-circuits to `loaded` when `complete && naturalWidth > 0`.
+ * touches, read from the installed `@radix-ui/react-avatar` dist rather than
+ * assumed: it assigns `src`, subscribes through `addEventListener`, and
+ * short-circuits to `loaded` when `complete && naturalWidth > 0`. Its `load`
+ * handler reads the image back off `event.currentTarget` rather than the
+ * closure (1.2 changed this), so the stub hands its listeners a real event
+ * shape — a bare `cb()` left that handler dereferencing undefined.
+ *
+ * The `src` getter is here to make the setter legal, not because anything
+ * reads it back: 1.1 guarded with `if (image.src !== src)`, 1.2 assigns
+ * unconditionally.
  * @param outcome - Whether the stubbed preload should succeed or fail.
  * @returns A restore function putting the real constructor back.
  */
 function stubImageLoading(outcome: 'load' | 'error'): () => void {
   const original = window.Image;
   class StubImage {
-    private listeners = new Map<string, Set<() => void>>();
+    private listeners = new Map<string, Set<(event: { currentTarget: StubImage }) => void>>();
     private currentSrc = '';
     public complete = false;
     public naturalWidth = 0;
@@ -55,17 +62,26 @@ function stubImageLoading(outcome: 'load' | 'error'): () => void {
           this.complete = true;
           this.naturalWidth = 1;
         }
-        for (const cb of this.listeners.get(outcome) ?? []) cb();
+        for (const cb of this.listeners.get(outcome) ?? [])
+          cb({ currentTarget: this });
       });
     }
 
-    public addEventListener(type: string, cb: () => void): void {
-      const set = this.listeners.get(type) ?? new Set<() => void>();
+    public addEventListener(
+      type: string,
+      cb: (event: { currentTarget: StubImage }) => void,
+    ): void {
+      const set =
+        this.listeners.get(type) ??
+        new Set<(event: { currentTarget: StubImage }) => void>();
       set.add(cb);
       this.listeners.set(type, set);
     }
 
-    public removeEventListener(type: string, cb: () => void): void {
+    public removeEventListener(
+      type: string,
+      cb: (event: { currentTarget: StubImage }) => void,
+    ): void {
       this.listeners.get(type)?.delete(cb);
     }
   }

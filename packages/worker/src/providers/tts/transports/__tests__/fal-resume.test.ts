@@ -43,7 +43,7 @@ const RESOLVED: ResolvedModel = {
   litellmModel: undefined,
   tokenPrice: undefined,
   creditPrice: undefined,
-} as unknown as ResolvedModel;
+};
 
 const SUBMIT_RESPONSE = {
   request_id: "fal-777",
