@@ -32,6 +32,7 @@ import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { DocumentClickToWrite } from '@web/spaces/document/document-click-to-write';
+import { BodyHeading } from '@web/spaces/document/document-heading';
 import { DocumentPlaceholders } from '@web/spaces/document/document-placeholders';
 import { DocumentTitle } from '@web/spaces/document/document-title';
 import { DocumentTitleIsPlainText } from '@web/spaces/document/document-title-plain-text';
@@ -127,7 +128,12 @@ export function buildDocumentExtensions(
       // back on the only terms a shared document allows: it writes when the
       // user actually clicks the space, and never for a viewer.
       trailingNode: false,
+      // The body caps headings at three levels and answers for what happens to
+      // a stored heading below that, neither of which StarterKit's own Heading
+      // can be configured into. `document-heading` carries the reasoning.
+      heading: false,
     }),
+    BodyHeading,
   ];
 
   // The collaboration wiring is shared with every other collaborative editor —

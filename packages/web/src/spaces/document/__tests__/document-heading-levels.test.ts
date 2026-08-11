@@ -131,26 +131,54 @@ describe('what the heading command accepts', () => {
   });
 });
 
-describe('a fourth-level heading that is already stored', () => {
-  // The node a paste from another editor produces.
-  const STORED = '<p>before</p><h4>FOURTH</h4><p>after</p>';
-
-  it('is kept, not dropped', () => {
-    const editor = open(STORED);
+describe('pasting a fourth-level heading', () => {
+  it('lands as a paragraph, because nothing parses an h4 any more', () => {
+    const editor = open('<p>before</p><h4>PASTED</h4><p>after</p>');
 
     expect(blocks(editor)).toEqual([
       { type: 'paragraph' },
-      { type: 'heading', level: 4 },
+      { type: 'paragraph' },
       { type: 'paragraph' },
     ]);
+    // The words survive; only the heading-ness is gone.
+    expect(editor.getText()).toContain('PASTED');
+  });
+});
+
+describe('a fourth-level heading already stored in the document', () => {
+  /**
+   * Put a `level: 4` heading in the body.
+   *
+   * Built from a node spec rather than from HTML on purpose: `parseHTML` no
+   * longer has a rule for `h4`, so pasted markup lands as a paragraph (covered
+   * above). What this describes is the other case — a node that reached the
+   * shared document while six levels were still parseable.
+   * @returns An editor whose body holds one such heading between two paragraphs.
+   */
+  function withStoredFourth(): Editor {
+    const editor = open('<p>before</p><p>after</p>');
+    editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
+    editor.commands.insertContent({
+      type: 'heading',
+      attrs: { level: 4 },
+      content: [{ type: 'text', text: 'FOURTH' }],
+    });
+    return editor;
+  }
+
+  it('is kept, not dropped', () => {
+    const editor = withStoredFourth();
+
+    expect(blocks(editor)).toContainEqual({ type: 'heading', level: 4 });
     expect(editor.getText()).toContain('FOURTH');
   });
 
   it('renders as h3 rather than as the largest heading on the page', () => {
-    const editor = open(STORED);
+    const editor = withStoredFourth();
 
     // Heading's stock renderHTML falls back to `levels[0]` — h1 — which would
     // show a minor heading as the biggest text in the document.
     expect(editor.getHTML()).toContain('<h3>FOURTH</h3>');
+    expect(editor.getHTML()).not.toContain('<h1>FOURTH</h1>');
   });
 });
