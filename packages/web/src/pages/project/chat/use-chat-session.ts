@@ -15,10 +15,12 @@ import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
 /**
  * A message as the cache holds it.
  *
- * A stored message plus the one state that is local by nature: a turn that
- * failed leaves a reply on screen, and nothing about that is written down.
+ * A stored message plus the one state that is local by nature: whether the
+ * reply is being written right now. Nothing else here is invented locally —
+ * how the turn ended, including its having failed, is recorded on the stored
+ * message, so what is on screen and what a reload brings back agree.
  */
-type CachedMessage = MessageData & { failed?: boolean; streaming?: boolean };
+type CachedMessage = MessageData & { streaming?: boolean };
 
 /** The open-chat answer with the cache's own message shape. */
 type CachedChat = Omit<OpenChatResult, 'current'> & {

@@ -92,7 +92,20 @@ export type MessagePart =
    * text, no reasoning and no tool call, and a row with an empty list is
    * indistinguishable from nothing having happened.
    */
-  | { type: "interrupted" };
+  | { type: "interrupted" }
+  /**
+   * The turn could not be finished: the provider refused, or something in the
+   * loop threw. Whatever had been written stands, and this says it stopped
+   * there for a reason rather than because the model had said everything.
+   *
+   * A part for the same reason `interrupted` is one, and the same guarantee
+   * follows: a turn that fails before the model says a word produces nothing
+   * else, and a row with an empty list cannot be told apart from a turn that
+   * never happened. Being stopped and failing are the two ways a turn ends
+   * without finishing, and a reader has to tell them apart — one is something
+   * the user did, the other is something that went wrong.
+   */
+  | { type: "failed" };
 
 /**
  * Single message within a conversation, as the rest of the app handles it.
@@ -133,6 +146,12 @@ export interface MessageData {
    * have to be written on every message that ever completed normally.
    */
   interrupted?: true;
+  /**
+   * The turn could not be finished, so `content` is as far as it got.
+   *
+   * Only ever `true`, for the same reason as {@link MessageData.interrupted}.
+   */
+  failed?: true;
 }
 
 /**

@@ -376,6 +376,34 @@ describe("how a turn ends", () => {
     expect(events).toContain("chat_done");
   });
 
+  it("records that the turn failed, so a reload does not read it as a finished answer", async () => {
+    // A stopped turn leaves a mark on the stored reply. A failed one has to
+    // as well, or the two look identical once the page is reloaded: half an
+    // answer that simply stops, with nothing to say it never got to finish.
+    streamTextRetry.mockReturnValue(
+      streamOf([
+        { type: "text-delta", text: "Half a sen" },
+        { type: "error", error: new Error("401 expired key") },
+      ]),
+    );
+    await runTurn();
+
+    const parts = wrapUpMessages().at(-1)?.parts as Array<{ type: string }> | undefined;
+    expect(parts?.map((p) => p.type)).toContain("failed");
+  });
+
+  it("stores a turn that failed before the model said anything", async () => {
+    // Nothing was written, so there is nothing but the mark — and without it
+    // no message is stored at all, leaving what the user said sitting alone
+    // with no answer and no explanation.
+    streamTextRetry.mockReturnValue(
+      streamOf([{ type: "error", error: new Error("401 expired key") }]),
+    );
+    await runTurn();
+
+    expect(wrapUpMessages()).toHaveLength(1);
+  });
+
   it("ends with error and chat_done when the stream itself throws", async () => {
     // This is the other failure shape: something inside our own loop throws,
     // or the stream is torn down with `controller.error()`. It is NOT what a

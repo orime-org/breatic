@@ -432,6 +432,11 @@ export class MainAgent {
       // arrives here, including the one where nobody is listening any more.
       flushPending();
       if (stopped) replyParts.push({ type: "interrupted" });
+      // The other way a turn ends without finishing. Recorded for the same
+      // reason: without it a failed turn and a turn that simply had little to
+      // say are the same row, and the panel can only say so much as it
+      // happens — a reload would read it as a finished answer.
+      if (announced === "failed") replyParts.push({ type: "failed" });
 
       // A stored message is a record of something that already happened, so
       // nothing in it may still say "running". A call in flight when the turn
