@@ -333,19 +333,6 @@ export function useChatSession(projectId: string): ChatSession {
                   patchMessage(replyId, (m) => ({ ...m, interrupted: true as const }));
                 }
                 finishTurn();
-                // The copy built here as the pieces arrived only ever carried
-                // prose, under an id the server has never heard of. What was
-                // stored is the whole turn — the tools it reached for, the
-                // reasoning, its real id — so once the server says the turn is
-                // over, that is what the panel should be showing. Without this
-                // a turn that used a tool shows no sign of it until the panel
-                // is opened again, which is the same "different before and
-                // after a reload" the stop marker had.
-                //
-                // Only on this ending. The other three tear the connection
-                // down before the server has finished writing, so there would
-                // be nothing settled to fetch.
-                void queryClient.invalidateQueries({ queryKey: chatKey(projectId) });
                 break;
 
               case SSE_EVENT_NAMES.ERROR:
