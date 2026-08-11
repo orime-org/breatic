@@ -279,6 +279,23 @@ describe('RailRecentLink (spec §4.1 ③)', () => {
     );
   });
 
+  it('treats a long label the same way whether the row is a link or a button', () => {
+    // `variant={null} size={null}` suppresses the variants but not the cva
+    // base, which carries whitespace-nowrap. So the three button rows refused
+    // to wrap while the link rows were free to — the fourth instance of the
+    // same shape as the width, the weight and the focus ring, and the one the
+    // three previous rounds left behind. A row is a row: it says how it treats
+    // its own text.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: /Recent/ }).className).toContain(
+      'whitespace-nowrap',
+    );
+  });
+
   it('is a top-level rail row, from the one definition', () => {
     render(
       <MemoryRouter>

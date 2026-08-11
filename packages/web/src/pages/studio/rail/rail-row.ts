@@ -43,15 +43,40 @@ export const RAIL_INDENT_NESTED = 'pl-3.5';
  * primitive's `font-medium` came through, leaving the three buttons permanently
  * at the weight {@link RAIL_ROW_CURRENT} uses to mark where the viewer is.
  *
- * The focus ring is the same story told by the element type: half these rows
- * are `<Link>` and half are `<Button>`, and only the buttons had a ring,
- * inherited from the primitive. Tabbing down the rail changed focus shape
- * halfway, so the definition names it and every row shows the same one.
+ * The focus ring and the wrapping are the same story told by the element type.
+ * The rail's rows are a mix of `<Link>` and `<Button>`; `variant={null}
+ * size={null}` suppresses the primitive's variants but never its cva base, and
+ * that base carries both a focus ring and `whitespace-nowrap`. So the buttons
+ * had a ring the links did not, and refused to wrap where the links were free
+ * to. Naming both here is what makes a row a row rather than whichever element
+ * it happens to be built on.
  * @param paddingLeft - The left-padding class that places this level.
  * @returns The row's class string, indent included.
  */
 function railRow(paddingLeft: string): string {
-  return `flex h-8 w-full items-center justify-start gap-2 rounded-chrome ${paddingLeft} pr-2 text-sm font-normal transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`;
+  return `flex h-8 w-full items-center justify-start gap-2 whitespace-nowrap rounded-chrome ${paddingLeft} pr-2 text-sm font-normal transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`;
+}
+
+/**
+ * An icon-only button in the rail's chrome at a given size — the group
+ * chevron, the narrow-screen hamburger.
+ *
+ * These two were written out separately and came out identical in all thirteen
+ * classes, including the focus ring {@link railRow} names as its own. That is
+ * not a coincidence to leave standing: the chevron sits in the same tab order
+ * as the rows, so the reason the ring is stated in one place applies to it too.
+ * Only the size ever differs.
+ *
+ * The glyph inside takes no colour of its own. `currentColor` resolves against
+ * the nearest element that sets one, so a glyph that names its own colour
+ * makes the button's `text-*` and `hover:text-*` dead classes and needs a
+ * `group-hover:` variant to get the effect back. Leaving the colour to the
+ * button is one rule instead of three.
+ * @param size - The height and width classes for this button.
+ * @returns The button's class string.
+ */
+export function railIconButton(size: string): string {
+  return `flex ${size} items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`;
 }
 
 /**

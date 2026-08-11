@@ -229,10 +229,26 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
         />
       </MemoryRouter>,
     );
+    // Asserted on whatever actually colours each icon rather than on the icon's
+    // own class list: `currentColor` resolves against the nearest ancestor that
+    // names a colour, so a glyph with no colour of its own is painted by its
+    // button. The `group-hover:` and `group-aria-` variants are not matched —
+    // they are the hover and current states, not the resting colour.
+    const RESTING_COLOUR = /(^|\s)(text-(?:muted-)?foreground)(\s|$)/;
+    const painterOf = (icon: Element): string | null => {
+      let el: Element | null = icon;
+      while (el && el !== container) {
+        const match = (el.getAttribute('class') ?? '').match(RESTING_COLOUR);
+        if (match) return match[2];
+        el = el.parentElement;
+      }
+      return null;
+    };
+
     const icons = [...container.querySelectorAll('svg')];
     expect(icons.length).toBeGreaterThan(0);
     for (const icon of icons) {
-      expect(icon.getAttribute('class')).toContain('text-muted-foreground');
+      expect(painterOf(icon)).toBe('text-muted-foreground');
     }
   });
 

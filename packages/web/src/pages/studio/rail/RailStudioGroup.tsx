@@ -8,6 +8,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
 import {
+  railIconButton,
   RAIL_INDENT_NESTED,
   RAIL_INDENT_TOP,
   RAIL_LIST,
@@ -46,8 +47,7 @@ const HEADING_TEXT =
  * The chevron's own hit area — `--btn-compact`, the smallest step on the
  * chrome ladder. Small, but far larger than the 12px glyph inside it.
  */
-const TOGGLE =
-  'group flex h-6 w-6 shrink-0 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+const TOGGLE = `shrink-0 ${railIconButton('h-6 w-6')}`;
 
 /**
  * A rail studio group (spec §4.2 / §4.3 — Discord-style two-level expand): a
@@ -95,12 +95,16 @@ export function RailStudioGroup({
           onClick={toggle}
           aria-expanded={!collapsed}
           aria-labelledby={titleId}
-          aria-controls={listId}
+          // Named only while the list is mounted. Collapsing unmounts it, and
+          // the collapse is persisted, so a fixed value would spend most of its
+          // life pointing at an element that is not in the document — which
+          // ARIA does not allow and `aria-expanded` already covers.
+          aria-controls={collapsed ? undefined : listId}
           variant={null}
           size={null}
           className={TOGGLE}
         >
-          <Chevron className='h-3 w-3 text-muted-foreground transition-colors group-hover:text-foreground' />
+          <Chevron className='h-3 w-3' />
         </Button>
       </div>
       {collapsed ? null : (

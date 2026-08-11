@@ -60,6 +60,20 @@ describe('StudioRailDrawer (narrow-screen rail)', () => {
   // drawer's copy change with every desktop test still green, which is the
   // drift that sharing the content was meant to rule out.
 
+  it('offsets its header from outside the box, not from inside it', async () => {
+    // The header is a fixed h-9 and the Sheet's own close button is absolutely
+    // positioned against the drawer, not against this row. Padding the header
+    // from inside shrinks its content box from 36 to 28, which moves the
+    // vertically centred brand up by four while the close button stays put —
+    // they stop lining up. A margin moves the whole box instead.
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
+    const header = screen.getByText('Breatic').closest('div');
+    expect(header?.className).toContain('mt-2');
+    expect(header?.className).not.toContain('pt-2');
+  });
+
   it('draws the same single rule the desktop rail does', async () => {
     const user = userEvent.setup();
     setup();

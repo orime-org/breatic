@@ -14,8 +14,8 @@ import {
   SheetTrigger,
 } from '@web/components/ui/sheet';
 import { useTranslation } from '@web/i18n/use-translation';
-import { RAIL_SEGMENT } from '@web/pages/studio/rail/rail-row';
-import { RailCreateStudioAction } from '@web/pages/studio/rail/RailCreateStudioAction';
+import { railIconButton } from '@web/pages/studio/rail/rail-row';
+import { RailFooter } from '@web/pages/studio/rail/RailFooter';
 import { StudioRailContent } from '@web/pages/studio/rail/StudioRailContent';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 import { BrandMark } from '@web/ui/BrandMark';
@@ -72,7 +72,7 @@ export function StudioRailDrawer({
           aria-label={t('studio.rail.openNav')}
           variant={null}
           size={null}
-          className='flex h-7 w-7 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:hidden'
+          className={`${railIconButton('h-7 w-7')} md:hidden`}
         >
           <Menu className='h-[18px] w-[18px]' />
         </Button>
@@ -89,8 +89,14 @@ export function StudioRailDrawer({
             gets its own row instead of overlapping the first rail item.
             Its pl-3.5 places the brand mark and is not the rail's nested
             indent — the two happen to be the same number and are free to
-            diverge. */}
-        <div className='flex h-9 shrink-0 items-center pl-3.5 pr-10 pt-2'>
+            diverge.
+
+            The 8px offset is a margin, not padding: this row is a fixed h-9,
+            so padding would take those 8 out of the content box and lift the
+            vertically centred brand by four, while the close button — absolute
+            against the drawer, not against this row — would stay where it is.
+            A margin moves the whole box and the two keep lining up. */}
+        <div className='mt-2 flex h-9 shrink-0 items-center pl-3.5 pr-10'>
           <Link
             to='/studio'
             aria-label={t('studio.topBar.home')}
@@ -111,12 +117,7 @@ export function StudioRailDrawer({
             onCreateProject={onCreateProject}
           />
         </ScrollArea>
-        <div className={`shrink-0 border-t border-border ${RAIL_SEGMENT}`}>
-          <RailCreateStudioAction
-            label={t('studio.rail.createStudio')}
-            onCreateStudio={onCreateStudio}
-          />
-        </div>
+        <RailFooter onCreateStudio={onCreateStudio} />
       </SheetContent>
     </Sheet>
   );

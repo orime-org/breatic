@@ -121,6 +121,22 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     );
   });
 
+  it('drops aria-controls once the list it points at is gone', () => {
+    // The collapsed list is not hidden, it is unmounted, and the collapse is
+    // persisted — so the attribute would spend most of its life naming an
+    // element that is not in the document. ARIA requires the value to be an
+    // IDREF resolving in the same document, and the practice for a target that
+    // comes and goes is to add the attribute when the target appears and drop
+    // it when it leaves. `aria-expanded` carries the state either way.
+    renderGroup();
+    const toggle = screen.getByRole('button', { name: 'My Studios' });
+    expect(toggle).toHaveAttribute('aria-controls');
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+  });
+
   it('gives the chevron a 24px hit area of its own', () => {
     renderGroup();
     const toggle = screen.getByRole('button', { name: 'My Studios' });
