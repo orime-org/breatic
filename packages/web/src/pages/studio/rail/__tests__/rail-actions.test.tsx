@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 import { RailCreateActions } from '@web/pages/studio/rail/RailCreateActions';
 import { RailRecentLink } from '@web/pages/studio/rail/RailRecentLink';
+import { RAIL_LIST, RAIL_ROW_TOP } from '@web/pages/studio/rail/rail-row';
 
 describe('RailCreateActions (spec §4.1 ①②)', () => {
   it('fires onCreateProject when create-project is clicked', () => {
@@ -15,10 +16,8 @@ describe('RailCreateActions (spec §4.1 ①②)', () => {
       <RailCreateActions
         createProjectLabel='New project'
         createCollectionLabel='New collection'
-        createStudioLabel='New studio'
         comingSoonLabel='Coming soon'
         onCreateProject={onCreateProject}
-        onCreateStudio={vi.fn()}
       />,
     );
 
@@ -26,38 +25,115 @@ describe('RailCreateActions (spec §4.1 ①②)', () => {
     expect(onCreateProject).toHaveBeenCalledTimes(1);
   });
 
-  it('fires onCreateStudio when create-studio is clicked', () => {
-    const onCreateStudio = vi.fn();
-    render(
-      <RailCreateActions
-        createProjectLabel='New project'
-        createCollectionLabel='New collection'
-        createStudioLabel='New studio'
-        comingSoonLabel='Coming soon'
-        onCreateProject={vi.fn()}
-        onCreateStudio={onCreateStudio}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'New studio' }));
-    expect(onCreateStudio).toHaveBeenCalledTimes(1);
-  });
-
   it('renders create-collection as a disabled placeholder (backend deferred)', () => {
     render(
       <RailCreateActions
         createProjectLabel='New project'
         createCollectionLabel='New collection'
-        createStudioLabel='New studio'
         comingSoonLabel='Coming soon'
         onCreateProject={vi.fn()}
-        onCreateStudio={vi.fn()}
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'New collection' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'New studio' })).toBeEnabled();
+    // Disabled through the HTML attribute — never `pointer-events: none`,
+    // which would swallow the hover that explains why it cannot be used.
+    const collection = screen.getByRole('button', { name: 'New collection' });
+    expect(collection).toBeDisabled();
+    expect(collection.className).toContain('cursor-not-allowed');
     expect(screen.getByRole('button', { name: 'New project' })).toBeEnabled();
+  });
+
+  it('does not answer the pointer at all on the disabled action', () => {
+    // `group` is what lets a row's icon come up under the pointer, so a row
+    // that cannot be used must not carry it. It kept `cursor-not-allowed`
+    // rather than `pointer-events: none` precisely so the hover still explains
+    // itself — that hover must not then light the icon brighter than the label
+    // it sits next to.
+    render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    const collection = screen.getByRole('button', { name: 'New collection' });
+    expect(collection.className).not.toMatch(/(^|\s)group(\s|$)/);
+    expect(screen.getByRole('button', { name: 'New project' }).className).toMatch(
+      /(^|\s)group(\s|$)/,
+    );
+  });
+
+  it('dims the disabled action to its own value, not the primitive’s', () => {
+    // The row definition says how a row reads when it cannot be used, so that
+    // value has to be the one that lands. Written without the `disabled:`
+    // prefix it never did: a plain class loses on specificity to the `Button`
+    // base's `disabled:opacity-50` (a class against a class plus a
+    // pseudo-class), and twMerge leaves both standing because the modifiers
+    // differ. Named the same way, twMerge drops the primitive's and the row's
+    // own value renders. (Prose here is scanned by Tailwind too — a class name
+    // written only in a comment still ships a rule nothing uses.)
+    render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    const collection = screen.getByRole('button', { name: 'New collection' });
+    expect(collection.className).toContain('disabled:opacity-65');
+    expect(collection.className).not.toContain('disabled:opacity-50');
+  });
+
+  it('no longer carries the create-studio action (it lives in the rail footer)', () => {
+    render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+  });
+
+  it('draws no separator of its own', () => {
+    const { container } = render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    expect(container.querySelectorAll('hr')).toHaveLength(0);
+  });
+
+  it('stacks its actions with the one list definition', () => {
+    const { container } = render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    expect(container.firstElementChild?.className).toContain(RAIL_LIST);
+  });
+
+  it('builds both actions from the one top-level row definition', () => {
+    render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    for (const name of ['New project', 'New collection']) {
+      expect(screen.getByRole('button', { name }).className).toContain(RAIL_ROW_TOP);
+    }
   });
 });
 
@@ -82,6 +158,154 @@ describe('RailRecentLink (spec §4.1 ③)', () => {
     );
     expect(screen.getByRole('link', { name: /Recent/ })).not.toHaveAttribute(
       'aria-current',
+    );
+  });
+
+  it('answers the keyboard with the same ring the buttons show', () => {
+    // A rail row is reached by tab as often as by pointer, and these rows are
+    // a mix of links and buttons — three buttons, and one link per studio plus
+    // Recent, so the links are the majority and grow with the data. With the
+    // ring left to the `Button` primitive only the buttons had one, and the
+    // links fell back to whatever ring the browser draws, so the focus you saw
+    // moving down the column kept changing shape. The definition owns it now,
+    // and every row shows the same one.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole('link', { name: /Recent/ });
+    expect(link.className).toContain('focus-visible:ring-1');
+    expect(link.className).toContain('focus-visible:ring-ring');
+    expect(link.className).toContain('focus-visible:outline-none');
+  });
+
+  it('brightens its icon on the page you are on, not only under the pointer', () => {
+    // Icons come up under the pointer, so the row you are actually on has to
+    // read at least as bright — otherwise hovering a row you are not on lights
+    // it more than the one you are. Three things have to line up on the
+    // rendered row, and none of them is visible in the icon's class list on its
+    // own: the row carries `group`, the row is the one marked aria-current, and
+    // the icon carries the variant keyed to both.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole('link', { name: /Recent/ });
+    expect(link.className).toMatch(/(^|\s)group(\s|$)/);
+    expect(link).toHaveAttribute('aria-current', 'page');
+    expect(link.querySelector('svg')?.getAttribute('class')).toContain(
+      'group-aria-[current=page]:text-foreground',
+    );
+  });
+
+  it('gives a top-level row the same 20px leading column a studio row has', () => {
+    // Where a row's label starts is its indent plus the width of whatever sits
+    // in front of it plus the gap. The ratified direction-D demo gives both
+    // levels a 20px leading column — the top level puts a 14px glyph inside a
+    // 20px box, the studio rows use a 20px avatar — so the only thing left
+    // separating the levels is the 6px indent. Drop the box and the top-level
+    // glyph is 16px, four narrower than the avatar, and those four add
+    // themselves to the six: the levels read ten apart instead of six.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    const svg = screen
+      .getByRole('link', { name: /Recent/ })
+      .querySelector('svg');
+    expect(svg?.getAttribute('class')).toMatch(/(^|\s)h-3\.5(\s|$)/);
+    expect(svg?.getAttribute('class')).toMatch(/(^|\s)w-3\.5(\s|$)/);
+    expect(svg?.parentElement?.className).toMatch(/(^|\s)h-5(\s|$)/);
+    expect(svg?.parentElement?.className).toMatch(/(^|\s)w-5(\s|$)/);
+  });
+
+  it('separates a row’s glyph from its label by the grid’s 8px', () => {
+    // The spacing grid is 2/4/6/8/12/16. The rail was using 10, which is not
+    // on it, and the demo uses 8.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole('link', { name: /Recent/ });
+    expect(link.className).toMatch(/(^|\s)gap-2(\s|$)/);
+    expect(link.className).not.toContain('gap-2.5');
+  });
+
+  it('starts its content at the left edge, not centred', () => {
+    // The `Button` primitive centres its content. A comment once claimed this
+    // class was applied when it never was, and the three create actions sat
+    // centred for as long as that comment did — so the class gets an assertion
+    // rather than another sentence saying it is there.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: /Recent/ }).className).toContain(
+      'justify-start',
+    );
+  });
+
+  it('brings a row’s icon up under the pointer', () => {
+    // The other half of the pair asserted below: without this one, deleting
+    // the hover variant from the icon left the whole rail's icons inert and
+    // every test green.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    const svg = screen
+      .getByRole('link', { name: /Recent/ })
+      .querySelector('svg');
+    expect(svg?.getAttribute('class')).toContain('group-hover:text-foreground');
+  });
+
+  it('keeps 2px between stacked rows so two filled rows never merge', () => {
+    // A selected row and the row hovered next to it are the same fill. With
+    // the rows touching they read as one block rather than two.
+    const { container } = render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    expect(container.firstElementChild?.className).toMatch(
+      /(^|\s)gap-0\.5(\s|$)/,
+    );
+  });
+
+  it('treats a long label the same way whether the row is a link or a button', () => {
+    // `variant={null} size={null}` suppresses the variants but not the cva
+    // base, which carries whitespace-nowrap. So the three button rows refused
+    // to wrap while the link rows were free to — the fourth instance of the
+    // same shape as the width, the weight and the focus ring, and the one the
+    // three previous rounds left behind. A row is a row: it says how it treats
+    // its own text.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: /Recent/ }).className).toContain(
+      'whitespace-nowrap',
+    );
+  });
+
+  it('is a top-level rail row, from the one definition', () => {
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: /Recent/ }).className).toContain(
+      RAIL_ROW_TOP,
     );
   });
 });
