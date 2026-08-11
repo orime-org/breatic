@@ -10,13 +10,12 @@ import { immer } from 'zustand/middleware/immer';
  * Chat content is private and does NOT enter Yjs. This store holds the
  * composer draft, the current conversation id, and the SSE streaming flag.
  *
- * Where the messages themselves live is not settled here. The line that used
- * to sit at the foot of this comment answered it — history belongs to the
- * REST cache, not this store — and that answer was written before there was
- * anything to hold: nothing renders a message from a server response today.
- * PR-3 batch 6 decides it, and it has to end up as one source, because the
- * reply being streamed and the reply read back from the server are the same
- * message and the screen must not show it twice or lose it at the handover.
+ * Where the messages themselves live is not settled here, on purpose. A line
+ * at the foot of this comment used to answer it, written before there was
+ * anything to hold — nothing renders a message from a server response today.
+ * PR-3 batch 6 decides it, and it has to come out as one source: the reply
+ * being streamed and the reply read back from the server are the same
+ * message, and the screen must not show it twice or lose it at the handover.
  */
 interface ChatState {
   composerDraft: string;

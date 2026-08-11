@@ -24,11 +24,16 @@
  * also re-enters the model's own context on the next request, which is the
  * other reason its home is the package the tools live in.
  *
- * Not to be read as "a browser never sees those strings": the tool message is
- * persisted with the prefix intact (`main-agent.ts`), and the conversation
- * history endpoint returns it verbatim, so a client rendering history today
- * does receive it. Whether history should carry the prefix is a separate
- * question from where the constants live.
+ * Not to be read as "a browser never sees those strings". Two paths hand one
+ * over: the tool message is persisted with the prefix intact
+ * (`main-agent.ts`) and the conversation history endpoint returns it
+ * verbatim, so a client rendering history receives it; and when the JSON
+ * after a sentinel fails to parse, the loop deliberately passes the raw
+ * string on (`{ raw: … }`, or `{ question: … }` on the ask-user path) so the
+ * frontend can still show what the agent meant — unreachable through today's
+ * four tools, which all build their payload with `JSON.stringify`, but it is
+ * what the loop is written to do. Whether history should carry the prefix is
+ * a separate question from where the constants live.
  */
 
 /**

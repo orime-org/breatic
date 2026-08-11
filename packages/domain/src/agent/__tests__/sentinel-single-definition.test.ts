@@ -13,10 +13,13 @@
  * that no longer recognises what a tool just returned, and the failure is
  * silent: the payload goes to the model as plain text and no widget appears.
  *
- * The scan covers the three packages that can hold agent code, because worker
- * runs the same loop. Tests are excluded — this file names all four to check
- * its own matcher, and the sentinel parser's unit test builds inputs out of
- * them.
+ * The scan covers the three packages that can hold agent code. Worker never
+ * decodes one — `agent-config.ts` withholds the interaction tools from a
+ * caller that did not ask to be interactive, and `dispatch.ts` does not — but
+ * it runs its own agent turn over the same tool package, so a copy could land
+ * there. Tests are excluded: this file names all four to check its own
+ * matcher, the sentinel parser's unit test builds inputs out of them, and the
+ * shared domain stub has to hand out their real values.
  */
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -51,11 +54,11 @@ const SENTINELS: ReadonlyArray<{ literal: string; owner: string }> = [
  * two regexes are not one: `//` inside a string deletes the rest of that line,
  * and `/*` inside a string opens a block that runs to the next `*` + `/`.
  * Measured on this repo — `packages/server/src/routes/assets.ts` has a route
- * pattern ending in `/` + `*`, and stripping deleted 60% of the file (33259
- * characters to 13134). A real second copy planted in that deleted region was
- * not found; the same copy at the top of the file was. Every character
- * stripping removes is a character the search cannot see, so a crude stripper
- * does not err on the side of strictness — it errs the only way that matters.
+ * pattern ending in `/` + `*`, and that one pattern swallowed 2718 characters,
+ * lines 243 through 312. A real second copy planted inside them was not found;
+ * the same copy at the top of the file was. Every character stripping removes
+ * is a character the search cannot see, so a crude stripper does not err on
+ * the side of strictness — it errs the only way that matters.
  *
  * Dropping the distinction removes the hole rather than narrowing it, at one
  * price: prose in a scanned file must name the constant, not the string. That
@@ -84,7 +87,7 @@ const SAMPLES: ReadonlyArray<{ source: string; literal: string; flagged: boolean
   { source: `// the __ASK_USER__ prefix marks a question`, literal: "__ASK_USER__", flagged: true, why: "prose counts too — say ASK_USER_SENTINEL instead" },
   { source: `/**\n * Results start with __ASK_USER__.\n */\nexport const x = 1;`, literal: "__ASK_USER__", flagged: true, why: "the same, in a docstring" },
   { source: `const DOCS = "https://example.test/a"; const LOCAL = "__ASK_USER__";`, literal: "__ASK_USER__", flagged: true, why: "a URL earlier on the line hid this from the version that stripped comments" },
-  { source: `route("/local-upload/*", h);\nconst LOCAL = "__ASK_USER__";`, literal: "__ASK_USER__", flagged: true, why: "a route pattern ending in a slash-star hid the whole rest of the file from that version" },
+  { source: `route("/local-upload/*", h);\nconst LOCAL = "__ASK_USER__";`, literal: "__ASK_USER__", flagged: true, why: "a route pattern ending in a slash-star, which in a real file opens a comment running to the next close" },
 ];
 
 /**
