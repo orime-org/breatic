@@ -1198,7 +1198,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // the slot filling.
   it('end-frame pick: clicking a non-image node fills nothing and wires no edge', () => {
     const setSlot = vi
-      .spyOn(canvasSpace, 'setNodeSlotUrl')
+      .spyOn(canvasSpace, 'setNodeSlotFields')
       .mockImplementation(() => {});
     const addEdgeSpy = vi.spyOn(canvasSpace, 'addEdge');
     mockUseCanvasSpace.mockReturnValue(
@@ -1246,7 +1246,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
   it('end-frame pick: clicking an image fills the end-frame field, not the first', () => {
     const setSlot = vi
-      .spyOn(canvasSpace, 'setNodeSlotUrl')
+      .spyOn(canvasSpace, 'setNodeSlotFields')
       .mockImplementation(() => {});
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
@@ -1277,13 +1277,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
           new MouseEvent('click', { bubbles: true, cancelable: true }),
         );
     });
-    expect(setSlot).toHaveBeenCalledWith(
-      'p',
-      's',
-      'target',
-      'endFrameUrl',
-      'https://cdn/l.png',
-    );
+    // Every field the slot owns in one call — the end frame owns just the
+    // one, and no poster key rides along for a slot that paints its own pick.
+    expect(setSlot).toHaveBeenCalledWith('p', 's', 'target', {
+      endFrameUrl: 'https://cdn/l.png',
+    });
     // One slot, one pick — the session completes on selection.
     expect(useCanvasStore.getState().pickSession).toBeNull();
     setSlot.mockRestore();

@@ -26,6 +26,8 @@ import { slotsForMode } from '@web/spaces/canvas/generate/video-mode-options';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type {
   VideoSlot,
+  VideoSlotField,
+  VideoSlotSpec,
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
 import type {
@@ -77,6 +79,13 @@ export interface VideoPanelViewModel {
    * decides is which of these get built into the payload.
    */
   slotUrls: VideoSlotUrls;
+  /**
+   * What each slot SHOWS for its pick — the pick itself for an image slot,
+   * the copied poster for one holding an asset an `<img>` cannot paint.
+   * Separate from {@link VideoPanelViewModel.slotUrls} because only that one
+   * travels upstream: a poster is ours, for the toolbar.
+   */
+  slotThumbnails: VideoSlotUrls;
 }
 
 /**
@@ -108,22 +117,59 @@ function asContentView(data: NodeView | undefined): ContentNodeView | undefined 
 }
 
 /**
- * Reads every slot's picked URL off the node.
+ * Reads one of a slot's URL fields off the node.
  *
  * Slot values are collaborative Yjs data — untrusted, whatever the type says.
  * A malformed one would ride the payload as a source param and be refused
  * upstream AFTER the task was accepted and billed; an empty string is a string
  * and no URL. Same guard the style slot carries.
  * @param content - The node's content view, if it has one.
+ * @param field - The data field to read.
+ * @returns The URL when one is really there, else undefined.
+ */
+function readSlotField(
+  content: ContentNodeView | undefined,
+  field: VideoSlotField,
+): string | undefined {
+  const value = content?.[field];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/**
+ * Reads every slot's picked URL off the node.
+ * @param content - The node's content view, if it has one.
  * @returns The URLs that are really there, by slot.
  */
 function readSlotUrls(content: ContentNodeView | undefined): VideoSlotUrls {
   const urls: VideoSlotUrls = {};
   for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
-    const value = content?.[VIDEO_SLOTS[slot].field];
-    if (typeof value === 'string' && value.length > 0) urls[slot] = value;
+    const url = readSlotField(content, VIDEO_SLOTS[slot].field);
+    if (url !== undefined) urls[slot] = url;
   }
   return urls;
+}
+
+/**
+ * Reads what each slot should SHOW for its pick.
+ *
+ * The same URL as the pick for a slot holding an image, and the copied poster
+ * for one holding something an `<img>` cannot paint. A slot whose poster is
+ * missing shows nothing at all rather than falling back to the asset: handed a
+ * video URL the `<img>` draws a blank square, and with `alt=''` not even a
+ * broken-image marker, whereas an empty slot still shows its icon and label.
+ * @param content - The node's content view, if it has one.
+ * @returns The URLs to display, by slot.
+ */
+function readSlotThumbnails(
+  content: ContentNodeView | undefined,
+): VideoSlotUrls {
+  const thumbnails: VideoSlotUrls = {};
+  for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
+    const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
+    const url = readSlotField(content, spec.coverField ?? spec.field);
+    if (url !== undefined) thumbnails[slot] = url;
+  }
+  return thumbnails;
 }
 
 /**
@@ -254,5 +300,6 @@ export function buildVideoPanelViewModel(input: {
     mode,
     slots: slotsForMode(mode),
     slotUrls: readSlotUrls(content),
+    slotThumbnails: readSlotThumbnails(content),
   };
 }

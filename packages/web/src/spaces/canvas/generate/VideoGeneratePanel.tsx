@@ -52,6 +52,8 @@ interface VideoGeneratePanelProps {
   slots: readonly VideoSlot[];
   /** What is picked, by slot. */
   slotUrls: VideoSlotUrls;
+  /** What to show for each pick, by slot (a poster where the asset cannot paint itself). */
+  slotThumbnails: VideoSlotUrls;
   /** The slot whose pick is running, if any. */
   activeSlot?: VideoSlot;
   /** Enter / exit a slot's pick. */
@@ -105,6 +107,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   onInsertReference,
   slots,
   slotUrls,
+  slotThumbnails,
   activeSlot,
   onPickSlot,
   onClearSlot,
@@ -125,6 +128,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           referenceActive={referencePicking}
           slots={slots}
           slotUrls={slotUrls}
+          slotThumbnails={slotThumbnails}
           activeSlot={activeSlot}
           onPickSlot={onPickSlot}
           onClearSlot={onClearSlot}

@@ -97,6 +97,8 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         Icon={Box}
         onPick={onStyle}
         active={styleActive}
+        // The style slot holds an image, so its pick IS its picture.
+        filled={styleThumbnail !== undefined}
         thumbnail={styleThumbnail}
         onClear={onClearStyle}
         disabled={styleDisabled}

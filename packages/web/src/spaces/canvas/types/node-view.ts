@@ -110,6 +110,25 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   endFrameUrl?: string;
   /**
+   * Character image URL for the image-animation mode (#1918, wire
+   * `data.characterImageUrl`) — a pick-time COPY on the same terms as
+   * `firstFrameUrl`. Sent as `params.image` at execute time; kept apart from
+   * the first frame because a pick survives a mode switch.
+   */
+  characterImageUrl?: string;
+  /**
+   * Driving video URL for the image-animation mode (#1918, wire
+   * `data.drivingVideoUrl`) — copied from a video node, sent as
+   * `params.video` at execute time.
+   */
+  drivingVideoUrl?: string;
+  /**
+   * Poster for `drivingVideoUrl` (#1918, wire `data.drivingVideoCoverUrl`) —
+   * what the toolbar shows for that slot, since an `<img>` cannot paint a
+   * video URL. Never sent upstream.
+   */
+  drivingVideoCoverUrl?: string;
+  /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
    * as the reference rail's focus entries and offers them in the @ mention
@@ -271,6 +290,9 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     styleImageUrl: data.styleImageUrl,
     firstFrameUrl: data.firstFrameUrl,
     endFrameUrl: data.endFrameUrl,
+    characterImageUrl: data.characterImageUrl,
+    drivingVideoUrl: data.drivingVideoUrl,
+    drivingVideoCoverUrl: data.drivingVideoCoverUrl,
     focusImages: data.focusImages,
   };
   switch (type) {

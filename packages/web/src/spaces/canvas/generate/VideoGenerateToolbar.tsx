@@ -24,6 +24,12 @@ interface VideoGenerateToolbarProps {
   slots: readonly VideoSlot[];
   /** What is picked, by slot; a slot missing from here renders empty. */
   slotUrls: VideoSlotUrls;
+  /**
+   * What to SHOW for each pick — the picked image itself for an image slot,
+   * the copied poster for a slot holding something an `<img>` cannot paint.
+   * A slot missing from here keeps its icon and label.
+   */
+  slotThumbnails: VideoSlotUrls;
   /** The slot whose pick is running, if any — highlights that one control. */
   activeSlot?: VideoSlot;
   /** Toggle a slot's pick. */
@@ -51,6 +57,7 @@ interface VideoGenerateToolbarProps {
  * @param root0.referenceActive - Whether the reference pick is running.
  * @param root0.slots - The slots the active mode collects.
  * @param root0.slotUrls - What is picked, by slot.
+ * @param root0.slotThumbnails - What to show for each pick, by slot.
  * @param root0.activeSlot - The slot whose pick is running.
  * @param root0.onPickSlot - Enter / exit a slot's pick.
  * @param root0.onClearSlot - Clear a slot.
@@ -61,6 +68,7 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
   referenceActive = false,
   slots,
   slotUrls,
+  slotThumbnails,
   activeSlot,
   onPickSlot,
   onClearSlot,
@@ -87,7 +95,8 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
             Icon={spec.Icon}
             onPick={() => onPickSlot(slot)}
             active={activeSlot === slot}
-            thumbnail={slotUrls[slot]}
+            filled={slotUrls[slot] !== undefined}
+            thumbnail={slotThumbnails[slot]}
             onClear={() => onClearSlot(slot)}
             // Never gated once shown: a slot only renders for the modes that
             // collect it, so there is no state where it is visible but

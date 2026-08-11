@@ -15,7 +15,7 @@
  * fourth was not. A slot is one entry here plus the mode options that name it.
  */
 
-import { Image } from 'lucide-react';
+import { Image, UserRound, Video } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import type { NodeType } from '@breatic/shared';
@@ -23,12 +23,35 @@ import type { NodeType } from '@breatic/shared';
 import type { PickPurpose } from '@web/stores/canvas';
 
 /** The source slots the video panel knows how to offer. */
-export type VideoSlot = 'firstFrame' | 'endFrame';
+export type VideoSlot =
+  | 'firstFrame'
+  | 'endFrame'
+  | 'characterImage'
+  | 'drivingVideo';
+
+/** Node data fields a slot's pick is copied into. */
+export type VideoSlotField =
+  | 'firstFrameUrl'
+  | 'endFrameUrl'
+  | 'characterImageUrl'
+  | 'drivingVideoUrl'
+  | 'drivingVideoCoverUrl';
 
 /** What one slot is made of. */
 export interface VideoSlotSpec {
   /** Node data field holding the picked URL. */
-  field: 'firstFrameUrl' | 'endFrameUrl';
+  field: VideoSlotField;
+  /**
+   * Node data field holding the poster to SHOW for this slot, when the picked
+   * asset cannot paint itself.
+   *
+   * The toolbar draws a filled slot with an `<img>`, which works only while
+   * the picked URL is an image. A video URL there renders nothing — and with
+   * `alt=''` not even a broken-image marker, just a blank square. A slot
+   * taking anything other than an image copies its node's poster too and
+   * names that field here; absent means the picked URL is itself the picture.
+   */
+  coverField?: VideoSlotField;
   /** The param the URL travels as, under our own names. */
   param: string;
   /** The pick this slot starts; the canvas dispatches on it. */
@@ -85,6 +108,35 @@ export const VIDEO_SLOTS = {
     tipKey: 'canvas.generatePanel.endFrameTip',
     clearLabelKey: 'canvas.generatePanel.removeEndFrame',
     errorKey: 'canvas.generatePanel.errorNoEndFrame',
+  },
+  characterImage: {
+    field: 'characterImageUrl',
+    param: 'image',
+    purpose: 'characterImage',
+    accepts: 'image',
+    Icon: UserRound,
+    testId: 'generate-video-tool-character-image',
+    thumbnailTestId: 'generate-video-character-image-thumbnail',
+    clearTestId: 'generate-video-character-image-clear',
+    labelKey: 'canvas.generatePanel.characterImage',
+    tipKey: 'canvas.generatePanel.characterImageTip',
+    clearLabelKey: 'canvas.generatePanel.removeCharacterImage',
+    errorKey: 'canvas.generatePanel.errorNoCharacterImage',
+  },
+  drivingVideo: {
+    field: 'drivingVideoUrl',
+    coverField: 'drivingVideoCoverUrl',
+    param: 'video',
+    purpose: 'drivingVideo',
+    accepts: 'video',
+    Icon: Video,
+    testId: 'generate-video-tool-driving-video',
+    thumbnailTestId: 'generate-video-driving-video-thumbnail',
+    clearTestId: 'generate-video-driving-video-clear',
+    labelKey: 'canvas.generatePanel.drivingVideo',
+    tipKey: 'canvas.generatePanel.drivingVideoTip',
+    clearLabelKey: 'canvas.generatePanel.removeDrivingVideo',
+    errorKey: 'canvas.generatePanel.errorNoDrivingVideo',
   },
 } as const satisfies Record<VideoSlot, VideoSlotSpec>;
 

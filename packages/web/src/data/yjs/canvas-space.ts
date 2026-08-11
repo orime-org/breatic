@@ -648,32 +648,42 @@ export function setNodeStyleImage(
   nodeId: string,
   url: string,
 ): void {
-  setNodeSlotUrl(projectId, spaceId, nodeId, 'styleImageUrl', url);
+  setNodeSlotFields(projectId, spaceId, nodeId, { styleImageUrl: url });
 }
 
 /**
- * Write one scalar slot URL onto a node's data map.
+ * Write a slot's pick onto a node's data map — every field that slot owns, in
+ * ONE transaction.
  *
- * Shared by every slot (style, first frame, end frame): they differ only in
- * which key they own, and the guard sequence around the write — resolve the
- * doc, find the node, confirm the data map is a `Y.Map` — is the same question
- * every time. Scalar last-write-wins, so setting overwrites a previous pick.
+ * Shared by every slot (style, first frame, end frame, character image,
+ * driving video): they differ only in which keys they own, and the guard
+ * sequence around the write — resolve the doc, find the node, confirm the data
+ * map is a `Y.Map` — is the same question every time. Scalar
+ * last-write-wins, so setting overwrites a previous pick.
  *
- * The key comes from the caller because that is where a slot is defined: the
+ * One transaction because a slot can own more than one field: the driving
+ * video copies the picked video AND its poster (#1918), since the toolbar
+ * paints a filled slot with an `<img>` and a video URL draws nothing there.
+ * Written one at a time, a collaborator — or this client, if the node went
+ * away between the two writes — would see the new video wearing the previous
+ * pick's poster, which is a frame out of a different video.
+ *
+ * `null` deletes the key rather than writing an empty string: "none picked" is
+ * the key's absent state, and that is what every reader tests for.
+ *
+ * The keys come from the caller because that is where a slot is defined: the
  * video panel's slot registry owns its field names, and this layer sits below
- * it (#1904). The image panel's style slot still has a named wrapper above.
+ * it (#1904). The image panel's style slot still has named wrappers above.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node whose slot to fill.
- * @param key - The data-map key this slot owns.
- * @param url - The copied image URL.
+ * @param nodeId - Id of the node whose slot to write.
+ * @param fields - The keys this slot owns; `null` clears one.
  */
-export function setNodeSlotUrl(
+export function setNodeSlotFields(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  key: string,
-  url: string,
+  fields: Readonly<Record<string, string | null>>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -681,32 +691,15 @@ export function setNodeSlotUrl(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => data.set(key, url), CANVAS_UNDO);
-}
-
-/**
- * Delete one scalar slot URL from a node's data map. Deleting rather than
- * writing an empty string keeps "none picked" as the key's absent state, which
- * is what every reader tests for.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node whose slot to clear.
- * @param key - The data-map key this slot owns.
- */
-export function clearNodeSlotUrl(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  key: string,
-): void {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
-  if (!data.has(key)) return;
-  doc.transact(() => data.delete(key), CANVAS_UNDO);
+  doc.transact(() => {
+    for (const [key, value] of Object.entries(fields)) {
+      if (value === null) {
+        if (data.has(key)) data.delete(key);
+      } else {
+        data.set(key, value);
+      }
+    }
+  }, CANVAS_UNDO);
 }
 
 /**
@@ -722,7 +715,7 @@ export function clearNodeStyleImage(
   spaceId: string,
   nodeId: string,
 ): void {
-  clearNodeSlotUrl(projectId, spaceId, nodeId, 'styleImageUrl');
+  setNodeSlotFields(projectId, spaceId, nodeId, { styleImageUrl: null });
 }
 
 /**

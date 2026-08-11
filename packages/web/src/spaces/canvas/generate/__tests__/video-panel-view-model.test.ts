@@ -339,6 +339,61 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     });
   });
 
+  it('shows the driving video by its poster, never by the video URL (#1918)', () => {
+    // The toolbar paints a filled slot with an `<img>`. Handed the mp4 it
+    // draws nothing at all — and with `alt=''` not even a broken-image
+    // marker, just a blank square where the pick should be. So the slot
+    // copies the node's poster at pick time and the panel shows that.
+    const nodes = [
+      node(
+        'n1',
+        videoView({
+          drivingVideoUrl: 'https://cdn/driving.mp4',
+          drivingVideoCoverUrl: 'https://cdn/driving-cover.png',
+        }),
+      ),
+    ];
+    const vm = buildVideoPanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      models,
+      mode: 'animate',
+    });
+    // What goes upstream is still the video itself.
+    expect(vm.slotUrls.drivingVideo).toBe('https://cdn/driving.mp4');
+    expect(vm.slotThumbnails.drivingVideo).toBe('https://cdn/driving-cover.png');
+  });
+
+  it('shows an image slot its own pick, with no poster in between', () => {
+    const nodes = [
+      node('n1', videoView({ characterImageUrl: 'https://cdn/c.png' })),
+    ];
+    const vm = buildVideoPanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      models,
+      mode: 'animate',
+    });
+    expect(vm.slotThumbnails.characterImage).toBe('https://cdn/c.png');
+  });
+
+  it('leaves a driving video with no poster showing nothing rather than the mp4', () => {
+    // A video node that has not got its poster yet. Falling back to the asset
+    // URL would put the blank square back; leaving the thumbnail absent lets
+    // the slot keep its icon and label, which at least names what it holds.
+    const nodes = [
+      node('n1', videoView({ drivingVideoUrl: 'https://cdn/driving.mp4' })),
+    ];
+    const vm = buildVideoPanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      models,
+      mode: 'animate',
+    });
+    expect(vm.slotUrls.drivingVideo).toBe('https://cdn/driving.mp4');
+    expect(vm.slotThumbnails.drivingVideo).toBeUndefined();
+  });
+
   it('keeps reading a slot the active mode does not collect', () => {
     // A pick survives a mode switch — either frame can be changed whenever
     // (user 2026-08-10) — so the panel still sees it. What the mode decides is

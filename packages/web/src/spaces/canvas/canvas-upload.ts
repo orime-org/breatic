@@ -7,6 +7,8 @@ import {
   retryTransient,
   type UploadClientConfig,
 } from '@web/data/upload/upload-retry';
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlotSpec } from '@web/spaces/canvas/generate/video-slots';
 import { videoCoverFile } from '@web/spaces/canvas/video-cover-extract';
 
 /**
@@ -694,6 +696,21 @@ export interface AssetNodeLike {
   };
 }
 
+/**
+ * Every node-data field a video slot copies an asset URL into.
+ *
+ * Both halves of the delete accounting read this: the set of URLs a surviving
+ * node keeps alive, and the question "does any node still hold this URL".
+ * Deriving them from the slot registry is what keeps the two in step with each
+ * other and with the slots themselves.
+ * @returns The field names, including the posters slots copy alongside assets.
+ */
+function videoSlotUrlFields(): readonly string[] {
+  return Object.values(VIDEO_SLOTS).flatMap((spec: VideoSlotSpec) =>
+    spec.coverField ? [spec.field, spec.coverField] : [spec.field],
+  );
+}
+
 /** One asset-delete report entry (activity feed). */
 export interface DeletedAssetEntry {
   fileUrl: string;
@@ -757,16 +774,14 @@ export function computeDeletedAssetEntries(
     if (typeof n.data?.styleImageUrl === 'string') {
       survivingUrls.add(n.data.styleImageUrl);
     }
-    // The video panel's first-frame slot (#1896) holds a copied URL on the
-    // same terms as the style slot. This set is a hand-kept list, so a new
-    // slot is NOT covered by resembling an existing one — leaving it out
-    // reports an asset the video node is still generating from.
-    if (typeof n.data?.firstFrameUrl === 'string') {
-      survivingUrls.add(n.data.firstFrameUrl);
-    }
-    // The end-frame slot (#1904), on the same terms.
-    if (typeof n.data?.endFrameUrl === 'string') {
-      survivingUrls.add(n.data.endFrameUrl);
+    // Every video-panel slot (#1896 onward) holds a copied URL on the same
+    // terms as the style slot. Read off the registry rather than listed here:
+    // the first two were added one PR at a time, and a slot left out of a
+    // hand-kept list reports an asset the video node is still generating from
+    // — silently, until someone deletes the node it was picked from (#1918).
+    for (const field of videoSlotUrlFields()) {
+      const value = (n.data as Record<string, unknown> | undefined)?.[field];
+      if (typeof value === 'string') survivingUrls.add(value);
     }
     // Focus crops (#1782) are uploaded assets too — a crop URL held by a
     // surviving node keeps the asset alive (adversarial round-2).
@@ -822,10 +837,15 @@ export function assetUrlSurvives(
     if (
       data?.content === url ||
       data?.coverUrl === url ||
-      data?.styleImageUrl === url ||
-      data?.firstFrameUrl === url ||
-      data?.endFrameUrl === url
+      data?.styleImageUrl === url
     ) {
+      return true;
+    }
+    // Same registry, same reason as the surviving-set above: the two lists
+    // are each other's other half, and a slot missing from either one lets
+    // its asset be reported as unused.
+    const fields = data as Record<string, unknown> | undefined;
+    if (videoSlotUrlFields().some((field) => fields?.[field] === url)) {
       return true;
     }
     if (validFocusImages(data?.focusImages).some((c) => c.url === url)) {

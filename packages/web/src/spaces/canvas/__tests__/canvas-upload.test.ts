@@ -14,6 +14,11 @@ import {
   computeDeletedAssetEntries,
   assetUrlSurvives,
 } from '@web/spaces/canvas/canvas-upload';
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import type {
+  VideoSlot,
+  VideoSlotSpec,
+} from '@web/spaces/canvas/generate/video-slots';
 
 describe('checkFileAdmission — which files the canvas refuses on selection', () => {
   const CAP = 1024;
@@ -939,6 +944,45 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     // it was picked from reports an asset that is still in use.
     const nodes = [{ id: 'v', data: { endFrameUrl: url('ef') } }];
     expect(assetUrlSurvives(url('ef'), nodes)).toBe(true);
+  });
+
+  it('sees every slot the video registry declares, not a list kept by hand (#1918)', () => {
+    // Driven off the registry so a slot added there is covered the day it is
+    // written. The two entries this replaces were added one PR at a time,
+    // each with a comment saying the next one would need its own line — which
+    // is the shape of an omission waiting to happen: leaving a slot out
+    // reports an asset the video node is still generating from, and nothing
+    // fails until a user deletes the node they picked it from.
+    for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
+      const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
+      for (const field of [spec.field, spec.coverField].filter(Boolean)) {
+        const held = url(`held-by-${String(field)}`);
+        const nodes = [{ id: 'v', data: { [String(field)]: held } }];
+        expect(
+          assetUrlSurvives(held, nodes),
+          `${slot}'s ${String(field)} does not keep its asset alive`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('does not report a driving video still held by a surviving node (#1918)', () => {
+    // The poster counts too: it is a second uploaded asset, copied into the
+    // slot at pick time on the same terms as the video itself.
+    const video = url('driving');
+    const cover = url('driving-cover');
+    const deleted = [
+      { id: 'src', type: 'video', data: { content: video, coverUrl: cover } },
+    ];
+    const all = [
+      { id: 'src', type: 'video', data: { content: video, coverUrl: cover } },
+      {
+        id: 'gen',
+        type: 'video',
+        data: { drivingVideoUrl: video, drivingVideoCoverUrl: cover },
+      },
+    ];
+    expect(computeDeletedAssetEntries(deleted, all, 'sp-1')).toEqual([]);
   });
 
   it('does not report an end frame still held by a surviving video node', () => {

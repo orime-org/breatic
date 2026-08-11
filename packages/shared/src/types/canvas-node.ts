@@ -423,6 +423,33 @@ export interface CanvasNodeFields {
      */
     endFrameUrl?: string;
     /**
+     * Character image URL for the image-animation mode (#1918, wire
+     * `data.characterImageUrl`) — a pick-time COPY on the same terms as
+     * `firstFrameUrl`, sent as `params.image` at execute time.
+     *
+     * Its own field although it travels under the same param as the first
+     * frame: a pick survives a mode switch, so one shared field would turn
+     * the frame chosen for image-to-video into the figure animation drives.
+     */
+    characterImageUrl?: string;
+    /**
+     * Driving video URL for the image-animation mode (#1918, wire
+     * `data.drivingVideoUrl`) — the performance whose motion is transferred
+     * onto the character, sent as `params.video` at execute time. Copied from
+     * a VIDEO node, the first slot that takes something other than an image.
+     */
+    drivingVideoUrl?: string;
+    /**
+     * Poster for `drivingVideoUrl` (#1918, wire `data.drivingVideoCoverUrl`),
+     * copied from the picked node's `coverUrl` at the same moment.
+     *
+     * Ours to show, never sent upstream: the toolbar draws a filled slot with
+     * an `<img>`, and a video URL there paints nothing at all. Copied rather
+     * than read back from the source node, on the same terms as the asset
+     * itself — the slot is a value, not a relationship.
+     */
+    drivingVideoCoverUrl?: string;
+    /**
      * Focus crops created on this node's generate panel (#1782) — maintained
      * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the
      * plain-values convention of the web `buildDataMap`): concurrent appends

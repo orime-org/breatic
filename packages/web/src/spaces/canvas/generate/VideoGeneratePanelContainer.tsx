@@ -9,7 +9,6 @@ import { canvasApi } from '@web/data/api/canvas';
 import { modelsApi } from '@web/data/api/models';
 import { ApiException } from '@web/data/api/types';
 import {
-  clearNodeSlotUrl,
   getPromptFragment,
   isNodeHandling,
   isNodeLocked,
@@ -51,6 +50,7 @@ import {
   slotForPurpose,
 } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
+import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
 import { buildVideoTaskPayload } from '@web/spaces/canvas/generate/video-task-payload';
 import {
   buildVideoPanelViewModel,
@@ -277,6 +277,15 @@ function VideoGeneratePanelBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: slotUrlsKey IS the input, serialized
     [slotUrlsKey],
   );
+  // The display URLs are a second object rebuilt just as often, so they need
+  // the same treatment: one unstable prop is enough to make both memos below
+  // re-render on every frame of a drag.
+  const slotThumbnailsKey = JSON.stringify(vm.slotThumbnails);
+  const stableSlotThumbnails = React.useMemo(
+    () => vm.slotThumbnails,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: slotThumbnailsKey IS the input, serialized
+    [slotThumbnailsKey],
+  );
   // Whether ANY mode this panel offers has a model to switch to. Deliberately
   // not the active mode's subset: a node sitting in a mode the catalog no
   // longer serves must still be able to switch back to one that works.
@@ -355,6 +364,10 @@ function VideoGeneratePanelBody({
   const startReferencePick = useCanvasStore((s) => s.startReferencePick);
   const startFirstFramePick = useCanvasStore((s) => s.startFirstFramePick);
   const startEndFramePick = useCanvasStore((s) => s.startEndFramePick);
+  const startCharacterImagePick = useCanvasStore(
+    (s) => s.startCharacterImagePick,
+  );
+  const startDrivingVideoPick = useCanvasStore((s) => s.startDrivingVideoPick);
   const referencePicking = useCanvasStore(
     (s) =>
       s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
@@ -362,8 +375,18 @@ function VideoGeneratePanelBody({
   // One starter per slot. `Record<VideoSlot, …>` is what makes a new slot
   // impossible to half-wire: leaving it out here does not compile.
   const startSlotPick: Record<VideoSlot, (id: string) => void> = React.useMemo(
-    () => ({ firstFrame: startFirstFramePick, endFrame: startEndFramePick }),
-    [startFirstFramePick, startEndFramePick],
+    () => ({
+      firstFrame: startFirstFramePick,
+      endFrame: startEndFramePick,
+      characterImage: startCharacterImagePick,
+      drivingVideo: startDrivingVideoPick,
+    }),
+    [
+      startFirstFramePick,
+      startEndFramePick,
+      startCharacterImagePick,
+      startDrivingVideoPick,
+    ],
   );
   /** The slot whose pick is running on this node, if any. */
   const activeSlot = useCanvasStore((s) =>
@@ -427,7 +450,7 @@ function VideoGeneratePanelBody({
   // user may be coming back to.
   const onClearSlot = React.useCallback(
     (slot: VideoSlot) =>
-      clearNodeSlotUrl(projectId, spaceId, nodeId, VIDEO_SLOTS[slot].field),
+      clearSlot(projectId, spaceId, nodeId, slot),
     [projectId, spaceId, nodeId],
   );
 
@@ -602,6 +625,7 @@ function VideoGeneratePanelBody({
       // source shows none rather than offering a pick the submit ignores.
       slots={vm.slots}
       slotUrls={stableSlotUrls}
+      slotThumbnails={stableSlotThumbnails}
       activeSlot={activeSlot}
       onPickSlot={onPickSlot}
       onClearSlot={onClearSlot}

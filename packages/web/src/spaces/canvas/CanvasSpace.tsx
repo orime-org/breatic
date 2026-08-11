@@ -41,6 +41,7 @@ import {
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
+import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
 import {
   FocusCropOverlay,
   handOffFocusToPickBanner,
@@ -52,7 +53,6 @@ import {
   addEdge,
   addNodeFocusImage,
   addNode,
-  setNodeSlotUrl,
   setNodeStyleImage,
   createGroup,
   expandGroup,
@@ -1687,18 +1687,7 @@ function CanvasSpaceInner({
         // branches below carry no exhaustive check, so a missing one does not
         // fail the build — it silently wires an EDGE (the reference
         // fallthrough at the end) instead of filling the slot.
-        const picked = pickedSlotUrl(
-          { type: node.type, data: node.data },
-          VIDEO_SLOTS[videoSlot].accepts,
-        );
-        if (picked === null) return;
-        setNodeSlotUrl(
-          projectId,
-          spaceId,
-          target,
-          VIDEO_SLOTS[videoSlot].field,
-          picked,
-        );
+        if (!fillSlot(projectId, spaceId, target, videoSlot, node)) return;
         // One slot, one pick — the session completes on selection.
         endPick();
         return;

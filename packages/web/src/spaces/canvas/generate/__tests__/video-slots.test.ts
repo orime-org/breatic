@@ -28,7 +28,10 @@
 import { describe, it, expect } from 'vitest';
 
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
+import type {
+  VideoSlot,
+  VideoSlotSpec,
+} from '@web/spaces/canvas/generate/video-slots';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 /**
@@ -50,6 +53,52 @@ function messageKeys(slot: VideoSlot): string[] {
       typeof value === 'string' && value.startsWith('canvas.'),
   );
 }
+
+describe('what a slot takes, and what it can show for it (#1918)', () => {
+  const slots = Object.keys(VIDEO_SLOTS) as VideoSlot[];
+
+  it('takes a video node for the driving slot, and knows where its poster is', () => {
+    expect(VIDEO_SLOTS.drivingVideo.accepts).toBe('video');
+    expect(VIDEO_SLOTS.drivingVideo.coverField).toBe('drivingVideoCoverUrl');
+  });
+
+  it('makes every slot that cannot paint itself name a poster field', () => {
+    // The toolbar shows a slot's pick with an `<img>`. That works only while
+    // the picked URL is itself an image; a video URL renders as a blank
+    // square with no broken-image marker (`alt=''`). Any slot taking
+    // something other than an image has to say where its poster lives — which
+    // is what the first audio slot will need too.
+    for (const slot of slots) {
+      const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
+      if (spec.accepts !== 'image') {
+        expect(
+          spec.coverField,
+          `${slot} takes a ${spec.accepts} node and must name a poster field`,
+        ).toBeTruthy();
+      }
+    }
+  });
+
+  it('leaves the poster field off the slots that take images', () => {
+    for (const slot of slots) {
+      const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
+      if (spec.accepts === 'image') {
+        expect(spec.coverField, `${slot} takes an image`).toBeUndefined();
+      }
+    }
+  });
+
+  it('gives every slot its own node field, param and test ids', () => {
+    // Two slots writing one node field would overwrite each other; two
+    // sharing a test id would make the suites below address the wrong one.
+    const fields = slots.map((s) => VIDEO_SLOTS[s].field);
+    const testIds = slots.map((s) => VIDEO_SLOTS[s].testId);
+    const purposes = slots.map((s) => VIDEO_SLOTS[s].purpose);
+    expect(new Set(fields).size).toBe(fields.length);
+    expect(new Set(testIds).size).toBe(testIds.length);
+    expect(new Set(purposes).size).toBe(purposes.length);
+  });
+});
 
 describe('the slot registry names only messages the catalogs answer', () => {
   const slots = Object.keys(VIDEO_SLOTS) as VideoSlot[];

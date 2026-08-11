@@ -136,7 +136,15 @@ interface SlotToolProps {
   onPick: () => void;
   /** Whether this slot's pick is running — highlights the button. */
   active: boolean;
-  /** The picked image URL (pick-time copy), or undefined when empty. */
+  /**
+   * Whether the slot holds a pick — which is NOT the same as having a picture
+   * to show for it. A slot taking a video holds an asset an `<img>` cannot
+   * paint, so it shows its icon while still being filled; reading fullness off
+   * the thumbnail would take away its ✕ and leave the user unable to undo a
+   * pick (#1918).
+   */
+  filled: boolean;
+  /** The picture to show for the pick, or undefined when there is none. */
   thumbnail?: string;
   /** Clear the picked image (the ✕ badge). */
   onClear: () => void;
@@ -172,6 +180,7 @@ interface SlotToolProps {
  * @param root0.onPick - Enter / exit the pick.
  * @param root0.active - Whether this slot's pick is running.
  * @param root0.thumbnail - The picked image URL, if any.
+ * @param root0.filled - Whether the slot holds a pick.
  * @param root0.onClear - Clear the picked image.
  * @param root0.disabled - Whether picking is unavailable.
  * @param root0.clearLabel - Localized ✕ aria-label.
@@ -186,6 +195,7 @@ export function SlotTool({
   Icon,
   onPick,
   active,
+  filled,
   thumbnail,
   onClear,
   disabled,
@@ -211,7 +221,7 @@ export function SlotTool({
             'relative overflow-hidden ' +
             TOOL_BASE +
             (active ? TOOL_ACTIVE : TOOL_INACTIVE) +
-            (active && thumbnail ? ' ring-1 ring-foreground' : '')
+            (active && filled ? ' ring-1 ring-foreground' : '')
           }
         >
           {/* The icon + label always lay out (invisible when covered) so the
@@ -231,7 +241,7 @@ export function SlotTool({
           ) : null}
         </Button>
       </ToolTip>
-      {thumbnail ? (
+      {filled ? (
         <Button
           type='button'
           variant={null}

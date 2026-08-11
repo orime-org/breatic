@@ -30,7 +30,7 @@ export interface VideoModeOption extends ModeOption {
   slots: readonly VideoSlot[];
 }
 
-/** The video modes offered today (#1896 slices 1 to 3). */
+/** The video modes offered so far (#1896 slices 1 to 4). */
 export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
   {
     value: 't2v',
@@ -49,6 +49,12 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     label: 'First-Last Frame',
     testId: 'generate-video-mode-first-last',
     slots: ['firstFrame', 'endFrame'],
+  },
+  {
+    value: 'animate',
+    label: 'Image Animation',
+    testId: 'generate-video-mode-animate',
+    slots: ['characterImage', 'drivingVideo'],
   },
 ];
 
