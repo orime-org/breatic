@@ -57,33 +57,35 @@ function messageKeys(slot: VideoSlot): string[] {
 describe('what a slot takes, and what it can show for it (#1918)', () => {
   const slots = Object.keys(VIDEO_SLOTS) as VideoSlot[];
 
-  it('takes a video node for the driving slot, and knows where its poster is', () => {
+  it('takes a video node for the driving slot, and keeps its poster with it', () => {
     expect(VIDEO_SLOTS.drivingVideo.accepts).toBe('video');
-    expect(VIDEO_SLOTS.drivingVideo.coverField).toBe('drivingVideoCoverUrl');
+    expect(VIDEO_SLOTS.drivingVideo.storesCover).toBe(true);
   });
 
-  it('makes every slot that cannot paint itself name a poster field', () => {
+  it('makes every slot that cannot paint itself carry a poster', () => {
     // The toolbar shows a slot's pick with an `<img>`. That works only while
     // the picked URL is itself an image; a video URL renders as a blank
     // square with no broken-image marker (`alt=''`). Any slot taking
-    // something other than an image has to say where its poster lives — which
-    // is what the first audio slot will need too.
+    // something other than an image has to store a poster alongside the
+    // asset — which is what the first audio slot will need too.
     for (const slot of slots) {
       const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
       if (spec.accepts !== 'image') {
         expect(
-          spec.coverField,
-          `${slot} takes a ${spec.accepts} node and must name a poster field`,
-        ).toBeTruthy();
+          spec.storesCover,
+          `${slot} takes a ${spec.accepts} node and must carry a poster`,
+        ).toBe(true);
       }
     }
   });
 
-  it('leaves the poster field off the slots that take images', () => {
+  it('stores a bare URL for the slots that take images', () => {
+    // An image paints itself, so wrapping it would add a shape for nothing —
+    // and would change the stored form of two slots that already shipped.
     for (const slot of slots) {
       const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
       if (spec.accepts === 'image') {
-        expect(spec.coverField, `${slot} takes an image`).toBeUndefined();
+        expect(spec.storesCover, `${slot} takes an image`).toBeUndefined();
       }
     }
   });

@@ -66,7 +66,9 @@ describe("wan buildRequest — wan-2.2-animate (#1918)", () => {
     );
 
     expect("video" in api).toBe(false);
-    // The catalog's "random" sentinel is ours, not a seed the vendor knows.
+    // The catalog's "random" sentinel goes out under no name at all. The
+    // vendor spells its own default the same way, so sending it would be
+    // equivalent -- this does not lean on that staying true.
     expect("seed" in api).toBe(false);
   });
 });

@@ -648,42 +648,39 @@ export function setNodeStyleImage(
   nodeId: string,
   url: string,
 ): void {
-  setNodeSlotFields(projectId, spaceId, nodeId, { styleImageUrl: url });
+  setNodeSlotValue(projectId, spaceId, nodeId, 'styleImageUrl', url);
 }
 
 /**
- * Write a slot's pick onto a node's data map — every field that slot owns, in
- * ONE transaction.
+ * Write a slot's pick onto a node's data map — the whole pick, one key.
  *
  * Shared by every slot (style, first frame, end frame, character image,
- * driving video): they differ only in which keys they own, and the guard
+ * driving video): they differ only in which key they own, and the guard
  * sequence around the write — resolve the doc, find the node, confirm the data
- * map is a `Y.Map` — is the same question every time. Scalar
- * last-write-wins, so setting overwrites a previous pick.
+ * map is a `Y.Map` — is the same question every time.
  *
- * One transaction because a slot can own more than one field: the driving
- * video copies the picked video AND its poster (#1918), since the toolbar
- * paints a filled slot with an `<img>` and a video URL draws nothing there.
- * Written one at a time, a collaborator — or this client, if the node went
- * away between the two writes — would see the new video wearing the previous
- * pick's poster, which is a frame out of a different video.
+ * ONE key on purpose. A slot that carries a poster alongside its asset keeps
+ * both inside this value rather than in a second field: two fields are two
+ * independent last-writer-wins registers, so two clients picking at once
+ * converge per-key and one client's asset can end up wearing the other's
+ * poster (`canvas-space-slot-concurrency.test.ts`). Splitting the write across
+ * keys cannot be fixed by wrapping it in a transaction — a transaction groups
+ * operations, it does not make separate keys decide a winner together.
  *
- * `null` deletes the key rather than writing an empty string: "none picked" is
+ * `null` deletes the key rather than writing an empty value: "none picked" is
  * the key's absent state, and that is what every reader tests for.
- *
- * The keys come from the caller because that is where a slot is defined: the
- * video panel's slot registry owns its field names, and this layer sits below
- * it (#1904). The image panel's style slot still has named wrappers above.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the node whose slot to write.
- * @param fields - The keys this slot owns; `null` clears one.
+ * @param key - The data-map key this slot owns.
+ * @param value - The pick to store, or `null` to empty the slot.
  */
-export function setNodeSlotFields(
+export function setNodeSlotValue(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  fields: Readonly<Record<string, string | null>>,
+  key: string,
+  value: string | Readonly<Record<string, string>> | null,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -692,12 +689,10 @@ export function setNodeSlotFields(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => {
-    for (const [key, value] of Object.entries(fields)) {
-      if (value === null) {
-        if (data.has(key)) data.delete(key);
-      } else {
-        data.set(key, value);
-      }
+    if (value === null) {
+      if (data.has(key)) data.delete(key);
+    } else {
+      data.set(key, value);
     }
   }, CANVAS_UNDO);
 }
@@ -715,7 +710,7 @@ export function clearNodeStyleImage(
   spaceId: string,
   nodeId: string,
 ): void {
-  setNodeSlotFields(projectId, spaceId, nodeId, { styleImageUrl: null });
+  setNodeSlotValue(projectId, spaceId, nodeId, 'styleImageUrl', null);
 }
 
 /**

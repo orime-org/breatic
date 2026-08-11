@@ -1198,7 +1198,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // the slot filling.
   it('end-frame pick: clicking a non-image node fills nothing and wires no edge', () => {
     const setSlot = vi
-      .spyOn(canvasSpace, 'setNodeSlotFields')
+      .spyOn(canvasSpace, 'setNodeSlotValue')
       .mockImplementation(() => {});
     const addEdgeSpy = vi.spyOn(canvasSpace, 'addEdge');
     mockUseCanvasSpace.mockReturnValue(
@@ -1246,7 +1246,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
   it('end-frame pick: clicking an image fills the end-frame field, not the first', () => {
     const setSlot = vi
-      .spyOn(canvasSpace, 'setNodeSlotFields')
+      .spyOn(canvasSpace, 'setNodeSlotValue')
       .mockImplementation(() => {});
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
@@ -1279,9 +1279,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
     // Every field the slot owns in one call — the end frame owns just the
     // one, and no poster key rides along for a slot that paints its own pick.
-    expect(setSlot).toHaveBeenCalledWith('p', 's', 'target', {
-      endFrameUrl: 'https://cdn/l.png',
-    });
+    expect(setSlot).toHaveBeenCalledWith(
+      'p',
+      's',
+      'target',
+      'endFrameUrl',
+      'https://cdn/l.png',
+    );
     // One slot, one pick — the session completes on selection.
     expect(useCanvasStore.getState().pickSession).toBeNull();
     setSlot.mockRestore();
@@ -1293,7 +1297,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // hardcoded check would have looked correct.
   it('driving-video pick: clicking an image fills nothing and wires no edge', () => {
     const setSlot = vi
-      .spyOn(canvasSpace, 'setNodeSlotFields')
+      .spyOn(canvasSpace, 'setNodeSlotValue')
       .mockImplementation(() => {});
     const addEdgeSpy = vi.spyOn(canvasSpace, 'addEdge');
     mockUseCanvasSpace.mockReturnValue(
@@ -1340,7 +1344,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
   it('driving-video pick: clicking a video copies its asset AND its poster', () => {
     const setSlot = vi
-      .spyOn(canvasSpace, 'setNodeSlotFields')
+      .spyOn(canvasSpace, 'setNodeSlotValue')
       .mockImplementation(() => {});
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
@@ -1378,9 +1382,9 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
     // Both fields in ONE call: written separately, a collaborator could see
     // the new video wearing the previous pick's poster.
-    expect(setSlot).toHaveBeenCalledWith('p', 's', 'target', {
-      drivingVideoUrl: 'https://cdn/driving.mp4',
-      drivingVideoCoverUrl: 'https://cdn/driving-cover.png',
+    expect(setSlot).toHaveBeenCalledWith('p', 's', 'target', 'drivingVideo', {
+      url: 'https://cdn/driving.mp4',
+      cover: 'https://cdn/driving-cover.png',
     });
     expect(useCanvasStore.getState().pickSession).toBeNull();
     setSlot.mockRestore();
@@ -1388,7 +1392,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
   it('character-image pick: clicking a video fills nothing and wires no edge', () => {
     const setSlot = vi
-      .spyOn(canvasSpace, 'setNodeSlotFields')
+      .spyOn(canvasSpace, 'setNodeSlotValue')
       .mockImplementation(() => {});
     const addEdgeSpy = vi.spyOn(canvasSpace, 'addEdge');
     mockUseCanvasSpace.mockReturnValue(

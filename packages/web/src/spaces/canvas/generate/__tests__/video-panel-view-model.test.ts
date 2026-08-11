@@ -348,8 +348,10 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
       node(
         'n1',
         videoView({
-          drivingVideoUrl: 'https://cdn/driving.mp4',
-          drivingVideoCoverUrl: 'https://cdn/driving-cover.png',
+          drivingVideo: {
+            url: 'https://cdn/driving.mp4',
+            cover: 'https://cdn/driving-cover.png',
+          },
         }),
       ),
     ];
@@ -382,7 +384,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     // URL would put the blank square back; leaving the thumbnail absent lets
     // the slot keep its icon and label, which at least names what it holds.
     const nodes = [
-      node('n1', videoView({ drivingVideoUrl: 'https://cdn/driving.mp4' })),
+      node('n1', videoView({ drivingVideo: { url: 'https://cdn/driving.mp4' } })),
     ];
     const vm = buildVideoPanelViewModel({
       nodeId: 'n1',

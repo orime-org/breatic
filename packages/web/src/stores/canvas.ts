@@ -52,7 +52,7 @@ export type HistoryCommand = 'undo' | 'redo';
  *     figure image animation drives. Its own slot rather than the first
  *     frame's, though both travel as `image`, because a pick survives a mode
  *     switch and these two mean different things.
- *   - `drivingVideo` — the same, into `drivingVideoUrl` (#1918), but from a
+ *   - `drivingVideo` — the same, into `drivingVideo` (#1918), but from a
  *     VIDEO node: the performance whose motion is transferred onto the
  *     character. The first pick that takes something other than an image, so
  *     it copies the node's poster alongside the asset — the toolbar shows a

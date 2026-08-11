@@ -117,17 +117,12 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   characterImageUrl?: string;
   /**
-   * Driving video URL for the image-animation mode (#1918, wire
-   * `data.drivingVideoUrl`) — copied from a video node, sent as
-   * `params.video` at execute time.
+   * The driving video for the image-animation mode (#1918, wire
+   * `data.drivingVideo`) — `url` is sent as `params.video` at execute time,
+   * `cover` is the poster the toolbar shows for it. One field, so the pair
+   * converges as a unit under concurrent picks.
    */
-  drivingVideoUrl?: string;
-  /**
-   * Poster for `drivingVideoUrl` (#1918, wire `data.drivingVideoCoverUrl`) —
-   * what the toolbar shows for that slot, since an `<img>` cannot paint a
-   * video URL. Never sent upstream.
-   */
-  drivingVideoCoverUrl?: string;
+  drivingVideo?: { url: string; cover?: string };
   /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
@@ -291,8 +286,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     firstFrameUrl: data.firstFrameUrl,
     endFrameUrl: data.endFrameUrl,
     characterImageUrl: data.characterImageUrl,
-    drivingVideoUrl: data.drivingVideoUrl,
-    drivingVideoCoverUrl: data.drivingVideoCoverUrl,
+    drivingVideo: data.drivingVideo,
     focusImages: data.focusImages,
   };
   switch (type) {

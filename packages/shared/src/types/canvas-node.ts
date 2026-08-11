@@ -433,22 +433,18 @@ export interface CanvasNodeFields {
      */
     characterImageUrl?: string;
     /**
-     * Driving video URL for the image-animation mode (#1918, wire
-     * `data.drivingVideoUrl`) — the performance whose motion is transferred
-     * onto the character, sent as `params.video` at execute time. Copied from
-     * a VIDEO node, the first slot that takes something other than an image.
-     */
-    drivingVideoUrl?: string;
-    /**
-     * Poster for `drivingVideoUrl` (#1918, wire `data.drivingVideoCoverUrl`),
-     * copied from the picked node's `coverUrl` at the same moment.
+     * The driving video for the image-animation mode (#1918, wire
+     * `data.drivingVideo`) — the performance whose motion is transferred onto
+     * the character. `url` is sent as `params.video` at execute time; `cover`
+     * is the poster copied from the picked node at the same moment, ours to
+     * show and never sent upstream (the toolbar draws a filled slot with an
+     * `<img>`, and a video URL there paints nothing at all).
      *
-     * Ours to show, never sent upstream: the toolbar draws a filled slot with
-     * an `<img>`, and a video URL there paints nothing at all. Copied rather
-     * than read back from the source node, on the same terms as the asset
-     * itself — the slot is a value, not a relationship.
+     * Both inside ONE field on purpose: two fields are two independent
+     * last-writer-wins registers, so two clients picking at once converge
+     * per-field and one client's video can end up wearing the other's poster.
      */
-    drivingVideoCoverUrl?: string;
+    drivingVideo?: { url: string; cover?: string };
     /**
      * Focus crops created on this node's generate panel (#1782) — maintained
      * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the

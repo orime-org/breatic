@@ -39,10 +39,17 @@ const MODEL_FIELDS: Readonly<Record<string, Readonly<Record<string, FieldNames>>
 
 /**
  * WaveSpeed's `wavespeed-ai/wan-2.2/animate` requires a `mode` that selects
- * animation over character replacement. It is not a knob the user turns, so it
- * is not a catalog param: replacing a character inside an existing video is a
- * mini-tool operation on that video, not generation (#1917), and our own
- * `mode` already names something else entirely — a model's generation mode.
+ * animation over character replacement. It is not a catalog param: our own
+ * `mode` already names something else entirely — a model's generation mode —
+ * and the generation panel offers animation only.
+ *
+ * Written unconditionally, which is correct only while animation is the one
+ * thing this family is asked for. `MINI_TOOL_REGISTRY.video.animate` points at
+ * this same model and would reach this same function, so whoever wires
+ * character replacement (#1917) has to branch here rather than pass a param:
+ * an unknown param is dropped with a warn upstream of this, and this line
+ * would then overwrite the intent with animation and bill for the wrong run.
+ * That entry has no caller today.
  */
 const UPSTREAM_MODE = "animate";
 
@@ -60,10 +67,18 @@ export async function buildRequest(
   params: Record<string, unknown>,
   providerName?: string,
 ): Promise<[string, Record<string, unknown>]> {
+  // Dropped under OUR name, before the rename: -1 is the catalog's "pick one
+  // for me", and reading it back under the vendor's name would make this line
+  // silently stop working the day that name changes -- which is exactly the
+  // one-line change MODEL_FIELDS promises is safe. Same order as seedance.
+  //
+  // The vendor happens to spell its own default the same way (-1, documented
+  // as "a random seed will be used"), so sending it would be equivalent; it
+  // goes out under no name at all rather than relying on that staying true.
+  const cleaned = { ...params };
+  if (cleaned.seed === -1) delete cleaned.seed;
   const names = MODEL_FIELDS[modelName]?.[providerName ?? "wavespeed"] ?? {};
-  const api = applyFieldNames(params, names);
-  // Ours, not the vendor's: -1 is how the catalog says "pick one for me".
-  if (api.seed === -1) delete api.seed;
+  const api = applyFieldNames(cleaned, names);
   api.mode = UPSTREAM_MODE;
   return [prompt, api];
 }

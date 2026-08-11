@@ -955,12 +955,21 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     // fails until a user deletes the node they picked it from.
     for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
       const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
-      for (const field of [spec.field, spec.coverField].filter(Boolean)) {
-        const held = url(`held-by-${String(field)}`);
-        const nodes = [{ id: 'v', data: { [String(field)]: held } }];
+      const held = url(`held-by-${slot}`);
+      const stored = spec.storesCover ? { url: held } : held;
+      const nodes = [{ data: { [spec.field]: stored } }];
+      expect(
+        assetUrlSurvives(held, nodes),
+        `${slot} does not keep its asset alive`,
+      ).toBe(true);
+      if (spec.storesCover) {
+        // The poster is a second uploaded asset held by the same pick.
+        const poster = url(`poster-of-${slot}`);
         expect(
-          assetUrlSurvives(held, nodes),
-          `${slot}'s ${String(field)} does not keep its asset alive`,
+          assetUrlSurvives(poster, [
+            { data: { [spec.field]: { url: held, cover: poster } } },
+          ]),
+          `${slot} does not keep its poster alive`,
         ).toBe(true);
       }
     }
@@ -979,7 +988,7 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
       {
         id: 'gen',
         type: 'video',
-        data: { drivingVideoUrl: video, drivingVideoCoverUrl: cover },
+        data: { drivingVideo: { url: video, cover } },
       },
     ];
     expect(computeDeletedAssetEntries(deleted, all, 'sp-1')).toEqual([]);

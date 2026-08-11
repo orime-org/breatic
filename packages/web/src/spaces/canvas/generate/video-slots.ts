@@ -4,9 +4,10 @@
 /**
  * Every source slot the video panel can offer, and everything one is made of.
  *
- * A slot is a pick-time COPY of one asset's URL, with a role: the first frame,
- * the end frame, and later a character image and a driving audio track. It is
- * not a reference — references are a relationship (an edge), a slot is a value.
+ * A slot is a pick-time COPY of one asset, with a role: the first frame, the
+ * end frame, the character image animation drives, the driving video it takes
+ * its motion from, and later a driving audio track. It is not a reference —
+ * references are a relationship (an edge), a slot is a value.
  *
  * Each slot's facts live here rather than spread across the toolbar, the
  * canvas click handler, the candidate highlighting and the payload builder.
@@ -34,24 +35,37 @@ export type VideoSlotField =
   | 'firstFrameUrl'
   | 'endFrameUrl'
   | 'characterImageUrl'
-  | 'drivingVideoUrl'
-  | 'drivingVideoCoverUrl';
+  | 'drivingVideo';
+
+/**
+ * What a slot stores for its pick.
+ *
+ * A bare URL when the picked asset is its own picture, and `{url, cover}`
+ * when it is not — a video's poster travels WITH it rather than in a field of
+ * its own, because two fields are two independent last-writer-wins registers:
+ * two clients picking different videos at once converge per-key, and the
+ * loser's poster can survive under the winner's video (`canvas-space-slot-
+ * concurrency.test.ts`). One field makes "a pick is one value" structural
+ * instead of a rule someone has to keep.
+ */
+export type VideoSlotPick =
+  | string
+  | { readonly url: string; readonly cover?: string };
 
 /** What one slot is made of. */
 export interface VideoSlotSpec {
   /** Node data field holding the picked URL. */
   field: VideoSlotField;
   /**
-   * Node data field holding the poster to SHOW for this slot, when the picked
-   * asset cannot paint itself.
+   * Whether this slot stores `{url, cover}` rather than a bare URL string.
    *
    * The toolbar draws a filled slot with an `<img>`, which works only while
    * the picked URL is an image. A video URL there renders nothing — and with
    * `alt=''` not even a broken-image marker, just a blank square. A slot
-   * taking anything other than an image copies its node's poster too and
-   * names that field here; absent means the picked URL is itself the picture.
+   * taking anything other than an image copies its node's poster alongside
+   * the asset, inside the one field, so the pair converges as a unit.
    */
-  coverField?: VideoSlotField;
+  storesCover?: true;
   /** The param the URL travels as, under our own names. */
   param: string;
   /** The pick this slot starts; the canvas dispatches on it. */
@@ -124,8 +138,8 @@ export const VIDEO_SLOTS = {
     errorKey: 'canvas.generatePanel.errorNoCharacterImage',
   },
   drivingVideo: {
-    field: 'drivingVideoUrl',
-    coverField: 'drivingVideoCoverUrl',
+    field: 'drivingVideo',
+    storesCover: true,
     param: 'video',
     purpose: 'drivingVideo',
     accepts: 'video',
@@ -142,6 +156,50 @@ export const VIDEO_SLOTS = {
 
 /** URLs picked into slots, by slot. Absent means the slot is empty. */
 export type VideoSlotUrls = Partial<Record<VideoSlot, string>>;
+
+/**
+ * A stored value that is really a URL.
+ *
+ * An empty string is a string and no URL, and node data is a CRDT map any
+ * client may write, so the type saying `string` proves nothing.
+ * @param value - The raw stored value.
+ * @returns The URL, or undefined when there is not one.
+ */
+function usableUrl(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/**
+ * Reads a slot's stored pick, in the shape THAT slot keeps it in.
+ *
+ * The shape is the slot's, not the value's: a slot storing a bare URL refuses
+ * an object and a slot storing `{url, cover}` refuses a bare string. Slot
+ * values are collaborative Yjs data — untrusted, whatever the type says — so
+ * reading whichever shape happens to be there would let a malformed value
+ * ride the payload as a source param and be refused upstream AFTER the task
+ * was accepted and billed.
+ *
+ * An empty string is a string and no URL. A poster that is missing or
+ * malformed leaves the slot showing its icon rather than an empty frame,
+ * which at least names what it holds.
+ * @param spec - The slot being read, which states its stored shape.
+ * @param value - The raw node-data value for that slot's field.
+ * @returns The asset URL and what to show for it, or null when there is no pick.
+ */
+export function readSlotPick(
+  spec: VideoSlotSpec,
+  value: unknown,
+): { url: string; thumbnail?: string } | null {
+  if (!spec.storesCover) {
+    const bare = usableUrl(value);
+    return bare ? { url: bare, thumbnail: bare } : null;
+  }
+  if (value === null || typeof value !== 'object') return null;
+  const url = usableUrl((value as { url?: unknown }).url);
+  if (!url) return null;
+  const cover = usableUrl((value as { cover?: unknown }).cover);
+  return cover ? { url, thumbnail: cover } : { url };
+}
 
 /**
  * Finds the slot a pick is filling, if any.

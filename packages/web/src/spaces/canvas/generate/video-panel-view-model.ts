@@ -23,10 +23,12 @@ import {
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import { slotsForMode } from '@web/spaces/canvas/generate/video-mode-options';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import {
+  VIDEO_SLOTS,
+  readSlotPick,
+} from '@web/spaces/canvas/generate/video-slots';
 import type {
   VideoSlot,
-  VideoSlotField,
   VideoSlotSpec,
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
@@ -117,25 +119,6 @@ function asContentView(data: NodeView | undefined): ContentNodeView | undefined 
 }
 
 /**
- * Reads one of a slot's URL fields off the node.
- *
- * Slot values are collaborative Yjs data — untrusted, whatever the type says.
- * A malformed one would ride the payload as a source param and be refused
- * upstream AFTER the task was accepted and billed; an empty string is a string
- * and no URL. Same guard the style slot carries.
- * @param content - The node's content view, if it has one.
- * @param field - The data field to read.
- * @returns The URL when one is really there, else undefined.
- */
-function readSlotField(
-  content: ContentNodeView | undefined,
-  field: VideoSlotField,
-): string | undefined {
-  const value = content?.[field];
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-/**
  * Reads every slot's picked URL off the node.
  * @param content - The node's content view, if it has one.
  * @returns The URLs that are really there, by slot.
@@ -143,8 +126,9 @@ function readSlotField(
 function readSlotUrls(content: ContentNodeView | undefined): VideoSlotUrls {
   const urls: VideoSlotUrls = {};
   for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
-    const url = readSlotField(content, VIDEO_SLOTS[slot].field);
-    if (url !== undefined) urls[slot] = url;
+    const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
+    const pick = readSlotPick(spec, content?.[spec.field]);
+    if (pick) urls[slot] = pick.url;
   }
   return urls;
 }
@@ -166,8 +150,8 @@ function readSlotThumbnails(
   const thumbnails: VideoSlotUrls = {};
   for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
     const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
-    const url = readSlotField(content, spec.coverField ?? spec.field);
-    if (url !== undefined) thumbnails[slot] = url;
+    const pick = readSlotPick(spec, content?.[spec.field]);
+    if (pick?.thumbnail !== undefined) thumbnails[slot] = pick.thumbnail;
   }
   return thumbnails;
 }
