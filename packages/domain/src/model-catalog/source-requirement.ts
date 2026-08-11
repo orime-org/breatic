@@ -41,7 +41,9 @@ const MODE_REQUIRED_SOURCES: Readonly<
     // required, is settled where the payload is built from the mode (#1904);
     // this row keeps the gate up for models that offer the mode.
     first_last: ["image"],
-    animate: ["image"],
+    // Character image AND driving video: the motion is transferred from the
+    // video onto the image, so neither alone is a run the upstream can make.
+    animate: ["image", "video"],
     motion: ["image"],
     ref: ["image"],
     talking_head: ["image", "audio"],

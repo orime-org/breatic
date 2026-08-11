@@ -29,6 +29,12 @@ describe("computeSourcesByMode (#1675)", () => {
     expect(computeSourcesByMode("video", "i2v")).toEqual({ i2v: ["image"] });
   });
 
+  it("maps animate → BOTH image + video", () => {
+    expect(computeSourcesByMode("video", "animate")).toEqual({
+      animate: ["image", "video"],
+    });
+  });
+
   it("maps talking_head → BOTH image + audio", () => {
     expect(computeSourcesByMode("video", "talking_head")).toEqual({
       talking_head: ["image", "audio"],
@@ -72,6 +78,16 @@ describe("violatesSourceRequirement (#1675 server gate)", () => {
     expect(violatesSourceRequirement(sbm, { images: ["u"] })).toBe(true);
     expect(violatesSourceRequirement(sbm, { video_url: "u" })).toBe(false);
     expect(violatesSourceRequirement(sbm, { video: "u" })).toBe(false);
+  });
+
+  it("gates animate until BOTH the character image AND the driving video are present", () => {
+    // The upstream serving this mode (wavespeed's wan-2.2/animate) takes a
+    // character image AND a driving video, both required — the motion comes
+    // from the video, so an image on its own has nothing to animate to.
+    const sbm = computeSourcesByMode("video", "animate");
+    expect(violatesSourceRequirement(sbm, { image: "u" })).toBe(true); // video missing
+    expect(violatesSourceRequirement(sbm, { video: "u" })).toBe(true); // image missing
+    expect(violatesSourceRequirement(sbm, { image: "u", video: "u" })).toBe(false);
   });
 
   it("gates talking_head until BOTH image AND audio are present", () => {
