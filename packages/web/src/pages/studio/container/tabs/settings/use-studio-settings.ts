@@ -121,7 +121,13 @@ export function useStudioSettings(
         );
       }
 
-      if (renamed) navigate(`/studio/${next.slug}`, { replace: true });
+      // Back to Settings, not to the studio's front door. A rename happens
+      // while the user is standing in Settings, and the tab is part of the
+      // address now — so dropping the segment would move them somewhere they
+      // did not ask to go, as the last step of an edit they did ask for.
+      if (renamed) {
+        navigate(`/studio/${next.slug}/settings`, { replace: true });
+      }
     },
     [navigate, queryClient, studio.slug, studio.type],
   );

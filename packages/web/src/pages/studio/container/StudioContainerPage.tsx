@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import { useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import type { ProjectSummary } from '@breatic/shared';
@@ -24,7 +24,11 @@ import { useCreateProject } from '@web/pages/studio/container/dialogs/use-create
 import { NonMemberView } from '@web/pages/studio/container/NonMemberView';
 import { StudioHeader } from '@web/pages/studio/container/StudioHeader';
 import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
-import type { StudioTabKey } from '@web/pages/studio/container/studio-tabs';
+import {
+  isStudioTabKey,
+  studioTabFromParam,
+  type StudioTabKey,
+} from '@web/pages/studio/container/studio-tabs';
 import { CollectionsTab } from '@web/pages/studio/container/tabs/CollectionsTab';
 import { CreditsTab } from '@web/pages/studio/container/tabs/CreditsTab';
 import { MembersTab } from '@web/pages/studio/container/tabs/MembersTab';
@@ -72,7 +76,8 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
  * @returns the studio container page.
  */
 export default function StudioContainerPage(): React.JSX.Element {
-  const { slug = '' } = useParams();
+  const { slug = '', tab: tabParam } = useParams();
+  const navigate = useNavigate();
   const t = useTranslation();
   const studioQuery = useQuery({
     queryKey: ['studio', slug],
@@ -97,7 +102,25 @@ export default function StudioContainerPage(): React.JSX.Element {
   });
   const studios = studiosQuery.data ?? [];
   const createProject = useCreateProject(studios);
-  const [tab, setTab] = React.useState<StudioTabKey>('projects');
+  // The address is the tab. Holding it in component state instead made every
+  // tab the same address: a link could only ever say "that studio", a refresh
+  // dropped the reader back on Projects, and Back skipped past the switches
+  // the user had made. So the segment is read here rather than mirrored — one
+  // value, no chance of the page and the address bar disagreeing.
+  const tab = studioTabFromParam(tabParam);
+  /**
+   * Switch tab by going to its address.
+   *
+   * `navigate` rather than `replace`: each switch is a place the user chose to
+   * be, so Back should walk them out of it.
+   * @param next - The tab to switch to.
+   */
+  const setTab = React.useCallback(
+    (next: StudioTabKey): void => {
+      navigate(`/studio/${slug}/${next}`);
+    },
+    [navigate, slug],
+  );
 
   const studio = studioQuery.data;
   // Projects (slice 2) + members (slice 3) come from the real API; the other
@@ -122,6 +145,23 @@ export default function StudioContainerPage(): React.JSX.Element {
   // current studio when the viewer is its admin, else the personal studio (§7.1).
   const creatable = creatableStudios(studios);
   const defaultStudioId = defaultCreateStudioId(studios, studio);
+
+  // Two addresses resolve to the studio itself rather than being rendered or
+  // left in the bar. Both are reached the ordinary way — a typo, an old link,
+  // or somebody's own settings link pasted to someone else — so each gets the
+  // one address that is certainly right instead of a page that contradicts it.
+  //
+  // A name that is not a tab. Answerable without waiting for anything.
+  const namesNoTab = tabParam !== undefined && !isStudioTabKey(tabParam);
+  // A real tab name on a studio the viewer is not in. The public façade below
+  // renders no tabs at all, so the address would claim a tab that is not on
+  // the page. This one has to wait for the studio to load: until then we do
+  // not know whether the viewer is a member.
+  const tabIsNotOnThisPage =
+    tabParam !== undefined && studio?.myStudioRole === null;
+  if (namesNoTab || tabIsNotOnThisPage) {
+    return <Navigate to={`/studio/${slug}`} replace />;
+  }
 
   return (
     <div className='flex h-full flex-col'>

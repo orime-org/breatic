@@ -286,7 +286,9 @@ describe('StudioContainerPage', () => {
 
   it('opens Projects when the address names no tab', async () => {
     setup('acme-studio');
-    const projects = await screen.findByRole('tab', { name: 'Projects' });
+    // Projects / Collections / Members carry a count chip, so the accessible
+    // name is the label plus the number — matched loosely on the label.
+    const projects = await screen.findByRole('tab', { name: /Projects/ });
     expect(projects).toHaveAttribute('aria-selected', 'true');
     // The bare studio address is not rewritten to spell out its default —
     // /studio/{slug} stays what a user typed and what we hand out.
@@ -304,7 +306,7 @@ describe('StudioContainerPage', () => {
         '/studio/acme-studio',
       ),
     );
-    expect(await screen.findByRole('tab', { name: 'Projects' })).toHaveAttribute(
+    expect(await screen.findByRole('tab', { name: /Projects/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -329,7 +331,7 @@ describe('StudioContainerPage', () => {
     // page and the bar disagree and Back goes somewhere nobody asked for.
     const user = userEvent.setup();
     setup('acme-studio');
-    await user.click(await screen.findByRole('tab', { name: 'Members' }));
+    await user.click(await screen.findByRole('tab', { name: /Members/ }));
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent(
         '/studio/acme-studio/members',
