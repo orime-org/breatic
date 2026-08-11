@@ -198,7 +198,6 @@ export class MainAgent {
     });
 
     let fullResponse = "";
-    let thinkingContent = "";
     let creditsUsed = 0;
 
     // What this turn did, in the order it did it. One turn of the assistant is
@@ -279,7 +278,6 @@ export class MainAgent {
             break;
 
           case "reasoning-delta":
-            thinkingContent += part.text;
             pendingReasoning += part.text;
             // `@ai-sdk/anthropic` raises one of these with no text when it
             // forwards the block's signature; sending those on would be a
