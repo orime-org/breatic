@@ -27,9 +27,15 @@
  * Every event name the agent chat stream carries.
  *
  * Closed set, and closed on what actually runs: a name is here because the
- * server emits it today, not because someone means to emit it later. The
- * server cannot send anything else — `sse()` takes an `SSEEventName`, so an
- * undeclared name does not compile.
+ * server emits it today, not because someone means to emit it later.
+ *
+ * Every event on this stream is built by `MainAgent.sse()`, which takes an
+ * `SSEEventName` — so an undeclared name does not compile, and that direction
+ * needs no test. What the compiler settles is that path, not the socket: the
+ * route holds a `StreamingApi` whose `write` takes any string, and the text
+ * mini-tool's route builds its frames by hand that way. Nothing on the chat
+ * stream does today, and that is a fact about how `routes/chat.ts` is written
+ * rather than a guarantee the type system hands out.
  *
  * The other direction is kept true by not writing names down early. A
  * contract listing an event nothing sends tells the browser to wait for

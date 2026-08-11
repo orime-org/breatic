@@ -60,7 +60,7 @@ export interface ParsedInteraction {
  * @returns The matching SSE event, its parsed JSON payload, and whether the
  * turn must stop for it, when `resultStr` starts with one of the three v13
  * interaction sentinels. `null` for any non-interaction tool output
- * (including `__ASK_USER__` which is handled separately by the agent loop).
+ * (including `ASK_USER_SENTINEL`, which the agent loop handles separately).
  *
  * On malformed JSON after a matched sentinel, returns the matched
  * event with `{ raw: resultStr }` so the frontend can still display

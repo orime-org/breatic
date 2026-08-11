@@ -35,41 +35,42 @@ const SENTINELS: ReadonlyArray<{ literal: string; owner: string }> = [
 ];
 
 /**
- * Strip comments, so that writing about a sentinel is not writing one.
+ * Whether a source writes a sentinel out.
  *
- * Same approach the repo's brand-token check takes: judge the code, not the
- * prose around it. Crude by design — it does not know a `//` inside a string
- * from a real line comment — which can only ever make this guard stricter
- * about what it strips, never more permissive about a real copy.
- * @param source - The file's text.
- * @returns The text with block and line comments removed.
- */
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-}
-
-/**
- * Whether a source spells a sentinel out.
+ * Anywhere in the file counts — any quotes, or none, code or comment. Two
+ * narrower versions came before this one and each had a hole:
  *
- * Any occurrence in code counts, whatever quotes surround it. The first
- * version looked for the literal wrapped in `"` or `'`, which missed the two
- * forms a real copy is most likely to take: these tools build their results
- * as `` `${SENTINEL}${JSON.stringify(payload)}` ``, so backticks are the local
- * idiom, and inside a template the literal is followed by `${`, not by a
- * closing quote. Neither wrapped form matches that.
+ * Looking for the literal wrapped in `"` or `'` missed the two forms a real
+ * second copy is most likely to take, because these tools build their results
+ * as `` `${SENTINEL}${JSON.stringify(payload)}` ``: backticks are the local
+ * idiom, and inside a template the literal is followed by `${` rather than by
+ * a closing quote.
  *
- * Importing the constant does not count, because an import names the symbol
- * and never the string.
+ * Stripping comments first, to let prose mention a sentinel without counting
+ * as a copy, was worse. Telling a comment from a string needs a parser, and
+ * two regexes are not one: `//` inside a string deletes the rest of that line,
+ * and `/*` inside a string opens a block that runs to the next `*` + `/`.
+ * Measured on this repo — `packages/server/src/routes/assets.ts` has a route
+ * pattern ending in `/` + `*`, and stripping deleted 60% of the file (33259
+ * characters to 13134). A real second copy planted in that deleted region was
+ * not found; the same copy at the top of the file was. Every character
+ * stripping removes is a character the search cannot see, so a crude stripper
+ * does not err on the side of strictness — it errs the only way that matters.
  *
- * `__ASK_USER__` is not a substring of `__ASK_USER_CHOICE__` — they diverge
- * at the twelfth character — so a plain substring test stays exact across all
- * four. Checked by the samples below.
+ * Dropping the distinction removes the hole rather than narrowing it, at one
+ * price: prose in a scanned file must name the constant, not the string. That
+ * is the better way to write it anyway, since a name follows the value.
+ *
+ * Importing the constant is untouched, because an import names the symbol and
+ * never the string. And `__ASK_USER__` is not a substring of
+ * `__ASK_USER_CHOICE__` — they diverge at the twelfth character — so a plain
+ * substring test stays exact across all four. Both checked by the samples.
  * @param source - The file's text.
  * @param literal - The sentinel string.
- * @returns True when the file writes that string out in code.
+ * @returns True when the file writes that string out.
  */
 function spells(source: string, literal: string): boolean {
-  return stripComments(source).includes(literal);
+  return source.includes(literal);
 }
 
 /** Sources the matcher must catch, and sources it must leave alone. */
@@ -80,8 +81,10 @@ const SAMPLES: ReadonlyArray<{ source: string; literal: string; flagged: boolean
   { source: "return `__ASK_USER__${JSON.stringify(p)}`;", literal: "__ASK_USER__", flagged: true, why: "backticks opening a template with an expression after it" },
   { source: `export const X = "__ASK_USER_CHOICE__";`, literal: "__ASK_USER__", flagged: false, why: "a longer sentinel is not the shorter one" },
   { source: `import { ASK_USER_SENTINEL } from "@breatic/domain";`, literal: "__ASK_USER__", flagged: false, why: "importing the name is the point" },
-  { source: `// the __ASK_USER__ prefix marks a question`, literal: "__ASK_USER__", flagged: false, why: "a line comment about it is not a copy of it" },
-  { source: `/**\n * Results start with __ASK_USER__.\n */\nexport const x = 1;`, literal: "__ASK_USER__", flagged: false, why: "the same, in a docstring" },
+  { source: `// the __ASK_USER__ prefix marks a question`, literal: "__ASK_USER__", flagged: true, why: "prose counts too — say ASK_USER_SENTINEL instead" },
+  { source: `/**\n * Results start with __ASK_USER__.\n */\nexport const x = 1;`, literal: "__ASK_USER__", flagged: true, why: "the same, in a docstring" },
+  { source: `const DOCS = "https://example.test/a"; const LOCAL = "__ASK_USER__";`, literal: "__ASK_USER__", flagged: true, why: "a URL earlier on the line hid this from the version that stripped comments" },
+  { source: `route("/local-upload/*", h);\nconst LOCAL = "__ASK_USER__";`, literal: "__ASK_USER__", flagged: true, why: "a route pattern ending in a slash-star hid the whole rest of the file from that version" },
 ];
 
 /**

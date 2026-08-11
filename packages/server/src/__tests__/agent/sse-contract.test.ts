@@ -5,13 +5,22 @@
  * This service and the browser describe the chat stream with one vocabulary,
  * and put it on the wire in the shape both of them read.
  *
- * What is NOT tested here is that the contract lists every event the backend
- * can send. The compiler already settles that: `sse()` takes an
- * `SSEEventName`, so a name the contract does not declare fails to compile —
- * `tsc --noEmit` on `this.sse("brand_new_event", ...)` gives
- * `TS2345: Argument of type '"brand_new_event"' is not assignable to
- * parameter of type 'SSEEventName'`. A test asserting the same thing could
- * only restate it.
+ * What is NOT tested here is that the contract lists every event this service
+ * sends. Every event on this stream is built by `sse()`, and the compiler
+ * settles that path: `sse()` takes an `SSEEventName`, so an undeclared name
+ * fails to compile — `tsc --noEmit` on `this.sse("brand_new_event", ...)`
+ * gives `TS2345: Argument of type '"brand_new_event"' is not assignable to
+ * parameter of type 'SSEEventName'`. A test asserting the same could only
+ * restate it.
+ *
+ * That covers the path, not the socket. `routes/chat.ts` writes to a
+ * `StreamingApi` whose `write` takes any string, so a hand-built frame would
+ * reach the browser unchecked — `routes/text-tools.ts` builds its frames that
+ * way for the other stream. Both chat writes go through `serializeSSE` today.
+ * That is how the route is written, not something the compiler enforces, and
+ * a test cannot settle it either: what it would have to check is that no
+ * future line writes a frame by hand, which is a fact about code not yet
+ * written.
  *
  * Nor is there anything here about a name the contract declares but nothing
  * emits, because the contract does not carry such names. `agent_thinking` is
@@ -65,6 +74,13 @@ describe("what goes on the wire", () => {
     );
     expect(payload).toHaveProperty("task_id", "task-7");
     expect(payload).not.toHaveProperty("taskId");
+  });
+
+  // The one field carrying content: the chunk text, the error message, every
+  // interaction widget's payload. Everything else on the frame is routing.
+  it("hands the payload through untouched", () => {
+    const data = { text: "hi", nested: { n: 1, list: [true, null] } };
+    expect(payloadOf(serializeSSE({ event: SSEEventType.CHAT_CHUNK, data })).data).toEqual(data);
   });
 
   it("ends with the blank line that closes an SSE frame", () => {
