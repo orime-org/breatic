@@ -40,12 +40,13 @@ export function groupByTurn(messages: readonly MessageData[]): Map<number, Messa
  * Keeps:
  * - The first `role: "user"` message
  * - The last `role: "assistant"` message that has non-empty content
- *   (skips tool_call-only assistant messages)
+ *   (skips a reply that only used tools and never spoke)
  *
  * Drops:
- * - All `role: "tool"` messages (tool results)
- * - Intermediate `role: "assistant"` messages with only tool_calls
- * - The `thinking` field from all kept messages
+ * - Every message between those two
+ * - Everything but the prose out of the two it keeps: tool use lives in the
+ *   reply's own parts, so dropping those parts is what drops the tool use
+ * - The `thinking` field from both
  * @param turnMessages - All messages for a single turn, in order
  * @returns Compressed messages (1-2 items)
  */

@@ -23,11 +23,31 @@ import type { MessageData, MessagePart } from "@breatic/shared";
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
 
 /**
+ * Whether this use of the tool got far enough to tell the model anything.
+ *
+ * Two stored states carry no outcome and they arrive here looking alike. A
+ * turn stopped while the tool was in flight is swept to `error` on its way to
+ * storage with nothing to say about why, because nothing went wrong — it
+ * simply never finished. A tool that genuinely failed carries the reason it
+ * failed. The reason is what separates them.
+ * @param part - The tool part to judge
+ * @returns True when the call has something to report back
+ */
+function hasOutcome(part: ToolPart): boolean {
+  if (part.status === "success") return true;
+  if (part.status === "error") return part.errorMessage !== undefined;
+  return false;
+}
+
+/**
  * Render what a tool returned in the typed form the SDK requires.
  *
  * The field is a discriminated union, not a string — `ai@7.0.58` validates it
  * with `z.discriminatedUnion` before the request goes out, so handing over the
  * stored string is rejected at the door.
+ *
+ * Only called for parts that {@link hasOutcome} accepted, so an `error` here
+ * always carries its reason.
  * @param part - The tool part to render
  * @returns The output in its typed form, saying plainly when the tool failed
  */
@@ -42,10 +62,10 @@ function toolOutput(part: ToolPart): { type: "text" | "error-text"; value: strin
  * Turn stored messages into the messages the model is sent.
  *
  * Reasoning never goes back: it is the model's own working, and returning it
- * teaches nothing while costing every turn. A tool call still waiting for its
- * result is left out along with the call itself — a call with no answer puts
- * the exchange in a state the protocol has no move for, and that is what a
- * turn stopped mid-tool leaves behind.
+ * teaches nothing while costing every turn. A call that never came back is
+ * left out along with its own half — a call with no answer puts the exchange
+ * in a state the protocol has no move for, and that is what a turn stopped
+ * mid-tool leaves behind.
  * @param history - Stored messages, oldest first
  * @returns The same history in protocol form, oldest first
  */
@@ -64,7 +84,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
         continue;
       }
 
-      if (part.type !== "tool" || part.status === "pending") continue;
+      if (part.type !== "tool" || !hasOutcome(part)) continue;
 
       out.push({
         role: "assistant",

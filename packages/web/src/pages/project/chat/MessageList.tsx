@@ -39,9 +39,13 @@ export function MessageList({
 }: MessageListProps): React.JSX.Element {
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const count = messages.length;
+  // A streaming reply arrives as pieces appended to the message already at
+  // the end, so the count sits still for the whole turn. Following its length
+  // as well is what keeps the answer in view while it is being written.
+  const lastLength = messages.at(-1)?.content.length ?? 0;
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [count]);
+  }, [count, lastLength]);
 
   return (
     <ScrollArea className='min-h-0 flex-1' data-testid='message-list'>

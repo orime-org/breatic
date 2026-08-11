@@ -48,7 +48,19 @@ export interface ChatSession {
    */
   failedToOpen: boolean;
   /**
+   * There is a conversation to write to, so a message can be sent right now.
+   *
+   * False while the chat is still opening and after opening failed. The panel
+   * turns the composer off on both, because a message typed then has nowhere
+   * to go and would be dropped without a word.
+   */
+  canSend: boolean;
+  /**
    * Send one message and stream the reply into the list.
+   *
+   * Resolves when the whole turn is over, but the message is in the list
+   * before the first await — so a caller that has checked `canSend`
+   * may treat the call itself as the send having happened.
    * @throws {Error} When there is no conversation to send to — the caller
    *   must not treat that as sent, or the text is gone with nothing said.
    */
@@ -110,6 +122,8 @@ export function useChatSession(projectId: string): ChatSession {
   const setStreaming = useChatStore((s) => s.setStreaming);
   const setActiveConversationId = useChatStore((s) => s.setActiveConversationId);
   const inFlight = React.useRef<AbortController | null>(null);
+  /** The reply currently being written, so ending the turn can unmark it. */
+  const activeReplyId = React.useRef<string | null>(null);
 
   const query = useQuery<CachedChat>({
     queryKey: chatKey(projectId),
@@ -121,21 +135,6 @@ export function useChatSession(projectId: string): ChatSession {
   React.useEffect(() => {
     if (conversationId) setActiveConversationId(conversationId);
   }, [conversationId, setActiveConversationId]);
-
-  // The turn belongs to this mounted panel. Unmounting stops it; without
-  // this, pieces of a reply keep arriving for a list that is gone, and the
-  // next mount refetches history the reply is not in yet.
-  React.useEffect(() => {
-    return () => {
-      inFlight.current?.abort();
-      inFlight.current = null;
-      // The store outlives this component, and an aborted request reports
-      // nothing back — so this is the only place that can say the turn is
-      // over. Left set, the composer shows a stop button for a turn that
-      // ended and refuses to send anything until it is clicked.
-      setStreaming(false);
-    };
-  }, [setStreaming]);
 
   /**
    * Rewrite one message in the cache.
@@ -220,16 +219,41 @@ export function useChatSession(projectId: string): ChatSession {
     ]);
   }, [queryClient, projectId, appendMessages]);
 
-  /** End the turn in flight, however it ended. */
+  /**
+   * End the turn in flight, however it ended.
+   *
+   * Four things end a turn — the server saying so, an error, the user
+   * pressing stop, the panel going away — and all four come through here.
+   * That is the point: both marks that say "a reply is being written" are
+   * cleared in one place, so a path cannot clear one and forget the other.
+   * Stopping used to clear only the store's, and the reply kept its blinking
+   * cursor for as long as the panel stayed open.
+   */
   const finishTurn = React.useCallback((): void => {
     inFlight.current = null;
+    if (activeReplyId.current !== null) {
+      patchMessage(activeReplyId.current, ({ streaming: _streaming, ...rest }) => rest);
+      activeReplyId.current = null;
+    }
     setStreaming(false);
-  }, [setStreaming]);
+  }, [setStreaming, patchMessage]);
 
   const abort = React.useCallback((): void => {
     inFlight.current?.abort();
     finishTurn();
   }, [finishTurn]);
+
+  // The turn belongs to this mounted panel. Collapsing the chat column
+  // unmounts it, and that ends the turn exactly the way pressing stop does:
+  // the request is torn down and both marks come off. Without it, pieces of a
+  // reply keep arriving for a list nobody is holding, the store keeps showing
+  // a stop button for a turn that ended, and the half-written reply keeps its
+  // typing cursor when the column is opened again.
+  React.useEffect(() => {
+    return () => {
+      abort();
+    };
+  }, [abort]);
 
   /**
    * Run one turn against one conversation.
@@ -271,15 +295,10 @@ export function useChatSession(projectId: string): ChatSession {
 
       const controller = new AbortController();
       inFlight.current = controller;
+      activeReplyId.current = replyId;
       setStreaming(true);
 
       let refusal: StreamRefusedError | undefined;
-
-      /** Stop marking this reply as being written, however the turn ended. */
-      const settleReply = (): void => {
-        patchMessage(replyId, ({ streaming: _streaming, ...rest }) => rest);
-        finishTurn();
-      };
 
       await chatApi.streamMessage(
         { projectId, conversationId: conversation, message: text },
@@ -305,14 +324,14 @@ export function useChatSession(projectId: string): ChatSession {
                 if (event.data.aborted) {
                   patchMessage(replyId, (m) => ({ ...m, interrupted: true as const }));
                 }
-                settleReply();
+                finishTurn();
                 break;
 
               case SSE_EVENT_NAMES.ERROR:
                 // What the server says here is a hardcoded English sentence;
                 // the panel shows its own wording, so only the fact matters.
                 patchMessage(replyId, (m) => ({ ...m, failed: true }));
-                settleReply();
+                finishTurn();
                 break;
 
               // Raised as the model reaches for a tool, and as it hands back
@@ -327,14 +346,14 @@ export function useChatSession(projectId: string): ChatSession {
                 break;
             }
           },
-          onClose: settleReply,
+          onClose: finishTurn,
           onError: (err: unknown) => {
             if (err instanceof StreamRefusedError) {
               refusal = err;
             } else {
               patchMessage(replyId, (m) => ({ ...m, failed: true }));
             }
-            settleReply();
+            finishTurn();
           },
         },
       );
@@ -392,5 +411,12 @@ export function useChatSession(projectId: string): ChatSession {
     [query.data],
   );
 
-  return { messages, isPending: query.isPending, failedToOpen: query.isError, send, abort };
+  return {
+    messages,
+    isPending: query.isPending,
+    failedToOpen: query.isError,
+    canSend: conversationId !== undefined,
+    send,
+    abort,
+  };
 }

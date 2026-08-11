@@ -165,9 +165,11 @@ describe("history on its way to the model", () => {
   });
 
   it("leaves out a call that never came back", () => {
-    // A turn stopped while a tool was still running stores the call as
-    // pending. Sending a call with no result puts the conversation in a state
-    // the protocol has no answer for, so neither half goes.
+    // A turn stopped while a tool was still running is swept to `error` on the
+    // way to storage, with nothing to say about why — because nothing went
+    // wrong, it simply never finished. That is how it comes back here, and a
+    // call with no result puts the conversation in a state the protocol has no
+    // answer for, so neither half goes.
     const history = [
       stored("user", [{ type: "text", text: "search" }]),
       stored("assistant", [
@@ -176,7 +178,7 @@ describe("history on its way to the model", () => {
           toolCallId: "tc-4",
           toolName: "web_search",
           input: { query: "x" },
-          status: "pending",
+          status: "error",
         },
         { type: "interrupted" },
       ]),

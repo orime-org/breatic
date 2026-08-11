@@ -53,7 +53,7 @@ export function ChatPanel({
   onQuickAction,
   disabled = false,
 }: ChatPanelProps): React.JSX.Element {
-  const { messages, isPending, failedToOpen, send, abort } = useChatSession(projectId);
+  const { messages, isPending, failedToOpen, canSend, send, abort } = useChatSession(projectId);
   const t = useTranslation();
   const draft = useChatStore((s) => s.composerDraft);
   const setDraft = useChatStore((s) => s.setComposerDraft);
@@ -72,15 +72,16 @@ export function ChatPanel({
   const submit = (): void => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
-    // The draft is only cleared once the message is on its way. Clearing it
-    // first is what made a failed send look like a successful one, with the
-    // user's words gone and nothing said about it.
-    void send(trimmed)
-      .then(clearDraft)
-      .catch(() => {
-        // Whatever went wrong is already on screen: either the panel says it
-        // could not open, or the reply itself is marked as failed.
-      });
+    // Cleared here rather than when the reply ends. The composer is only live
+    // when there is a conversation to write to, so by the time this runs the
+    // message is already in the list — waiting for the whole turn would leave
+    // the user's words sitting in the box beside their own sent bubble, and
+    // wipe anything typed while the reply streamed in.
+    void send(trimmed).catch(() => {
+      // Whatever went wrong is already on screen: either the panel says it
+      // could not open, or the reply itself is marked as failed.
+    });
+    clearDraft();
   };
 
   return (
@@ -116,6 +117,7 @@ export function ChatPanel({
       <ChatComposer
         draft={draft}
         streaming={streaming}
+        disabled={!canSend}
         onChange={setDraft}
         onSubmit={submit}
         onAbort={abort}

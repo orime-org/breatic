@@ -73,9 +73,26 @@ function openChatAnswers(messages: Array<{ id: string; role: string; text: strin
  * Render the hook against a fresh client.
  * @returns The render result, for reading `current` off it
  */
-function render(): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
+function render(): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> & {
+  client: QueryClient;
+  } {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return renderHook(() => useChatSession('p-1'), { wrapper: makeWrapper(client) });
+  return {
+    ...renderHook(() => useChatSession('p-1'), { wrapper: makeWrapper(client) }),
+    client,
+  };
+}
+
+/**
+ * The messages as the cache holds them, readable after the panel is gone.
+ * @param client - The client backing the render under test
+ * @returns Those messages, or an empty list when nothing is cached
+ */
+function cachedMessages(client: QueryClient): Array<{ streaming?: boolean }> {
+  const data = client.getQueryData(['chat-open', 'p-1']) as
+    | { current: { messages: Array<{ streaming?: boolean }> } }
+    | undefined;
+  return data?.current.messages ?? [];
 }
 
 beforeEach(() => {
@@ -210,6 +227,10 @@ describe('sending a message', () => {
       void result.current.send('hi');
     });
 
+    // Wait for the reply to actually be on screen and marked, or the
+    // assertions below pass against an empty list without testing anything.
+    await waitFor(() => expect(result.current.messages.at(-1)?.streaming).toBe(true));
+
     act(() => {
       result.current.abort();
     });
@@ -217,6 +238,9 @@ describe('sending a message', () => {
     // The server's ending never arrives on this path: the connection is gone
     // before it is written, so nothing but this clears the flag.
     expect(useChatStore.getState().streaming).toBe(false);
+    // And the reply itself has to stop claiming it is being written, or it
+    // keeps its blinking cursor for as long as the panel stays open.
+    await waitFor(() => expect(result.current.messages.at(-1)?.streaming).toBeUndefined());
   });
 });
 
@@ -304,12 +328,15 @@ describe('when the chat never opened', () => {
 describe('when the panel goes away mid-stream', () => {
   it('leaves nothing claiming a turn is still running', async () => {
     openChatAnswers([]);
-    const { result, unmount } = render();
+    const { result, unmount, client } = render();
     await waitFor(() => expect(result.current.isPending).toBe(false));
     await act(async () => {
       void result.current.send('hi');
     });
     expect(useChatStore.getState().streaming).toBe(true);
+    // The reply has to actually be on screen and marked, or what follows
+    // passes against an empty list without testing anything.
+    await waitFor(() => expect(result.current.messages.at(-1)?.streaming).toBe(true));
 
     // Collapsing the chat column unmounts the panel. The store outlives it,
     // so a flag left on strands the composer showing a stop button for a turn
@@ -319,6 +346,9 @@ describe('when the panel goes away mid-stream', () => {
     });
 
     expect(useChatStore.getState().streaming).toBe(false);
+    // The cache outlives the panel too. Left marked, the half-written reply
+    // still has its typing cursor when the column is opened again.
+    expect(cachedMessages(client).at(-1)?.streaming).toBeUndefined();
   });
 });
 

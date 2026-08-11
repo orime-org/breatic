@@ -9,7 +9,7 @@
  * sentinel-prefixed JSON string from `execute()`. main-agent intercepts
  * the matching sentinel inside the `tool-result` part of the stream,
  * yields the right SSE event so the frontend can render a UI widget,
- * and persists the parsed payload onto `tool_calls[0].result` so a
+ * and stores the payload on the tool part of the reply it belongs to, so a
  * page reload can rebuild the same widget from history.
  *
  * Keeping sentinel decode out of `main-agent.ts` lets us unit-test the

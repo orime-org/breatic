@@ -83,6 +83,11 @@ describe('ChatPanel', () => {
   it('typing in the composer writes to the chat store draft', async () => {
     const user = userEvent.setup();
     renderPanel();
+    // The composer is off until there is a conversation to write to.
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled(),
+    );
     await user.type(screen.getByTestId('chat-composer-textarea'), 'Hi!');
     expect(useChatStore.getState().composerDraft).toBe('Hi!');
   });
@@ -102,6 +107,42 @@ describe('ChatPanel', () => {
       ),
     );
     expect(useChatStore.getState().composerDraft).toBe('');
+  });
+
+  it('clears the composer as soon as the message is sent, not when the reply ends', async () => {
+    const user = userEvent.setup();
+    // Hold the stream open, the way a real turn does for as long as it runs.
+    let endTurn = (): void => {};
+    vi.mocked(chatApi.streamMessage).mockImplementation(
+      async () =>
+        new Promise<void>((resolve) => {
+          endTurn = resolve;
+        }),
+    );
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+
+    useChatStore.getState().setComposerDraft('first question');
+    await user.click(screen.getByTestId('chat-composer-send'));
+    await waitFor(() => expect(chatApi.streamMessage).toHaveBeenCalled());
+
+    // The words are on screen as a sent message. Leaving them in the box too
+    // reads as a send that did not take, and anything typed while waiting is
+    // wiped the moment the reply finishes.
+    expect(useChatStore.getState().composerDraft).toBe('');
+    endTurn();
+  });
+
+  it('does not let anything be typed before the chat is open', async () => {
+    // openChat never answers, which is the state every panel starts in.
+    vi.mocked(chatApi.openChat).mockImplementation(() => new Promise(() => {}));
+    renderPanel();
+
+    // Pressing enter here used to drop the keystroke with no request, no
+    // error and no bubble — the user cannot tell it was not sent.
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-composer-textarea')).toBeDisabled(),
+    );
   });
 
   it('keeps what the user typed when the chat could not be opened', async () => {
