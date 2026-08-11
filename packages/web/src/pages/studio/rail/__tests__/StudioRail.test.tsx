@@ -279,6 +279,48 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
     );
   });
 
+  it('fills the row you are on, and gives the others that fill only under the pointer', () => {
+    // The one visible answer to "which studio am I in" is that block of fill.
+    // Deleting it from RAIL_ROW_CURRENT left every test in this folder green,
+    // because the assertions all compared a rendered row against the constant
+    // that produced it — true no matter what the constant says.
+    render(
+      <MemoryRouter>
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const current = screen.getByRole('link', { name: /Recent/ });
+    expect(current.className).toMatch(/(^|\s)bg-accent(\s|$)/);
+
+    const idle = screen.getByRole('button', { name: 'New project' });
+    expect(idle.className).toContain('hover:bg-accent');
+    expect(idle.className).not.toMatch(/(^|\s)bg-accent(\s|$)/);
+  });
+
+  it('leaves 12px between the three groups, which is what tells them apart', () => {
+    // Four of the five rules were removed on the grounds that the headings and
+    // the space between the groups already say where each one begins. That
+    // makes this gap load-bearing, and it had no test: setting it to zero left
+    // every test green while the three groups read as one block.
+    const { container } = render(
+      <MemoryRouter>
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const groups = container.querySelector('hr')?.nextElementSibling;
+    expect(groups?.className).toMatch(/(^|\s)gap-3(\s|$)/);
+  });
+
   it('renders Recent at the TOP, above the create actions (visual spec 2026-06-08)', () => {
     render(
       <MemoryRouter>

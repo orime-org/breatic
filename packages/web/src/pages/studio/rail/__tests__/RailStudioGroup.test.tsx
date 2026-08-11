@@ -143,6 +143,18 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     expect(row.className).not.toContain('pl-2 ');
   });
 
+  it('keeps the top level at 8px, the other half of that same step', () => {
+    // Both numbers together are the step; pinning one of them pins nothing.
+    // Setting RAIL_INDENT_TOP to pl-3.5 flattens the two levels completely —
+    // the exact change the comment above warns against — and left every test
+    // in this folder green, because the only assertion on the top-level indent
+    // compared a rendered row against the constant that produced it.
+    renderGroup();
+    const heading = screen.getByText('My Studios').closest('div');
+    expect(heading?.className).toContain('pl-2');
+    expect(heading?.className).not.toContain('pl-3.5');
+  });
+
   it('stacks studio rows with the same gap the top-level rows use', () => {
     // With no gap the filled backgrounds touch, so a selected row and the row
     // being hovered next to it read as one block rather than two.

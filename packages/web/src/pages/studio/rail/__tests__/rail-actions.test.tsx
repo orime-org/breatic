@@ -233,6 +233,52 @@ describe('RailRecentLink (spec §4.1 ③)', () => {
     expect(link.className).not.toContain('gap-2.5');
   });
 
+  it('starts its content at the left edge, not centred', () => {
+    // The `Button` primitive centres its content. A comment once claimed this
+    // class was applied when it never was, and the three create actions sat
+    // centred for as long as that comment did — so the class gets an assertion
+    // rather than another sentence saying it is there.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: /Recent/ }).className).toContain(
+      'justify-start',
+    );
+  });
+
+  it('brings a row’s icon up under the pointer', () => {
+    // The other half of the pair asserted below: without this one, deleting
+    // the hover variant from the icon left the whole rail's icons inert and
+    // every test green.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    const svg = screen
+      .getByRole('link', { name: /Recent/ })
+      .querySelector('svg');
+    expect(svg?.getAttribute('class')).toContain('group-hover:text-foreground');
+  });
+
+  it('keeps 2px between stacked rows so two filled rows never merge', () => {
+    // A selected row and the row hovered next to it are the same fill. With
+    // the rows touching they read as one block rather than two.
+    const { container } = render(
+      <RailCreateActions
+        createProjectLabel='New project'
+        createCollectionLabel='New collection'
+        comingSoonLabel='Coming soon'
+        onCreateProject={vi.fn()}
+      />,
+    );
+    expect(container.firstElementChild?.className).toMatch(
+      /(^|\s)gap-0\.5(\s|$)/,
+    );
+  });
+
   it('is a top-level rail row, from the one definition', () => {
     render(
       <MemoryRouter>
