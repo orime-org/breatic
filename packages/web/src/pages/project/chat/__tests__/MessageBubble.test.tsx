@@ -65,4 +65,35 @@ describe('MessageBubble', () => {
     });
     expect(screen.getByTestId('tool-call-card')).toBeInTheDocument();
   });
+
+  it('says so when the turn was stopped before it finished', () => {
+    // The backend goes to the trouble of storing this mark (batch 3, item 33)
+    // so the reader can tell a cut-off answer from a complete one. Carrying it
+    // to the component and not drawing it wastes the whole chain.
+    render(
+      <MessageBubble
+        message={{ id: 'm1', role: 'assistant', content: 'half a sen', interrupted: true }}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-interrupted')).toBeInTheDocument();
+  });
+
+  it('does not say that about a reply that finished', () => {
+    render(<MessageBubble message={{ id: 'm2', role: 'assistant', content: 'all of it' }} />);
+
+    expect(screen.queryByTestId('message-bubble-interrupted')).toBeNull();
+  });
+
+  it('shows the failure in the reader\'s own language, not the server\'s', () => {
+    // Acceptance item 26. What the server sends on this path is a hardcoded
+    // English sentence, so the panel says it itself.
+    render(
+      <MessageBubble message={{ id: 'm3', role: 'assistant', content: '', failed: true }} />,
+    );
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toBeInTheDocument();
+    expect(alert.textContent).toBe('This reply could not be finished. Try sending it again.');
+  });
 });

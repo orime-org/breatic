@@ -131,6 +131,9 @@
     },
     "error": {
       "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요."
+    },
+    "message": {
+      "interrupted": "중지됨"
     }
   },
   "canvas": {

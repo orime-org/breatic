@@ -131,6 +131,9 @@
     },
     "error": {
       "turnFailed": "This reply could not be finished. Try sending it again."
+    },
+    "message": {
+      "interrupted": "Stopped"
     }
   },
   "canvas": {

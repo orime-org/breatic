@@ -148,6 +148,25 @@ describe('sending a message', () => {
     expect(result.current.messages).toHaveLength(2);
   });
 
+  it('marks the reply in flight so the bubble can show it is being written', async () => {
+    openChatAnswers([]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await act(async () => {
+      void result.current.send('hi');
+    });
+
+    // Without this the bubble sits empty and still until the first token,
+    // and the typing cursor in MessageBubble has nothing to render from.
+    await waitFor(() => expect(result.current.messages.at(-1)?.streaming).toBe(true));
+
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_DONE, data: {} });
+    });
+
+    await waitFor(() => expect(result.current.messages.at(-1)?.streaming).toBeUndefined());
+  });
+
   it('is streaming until the turn says it is done', async () => {
     openChatAnswers([]);
     const { result } = render();

@@ -131,6 +131,9 @@
     },
     "error": {
       "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。"
+    },
+    "message": {
+      "interrupted": "停止しました"
     }
   },
   "canvas": {

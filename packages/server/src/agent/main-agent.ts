@@ -330,6 +330,25 @@ export class MainAgent {
             yield this.sse(SSEEventType.AGENT_TOOL_HINT, { hint: part.toolName });
             break;
 
+          // The SDK hands a failed tool back as its own part rather than
+          // throwing, the same way it does a failed provider call. Without
+          // this the call sits in the reply as "still running" for good.
+          case "tool-error": {
+            const failedIndex = replyParts.findIndex(
+              (p) => p.type === "tool" && p.toolCallId === part.toolCallId,
+            );
+            const failedCall = failedIndex >= 0 ? replyParts[failedIndex] : undefined;
+            if (failedCall?.type === "tool") {
+              replyParts[failedIndex] = {
+                ...failedCall,
+                status: "error",
+                errorMessage:
+                  part.error instanceof Error ? part.error.message : String(part.error),
+              };
+            }
+            break;
+          }
+
           case "tool-result": {
             // Stringify once; the same value is read for the marker, for the
             // event payload, and for what gets stored.
@@ -415,6 +434,19 @@ export class MainAgent {
       // arrives here, including the one where nobody is listening any more.
       flushPending();
       if (stopped) replyParts.push({ type: "interrupted" });
+
+      // A stored message is a record of something that already happened, so
+      // nothing in it may still say "running". A call in flight when the turn
+      // was stopped never gets a result — measured, see the `abort` case — and
+      // there is no later moment that would close it out.
+      // No message is set: nothing went wrong with the tool, the turn simply
+      // ended around it. What to say about that is the panel's to decide, and
+      // it says it in the reader's language.
+      for (const [i, part] of replyParts.entries()) {
+        if (part.type === "tool" && part.status === "pending") {
+          replyParts[i] = { ...part, status: "error" };
+        }
+      }
 
       const failures = await finalizeTurn({
         steps: {

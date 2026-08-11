@@ -60,6 +60,16 @@ export function MessageBubble({
             ) : null}
           </div>
         ) : null}
+        {message.interrupted ? (
+          // The backend stores this mark so a cut-off answer can be told apart
+          // from a complete one; without drawing it the whole chain is wasted.
+          <div
+            data-testid='message-bubble-interrupted'
+            className='text-xs text-muted-foreground'
+          >
+            {t('chat.message.interrupted')}
+          </div>
+        ) : null}
         {message.failed ? (
           // On the turn it belongs to rather than as a banner: what failed is
           // this reply, and a bar at the top of the panel would say the whole

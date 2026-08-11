@@ -18,7 +18,7 @@ import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
  * A stored message plus the one state that is local by nature: a turn that
  * failed leaves a reply on screen, and nothing about that is written down.
  */
-type CachedMessage = MessageData & { failed?: boolean };
+type CachedMessage = MessageData & { failed?: boolean; streaming?: boolean };
 
 /** The open-chat answer with the cache's own message shape. */
 type CachedChat = Omit<OpenChatResult, 'current'> & {
@@ -76,6 +76,7 @@ function toChatMessage(message: CachedMessage): ChatMessage {
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(message.interrupted ? { interrupted: true as const } : {}),
     ...(message.failed ? { failed: true } : {}),
+    ...(message.streaming ? { streaming: true } : {}),
   };
 }
 
@@ -245,8 +246,11 @@ export function useChatSession(projectId: string): ChatSession {
 
       appendMessages(
         userMessage
-          ? [{ id: replyId, role: 'assistant', parts: [], content: '', ts: now, turnIndex }]
-          : [said, { id: replyId, role: 'assistant', parts: [], content: '', ts: now, turnIndex }],
+          ? [{ id: replyId, role: 'assistant', parts: [], content: '', ts: now, turnIndex, streaming: true }]
+          : [
+            said,
+            { id: replyId, role: 'assistant', parts: [], content: '', ts: now, turnIndex, streaming: true },
+          ],
       );
 
       const controller = new AbortController();
@@ -254,6 +258,12 @@ export function useChatSession(projectId: string): ChatSession {
       setStreaming(true);
 
       let refusal: StreamRefusedError | undefined;
+
+      /** Stop marking this reply as being written, however the turn ended. */
+      const settleReply = (): void => {
+        patchMessage(replyId, ({ streaming: _streaming, ...rest }) => rest);
+        finishTurn();
+      };
 
       await chatApi.streamMessage(
         { projectId, conversationId: conversation, message: text },
@@ -279,14 +289,14 @@ export function useChatSession(projectId: string): ChatSession {
                 if (event.data.aborted) {
                   patchMessage(replyId, (m) => ({ ...m, interrupted: true as const }));
                 }
-                finishTurn();
+                settleReply();
                 break;
 
               case SSE_EVENT_NAMES.ERROR:
                 // What the server says here is a hardcoded English sentence;
                 // the panel shows its own wording, so only the fact matters.
                 patchMessage(replyId, (m) => ({ ...m, failed: true }));
-                finishTurn();
+                settleReply();
                 break;
 
               // Raised as the model reaches for a tool, and as it hands back
@@ -301,14 +311,14 @@ export function useChatSession(projectId: string): ChatSession {
                 break;
             }
           },
-          onClose: finishTurn,
+          onClose: settleReply,
           onError: (err: unknown) => {
             if (err instanceof StreamRefusedError) {
               refusal = err;
             } else {
               patchMessage(replyId, (m) => ({ ...m, failed: true }));
             }
-            finishTurn();
+            settleReply();
           },
         },
       );

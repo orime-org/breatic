@@ -131,6 +131,9 @@
     },
     "error": {
       "turnFailed": "这条回复没能完成，可以再发一次。"
+    },
+    "message": {
+      "interrupted": "已停止"
     }
   },
   "canvas": {
