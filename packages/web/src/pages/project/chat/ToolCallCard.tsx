@@ -3,8 +3,10 @@
 
 import { CircleAlert, CircleCheck, Loader2 } from 'lucide-react';
 import type * as React from 'react';
+import { toolCallHasOutcome } from '@breatic/shared';
 
 import { cn } from '@web/lib/utils';
+import { useTranslation } from '@web/i18n/use-translation';
 
 import type { ToolCall } from '@web/pages/project/chat/types';
 
@@ -23,6 +25,14 @@ interface ToolCallCardProps {
 export function ToolCallCard({
   toolCall,
 }: ToolCallCardProps): React.JSX.Element {
+  const t = useTranslation();
+  // Storage has no third terminal state, so a call the user stopped mid-flight
+  // is kept as `error` with nothing to say about why. Calling that a failure
+  // tells the user something broke when they are the one who stopped it.
+  // Narrowed to `error` on purpose: a call still running is also without an
+  // outcome, and that one is the spinner's job, not this line's.
+  const unfinished = toolCall.status === 'error' && !toolCallHasOutcome(toolCall);
+
   return (
     <div
       data-testid='tool-call-card'
@@ -33,12 +43,16 @@ export function ToolCallCard({
         <StatusIcon status={toolCall.status} />
         <span className='font-mono'>{toolCall.name}</span>
       </div>
-      {toolCall.status === 'error' ? (
+      {unfinished ? (
+        <div className='mt-1 text-muted-foreground' data-testid='tool-call-unfinished'>
+          {t('chat.tool.unfinished')}
+        </div>
+      ) : toolCall.status === 'error' ? (
         <div
           className='mt-1 text-status-error-foreground'
           data-testid='tool-call-error'
         >
-          {toolCall.errorMessage ?? 'Tool call failed'}
+          {toolCall.errorMessage}
         </div>
       ) : null}
     </div>

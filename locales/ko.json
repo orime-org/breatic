@@ -135,6 +135,9 @@
     },
     "message": {
       "interrupted": "중지됨"
+    },
+    "tool": {
+      "unfinished": "완료되기 전에 중지됨"
     }
   },
   "canvas": {

@@ -241,6 +241,11 @@ describe('sending a message', () => {
     // And the reply itself has to stop claiming it is being written, or it
     // keeps its blinking cursor for as long as the panel stays open.
     await waitFor(() => expect(result.current.messages.at(-1)?.streaming).toBeUndefined());
+
+    // The half-written reply has to say it was cut off. The server records
+    // exactly that, so without it the same message reads as a finished answer
+    // now and as a stopped one after a reload.
+    expect(result.current.messages.at(-1)?.interrupted).toBe(true);
   });
 });
 
@@ -322,6 +327,33 @@ describe('when the chat never opened', () => {
     // `send` resolving as if it worked is what let the composer clear the
     // draft: the user pressed enter, their words vanished, nothing was sent.
     await expect(result.current.send('please do not eat this')).rejects.toThrow();
+  });
+});
+
+describe('when reopening the chat also fails', () => {
+  it('still says the turn failed instead of leaving the screen bare', async () => {
+    openChatAnswers([]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+
+    // The conversation is gone, and the attempt to open a fresh one fails too
+    // — the server is down, or the project went away with it.
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(new StreamRefusedError(404, 'Resource not found'));
+    });
+    vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('server said no'));
+
+    await act(async () => {
+      await result.current.send('find me references');
+    });
+
+    // What the user said stays, and something on screen says it did not get
+    // an answer. Without this the turn ends with nothing at all: no reply, no
+    // marker, and the panel still believes the chat is open.
+    await waitFor(() =>
+      expect(result.current.messages.map((m) => m.content)).toContain('find me references'),
+    );
+    expect(result.current.messages.at(-1)?.failed).toBe(true);
   });
 });
 

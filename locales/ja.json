@@ -135,6 +135,9 @@
     },
     "message": {
       "interrupted": "停止しました"
+    },
+    "tool": {
+      "unfinished": "完了前に停止しました"
     }
   },
   "canvas": {

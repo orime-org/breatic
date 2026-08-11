@@ -233,6 +233,8 @@ export { newId, deriveId } from "@shared/ids.js";
 // envelope are written, for the server that sends them and the browser that
 // reads them. Sentinels are not here on purpose; see the file's own note.
 export { SSE_EVENT_NAMES } from "@shared/agent/sse-events.js";
+export { toolCallHasOutcome } from "@shared/agent/tool-outcome.js";
+export type { ToolOutcomeFields } from "@shared/agent/tool-outcome.js";
 export type { SSEEventName, SSEEventEnvelope } from "@shared/agent/sse-events.js";
 
 // The one HTTP transport with retries — backend services and browser alike.

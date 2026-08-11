@@ -17,27 +17,11 @@
  */
 
 import type { ModelMessage } from "ai";
+import { toolCallHasOutcome } from "@breatic/shared";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
-
-/**
- * Whether this use of the tool got far enough to tell the model anything.
- *
- * Two stored states carry no outcome and they arrive here looking alike. A
- * turn stopped while the tool was in flight is swept to `error` on its way to
- * storage with nothing to say about why, because nothing went wrong — it
- * simply never finished. A tool that genuinely failed carries the reason it
- * failed. The reason is what separates them.
- * @param part - The tool part to judge
- * @returns True when the call has something to report back
- */
-function hasOutcome(part: ToolPart): boolean {
-  if (part.status === "success") return true;
-  if (part.status === "error") return part.errorMessage !== undefined;
-  return false;
-}
 
 /**
  * Render what a tool returned in the typed form the SDK requires.
@@ -46,8 +30,8 @@ function hasOutcome(part: ToolPart): boolean {
  * with `z.discriminatedUnion` before the request goes out, so handing over the
  * stored string is rejected at the door.
  *
- * Only called for parts that {@link hasOutcome} accepted, so an `error` here
- * always carries its reason.
+ * Only called for parts that `toolCallHasOutcome` accepted, so an `error`
+ * here always carries its reason.
  * @param part - The tool part to render
  * @returns The output in its typed form, saying plainly when the tool failed
  */
@@ -84,7 +68,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
         continue;
       }
 
-      if (part.type !== "tool" || !hasOutcome(part)) continue;
+      if (part.type !== "tool" || !toolCallHasOutcome(part)) continue;
 
       out.push({
         role: "assistant",

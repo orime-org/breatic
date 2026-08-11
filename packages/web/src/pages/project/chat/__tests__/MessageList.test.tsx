@@ -46,4 +46,31 @@ describe('MessageList', () => {
     expect(scrollIntoView).toHaveBeenCalled();
     scrollIntoView.mockRestore();
   });
+
+  it('stops following once the user has scrolled up to read', () => {
+    const scrollIntoView = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
+
+    const growing = (content: string): ChatMessage[] => [
+      { id: 'm1', role: 'user', content: 'Hello' },
+      { id: 'm2', role: 'assistant', content },
+    ];
+    const { container, rerender } = render(<MessageList messages={growing('Th')} />);
+
+    // jsdom lays nothing out, so the scroll position has to be stated. This
+    // one is a long way from the bottom: the reader went back up.
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]');
+    Object.defineProperty(viewport, 'scrollHeight', { value: 2000, configurable: true });
+    Object.defineProperty(viewport, 'clientHeight', { value: 400, configurable: true });
+    Object.defineProperty(viewport, 'scrollTop', { value: 0, configurable: true });
+    scrollIntoView.mockClear();
+
+    rerender(<MessageList messages={growing('That is a much longer answer')} />);
+
+    // Dragging them back down once per token makes the column unreadable for
+    // the whole turn, which is the window a long answer is worth reading in.
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    scrollIntoView.mockRestore();
+  });
 });

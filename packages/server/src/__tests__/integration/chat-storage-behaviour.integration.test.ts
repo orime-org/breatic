@@ -244,7 +244,16 @@ describe("a message survives the round trip through parts", () => {
       type: fc.constant("tool" as const),
       toolCallId: fc.uuid(),
       toolName: fc.string({ minLength: 1 }),
-      input: fc.dictionary(fc.string({ minLength: 1 }), fc.jsonValue()),
+      // Round-tripped through JSON before it is used, so the generator only
+      // produces values JSON can carry. It cannot carry negative zero —
+      // `JSON.stringify(-0)` is `"0"` — and vitest's `toEqual` tells the two
+      // apart, so a generated -0 failed this property about one run in five
+      // while every other value passed. Normalising the input rather than the
+      // stored result keeps the property intact: a real storage defect still
+      // shows up as a difference.
+      input: fc
+        .dictionary(fc.string({ minLength: 1 }), fc.jsonValue())
+        .map((d) => JSON.parse(JSON.stringify(d)) as Record<string, unknown>),
       status: fc.constantFrom("pending" as const, "success" as const, "error" as const),
       output: fc.string(),
     }),

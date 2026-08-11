@@ -135,6 +135,9 @@
     },
     "message": {
       "interrupted": "Stopped"
+    },
+    "tool": {
+      "unfinished": "Stopped before it finished"
     }
   },
   "canvas": {

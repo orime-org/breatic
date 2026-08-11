@@ -239,9 +239,17 @@ export function useChatSession(projectId: string): ChatSession {
   }, [setStreaming, patchMessage]);
 
   const abort = React.useCallback((): void => {
+    // Marked here rather than in finishTurn, because this is the one ending
+    // that means the reply was cut off. The server records the same thing on
+    // its side, so leaving it out makes the identical message read as a
+    // finished answer now and as a stopped one after a reload. It has to
+    // happen before finishTurn, which forgets which reply was in flight.
+    if (activeReplyId.current !== null) {
+      patchMessage(activeReplyId.current, (m) => ({ ...m, interrupted: true as const }));
+    }
     inFlight.current?.abort();
     finishTurn();
-  }, [finishTurn]);
+  }, [finishTurn, patchMessage]);
 
   // The turn belongs to this mounted panel. Collapsing the chat column
   // unmounts it, and that ends the turn exactly the way pressing stop does:
@@ -387,7 +395,17 @@ export function useChatSession(projectId: string): ChatSession {
         return;
       }
 
-      const fresh = await chatApi.openChat(projectId);
+      // Opening a fresh one can fail too, and when it does the turn is over
+      // with nothing to show for it: the reply was already dropped when the
+      // first attempt was refused. Ending here without a word leaves what the
+      // user said sitting alone with no answer and no explanation.
+      let fresh;
+      try {
+        fresh = await chatApi.openChat(projectId);
+      } catch {
+        appendFailedReply();
+        return;
+      }
       const said = lastUserMessage();
 
       // The new conversation arrives with what the user said already on it,

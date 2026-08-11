@@ -22,10 +22,20 @@ interface MessageListProps {
 }
 
 /**
- * Scrollable message column. Auto-scrolls to the bottom whenever the
- * message count grows so the user follows along with the assistant's
- * streaming output. Renders `<ChatEmpty />` when there are no messages
- * yet (new conversation greeting + quick actions).
+ * How close to the bottom still counts as being at the bottom, in pixels.
+ *
+ * A reader parked at the end is never exactly at it — a partly scrolled last
+ * line, a rounded-off device pixel — so an exact test would let go of the
+ * bottom the moment anything moved. This is the usual size of that allowance
+ * in a streaming chat column.
+ */
+const AT_BOTTOM_SLACK_PX = 64;
+
+/**
+ * Scrollable message column. Follows a reply as it is written, but only while
+ * the reader is at the bottom: once they scroll up, the column stays where
+ * they put it until they come back down. Renders `<ChatEmpty />` when there
+ * are no messages yet (new conversation greeting + quick actions).
  * @param root0 - The component props.
  * @param root0.messages - The messages to render in order.
  * @param root0.loading - The conversation has not arrived yet.
@@ -44,7 +54,20 @@ export function MessageList({
   // as well is what keeps the answer in view while it is being written.
   const lastLength = messages.at(-1)?.content.length ?? 0;
   React.useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const anchor = bottomRef.current;
+    if (!anchor) return;
+
+    // Only follow a reader who is already at the end. Scrolling them back
+    // down on every token — which is what following unconditionally means —
+    // makes the column unreadable for the whole turn, exactly when a long
+    // answer is worth reading. Standard sticky-bottom behaviour.
+    const viewport = anchor.closest('[data-radix-scroll-area-viewport]');
+    if (viewport) {
+      const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      if (distance > AT_BOTTOM_SLACK_PX) return;
+    }
+
+    anchor.scrollIntoView({ behavior: 'smooth' });
   }, [count, lastLength]);
 
   return (
