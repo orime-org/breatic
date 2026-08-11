@@ -5,8 +5,8 @@ import type * as React from 'react';
 import { Plus } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { RailIcon } from '@web/pages/studio/rail/RailIcon';
 import {
-  RAIL_ICON,
   RAIL_ROW_IDLE,
   RAIL_ROW_TOP,
 } from '@web/pages/studio/rail/rail-row';
@@ -42,7 +42,7 @@ export function RailCreateStudioAction({
       onClick={onCreateStudio}
       className={`${RAIL_ROW_TOP} ${RAIL_ROW_IDLE}`}
     >
-      <Plus className={RAIL_ICON} />
+      <RailIcon icon={Plus} />
       {label}
     </Button>
   );

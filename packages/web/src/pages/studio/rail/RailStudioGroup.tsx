@@ -36,7 +36,7 @@ interface RailStudioGroupProps {
  * The group heading: a quiet label, one step below the rows it names. It sits
  * at the top level's indent, taken from there rather than typed again.
  */
-const HEADING = `flex h-7 items-center gap-2 ${RAIL_INDENT_TOP} pr-1`;
+const HEADING = `flex h-7 items-center gap-1 ${RAIL_INDENT_TOP} pr-1`;
 
 /** The heading's text — 11px with wider tracking, so studio names stay loudest. */
 const HEADING_TEXT =

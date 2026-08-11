@@ -5,8 +5,8 @@ import type * as React from 'react';
 import { Plus } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { RailIcon } from '@web/pages/studio/rail/RailIcon';
 import {
-  RAIL_ICON,
   RAIL_LIST,
   RAIL_ROW_DISABLED,
   RAIL_ROW_IDLE,
@@ -60,7 +60,7 @@ export function RailCreateActions({
         onClick={onCreateProject}
         className={`${RAIL_ROW_TOP} ${RAIL_ROW_IDLE}`}
       >
-        <Plus className={RAIL_ICON} />
+        <RailIcon icon={Plus} />
         {createProjectLabel}
       </Button>
       <Button
@@ -71,7 +71,7 @@ export function RailCreateActions({
         size={null}
         className={`${RAIL_ROW_TOP} ${RAIL_ROW_DISABLED}`}
       >
-        <Plus className={RAIL_ICON} />
+        <RailIcon icon={Plus} />
         {createCollectionLabel}
       </Button>
     </div>

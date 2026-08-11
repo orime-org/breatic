@@ -172,6 +172,26 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
     expect(container.querySelectorAll('hr')).toHaveLength(1);
   });
 
+  it('breathes less above that rule than below it, as the demo does', () => {
+    // The ratified demo pads the acting segment 8/8/6 and the navigating one
+    // 12/8/8: the rule sits closer to what it closes than to what it opens.
+    // With both segments on a flat 8 the rule reads as centred between two
+    // equal blocks, which is not what was signed off.
+    const { container } = render(
+      <MemoryRouter>
+        <StudioRail
+          studios={[]}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const rule = container.querySelector('hr');
+    expect(rule?.previousElementSibling?.className).toContain('pb-1.5');
+    expect(rule?.nextElementSibling?.className).toContain('pt-3');
+  });
+
   it('pins create-studio to the foot of the rail, outside the scrolling area', () => {
     // Creating a Studio is not the same act as creating something inside the
     // one you are in, and it must stay reachable however long the list grows.

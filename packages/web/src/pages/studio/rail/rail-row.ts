@@ -51,7 +51,7 @@ export const RAIL_INDENT_NESTED = 'pl-3.5';
  * @returns The row's class string, indent included.
  */
 function railRow(paddingLeft: string): string {
-  return `flex h-8 w-full items-center justify-start gap-2.5 rounded-chrome ${paddingLeft} pr-2 text-sm font-normal transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`;
+  return `flex h-8 w-full items-center justify-start gap-2 rounded-chrome ${paddingLeft} pr-2 text-sm font-normal transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`;
 }
 
 /**
@@ -99,12 +99,24 @@ export const RAIL_ROW_DISABLED =
   'cursor-not-allowed text-muted-foreground disabled:opacity-65';
 
 /**
- * A rail icon. One secondary grey for all of them: an icon painted louder than
- * the words beside it is what made the column read as noise. It comes up with
- * its row under the pointer, and on the row the viewer is actually on — that
- * second half matters because without it, hovering a row you are not on lights
- * it brighter than the one you are. Both reach the icon through the `group` its
- * row carries, which is why a disabled row does not carry one.
+ * The column a row leads with — 20px wide, whatever sits in it.
+ *
+ * Where a row's label starts is its indent plus this width plus the gap, so
+ * the levels only read as one step apart if this width is the same on both.
+ * A studio row leads with a 20px avatar; without a column of its own a
+ * top-level row would lead with its bare 14px glyph and start its label six
+ * short, turning the deliberate 6px step into ten.
+ */
+export const RAIL_ICON_BOX = 'flex h-5 w-5 shrink-0 items-center justify-center';
+
+/**
+ * The glyph inside {@link RAIL_ICON_BOX}. One secondary grey for all of them:
+ * an icon painted louder than the words beside it is what made the column read
+ * as noise. It comes up with its row under the pointer, and on the row the
+ * viewer is actually on — that second half matters because without it, hovering
+ * a row you are not on lights it brighter than the one you are. Both reach the
+ * icon through the `group` its row carries, which is why a disabled row does
+ * not carry one.
  */
 export const RAIL_ICON =
-  'h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground group-aria-[current=page]:text-foreground';
+  'h-3.5 w-3.5 text-muted-foreground transition-colors group-hover:text-foreground group-aria-[current=page]:text-foreground';

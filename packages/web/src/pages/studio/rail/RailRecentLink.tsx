@@ -6,8 +6,8 @@ import { Link } from 'react-router-dom';
 import { Clock } from 'lucide-react';
 
 import { cn } from '@web/lib/utils';
+import { RailIcon } from '@web/pages/studio/rail/RailIcon';
 import {
-  RAIL_ICON,
   RAIL_ROW_CURRENT,
   RAIL_ROW_IDLE,
   RAIL_ROW_TOP,
@@ -42,7 +42,7 @@ export function RailRecentLink({
       // rather than the stylesheet's ordering.
       className={cn(RAIL_ROW_TOP, active ? RAIL_ROW_CURRENT : RAIL_ROW_IDLE)}
     >
-      <Clock className={RAIL_ICON} />
+      <RailIcon icon={Clock} />
       {label}
     </Link>
   );

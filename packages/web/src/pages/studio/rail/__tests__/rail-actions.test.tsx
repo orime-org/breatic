@@ -198,6 +198,41 @@ describe('RailRecentLink (spec §4.1 ③)', () => {
     );
   });
 
+  it('gives a top-level row the same 20px leading column a studio row has', () => {
+    // Where a row's label starts is its indent plus the width of whatever sits
+    // in front of it plus the gap. The ratified direction-D demo gives both
+    // levels a 20px leading column — the top level puts a 14px glyph inside a
+    // 20px box, the studio rows use a 20px avatar — so the only thing left
+    // separating the levels is the 6px indent. Drop the box and the top-level
+    // glyph is 16px, four narrower than the avatar, and those four add
+    // themselves to the six: the levels read ten apart instead of six.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    const svg = screen
+      .getByRole('link', { name: /Recent/ })
+      .querySelector('svg');
+    expect(svg?.getAttribute('class')).toContain('h-3.5');
+    expect(svg?.getAttribute('class')).toContain('w-3.5');
+    expect(svg?.parentElement?.className).toContain('h-5');
+    expect(svg?.parentElement?.className).toContain('w-5');
+  });
+
+  it('separates a row’s glyph from its label by the grid’s 8px', () => {
+    // The spacing grid is 2/4/6/8/12/16. The rail was using 10, which is not
+    // on it, and the demo uses 8.
+    render(
+      <MemoryRouter>
+        <RailRecentLink label='Recent' active={false} />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole('link', { name: /Recent/ });
+    expect(link.className).toMatch(/(^|\s)gap-2(\s|$)/);
+    expect(link.className).not.toContain('gap-2.5');
+  });
+
   it('is a top-level rail row, from the one definition', () => {
     render(
       <MemoryRouter>

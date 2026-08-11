@@ -177,6 +177,15 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     expect(row.className).toContain('focus-visible:outline-none');
   });
 
+  it('sets the heading’s label and chevron 4px apart, as the demo does', () => {
+    // The heading's title is flex-1 and the chevron is pinned right, so this
+    // gap only decides where the title starts truncating — but it is on the
+    // ratified demo at --space-2, and 8 is a different step of the same grid.
+    renderGroup();
+    const head = screen.getByText('My Studios').closest('div');
+    expect(head?.className).toMatch(/(^|\s)gap-1(\s|$)/);
+  });
+
   it('renders the group header as a quiet label, not a full-size row', () => {
     renderGroup();
     const title = screen.getByText('My Studios');

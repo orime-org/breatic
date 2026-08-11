@@ -57,7 +57,10 @@ export function StudioRailContent({
   const { personal, myTeam, joined } = splitStudios(studios);
   return (
     <>
-      <div className={`${RAIL_LIST} ${RAIL_SEGMENT}`}>
+      {/* The rule sits closer to the segment it closes than to the one it
+          opens (pb-1.5 above, pt-3 below), so it reads as belonging to what
+          came before rather than floating between two equal blocks. */}
+      <div className={`${RAIL_LIST} ${RAIL_SEGMENT} pb-1.5`}>
         <RailRecentLink
           label={t('studio.rail.recent')}
           active={activeSlug === null}
@@ -72,7 +75,7 @@ export function StudioRailContent({
 
       <hr className='border-border' />
 
-      <div className={`flex flex-col gap-3 ${RAIL_SEGMENT}`}>
+      <div className={`flex flex-col gap-3 ${RAIL_SEGMENT} pt-3`}>
         <RailStudioGroup
           title={t('studio.rail.personalStudio')}
           studios={personal}
