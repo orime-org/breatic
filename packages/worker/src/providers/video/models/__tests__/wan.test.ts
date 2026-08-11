@@ -8,11 +8,12 @@ import { buildRequest } from "@worker/providers/video/models/wan.js";
 /**
  * #1918 — what `wan-2.2-animate` puts on the wire.
  *
- * Its only upstream, WaveSpeed's `wavespeed-ai/wan-2.2/animate`, requires
- * three fields: the character image, the driving video whose motion is
- * transferred onto it, and a `mode` that selects animation over character
- * replacement. The first two are ours to map by name; the third is not a knob
- * the user turns, so this family states it.
+ * Its only upstream, WaveSpeed's `wavespeed-ai/wan-2.2/animate`, requires the
+ * character image and the driving video whose motion is transferred onto it,
+ * and takes a `mode` selecting animation over character replacement. The
+ * first two are ours to map by name. The third the vendor lists as optional
+ * and already defaults to `animate`; this family sends it anyway, to state
+ * the intent rather than inherit it.
  *
  * Every mapped name is written out even where both sides use the same word:
  * that is what keeps our vocabulary and the vendor's independent (user

@@ -38,8 +38,11 @@ const MODEL_FIELDS: Readonly<Record<string, Readonly<Record<string, FieldNames>>
 };
 
 /**
- * WaveSpeed's `wavespeed-ai/wan-2.2/animate` requires a `mode` that selects
- * animation over character replacement. It is not a catalog param: our own
+ * WaveSpeed's `wavespeed-ai/wan-2.2/animate` takes a `mode` that selects
+ * animation over character replacement. Its API docs list it as optional and
+ * already default it to `animate`, so this is sent to state the intent rather
+ * than because the request would fail without it. It is not a catalog param:
+ * our own
  * `mode` already names something else entirely — a model's generation mode —
  * and the generation panel offers animation only.
  *

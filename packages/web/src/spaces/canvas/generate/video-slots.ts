@@ -37,21 +37,6 @@ export type VideoSlotField =
   | 'characterImageUrl'
   | 'drivingVideo';
 
-/**
- * What a slot stores for its pick.
- *
- * A bare URL when the picked asset is its own picture, and `{url, cover}`
- * when it is not — a video's poster travels WITH it rather than in a field of
- * its own, because two fields are two independent last-writer-wins registers:
- * two clients picking different videos at once converge per-key, and the
- * loser's poster can survive under the winner's video (`canvas-space-slot-
- * concurrency.test.ts`). One field makes "a pick is one value" structural
- * instead of a rule someone has to keep.
- */
-export type VideoSlotPick =
-  | string
-  | { readonly url: string; readonly cover?: string };
-
 /** What one slot is made of. */
 export interface VideoSlotSpec {
   /** Node data field holding the picked URL. */
@@ -171,6 +156,17 @@ function usableUrl(value: unknown): string | undefined {
 
 /**
  * Reads a slot's stored pick, in the shape THAT slot keeps it in.
+ *
+ * This function IS the stored contract — a slot keeps a bare URL, or `{url,
+ * cover}` when the picked asset is not its own picture. Stated here rather
+ * than as a type alias nothing is checked against: the wire declaration
+ * (`CanvasNodeFields.data`) and this reader are what a stored value actually
+ * has to satisfy, and a third restatement would be one more thing to drift.
+ *
+ * A video's poster travels WITH it rather than in a field of its own, because
+ * two fields are two independent last-writer-wins registers: two clients
+ * picking different videos at once converge per-key, and the loser's poster
+ * can survive under the winner's video (`canvas-space-slot-concurrency.test`).
  *
  * The shape is the slot's, not the value's: a slot storing a bare URL refuses
  * an object and a slot storing `{url, cover}` refuses a bare string. Slot
