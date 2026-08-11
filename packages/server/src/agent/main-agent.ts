@@ -20,13 +20,14 @@ import { getAgentConfig } from "@breatic/core";
 import { env } from "@breatic/core";
 import { creditService } from "@breatic/domain";
 import { ASK_USER_SENTINEL } from "@breatic/domain";
+import type { MessagePart } from "@breatic/shared";
 import { SSEEventType } from "@server/agent/types.js";
 import type { SSEEvent } from "@server/agent/types.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { parseInteractionSentinel } from "@server/agent/interaction-sentinel.js";
+import { parseInteractionSentinel, stripSentinel } from "@server/agent/interaction-sentinel.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"]);
 
@@ -66,7 +67,7 @@ export class MainAgent {
     // survives retries — see core/src/modules/credit.service.ts `deductOnce`.
     const turnIndex = await messageRepo.addMessage(conversationId, {
       role: "user",
-      content: userMessage,
+      parts: [{ type: "text", text: userMessage }],
     });
     this.ctx.billing = { turnIndex };
 
@@ -115,7 +116,7 @@ export class MainAgent {
     // same reason as `chat()` above.
     const turnIndex = await messageRepo.addMessage(conversationId, {
       role: "user",
-      content: `/skill ${skillName} ${userInput}`,
+      parts: [{ type: "text", text: `/skill ${skillName} ${userInput}` }],
     });
     this.ctx.billing = { turnIndex };
 
@@ -184,7 +185,32 @@ export class MainAgent {
     let fullResponse = "";
     let thinkingContent = "";
     let creditsUsed = 0;
-    const toolCallLog: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+
+    // What this turn did, in the order it did it. One turn of the assistant is
+    // one message, and this is that message being built: prose, reasoning and
+    // tool use land here as they happen and go to the store together at the
+    // end. Writing them out as they arrive instead is what used to split one
+    // reply across three rows, leaving every reader to put it back together.
+    const replyParts: MessagePart[] = [];
+
+    // Prose and reasoning arrive in fragments, so they are held here until
+    // something ends the run — a tool call, or the turn itself. Without that,
+    // a reply that wrote, called a tool, then wrote again would store its two
+    // halves as one block and lose where the tool sat between them.
+    let pendingText = "";
+    let pendingReasoning = "";
+
+    /** Close off whatever prose and reasoning have accumulated. */
+    const flushPending = (): void => {
+      if (pendingReasoning) {
+        replyParts.push({ type: "reasoning", text: pendingReasoning });
+        pendingReasoning = "";
+      }
+      if (pendingText) {
+        replyParts.push({ type: "text", text: pendingText });
+        pendingText = "";
+      }
+    };
 
     // Tokens are counted off the stream as it goes past, never from
     // `result.usage`. That getter is not a passive read: on ai@7.0.58 it
@@ -233,11 +259,13 @@ export class MainAgent {
         switch (part.type) {
           case "text-delta":
             fullResponse += part.text;
+            pendingText += part.text;
             yield this.sse(SSEEventType.CHAT_CHUNK, { text: part.text });
             break;
 
           case "reasoning-delta":
             thinkingContent += part.text;
+            pendingReasoning += part.text;
             break;
 
           case "finish-step":
@@ -267,44 +295,40 @@ export class MainAgent {
             break stream;
 
           case "tool-call":
-            toolCallLog.push({
-              id: part.toolCallId,
-              name: part.toolName,
-              arguments: part.input as Record<string, unknown>,
+            // Whatever was being written stops here, so the reply records
+            // that the tool ran at this point and not somewhere else.
+            flushPending();
+            replyParts.push({
+              type: "tool",
+              toolCallId: part.toolCallId,
+              toolName: part.toolName,
+              input: part.input as Record<string, unknown>,
+              status: "pending",
             });
             yield this.sse(SSEEventType.AGENT_TOOL_HINT, { hint: part.toolName });
             break;
 
           case "tool-result": {
-            const toolCall = toolCallLog.find((tc) => tc.id === part.toolCallId);
-
-            // Stringify output once; reused for sentinel detection,
-            // interaction-tool payload parse, and the `role: 'tool'`
-            // history message that the LLM sees on subsequent turns.
+            // Stringify once; the same value is read for the marker, for the
+            // event payload, and for what gets stored.
             const output = "output" in part ? part.output : undefined;
             const resultStr = typeof output === "string" ? output : JSON.stringify(output);
 
-            // Pre-parse interaction-tool payload BEFORE persisting so the
-            // structured result lands on the assistant `tool_calls[0].result`
-            // record. History reload reads that field directly — sentinel
-            // decoding stays a backend protocol concern and never leaks
-            // into the frontend persistence boundary.
             const interaction = parseInteractionSentinel(resultStr);
 
-            if (toolCall) {
-              await messageRepo.addMessage(conversationId, {
-                role: "assistant",
-                content: "",
-                tool_calls: [
-                  interaction ? { ...toolCall, result: interaction.payload } : toolCall,
-                ],
-              });
-              await messageRepo.addMessage(conversationId, {
-                role: "tool",
-                content: resultStr,
-                tool_call_id: part.toolCallId,
-                name: toolCall.name,
-              });
+            // The call this answers is already in the reply, waiting. Replace
+            // it rather than mutate it in place, and store the result with its
+            // marker off — that marker is read here and has no reader after.
+            const callIndex = replyParts.findIndex(
+              (p) => p.type === "tool" && p.toolCallId === part.toolCallId,
+            );
+            const call = callIndex >= 0 ? replyParts[callIndex] : undefined;
+            if (call?.type === "tool") {
+              replyParts[callIndex] = {
+                ...call,
+                status: "success",
+                output: stripSentinel(resultStr),
+              };
             }
 
             if (resultStr.startsWith(ASK_USER_SENTINEL)) {
@@ -363,22 +387,26 @@ export class MainAgent {
       const exit = announced ?? "aborted";
       const stopped = exit === "aborted";
 
+      // Close off whatever the loop was in the middle of writing, then record
+      // how it ended. Both have to happen before the reply is handed over:
+      // this is the only point that knows the turn is over, and every ending
+      // arrives here, including the one where nobody is listening any more.
+      flushPending();
+      if (stopped) replyParts.push({ type: "interrupted" });
+
       const failures = await finalizeTurn({
         steps: {
-          // A stopped turn is stored whether or not it got a word out. The
-          // guard used to be the reply alone, which is right for every other
-          // ending -- nothing generated, nothing to keep -- and wrong for this
-          // one: a turn stopped after a tool call and before any prose would
-          // leave no trace at all, so coming back to the conversation would
-          // show no sign the turn had ever happened.
+          // Anything at all to record means a message. A stopped turn always
+          // has something -- the mark above -- so it is stored whether or not
+          // it got a word out: a turn stopped after a tool call and before any
+          // prose would otherwise leave no trace, and coming back to the
+          // conversation would show no sign it had ever happened.
           persist:
-            fullResponse || stopped
+            replyParts.length > 0
               ? async () => {
                   await messageRepo.addMessage(conversationId, {
                     role: "assistant",
-                    content: fullResponse,
-                    ...(thinkingContent ? { thinking: thinkingContent } : {}),
-                    ...(stopped ? { interrupted: true as const } : {}),
+                    parts: replyParts,
                   });
                 }
               : undefined,
