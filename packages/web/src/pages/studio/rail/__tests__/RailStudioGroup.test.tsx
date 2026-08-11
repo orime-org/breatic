@@ -7,7 +7,6 @@ import { MemoryRouter } from 'react-router-dom';
 
 import { RailStudioGroup } from '@web/pages/studio/rail/RailStudioGroup';
 import {
-  RAIL_ICON,
   RAIL_INDENT_NESTED,
   RAIL_INDENT_TOP,
   RAIL_LIST,
@@ -167,11 +166,15 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     );
   });
 
-  it('brightens the current row’s icon rather than leaving it the quiet grey', () => {
-    // Icons come up under the pointer; the row you are on has to read at least
-    // as bright, or hovering a row you are not on lights it more than the one
-    // you are.
-    expect(RAIL_ICON).toContain('group-aria-[current=page]:text-foreground');
+  it('answers the keyboard on a studio row too, not just on the buttons', () => {
+    // Studio rows are links. Left to the `Button` primitive the ring stopped at
+    // the rail's buttons, so tabbing down the column changed focus shape when
+    // it crossed into the studios.
+    renderGroup();
+    const row = screen.getByRole('link', { name: /Acme/ });
+    expect(row.className).toContain('focus-visible:ring-1');
+    expect(row.className).toContain('focus-visible:ring-ring');
+    expect(row.className).toContain('focus-visible:outline-none');
   });
 
   it('renders the group header as a quiet label, not a full-size row', () => {

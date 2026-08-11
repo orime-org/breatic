@@ -32,21 +32,26 @@ export const RAIL_INDENT_NESTED = 'pl-3.5';
 /**
  * Build a rail row's classes at a given indent.
  *
- * A row carries its own width, alignment and weight rather than borrowing them
- * from whatever contains it, because each had already gone wrong that way. A
- * `<button>` sizes to its content whatever its `display` is, so the create
- * actions only filled the rail while their parent happened to be a flex column
- * stretching them. `justify-start` undoes the `Button` primitive's centring — a
- * comment in `RailCreateActions` claimed that class was applied, but it never
- * was, so the three create actions had been sitting centred. And `font-normal`
- * is here to be overridden: without a weight of its own the primitive's
- * `font-medium` came through, leaving the three buttons permanently at the
- * weight {@link RAIL_ROW_CURRENT} uses to mark where the viewer is.
+ * A row carries its own width, alignment, weight and focus ring rather than
+ * borrowing them from whatever contains it, because each had already gone wrong
+ * that way. A `<button>` sizes to its content whatever its `display` is, so the
+ * create actions only filled the rail while their parent happened to be a flex
+ * column stretching them. `justify-start` undoes the `Button` primitive's
+ * centring — a comment in `RailCreateActions` claimed that class was applied,
+ * but it never was, so the three create actions had been sitting centred. And
+ * `font-normal` is here to be overridden: without a weight of its own the
+ * primitive's `font-medium` came through, leaving the three buttons permanently
+ * at the weight {@link RAIL_ROW_CURRENT} uses to mark where the viewer is.
+ *
+ * The focus ring is the same story told by the element type: half these rows
+ * are `<Link>` and half are `<Button>`, and only the buttons had a ring,
+ * inherited from the primitive. Tabbing down the rail changed focus shape
+ * halfway, so the definition names it and every row shows the same one.
  * @param paddingLeft - The left-padding class that places this level.
  * @returns The row's class string, indent included.
  */
 function railRow(paddingLeft: string): string {
-  return `flex h-8 w-full items-center justify-start gap-2.5 rounded-chrome ${paddingLeft} pr-2 text-sm font-normal transition-colors`;
+  return `flex h-8 w-full items-center justify-start gap-2.5 rounded-chrome ${paddingLeft} pr-2 text-sm font-normal transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`;
 }
 
 /**
@@ -79,9 +84,16 @@ export const RAIL_ROW_IDLE = 'group text-foreground hover:bg-accent';
  * than `pointer-events: none` so the hover still explains itself — and it does
  * NOT carry `group`, which is what would otherwise let the pointer light its
  * icon brighter than its own dimmed label.
+ *
+ * The dimming names the `disabled:` modifier because the only rows that use it
+ * are disabled `Button`s, and the primitive dims those to 50% through
+ * `disabled:opacity-50`. A bare `opacity-65` never landed: it loses on
+ * specificity to a class plus a pseudo-class, and twMerge leaves both standing
+ * because the modifiers differ. Named the same way, twMerge drops the
+ * primitive's and this value is the one that renders.
  */
 export const RAIL_ROW_DISABLED =
-  'cursor-not-allowed text-muted-foreground opacity-65';
+  'cursor-not-allowed text-muted-foreground disabled:opacity-65';
 
 /**
  * A rail icon. One secondary grey for all of them: an icon painted louder than
