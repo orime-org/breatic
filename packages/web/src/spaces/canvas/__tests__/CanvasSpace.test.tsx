@@ -1287,6 +1287,152 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     setSlot.mockRestore();
   });
 
+  // #1918 acceptance 3: the driving-video slot is the first that takes
+  // something other than an image, so it is the first real exercise of the
+  // registry's `accepts` field — until now every slot answered "image" and a
+  // hardcoded check would have looked correct.
+  it('driving-video pick: clicking an image fills nothing and wires no edge', () => {
+    const setSlot = vi
+      .spyOn(canvasSpace, 'setNodeSlotFields')
+      .mockImplementation(() => {});
+    const addEdgeSpy = vi.spyOn(canvasSpace, 'addEdge');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'video',
+            position: { x: 0, y: 0 },
+            data: { kind: 'video', status: 'idle', mode: 'animate' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 600, y: 0 },
+            data: { kind: 'image', content: 'https://cdn/i.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startDrivingVideoPick('target');
+    });
+    act(() => {
+      document
+        .querySelector('.react-flow__node[data-id="src-image"]')
+        ?.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true }),
+        );
+    });
+    expect(setSlot).not.toHaveBeenCalled();
+    expect(addEdgeSpy).not.toHaveBeenCalled();
+    expect(useCanvasStore.getState().pickSession).toEqual({
+      nodeId: 'target',
+      purpose: 'drivingVideo',
+    });
+    setSlot.mockRestore();
+    addEdgeSpy.mockRestore();
+    act(() => {
+      useCanvasStore.setState({ pickSession: null });
+    });
+  });
+
+  it('driving-video pick: clicking a video copies its asset AND its poster', () => {
+    const setSlot = vi
+      .spyOn(canvasSpace, 'setNodeSlotFields')
+      .mockImplementation(() => {});
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'video',
+            position: { x: 0, y: 0 },
+            data: { kind: 'video', status: 'idle', mode: 'animate' },
+          },
+          {
+            id: 'src-video',
+            type: 'video',
+            position: { x: 600, y: 0 },
+            data: {
+              kind: 'video',
+              content: 'https://cdn/driving.mp4',
+              coverUrl: 'https://cdn/driving-cover.png',
+              status: 'idle',
+            },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startDrivingVideoPick('target');
+    });
+    act(() => {
+      document
+        .querySelector('.react-flow__node[data-id="src-video"]')
+        ?.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true }),
+        );
+    });
+    // Both fields in ONE call: written separately, a collaborator could see
+    // the new video wearing the previous pick's poster.
+    expect(setSlot).toHaveBeenCalledWith('p', 's', 'target', {
+      drivingVideoUrl: 'https://cdn/driving.mp4',
+      drivingVideoCoverUrl: 'https://cdn/driving-cover.png',
+    });
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+    setSlot.mockRestore();
+  });
+
+  it('character-image pick: clicking a video fills nothing and wires no edge', () => {
+    const setSlot = vi
+      .spyOn(canvasSpace, 'setNodeSlotFields')
+      .mockImplementation(() => {});
+    const addEdgeSpy = vi.spyOn(canvasSpace, 'addEdge');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'video',
+            position: { x: 0, y: 0 },
+            data: { kind: 'video', status: 'idle', mode: 'animate' },
+          },
+          {
+            id: 'src-video',
+            type: 'video',
+            position: { x: 600, y: 0 },
+            data: {
+              kind: 'video',
+              content: 'https://cdn/v.mp4',
+              status: 'idle',
+            },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startCharacterImagePick('target');
+    });
+    act(() => {
+      document
+        .querySelector('.react-flow__node[data-id="src-video"]')
+        ?.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true }),
+        );
+    });
+    expect(setSlot).not.toHaveBeenCalled();
+    expect(addEdgeSpy).not.toHaveBeenCalled();
+    setSlot.mockRestore();
+    addEdgeSpy.mockRestore();
+    act(() => {
+      useCanvasStore.setState({ pickSession: null });
+    });
+  });
+
   // #1904 acceptance 4: the visual half of the same rule. The candidate
   // highlighting is a list of purposes too, so a slot missing from it falls
   // through to the reference painting and everything looks pickable.
