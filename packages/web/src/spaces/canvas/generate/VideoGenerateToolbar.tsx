@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Image, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
@@ -9,59 +9,61 @@ import {
   SlotTool,
   ToggleTool,
 } from '@web/spaces/canvas/generate/generate-tools';
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import type {
+  VideoSlot,
+  VideoSlotUrls,
+} from '@web/spaces/canvas/generate/video-slots';
 
 interface VideoGenerateToolbarProps {
   /** Toggle the "select a reference from the canvas" mode (enter, or exit while active). */
   onReference: () => void;
   /** Whether the reference pick is running — highlights the button. */
   referenceActive?: boolean;
-  /**
-   * Whether the active mode takes a first frame. Read off the model's
-   * per-mode source needs, so text-to-video shows no slot at all rather than
-   * a slot the submit would ignore.
-   */
-  firstFrameSupported: boolean;
-  /** Toggle the first-frame pick. */
-  onFirstFrame: () => void;
-  /** Whether the first-frame pick is running — highlights the slot. */
-  firstFrameActive?: boolean;
-  /** The picked first-frame URL (pick-time copy), or undefined when empty. */
-  firstFrameUrl?: string;
-  /** Clear the picked first frame (the slot's ✕ badge). */
-  onClearFirstFrame: () => void;
+  /** The source slots the active mode collects, in display order. */
+  slots: readonly VideoSlot[];
+  /** What is picked, by slot; a slot missing from here renders empty. */
+  slotUrls: VideoSlotUrls;
+  /** The slot whose pick is running, if any — highlights that one control. */
+  activeSlot?: VideoSlot;
+  /** Toggle a slot's pick. */
+  onPickSlot: (slot: VideoSlot) => void;
+  /** Clear a slot (its ✕ badge). */
+  onClearSlot: (slot: VideoSlot) => void;
 }
 
 /**
- * The video Generate panel's top tool row: Reference first, then the source
- * slots the active mode needs (design §4.2 — "leftmost is always Reference").
+ * The video Generate panel's top tool row: Reference first, then one control
+ * per source slot the active mode collects (design §4.2 — "leftmost is always
+ * Reference").
  *
  * Reference is present in every mode: a connected node feeds the prompt's `@`
- * mentions whatever the model generates from. The first-frame slot appears
- * only for the modes that take one — showing it under text-to-video would
- * offer a pick the submit then ignores.
+ * mentions whatever the model generates from. The slots come from the mode,
+ * so a mode that takes no source shows no slot rather than offering a pick the
+ * submit then ignores, and a new slot is a registry entry rather than another
+ * branch here.
  *
  * Its own row rather than a mode of the image toolbar: the image panel's tools
- * are Style and Focus, which mean nothing here, and video's grow with each
- * mode (end frame, character image, driving audio). What the two rows are
- * built FROM is shared — {@link ToggleTool} and {@link SlotTool}.
+ * are Style and Focus, which mean nothing here. What the two rows are built
+ * FROM is shared — {@link ToggleTool} and {@link SlotTool}.
  * @param root0 - Component props.
  * @param root0.onReference - Enter / exit the reference pick.
  * @param root0.referenceActive - Whether the reference pick is running.
- * @param root0.firstFrameSupported - Whether the active mode takes a first frame.
- * @param root0.onFirstFrame - Enter / exit the first-frame pick.
- * @param root0.firstFrameActive - Whether the first-frame pick is running.
- * @param root0.firstFrameUrl - The picked first-frame URL, if any.
- * @param root0.onClearFirstFrame - Clear the picked first frame.
+ * @param root0.slots - The slots the active mode collects.
+ * @param root0.slotUrls - What is picked, by slot.
+ * @param root0.activeSlot - The slot whose pick is running.
+ * @param root0.onPickSlot - Enter / exit a slot's pick.
+ * @param root0.onClearSlot - Clear a slot.
  * @returns The tool row.
  */
 export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
   onReference,
   referenceActive = false,
-  firstFrameSupported,
-  onFirstFrame,
-  firstFrameActive = false,
-  firstFrameUrl,
-  onClearFirstFrame,
+  slots,
+  slotUrls,
+  activeSlot,
+  onPickSlot,
+  onClearSlot,
 }: VideoGenerateToolbarProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -74,26 +76,30 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
         onClick={onReference}
         active={referenceActive}
       />
-      {firstFrameSupported ? (
-        <SlotTool
-          testId='generate-video-tool-first-frame'
-          thumbnailTestId='generate-video-first-frame-thumbnail'
-          clearTestId='generate-video-first-frame-clear'
-          Icon={Image}
-          onPick={onFirstFrame}
-          active={firstFrameActive}
-          thumbnail={firstFrameUrl}
-          onClear={onClearFirstFrame}
-          // Never gated once shown: the slot only renders for modes that take
-          // a first frame, so there is no state where it is visible but
-          // unpickable (Style needs that gate because it renders in both
-          // image modes and only some models accept it).
-          disabled={false}
-          clearLabel={t('canvas.generatePanel.removeFirstFrame')}
-          label={t('canvas.generatePanel.firstFrame')}
-          tip={t('canvas.generatePanel.firstFrameTip')}
-        />
-      ) : null}
+      {slots.map((slot) => {
+        const spec = VIDEO_SLOTS[slot];
+        return (
+          <SlotTool
+            key={slot}
+            testId={spec.testId}
+            thumbnailTestId={spec.thumbnailTestId}
+            clearTestId={spec.clearTestId}
+            Icon={spec.Icon}
+            onPick={() => onPickSlot(slot)}
+            active={activeSlot === slot}
+            thumbnail={slotUrls[slot]}
+            onClear={() => onClearSlot(slot)}
+            // Never gated once shown: a slot only renders for the modes that
+            // collect it, so there is no state where it is visible but
+            // unpickable (Style needs that gate because it renders in both
+            // image modes and only some models accept it).
+            disabled={false}
+            clearLabel={t(spec.clearLabelKey)}
+            label={t(spec.labelKey)}
+            tip={t(spec.tipKey)}
+          />
+        );
+      })}
     </div>
   );
 });

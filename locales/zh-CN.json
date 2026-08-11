@@ -197,6 +197,7 @@
       "selectFromCanvas": "从画布选择参考",
       "selectStyleFromCanvas": "从画布选择风格参考",
       "selectFirstFrameFromCanvas": "在画布上选一张图片作为首帧",
+      "selectEndFrameFromCanvas": "在画布上选一张图片作为尾帧",
       "removeStyle": "移除风格参考",
       "returnToNode": "返回节点",
       "exitSelect": "退出",
@@ -246,7 +247,11 @@
       "firstFrame": "首帧",
       "firstFrameTip": "挑一张图作为视频的第一帧",
       "removeFirstFrame": "移除首帧",
-      "errorNoFirstFrame": "先挑一张首帧 —— 这个模式要从一张图开始生成"
+      "errorNoFirstFrame": "先挑一张首帧",
+      "endFrame": "尾帧",
+      "endFrameTip": "挑一张图作为视频的最后一帧",
+      "removeEndFrame": "移除尾帧",
+      "errorNoEndFrame": "先挑一张尾帧"
     },
     "nodeMenu": {
       "generate": "生成",

@@ -11,14 +11,17 @@
 
 import { describe, it, expect } from "vitest";
 
-import { SSEEventType } from "../../agent/types.js";
+// The sentinels come from the package that writes them; the parser is what
+// this file is testing.
 import {
-  parseInteractionSentinel,
   ASK_USER_SENTINEL,
   ASK_USER_CHOICE_SENTINEL,
   PROPOSE_CANVAS_ACTION_SENTINEL,
   SHOW_SEARCH_RESULTS_SENTINEL,
-} from "../../agent/interaction-sentinel.js";
+} from "@breatic/domain";
+
+import { SSEEventType } from "../../agent/types.js";
+import { parseInteractionSentinel } from "../../agent/interaction-sentinel.js";
 
 describe("parseInteractionSentinel", () => {
   it("parses ask_user_choice payload", () => {

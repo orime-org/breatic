@@ -64,10 +64,10 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         referencePicking={false}
         onRemoveReference={() => {}}
         onInsertReference={() => {}}
-        firstFrameSupported={false}
-        onFirstFrame={() => {}}
-        firstFramePicking={false}
-        onClearFirstFrame={() => {}}
+        slots={[]}
+        slotUrls={{}}
+        onPickSlot={() => {}}
+        onClearSlot={() => {}}
         canExecute
         promptSlot={<div data-testid='prompt-slot' />}
         onExit={onExit}
@@ -153,12 +153,35 @@ describe('VideoGeneratePanel', () => {
     expect(screen.getByTestId('generate-video-tool-reference')).toBeInTheDocument();
   });
 
-  it('shows the first-frame slot only when the mode takes one', () => {
-    renderPanel({ firstFrameSupported: false });
+  it('shows one slot control per slot the mode collects, and none otherwise', () => {
+    renderPanel({ slots: [] });
     expect(screen.queryByTestId('generate-video-tool-first-frame')).toBeNull();
+    expect(screen.queryByTestId('generate-video-tool-end-frame')).toBeNull();
     cleanup();
-    renderPanel({ firstFrameSupported: true });
+
+    renderPanel({ slots: ['firstFrame'] });
     expect(screen.getByTestId('generate-video-tool-first-frame')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-video-tool-end-frame')).toBeNull();
+    cleanup();
+
+    renderPanel({ slots: ['firstFrame', 'endFrame'] });
+    expect(screen.getByTestId('generate-video-tool-first-frame')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-video-tool-end-frame')).toBeInTheDocument();
+  });
+
+  it('fills each slot control from its own URL', () => {
+    // The two frames are separate values on separate node fields; a shared
+    // read would show the same picture in both.
+    renderPanel({
+      slots: ['firstFrame', 'endFrame'],
+      slotUrls: { firstFrame: 'https://cdn/f.png', endFrame: 'https://cdn/l.png' },
+    });
+    expect(
+      screen.getByTestId('generate-video-first-frame-thumbnail'),
+    ).toHaveAttribute('src', 'https://cdn/f.png');
+    expect(
+      screen.getByTestId('generate-video-end-frame-thumbnail'),
+    ).toHaveAttribute('src', 'https://cdn/l.png');
   });
 
   it('renders the reference rail rows the container derives', () => {

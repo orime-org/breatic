@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import type { SSEEventEnvelope } from '@breatic/shared';
+
 import { sseStream } from '@web/data/stream/sse';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 import { apiGet } from '@web/data/api/request';
@@ -16,11 +18,6 @@ export interface ConversationDetail {
   id: string;
   name: string;
   messages: ChatMessage[];
-}
-
-export interface ChatStreamEvent {
-  type: 'token' | 'tool_call' | 'tool_result' | 'thinking' | 'done' | 'error';
-  payload: unknown;
 }
 
 export const chatApi = {
@@ -43,8 +40,9 @@ export const chatApi = {
    * @param body.conversationId - Conversation to append to. The server requires
    *   one and refuses a request without it: `POST /chat/open` is the only place
    *   a conversation is created, so a client always has an id before it can
-   *   speak. This call still sends the wrong field names and the wrong URL
-   *   prefix; wiring it up is PR-3 batch 6.
+   *   speak. This call still sends the wrong field names — the server reads
+   *   `conversation_id` and `message` — so it cannot succeed yet; wiring it up
+   *   is PR-3 batch 6. It does at least reach the right address now.
    * @param body.content - The user's message text.
    * @param body.references - Canvas entities (nodes / spaces) attached as context.
    * @param handlers - Stream lifecycle callbacks.
@@ -62,18 +60,18 @@ export const chatApi = {
       references?: Array<{ kind: string; id: string }>;
     },
     handlers: {
-      onEvent: (e: ChatStreamEvent) => void;
+      onEvent: (e: SSEEventEnvelope) => void;
       onClose?: () => void;
       onError?: (err: unknown) => void;
       signal?: AbortSignal;
     },
   ): Promise<void> {
-    return sseStream<ChatStreamEvent>({
+    return sseStream<SSEEventEnvelope>({
       url: '/chat/message',
       body,
       parseEvent: (data) => {
         try {
-          return JSON.parse(data) as ChatStreamEvent;
+          return JSON.parse(data) as SSEEventEnvelope;
         } catch {
           return null;
         }

@@ -25,6 +25,7 @@ vi.mock('@microsoft/fetch-event-source', () => ({
 }));
 
 import { sseStream } from '@web/data/stream/sse';
+import { API_BASE_PATH } from '@web/data/api/base-path';
 
 /** The option object `sseStream` handed to the library on the last call. */
 interface CapturedOptions {
@@ -67,6 +68,30 @@ beforeEach(() => {
 
 afterEach(() => {
   setLocale('en');
+});
+
+describe('where a streaming request is sent', () => {
+  it('puts a relative path under the one API prefix', async () => {
+    await sseStream({
+      url: '/chat/message',
+      parseEvent: (d) => d,
+      onEvent: () => undefined,
+    });
+    expect(fetchEventSourceMock.mock.calls.at(-1)?.[0]).toBe(
+      `${API_BASE_PATH}/chat/message`,
+    );
+  });
+
+  it('leaves an absolute URL exactly as given', async () => {
+    await sseStream({
+      url: 'https://example.test/stream',
+      parseEvent: (d) => d,
+      onEvent: () => undefined,
+    });
+    expect(fetchEventSourceMock.mock.calls.at(-1)?.[0]).toBe(
+      'https://example.test/stream',
+    );
+  });
 });
 
 describe('a streaming request carries the language the user chose', () => {

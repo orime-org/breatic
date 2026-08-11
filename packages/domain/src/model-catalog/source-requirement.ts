@@ -36,6 +36,11 @@ const MODE_REQUIRED_SOURCES: Readonly<
   },
   video: {
     i2v: ["image"],
+    // Two images, but this table speaks in source TYPES and both are images,
+    // so it can only ask for one. Which slot is which, and that both are
+    // required, is settled where the payload is built from the mode (#1904);
+    // this row keeps the gate up for models that offer the mode.
+    first_last: ["image"],
     animate: ["image"],
     motion: ["image"],
     ref: ["image"],

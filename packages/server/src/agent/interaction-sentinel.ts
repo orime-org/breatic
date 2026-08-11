@@ -15,12 +15,13 @@
  * Keeping sentinel decode out of `main-agent.ts` lets us unit-test the
  * parse logic in isolation without mocking the AI SDK stream.
  */
-import { SSEEventType } from "@server/agent/types.js";
+import {
+  ASK_USER_CHOICE_SENTINEL,
+  PROPOSE_CANVAS_ACTION_SENTINEL,
+  SHOW_SEARCH_RESULTS_SENTINEL,
+} from "@breatic/domain";
 
-export const ASK_USER_SENTINEL = "__ASK_USER__";
-export const ASK_USER_CHOICE_SENTINEL = "__ASK_USER_CHOICE__";
-export const PROPOSE_CANVAS_ACTION_SENTINEL = "__PROPOSE_CANVAS_ACTION__";
-export const SHOW_SEARCH_RESULTS_SENTINEL = "__SHOW_SEARCH_RESULTS__";
+import { SSEEventType } from "@server/agent/types.js";
 
 export type InteractionEvent =
   | typeof SSEEventType.AGENT_CHOICE
@@ -59,7 +60,7 @@ export interface ParsedInteraction {
  * @returns The matching SSE event, its parsed JSON payload, and whether the
  * turn must stop for it, when `resultStr` starts with one of the three v13
  * interaction sentinels. `null` for any non-interaction tool output
- * (including `__ASK_USER__` which is handled separately by the agent loop).
+ * (including `ASK_USER_SENTINEL`, which the agent loop handles separately).
  *
  * On malformed JSON after a matched sentinel, returns the matched
  * event with `{ raw: resultStr }` so the frontend can still display

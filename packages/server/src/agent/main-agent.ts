@@ -19,13 +19,14 @@ import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
 import { env } from "@breatic/core";
 import { creditService } from "@breatic/domain";
+import { ASK_USER_SENTINEL } from "@breatic/domain";
 import { SSEEventType } from "@server/agent/types.js";
 import type { SSEEvent } from "@server/agent/types.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { ASK_USER_SENTINEL, parseInteractionSentinel } from "@server/agent/interaction-sentinel.js";
+import { parseInteractionSentinel } from "@server/agent/interaction-sentinel.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"]);
 

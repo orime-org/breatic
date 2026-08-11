@@ -445,6 +445,18 @@ export const domainMock = () => ({
   resolveProvider: vi.fn(),
   buildToolSet: vi.fn().mockReturnValue({}),
   BASELINE_TOOLS: [],
+  // The interaction sentinels, spelled out because this stub deliberately
+  // does not load the real module. They are not stand-ins: the agent loop
+  // recognises a tool result by `startsWith`, and tests feed it the literal
+  // strings, so a placeholder here would make the loop take a different
+  // branch than the one under test and still look green.
+  //
+  // Copies that must not drift, in other words —
+  // `agent/sentinel-stub-fidelity.test.ts` holds them to the real values.
+  ASK_USER_SENTINEL: "__ASK_USER__",
+  ASK_USER_CHOICE_SENTINEL: "__ASK_USER_CHOICE__",
+  PROPOSE_CANVAS_ACTION_SENTINEL: "__PROPOSE_CANVAS_ACTION__",
+  SHOW_SEARCH_RESULTS_SENTINEL: "__SHOW_SEARCH_RESULTS__",
   getSkillRegistry: () => ({
     get: (name: string) =>
       ["gated_fixture", "creative_research", "canvas_fixture", "canvas_gated"].includes(name)

@@ -41,6 +41,16 @@ export * as assetRepo from "@domain/asset/asset.repo.js";
 export { getModel, resolveProvider } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export { buildToolSet, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
+// The prefixes the interaction tools glue onto their results. Exported
+// because the agent loop has to recognise them, and the loop lives in a
+// service: producer and reader agreeing on one spelling means the tool that
+// writes the string is the only file that holds it.
+export {
+  ASK_USER_SENTINEL,
+  ASK_USER_CHOICE_SENTINEL,
+  PROPOSE_CANVAS_ACTION_SENTINEL,
+  SHOW_SEARCH_RESULTS_SENTINEL,
+} from "@domain/agent/tools/index.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
 export { assertSkillUsable } from "@domain/agent/skill-gate.js";
 export {

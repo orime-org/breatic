@@ -14,6 +14,9 @@
 import type { TaskCreateInput } from '@breatic/shared';
 
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
+import { slotsForMode } from '@web/spaces/canvas/generate/video-mode-options';
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 
 /** Video-node generation task type (AIGC_TASK_TYPES key on the worker). */
 const VIDEO_TASK_TYPE = 'video';
@@ -30,21 +33,47 @@ export interface VideoTaskInput {
   params: Record<string, unknown>;
   /** Plain-text prompt (extracted from the rich-text prompt). */
   promptText: string;
+  /** The active generation mode — it decides which source fields are built. */
+  mode: string;
   /**
-   * The picked first frame (image-to-video). Travels as its OWN param, never
-   * folded into the reference array: the array is the `@`-picked pool and
-   * means something else to the model. Absent when nothing is picked — the
-   * key is then left OFF the wire entirely, because the upstream provider
-   * reads its presence, not its value.
+   * URLs picked into slots. Only the ones the active mode collects are built
+   * into the payload; the rest stay on the node, where a switch back to their
+   * mode finds them again.
    */
-  firstFrameUrl?: string;
+  slotUrls: VideoSlotUrls;
   /** The node's current persistent lease counter; gen = leaseGen + 1. Absent = 0. */
   leaseGen?: number;
 }
 
 /**
+ * The source params one mode sends.
+ *
+ * Built FROM the mode rather than collected and then guarded: a mode's field
+ * set is fixed, so a slot the mode does not collect has no way in and needs no
+ * check to keep it out (user 2026-08-10). Each URL travels as its own param,
+ * never folded into the reference array — that array is the `@`-picked pool
+ * and means something else to the model. An empty slot leaves no key behind at
+ * all, because the upstream provider reads a source field's presence, not its
+ * value.
+ * @param mode - The active generation mode.
+ * @param slotUrls - What is currently picked, by slot.
+ * @returns The source params, ready to merge into the payload.
+ */
+function sourceParams(
+  mode: string,
+  slotUrls: VideoSlotUrls,
+): Record<string, string> {
+  const params: Record<string, string> = {};
+  for (const slot of slotsForMode(mode)) {
+    const url = slotUrls[slot];
+    if (url) params[VIDEO_SLOTS[slot].param] = url;
+  }
+  return params;
+}
+
+/**
  * Builds the overwrite-mode task payload for a video-node Generate.
- * @param input - The node, project/space, model, params, prompt and lease gen.
+ * @param input - The node, project/space, model, params, prompt, mode, picked slots and lease gen.
  * @returns The `POST /canvas/tasks` request body (overwrite, gen-fenced).
  */
 export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
@@ -60,7 +89,7 @@ export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
     params: {
       ...input.params,
       prompt: input.promptText,
-      ...(input.firstFrameUrl ? { image: input.firstFrameUrl } : {}),
+      ...sourceParams(input.mode, input.slotUrls),
     },
     leaseGen: input.leaseGen,
   });
