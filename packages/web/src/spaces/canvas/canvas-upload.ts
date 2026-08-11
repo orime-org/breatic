@@ -690,6 +690,7 @@ export interface AssetNodeLike {
     focusImages?: unknown;
     styleImageUrl?: unknown;
     firstFrameUrl?: unknown;
+    endFrameUrl?: unknown;
   };
 }
 
@@ -763,6 +764,10 @@ export function computeDeletedAssetEntries(
     if (typeof n.data?.firstFrameUrl === 'string') {
       survivingUrls.add(n.data.firstFrameUrl);
     }
+    // The end-frame slot (#1904), on the same terms.
+    if (typeof n.data?.endFrameUrl === 'string') {
+      survivingUrls.add(n.data.endFrameUrl);
+    }
     // Focus crops (#1782) are uploaded assets too — a crop URL held by a
     // surviving node keeps the asset alive (adversarial round-2).
     for (const crop of validFocusImages(n.data?.focusImages)) {
@@ -818,7 +823,8 @@ export function assetUrlSurvives(
       data?.content === url ||
       data?.coverUrl === url ||
       data?.styleImageUrl === url ||
-      data?.firstFrameUrl === url
+      data?.firstFrameUrl === url ||
+      data?.endFrameUrl === url
     ) {
       return true;
     }

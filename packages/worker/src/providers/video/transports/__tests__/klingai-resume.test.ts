@@ -33,6 +33,9 @@ const RESOLVED: ResolvedModel = {
   modelName: "kling-o3-pro",
   modelId: "kling-o3-pro",
   providerName: "klingai",
+  // What `kling-o3-pro` declares in config/models/video/kling.yaml. Since
+  // #1904 the endpoint follows the mode, and `resolveModel` always carries it.
+  mode: "t2v",
   baseUrl: "https://api.klingai.test/v1",
   apiKey: "ak:sk",
   timeout: 60,

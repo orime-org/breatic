@@ -103,6 +103,15 @@ video:
       description: >
         Animate a still image into a video. The image becomes the first frame.
       required_inputs: [prompt, image_url]
+    first_last:
+      label: first-last frame
+      description: >
+        Generate a video that starts from one image and ends on another.
+        Both frames are required; the model fills the motion between them.
+      # Written with the param names our own API uses. The entries around it
+      # use names our params do not have (image_url, img_urls, audio_url);
+      # nothing reads this field, so the mismatch has gone unnoticed (#1911).
+      required_inputs: [prompt, image, end_image]
     ref:
       label: reference-to-video
       description: >

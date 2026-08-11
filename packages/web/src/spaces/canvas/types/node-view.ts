@@ -103,6 +103,13 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   firstFrameUrl?: string;
   /**
+   * End-frame image URL for the first-last frame mode (#1904, wire
+   * `data.endFrameUrl`) — a pick-time COPY on the same terms as
+   * `firstFrameUrl`. The video panel renders it in its end-frame slot and
+   * sends it as `params.end_image` at execute time.
+   */
+  endFrameUrl?: string;
+  /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
    * as the reference rail's focus entries and offers them in the @ mention
@@ -263,6 +270,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     modelByMode: data.modelByMode,
     styleImageUrl: data.styleImageUrl,
     firstFrameUrl: data.firstFrameUrl,
+    endFrameUrl: data.endFrameUrl,
     focusImages: data.focusImages,
   };
   switch (type) {
