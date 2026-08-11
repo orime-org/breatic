@@ -28,7 +28,10 @@
 import { describe, it, expect } from 'vitest';
 
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
+import type {
+  VideoSlot,
+  VideoSlotSpec,
+} from '@web/spaces/canvas/generate/video-slots';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 /**
@@ -50,6 +53,60 @@ function messageKeys(slot: VideoSlot): string[] {
       typeof value === 'string' && value.startsWith('canvas.'),
   );
 }
+
+describe('what a slot takes, and what it can show for it (#1918)', () => {
+  const slots = Object.keys(VIDEO_SLOTS) as VideoSlot[];
+
+  it('takes a video node for the driving slot, and keeps its poster with it', () => {
+    expect(VIDEO_SLOTS.drivingVideo.accepts).toBe('video');
+    expect(VIDEO_SLOTS.drivingVideo.storesCover).toBe(true);
+  });
+
+  it('makes every slot that cannot paint itself carry a poster', () => {
+    // The toolbar shows a slot's pick with an `<img>`. That works only while
+    // the picked URL is itself an image; a video URL renders as a blank
+    // square with no broken-image marker (`alt=''`). Any slot taking
+    // something other than an image has to store a poster alongside the
+    // asset — which is what the first audio slot will need too.
+    for (const slot of slots) {
+      const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
+      if (spec.accepts !== 'image') {
+        expect(
+          spec.storesCover,
+          `${slot} takes a ${spec.accepts} node and must carry a poster`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('stores a bare URL for the slots that take images', () => {
+    // An image paints itself, so wrapping it would add a shape for nothing —
+    // and would change the stored form of two slots that already shipped.
+    for (const slot of slots) {
+      const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
+      if (spec.accepts === 'image') {
+        expect(spec.storesCover, `${slot} takes an image`).toBeUndefined();
+      }
+    }
+  });
+
+  it('gives every slot its own node field, purpose and test ids', () => {
+    // Two slots writing one node field would overwrite each other; two
+    // sharing a test id would make the suites below address the wrong one;
+    // two sharing a purpose would make `slotForPurpose` answer with the
+    // wrong slot, since that lookup is what dispatches a click.
+    //
+    // `param` is deliberately NOT in here: the first frame and the character
+    // image both travel upstream as `image`, and only the mode decides which
+    // one is being sent.
+    const fields = slots.map((s) => VIDEO_SLOTS[s].field);
+    const testIds = slots.map((s) => VIDEO_SLOTS[s].testId);
+    const purposes = slots.map((s) => VIDEO_SLOTS[s].purpose);
+    expect(new Set(fields).size).toBe(fields.length);
+    expect(new Set(testIds).size).toBe(testIds.length);
+    expect(new Set(purposes).size).toBe(purposes.length);
+  });
+});
 
 describe('the slot registry names only messages the catalogs answer', () => {
   const slots = Object.keys(VIDEO_SLOTS) as VideoSlot[];

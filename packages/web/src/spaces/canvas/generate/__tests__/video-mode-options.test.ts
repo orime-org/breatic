@@ -18,11 +18,12 @@ import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
  * the mode option means adding a mode cannot forget to state it.
  */
 describe('video mode options (#1904)', () => {
-  it('offers the three modes built so far, text-to-video first', () => {
+  it('offers the four modes built so far, text-to-video first', () => {
     expect(VIDEO_MODE_OPTIONS.map((o) => o.value)).toEqual([
       't2v',
       'i2v',
       'first_last',
+      'animate',
     ]);
   });
 
@@ -35,6 +36,17 @@ describe('video mode options (#1904)', () => {
     expect(slotsForMode('t2v')).toEqual([]);
     expect(slotsForMode('i2v')).toEqual(['firstFrame']);
     expect(slotsForMode('first_last')).toEqual(['firstFrame', 'endFrame']);
+    expect(slotsForMode('animate')).toEqual(['characterImage', 'drivingVideo']);
+  });
+
+  it('keeps the character image apart from the first frame (#1918)', () => {
+    // Both travel as `image`, but they are different slots on purpose: a pick
+    // survives a mode switch, so sharing one would turn the first frame the
+    // user chose for image-to-video into the character animation drives.
+    expect(VIDEO_SLOTS.characterImage.field).toBe('characterImageUrl');
+    expect(VIDEO_SLOTS.firstFrame.field).toBe('firstFrameUrl');
+    expect(VIDEO_SLOTS.characterImage.param).toBe('image');
+    expect(VIDEO_SLOTS.firstFrame.param).toBe('image');
   });
 
   it('collects nothing for a mode it does not offer', () => {

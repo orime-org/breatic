@@ -66,6 +66,7 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         onInsertReference={() => {}}
         slots={[]}
         slotUrls={{}}
+        slotThumbnails={{}}
         onPickSlot={() => {}}
         onClearSlot={() => {}}
         canExecute
@@ -169,12 +170,41 @@ describe('VideoGeneratePanel', () => {
     expect(screen.getByTestId('generate-video-tool-end-frame')).toBeInTheDocument();
   });
 
+  it('offers to clear a slot that is filled but has no picture to show (#1918)', () => {
+    // A driving video whose node has no poster yet. The slot IS filled — it
+    // holds the video and the payload will carry it — but there is nothing an
+    // `<img>` can paint, so the control keeps its icon and label. What must
+    // not follow is losing the ✕: a pick the user cannot take back is a
+    // dead end, and the only way out would be picking a different video.
+    renderPanel({
+      slots: ['drivingVideo'],
+      slotUrls: { drivingVideo: 'https://cdn/driving.mp4' },
+      slotThumbnails: {},
+    });
+    expect(
+      screen.queryByTestId('generate-video-driving-video-thumbnail'),
+    ).toBeNull();
+    expect(
+      screen.getByTestId('generate-video-driving-video-clear'),
+    ).toBeInTheDocument();
+  });
+
   it('fills each slot control from its own URL', () => {
     // The two frames are separate values on separate node fields; a shared
     // read would show the same picture in both.
+    //
+    // What a slot SHOWS comes from `slotThumbnails`, not from the picked URL:
+    // for an image slot the view model puts the same URL in both, but a slot
+    // holding a video shows a poster instead, because an `<img>` cannot paint
+    // an mp4 (#1918). The panel is the dumb end of that — it renders what it
+    // is handed and does not fall back from one to the other.
     renderPanel({
       slots: ['firstFrame', 'endFrame'],
       slotUrls: { firstFrame: 'https://cdn/f.png', endFrame: 'https://cdn/l.png' },
+      slotThumbnails: {
+        firstFrame: 'https://cdn/f.png',
+        endFrame: 'https://cdn/l.png',
+      },
     });
     expect(
       screen.getByTestId('generate-video-first-frame-thumbnail'),

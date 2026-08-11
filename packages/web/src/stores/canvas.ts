@@ -48,13 +48,25 @@ export type HistoryCommand = 'undo' | 'redo';
  *     frame mode ends. Independent of the first frame in every way — either
  *     one can be picked or replaced at any time, and only execute asks for
  *     both (user 2026-08-10).
+ *   - `characterImage` — the same, into `characterImageUrl` (#1918): the
+ *     figure image animation drives. Its own slot rather than the first
+ *     frame's, though both travel as `image`, because a pick survives a mode
+ *     switch and these two mean different things.
+ *   - `drivingVideo` — the same, into `drivingVideo` (#1918), but from a
+ *     VIDEO node: the performance whose motion is transferred onto the
+ *     character. The first SLOT pick that takes something other than an image
+ *     (`reference` has always taken any node the edge rules allow), so
+ *     it copies the node's poster alongside the asset — the toolbar shows a
+ *     pick with an `<img>` and a video URL would paint nothing.
  */
 export type PickPurpose =
   | 'reference'
   | 'style'
   | 'focus'
   | 'firstFrame'
-  | 'endFrame';
+  | 'endFrame'
+  | 'characterImage'
+  | 'drivingVideo';
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a
@@ -199,6 +211,10 @@ interface CanvasState {
   startFirstFramePick: (nodeId: string) => void;
   /** Enter the end-frame pick for a video node (#1904). */
   startEndFramePick: (nodeId: string) => void;
+  /** Enter the character-image pick for a video node (#1918). */
+  startCharacterImagePick: (nodeId: string) => void;
+  /** Enter the driving-video pick for a video node (#1918). */
+  startDrivingVideoPick: (nodeId: string) => void;
   /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
   startFocusPick: (nodeId: string) => void;
   /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
@@ -398,6 +414,14 @@ export const useCanvasStore = create<CanvasState>()(
     startEndFramePick: (nodeId) =>
       set((s) => {
         s.pickSession = { nodeId, purpose: 'endFrame' };
+      }),
+    startCharacterImagePick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'characterImage' };
+      }),
+    startDrivingVideoPick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'drivingVideo' };
       }),
     startFocusPick: (nodeId) =>
       set((s) => {

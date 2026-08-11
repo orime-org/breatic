@@ -48,13 +48,27 @@ vi.mock('@web/data/yjs/use-socket', () => ({
 /** Every `slotUrls` object the panel has been handed, newest last. */
 const seenSlotUrls: unknown[] = [];
 
+/**
+ * Every `slotThumbnails` object it has been handed, newest last.
+ *
+ * A second object rebuilt just as often (#1918): a slot holding a video shows
+ * a poster rather than the picked URL, so the panel takes both. One unstable
+ * prop is enough to make the memo below never bail, which is the same as not
+ * having it — so this one is pinned on the same terms as the URLs.
+ */
+const seenSlotThumbnails: unknown[] = [];
+
 // The real panel renders a tree this case has no use for; standing in for it
 // is what lets the case read the prop object itself, which is the thing under
 // test. It is NOT wrapped in React.memo on purpose — a memo here would hide
 // the very re-render the case is measuring.
 vi.mock('@web/spaces/canvas/generate/VideoGeneratePanel', () => ({
-  VideoGeneratePanel: (props: { slotUrls: unknown }): null => {
+  VideoGeneratePanel: (props: {
+    slotUrls: unknown;
+    slotThumbnails: unknown;
+  }): null => {
     seenSlotUrls.push(props.slotUrls);
+    seenSlotThumbnails.push(props.slotThumbnails);
     return null;
   },
 }));
@@ -149,6 +163,7 @@ function mount(): ReturnType<typeof render> {
 describe('the container keeps its memoized children bail-able', () => {
   beforeEach(() => {
     seenSlotUrls.length = 0;
+    seenSlotThumbnails.length = 0;
     _resetForTests();
     useCanvasStore.setState({
       panelHostId: null,
@@ -186,6 +201,7 @@ describe('the container keeps its memoized children bail-able', () => {
       expect(seenSlotUrls.length).toBeGreaterThan(0);
     });
     const before = seenSlotUrls.at(-1);
+    const thumbsBefore = seenSlotThumbnails.at(-1);
     // Counted HERE, not from mount: by now the panel has already rendered
     // more than once (mount, then the catalog query settling), so an absolute
     // `length > 1` below would be satisfied before the rerender it is meant to
@@ -220,6 +236,7 @@ describe('the container keeps its memoized children bail-able', () => {
     const after = seenSlotUrls.at(-1);
     expect(seenSlotUrls.length).toBeGreaterThan(rendersBefore);
     expect(Object.is(before, after)).toBe(true);
+    expect(Object.is(thumbsBefore, seenSlotThumbnails.at(-1))).toBe(true);
   });
 
   it('hands down a DIFFERENT slotUrls object once a slot really changes', async () => {
