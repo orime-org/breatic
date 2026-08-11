@@ -176,7 +176,7 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
 
   it('puts Recent and the create actions on opposite sides of the first rule', () => {
     // Going somewhere and making something are different acts. They shared a
-    // block, two pixels apart, which read as one list.
+    // block, two pixels apart, which read as one list of three unrelated things.
     const { container } = render(
       <MemoryRouter>
         <StudioRail
@@ -357,7 +357,7 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
   });
 
   it('leaves 12px between the three groups, which is what tells them apart', () => {
-    // Four of the five rules were removed on the grounds that the headings and
+    // Three of the five rules were removed on the grounds that the headings and
     // the space between the groups already say where each one begins. That
     // makes this gap load-bearing, and it had no test: setting it to zero left
     // every test green while the three groups read as one block.

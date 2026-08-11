@@ -49,8 +49,9 @@ const HEADING_TEXT =
  * Everything else about how it looks comes from the `chrome-ghost` variant,
  * which is the description of exactly this: an icon-only chrome button, muted
  * at rest, accent fill and full foreground under the pointer. Written out by
- * hand it takes fourteen classes, eleven of which the `Button` base hands out
- * unconditionally — a copy that is inert as well as duplicated.
+ * hand it takes fourteen classes: seven the `Button` base hands out
+ * unconditionally, three that are exactly what `chrome-ghost` says, and four
+ * of its own — so ten of the fourteen were a copy of something already said.
  *
  * The glyph inside takes no colour of its own. `currentColor` resolves against
  * the nearest element that sets one, so a glyph naming its own colour makes
@@ -109,12 +110,13 @@ export function RailStudioGroup({
           // Named only while the list is mounted. Collapsing unmounts it, and
           // the collapse is persisted, so a fixed value would go on naming an
           // element that is not in the document for as long as the group stays
-          // shut. ARIA permits that — user agents are told to ignore an ID
-          // reference that matches nothing — and the attribute is optional on
-          // a disclosure to begin with. It is dropped because the combobox
-          // pattern, the one place ARIA does require the reference to resolve,
-          // resolves it by only naming the listbox while the listbox exists;
-          // and because `aria-expanded` already carries the state either way.
+          // shut. ARIA files that under author error: user agents are told to
+          // ignore such a reference and not to expose the attribute at all. The
+          // attribute is optional on a disclosure to begin with, so rather than
+          // ship a reference the platform will discard, it is named only while
+          // there is something to name — which is how the patterns that do
+          // require a resolvable reference (combobox, scrollbar) keep theirs.
+          // `aria-expanded` carries the state either way.
           aria-controls={collapsed ? undefined : listId}
           variant='chrome-ghost'
           size={null}

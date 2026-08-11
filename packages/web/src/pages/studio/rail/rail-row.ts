@@ -49,9 +49,10 @@ export const RAIL_INDENT_NESTED = 'pl-3.5';
  * the container: a `<button>` sizes to its content whatever its `display` is,
  * so the create actions only filled the rail while their parent happened to be
  * a flex column stretching them. And `justify-start` undoes the `Button`
- * primitive's centring — a comment in `RailCreateActions` claimed that class
- * was applied when it never was, so those actions sat centred for as long as
- * the comment did.
+ * primitive's centring. That class and the comment explaining it arrived
+ * together; five hours later the commit that undid an over-eager button
+ * conversion restored the className byte for byte from before it, taking the
+ * class and leaving the comment. The actions have been centred since.
  *
  * The rest were decided by the element type. The rail's rows are a mix of
  * `<Link>` and `<Button>`; `variant={null} size={null}` suppresses the
@@ -119,14 +120,16 @@ export const RAIL_ROW_DISABLED =
  * the levels only read as one step apart if this width is the same on both.
  * A studio row leads with a 20px avatar; without a column of its own a
  * top-level row would lead with its bare 14px glyph and start its label six
- * short, turning the deliberate 6px step into ten.
+ * short, turning the deliberate 6px step into twelve.
  */
 export const RAIL_ICON_BOX = 'flex h-5 w-5 shrink-0 items-center justify-center';
 
 /**
  * The glyph inside {@link RAIL_ICON_BOX}. One secondary grey for all of them:
- * an icon painted louder than the words beside it is what made the column read
- * as noise. It comes up with its row under the pointer, and on the row the
+ * three different greys used to share this column — a plus at the same
+ * strength as its label, a clock a step below its own, group icons following
+ * their heading — and an icon carrying as much weight as the words beside it
+ * is what made the column read as noise. It comes up with its row under the pointer, and on the row the
  * viewer is actually on — that second half matters because without it, hovering
  * a row you are not on lights it brighter than the one you are. Both reach the
  * icon through the `group` its row carries, which is why a disabled row does

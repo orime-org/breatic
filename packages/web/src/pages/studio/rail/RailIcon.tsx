@@ -15,7 +15,7 @@ interface RailIconProps {
  * What a top-level rail row leads with: a glyph inside the 20px column every
  * row shares. The two parts are one component rather than two class names a
  * caller remembers to pair, because a caller who reaches for the glyph alone
- * gets a row whose label starts four short of every other row's — and nothing
+ * gets a row whose label starts six short of every other row's — and nothing
  * about a bare glyph says it was supposed to sit in a column.
  * @param props - The glyph to draw.
  * @param props.icon - The lucide glyph this row leads with.

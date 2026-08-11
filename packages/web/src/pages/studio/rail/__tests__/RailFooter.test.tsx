@@ -54,7 +54,7 @@ describe('RailFooter (the rail’s pinned foot)', () => {
     expect(container.firstElementChild?.className).toContain('shrink-0');
   });
 
-  it('is pinned by a scroller that will give way, in both hosts', () => {
+  it('is pinned by a scroller that will give way', () => {
     // `shrink-0` only pins the foot if something above it shrinks, and a flex
     // child refuses to go below its content without `min-h-0` — so a long
     // studio list would push the foot out of view. The two halves of that fact

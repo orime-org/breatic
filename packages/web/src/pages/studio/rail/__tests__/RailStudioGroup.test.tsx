@@ -124,11 +124,10 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
   it('drops aria-controls once the list it points at is gone', () => {
     // The collapsed list is not hidden, it is unmounted, and the collapse is
     // persisted — so a fixed value would go on naming an element that is not
-    // in the document for as long as the group stays shut. ARIA permits that,
-    // and the attribute is optional on a disclosure anyway; it is dropped
-    // because that is how the one pattern ARIA does hold to a resolvable
-    // reference — the combobox — keeps it resolvable, and because
-    // `aria-expanded` carries the state either way.
+    // in the document for as long as the group stays shut. ARIA files that
+    // under author error and tells user agents not to expose the attribute;
+    // since it is optional on a disclosure anyway, it is named only while
+    // there is something to name.
     renderGroup();
     const toggle = screen.getByRole('button', { name: 'My Studios' });
     expect(toggle).toHaveAttribute('aria-controls');
@@ -150,8 +149,9 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     // An icon-only chrome button — muted at rest, accent fill and full
     // foreground under the pointer — is what `chrome-ghost` is. Spelling those
     // classes out by hand produces a copy of a variant that already exists,
-    // and eleven of the classes such a copy needs are ones the `Button` base
-    // hands out unconditionally, so the copy is inert as well as duplicated.
+    // and of the fourteen classes such a copy needs, seven come from the
+    // `Button` base unconditionally and three more are exactly what
+    // `chrome-ghost` says — so most of the copy was inert as well.
     renderGroup();
     const toggle = screen.getByRole('button', { name: 'My Studios' });
     expect(toggle.className).toContain('text-muted-foreground');
