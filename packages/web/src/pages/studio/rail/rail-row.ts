@@ -87,10 +87,13 @@ export const RAIL_ROW_IDLE = 'group text-foreground hover:bg-accent';
  *
  * The dimming names the `disabled:` modifier because the only rows that use it
  * are disabled `Button`s, and the primitive dims those to 50% through
- * `disabled:opacity-50`. A bare `opacity-65` never landed: it loses on
- * specificity to a class plus a pseudo-class, and twMerge leaves both standing
- * because the modifiers differ. Named the same way, twMerge drops the
- * primitive's and this value is the one that renders.
+ * `disabled:opacity-50`. Written without that prefix it never landed: a plain
+ * class loses on specificity to a class plus a pseudo-class, and twMerge leaves
+ * both standing because the modifiers differ. Named the same way, twMerge drops
+ * the primitive's and this value is the one that renders.
+ *
+ * Keep class names out of prose here: Tailwind scans this file as text, so a
+ * name written only in a comment still ships a rule nothing uses.
  */
 export const RAIL_ROW_DISABLED =
   'cursor-not-allowed text-muted-foreground disabled:opacity-65';

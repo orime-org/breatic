@@ -66,11 +66,13 @@ describe('RailCreateActions (spec §4.1 ①②)', () => {
 
   it('dims the disabled action to its own value, not the primitive’s', () => {
     // The row definition says how a row reads when it cannot be used, so that
-    // value has to be the one that lands. A bare `opacity-65` never did: it
-    // loses on specificity to the `Button` base's `disabled:opacity-50`
-    // (one class against a class plus a pseudo-class), and twMerge leaves both
-    // standing because the modifiers differ. Written with the same modifier,
-    // twMerge drops the primitive's and the row's own value renders.
+    // value has to be the one that lands. Written without the `disabled:`
+    // prefix it never did: a plain class loses on specificity to the `Button`
+    // base's `disabled:opacity-50` (a class against a class plus a
+    // pseudo-class), and twMerge leaves both standing because the modifiers
+    // differ. Named the same way, twMerge drops the primitive's and the row's
+    // own value renders. (Prose here is scanned by Tailwind too — a class name
+    // written only in a comment still ships a rule nothing uses.)
     render(
       <RailCreateActions
         createProjectLabel='New project'
