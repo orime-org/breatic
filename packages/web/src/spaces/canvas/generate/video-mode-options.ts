@@ -39,7 +39,7 @@ export interface VideoModeOption extends ModeOption {
   takesReferences: boolean;
 }
 
-/** The video modes offered so far (#1896 slices 1 to 5). */
+/** The video modes offered so far (#1896 slices 1 to 6). */
 export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
   {
     value: 't2v',

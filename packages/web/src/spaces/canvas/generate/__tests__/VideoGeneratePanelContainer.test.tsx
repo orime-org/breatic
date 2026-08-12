@@ -1329,23 +1329,40 @@ describe('VideoGeneratePanelContainer', () => {
 
     it('lets the talking head execute with no prompt written (#1935)', async () => {
       // Acceptance 6. This model declares no `prompt` param at all, so asking
-      // for one would be a demand nothing upstream can honour. Seeded without
-      // a prompt fragment, so the editor's text really is empty.
-      await openInMode('talking_head', 'omnihuman-1.5');
+      // for one would be a demand about a model with nothing to do with the
+      // answer. Seeded without a prompt fragment, so the editor's text really
+      // is empty.
+      //
+      // Submits rather than only reading the button: the panel weighs this in
+      // TWO places — once for the button's disabled state, once inside the
+      // execute handler before it builds the task — and a case that only
+      // reads the button leaves the second one unheld.
+      await openInMode('talking_head', 'omnihuman-1.5', {
+        characterImageUrl: 'https://cdn/portrait.png',
+        drivingAudio: { url: 'https://cdn/speech.mp3' },
+      });
       await waitFor(() =>
         expect(screen.getByTestId('generate-video-execute')).not.toBeDisabled(),
       );
+      const createTask = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue({ taskId: 't1' } as never);
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+      await waitFor(() => expect(createTask).toHaveBeenCalled());
+      expect(createTask.mock.calls[0]?.[0]?.params).toMatchObject({
+        image: 'https://cdn/portrait.png',
+        audio: 'https://cdn/speech.mp3',
+        prompt: '',
+      });
+      createTask.mockRestore();
     });
 
     it('still demands a prompt from the modes whose model takes one', async () => {
       // Acceptance 7, the other side of the same switch: dropping the demand
-      // must not leak into the five modes that keep it.
+      // must not leak into the five modes that keep it. Seeded with no prompt
+      // fragment, so the editor is empty from the start and this is exactly
+      // the state the demand exists to refuse.
       await openInMode('t2v', 'veo-3.1');
-      const editor = screen.getByTestId('generate-prompt-editor');
-      const surface = editor.querySelector('.ProseMirror');
-      act(() => {
-        if (surface) surface.innerHTML = '<p></p>';
-      });
       await waitFor(() =>
         expect(screen.getByTestId('generate-video-execute')).toBeDisabled(),
       );
@@ -1378,9 +1395,13 @@ describe('VideoGeneratePanelContainer', () => {
      * @param mode - The mode the node is stored in.
      * @param model - The model to store alongside it.
      */
-    async function openInMode(mode: string, model: string): Promise<void> {
+    async function openInMode(
+      mode: string,
+      model: string,
+      slots: Record<string, unknown> = {},
+    ): Promise<void> {
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-      const stored = { mode, model };
+      const stored = { mode, model, ...slots };
       seedVideoNode(stored);
       mountContainer('video', stored, { nodes: SOURCES, edges: WIRES });
       act(() => {

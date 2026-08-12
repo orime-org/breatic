@@ -117,10 +117,17 @@ export interface VideoPanelViewModel {
   maxReferences: number | undefined;
   /**
    * Whether the active model takes a prompt at all (#1935). Read off the wire
-   * for the same reason as {@link VideoPanelViewModel.maxReferences}: which
-   * params a model accepts is declared per model, and the worker drops any it
-   * never declared — so a prompt this model has no field for cannot arrive
-   * upstream however hard the panel insists on one.
+   * for the same reason as {@link VideoPanelViewModel.maxReferences}: what a
+   * model accepts is declared per model, so a demand belongs to the model
+   * rather than to the mode that happens to select it.
+   *
+   * What this measures is the model's catalog entry, not the endpoint behind
+   * it — the prompt travels as its own argument the whole way down and never
+   * passes the param check, so a model with no prompt field still receives
+   * whatever was typed. Every video model but the talking-head one declares
+   * a prompt, which is why demanding one everywhere else stays correct; the
+   * IMAGE catalog declares none at all, so this derivation is video's and
+   * does not transfer (`GeneratePanelContainer` states its own).
    *
    * True when the model is unknown: an unrecognised model is not a licence to
    * skip the requirement every other mode has.

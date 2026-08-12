@@ -21,9 +21,14 @@ export interface ExecuteGateInput {
    * Asked of the MODEL, not of the mode: which params a model accepts is
    * declared per model in the catalog and reaches the browser whole, the same
    * fact the panel already reads for the audio toggle and the reference cap.
-   * The talking-head model declares no `prompt`, so demanding one there would
-   * be a requirement we invented — and one a caller could not honour, since
-   * the worker drops params a model never declared.
+   * The talking-head model declares no `prompt` — it takes a portrait and an
+   * audio track and follows the audio — so demanding one there would be a
+   * requirement we invented for a model with nothing to do with the answer.
+   *
+   * Whether one is SENT is a separate question this gate does not decide: the
+   * prompt travels as its own argument all the way to the request body, so a
+   * model with no prompt field still receives whatever was typed (the
+   * talking-head endpoint accepts and ignores it — verified 2026-08-12).
    *
    * Callers pass it rather than the gate deriving it: this module is given
    * everything it weighs, and it has no catalog to consult.

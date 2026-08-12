@@ -6,7 +6,8 @@
  *
  * A slot holds ONE pick copied off a canvas node at pick time — the image
  * panel's style reference (#1664), the video panel's first and end frames
- * (#1896 / #1904), its character image and its driving video (#1918). Asking
+ * (#1896 / #1904), its character image, its driving video (#1918) and its
+ * driving audio (#1935). Asking
  * the question in one place is what stops them from drifting into different
  * answers to "can I pick this", which is the failure a second slot invites.
  *

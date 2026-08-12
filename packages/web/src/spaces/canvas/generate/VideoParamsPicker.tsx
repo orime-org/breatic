@@ -39,20 +39,6 @@ interface VideoParamsPickerProps {
   onChange: (partial: VideoParamsValue) => void;
 }
 
-/**
- * The video panel's parameter picker: a pill showing the current
- * `ratio · resolution · duration` that opens a popover with those three as
- * identically-shaped option rows plus the audio switch.
- *
- * Every option comes from the active model's own param definitions, so a model
- * that does not declare a parameter simply has no group for it — several video
- * models declare no resolution, and not all of them can generate sound.
- * @param root0 - Component props.
- * @param root0.model - The current model.
- * @param root0.value - The current selection.
- * @param root0.onChange - Called with the changed field.
- * @returns The video params picker.
- */
 /** The params this pill edits. Named once so the check below cannot drift. */
 const EDITED_PARAMS = [
   'aspect_ratio',
@@ -77,6 +63,20 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
   return EDITED_PARAMS.some((name) => model.params?.[name] != null);
 }
 
+/**
+ * The video panel's parameter picker: a pill showing the current
+ * `ratio · resolution · duration` that opens a popover with those three as
+ * identically-shaped option rows plus the audio switch.
+ *
+ * Every option comes from the active model's own param definitions, so a model
+ * that does not declare a parameter simply has no group for it — several video
+ * models declare no resolution, and not all of them can generate sound.
+ * @param root0 - Component props.
+ * @param root0.model - The current model.
+ * @param root0.value - The current selection.
+ * @param root0.onChange - Called with the changed field.
+ * @returns The video params picker.
+ */
 export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   model,
   value,

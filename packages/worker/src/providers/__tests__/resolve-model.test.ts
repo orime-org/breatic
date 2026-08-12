@@ -92,20 +92,25 @@ describe("validateParams (#1672 behavior pins)", () => {
     expect(cleaned.aspect_ratio).toBe("1:1");
   });
 
-  it("drops a prompt sent to the talking-head model, which declares none (#1935)", () => {
-    // The panel stops DEMANDING a prompt in this mode; it does not stop
-    // sending the field, and it should not have to. This is where a prompt
-    // typed here actually dies -- one layer above the transport, in the same
-    // pass that drops any param a model never declared. Pinned so nobody
-    // later reads "the request carries no prompt" as something the panel does.
+  it("carries the talking-head model's two sources through untouched (#1935)", () => {
+    // This model declares nothing but its two sources and a seed, which is
+    // why the panel demands no prompt for it and shows it no params pill.
+    // Pinned here because both of those panel decisions read this same
+    // declaration off the wire, so a source silently renamed or dropped in
+    // the catalog would change what the panel asks for without changing the
+    // panel.
+    //
+    // A prompt is NOT part of this call: the dispatcher lifts it out of the
+    // params (`runAigcDirect` deletes it) before this pass ever runs, and
+    // carries it to the provider as its own argument -- so pinning "a prompt
+    // is dropped here" would pin a call shape production never produces.
     const [name, cleaned] = validateParams("video", "omnihuman-1.5", {
       image: "https://cdn/portrait.png",
       audio: "https://cdn/speech.mp3",
-      prompt: "a drone shot over a canyon",
     });
     expect(name).toBe("omnihuman-1.5");
     expect(cleaned.image).toBe("https://cdn/portrait.png");
     expect(cleaned.audio).toBe("https://cdn/speech.mp3");
-    expect("prompt" in cleaned).toBe(false);
+    expect(cleaned.seed).toBe(-1);
   });
 });
