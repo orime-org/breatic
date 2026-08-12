@@ -151,13 +151,14 @@ export function useChatSession(projectId: string): ChatSession {
    */
   const [justFailed, setJustFailed] = React.useState<string | null>(null);
 
-  // While a turn is being written, this cache is the only place it exists:
-  // its two messages were put here by hand, and every piece of the reply is
-  // appended to one of them. The server has no record of any of it until the
-  // turn ends. A refetch mid-reply therefore replaces the whole list with one
-  // that does not contain this turn — taking it off the screen while it is
-  // still arriving, after which every remaining piece is written to a message
-  // that is no longer there and the reply never appears again.
+  // While a turn is being written, the reply exists only here: its message was
+  // put into this cache by hand, and every piece that arrives is appended to
+  // it. What the reader said is a different matter — the server stores that as
+  // soon as the request reaches it, before the model is called at all. The
+  // reply is the half that is not written down until the turn ends, so a
+  // refetch mid-reply replaces the list with one carrying the question and not
+  // the answer: the reply leaves the screen while it is still arriving, and
+  // every remaining piece is then written to a message that is no longer there.
   //
   // Only the one trigger that is on by default: `refetchOnReconnect` defaults
   // to true, so it is the one a turn has to be protected from. Naming the
@@ -321,10 +322,10 @@ export function useChatSession(projectId: string): ChatSession {
       // failure being announced from here on is this turn's, if it has one.
       setJustFailed(null);
 
-      // From here the local cache is the only place this turn exists: its two
-      // messages are about to be written into it by hand, and the server has
-      // no record of any of it until the turn ends. So the local one is the
-      // one that is right, and anything that disagrees has to give way.
+      // From here the local cache is the only place this turn is whole: its
+      // two messages are about to be written into it by hand, and the reply is
+      // not written down anywhere else until the turn ends. So the local one
+      // is the one that is right, and anything that disagrees has to give way.
       //
       // A request already on its way back asked about a world without this
       // turn in it, which makes its answer wrong the moment this line runs.

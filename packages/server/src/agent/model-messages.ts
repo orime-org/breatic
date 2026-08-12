@@ -26,7 +26,7 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
 /**
  * Render what a tool returned in the typed form the SDK requires.
  *
- * The field is a discriminated union, not a string — `ai@7.0.58` validates it
+ * The field is a discriminated union, not a string — `ai@7.0.59` validates it
  * with `z.discriminatedUnion` before the request goes out, so handing over the
  * stored string is rejected at the door.
  *
