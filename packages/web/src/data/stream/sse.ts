@@ -10,14 +10,6 @@ import { API_BASE_PATH } from '@web/data/api/base-path';
 const EVENT_STREAM = 'text/event-stream';
 
 /**
- * A stream that was refused before it opened.
- *
- * The status is what tells the caller which refusal this is, and some of them
- * are recoverable — a conversation that is gone can be replaced, where a
- * permission failure cannot. Without it every refusal reads the same and the
- * only thing a caller can do is show the message.
- */
-/**
  * The request never reached the server.
  *
  * Offline, DNS, connection refused, the server not running. Nothing was sent,

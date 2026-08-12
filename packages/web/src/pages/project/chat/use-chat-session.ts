@@ -487,13 +487,32 @@ export function useChatSession(projectId: string): ChatSession {
     [conversationId, projectId, queryClient, runTurn, lastUserMessage],
   );
 
-  const messages = React.useMemo(
-    () =>
-      (query.data?.current.messages ?? []).map((m) =>
-        toChatMessage(m, m.id === justFailed),
-      ),
-    [query.data, justFailed],
-  );
+  // What the panel was handed for each stored message last time round.
+  //
+  // Every piece of a reply replaces the cache entry, so this runs once per
+  // token. Rebuilding all of it each time hands every bubble in the column a
+  // new object, and a conversation is only ever appended to — one message is
+  // changing and the rest were settled long ago. Keyed on the stored message
+  // itself, which `patchMessage` leaves untouched for everything it is not
+  // rewriting, so identity is exactly the question "did this one change".
+  const rendered = React.useRef(new Map<CachedMessage, ChatMessage>());
+
+  const messages = React.useMemo(() => {
+    const kept = new Map<CachedMessage, ChatMessage>();
+    const out = (query.data?.current.messages ?? []).map((m) => {
+      const justNow = m.id === justFailed;
+      const before = rendered.current.get(m);
+      // The second half matters on the one message whose failure has just
+      // stopped being news: nothing about it changed except that.
+      const view = before && Boolean(before.failedJustNow) === justNow
+        ? before
+        : toChatMessage(m, justNow);
+      kept.set(m, view);
+      return view;
+    });
+    rendered.current = kept;
+    return out;
+  }, [query.data, justFailed]);
 
   return {
     messages,

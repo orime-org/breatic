@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -18,11 +18,16 @@ interface MessageBubbleProps {
  * Renders one message in the chat list. Layout flips left/right based on
  * role; thinking + tool calls nest inside the bubble so they share the
  * bubble's column.
+ *
+ * Memoised, and the hook above keeps the object for a settled message the
+ * same one from render to render — the two together are what stop a reply
+ * arriving one token at a time from redrawing the whole conversation behind
+ * it, several dozen bubbles at a time.
  * @param root0 - The component props.
  * @param root0.message - The chat message to render.
  * @returns The message bubble with optional thinking fold and tool-call cards.
  */
-export function MessageBubble({
+export const MessageBubble = React.memo(function MessageBubble({
   message,
 }: MessageBubbleProps): React.JSX.Element {
   const t = useTranslation();
@@ -102,4 +107,4 @@ export function MessageBubble({
       </div>
     </div>
   );
-}
+});

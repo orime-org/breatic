@@ -399,6 +399,35 @@ describe('when the conversation it was writing to is gone', () => {
   });
 });
 
+describe('while a reply is being written', () => {
+  it('hands back the same object for every message that did not change', async () => {
+    openChatAnswers([
+      { id: 'm1', role: 'user', text: 'an earlier question' },
+      { id: 'm2', role: 'assistant', text: 'an earlier answer' },
+    ]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+    await act(async () => {
+      void result.current.send('and now this');
+    });
+    const settled = result.current.messages.slice(0, 2);
+
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'One' } });
+    });
+    await waitFor(() => expect(result.current.messages.at(-1)?.content).toBe('One'));
+
+    // This runs once per token. A conversation is only ever appended to, so
+    // the settled messages behind the one being written have nothing new to
+    // say; handing the panel new objects for them anyway redraws the whole
+    // column on every token, and the longer the conversation the worse it
+    // gets. `toBe`, not `toEqual` — equal content is exactly what fails to
+    // stop a re-render.
+    expect(result.current.messages[0]).toBe(settled[0]);
+    expect(result.current.messages[1]).toBe(settled[1]);
+  });
+});
+
 describe('when the network comes back mid-reply', () => {
   it('does not let a background refetch swallow the turn being written', async () => {
     openChatAnswers([]);
