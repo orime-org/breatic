@@ -3,7 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StrictMode } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -62,12 +62,16 @@ describe('studio container — invariant 5 (StrictMode-safe)', () => {
         </QueryClientProvider>
       </StrictMode>,
     );
-    // If a component duplicated DOM under the double render, the tab count
-    // would multiply; exactly 6 tabs (once the shell query resolves) proves
-    // render idempotence. The top bar moved to the layout route, so the
-    // standalone container no longer renders a banner. 6 tabs = team studio
-    // with Works added at the 3rd position (spec §6.1).
-    expect(await screen.findAllByRole('tab')).toHaveLength(6);
+    // If a component duplicated DOM under the double render, the section count
+    // would multiply; exactly 6 (once the shell query resolves) proves render
+    // idempotence. The top bar moved to the layout route, so the standalone
+    // container no longer renders a banner. 6 sections = team studio with Works
+    // added at the 3rd position (spec §6.1). Counted inside the nav: the
+    // project cards are links too.
+    const nav = await screen.findByRole('navigation', {
+      name: 'Studio sections',
+    });
+    expect(within(nav).getAllByRole('link')).toHaveLength(6);
   });
 });
 

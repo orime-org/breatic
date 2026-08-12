@@ -210,8 +210,13 @@ describe('useStudioSettings — changing the slug', () => {
 
     result.current.save({ slug: 'acme-co' });
 
+    // The settings segment is not decoration. A rename happens WHILE the user
+    // is standing in Settings, and the tab now lives in the address — so an
+    // address without it is an instruction to leave, which is the opposite of
+    // what just happened. This used to be `/studio/acme-co` and was correct
+    // then: the tab was component state, and state survives a param change.
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/studio/acme-co', {
+      expect(navigate).toHaveBeenCalledWith('/studio/acme-co/settings', {
         replace: true,
       }),
     );

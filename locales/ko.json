@@ -753,7 +753,11 @@
     "topBar": {
       "home": "Studio 홈",
       "account": "계정",
-      "signOut": "로그아웃"
+      "signOut": "로그아웃",
+      "credits": "크레딧",
+      "membership": "멤버십",
+      "accountSettings": "계정 설정",
+      "notOpenYet": "미제공"
     },
     "container": {
       "shell": {
@@ -766,7 +770,8 @@
         "works": "Works",
         "members": "멤버",
         "credits": "크레딧",
-        "settings": "설정"
+        "settings": "설정",
+        "navLabel": "Studio 섹션"
       },
       "works": {
         "emptyHint": "Work은 Project에서 발행한 독립 완성물(완성된 동영상 / 미니게임…)로, Studio의 대외적인 얼굴입니다. 발행 기능이 출시되면 발행한 Work이 여기에 표시됩니다.",
