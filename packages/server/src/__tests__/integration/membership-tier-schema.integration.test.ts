@@ -43,6 +43,14 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
+import { initCore, getDefaultMembershipTier } from "@breatic/core";
+import * as userRepo from "@server/modules/auth/user.repo.js";
+
+try {
+  initCore(process.env);
+} catch {
+  // already initialised by a sibling suite in this worker — fine.
+}
 
 const PG_DRIVER_LOCAL = "membership-tier-schema-test-driver";
 
@@ -101,6 +109,37 @@ describe("users.membership_tier", () => {
     `;
     try {
       expect(row?.membership_tier).toBe("base");
+    } finally {
+      await sql`DELETE FROM users WHERE email = ${email}`;
+    }
+  });
+
+  it("puts a newly registered account on the configured tier, not the column default", async () => {
+    // The two defaults are different things and this is the case that keeps
+    // them apart. The column default backstops a write that names no tier;
+    // where a REGISTRATION lands is a deployment decision, and the field that
+    // carries it is the one thing distinguishing a self-hosted install from
+    // ours.
+    //
+    // Gate 2 caught the config field being read, validated, frozen into
+    // memory, and then never called: every new account fell through to the
+    // column default instead. On a self-hosted install that is `base`, whose
+    // team-studio ceiling is zero — so nobody there could create even one
+    // team studio, and the refusal told them to upgrade on a deployment with
+    // nothing to upgrade to.
+    //
+    // This assertion's premise has to hold first: the configured tier must
+    // differ from the column default, or the case stays green with the whole
+    // implementation deleted.
+    expect(getDefaultMembershipTier()).not.toBe("base");
+
+    const email = `tier-reg-${Date.now()}-${Math.random()}@example.test`;
+    const user = await userRepo.createUser({ email });
+    try {
+      const [row] = await sql<{ membership_tier: string }[]>`
+        SELECT membership_tier FROM users WHERE id = ${user.id}
+      `;
+      expect(row?.membership_tier).toBe(getDefaultMembershipTier());
     } finally {
       await sql`DELETE FROM users WHERE email = ${email}`;
     }
