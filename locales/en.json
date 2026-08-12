@@ -752,7 +752,11 @@
     "topBar": {
       "home": "Studio home",
       "account": "Account",
-      "signOut": "Sign out"
+      "signOut": "Sign out",
+      "credits": "Credits",
+      "membership": "Membership",
+      "accountSettings": "Account settings",
+      "notOpenYet": "Not open yet"
     },
     "container": {
       "shell": {
@@ -765,7 +769,8 @@
         "works": "Works",
         "members": "Members",
         "credits": "Credits",
-        "settings": "Settings"
+        "settings": "Settings",
+        "navLabel": "Studio sections"
       },
       "works": {
         "emptyHint": "Works are the finished products a project publishes (a complete video, a mini-game…) — your Studio's public face. Once publishing ships, your published works will appear here.",

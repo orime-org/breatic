@@ -752,7 +752,11 @@
     "topBar": {
       "home": "Studio 首頁",
       "account": "帳號",
-      "signOut": "登出"
+      "signOut": "登出",
+      "credits": "點數",
+      "membership": "會員",
+      "accountSettings": "帳號設定",
+      "notOpenYet": "未開放"
     },
     "container": {
       "shell": {
@@ -765,7 +769,8 @@
         "works": "Works",
         "members": "成員",
         "credits": "點數",
-        "settings": "設定"
+        "settings": "設定",
+        "navLabel": "Studio 分區"
       },
       "works": {
         "emptyHint": "Works 是從 Project 發布出來的獨立成品(完整影片 / 小遊戲…),是 Studio 對外的門面。功能上線後,已發布的成品會在這裡展示。",

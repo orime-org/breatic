@@ -752,7 +752,11 @@
     "topBar": {
       "home": "Studio ホーム",
       "account": "アカウント",
-      "signOut": "ログアウト"
+      "signOut": "ログアウト",
+      "credits": "クレジット",
+      "membership": "メンバーシップ",
+      "accountSettings": "アカウント設定",
+      "notOpenYet": "未提供"
     },
     "container": {
       "shell": {
@@ -765,7 +769,8 @@
         "works": "Works",
         "members": "メンバー",
         "credits": "クレジット",
-        "settings": "設定"
+        "settings": "設定",
+        "navLabel": "Studio セクション"
       },
       "works": {
         "emptyHint": "Work は Project から公開する独立した成果物(完成した動画 / ミニゲームなど)で、Studio の対外的な顔です。公開機能が実装されると、公開した Work がここに表示されます。",

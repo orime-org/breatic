@@ -24,7 +24,8 @@ import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
  *
  * `/`                      → redirect to /studio
  * `/studio`                → StudioPage (cross-studio "Recent" landing) [AUTH]
- * `/studio/:slug`          → StudioContainerPage (per-studio 5-tab)     [AUTH]
+ * `/studio/:slug`          → StudioContainerPage (per-studio 6-tab)     [AUTH]
+ * `/studio/:slug/:tab`     → the same page opened at one of its tabs    [AUTH]
  * `/project/:projectId`    → ProjectPage (canvas + chat)                [AUTH]
  *
  * `[AUTH]` routes are wrapped in `<ProtectedRoute>` which gates render
@@ -76,6 +77,15 @@ const baseRoutes: RouteObject[] = [
       // (tabs) or non-member view, by `myStudioRole`. The slug is the globally-
       // unique studio locator (no id; URL design §5.7).
       { path: ':slug', element: <StudioContainerPage /> },
+      // `/studio/{slug}/{tab}` — the same page opened at one of its tabs. A tab
+      // holds a different set of things and each set is worth linking to, so it
+      // is a path segment and not component state: the address is what a user
+      // can send, what a refresh restores, and what Back walks through. The
+      // segment is checked against the addresses this scheme emits, which is
+      // the tab list minus the default section — that one's address carries no
+      // segment at all. Anything else, and any section on a studio the viewer
+      // is not in, resolves to `/studio/{slug}`.
+      { path: ':slug/:tab', element: <StudioContainerPage /> },
     ],
   },
   {
