@@ -25,12 +25,21 @@ interface ReferenceRailProps {
   /** Insert this reference's @-mention into the prompt at the cursor (chip click). */
   onInsert: (item: ReferenceRailItem) => void;
   /**
-   * Dim + de-activate the IMAGE rows only — set in text-to-image, which
-   * ignores source images (mode toggle §2.5; scope ruled 2026-07-11, round-3
-   * R3-4 = A). Text rows stay fully interactive because their @-chips still
-   * serialize into the prompt in t2i — the same scoping as the editor's chip
-   * dim, which greys image chips only. Dimmed image chips still render (edges
-   * stay visible); switch to image-to-image to manage them.
+   * Dim + de-activate the IMAGE rows only — set by a mode that ignores source
+   * images (scope ruled 2026-07-11, round-3 R3-4 = A). Two panels set it now:
+   * the image panel in text-to-image (mode toggle §2.5), and since #1927 the
+   * video panel in every mode but reference-to-video. Text rows stay fully
+   * interactive in both, because their @-chips still serialize into the
+   * prompt whatever the mode — the same scoping as the editor's chip dim,
+   * which greys image chips only.
+   *
+   * A dimmed row's ✕ is disabled too, and that is the point: references are
+   * shared across modes, so a row thrown away here would be gone when the
+   * user switches back (decision 2026-08-11). Getting it back means switching
+   * to a mode that uses it — image-to-image on the image panel,
+   * reference-to-video on the video one — or deleting the edge on the canvas.
+   * That a row can be ADDED in a mode that immediately dims it is a gap of
+   * its own, tracked as #1934.
    */
   imageRefsDisabled?: boolean;
   /**
@@ -50,7 +59,7 @@ interface ReferenceRailProps {
  * @param root0.references - The derived reference rows.
  * @param root0.onRemove - Remove a reference by id.
  * @param root0.onInsert - Insert a reference's @-mention into the prompt.
- * @param root0.imageRefsDisabled - Dim + de-activate the image rows (t2i).
+ * @param root0.imageRefsDisabled - Dim + de-activate the image rows in a mode that ignores them.
  * @returns The reference rail, or null when empty.
  */
 export const ReferenceRail = React.memo(function ReferenceRail({

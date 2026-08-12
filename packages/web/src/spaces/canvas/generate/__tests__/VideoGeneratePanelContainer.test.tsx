@@ -819,9 +819,10 @@ describe('VideoGeneratePanelContainer', () => {
     });
 
     it('“add reference” toggles the canvas pick on this node', async () => {
-      // In the mode that can use one: since #1927 the tool closes in the four
-      // modes whose rail rows are dimmed, because a row added there could not
-      // be removed from the panel again.
+      // Mounted in `ref` because this suite's other reference cases are, not
+      // because the tool is mode-gated — it is not, and must not be: one
+      // button starts text, audio and video picks too, and those work in
+      // every mode. The case below holds that.
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
       const stored = { mode: 'ref', model: 'kling-o3-pro-ref' };
       seedVideoNode(stored);
@@ -1224,6 +1225,41 @@ describe('VideoGeneratePanelContainer', () => {
       // across modes, so a ✕ pressed here would lose an image the user is
       // coming back for (design decision 2026-08-11).
       expect(screen.getByTestId('generate-ref-remove-r-a')).toBeDisabled();
+    });
+
+    it('keeps offering to add a reference in every mode', async () => {
+      // A video node takes text, audio and video references too, and those
+      // work in all five modes — the rail keeps their rows live and the @
+      // popup keeps offering them. Gating this one button on "does this mode
+      // use reference IMAGES" took away the only in-panel way to add any of
+      // them, which is why that gate was withdrawn.
+      await openInMode('t2v', 'veo-3.1');
+      expect(
+        screen.getByTestId('generate-video-tool-reference'),
+      ).not.toBeDisabled();
+    });
+
+    it('dims the prompt’s own image chips under a mode that cannot use them', async () => {
+      // The second of the dimming signal's three outlets. The rail says "this
+      // mode cannot use that image"; without this the chip already sitting in
+      // the prompt would render at full strength and say the opposite.
+      await openInMode('t2v', 'veo-3.1');
+      // The dim rides the ScrollArea's VIEWPORT class, not the root that
+      // carries the test id.
+      expect(
+        screen
+          .getByTestId('generate-prompt-editor')
+          .querySelector('[data-radix-scroll-area-viewport]')?.className ?? '',
+      ).toContain('reference-mention[data-kind=image]');
+    });
+
+    it('leaves the prompt’s image chips alone in the mode that uses them', async () => {
+      await openInMode('ref', 'kling-o3-pro-ref');
+      expect(
+        screen
+          .getByTestId('generate-prompt-editor')
+          .querySelector('[data-radix-scroll-area-viewport]')?.className ?? '',
+      ).not.toContain('reference-mention[data-kind=image]');
     });
 
     it('tells the user @ is how a reference gets used', async () => {

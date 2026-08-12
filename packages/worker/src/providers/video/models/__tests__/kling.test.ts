@@ -102,6 +102,13 @@ describe("kling buildRequest — source field names per provider (#1904)", () =>
  * agrees by coincidence is indistinguishable from one nobody ever checked,
  * and the first model whose vendor calls it something else would be found out
  * by a failed generation rather than by this file.
+ *
+ * Be clear about what these two cases hold, then: the NAMES on the wire, not
+ * the table entry that states them. `applyFieldNames` passes a param through
+ * untouched when the table says nothing about it (field-mapping.ts:26-28), so
+ * deleting the `kling-o3-pro-ref` entry leaves both green — the property the
+ * entry exists for is one nothing here can see. What would catch its removal
+ * is a reader, which is why it is written down rather than left implicit.
  */
 const REF_IMAGES = ["https://cdn.test/a.png", "https://cdn.test/b.png"];
 
