@@ -519,6 +519,29 @@ body {
   line-height: 1.65;
 }
 
+/* A remote collaborator's selection band is painted on an inline element, whose
+   background covers the text box and not the line box — so between wrapped
+   lines a stripe of the leading goes unpainted. The shared rule near the top of
+   this file closes that with `0.096em` of vertical padding, a figure measured
+   against 13px text on an 18px line; it is a fixed ratio, and it only lands on
+   the leading it was measured against.
+
+   The line height above is 1.65, so this body needs a different figure, and
+   this rule supplies it HERE ONLY. The chat panel and the prompt editor keep
+   the shared value untouched — they are correct on it, and neither is in this
+   slice's blast radius. Deriving the shared rule from the live leading instead
+   of a constant is the real fix and belongs with a change that can verify all
+   three editors.
+
+   `1lh` is the line box, `1.21em` the font's content box (Inter's hhea metrics,
+   (1984 + 494) / 2048), so half their difference is the leading to paint over.
+   Measured in Chromium: unpainted stripe 3.87px -> 0.16px, and the chat panel
+   unchanged at 0.02px. The exclusion matches the shared rule's: a chip is an
+   atomic box and WOULD grow from vertical padding. */
+.doc-body-editor .ProseMirror .collaboration-carets__selection:not(:has(.reference-mention)) {
+  padding-block: calc((1lh - 1.21em) / 2);
+}
+
 .doc-body-editor .ProseMirror p {
   margin: 0.85em 0;
 }
@@ -621,11 +644,37 @@ body {
   margin-top: 0.3em;
 }
 
+/* A quote is the one block here that holds other blocks, so it is the one that
+   has to CONTAIN their margins. Its own decoration is all inline-direction —
+   a left border and left padding — which leaves the block direction open, and
+   an open block direction is what lets a child's margin collapse out and stand
+   in for the quote's own. What reaches the screen is then whichever is larger,
+   and the child usually wins: a quote holding a heading opened with the
+   heading's 1.9em (45.6px) instead of the quote's 1.1em, and a quote inside a
+   list item sat 12.75px from its neighbours where the item's rhythm is 4.5px.
+
+   `flow-root` closes the block direction at any depth — a list inside the quote
+   cannot leak its items' margins either. The first and last child then have
+   their outer margins zeroed so the text still meets the quote's top and bottom
+   edges, which is how it looked while the margins were escaping.
+
+   Measured: quote inside a list item 12.75px -> 4.5px above and below, the same
+   with a list inside the quote; in the body a quote opening with a heading
+   45.59px -> 16.5px; the quote's top edge to its first line stays 0. */
 .doc-body-editor .ProseMirror blockquote {
+  display: flow-root;
   margin: 1.1em 0;
   padding-inline-start: 1em;
   border-inline-start: 2px solid var(--color-border);
   color: var(--color-muted-foreground);
+}
+
+.doc-body-editor .ProseMirror blockquote > :first-child {
+  margin-top: 0;
+}
+
+.doc-body-editor .ProseMirror blockquote > :last-child {
+  margin-bottom: 0;
 }
 
 /* `:not(pre)` keeps this off the code inside a code block: TipTap renders that
