@@ -138,6 +138,9 @@ export * as projectAuthService from "@core/auth/projectAuth.service.js";
 export {
   getUserMembershipTier,
   getStudioMembershipTier,
+  getLimitsForUser,
+  getLimitsForStudio,
+  lockLimitsForUser,
 } from "@core/auth/membership.repo.js";
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──

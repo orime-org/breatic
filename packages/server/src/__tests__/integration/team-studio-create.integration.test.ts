@@ -38,6 +38,7 @@ import type { MembershipTier } from "@breatic/shared";
 import { initCore, loadLocales, getMembershipLimits } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { studioService } from "@server/modules";
+import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 
 try {
   initCore(process.env);
@@ -225,6 +226,50 @@ describe("createTeamStudio", () => {
     await seedTeamStudios(other.id, ceilingFor("team")); // another user's full quota must not block
     const studio = await studioService.createTeamStudio(user.id, "Mine", uniqueSlug());
     expect(studio.type).toBe("team");
+  });
+
+  it("holds the ceiling when two creates run at once", async () => {
+    // Counting rows and then inserting is not a decision under concurrency:
+    // both transactions count, both see room, both insert. Measured before
+    // the fix on a `pro` account (ceiling 1): three simultaneous requests left
+    // two rows. It did not matter while the number was an internal cap of 50;
+    // it matters now that it is what somebody paid for.
+    //
+    // The interleaving is observed, not hoped for. A separate connection holds
+    // the account's row so the first create parks on it, the second is then
+    // known to be queued behind the first, and only then is the gate released.
+    // Written with `Promise.all` instead, this test passes with the lock
+    // deleted — the two short transactions reuse one pooled connection and run
+    // one after the other, so nothing ever interleaves.
+    const user = await insertUser("pro");
+    expect(ceilingFor("pro")).toBe(1);
+
+    const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+    let first: Promise<unknown>;
+    let second: Promise<unknown>;
+    try {
+      await gate.begin(async (g) => {
+        await g`SELECT id FROM users WHERE id = ${user.id} FOR UPDATE`;
+
+        first = studioService.createTeamStudio(user.id, "A", uniqueSlug());
+        await waitUntilBlockedOn(sql, ["users", "for update"], 1);
+        second = studioService.createTeamStudio(user.id, "B", uniqueSlug());
+        await waitUntilBlockedOn(sql, ["users", "for update"], 2);
+      });
+    } finally {
+      await gate.end({ timeout: 5 });
+    }
+
+    const results = await Promise.allSettled([first!, second!]);
+    const created = results.filter((r) => r.status === "fulfilled").length;
+    expect(created).toBe(1);
+    const rows = await sql<{ n: string }[]>`
+      SELECT count(*)::text AS n FROM studios s
+      JOIN studio_members m ON m.studio_id = s.id
+      WHERE m.user_id = ${user.id} AND m.role = 'admin' AND m.deleted_at IS NULL
+        AND s.type = 'team' AND s.deleted_at IS NULL
+    `;
+    expect(rows[0]!.n).toBe("1");
   });
 
   it("counts by current admin role, not the immutable created_by (transfer frees quota)", async () => {

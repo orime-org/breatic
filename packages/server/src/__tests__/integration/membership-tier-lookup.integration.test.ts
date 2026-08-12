@@ -46,6 +46,9 @@ import { initCore, loadLocales } from "@breatic/core";
 import {
   getUserMembershipTier,
   getStudioMembershipTier,
+  getLimitsForUser,
+  getLimitsForStudio,
+  getMembershipLimits,
 } from "@breatic/core";
 
 try {
@@ -221,5 +224,86 @@ describe("getStudioMembershipTier", () => {
     await expect(
       getStudioMembershipTier("00000000-0000-0000-0000-000000000000"),
     ).rejects.toThrow();
+  });
+});
+
+/**
+ * The two functions callers actually use. Everything above resolves a tier;
+ * these turn a tier into the six numbers, and they are the only place that
+ * conversion happens.
+ *
+ * Why it matters that there is exactly one such place: five more ceilings are
+ * coming (projects, two kinds of member cap, concurrent connections,
+ * storage), each with its own check point. Written as "look up the tier, then
+ * index the config" at every one of them, the pair would end up copied six to
+ * eight times — and the enterprise tier, whose ceilings are negotiated per
+ * customer and will be read from the database, would then have to be threaded
+ * through every copy. Miss one and that customer is quietly held to the
+ * standard tier on that one path, with no error.
+ */
+describe("getLimitsForUser", () => {
+  it("returns that account's own tier's six ceilings", async () => {
+    const { userId } = await insertUser("pro");
+    await expect(getLimitsForUser(userId)).resolves.toEqual(
+      getMembershipLimits("pro"),
+    );
+  });
+
+  it("names the account and the value when the column holds a tier we do not have", async () => {
+    // `membership_tier` is a bare varchar with no CHECK constraint, and until
+    // the enterprise work lands a hand-written UPDATE is how an operator moves
+    // someone off base. A typo there used to reach `getMembershipLimits`,
+    // return undefined, and get dereferenced — the person creating a studio
+    // saw a 500 whose log line said only "Cannot read properties of
+    // undefined". It stays a 500 (our data is wrong, not their input); what
+    // this pins is that the log names which account and which value.
+    const [u] = await sql<{ id: string }[]>`
+      INSERT INTO users (email, email_verified, membership_tier)
+      VALUES (${`tier-bad-${seq++}@example.test`}, true, 'Pro')
+      RETURNING id
+    `;
+    const userId = u!.id;
+    await expect(getLimitsForUser(userId)).rejects.toThrow(
+      new RegExp(`${userId}[\\s\\S]*Pro|Pro[\\s\\S]*${userId}`),
+    );
+  });
+});
+
+describe("getLimitsForStudio", () => {
+  it("returns the ceilings of the studio's current admin", async () => {
+    const { userId } = await insertUser("team");
+    const studioId = await insertTeamStudio(userId);
+    await expect(getLimitsForStudio(studioId)).resolves.toEqual(
+      getMembershipLimits("team"),
+    );
+  });
+
+  it("follows a transfer, like the tier lookup it builds on", async () => {
+    const from = await insertUser("team");
+    const to = await insertUser("base");
+    const studioId = await insertTeamStudio(from.userId);
+    await sql`
+      UPDATE studio_members SET role = 'maintainer'
+      WHERE studio_id = ${studioId} AND user_id = ${from.userId}
+    `;
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${studioId}, ${to.userId}, 'admin')
+    `;
+    await expect(getLimitsForStudio(studioId)).resolves.toEqual(
+      getMembershipLimits("base"),
+    );
+  });
+
+  it("names the studio and the value when its admin's tier is not one we have", async () => {
+    const [u] = await sql<{ id: string }[]>`
+      INSERT INTO users (email, email_verified, membership_tier)
+      VALUES (${`tier-bad-${seq++}@example.test`}, true, 'TEAM')
+      RETURNING id
+    `;
+    const studioId = await insertTeamStudio(u!.id);
+    await expect(getLimitsForStudio(studioId)).rejects.toThrow(
+      new RegExp(`${studioId}[\\s\\S]*TEAM|TEAM[\\s\\S]*${studioId}`),
+    );
   });
 });
