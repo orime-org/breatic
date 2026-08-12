@@ -24,10 +24,14 @@
  * The cases that enumerate the levels read them from `BODY_HEADING_LEVELS`; the
  * out-of-range ones say `4` outright, on purpose. IF WIDENING THE CAP TURNS
  * THOSE RED, THE FIX IS NOT TO BUMP THE NUMBER — `index.css` needs a rule for
- * the level being added, and nothing here can check that. Preflight resets
- * `h1..h6` to inherit, so a level with no rule of its own renders at the
- * paragraph's size and weight.
+ * the level being added first, since preflight resets `h1..h6` to inherit and a
+ * level with no rule of its own renders at the paragraph's size and weight. The
+ * last case here reads the stylesheet off disk and says so, so widening the
+ * array on its own turns that one red too rather than passing quietly.
  */
+
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor, type Extensions } from '@tiptap/core';
@@ -158,6 +162,25 @@ describe('how the levels the body keeps render', () => {
 
     for (const level of BODY_HEADING_LEVELS) {
       expect(html).toContain(`<h${level}>T${level}</h${level}>`);
+    }
+  });
+
+  // Preflight resets `h1..h6` to `font-size: inherit; font-weight: inherit`, so
+  // a level with no rule of its own is not a smaller heading — it is a
+  // paragraph wearing a heading's tag, which is the defect this slice removes.
+  // Nothing in the language connects the array to the stylesheet, but a test
+  // can read both, and four already do it elsewhere in this package.
+  it('gives each level it keeps a size and a weight in index.css', () => {
+    const css = readFileSync(resolve(__dirname, '../../../index.css'), 'utf8');
+
+    for (const level of BODY_HEADING_LEVELS) {
+      const rule = new RegExp(
+        String.raw`\.doc-body-editor\s+\.ProseMirror\s+h${level}[^{]*\{[^}]*\}`,
+      ).exec(css)?.[0];
+
+      expect(rule, `no rule selects h${level} in the document body`).toBeDefined();
+      expect(rule).toMatch(/font-size:/);
+      expect(rule).toMatch(/font-weight:/);
     }
   });
 });

@@ -41,7 +41,9 @@ import { Heading } from '@tiptap/extension-heading';
  * widening this list means adding a rule there in the same change: preflight
  * resets `h1..h6` to inherit, and a level with no rule of its own renders at
  * the paragraph's size and weight, which is the exact defect this slice exists
- * to remove.
+ * to remove. That is HELD, not merely asked for — `document-heading-levels`
+ * reads the stylesheet off disk and fails on a level with no size and weight
+ * of its own, so widening this array alone turns it red.
  */
 export const BODY_HEADING_LEVELS = [1, 2, 3] as const;
 
