@@ -65,7 +65,13 @@ export const BodyHeading = Heading.extend({
    */
   renderHTML(props) {
     const stored = props.node.attrs.level as number;
-    if ((this.options.levels as number[]).includes(stored)) {
+    // Both halves read the same array. Asking `this.options.levels` instead
+    // would let a second `.configure({ levels })` on this extension move the
+    // range without moving FALLBACK_LEVEL, and the fallback would then land
+    // out of range too — where Heading's own renderHTML sends it to
+    // `levels[0]`, the LARGEST level, which is the defect this override exists
+    // to prevent.
+    if ((BODY_HEADING_LEVELS as readonly number[]).includes(stored)) {
       return this.parent?.(props) as DOMOutputSpec;
     }
     const inRange = props.node.type.create(

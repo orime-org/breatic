@@ -478,11 +478,17 @@ body {
    every property the h1 rule sets and outranks it — but add one property here
    that the title does not declare and it lands on the title.
 
-   No BLOCK selector in this block needs it: the title is an `h1`, so `p`, the
-   lists, `blockquote`, `code`, `pre`, `hr` and `a` cannot match it. Its
-   `marks: ''` does NOT extend that to inline selectors — marks are what the
-   document may store, and a decoration is a span the view wraps at render
-   time, which no schema constraint governs. The collaboration band below is
+   Nothing else in this block needs it, but for two different reasons. The
+   block selectors — `p`, the lists, `blockquote`, `pre`, `hr` — cannot match
+   the title because it is an `h1` and none of them is. The INLINE ones —
+   `:not(pre) > code` and `a` — are descendant selectors, so the title's tag
+   name is beside the point; what keeps them out is that the title stores no
+   marks (`marks: ''`), and both of those elements only ever appear as one.
+
+   Which is exactly why `marks: ''` does not settle the question for every
+   inline selector — marks are what the document may store, and a decoration
+   is a span the view wraps at render time, which no schema constraint
+   governs. The collaboration band below is
    one: y-tiptap adds it with `Decoration.inline(from, to, …)` over the remote
    selection's range whatever node that range falls in, so selecting the title
    puts a `.collaboration-carets__selection` inside it and the band rule finds
@@ -509,9 +515,11 @@ body {
    bare, `:not(.doc-title)` scores as a class and lifts the heading rules to
    (0,3,1) — above the list-item reset below, which then loses on a heading
    inside a list item while winning on its six siblings. (Not above everything
-   here: the quote's two pairs and the band override score higher still.) That
-   weight was never the point: the exclusion is here to miss the title, not to
-   outrank anything, and `:where()` says exactly that.
+   here: the quote's two `:nth-child(of …)` rules are (0,4,1). The band
+   override is (0,3,0) and would LOSE to a bare `:not()`, which is the other
+   half of why leaving it bare is a bad idea.) That weight was never the
+   point: the exclusion is here to miss the title, not to outrank anything,
+   and `:where()` says exactly that.
 
    Sizes derive from `--font-size-base` the way the title does, and the
    coefficients are fractions rather than decimals because 15 × 1.333 is
@@ -527,6 +535,22 @@ body {
    horizontal overflow, with and without an `overflow-wrap` of our own. */
 .doc-body-editor .ProseMirror {
   line-height: 1.65;
+
+  /* The two below are layout rather than typography, and they used to sit in
+     their own block 300 lines further down. One selector, one place: with two
+     blocks, anyone adding a property to this element finds whichever they
+     happen to open, and a property written in both would be settled by source
+     order — which this file elsewhere calls out as a silent thing to depend
+     on. */
+  flex: 1 0 auto;
+
+  /* The document's top and bottom breathing room, on the editable element
+     itself rather than on the scroll viewport around it. On the viewport it
+     sat OUTSIDE the editor, so the bottom strip of it answered no clicks —
+     `document-click-to-write` listens on this element, and a press in that
+     strip reports the viewport as its target. Here the same 16px is interior,
+     and the editable surface reaches the scroller's own edge. */
+  padding-block: 1rem;
 }
 
 /* A remote collaborator's selection band is painted on an inline element, whose
@@ -553,12 +577,20 @@ body {
    rounds differently (1.267em at 15px on Chrome 128).
 
    SO ONE FIGURE CANNOT BE RIGHT EVERYWHERE THIS RULE LANDS, and it lands on
-   every text in the body, not only the paragraphs. Measured on the machine
-   this was written on: 0.156px of stripe left in a paragraph and inside a
-   quote, 0.85px in a code block (13.5px monospace on a 1.6 line), 1.06px in a
-   heading (24px on 1.3). A different build can round any of them into a
-   fraction of a pixel of OVERLAP instead. All of them beat the 3.87px this
-   replaces in the paragraph case, and none of them is correct.
+   every text in the body, not only the paragraphs. Measured in the browser,
+   as the line box minus what the band actually paints:
+
+     paragraph, and inside a quote  15px / 1.65   0.156px of stripe
+     code block                     13.5px / 1.6  0.85px of stripe
+     document title                 30px / 1.25   0.313px of stripe
+     body h1                        24px / 1.3    0.441px of OVERLAP
+
+   The last row is the one that matters most: at 24px the rendered content box
+   is 1.229em, wider than the 1.21em guessed here, so the band paints PAST the
+   line box rather than short of it — which is the overlap the shared rule's
+   own comment warns about, where two bands on adjacent lines stack into a
+   darker strip. Nothing here is correct; the paragraph case, which is most of
+   the body, is merely 25x better than the 3.87px it replaces.
 
    The correct shape is the one CodeMirror's `drawSelection` uses: measure the
    selection's client rects and paint positioned rectangles, which needs no
@@ -735,9 +767,11 @@ body {
    widget, which is a guess about position, and a wrong one as soon as there
    are two. Two is ordinary in a shared document: y-tiptap gives every remote
    client its own caret widget, so a collaborator resting in the same gap adds
-   a second. Verified in the browser and in jsdom against zero, one and two
-   widgets, and with one BETWEEN two blocks (where the block after it is
-   correctly not matched — it is not the first).
+   a second. Verified in the BROWSER against zero, one and two widgets, and
+   with one BETWEEN two blocks (where the block after it is correctly not
+   matched — it is not the first). Not in jsdom, which cannot answer this:
+   `document-quote-contains-its-blocks` records what its selector engine does
+   with `:nth-child(N of S)` and why the unit tests hold the shape instead.
 
    `.ProseMirror-widget` is prosemirror-view's class for the widgets it builds
    the DOM for; one declared `spec.raw` brings its own element and gets no
@@ -781,11 +815,25 @@ body {
   border-top: 1px solid var(--color-border);
 }
 
-/* The product has no coloured link: `notification-headline` styles its links
-   with `text-foreground` and reveals the underline on hover. A link sitting
-   inside a paragraph has no such affordance, so the underline stays on. */
+/* A LINK HAS TO BE TELLABLE FROM THE WORDS AROUND IT, and here an underline
+   alone cannot do that: the body offers an underline mark of its own, so
+   `Cmd+U` on a word and a link render identically — measured, the two differ
+   only in `text-underline-offset` (2px against auto). Paste a URL over an
+   already-underlined word and nothing on screen changes at all.
+
+   `color: inherit` came from `notification-headline`, which does style its
+   links as plain foreground — but it has no underline mark to collide with,
+   and that half of the premise was never checked against the body. Every
+   editor the industry ships colours the link: Primer's is its accent blue and
+   requires an underline as well when the link sits inside a sentence, Notion's
+   is a lighter grey than the text. None leaves it identical to the prose.
+
+   So: colour from a token of its own, and the underline stays — colour is
+   never allowed to be the only signal (WCAG 1.4.1). The token, not the palette
+   entry, because what this rule means is `link`, and `--color-content-link`
+   is where the choice of blue is argued. */
 .doc-body-editor .ProseMirror a {
-  color: inherit;
+  color: var(--color-content-link);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -831,16 +879,8 @@ body {
      definite value to be capped from. */
   width: 100%;
 }
-.doc-body-editor .ProseMirror {
-  flex: 1 0 auto;
-  /* The document's top and bottom breathing room, on the editable element
-     itself rather than on the scroll viewport around it. On the viewport it
-     sat OUTSIDE the editor, so the bottom strip of it answered no clicks —
-     `document-click-to-write` listens on this element, and a press in that
-     strip reports the viewport as its target. Here the same 16px is interior,
-     and the editable surface reaches the scroller's own edge. */
-  padding-block: 1rem;
-}
+/* `flex` and `padding-block` for this element are declared with its typography
+   above, in the one block that carries this selector. */
 
 /* Remote collaborator carets, shared by every collaborative editor — the
    document body and the generate prompt alike (batch-2 item 14,

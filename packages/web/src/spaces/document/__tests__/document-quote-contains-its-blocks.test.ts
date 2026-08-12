@@ -144,11 +144,19 @@ describe('a widget decoration inside a quote', () => {
  * @throws {Error} If no rule in the file zeroes that margin on a quote's child.
  */
 function quoteMarginSelector(property: 'margin-top' | 'margin-bottom'): string {
-  const css = readFileSync(resolve(__dirname, '../../../index.css'), 'utf8');
-  const rule = new RegExp(
-    String.raw`(\.doc-body-editor\s+\.ProseMirror\s+blockquote\s*>[^{}]+?)\{([^}]*)\}`,
-    'g',
+  // Comments first: they discuss selectors at length, and a selector cannot
+  // contain one, so leaving them in only lets a paragraph of prose be read as
+  // part of the rule that follows it.
+  const css = readFileSync(resolve(__dirname, '../../../index.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
   );
+  // Matched on what the rule DOES, not on the scope it is written in. Putting
+  // the scope in the search would make the case below — that the scope is
+  // still there — true by construction: drop `.doc-body-editor` from the
+  // stylesheet and the rule would simply stop being found, which reads as
+  // "no such rule" rather than "the scope is gone".
+  const rule = /([^{}]*blockquote\s*>[^{}]+?)\{([^}]*)\}/g;
   for (const [, selector, body] of css.matchAll(rule)) {
     if (new RegExp(String.raw`${property}\s*:\s*0\s*;`).test(body)) {
       return selector.trim();
@@ -181,6 +189,8 @@ describe('how index.css picks the first and last block in a quote', () => {
     );
   });
 
+  // Without the scope these two would reach the generate panel's prompt editor
+  // and the canvas text node, whose quotes this slice never measured.
   it('scopes both to the document body', () => {
     for (const property of ['margin-top', 'margin-bottom'] as const) {
       expect(quoteMarginSelector(property)).toMatch(
