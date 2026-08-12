@@ -12,12 +12,19 @@
  * collab enforces the concurrency one, and worker enforces the storage one
  * on the generation path. Neither collab nor worker may import server.
  *
- * Unlike the sibling loaders in this directory, **no field has a default**.
- * A quota that silently falls back to a number we invented is worse than a
- * service that refuses to start: the operator would go on believing the
- * value they wrote in the file is the one being enforced. Startup calls
- * {@link getMembershipConfig} once so a malformed file fails the boot rather
- * than the first user who happens to hit a ceiling.
+ * Unlike the sibling loaders in this directory, **no field has a default**. A
+ * quota that silently falls back to a number we invented would leave the
+ * operator believing the value they wrote in the file is the one being
+ * enforced; a loud failure will not.
+ *
+ * Nothing reads this file at boot, so that failure lands on the first caller
+ * that needs it — a registration, or a quota check. What keeps a broken file
+ * out of production is CI: the config test loads this very file and asserts
+ * its contents, and config/ is copied into the image, so a change to it goes
+ * through CI by construction. Warming every lazily loaded config at startup
+ * is worth doing for self-hosted installs, which edit their own copy outside
+ * our CI, but it belongs in one mechanism covering all of them rather than a
+ * block bolted onto this one.
  */
 
 import { readFileSync } from "node:fs";
@@ -103,8 +110,8 @@ let _cached: Readonly<MembershipConfig> | null = null;
 /**
  * Load the membership configuration from YAML.
  *
- * Memoized. Call it once from each service's composition root so a malformed
- * file is a boot failure.
+ * Memoized, and read lazily: the first caller pays for the read and is the
+ * one that sees a parse error. No service entry loads it at boot.
  * @returns Frozen, validated config
  * @throws {z.ZodError} if any tier is missing a field, or a value is negative
  *   or fractional

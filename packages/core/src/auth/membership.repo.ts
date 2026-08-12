@@ -3,7 +3,8 @@
 
 /**
  * Which membership tier governs an account, and which governs a studio — and
- * the two functions callers actually use, which turn that tier into ceilings.
+ * the three functions callers actually use, which turn that tier into
+ * ceilings.
  *
  * A repo rather than a service: the lookups are queries and nothing else, and
  * table access belongs in one.

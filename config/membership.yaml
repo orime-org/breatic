@@ -11,9 +11,11 @@
 # base.team_studios is 0 because that tier genuinely cannot create a team
 # studio, and the same comparison refuses it.
 #
-# No field has a default. Leave one out and the service refuses to start,
-# which is the point: a quota quietly falling back to a number we invented
-# would leave you believing the file you wrote is what is being enforced.
+# No field has a default. Leave one out and the first request that needs a
+# quota fails loudly — this file is read on first use, not at startup, so the
+# service will start either way. What must not happen is a quota quietly
+# falling back to a number we invented, which would leave you believing the
+# file you wrote is what is being enforced.
 
 # Which tier a newly registered account lands in.
 #

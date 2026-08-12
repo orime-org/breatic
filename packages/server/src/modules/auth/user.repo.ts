@@ -121,8 +121,9 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
  * @param data.hashedPassword - Optional bcrypt password hash (absent for OAuth-only sign-ups)
  * @param data.googleId - Optional linked Google account identifier
  * @returns The created UserEntity
- * @throws {z.ZodError} if `config/membership.yaml` is malformed — in practice
- *   unreachable, since every service entry loads it at boot
+ * @throws {z.ZodError} if `config/membership.yaml` is malformed — the file is
+ *   read on first use and on a fresh server this is often that first use, so
+ *   a broken file surfaces here, as a failed registration
  */
 export async function createUser(data: {
   email: string;
