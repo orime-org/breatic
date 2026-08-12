@@ -17,7 +17,10 @@ import type {
   VideoSlot,
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
-import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
+import {
+  VIDEO_MODE_OPTIONS,
+  modeTakesReferences,
+} from '@web/spaces/canvas/generate/video-mode-options';
 import {
   VideoParamsPicker,
   type VideoParamsValue,
@@ -150,17 +153,15 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        // Not dimmed, and that is NOT the same as "these count": no mode this
-        // panel offers feeds a reference IMAGE to the model — text-to-video
-        // takes nothing, and image-to-video and first-last frame take their
-        // pictures from the slots. An image `@` chip therefore contributes nothing
-        // today (a non-text chip serializes to an empty string). Dimming is
-        // how the image panel says that, but here it would also disable the
-        // row's ✕ — `inert` gates removal too — leaving a reference the rail
-        // cannot take back. Which of the two costs to pay is a product call
-        // and belongs with the slice that gives video references a job
-        // (reference-to-video, #1896); tracked as #1903.
-        imageRefsDisabled={false}
+        // Dimmed under every mode but reference-to-video, which is the only
+        // one that feeds a reference IMAGE to the model — text-to-video takes
+        // no picture at all and the other three take theirs from slots, so an
+        // image `@` chip would contribute nothing to any of them (#1903,
+        // landed with #1927). Dimming also disables
+        // the row's ✕, and that is deliberate rather than a side effect:
+        // references are shared across modes, so a ✕ pressed here would throw
+        // away an image the user is coming back for (decision 2026-08-11).
+        imageRefsDisabled={!modeTakesReferences(mode)}
       />
 
       {promptSlot}

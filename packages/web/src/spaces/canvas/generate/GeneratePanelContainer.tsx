@@ -37,6 +37,7 @@ import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
+import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -571,15 +572,12 @@ function GeneratePanelBody({
     // BEFORE the submitting latch (button stays clickable, actionable message).
     // The server re-checks before enqueue — otherwise the worker silently
     // truncates the extras (design decision A: toast, not a node error state).
-    if (
-      typeof fresh.maxReferences === 'number' &&
-      fresh.referenceUrls.length > fresh.maxReferences
-    ) {
-      toast.error(
-        t('canvas.generatePanel.errorTooManyReferences', {
-          limit: fresh.maxReferences,
-        }),
-      );
+    const overCap = referenceCapExceeded(
+      fresh.referenceUrls.length,
+      fresh.maxReferences,
+    );
+    if (overCap) {
+      toast.error(t('canvas.generatePanel.errorTooManyReferences', overCap));
       return;
     }
     submittingRef.current = true;
