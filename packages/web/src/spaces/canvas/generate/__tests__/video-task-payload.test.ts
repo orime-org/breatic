@@ -89,6 +89,39 @@ describe('buildVideoTaskPayload', () => {
     expect(out.params).not.toHaveProperty('end_image');
   });
 
+  it('sends the talking head its character image and its audio (#1935)', () => {
+    // Upstream takes exactly two things and both are required: the portrait
+    // to animate and the track its lips follow (checked against WaveSpeed's
+    // API and model pages, 2026-08-12). The server gate asks for both too
+    // (source-requirement maps `talking_head` to `["image", "audio"]`).
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'talking_head',
+      slotUrls: {
+        characterImage: 'https://cdn/portrait.png',
+        drivingAudio: 'https://cdn/speech.mp3',
+      },
+    });
+    expect(out.params).toMatchObject({
+      image: 'https://cdn/portrait.png',
+      audio: 'https://cdn/speech.mp3',
+    });
+    // The driving VIDEO is another mode's slot; a pick survives a mode switch,
+    // so a node arriving here can still hold one.
+    expect(out.params).not.toHaveProperty('video');
+  });
+
+  it('carries the talking head no audio when none was picked', () => {
+    // The refusal for a missing slot is the execute gate's job; the payload
+    // must not invent a key, or the server gate would see a complete request.
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'talking_head',
+      slotUrls: { characterImage: 'https://cdn/portrait.png' },
+    });
+    expect(out.params).not.toHaveProperty('audio');
+  });
+
   it('does not let a first frame picked elsewhere stand in as the character', () => {
     // A pick survives a mode switch, so a node arriving in image animation
     // can still be holding the first frame it was given in image-to-video.

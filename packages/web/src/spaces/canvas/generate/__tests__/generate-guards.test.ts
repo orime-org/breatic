@@ -11,6 +11,7 @@ const ok = {
   model: 'midjourney-v7',
   nodeStatus: 'idle' as string | undefined,
   isSubmitting: false,
+  promptRequired: true,
 };
 
 describe('canExecuteGenerate — every execute precondition must hold', () => {
@@ -25,6 +26,30 @@ describe('canExecuteGenerate — every execute precondition must hold', () => {
   it('is false for an empty or whitespace-only prompt', () => {
     expect(canExecuteGenerate({ ...ok, promptText: '' })).toBe(false);
     expect(canExecuteGenerate({ ...ok, promptText: '  \n\t ' })).toBe(false);
+  });
+
+  it('lets an empty prompt through when the caller says none is required (#1935)', () => {
+    // The talking-head model declares no `prompt` param at all, so demanding
+    // one would be a requirement we invented: the caller asks the selected
+    // model, and passes the answer here. Whitespace-only counts as empty on
+    // both sides of the switch, so the two paths differ in exactly one thing.
+    expect(
+      canExecuteGenerate({ ...ok, promptText: '', promptRequired: false }),
+    ).toBe(true);
+    expect(
+      canExecuteGenerate({ ...ok, promptText: ' \n\t ', promptRequired: false }),
+    ).toBe(true);
+  });
+
+  it('still weighs every other precondition when no prompt is required', () => {
+    // Dropping the prompt requirement must not become a way past the model,
+    // the node's existence, or the in-flight latch.
+    const noPrompt = { ...ok, promptText: '', promptRequired: false };
+    expect(canExecuteGenerate({ ...noPrompt, model: '' })).toBe(false);
+    expect(canExecuteGenerate({ ...noPrompt, nodeStatus: undefined })).toBe(
+      false,
+    );
+    expect(canExecuteGenerate({ ...noPrompt, isSubmitting: true })).toBe(false);
   });
 
   it('is false when no model is selected (empty catalog fallback)', () => {
