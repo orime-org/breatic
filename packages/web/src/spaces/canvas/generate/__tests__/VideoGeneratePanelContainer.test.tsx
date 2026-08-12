@@ -73,6 +73,11 @@ const T2V: ModelEntry = {
   cost_per_call: 88,
   generation_time: 120,
   params: {
+    // Declared because every real video model declares it (kling, seedance,
+    // veo and wan all do) — and since #1935 the panel reads this key to decide
+    // whether to demand a prompt. A fixture without it would put these cases
+    // in a state the catalog never ships.
+    prompt: { description: '', default: null },
     aspect_ratio: { description: '', values: ['16:9'], default: '16:9' },
     duration: { description: '', values: [4, 8], default: 8 },
   },
@@ -129,18 +134,34 @@ const REF: ModelEntry = {
 };
 
 /**
+ * A talking-head model (#1935), shaped like `omnihuman-1.5`: it takes a
+ * portrait and an audio track and declares NOTHING else — no prompt, and none
+ * of the four params the toolbar's pill edits. Both absences are load-bearing
+ * here, so the fixture states them by leaving `params` empty rather than
+ * spreading `T2V.params`.
+ */
+const TALKING_HEAD: ModelEntry = {
+  ...T2V,
+  name: 'omnihuman-1.5',
+  display_name: 'OmniHuman 1.5',
+  mode: 'talking_head',
+  sourcesByMode: { talking_head: ['image', 'audio'] },
+  params: {},
+};
+
+/**
  * A catalog carrying both buckets.
  * @returns The catalog payload `modelsApi.list()` resolves to.
  */
 function catalog(): ModelCatalog {
   return {
     image: [T2I],
-    video: [T2V, T2V_LITE, I2V, REF],
+    video: [T2V, T2V_LITE, I2V, REF, TALKING_HEAD],
     audio: [],
     tts: [],
     three_d: [],
     understand: [],
-    total: 5,
+    total: 6,
   };
 }
 
@@ -1287,6 +1308,67 @@ describe('VideoGeneratePanelContainer', () => {
       expect(insert.classList.contains('opacity-50')).toBe(false);
       expect(insert).not.toBeDisabled();
       expect(screen.getByTestId('generate-ref-remove-r-a')).not.toBeDisabled();
+    });
+
+    it('offers the talking head a character image and an audio slot (#1935)', async () => {
+      // Acceptance 1. The character image is the slot image animation already
+      // collects; the audio slot is this slice's only new one.
+      await openInMode('talking_head', 'omnihuman-1.5');
+      expect(
+        screen.getByTestId('generate-video-tool-character-image'),
+      ).toBeVisible();
+      expect(
+        screen.getByTestId('generate-video-tool-driving-audio'),
+      ).toBeVisible();
+      // And nothing from the modes next to it.
+      expect(
+        screen.queryByTestId('generate-video-tool-driving-video'),
+      ).toBeNull();
+      expect(screen.queryByTestId('generate-video-tool-first-frame')).toBeNull();
+    });
+
+    it('lets the talking head execute with no prompt written (#1935)', async () => {
+      // Acceptance 6. This model declares no `prompt` param at all, so asking
+      // for one would be a demand nothing upstream can honour. Seeded without
+      // a prompt fragment, so the editor's text really is empty.
+      await openInMode('talking_head', 'omnihuman-1.5');
+      await waitFor(() =>
+        expect(screen.getByTestId('generate-video-execute')).not.toBeDisabled(),
+      );
+    });
+
+    it('still demands a prompt from the modes whose model takes one', async () => {
+      // Acceptance 7, the other side of the same switch: dropping the demand
+      // must not leak into the five modes that keep it.
+      await openInMode('t2v', 'veo-3.1');
+      const editor = screen.getByTestId('generate-prompt-editor');
+      const surface = editor.querySelector('.ProseMirror');
+      act(() => {
+        if (surface) surface.innerHTML = '<p></p>';
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId('generate-video-execute')).toBeDisabled(),
+      );
+    });
+
+    it('shows no params pill for a model with nothing to edit (#1935)', async () => {
+      // Acceptance 12. Each group inside the pill already vanishes when its
+      // model declares no options; the pill itself did not, so this model —
+      // which declares none of the four it edits — got an empty label opening
+      // onto an empty popover.
+      await openInMode('talking_head', 'omnihuman-1.5');
+      // Wait for the row the pill belongs to, or "not there" would also be
+      // true of a panel that has not drawn its toolbar yet.
+      await screen.findByTestId('generate-video-mode-trigger');
+      expect(screen.queryByTestId('generate-video-params-trigger')).toBeNull();
+    });
+
+    it('keeps the params pill for the models that have something in it', async () => {
+      await openInMode('t2v', 'veo-3.1');
+      await screen.findByTestId('generate-video-mode-trigger');
+      expect(
+        await screen.findByTestId('generate-video-params-trigger'),
+      ).toBeVisible();
     });
     /**
      * Opens the panel on a node already stored in one mode. The container reads

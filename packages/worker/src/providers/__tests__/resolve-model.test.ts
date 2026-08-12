@@ -91,4 +91,21 @@ describe("validateParams (#1672 behavior pins)", () => {
     });
     expect(cleaned.aspect_ratio).toBe("1:1");
   });
+
+  it("drops a prompt sent to the talking-head model, which declares none (#1935)", () => {
+    // The panel stops DEMANDING a prompt in this mode; it does not stop
+    // sending the field, and it should not have to. This is where a prompt
+    // typed here actually dies -- one layer above the transport, in the same
+    // pass that drops any param a model never declared. Pinned so nobody
+    // later reads "the request carries no prompt" as something the panel does.
+    const [name, cleaned] = validateParams("video", "omnihuman-1.5", {
+      image: "https://cdn/portrait.png",
+      audio: "https://cdn/speech.mp3",
+      prompt: "a drone shot over a canyon",
+    });
+    expect(name).toBe("omnihuman-1.5");
+    expect(cleaned.image).toBe("https://cdn/portrait.png");
+    expect(cleaned.audio).toBe("https://cdn/speech.mp3");
+    expect("prompt" in cleaned).toBe(false);
+  });
 });
