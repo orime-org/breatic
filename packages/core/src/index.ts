@@ -129,6 +129,10 @@ export type {
   ActivityCursor,
 } from "@core/activity/project-activities.repo.js";
 export * as projectAuthService from "@core/auth/projectAuth.service.js";
+export {
+  getUserMembershipTier,
+  getStudioMembershipTier,
+} from "@core/auth/membership.service.js";
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
