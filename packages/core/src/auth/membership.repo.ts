@@ -210,7 +210,6 @@ export async function getLimitsForUser(
 
 /**
  * The ceilings that apply to a studio: its current admin's tier's.
- *
  * @param studioId - The studio whose ceilings to resolve
  * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
  * @returns That tier's six ceilings
