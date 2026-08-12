@@ -146,9 +146,25 @@ export function useChatSession(projectId: string): ChatSession {
    */
   const [justFailed, setJustFailed] = React.useState<string | null>(null);
 
+  // While a turn is being written, this cache is the only place it exists:
+  // its two messages were put here by hand, and every piece of the reply is
+  // appended to one of them. The server has no record of any of it until the
+  // turn ends. A refetch mid-reply therefore replaces the whole list with one
+  // that does not contain this turn — taking it off the screen while it is
+  // still arriving, after which every remaining piece is written to a message
+  // that is no longer there and the reply never appears again.
+  //
+  // Both triggers are named rather than relying on the client-wide defaults,
+  // because what makes this unsafe is the turn, not the configuration
+  // somewhere else. `refetchOnMount` is left alone: a hook that is only just
+  // mounting has no turn of its own to lose.
+  const noTurnInFlight = React.useCallback((): boolean => inFlight.current === null, []);
+
   const query = useQuery<CachedChat>({
     queryKey: chatKey(projectId),
     queryFn: () => chatApi.openChat(projectId),
+    refetchOnReconnect: noTurnInFlight,
+    refetchOnWindowFocus: noTurnInFlight,
   });
 
   const conversationId = query.data?.current.conversation.id;

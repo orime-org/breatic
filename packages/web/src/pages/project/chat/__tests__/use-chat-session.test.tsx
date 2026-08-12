@@ -14,7 +14,7 @@
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SSE_EVENT_NAMES } from '@breatic/shared';
 import type { SSEEventEnvelope } from '@breatic/shared';
 
@@ -396,6 +396,43 @@ describe('when the conversation it was writing to is gone', () => {
     // composer takes the same words back as a draft, so the one sentence is
     // on screen twice: sent and unsent at once.
     expect(cachedMessages(client)).toHaveLength(0);
+  });
+});
+
+describe('when the network comes back mid-reply', () => {
+  it('does not let a background refetch swallow the turn being written', async () => {
+    openChatAnswers([]);
+    const { result, client } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await act(async () => {
+      void result.current.send('hi');
+    });
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'Half a' } });
+    });
+
+    // Losing the network and getting it back is the ordinary case here — a
+    // laptop lid, a train, switching to a hotspot. The server has no record
+    // of this turn yet, so a list fetched from it does not contain either of
+    // these two messages; writing it over the cache mid-reply takes the
+    // turn off the screen while it is still being written, and every
+    // remaining piece of the reply then lands on a message that is gone.
+    await act(async () => {
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: ' sentence' } });
+    });
+
+    await waitFor(() => expect(result.current.messages.at(-1)?.content).toBe('Half a sentence'));
+    expect(result.current.messages).toHaveLength(2);
+    // The chat was opened once, when the panel mounted, and not again — the
+    // reconnect did not start a fetch at all.
+    expect(vi.mocked(chatApi.openChat)).toHaveBeenCalledTimes(1);
+    expect(cachedMessages(client)).toHaveLength(2);
   });
 });
 
