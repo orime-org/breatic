@@ -154,9 +154,10 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
         // Dimmed under every mode but reference-to-video, which is the only
-        // one that feeds a reference IMAGE to the model — the others take
-        // their pictures from slots, so an image `@` chip would contribute
-        // nothing to them (#1903, landed with #1927). Dimming also disables
+        // one that feeds a reference IMAGE to the model — text-to-video takes
+        // no picture at all and the other three take theirs from slots, so an
+        // image `@` chip would contribute nothing to any of them (#1903,
+        // landed with #1927). Dimming also disables
         // the row's ✕, and that is deliberate rather than a side effect:
         // references are shared across modes, so a ✕ pressed here would throw
         // away an image the user is coming back for (decision 2026-08-11).

@@ -244,11 +244,11 @@ function VideoGeneratePanelBody({
         atMentionedSourceIds,
         // Empty on purpose. What a text reference SAYS never travels through
         // here: the prompt string is serialized by the editor from its own
-        // reference pool, and this call site reads only the model, the params,
-        // the node status, the slots and the reference URLs. Filling it in
-        // would read every text body on the board on every click for a field
-        // nobody downstream looks at. Stated rather than omitted — the
-        // parameter is required so that leaving it out cannot be an oversight.
+        // reference pool, and nothing this call site's readers touch is
+        // derived from a text body. Filling it in would read every text body
+        // on the board on every click for a field nobody downstream looks at.
+        // Stated rather than omitted — the parameter is required so that
+        // leaving it out cannot be an oversight.
         textById: EMPTY_TEXT,
       });
     },
@@ -609,10 +609,12 @@ function VideoGeneratePanelBody({
   // put it in `useEditor`'s dependency list (PromptEditor bakes it into the
   // extensions at creation), and @tiptap/react rebuilds the whole editor when
   // a dep changes — taking the prompt's undo history with it. The gap it was
-  // written to close is real but lives elsewhere: typing `@` in a mode that
-  // cannot use image references opens nothing at all, because the popup hides
-  // itself at zero matches rather than showing the empty-state label it is
-  // handed (#1901). That is what has to explain itself, not this sentence.
+  // written to close is real but lives elsewhere: with only IMAGE references
+  // connected, typing `@` in a mode that cannot use them opens nothing at
+  // all — the popup hides itself at zero matches rather than showing the
+  // empty-state label it is handed (#1901). A connected text reference still
+  // opens it; the picker drops image rows only. That silence is what has to
+  // explain itself, not this sentence.
   const promptPlaceholder = t('canvas.generatePanel.videoPromptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.videoMentionEmpty');
   // A node made before video generation existed carries no prompt container,

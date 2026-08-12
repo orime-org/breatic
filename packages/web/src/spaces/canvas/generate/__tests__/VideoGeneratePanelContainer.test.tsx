@@ -820,9 +820,9 @@ describe('VideoGeneratePanelContainer', () => {
 
     it('“add reference” toggles the canvas pick on this node', async () => {
       // Mounted in `ref` because this suite's other reference cases are, not
-      // because the tool is mode-gated — it is not, and must not be: one
-      // button starts text, audio and video picks too, and those work in
-      // every mode. The case below holds that.
+      // because the tool is mode-gated — it is not, and must not be: this one
+      // button starts every kind of reference pick, and a TEXT reference
+      // works in every mode. The case below holds that.
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
       const stored = { mode: 'ref', model: 'kling-o3-pro-ref' };
       seedVideoNode(stored);
@@ -1228,11 +1228,14 @@ describe('VideoGeneratePanelContainer', () => {
     });
 
     it('keeps offering to add a reference in every mode', async () => {
-      // A video node takes text, audio and video references too, and those
-      // work in all five modes — the rail keeps their rows live and the @
-      // popup keeps offering them. Gating this one button on "does this mode
-      // use reference IMAGES" took away the only in-panel way to add any of
-      // them, which is why that gate was withdrawn.
+      // A video node also takes TEXT references, and a text reference works
+      // in every mode — the rail keeps its row live and the @ popup keeps
+      // offering it. This one button starts every kind of reference pick, so
+      // gating it on "does this mode use reference IMAGES" took away the only
+      // in-panel way to add one, which is why that gate was withdrawn.
+      // (Audio and video rows are a separate matter: both halves ask
+      // `canConnect(kind, 'image')`, which is false for them, so those rows
+      // are inert in every mode including this one — tracked as #1930.)
       await openInMode('t2v', 'veo-3.1');
       expect(
         screen.getByTestId('generate-video-tool-reference'),

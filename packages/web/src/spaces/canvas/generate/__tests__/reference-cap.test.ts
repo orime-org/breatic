@@ -58,9 +58,10 @@ describe('positiveCap', () => {
  *
  * What it hands back is the message's VALUES, not its key: the key stays
  * spelled out at each call site, because the check that every id reaches a
- * real message in all five catalogs only sees ids written inside a `t("…")`
- * call. Measured — returning the key from here left that check green after
- * the message was deleted from a catalog.
+ * real message only sees ids written inside a `t("…")` call. Measured —
+ * returning the key from here left that check green after the message was
+ * deleted from the catalog it resolves against (`locales/en.json`, the
+ * source; the other four are held level by a check of their own).
  */
 describe('referenceCapExceeded', () => {
   it('says nothing while the count is within the cap', () => {

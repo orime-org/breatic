@@ -99,10 +99,11 @@ export function slotsForMode(mode: string): readonly VideoSlot[] {
 /**
  * Whether a mode's sources are the `@`-mentioned reference images (#1927).
  *
- * One statement, three readers: the payload puts the picked URLs in `images`
- * only for a mode that says yes, the execute gate checks how many were picked
- * only for that mode, and the rail dims its image rows for every mode that
- * says no. Deriving it from the mode list rather than from a model's declared
+ * One statement, four readers: the payload puts the picked URLs in `images`
+ * only for a mode that says yes, the view model only collects them for such a
+ * mode, the execute gate checks how many were picked only for that mode, and
+ * both places that SHOW references — the rail's image rows, and the prompt
+ * editor's chips plus its `@` picker — dim for every mode that says no. Deriving it from the mode list rather than from a model's declared
  * params is what keeps the four slot-collecting modes untouched — they take
  * their sources through controls, whatever their model happens to declare.
  * @param mode - The active mode.
