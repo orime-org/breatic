@@ -3,11 +3,12 @@
 
 import * as React from 'react';
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   MemoryRouter,
   useLocation,
+  useNavigate,
   useNavigationType,
 } from 'react-router-dom';
 
@@ -47,14 +48,17 @@ function setup(
  */
 function setupWithLocation(studioType: StudioType): {
   location: () => { pathname: string; entryKey: string };
+  goBack: () => void;
 } {
   let read: () => { pathname: string; entryKey: string } = () => ({
     pathname: '',
     entryKey: '',
   });
+  let back: () => void = () => {};
   function Probe(): React.JSX.Element {
     const loc = useLocation();
     const nav = useNavigationType();
+    const navigate = useNavigate();
     read = () => ({
       pathname: loc.pathname,
       // NOT `window.history.length`: MemoryRouter keeps its stack in memory and
@@ -63,6 +67,9 @@ function setupWithLocation(studioType: StudioType): {
       // the router pushes, so it does move when a navigation occurs.
       entryKey: loc.key,
     });
+    // One step back through the router's own stack — the test's stand-in for
+    // the browser's Back button, which is where "once" is actually felt.
+    back = () => navigate(-1);
     // `nav` is read so the probe re-renders on every navigation.
     return <span data-testid='nav-type'>{nav}</span>;
   }
@@ -76,7 +83,7 @@ function setupWithLocation(studioType: StudioType): {
       <Probe />
     </MemoryRouter>,
   );
-  return { location: () => read() };
+  return { location: () => read(), goBack: () => act(() => back()) };
 }
 
 // Each of these sections is a place with its own address — you can link to it,
@@ -183,17 +190,34 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
     expect(location().entryKey).toBe(keyBefore);
   });
 
-  it('navigates on Enter, once', async () => {
+  it('navigates on Enter, once — one press in, one Back out', async () => {
     // The other half of the same fact: focus moves without going anywhere, and
     // going somewhere takes a deliberate press. Together they are what a
     // tablist could not give.
+    //
+    // "Once" is the load-bearing word, and what it promises the reader is that
+    // one press in costs one Back out. Asserting the destination alone says
+    // nothing about that: the address is right whether the press left the
+    // previous page reachable or replaced it, and the reader only finds out
+    // when Back does not take them home. Pressing Back is the only way to ask.
+    //
+    // Not counted, pressed. Counting entries would need a number the router
+    // does not expose — `window.history.length` is inert under MemoryRouter —
+    // and it would also be measuring the wrong thing: a second push of the SAME
+    // address is not even possible here, because a `<Link>` whose target equals
+    // the current location replaces rather than pushes (verified against the
+    // installed react-router). What a reader can actually be robbed of is the
+    // page they came from.
     const user = userEvent.setup();
-    const { location } = setupWithLocation('team');
+    const { location, goBack } = setupWithLocation('team');
     screen.getAllByRole('link')[1]?.focus();
 
     await user.keyboard('{Enter}');
-
     expect(location().pathname).toBe('/studio/acme-studio/collections');
+
+    goBack();
+
+    expect(location().pathname).toBe('/studio/acme-studio');
   });
 
   it('renders all 6 sections for a team studio, in spec order', () => {

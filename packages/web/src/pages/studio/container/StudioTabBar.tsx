@@ -15,7 +15,13 @@ import {
 import type { StudioType } from '@web/pages/studio/shared/studio-types';
 
 interface StudioTabBarProps {
-  /** Decides whether the team-only Members tab shows (spec §2.2). */
+  /**
+   * Which sections are on offer. It decides nothing today: no section is
+   * marked team-only, so both kinds of studio get all six — a personal
+   * studio's Members section is read-only rather than absent (decision A,
+   * 2026-06-08). The filter behind it is kept for a future section that is
+   * genuinely team-only.
+   */
   studioType: StudioType;
   /**
    * Per-tab item counts shown as a muted chip after the label (locked mock:
@@ -34,8 +40,8 @@ const LINK_BASE =
   'inline-flex items-center gap-1.5 -mb-px border-b border-transparent px-3 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 /**
- * The studio container's section strip (spec §2.2) — six sections for a team
- * studio, each a link to its own address.
+ * The studio container's section strip (spec §2.2) — six sections, the same
+ * six for either kind of studio, each a link to its own address.
  *
  * LINKS, NOT A TABLIST, and the difference is not cosmetic. The ARIA tabs
  * widget moves focus with the arrow keys and activates whatever focus lands
