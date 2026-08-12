@@ -516,12 +516,12 @@ body {
    The exclusion is wrapped in `:where()` so that it costs nothing. Written
    bare, `:not(.doc-title)` scores as a class and lifts the heading rules to
    (0,3,1) — above the list-item reset below, which then loses on a heading
-   inside a list item while winning on its six siblings. (Not above everything
-   here: the quote's two `:nth-child(of …)` rules are (0,4,1). The band
-   override is (0,3,0) and would LOSE to a bare `:not()`, which is the other
-   half of why leaving it bare is a bad idea.) That weight was never the
-   point: the exclusion is here to miss the title, not to outrank anything,
-   and `:where()` says exactly that.
+   inside a list item while winning on its six siblings. That is the only rule
+   here it would take anything from; the quote's two `:nth-child(of …)` rules
+   are higher at (0,4,1), and the band override never meets these at all (it
+   lands on an inline span and sets a padding, sharing neither element nor
+   property). The weight was never the point: the exclusion is here to miss
+   the title, not to outrank anything, and `:where()` says exactly that.
 
    Sizes derive from `--font-size-base` the way the title does, and the
    coefficients are fractions rather than decimals because 15 × 1.333 is
@@ -717,10 +717,11 @@ body {
 
 /* An item holding more than one block still needs them apart. `em` here is the
    BLOCK'S own size, as everywhere else in this file — a paragraph's 0.85em and
-   a heading's 1.9em are read the same way — so the gap tracks whatever the
-   block is set in rather than landing on one figure: measured 4.5px under a
-   paragraph, a quote, a nested list or a divider, 6px under a heading (20px
-   text) and 4.05px under a code block (13.5px text). Reachable by pasting an
+   a heading's 1.9em are read the same way. It is a `margin-top`, so the block
+   BELOW the gap is the one whose size sets it, and the gap tracks that rather
+   than landing on one figure: measured 4.5px above a paragraph, a quote, a
+   nested list or a divider, 6px above a heading (20px text) and 4.05px above
+   a code block (13.5px text). Reachable by pasting an
    item that holds two paragraphs, or a paragraph and a quote. */
 .doc-body-editor .ProseMirror :is(ul, ol) > li > * + * {
   margin-top: 0.3em;

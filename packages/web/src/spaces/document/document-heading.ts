@@ -5,8 +5,8 @@
  * The body's headings, capped at three levels.
  *
  * StarterKit's Heading ships with all six, each with an input rule and a
- * `Mod-Alt-N` shortcut, so a fourth level is reachable today by typing
- * `#### `. The body has no room for one: `h3` is already 17px against a 15px
+ * `Mod-Alt-N` shortcut, so on stock StarterKit a fourth level would be one
+ * `#### ` away. The body has no room for one: `h3` is already 17px against a 15px
  * paragraph, and a fourth would have to fit in the two pixels left. Notion and
  * Feishu both stop at three for the same reason.
  *

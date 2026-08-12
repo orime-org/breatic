@@ -12,14 +12,16 @@
  * stylesheet, and this file pins both:
  *
  * - a gap cursor beside a divider opening a quote really does put a
- *   `.ProseMirror-widget` in the first child slot, and a second caret really
- *   can join it — `@tiptap/y-tiptap` gives every remote client its own widget
- *   at its own head position, so a collaborator resting in the same gap adds
- *   one. Selecting the block by counting non-widgets holds for both;
- *   `.ProseMirror-widget:first-child + *`, which this replaced, held only for
- *   the first.
+ *   `.ProseMirror-widget` in the first child slot, at either end;
  * - the schema this body ships can put a divider first inside a quote at all,
  *   which is what makes the gap cursor reachable.
+ *
+ * WHY THE RULES COUNT NON-WIDGETS rather than reach past one is a third fact,
+ * and NOT one this file holds: a second caret can join the first, since
+ * `@tiptap/y-tiptap` gives every remote client its own widget at its own head.
+ * Producing one takes a caret provider this file never mounts, so two widgets
+ * were verified in the browser instead, and the measurement is recorded with
+ * the rules in `index.css`.
  *
  * Geometry is not asserted here — jsdom lays nothing out. What the stylesheet
  * does with these elements was measured in a browser and is recorded with the
@@ -128,7 +130,6 @@ describe('a widget decoration inside a quote', () => {
     expect(last?.tagName).toBe('DIV');
     expect(last?.classList.contains('ProseMirror-widget')).toBe(true);
   });
-
 });
 
 /**
