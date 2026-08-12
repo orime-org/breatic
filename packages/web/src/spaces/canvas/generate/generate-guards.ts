@@ -26,9 +26,11 @@ export interface ExecuteGateInput {
    * requirement we invented for a model with nothing to do with the answer.
    *
    * Whether one is SENT is a separate question this gate does not decide: the
-   * prompt travels as its own argument all the way to the request body, so a
-   * model with no prompt field still receives whatever was typed (the
-   * talking-head endpoint accepts and ignores it — verified 2026-08-12).
+   * prompt travels as its own argument rather than as a param, so any
+   * non-empty text reaches the request body even for a model with no prompt
+   * field (an empty one does not — the transport writes the field only when
+   * there is something in it). The talking-head endpoint accepts the extra
+   * field and ignores it — verified against it on 2026-08-12.
    *
    * Callers pass it rather than the gate deriving it: this module is given
    * everything it weighs, and it has no catalog to consult.

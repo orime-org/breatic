@@ -423,9 +423,11 @@ export interface CanvasNodeFields {
      */
     endFrameUrl?: string;
     /**
-     * Character image URL for the image-animation mode (#1918, wire
-     * `data.characterImageUrl`) — a pick-time COPY on the same terms as
-     * `firstFrameUrl`, sent as `params.image` at execute time.
+     * Character image URL for the modes that animate a person — image
+     * animation (#1918) and the talking head (#1935) — wire
+     * `data.characterImageUrl`. A pick-time COPY on the same terms as
+     * `firstFrameUrl`, sent as `params.image` at execute time. One slot for
+     * both because both want the same thing of it: one picture of a person.
      *
      * Its own field although it travels under the same param as the first
      * frame: a pick survives a mode switch, so one shared field would turn

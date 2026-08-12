@@ -124,10 +124,15 @@ export interface VideoPanelViewModel {
    * What this measures is the model's catalog entry, not the endpoint behind
    * it — the prompt travels as its own argument the whole way down and never
    * passes the param check, so a model with no prompt field still receives
-   * whatever was typed. Every video model but the talking-head one declares
-   * a prompt, which is why demanding one everywhere else stays correct; the
-   * IMAGE catalog declares none at all, so this derivation is video's and
-   * does not transfer (`GeneratePanelContainer` states its own).
+   * any non-empty text that was typed.
+   *
+   * Among the models THIS PANEL can offer — the ones whose mode is one of its
+   * six — every one declares a prompt except the talking-head model, which is
+   * why demanding one everywhere else stays correct. Deliberately scoped to
+   * the panel rather than to the catalog: `catalog.video` also carries the
+   * mini-tool entries (upscaling, frame interpolation), and those declare no
+   * prompt either. The IMAGE panel derives nothing — see the reason stated at
+   * its own gate.
    *
    * True when the model is unknown: an unrecognised model is not a licence to
    * skip the requirement every other mode has.

@@ -110,10 +110,11 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   endFrameUrl?: string;
   /**
-   * Character image URL for the image-animation mode (#1918, wire
-   * `data.characterImageUrl`) — a pick-time COPY on the same terms as
-   * `firstFrameUrl`. Sent as `params.image` at execute time; kept apart from
-   * the first frame because a pick survives a mode switch.
+   * Character image URL for the modes that animate a person — image animation
+   * (#1918) and the talking head (#1935) — wire `data.characterImageUrl`. A
+   * pick-time COPY on the same terms as `firstFrameUrl`. Sent as
+   * `params.image` at execute time; kept apart from the first frame because a
+   * pick survives a mode switch.
    */
   characterImageUrl?: string;
   /**

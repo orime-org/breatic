@@ -100,14 +100,18 @@ describe('buildVideoTaskPayload', () => {
       slotUrls: {
         characterImage: 'https://cdn/portrait.png',
         drivingAudio: 'https://cdn/speech.mp3',
+        // The driving VIDEO is image animation's slot, and a pick survives a
+        // mode switch — so a node arriving here really can still hold one.
+        // Seeded rather than assumed away: without it the assertion below
+        // would hold for any implementation, including one that ignores the
+        // mode entirely.
+        drivingVideo: 'https://cdn/driving.mp4',
       },
     });
     expect(out.params).toMatchObject({
       image: 'https://cdn/portrait.png',
       audio: 'https://cdn/speech.mp3',
     });
-    // The driving VIDEO is another mode's slot; a pick survives a mode switch,
-    // so a node arriving here can still hold one.
     expect(out.params).not.toHaveProperty('video');
   });
 

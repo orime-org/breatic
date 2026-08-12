@@ -39,7 +39,13 @@ interface VideoParamsPickerProps {
   onChange: (partial: VideoParamsValue) => void;
 }
 
-/** The params this pill edits. Named once so the check below cannot drift. */
+/**
+ * The params this pill edits, for the has-anything check below.
+ *
+ * This list and the groups in the component are two copies of one fact, kept
+ * in step by hand: adding a group means adding its name here too, or a model
+ * declaring only the new param gets no pill and the group becomes unreachable.
+ */
 const EDITED_PARAMS = [
   'aspect_ratio',
   'resolution',

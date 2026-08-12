@@ -1682,11 +1682,12 @@ function CanvasSpaceInner({
       const videoSlot = slotForPurpose(session.purpose);
       if (videoSlot) {
         // A video slot (first frame, end frame, character image, driving
-        // video, driving audio): COPY the clicked node's asset onto the
-        // video node, same
-        // terms as Style — a pick-time snapshot with no relationship to the
-        // source, so deleting or regenerating that node never changes what
-        // this video generates from. `fillSlot` decides what a slot copies:
+        // video, driving audio): COPY the clicked node's asset onto the video
+        // node, same terms as Style — a pick-time snapshot with no
+        // relationship to the source, so deleting or regenerating that node
+        // never changes what this video generates from.
+        //
+        // `fillSlot` decides what a slot copies:
         // the asset alone, or the asset plus the node's poster for a slot
         // holding something an `<img>` cannot paint (#1918). The node type it
         // accepts comes off the registry — the same field the candidate
