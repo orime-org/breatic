@@ -153,11 +153,11 @@ function setup(slug = 'acme-studio', strict = false, tab?: string) {
 }
 
 describe('StudioContainerPage', () => {
-  it('renders the studio header and a 6-tab tablist (shell from the real query)', async () => {
+  it('renders the studio header and all 6 section links (shell from the real query)', async () => {
     setup('acme-studio');
     // The top bar moved to the layout route, so the container renders the
-    // studio header (name + type badge) + the tab list, not a banner. The tab
-    // set is 6 for a team studio (projects / collections / works / members /
+    // studio header (name + type badge) + the section strip, not a banner.
+    // The strip carries 6 sections (projects / collections / works / members /
     // credits / settings — Works added at the 3rd position, spec §6.1).
     expect(await screen.findByText('Acme Studio')).toBeInTheDocument();
     expect(screen.getByText('Team')).toBeInTheDocument();
@@ -167,25 +167,25 @@ describe('StudioContainerPage', () => {
     expect(within(nav).getAllByRole('link')).toHaveLength(6);
   });
 
-  it('defaults to the Projects tab panel', async () => {
+  it('defaults to the Projects section', async () => {
     setup('acme-studio');
     // The tab's accessible name now includes its count chip ("Projects 1"),
     // so match by substring.
     expect(await screen.findByRole('link', { name: /Projects/ })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('switches the visible panel when another tab is clicked', async () => {
+  it('shows another section when its link is clicked', async () => {
     const user = userEvent.setup();
     setup('acme-studio');
     await user.click(await screen.findByRole('link', { name: 'Credits' }));
     expect(screen.getByRole('link', { name: 'Credits' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('renders all 6 tabs for a personal studio (Members read-only, A 方案)', async () => {
+  it('renders all 6 sections for a personal studio (Members read-only, A 方案)', async () => {
     setup('alex');
-    // Personal studios now show all 6 tabs; the Members tab is read-only
-    // (A 方案 2026-06-08): projects / collections / works / members / credits /
-    // settings.
+    // Personal studios show the same 6 sections; their Members section is
+    // read-only rather than absent (A 方案 2026-06-08): projects / collections
+    // / works / members / credits / settings.
     await screen.findByRole('navigation', { name: 'Studio sections' });
     const nav = screen.getByRole('navigation', { name: 'Studio sections' });
     expect(within(nav).getAllByRole('link')).toHaveLength(6);
@@ -277,8 +277,10 @@ describe('StudioContainerPage', () => {
 
   it('opens the tab the address names', async () => {
     setup('acme-studio', false, 'settings');
-    // The tab strip is the visible proof: `aria-selected` names the one tab
-    // the page considers current.
+    // The strip is the visible proof, and it says so with `aria-current`, not
+    // with `aria-selected` — these are links, and only a `role="tab"` may carry
+    // a selected state. The one place `aria-selected` does appear in this
+    // product is the project's Space tabs, which is a different control.
     const settings = await screen.findByRole('link', { name: 'Settings' });
     expect(settings).toHaveAttribute('aria-current', 'page');
   });
@@ -315,7 +317,7 @@ describe('StudioContainerPage', () => {
   });
 
   it('sends the default section spelled out back to the bare studio', async () => {
-    // `/studio/{slug}/projects` is a name the tab list recognises, so the
+    // `/studio/{slug}/projects` is a name the section list recognises, so the
     // wrong-name redirect lets it through — and it then renders, giving the
     // default section a SECOND live address. The strip's first link is built
     // by `studioTabPath`, which only ever emits the bare one, so standing here

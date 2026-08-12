@@ -153,10 +153,12 @@ describe('StudioAccountMenu', () => {
       // invisible — the outcome the `disabled` attribute was rejected for. The
       // dimming belongs on the content.
       expect(entry.className).not.toMatch(/(^|\s)opacity-/);
-      // Something still fills on focus, and it is not nothing. The shared
-      // `focus:bg-accent` is deliberately traded for a `focus-visible:` one —
-      // pointer-move focus must not light a row that cannot be pressed — so
-      // what this insists on is that the trade left a highlight behind.
+      // Something still fills on focus, and it is not nothing. The row keeps
+      // the primitive's own `focus:bg-accent` — what stops the mouse lighting
+      // it is the cancelled pointer-move, not a change to this fill (see the
+      // sibling test about hovering). Cancelling the fill instead is a shape
+      // this was written in once and moved away from, so the assertion insists
+      // there is still a fill and that it is not `transparent`.
       expect(entry.className).toMatch(/focus(-visible)?:bg-(?!transparent)/);
       // The dimming is on the content instead.
       const dimmed = entry.querySelector('[class*="opacity-"]');

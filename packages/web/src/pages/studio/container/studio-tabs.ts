@@ -106,8 +106,13 @@ function isStudioTabKey(value: string | undefined): value is StudioTabKey {
  * link, the one marked as the current page, points at a different URL than the
  * one in the bar.
  *
- * Keeping the accepted set equal to the emitted set is what makes that
- * impossible, rather than something to be careful about.
+ * What this rules out is a SEGMENT we would not have written. It does not make
+ * the accepted addresses equal to the emitted ones, and the gap is worth
+ * naming: the router hands over `settings` for `/studio/x/settings/` as
+ * readily as for `/studio/x/settings`, so a trailing slash reaches this
+ * function already gone and the address keeps it. That is how every route in
+ * this app behaves — `/studio/` renders the same page as `/studio` — so
+ * normalising it is not this page's business to invent alone.
  * @param value - The `:tab` route parameter, absent when the address has none.
  * @returns Whether this scheme would produce a segment like it.
  */

@@ -137,19 +137,20 @@ export default function StudioContainerPage(): React.JSX.Element {
   // one address that is certainly right instead of a page that contradicts it.
   //
   // A segment this scheme would never have produced. Answerable without
-  // waiting for anything. Note it is the ADDRESS being judged and not the
-  // name: `projects` is a real tab, but the default section's address carries
-  // no segment, so spelling it out is a second address for a page that has
-  // one — and the strip's first link, marked as the current page, would point
-  // somewhere other than the bar.
-  const namesNoTab = tabParam !== undefined && !isAddressableTabSegment(tabParam);
+  // waiting for anything. It is the address being judged rather than the name,
+  // which is why this is not called "names no tab": `projects` IS a tab name,
+  // but the default section's address carries no segment, so spelling it out
+  // is a second address for a page that has one — and the strip's first link,
+  // marked as the current page, would point somewhere other than the bar.
+  const segmentIsNotOneWeEmit =
+    tabParam !== undefined && !isAddressableTabSegment(tabParam);
   // A real tab name on a studio the viewer is not in. The public façade below
   // renders no tabs at all, so the address would claim a tab that is not on
   // the page. This one has to wait for the studio to load: until then we do
   // not know whether the viewer is a member.
   const tabIsNotOnThisPage =
     tabParam !== undefined && studio?.myStudioRole === null;
-  if (namesNoTab || tabIsNotOnThisPage) {
+  if (segmentIsNotOneWeEmit || tabIsNotOnThisPage) {
     return <Navigate to={`/studio/${slug}`} replace />;
   }
 

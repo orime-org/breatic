@@ -65,11 +65,11 @@ interface ComingEntryProps {
  * covers the same pixels and leaves the row free to take the highlight at full
  * strength.
  *
- * That highlight is then kept away from the MOUSE. Radix focuses an undisabled
- * item on pointer-move and highlights whatever it focuses, so these rows lit up
- * exactly like the two that can be pressed — an affordance for something that
- * does not respond, where every other unavailable control in this product
- * simply has no hover state.
+ * That highlight is then kept away from HOVERING. Radix focuses an undisabled
+ * item on pointer-move and highlights whatever it focuses, so merely sweeping
+ * the mouse down the menu lit these rows exactly like the two that can be
+ * pressed — an affordance for something that does not respond, where every
+ * other unavailable control in this product simply has no hover state.
  *
  * The cancelling is done to the focus rather than to the fill. Two CSS rules
  * could have expressed it (`focus:` off, `focus-visible:` back on), but that
@@ -78,10 +78,16 @@ interface ComingEntryProps {
  * could not be checked. `preventDefault` on the pointer-move is checkable:
  * `composeEventHandlers` runs this handler first and skips Radix's when the
  * event is defaulted, and Radix guards its `item.focus()` on the same flag.
- * The row is then never focused by the mouse at all, and keyboard focus —
- * which arrives through the roving-focus group, not through pointer-move —
- * is untouched. The only other thing skipped is `onItemEnter`, which exists
- * for the submenu safe-triangle and this menu has no submenus.
+ * Keyboard focus is untouched, arriving through the roving-focus group rather
+ * than through pointer-move. The only other thing skipped is `onItemEnter`,
+ * which exists for the submenu safe-triangle and this menu has no submenus.
+ *
+ * What this does NOT cover, deliberately: pressing the row still focuses it,
+ * because the browser focuses what you mousedown on and Radix guards only the
+ * pointer-move path. The highlight that follows is then an honest report of
+ * where focus is — the same thing an arrow key would produce — rather than a
+ * promise that the press did something. Hovering is the gesture that was
+ * making a promise, and it is the one that was cancelled.
  * @param props - The entry's label, note and icon.
  * @param props.label - The entry's label.
  * @param props.note - The muted note saying it is not available.
