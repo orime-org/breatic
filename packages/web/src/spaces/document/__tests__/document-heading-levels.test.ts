@@ -35,13 +35,17 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { Editor, type Extensions } from '@tiptap/core';
+import { Editor, getSchema, type Extensions } from '@tiptap/core';
+import { Document } from '@tiptap/extension-document';
 import { Heading } from '@tiptap/extension-heading';
+import { Paragraph } from '@tiptap/extension-paragraph';
+import { Text } from '@tiptap/extension-text';
+import { DOMSerializer } from '@tiptap/pm/model';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-heading';
+import { BODY_HEADING_LEVELS, BodyHeading } from '@web/spaces/document/document-heading';
 
 const editors: Editor[] = [];
 
@@ -172,7 +176,16 @@ describe('how the levels the body keeps render', () => {
   // Nothing in the language connects the array to the stylesheet, but a test
   // can read both, and four already do it elsewhere in this package.
   it('gives each level it keeps a size and a weight in index.css', () => {
-    const css = readFileSync(resolve(__dirname, '../../../index.css'), 'utf8');
+    // Comments first. A selector cannot contain one, and this stylesheet
+    // quotes selectors in its prose constantly — leaving them in lets a
+    // sentence mentioning `h4` be read as the start of an h4 rule, with
+    // `[^{]*` running past the comment's end to swallow the NEXT rule's body.
+    // Measured: adding a comment that says h4 has no rule yet makes this case
+    // green on all four levels, which is the one edit it exists to catch.
+    const css = readFileSync(resolve(__dirname, '../../../index.css'), 'utf8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    );
 
     for (const level of BODY_HEADING_LEVELS) {
       const rule = new RegExp(
@@ -182,6 +195,50 @@ describe('how the levels the body keeps render', () => {
       expect(rule, `no rule selects h${level} in the document body`).toBeDefined();
       expect(rule).toMatch(/font-size:/);
       expect(rule).toMatch(/font-weight:/);
+    }
+  });
+});
+
+describe('narrowing the levels a second time', () => {
+  /**
+   * What `BodyHeading` renders a stored level as, under a given `levels`.
+   *
+   * Serialised straight from the schema rather than round-tripped through
+   * `setContent`, which would parse an out-of-range tag as a paragraph and
+   * never reach `renderHTML` at all.
+   * @param levels - What to configure the extension with, or undefined to ship as-is.
+   * @param stored - The `level` attribute on the node being rendered.
+   * @returns The heading's serialised HTML.
+   */
+  function renderAt(levels: number[] | undefined, stored: number): string {
+    const heading = levels ? BodyHeading.configure({ levels }) : BodyHeading;
+    const schema = getSchema([Document, Text, Paragraph, heading]);
+    const node = schema.nodes.heading.create({ level: stored }, schema.text('X'));
+    const box = document.createElement('div');
+    box.appendChild(DOMSerializer.fromSchema(schema).serializeNode(node));
+    return box.innerHTML;
+  }
+
+  // The override answers for a level outside the range by re-rendering it at
+  // the SMALLEST level kept. Which levels are kept is a runtime option, so the
+  // fallback has to be read from the same place — Heading's own renderHTML
+  // consults `this.options.levels`, and a fallback derived from anywhere else
+  // can land outside it, where that code sends the node to `levels[0]`, the
+  // largest heading on the page.
+  //
+  // Nothing configures this extension a second time today. That is why this
+  // case exists: it holds the property rather than the current call graph.
+  it('still lands on the smallest level kept, not the largest', () => {
+    expect(renderAt([1, 2], 3)).toBe('<h2>X</h2>');
+    expect(renderAt([1, 2], 4)).toBe('<h2>X</h2>');
+    expect(renderAt([1], 3)).toBe('<h1>X</h1>');
+  });
+
+  it('leaves the shipped configuration where it was', () => {
+    expect(renderAt(undefined, 4)).toBe('<h3>X</h3>');
+    expect(renderAt(undefined, 6)).toBe('<h3>X</h3>');
+    for (const level of BODY_HEADING_LEVELS) {
+      expect(renderAt(undefined, level)).toBe(`<h${level}>X</h${level}>`);
     }
   });
 });

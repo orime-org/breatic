@@ -481,9 +481,10 @@ body {
    Nothing else in this block needs it, but for two different reasons. The
    block selectors — `p`, the lists, `blockquote`, `pre`, `hr` — cannot match
    the title because it is an `h1` and none of them is. The INLINE ones —
-   `:not(pre) > code` and `a` — are descendant selectors, so the title's tag
-   name is beside the point; what keeps them out is that the title stores no
-   marks (`marks: ''`), and both of those elements only ever appear as one.
+   `strong`, `:not(pre) > code` and `a` — are descendant selectors, so the
+   title's tag name is beside the point; what keeps them out is that the title
+   stores no marks (`marks: ''`), and each of those three elements only ever
+   appears as one.
 
    Which is exactly why `marks: ''` does not settle the question for every
    inline selector — marks are what the document may store, and a decoration
@@ -492,9 +493,10 @@ body {
    one: y-tiptap adds it with `Decoration.inline(from, to, …)` over the remote
    selection's range whatever node that range falls in, so selecting the title
    puts a `.collaboration-carets__selection` inside it and the band rule finds
-   it. That is harmless — read against the title's own 30px/1.25 the rule
-   leaves 1.06px rather than the shared value's 2.88px — but an inline rule
-   added here reaches the title, and has to say whether it means to.
+   it. That is harmless here — measured against the title's own 30px/1.25 this
+   rule leaves 0.313px of stripe, where the shared value it overrides would
+   overlap by about 4px — but an inline rule added here reaches the title, and
+   has to say whether it means to.
 
    THE CONTAINER RULE IS A DIFFERENT MATTER AND NO EXCLUSION CAN HELP IT. The
    `line-height` on `.doc-body-editor .ProseMirror` below reaches the title by
@@ -524,8 +526,22 @@ body {
    Sizes derive from `--font-size-base` the way the title does, and the
    coefficients are fractions rather than decimals because 15 × 1.333 is
    19.995px, not 20. The hard ceiling is the title's 30px: the largest body
-   heading has to stay under it or the hierarchy inverts. */
-/* Only the line height. Long words and URLs already wrap, and it is @tiptap/core
+   heading has to stay under it or the hierarchy inverts.
+
+   ONLY THE TOP MARGINS SEPARATE THE THREE LEVELS ON SCREEN. Adjacent siblings
+   collapse to the larger of the two margins, and every block that can follow a
+   heading declares at least 12.75px above it (0.85em on a paragraph or list,
+   1.1em on a quote or code block, 2em on a divider, and more on another
+   heading). So the bottom margins below are ceilings, not distances: h2's 10px
+   and h3's 7.65px are never what reaches the screen, and h1's 13.2px wins only
+   over a paragraph or a list, by 0.445px. Measured in the browser: h1→p
+   13.195, h2→p 12.75, h3→p 12.75, h3→list 12.75, h1→code block 14.844. Whether
+   the space under a heading SHOULD track its level is a design question, and
+   answering it means stopping the collapse rather than tuning these numbers. */
+/* This element's own rules: the body's line height, and the two layout
+   properties that used to live in a second block further down.
+
+   Long words and URLs already wrap, and it is @tiptap/core
    that makes them: its `style.ts` is inlined into the bundle and injected as a
    stylesheet when an Editor is constructed, and it sets `word-wrap: break-word`
    on `.ProseMirror`. Not prosemirror-view — that package ships a stylesheet

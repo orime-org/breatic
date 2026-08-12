@@ -47,9 +47,6 @@ import { Heading } from '@tiptap/extension-heading';
  */
 export const BODY_HEADING_LEVELS = [1, 2, 3] as const;
 
-/** Where a level outside {@link BODY_HEADING_LEVELS} renders instead. */
-const FALLBACK_LEVEL = BODY_HEADING_LEVELS[BODY_HEADING_LEVELS.length - 1];
-
 export const BodyHeading = Heading.extend({
   /**
    * Render as Heading does, with an out-of-range level moved into range first.
@@ -64,18 +61,24 @@ export const BodyHeading = Heading.extend({
    * @returns The DOM output spec for this heading.
    */
   renderHTML(props) {
+    // BOTH READS COME FROM `this.options.levels`, and they have to. Heading's
+    // own renderHTML is the code this hands off to, and it decides whether a
+    // level is in range by consulting that option; a fallback derived from
+    // anywhere else can be out of range by the time it gets there, and that
+    // code answers an out-of-range level with `levels[0]` — the LARGEST
+    // heading, which is what this override exists to avoid.
+    //
+    // Reading the module constant here instead LOOKS like it removes a second
+    // source of truth and does not: measured, `.configure({ levels: [1, 2] })`
+    // then renders a stored level 3 as `<h1>` either way, because the option
+    // is what the parent goes on. The largest number is the smallest heading.
+    const levels = this.options.levels as number[];
     const stored = props.node.attrs.level as number;
-    // Both halves read the same array. Asking `this.options.levels` instead
-    // would let a second `.configure({ levels })` on this extension move the
-    // range without moving FALLBACK_LEVEL, and the fallback would then land
-    // out of range too — where Heading's own renderHTML sends it to
-    // `levels[0]`, the LARGEST level, which is the defect this override exists
-    // to prevent.
-    if ((BODY_HEADING_LEVELS as readonly number[]).includes(stored)) {
+    if (levels.includes(stored)) {
       return this.parent?.(props) as DOMOutputSpec;
     }
     const inRange = props.node.type.create(
-      { ...props.node.attrs, level: FALLBACK_LEVEL },
+      { ...props.node.attrs, level: Math.max(...levels) },
       props.node.content,
       props.node.marks,
     );
