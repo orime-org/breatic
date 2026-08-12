@@ -7,7 +7,11 @@ import type { MessageData, SSEEventEnvelope } from '@breatic/shared';
 import { SSE_EVENT_NAMES } from '@breatic/shared';
 
 import { chatApi } from '@web/data/api/chat';
-import { StreamRefusedError } from '@web/data/stream/sse';
+import {
+  StreamRefusedError,
+  StreamUnreachableError,
+  StreamDroppedError,
+} from '@web/data/stream/sse';
 import type { OpenChatResult } from '@web/data/api/chat';
 import { useChatStore } from '@web/stores';
 import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
@@ -205,22 +209,6 @@ export function useChatSession(projectId: string): ChatSession {
     return messages?.filter((m) => m.role === 'user').at(-1);
   }, [queryClient, projectId]);
 
-  /** Leave a failed reply where the answer would have gone. */
-  const appendFailedReply = React.useCallback((): void => {
-    const last = queryClient.getQueryData<CachedChat>(chatKey(projectId))?.current.messages.at(-1);
-    appendMessages([
-      {
-        id: `local-reply-${crypto.randomUUID()}`,
-        role: 'assistant',
-        parts: [],
-        content: '',
-        ts: new Date().toISOString(),
-        turnIndex: last?.turnIndex ?? 1,
-        failed: true,
-      },
-    ]);
-  }, [queryClient, projectId, appendMessages]);
-
   /**
    * End the turn in flight, however it ended.
    *
@@ -278,7 +266,7 @@ export function useChatSession(projectId: string): ChatSession {
       text: string,
       conversation: string,
       userMessage?: CachedMessage,
-    ): Promise<StreamRefusedError | undefined> => {
+    ): Promise<StreamRefusedError | StreamUnreachableError | undefined> => {
       const now = new Date().toISOString();
       const replyId = `local-reply-${crypto.randomUUID()}`;
       const turnIndex =
@@ -309,6 +297,7 @@ export function useChatSession(projectId: string): ChatSession {
       setStreaming(true);
 
       let refusal: StreamRefusedError | undefined;
+      let unreachable: StreamUnreachableError | undefined;
 
       await chatApi.streamMessage(
         { projectId, conversationId: conversation, message: text },
@@ -358,17 +347,25 @@ export function useChatSession(projectId: string): ChatSession {
           },
           onClose: finishTurn,
           onError: (err: unknown) => {
+            // Three endings, and the panel can only say something true about
+            // one it can tell from the others.
             if (err instanceof StreamRefusedError) {
+              // The server answered and said no. Nothing was stored — it
+              // writes the user's own message inside the turn, which never
+              // ran — so there is nothing to leave on screen either.
               refusal = err;
-            } else {
-              // The connection died on its own. The server cannot tell that
-              // from the user pressing stop — both reach it as the client
-              // going away — so it records the turn as stopped, and this has
-              // to say the same. Calling it a failure here would be the panel
-              // announcing a verdict the stored record contradicts on reload.
-              //
-              // A failure the server does report arrives as an `error` event
-              // on a stream that is still open, and that path marks it failed.
+            } else if (err instanceof StreamUnreachableError) {
+              // The request never left. Same as above: no record anywhere, so
+              // this is not something that was stopped, it is something that
+              // was never sent. `send` reports it and the composer takes the
+              // words back.
+              unreachable = err;
+            } else if (err instanceof StreamDroppedError && activeReplyId.current === replyId) {
+              // The stream opened and then died. The server sees that as the
+              // client going away and cannot tell it from the user pressing
+              // stop, so it records the turn as stopped and this says the
+              // same. Guarded on the turn still being the live one: a late
+              // error belongs to nothing that is still running.
               patchMessage(replyId, (m) => ({ ...m, interrupted: true as const }));
             }
             finishTurn();
@@ -376,10 +373,17 @@ export function useChatSession(projectId: string): ChatSession {
         },
       );
 
-      // The reply that was never going to arrive goes, whether this attempt
-      // is the end of it or the start of a second one.
-      if (refusal) removeMessage(replyId);
-      return refusal;
+      // Nothing the server kept, nothing left on screen. Both of these mean
+      // the turn never ran, so it stored neither the reply nor the message
+      // the user typed — leaving either behind would show a conversation the
+      // server does not have, and a reload would quietly disagree.
+      if (refusal || unreachable) {
+        removeMessage(replyId);
+        // Not on the second attempt: that one is re-sending a message which
+        // is already on screen and belongs to the caller.
+        if (unreachable && !userMessage && said.id) removeMessage(said.id);
+      }
+      return refusal ?? unreachable;
     },
     [projectId, queryClient, appendMessages, patchMessage, removeMessage, setStreaming, finishTurn],
   );
@@ -393,29 +397,31 @@ export function useChatSession(projectId: string): ChatSession {
         throw new Error('chat is not open');
       }
 
-      const refusal = await runTurn(text, conversationId);
-      if (!refusal) return;
+      const ending = await runTurn(text, conversationId);
+      if (!ending) return;
+
+      // It never left the machine. Nothing was stored and nothing is left on
+      // screen, so the only honest thing is to say it was not sent and give
+      // the words back — which is what throwing does here.
+      if (ending instanceof StreamUnreachableError) throw ending;
 
       // Only one refusal is worth a second try. A conversation can be deleted
       // from another tab while this one still holds its id, and that is not
       // something the user did or can act on; every other refusal — no
-      // permission, a project that is gone — says trying again is pointless.
-      if (refusal.status !== NOT_FOUND) {
-        appendFailedReply();
-        return;
-      }
+      // permission, a project that is gone — says trying again is pointless,
+      // and the server kept no record of the attempt either.
+      if (ending.status !== NOT_FOUND) throw ending;
 
       // Opening a fresh one can fail too, and when it does the turn is over
       // with nothing to show for it: the reply was already dropped when the
       // first attempt was refused. Ending here without a word leaves what the
       // user said sitting alone with no answer and no explanation.
-      let fresh;
-      try {
-        fresh = await chatApi.openChat(projectId);
-      } catch {
-        appendFailedReply();
-        return;
-      }
+      // The conversation is gone and a fresh one cannot be opened either.
+      // Nothing was stored for this attempt, so the same rule applies as
+      // above: let it out, and the composer hands the words back. Catching it
+      // here to make up a reply would put a turn on screen the server has no
+      // record of.
+      const fresh = await chatApi.openChat(projectId);
       const said = lastUserMessage();
 
       // The new conversation arrives with what the user said already on it,
@@ -428,10 +434,10 @@ export function useChatSession(projectId: string): ChatSession {
         },
       });
 
-      const secondRefusal = await runTurn(text, fresh.current.conversation.id, said);
-      if (secondRefusal) appendFailedReply();
+      const secondEnding = await runTurn(text, fresh.current.conversation.id, said);
+      if (secondEnding) throw secondEnding;
     },
-    [conversationId, projectId, queryClient, runTurn, appendFailedReply, lastUserMessage],
+    [conversationId, projectId, queryClient, runTurn, lastUserMessage],
   );
 
   const messages = React.useMemo(

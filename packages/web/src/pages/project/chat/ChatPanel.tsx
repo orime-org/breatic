@@ -7,6 +7,8 @@ import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { useChatStore } from '@web/stores';
 import { useTranslation } from '@web/i18n/use-translation';
 
+import { StreamRefusedError } from '@web/data/stream/sse';
+import { toast } from '@web/lib/toast';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import {
   ConversationHistorySheet,
@@ -77,9 +79,16 @@ export function ChatPanel({
     // message is already in the list — waiting for the whole turn would leave
     // the user's words sitting in the box beside their own sent bubble, and
     // wipe anything typed while the reply streamed in.
-    void send(trimmed).catch(() => {
-      // Whatever went wrong is already on screen: either the panel says it
-      // could not open, or the reply itself is marked as failed.
+    void send(trimmed).catch((err: unknown) => {
+      // The server said why, in the reader's language — sse.ts goes to the
+      // trouble of reading that out of the error envelope, and this is the
+      // only place it can reach a person.
+      if (err instanceof StreamRefusedError) toast.error(err.message);
+      // It was not sent, and the server kept no record of it — so nothing of
+      // the attempt is on screen to explain itself. Handing the words back is
+      // the explanation: the message is where the user left it, ready to send
+      // again, rather than gone with nothing to show for it.
+      setDraft(trimmed);
     });
     clearDraft();
   };

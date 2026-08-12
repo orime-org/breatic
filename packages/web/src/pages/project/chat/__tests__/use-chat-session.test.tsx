@@ -23,7 +23,11 @@ vi.mock('@web/data/api/chat', () => ({
 }));
 
 import { chatApi } from '@web/data/api/chat';
-import { StreamRefusedError } from '@web/data/stream/sse';
+import {
+  StreamRefusedError,
+  StreamUnreachableError,
+  StreamDroppedError,
+} from '@web/data/stream/sse';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 import { useChatStore } from '@web/stores';
 
@@ -281,13 +285,15 @@ describe('when the conversation it was writing to is gone', () => {
     });
 
     await act(async () => {
-      await result.current.send('hi');
+      await expect(result.current.send('hi')).rejects.toThrow();
     });
 
     // A conversation refused the moment it was made is not a stale id, and
-    // asking again would only ask again.
+    // asking again would only ask again. The server kept no record of any of
+    // it, so nothing about it is left on screen either — `send` saying it was
+    // not sent is what the composer acts on.
     expect(chatApi.streamMessage).toHaveBeenCalledTimes(2);
-    await waitFor(() => expect(result.current.messages.at(-1)?.failed).toBe(true));
+    expect(result.current.messages.some((m) => m.failed)).toBe(false);
   });
 
   it('shows the failure for a refusal it cannot recover from', async () => {
@@ -300,12 +306,13 @@ describe('when the conversation it was writing to is gone', () => {
     });
 
     await act(async () => {
-      await result.current.send('hi');
+      await expect(result.current.send('hi')).rejects.toThrow();
     });
 
-    // Being refused for lack of permission is not fixed by trying again.
+    // Being refused for lack of permission is not fixed by trying again, and
+    // the turn never ran, so there is nothing of it to show.
     expect(chatApi.openChat).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(result.current.messages.at(-1)?.failed).toBe(true));
+    expect(result.current.messages.some((m) => m.failed)).toBe(false);
   });
 });
 
@@ -346,7 +353,7 @@ describe('when the connection dies mid-reply', () => {
     // server saying it failed. The server cannot tell those two apart: both
     // reach it as the client going away, and it records the turn as stopped.
     act(() => {
-      handlers.onError?.(new TypeError('network error'));
+      handlers.onError?.(new StreamDroppedError(new TypeError('network error')));
     });
 
     // So the panel has to say the same thing. Calling it a failure here is
@@ -356,8 +363,54 @@ describe('when the connection dies mid-reply', () => {
   });
 });
 
+describe('when the request never reached the server', () => {
+  it('does not call it a stopped reply, and hands the words back', async () => {
+    openChatAnswers([]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(new StreamUnreachableError(new TypeError('Failed to fetch')));
+    });
+
+    // Nothing was sent, so the server stored nothing — not the reply, and not
+    // even what the user typed, which it writes as the first thing inside the
+    // turn. Saying "Stopped" here announces that a reply was cut off when no
+    // reply was ever begun.
+    await expect(result.current.send('is anyone there')).rejects.toThrow();
+
+    const last = result.current.messages.at(-1);
+    expect(last?.interrupted).toBeUndefined();
+  });
+});
+
+describe('when a stale error arrives after the turn is over', () => {
+  it('leaves the finished reply alone', async () => {
+    openChatAnswers([]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await act(async () => {
+      void result.current.send('hi');
+    });
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'All done.' } });
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_DONE, data: {} });
+    });
+    await waitFor(() => expect(result.current.messages.at(-1)?.streaming).toBeUndefined());
+
+    // The turn ended. A late error belongs to nothing that is still running,
+    // and stamping it on the finished reply says it was cut off when it was
+    // not.
+    act(() => {
+      handlers.onError?.(new StreamDroppedError(new TypeError('late')));
+    });
+
+    expect(result.current.messages.at(-1)?.interrupted).toBeUndefined();
+  });
+});
+
 describe('when reopening the chat also fails', () => {
-  it('still says the turn failed instead of leaving the screen bare', async () => {
+  it('says it was not sent rather than leaving a reply the server never kept', async () => {
     openChatAnswers([]);
     const { result } = render();
     await waitFor(() => expect(result.current.isPending).toBe(false));
@@ -370,16 +423,14 @@ describe('when reopening the chat also fails', () => {
     vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('server said no'));
 
     await act(async () => {
-      await result.current.send('find me references');
+      await expect(result.current.send('find me references')).rejects.toThrow();
     });
 
-    // What the user said stays, and something on screen says it did not get
-    // an answer. Without this the turn ends with nothing at all: no reply, no
-    // marker, and the panel still believes the chat is open.
-    await waitFor(() =>
-      expect(result.current.messages.map((m) => m.content)).toContain('find me references'),
-    );
-    expect(result.current.messages.at(-1)?.failed).toBe(true);
+    // Nothing was stored for this attempt — not the reply, and not what the
+    // user typed, which the server writes inside the turn. Leaving either on
+    // screen would show a conversation the server does not have. Saying it
+    // was not sent is what lets the composer hand the words back.
+    expect(result.current.messages.some((m) => m.failed)).toBe(false);
   });
 });
 

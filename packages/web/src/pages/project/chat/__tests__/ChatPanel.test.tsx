@@ -159,4 +159,24 @@ describe('ChatPanel', () => {
     // lost: nothing was sent, and there was nothing left to send again.
     expect(useChatStore.getState().composerDraft).toBe('please do not eat this');
   });
+
+  it('hands the words back when the message could not be sent', async () => {
+    const user = userEvent.setup();
+    vi.mocked(chatApi.streamMessage).mockRejectedValue(new Error('never left'));
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled(),
+    );
+
+    useChatStore.getState().setComposerDraft('is anyone there');
+    await user.click(screen.getByTestId('chat-composer-send'));
+
+    // Nothing was stored, and nothing of the attempt is left on screen — so
+    // if the words are not handed back they are simply gone, and the user has
+    // to type the whole thing again.
+    await waitFor(() =>
+      expect(useChatStore.getState().composerDraft).toBe('is anyone there'),
+    );
+  });
 });
