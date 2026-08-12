@@ -37,7 +37,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor, getSchema, type Extensions } from '@tiptap/core';
 import { Document } from '@tiptap/extension-document';
-import { Heading } from '@tiptap/extension-heading';
+import { Heading, type Level } from '@tiptap/extension-heading';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Text } from '@tiptap/extension-text';
 import { DOMSerializer } from '@tiptap/pm/model';
@@ -210,7 +210,7 @@ describe('narrowing the levels a second time', () => {
    * @param stored - The `level` attribute on the node being rendered.
    * @returns The heading's serialised HTML.
    */
-  function renderAt(levels: number[] | undefined, stored: number): string {
+  function renderAt(levels: Level[] | undefined, stored: number): string {
     const heading = levels ? BodyHeading.configure({ levels }) : BodyHeading;
     const schema = getSchema([Document, Text, Paragraph, heading]);
     const node = schema.nodes.heading.create({ level: stored }, schema.text('X'));
