@@ -819,9 +819,13 @@ describe('VideoGeneratePanelContainer', () => {
     });
 
     it('“add reference” toggles the canvas pick on this node', async () => {
+      // In the mode that can use one: since #1927 the tool closes in the four
+      // modes whose rail rows are dimmed, because a row added there could not
+      // be removed from the panel again.
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-      seedVideoNode();
-      mountContainer('video');
+      const stored = { mode: 'ref', model: 'kling-o3-pro-ref' };
+      seedVideoNode(stored);
+      mountContainer('video', stored);
       act(() => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
@@ -1182,8 +1186,12 @@ describe('VideoGeneratePanelContainer', () => {
       expect(execute).not.toBeDisabled();
       fireEvent.click(execute);
       await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      // The message must NOT instruct an action the user may already have
+      // performed, and it must name the prerequisite the image panel's sibling
+      // string carries ("connected") — without it, a user on a fresh node types
+      // `@`, gets no popup at all, and has nowhere to go.
       expect(vi.mocked(toast.error).mock.calls[0]![0]).toBe(
-        'Type @ in the prompt to reference at least one image',
+        'This mode needs a reference image — connect one to this node and type @ in the prompt to use it',
       );
       expect(create).not.toHaveBeenCalled();
     });
@@ -1224,6 +1232,63 @@ describe('VideoGeneratePanelContainer', () => {
       expect(insert.classList.contains('opacity-50')).toBe(false);
       expect(insert).not.toBeDisabled();
       expect(screen.getByTestId('generate-ref-remove-r-a')).not.toBeDisabled();
+    });
+    /**
+     * Opens the panel on a node already stored in one mode. The container reads
+     * `mode` off the nodes PROP, and this harness holds that array static, so a
+     * click on the mode picker writes Yjs without changing what is rendered —
+     * each mode gets its own mount.
+     * @param mode - The mode the node is stored in.
+     * @param model - The model to store alongside it.
+     */
+    async function openInMode(mode: string, model: string): Promise<void> {
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const stored = { mode, model };
+      seedVideoNode(stored);
+      mountContainer('video', stored, { nodes: SOURCES, edges: WIRES });
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      await screen.findByTestId('generate-video-execute');
+    }
+
+    /** The placeholder currently shown, or '' once the prompt is no longer empty. */
+    function placeholderText(): string {
+      return (
+        screen
+          .getByTestId('generate-prompt-editor')
+          .querySelector('[data-placeholder]')
+          ?.getAttribute('data-placeholder') ?? ''
+      );
+    }
+
+    it('promises @ in the mode that answers it', async () => {
+      await openInMode('ref', 'kling-o3-pro-ref');
+      await waitFor(() => expect(placeholderText()).toContain('@'));
+    });
+
+    it('promises @ nowhere else', async () => {
+      // Under the four modes that collect through slots the `@` popup drops
+      // every image row, so a board wired only with images answers the
+      // keystroke with nothing at all — telling them to type it is a dead end.
+      await openInMode('t2v', 'veo-3.1');
+      await waitFor(() => expect(placeholderText()).not.toBe(''));
+      expect(placeholderText()).not.toContain('@');
+    });
+
+    it('stops offering to add a reference in a mode that cannot use one', async () => {
+      // The rail's rows are locked while dimmed (decision 2026-08-11), so a
+      // reference added HERE could not be taken back from the panel at all.
+      // The add path closes with the same signal that dims the rows.
+      await openInMode('t2v', 'veo-3.1');
+      expect(screen.getByTestId('generate-video-tool-reference')).toBeDisabled();
+    });
+
+    it('keeps offering it in the mode that can', async () => {
+      await openInMode('ref', 'kling-o3-pro-ref');
+      expect(
+        screen.getByTestId('generate-video-tool-reference'),
+      ).not.toBeDisabled();
     });
   });
 });

@@ -24,3 +24,32 @@ export function positiveCap(cap: number | undefined): number | undefined {
     ? cap
     : undefined;
 }
+
+/** A refusal to submit: the message key and the values it interpolates. */
+export interface ReferenceCapError {
+  /** Localization key for the refusal message. */
+  key: string;
+  /** ICU values the message interpolates. */
+  values: { limit: number };
+}
+
+/**
+ * Whether a submit carries more reference images than the model takes.
+ *
+ * The rule lives here rather than in each panel because it only works when the
+ * two agree: both refuse at the same threshold and both name the same number,
+ * and a later change to what it means — a different comparison, a count in the
+ * message, a mode that opts out — has to land in both or the same catalog
+ * figure would be enforced two ways. The server re-checks before enqueue; this
+ * is what turns that into something the user can act on.
+ * @param count - How many references the submit carries.
+ * @param cap - The model's cap, already normalized by {@link positiveCap}.
+ * @returns The refusal, or null when the submit is within the cap or uncapped.
+ */
+export function referenceCapError(
+  count: number,
+  cap: number | undefined,
+): ReferenceCapError | null {
+  if (typeof cap !== 'number' || count <= cap) return null;
+  return { key: 'canvas.generatePanel.errorTooManyReferences', values: { limit: cap } };
+}

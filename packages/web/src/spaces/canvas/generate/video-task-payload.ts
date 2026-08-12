@@ -54,8 +54,8 @@ export interface VideoTaskInput {
   slotUrls: VideoSlotUrls;
   /**
    * The reference image URLs the prompt `@`-mentions, snapshotted at execute
-   * time. Built into the payload only under a mode that collects references
-   * (#1927); the rest leave the key off entirely.
+   * time. Written into the payload only under a mode that collects references
+   * (#1927); under the rest this value contributes nothing.
    */
   referenceUrls?: readonly string[];
   /** The node's current persistent lease counter; gen = leaseGen + 1. Absent = 0. */
@@ -69,9 +69,16 @@ export interface VideoTaskInput {
  * set is fixed, so a slot the mode does not collect has no way in and needs no
  * check to keep it out (user 2026-08-10). Each URL travels as its own param,
  * never folded into the reference array — that array is the `@`-picked pool
- * and means something else to the model. An empty slot leaves no key behind at
- * all, because the upstream provider reads a source field's presence, not its
+ * and means something else to the model. An empty slot adds no key here,
+ * because the upstream provider reads a source field's presence, not its
  * value.
+ *
+ * "Adds no key" is a statement about this function, not about the payload:
+ * the model's own declared params are merged in first, and a model that
+ * declares `images` (as `kling-o3-pro-ref` does, with a null default) puts the
+ * key there whatever this returns. That is the same route `seed` and
+ * `generate_audio` arrive by, and the worker drops null values before mapping
+ * them to vendor names.
  * @param mode - The active generation mode.
  * @param slotUrls - What is currently picked, by slot.
  * @param referenceUrls - The `@`-mentioned reference images.
@@ -89,9 +96,10 @@ function sourceParams(
   }
   // Reference-to-video (#1927): the `@`-picked pool IS this mode's source, so
   // here it is a source param like any other — same rule, same shape. An empty
-  // pool leaves no key for the same reason an empty slot does: upstream reads
-  // a source field's presence, so sending an empty list would be a claim
-  // rather than a silence. Execute refuses that submit anyway.
+  // pool writes nothing for the same reason an empty slot does: upstream reads
+  // a source field's presence, so an empty list would be a claim rather than a
+  // silence. Execute refuses that submit anyway, and whatever the model's own
+  // declared default left in `params` stays as it was.
   if (modeTakesReferences(mode) && referenceUrls.length > 0) {
     params[REFERENCE_PARAM] = [...referenceUrls];
   }

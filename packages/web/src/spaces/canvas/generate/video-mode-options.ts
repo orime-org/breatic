@@ -3,18 +3,20 @@
 
 /**
  * The video modes the panel's mode picker offers, in display order, and the
- * source slots each one collects.
+ * sources each one collects.
  *
  * Text-to-video first — it is the default and the one that needs nothing.
- * The list grows one entry per slice: image animation, reference-to-video and
- * talking head each arrive with the source slots they need, so a mode never
- * appears before the panel can collect what it takes.
+ * The list grows one entry per slice, and each entry arrives stating what it
+ * collects, so a mode never appears before the panel can collect it. There are
+ * two ways to state that: the slots the toolbar renders a control for, and —
+ * since reference-to-video (#1927) — whether the mode takes the images the
+ * prompt `@`-mentions instead.
  *
- * The slots sit on the mode option rather than in a table of their own,
- * because what a mode sends upstream is a fixed set of fields and everything
+ * Both sit on the mode option rather than in a table of their own, because
+ * what a mode sends upstream is a fixed set of fields and everything
  * downstream is built from it — the toolbar's controls, the check before
- * execute, and the payload's source params. One list means adding a mode
- * cannot forget to state what it collects.
+ * execute, the payload's source params, and the rail's dimming. One list means
+ * adding a mode cannot forget to state what it collects.
  *
  * Labels are English only, never localized (user 2026-07-10 item 15): these
  * are product mode names in the do-not-translate spirit of the DNT glossary,

@@ -222,3 +222,47 @@ describe('buildVideoTaskPayload — reference images (#1927)', () => {
     expect(out.params).not.toHaveProperty('image');
   });
 });
+
+/**
+ * What the payload really says about `images` when nothing is `@`-picked.
+ *
+ * The source-param builder adds no key — but it is not the only writer. The
+ * model's own declared params arrive first (`resolveParamsForModel` fills a
+ * value for every param the model declares, and `kling-o3-pro-ref` declares
+ * `images` with a null default), so the payload can carry the key without the
+ * builder ever touching it. Pinned here because the cases above cannot see it:
+ * their `BASE.params` never carries the key production always carries.
+ */
+describe('buildVideoTaskPayload — the model brings its own `images` key', () => {
+  const WITH_DECLARED = {
+    ...BASE,
+    params: { ...BASE.params, images: null },
+  };
+
+  it('overwrites the declared null with the @-picked list', () => {
+    const out = buildVideoTaskPayload({
+      ...WITH_DECLARED,
+      mode: 'ref',
+      referenceUrls: ['https://cdn/a.png'],
+    });
+    expect(out.params).toMatchObject({ images: ['https://cdn/a.png'] });
+  });
+
+  it('leaves the declared null alone when nothing is @-picked', () => {
+    // Not "no key": the key is the model's, and stripping it here would be a
+    // special case for one param among many that arrive the same way (`seed`,
+    // `generate_audio`). Upstream is unbothered — the worker drops null values
+    // before mapping and the server's source gate wants a non-empty array.
+    const out = buildVideoTaskPayload({ ...WITH_DECLARED, mode: 'ref', referenceUrls: [] });
+    expect(out.params.images).toBeNull();
+  });
+
+  it('leaves it alone under a mode that does not take references', () => {
+    const out = buildVideoTaskPayload({
+      ...WITH_DECLARED,
+      mode: 't2v',
+      referenceUrls: ['https://cdn/a.png'],
+    });
+    expect(out.params.images).toBeNull();
+  });
+});

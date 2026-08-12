@@ -14,7 +14,10 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
+import {
+  positiveCap,
+  referenceCapError,
+} from '@web/spaces/canvas/generate/reference-cap';
 
 describe('positiveCap', () => {
   it('takes a positive cap at face value', () => {
@@ -41,5 +44,34 @@ describe('positiveCap', () => {
     // A model that declares no `max_items` is not capped; the param descriptor
     // has no way to say "at most none".
     expect(positiveCap(undefined)).toBeUndefined();
+  });
+});
+
+/**
+ * The count gate itself, not just the cap it reads.
+ *
+ * Both Generate panels refuse a submit that carries more references than the
+ * model takes, and both name the limit in the refusal. That rule was written
+ * out twice, character for character — which is the shape the cap extraction
+ * above exists to avoid, since a later change to what the rule means (`>=`,
+ * a different message, a mode that opts out) would land in one panel only.
+ */
+describe('referenceCapError', () => {
+  it('says nothing while the count is within the cap', () => {
+    expect(referenceCapError(7, 7)).toBeNull();
+    expect(referenceCapError(0, 7)).toBeNull();
+  });
+
+  it('reports the limit, not the count, so the refusal can name it', () => {
+    // What the user needs is the number to get under, which is the only one
+    // they cannot see anywhere in the panel.
+    expect(referenceCapError(8, 7)).toEqual({
+      key: 'canvas.generatePanel.errorTooManyReferences',
+      values: { limit: 7 },
+    });
+  });
+
+  it('says nothing when the model is uncapped', () => {
+    expect(referenceCapError(99, undefined)).toBeNull();
   });
 });

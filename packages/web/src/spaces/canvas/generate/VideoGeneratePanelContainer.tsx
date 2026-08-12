@@ -27,6 +27,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores';
 import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
+import { referenceCapError } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -44,7 +45,10 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 import type { VideoParamsValue } from '@web/spaces/canvas/generate/VideoParamsPicker';
-import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
+import {
+  VIDEO_MODE_OPTIONS,
+  modeTakesReferences,
+} from '@web/spaces/canvas/generate/video-mode-options';
 import {
   VIDEO_SLOTS,
   slotForPurpose,
@@ -52,9 +56,6 @@ import {
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
 import { buildVideoTaskPayload } from '@web/spaces/canvas/generate/video-task-payload';
-import {
-  modeTakesReferences,
-} from '@web/spaces/canvas/generate/video-mode-options';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
@@ -541,15 +542,12 @@ function VideoGeneratePanelBody({
     // the limit is the point — otherwise the only way to find it is to remove
     // one and try again. The server re-checks before enqueue, since the worker
     // would otherwise truncate the extras silently.
-    if (
-      typeof fresh.maxReferences === 'number' &&
-      fresh.referenceUrls.length > fresh.maxReferences
-    ) {
-      toast.error(
-        t('canvas.generatePanel.errorTooManyReferences', {
-          limit: fresh.maxReferences,
-        }),
-      );
+    const capError = referenceCapError(
+      fresh.referenceUrls.length,
+      fresh.maxReferences,
+    );
+    if (capError) {
+      toast.error(t(capError.key, capError.values));
       return;
     }
     submittingRef.current = true;
@@ -607,7 +605,14 @@ function VideoGeneratePanelBody({
   // prompt editor's chips and its `@` popup. The rail reads the same table
   // inside the panel.
   const imageRefsDisabled = !modeTakesReferences(mode);
-  const promptPlaceholder = t('canvas.generatePanel.videoPromptPlaceholder');
+  // Only the mode that answers `@` may promise it: under the other four the
+  // popup drops every image row, so a board wired only with images answers the
+  // keystroke with nothing at all.
+  const promptPlaceholder = t(
+    imageRefsDisabled
+      ? 'canvas.generatePanel.videoPromptPlaceholder'
+      : 'canvas.generatePanel.videoPromptPlaceholderWithReference',
+  );
   const mentionEmptyLabel = t('canvas.generatePanel.videoMentionEmpty');
   // A node made before video generation existed carries no prompt container,
   // and #1880 ratified that those are NOT repaired — creating one when the
