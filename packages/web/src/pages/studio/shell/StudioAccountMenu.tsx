@@ -65,15 +65,23 @@ interface ComingEntryProps {
  * covers the same pixels and leaves the row free to take the highlight at full
  * strength.
  *
- * That highlight is then narrowed to the KEYBOARD. Radix focuses an
- * undisabled item on pointer-move, so the shared `focus:bg-accent` would light
- * this row exactly like the two that can be clicked — an affordance for
- * something that does not respond. Every other disabled control here simply
- * has no hover class; this one has to cancel an inherited one, which is what
- * `focus:bg-transparent` does, with `focus-visible:bg-accent` putting it back
- * for the case that matters. (`cn` cannot drop the inherited rule: twMerge
- * treats different modifiers as different properties — see `rail-row.ts` for
- * the same trap.)
+ * That highlight is then kept away from the MOUSE. Radix focuses an undisabled
+ * item on pointer-move and highlights whatever it focuses, so these rows lit up
+ * exactly like the two that can be pressed — an affordance for something that
+ * does not respond, where every other unavailable control in this product
+ * simply has no hover state.
+ *
+ * The cancelling is done to the focus rather than to the fill. Two CSS rules
+ * could have expressed it (`focus:` off, `focus-visible:` back on), but that
+ * rests on whether a browser decides a pointer-driven focus is "visible" — a
+ * heuristic that read both ways within one session here, so a fix built on it
+ * could not be checked. `preventDefault` on the pointer-move is checkable:
+ * `composeEventHandlers` runs this handler first and skips Radix's when the
+ * event is defaulted, and Radix guards its `item.focus()` on the same flag.
+ * The row is then never focused by the mouse at all, and keyboard focus —
+ * which arrives through the roving-focus group, not through pointer-move —
+ * is untouched. The only other thing skipped is `onItemEnter`, which exists
+ * for the submenu safe-triangle and this menu has no submenus.
  * @param props - The entry's label, note and icon.
  * @param props.label - The entry's label.
  * @param props.note - The muted note saying it is not available.
@@ -89,7 +97,8 @@ function ComingEntry({
     <DropdownMenuItem
       aria-disabled='true'
       onSelect={(event) => event.preventDefault()}
-      className='cursor-not-allowed focus:bg-transparent focus-visible:bg-accent'
+      onPointerMove={(event) => event.preventDefault()}
+      className='cursor-not-allowed'
     >
       <span className='flex flex-1 items-center gap-2 opacity-50'>
         {icon}

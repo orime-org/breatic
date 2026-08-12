@@ -165,6 +165,34 @@ describe('StudioAccountMenu', () => {
     },
   );
 
+  it('does not follow the mouse onto Credits, but still does onto Account settings', async () => {
+    // The menu primitive highlights whatever it focuses, and it focuses an
+    // undisabled item on pointer-move — so these two rows lit up exactly like
+    // the ones that can be pressed, offering an affordance for something that
+    // does not respond. Every other unavailable control in this product simply
+    // has no hover state.
+    //
+    // This asks about FOCUS rather than about the fill, because focus is the
+    // thing the primitive actually decides. Whether a focused element also
+    // matches `:focus-visible` is a browser heuristic that reads differently
+    // from one moment to the next, so a fix resting on it could not be checked
+    // — cancelling the focus itself can be.
+    const user = userEvent.setup();
+    useCurrentUserStore.getState().setUser(ALEX);
+    setup();
+    await openMenu(user);
+
+    const credits = screen.getByRole('menuitem', { name: /Credits/ });
+    await user.hover(credits);
+    expect(document.activeElement).not.toBe(credits);
+
+    // The control: an entry that CAN be pressed still follows the mouse, so
+    // the assertion above is about these rows and not about hovering at all.
+    const settings = screen.getByRole('menuitem', { name: 'Account settings' });
+    await user.hover(settings);
+    expect(document.activeElement).toBe(settings);
+  });
+
   it.each([['Credits'], ['Membership']])(
     'dims %s as ONE thing — the note included',
     async (name) => {
