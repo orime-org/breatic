@@ -138,8 +138,8 @@ describe('StudioAccountMenu', () => {
       // Reachable and invisible is the same outcome as unreachable for the
       // person looking at the screen: they arrow down, nothing appears to
       // happen, and the entry reads as skipped. The menu primitive expresses
-      // its highlight as a focus background, so an entry that cancels that
-      // background has no way left to say where focus is.
+      // its highlight as a background, so an entry left with no background to
+      // show has no way of saying where focus is.
       const user = userEvent.setup();
       useCurrentUserStore.getState().setUser(ALEX);
       setup();
@@ -148,17 +148,45 @@ describe('StudioAccountMenu', () => {
       const entry = screen.getByRole('menuitem', { name: new RegExp(name) });
       // The row must not dim ITSELF. `opacity` composites the whole element
       // against its backdrop, background included, so a dimmed row dims its own
-      // focus fill: at 50% over the primitive's accent that is a five-level
-      // step out of 255, which is no indicator at all. The row is then
-      // focusable and invisible — the outcome the `disabled` attribute was
-      // rejected for. The dimming belongs on the label and icon.
+      // highlight: at 50% over the primitive's accent that is a five-level step
+      // out of 255, which is no indicator at all. The row is then focusable and
+      // invisible — the outcome the `disabled` attribute was rejected for. The
+      // dimming belongs on the content.
       expect(entry.className).not.toMatch(/(^|\s)opacity-/);
-      // And it must not cancel the primitive's own focus fill either.
-      expect(entry.className).not.toContain('focus:bg-transparent');
+      // Something still fills on focus, and it is not nothing. The shared
+      // `focus:bg-accent` is deliberately traded for a `focus-visible:` one —
+      // pointer-move focus must not light a row that cannot be pressed — so
+      // what this insists on is that the trade left a highlight behind.
+      expect(entry.className).toMatch(/focus(-visible)?:bg-(?!transparent)/);
       // The dimming is on the content instead.
       const dimmed = entry.querySelector('[class*="opacity-"]');
       expect(dimmed).not.toBeNull();
       expect(dimmed?.textContent).toContain(name);
+    },
+  );
+
+  it.each([['Credits'], ['Membership']])(
+    'dims %s as ONE thing — the note included',
+    async (name) => {
+      // Every disabled thing in this product dims the whole element and lets
+      // the tokens inside keep their own order: the toolbar's disabled sort
+      // button dims "Sort" and "Recently opened" together and the first stays
+      // the quieter of the two; the unavailable Timeline card dims its icon,
+      // title, subtitle and badge together. Leaving the note outside the dim
+      // is what made it the loudest thing on a row whose whole point is the
+      // feature's NAME.
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+
+      const entry = screen.getByRole('menuitem', { name: new RegExp(name) });
+      const dimmed = entry.querySelector('[class*="opacity-"]');
+      expect(dimmed).not.toBeNull();
+      expect(dimmed?.textContent).toContain(name);
+      expect(dimmed?.textContent).toContain('Not open yet');
+      // Nothing readable is left outside it.
+      expect(entry.textContent).toBe(dimmed?.textContent);
     },
   );
 

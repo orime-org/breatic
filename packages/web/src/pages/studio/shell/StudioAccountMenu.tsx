@@ -47,14 +47,33 @@ interface ComingEntryProps {
  * select, and a menu that shuts on the press would read as though something
  * happened. Nothing did.
  *
- * The dimming goes on the CONTENT, not on the row. `opacity` composites the
- * whole element against what is behind it — its background included — so a
- * dimmed row dims its own focus fill along with its text. At 50% over the
- * primitive's accent that leaves a step of five levels out of 255 (1.05:1),
- * which is no indicator at all, and the row is then focusable and invisible:
- * the same outcome as the `disabled` attribute this is written to avoid.
- * Dimming the label and icon instead leaves the row free to take the
- * primitive's own full-strength focus fill, identical to every other entry.
+ * VISUALLY it follows what every other unavailable thing in this product does:
+ * dim the whole element at once, and let the tokens inside keep their own
+ * order. The disabled sort button in the container toolbar dims "Sort" and
+ * its value together, and "Sort" stays the quieter of the two; the unavailable
+ * Timeline card in the space-kind picker dims its icon, title, subtitle and
+ * "not available" badge together. The note here is that badge, borrowed
+ * class-for-class — the muted fill behind it is what keeps it readable once
+ * the whole entry is at half strength.
+ *
+ * The one place this departs is WHERE the dimming hangs, and it has to. Radix
+ * expresses the highlight as a background on the row, and `opacity` composites
+ * an element against its backdrop with its own background included — so
+ * dimming the ROW dims its highlight too, leaving a step of five levels out of
+ * 255. The entry would be reachable and invisible: exactly the outcome the
+ * `disabled` attribute was rejected for. Dimming all of the content instead
+ * covers the same pixels and leaves the row free to take the highlight at full
+ * strength.
+ *
+ * That highlight is then narrowed to the KEYBOARD. Radix focuses an
+ * undisabled item on pointer-move, so the shared `focus:bg-accent` would light
+ * this row exactly like the two that can be clicked — an affordance for
+ * something that does not respond. Every other disabled control here simply
+ * has no hover class; this one has to cancel an inherited one, which is what
+ * `focus:bg-transparent` does, with `focus-visible:bg-accent` putting it back
+ * for the case that matters. (`cn` cannot drop the inherited rule: twMerge
+ * treats different modifiers as different properties — see `rail-row.ts` for
+ * the same trap.)
  * @param props - The entry's label, note and icon.
  * @param props.label - The entry's label.
  * @param props.note - The muted note saying it is not available.
@@ -70,13 +89,15 @@ function ComingEntry({
     <DropdownMenuItem
       aria-disabled='true'
       onSelect={(event) => event.preventDefault()}
-      className='cursor-not-allowed'
+      className='cursor-not-allowed focus:bg-transparent focus-visible:bg-accent'
     >
       <span className='flex flex-1 items-center gap-2 opacity-50'>
         {icon}
         {label}
+        <span className='ml-auto rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
+          {note}
+        </span>
       </span>
-      <span className='pl-4 text-2xs text-muted-foreground'>{note}</span>
     </DropdownMenuItem>
   );
 }
