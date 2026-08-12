@@ -12,7 +12,7 @@ vi.mock('@web/data/api/chat', () => ({
 }));
 
 import { chatApi } from '@web/data/api/chat';
-import { StreamUnreachableError } from '@web/data/stream/sse';
+import { StreamRefusedError, StreamUnreachableError } from '@web/data/stream/sse';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { useChatStore } from '@web/stores';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
@@ -163,6 +163,56 @@ describe('ChatPanel', () => {
     // that were typed since. They are gone with no message, no undo, and no
     // sign of where they went.
     expect(useChatStore.getState().composerDraft).toBe('and three titles too');
+  });
+
+  it('says so on the composer when the message never went out', async () => {
+    const user = userEvent.setup();
+    vi.mocked(chatApi.streamMessage).mockRejectedValue(
+      new StreamUnreachableError(new Error('offline')),
+    );
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+
+    useChatStore.getState().setComposerDraft('shorten this');
+    await user.click(screen.getByTestId('chat-composer-send'));
+
+    // Everything else about this failure is something that did not happen:
+    // no bubble, no reply. Without a line saying so, the reader is left to
+    // work it out from an absence.
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-notice')).toHaveTextContent('did not go out'),
+    );
+  });
+
+  it('says what the server said when it refused', async () => {
+    const user = userEvent.setup();
+    vi.mocked(chatApi.streamMessage).mockRejectedValue(
+      new StreamRefusedError(403, 'You do not have access to this project'),
+    );
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+
+    useChatStore.getState().setComposerDraft('let me in');
+    await user.click(screen.getByTestId('chat-composer-send'));
+
+    // The server went to the trouble of saying why, in the reader's language.
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-notice')).toHaveTextContent(
+        'You do not have access to this project',
+      ),
+    );
+  });
+
+  it('has one place to say things, not two', async () => {
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('server said no'));
+    renderPanel();
+
+    // A chat that would not open used to have its own red bar at the top of
+    // the panel. Two places that say things is one too many: the reader has
+    // to learn where to look, and the two can disagree.
+    await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
+    expect(screen.queryByTestId('chat-open-failed')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
   });
 
   it('does not let anything be typed before the chat is open', async () => {

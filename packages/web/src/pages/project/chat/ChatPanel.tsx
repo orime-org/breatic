@@ -8,8 +8,8 @@ import { useChatStore } from '@web/stores';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { StreamRefusedError } from '@web/data/stream/sse';
-import { toast } from '@web/lib/toast';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import { ChatNotice } from '@web/pages/project/chat/ChatNotice';
 import {
   ConversationHistorySheet,
   type ConversationSummary,
@@ -71,6 +71,14 @@ export function ChatPanel({
   // message list needs to know it happened — it is the one thing that should
   // bring the column back to the bottom after they have scrolled up to read.
   const [sentCount, setSentCount] = React.useState(0);
+  /**
+   * What the panel has to say about the last thing that went wrong.
+   *
+   * One line, on the composer, for every failure the panel can report. It is
+   * cleared by trying again — that is the only thing that makes the last
+   * failure old news, and it means the reader never has to dismiss anything.
+   */
+  const [notice, setNotice] = React.useState<string | null>(null);
 
   /**
    * Send the trimmed composer draft and clear the input.
@@ -79,16 +87,22 @@ export function ChatPanel({
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
     setSentCount((n) => n + 1);
+    setNotice(null);
     // Cleared here rather than when the reply ends. The composer is only live
     // when there is a conversation to write to, so by the time this runs the
     // message is already in the list — waiting for the whole turn would leave
     // the user's words sitting in the box beside their own sent bubble, and
     // wipe anything typed while the reply streamed in.
     void send(trimmed).catch((err: unknown) => {
-      // The server said why, in the reader's language — sse.ts goes to the
-      // trouble of reading that out of the error envelope, and this is the
-      // only place it can reach a person.
-      if (err instanceof StreamRefusedError) toast.error(err.message);
+      // Two failures, one line each, both on the composer. When the server
+      // answered it said why, in the reader's language — sse.ts goes to the
+      // trouble of reading that out of the error envelope, and dropping it
+      // here would waste the only sentence anyone wrote about this refusal.
+      // When it never answered there is nothing to quote, and the reader
+      // needs to know it was the connection and not their message.
+      setNotice(
+        err instanceof StreamRefusedError ? err.message : t('chat.error.notSent'),
+      );
       // It was not sent, and the server kept no record of it — so nothing of
       // the attempt is on screen to explain itself. Handing the words back is
       // the explanation: the message is where the user left it, ready to send
@@ -118,15 +132,6 @@ export function ChatPanel({
           : undefined
       }
     >
-      {failedToOpen ? (
-        <div
-          role='alert'
-          data-testid='chat-open-failed'
-          className='m-2.5 rounded-content-sm border border-status-error-border bg-status-error-bg px-3 py-2 text-xs text-status-error-foreground'
-        >
-          {t('chat.error.openFailed')}
-        </div>
-      ) : null}
       <MessageList
         messages={messages}
         loading={isPending || failedToOpen}
@@ -136,6 +141,11 @@ export function ChatPanel({
           else setDraft(label);
         }}
       />
+      {/* A chat that would not open is the same kind of news as a message
+          that would not send, and it belongs in the same place — a second
+          bar at the top of the panel would be one more spot to learn to
+          look at, and the two could disagree. */}
+      <ChatNotice message={failedToOpen ? t('chat.error.openFailed') : notice} />
       <ChatComposer
         draft={draft}
         streaming={streaming}

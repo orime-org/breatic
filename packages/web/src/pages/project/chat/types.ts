@@ -22,7 +22,15 @@ export interface ToolCall {
 export interface ChatMessage {
   id: string;
   role: ChatRole;
-  /** Final-form content (HTML-sanitized server-side; safe to render). */
+  /**
+   * What this message says, as text.
+   *
+   * Nothing sanitises it — the chat path has no such step anywhere, on either
+   * side. It is safe today because it is drawn as text and never as markup.
+   * Anyone about to render it as markup has to answer the two questions in
+   * CLAUDE.md's XSS clause first, and the second one is the trap: handing it
+   * to a markdown renderer with raw HTML enabled counts.
+   */
   content: string;
   /** Optional hidden chain-of-thought, foldable in the UI. */
   thinking?: string;
