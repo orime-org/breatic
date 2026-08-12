@@ -478,6 +478,13 @@ body {
    the h1 rule sets and outranks it — but add one property here that the title
    does not declare and it lands on the title.
 
+   The exclusion is wrapped in `:where()` so that it costs nothing. Written
+   bare, `:not(.doc-title)` scores as a class and lifts the heading rules to
+   three, above every other rule in this block — including the list-item reset
+   below, which then loses on a heading inside a list item while winning on its
+   six siblings. That weight was never the point: the exclusion is here to miss
+   the title, not to outrank anything, and `:where()` says exactly that.
+
    Sizes derive from `--font-size-base` the way the title does, and the
    coefficients are fractions rather than decimals because 15 × 1.333 is
    19.995px, not 20. The hard ceiling is the title's 30px: the largest body
@@ -498,7 +505,7 @@ body {
   margin: 0.85em 0;
 }
 
-.doc-body-editor .ProseMirror h1:not(.doc-title) {
+.doc-body-editor .ProseMirror h1:where(:not(.doc-title)) {
   font-size: calc(var(--font-size-base) * 8 / 5); /* 24px */
   font-weight: 700;
   line-height: 1.3;
@@ -506,14 +513,14 @@ body {
   margin: 1.9em 0 0.55em;
 }
 
-.doc-body-editor .ProseMirror h2:not(.doc-title) {
+.doc-body-editor .ProseMirror h2:where(:not(.doc-title)) {
   font-size: calc(var(--font-size-base) * 4 / 3); /* 20px */
   font-weight: 600;
   line-height: 1.35;
   margin: 1.7em 0 0.5em;
 }
 
-.doc-body-editor .ProseMirror h3:not(.doc-title) {
+.doc-body-editor .ProseMirror h3:where(:not(.doc-title)) {
   font-size: calc(var(--font-size-base) * 17 / 15); /* 17px */
   font-weight: 600;
   line-height: 1.45;
@@ -523,8 +530,25 @@ body {
 /* Only 400/500/600/700/800 of Inter are loaded (`index.tsx`), and the CSS
    font-matching rules round a weight above 500 UP to the next face — so 650
    would render as 700 and h2 would weigh exactly what h1 does. The three levels
-   separate by size; h1 alone is heavier. `strong` is left out entirely: the
-   browser already renders it at 700. */
+   separate by size; h1 alone is heavier. */
+
+/* Bold is an absolute 700 here, because preflight makes it relative.
+   Preflight ships `strong { font-weight: bolder }`, and `bolder` steps up from
+   the INHERITED weight: from a paragraph's 400 it lands on 700, but from the
+   weights the rules above give the headings it lands on 900, which matches the
+   800 face — a bolded word inside an h1 coming out heavier than the h1. That
+   900 is not a value anyone chose; it is arithmetic on a weight this block
+   introduced.
+
+   Nothing is lost by pinning it. Bold and a heading say the same thing — read
+   this bit first — so inside a heading the mark has nothing left to add, and
+   700 against the h2/h3 600 still shows. The mark is recorded either way, and
+   it is real data: turn that heading back into a paragraph and the bold shows.
+   Absolute is also what CSS resets that reject normalize's `bolder` settle on,
+   for exactly this context-dependence. */
+.doc-body-editor .ProseMirror strong {
+  font-weight: 700;
+}
 
 .doc-body-editor .ProseMirror ul,
 .doc-body-editor .ProseMirror ol {
@@ -541,15 +565,38 @@ body {
 }
 
 /* A list item's children carry block margins that do not belong inside it.
-   `listItem`'s content is `paragraph block*`, and both halves reach the screen:
-   the paragraph always, and the `block*` as a nested list, which any item
-   becomes on Tab. Left alone each spaces itself as though it stood in the body
-   — 0.85em, against the 0.3em the items themselves sit apart — so the text
-   loosens and a sub-list floats away from the line it belongs to. */
-.doc-body-editor .ProseMirror li > p,
-.doc-body-editor .ProseMirror li > ul,
-.doc-body-editor .ProseMirror li > ol {
+   `listItem`'s content is `paragraph block*`, and `block` here is seven node
+   types: paragraph, heading, blockquote, codeBlock, bulletList, orderedList,
+   horizontalRule. Left alone each spaces itself as though it stood in the body
+   — up to 2em — inside an item whose siblings sit 0.3em apart.
+
+   THE SELECTOR IS `*` ON PURPOSE. Naming the types instead is how this was
+   written twice and wrong twice: first only `p`, then `p, ul, ol`, each time
+   covering the children that came to mind. `*` is right for a reason, not out
+   of laziness — the item owns the spacing of everything it holds, whatever
+   that turns out to be, so a node type added to the schema later needs no edit
+   here. Reachability was not the deciding factor either, but for the record
+   the divider takes three keystrokes (`--- ` inside an item) and paste brings
+   the rest.
+
+   NAMING THE LIST IS WHAT MAKES IT WIN, not where it sits in the file. `*`
+   contributes no specificity, so `.doc-body-editor .ProseMirror li > *` scores
+   the same as `.doc-body-editor .ProseMirror hr` and the later of the two takes
+   the margin — which is how a first attempt at this rule appeared to work on
+   the children declared above it and silently lost to the quote, the code block
+   and the divider declared below. `:is(ul, ol) >` adds the element the tie was
+   missing, so the reset wins wherever it is written and whatever is added after
+   it. A list item has no other parent, so the extra step is true as well as
+   useful. */
+.doc-body-editor .ProseMirror :is(ul, ol) > li > * {
   margin: 0;
+}
+
+/* An item holding more than one block still needs them apart, at the same
+   rhythm the items themselves keep. Reachable by pasting an item that holds
+   two paragraphs, or a paragraph and a quote. */
+.doc-body-editor .ProseMirror :is(ul, ol) > li > * + * {
+  margin-top: 0.3em;
 }
 
 .doc-body-editor .ProseMirror li {
