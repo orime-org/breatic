@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   VIDEO_MODE_OPTIONS,
   slotsForMode,
+  modeTakesReferences,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 
@@ -18,12 +19,13 @@ import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
  * the mode option means adding a mode cannot forget to state it.
  */
 describe('video mode options (#1904)', () => {
-  it('offers the four modes built so far, text-to-video first', () => {
+  it('offers the five modes built so far, text-to-video first', () => {
     expect(VIDEO_MODE_OPTIONS.map((o) => o.value)).toEqual([
       't2v',
       'i2v',
       'first_last',
       'animate',
+      'ref',
     ]);
   });
 
@@ -72,5 +74,46 @@ describe('video mode options (#1904)', () => {
     expect(VIDEO_SLOTS.endFrame.field).toBe('endFrameUrl');
     expect(VIDEO_SLOTS.firstFrame.param).toBe('image');
     expect(VIDEO_SLOTS.endFrame.param).toBe('end_image');
+  });
+});
+
+/**
+ * #1927 — reference-to-video collects its sources from the reference rail,
+ * not from slots, so the mode has to say so on the option itself.
+ *
+ * Every mode before it took its sources through slots, and the four
+ * consumers — the toolbar, the payload, the execute gate and the rail's
+ * dimming — all read `slots`. This one collects nothing that way: its
+ * sources are the images the prompt `@`-mentions. Stating that appetite on
+ * the option keeps it in the same one list, so adding a mode still cannot
+ * forget to say what it takes.
+ */
+describe('reference-to-video (#1927)', () => {
+  it('collects no slots — its sources come from the rail', () => {
+    expect(slotsForMode('ref')).toEqual([]);
+  });
+
+  it('is the only mode that takes @-mentioned reference images', () => {
+    // The four before it collect through slots. Letting one of them take
+    // rail references too would put a second, unasked-for source on the
+    // payload of three modes that have already shipped.
+    expect(modeTakesReferences('ref')).toBe(true);
+    expect(modeTakesReferences('t2v')).toBe(false);
+    expect(modeTakesReferences('i2v')).toBe(false);
+    expect(modeTakesReferences('first_last')).toBe(false);
+    expect(modeTakesReferences('animate')).toBe(false);
+  });
+
+  it('takes no references for a mode this panel does not offer', () => {
+    // Same reason `slotsForMode` answers empty: the node's `mode` field is
+    // shared with the image panel and can hold a value this panel never shows.
+    expect(modeTakesReferences('t2i')).toBe(false);
+    expect(modeTakesReferences('talking_head')).toBe(false);
+  });
+
+  it('states the appetite on every option, so adding a mode cannot forget', () => {
+    for (const option of VIDEO_MODE_OPTIONS) {
+      expect(typeof option.takesReferences, option.value).toBe('boolean');
+    }
   });
 });

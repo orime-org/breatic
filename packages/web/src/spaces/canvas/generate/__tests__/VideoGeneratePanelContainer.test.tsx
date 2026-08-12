@@ -113,18 +113,34 @@ const T2I: ModelEntry = {
 };
 
 /**
+ * A reference-to-video model (#1927). Its sources come from the reference
+ * rail rather than a slot, and its `images` param states how many it takes.
+ */
+const REF: ModelEntry = {
+  ...T2V,
+  name: 'kling-o3-pro-ref',
+  display_name: 'Kling O3 Pro Ref',
+  mode: 'ref',
+  sourcesByMode: { ref: ['image'] },
+  params: {
+    ...T2V.params,
+    images: { description: '', type: 'list', max_items: 2, default: null },
+  },
+};
+
+/**
  * A catalog carrying both buckets.
  * @returns The catalog payload `modelsApi.list()` resolves to.
  */
 function catalog(): ModelCatalog {
   return {
     image: [T2I],
-    video: [T2V, T2V_LITE, I2V],
+    video: [T2V, T2V_LITE, I2V, REF],
     audio: [],
     tts: [],
     three_d: [],
     understand: [],
-    total: 4,
+    total: 5,
   };
 }
 
@@ -232,6 +248,28 @@ function typePrompt(text: string): void {
   if (!fragment) throw new Error('seedVideoNode must run first');
   const paragraph = new Y.XmlElement('paragraph');
   paragraph.insert(0, [new Y.XmlText(text)]);
+  fragment.insert(0, [paragraph]);
+}
+
+/**
+ * Writes a prompt whose text is followed by one `@` mention per source id —
+ * what the editor produces when someone picks a reference out of the `@`
+ * popup. The mention chips are what the reference gate and the payload read;
+ * a connected image the prompt never mentions is not one of them.
+ * @param text - The prompt body.
+ * @param sourceIds - The source node ids to mention, in order.
+ */
+function typePromptMentioning(text: string, sourceIds: string[]): void {
+  const fragment = getPromptFragment('p', 's', 'target');
+  if (!fragment) throw new Error('seedVideoNode must run first');
+  const paragraph = new Y.XmlElement('paragraph');
+  paragraph.insert(0, [new Y.XmlText(text)]);
+  for (const id of sourceIds) {
+    const chip = new Y.XmlElement('referenceMention');
+    chip.setAttribute('sourceNodeId', id);
+    chip.setAttribute('kind', 'image');
+    paragraph.insert(paragraph.length, [chip]);
+  }
   fragment.insert(0, [paragraph]);
 }
 
@@ -781,9 +819,14 @@ describe('VideoGeneratePanelContainer', () => {
     });
 
     it('“add reference” toggles the canvas pick on this node', async () => {
+      // Mounted in `ref` because this suite's other reference cases are, not
+      // because the tool is mode-gated — it is not, and must not be: this one
+      // button starts every kind of reference pick, and a TEXT reference
+      // works in every mode. The case below holds that.
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-      seedVideoNode();
-      mountContainer('video');
+      const stored = { mode: 'ref', model: 'kling-o3-pro-ref' };
+      seedVideoNode(stored);
+      mountContainer('video', stored);
       act(() => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
@@ -1032,5 +1075,237 @@ describe('VideoGeneratePanelContainer', () => {
       await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
       expect(create.mock.calls[0]![0].params.image).toBeUndefined();
     });
+  });
+  describe('reference-to-video (#1927)', () => {
+    /** Two image nodes on the board, both wired into the target. */
+    const SOURCES = [
+      {
+        id: 'ref-a',
+        data: {
+          kind: 'image' as const,
+          status: 'idle' as const,
+          name: 'A',
+          content: 'https://cdn/a.png',
+        },
+      },
+      {
+        id: 'ref-b',
+        data: {
+          kind: 'image' as const,
+          status: 'idle' as const,
+          name: 'B',
+          content: 'https://cdn/b.png',
+        },
+      },
+      {
+        id: 'ref-c',
+        data: {
+          kind: 'image' as const,
+          status: 'idle' as const,
+          name: 'C',
+          content: 'https://cdn/c.png',
+        },
+      },
+    ];
+    const WIRES = [
+      { id: 'r-a', source: 'ref-a', target: 'target' },
+      { id: 'r-b', source: 'ref-b', target: 'target' },
+      { id: 'r-c', source: 'ref-c', target: 'target' },
+    ];
+
+    /**
+     * Opens the panel on a reference-to-video node with both images connected
+     * on the board AND in the doc — the submit path re-derives everything from
+     * live Yjs at click time, so an edge that exists only as a prop would
+     * vanish the moment execute is pressed.
+     * @param mentioned - The source ids the prompt `@`-mentions.
+     */
+    async function openRefPanel(mentioned: string[]): Promise<void> {
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const stored = { mode: 'ref', model: 'kling-o3-pro-ref' };
+      seedVideoNode(stored);
+      for (const source of SOURCES) {
+        addNode('p', 's', {
+          id: source.id,
+          type: 'image',
+          position: { x: 0, y: 0 },
+          data: {
+            name: source.data.name,
+            createdAt: 1000,
+            createdBy: 'u1',
+            locked: false,
+            state: 'idle',
+            attachments: [],
+            content: source.data.content,
+          },
+        } as Parameters<typeof addNode>[2]);
+      }
+      for (const wire of WIRES) addEdge('p', 's', wire);
+      typePromptMentioning('the two of them walk into frame', mentioned);
+      mountContainer('video', stored, { nodes: SOURCES, edges: WIRES });
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      // The prompt reaches the container through the editor's change
+      // callback, a tick after the button first renders — every case here
+      // presses it, so waiting for the prompt to land belongs in one place.
+      const execute = await screen.findByTestId('generate-video-execute');
+      await waitFor(() => expect(execute).not.toBeDisabled());
+    }
+
+    it('offers no source slot — the sources come from the rail', async () => {
+      await openRefPanel(['ref-a']);
+      expect(screen.queryByTestId('generate-video-tool-first-frame')).toBeNull();
+      expect(screen.queryByTestId('generate-video-tool-end-frame')).toBeNull();
+      expect(
+        screen.queryByTestId('generate-video-tool-character-image'),
+      ).toBeNull();
+      expect(screen.queryByTestId('generate-video-tool-driving-video')).toBeNull();
+    });
+
+    it('sends only the @-mentioned image, not everything connected', async () => {
+      await openRefPanel(['ref-b']);
+      const create = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue({ id: 't1' } as Awaited<
+          ReturnType<typeof canvasApi.createTask>
+        >);
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect(create.mock.calls[0]![0].params.images).toEqual([
+        'https://cdn/b.png',
+      ]);
+    });
+
+    it('stays clickable with nothing mentioned, and says what to do', async () => {
+      // A greyed button explains nothing to someone who has already written a
+      // prompt and connected their images (user 2026-08-11). The message names
+      // the action — type @ — rather than reporting a failure.
+      await openRefPanel([]);
+      const create = vi.spyOn(canvasApi, 'createTask');
+      const execute = screen.getByTestId('generate-video-execute');
+      expect(execute).not.toBeDisabled();
+      fireEvent.click(execute);
+      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      // The message must NOT instruct an action the user may already have
+      // performed, and it must name the prerequisite the image panel's sibling
+      // string carries ("connected") — without it, a user on a fresh node types
+      // `@`, gets no popup at all, and has nowhere to go.
+      expect(vi.mocked(toast.error).mock.calls[0]![0]).toBe(
+        'This mode needs a reference image — connect one to this node and type @ in the prompt to use it',
+      );
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('refuses more images than the model takes, and says how many', async () => {
+      // Knowing the limit is the difference between removing one and guessing.
+      // The model in this catalog takes two; the prompt mentions three.
+      await openRefPanel(['ref-a', 'ref-b', 'ref-c']);
+      const create = vi.spyOn(canvasApi, 'createTask');
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(toast.error).mock.calls[0]![0]).toContain('2');
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('dims the connected images under a mode that cannot use them', async () => {
+      // The rail is shared across modes and a reference survives a switch, so
+      // without this the panel would keep offering images the mode ignores.
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const stored = { mode: 't2v', model: 'veo-3.1' };
+      seedVideoNode(stored);
+      mountContainer('video', stored, { nodes: SOURCES, edges: WIRES });
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const insert = await screen.findByTestId('generate-ref-insert-r-a');
+      expect(insert.classList.contains('opacity-50')).toBe(true);
+      expect(insert).toBeDisabled();
+      // And it cannot be thrown away while it is dimmed: references are shared
+      // across modes, so a ✕ pressed here would lose an image the user is
+      // coming back for (design decision 2026-08-11).
+      expect(screen.getByTestId('generate-ref-remove-r-a')).toBeDisabled();
+    });
+
+    it('keeps offering to add a reference in every mode', async () => {
+      // A video node also takes TEXT references, and a text reference works
+      // in every mode — the rail keeps its row live and the @ popup keeps
+      // offering it. This one button starts every kind of reference pick, so
+      // gating it on "does this mode use reference IMAGES" took away the only
+      // in-panel way to add one, which is why that gate was withdrawn.
+      // (Audio and video rows are a separate matter: both halves ask
+      // `canConnect(kind, 'image')`, which is false for them, so those rows
+      // are inert in every mode including this one — tracked as #1930.)
+      await openInMode('t2v', 'veo-3.1');
+      expect(
+        screen.getByTestId('generate-video-tool-reference'),
+      ).not.toBeDisabled();
+    });
+
+    it('dims the prompt’s own image chips under a mode that cannot use them', async () => {
+      // The second of the dimming signal's three outlets. The rail says "this
+      // mode cannot use that image"; without this the chip already sitting in
+      // the prompt would render at full strength and say the opposite.
+      await openInMode('t2v', 'veo-3.1');
+      // The dim rides the ScrollArea's VIEWPORT class, not the root that
+      // carries the test id.
+      expect(
+        screen
+          .getByTestId('generate-prompt-editor')
+          .querySelector('[data-radix-scroll-area-viewport]')?.className ?? '',
+      ).toContain('reference-mention[data-kind=image]');
+    });
+
+    it('leaves the prompt’s image chips alone in the mode that uses them', async () => {
+      await openInMode('ref', 'kling-o3-pro-ref');
+      expect(
+        screen
+          .getByTestId('generate-prompt-editor')
+          .querySelector('[data-radix-scroll-area-viewport]')?.className ?? '',
+      ).not.toContain('reference-mention[data-kind=image]');
+    });
+
+    it('tells the user @ is how a reference gets used', async () => {
+      // Acceptance 11: the placeholder is where someone learns the rule before
+      // being refused by it. One sentence for every mode, deliberately —
+      // making it follow the mode put it in `useEditor`'s dependency list and
+      // rebuilt the whole editor on each switch, undo history included.
+      await openInMode('ref', 'kling-o3-pro-ref');
+      await waitFor(() =>
+        expect(
+          screen
+            .getByTestId('generate-prompt-editor')
+            .querySelector('[data-placeholder]')
+            ?.getAttribute('data-placeholder') ?? '',
+        ).toContain('@'),
+      );
+    });
+
+    it('leaves the connected images alone in the mode that uses them', async () => {
+      await openRefPanel(['ref-a']);
+      const insert = await screen.findByTestId('generate-ref-insert-r-a');
+      expect(insert.classList.contains('opacity-50')).toBe(false);
+      expect(insert).not.toBeDisabled();
+      expect(screen.getByTestId('generate-ref-remove-r-a')).not.toBeDisabled();
+    });
+    /**
+     * Opens the panel on a node already stored in one mode. The container reads
+     * `mode` off the nodes PROP, and this harness holds that array static, so a
+     * click on the mode picker writes Yjs without changing what is rendered —
+     * each mode gets its own mount.
+     * @param mode - The mode the node is stored in.
+     * @param model - The model to store alongside it.
+     */
+    async function openInMode(mode: string, model: string): Promise<void> {
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const stored = { mode, model };
+      seedVideoNode(stored);
+      mountContainer('video', stored, { nodes: SOURCES, edges: WIRES });
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      await screen.findByTestId('generate-video-execute');
+    }
+
   });
 });

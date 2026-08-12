@@ -30,6 +30,8 @@ import {
   resolveModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
+import { mentionedImageUrls } from '@web/spaces/canvas/generate/reference-urls';
 import type {
   ContentNodeView,
   NodeView,
@@ -37,17 +39,6 @@ import type {
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
-
-/**
- * Normalizes a wire `max_items` to a real cap: a positive finite number, else
- * undefined (uncapped). Mirrors the server rule's `limit >= 1` guard and the
- * worker's truthy `spec.max_items`, so the frontend count gate agrees with both.
- * @param cap - The `max_items` read off the wire ParamDescriptor (may be 0 / negative / NaN / undefined).
- * @returns The positive cap, or undefined when the param is effectively uncapped.
- */
-function positiveCap(cap: number | undefined): number | undefined {
-  return typeof cap === 'number' && Number.isFinite(cap) && cap >= 1 ? cap : undefined;
-}
 
 /** The render inputs the Generate panel needs, derived from live node data. */
 export interface GeneratePanelViewModel {
@@ -133,19 +124,6 @@ export interface GeneratePanelViewModel {
  */
 function asContentView(data: NodeView | undefined): ContentNodeView | undefined {
   return data && 'status' in data ? data : undefined;
-}
-
-/**
- * Reads an IMAGE node's asset URL — the only valid i2i source. A connected
- * non-image node (audio / video / 3d / web) can be @-mentioned (the pool has no
- * type filter), but its URL must never ride into `params.images` as a source
- * image, so every non-image kind yields undefined (adversarial 2026-07-10). An
- * i2i source is definitionally an image; text content is a body, not a URL.
- * @param data - The source node view.
- * @returns The image URL, or undefined when the source is not an image node.
- */
-function imageUrlOf(data: NodeView | undefined): string | undefined {
-  return data?.kind === 'image' ? data.content : undefined;
 }
 
 /**
@@ -259,7 +237,6 @@ export function buildGeneratePanelViewModel(input: {
   const params = current ? resolveParamsForModel(current, content?.params ?? {}) : {};
 
   const references = deriveReferences(nodeId, nodes, edges, input.textById);
-  const byId = new Map(nodes.map((n) => [n.id, n]));
   // t2i generates from scratch and ignores source images (design §2.5): the
   // rail still renders (greyed in the panel) but contributes NO reference URLs
   // to the execute payload. i2i sends them. (Style images — a future slice —
@@ -277,17 +254,12 @@ export function buildGeneratePanelViewModel(input: {
     mode === 't2i'
       ? []
       : [
-        ...references
-          .filter((r) => atMentioned.has(r.sourceNodeId))
-          .map((r) => imageUrlOf(byId.get(r.sourceNodeId)?.data))
-        // The source node's content is collaborative Yjs data — untrusted,
-        // and NOT covered by the catalog boundary. typeof, not Boolean: a
-        // malformed source whose content is a non-string object is truthy
-        // and would slip a non-URL into the task payload.
-          .filter((u): u is string => typeof u === 'string' && u.length > 0),
+        ...mentionedImageUrls(references, atMentioned, nodes),
         // Focus crops (#1782): the same @-only rule — a crop reaches the
         // payload only when its focus: pool id is mentioned. Appended after
         // node references (pool order → payload order).
+        // Focus crops (#1782) live on this panel alone, which is why they
+        // stay here rather than moving into the shared derivation above.
         ...focusImages
           .filter((f) => atMentioned.has(focusRefId(f.id)))
           .map((f) => f.url),

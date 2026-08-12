@@ -21,6 +21,21 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 
 **React 优化 hooks 是质量纪律(MANDATORY)**:`React.memo` / `useMemo` / `useCallback` 正确、彻底地应用,即便某处测不出提速也要用。判定题:**这个值 / 回调每次渲染都新建、且被传给子组件或进依赖数组吗?是 → 稳定它**;**`React.memo` 的组件其 props 必须全部稳定,否则 memo 永不 bail = 等于没 memo**(view-model 每次画布变动重建时,传给 memo 组件的数组 / 对象要单独按真实依赖 memo 化——2026-07-11 对抗曾咬出 ModelPicker 被每帧新数组击穿)。完整判定题与高频列表复用规则见根 [CLAUDE.md](../../CLAUDE.md#关键规范) 前端工业级标准段,此处不复制细节。
 
+## 写进内容里的链接用 `--color-content-link`(MANDATORY)
+
+**chrome 保持中性说的是整体视觉效果,不是「内容里也不许有颜色」**(user 2026-08-12)。正文里的链接是那个
+例外:它必须能跟周围的字分开,而**下划线一个人做不到这件事** —— 富文本正文同时提供 `Cmd+U` 的下划线标记,
+实测两者的计算样式只差 `text-underline-offset`(2px 对 auto),给一段已加下划线的文字粘上 URL 屏幕上零变化。
+
+所以内容里的链接一律 **`color: var(--color-content-link)` 加下划线两样都要**:颜色让它跟正文分开,下划线
+保住「颜色不能是唯一信号」这条(WCAG 1.4.1)。这个 token 指向 palette 的 blue,而 palette 那段注释自己写着
+identity 值就是给彩色文字用的;我们的 blue 锚在 Radix step 11,定值时校验过它跟 Primer 的 accent 蓝(也就是
+Primer 的链接色)落在同一个行业收敛区里。业界三家(GitHub 蓝 + 下划线 ·
+Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
+
+判定题:**这条链接嵌在一段话里、要让人看出它能点吗?是 → `--color-content-link` 加下划线**。chrome 里的
+链接(导航、面包屑、按钮式链接)不在此列,那些靠位置和形状就说明了自己是什么,照旧走中性。
+
 ## 中性激活边框单一真相源(MANDATORY,CI 强制)
 **凡是边框色独立表达「选中 / 聚焦 / 激活」且用黑白灰(中性色)的,一律 `border-active-border`**(= `--color-active-border`,输入框聚焦色)—— 禁止 `border-primary` / `border-foreground` / 自写灰客串激活边框(user 2026-07-11 拍板,此前分辨率选中边框曾写成 `border-primary` 漂移)。**彩色另论**:彩色语义边框(`border-status-*`、palette 七彩,如画布节点选中蓝)是另一套体系,不受此约束。判定题:**这个边框是不是在用中性色告诉用户「这项被选中 / 激活了」?是 → `border-active-border`,没有第二个选项**。**tab 激活下划线也在此列**(user 2026-07-11 拍板收编,`data-[state=active]` 进守卫扫描,别当"文字同色 indicator"豁免)。豁免:shadcn vendor(`components/ui/`,ADR 14 primitive 不动;checkbox/radio 选中边框是填充体系的一部分,非独立边框指示)。`breatic/active-border` CI 强制(扫状态变体 + 中性 border 类组合;运行时拼接的条件写法扫不到,靠本条 mandate 兜底)。
 

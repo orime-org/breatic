@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
-import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 import type { VideoGenMode } from '@web/spaces/canvas/generate/video-panel-view-model';
 import {
@@ -74,6 +74,39 @@ function videoView(
   over: Partial<Extract<NodeView, { kind: 'video' }>> = {},
 ): NodeView {
   return { kind: 'video', status: 'idle', ...over };
+}
+
+/** No edges, which is what a case about models / params / slots wants. */
+const NO_EDGES: CanvasEdge[] = [];
+
+/**
+ * Shared empty text map. The rail's rows carry what a referenced TEXT node
+ * says, and no case here is about that — but the parameter is required at the
+ * real call sites so that omitting it can never blank every text reference by
+ * accident (#1774 round-6), so it is stated rather than defaulted away.
+ */
+const NO_TEXT: ReadonlyMap<string, string> = new Map();
+
+/**
+ * Builds the view model, filling in the reference inputs a case does not care
+ * about.
+ * @param input - Everything the view model takes; edges and text default to empty.
+ * @returns The derived view model.
+ */
+function buildVm(input: {
+  nodeId: string;
+  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+  models: ModelEntry[];
+  mode: VideoGenMode;
+  edges?: ReadonlyArray<CanvasEdge>;
+  textById?: ReadonlyMap<string, string>;
+  atMentionedSourceIds?: ReadonlySet<string>;
+}): ReturnType<typeof buildVideoPanelViewModel> {
+  return buildVideoPanelViewModel({
+    ...input,
+    edges: input.edges ?? NO_EDGES,
+    textById: input.textById ?? NO_TEXT,
+  });
 }
 
 describe('selectVideoModeModels', () => {
@@ -146,7 +179,7 @@ describe('buildVideoPanelViewModel', () => {
     // i2v and upscale entries sit earlier and later in the catalog and
     // neither may win.
     const nodes = [node('n1', videoView())];
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models: [
@@ -161,7 +194,7 @@ describe('buildVideoPanelViewModel', () => {
 
   it('uses the stored model when the active mode offers it', () => {
     const nodes = [node('n1', videoView({ model: 'veo-3.1-lite' }))];
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models,
@@ -173,7 +206,7 @@ describe('buildVideoPanelViewModel', () => {
 
   it('falls back to the first offered model when none is stored', () => {
     const nodes = [node('n1', videoView())];
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models,
@@ -189,7 +222,7 @@ describe('buildVideoPanelViewModel', () => {
     // submitting it would generate from the prompt alone, ignoring the source
     // the mode is named after.
     const nodes = [node('n1', videoView({ model: 'kling-o3-pro-i2v' }))];
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models,
@@ -200,7 +233,7 @@ describe('buildVideoPanelViewModel', () => {
 
   it('resolves no model and no params when the mode offers nothing', () => {
     const nodes = [node('n1', videoView({ model: 'veo-3.1' }))];
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models,
@@ -223,7 +256,7 @@ describe('buildVideoPanelViewModel', () => {
         }),
       ),
     ];
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models,
@@ -247,7 +280,7 @@ describe('buildVideoPanelViewModel', () => {
       },
     });
     const nodes = [node('n1', videoView({ params: { duration: 12 } }))];
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models: [ranged],
@@ -258,7 +291,7 @@ describe('buildVideoPanelViewModel', () => {
 
   it('reports the node status so the panel can block submitting mid-generation', () => {
     const nodes = [node('n1', videoView({ status: 'handling' }))];
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models,
@@ -268,7 +301,7 @@ describe('buildVideoPanelViewModel', () => {
   });
 
   it('resolves a default model for a node that is not on the canvas', () => {
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'missing',
       nodes: [],
       models,
@@ -282,7 +315,7 @@ describe('buildVideoPanelViewModel', () => {
     // A catalog of mini-tool entries only. Nothing to pick, nothing to price,
     // and no params to reconcile against — the panel's execute gate reads the
     // empty model and stays shut.
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes: [node('n1', videoView())],
       models: [makeModel('video-upscale-pro', { mode: 'upscale' })],
@@ -306,7 +339,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     // first frame; first-last frame both, in the order they are shown.
     const nodes = [node('n1', videoView())];
     const slotsIn = (mode: VideoGenMode): readonly string[] =>
-      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode }).slots;
+      buildVm({ nodeId: 'n1', nodes, models, mode }).slots;
     expect(slotsIn('t2v')).toEqual([]);
     expect(slotsIn('i2v')).toEqual(['firstFrame']);
     expect(slotsIn('first_last')).toEqual(['firstFrame', 'endFrame']);
@@ -315,7 +348,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
   it('echoes the mode back, so the payload is built from the same one', () => {
     const nodes = [node('n1', videoView())];
     expect(
-      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'first_last' })
+      buildVm({ nodeId: 'n1', nodes, models, mode: 'first_last' })
         .mode,
     ).toBe('first_last');
   });
@@ -331,7 +364,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
       ),
     ];
     expect(
-      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'first_last' })
+      buildVm({ nodeId: 'n1', nodes, models, mode: 'first_last' })
         .slotUrls,
     ).toEqual({
       firstFrame: 'https://cdn/f.png',
@@ -355,7 +388,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
         }),
       ),
     ];
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models,
@@ -370,7 +403,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     const nodes = [
       node('n1', videoView({ characterImageUrl: 'https://cdn/c.png' })),
     ];
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models,
@@ -386,7 +419,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     const nodes = [
       node('n1', videoView({ drivingVideo: { url: 'https://cdn/driving.mp4' } })),
     ];
-    const vm = buildVideoPanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       models,
@@ -404,7 +437,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
       node('n1', videoView({ endFrameUrl: 'https://cdn/l.png' })),
     ];
     expect(
-      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'i2v' })
+      buildVm({ nodeId: 'n1', nodes, models, mode: 'i2v' })
         .slotUrls.endFrame,
     ).toBe('https://cdn/l.png');
   });
@@ -415,7 +448,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     // task is accepted and billed; an empty string passes `typeof === 'string'`
     // but is no URL either. Same guard the style slot has carried since #1664.
     const bad = (value: unknown): unknown =>
-      buildVideoPanelViewModel({
+      buildVm({
         nodeId: 'n1',
         nodes: [
           node(
@@ -437,7 +470,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
   it('reports an empty slot map when the node has no picks', () => {
     const nodes = [node('n1', videoView())];
     expect(
-      buildVideoPanelViewModel({ nodeId: 'n1', nodes, models, mode: 'first_last' })
+      buildVm({ nodeId: 'n1', nodes, models, mode: 'first_last' })
         .slotUrls,
     ).toEqual({});
   });
@@ -527,5 +560,164 @@ describe('resolveVideoModeSwitch', () => {
       model: '',
       params: {},
     });
+  });
+});
+
+/**
+ * #1927 — the reference rail, and the images the prompt `@`-mentions.
+ *
+ * The rail rows and the URLs that ride the payload are two different answers:
+ * the rail shows everything connected, and only what the prompt `@`-mentions
+ * is sent. Deriving both here rather than in the container keeps them from
+ * disagreeing, and lets the execute path re-derive them from live Yjs at click
+ * time — the same reason the image panel does it this way.
+ */
+describe('buildVideoPanelViewModel — references (#1927)', () => {
+  const REF_MODELS = [
+    makeModel('kling-o3-pro-ref', {
+      mode: 'ref',
+      params: {
+        images: { description: '', type: 'list', max_items: 7, default: null },
+      },
+    }),
+  ];
+
+  /**
+   * A canvas with two images connected into the target video node.
+   * @returns The nodes and the edges wiring them in.
+   */
+  function twoConnectedImages(): {
+    nodes: CanvasNodeView[];
+    edges: CanvasEdge[];
+    } {
+    return {
+      nodes: [
+        node('n1', videoView({ mode: 'ref', model: 'kling-o3-pro-ref' })),
+        node('src-a', { kind: 'image', status: 'idle', content: 'https://cdn/a.png' }),
+        node('src-b', { kind: 'image', status: 'idle', content: 'https://cdn/b.png' }),
+      ],
+      edges: [
+        { id: 'e-a', source: 'src-a', target: 'n1' },
+        { id: 'e-b', source: 'src-b', target: 'n1' },
+      ],
+    };
+  }
+
+  it('shows every connected source in the rail, @-mentioned or not', () => {
+    const { nodes, edges } = twoConnectedImages();
+    const vm = buildVm({ nodeId: 'n1', nodes, edges, models: REF_MODELS, mode: 'ref' });
+    expect(vm.references.map((r) => r.sourceNodeId)).toEqual(['src-a', 'src-b']);
+  });
+
+  it('sends only the @-mentioned ones, in rail order', () => {
+    // Connecting an image says "this one is available"; `@`-mentioning it says
+    // "use this one". A connected image that is never mentioned contributes
+    // nothing — otherwise the user could not connect a candidate without
+    // paying for it in every generation.
+    const { nodes, edges } = twoConnectedImages();
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: REF_MODELS,
+      mode: 'ref',
+      atMentionedSourceIds: new Set(['src-b']),
+    });
+    expect(vm.referenceUrls).toEqual(['https://cdn/b.png']);
+  });
+
+  it('keeps rail order, not mention order', () => {
+    const { nodes, edges } = twoConnectedImages();
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: REF_MODELS,
+      mode: 'ref',
+      atMentionedSourceIds: new Set(['src-b', 'src-a']),
+    });
+    expect(vm.referenceUrls).toEqual(['https://cdn/a.png', 'https://cdn/b.png']);
+  });
+
+  it('sends nothing when nothing is @-mentioned', () => {
+    const { nodes, edges } = twoConnectedImages();
+    const vm = buildVm({ nodeId: 'n1', nodes, edges, models: REF_MODELS, mode: 'ref' });
+    expect(vm.references).toHaveLength(2);
+    expect(vm.referenceUrls).toEqual([]);
+  });
+
+  it('sends nothing under a mode that does not take references', () => {
+    // The four modes built before this one collect through slots. A reference
+    // stays connected across a mode switch, so without this the images someone
+    // connected for reference-to-video would ride into a first-last-frame task.
+    const { nodes, edges } = twoConnectedImages();
+    for (const mode of ['t2v', 'i2v', 'first_last', 'animate'] as VideoGenMode[]) {
+      const vm = buildVm({
+        nodeId: 'n1',
+        nodes,
+        edges,
+        models: [makeModel('kling-i2v', { mode: ['i2v', 'first_last'] }), ...REF_MODELS],
+        mode,
+        atMentionedSourceIds: new Set(['src-a', 'src-b']),
+      });
+      expect(vm.referenceUrls, mode).toEqual([]);
+    }
+  });
+
+  it('drops an @-mentioned source that is not an image', () => {
+    // The rail carries text, audio and video rows too. A text node's body is
+    // not a URL, and sending it as one would put a sentence where the upstream
+    // expects an image.
+    const nodes: CanvasNodeView[] = [
+      node('n1', videoView({ mode: 'ref' })),
+      node('src-t', { kind: 'text', status: 'idle' }),
+    ];
+    const edges: CanvasEdge[] = [{ id: 'e-t', source: 'src-t', target: 'n1' }];
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: REF_MODELS,
+      mode: 'ref',
+      atMentionedSourceIds: new Set(['src-t']),
+    });
+    expect(vm.referenceUrls).toEqual([]);
+  });
+
+  it('reads the model\'s reference cap off the wire', () => {
+    const { nodes, edges } = twoConnectedImages();
+    const vm = buildVm({ nodeId: 'n1', nodes, edges, models: REF_MODELS, mode: 'ref' });
+    expect(vm.maxReferences).toBe(7);
+  });
+
+  it('treats a non-positive cap as uncapped, like the server and the worker', () => {
+    // The server rule guards on `limit >= 1` and the worker on a truthy
+    // `spec.max_items`; a frontend that honoured 0 would block every submit
+    // with a "at most 0 reference images" toast the other two never meant.
+    const { nodes, edges } = twoConnectedImages();
+    for (const cap of [0, -1, Number.NaN, undefined]) {
+      const models = [
+        makeModel('kling-o3-pro-ref', {
+          mode: 'ref',
+          params: {
+            images: { description: '', type: 'list', max_items: cap, default: null },
+          },
+        }),
+      ];
+      const vm = buildVm({ nodeId: 'n1', nodes, edges, models, mode: 'ref' });
+      expect(vm.maxReferences, String(cap)).toBeUndefined();
+    }
+  });
+
+  it('has no cap when the model declares no reference param at all', () => {
+    const { nodes, edges } = twoConnectedImages();
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: [makeModel('veo-3.1', { mode: 'ref' })],
+      mode: 'ref',
+    });
+    expect(vm.maxReferences).toBeUndefined();
   });
 });
