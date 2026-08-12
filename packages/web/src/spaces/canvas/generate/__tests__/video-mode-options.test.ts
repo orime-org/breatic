@@ -47,11 +47,11 @@ describe('video mode options (#1904)', () => {
   });
 
   it('reuses the character image for the talking head (#1935)', () => {
-    // The registry's own list of roles anticipates exactly one new slot — "the
-    // character image animation drives, the driving video it takes its motion
-    // from, and later a driving audio track" — and a slot shared across modes
-    // is how the first frame already works (image-to-video and first-last).
-    // Both modes want the same thing of it: a picture of a person.
+    // The registry's own list of roles anticipated exactly this slot before it
+    // existed ("and later a driving audio track", since rewritten to name the
+    // slot outright), and a slot shared across modes is how the first frame
+    // already works (image-to-video and first-last). Both modes want the same
+    // thing of it: a picture of a person.
     expect(slotsForMode('talking_head')[0]).toBe('characterImage');
     expect(slotsForMode('animate')[0]).toBe('characterImage');
   });

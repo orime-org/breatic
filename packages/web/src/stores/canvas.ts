@@ -48,10 +48,12 @@ export type HistoryCommand = 'undo' | 'redo';
  *     frame mode ends. Independent of the first frame in every way — either
  *     one can be picked or replaced at any time, and only execute asks for
  *     both (user 2026-08-10).
- *   - `characterImage` — the same, into `characterImageUrl` (#1918): the
- *     figure image animation drives. Its own slot rather than the first
- *     frame's, though both travel as `image`, because a pick survives a mode
- *     switch and these two mean different things.
+ *   - `characterImage` — the same, into `characterImageUrl` (#1918): one
+ *     picture of a person, for both modes that animate one — the figure
+ *     image animation drives, and the portrait the talking head speaks with
+ *     (#1935). Its own slot rather than the first frame's, though both travel
+ *     as `image`, because a pick survives a mode switch and these two mean
+ *     different things.
  *   - `drivingVideo` — the same, into `drivingVideo` (#1918), but from a
  *     VIDEO node: the performance whose motion is transferred onto the
  *     character. The first SLOT pick that takes something other than an image

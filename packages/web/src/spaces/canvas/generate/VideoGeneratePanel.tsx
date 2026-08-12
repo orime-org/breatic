@@ -156,7 +156,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         onInsert={onInsertReference}
         // Dimmed under every mode but reference-to-video, which is the only
         // one that feeds a reference IMAGE to the model — text-to-video takes
-        // no picture at all and the other three take theirs from slots, so an
+        // no picture at all and the other four take theirs from slots, so an
         // image `@` chip would contribute nothing to any of them (#1903,
         // landed with #1927). Dimming also disables
         // the row's ✕, and that is deliberate rather than a side effect:

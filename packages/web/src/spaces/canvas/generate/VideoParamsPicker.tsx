@@ -60,8 +60,8 @@ const EDITED_PARAMS = [
  * this component's own rule, "a model that does not declare a parameter simply
  * has no group for it". This is the same question one level up, for the pill
  * that holds the groups: a model declaring none of them (the talking-head one
- * declares only its two sources) would otherwise get a pill with an empty
- * label that opens onto nothing.
+ * declares two sources and a seed, none of which this pill edits) would
+ * otherwise get a pill with an empty label that opens onto nothing.
  * @param model - The model the panel currently has selected.
  * @returns True when the model declares at least one param this pill edits.
  */

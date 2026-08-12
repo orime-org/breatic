@@ -135,10 +135,11 @@ const REF: ModelEntry = {
 
 /**
  * A talking-head model (#1935), shaped like `omnihuman-1.5`: it takes a
- * portrait and an audio track and declares NOTHING else — no prompt, and none
- * of the four params the toolbar's pill edits. Both absences are load-bearing
- * here, so the fixture states them by leaving `params` empty rather than
- * spreading `T2V.params`.
+ * portrait and an audio track, and declares no prompt and none of the four
+ * params the toolbar's pill edits. Both absences are load-bearing here, so
+ * the fixture states them by leaving `params` empty rather than spreading
+ * `T2V.params`. The real entry also declares a seed, which neither decision
+ * reads.
  */
 const TALKING_HEAD: ModelEntry = {
   ...T2V,
