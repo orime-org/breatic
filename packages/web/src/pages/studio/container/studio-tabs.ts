@@ -59,9 +59,10 @@ export const DEFAULT_STUDIO_TAB: StudioTabKey = 'projects';
  * rather than to a section of it, and routing it through here would be a claim
  * about which section it meant.
  *
- * The default section has ONE address, the studio's own. Giving it two — the
- * bare one and an explicit `/projects` — would mean the strip's first link
- * pointed away from the page the reader is already on.
+ * The default section has ONE address, the studio's own. A spelled-out
+ * `/projects` is not a second one: {@link isAddressableTabSegment} refuses it
+ * and the container sends it back here, so the strip's first link can never
+ * point away from the page its reader is already on.
  * @param slug - The studio.
  * @param tab - The section.
  * @returns The path to that section.
@@ -80,15 +81,40 @@ export function studioTabPath(slug: string, tab: StudioTabKey): string {
  * from it stops being addressable in the same edit. Two lists would drift, and
  * the drift would show up as a URL that resolves to nothing.
  *
- * Nothing is corrected on the way in — not case, not surrounding whitespace,
- * not a trailing slash. A URL is an exact address; repairing one quietly makes
- * both spellings valid forever and there is then no way to take the wrong one
- * back.
+ * Nothing is corrected on the way in — not case, and not surrounding
+ * whitespace. A URL is an exact address; repairing one quietly makes both
+ * spellings valid forever and there is then no way to take the wrong one back.
+ * (A trailing slash never reaches here to be corrected or not: the router
+ * strips it while matching, so `/studio/x/settings/` hands over the same
+ * `settings` as the address without it.)
  * @param value - The `:tab` route parameter, absent when the address has none.
  * @returns Whether the segment names a tab.
  */
-export function isStudioTabKey(value: string | undefined): value is StudioTabKey {
+function isStudioTabKey(value: string | undefined): value is StudioTabKey {
   return STUDIO_TABS.some((tab) => tab.key === value);
+}
+
+/**
+ * Whether a URL segment is the one this scheme would put there for its
+ * section — the question a router asks, as opposed to {@link isStudioTabKey},
+ * which asks the narrower one about the name alone.
+ *
+ * The two differ on exactly one value. `projects` is a real tab name, so the
+ * name test passes it; but the default section's address carries no segment at
+ * all (see {@link studioTabPath}), so `/studio/{slug}/projects` is a second
+ * address for a page that has one — and standing on it means the strip's first
+ * link, the one marked as the current page, points at a different URL than the
+ * one in the bar.
+ *
+ * Keeping the accepted set equal to the emitted set is what makes that
+ * impossible, rather than something to be careful about.
+ * @param value - The `:tab` route parameter, absent when the address has none.
+ * @returns Whether this scheme would produce a segment like it.
+ */
+export function isAddressableTabSegment(
+  value: string | undefined,
+): value is StudioTabKey {
+  return isStudioTabKey(value) && value !== DEFAULT_STUDIO_TAB;
 }
 
 /**
@@ -97,8 +123,9 @@ export function isStudioTabKey(value: string | undefined): value is StudioTabKey
  *
  * This answers "which tab do I render". It deliberately cannot tell an absent
  * segment from a wrong one — both render Projects — so a caller that needs to
- * distinguish them (to redirect away from a wrong address while leaving a bare
- * one alone) asks {@link isStudioTabKey} instead.
+ * distinguish them (to redirect away from an address this scheme would not
+ * have produced, while leaving a bare one alone) asks
+ * {@link isAddressableTabSegment} instead.
  * @param value - The `:tab` route parameter, absent when the address has none.
  * @returns The tab to render.
  */

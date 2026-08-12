@@ -24,7 +24,7 @@ import { NonMemberView } from '@web/pages/studio/container/NonMemberView';
 import { StudioHeader } from '@web/pages/studio/container/StudioHeader';
 import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
 import {
-  isStudioTabKey,
+  isAddressableTabSegment,
   studioTabFromParam,
 } from '@web/pages/studio/container/studio-tabs';
 import { CollectionsTab } from '@web/pages/studio/container/tabs/CollectionsTab';
@@ -136,8 +136,13 @@ export default function StudioContainerPage(): React.JSX.Element {
   // or somebody's own settings link pasted to someone else — so each gets the
   // one address that is certainly right instead of a page that contradicts it.
   //
-  // A name that is not a tab. Answerable without waiting for anything.
-  const namesNoTab = tabParam !== undefined && !isStudioTabKey(tabParam);
+  // A segment this scheme would never have produced. Answerable without
+  // waiting for anything. Note it is the ADDRESS being judged and not the
+  // name: `projects` is a real tab, but the default section's address carries
+  // no segment, so spelling it out is a second address for a page that has
+  // one — and the strip's first link, marked as the current page, would point
+  // somewhere other than the bar.
+  const namesNoTab = tabParam !== undefined && !isAddressableTabSegment(tabParam);
   // A real tab name on a studio the viewer is not in. The public façade below
   // renders no tabs at all, so the address would claim a tab that is not on
   // the page. This one has to wait for the studio to load: until then we do

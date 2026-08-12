@@ -314,6 +314,29 @@ describe('StudioContainerPage', () => {
     expect(await screen.findByRole('link', { name: /Projects/ })).toHaveAttribute('aria-current', 'page');
   });
 
+  it('sends the default section spelled out back to the bare studio', async () => {
+    // `/studio/{slug}/projects` is a name the tab list recognises, so the
+    // wrong-name redirect lets it through — and it then renders, giving the
+    // default section a SECOND live address. The strip's first link is built
+    // by `studioTabPath`, which only ever emits the bare one, so standing here
+    // means the link marked `aria-current="page"` points somewhere else than
+    // the page you are on.
+    //
+    // Nothing we ship produces this address; someone types it, or guesses it
+    // from `/members` and `/settings`. The fix is not to defend against that
+    // guess but to keep one rule true: the addresses we accept are the
+    // addresses we hand out.
+    setup('acme-studio', false, 'projects');
+    await waitFor(() =>
+      expect(screen.getByTestId('location').textContent).toBe(
+        '/studio/acme-studio',
+      ),
+    );
+    expect(
+      await screen.findByRole('link', { name: /Projects/ }),
+    ).toHaveAttribute('aria-current', 'page');
+  });
+
   it('sends a non-member back to the studio even when the tab name is real', async () => {
     // A non-member gets the public façade, which renders no tabs at all — so
     // `settings` is a perfectly spelled address for something not on the
