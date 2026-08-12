@@ -20,7 +20,8 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { Editor } from '@tiptap/core';
+import { Editor, type Extensions } from '@tiptap/core';
+import { Heading } from '@tiptap/extension-heading';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -131,6 +132,21 @@ describe('what the heading command accepts', () => {
   });
 });
 
+describe('how the levels the body keeps render', () => {
+  it('gives each of the three its own tag', () => {
+    // The override in `document-heading` answers for two cases, and only the
+    // out-of-range one is asserted below. Without this, rendering EVERY heading
+    // at the fallback level passes the whole suite — while `h1` and `h2` stop
+    // matching their stylesheet rules and all three levels collapse to one size.
+    const editor = open('<h1>ONE</h1><h2>TWO</h2><h3>THREE</h3>');
+    const html = editor.getHTML();
+
+    expect(html).toContain('<h1>ONE</h1>');
+    expect(html).toContain('<h2>TWO</h2>');
+    expect(html).toContain('<h3>THREE</h3>');
+  });
+});
+
 describe('pasting a fourth-level heading', () => {
   it('lands as a paragraph, because nothing parses an h4 any more', () => {
     const editor = open('<p>before</p><h4>PASTED</h4><p>after</p>');
@@ -147,29 +163,68 @@ describe('pasting a fourth-level heading', () => {
 
 describe('a fourth-level heading already stored in the document', () => {
   /**
-   * Put a `level: 4` heading in the body.
+   * The extension list as it stood before the body capped headings at three.
    *
-   * Built from a node spec rather than from HTML on purpose: `parseHTML` no
-   * longer has a rule for `h4`, so pasted markup lands as a paragraph (covered
-   * above). What this describes is the other case — a node that reached the
-   * shared document while six levels were still parseable.
-   * @returns An editor whose body holds one such heading between two paragraphs.
+   * Used to author the other side of the wire — a peer still running the
+   * six-level bundle, or the same document as it was written before the cap.
+   * StarterKit's heading is already off, so swapping ours out and putting stock
+   * Heading back reproduces exactly the schema that shipped before.
+   * @param fragment - The body fragment that editor binds to.
+   * @returns The extension list, with six heading levels instead of three.
+   */
+  function sixLevelExtensions(fragment: Y.XmlFragment): Extensions {
+    return buildDocumentExtensions({ fragment })
+      .filter((extension) => extension.name !== 'heading')
+      .concat(Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }));
+  }
+
+  /**
+   * A body holding a `level: 4` heading that arrived over the wire.
+   *
+   * The heading is authored by a SIX-level editor, encoded out of its Y.Doc and
+   * applied to a second one, which a three-level editor then binds to. That
+   * round trip is the whole point: y-tiptap drops whatever the receiving schema
+   * does not recognise and commits the deletion as an ordinary local change, so
+   * the only way to show the cap keeps stored headings is to make that schema
+   * reconcile a document it did not author. Verified by mutation — filtering
+   * the heading extension out of the receiving list turns three blocks into
+   * two, and both assertions below go red.
+   *
+   * Authoring it through the three-level editor instead would assert nothing.
+   * `levels` is not an attribute constraint: Heading declares `level` with no
+   * `validate`, and the path Yjs loads through (`NodeType.create` ->
+   * `computeAttrs`) does not run one anyway, so `{ level: 4 }` is accepted under
+   * any `levels` array — the assertion would hold on the code this replaces.
+   * @returns An editor on the three-level schema, bound to the received body.
    */
   function withStoredFourth(): Editor {
-    const editor = open('<p>before</p><p>after</p>');
-    editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
-    editor.commands.insertContent({
-      type: 'heading',
-      attrs: { level: 4 },
-      content: [{ type: 'text', text: 'FOURTH' }],
+    const authored = new Y.Doc();
+    Y.applyUpdate(authored, encodeInitialSpaceContent('document', 'T'));
+    const olderPeer = new Editor({
+      extensions: sixLevelExtensions(documentBodyFragment(authored)),
     });
+    editors.push(olderPeer);
+    olderPeer.commands.setContent(
+      '<h1 class="doc-title">T</h1><p>before</p><h4>FOURTH</h4><p>after</p>',
+    );
+
+    const received = new Y.Doc();
+    Y.applyUpdate(received, Y.encodeStateAsUpdate(authored));
+    const editor = new Editor({
+      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(received) }),
+    });
+    editors.push(editor);
     return editor;
   }
 
-  it('is kept, not dropped', () => {
+  it('survives the trip to a client that keeps three levels', () => {
     const editor = withStoredFourth();
 
-    expect(blocks(editor)).toContainEqual({ type: 'heading', level: 4 });
+    expect(blocks(editor)).toEqual([
+      { type: 'paragraph' },
+      { type: 'heading', level: 4 },
+      { type: 'paragraph' },
+    ]);
     expect(editor.getText()).toContain('FOURTH');
   });
 
