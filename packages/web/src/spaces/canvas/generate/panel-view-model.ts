@@ -30,6 +30,7 @@ import {
   resolveModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
 import type {
   ContentNodeView,
   NodeView,
@@ -37,17 +38,6 @@ import type {
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
-
-/**
- * Normalizes a wire `max_items` to a real cap: a positive finite number, else
- * undefined (uncapped). Mirrors the server rule's `limit >= 1` guard and the
- * worker's truthy `spec.max_items`, so the frontend count gate agrees with both.
- * @param cap - The `max_items` read off the wire ParamDescriptor (may be 0 / negative / NaN / undefined).
- * @returns The positive cap, or undefined when the param is effectively uncapped.
- */
-function positiveCap(cap: number | undefined): number | undefined {
-  return typeof cap === 'number' && Number.isFinite(cap) && cap >= 1 ? cap : undefined;
-}
 
 /** The render inputs the Generate panel needs, derived from live node data. */
 export interface GeneratePanelViewModel {

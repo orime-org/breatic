@@ -8,18 +8,29 @@
  * envelope (which they get from `buildOverwriteTaskPayload`) and nothing else.
  * What goes in `params` is where they differ, and video's list grows with each
  * generation mode — first frame, end frame, character image, driving video —
- * none of which mean anything to an image task.
+ * none of which mean anything to an image task. The one field the two do share,
+ * the reference pool, is still built on different terms: here it belongs to a
+ * single mode (#1927), where on the image side it belongs to all but one.
  */
 
 import type { TaskCreateInput } from '@breatic/shared';
 
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
-import { slotsForMode } from '@web/spaces/canvas/generate/video-mode-options';
+import {
+  modeTakesReferences,
+  slotsForMode,
+} from '@web/spaces/canvas/generate/video-mode-options';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 
 /** Video-node generation task type (AIGC_TASK_TYPES key on the worker). */
 const VIDEO_TASK_TYPE = 'video';
+
+/**
+ * The param the reference pool travels under — the same name the image panel
+ * uses and the one every reference-taking model declares.
+ */
+const REFERENCE_PARAM = 'images';
 
 /** Inputs for {@link buildVideoTaskPayload}. */
 export interface VideoTaskInput {
@@ -41,6 +52,12 @@ export interface VideoTaskInput {
    * mode finds them again.
    */
   slotUrls: VideoSlotUrls;
+  /**
+   * The reference image URLs the prompt `@`-mentions, snapshotted at execute
+   * time. Built into the payload only under a mode that collects references
+   * (#1927); the rest leave the key off entirely.
+   */
+  referenceUrls?: readonly string[];
   /** The node's current persistent lease counter; gen = leaseGen + 1. Absent = 0. */
   leaseGen?: number;
 }
@@ -57,23 +74,33 @@ export interface VideoTaskInput {
  * value.
  * @param mode - The active generation mode.
  * @param slotUrls - What is currently picked, by slot.
+ * @param referenceUrls - The `@`-mentioned reference images.
  * @returns The source params, ready to merge into the payload.
  */
 function sourceParams(
   mode: string,
   slotUrls: VideoSlotUrls,
-): Record<string, string> {
-  const params: Record<string, string> = {};
+  referenceUrls: readonly string[],
+): Record<string, unknown> {
+  const params: Record<string, unknown> = {};
   for (const slot of slotsForMode(mode)) {
     const url = slotUrls[slot];
     if (url) params[VIDEO_SLOTS[slot].param] = url;
+  }
+  // Reference-to-video (#1927): the `@`-picked pool IS this mode's source, so
+  // here it is a source param like any other — same rule, same shape. An empty
+  // pool leaves no key for the same reason an empty slot does: upstream reads
+  // a source field's presence, so sending an empty list would be a claim
+  // rather than a silence. Execute refuses that submit anyway.
+  if (modeTakesReferences(mode) && referenceUrls.length > 0) {
+    params[REFERENCE_PARAM] = [...referenceUrls];
   }
   return params;
 }
 
 /**
  * Builds the overwrite-mode task payload for a video-node Generate.
- * @param input - The node, project/space, model, params, prompt, mode, picked slots and lease gen.
+ * @param input - The node, project/space, model, params, prompt, mode, picked slots, references and lease gen.
  * @returns The `POST /canvas/tasks` request body (overwrite, gen-fenced).
  */
 export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
@@ -89,7 +116,7 @@ export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
     params: {
       ...input.params,
       prompt: input.promptText,
-      ...sourceParams(input.mode, input.slotUrls),
+      ...sourceParams(input.mode, input.slotUrls, input.referenceUrls ?? []),
     },
     leaseGen: input.leaseGen,
   });

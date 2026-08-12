@@ -16,13 +16,21 @@
 import { VIDEO_GENERATION_MODES } from '@breatic/shared';
 import type { ModelEntry } from '@breatic/shared';
 
-import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
+import {
+  deriveReferences,
+  type ReferenceRailItem,
+} from '@web/spaces/canvas/generate/derive-references';
 import {
   filterModelsByMode,
   resolveModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
-import { slotsForMode } from '@web/spaces/canvas/generate/video-mode-options';
+import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
+import {
+  modeTakesReferences,
+  slotsForMode,
+} from '@web/spaces/canvas/generate/video-mode-options';
 import {
   VIDEO_SLOTS,
   readSlotPick,
@@ -88,6 +96,36 @@ export interface VideoPanelViewModel {
    * travels upstream: a poster is ours, for the toolbar.
    */
   slotThumbnails: VideoSlotUrls;
+  /**
+   * Reference rail rows derived from incoming edges — everything connected,
+   * whether or not the prompt mentions it. What the rail SHOWS.
+   */
+  references: ReferenceRailItem[];
+  /**
+   * The reference image URLs this submit sends (#1927) — the `@`-mentioned
+   * ones only, in rail order, and only under a mode that takes references.
+   * What the PAYLOAD carries, which is a smaller thing than what the rail
+   * shows: connecting an image offers it, mentioning it uses it.
+   */
+  referenceUrls: string[];
+  /**
+   * How many reference images the active model takes, or undefined when it is
+   * uncapped. Read off the wire so the panel, the server rule and the worker
+   * all count against the same figure.
+   */
+  maxReferences: number | undefined;
+}
+
+/** Shared empty set for a prompt that mentions nothing (avoids a per-call allocation). */
+const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
+
+/**
+ * Narrows a node view to the image URL it can lend as a reference.
+ * @param data - The source node's view.
+ * @returns Its content URL when it is an image node, else undefined.
+ */
+function imageUrlOf(data: NodeView | undefined): string | undefined {
+  return data?.kind === 'image' ? data.content : undefined;
 }
 
 /**
@@ -249,6 +287,10 @@ export function selectVideoModeModels(
  * @param input.mode - The active generation mode. Passed in rather than read off
  *   the node: the panel owns which mode it is showing, and the node stores one
  *   `mode` field shared with the image panel's own mode set.
+ * @param input.edges - Current canvas edges; the incoming ones are the references.
+ * @param input.textById - What each referenced text node says, for the rail's previews.
+ * @param input.atMentionedSourceIds - The sources the prompt `@`-mentions right
+ *   now. Absent means none, which is what an untouched prompt has.
  * @returns The derived view model.
  */
 export function buildVideoPanelViewModel(input: {
@@ -256,6 +298,9 @@ export function buildVideoPanelViewModel(input: {
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
   models: ModelEntry[];
   mode: VideoGenMode;
+  edges: ReadonlyArray<CanvasEdge>;
+  textById: ReadonlyMap<string, string>;
+  atMentionedSourceIds?: ReadonlySet<string>;
 }): VideoPanelViewModel {
   const { nodeId, nodes, mode } = input;
   const content = asContentView(nodes.find((n) => n.id === nodeId)?.data);
@@ -274,6 +319,26 @@ export function buildVideoPanelViewModel(input: {
       : (models[0]?.name ?? '');
   const current = models.find((m) => m.name === model);
 
+  const references = deriveReferences(nodeId, nodes, input.edges, input.textById);
+  // Only the `@`-mentioned ones travel, and only under a mode that asked for
+  // them (#1927). A reference survives a mode switch — that is deliberate, so
+  // switching back finds it — which is exactly why the mode, not the rail,
+  // decides whether anything is sent: otherwise the images someone connected
+  // for reference-to-video would ride into a first-last-frame task.
+  const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const referenceUrls = modeTakesReferences(mode)
+    ? references
+      .filter((r) => atMentioned.has(r.sourceNodeId))
+      .map((r) => imageUrlOf(byId.get(r.sourceNodeId)?.data))
+    // The source node's content is collaborative Yjs data — untrusted, and
+    // not covered by the catalog boundary. `typeof`, not Boolean: a
+    // malformed source whose content is an object is truthy and would slip
+    // a non-URL into the payload. This also drops the rail's text, audio
+    // and video rows, which have no image to lend.
+      .filter((u): u is string => typeof u === 'string' && u.length > 0)
+    : [];
+
   return {
     model,
     params: current ? resolveParamsForModel(current, content?.params ?? {}) : {},
@@ -285,5 +350,8 @@ export function buildVideoPanelViewModel(input: {
     slots: slotsForMode(mode),
     slotUrls: readSlotUrls(content),
     slotThumbnails: readSlotThumbnails(content),
+    references,
+    referenceUrls,
+    maxReferences: positiveCap(current?.params.images?.max_items),
   };
 }

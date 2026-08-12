@@ -160,3 +160,65 @@ describe('buildVideoTaskPayload', () => {
     expect(buildVideoTaskPayload(noLease).node_gens).toEqual({ 'node-1': 1 });
   });
 });
+
+/**
+ * #1927 — the reference images travel as `params.images`, and only for the
+ * mode that asked for them.
+ *
+ * Same rule the slots follow: the field set is built FROM the mode, so a mode
+ * that does not take references has no way to put an `images` key on the
+ * payload and needs no check to keep it out. That matters more here than it
+ * did for the slots — a reference stays connected across a mode switch, so
+ * without this an image someone connected for reference-to-video would ride
+ * along into a first-last-frame task.
+ */
+describe('buildVideoTaskPayload — reference images (#1927)', () => {
+  const REFS = ['https://cdn/a.png', 'https://cdn/b.png'];
+
+  it('sends reference-to-video the @-picked images, in order', () => {
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'ref',
+      referenceUrls: REFS,
+    });
+    expect(out.params).toMatchObject({ images: REFS });
+  });
+
+  it('leaves no `images` key on a mode that does not take references', () => {
+    for (const mode of ['t2v', 'i2v', 'first_last', 'animate']) {
+      const out = buildVideoTaskPayload({
+        ...BASE,
+        mode,
+        slotUrls: {
+          firstFrame: 'https://cdn/first.png',
+          endFrame: 'https://cdn/last.png',
+          characterImage: 'https://cdn/character.png',
+          drivingVideo: 'https://cdn/driving.mp4',
+        },
+        referenceUrls: REFS,
+      });
+      expect(out.params, mode).not.toHaveProperty('images');
+    }
+  });
+
+  it('leaves no `images` key when nothing is @-picked', () => {
+    // The execute gate refuses this submit, so the builder never sees it in
+    // practice; an empty key would still be wrong — upstream reads a source
+    // field's presence, so an empty list is a claim of its own.
+    const out = buildVideoTaskPayload({ ...BASE, mode: 'ref', referenceUrls: [] });
+    expect(out.params).not.toHaveProperty('images');
+  });
+
+  it('never folds a slot URL into the reference array', () => {
+    // The two are different things to the model, and a mode takes one kind or
+    // the other — never both.
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'ref',
+      slotUrls: { firstFrame: 'https://cdn/first.png' },
+      referenceUrls: REFS,
+    });
+    expect(out.params).toMatchObject({ images: REFS });
+    expect(out.params).not.toHaveProperty('image');
+  });
+});

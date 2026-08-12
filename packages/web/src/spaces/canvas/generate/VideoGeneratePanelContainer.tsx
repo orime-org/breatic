@@ -53,6 +53,9 @@ import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
 import { buildVideoTaskPayload } from '@web/spaces/canvas/generate/video-task-payload';
 import {
+  modeTakesReferences,
+} from '@web/spaces/canvas/generate/video-mode-options';
+import {
   buildVideoPanelViewModel,
   nodeVideoMode,
   resolveVideoModeSwitch,
@@ -143,13 +146,17 @@ function VideoGeneratePanelBody({
     promptTextRef.current = text;
     setPromptText(text);
   }, []);
-  // Required by the editor so that forgetting it can never be an accident.
-  // Nothing in this panel's submit reads the picked ids: a text chip
-  // substitutes its source's words INSIDE the serialized prompt, and an image
-  // chip becomes a model input only in reference-to-video, a mode this panel
-  // does not offer yet. When it arrives, this is where the ids it needs come
-  // from.
-  const handleAtMentionsChange = React.useCallback(() => {}, []);
+  // The ids the prompt `@`-mentions right now. Kept in a ref rather than in
+  // state because the only reader is the click handler: re-rendering the panel
+  // on every keystroke that touches a chip would buy nothing, and reading the
+  // ref at click time is what makes the submit send exactly what the prompt
+  // says at that instant (#1927). A text chip substitutes its source's words
+  // inside the serialized prompt and needs none of this; an image chip becomes
+  // a model input, and that is what these ids are for.
+  const atMentionedRef = React.useRef<string[]>([]);
+  const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
+    atMentionedRef.current = sourceIds;
+  }, []);
   // Click a reference-rail chip → insert its `@` mention at the prompt cursor
   // (user 2026-07-10 item 8); the editor places it at the caret or the end.
   const promptEditorRef = React.useRef<PromptEditorHandle>(null);
@@ -211,15 +218,12 @@ function VideoGeneratePanelBody({
     [nodeId, nodes, edges],
   );
   const textById = useTextBodies(projectId, spaceId, textNodeIds);
-  const references = React.useMemo(
-    () => deriveReferences(nodeId, nodes, edges, textById),
-    [nodeId, nodes, edges, textById],
-  );
-
   const vm = React.useMemo(
-    () => buildVideoPanelViewModel({ nodeId, nodes, models, mode }),
-    [nodeId, nodes, models, mode],
+    () =>
+      buildVideoPanelViewModel({ nodeId, nodes, edges, models, mode, textById }),
+    [nodeId, nodes, edges, models, mode, textById],
   );
+  const references = vm.references;
 
   // Every write-callback re-derives from live Yjs at click time instead of
   // reading the render closure: that closure goes stale the moment a
@@ -227,15 +231,28 @@ function VideoGeneratePanelBody({
   // would clobber their edit. The MODE is re-read too — a collaborator can
   // switch it between this render and the click, and it decides both the model
   // and whether the submission needs a source.
-  const freshVm = React.useCallback(() => {
-    const graph = readCanvasGraph(projectId, spaceId);
-    return buildVideoPanelViewModel({
-      nodeId,
-      nodes: graph.nodes,
-      models,
-      mode: nodeVideoMode(graph.nodes, nodeId),
-    });
-  }, [projectId, spaceId, nodeId, models]);
+  const freshVm = React.useCallback(
+    (atMentionedSourceIds?: ReadonlySet<string>) => {
+      const graph = readCanvasGraph(projectId, spaceId);
+      return buildVideoPanelViewModel({
+        nodeId,
+        nodes: graph.nodes,
+        edges: graph.edges,
+        models,
+        mode: nodeVideoMode(graph.nodes, nodeId),
+        atMentionedSourceIds,
+        // Empty on purpose. What a text reference SAYS never travels through
+        // here: the prompt string is serialized by the editor from its own
+        // reference pool, and this call site reads only the model, the params,
+        // the node status, the slots and the reference URLs. Filling it in
+        // would read every text body on the board on every click for a field
+        // nobody downstream looks at. Stated rather than omitted — the
+        // parameter is required so that leaving it out cannot be an oversight.
+        textById: EMPTY_TEXT,
+      });
+    },
+    [projectId, spaceId, nodeId, models],
+  );
 
   // Stable identities for the memoized children: the view model rebuilds on
   // every canvas mutation, so a freshly-filtered array or a rebuilt params
@@ -485,7 +502,7 @@ function VideoGeneratePanelBody({
     // Falls back to the ref when the editor is gone (unmounting).
     const freshPrompt =
       promptEditorRef.current?.serializePrompt() ?? promptTextRef.current;
-    const fresh = freshVm();
+    const fresh = freshVm(new Set(atMentionedRef.current));
     if (
       !canExecuteGenerate({
         promptText: freshPrompt,
@@ -510,6 +527,31 @@ function VideoGeneratePanelBody({
       toast.error(t(VIDEO_SLOTS[emptySlot].errorKey));
       return;
     }
+    // The same question for the mode whose sources are references rather than
+    // slots (#1927): connecting an image offers it, `@`-mentioning it uses it,
+    // and a submit with nothing mentioned would send a reference model no
+    // references at all. Its own sentence — the image panel's says "source
+    // image", which is the i2i vocabulary and would point someone here at a
+    // control this panel does not have.
+    if (modeTakesReferences(fresh.mode) && fresh.referenceUrls.length === 0) {
+      toast.error(t('canvas.generatePanel.errorNoReferenceMention'));
+      return;
+    }
+    // And the other end of the same gate: more than the model takes. Naming
+    // the limit is the point — otherwise the only way to find it is to remove
+    // one and try again. The server re-checks before enqueue, since the worker
+    // would otherwise truncate the extras silently.
+    if (
+      typeof fresh.maxReferences === 'number' &&
+      fresh.referenceUrls.length > fresh.maxReferences
+    ) {
+      toast.error(
+        t('canvas.generatePanel.errorTooManyReferences', {
+          limit: fresh.maxReferences,
+        }),
+      );
+      return;
+    }
     submittingRef.current = true;
     setIsSubmitting(true);
     try {
@@ -526,6 +568,7 @@ function VideoGeneratePanelBody({
         // behind by a mode switch has no way in and needs no gate here.
         mode: fresh.mode,
         slotUrls: fresh.slotUrls,
+        referenceUrls: fresh.referenceUrls,
         leaseGen: readNodeLeaseGen(projectId, spaceId, nodeId),
       });
       await canvasApi.createTask(payload);
@@ -560,6 +603,10 @@ function VideoGeneratePanelBody({
   // locale switch, so depending on it alone would freeze this copy in the old
   // language until the panel is reopened. The rule covers the whole group — a
   // string added here goes in the dependency array too.
+  // One statement of "this mode cannot use a reference image", read by the
+  // prompt editor's chips and its `@` popup. The rail reads the same table
+  // inside the panel.
+  const imageRefsDisabled = !modeTakesReferences(mode);
   const promptPlaceholder = t('canvas.generatePanel.videoPromptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.videoMentionEmpty');
   // A node made before video generation existed carries no prompt container,
@@ -580,10 +627,11 @@ function VideoGeneratePanelBody({
           onTextChange={handlePromptChange}
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
-          // Same value, same reason as the rail's — see VideoGeneratePanel:
-          // an image `@` chip contributes nothing in any mode this panel
-          // offers, and dimming carries a cost of its own. #1903.
-          imageRefsDisabled={false}
+          // Same signal as the rail's, from the same table: an image `@` chip
+          // is a model input only under reference-to-video. Both outlets have
+          // to agree, or the rail would say "this mode cannot use that image"
+          // while typing `@` still offered it at full strength.
+          imageRefsDisabled={imageRefsDisabled}
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
         />
@@ -603,6 +651,11 @@ function VideoGeneratePanelBody({
       stableReferences,
       handlePromptChange,
       handleAtMentionsChange,
+      // A mode switch changes this, and the editor is what shows it: without
+      // the dependency the chips already in the prompt would stay at full
+      // strength and the `@` popup would keep offering images the new mode
+      // cannot use.
+      imageRefsDisabled,
       caretProvider,
     ],
   );

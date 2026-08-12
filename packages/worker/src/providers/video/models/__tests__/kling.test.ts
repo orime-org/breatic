@@ -91,3 +91,44 @@ describe("kling buildRequest — source field names per provider (#1904)", () =>
     expect("end_image" in ws).toBe(false);
   });
 });
+
+/**
+ * #1927 — the field names `kling-o3-pro-ref` puts on the wire.
+ *
+ * Unlike the case above, this one is a regression guard rather than a bug
+ * being fixed: the reference array happens to be called `images` on both
+ * sides, so it would travel correctly today by falling through the family
+ * table untouched. Stating it is the rule (user 2026-08-10) — a name that
+ * agrees by coincidence is indistinguishable from one nobody ever checked,
+ * and the first model whose vendor calls it something else would be found out
+ * by a failed generation rather than by this file.
+ */
+const REF_IMAGES = ["https://cdn.test/a.png", "https://cdn.test/b.png"];
+
+describe("kling buildRequest — reference-to-video field names (#1927)", () => {
+  it("sends WaveSpeed the reference array as `images`", async () => {
+    const [prompt, api] = await buildRequest(
+      "the two of them walk into frame",
+      "kling-o3-pro-ref",
+      { images: REF_IMAGES, duration: 5 },
+      "wavespeed",
+    );
+
+    expect(prompt).toBe("the two of them walk into frame");
+    expect(api.images).toEqual(REF_IMAGES);
+  });
+
+  it("still converts the audio flag the family renames", async () => {
+    // The model states only what is its own; whatever the family has always
+    // done still applies underneath it.
+    const [, api] = await buildRequest(
+      "the two of them walk into frame",
+      "kling-o3-pro-ref",
+      { images: REF_IMAGES, generate_audio: true },
+      "wavespeed",
+    );
+
+    expect(api.sound).toBe(true);
+    expect("generate_audio" in api).toBe(false);
+  });
+});
