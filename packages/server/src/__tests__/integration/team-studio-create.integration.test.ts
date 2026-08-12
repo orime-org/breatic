@@ -220,6 +220,25 @@ describe("createTeamStudio", () => {
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
+  it("lets the self-hosted tier past the widest priced tier's ceiling", async () => {
+    // Acceptance item 6 asks for the FOURTH team studio specifically, and four
+    // is the first count that means anything: `team`, the widest priced tier,
+    // stops at three. Creating one proves nothing — every tier above base
+    // allows that. Measured before this case existed: setting
+    // `self_hosted.team_studios` to 0 in the shipped config, which would leave
+    // every self-hosted install unable to create a single team studio, left
+    // all 52 tests in this suite and the config suite green.
+    //
+    // It reads the ceiling from the config rather than asserting 9999, since
+    // the number is a deployment's to choose; what is pinned is that it clears
+    // the priced tiers.
+    expect(ceilingFor("self_hosted")).toBeGreaterThan(ceilingFor("team"));
+    const user = await insertUser("self_hosted");
+    await seedTeamStudios(user.id, 3);
+    const fourth = await studioService.createTeamStudio(user.id, "Fourth", uniqueSlug());
+    expect(fourth.type).toBe("team");
+  });
+
   it("counts only the studios the user administers toward the limit", async () => {
     const user = await insertUser();
     const other = await insertUser();

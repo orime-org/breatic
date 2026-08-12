@@ -295,15 +295,25 @@ describe("getLimitsForStudio", () => {
     );
   });
 
-  it("names the studio and the value when its admin's tier is not one we have", async () => {
+  it("names the studio, the ACCOUNT, and the value when the tier is not one we have", async () => {
+    // The row an operator has to go fix is a `users` row, so the studio id on
+    // its own does not finish the job — it is the thing they have in hand,
+    // not the thing they must edit. The lookup already joins `users` to read
+    // the tier, so the account id is one column away.
     const [u] = await sql<{ id: string }[]>`
       INSERT INTO users (email, email_verified, membership_tier)
       VALUES (${`tier-bad-${seq++}@example.test`}, true, 'TEAM')
       RETURNING id
     `;
-    const studioId = await insertTeamStudio(u!.id);
-    await expect(getLimitsForStudio(studioId)).rejects.toThrow(
-      new RegExp(`${studioId}[\\s\\S]*TEAM|TEAM[\\s\\S]*${studioId}`),
+    const adminUserId = u!.id;
+    const studioId = await insertTeamStudio(adminUserId);
+    const err = await getLimitsForStudio(studioId).then(
+      () => null,
+      (e: unknown) => e as Error,
     );
+    expect(err, "expected a throw").not.toBeNull();
+    expect(err!.message).toContain(studioId);
+    expect(err!.message).toContain(adminUserId);
+    expect(err!.message).toContain("TEAM");
   });
 });

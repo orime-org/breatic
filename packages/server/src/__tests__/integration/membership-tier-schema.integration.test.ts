@@ -128,10 +128,28 @@ describe("users.membership_tier", () => {
     // team studio, and the refusal told them to upgrade on a deployment with
     // nothing to upgrade to.
     //
-    // This assertion's premise has to hold first: the configured tier must
-    // differ from the column default, or the case stays green with the whole
-    // implementation deleted.
-    expect(getDefaultMembershipTier()).not.toBe("base");
+    // What this case can prove depends on the config it runs against, and
+    // saying so out loud is the point of this check.
+    //
+    // The repository's config/membership.yaml is the file a self-hosted
+    // install ships with, so `default_tier` there is `self_hosted` and the
+    // assertion below discriminates: deleting the write from createUser makes
+    // it fail. Measured, not assumed.
+    //
+    // Our own deployment is expected to set `base` (design §6.3). Under that
+    // value the write and the column default produce the same row, so nothing
+    // black-box can tell them apart and this case would pass with the write
+    // gone. That is a property of the configuration, not a defect — but it
+    // must not pass silently, so the check below fails loudly and says what
+    // was lost rather than letting the case quietly stop testing anything.
+    expect(
+      getDefaultMembershipTier(),
+      "config/membership.yaml now sets default_tier to the same value as the " +
+        "users.membership_tier column default, so this case can no longer " +
+        "tell 'createUser wrote the tier' apart from 'the column default " +
+        "applied'. The behaviour is still required; it is this test that " +
+        "stopped being able to see it.",
+    ).not.toBe("base");
 
     const email = `tier-reg-${Date.now()}-${Math.random()}@example.test`;
     const user = await userRepo.createUser({ email });

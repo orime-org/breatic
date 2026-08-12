@@ -8,16 +8,26 @@
  * A repo rather than a service: the lookups are queries and nothing else, and
  * table access belongs in one.
  *
- * **`getLimitsForUser` and `getLimitsForStudio` are the only place a tier
- * becomes numbers.** Call points do not run the tier lookup and index the
- * config themselves. Five more ceilings are coming — projects per studio, two
- * kinds of member cap, concurrent writable connections, storage — each with
- * its own check point, so that pair of steps would otherwise end up written
- * out six to eight times. The enterprise tier, whose ceilings are negotiated
- * per customer and will be read from the database rather than the config
- * file, then has one function to change instead of eight call sites; miss one
- * of eight and that customer is held to the standard tier on that one path,
- * silently.
+ * **Call points do not run the tier lookup and index the config themselves.**
+ * They call one of the three exported `…LimitsFor…` functions below, which
+ * differ only in what they start from and whether they lock:
+ *
+ *   - `getLimitsForUser`  — an account, no lock. For reads.
+ *   - `lockLimitsForUser` — an account, row locked. Before creating something.
+ *   - `getLimitsForStudio`— a studio, resolved through its current admin.
+ *
+ * Five more ceilings are coming — projects per studio, two kinds of member
+ * cap, concurrent writable connections, storage — each with its own check
+ * point, so "look up the tier, then index the config" would otherwise end up
+ * written out six to eight times across the codebase.
+ *
+ * There are two routes from an id to a tier here, not one: an account's tier
+ * is its own column, a studio's is its admin's. Both end at
+ * `getMembershipLimits`. When the enterprise tier arrives — ceilings
+ * negotiated per customer, read from the database rather than the config file
+ * — BOTH routes need the extra step, because both ultimately answer for an
+ * account. `readStudioAdmin` returns that account's id for exactly this
+ * reason. Saying "there is one seam" would be tidier and it would be false.
  *
  * Two lookups because the ratified rule has two halves. How many team studios
  * an account may administer is decided by that account's own tier. Everything
@@ -162,8 +172,28 @@ export async function getStudioMembershipTier(
   studioId: string,
   tx?: DbTx,
 ): Promise<MembershipTier> {
+  return (await readStudioAdmin(studioId, tx)).tier;
+}
+
+/**
+ * The account that administers a studio, and that account's tier.
+ *
+ * Both come from one join because both are needed together: the tier decides
+ * the ceilings, and the account id is what an operator has to go and fix when
+ * the tier turns out not to be one this build knows. Reporting only the studio
+ * would name the thing they have in hand rather than the row they must edit.
+ * @param studioId - The studio to resolve
+ * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
+ * @returns The current admin's account id and tier
+ * @throws {Error} if the studio is gone, has no live admin, that admin's
+ *   account is gone, or their stored tier is not one this build knows
+ */
+async function readStudioAdmin(
+  studioId: string,
+  tx?: DbTx,
+): Promise<{ adminUserId: string; tier: MembershipTier }> {
   const rows = await (tx ?? db)
-    .select({ tier: users.membershipTier })
+    .select({ tier: users.membershipTier, adminUserId: users.id })
     .from(studios)
     .innerJoin(studioMembers, eq(studioMembers.studioId, studios.id))
     .innerJoin(users, eq(users.id, studioMembers.userId))
@@ -178,15 +208,21 @@ export async function getStudioMembershipTier(
     )
     .limit(1);
 
-  const tier = rows[0]?.tier;
-  if (tier === undefined) {
+  const row = rows[0];
+  if (row === undefined) {
     // Plain Error for the same reason as above, and more plainly still: a
     // studio without exactly one live admin is corruption on our side. The
     // person whose request happens to touch it should see a 500, and we
     // should see it in the log.
     throw new Error(`No live admin for studio ${studioId}`);
   }
-  return asKnownTier(tier, `studio ${studioId} (via its admin)`);
+  return {
+    adminUserId: row.adminUserId,
+    tier: asKnownTier(
+      row.tier,
+      `account ${row.adminUserId}, the admin of studio ${studioId}`,
+    ),
+  };
 }
 
 /**
@@ -205,7 +241,7 @@ export async function getLimitsForUser(
   userId: string,
   tx?: DbTx,
 ): Promise<MembershipLimits> {
-  return getMembershipLimits(await getUserMembershipTier(userId, tx));
+  return getMembershipLimits(await readUserTier(userId, tx, false));
 }
 
 /**
@@ -220,7 +256,7 @@ export async function getLimitsForStudio(
   studioId: string,
   tx?: DbTx,
 ): Promise<MembershipLimits> {
-  return getMembershipLimits(await getStudioMembershipTier(studioId, tx));
+  return getMembershipLimits((await readStudioAdmin(studioId, tx)).tier);
 }
 
 /**
