@@ -258,6 +258,7 @@ describe("a message survives the round trip through parts", () => {
       output: fc.string(),
     }),
     fc.record({ type: fc.constant("interrupted" as const) }),
+    fc.record({ type: fc.constant("failed" as const) }),
   );
 
   const messageArb = fc.record({
@@ -315,6 +316,24 @@ describe("a message survives the round trip through parts", () => {
 
     expect(stored).toMatchObject({ role: "assistant", content: "", interrupted: true });
     expect(stored!.parts).toEqual([{ type: "interrupted" }]);
+  });
+
+  it("keeps a turn that failed before it said anything distinguishable from nothing", async () => {
+    // The other ending that does not finish. Same guarantee as above and for
+    // the same reason: a turn that fails on its first token has nothing else
+    // to store, so without the marker the row is an empty list — and what the
+    // user said would sit alone with no answer and no reason.
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+
+    await messageRepo.addMessage(conv.id, {
+      role: "assistant",
+      parts: [{ type: "failed" }],
+    });
+    const [stored] = await messageRepo.getMessages(conv.id, 1);
+
+    expect(stored).toMatchObject({ role: "assistant", content: "", failed: true });
+    expect(stored!.parts).toEqual([{ type: "failed" }]);
   });
 });
 

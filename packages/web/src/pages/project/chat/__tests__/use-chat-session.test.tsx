@@ -330,6 +330,32 @@ describe('when the chat never opened', () => {
   });
 });
 
+describe('when the connection dies mid-reply', () => {
+  it('marks the reply the way the server records it: stopped, not failed', async () => {
+    openChatAnswers([]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await act(async () => {
+      void result.current.send('hi');
+    });
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'Half a sen' } });
+    });
+
+    // The socket dies on its own — not the user pressing stop, and not the
+    // server saying it failed. The server cannot tell those two apart: both
+    // reach it as the client going away, and it records the turn as stopped.
+    act(() => {
+      handlers.onError?.(new TypeError('network error'));
+    });
+
+    // So the panel has to say the same thing. Calling it a failure here is
+    // the panel inventing a verdict the record will contradict on reload.
+    await waitFor(() => expect(result.current.messages.at(-1)?.interrupted).toBe(true));
+    expect(result.current.messages.at(-1)?.failed).toBeUndefined();
+  });
+});
+
 describe('when reopening the chat also fails', () => {
   it('still says the turn failed instead of leaving the screen bare', async () => {
     openChatAnswers([]);

@@ -92,8 +92,23 @@ describe('MessageBubble', () => {
       <MessageBubble message={{ id: 'm3', role: 'assistant', content: '', failed: true }} />,
     );
 
-    const alert = screen.getByRole('alert');
-    expect(alert).toBeInTheDocument();
-    expect(alert.textContent).toBe('This reply could not be finished. Try sending it again.');
+    // Found by its own handle rather than by role: the mark is stated, not
+    // announced, for the reason the test below pins.
+    const mark = screen.getByTestId('message-bubble-error');
+    expect(mark.textContent).toBe('This reply could not be finished. Try sending it again.');
+  });
+
+  it('does not announce a failure that came back with the history', () => {
+    // The mark used to exist only while a turn was happening, so announcing
+    // it was right. It is stored now and comes back with every reload, and an
+    // assertive region would read out every past failure in the conversation
+    // — one after another — the moment the panel opens. Its sibling mark for
+    // a stopped turn has always been plain text, for the same reason.
+    render(
+      <MessageBubble
+        message={{ id: 'm1', role: 'assistant', content: 'Half a sen', failed: true }}
+      />,
+    );
+    expect(screen.getByTestId('message-bubble-error').getAttribute('role')).toBeNull();
   });
 });

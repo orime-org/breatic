@@ -34,8 +34,11 @@ export interface ChatMessage {
   /**
    * The turn failed and this reply is as much of it as there is.
    *
-   * Local only: the server has no such field, and no stored message carries
-   * it. What failed is this attempt, not anything that was written down.
+   * Stored, like {@link ChatMessage.interrupted}: the server records failure
+   * as a part of the reply, so what is on screen while it happens and what a
+   * reload brings back say the same thing.
+   *
+   * Only ever `true`; its absence is the ordinary case.
    */
-  failed?: boolean;
+  failed?: true;
 }

@@ -361,7 +361,15 @@ export function useChatSession(projectId: string): ChatSession {
             if (err instanceof StreamRefusedError) {
               refusal = err;
             } else {
-              patchMessage(replyId, (m) => ({ ...m, failed: true }));
+              // The connection died on its own. The server cannot tell that
+              // from the user pressing stop — both reach it as the client
+              // going away — so it records the turn as stopped, and this has
+              // to say the same. Calling it a failure here would be the panel
+              // announcing a verdict the stored record contradicts on reload.
+              //
+              // A failure the server does report arrives as an `error` event
+              // on a stream that is still open, and that path marks it failed.
+              patchMessage(replyId, (m) => ({ ...m, interrupted: true as const }));
             }
             finishTurn();
           },

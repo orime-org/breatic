@@ -75,8 +75,12 @@ export function MessageBubble({
           // this reply, and a bar at the top of the panel would say the whole
           // conversation had. The wording is ours — what the server sends on
           // this path is a hardcoded English sentence.
+          //
+          // Stated, not announced. This is stored now and comes back with the
+          // history, so an assertive region would read out every past failure
+          // in the conversation the moment the panel opens. The mark for a
+          // stopped turn, above, has always been plain text for that reason.
           <div
-            role='alert'
             data-testid='message-bubble-error'
             className='rounded-content-sm border border-status-error-border bg-status-error-bg px-2 py-1 text-xs text-status-error-foreground'
           >
