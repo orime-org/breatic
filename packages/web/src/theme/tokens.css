@@ -300,6 +300,18 @@ html[data-theme='light'] {
   --color-status-error-foreground: var(--color-palette-red);
   --color-status-error-border: var(--color-palette-red-border);
 
+  /* ---- Link inside written content. Chrome stays neutral; a link in a
+     paragraph is content, and it has to be told apart from the words around
+     it. An underline alone cannot do that here — the body also offers an
+     underline mark, so the two would render identically. Not a status: a link
+     is not a state something is in, so it gets its own name rather than
+     borrowing `status-info`. Blue because that is where the industry landed
+     for exactly this (Primer's link colour is its accent blue, which this
+     palette's blue was already tuned against); the underline stays on, since
+     colour must never be the only signal (WCAG 1.4.1). Dark tracks the
+     palette through var(), same as every other alias. ---- */
+  --color-content-link: var(--color-palette-blue);
+
   /* ---- Annotation note surface · sticky-note color (canvas AnnotationNode).
      Standalone token, not part of the neutral / status systems. Dark variant
      overridden in the dark block below. ---- */

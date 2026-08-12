@@ -464,6 +464,397 @@ body {
   color: var(--color-muted-foreground);
 }
 
+/* ---- The document Space's body typography ----
+   Tailwind's preflight resets `h1..h6` to inherit their size and weight, and
+   strips `list-style` off `ol, ul`. TipTap renders those as bare elements, so
+   there is nowhere to hang a utility class: without the rules below, pressing
+   the quote button changes the document and nothing on screen.
+
+   THE THREE HEADING RULES EXCLUDE `.doc-title`, because the document's title IS
+   an `h1` — `document-title.ts` renders `['h1', { class: 'doc-title' }]` into
+   this same `.ProseMirror`. So `h1` alone matches the title too, and
+   `:first-child` matches ONLY the title (it is always the first block). Leaving
+   the exclusion out happens to work today, since the title rule above declares
+   every property the h1 rule sets and outranks it — but add one property here
+   that the title does not declare and it lands on the title.
+
+   Nothing else in this block needs it, but for two different reasons. The
+   block selectors — `p`, the lists, `blockquote`, `pre`, `hr` — cannot match
+   the title because it is an `h1` and none of them is. The INLINE ones —
+   `strong`, `:not(pre) > code` and `a` — are descendant selectors, so the
+   title's tag name is beside the point; what keeps them out is that the title
+   stores no marks (`marks: ''`), and each of those three elements only ever
+   appears as one.
+
+   Which is exactly why `marks: ''` does not settle the question for every
+   inline selector — marks are what the document may store, and a decoration
+   is a span the view wraps at render time, which no schema constraint
+   governs. The collaboration band below is
+   one: y-tiptap adds it with `Decoration.inline(from, to, …)` over the remote
+   selection's range whatever node that range falls in, so selecting the title
+   puts a `.collaboration-carets__selection` inside it and the band rule finds
+   it. That is harmless here — measured against the title's own 30px/1.25 this
+   rule leaves 0.313px of stripe, where the shared value it overrides would
+   overlap by about 4px — but an inline rule added here reaches the title, and
+   has to say whether it means to.
+
+   THE CONTAINER RULE IS A DIFFERENT MATTER AND NO EXCLUSION CAN HELP IT. The
+   `line-height` on `.doc-body-editor .ProseMirror` below reaches the title by
+   inheritance, which `:not()` does not stop — what keeps it off is that
+   `.doc-title` declares its own `line-height`. So an inheritable property added
+   there (`color`, `font-family`, `text-wrap`) lands on the title unless the
+   title rule declares that property too.
+
+   There is one rule per level `BODY_HEADING_LEVELS` offers, and the two lists
+   have to be changed together — CSS cannot read a TypeScript constant and this
+   project has no JS Tailwind config to bridge them, so a level that gains an
+   input rule but no rule here renders at the paragraph's size and weight,
+   preflight having reset `h1..h6` to inherit. THAT MUCH IS HELD: a case in
+   `document-heading-levels` reads this file off disk and fails on a level with
+   no size and weight of its own, so widening the array alone turns it red.
+
+   The exclusion is wrapped in `:where()` so that it costs nothing. Written
+   bare, `:not(.doc-title)` scores as a class and lifts the heading rules to
+   (0,3,1) — above the list-item reset below, which then loses on a heading
+   inside a list item while winning on its six siblings. That is the only rule
+   here it would take anything from; the quote's two `:nth-child(of …)` rules
+   are higher at (0,4,1), and the band override never meets these at all (it
+   lands on an inline span and sets a padding, sharing neither element nor
+   property). The weight was never the point: the exclusion is here to miss
+   the title, not to outrank anything, and `:where()` says exactly that.
+
+   Sizes derive from `--font-size-base` the way the title does, and the
+   coefficients are fractions rather than decimals because 15 × 1.333 is
+   19.995px, not 20. The hard ceiling is the title's 30px: the largest body
+   heading has to stay under it or the hierarchy inverts.
+
+   ONLY THE TOP MARGINS SEPARATE THE THREE LEVELS ON SCREEN. Adjacent siblings
+   collapse to the larger of the two margins, and every block that can follow a
+   heading declares at least 12.75px above it (0.85em on a paragraph or list,
+   1.1em on a quote or code block, 2em on a divider, and more on another
+   heading). So the bottom margins below are ceilings, not distances: h2's 10px
+   and h3's 7.65px are never what reaches the screen, and h1's 13.2px wins only
+   over a paragraph or a list, by 0.445px. Measured in the browser: h1→p
+   13.195, h2→p 12.75, h3→p 12.75, h3→list 12.75, h1→code block 14.844. Whether
+   the space under a heading SHOULD track its level is a design question, and
+   answering it means stopping the collapse rather than tuning these numbers. */
+/* This element's own rules: the body's line height, and the two layout
+   properties that used to live in a second block further down.
+
+   Long words and URLs already wrap, and it is @tiptap/core
+   that makes them: its `style.ts` is inlined into the bundle and injected as a
+   stylesheet when an Editor is constructed, and it sets `word-wrap: break-word`
+   on `.ProseMirror`. Not prosemirror-view — that package ships a stylesheet
+   saying the same thing but nothing here imports it; it only logs a warning
+   asking you to. The switch is the Editor's `injectCSS` option, which defaults
+   to true and is left alone. Measured with a 180-character URL: two lines, no
+   horizontal overflow, with and without an `overflow-wrap` of our own. */
+.doc-body-editor .ProseMirror {
+  line-height: 1.65;
+
+  /* The two below are layout rather than typography, and they used to sit in
+     their own block 300 lines further down. One selector, one place: with two
+     blocks, anyone adding a property to this element finds whichever they
+     happen to open, and a property written in both would be settled by source
+     order — which this file elsewhere calls out as a silent thing to depend
+     on. */
+  flex: 1 0 auto;
+
+  /* The document's top and bottom breathing room, on the editable element
+     itself rather than on the scroll viewport around it. On the viewport it
+     sat OUTSIDE the editor, so the bottom strip of it answered no clicks —
+     `document-click-to-write` listens on this element, and a press in that
+     strip reports the viewport as its target. Here the same 16px is interior,
+     and the editable surface reaches the scroller's own edge. */
+  padding-block: 1rem;
+}
+
+/* A remote collaborator's selection band is painted on an inline element, whose
+   background covers the text box and not the line box — so between wrapped
+   lines a stripe of the leading goes unpainted. The shared rule near the top of
+   this file closes that with `0.096em` of vertical padding, a figure measured
+   against 13px text on an 18px line; it is a fixed ratio, and it only lands on
+   the leading it was measured against.
+
+   The line height above is 1.65, so this body needs a different figure, and
+   this rule supplies it HERE ONLY. Three editors install the caret extension
+   through `buildCollabExtensions`, and the other two — the generate panel's
+   prompt editor and the canvas text node — keep the shared value untouched.
+   Neither is in this slice's blast radius. Deriving the shared rule from the
+   live leading instead of a constant is the real fix and belongs with a change
+   that can verify all three.
+
+   `1lh` is the line box and `1.21em` stands in for the font's content box, so
+   half their difference is the leading to paint over. THE SECOND HALF OF THAT
+   IS A GUESS, and it is the reason this rule is a stopgap rather than an answer:
+   the rendered content box is not a fixed ratio. Blink rounds the font's ascent
+   and descent per size, so Inter measures 1.192em at 13px, 1.2em at 15px,
+   1.225em at 20px and 1.229em at 24px on Chrome 151 — and a different build
+   rounds differently (1.267em at 15px on Chrome 128).
+
+   SO ONE FIGURE CANNOT BE RIGHT EVERYWHERE THIS RULE LANDS, and it lands on
+   every text in the body, not only the paragraphs. Measured in the browser,
+   as the line box minus what the band actually paints:
+
+     paragraph, and inside a quote  15px / 1.65   0.156px of stripe
+     code block                     13.5px / 1.6  0.85px of stripe
+     document title                 30px / 1.25   0.313px of stripe
+     body h1                        24px / 1.3    0.441px of OVERLAP
+
+   The last row is the one that matters most: at 24px the rendered content box
+   is 1.229em, wider than the 1.21em guessed here, so the band paints PAST the
+   line box rather than short of it — which is the overlap the shared rule's
+   own comment warns about, where two bands on adjacent lines stack into a
+   darker strip. Nothing here is correct; the paragraph case, which is most of
+   the body, is merely 25x better than the 3.87px it replaces.
+
+   The correct shape is the one CodeMirror's `drawSelection` uses: measure the
+   selection's client rects and paint positioned rectangles, which needs no
+   constant at all. That replaces this rule and the shared one it overrides,
+   across all three editors that carry a band, and is tracked separately. */
+.doc-body-editor .ProseMirror .collaboration-carets__selection {
+  padding-block: calc((1lh - 1.21em) / 2);
+}
+
+.doc-body-editor .ProseMirror p {
+  margin: 0.85em 0;
+}
+
+.doc-body-editor .ProseMirror h1:where(:not(.doc-title)) {
+  font-size: calc(var(--font-size-base) * 8 / 5); /* 24px */
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 1.9em 0 0.55em;
+}
+
+.doc-body-editor .ProseMirror h2:where(:not(.doc-title)) {
+  font-size: calc(var(--font-size-base) * 4 / 3); /* 20px */
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1.7em 0 0.5em;
+}
+
+.doc-body-editor .ProseMirror h3:where(:not(.doc-title)) {
+  font-size: calc(var(--font-size-base) * 17 / 15); /* 17px */
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 1.5em 0 0.45em;
+}
+
+/* Only 400/500/600/700/800 of Inter are loaded (`index.tsx`), and the CSS
+   font-matching rules round a weight above 500 UP to the next face — so 650
+   would render as 700 and h2 would weigh exactly what h1 does. The three levels
+   separate by size; h1 alone is heavier. */
+
+/* Bold is an absolute 700 here, because preflight makes it relative.
+   Preflight ships `strong { font-weight: bolder }`, and `bolder` steps up from
+   the INHERITED weight: from a paragraph's 400 it lands on 700, but from the
+   weights the rules above give the headings it lands on 900, which matches the
+   800 face — a bolded word inside an h1 coming out heavier than the h1. That
+   900 is not a value anyone chose; it is arithmetic on a weight this block
+   introduced.
+
+   Nothing is lost by pinning it. Bold and a heading say the same thing — read
+   this bit first — so inside a heading the mark has nothing left to add, and
+   700 against the h2/h3 600 still shows. The mark is recorded either way, and
+   it is real data: turn that heading back into a paragraph and the bold shows.
+   Absolute is also what CSS resets that reject normalize's `bolder` settle on,
+   for exactly this context-dependence. */
+.doc-body-editor .ProseMirror strong {
+  font-weight: 700;
+}
+
+.doc-body-editor .ProseMirror ul,
+.doc-body-editor .ProseMirror ol {
+  margin: 0.85em 0;
+  padding-inline-start: 1.5em;
+}
+
+.doc-body-editor .ProseMirror ul {
+  list-style-type: disc;
+}
+
+.doc-body-editor .ProseMirror ol {
+  list-style-type: decimal;
+}
+
+/* A list item's children carry block margins that do not belong inside it.
+   `listItem`'s content is `paragraph block*`, and `block` here is seven node
+   types: paragraph, heading, blockquote, codeBlock, bulletList, orderedList,
+   horizontalRule. Left alone each spaces itself as though it stood in the body
+   — up to 2em — inside an item whose siblings sit 0.3em apart.
+
+   THE SELECTOR IS `*` ON PURPOSE. Naming the types instead is how this was
+   written twice and wrong twice: first only `p`, then `p, ul, ol`, each time
+   covering the children that came to mind. `*` is right for a reason, not out
+   of laziness — the item owns the spacing of everything it holds, whatever
+   that turns out to be, so a node type added to the schema later needs no edit
+   here. Reachability was not the deciding factor either, but for the record
+   the divider takes three keystrokes (`--- ` inside an item) and paste brings
+   the rest.
+
+   NAMING THE LIST IS WHAT PUTS IT ABOVE THE ELEMENT RULES, not where it sits
+   in the file. `*` contributes no specificity, so
+   `.doc-body-editor .ProseMirror li > *` scores the same as
+   `.doc-body-editor .ProseMirror hr` and the later of the two takes the margin
+   — which is how a first attempt at this rule appeared to work on the children
+   declared above it and silently lost to the quote, the code block and the
+   divider declared below. `:is(ul, ol) >` adds the element that tie was
+   missing. A list item has no other parent, so the extra step is true as well
+   as useful.
+
+   THAT BUYS ONE ELEMENT, NOT IMMUNITY. This is (0,2,2), so it outranks every
+   single-element rule in this block wherever it is written — and nothing else.
+   Anything below it that scores as much wins on order, and anything scoring
+   more wins from anywhere; both shapes are already in this block, the quote's
+   two `:nth-child(of …)` rules being the higher of them. So the test for a
+   rule added here is its own score against this one, NOT whether the reset
+   happens to be written above it. */
+.doc-body-editor .ProseMirror :is(ul, ol) > li > * {
+  margin: 0;
+}
+
+/* An item holding more than one block still needs them apart. `em` here is the
+   BLOCK'S own size, as everywhere else in this file — a paragraph's 0.85em and
+   a heading's 1.9em are read the same way. It is a `margin-top`, so the block
+   BELOW the gap is the one whose size sets it, and the gap tracks that rather
+   than landing on one figure: measured 4.5px above a paragraph, a quote, a
+   nested list or a divider, 6px above a heading (20px text) and 4.05px above
+   a code block (13.5px text). Reachable by pasting an
+   item that holds two paragraphs, or a paragraph and a quote. */
+.doc-body-editor .ProseMirror :is(ul, ol) > li > * + * {
+  margin-top: 0.3em;
+}
+
+/* Items sit apart from EACH OTHER, which is why this is `+` and not every
+   item. Written unconditionally it also lands on the first one, whose margin
+   then has nothing above it inside the list and collapses out through the
+   list's own — invisible while the list has a margin of its own to collapse
+   into, and 4.5px of unasked-for inset the moment something zeroes it. The
+   quote below does exactly that to its first child. What separates the first
+   item from whatever precedes the list is the LIST's margin; that is the one
+   the quote means to zero, and with `+` it is the only one there. */
+.doc-body-editor .ProseMirror li + li {
+  margin-top: 0.3em;
+}
+
+/* A quote is the one block here that holds other blocks, so it is the one that
+   has to CONTAIN their margins. Its own decoration is all inline-direction —
+   a left border and left padding — which leaves the block direction open, and
+   an open block direction is what lets a child's margin collapse out and stand
+   in for the quote's own. What reaches the screen is then whichever is larger,
+   and the child usually wins: a quote holding a heading opened with the
+   heading's 1.9em (45.6px) instead of the quote's 1.1em, and a quote inside a
+   list item sat 12.75px from its neighbours where the item's rhythm is 4.5px.
+
+   `flow-root` closes the block direction at any depth — a list inside the quote
+   cannot leak its items' margins either. The first and last child then have
+   their outer margins zeroed so the text still meets the quote's top and bottom
+   edges, which is how it looked while the margins were escaping.
+
+   Measured: quote inside a list item 12.75px -> 4.5px above and below, the same
+   with a list inside the quote; in the body a quote opening with a heading
+   45.59px -> 16.5px. Its own edges then read 0 to the block at each end
+   whatever that block is: measured with the first one a list, a paragraph and
+   a heading, and with the last one a list, top and bottom each time. */
+.doc-body-editor .ProseMirror blockquote {
+  display: flow-root;
+  margin: 1.1em 0;
+  padding-inline-start: 1em;
+  border-inline-start: 2px solid var(--color-border);
+  color: var(--color-muted-foreground);
+}
+
+/* THE FIRST CHILD ELEMENT IS NOT ALWAYS THE FIRST BLOCK, which is why neither
+   of these says `:first-child`. ProseMirror draws a caret by inserting an
+   element, and one on a block boundary lands as a direct child of the quote:
+   a gap cursor beside a divider opening the quote puts
+   `div.ProseMirror-gapcursor.ProseMirror-widget` ahead of the divider. Zero
+   the first CHILD's margin and you zero the widget's, which it has none of,
+   while the divider keeps its own — measured in the browser with the caret
+   actually resting there, the quote springs open by 30px and closes again when
+   the caret leaves.
+
+   `:nth-child(1 of S)` says the thing directly: among the children that match
+   S, take the first. Counting only what is not a widget makes the match the
+   first BLOCK, however many widgets sit in front of it and wherever else they
+   sit. That last part is the reason this replaced a pair of selectors that
+   read `.ProseMirror-widget:first-child + *` — reaching past exactly one
+   widget, which is a guess about position, and a wrong one as soon as there
+   are two. Two is ordinary in a shared document: y-tiptap gives every remote
+   client its own caret widget, so a collaborator resting in the same gap adds
+   a second. Verified in the BROWSER against zero, one and two widgets, and
+   with one BETWEEN two blocks (where the block after it is correctly not
+   matched — it is not the first). Not in jsdom, which cannot answer this:
+   `document-quote-contains-its-blocks` records what its selector engine does
+   with `:nth-child(N of S)` and why the unit tests hold the shape instead.
+
+   `.ProseMirror-widget` is prosemirror-view's class for the widgets it builds
+   the DOM for; one declared `spec.raw` brings its own element and gets no
+   class, and would be counted as a block here. Nothing in this editor renders
+   a raw widget. Naming the seven block types instead of excluding widgets
+   would go stale with the schema. */
+.doc-body-editor .ProseMirror blockquote > :nth-child(1 of :not(.ProseMirror-widget)) {
+  margin-top: 0;
+}
+
+.doc-body-editor .ProseMirror blockquote > :nth-last-child(1 of :not(.ProseMirror-widget)) {
+  margin-bottom: 0;
+}
+
+/* `:not(pre)` keeps this off the code inside a code block: TipTap renders that
+   as `pre > code`, and two nested 0.9em multiply to 0.81em. */
+.doc-body-editor .ProseMirror :not(pre) > code {
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  background: var(--color-muted);
+  border-radius: var(--radius-content-xs);
+}
+
+/* No `white-space` here on purpose: the same injected @tiptap/core stylesheet
+   sets `.ProseMirror pre { white-space: pre-wrap }`, so a long line wraps
+   rather than being clipped. Overriding that to scroll horizontally instead is
+   a slice of its own — it needs a NodeView to hold a scroller and a per-block
+   toggle. */
+.doc-body-editor .ProseMirror pre {
+  font-size: 0.9em;
+  line-height: 1.6;
+  margin: 1.1em 0;
+  padding: 0.75em 1em;
+  background: var(--color-muted);
+  border-radius: var(--radius-content-sm);
+}
+
+.doc-body-editor .ProseMirror hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+/* A LINK HAS TO BE TELLABLE FROM THE WORDS AROUND IT, and here an underline
+   alone cannot do that: the body offers an underline mark of its own, so
+   `Cmd+U` on a word and a link render identically — measured, the two differ
+   only in `text-underline-offset` (2px against auto). Paste a URL over an
+   already-underlined word and nothing on screen changes at all.
+
+   `color: inherit` came from `notification-headline`, which does style its
+   links as plain foreground — but it has no underline mark to collide with,
+   and that half of the premise was never checked against the body. Every
+   editor the industry ships colours the link: Primer's is its accent blue and
+   requires an underline as well when the link sits inside a sentence, Notion's
+   is a lighter grey than the text. None leaves it identical to the prose.
+
+   So: colour from a token of its own, and the underline stays — colour is
+   never allowed to be the only signal (WCAG 1.4.1). The token, not the palette
+   entry, because what this rule means is `link`, and `--color-content-link`
+   is where the choice of blue is argued. */
+.doc-body-editor .ProseMirror a {
+  color: var(--color-content-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* ---- Room to click under the last block ----
    A document Space is born with a title and no body blocks, so the editable
    surface has to reach the bottom of the scroll viewport: below where it stops
@@ -505,16 +896,8 @@ body {
      definite value to be capped from. */
   width: 100%;
 }
-.doc-body-editor .ProseMirror {
-  flex: 1 0 auto;
-  /* The document's top and bottom breathing room, on the editable element
-     itself rather than on the scroll viewport around it. On the viewport it
-     sat OUTSIDE the editor, so the bottom strip of it answered no clicks —
-     `document-click-to-write` listens on this element, and a press in that
-     strip reports the viewport as its target. Here the same 16px is interior,
-     and the editable surface reaches the scroller's own edge. */
-  padding-block: 1rem;
-}
+/* `flex` and `padding-block` for this element are declared with its typography
+   above, in the one block that carries this selector. */
 
 /* Remote collaborator carets, shared by every collaborative editor — the
    document body and the generate prompt alike (batch-2 item 14,

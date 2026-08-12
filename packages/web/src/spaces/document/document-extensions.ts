@@ -4,18 +4,20 @@
 /**
  * The document editor's extension list.
  *
- * **What a user can write into the body is StarterKit's, unchanged.** Every
- * heading, list, quote, code block and mark it ships behaves exactly as it
- * would on its own, because the editing feature set is a separate body of work
- * with its own slice.
+ * **What a user can write into the body is StarterKit's, save for one named
+ * departure.** Every list, quote, code block and mark it ships behaves exactly
+ * as it would on its own, because the editing feature set is a separate body of
+ * work with its own slice. Headings are the exception: the body offers three
+ * levels rather than six, and `document-heading` carries that reasoning.
  *
- * What IS ours is the document's outer shape — a title that cannot be removed,
- * followed by a body that may hold nothing — and the handful of behaviours that
- * shape forces. Each is added below with the reason it qualifies, and the bar
- * for another is the same: the shared, title-first document broke something,
- * and nothing else counts.
+ * So a change here qualifies on one of two grounds, and nothing else counts:
  *
- * Three of StarterKit's defaults are switched off, each for its own reason
+ * - the document's outer shape broke something — a title that cannot be
+ *   removed, followed by a body that may hold nothing;
+ * - what the body renders leaves no room for what StarterKit offers, which is
+ *   what caps the headings.
+ *
+ * Four of StarterKit's defaults are switched off, each for its own reason
  * stated where it happens. `document-extensions.test` pins the NODES the
  * schema gains and the StarterKit switches, so neither of those can change
  * quietly. An extension that contributes no node is not pinned by it — the bar
@@ -32,6 +34,7 @@ import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { DocumentClickToWrite } from '@web/spaces/document/document-click-to-write';
+import { BodyHeading } from '@web/spaces/document/document-heading';
 import { DocumentPlaceholders } from '@web/spaces/document/document-placeholders';
 import { DocumentTitle } from '@web/spaces/document/document-title';
 import { DocumentTitleIsPlainText } from '@web/spaces/document/document-title-plain-text';
@@ -127,7 +130,15 @@ export function buildDocumentExtensions(
       // back on the only terms a shared document allows: it writes when the
       // user actually clicks the space, and never for a viewer.
       trailingNode: false,
+      // The body caps headings at three levels and answers for what happens to
+      // a heading stored below that. The cap alone would be a `configure` away
+      // — StarterKit forwards this option straight to `Heading.configure` — but
+      // the answer lives in Heading's own `renderHTML` and takes an `extend`,
+      // and StarterKit builds its Heading internally, where there is nothing to
+      // extend. So ours replaces it. `document-heading` carries the reasoning.
+      heading: false,
     }),
+    BodyHeading,
   ];
 
   // The collaboration wiring is shared with every other collaborative editor —
