@@ -154,6 +154,42 @@ describe('MessageList', () => {
     scrollIntoView.mockRestore();
   });
 
+  it('comes back to the bottom when the reader sends something themselves', () => {
+    const scrollIntoView = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 0 };
+    const restore = stateGeometry(geometry);
+
+    const { container, rerender } = render(
+      <MessageList messages={[bubble('m1', 'an earlier answer')]} />,
+    );
+    // Reading something further up.
+    fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
+    scrollIntoView.mockClear();
+
+    // Then they type into the composer and hit enter: their own message and
+    // the reply about to be written are appended.
+    geometry.scrollHeight = 2200;
+    rerender(
+      <MessageList
+        messages={[
+          bubble('m1', 'an earlier answer'),
+          { id: 'm2', role: 'user', content: 'what about this' },
+          bubble('m3', ''),
+        ]}
+      />,
+    );
+
+    // Scrolling up says "let me read". Sending says "show me what happens
+    // next" — and if the column stays where it was, nothing on screen
+    // changes at all: not their own message, not a word of the reply. They
+    // have no way to tell it went anywhere.
+    expect(scrollIntoView).toHaveBeenCalled();
+    restore();
+    scrollIntoView.mockRestore();
+  });
+
   it('picks following back up when the user returns to the bottom', () => {
     const scrollIntoView = vi
       .spyOn(HTMLElement.prototype, 'scrollIntoView')

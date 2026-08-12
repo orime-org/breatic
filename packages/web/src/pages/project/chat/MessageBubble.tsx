@@ -81,12 +81,16 @@ export function MessageBubble({
           // conversation had. The wording is ours — what the server sends on
           // this path is a hardcoded English sentence.
           //
-          // Stated, not announced. This is stored now and comes back with the
-          // history, so an assertive region would read out every past failure
-          // in the conversation the moment the panel opens. The mark for a
-          // stopped turn, above, has always been plain text for that reason.
+          // Announced only when it just happened. Someone waiting on an answer
+          // has nothing else to go on: the reply stops growing and the stop
+          // button turns back into send, both of which can only be seen. But
+          // failure is also stored and comes back with the history, and an
+          // assertive region on those would read out every past failure in
+          // the conversation the moment the panel opens — so the mark that
+          // separates the two is what decides whether this one speaks.
           <div
             data-testid='message-bubble-error'
+            {...(message.failedJustNow ? { role: 'alert' } : {})}
             className='rounded-content-sm border border-status-error-border bg-status-error-bg px-2 py-1 text-xs text-status-error-foreground'
           >
             {t('chat.error.turnFailed')}

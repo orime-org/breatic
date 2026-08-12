@@ -60,6 +60,28 @@ export function MessageList({
   // the end, so the count sits still for the whole turn. Following its length
   // as well is what keeps the answer in view while it is being written.
   const lastLength = messages.at(-1)?.content.length ?? 0;
+  // Which message the reader last sent. A chat belongs to one person, so
+  // every message in this list with their role is one they typed here.
+  const lastSaid = React.useMemo(
+    () => messages.filter((m) => m.role === 'user').at(-1)?.id,
+    [messages],
+  );
+  const previouslySaid = React.useRef(lastSaid);
+
+  // Before the effect that follows, so a message the reader just sent is
+  // already allowed to pull the column down by the time it runs.
+  React.useEffect(() => {
+    // Scrolling up says "let me read"; sending says "show me what happens
+    // next". Only the first should stop the column following, and there is
+    // no way to tell them apart from scroll position alone — which is why
+    // this is watched separately rather than folded into the check above.
+    // Without it, someone who scrolled up and then sent something sees
+    // nothing move at all: not their own message, not a word of the reply.
+    if (lastSaid !== undefined && lastSaid !== previouslySaid.current) {
+      stickToBottom.current = true;
+    }
+    previouslySaid.current = lastSaid;
+  }, [lastSaid]);
 
   React.useEffect(() => {
     const viewport = bottomRef.current?.closest('[data-radix-scroll-area-viewport]');

@@ -314,6 +314,54 @@ describe('when the conversation it was writing to is gone', () => {
     expect(chatApi.openChat).toHaveBeenCalledTimes(1);
     expect(result.current.messages.some((m) => m.failed)).toBe(false);
   });
+
+  it('marks a failure the reader is living through, apart from one they are reading about', async () => {
+    openChatAnswers([]);
+    const { result, client } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await act(async () => {
+      void result.current.send('hi');
+    });
+
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'upstream said no' } });
+    });
+
+    // Both marks: `failed` is stored and comes back with the history, so it
+    // cannot say whether this just happened. This second one is local and
+    // says exactly that, which is what lets the bubble announce this failure
+    // to someone waiting on it without announcing every past one at load.
+    await waitFor(() => {
+      const last = cachedMessages(client).at(-1) as { failed?: boolean; failedJustNow?: boolean };
+      expect(last.failed).toBe(true);
+      expect(last.failedJustNow).toBe(true);
+    });
+  });
+
+  it('takes back what the user said when the server refused to hear it', async () => {
+    openChatAnswers([]);
+    const { result, client } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      // Being refused mid-flight: the request reached the server and came
+      // back as an ordinary response, so the stream never opened and the
+      // turn never ran.
+      h.onError?.(new StreamRefusedError(403, 'Forbidden'));
+    });
+
+    await act(async () => {
+      await expect(result.current.send('let me in')).rejects.toThrow();
+    });
+
+    // The server stored nothing — not the reply, and not the message the
+    // user typed, which is only written once the turn is under way. Leaving
+    // their bubble behind puts a message on screen that the conversation
+    // does not contain, and it disappears on the next reload. Worse, the
+    // composer takes the same words back as a draft, so the one sentence is
+    // on screen twice: sent and unsent at once.
+    expect(cachedMessages(client)).toHaveLength(0);
+  });
 });
 
 describe('when the chat never opened', () => {

@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MessageData, SSEEventEnvelope } from '@breatic/shared';
-import { SSE_EVENT_NAMES } from '@breatic/shared';
+import { SSE_EVENT_NAMES, newId } from '@breatic/shared';
 
 import { chatApi } from '@web/data/api/chat';
 import {
@@ -19,12 +19,16 @@ import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
 /**
  * A message as the cache holds it.
  *
- * A stored message plus the one state that is local by nature: whether the
- * reply is being written right now. Nothing else here is invented locally —
- * how the turn ended, including its having failed, is recorded on the stored
- * message, so what is on screen and what a reload brings back agree.
+ * A stored message plus the two states that are local by nature.
+ *
+ * Whether the reply is being written right now, and whether its failure is
+ * one the reader is living through rather than reading about. How the turn
+ * ended, failure included, is recorded on the stored message, so what is on
+ * screen and what a reload brings back agree; but "it just failed, in front
+ * of you" is true only once and cannot be stored, because a reload would
+ * bring it back saying the same thing about a failure from days ago.
  */
-type CachedMessage = MessageData & { streaming?: boolean };
+type CachedMessage = MessageData & { streaming?: boolean; failedJustNow?: boolean };
 
 /** The open-chat answer with the cache's own message shape. */
 type CachedChat = Omit<OpenChatResult, 'current'> & {
@@ -105,6 +109,7 @@ function toChatMessage(message: CachedMessage): ChatMessage {
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(message.interrupted ? { interrupted: true as const } : {}),
     ...(message.failed ? { failed: true } : {}),
+    ...(message.failedJustNow ? { failedJustNow: true } : {}),
     ...(message.streaming ? { streaming: true } : {}),
   };
 }
@@ -268,13 +273,16 @@ export function useChatSession(projectId: string): ChatSession {
       userMessage?: CachedMessage,
     ): Promise<StreamRefusedError | StreamUnreachableError | undefined> => {
       const now = new Date().toISOString();
-      const replyId = `local-reply-${crypto.randomUUID()}`;
+      // `newId` and not `crypto.randomUUID`: same v4 shape, but it is the
+      // generator the rest of the app uses, and it works outside a secure
+      // context where `crypto.randomUUID` is undefined.
+      const replyId = `local-reply-${newId()}`;
       const turnIndex =
         (queryClient.getQueryData<CachedChat>(chatKey(projectId))?.current.messages.at(-1)
           ?.turnIndex ?? 0) + 1;
 
       const said: CachedMessage = userMessage ?? {
-        id: `local-user-${crypto.randomUUID()}`,
+        id: `local-user-${newId()}`,
         role: 'user',
         parts: [{ type: 'text', text }],
         content: text,
@@ -329,7 +337,14 @@ export function useChatSession(projectId: string): ChatSession {
               case SSE_EVENT_NAMES.ERROR:
                 // What the server says here is a hardcoded English sentence;
                 // the panel shows its own wording, so only the fact matters.
-                patchMessage(replyId, (m) => ({ ...m, failed: true }));
+                //
+                // Two marks, because they say different things. `failed` is
+                // stored and comes back with the history. The second one is
+                // this panel's own record that the failure happened just now,
+                // with someone waiting on it — which is what lets the bubble
+                // announce this one to a screen reader without announcing
+                // every past failure the moment the panel opens.
+                patchMessage(replyId, (m) => ({ ...m, failed: true, failedJustNow: true }));
                 finishTurn();
                 break;
 
@@ -381,7 +396,7 @@ export function useChatSession(projectId: string): ChatSession {
         removeMessage(replyId);
         // Not on the second attempt: that one is re-sending a message which
         // is already on screen and belongs to the caller.
-        if (unreachable && !userMessage && said.id) removeMessage(said.id);
+        if (!userMessage && said.id) removeMessage(said.id);
       }
       return refusal ?? unreachable;
     },

@@ -99,16 +99,36 @@ describe('MessageBubble', () => {
   });
 
   it('does not announce a failure that came back with the history', () => {
-    // The mark used to exist only while a turn was happening, so announcing
-    // it was right. It is stored now and comes back with every reload, and an
-    // assertive region would read out every past failure in the conversation
-    // — one after another — the moment the panel opens. Its sibling mark for
-    // a stopped turn has always been plain text, for the same reason.
+    // Failure is stored, so it comes back with every reload. An assertive
+    // region on all of them would read out every past failure in the
+    // conversation — one after another — the moment the panel opens. What
+    // tells them apart is the mark below: this one is missing it, so this
+    // failure is being read about, not being lived through.
     render(
       <MessageBubble
         message={{ id: 'm1', role: 'assistant', content: 'Half a sen', failed: true }}
       />,
     );
     expect(screen.getByTestId('message-bubble-error').getAttribute('role')).toBeNull();
+  });
+
+  it('announces a failure that just happened, while the reader is waiting', () => {
+    // Acceptance item 26. Someone who sent a message and is waiting for the
+    // answer has no other way to learn the turn is over: the reply simply
+    // stops growing and the stop button turns back into send, both of which
+    // are only visible. Using a screen reader, they wait for something that
+    // is never coming.
+    render(
+      <MessageBubble
+        message={{
+          id: 'm1',
+          role: 'assistant',
+          content: 'Half a sen',
+          failed: true,
+          failedJustNow: true,
+        }}
+      />,
+    );
+    expect(screen.getByTestId('message-bubble-error').getAttribute('role')).toBe('alert');
   });
 });
