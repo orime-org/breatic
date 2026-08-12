@@ -465,6 +465,54 @@ describe('when the network comes back mid-reply', () => {
   });
 });
 
+describe('when a refetch started before the turn lands during it', () => {
+  it('does not let it overwrite the turn that started while it was in flight', async () => {
+    openChatAnswers([{ id: 'm1', role: 'user', text: 'earlier' }]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+
+    // A refetch is under way — `refetchOnMount` starts one whenever the panel
+    // is opened again over stale data, and at that moment there is no turn to
+    // protect, so the guard lets it go. Hold it open.
+    let land = (): void => {};
+    vi.mocked(chatApi.openChat).mockImplementationOnce(
+      async () =>
+        new Promise((resolve) => {
+          land = () =>
+            resolve({
+              conversations: [{ id: 'c-1' }],
+              current: { conversation: { id: 'c-1' }, messages: [] },
+            } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+        }),
+    );
+    await act(async () => {
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // The reader sends before it comes back.
+    await act(async () => {
+      void result.current.send('hello');
+    });
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'A' } });
+    });
+    await waitFor(() => expect(result.current.messages).toHaveLength(3));
+
+    // Now it lands. It was asked for before this turn existed, so it does not
+    // contain it — and the guard only ever looked at the moment a refetch
+    // starts, not the moment it writes.
+    await act(async () => {
+      land();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(result.current.messages).toHaveLength(3);
+    expect(result.current.messages.at(-1)?.content).toBe('A');
+  });
+});
+
 describe('when one turn ends after the next has started', () => {
   it('does not let the late ending clear the turn that is running now', async () => {
     openChatAnswers([]);

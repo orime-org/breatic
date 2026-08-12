@@ -169,7 +169,19 @@ export function useChatSession(projectId: string): ChatSession {
 
   const query = useQuery<CachedChat>({
     queryKey: chatKey(projectId),
-    queryFn: () => chatApi.openChat(projectId),
+    queryFn: async () => {
+      const fresh = await chatApi.openChat(projectId);
+      // Asked for before this turn existed, so it cannot contain it. The
+      // guard below only decides whether to *start* a fetch, and a turn can
+      // begin while one is already on its way back — opening the panel over
+      // stale data starts one every time, and the composer is live before it
+      // lands. Writing it in then takes the turn off the screen mid-reply.
+      if (inFlight.current !== null) {
+        const current = queryClient.getQueryData<CachedChat>(chatKey(projectId));
+        if (current) return current;
+      }
+      return fresh;
+    },
     refetchOnReconnect: noTurnInFlight,
   });
 
