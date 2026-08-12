@@ -533,11 +533,24 @@ body {
    of a constant is the real fix and belongs with a change that can verify all
    three editors.
 
-   `1lh` is the line box, `1.21em` the font's content box (Inter's hhea metrics,
-   (1984 + 494) / 2048), so half their difference is the leading to paint over.
-   Measured in Chromium: unpainted stripe 3.87px -> 0.16px, and the chat panel
-   unchanged at 0.02px. The exclusion matches the shared rule's: a chip is an
-   atomic box and WOULD grow from vertical padding. */
+   `1lh` is the line box and `1.21em` stands in for the font's content box, so
+   half their difference is the leading to paint over. THE SECOND HALF OF THAT
+   IS A GUESS, and it is the reason this rule is a stopgap rather than an answer:
+   the rendered content box is not a fixed ratio. Blink rounds the font's ascent
+   and descent per size, so Inter measures 1.192em at 13px, 1.2em at 15px,
+   1.225em at 20px and 1.229em at 24px on Chrome 151 — and a different build
+   rounds differently (1.267em at 15px on Chrome 128). So the residue here is
+   0.16px of stripe on the machine this was measured on and may be a fraction of
+   a pixel of OVERLAP on another. Both are far better than the 3.87px this
+   replaces, and neither is correct.
+
+   The correct shape is the one CodeMirror's `drawSelection` uses: measure the
+   selection's client rects and paint positioned rectangles, which needs no
+   constant at all. That replaces this rule and the shared one it overrides,
+   across all three editors that carry a band, and is tracked separately.
+
+   The exclusion matches the shared rule's: a chip is an atomic box and WOULD
+   grow from vertical padding. */
 .doc-body-editor .ProseMirror .collaboration-carets__selection:not(:has(.reference-mention)) {
   padding-block: calc((1lh - 1.21em) / 2);
 }
