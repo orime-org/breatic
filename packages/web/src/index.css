@@ -527,11 +527,12 @@ body {
    the leading it was measured against.
 
    The line height above is 1.65, so this body needs a different figure, and
-   this rule supplies it HERE ONLY. The chat panel and the prompt editor keep
-   the shared value untouched — they are correct on it, and neither is in this
-   slice's blast radius. Deriving the shared rule from the live leading instead
-   of a constant is the real fix and belongs with a change that can verify all
-   three editors.
+   this rule supplies it HERE ONLY. Three editors install the caret extension
+   through `buildCollabExtensions`, and the other two — the generate panel's
+   prompt editor and the canvas text node — keep the shared value untouched.
+   Neither is in this slice's blast radius. Deriving the shared rule from the
+   live leading instead of a constant is the real fix and belongs with a change
+   that can verify all three.
 
    `1lh` is the line box and `1.21em` stands in for the font's content box, so
    half their difference is the leading to paint over. THE SECOND HALF OF THAT
@@ -644,23 +645,36 @@ body {
    as useful.
 
    THAT BUYS ONE ELEMENT, NOT IMMUNITY. This is (0,2,2), so it outranks every
-   single-element rule in this block wherever it is written — but a later rule
-   at (0,2,2) or above still wins on order, and two already exist: `* + *` just
-   below (deliberately) and `:not(pre) > code` further down. Adding a rule here
-   of that shape and expecting the reset to survive is the same mistake one tier
-   up. */
+   single-element rule in this block wherever it is written — and nothing else.
+   Anything below it that scores as much wins on order, and anything scoring
+   more wins from anywhere; both shapes are already in this block, the quote's
+   `> :first-child` and `> :last-child` being the higher of them. So the test
+   for a rule added here is its own score against this one, NOT whether the
+   reset happens to be written above it. */
 .doc-body-editor .ProseMirror :is(ul, ol) > li > * {
   margin: 0;
 }
 
-/* An item holding more than one block still needs them apart, at the same
-   rhythm the items themselves keep. Reachable by pasting an item that holds
-   two paragraphs, or a paragraph and a quote. */
+/* An item holding more than one block still needs them apart. `em` here is the
+   BLOCK'S own size, as everywhere else in this file — a paragraph's 0.85em and
+   a heading's 1.9em are read the same way — so the gap tracks whatever the
+   block is set in rather than landing on one figure: measured 4.5px under a
+   paragraph, a quote, a nested list or a divider, 6px under a heading (20px
+   text) and 4.05px under a code block (13.5px text). Reachable by pasting an
+   item that holds two paragraphs, or a paragraph and a quote. */
 .doc-body-editor .ProseMirror :is(ul, ol) > li > * + * {
   margin-top: 0.3em;
 }
 
-.doc-body-editor .ProseMirror li {
+/* Items sit apart from EACH OTHER, which is why this is `+` and not every
+   item. Written unconditionally it also lands on the first one, whose margin
+   then has nothing above it inside the list and collapses out through the
+   list's own — invisible while the list has a margin of its own to collapse
+   into, and 4.5px of unasked-for inset the moment something zeroes it. The
+   quote below does exactly that to its first child. What separates the first
+   item from whatever precedes the list is the LIST's margin; that is the one
+   the quote means to zero, and with `+` it is the only one there. */
+.doc-body-editor .ProseMirror li + li {
   margin-top: 0.3em;
 }
 
@@ -680,7 +694,8 @@ body {
 
    Measured: quote inside a list item 12.75px -> 4.5px above and below, the same
    with a list inside the quote; in the body a quote opening with a heading
-   45.59px -> 16.5px; the quote's top edge to its first line stays 0. */
+   45.59px -> 16.5px. Its own edges then read 0 to the first and last block
+   whichever they are — list, paragraph, heading, all four ends measured. */
 .doc-body-editor .ProseMirror blockquote {
   display: flow-root;
   margin: 1.1em 0;
@@ -689,11 +704,28 @@ body {
   color: var(--color-muted-foreground);
 }
 
-.doc-body-editor .ProseMirror blockquote > :first-child {
+/* THE FIRST CHILD ELEMENT IS NOT ALWAYS THE FIRST BLOCK. A widget decoration
+   renders as an element of its own, and one placed on a block boundary lands
+   as a direct child of the quote: a gap cursor beside a divider opening the
+   quote puts `div.ProseMirror-gapcursor.ProseMirror-widget` ahead of the
+   divider, and `:first-child` then zeroes the widget's margin — which it has
+   none of — while the divider keeps its own. Measured in the browser with the
+   caret actually resting there: the quote springs open by 30px, and closes
+   again when the caret leaves. Both ends verified against the real schema.
+
+   The second selector in each pair is what actually reaches the block on
+   those frames. `.ProseMirror-widget` is prosemirror-view's own class on every
+   widget it renders, so this asks the DOM what an element IS rather than
+   guessing from where it sits. Naming the block types instead would need all
+   seven and would go stale with the schema. A widget BETWEEN two blocks is
+   matched by neither, which is right — the block after it is not the first. */
+.doc-body-editor .ProseMirror blockquote > :first-child,
+.doc-body-editor .ProseMirror blockquote > .ProseMirror-widget:first-child + * {
   margin-top: 0;
 }
 
-.doc-body-editor .ProseMirror blockquote > :last-child {
+.doc-body-editor .ProseMirror blockquote > :last-child,
+.doc-body-editor .ProseMirror blockquote > :has(+ .ProseMirror-widget:last-child) {
   margin-bottom: 0;
 }
 
