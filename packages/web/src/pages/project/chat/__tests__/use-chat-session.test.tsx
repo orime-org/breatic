@@ -92,9 +92,9 @@ function render(): ReturnType<typeof renderHook<ReturnType<typeof useChatSession
  * @param client - The client backing the render under test
  * @returns Those messages, or an empty list when nothing is cached
  */
-function cachedMessages(client: QueryClient): Array<{ streaming?: boolean }> {
+function cachedMessages(client: QueryClient): Array<{ streaming?: boolean; failed?: boolean }> {
   const data = client.getQueryData(['chat-open', 'p-1']) as
-    | { current: { messages: Array<{ streaming?: boolean }> } }
+    | { current: { messages: Array<{ streaming?: boolean; failed?: boolean }> } }
     | undefined;
   return data?.current.messages ?? [];
 }
@@ -327,15 +327,50 @@ describe('when the conversation it was writing to is gone', () => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'upstream said no' } });
     });
 
-    // Both marks: `failed` is stored and comes back with the history, so it
-    // cannot say whether this just happened. This second one is local and
-    // says exactly that, which is what lets the bubble announce this failure
-    // to someone waiting on it without announcing every past one at load.
+    // Both marks, and each in the place that matches how long it is true for.
+    // `failed` is stored, so it belongs in the cache and comes back with the
+    // history. The second says the failure is happening right now, in front
+    // of someone waiting on it — true of this render and nothing else, so it
+    // is not in the cache at all.
     await waitFor(() => {
-      const last = cachedMessages(client).at(-1) as { failed?: boolean; failedJustNow?: boolean };
-      expect(last.failed).toBe(true);
-      expect(last.failedJustNow).toBe(true);
+      expect(result.current.messages.at(-1)?.failed).toBe(true);
+      expect(result.current.messages.at(-1)?.failedJustNow).toBe(true);
     });
+    expect(cachedMessages(client).at(-1)?.failed).toBe(true);
+    expect(cachedMessages(client).at(-1)).not.toHaveProperty('failedJustNow');
+  });
+
+  it('forgets that it just happened once the panel goes away', async () => {
+    openChatAnswers([]);
+    // Nothing is stale, so opening the panel a second time reads the cache
+    // rather than the server — which is the point: what survives here is what
+    // was written into the cache, and nothing else.
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const first = renderHook(() => useChatSession('p-1'), { wrapper: makeWrapper(client) });
+    await waitFor(() => expect(first.result.current.isPending).toBe(false));
+    await act(async () => {
+      void first.result.current.send('hi');
+    });
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'upstream said no' } });
+    });
+    await waitFor(() => expect(first.result.current.messages.at(-1)?.failedJustNow).toBe(true));
+
+    // Collapsing the agent column unmounts the panel; opening it again mounts
+    // a new one over the same cache.
+    first.unmount();
+    const second = renderHook(() => useChatSession('p-1'), { wrapper: makeWrapper(client) });
+    await waitFor(() => expect(second.result.current.messages).toHaveLength(2));
+
+    // The failure is still there to read — it is part of the conversation.
+    // But nobody is living through it any more, and a bubble that still said
+    // so would read the whole thing out again to a screen reader as if it had
+    // just happened, minutes after the reader had already been told.
+    expect(second.result.current.messages.at(-1)?.failed).toBe(true);
+    expect(second.result.current.messages.at(-1)?.failedJustNow).toBeUndefined();
+    second.unmount();
   });
 
   it('takes back what the user said when the server refused to hear it', async () => {

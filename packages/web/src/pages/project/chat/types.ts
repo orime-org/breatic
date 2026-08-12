@@ -44,12 +44,18 @@ export interface ChatMessage {
   /**
    * The failure happened just now, with the reader waiting on this reply.
    *
-   * Unlike {@link ChatMessage.failed} this is not stored, and it cannot be:
-   * a reload would bring it back still claiming to be recent. It is the
-   * difference between living through a failure and reading about one, and
-   * only the first is worth announcing — a reply that stops growing and a
-   * stop button turning back into send are both purely visual, so without
-   * this a screen reader user waits for an answer that is never coming.
+   * It is the difference between living through a failure and reading about
+   * one, and only the first is worth announcing — a reply that stops growing
+   * and a stop button turning back into send are both purely visual, so
+   * without this a screen reader user waits for an answer that is never
+   * coming.
+   *
+   * Unlike {@link ChatMessage.failed} this is kept nowhere the message goes.
+   * It belongs to the panel that watched it happen and is gone the moment
+   * that panel is: not in the cache, which outlives the column being
+   * collapsed, and not on the server, which would hand it back on reload.
+   * Either would have a failure from ten minutes ago still announcing itself
+   * as news.
    *
    * Only ever `true`; its absence is the ordinary case.
    */

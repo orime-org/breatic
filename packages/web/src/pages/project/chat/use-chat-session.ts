@@ -19,16 +19,13 @@ import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
 /**
  * A message as the cache holds it.
  *
- * A stored message plus the two states that are local by nature.
- *
- * Whether the reply is being written right now, and whether its failure is
- * one the reader is living through rather than reading about. How the turn
- * ended, failure included, is recorded on the stored message, so what is on
- * screen and what a reload brings back agree; but "it just failed, in front
- * of you" is true only once and cannot be stored, because a reload would
- * bring it back saying the same thing about a failure from days ago.
+ * A stored message plus whether its reply is being written right now. That
+ * one is local — the server has no such state — but it lasts exactly as long
+ * as the message it is on, which is what makes the cache the right place for
+ * it. "It just failed, in front of you" does not: it is true of one moment,
+ * and is kept in this panel's own state instead.
  */
-type CachedMessage = MessageData & { streaming?: boolean; failedJustNow?: boolean };
+type CachedMessage = MessageData & { streaming?: boolean };
 
 /** The open-chat answer with the cache's own message shape. */
 type CachedChat = Omit<OpenChatResult, 'current'> & {
@@ -82,9 +79,11 @@ export interface ChatSession {
 /**
  * Adapt one stored message into what the panel renders.
  * @param message - The message as the server hands it out
+ * @param justFailed - This failure is happening now, with the reader waiting
+ *   on it, rather than being read back out of the history
  * @returns The same message in the panel's shape
  */
-function toChatMessage(message: CachedMessage): ChatMessage {
+function toChatMessage(message: CachedMessage, justFailed: boolean): ChatMessage {
   const toolCalls: ToolCall[] = message.parts
     .filter((p) => p.type === 'tool')
     .map((p) => {
@@ -109,7 +108,7 @@ function toChatMessage(message: CachedMessage): ChatMessage {
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(message.interrupted ? { interrupted: true as const } : {}),
     ...(message.failed ? { failed: true } : {}),
-    ...(message.failedJustNow ? { failedJustNow: true } : {}),
+    ...(justFailed ? { failedJustNow: true as const } : {}),
     ...(message.streaming ? { streaming: true } : {}),
   };
 }
@@ -135,6 +134,17 @@ export function useChatSession(projectId: string): ChatSession {
   const inFlight = React.useRef<AbortController | null>(null);
   /** The reply currently being written, so ending the turn can unmark it. */
   const activeReplyId = React.useRef<string | null>(null);
+  /**
+   * The reply whose failure the reader is living through, if any.
+   *
+   * Held here rather than on the message, because it is true of this panel
+   * for as long as it stays open and of nothing else. Storing it alongside
+   * the message would outlive that by every measure: the cache survives the
+   * panel being collapsed, so opening the column again would find a failure
+   * from ten minutes ago still claiming to be happening, and read it out to
+   * a screen reader as if it had just arrived.
+   */
+  const [justFailed, setJustFailed] = React.useState<string | null>(null);
 
   const query = useQuery<CachedChat>({
     queryKey: chatKey(projectId),
@@ -272,6 +282,10 @@ export function useChatSession(projectId: string): ChatSession {
       conversation: string,
       userMessage?: CachedMessage,
     ): Promise<StreamRefusedError | StreamUnreachableError | undefined> => {
+      // A new turn is under way, so whatever failed before it is no longer
+      // what is happening — it has become part of the history, and the
+      // failure being announced from here on is this turn's, if it has one.
+      setJustFailed(null);
       const now = new Date().toISOString();
       // `newId` and not `crypto.randomUUID`: same v4 shape, but it is the
       // generator the rest of the app uses, and it works outside a secure
@@ -338,13 +352,15 @@ export function useChatSession(projectId: string): ChatSession {
                 // What the server says here is a hardcoded English sentence;
                 // the panel shows its own wording, so only the fact matters.
                 //
-                // Two marks, because they say different things. `failed` is
-                // stored and comes back with the history. The second one is
-                // this panel's own record that the failure happened just now,
-                // with someone waiting on it — which is what lets the bubble
-                // announce this one to a screen reader without announcing
-                // every past failure the moment the panel opens.
-                patchMessage(replyId, (m) => ({ ...m, failed: true, failedJustNow: true }));
+                // Two marks, because they say different things and last for
+                // different lengths of time. `failed` is stored and comes
+                // back with the history. The second is this panel's record
+                // that the failure happened just now, with someone waiting on
+                // it — which is what lets the bubble announce this one to a
+                // screen reader without announcing every past failure the
+                // moment the panel opens.
+                patchMessage(replyId, (m) => ({ ...m, failed: true }));
+                setJustFailed(replyId);
                 finishTurn();
                 break;
 
@@ -456,8 +472,11 @@ export function useChatSession(projectId: string): ChatSession {
   );
 
   const messages = React.useMemo(
-    () => (query.data?.current.messages ?? []).map(toChatMessage),
-    [query.data],
+    () =>
+      (query.data?.current.messages ?? []).map((m) =>
+        toChatMessage(m, m.id === justFailed),
+      ),
+    [query.data, justFailed],
   );
 
   return {
