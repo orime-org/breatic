@@ -101,7 +101,8 @@
         "label": "스킬을 선택하여 에이전트의 동작 범위를 지정하세요",
         "title": "스킬 선택"
       },
-      "send": "전송"
+      "send": "전송",
+      "stop": "중지"
     },
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",

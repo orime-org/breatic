@@ -101,7 +101,8 @@
         "label": "Skill を選んで agent の動作を絞り込む",
         "title": "Skill を選択"
       },
-      "send": "送信"
+      "send": "送信",
+      "stop": "停止"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",

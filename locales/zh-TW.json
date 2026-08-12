@@ -101,7 +101,8 @@
         "label": "選擇 Skill 限定 agent 行為",
         "title": "選擇 Skill"
       },
-      "send": "傳送"
+      "send": "傳送",
+      "stop": "停止"
     },
     "empty": {
       "greetingWithName": "嗨,{name}!",

@@ -41,6 +41,16 @@ describe('ChatComposer', () => {
     expect(screen.getByTestId('chat-composer-abort')).toBeInTheDocument();
   });
 
+  it('names the abort button in the reader’s language, like every other button', () => {
+    setup({ streaming: true });
+    // The only name this button has: it is an icon, so a screen reader reads
+    // out the label and nothing else. The product ships in five languages,
+    // and the button beside it — send — has been localised all along. This
+    // reads the catalog under test, which is English; what it rules out is
+    // the label being written into the component, where no locale reaches it.
+    expect(screen.getByTestId('chat-composer-abort')).toHaveAccessibleName('Stop');
+  });
+
   it('send is disabled while the draft is empty', () => {
     setup();
     expect(
