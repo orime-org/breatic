@@ -43,10 +43,11 @@ const ALLOWED_STARTERKIT_OVERRIDES: Readonly<Record<string, string>> = {
   // broadcasts, lands on the opener's undo stack, and fires for a viewer whose
   // update the server then silently drops.
   trailingNode: 'its append is a write to a document everyone shares',
-  // Switched off so `BodyHeading` can take its place. The body keeps three
-  // levels, and a stored heading below that has to render as the smallest one
-  // rather than the largest — neither is reachable through `configure`, since
-  // the fallback lives in Heading's own `renderHTML`.
+  // Switched off so `BodyHeading` can take its place. The cap to three levels
+  // would be a `configure` away, but a stored heading below that has to render
+  // as the smallest level rather than the largest, and that lives in Heading's
+  // own `renderHTML` — an `extend` on an instance StarterKit builds internally
+  // and never hands out.
   heading: 'the body caps headings at three levels and answers for the rest',
 };
 

@@ -482,10 +482,14 @@ body {
    coefficients are fractions rather than decimals because 15 × 1.333 is
    19.995px, not 20. The hard ceiling is the title's 30px: the largest body
    heading has to stay under it or the hierarchy inverts. */
-/* Only the line height. Long words and URLs already wrap: prosemirror-view's
-   own stylesheet sets `word-wrap: break-word` on `.ProseMirror`. Measured with
-   a 180-character URL — two lines, no horizontal overflow, with and without an
-   `overflow-wrap` of our own. */
+/* Only the line height. Long words and URLs already wrap, and it is @tiptap/core
+   that makes them: its `style.ts` is inlined into the bundle and injected as a
+   stylesheet when an Editor is constructed, and it sets `word-wrap: break-word`
+   on `.ProseMirror`. Not prosemirror-view — that package ships a stylesheet
+   saying the same thing but nothing here imports it; it only logs a warning
+   asking you to. The switch is the Editor's `injectCSS` option, which defaults
+   to true and is left alone. Measured with a 180-character URL: two lines, no
+   horizontal overflow, with and without an `overflow-wrap` of our own. */
 .doc-body-editor .ProseMirror {
   line-height: 1.65;
 }
@@ -568,10 +572,10 @@ body {
   border-radius: var(--radius-content-xs);
 }
 
-/* No `white-space` here on purpose: prosemirror-view's stylesheet already sets
-   `.ProseMirror pre { white-space: pre-wrap }`, so a long line wraps rather
-   than being clipped. Overriding that to scroll horizontally instead is a
-   slice of its own — it needs a NodeView to hold a scroller and a per-block
+/* No `white-space` here on purpose: the same injected @tiptap/core stylesheet
+   sets `.ProseMirror pre { white-space: pre-wrap }`, so a long line wraps
+   rather than being clipped. Overriding that to scroll horizontally instead is
+   a slice of its own — it needs a NodeView to hold a scroller and a per-block
    toggle. */
 .doc-body-editor .ProseMirror pre {
   font-size: 0.9em;

@@ -14,9 +14,12 @@
  * governs input rules, shortcuts and rendering, not the range of the `level`
  * attribute. What it does change is how an out-of-range heading RENDERS:
  * Heading's own `renderHTML` falls back to `levels[0]`, which would show a
- * fourth-level heading as the largest text on the page. A document can hold
- * such a node today, because pasting from another editor produces one, so that
- * fallback is overridden to land on the smallest level we keep instead.
+ * fourth-level heading as the largest text on the page, so that fallback is
+ * overridden to land on the smallest level we keep instead.
+ *
+ * Both halves are asserted below, and so is the reason each is needed: a
+ * pasted `<h4>` no longer parses as a heading at all, while one that arrives
+ * over the wire from a six-level peer stays a heading and has to render small.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';

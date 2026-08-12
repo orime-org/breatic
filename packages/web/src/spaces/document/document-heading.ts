@@ -16,9 +16,18 @@
  * intact. What it does change is how that heading RENDERS, and the stock
  * behaviour is the wrong way round: `renderHTML` falls back to `levels[0]`,
  * which is the LARGEST level we keep, so a minor heading would come back as
- * the biggest text on the page. A document can hold one today — pasting from
- * another editor produces it — so the fallback is overridden to land on the
+ * the biggest text on the page. The fallback is overridden to land on the
  * smallest level instead.
+ *
+ * Two things still put such a heading in front of that fallback, and pasting
+ * is not one of them — `parseHTML` is built from `levels`, so an `<h4>` no
+ * longer matches any rule and arrives as a paragraph:
+ *
+ * - a document written before the cap, or by a peer still on the six-level
+ *   bundle, which reaches this client through Yjs;
+ * - splitting one of those headings, which mints another node at the same
+ *   out-of-range level. Verified: Enter inside a stored level-4 heading leaves
+ *   two of them, both rendered as `h3`.
  */
 
 import { mergeAttributes } from '@tiptap/core';
