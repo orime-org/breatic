@@ -620,15 +620,22 @@ body {
    the divider takes three keystrokes (`--- ` inside an item) and paste brings
    the rest.
 
-   NAMING THE LIST IS WHAT MAKES IT WIN, not where it sits in the file. `*`
-   contributes no specificity, so `.doc-body-editor .ProseMirror li > *` scores
-   the same as `.doc-body-editor .ProseMirror hr` and the later of the two takes
-   the margin — which is how a first attempt at this rule appeared to work on
-   the children declared above it and silently lost to the quote, the code block
-   and the divider declared below. `:is(ul, ol) >` adds the element the tie was
-   missing, so the reset wins wherever it is written and whatever is added after
-   it. A list item has no other parent, so the extra step is true as well as
-   useful. */
+   NAMING THE LIST IS WHAT PUTS IT ABOVE THE ELEMENT RULES, not where it sits
+   in the file. `*` contributes no specificity, so
+   `.doc-body-editor .ProseMirror li > *` scores the same as
+   `.doc-body-editor .ProseMirror hr` and the later of the two takes the margin
+   — which is how a first attempt at this rule appeared to work on the children
+   declared above it and silently lost to the quote, the code block and the
+   divider declared below. `:is(ul, ol) >` adds the element that tie was
+   missing. A list item has no other parent, so the extra step is true as well
+   as useful.
+
+   THAT BUYS ONE ELEMENT, NOT IMMUNITY. This is (0,2,2), so it outranks every
+   single-element rule in this block wherever it is written — but a later rule
+   at (0,2,2) or above still wins on order, and two already exist: `* + *` just
+   below (deliberately) and `:not(pre) > code` further down. Adding a rule here
+   of that shape and expecting the reset to survive is the same mistake one tier
+   up. */
 .doc-body-editor .ProseMirror :is(ul, ol) > li > * {
   margin: 0;
 }
