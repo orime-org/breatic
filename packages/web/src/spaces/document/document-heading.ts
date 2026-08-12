@@ -30,10 +30,19 @@
  *   two of them, both rendered as `h3`.
  */
 
-import { mergeAttributes } from '@tiptap/core';
+import type { DOMOutputSpec } from '@tiptap/pm/model';
 import { Heading } from '@tiptap/extension-heading';
 
-/** The heading levels the body offers, largest first. */
+/**
+ * The heading levels the body offers, largest first.
+ *
+ * `index.css` gives each of these a size and weight by hand — CSS cannot read
+ * this array, and the project has no JS Tailwind config to bridge them. So
+ * widening this list means adding a rule there in the same change: preflight
+ * resets `h1..h6` to inherit, and a level with no rule of its own renders at
+ * the paragraph's size and weight, which is the exact defect this slice exists
+ * to remove.
+ */
 export const BODY_HEADING_LEVELS = [1, 2, 3] as const;
 
 /** Where a level outside {@link BODY_HEADING_LEVELS} renders instead. */
@@ -41,24 +50,27 @@ const FALLBACK_LEVEL = BODY_HEADING_LEVELS[BODY_HEADING_LEVELS.length - 1];
 
 export const BodyHeading = Heading.extend({
   /**
-   * Render at the stored level, or at the smallest level we keep.
+   * Render as Heading does, with an out-of-range level moved into range first.
    *
-   * Only the fallback differs from the stock implementation, and it is the
-   * whole reason this override exists.
+   * The work is delegated rather than reimplemented. Copying Heading's four
+   * lines and editing one of them would leave the other three free to drift
+   * from upstream unnoticed — nothing here asserts on the attributes they
+   * merge, so a change to that half would go unnoticed too. Handing the level
+   * back in range and calling the parent leaves exactly one line that is ours.
    * @param props - The node being rendered and the attributes resolved for it.
    * @param props.node - The heading node, whose `level` attribute may be out of range.
-   * @param props.HTMLAttributes - Attributes the editor resolved for this node.
    * @returns The DOM output spec for this heading.
    */
-  renderHTML({ node, HTMLAttributes }) {
-    const stored = node.attrs.level as number;
-    const level = (this.options.levels as number[]).includes(stored)
-      ? stored
-      : FALLBACK_LEVEL;
-    return [
-      `h${level}`,
-      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
-      0,
-    ];
+  renderHTML(props) {
+    const stored = props.node.attrs.level as number;
+    if ((this.options.levels as number[]).includes(stored)) {
+      return this.parent?.(props) as DOMOutputSpec;
+    }
+    const inRange = props.node.type.create(
+      { ...props.node.attrs, level: FALLBACK_LEVEL },
+      props.node.content,
+      props.node.marks,
+    );
+    return this.parent?.({ ...props, node: inRange }) as DOMOutputSpec;
   },
 }).configure({ levels: [...BODY_HEADING_LEVELS] });

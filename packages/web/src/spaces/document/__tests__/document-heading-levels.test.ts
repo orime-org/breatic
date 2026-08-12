@@ -20,6 +20,13 @@
  * Both halves are asserted below, and so is the reason each is needed: a
  * pasted `<h4>` no longer parses as a heading at all, while one that arrives
  * over the wire from a six-level peer stays a heading and has to render small.
+ *
+ * The cases that enumerate the levels read them from `BODY_HEADING_LEVELS`; the
+ * out-of-range ones say `4` outright, on purpose. IF WIDENING THE CAP TURNS
+ * THOSE RED, THE FIX IS NOT TO BUMP THE NUMBER — `index.css` needs a rule for
+ * the level being added, and nothing here can check that. Preflight resets
+ * `h1..h6` to inherit, so a level with no rule of its own renders at the
+ * paragraph's size and weight.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -29,6 +36,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-heading';
 
 const editors: Editor[] = [];
 
@@ -122,7 +130,7 @@ describe('what the heading command accepts', () => {
     const editor = open('<p>x</p>');
     caretInBody(editor);
 
-    for (const level of [1, 2, 3] as const) {
+    for (const level of BODY_HEADING_LEVELS) {
       expect(editor.can().toggleHeading({ level })).toBe(true);
     }
   });
@@ -136,17 +144,21 @@ describe('what the heading command accepts', () => {
 });
 
 describe('how the levels the body keeps render', () => {
-  it('gives each of the three its own tag', () => {
+  it('gives each level it keeps its own tag', () => {
     // The override in `document-heading` answers for two cases, and only the
     // out-of-range one is asserted below. Without this, rendering EVERY heading
     // at the fallback level passes the whole suite — while `h1` and `h2` stop
     // matching their stylesheet rules and all three levels collapse to one size.
-    const editor = open('<h1>ONE</h1><h2>TWO</h2><h3>THREE</h3>');
+    //
+    // Driven off the constant rather than a literal list, so that widening the
+    // cap fails here on the level that has no rule yet instead of passing.
+    const written = BODY_HEADING_LEVELS.map((level) => `<h${level}>T${level}</h${level}>`);
+    const editor = open(written.join(''));
     const html = editor.getHTML();
 
-    expect(html).toContain('<h1>ONE</h1>');
-    expect(html).toContain('<h2>TWO</h2>');
-    expect(html).toContain('<h3>THREE</h3>');
+    for (const level of BODY_HEADING_LEVELS) {
+      expect(html).toContain(`<h${level}>T${level}</h${level}>`);
+    }
   });
 });
 

@@ -478,6 +478,12 @@ body {
    the h1 rule sets and outranks it — but add one property here that the title
    does not declare and it lands on the title.
 
+   There is one rule per level `BODY_HEADING_LEVELS` offers, and the two lists
+   have to be changed together: nothing mechanical connects them, because CSS
+   cannot read a TypeScript constant and this project has no JS Tailwind config
+   to bridge them. A level that gains an input rule but no rule here renders at
+   the paragraph's size and weight, preflight having reset `h1..h6` to inherit.
+
    The exclusion is wrapped in `:where()` so that it costs nothing. Written
    bare, `:not(.doc-title)` scores as a class and lifts the heading rules to
    three, above every other rule in this block — including the list-item reset
