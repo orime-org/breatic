@@ -38,10 +38,15 @@ export function MessageBubble({
     >
       <div
         className={cn(
-          'max-w-[80%] rounded-lg px-3 py-2 text-sm',
+          'rounded-lg px-3 py-2 text-sm',
+          // Only what a person says is held back from the far edge. That gap
+          // is what makes a message read as one side of a conversation, and
+          // the agent is not taking a side in one — it is the panel talking,
+          // so its text runs the full width with the same margin on both
+          // sides.
           isUser
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted text-foreground',
+            ? 'max-w-[80%] bg-primary text-primary-foreground'
+            : 'w-full bg-muted text-foreground',
         )}
       >
         {message.thinking ? (
