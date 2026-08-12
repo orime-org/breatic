@@ -101,8 +101,7 @@
         "label": "Pick a Skill to scope the agent's behavior",
         "title": "Pick Skill"
       },
-      "send": "Send",
-      "stop": "Stop"
+      "send": "Send"
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",

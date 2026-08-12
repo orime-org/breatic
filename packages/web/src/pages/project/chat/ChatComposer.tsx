@@ -209,7 +209,7 @@ export function ChatComposer({
             type='button'
             variant={null}
             size={null}
-            aria-label={t('chat.composer.stop')}
+            aria-label='Abort'
             onClick={onAbort}
             data-testid='chat-composer-abort'
             className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error'
