@@ -4,7 +4,11 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  DEFAULT_STUDIO_TAB,
+  isAddressableTabSegment,
   STUDIO_TABS,
+  studioTabFromParam,
+  studioTabPath,
   visibleStudioTabs,
 } from '@web/pages/studio/container/studio-tabs';
 
@@ -41,5 +45,80 @@ describe('studio-tabs (spec §6.1 — Works tab at the 3rd position)', () => {
     expect(keys).toContain('works');
     expect(keys).toContain('members');
     expect(keys).toHaveLength(6);
+  });
+});
+
+describe('studioTabFromParam — the URL segment is the tab', () => {
+  it('accepts every key the tab list itself declares', () => {
+    // Derived from STUDIO_TABS rather than restated, so a tab added to the
+    // list is addressable by URL without a second edit — and a tab removed
+    // from it stops being addressable in the same commit.
+    for (const tab of STUDIO_TABS) {
+      expect(studioTabFromParam(tab.key)).toBe(tab.key);
+    }
+  });
+
+  it('falls back to projects for a name that is not a tab', () => {
+    expect(studioTabFromParam('nonsense')).toBe(DEFAULT_STUDIO_TAB);
+    expect(DEFAULT_STUDIO_TAB).toBe('projects');
+  });
+
+  it('falls back to projects when the segment is absent', () => {
+    // `/studio/{slug}` carries no tab segment; it is the same page opened at
+    // its default, not an error.
+    expect(studioTabFromParam(undefined)).toBe(DEFAULT_STUDIO_TAB);
+  });
+
+  it('rejects a name that only looks like a tab', () => {
+    // Case and whitespace are not corrected. A URL is an exact address, and
+    // silently repairing one makes two spellings of it valid forever.
+    //
+    // A trailing slash is deliberately NOT among these: the router strips it
+    // while matching, so `/studio/x/settings/` hands this function the same
+    // `settings` as the address without one. Asserting on `'settings/'` would
+    // be asserting on an input no caller can produce — green either way, and
+    // green is then a claim about a rule that does not exist.
+    expect(studioTabFromParam('Settings')).toBe(DEFAULT_STUDIO_TAB);
+    expect(studioTabFromParam(' settings')).toBe(DEFAULT_STUDIO_TAB);
+  });
+});
+
+describe('isAddressableTabSegment — the address is judged, not the name', () => {
+  it('accepts every section that carries a segment of its own', () => {
+    for (const tab of STUDIO_TABS) {
+      if (tab.key === DEFAULT_STUDIO_TAB) continue;
+      expect(isAddressableTabSegment(tab.key)).toBe(true);
+    }
+  });
+
+  it('refuses the default section spelled out, which has no segment', () => {
+    // `projects` is a real tab, so a name test would pass it — but the address
+    // this scheme emits for the default section carries no segment at all.
+    // Accepting both spellings would give one page two addresses, and the
+    // strip's first link, marked as the current page, would then point at the
+    // other one.
+    expect(isAddressableTabSegment(DEFAULT_STUDIO_TAB)).toBe(false);
+    expect(studioTabPath('acme', DEFAULT_STUDIO_TAB)).toBe('/studio/acme');
+  });
+
+  it('refuses a name that is not a section, and an absent segment', () => {
+    expect(isAddressableTabSegment('nonsense')).toBe(false);
+    expect(isAddressableTabSegment(undefined)).toBe(false);
+  });
+
+  it('accepts exactly what studioTabPath emits, for every section', () => {
+    // The one rule this pair exists to keep: every SEGMENT this scheme writes
+    // is accepted, and the default section — which writes none — is not.
+    // (Accepted addresses are not thereby equal to emitted ones: a trailing
+    // slash survives in the bar but never reaches the predicate. See the
+    // function's own TSDoc.) Asked of the whole list so a section added later
+    // cannot quietly fall on one side only.
+    for (const tab of STUDIO_TABS) {
+      const emitted = studioTabPath('acme', tab.key);
+      const segment = emitted.split('/')[3];
+      expect(isAddressableTabSegment(segment)).toBe(
+        tab.key !== DEFAULT_STUDIO_TAB,
+      );
+    }
   });
 });

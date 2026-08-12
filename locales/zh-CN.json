@@ -243,7 +243,8 @@
       "durationSeconds": "{n} 秒",
       "generateAudio": "生成音频",
       "videoParams": "参数",
-      "videoPromptPlaceholder": "描述你想生成的视频",
+      "videoPromptPlaceholder": "描述你想生成的视频，@ 引用参考",
+      "errorNoReferenceMention": "这一档需要参考图 —— 先把图连到这个节点，再在提示词里输入 @ 引用它。",
       "videoMentionEmpty": "还没有可引用的参考",
       "videoNoPrompt": "这个节点建得比视频生成早，没有提示词。新建一个视频节点就能生成。",
       "firstFrame": "首帧",
@@ -752,7 +753,11 @@
     "topBar": {
       "home": "Studio 主页",
       "account": "账号",
-      "signOut": "退出登录"
+      "signOut": "退出登录",
+      "credits": "积分",
+      "membership": "会员",
+      "accountSettings": "账号设置",
+      "notOpenYet": "未开放"
     },
     "container": {
       "shell": {
@@ -765,7 +770,8 @@
         "works": "Works",
         "members": "成员",
         "credits": "积分",
-        "settings": "设置"
+        "settings": "设置",
+        "navLabel": "Studio 分区"
       },
       "works": {
         "emptyHint": "Works 是从 Project 发布出来的独立成品(完整视频 / 小游戏…),是 Studio 对外的门面。功能上线后,已发布的成品会在这里展示。",

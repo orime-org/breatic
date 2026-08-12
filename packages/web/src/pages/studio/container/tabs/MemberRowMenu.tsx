@@ -25,7 +25,7 @@ interface MemberRowMenuProps {
 
 /**
  * The per-member row action menu (spec §3.7), Admin-only. A `⋯` trigger opens a
- * popover (the project-wide menu pattern, matching `StudioAccountMenu`) with:
+ * popover with:
  * change role (maintainer ↔ guest) and remove member. Transferring the studio
  * admin lives in a single entry at the bottom of the Settings tab (not per-row).
  * The admin row never renders a menu (handled by the caller — an admin manages

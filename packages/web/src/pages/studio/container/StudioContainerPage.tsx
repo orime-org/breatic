@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import { useParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import type { ProjectSummary } from '@breatic/shared';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { Tabs, TabsContent } from '@web/components/ui/tabs';
 import { studiosApi } from '@web/data/api/studios';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
@@ -24,7 +23,10 @@ import { useCreateProject } from '@web/pages/studio/container/dialogs/use-create
 import { NonMemberView } from '@web/pages/studio/container/NonMemberView';
 import { StudioHeader } from '@web/pages/studio/container/StudioHeader';
 import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
-import type { StudioTabKey } from '@web/pages/studio/container/studio-tabs';
+import {
+  isAddressableTabSegment,
+  studioTabFromParam,
+} from '@web/pages/studio/container/studio-tabs';
 import { CollectionsTab } from '@web/pages/studio/container/tabs/CollectionsTab';
 import { CreditsTab } from '@web/pages/studio/container/tabs/CreditsTab';
 import { MembersTab } from '@web/pages/studio/container/tabs/MembersTab';
@@ -57,22 +59,23 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
  * Studio container page (`/studio/{slug}`, spec §6) — the per-studio
  * workspace. The rail + top bar live in the layout route; this page renders
  * the studio header + center area, forking on the viewer's role:
- * - **member** (`myStudioRole !== null`): a 6-tab body (projects / collections
- *   / works / members / credits / settings; 5 for personal studios, which drop
- *   the team-only Members tab). Works sits at the 3rd position (spec §6.1).
+ * - **member** (`myStudioRole !== null`): six sections (projects / collections
+ *   / works / members / credits / settings), the same six for personal studios
+ *   — their Members section is read-only rather than absent (decision A,
+ *   2026-06-08). Works sits at the 3rd position (spec §6.1).
  * - **non-member** (`myStudioRole === null`, decision A: 200 + null): the
- *   header + `NonMemberView` (a "Works" empty state), with NO tabs — no studio
- *   data is rendered, so private content cannot leak (spec §6.3).
+ *   header + `NonMemberView` (a "Works" empty state), with NO sections — no
+ *   studio data is rendered, so private content cannot leak (spec §6.3).
  *
  * The studio header comes from the real API (`GET /studio/:slug`, with the
  * viewer's role); projects come from `GET /studio/:slug/projects` (slice 2).
- * The other tab **contents** stay on stub until their own slices build their
- * backends. A missing slug renders the error state (the service returns 404);
+ * The remaining sections render EMPTY (not faked) until their own slices
+ * wire real backends. A missing slug renders the error state (the service returns 404);
  * React Query dedupes the queries so StrictMode's double mount fetches once.
  * @returns the studio container page.
  */
 export default function StudioContainerPage(): React.JSX.Element {
-  const { slug = '' } = useParams();
+  const { slug = '', tab: tabParam } = useParams();
   const t = useTranslation();
   const studioQuery = useQuery({
     queryKey: ['studio', slug],
@@ -97,7 +100,12 @@ export default function StudioContainerPage(): React.JSX.Element {
   });
   const studios = studiosQuery.data ?? [];
   const createProject = useCreateProject(studios);
-  const [tab, setTab] = React.useState<StudioTabKey>('projects');
+  // The address is the tab. Holding it in component state instead made every
+  // tab the same address: a link could only ever say "that studio", a refresh
+  // dropped the reader back on Projects, and Back skipped past the switches
+  // the user had made. So the segment is read here rather than mirrored — one
+  // value, no chance of the page and the address bar disagreeing.
+  const tab = studioTabFromParam(tabParam);
 
   const studio = studioQuery.data;
   // Projects (slice 2) + members (slice 3) come from the real API; the other
@@ -122,6 +130,29 @@ export default function StudioContainerPage(): React.JSX.Element {
   // current studio when the viewer is its admin, else the personal studio (§7.1).
   const creatable = creatableStudios(studios);
   const defaultStudioId = defaultCreateStudioId(studios, studio);
+
+  // Two addresses resolve to the studio itself rather than being rendered or
+  // left in the bar. Both are reached the ordinary way — a typo, an old link,
+  // or somebody's own settings link pasted to someone else — so each gets the
+  // one address that is certainly right instead of a page that contradicts it.
+  //
+  // A segment this scheme would never have produced. Answerable without
+  // waiting for anything. It is the address being judged rather than the name,
+  // which is why this is not called "names no tab": `projects` IS a tab name,
+  // but the default section's address carries no segment, so spelling it out
+  // is a second address for a page that has one — and the strip's first link,
+  // marked as the current page, would point somewhere other than the bar.
+  const segmentIsNotOneWeEmit =
+    tabParam !== undefined && !isAddressableTabSegment(tabParam);
+  // A real tab name on a studio the viewer is not in. The public façade below
+  // renders no tabs at all, so the address would claim a tab that is not on
+  // the page. This one has to wait for the studio to load: until then we do
+  // not know whether the viewer is a member.
+  const tabIsNotOnThisPage =
+    tabParam !== undefined && studio?.myStudioRole === null;
+  if (segmentIsNotOneWeEmit || tabIsNotOnThisPage) {
+    return <Navigate to={`/studio/${slug}`} replace />;
+  }
 
   return (
     <div className='flex h-full flex-col'>
@@ -151,14 +182,12 @@ export default function StudioContainerPage(): React.JSX.Element {
           </ScrollArea>
         </div>
       ) : (
-        <Tabs
-          value={tab}
-          onValueChange={(value) => setTab(value as StudioTabKey)}
-          className='flex w-full min-h-0 flex-1 flex-col'
-        >
+        <div className='flex w-full min-h-0 flex-1 flex-col'>
           <StudioHeader studio={view.studio} />
           <StudioTabBar
             studioType={view.studio.type}
+            current={tab}
+            slug={slug}
             counts={{
               projects: projects.length,
               collections: view.collections.length,
@@ -167,7 +196,7 @@ export default function StudioContainerPage(): React.JSX.Element {
           />
           <ScrollArea className='min-h-0 flex-1'>
             <div className={`${CENTER_COLUMN} pt-[18px] pb-12`}>
-              <TabsContent value='projects'>
+              {tab === 'projects' ? (
                 <ProjectsTab
                   projects={projects}
                   studioRole={view.studio.myStudioRole}
@@ -175,17 +204,15 @@ export default function StudioContainerPage(): React.JSX.Element {
                   creatableStudios={creatable}
                   defaultStudioId={defaultStudioId}
                 />
-              </TabsContent>
-              <TabsContent value='collections'>
+              ) : null}
+              {tab === 'collections' ? (
                 <CollectionsTab
                   collections={view.collections}
                   studioRole={view.studio.myStudioRole}
                 />
-              </TabsContent>
-              <TabsContent value='works'>
-                <WorksTab />
-              </TabsContent>
-              <TabsContent value='members'>
+              ) : null}
+              {tab === 'works' ? <WorksTab /> : null}
+              {tab === 'members' ? (
                 <MembersTab
                   slug={slug}
                   members={members}
@@ -193,19 +220,19 @@ export default function StudioContainerPage(): React.JSX.Element {
                   studioRole={view.studio.myStudioRole}
                   studioType={view.studio.type}
                 />
-              </TabsContent>
-              <TabsContent value='credits'>
+              ) : null}
+              {tab === 'credits' ? (
                 <CreditsTab
                   wallet={view.wallet}
                   studioRole={view.studio.myStudioRole}
                 />
-              </TabsContent>
-              <TabsContent value='settings'>
+              ) : null}
+              {tab === 'settings' ? (
                 <SettingsTab studio={view.studio} members={members} />
-              </TabsContent>
+              ) : null}
             </div>
           </ScrollArea>
-        </Tabs>
+        </div>
       )}
     </div>
   );

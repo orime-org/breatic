@@ -59,6 +59,15 @@ const MODEL_FIELDS: Readonly<Record<string, Readonly<Record<string, FieldNames>>
     klingai: { image: "image", end_image: "image_tail" },
     wavespeed: { image: "image", end_image: "end_image" },
   },
+  // `kling-o3-pro-ref` (#1927): WaveSpeed's
+  // `kwaivgi/kling-video-o3-pro/reference-to-video` takes the reference array
+  // as `images`, which is what we call it too. Written out rather than left to
+  // fall through: a name that agrees by coincidence looks exactly like one
+  // nobody ever checked, and the next model whose vendor calls it something
+  // else would be found out by a failed generation instead of by this table.
+  "kling-o3-pro-ref": {
+    wavespeed: { images: "images" },
+  },
 };
 
 /**
