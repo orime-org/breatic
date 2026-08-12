@@ -105,7 +105,7 @@ models:
     mode: "ref"
     tier: recommended
     description: "Kling O3 reference-to-video"
-    guide: "Generate a video from reference images using Kling O3 Pro. Maintains character/style consistency. Duration 3-15s. Provide 1-9 reference images."
+    guide: "Generate a video from reference images using Kling O3 Pro. Maintains character/style consistency. Duration 3-15s. Provide 1-7 reference images."
     cost_per_call: 56
     generation_time: 120
     params:
@@ -113,9 +113,9 @@ models:
         description: "Scene description"
         default: null
       images:
-        description: "Reference image URLs (1-9)"
+        description: "Reference image URLs (1-7)"
         type: "list"
-        max_items: 9
+        max_items: 7
         default: null
       aspect_ratio:
         description: "Output aspect ratio"

@@ -160,3 +160,109 @@ describe('buildVideoTaskPayload', () => {
     expect(buildVideoTaskPayload(noLease).node_gens).toEqual({ 'node-1': 1 });
   });
 });
+
+/**
+ * #1927 — the reference images travel as `params.images`, and only for the
+ * mode that asked for them.
+ *
+ * Same rule the slots follow: the field set is built FROM the mode, so a mode
+ * that does not take references has no way to put an `images` key on the
+ * payload and needs no check to keep it out. That matters more here than it
+ * did for the slots — a reference stays connected across a mode switch, so
+ * without this an image someone connected for reference-to-video would ride
+ * along into a first-last-frame task.
+ */
+describe('buildVideoTaskPayload — reference images (#1927)', () => {
+  const REFS = ['https://cdn/a.png', 'https://cdn/b.png'];
+
+  it('sends reference-to-video the @-picked images, in order', () => {
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'ref',
+      referenceUrls: REFS,
+    });
+    expect(out.params).toMatchObject({ images: REFS });
+  });
+
+  it('leaves no `images` key on a mode that does not take references', () => {
+    for (const mode of ['t2v', 'i2v', 'first_last', 'animate']) {
+      const out = buildVideoTaskPayload({
+        ...BASE,
+        mode,
+        slotUrls: {
+          firstFrame: 'https://cdn/first.png',
+          endFrame: 'https://cdn/last.png',
+          characterImage: 'https://cdn/character.png',
+          drivingVideo: 'https://cdn/driving.mp4',
+        },
+        referenceUrls: REFS,
+      });
+      expect(out.params, mode).not.toHaveProperty('images');
+    }
+  });
+
+  it('leaves no `images` key when nothing is @-picked', () => {
+    // The execute gate refuses this submit, so the builder never sees it in
+    // practice; an empty key would still be wrong — upstream reads a source
+    // field's presence, so an empty list is a claim of its own.
+    const out = buildVideoTaskPayload({ ...BASE, mode: 'ref', referenceUrls: [] });
+    expect(out.params).not.toHaveProperty('images');
+  });
+
+  it('never folds a slot URL into the reference array', () => {
+    // The two are different things to the model, and a mode takes one kind or
+    // the other — never both.
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'ref',
+      slotUrls: { firstFrame: 'https://cdn/first.png' },
+      referenceUrls: REFS,
+    });
+    expect(out.params).toMatchObject({ images: REFS });
+    expect(out.params).not.toHaveProperty('image');
+  });
+});
+
+/**
+ * What the payload really says about `images` when nothing is `@`-picked.
+ *
+ * The source-param builder adds no key — but it is not the only writer. The
+ * model's own declared params arrive first (`resolveParamsForModel` fills a
+ * value for every param the model declares, and `kling-o3-pro-ref` declares
+ * `images` with a null default), so the payload can carry the key without the
+ * builder ever touching it. Pinned here because the cases above cannot see it:
+ * their `BASE.params` never carries the key production always carries.
+ */
+describe('buildVideoTaskPayload — the model brings its own `images` key', () => {
+  const WITH_DECLARED = {
+    ...BASE,
+    params: { ...BASE.params, images: null },
+  };
+
+  it('overwrites the declared null with the @-picked list', () => {
+    const out = buildVideoTaskPayload({
+      ...WITH_DECLARED,
+      mode: 'ref',
+      referenceUrls: ['https://cdn/a.png'],
+    });
+    expect(out.params).toMatchObject({ images: ['https://cdn/a.png'] });
+  });
+
+  it('leaves the declared null alone when nothing is @-picked', () => {
+    // Not "no key": the key is the model's, and stripping it here would be a
+    // special case for one param among many that arrive the same way (`seed`,
+    // `generate_audio`). Upstream is unbothered — the worker drops null values
+    // before mapping and the server's source gate wants a non-empty array.
+    const out = buildVideoTaskPayload({ ...WITH_DECLARED, mode: 'ref', referenceUrls: [] });
+    expect(out.params.images).toBeNull();
+  });
+
+  it('leaves it alone under a mode that does not take references', () => {
+    const out = buildVideoTaskPayload({
+      ...WITH_DECLARED,
+      mode: 't2v',
+      referenceUrls: ['https://cdn/a.png'],
+    });
+    expect(out.params.images).toBeNull();
+  });
+});

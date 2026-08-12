@@ -262,7 +262,8 @@
       "durationSeconds": "{n}s",
       "generateAudio": "Generate audio",
       "videoParams": "Parameters",
-      "videoPromptPlaceholder": "Describe the video you want to generate",
+      "videoPromptPlaceholder": "Describe the video you want to generate, @ to add a reference",
+      "errorNoReferenceMention": "This mode needs a reference image — connect one to this node and type @ in the prompt to use it",
       "videoMentionEmpty": "No references to mention yet",
       "videoNoPrompt": "This node was made before videos could be generated, so it has no prompt. Create a new video node to generate one.",
       "firstFrame": "First frame",
@@ -762,7 +763,11 @@
     "topBar": {
       "home": "Studio home",
       "account": "Account",
-      "signOut": "Sign out"
+      "signOut": "Sign out",
+      "credits": "Credits",
+      "membership": "Membership",
+      "accountSettings": "Account settings",
+      "notOpenYet": "Not open yet"
     },
     "container": {
       "shell": {
@@ -775,7 +780,8 @@
         "works": "Works",
         "members": "Members",
         "credits": "Credits",
-        "settings": "Settings"
+        "settings": "Settings",
+        "navLabel": "Studio sections"
       },
       "works": {
         "emptyHint": "Works are the finished products a project publishes (a complete video, a mini-game…) — your Studio's public face. Once publishing ships, your published works will appear here.",
