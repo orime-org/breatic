@@ -197,19 +197,22 @@ describe('a fourth-level heading already stored in the document', () => {
    * A body holding a `level: 4` heading that arrived over the wire.
    *
    * The heading is authored by a SIX-level editor, encoded out of its Y.Doc and
-   * applied to a second one, which a three-level editor then binds to. That
-   * round trip is the whole point: y-tiptap drops whatever the receiving schema
-   * does not recognise and commits the deletion as an ordinary local change, so
-   * the only way to show the cap keeps stored headings is to make that schema
-   * reconcile a document it did not author. Verified by mutation — filtering
-   * the heading extension out of the receiving list turns three blocks into
-   * two, and both assertions below go red.
+   * applied to a second one, which a three-level editor then binds to — the
+   * path a document written before the cap actually takes to reach this client.
    *
-   * Authoring it through the three-level editor instead would assert nothing.
-   * `levels` is not an attribute constraint: Heading declares `level` with no
-   * `validate`, and the path Yjs loads through (`NodeType.create` ->
-   * `computeAttrs`) does not run one anyway, so `{ level: 4 }` is accepted under
-   * any `levels` array — the assertion would hold on the code this replaces.
+   * BE CLEAR ABOUT WHAT THIS HOLDS AND WHAT IT DOES NOT. Narrowing `levels` can
+   * never drop a heading: `levels` governs input rules, shortcuts and rendering,
+   * not the attribute's range. Heading declares `level` with no `validate`, and
+   * the path Yjs loads through (`NodeType.create` -> `computeAttrs`) would not
+   * run one anyway. So this case is green on stock six-level Heading too, and it
+   * pins nothing about the cap — the sibling case below is the one that does.
+   *
+   * What it does hold is the loss that WOULD be silent: y-tiptap drops whatever
+   * the receiving schema fails to recognise and commits the deletion as an
+   * ordinary local change, so it syncs to every peer and persists. Verified by
+   * mutation — filter the heading extension out of the receiving list and three
+   * blocks become two, with both assertions red. That is the guard, against a
+   * future change to this schema or an upstream one, not against this slice.
    * @returns An editor on the three-level schema, bound to the received body.
    */
   function withStoredFourth(): Editor {

@@ -470,13 +470,25 @@ body {
    there is nowhere to hang a utility class: without the rules below, pressing
    the quote button changes the document and nothing on screen.
 
-   EVERY SELECTOR EXCLUDES `.doc-title`, because the document's title IS an
-   `h1` — `document-title.ts` renders `['h1', { class: 'doc-title' }]` into this
-   same `.ProseMirror`. So `h1` alone matches the title too, and `:first-child`
-   matches ONLY the title (it is always the first block). Leaving the exclusion
-   out happens to work today, since the title rule above declares every property
-   the h1 rule sets and outranks it — but add one property here that the title
-   does not declare and it lands on the title.
+   THE THREE HEADING RULES EXCLUDE `.doc-title`, because the document's title IS
+   an `h1` — `document-title.ts` renders `['h1', { class: 'doc-title' }]` into
+   this same `.ProseMirror`. So `h1` alone matches the title too, and
+   `:first-child` matches ONLY the title (it is always the first block). Leaving
+   the exclusion out happens to work today, since the title rule above declares
+   every property the h1 rule sets and outranks it — but add one property here
+   that the title does not declare and it lands on the title.
+
+   No other selector in this block needs it: the title is an `h1`, so `p`, the
+   lists, `blockquote`, `code`, `pre`, `hr` and `a` cannot match it, and it
+   holds text and nothing else (`content: 'text*'`, `marks: ''`), so no inline
+   rule reaches inside it either.
+
+   THE CONTAINER RULE IS A DIFFERENT MATTER AND NO EXCLUSION CAN HELP IT. The
+   `line-height` on `.doc-body-editor .ProseMirror` below reaches the title by
+   inheritance, which `:not()` does not stop — what keeps it off is that
+   `.doc-title` declares its own `line-height`. So an inheritable property added
+   there (`color`, `font-family`, `text-wrap`) lands on the title unless the
+   title rule declares that property too.
 
    There is one rule per level `BODY_HEADING_LEVELS` offers, and the two lists
    have to be changed together: nothing mechanical connects them, because CSS
