@@ -11,8 +11,13 @@
  *   - one user may create many team studios (not blocked by the
  *     one-personal-per-user partial index).
  *   - a duplicate slug loses the unique-index race → ConflictError (409).
- *   - the per-user team-studio limit (50, user decision B) is enforced; the
- *     count is scoped to the creator's OWN active team studios.
+ *   - the per-user team-studio limit is enforced and comes from the creator's
+ *     MEMBERSHIP TIER (config/membership.yaml), not from a constant; the count
+ *     is scoped to the creator's OWN active team studios.
+ *
+ * Every user here is created with an explicit tier, because the database
+ * default is `base` and Base cannot create a team studio at all — a case
+ * pinned below rather than worked around.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -29,7 +34,8 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore } from "@breatic/core";
+import type { MembershipTier } from "@breatic/shared";
+import { initCore, getMembershipLimits } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { studioService } from "@server/modules";
 
@@ -54,13 +60,30 @@ afterAll(async () => {
 });
 
 let userSeq = 0;
-/** Insert a user; returns { id, email }. */
-async function insertUser(): Promise<{ id: string; email: string }> {
+/**
+ * Insert a user on a given tier; returns { id, email }.
+ *
+ * The tier is always explicit. The column defaults to `base`, whose
+ * team-studio ceiling is 0, so a test that just wants "a user who can create
+ * team studios" has to say which tier that is.
+ * @param tier - Membership tier to stamp on the account (default `team`, the
+ *   most generous of the priced three).
+ * @returns The new user's id and email.
+ */
+async function insertUser(
+  tier: MembershipTier = "team",
+): Promise<{ id: string; email: string }> {
   const email = `tsc-${userSeq++}@example.com`;
   const rows = await sql<{ id: string }[]>`
-    INSERT INTO users (email, email_verified) VALUES (${email}, true) RETURNING id
+    INSERT INTO users (email, email_verified, membership_tier)
+    VALUES (${email}, true, ${tier}) RETURNING id
   `;
   return { id: rows[0]!.id, email };
+}
+
+/** That tier's team-studio ceiling, straight from the shipped config. */
+function ceilingFor(tier: MembershipTier): number {
+  return getMembershipLimits(tier).team_studios;
 }
 
 let slugSeq = 0;
@@ -144,25 +167,37 @@ describe("createTeamStudio", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("rejects creating beyond the per-user team-studio limit (50)", async () => {
-    const user = await insertUser();
-    await seedTeamStudios(user.id, 50);
+  it("rejects creating beyond the tier's team-studio ceiling", async () => {
+    const user = await insertUser("pro");
+    await seedTeamStudios(user.id, ceilingFor("pro"));
     await expect(
       studioService.createTeamStudio(user.id, "Over Limit", uniqueSlug()),
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it("allows the 50th team studio (limit is >=50, not >50)", async () => {
-    const user = await insertUser();
-    await seedTeamStudios(user.id, 49);
-    const studio = await studioService.createTeamStudio(user.id, "Fiftieth", uniqueSlug());
+  it("allows the last one under the ceiling (the test is >=, not >)", async () => {
+    const user = await insertUser("pro");
+    await seedTeamStudios(user.id, ceilingFor("pro") - 1);
+    const studio = await studioService.createTeamStudio(user.id, "Last", uniqueSlug());
     expect(studio.type).toBe("team");
+  });
+
+  it("refuses a Base account outright — that tier's ceiling is zero", async () => {
+    // Not an edge case dressed up as one: zero is an ordinary ceiling here and
+    // `count >= 0` is true for a user with none, which is exactly the refusal
+    // the tier is meant to produce. It is also the database default, so this
+    // is what an account gets unless something says otherwise.
+    const user = await insertUser("base");
+    expect(ceilingFor("base")).toBe(0);
+    await expect(
+      studioService.createTeamStudio(user.id, "Not Allowed", uniqueSlug()),
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it("counts only the studios the user administers toward the limit", async () => {
     const user = await insertUser();
     const other = await insertUser();
-    await seedTeamStudios(other.id, 50); // another user's 50 must not block
+    await seedTeamStudios(other.id, ceilingFor("team")); // another user's full quota must not block
     const studio = await studioService.createTeamStudio(user.id, "Mine", uniqueSlug());
     expect(studio.type).toBe("team");
   });
@@ -180,11 +215,13 @@ describe("createTeamStudio", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${rows[0]!.id}, ${recipient.id}, 'admin')
     `;
-    await seedTeamStudios(recipient.id, 49); // recipient now administers 50
+    // The transferred studio already counts toward the recipient, so seed one
+    // fewer to put them exactly at their ceiling.
+    await seedTeamStudios(recipient.id, ceilingFor("team") - 1);
     // The creator administers 0 (created_by no longer counts) → can still create.
     const fresh = await studioService.createTeamStudio(creator.id, "Fresh", uniqueSlug());
     expect(fresh.type).toBe("team");
-    // The recipient administers 50 → blocked.
+    // The recipient is at their ceiling → blocked.
     await expect(
       studioService.createTeamStudio(recipient.id, "Over", uniqueSlug()),
     ).rejects.toMatchObject({ statusCode: 409 });

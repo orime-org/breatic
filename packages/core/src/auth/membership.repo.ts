@@ -36,20 +36,25 @@
 
 import { and, eq, isNull } from "drizzle-orm";
 import type { MembershipTier } from "@breatic/shared";
-import { db } from "@core/db/client.js";
+import { db, type DbTx } from "@core/db/client.js";
 import { studioMembers, studios, users } from "@core/db/schema.js";
 
 /**
  * The tier an account is on.
  * @param userId - The account to look up
+ * @param tx - Optional transaction handle. Callers already inside one must
+ *   pass it: a read issued from within a transaction otherwise reaches for a
+ *   SECOND pooled connection while the first is still held, which is how the
+ *   pool exhausts itself under concurrent writes.
  * @returns That account's membership tier
  * @throws {Error} if no live account has that id — corruption or a caller
  *   bug, never user input, so it is not an AppError
  */
 export async function getUserMembershipTier(
   userId: string,
+  tx?: DbTx,
 ): Promise<MembershipTier> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({ tier: users.membershipTier })
     .from(users)
     .where(and(eq(users.id, userId), isNull(users.deletedAt)))
@@ -79,14 +84,17 @@ export async function getUserMembershipTier(
  * fallback tier would silently decide every ceiling on that studio against a
  * number nobody chose — the kind of wrong that surfaces only in an audit.
  * @param studioId - The studio whose governing tier to resolve
+ * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
+ *   for why a caller inside a transaction must pass it
  * @returns The current admin's membership tier
  * @throws {Error} if the studio is gone, or has no live admin, or that admin's
  *   account is gone — all three are corruption, so it is not an AppError
  */
 export async function getStudioMembershipTier(
   studioId: string,
+  tx?: DbTx,
 ): Promise<MembershipTier> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({ tier: users.membershipTier })
     .from(studios)
     .innerJoin(studioMembers, eq(studioMembers.studioId, studios.id))

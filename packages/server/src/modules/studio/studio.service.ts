@@ -24,6 +24,7 @@ import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { db } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
+import { getMembershipLimits, getUserMembershipTier } from "@breatic/core";
 import { studioMembersRepo, studioAuthService } from "@breatic/domain";
 import {
   t,
@@ -73,16 +74,18 @@ export async function createPersonalStudio(
   }
 }
 
-/** Per-user cap on active team studios (user decision B, 2026-06-09). */
-const TEAM_STUDIO_LIMIT = 50;
+
 
 /**
  * Create a team studio with the creator as its sole admin, atomically.
  *
- * Unlike a personal studio, a user may own up to `TEAM_STUDIO_LIMIT` active
- * team studios. The studio row + the creator's admin `studio_members` row are
- * written in one transaction (mirrors `createPersonalStudio`); the per-user
- * limit is checked inside the same transaction. The limit is a soft cap —
+ * Unlike a personal studio, how many active team studios a user may administer
+ * comes from their membership tier (`config/membership.yaml`). The studio row +
+ * the creator's admin `studio_members` row are written in one transaction
+ * (mirrors `createPersonalStudio`); the limit is checked inside the same
+ * transaction, and the tier is read on that same handle so the check does not
+ * reach for a second pooled connection. Base is zero, so an account on that
+ * tier is refused before anything is written. The limit is a soft cap —
  * concurrent creates may marginally exceed it, which is acceptable for a
  * non-integrity guard (the hard data-integrity invariant is the global-unique
  * slug, backed by `studios_slug_idx`). A taken slug (lost the unique-index
@@ -101,8 +104,10 @@ export async function createTeamStudio(
 ): Promise<Studio> {
   try {
     return await db.transaction(async (tx) => {
+      const tier = await getUserMembershipTier(userId, tx);
+      const limit = getMembershipLimits(tier).team_studios;
       const count = await studioRepo.countTeamStudiosAdministeredBy(userId, tx);
-      if (count >= TEAM_STUDIO_LIMIT) {
+      if (count >= limit) {
         throw new ConflictError(t("server.studio.team_limit_reached"));
       }
       const studio = await studioRepo.createTeamStudio(userId, slug, name, tx);
