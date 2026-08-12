@@ -68,9 +68,27 @@ export function MessageList({
   const stickToBottom = React.useRef(true);
   const count = messages.length;
   // A streaming reply arrives as pieces appended to the message already at
-  // the end, so the count sits still for the whole turn. Following its length
-  // as well is what keeps the answer in view while it is being written.
-  const lastLength = messages.at(-1)?.content.length ?? 0;
+  // the end, so the count sits still for the whole turn. Following the last
+  // message's own shape as well is what keeps the answer in view while it is
+  // being written.
+  //
+  // Its shape, not just the words in it: how a turn ended is drawn inside the
+  // same bubble — a failure box, a note that it was stopped, a card per tool
+  // it used — and each of those makes the bubble taller without adding a
+  // single character. Following the text alone leaves a reader who never left
+  // the bottom unable to see the thing that just told them what happened.
+  const lastShape = React.useMemo(() => {
+    const last = messages.at(-1);
+    if (!last) return '';
+    return [
+      last.content.length,
+      last.thinking?.length ?? 0,
+      last.toolCalls?.length ?? 0,
+      last.streaming ? 's' : '',
+      last.failed ? 'f' : '',
+      last.interrupted ? 'i' : '',
+    ].join('|');
+  }, [messages]);
   // Before the effect that follows, so a message the reader just sent is
   // already allowed to pull the column down by the time it runs.
   React.useEffect(() => {
@@ -105,7 +123,7 @@ export function MessageList({
     // down, and every one of them is read above as "the reader is far from
     // the end" until it lands — which would switch following off mid-turn.
     bottomRef.current?.scrollIntoView();
-  }, [count, lastLength]);
+  }, [count, lastShape]);
 
   return (
     <ScrollArea className='min-h-0 flex-1' data-testid='message-list'>

@@ -93,7 +93,14 @@ export function ChatPanel({
       // the attempt is on screen to explain itself. Handing the words back is
       // the explanation: the message is where the user left it, ready to send
       // again, rather than gone with nothing to show for it.
-      setDraft(trimmed);
+      //
+      // Only into a box that is still empty. The composer stays live for the
+      // whole turn and carrying on typing is the ordinary thing to do, so
+      // writing over whatever is in there would take away words that were
+      // never in trouble — with no message, no undo, and nowhere to look for
+      // them. Read from the store rather than the render that started the
+      // send, which closed over the draft as it was then.
+      if (useChatStore.getState().composerDraft === '') setDraft(trimmed);
     });
     clearDraft();
   };

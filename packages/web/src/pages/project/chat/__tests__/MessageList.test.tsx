@@ -154,6 +154,39 @@ describe('MessageList', () => {
     scrollIntoView.mockRestore();
   });
 
+  it('follows the end of a turn, not only the words in it', () => {
+    const scrollIntoView = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    const restore = stateGeometry(geometry);
+
+    const reply: ChatMessage = { id: 'm2', role: 'assistant', content: 'half an answer' };
+    const { container, rerender } = render(
+      <MessageList messages={[bubble('m1', 'earlier'), reply]} sentCount={1} />,
+    );
+    // The reader is at the bottom and stays there.
+    fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
+    scrollIntoView.mockClear();
+
+    // The turn fails partway. Not one more word is written, but the bubble
+    // grows: a failure box appears inside it. The same holds for the mark on
+    // a turn that was stopped.
+    geometry.scrollHeight = 2026;
+    rerender(
+      <MessageList
+        messages={[bubble('m1', 'earlier'), { ...reply, failed: true }]}
+        sentCount={1}
+      />,
+    );
+
+    // Without this the reader sits at the bottom and cannot see the thing
+    // that just told them what happened to their answer.
+    expect(scrollIntoView).toHaveBeenCalled();
+    restore();
+    scrollIntoView.mockRestore();
+  });
+
   it('does not read a background refetch as the reader sending something', () => {
     const scrollIntoView = vi
       .spyOn(HTMLElement.prototype, 'scrollIntoView')

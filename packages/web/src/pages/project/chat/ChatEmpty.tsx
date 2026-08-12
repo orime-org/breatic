@@ -39,9 +39,9 @@ interface ChatEmptyProps {
  *   Hi, <name>!                              ← bold foreground greeting
  *   Try asking @ a node                      ← muted instruction
  *   Or type your prompt below ↓
- *   [🖼️ Generate a cyberpunk-style image]    ← stacked quick actions
- *   [🎵 Compose a lo-fi background track]
- *   [✏️ Write a product description]
+ *   [🖼️ Find me a reference]                 ← stacked quick actions,
+ *   [✨ Write a prompt for this]                see QUICK_ACTIONS above
+ *   [✏️ Refine this prompt]
  *
  * Greeting uses the current user's name (`useCurrentUserStore`); falls
  * back to a plain greeting when unauthenticated (dev / pre-login). All

@@ -52,6 +52,11 @@ export interface ChatSession {
    *
    * Distinct from an empty chat, which invites the user to start one. Showing
    * that here is what let a message be typed, sent, and silently dropped.
+   *
+   * Also distinct from a later attempt failing over a conversation already on
+   * screen: that one is still open and still readable, and saying it never
+   * opened would take every bubble off the screen and tell the reader their
+   * history is gone.
    */
   failedToOpen: boolean;
   /**
@@ -154,17 +159,18 @@ export function useChatSession(projectId: string): ChatSession {
   // still arriving, after which every remaining piece is written to a message
   // that is no longer there and the reply never appears again.
   //
-  // Both triggers are named rather than relying on the client-wide defaults,
-  // because what makes this unsafe is the turn, not the configuration
-  // somewhere else. `refetchOnMount` is left alone: a hook that is only just
-  // mounting has no turn of its own to lose.
+  // Only the one trigger that is on by default: `refetchOnReconnect` defaults
+  // to true, so it is the one a turn has to be protected from. Naming the
+  // others "to be explicit" is not free — window focus is off client-wide,
+  // and passing a predicate here would turn it back on for this query alone,
+  // which is the opposite of a guard. `refetchOnMount` is left alone too: a
+  // hook that is only just mounting has no turn of its own to lose.
   const noTurnInFlight = React.useCallback((): boolean => inFlight.current === null, []);
 
   const query = useQuery<CachedChat>({
     queryKey: chatKey(projectId),
     queryFn: () => chatApi.openChat(projectId),
     refetchOnReconnect: noTurnInFlight,
-    refetchOnWindowFocus: noTurnInFlight,
   });
 
   const conversationId = query.data?.current.conversation.id;
@@ -249,8 +255,20 @@ export function useChatSession(projectId: string): ChatSession {
    * cleared in one place, so a path cannot clear one and forget the other.
    * Stopping used to clear only the store's, and the reply kept its blinking
    * cursor for as long as the panel stayed open.
+   *
+   * An ending names the turn it belongs to, because they do not always arrive
+   * while that turn is still the current one. The server finishes a failed
+   * turn by sending `error` and only then writing it down and charging for it
+   * — the composer is live again for the whole of that, so the next turn can
+   * already be under way when `chat_done` lands. An ending that does not say
+   * which turn it is would end whichever one is running: a send button over a
+   * reply still being written, and a request nothing can stop any more.
+   * @param turn - The reply this ending belongs to. Omitted by the caller
+   *   that means "whatever is running now" — pressing stop, or the panel
+   *   going away.
    */
-  const finishTurn = React.useCallback((): void => {
+  const finishTurn = React.useCallback((turn?: string): void => {
+    if (turn !== undefined && turn !== activeReplyId.current) return;
     inFlight.current = null;
     if (activeReplyId.current !== null) {
       patchMessage(activeReplyId.current, ({ streaming: _streaming, ...rest }) => rest);
@@ -361,7 +379,7 @@ export function useChatSession(projectId: string): ChatSession {
                 if (event.data.aborted) {
                   patchMessage(replyId, (m) => ({ ...m, interrupted: true as const }));
                 }
-                finishTurn();
+                finishTurn(replyId);
                 break;
 
               case SSE_EVENT_NAMES.ERROR:
@@ -377,7 +395,7 @@ export function useChatSession(projectId: string): ChatSession {
                 // moment the panel opens.
                 patchMessage(replyId, (m) => ({ ...m, failed: true }));
                 setJustFailed(replyId);
-                finishTurn();
+                finishTurn(replyId);
                 break;
 
               // Raised as the model reaches for a tool, and as it hands back
@@ -392,7 +410,7 @@ export function useChatSession(projectId: string): ChatSession {
                 break;
             }
           },
-          onClose: finishTurn,
+          onClose: () => finishTurn(replyId),
           onError: (err: unknown) => {
             // Three endings, and the panel can only say something true about
             // one it can tell from the others.
@@ -415,7 +433,7 @@ export function useChatSession(projectId: string): ChatSession {
               // error belongs to nothing that is still running.
               patchMessage(replyId, (m) => ({ ...m, interrupted: true as const }));
             }
-            finishTurn();
+            finishTurn(replyId);
           },
         },
       );
@@ -517,7 +535,10 @@ export function useChatSession(projectId: string): ChatSession {
   return {
     messages,
     isPending: query.isPending,
-    failedToOpen: query.isError,
+    // Only when there is nothing to show for it. A later attempt failing over
+    // a conversation that is already here leaves that conversation exactly as
+    // it was.
+    failedToOpen: query.isError && query.data === undefined,
     canSend: conversationId !== undefined,
     send,
     abort,

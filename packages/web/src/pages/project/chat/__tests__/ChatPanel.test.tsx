@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -12,6 +12,7 @@ vi.mock('@web/data/api/chat', () => ({
 }));
 
 import { chatApi } from '@web/data/api/chat';
+import { StreamUnreachableError } from '@web/data/stream/sse';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { useChatStore } from '@web/stores';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
@@ -131,6 +132,37 @@ describe('ChatPanel', () => {
     // wiped the moment the reply finishes.
     expect(useChatStore.getState().composerDraft).toBe('');
     endTurn();
+  });
+
+  it('does not overwrite what was typed while a failed send was in flight', async () => {
+    const user = userEvent.setup();
+    let failTurn = (): void => {};
+    vi.mocked(chatApi.streamMessage).mockImplementation(
+      async () =>
+        new Promise<void>((_resolve, reject) => {
+          failTurn = () => reject(new StreamUnreachableError(new Error('offline')));
+        }),
+    );
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+
+    useChatStore.getState().setComposerDraft('shorten this for me');
+    await user.click(screen.getByTestId('chat-composer-send'));
+    await waitFor(() => expect(useChatStore.getState().composerDraft).toBe(''));
+
+    // The composer is live for the whole turn, so carrying on typing is the
+    // ordinary thing to do.
+    useChatStore.getState().setComposerDraft('and three titles too');
+
+    await act(async () => {
+      failTurn();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // Handing back the words that were not sent must not take away the words
+    // that were typed since. They are gone with no message, no undo, and no
+    // sign of where they went.
+    expect(useChatStore.getState().composerDraft).toBe('and three titles too');
   });
 
   it('does not let anything be typed before the chat is open', async () => {

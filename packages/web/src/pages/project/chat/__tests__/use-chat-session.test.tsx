@@ -465,6 +465,74 @@ describe('when the network comes back mid-reply', () => {
   });
 });
 
+describe('when one turn ends after the next has started', () => {
+  it('does not let the late ending clear the turn that is running now', async () => {
+    openChatAnswers([]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+
+    await act(async () => {
+      void result.current.send('first');
+    });
+    const firstTurn = handlers;
+
+    // The first turn fails. The server is not finished with it — it still has
+    // to write the turn down and charge for it before it sends `chat_done` —
+    // but the composer is already live again, so the reader can send.
+    act(() => {
+      firstTurn.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'upstream said no' } });
+    });
+    await waitFor(() => expect(useChatStore.getState().streaming).toBe(false));
+
+    await act(async () => {
+      void result.current.send('second');
+    });
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'writing' } });
+    });
+    expect(useChatStore.getState().streaming).toBe(true);
+
+    // Now the first turn's `chat_done` arrives.
+    act(() => {
+      firstTurn.onEvent({ event: SSE_EVENT_NAMES.CHAT_DONE, data: {} });
+    });
+
+    // It belongs to a turn that is over. Letting it end the current one puts
+    // a send button over a reply still being written, and the request behind
+    // it can no longer be stopped by anything — not the button, not closing
+    // the panel.
+    expect(useChatStore.getState().streaming).toBe(true);
+    expect(result.current.messages.at(-1)?.streaming).toBe(true);
+  });
+});
+
+describe('when asking the server again fails', () => {
+  it('keeps the conversation on screen rather than claiming the chat never opened', async () => {
+    openChatAnswers([
+      { id: 'm1', role: 'user', text: 'an earlier question' },
+      { id: 'm2', role: 'assistant', text: 'an earlier answer' },
+    ]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+
+    // The conversation is already on screen. Now a background refetch fails —
+    // a cookie that expired while the tab sat idle, a 5xx blip.
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('server said no'));
+    await act(async () => {
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Nothing about the conversation changed: it is the same conversation,
+    // still readable. Saying "the chat failed to open" and taking every
+    // bubble off the screen tells the reader their history is gone, when it
+    // is sitting in the cache untouched.
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.failedToOpen).toBe(false);
+  });
+});
+
 describe('when the chat never opened', () => {
   it('says so rather than looking like an empty conversation', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('server said no'));
