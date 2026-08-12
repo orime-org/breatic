@@ -91,7 +91,7 @@ describe("users.membership_tier", () => {
 
   it("gives a row that names no tier the most restrictive one", async () => {
     // The structural check above says a default exists; this one says the
-    // default is the one we meant. A row landing on `enterprise` would carry
+    // default is the one we meant. A row landing on `self_hosted` would carry
     // ceilings nobody reaches, and nothing would surface it.
     const email = `tier-default-${Date.now()}-${Math.random()}@example.test`;
     const [row] = await sql<{ membership_tier: string }[]>`

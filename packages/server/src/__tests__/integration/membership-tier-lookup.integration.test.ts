@@ -154,7 +154,7 @@ describe("getStudioMembershipTier", () => {
     // ordinary shape (a studio with a mixed roster resolves to its admin).
     // The filter itself is pinned by the next case.
     const admin = await insertUser("base");
-    const member = await insertUser("enterprise");
+    const member = await insertUser("self_hosted");
     const studioId = await insertTeamStudio(admin.userId);
     await sql`
       INSERT INTO studio_members (studio_id, user_id, role)
@@ -171,7 +171,7 @@ describe("getStudioMembershipTier", () => {
     // surfaces; without it, the maintainer's tier would quietly become the
     // studio's ceilings.
     const admin = await insertUser("base");
-    const member = await insertUser("enterprise");
+    const member = await insertUser("self_hosted");
     const studioId = await insertTeamStudio(admin.userId);
     await sql`
       INSERT INTO studio_members (studio_id, user_id, role)

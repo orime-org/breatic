@@ -54,7 +54,7 @@ export const users = pgTable(
     hashedPassword: varchar("hashed_password", { length: 255 }),
     emailVerified: boolean("email_verified").default(false).notNull(),
     googleId: varchar("google_id", { length: 255 }),
-    // Membership tier (0051). One of base / pro / team / enterprise; the
+    // Membership tier (0051). One of base / pro / team / self_hosted; the
     // ceilings each one carries live in `config/membership.yaml`, never here.
     //
     // It sits on the account because the tier follows the person. Which tier

@@ -2,7 +2,7 @@
 #
 # Ratified 2026-07-30: a tier decides capacity and collaboration scale, never
 # what a person can create. Every generation feature and every model is
-# available on all four tiers.
+# available on every tier.
 #
 # EVERY NUMBER BELOW IS AN ORDINARY CEILING. There is no "unlimited" value and
 # no sentinel — the check is always `count >= limit`, with no special case
@@ -19,9 +19,13 @@
 #
 # This single field is what distinguishes a self-hosted install from our
 # hosted service — there is no separate "self-hosted mode" switch.
-#   self-hosted (this file as shipped): enterprise, whose numbers you set
+#   self-hosted (this file as shipped): self_hosted, whose numbers you set
 #   our hosted service:                 base, and people pay their way up
-default_tier: enterprise
+#
+# Applied at registration. The database column has its own default of `base`,
+# but that one is for the rows the migration found already there — it is not
+# what a new account falls back to.
+default_tier: self_hosted
 
 tiers:
   # Free tier. One personal studio, no team studios.
@@ -51,14 +55,19 @@ tiers:
     project_members: 40
     storage_bytes: 536870912000  # 500 GiB
 
-  # The negotiated tier, and the one every self-hosted account lands in.
-  # Both cases have the same property: the numbers come from whoever runs
-  # this deployment, not from our price list.
+  # Every account on a self-hosted install lands here. The numbers come from
+  # whoever runs this deployment, not from our price list.
   #
   # Shipped wide open. These are not markers — they are ordinary ceilings set
   # high enough that nobody reaches them. Lower any of them to a real number
   # and it takes effect immediately, no code change involved.
-  enterprise:
+  #
+  # The negotiated enterprise tier is NOT here and is not in the tier enum
+  # either. Its ceilings are agreed per customer, so there is no one set of
+  # them to write down; that work reads them from the database. Inventing a
+  # set here would hand an account put on that tier a ceiling nobody agreed
+  # to, and it would not complain.
+  self_hosted:
     team_studios: 9999
     projects_per_studio: 9999
     concurrent_editors: 9999

@@ -20,19 +20,27 @@
  */
 
 /**
- * The four tiers.
+ * The tiers an account can currently be on.
  *
- * `enterprise` is the ratified fourth tier — the negotiated one — and
- * carries two kinds of deployment on purpose: negotiated customers on our
- * hosted service, and every account on a self-hosted install. What they
- * have in common is that their numbers do not come from our price list —
- * they come from whoever runs that deployment. This is deliberate, not a
- * leftover: anyone tempted to "clean up" the double duty should read this
- * paragraph first.
+ * The first three are the ratified priced tiers. `self_hosted` is a
+ * deployment shape rather than an entry on the price list: whoever runs a
+ * self-hosted install gets the numbers written in that install's
+ * `config/membership.yaml`, and tightens them by editing that file.
+ *
+ * The product has a fifth category — enterprise, the negotiated one — and it
+ * is deliberately absent here. Its numbers are agreed per customer, so there
+ * is no single set of them to put in a config file; they will be read from
+ * the database when that work happens, and this enum gains the value then.
+ *
+ * Leaving it out is the safe direction, not the lazy one. Present in the
+ * enum, the tier would need numbers in the config file today, and those
+ * numbers would be invented: an account put on it would silently receive a
+ * ceiling nobody negotiated. Absent from the enum, the same attempt fails
+ * loudly.
  */
-export const MEMBERSHIP_TIERS = ["base", "pro", "team", "enterprise"] as const;
+export const MEMBERSHIP_TIERS = ["base", "pro", "team", "self_hosted"] as const;
 
-/** One of the four membership tiers. */
+/** One of the tiers an account can be on. */
 export type MembershipTier = (typeof MEMBERSHIP_TIERS)[number];
 
 // The ceilings each tier carries are NOT here. They are the shape of

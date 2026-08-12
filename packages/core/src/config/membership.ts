@@ -78,15 +78,20 @@ export const membershipConfigSchema = z.object({
    *
    * This one field is what makes a deployment ours or somebody else's: we
    * ship `base` and let people pay their way up; a self-hosted install ships
-   * `enterprise` and fills that tier's numbers itself. No separate
+   * `self_hosted` and fills that tier's numbers itself. No separate
    * "self-hosted mode" switch exists, because this field already says it.
+   *
+   * It is applied at registration, in `createUser`. The column's own default
+   * (`base`) exists for the rows the migration found already there, and is
+   * not a fallback for new accounts — leaving it to do that job is what makes
+   * this field inert, which is exactly the state Gate 2 caught.
    */
   default_tier: z.enum(MEMBERSHIP_TIERS),
   tiers: z.object({
     base: tierLimitsSchema,
     pro: tierLimitsSchema,
     team: tierLimitsSchema,
-    enterprise: tierLimitsSchema,
+    self_hosted: tierLimitsSchema,
   }),
 });
 

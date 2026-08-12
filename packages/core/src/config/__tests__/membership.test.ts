@@ -59,7 +59,7 @@ function config(over: Record<string, unknown> = {}): Record<string, unknown> {
       base: tier(),
       pro: tier(),
       team: tier(),
-      enterprise: tier(),
+      self_hosted: tier(),
     },
     ...over,
   };
@@ -80,7 +80,7 @@ describe("membershipConfigSchema — every number is required", () => {
       delete incomplete[field];
       expect(() =>
         membershipConfigSchema.parse(
-          config({ tiers: { base: incomplete, pro: tier(), team: tier(), enterprise: tier() } }),
+          config({ tiers: { base: incomplete, pro: tier(), team: tier(), self_hosted: tier() } }),
         ),
       ).toThrow();
     });
@@ -102,7 +102,7 @@ describe("membershipConfigSchema — what counts as a limit", () => {
     // true for every count, which is exactly the intended refusal.
     expect(() =>
       membershipConfigSchema.parse(
-        config({ tiers: { base: tier({ team_studios: 0 }), pro: tier(), team: tier(), enterprise: tier() } }),
+        config({ tiers: { base: tier({ team_studios: 0 }), pro: tier(), team: tier(), self_hosted: tier() } }),
       ),
     ).not.toThrow();
   });
@@ -112,7 +112,7 @@ describe("membershipConfigSchema — what counts as a limit", () => {
     // so the comparison stays `count >= limit` with no branch anywhere.
     expect(() =>
       membershipConfigSchema.parse(
-        config({ tiers: { base: tier(), pro: tier(), team: tier(), enterprise: tier({ team_studios: 9999 }) } }),
+        config({ tiers: { base: tier(), pro: tier(), team: tier(), self_hosted: tier({ team_studios: 9999 }) } }),
       ),
     ).not.toThrow();
   });
@@ -120,7 +120,7 @@ describe("membershipConfigSchema — what counts as a limit", () => {
   it("rejects a negative limit", () => {
     expect(() =>
       membershipConfigSchema.parse(
-        config({ tiers: { base: tier({ projects_per_studio: -1 }), pro: tier(), team: tier(), enterprise: tier() } }),
+        config({ tiers: { base: tier({ projects_per_studio: -1 }), pro: tier(), team: tier(), self_hosted: tier() } }),
       ),
     ).toThrow();
   });
@@ -128,7 +128,7 @@ describe("membershipConfigSchema — what counts as a limit", () => {
   it("rejects a fractional limit", () => {
     expect(() =>
       membershipConfigSchema.parse(
-        config({ tiers: { base: tier({ concurrent_editors: 2.5 }), pro: tier(), team: tier(), enterprise: tier() } }),
+        config({ tiers: { base: tier({ concurrent_editors: 2.5 }), pro: tier(), team: tier(), self_hosted: tier() } }),
       ),
     ).toThrow();
   });
