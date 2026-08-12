@@ -513,6 +513,52 @@ describe('when a refetch started before the turn lands during it', () => {
   });
 });
 
+describe('when a whole turn happens while a refetch is in flight', () => {
+  it('still does not let that refetch overwrite it', async () => {
+    openChatAnswers([{ id: 'm1', role: 'user', text: 'earlier' }]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+
+    let land = (): void => {};
+    vi.mocked(chatApi.openChat).mockImplementationOnce(
+      async () =>
+        new Promise((resolve) => {
+          land = () =>
+            resolve({
+              conversations: [{ id: 'c-1' }],
+              current: { conversation: { id: 'c-1' }, messages: [] },
+            } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+        }),
+    );
+    await act(async () => {
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // A whole turn runs and finishes inside that window — pressing stop, or a
+    // turn that fails in 200ms, both do it.
+    await act(async () => {
+      void result.current.send('hello');
+    });
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'A' } });
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_DONE, data: {} });
+    });
+    await waitFor(() => expect(result.current.messages).toHaveLength(3));
+
+    // Only now does the refetch land. There is no turn running, so a guard
+    // that asks "is one running right now" says yes, write it — and what it
+    // writes was asked for before this turn existed.
+    await act(async () => {
+      land();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(result.current.messages).toHaveLength(3);
+  });
+});
+
 describe('when one turn ends after the next has started', () => {
   it('does not let the late ending clear the turn that is running now', async () => {
     openChatAnswers([]);
@@ -535,6 +581,10 @@ describe('when one turn ends after the next has started', () => {
     await act(async () => {
       void result.current.send('second');
     });
+    // The second turn's own messages have to be on screen before its stream
+    // can be spoken to — `runTurn` cancels any fetch still on its way back
+    // before it writes them, so that takes a turn of the microtask queue.
+    await waitFor(() => expect(result.current.messages).toHaveLength(4));
     act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'writing' } });
     });

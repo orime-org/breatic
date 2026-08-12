@@ -169,19 +169,7 @@ export function useChatSession(projectId: string): ChatSession {
 
   const query = useQuery<CachedChat>({
     queryKey: chatKey(projectId),
-    queryFn: async () => {
-      const fresh = await chatApi.openChat(projectId);
-      // Asked for before this turn existed, so it cannot contain it. The
-      // guard below only decides whether to *start* a fetch, and a turn can
-      // begin while one is already on its way back — opening the panel over
-      // stale data starts one every time, and the composer is live before it
-      // lands. Writing it in then takes the turn off the screen mid-reply.
-      if (inFlight.current !== null) {
-        const current = queryClient.getQueryData<CachedChat>(chatKey(projectId));
-        if (current) return current;
-      }
-      return fresh;
-    },
+    queryFn: () => chatApi.openChat(projectId),
     refetchOnReconnect: noTurnInFlight,
   });
 
@@ -332,6 +320,19 @@ export function useChatSession(projectId: string): ChatSession {
       // what is happening — it has become part of the history, and the
       // failure being announced from here on is this turn's, if it has one.
       setJustFailed(null);
+
+      // From here the local cache is the only place this turn exists: its two
+      // messages are about to be written into it by hand, and the server has
+      // no record of any of it until the turn ends. So the local one is the
+      // one that is right, and anything that disagrees has to give way.
+      //
+      // A request already on its way back asked about a world without this
+      // turn in it, which makes its answer wrong the moment this line runs.
+      // Cancelling is what TanStack Query offers for exactly this — it is
+      // step one of the optimistic-update guide — and a cancelled fetch never
+      // writes. The predicate on `refetchOnReconnect` above covers the other
+      // direction: no new fetch starts while the turn runs.
+      await queryClient.cancelQueries({ queryKey: chatKey(projectId) });
       const now = new Date().toISOString();
       // `newId` and not `crypto.randomUUID`: same v4 shape, but it is the
       // generator the rest of the app uses, and it works outside a secure
