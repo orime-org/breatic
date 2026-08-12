@@ -68,11 +68,19 @@ afterAll(async () => {
 });
 
 let seq = 0;
-/** Insert a fresh registered user; returns its id. */
+/**
+ * Insert a fresh registered user on a tier that may create team studios.
+ *
+ * The column defaults to `base`, whose team-studio ceiling is 0 — these cases
+ * exercise the route, not the ceiling, so they say which tier they need
+ * rather than relying on a default that refuses.
+ * @returns The new user's id.
+ */
 async function insertUser(): Promise<string> {
   const email = `tscr-${seq++}@example.com`;
   const rows = await sql<{ id: string }[]>`
-    INSERT INTO users (email, email_verified) VALUES (${email}, true) RETURNING id
+    INSERT INTO users (email, email_verified, membership_tier)
+    VALUES (${email}, true, 'team') RETURNING id
   `;
   return rows[0]!.id;
 }
