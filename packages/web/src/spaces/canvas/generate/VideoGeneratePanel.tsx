@@ -23,6 +23,7 @@ import {
 } from '@web/spaces/canvas/generate/video-mode-options';
 import {
   VideoParamsPicker,
+  videoParamsPickerHasOptions,
   type VideoParamsValue,
 } from '@web/spaces/canvas/generate/VideoParamsPicker';
 
@@ -175,7 +176,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           disabled={catalogEmpty}
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
-        {currentModel ? (
+        {currentModel && videoParamsPickerHasOptions(currentModel) ? (
           <VideoParamsPicker
             model={currentModel}
             value={params}

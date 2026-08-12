@@ -53,6 +53,30 @@ interface VideoParamsPickerProps {
  * @param root0.onChange - Called with the changed field.
  * @returns The video params picker.
  */
+/** The params this pill edits. Named once so the check below cannot drift. */
+const EDITED_PARAMS = [
+  'aspect_ratio',
+  'resolution',
+  'duration',
+  'generate_audio',
+] as const;
+
+/**
+ * Whether this pill would have anything to show for a model (#1935).
+ *
+ * Each group already renders nothing when its model declares no options — see
+ * this component's own rule, "a model that does not declare a parameter simply
+ * has no group for it". This is the same question one level up, for the pill
+ * that holds the groups: a model declaring none of them (the talking-head one
+ * declares only its two sources) would otherwise get a pill with an empty
+ * label that opens onto nothing.
+ * @param model - The model the panel currently has selected.
+ * @returns True when the model declares at least one param this pill edits.
+ */
+export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
+  return EDITED_PARAMS.some((name) => model.params?.[name] != null);
+}
+
 export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   model,
   value,

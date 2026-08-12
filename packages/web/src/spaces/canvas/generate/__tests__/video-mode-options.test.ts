@@ -19,13 +19,14 @@ import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
  * the mode option means adding a mode cannot forget to state it.
  */
 describe('video mode options (#1904)', () => {
-  it('offers the five modes built so far, text-to-video first', () => {
+  it('offers the six modes built so far, text-to-video first', () => {
     expect(VIDEO_MODE_OPTIONS.map((o) => o.value)).toEqual([
       't2v',
       'i2v',
       'first_last',
       'animate',
       'ref',
+      'talking_head',
     ]);
   });
 

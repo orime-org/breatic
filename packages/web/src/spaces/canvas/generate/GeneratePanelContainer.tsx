@@ -310,6 +310,10 @@ function GeneratePanelBody({
     model: vm.model,
     nodeStatus: vm.nodeStatus,
     isSubmitting,
+    // Every image model declares a prompt, so this panel has always required
+    // one and still does. Stated rather than derived here because deriving it
+    // would change nothing and this slice is not the image panel's.
+    promptRequired: true,
   });
 
   const onSelectModel = React.useCallback(
@@ -554,6 +558,8 @@ function GeneratePanelBody({
         model: fresh.model,
         nodeStatus: fresh.nodeStatus,
         isSubmitting: false,
+        // Same as the button's gate above: this panel's models all take one.
+        promptRequired: true,
       })
     ) {
       return;

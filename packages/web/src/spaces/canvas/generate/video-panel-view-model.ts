@@ -115,6 +115,17 @@ export interface VideoPanelViewModel {
    * all count against the same figure.
    */
   maxReferences: number | undefined;
+  /**
+   * Whether the active model takes a prompt at all (#1935). Read off the wire
+   * for the same reason as {@link VideoPanelViewModel.maxReferences}: which
+   * params a model accepts is declared per model, and the worker drops any it
+   * never declared — so a prompt this model has no field for cannot arrive
+   * upstream however hard the panel insists on one.
+   *
+   * True when the model is unknown: an unrecognised model is not a licence to
+   * skip the requirement every other mode has.
+   */
+  promptRequired: boolean;
 }
 
 /** Shared empty set for a prompt that mentions nothing (avoids a per-call allocation). */
@@ -336,5 +347,6 @@ export function buildVideoPanelViewModel(input: {
     references,
     referenceUrls,
     maxReferences: positiveCap(current?.params.images?.max_items),
+    promptRequired: current ? current.params.prompt != null : true,
   };
 }
