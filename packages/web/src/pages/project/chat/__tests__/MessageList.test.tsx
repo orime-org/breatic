@@ -154,6 +154,80 @@ describe('MessageList', () => {
     scrollIntoView.mockRestore();
   });
 
+  it('does not read a background refetch as the reader sending something', () => {
+    const scrollIntoView = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 0 };
+    const restore = stateGeometry(geometry);
+
+    const said: ChatMessage = { id: 'local-user-abc', role: 'user', content: 'what about this' };
+    const { container, rerender } = render(
+      <MessageList
+        messages={[said, bubble('local-reply-x', 'a partial')]}
+        sentCount={1}
+      />,
+    );
+    // Reading something further up.
+    fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
+    scrollIntoView.mockClear();
+
+    // The network comes back and the conversation is fetched again. Every
+    // message is the same message, but the two the panel had made up ids for
+    // now carry the server's, and the reply arrives in the form the server
+    // stored it. Nothing here was done by the reader. Reading the changed id
+    // as "they just sent something" pulls them out of what they were reading.
+    geometry.scrollHeight = 2010;
+    rerender(
+      <MessageList
+        messages={[
+          { ...said, id: 'srv-77' },
+          bubble('srv-78', 'a partial answer, in full'),
+        ]}
+        sentCount={1}
+      />,
+    );
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    restore();
+    scrollIntoView.mockRestore();
+  });
+
+  it('does not read messages arriving from elsewhere as the reader sending', () => {
+    const scrollIntoView = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 0 };
+    const restore = stateGeometry(geometry);
+
+    const { container, rerender } = render(
+      <MessageList messages={[bubble('m1', 'an earlier answer')]} sentCount={3} />,
+    );
+    fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
+    scrollIntoView.mockClear();
+
+    // The same person, in another tab of the same project, says something.
+    // This tab asks the server for the conversation again and the list grows
+    // by a turn they did not type here. More messages is not the same event
+    // as this reader pressing send, and only the second should take them out
+    // of what they are reading.
+    geometry.scrollHeight = 2400;
+    rerender(
+      <MessageList
+        messages={[
+          bubble('m1', 'an earlier answer'),
+          { id: 'srv-90', role: 'user', content: 'sent from the other tab' },
+          bubble('srv-91', 'and its answer'),
+        ]}
+        sentCount={3}
+      />,
+    );
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    restore();
+    scrollIntoView.mockRestore();
+  });
+
   it('comes back to the bottom when the reader sends something themselves', () => {
     const scrollIntoView = vi
       .spyOn(HTMLElement.prototype, 'scrollIntoView')
@@ -162,14 +236,14 @@ describe('MessageList', () => {
     const restore = stateGeometry(geometry);
 
     const { container, rerender } = render(
-      <MessageList messages={[bubble('m1', 'an earlier answer')]} />,
+      <MessageList messages={[bubble('m1', 'an earlier answer')]} sentCount={0} />,
     );
     // Reading something further up.
     fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
     scrollIntoView.mockClear();
 
-    // Then they type into the composer and hit enter: their own message and
-    // the reply about to be written are appended.
+    // Then they type into the composer and hit enter: the count goes up, and
+    // their own message and the reply about to be written are appended.
     geometry.scrollHeight = 2200;
     rerender(
       <MessageList
@@ -178,6 +252,7 @@ describe('MessageList', () => {
           { id: 'm2', role: 'user', content: 'what about this' },
           bubble('m3', ''),
         ]}
+        sentCount={1}
       />,
     );
 

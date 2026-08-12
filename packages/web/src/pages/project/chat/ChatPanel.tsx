@@ -67,6 +67,10 @@ export function ChatPanel({
   );
 
   const [historyOpen, setHistoryOpen] = useExclusiveOverlay('conversation-history');
+  // Sending is something the reader does, and this is where they do it. The
+  // message list needs to know it happened — it is the one thing that should
+  // bring the column back to the bottom after they have scrolled up to read.
+  const [sentCount, setSentCount] = React.useState(0);
 
   /**
    * Send the trimmed composer draft and clear the input.
@@ -74,6 +78,7 @@ export function ChatPanel({
   const submit = (): void => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
+    setSentCount((n) => n + 1);
     // Cleared here rather than when the reply ends. The composer is only live
     // when there is a conversation to write to, so by the time this runs the
     // message is already in the list — waiting for the whole turn would leave
@@ -118,6 +123,7 @@ export function ChatPanel({
       <MessageList
         messages={messages}
         loading={isPending || failedToOpen}
+        sentCount={sentCount}
         onQuickAction={(label) => {
           if (onQuickAction) onQuickAction(label);
           else setDraft(label);

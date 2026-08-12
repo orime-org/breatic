@@ -18,6 +18,15 @@ interface MessageListProps {
    * their own history flash past as if it were not there.
    */
   loading?: boolean;
+  /**
+   * How many times the reader has pressed send in this panel.
+   *
+   * Only the fact that it changed is used. Sending is a thing the reader
+   * does, and nothing about the list can stand in for it: the same messages
+   * arrive when the server is asked for them again, with different ids and a
+   * reply in the form it was stored — a change with no reader behind it.
+   */
+  sentCount?: number;
   onQuickAction?: (label: string) => void;
 }
 
@@ -39,12 +48,14 @@ const AT_BOTTOM_SLACK_PX = 64;
  * @param root0 - The component props.
  * @param root0.messages - The messages to render in order.
  * @param root0.loading - The conversation has not arrived yet.
+ * @param root0.sentCount - How many times the reader has pressed send.
  * @param root0.onQuickAction - Called with a quick-action label from the empty state.
  * @returns The scrollable message column, or the empty-conversation state.
  */
 export function MessageList({
   messages,
   loading = false,
+  sentCount,
   onQuickAction,
 }: MessageListProps): React.JSX.Element {
   const bottomRef = React.useRef<HTMLDivElement>(null);
@@ -60,28 +71,17 @@ export function MessageList({
   // the end, so the count sits still for the whole turn. Following its length
   // as well is what keeps the answer in view while it is being written.
   const lastLength = messages.at(-1)?.content.length ?? 0;
-  // Which message the reader last sent. A chat belongs to one person, so
-  // every message in this list with their role is one they typed here.
-  const lastSaid = React.useMemo(
-    () => messages.filter((m) => m.role === 'user').at(-1)?.id,
-    [messages],
-  );
-  const previouslySaid = React.useRef(lastSaid);
-
   // Before the effect that follows, so a message the reader just sent is
   // already allowed to pull the column down by the time it runs.
   React.useEffect(() => {
     // Scrolling up says "let me read"; sending says "show me what happens
-    // next". Only the first should stop the column following, and there is
-    // no way to tell them apart from scroll position alone — which is why
-    // this is watched separately rather than folded into the check above.
-    // Without it, someone who scrolled up and then sent something sees
-    // nothing move at all: not their own message, not a word of the reply.
-    if (lastSaid !== undefined && lastSaid !== previouslySaid.current) {
-      stickToBottom.current = true;
-    }
-    previouslySaid.current = lastSaid;
-  }, [lastSaid]);
+    // next". Only the first should stop the column following, and scroll
+    // position alone cannot tell them apart — which is why this is watched
+    // separately. Without it, someone who scrolled up and then sent
+    // something sees nothing move at all: not their own message, not a word
+    // of the reply.
+    stickToBottom.current = true;
+  }, [sentCount]);
 
   React.useEffect(() => {
     const viewport = bottomRef.current?.closest('[data-radix-scroll-area-viewport]');
