@@ -77,7 +77,9 @@ try {
 // one number is a load error rather than a quietly-substituted value. Lazily,
 // that error would land on whoever first reaches a ceiling — a 500 on their
 // request instead of a service that refused to start. Every entry does this;
-// `breatic/service-observability` keeps it that way.
+// `breatic/eager-config-load` keeps it that way, and keeps the two loads
+// above it that way too — it asks every lazy config loader this file imports
+// whether it is called at top level.
 try {
   getMembershipConfig();
 } catch (err) {

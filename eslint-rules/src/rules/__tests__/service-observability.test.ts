@@ -48,32 +48,17 @@ ruleTester.run("service-observability", serviceObservability, {
       errors: [
         { messageId: "noLogger" },
         { messageId: "noHealthServer" },
-        { messageId: "noQuotaConfig" },
       ],
-    },
-    // Logger and health server wired, quota config never loaded. Without the
-    // eager load a malformed membership.yaml stays invisible until the first
-    // person who happens to hit a ceiling, and it surfaces there as a 500.
-    {
-      filename: entry,
-      code: `initLogger("collab");\nstartHealthServer(1235);`,
-      errors: [{ messageId: "noQuotaConfig" }],
     },
     {
       filename: entry,
       code: `initLogger("collab");`,
-      errors: [
-        { messageId: "noHealthServer" },
-        { messageId: "noQuotaConfig" },
-      ],
+      errors: [{ messageId: "noHealthServer" }],
     },
     {
       filename: entry,
       code: `startHealthServer(1235);`,
-      errors: [
-        { messageId: "noLogger" },
-        { messageId: "noQuotaConfig" },
-      ],
+      errors: [{ messageId: "noLogger" }],
     },
     // An import is not a wire. The guard this replaces matched text, so a
     // file containing only these two imports satisfied it.
@@ -83,7 +68,6 @@ ruleTester.run("service-observability", serviceObservability, {
       errors: [
         { messageId: "noLogger" },
         { messageId: "noHealthServer" },
-        { messageId: "noQuotaConfig" },
       ],
     },
     // A name mentioned in a comment or a string is not a call either.
@@ -93,7 +77,6 @@ ruleTester.run("service-observability", serviceObservability, {
       errors: [
         { messageId: "noLogger" },
         { messageId: "noHealthServer" },
-        { messageId: "noQuotaConfig" },
       ],
     },
     // console is not a logger — another rule bans it in libraries, and
@@ -101,10 +84,7 @@ ruleTester.run("service-observability", serviceObservability, {
     {
       filename: entry,
       code: `console.info("up");\nstartHealthServer(1);`,
-      errors: [
-        { messageId: "noLogger" },
-        { messageId: "noQuotaConfig" },
-      ],
+      errors: [{ messageId: "noLogger" }],
     },
   ],
 });
