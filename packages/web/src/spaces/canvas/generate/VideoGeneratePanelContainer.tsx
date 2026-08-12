@@ -27,7 +27,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores';
 import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
-import { referenceCapError } from '@web/spaces/canvas/generate/reference-cap';
+import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -542,12 +542,12 @@ function VideoGeneratePanelBody({
     // the limit is the point — otherwise the only way to find it is to remove
     // one and try again. The server re-checks before enqueue, since the worker
     // would otherwise truncate the extras silently.
-    const capError = referenceCapError(
+    const overCap = referenceCapExceeded(
       fresh.referenceUrls.length,
       fresh.maxReferences,
     );
-    if (capError) {
-      toast.error(t(capError.key, capError.values));
+    if (overCap) {
+      toast.error(t('canvas.generatePanel.errorTooManyReferences', overCap));
       return;
     }
     submittingRef.current = true;
@@ -605,14 +605,15 @@ function VideoGeneratePanelBody({
   // prompt editor's chips and its `@` popup. The rail reads the same table
   // inside the panel.
   const imageRefsDisabled = !modeTakesReferences(mode);
-  // Only the mode that answers `@` may promise it: under the other four the
-  // popup drops every image row, so a board wired only with images answers the
-  // keystroke with nothing at all.
-  const promptPlaceholder = t(
-    imageRefsDisabled
-      ? 'canvas.generatePanel.videoPromptPlaceholder'
-      : 'canvas.generatePanel.videoPromptPlaceholderWithReference',
-  );
+  // One string for every mode, deliberately. Making it follow the mode would
+  // put it in `useEditor`'s dependency list (PromptEditor bakes it into the
+  // extensions at creation), and @tiptap/react rebuilds the whole editor when
+  // a dep changes — taking the prompt's undo history with it. The gap it was
+  // written to close is real but lives elsewhere: typing `@` in a mode that
+  // cannot use image references opens nothing at all, because the popup hides
+  // itself at zero matches rather than showing the empty-state label it is
+  // handed (#1901). That is what has to explain itself, not this sentence.
+  const promptPlaceholder = t('canvas.generatePanel.videoPromptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.videoMentionEmpty');
   // A node made before video generation existed carries no prompt container,
   // and #1880 ratified that those are NOT repaired — creating one when the

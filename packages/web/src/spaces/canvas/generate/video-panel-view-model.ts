@@ -27,6 +27,7 @@ import {
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
+import { mentionedImageUrls } from '@web/spaces/canvas/generate/reference-urls';
 import {
   modeTakesReferences,
   slotsForMode,
@@ -118,15 +119,6 @@ export interface VideoPanelViewModel {
 
 /** Shared empty set for a prompt that mentions nothing (avoids a per-call allocation). */
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
-
-/**
- * Narrows a node view to the image URL it can lend as a reference.
- * @param data - The source node's view.
- * @returns Its content URL when it is an image node, else undefined.
- */
-function imageUrlOf(data: NodeView | undefined): string | undefined {
-  return data?.kind === 'image' ? data.content : undefined;
-}
 
 /**
  * Sanitizes a node's stored `mode` into one this panel offers.
@@ -326,17 +318,8 @@ export function buildVideoPanelViewModel(input: {
   // decides whether anything is sent: otherwise the images someone connected
   // for reference-to-video would ride into a first-last-frame task.
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
-  const byId = new Map(nodes.map((n) => [n.id, n]));
   const referenceUrls = modeTakesReferences(mode)
-    ? references
-      .filter((r) => atMentioned.has(r.sourceNodeId))
-      .map((r) => imageUrlOf(byId.get(r.sourceNodeId)?.data))
-    // The source node's content is collaborative Yjs data — untrusted, and
-    // not covered by the catalog boundary. `typeof`, not Boolean: a
-    // malformed source whose content is an object is truthy and would slip
-    // a non-URL into the payload. This also drops the rail's text, audio
-    // and video rows, which have no image to lend.
-      .filter((u): u is string => typeof u === 'string' && u.length > 0)
+    ? mentionedImageUrls(references, atMentioned, nodes)
     : [];
 
   return {

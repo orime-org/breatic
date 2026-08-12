@@ -20,13 +20,6 @@ interface VideoGenerateToolbarProps {
   onReference: () => void;
   /** Whether the reference pick is running — highlights the button. */
   referenceActive?: boolean;
-  /**
-   * Whether this mode cannot use a reference image. The rail dims its image
-   * rows on the same signal, and a dimmed row's ✕ is disabled (decision
-   * 2026-08-11) — so a reference added here could not be taken back from the
-   * panel at all. The add path closes with the rows (#1927).
-   */
-  referenceDisabled?: boolean;
   /** The source slots the active mode collects, in display order. */
   slots: readonly VideoSlot[];
   /** What is picked, by slot; a slot missing from here renders empty. */
@@ -62,7 +55,6 @@ interface VideoGenerateToolbarProps {
  * @param root0 - Component props.
  * @param root0.onReference - Enter / exit the reference pick.
  * @param root0.referenceActive - Whether the reference pick is running.
- * @param root0.referenceDisabled - Whether this mode cannot use a reference.
  * @param root0.slots - The slots the active mode collects.
  * @param root0.slotUrls - What is picked, by slot.
  * @param root0.slotThumbnails - What to show for each pick, by slot.
@@ -74,7 +66,6 @@ interface VideoGenerateToolbarProps {
 export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
   onReference,
   referenceActive = false,
-  referenceDisabled = false,
   slots,
   slotUrls,
   slotThumbnails,
@@ -92,7 +83,6 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
         Icon={Plus}
         onClick={onReference}
         active={referenceActive}
-        disabled={referenceDisabled}
       />
       {slots.map((slot) => {
         const spec = VIDEO_SLOTS[slot];

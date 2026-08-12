@@ -1226,6 +1226,22 @@ describe('VideoGeneratePanelContainer', () => {
       expect(screen.getByTestId('generate-ref-remove-r-a')).toBeDisabled();
     });
 
+    it('tells the user @ is how a reference gets used', async () => {
+      // Acceptance 11: the placeholder is where someone learns the rule before
+      // being refused by it. One sentence for every mode, deliberately —
+      // making it follow the mode put it in `useEditor`'s dependency list and
+      // rebuilt the whole editor on each switch, undo history included.
+      await openInMode('ref', 'kling-o3-pro-ref');
+      await waitFor(() =>
+        expect(
+          screen
+            .getByTestId('generate-prompt-editor')
+            .querySelector('[data-placeholder]')
+            ?.getAttribute('data-placeholder') ?? '',
+        ).toContain('@'),
+      );
+    });
+
     it('leaves the connected images alone in the mode that uses them', async () => {
       await openRefPanel(['ref-a']);
       const insert = await screen.findByTestId('generate-ref-insert-r-a');
@@ -1252,43 +1268,5 @@ describe('VideoGeneratePanelContainer', () => {
       await screen.findByTestId('generate-video-execute');
     }
 
-    /** The placeholder currently shown, or '' once the prompt is no longer empty. */
-    function placeholderText(): string {
-      return (
-        screen
-          .getByTestId('generate-prompt-editor')
-          .querySelector('[data-placeholder]')
-          ?.getAttribute('data-placeholder') ?? ''
-      );
-    }
-
-    it('promises @ in the mode that answers it', async () => {
-      await openInMode('ref', 'kling-o3-pro-ref');
-      await waitFor(() => expect(placeholderText()).toContain('@'));
-    });
-
-    it('promises @ nowhere else', async () => {
-      // Under the four modes that collect through slots the `@` popup drops
-      // every image row, so a board wired only with images answers the
-      // keystroke with nothing at all — telling them to type it is a dead end.
-      await openInMode('t2v', 'veo-3.1');
-      await waitFor(() => expect(placeholderText()).not.toBe(''));
-      expect(placeholderText()).not.toContain('@');
-    });
-
-    it('stops offering to add a reference in a mode that cannot use one', async () => {
-      // The rail's rows are locked while dimmed (decision 2026-08-11), so a
-      // reference added HERE could not be taken back from the panel at all.
-      // The add path closes with the same signal that dims the rows.
-      await openInMode('t2v', 'veo-3.1');
-      expect(screen.getByTestId('generate-video-tool-reference')).toBeDisabled();
-    });
-
-    it('keeps offering it in the mode that can', async () => {
-      await openInMode('ref', 'kling-o3-pro-ref');
-      expect(
-        screen.getByTestId('generate-video-tool-reference'),
-      ).not.toBeDisabled();
-    });
   });
 });

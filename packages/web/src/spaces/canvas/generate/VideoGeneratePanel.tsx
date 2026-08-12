@@ -129,7 +129,6 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         <VideoGenerateToolbar
           onReference={onAddReference}
           referenceActive={referencePicking}
-          referenceDisabled={!modeTakesReferences(mode)}
           slots={slots}
           slotUrls={slotUrls}
           slotThumbnails={slotThumbnails}

@@ -25,31 +25,30 @@ export function positiveCap(cap: number | undefined): number | undefined {
     : undefined;
 }
 
-/** A refusal to submit: the message key and the values it interpolates. */
-export interface ReferenceCapError {
-  /** Localization key for the refusal message. */
-  key: string;
-  /** ICU values the message interpolates. */
-  values: { limit: number };
-}
-
 /**
  * Whether a submit carries more reference images than the model takes.
  *
  * The rule lives here rather than in each panel because it only works when the
- * two agree: both refuse at the same threshold and both name the same number,
- * and a later change to what it means — a different comparison, a count in the
- * message, a mode that opts out — has to land in both or the same catalog
- * figure would be enforced two ways. The server re-checks before enqueue; this
- * is what turns that into something the user can act on.
+ * two agree: both refuse at the same threshold and both report the same
+ * number, and a later change to what it means — a different comparison, a
+ * count alongside the limit, a mode that opts out — has to land in both or the
+ * same catalog figure would be enforced two ways. The server re-checks before
+ * enqueue; this is what turns that into something the user can act on.
+ *
+ * The MESSAGE stays at the call sites, spelled out. A key handed back from
+ * here would be a key no `t("…")` call names, and the check that every id
+ * reaches a real message in all five catalogs only sees ids written out inside
+ * that call — measured: with the key returned from here, deleting
+ * `errorTooManyReferences` from a catalog left all 24 repo-lint checks green,
+ * while deleting a key that still had a literal call failed one.
  * @param count - How many references the submit carries.
  * @param cap - The model's cap, already normalized by {@link positiveCap}.
- * @returns The refusal, or null when the submit is within the cap or uncapped.
+ * @returns The values the message interpolates, or null when within the cap or uncapped.
  */
-export function referenceCapError(
+export function referenceCapExceeded(
   count: number,
   cap: number | undefined,
-): ReferenceCapError | null {
+): { limit: number } | null {
   if (typeof cap !== 'number' || count <= cap) return null;
-  return { key: 'canvas.generatePanel.errorTooManyReferences', values: { limit: cap } };
+  return { limit: cap };
 }
