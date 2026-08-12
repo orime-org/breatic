@@ -22,7 +22,18 @@ const LOGGER_FACTORY = new Set(["createLogger", "initLogger"]);
 const HEALTH_SERVER = "startHealthServer";
 
 /**
- * Long-running services wire a logger and a health endpoint.
+ * The call that loads the membership quota ceilings.
+ *
+ * Loading is lazy and memoized, so without one eager call at startup a
+ * malformed `config/membership.yaml` stays invisible until the first person
+ * who happens to reach a ceiling — and it surfaces there as a 500 on their
+ * request rather than as a service that refused to start.
+ */
+const QUOTA_CONFIG = "getMembershipConfig";
+
+/**
+ * Long-running services wire a logger and a health endpoint, and load the
+ * quota ceilings eagerly.
  *
  * A service whose logger is never wired fails quietly, which is the worst
  * way to fail: collab ran for a fortnight with dead file logging and the
@@ -47,19 +58,21 @@ const HEALTH_SERVER = "startHealthServer";
  */
 export const serviceObservability = createRule<
   [],
-  "noLogger" | "noHealthServer"
+  "noLogger" | "noHealthServer" | "noQuotaConfig"
 >({
   name: "service-observability",
   meta: {
     type: "problem",
     docs: {
-      description: "Service entries wire a logger and a health server",
+      description:
+        "Service entries wire a logger and a health server, and load quota config eagerly",
     },
     schema: [],
     messages: {
       noLogger:
         "This service entry never calls a logger. A service whose logging is not wired fails silently — collab ran a fortnight that way and the only symptom was an undiagnosable banner. Call createLogger, initLogger, or a level on the shared logger.",
       noHealthServer: `This service entry never calls ${HEALTH_SERVER}(). Without /healthz a drifted connection keeps reading as healthy, so nothing replaces the instance.`,
+      noQuotaConfig: `This service entry never calls ${QUOTA_CONFIG}(). Loading is lazy, so a malformed config/membership.yaml would stay invisible until the first request that reaches a ceiling and surface there as a 500 instead of as a service that refused to start.`,
     },
   },
   defaultOptions: [],
@@ -68,6 +81,7 @@ export const serviceObservability = createRule<
 
     let hasLogger = false;
     let hasHealthServer = false;
+    let hasQuotaConfig = false;
 
     return {
       CallExpression(node: TSESTree.CallExpression): void {
@@ -75,6 +89,7 @@ export const serviceObservability = createRule<
         if (callee.type === AST_NODE_TYPES.Identifier) {
           if (LOGGER_FACTORY.has(callee.name)) hasLogger = true;
           if (callee.name === HEALTH_SERVER) hasHealthServer = true;
+          if (callee.name === QUOTA_CONFIG) hasQuotaConfig = true;
           return;
         }
         if (
@@ -82,6 +97,7 @@ export const serviceObservability = createRule<
           callee.property.type === AST_NODE_TYPES.Identifier
         ) {
           if (callee.property.name === HEALTH_SERVER) hasHealthServer = true;
+          if (callee.property.name === QUOTA_CONFIG) hasQuotaConfig = true;
           if (isLoggerLevelAccess(callee)) hasLogger = true;
         }
       },
@@ -90,6 +106,9 @@ export const serviceObservability = createRule<
         if (!hasLogger) context.report({ node, messageId: "noLogger" });
         if (!hasHealthServer) {
           context.report({ node, messageId: "noHealthServer" });
+        }
+        if (!hasQuotaConfig) {
+          context.report({ node, messageId: "noQuotaConfig" });
         }
       },
     };

@@ -78,7 +78,6 @@ export type {
   StudioMembersView,
   PersonalStudioRef,
   MembershipTier,
-  MembershipLimits,
   InvitableProjectRole,
   ProjectInvitationStatus,
   PendingProjectInvitationSummary,

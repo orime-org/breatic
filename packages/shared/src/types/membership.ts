@@ -35,31 +35,8 @@ export const MEMBERSHIP_TIERS = ["base", "pro", "team", "enterprise"] as const;
 /** One of the four membership tiers. */
 export type MembershipTier = (typeof MEMBERSHIP_TIERS)[number];
 
-/**
- * The quota fields a tier carries.
- *
- * Every one is a plain ceiling compared with `count >= limit`. There is no
- * "unlimited" value and no sentinel: a deployment that does not want to cap
- * something writes a number nobody reaches. That keeps zero meaning zero —
- * `base.team_studios` is 0 because that tier genuinely cannot create a team
- * studio, and the same comparison refuses it without a special case.
- */
-export interface MembershipLimits {
-  /** Team studios this account may administer at once. */
-  team_studios: number;
-  /** Projects one studio may hold. */
-  projects_per_studio: number;
-  /**
-   * Simultaneous WRITABLE connections to one document. Connections, not
-   * people: one account with four browser tabs open holds four of them.
-   * (The ratified decision words this as "people", which is imprecise —
-   * user 2026-08-12 confirmed connections is what is enforced.)
-   */
-  concurrent_editors: number;
-  /** Active members one studio may have. */
-  studio_members: number;
-  /** People explicitly invited to one project. */
-  project_members: number;
-  /** Storage bytes, summed over the studios this account administers. */
-  storage_bytes: number;
-}
+// The ceilings each tier carries are NOT here. They are the shape of
+// `config/membership.yaml`, they are read only by the services that enforce
+// them, and web has no use for them until there is a membership page to
+// render — which is a separate piece of work. By this package's own entry
+// test ("does web need it?") they belong beside the loader, in core.

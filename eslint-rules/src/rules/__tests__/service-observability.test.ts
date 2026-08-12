@@ -11,20 +11,25 @@ ruleTester.run("service-observability", serviceObservability, {
   valid: [
     {
       filename: entry,
-      code: `initLogger("collab");\nstartHealthServer(1235);`,
+      code: `initLogger("collab");\nstartHealthServer(1235);\ngetMembershipConfig();`,
     },
     {
       filename: "/repo/packages/server/src/index.ts",
-      code: `const log = createLogger("server");\nstartHealthServer(3001);`,
+      code: `const log = createLogger("server");\nstartHealthServer(3001);\ngetMembershipConfig();`,
     },
     {
       filename: "/repo/packages/worker/src/index.ts",
-      code: `logger.info("up");\nstartHealthServer(9101);`,
+      code: `logger.info("up");\nstartHealthServer(9101);\ngetMembershipConfig();`,
     },
     // A child or scoped logger reads through a member.
     {
       filename: entry,
-      code: `deps.logger.warn("x");\nstartHealthServer(1);`,
+      code: `deps.logger.warn("x");\nstartHealthServer(1);\ngetMembershipConfig();`,
+    },
+    // Any of the three may be reached through a namespace import.
+    {
+      filename: entry,
+      code: `initLogger("collab");\ncore.startHealthServer(1);\ncore.getMembershipConfig();`,
     },
     // Not a service entry: this rule has nothing to say about it.
     {
@@ -40,37 +45,66 @@ ruleTester.run("service-observability", serviceObservability, {
     {
       filename: entry,
       code: `export const x = 1;`,
-      errors: [{ messageId: "noLogger" }, { messageId: "noHealthServer" }],
+      errors: [
+        { messageId: "noLogger" },
+        { messageId: "noHealthServer" },
+        { messageId: "noQuotaConfig" },
+      ],
+    },
+    // Logger and health server wired, quota config never loaded. Without the
+    // eager load a malformed membership.yaml stays invisible until the first
+    // person who happens to hit a ceiling, and it surfaces there as a 500.
+    {
+      filename: entry,
+      code: `initLogger("collab");\nstartHealthServer(1235);`,
+      errors: [{ messageId: "noQuotaConfig" }],
     },
     {
       filename: entry,
       code: `initLogger("collab");`,
-      errors: [{ messageId: "noHealthServer" }],
+      errors: [
+        { messageId: "noHealthServer" },
+        { messageId: "noQuotaConfig" },
+      ],
     },
     {
       filename: entry,
       code: `startHealthServer(1235);`,
-      errors: [{ messageId: "noLogger" }],
+      errors: [
+        { messageId: "noLogger" },
+        { messageId: "noQuotaConfig" },
+      ],
     },
     // An import is not a wire. The guard this replaces matched text, so a
     // file containing only these two imports satisfied it.
     {
       filename: entry,
       code: `import { startHealthServer, createLogger } from "@breatic/core";`,
-      errors: [{ messageId: "noLogger" }, { messageId: "noHealthServer" }],
+      errors: [
+        { messageId: "noLogger" },
+        { messageId: "noHealthServer" },
+        { messageId: "noQuotaConfig" },
+      ],
     },
     // A name mentioned in a comment or a string is not a call either.
     {
       filename: entry,
       code: `// createLogger("main") used to be here\nconst url = "https://x/startHealthServer";`,
-      errors: [{ messageId: "noLogger" }, { messageId: "noHealthServer" }],
+      errors: [
+        { messageId: "noLogger" },
+        { messageId: "noHealthServer" },
+        { messageId: "noQuotaConfig" },
+      ],
     },
     // console is not a logger — another rule bans it in libraries, and
     // counting it here would let one rule satisfy what another forbids.
     {
       filename: entry,
       code: `console.info("up");\nstartHealthServer(1);`,
-      errors: [{ messageId: "noLogger" }],
+      errors: [
+        { messageId: "noLogger" },
+        { messageId: "noQuotaConfig" },
+      ],
     },
   ],
 });

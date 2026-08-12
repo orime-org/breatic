@@ -24,7 +24,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MEMBERSHIP_TIERS, type MembershipLimits, type MembershipTier } from "@breatic/shared";
+import { MEMBERSHIP_TIERS, type MembershipTier } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /**
@@ -39,7 +39,17 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
  */
 const limitSchema = z.number().int().nonnegative();
 
-/** The six ceilings every tier carries. */
+/**
+ * The six ceilings every tier carries.
+ *
+ * `concurrent_editors` counts simultaneous WRITABLE CONNECTIONS to one
+ * document, not people: one account with four browser tabs open holds four of
+ * them. The ratified decision words this as "people", which is imprecise —
+ * user 2026-08-12 confirmed connections is what gets enforced, and that the
+ * decision's wording is what needs correcting.
+ *
+ * Field names are the YAML's, so this shape and the file cannot drift.
+ */
 const tierLimitsSchema = z.object({
   team_studios: limitSchema,
   projects_per_studio: limitSchema,
@@ -48,6 +58,18 @@ const tierLimitsSchema = z.object({
   project_members: limitSchema,
   storage_bytes: limitSchema,
 });
+
+/**
+ * One tier's ceilings.
+ *
+ * Inferred from the schema rather than declared beside it, so there is no
+ * second list of field names to fall out of step with the first.
+ *
+ * Not in `@breatic/shared`: web has no use for these until there is a
+ * membership page to render, which is separate work. They are the shape of a
+ * config file the backend services read, so they live beside the loader.
+ */
+export type MembershipLimits = z.infer<typeof tierLimitsSchema>;
 
 /** Schema for `config/membership.yaml`. */
 export const membershipConfigSchema = z.object({

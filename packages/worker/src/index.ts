@@ -18,6 +18,7 @@ import {
   createQueue,
   createQueueEvents,
   checkInfraReady,
+  getMembershipConfig,
   InfraNotReadyError,
   logger,
   getRedis,
@@ -45,6 +46,20 @@ initLogger("worker");
 // rule `CanvasSpace.tsx` states for the upload path. Loading the catalogs buys
 // a sentence instead of a key, not a translated one.
 loadLocales();
+
+// Read the membership quota ceilings now rather than on the first job that
+// needs them. The file carries no defaults — a tier missing one number is a
+// load error, not a quietly-substituted value — and lazily that error would
+// land inside a running job, where it reads as a failed generation rather
+// than as a misconfigured deployment. The worker needs them for the storage
+// ceiling on the generation path. Library throws, this layer decides the
+// process's fate, per the lifecycle mandate.
+try {
+  getMembershipConfig();
+} catch (err) {
+  logger.error({ err }, "membership_config_invalid");
+  process.exit(1);
+}
 
 
 // Route the AI SDK's warnings into our logger. Without this the SDK writes

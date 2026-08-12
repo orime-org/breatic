@@ -4,6 +4,9 @@
 /**
  * Which membership tier governs an account, and which governs a studio.
  *
+ * A repo rather than a service: both functions are queries and nothing else,
+ * and table access belongs in one.
+ *
  * Two lookups because the ratified rule has two halves. How many team studios
  * an account may administer is decided by that account's own tier. Everything
  * a studio caps — projects, members, simultaneous writable connections,
@@ -35,13 +38,13 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { MembershipTier } from "@breatic/shared";
 import { db } from "@core/db/client.js";
 import { studioMembers, studios, users } from "@core/db/schema.js";
-import { NotFoundError } from "@core/app-errors.js";
 
 /**
  * The tier an account is on.
  * @param userId - The account to look up
  * @returns That account's membership tier
- * @throws {NotFoundError} if no live account has that id
+ * @throws {Error} if no live account has that id — corruption or a caller
+ *   bug, never user input, so it is not an AppError
  */
 export async function getUserMembershipTier(
   userId: string,
@@ -54,7 +57,13 @@ export async function getUserMembershipTier(
 
   const tier = rows[0]?.tier;
   if (tier === undefined) {
-    throw new NotFoundError(`No live account ${userId}`);
+    // A plain Error, not an AppError. `errorHandler` puts an AppError's
+    // message on the wire verbatim, and this sentence is not addressed to a
+    // user: every caller resolves the id from a session or from a row it
+    // just read, so an id with no live account behind it means our data or
+    // our code is wrong, not their input. A plain throw becomes a 500 with
+    // the context logged, which is what that is.
+    throw new Error(`No live account ${userId}`);
   }
   return tier as MembershipTier;
 }
@@ -71,8 +80,8 @@ export async function getUserMembershipTier(
  * number nobody chose — the kind of wrong that surfaces only in an audit.
  * @param studioId - The studio whose governing tier to resolve
  * @returns The current admin's membership tier
- * @throws {NotFoundError} if the studio is gone, or has no live admin, or that
- *   admin's account is gone
+ * @throws {Error} if the studio is gone, or has no live admin, or that admin's
+ *   account is gone — all three are corruption, so it is not an AppError
  */
 export async function getStudioMembershipTier(
   studioId: string,
@@ -95,7 +104,11 @@ export async function getStudioMembershipTier(
 
   const tier = rows[0]?.tier;
   if (tier === undefined) {
-    throw new NotFoundError(`No live admin for studio ${studioId}`);
+    // Plain Error for the same reason as above, and more plainly still: a
+    // studio without exactly one live admin is corruption on our side. The
+    // person whose request happens to touch it should see a 500, and we
+    // should see it in the log.
+    throw new Error(`No live admin for studio ${studioId}`);
   }
   return tier as MembershipTier;
 }
