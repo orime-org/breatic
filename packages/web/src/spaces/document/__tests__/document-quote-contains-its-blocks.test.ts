@@ -30,6 +30,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
+import type { ResolvedPos } from '@tiptap/pm/model';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -64,27 +65,41 @@ function open(bodyHtml: string): Editor {
 }
 
 /**
- * Put a gap cursor at the given document position.
+ * `GapCursor.valid` decides where the caret can rest, and upstream marks it
+ * `@internal`, so it is absent from the published types. Called through a
+ * narrow declaration rather than skipped: without it these cases would place a
+ * cursor somewhere no user can reach and still see the widget render, which
+ * would make them pass on a situation that never happens.
+ */
+const gapCursorReaches = GapCursor as unknown as {
+  valid(pos: ResolvedPos): boolean;
+};
+
+/**
+ * Put a gap cursor at a position, having checked the caret can get there.
  * @param editor - The editor to place the cursor in.
- * @param pos - A position `GapCursor.valid` accepts.
+ * @param pos - The position to place it at.
  */
 function placeGapCursor(editor: Editor, pos: number): void {
   const $pos = editor.state.doc.resolve(pos);
-  expect(GapCursor.valid($pos), `no gap cursor is valid at ${pos}`).toBe(true);
+  expect(gapCursorReaches.valid($pos), `no gap cursor rests at ${pos}`).toBe(true);
   editor.view.dispatch(editor.state.tr.setSelection(new GapCursor($pos)));
 }
 
 /**
- * Every position in the document a gap cursor can occupy.
- * @param editor - The editor to scan.
- * @returns The valid positions, in document order.
+ * Where the quote's own content starts and ends, in document positions.
+ * @param editor - The editor holding the quote.
+ * @returns The position before its first block and the one after its last.
  */
-function gapPositions(editor: Editor): number[] {
-  const out: number[] = [];
-  for (let pos = 0; pos <= editor.state.doc.content.size; pos++) {
-    if (GapCursor.valid(editor.state.doc.resolve(pos))) out.push(pos);
-  }
-  return out;
+function insideTheQuote(editor: Editor): { start: number; end: number } {
+  let found: { start: number; end: number } | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (found || node.type.name !== 'blockquote') return true;
+    found = { start: pos + 1, end: pos + node.nodeSize - 1 };
+    return false;
+  });
+  if (!found) throw new Error('the body holds no quote');
+  return found;
 }
 
 // A divider before the quote is what makes the gap inside it reachable:
@@ -95,8 +110,7 @@ const BODY = '<hr><blockquote><hr><p>x</p><hr></blockquote>';
 describe('a widget decoration inside a quote', () => {
   it('takes the first child slot from the block that opens the quote', () => {
     const editor = open(BODY);
-    const [, insideQuoteStart] = gapPositions(editor);
-    placeGapCursor(editor, insideQuoteStart);
+    placeGapCursor(editor, insideTheQuote(editor).start);
 
     const first = editor.view.dom.querySelector('blockquote')?.firstElementChild;
     expect(first?.tagName).toBe('DIV');
@@ -105,8 +119,7 @@ describe('a widget decoration inside a quote', () => {
 
   it('takes the last child slot from the block that closes it', () => {
     const editor = open(BODY);
-    const positions = gapPositions(editor);
-    placeGapCursor(editor, positions[positions.length - 2]);
+    placeGapCursor(editor, insideTheQuote(editor).end);
 
     const last = editor.view.dom.querySelector('blockquote')?.lastElementChild;
     expect(last?.tagName).toBe('DIV');

@@ -694,8 +694,9 @@ body {
 
    Measured: quote inside a list item 12.75px -> 4.5px above and below, the same
    with a list inside the quote; in the body a quote opening with a heading
-   45.59px -> 16.5px. Its own edges then read 0 to the first and last block
-   whichever they are — list, paragraph, heading, all four ends measured. */
+   45.59px -> 16.5px. Its own edges then read 0 to the block at each end
+   whatever that block is: measured with the first one a list, a paragraph and
+   a heading, and with the last one a list, top and bottom each time. */
 .doc-body-editor .ProseMirror blockquote {
   display: flow-root;
   margin: 1.1em 0;
@@ -711,7 +712,9 @@ body {
    divider, and `:first-child` then zeroes the widget's margin — which it has
    none of — while the divider keeps its own. Measured in the browser with the
    caret actually resting there: the quote springs open by 30px, and closes
-   again when the caret leaves. Both ends verified against the real schema.
+   again when the caret leaves. That figure is the opening end; the closing one
+   is held by `document-quote-contains-its-blocks`, which pins the widget
+   taking either slot against the real schema.
 
    The second selector in each pair is what actually reaches the block on
    those frames. `.ProseMirror-widget` is prosemirror-view's own class on every
