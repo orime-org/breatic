@@ -35,7 +35,7 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import type { MembershipTier } from "@breatic/shared";
-import { initCore, getMembershipLimits } from "@breatic/core";
+import { initCore, loadLocales, getMembershipLimits } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { studioService } from "@server/modules";
 
@@ -44,6 +44,10 @@ try {
 } catch {
   // already initialised by a sibling suite in this worker — fine.
 }
+// Without this, `t()` echoes the key back and every refusal message in this
+// suite reads `server.studio.…` instead of a sentence. It went unnoticed while
+// the cases only asserted status codes.
+loadLocales();
 
 let sql: ReturnType<typeof postgres>;
 
@@ -180,6 +184,27 @@ describe("createTeamStudio", () => {
     await seedTeamStudios(user.id, ceilingFor("pro") - 1);
     const studio = await studioService.createTeamStudio(user.id, "Last", uniqueSlug());
     expect(studio.type).toBe("team");
+  });
+
+  it("tells the person what their own tier allows, not a number from the catalog", async () => {
+    // The refusal sentence used to carry the cap as literal text in all five
+    // languages ("the limit of 50 team studios"). That was true while the cap
+    // was a constant; the moment it became per-tier the sentence was wrong for
+    // every tier at once. This pins that the number reaching the user is the
+    // one actually enforced on them.
+    // The whole sentence, not a substring of it. "contains the number 1" was
+    // the first thing written here and it was useless: with the argument
+    // missing, `t()` hands back the ICU template itself, and that template
+    // contains a literal 1 inside its `one {…}` branch — so the weak assertion
+    // passed under exactly the mutation it was meant to catch. Measured, not
+    // reasoned: dropping `{ limit }` left the suite green.
+    const user = await insertUser("pro");
+    await seedTeamStudios(user.id, ceilingFor("pro"));
+    await expect(
+      studioService.createTeamStudio(user.id, "Over Limit", uniqueSlug()),
+    ).rejects.toMatchObject({
+      message: "Your plan allows 1 team studio. Upgrade to create more.",
+    });
   });
 
   it("refuses a Base account outright — that tier's ceiling is zero", async () => {

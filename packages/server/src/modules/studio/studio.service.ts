@@ -108,7 +108,13 @@ export async function createTeamStudio(
       const limit = getMembershipLimits(tier).team_studios;
       const count = await studioRepo.countTeamStudiosAdministeredBy(userId, tx);
       if (count >= limit) {
-        throw new ConflictError(t("server.studio.team_limit_reached"));
+        // The number goes INTO the sentence. It used to be written into the
+        // catalogs ("the limit of 50 team studios"), which was true while the
+        // cap was a constant and became false for every tier the moment it
+        // stopped being one.
+        throw new ConflictError(
+          t("server.studio.team_limit_reached", { limit }),
+        );
       }
       const studio = await studioRepo.createTeamStudio(userId, slug, name, tx);
       await studioMembersRepo.insertAdmin(studio.id, userId, tx);

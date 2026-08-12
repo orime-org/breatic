@@ -30,7 +30,7 @@
     },
     "studio": {
       "slug_taken": "その Slug はすでに使用されています。別のものを選んでください。",
-      "team_limit_reached": "チーム Studios の上限(50 個)に達しました。",
+      "team_limit_reached": "{limit, plural, =0 {現在のプランではチーム Studio を作成できません。アップグレードすると作成できます。} other {現在のプランで作成できるチーム Studio は最大 # 個です。アップグレードするとさらに作成できます。}}",
       "email_not_registered": "そのメールアドレスは登録されていません。",
       "already_member": "そのユーザーはすでにメンバーです。",
       "already_invited": "そのユーザーには保留中の招待があります。",

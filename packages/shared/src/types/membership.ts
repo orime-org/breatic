@@ -22,7 +22,7 @@
 /**
  * The four tiers.
  *
- * `enterprise` is the ratified fourth tier ("商务谈" in the decision) and
+ * `enterprise` is the ratified fourth tier — the negotiated one — and
  * carries two kinds of deployment on purpose: negotiated customers on our
  * hosted service, and every account on a self-hosted install. What they
  * have in common is that their numbers do not come from our price list —
