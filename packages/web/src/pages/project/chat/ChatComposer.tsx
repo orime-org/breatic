@@ -167,7 +167,14 @@ export function ChatComposer({
         value={draft}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
+          // Typing Chinese, Japanese or Korean means pressing Enter to accept
+          // what the IME is offering, several times per sentence. The browser
+          // marks that keystroke as part of the composition, and that mark is
+          // the only thing separating it from the Enter that means "send" —
+          // both arrive as `key === 'Enter'` with no modifier. Without this
+          // check the first message a CJK reader ever sends is the raw
+          // keystrokes they were still choosing between.
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             submit();
           }
