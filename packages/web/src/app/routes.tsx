@@ -81,8 +81,10 @@ const baseRoutes: RouteObject[] = [
       // holds a different set of things and each set is worth linking to, so it
       // is a path segment and not component state: the address is what a user
       // can send, what a refresh restores, and what Back walks through. The
-      // segment is validated against the tab list itself; anything else, and
-      // any tab on a studio the viewer is not in, resolves to `/studio/{slug}`.
+      // segment is checked against the addresses this scheme emits, which is
+      // the tab list minus the default section — that one's address carries no
+      // segment at all. Anything else, and any section on a studio the viewer
+      // is not in, resolves to `/studio/{slug}`.
       { path: ':slug/:tab', element: <StudioContainerPage /> },
     ],
   },

@@ -278,9 +278,9 @@ describe('StudioContainerPage', () => {
   it('opens the tab the address names', async () => {
     setup('acme-studio', false, 'settings');
     // The strip is the visible proof, and it says so with `aria-current`, not
-    // with `aria-selected` — these are links, and only a `role="tab"` may carry
-    // a selected state. The one place `aria-selected` does appear in this
-    // product is the project's Space tabs, which is a different control.
+    // with `aria-selected` — a link is not one of the roles allowed to carry a
+    // selected state. The one place `aria-selected` does appear in this product
+    // is the project's Space tabs, which is a different control.
     const settings = await screen.findByRole('link', { name: 'Settings' });
     expect(settings).toHaveAttribute('aria-current', 'page');
   });
@@ -326,8 +326,8 @@ describe('StudioContainerPage', () => {
     //
     // Nothing we ship produces this address; someone types it, or guesses it
     // from `/members` and `/settings`. The fix is not to defend against that
-    // guess but to keep one rule true: the addresses we accept are the
-    // addresses we hand out.
+    // guess but to keep one rule true: the only segments we accept are the
+    // ones we write.
     setup('acme-studio', false, 'projects');
     await waitFor(() =>
       expect(screen.getByTestId('location').textContent).toBe(

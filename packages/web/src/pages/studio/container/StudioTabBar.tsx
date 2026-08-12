@@ -48,8 +48,10 @@ const LINK_BASE =
  * on; that is the right trade when activating means swapping a panel that is
  * already loaded, and W3C recommends it for exactly that reason. Here
  * activating means going to an address, so arrowing along the strip to LOOK
- * wrote a history entry at every stop and a keyboard user had to press Back
- * once per keystroke to get back out. Focus movement and navigation are two
+ * would write a history entry at every stop and a keyboard user would need one
+ * Back per keystroke to get out. (It never did: before this change the section
+ * was component state and went nowhere. The cost is what the widget would have
+ * made of an address, which is why the widget went rather than the address.) Focus movement and navigation are two
  * different acts and links keep them apart: Tab moves, Enter goes.
  *
  * Being links also restores what a tab can never offer — open in a new tab,

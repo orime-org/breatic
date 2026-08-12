@@ -107,8 +107,11 @@ describe('isAddressableTabSegment — the address is judged, not the name', () =
   });
 
   it('accepts exactly what studioTabPath emits, for every section', () => {
-    // The one rule this pair exists to keep: the addresses accepted are the
-    // addresses handed out. Asked of the whole list so a section added later
+    // The one rule this pair exists to keep: every SEGMENT this scheme writes
+    // is accepted, and the default section — which writes none — is not.
+    // (Accepted addresses are not thereby equal to emitted ones: a trailing
+    // slash survives in the bar but never reaches the predicate. See the
+    // function's own TSDoc.) Asked of the whole list so a section added later
     // cannot quietly fall on one side only.
     for (const tab of STUDIO_TABS) {
       const emitted = studioTabPath('acme', tab.key);

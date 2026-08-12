@@ -69,8 +69,8 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
  *
  * The studio header comes from the real API (`GET /studio/:slug`, with the
  * viewer's role); projects come from `GET /studio/:slug/projects` (slice 2).
- * The other sections' **contents** stay on stub until their own slices build
- * their backends. A missing slug renders the error state (the service returns 404);
+ * The remaining sections render EMPTY (not faked) until their own slices
+ * wire real backends. A missing slug renders the error state (the service returns 404);
  * React Query dedupes the queries so StrictMode's double mount fetches once.
  * @returns the studio container page.
  */

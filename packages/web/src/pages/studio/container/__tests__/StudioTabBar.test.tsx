@@ -167,10 +167,12 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
   });
 
   it('moves focus between sections WITHOUT navigating', async () => {
-    // This is the whole reason the widget was wrong. In a tablist the arrow
-    // keys move focus and activate in one motion, so a keyboard user looking
-    // along the strip left a history entry at every stop and had to press Back
-    // once per keystroke to get out. Links do not activate on focus.
+    // This is the whole reason the widget was wrong FOR THIS STRIP. In a
+    // tablist the arrow keys move focus and activate in one motion — free when
+    // activating swaps a panel already loaded, which is why W3C recommends it.
+    // Once the section is an address, the same motion would write a history
+    // entry at every stop and a keyboard user looking along the strip would
+    // need one Back per keystroke to get out. Links do not activate on focus.
     //
     // What this asserts is the ADDRESS, not `aria-current`: that attribute is
     // computed from the `current` prop, which this test sets and never

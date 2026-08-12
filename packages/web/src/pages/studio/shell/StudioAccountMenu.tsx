@@ -60,7 +60,8 @@ interface ComingEntryProps {
  * expresses the highlight as a background on the row, and `opacity` composites
  * an element against its backdrop with its own background included — so
  * dimming the ROW dims its highlight too, leaving a step of five levels out of
- * 255. The entry would be reachable and invisible: exactly the outcome the
+ * 255 in the dark theme and nine in the light one — too small to see in
+ * either. The entry would be reachable and invisible: exactly the outcome the
  * `disabled` attribute was rejected for. Dimming all of the content instead
  * covers the same pixels and leaves the row free to take the highlight at full
  * strength.
@@ -126,7 +127,9 @@ function ComingEntry({
  * Radix's menu closes itself on select; a popover does not, and this one is
  * mounted by the layout route, so navigating swaps the content underneath it
  * and leaves it sitting open over the page it just opened. It is also what the
- * rest of the app's action menus use.
+ * canvas's own menus use — its context menu, node menu, edge menu and
+ * floating menu are all `DropdownMenu`. Two menus are still on `Popover`
+ * (`MemberRowMenu` and `BellMenu`) and predate this.
  *
  * Credits and membership are shown before either feature exists, so that the
  * shape of the account is visible and nothing has to be added to the menu
