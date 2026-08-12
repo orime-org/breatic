@@ -22,7 +22,6 @@ import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis, yjsRawPg } 
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { startHealthServer } from "@breatic/core";
 import { getStorageConfig } from "@breatic/core";
-import { getMembershipConfig } from "@breatic/core";
 import { runGracefulShutdown } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
 import { logger, initLogger } from "@breatic/core";
@@ -69,21 +68,6 @@ try {
   getStorageConfig();
 } catch (err) {
   logger.error({ err }, "storage_config_invalid");
-  process.exit(1);
-}
-
-// Same fail-fast for the membership quota ceilings, and for a sharper reason
-// than the two above: this file carries no defaults at all, so a tier missing
-// one number is a load error rather than a quietly-substituted value. Lazily,
-// that error would land on whoever first reaches a ceiling — a 500 on their
-// request instead of a service that refused to start. Every entry does this;
-// `breatic/eager-config-load` keeps it that way, and keeps the two loads
-// above it that way too — it asks every lazy config loader this file imports
-// whether it is called at top level.
-try {
-  getMembershipConfig();
-} catch (err) {
-  logger.error({ err }, "membership_config_invalid");
   process.exit(1);
 }
 

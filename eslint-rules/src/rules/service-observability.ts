@@ -44,11 +44,6 @@ const HEALTH_SERVER = "startHealthServer";
  * The other half of this invariant cannot live in a rule. If an entry file
  * is deleted or renamed, no file gets linted and a rule has nothing to say;
  * that the three entries exist is asserted by the repo-wide checks.
- *
- * Eager config loading used to be a third branch here and now has its own
- * rule, `eager-config-load`. It did not belong: loading a config file at boot
- * is not observability, and matching one hard-coded loader name left the
- * structurally identical loads beside it unguarded.
  */
 export const serviceObservability = createRule<
   [],

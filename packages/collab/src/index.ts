@@ -25,7 +25,6 @@ import {
   pingRedis,
   yjsRawPg,
   checkInfraReady,
-  getMembershipConfig,
   startHealthServer,
   runGracefulShutdown,
   InfraNotReadyError,
@@ -42,20 +41,6 @@ import { startMembersSync } from "@collab/services/members-sync.js";
 initLogger("collab");
 
 const logger = createLogger("main");
-
-// Read the membership quota ceilings now rather than on the first connection.
-// The file carries no defaults — a tier missing one number is a load error,
-// not a quietly-substituted value — and lazily that error would surface
-// inside `onAuthenticate`, where the client sees an unexplained refused
-// connection rather than anyone seeing a misconfigured deployment. Collab
-// needs them for the per-document concurrency ceiling. Library throws, this
-// layer decides the process's fate, per the lifecycle mandate.
-try {
-  getMembershipConfig();
-} catch (err) {
-  logger.error({ err }, "membership_config_invalid");
-  process.exit(1);
-}
 
 /**
  * Deadline (ms) for the teardown drains that follow the store settle.

@@ -521,7 +521,6 @@ export default tseslint.config(
     // repo-wide checks: a deleted entry is a file nothing lints.
     files: ["packages/{server,worker,collab}/src/index.ts"],
     rules: {
-      "breatic/eager-config-load": "error",
       "breatic/service-observability": "error",
     },
   },

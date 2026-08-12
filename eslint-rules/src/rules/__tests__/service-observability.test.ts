@@ -11,25 +11,25 @@ ruleTester.run("service-observability", serviceObservability, {
   valid: [
     {
       filename: entry,
-      code: `initLogger("collab");\nstartHealthServer(1235);\ngetMembershipConfig();`,
+      code: `initLogger("collab");\nstartHealthServer(1235);`,
     },
     {
       filename: "/repo/packages/server/src/index.ts",
-      code: `const log = createLogger("server");\nstartHealthServer(3001);\ngetMembershipConfig();`,
+      code: `const log = createLogger("server");\nstartHealthServer(3001);`,
     },
     {
       filename: "/repo/packages/worker/src/index.ts",
-      code: `logger.info("up");\nstartHealthServer(9101);\ngetMembershipConfig();`,
+      code: `logger.info("up");\nstartHealthServer(9101);`,
     },
     // A child or scoped logger reads through a member.
     {
       filename: entry,
-      code: `deps.logger.warn("x");\nstartHealthServer(1);\ngetMembershipConfig();`,
+      code: `deps.logger.warn("x");\nstartHealthServer(1);`,
     },
-    // Any of the three may be reached through a namespace import.
+    // Either may be reached through a namespace import.
     {
       filename: entry,
-      code: `initLogger("collab");\ncore.startHealthServer(1);\ncore.getMembershipConfig();`,
+      code: `initLogger("collab");\ncore.startHealthServer(1);`,
     },
     // Not a service entry: this rule has nothing to say about it.
     {
