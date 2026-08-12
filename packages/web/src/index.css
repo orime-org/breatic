@@ -478,10 +478,17 @@ body {
    every property the h1 rule sets and outranks it — but add one property here
    that the title does not declare and it lands on the title.
 
-   No other selector in this block needs it: the title is an `h1`, so `p`, the
-   lists, `blockquote`, `code`, `pre`, `hr` and `a` cannot match it, and it
-   holds text and nothing else (`content: 'text*'`, `marks: ''`), so no inline
-   rule reaches inside it either.
+   No BLOCK selector in this block needs it: the title is an `h1`, so `p`, the
+   lists, `blockquote`, `code`, `pre`, `hr` and `a` cannot match it. Its
+   `marks: ''` does NOT extend that to inline selectors — marks are what the
+   document may store, and a decoration is a span the view wraps at render
+   time, which no schema constraint governs. The collaboration band below is
+   one: y-tiptap adds it with `Decoration.inline(from, to, …)` over the remote
+   selection's range whatever node that range falls in, so selecting the title
+   puts a `.collaboration-carets__selection` inside it and the band rule finds
+   it. That is harmless — read against the title's own 30px/1.25 the rule
+   leaves 1.06px rather than the shared value's 2.88px — but an inline rule
+   added here reaches the title, and has to say whether it means to.
 
    THE CONTAINER RULE IS A DIFFERENT MATTER AND NO EXCLUSION CAN HELP IT. The
    `line-height` on `.doc-body-editor .ProseMirror` below reaches the title by
@@ -491,17 +498,20 @@ body {
    title rule declares that property too.
 
    There is one rule per level `BODY_HEADING_LEVELS` offers, and the two lists
-   have to be changed together: nothing mechanical connects them, because CSS
-   cannot read a TypeScript constant and this project has no JS Tailwind config
-   to bridge them. A level that gains an input rule but no rule here renders at
-   the paragraph's size and weight, preflight having reset `h1..h6` to inherit.
+   have to be changed together — CSS cannot read a TypeScript constant and this
+   project has no JS Tailwind config to bridge them, so a level that gains an
+   input rule but no rule here renders at the paragraph's size and weight,
+   preflight having reset `h1..h6` to inherit. THAT MUCH IS HELD: a case in
+   `document-heading-levels` reads this file off disk and fails on a level with
+   no size and weight of its own, so widening the array alone turns it red.
 
    The exclusion is wrapped in `:where()` so that it costs nothing. Written
    bare, `:not(.doc-title)` scores as a class and lifts the heading rules to
-   three, above every other rule in this block — including the list-item reset
-   below, which then loses on a heading inside a list item while winning on its
-   six siblings. That weight was never the point: the exclusion is here to miss
-   the title, not to outrank anything, and `:where()` says exactly that.
+   (0,3,1) — above the list-item reset below, which then loses on a heading
+   inside a list item while winning on its six siblings. (Not above everything
+   here: the quote's two pairs and the band override score higher still.) That
+   weight was never the point: the exclusion is here to miss the title, not to
+   outrank anything, and `:where()` says exactly that.
 
    Sizes derive from `--font-size-base` the way the title does, and the
    coefficients are fractions rather than decimals because 15 × 1.333 is
@@ -540,19 +550,21 @@ body {
    the rendered content box is not a fixed ratio. Blink rounds the font's ascent
    and descent per size, so Inter measures 1.192em at 13px, 1.2em at 15px,
    1.225em at 20px and 1.229em at 24px on Chrome 151 — and a different build
-   rounds differently (1.267em at 15px on Chrome 128). So the residue here is
-   0.16px of stripe on the machine this was measured on and may be a fraction of
-   a pixel of OVERLAP on another. Both are far better than the 3.87px this
-   replaces, and neither is correct.
+   rounds differently (1.267em at 15px on Chrome 128).
+
+   SO ONE FIGURE CANNOT BE RIGHT EVERYWHERE THIS RULE LANDS, and it lands on
+   every text in the body, not only the paragraphs. Measured on the machine
+   this was written on: 0.156px of stripe left in a paragraph and inside a
+   quote, 0.85px in a code block (13.5px monospace on a 1.6 line), 1.06px in a
+   heading (24px on 1.3). A different build can round any of them into a
+   fraction of a pixel of OVERLAP instead. All of them beat the 3.87px this
+   replaces in the paragraph case, and none of them is correct.
 
    The correct shape is the one CodeMirror's `drawSelection` uses: measure the
    selection's client rects and paint positioned rectangles, which needs no
    constant at all. That replaces this rule and the shared one it overrides,
-   across all three editors that carry a band, and is tracked separately.
-
-   The exclusion matches the shared rule's: a chip is an atomic box and WOULD
-   grow from vertical padding. */
-.doc-body-editor .ProseMirror .collaboration-carets__selection:not(:has(.reference-mention)) {
+   across all three editors that carry a band, and is tracked separately. */
+.doc-body-editor .ProseMirror .collaboration-carets__selection {
   padding-block: calc((1lh - 1.21em) / 2);
 }
 
@@ -648,9 +660,9 @@ body {
    single-element rule in this block wherever it is written — and nothing else.
    Anything below it that scores as much wins on order, and anything scoring
    more wins from anywhere; both shapes are already in this block, the quote's
-   `> :first-child` and `> :last-child` being the higher of them. So the test
-   for a rule added here is its own score against this one, NOT whether the
-   reset happens to be written above it. */
+   two `:nth-child(of …)` rules being the higher of them. So the test for a
+   rule added here is its own score against this one, NOT whether the reset
+   happens to be written above it. */
 .doc-body-editor .ProseMirror :is(ul, ol) > li > * {
   margin: 0;
 }
@@ -705,30 +717,38 @@ body {
   color: var(--color-muted-foreground);
 }
 
-/* THE FIRST CHILD ELEMENT IS NOT ALWAYS THE FIRST BLOCK. A widget decoration
-   renders as an element of its own, and one placed on a block boundary lands
-   as a direct child of the quote: a gap cursor beside a divider opening the
-   quote puts `div.ProseMirror-gapcursor.ProseMirror-widget` ahead of the
-   divider, and `:first-child` then zeroes the widget's margin — which it has
-   none of — while the divider keeps its own. Measured in the browser with the
-   caret actually resting there: the quote springs open by 30px, and closes
-   again when the caret leaves. That figure is the opening end; the closing one
-   is held by `document-quote-contains-its-blocks`, which pins the widget
-   taking either slot against the real schema.
+/* THE FIRST CHILD ELEMENT IS NOT ALWAYS THE FIRST BLOCK, which is why neither
+   of these says `:first-child`. ProseMirror draws a caret by inserting an
+   element, and one on a block boundary lands as a direct child of the quote:
+   a gap cursor beside a divider opening the quote puts
+   `div.ProseMirror-gapcursor.ProseMirror-widget` ahead of the divider. Zero
+   the first CHILD's margin and you zero the widget's, which it has none of,
+   while the divider keeps its own — measured in the browser with the caret
+   actually resting there, the quote springs open by 30px and closes again when
+   the caret leaves.
 
-   The second selector in each pair is what actually reaches the block on
-   those frames. `.ProseMirror-widget` is prosemirror-view's own class on every
-   widget it renders, so this asks the DOM what an element IS rather than
-   guessing from where it sits. Naming the block types instead would need all
-   seven and would go stale with the schema. A widget BETWEEN two blocks is
-   matched by neither, which is right — the block after it is not the first. */
-.doc-body-editor .ProseMirror blockquote > :first-child,
-.doc-body-editor .ProseMirror blockquote > .ProseMirror-widget:first-child + * {
+   `:nth-child(1 of S)` says the thing directly: among the children that match
+   S, take the first. Counting only what is not a widget makes the match the
+   first BLOCK, however many widgets sit in front of it and wherever else they
+   sit. That last part is the reason this replaced a pair of selectors that
+   read `.ProseMirror-widget:first-child + *` — reaching past exactly one
+   widget, which is a guess about position, and a wrong one as soon as there
+   are two. Two is ordinary in a shared document: y-tiptap gives every remote
+   client its own caret widget, so a collaborator resting in the same gap adds
+   a second. Verified in the browser and in jsdom against zero, one and two
+   widgets, and with one BETWEEN two blocks (where the block after it is
+   correctly not matched — it is not the first).
+
+   `.ProseMirror-widget` is prosemirror-view's class for the widgets it builds
+   the DOM for; one declared `spec.raw` brings its own element and gets no
+   class, and would be counted as a block here. Nothing in this editor renders
+   a raw widget. Naming the seven block types instead of excluding widgets
+   would go stale with the schema. */
+.doc-body-editor .ProseMirror blockquote > :nth-child(1 of :not(.ProseMirror-widget)) {
   margin-top: 0;
 }
 
-.doc-body-editor .ProseMirror blockquote > :last-child,
-.doc-body-editor .ProseMirror blockquote > :has(+ .ProseMirror-widget:last-child) {
+.doc-body-editor .ProseMirror blockquote > :nth-last-child(1 of :not(.ProseMirror-widget)) {
   margin-bottom: 0;
 }
 

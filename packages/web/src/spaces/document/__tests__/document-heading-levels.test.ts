@@ -25,9 +25,10 @@
  * out-of-range ones say `4` outright, on purpose. IF WIDENING THE CAP TURNS
  * THOSE RED, THE FIX IS NOT TO BUMP THE NUMBER — `index.css` needs a rule for
  * the level being added first, since preflight resets `h1..h6` to inherit and a
- * level with no rule of its own renders at the paragraph's size and weight. The
- * last case here reads the stylesheet off disk and says so, so widening the
- * array on its own turns that one red too rather than passing quietly.
+ * level with no rule of its own renders at the paragraph's size and weight.
+ * `gives each level it keeps a size and a weight in index.css` reads the
+ * stylesheet off disk and says so, so widening the array on its own turns that
+ * one red too rather than passing quietly.
  */
 
 import { readFileSync } from 'node:fs';
