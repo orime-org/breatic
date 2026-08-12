@@ -54,14 +54,25 @@ export const users = pgTable(
     hashedPassword: varchar("hashed_password", { length: 255 }),
     emailVerified: boolean("email_verified").default(false).notNull(),
     googleId: varchar("google_id", { length: 255 }),
-    // No membership column here, and that is not the same statement it used
-    // to be. The old `membership_type` / `membership_expires_at` pair was
-    // removed in the 0010_* migration back when the product carried no tiers
-    // at all; the ratified membership decision of 2026-07-30 brought tiers
-    // back (four of them), and none of it is built yet. So this table holds
-    // no tier because the tier work has not started, NOT because the product
-    // has decided against tiers. Credits are a separate leg and live in
-    // `credit_balances`, never on the account row.
+    // Membership tier (0051). One of base / pro / team / enterprise; the
+    // ceilings each one carries live in `config/membership.yaml`, never here.
+    //
+    // It sits on the account because the tier follows the person. Which tier
+    // governs a studio's ceilings is a separate question with a settled
+    // answer — the tier of that studio's current admin — so transferring a
+    // studio moves it onto the new admin's tier without touching this column.
+    //
+    // The old `membership_type` / `membership_expires_at` pair, dropped in
+    // 0010 back when the product carried no tiers at all, is NOT what this
+    // is. There is no expiry column here: an expiry is a billing fact, and
+    // billing is a separate leg — this column is a value that can be read and
+    // enforced, and what makes it change is the Stripe work that comes later.
+    //
+    // Credits are yet another leg and live in `credit_balances`, never on the
+    // account row.
+    membershipTier: varchar("membership_tier", { length: 16 })
+      .default("base")
+      .notNull(),
     // Recovery code (GitHub backup-codes pattern, PR-a 2026-05-26):
     // bcrypt-hashed single-use code shown once at registration so users
     // can reset their password without an SMTP backend (self-host
