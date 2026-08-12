@@ -78,6 +78,17 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     slots: [],
     takesReferences: true,
   },
+  {
+    value: 'talking_head',
+    label: 'Talking Head',
+    testId: 'generate-video-mode-talking-head',
+    // The character image is the same slot image animation collects: both
+    // modes want one picture of a person, and a slot shared across modes is
+    // how the first frame already works. The driving audio is the first slot
+    // in this panel that takes an audio node.
+    slots: ['characterImage', 'drivingAudio'],
+    takesReferences: false,
+  },
 ];
 
 /** No slots — shared so every "this mode collects nothing" answer is one array. */

@@ -209,6 +209,7 @@
       "selectEndFrameFromCanvas": "Pick an image on the canvas to be the end frame",
       "selectCharacterImageFromCanvas": "Pick an image on the canvas to be the character",
       "selectDrivingVideoFromCanvas": "Pick a video on the canvas to drive the motion",
+      "selectDrivingAudioFromCanvas": "Pick an audio track on the canvas for the lips to follow",
       "removeStyle": "Remove style reference",
       "returnToNode": "Return to node",
       "exitSelect": "Exit",
@@ -265,13 +266,17 @@
       "removeEndFrame": "Remove end frame",
       "errorNoEndFrame": "Pick an end frame",
       "characterImage": "Character",
-      "characterImageTip": "Pick the image to animate",
+      "characterImageTip": "Pick the image of the character",
       "removeCharacterImage": "Remove character",
       "errorNoCharacterImage": "Pick a character image",
       "drivingVideo": "Driving video",
+      "drivingAudio": "Driving audio",
       "drivingVideoTip": "Pick the video whose motion is copied",
+      "drivingAudioTip": "Pick the audio the lips follow",
       "removeDrivingVideo": "Remove driving video",
-      "errorNoDrivingVideo": "Pick a driving video"
+      "removeDrivingAudio": "Remove driving audio",
+      "errorNoDrivingVideo": "Pick a driving video",
+      "errorNoDrivingAudio": "Pick a driving audio track"
     },
     "edge": {
       "delete": "Delete connection"

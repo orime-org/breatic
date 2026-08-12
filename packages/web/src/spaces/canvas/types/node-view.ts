@@ -124,6 +124,13 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   drivingVideo?: { url: string; cover?: string };
   /**
+   * The driving audio for the talking-head mode (#1935, wire
+   * `data.drivingAudio`) — `url` is sent as `params.audio` at execute time.
+   * Same one-field shape as `drivingVideo` above and for the same reason;
+   * `cover` is always absent, since an audio node has no poster to copy.
+   */
+  drivingAudio?: { url: string; cover?: string };
+  /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
    * as the reference rail's focus entries and offers them in the @ mention
@@ -287,6 +294,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     endFrameUrl: data.endFrameUrl,
     characterImageUrl: data.characterImageUrl,
     drivingVideo: data.drivingVideo,
+    drivingAudio: data.drivingAudio,
     focusImages: data.focusImages,
   };
   switch (type) {

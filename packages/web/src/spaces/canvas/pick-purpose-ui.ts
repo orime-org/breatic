@@ -72,4 +72,8 @@ export const PICK_PURPOSE_UI = {
     banner: 'canvas.generatePanel.selectDrivingVideoFromCanvas',
     trigger: { generateVideo: VIDEO_SLOTS.drivingVideo.testId },
   },
+  drivingAudio: {
+    banner: 'canvas.generatePanel.selectDrivingAudioFromCanvas',
+    trigger: { generateVideo: VIDEO_SLOTS.drivingAudio.testId },
+  },
 } as const satisfies Record<PickPurpose, PickPurposeUi>;

@@ -200,6 +200,7 @@
       "selectEndFrameFromCanvas": "キャンバスで最後のフレームにする画像を選択",
       "selectCharacterImageFromCanvas": "キャンバスでキャラクターにする画像を選択",
       "selectDrivingVideoFromCanvas": "キャンバスで動きの元にする動画を選択",
+      "selectDrivingAudioFromCanvas": "キャンバスで口の動きに合わせる音声を選択",
       "removeStyle": "スタイル参照を削除",
       "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
@@ -256,13 +257,17 @@
       "removeEndFrame": "最後のフレームを削除",
       "errorNoEndFrame": "最後のフレームを選んでください",
       "characterImage": "キャラクター",
-      "characterImageTip": "動かす画像を選ぶ",
+      "characterImageTip": "人物の画像を選ぶ",
       "removeCharacterImage": "キャラクターを削除",
       "errorNoCharacterImage": "キャラクター画像を選んでください",
       "drivingVideo": "動きの元の動画",
+      "drivingAudio": "口の動きの元の音声",
       "drivingVideoTip": "動きをコピーする動画を選ぶ",
+      "drivingAudioTip": "口の動きに合わせる音声を選ぶ",
       "removeDrivingVideo": "動きの元の動画を削除",
-      "errorNoDrivingVideo": "動きの元になる動画を選んでください"
+      "removeDrivingAudio": "口の動きの元の音声を削除",
+      "errorNoDrivingVideo": "動きの元になる動画を選んでください",
+      "errorNoDrivingAudio": "口の動きの元になる音声を選んでください"
     },
     "nodeMenu": {
       "generate": "生成",

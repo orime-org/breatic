@@ -446,6 +446,19 @@ export interface CanvasNodeFields {
      */
     drivingVideo?: { url: string; cover?: string };
     /**
+     * The driving audio for the talking-head mode (#1935, wire
+     * `data.drivingAudio`) — the track the portrait's lips follow. `url` is
+     * sent as `params.audio` at execute time.
+     *
+     * Shaped like `drivingVideo` above because it travels the same road: a
+     * slot taking anything other than an image keeps its poster beside the
+     * asset, in one field, for the same convergence reason. `cover` is always
+     * absent here — an audio node carries no poster of its own — which leaves
+     * the toolbar showing the slot's icon, the way every small row in the
+     * product shows audio.
+     */
+    drivingAudio?: { url: string; cover?: string };
+    /**
      * Focus crops created on this node's generate panel (#1782) — maintained
      * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the
      * plain-values convention of the web `buildDataMap`): concurrent appends
