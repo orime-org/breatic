@@ -111,23 +111,26 @@ describe("messages", () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 
-    await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "one" }] });
-    await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: "two" }] });
+    const asked = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "one" }] });
+    await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: "two" }], turnIndex: asked });
     await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "three" }] });
 
     const msgs = await messageRepo.getMessages(conv.id);
     expect(msgs.map((m) => m.content)).toEqual(["one", "two", "three"]);
   });
 
-  it("opens a new turn on each user message and keeps replies in that turn", async () => {
+  it("opens a new turn on each user message", async () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 
     const t1 = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q1" }] });
-    const r1 = await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: "a1" }] });
+    await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: "a1" }], turnIndex: t1 });
     const t2 = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q2" }] });
 
-    expect(r1).toBe(t1);
+    // A reply in between does not consume a number: it joins the turn its
+    // question opened. Where the reply itself ends up is asserted below,
+    // where it can still fail -- reading back the number just handed in
+    // would hold whatever the store did with it.
     expect(t2).toBe(t1 + 1);
   });
 
@@ -240,10 +243,10 @@ describe("deleting a conversation while it is still being written to", () => {
     for (let round = 0; round < 5; round++) {
       const { userId, projectId } = await seedProject();
       const conv = await seedConversation(userId, projectId);
-      await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "already here" }] });
+      const asked = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "already here" }] });
 
       await Promise.allSettled([
-        messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: "still writing" }] }),
+        messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: "still writing" }], turnIndex: asked }),
         conversationRepo.softDeleteConversation(conv.id),
       ]);
 
@@ -294,10 +297,19 @@ describe("a message survives the round trip through parts", () => {
     fc.record({ type: fc.constant("failed" as const) }),
   );
 
-  const messageArb = fc.record({
-    role: fc.constantFrom("user" as const, "assistant" as const),
-    parts: fc.array(partArb, { minLength: 1, maxLength: 4 }),
-  });
+  // A reply carries the turn it answers; a question is given one. So the two
+  // roles are drawn separately rather than as one record with a role field.
+  const messageArb = fc.oneof(
+    fc.record({
+      role: fc.constant("user" as const),
+      parts: fc.array(partArb, { minLength: 1, maxLength: 4 }),
+    }),
+    fc.record({
+      role: fc.constant("assistant" as const),
+      parts: fc.array(partArb, { minLength: 1, maxLength: 4 }),
+      turnIndex: fc.constant(1),
+    }),
+  );
 
   it("comes back with every part it went in with", async () => {
     const { userId, projectId } = await seedProject();
@@ -344,6 +356,7 @@ describe("a message survives the round trip through parts", () => {
     await messageRepo.addMessage(conv.id, {
       role: "assistant",
       parts: [{ type: "interrupted" }],
+      turnIndex: 1,
     });
     const [stored] = await messageRepo.getMessages(conv.id, 1);
 
@@ -362,6 +375,7 @@ describe("a message survives the round trip through parts", () => {
     await messageRepo.addMessage(conv.id, {
       role: "assistant",
       parts: [{ type: "failed" }],
+      turnIndex: 1,
     });
     const [stored] = await messageRepo.getMessages(conv.id, 1);
 
@@ -376,8 +390,8 @@ describe("the memory chain still sees the same messages", () => {
     const conv = await seedConversation(userId, projectId);
 
     for (let i = 0; i < 5; i++) {
-      await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: `q${i}` }] });
-      await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: `a${i}` }] });
+      const turn = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: `q${i}` }] });
+      await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: `a${i}` }], turnIndex: turn });
     }
     await conversationRepo.updateConsolidatedTurn(conv.id, 2);
 
@@ -390,8 +404,8 @@ describe("the memory chain still sees the same messages", () => {
     const conv = await seedConversation(userId, projectId);
 
     for (let i = 1; i <= 6; i++) {
-      await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: `q${i}` }] });
-      await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: `a${i}` }] });
+      const turn = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: `q${i}` }] });
+      await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: `a${i}` }], turnIndex: turn });
     }
 
     // Turns 1..6 exist, 1 is already consolidated, the last 2 are kept back:
@@ -400,16 +414,33 @@ describe("the memory chain still sees the same messages", () => {
     expect(window.map((m) => m.content)).toEqual(["q2", "a2", "q3", "a3", "q4", "a4"]);
   });
 
-  it("strips internal fields and consolidated turns for the LLM", async () => {
+  it("skips consolidated turns and drops the model's own reasoning", async () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 
     await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "old" }] });
-    await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "new" }] });
+    const turn = await messageRepo.addMessage(conv.id, {
+      role: "user",
+      parts: [{ type: "text", text: "new" }],
+    });
+    await messageRepo.addMessage(conv.id, {
+      role: "assistant",
+      parts: [
+        { type: "reasoning", text: "the user probably means" },
+        { type: "text", text: "here you go" },
+      ],
+      turnIndex: turn,
+    });
 
     const forLlm = await messageRepo.getMessagesForLlm(conv.id, 1);
-    expect(forLlm.map((m) => m.content)).toEqual(["new"]);
-    expect(forLlm[0]).not.toHaveProperty("ts");
+    expect(forLlm.map((m) => m.content)).toEqual(["new", "here you go"]);
+    // Reasoning is the model's own working: sending it back teaches nothing
+    // and is paid for every turn.
+    expect(forLlm[1]).not.toHaveProperty("thinking");
+    // The turn index stays, because the compressor between here and the model
+    // groups by it. Dropping it left every message in one group and the
+    // compressing branch unreachable.
+    expect(forLlm[1]?.turnIndex).toBe(turn);
   });
 
   it("compresses the turns past the detail window, read the way the route reads them", async () => {
@@ -417,12 +448,13 @@ describe("the memory chain still sees the same messages", () => {
     const conv = await seedConversation(userId, projectId);
 
     for (let i = 1; i <= 5; i++) {
-      await messageRepo.addMessage(conv.id, {
+      const turn = await messageRepo.addMessage(conv.id, {
         role: "user",
         parts: [{ type: "text", text: `q${i}` }],
       });
       await messageRepo.addMessage(conv.id, {
         role: "assistant",
+        turnIndex: turn,
         parts: [
           {
             type: "tool",

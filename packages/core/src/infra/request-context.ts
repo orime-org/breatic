@@ -25,21 +25,6 @@ export interface RequestStore {
   memoryContext: MemoryContext;
   /** Compressed conversation history (old turns compressed, recent full). */
   compressedHistory: readonly MessageData[];
-  /**
-   * Billing state for the current turn. Set by MainAgent after saving the
-   * user message (so we have a stable `turnIndex`), consumed by
-   * `deductOnce` call sites for idempotent billing refKeys.
-   *
-   * - `turnIndex` — the conversation turn this request is processing,
-   *   used to build `turn:${conversationId}:${turnIndex}`, the refKey that
-   *   makes a turn's billing idempotent across a reconnect or a re-entry.
-   *
-   * Optional because not every code path uses AsyncLocalStorage (tests,
-   * background jobs). Callers that need it must null-check.
-   */
-  billing?: {
-    turnIndex: number;
-  };
 }
 
 /** The AsyncLocalStorage instance shared across the application. */

@@ -84,8 +84,10 @@ function toMessageData(row: StoredRow): MessageData {
  * aggregate over the messages, because a locking clause cannot be combined
  * with an aggregate at all.
  * @param id - Conversation UUID to append to
- * @param message - The message; `ts` and `turnIndex` are assigned here
- * @returns The turn index assigned to this message — callers billing by turn
+ * @param message - The message. A question opens a turn and is numbered here;
+ *   a reply says which turn it answers, because nothing readable off the table
+ *   can tell one turn's answer from a later turn's
+ * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  *   `main-agent.ts` writes the user's own message through here before a turn
@@ -107,16 +109,26 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
       throw new NotFoundError(t("server.conversation.not_found"));
     }
 
-    // Deliberately NOT filtered on `deleted_at`: the turn index is a
-    // monotonic counter that doubles as a billing key, so it must never step
-    // back onto a number a cascade-deleted message already used.
-    const turnRows = await tx
-      .select({ maxTurn: max(conversationMessages.turnIndex) })
-      .from(conversationMessages)
-      .where(eq(conversationMessages.conversationId, id));
+    let turnIndex: number;
+    if (message.role === "assistant") {
+      // A reply goes in the turn it answers, and only its caller knows which
+      // that is. Taking the newest turn instead gives the same number exactly
+      // while nothing else has happened since the question — and when
+      // something has, which is what two open tabs or a reply slower than the
+      // next question produce, the answer is filed under a question nobody
+      // asked there and the one it answered reads as never answered.
+      turnIndex = message.turnIndex;
+    } else {
+      // Deliberately NOT filtered on `deleted_at`: the turn index is a
+      // monotonic counter that doubles as a billing key, so it must never step
+      // back onto a number a cascade-deleted message already used.
+      const turnRows = await tx
+        .select({ maxTurn: max(conversationMessages.turnIndex) })
+        .from(conversationMessages)
+        .where(eq(conversationMessages.conversationId, id));
 
-    const currentTurn = turnRows[0]?.maxTurn ?? 0;
-    const turnIndex = message.role === "user" ? currentTurn + 1 : currentTurn;
+      turnIndex = (turnRows[0]?.maxTurn ?? 0) + 1;
+    }
 
     const seqRows = await tx
       .select({ maxSeq: max(conversationMessages.seq) })
@@ -181,11 +193,22 @@ export async function getMessages(id: string, limit = MAX_HISTORY): Promise<Mess
 /**
  * Get messages formatted for LLM context.
  *
- * Skips already-consolidated turns and strips the fields the model has no use
- * for (creation time, turn index, the model's own reasoning).
+ * Skips already-consolidated turns and drops the model's own reasoning.
+ *
+ * It used to drop the creation time and the turn index as well, on the
+ * grounds that the model is not shown them. But the model is not shown these
+ * objects at all — `toModelMessages` names the fields it sends, one at a
+ * time — so withholding them here reached nobody, and it cost a cast that
+ * told the compiler a message with no timestamp was a whole one.
+ *
+ * What it did reach is the compressor, the one caller that stands between
+ * here and the model, whose first act is to group messages by turn. Without
+ * the field every message landed in a single group, a single group is never
+ * more than the full-detail window, and the branch that drops old tool calls
+ * was unreachable for as long as this function stripped it.
  * @param id - Conversation UUID
  * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
- * @returns Unconsolidated messages with internal-only fields removed
+ * @returns Unconsolidated messages, without the model's reasoning
  */
 export async function getMessagesForLlm(
   id: string,
@@ -212,8 +235,8 @@ export async function getMessagesForLlm(
     .orderBy(asc(conversationMessages.turnIndex), asc(conversationMessages.seq));
 
   return rows.map((row) => {
-    const { ts: _ts, turnIndex: _ti, thinking: _th, ...rest } = toMessageData(row);
-    return rest as MessageData;
+    const { thinking: _th, ...rest } = toMessageData(row);
+    return rest;
   });
 }
 

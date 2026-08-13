@@ -112,14 +112,14 @@ export class MainAgent {
   ): AsyncGenerator<SSEEvent> {
     const { conversationId, memoryContext, compressedHistory } = this.ctx;
 
-    // Save what the user said. Capture the assigned turnIndex so billing can
-    // build a stable refKey (`turn:${conversationId}:${turnIndex}`) that
-    // survives retries — see core/src/modules/credit.service.ts `deductOnce`.
+    // Save what the user said. The turn it opened is what the rest of this
+    // run is filed under: the reply goes in it, and billing builds a stable
+    // refKey from it (`turn:${conversationId}:${turnIndex}`) that survives
+    // retries — see domain/src/credit/credit.service.ts `deductOnce`.
     const turnIndex = await messageRepo.addMessage(conversationId, {
       role: "user",
       parts: [{ type: "text", text: said }],
     });
-    this.ctx.billing = { turnIndex };
 
     // One factory decides model, instructions and tools — see
     // domain/agent/agent-config.ts for why nothing else may assemble them.
@@ -135,7 +135,7 @@ export class MainAgent {
       { role: "user", content: MainAgent.buildUserContent(said, resources) },
     ];
 
-    yield* this.runStream(agentConfig, messages, signal);
+    yield* this.runStream(agentConfig, messages, turnIndex, signal);
   }
 
   /**
@@ -149,21 +149,20 @@ export class MainAgent {
    * itself, is set out where `announced` is declared.
    * @param agentConfig - Model, instructions and tools, from the one factory that decides them.
    * @param messages - Conversation history plus the current user message.
+   * @param turnIndex - The turn this run answers. A parameter and not a
+   *   context field: it is known one line before the call, both the reply and
+   *   the charge are filed under it, and neither has anything sensible to do
+   *   with a turn it could not identify.
    * @param signal - Raised when the user stops the turn or the client goes away.
    * @yields SSE events — chat chunks, tool hints, interaction prompts, an error, and the ending.
    */
   private async *runStream(
     agentConfig: ResolvedAgentConfig,
     messages: ModelMessage[],
+    turnIndex: number,
     signal?: AbortSignal,
   ): AsyncGenerator<SSEEvent> {
     const { userId, conversationId, projectId } = this.ctx;
-    // Read with the others, not from inside the `finally`. `this.ctx` reaches
-    // into AsyncLocalStorage, which is only guaranteed to be there while the
-    // caller is still driving this generator — and the whole point of the
-    // cleanup below is to survive exits where that is not the case. Three
-    // context fields were already captured here and this was the odd one out.
-    const billingTurnIndex = this.ctx.billing?.turnIndex;
     const agentCfg = getAgentConfig();
 
     const result = streamTextRetry({
@@ -464,6 +463,7 @@ export class MainAgent {
                   await messageRepo.addMessage(conversationId, {
                     role: "assistant",
                     parts: replyParts,
+                    turnIndex,
                   });
                 }
               : undefined,
@@ -471,14 +471,11 @@ export class MainAgent {
             if (tokensUsed === 0) return;
 
             creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
-            if (billingTurnIndex === undefined) {
-              throw new Error("MainAgent.runStream: billing.turnIndex not initialized");
-            }
             // The turn-scoped refKey makes this idempotent: an SSE reconnect
             // or a re-entry on the same turn will not double-charge.
             await creditService.deductOnce(
               userId,
-              `turn:${conversationId}:${billingTurnIndex}`,
+              `turn:${conversationId}:${turnIndex}`,
               creditsUsed,
               "Agent chat",
               {
