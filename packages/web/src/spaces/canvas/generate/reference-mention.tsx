@@ -229,10 +229,10 @@ function ReferenceMentionChip({
       resolveOnOpen={kind === 'text' ? resolveTextHover : undefined}
       // The preview is NOT dimmed, in either mode. Its job is to say what this
       // chip IS; whether the mode can use it is said by the chip body's own
-      // grey-out and by the rail (user 2026-08-13: 预览本身就是要告诉用户这个
-      // 条目内容是什么). Greying it made the one thing meant to be legible the
-      // hardest to read, and the rail's preview had already stopped doing it,
-      // so the same image previewed two ways in one panel.
+      // grey-out and by the rail (user 2026-08-13). Greying it made the one
+      // thing meant to be legible the hardest to read, and the rail's preview
+      // had already stopped doing it, so the same image previewed two ways in
+      // one panel.
       // The chip lives inside the generate panel's NodeToolbar (canvas space),
       // so the open card must follow the viewport as the canvas pans / zooms.
       followCanvas
