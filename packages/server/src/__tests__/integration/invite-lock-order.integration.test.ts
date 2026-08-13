@@ -197,13 +197,26 @@ async function rowIsLockedByAnother(
  * Both sides are asked for it rather than just the sweep: which transaction
  * Postgres aborts to break a cycle is its own choice, so pinning only one of
  * them would pass whenever it happened to pick the other.
+ *
+ * The chain is walked rather than the top level read, for the reason
+ * `utils/pg-error.ts` already documents: a query made through drizzle arrives
+ * as a `DrizzleQueryError` whose own `code` is undefined and whose SQLSTATE
+ * sits on `.cause`. Measured here — under a real deadlock the invite side
+ * rejected with `code=undefined, cause.code=40P01`, so a flat check reported
+ * null and the assertion below passed while the deadlock was happening.
  * @param err - Whatever was thrown or rejected with.
- * @returns The `code` field if this looks like a PostgresError, else null.
+ * @returns The first SQLSTATE found on the error or its causes, else null.
  */
 function sqlStateOf(err: unknown): string | null {
-  if (err !== null && typeof err === "object" && "code" in err) {
-    const { code } = err;
-    if (typeof code === "string") return code;
+  let current: unknown = err;
+  // Bounded so a cyclic cause chain cannot spin here.
+  for (let depth = 0; depth < 5; depth++) {
+    if (current === null || typeof current !== "object") return null;
+    if ("code" in current && typeof current.code === "string") {
+      return current.code;
+    }
+    if (!("cause" in current)) return null;
+    current = current.cause;
   }
   return null;
 }

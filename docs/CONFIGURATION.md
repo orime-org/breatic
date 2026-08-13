@@ -162,7 +162,7 @@ loader:`packages/core/src/config/membership.ts`。**惰性加载**:首次被调�
 
 **档位只有这四个**。产品上还有企业版(决议里的「商务谈」),它的数值一家一谈、将来从数据库读,所以既不在这个文件里、也不在档位枚举里——在这儿编一组数字,会让被设成企业版的账号拿到谁都没谈过的额度而且不报错。
 
-**目前只有 `team_studios` 真的在拦人**,其余五项配置已就位、检查点随后续几批接上。
+**目前四项真的在拦人**:`team_studios` · `projects_per_studio` · `studio_members` · `project_members`。其余两项(`concurrent_editors` · `storage_bytes`)配置已就位、检查点随后续几批接上。
 
 ## 8. 连接 / 存储上传韧性(代码内,非 yaml)
 
