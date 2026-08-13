@@ -48,6 +48,7 @@
       "email_not_registered": "该邮箱未注册。",
       "already_member": "该用户已有访问权限。",
       "already_invited": "该用户已有一个待确认的邀请。",
+      "limit_reached": "{limit, plural, =0 {这个 Studio 的会员等级不支持创建 Project，升级后即可创建。} other {这个 Studio 的会员等级最多可创建 # 个 Project，升级可创建更多。}}",
       "collaborator_limit_reached": "该 Project 已达到协作者数上限。",
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申请角色升级",
       "no_active_owner": "这个 Project 没有在任的 Owner",

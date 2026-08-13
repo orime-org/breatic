@@ -45,6 +45,7 @@
       "email_not_registered": "該信箱尚未註冊。",
       "already_member": "該使用者已有存取權限。",
       "already_invited": "該使用者已有一個待確認的邀請。",
+      "limit_reached": "{limit, plural, =0 {這個 Studio 的會員等級不支援建立 Project，升級後即可建立。} other {這個 Studio 的會員等級最多可建立 # 個 Project，升級可建立更多。}}",
       "collaborator_limit_reached": "該 Project 已達到協作者數上限。",
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申請角色升級",
       "no_active_owner": "這個 Project 沒有在任的 Owner",

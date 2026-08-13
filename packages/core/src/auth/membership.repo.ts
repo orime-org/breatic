@@ -14,11 +14,14 @@
  * differ only in what they start from and whether they lock:
  *
  *   - `getLimitsForUser`  — an account, no lock. For reads.
- *   - `lockLimitsForUser` — an account, row locked. Before creating something.
- *   - `getLimitsForStudio`— a studio, resolved through its current admin.
+ *   - `lockLimitsForUser` — an account, row locked. For the one ceiling whose
+ *     counted set belongs to the account: how many team studios it administers.
+ *   - `getLimitsForStudio`— a studio, resolved through its current admin. No
+ *     lock: a ceiling counted per studio is serialised on the STUDIO's row,
+ *     which is not this module's to take (see `studioRepo.lockStudio`).
  *
- * Five more ceilings are coming — projects per studio, two kinds of member
- * cap, concurrent writable connections, storage — each with its own check
+ * Four more ceilings are coming — two kinds of member cap, concurrent
+ * writable connections, storage — each with its own check
  * point, so "look up the tier, then index the config" would otherwise end up
  * written out six to eight times across the codebase.
  *
@@ -264,9 +267,19 @@ export async function getLimitsForStudio(
  * The ceilings that apply to an account, with that account's row locked for
  * the rest of the transaction.
  *
- * This is the one to call before deciding whether something may be created.
+ * Call this when the thing being counted BELONGS TO THE ACCOUNT — today that
+ * is exactly one ceiling, how many team studios this account administers.
  * {@link getLimitsForUser} answers the same question without the lock and is
  * for reads — showing somebody what their plan allows.
+ *
+ * **Do not reach for this just because something is about to be created.** The
+ * row a quota check locks is the row the COUNTED SET belongs to, which is not
+ * always the row the tier is read from; the two coincide here only because an
+ * account's team studios belong to that account. Counting projects in a studio
+ * locks the `studios` row, counting members of a project locks the `projects`
+ * row — taking the admin's account row instead would serialise every studio
+ * that person administers against every other, and every project in a studio
+ * against every other.
  *
  * Counting rows and then inserting is not a decision under concurrency: two
  * transactions both count, both see room, and both insert. That was tolerable
