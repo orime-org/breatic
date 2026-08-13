@@ -40,8 +40,24 @@ export interface ChatSession {
    * reader is looking at an answer that stopped for no reason they can see.
    */
   connectionLost: boolean;
+  /**
+   * The last attempt to reach further back failed.
+   *
+   * Cleared by pressing the button again, which is still where it was — the
+   * failure took nothing off the screen, so the way to try again is the way
+   * it was tried the first time.
+   */
+  earlierFailed: boolean;
   /** Load the messages before the ones on screen. */
   loadEarlier: () => void;
+  /**
+   * Try opening the chat again.
+   *
+   * The one failure with nothing left on screen to press: no conversation
+   * means no composer and no messages, so without this the only way back was
+   * to reload the page — which is what the panel used to tell people to do.
+   */
+  retryOpen: () => void;
   /**
    * Send one message and stream the reply into the list.
    *
@@ -123,6 +139,9 @@ export function useChatSession(projectId: string): ChatSession {
   const connectionLost = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.connectionLost ?? false) : false,
   );
+  const earlierFailed = useConversationRuntime((s) =>
+    conversationId ? (s.conversations[conversationId]?.earlierFailed ?? false) : false,
+  );
   const failures = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.failures ?? 0) : 0,
   );
@@ -162,6 +181,10 @@ export function useChatSession(projectId: string): ChatSession {
     if (conversationId) void conversationRuntime.loadEarlier(conversationId);
   }, [conversationId]);
 
+  const retryOpen = React.useCallback((): void => {
+    void conversationRuntime.ensureLoaded(projectId);
+  }, [projectId]);
+
   // What the panel was handed for each stored message last time round.
   //
   // Every piece of a reply replaces that message, so this runs once per token.
@@ -196,7 +219,9 @@ export function useChatSession(projectId: string): ChatSession {
     streaming,
     hasMore,
     connectionLost,
+    earlierFailed,
     loadEarlier,
+    retryOpen,
     send,
     abort,
   };

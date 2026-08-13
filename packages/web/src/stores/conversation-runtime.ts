@@ -97,6 +97,18 @@ export interface ConversationRuntime {
    * trying again is what makes the last one old news.
    */
   connectionLost: boolean;
+  /**
+   * Reaching further back failed.
+   *
+   * Held rather than thrown. Every library that fetches for a view does the
+   * same -- RTK Query says rejections are captured rather than propagated,
+   * and SWR and Apollo both hand the failure back as a value -- because the
+   * caller is a click handler, and a rejection out of one is an unhandled
+   * rejection with nobody to catch it and nothing on screen either way.
+   * Cleared when the reader presses again, which is the way back: the button
+   * stays where it was, so trying again is pressing the same thing.
+   */
+  earlierFailed: boolean;
 }
 
 /** How far opening one project's chat has got. */
@@ -119,6 +131,19 @@ interface ConversationRuntimeState {
  * recompute when a request starts and again when it lands.
  */
 const opening = new Map<string, Promise<void>>();
+
+/**
+ * Earlier pages already being fetched, keyed by the conversation asked about.
+ *
+ * A second press joins the request in flight rather than making another one.
+ * Two requests would answer with the same page and both would be written to
+ * the head of the list, so the reader would be shown every earlier message
+ * twice -- and this is a button, which is the one thing readers press twice.
+ * Keying the request by what it asks for and joining the one in flight is how
+ * every library that fetches for a view does this: SWR calls it deduping,
+ * RTK Query keys it by endpoint and arguments, Apollo has it on by default.
+ */
+const loadingEarlier = new Map<string, Promise<void>>();
 
 const useStore = create<ConversationRuntimeState>()(() => ({
   conversations: {},
@@ -205,7 +230,13 @@ async function ensureLoaded(projectId: string): Promise<void> {
       // every way this can fail: there is no conversation to write to. The
       // request itself is where a failure is worth its own words, and it says
       // them there.
-      useStore.setState((s) => ({ openStatus: { ...s.openStatus, [projectId]: 'failed' } }));
+      //
+      // Guarded the same way adopting is, and for the same reason: a refusal
+      // arriving after the reader left would put the project back, holding
+      // nothing but the news that it failed.
+      if (useStore.getState().openStatus[projectId] !== undefined) {
+        useStore.setState((s) => ({ openStatus: { ...s.openStatus, [projectId]: 'failed' } }));
+      }
     } finally {
       opening.delete(projectId);
     }
@@ -217,11 +248,20 @@ async function ensureLoaded(projectId: string): Promise<void> {
 
 /**
  * Put a conversation and its newest page on screen for a project.
+ *
+ * Does nothing when the project is no longer one this store is holding. An
+ * answer to a request made before the reader left lands after they have left,
+ * and writing it then puts the project back -- with a conversation, a message
+ * list and a status, none of which anything will ever clear again, because
+ * the one thing that clears them already ran. Whether the project is still
+ * here is exactly whether it still has an open status, which is the key
+ * leaving deletes.
  * @param projectId - The project showing it.
  * @param opened - The conversation, its newest page, and whether the
  *   conversation reaches back further than that page does.
  */
 function adoptConversation(projectId: string, opened: OpenChatResult['current']): void {
+  if (useStore.getState().openStatus[projectId] === undefined) return;
   const conversationId = opened.conversation.id;
   useStore.setState((s) => ({
     openStatus: { ...s.openStatus, [projectId]: 'ready' },
@@ -237,6 +277,7 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
         failures: 0,
         failedReplyId: null,
         connectionLost: false,
+        earlierFailed: false,
       },
     },
   }));
@@ -511,18 +552,45 @@ async function send(projectId: string, text: string): Promise<void> {
  * Written to the head of the list, which is the half no turn touches: a reply
  * being streamed is appended to the tail, so the two writers never contend.
  * @param conversationId - The conversation to reach further back in.
+ * @returns When the page has been written, or the attempt failed. Never
+ *   rejects: the caller is a click handler, and there is nothing there to
+ *   catch one.
  */
 async function loadEarlier(conversationId: string): Promise<void> {
   const before = useStore.getState().conversations[conversationId];
   if (!before || !before.hasMore || before.oldestLoadedTurn === null) return;
+  const beforeTurn = before.oldestLoadedTurn;
 
-  const earlier = await chatApi.messagesBefore(conversationId, before.oldestLoadedTurn);
-  patchConversation(conversationId, (c) => ({
-    ...c,
-    messages: [...earlier.messages.map(toStored), ...c.messages],
-    hasMore: earlier.hasMore,
-    oldestLoadedTurn: oldestTurnOf(earlier.messages) ?? c.oldestLoadedTurn,
-  }));
+  const inFlight = loadingEarlier.get(conversationId);
+  if (inFlight) return inFlight;
+
+  const attempt = (async (): Promise<void> => {
+    // Pressing again is what makes the last failure old news, and pressing
+    // again is what just happened.
+    patchConversation(conversationId, (c) => ({ ...c, earlierFailed: false }));
+    try {
+      const earlier = await chatApi.messagesBefore(conversationId, beforeTurn);
+      // Written through `patchConversation`, which does nothing when the
+      // conversation is gone. That is the whole guard needed for a page
+      // landing after the reader left: there is no longer anywhere to put it.
+      patchConversation(conversationId, (c) => ({
+        ...c,
+        messages: [...earlier.messages.map(toStored), ...c.messages],
+        hasMore: earlier.hasMore,
+        oldestLoadedTurn: oldestTurnOf(earlier.messages) ?? c.oldestLoadedTurn,
+      }));
+    } catch {
+      // What went wrong is not worth quoting: every way this can fail says
+      // the same thing to the reader, which is that what came before is still
+      // not on screen and the button is still there.
+      patchConversation(conversationId, (c) => ({ ...c, earlierFailed: true }));
+    } finally {
+      loadingEarlier.delete(conversationId);
+    }
+  })();
+
+  loadingEarlier.set(conversationId, attempt);
+  return attempt;
 }
 
 /**
@@ -564,6 +632,7 @@ function leaveProject(projectId: string): void {
  */
 export function _resetForTests(): void {
   opening.clear();
+  loadingEarlier.clear();
   useStore.setState({ conversations: {}, currentByProject: {}, openStatus: {} });
 }
 

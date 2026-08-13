@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useCanvasStore } from '@web/stores/canvas';
 import { useChatStore } from '@web/stores/chat';
+import { useConversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 import { useInpaintStore } from '@web/stores/inpaint';
 import { useMiniToolStore } from '@web/stores/mini-tool';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
@@ -85,5 +86,44 @@ describe('resetProjectUiStores (#1771)', () => {
     expect(useUIStore.getState().chatPanelCollapsed).toBe(true);
     // Brush preference.
     expect(useInpaintStore.getState().brushSize).toBe(42);
+  });
+
+  /**
+   * The conversation runtime is not one of the five above: what it holds is a
+   * turn that may be running and a list of messages, neither of which is
+   * panel state. It is torn down from the same place because leaving is the
+   * same act -- and because this one line is the only thing that stops a turn
+   * for a project the reader has walked away from. What the runtime does when
+   * it is told to is pinned in its own file; what is pinned here is that it
+   * gets told at all.
+   */
+  it('tells the conversation runtime the project is being left', () => {
+    _resetForTests();
+    const abort = new AbortController();
+    useConversationRuntime.setState({
+      conversations: {
+        'c-1': {
+          projectId: 'project-1',
+          messages: [],
+          turn: { replyId: 'r-1', abort },
+          hasMore: false,
+          oldestLoadedTurn: 1,
+          failures: 0,
+          failedReplyId: null,
+          connectionLost: false,
+          earlierFailed: false,
+        },
+      },
+      currentByProject: { 'project-1': 'c-1' },
+      openStatus: { 'project-1': 'ready' },
+    });
+
+    resetProjectUiStores('project-1');
+
+    // Stopped, because once the project is off the screen there is no stop
+    // button anywhere for this turn.
+    expect(abort.signal.aborted).toBe(true);
+    expect(useConversationRuntime.getState().conversations['c-1']).toBeUndefined();
+    expect(useConversationRuntime.getState().openStatus['project-1']).toBeUndefined();
   });
 });

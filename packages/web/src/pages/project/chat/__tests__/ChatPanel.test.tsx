@@ -222,6 +222,25 @@ describe('ChatPanel', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1);
   });
 
+  it('offers a way back when the chat could not be opened', async () => {
+    const user = userEvent.setup();
+    vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('server said no'));
+    renderPanel();
+
+    await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
+    // The one failure that leaves nothing on screen to press: no conversation
+    // means no composer and no messages. Without this the only way back was
+    // to reload the page, which is what the panel used to tell people to do.
+    const retry = screen.getByTestId('chat-notice-action');
+
+    chatOpensWith(['back again']);
+    await user.click(retry);
+
+    await waitFor(() => expect(screen.getByText('back again')).toBeInTheDocument());
+    expect(screen.queryByTestId('chat-notice')).not.toBeInTheDocument();
+    expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled();
+  });
+
   it('does not let anything be typed before the chat is open', async () => {
     // openChat never answers, which is the state every panel starts in.
     vi.mocked(chatApi.openChat).mockImplementation(() => new Promise(() => {}));

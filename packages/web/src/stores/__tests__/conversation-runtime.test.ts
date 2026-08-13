@@ -229,6 +229,124 @@ describe('loading what came before', () => {
 
     expect(chatApi.messagesBefore).not.toHaveBeenCalled();
   });
+
+  it('fetches one page however many times the button is pressed', async () => {
+    openChatAnswers({ hasMore: true });
+    await conversationRuntime.ensureLoaded('p-1');
+    vi.mocked(chatApi.messagesBefore).mockResolvedValue({
+      messages: [
+        {
+          id: 'm0',
+          role: 'user',
+          parts: [{ type: 'text', text: 'oldest' }],
+          content: 'oldest',
+          ts: '2026-08-12T00:00:00Z',
+          turnIndex: 3,
+        },
+      ],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.messagesBefore>>);
+
+    // Both before either lands, which is what a second press is.
+    await Promise.all([
+      conversationRuntime.loadEarlier('c-1'),
+      conversationRuntime.loadEarlier('c-1'),
+    ]);
+
+    // Two requests would answer with the same page and both would write it to
+    // the head, so the reader would be shown every earlier message twice.
+    expect(chatApi.messagesBefore).toHaveBeenCalledTimes(1);
+    expect(conversation()?.messages.map((m) => m.content)).toEqual(['oldest', 'earlier']);
+  });
+
+  it('says so when it fails, rather than rejecting into a click handler', async () => {
+    openChatAnswers({ hasMore: true });
+    await conversationRuntime.ensureLoaded('p-1');
+    vi.mocked(chatApi.messagesBefore).mockRejectedValue(new Error('offline'));
+
+    // Not `.rejects`: the caller is an onClick, and a rejection out of one is
+    // an unhandled rejection with nobody to catch it.
+    await expect(conversationRuntime.loadEarlier('c-1')).resolves.toBeUndefined();
+
+    expect(conversation()?.earlierFailed).toBe(true);
+    // Still there, still saying there is more -- the button the reader
+    // pressed is the way to press it again.
+    expect(conversation()?.hasMore).toBe(true);
+  });
+
+  it('stops saying it failed once the reader presses again', async () => {
+    openChatAnswers({ hasMore: true });
+    await conversationRuntime.ensureLoaded('p-1');
+    vi.mocked(chatApi.messagesBefore).mockRejectedValueOnce(new Error('offline'));
+    await conversationRuntime.loadEarlier('c-1');
+    expect(conversation()?.earlierFailed).toBe(true);
+
+    vi.mocked(chatApi.messagesBefore).mockResolvedValue({
+      messages: [],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.messagesBefore>>);
+    await conversationRuntime.loadEarlier('c-1');
+
+    expect(conversation()?.earlierFailed).toBe(false);
+  });
+});
+
+describe('an answer that arrives after the reader has left', () => {
+  it('is dropped, rather than putting the project back', async () => {
+    let answer: (r: unknown) => void = () => {};
+    vi.mocked(chatApi.openChat).mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }) as ReturnType<typeof chatApi.openChat>,
+    );
+    const opened = conversationRuntime.ensureLoaded('p-1');
+
+    conversationRuntime.leaveProject('p-1');
+    answer({
+      conversations: [{ id: 'c-1' }],
+      current: { conversation: { id: 'c-1' }, messages: [], hasMore: false },
+    });
+    await opened;
+
+    // Nothing clears these a second time: leaving already ran, and it is the
+    // only thing that clears them. Written now, they would stay for the life
+    // of the page -- a conversation for a project nobody is looking at.
+    expect(conversation()).toBeUndefined();
+    expect(useConversationRuntime.getState().currentByProject['p-1']).toBeUndefined();
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBeUndefined();
+  });
+
+  it('is dropped when it is a refusal too', async () => {
+    let refuse: (e: unknown) => void = () => {};
+    vi.mocked(chatApi.openChat).mockReturnValue(
+      new Promise((_resolve, reject) => {
+        refuse = reject;
+      }) as ReturnType<typeof chatApi.openChat>,
+    );
+    const opened = conversationRuntime.ensureLoaded('p-1');
+
+    conversationRuntime.leaveProject('p-1');
+    refuse(new Error('gone'));
+    await opened;
+
+    // Otherwise the project comes back holding one thing: the news that it
+    // failed, about a request made for a screen that is no longer there.
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBeUndefined();
+  });
+});
+
+describe('opening again after it failed', () => {
+  it('asks again, which is what the retry button does', async () => {
+    vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
+    await conversationRuntime.ensureLoaded('p-1');
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('failed');
+
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('ready');
+    expect(conversation()?.messages).toHaveLength(1);
+  });
 });
 
 describe('a turn that ended because the connection did', () => {

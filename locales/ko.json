@@ -132,8 +132,10 @@
     "error": {
       "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요.",
       "notSent": "보내지 못했습니다. 네트워크를 확인해 주세요.",
-      "openFailed": "이 대화를 열지 못했습니다. 페이지를 새로고침하고 다시 시도해 주세요.",
-      "connectionLost": "연결이 끊겨 답변이 여기서 멈췄습니다."
+      "openFailed": "이 채팅을 열지 못했습니다.",
+      "retry": "다시 시도",
+      "connectionLost": "연결이 끊겨 답변이 여기서 멈췄습니다.",
+      "loadEarlierFailed": "이전 메시지를 불러오지 못했습니다."
     },
     "message": {
       "interrupted": "중지됨"

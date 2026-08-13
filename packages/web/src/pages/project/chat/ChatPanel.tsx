@@ -72,7 +72,9 @@ export function ChatPanel({
     streaming,
     hasMore,
     connectionLost,
+    earlierFailed,
     loadEarlier,
+    retryOpen,
     send,
     abort,
   } = useChatSession(projectId);
@@ -155,6 +157,49 @@ export function ChatPanel({
     [setActiveConversationId, setHistoryOpen],
   );
 
+  // Read out here rather than inside the memo below. `t` keeps the same
+  // identity for the life of the page -- switching language re-renders
+  // without replacing it -- so a memo that depends on `t` and calls it inside
+  // would go on showing the sentence in the language it first ran in.
+  const openFailedText = t('chat.error.openFailed');
+  const retryText = t('chat.error.retry');
+  const earlierFailedText = t('chat.error.loadEarlierFailed');
+  const connectionLostText = t('chat.error.connectionLost');
+
+  /**
+   * What the one notice line is saying, and what to press about it.
+   *
+   * Four things can be wrong and only one line to say them in, so they are
+   * ranked. Opening failed comes first because it rules the others out --
+   * with no conversation nothing can be sent and nothing can be reached back
+   * for. Then the two the reader is waiting on an answer to, the send ahead
+   * of the earlier page because their own words are what is at stake. The
+   * dropped connection comes last: it is the state the panel is in rather
+   * than the answer to something just pressed.
+   */
+  const noticeState = React.useMemo((): {
+    message: string | null;
+    action?: { label: string; onClick: () => void };
+  } => {
+    if (failedToOpen) {
+      return { message: openFailedText, action: { label: retryText, onClick: retryOpen } };
+    }
+    if (notice !== null) return { message: notice };
+    if (earlierFailed) return { message: earlierFailedText };
+    if (connectionLost) return { message: connectionLostText };
+    return { message: null };
+  }, [
+    failedToOpen,
+    notice,
+    earlierFailed,
+    connectionLost,
+    openFailedText,
+    retryText,
+    earlierFailedText,
+    connectionLostText,
+    retryOpen,
+  ]);
+
   /** Load a quick-action label into the composer. Stable for the same reason. */
   const quickAction = React.useCallback(
     (label: string): void => {
@@ -188,19 +233,9 @@ export function ChatPanel({
       {/* A chat that would not open is the same kind of news as a message
           that would not send, and it belongs in the same place — a second
           bar at the top of the panel would be one more spot to learn to
-          look at, and the two could disagree. */}
-      {/* Three things this one line can be saying, and they cannot happen at
-          once: the chat would not open, the message would not send, or the
-          connection dropped while a reply was arriving. The last one has
-          nowhere else to be said -- the mark left on a reply by a dropped
-          connection is the same one the reader's own stop button leaves. */}
-      <ChatNotice
-        message={
-          failedToOpen
-            ? t('chat.error.openFailed')
-            : (notice ?? (connectionLost ? t('chat.error.connectionLost') : null))
-        }
-      />
+          look at, and the two could disagree. Which of them this line is
+          saying, and why in that order, is worked out above. */}
+      <ChatNotice message={noticeState.message} action={noticeState.action} />
       <ChatComposer
         draft={draft}
         streaming={streaming}
