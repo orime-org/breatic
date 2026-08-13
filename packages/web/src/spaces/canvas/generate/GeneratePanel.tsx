@@ -205,9 +205,12 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        // Text-to-image reads no source images at all, so its rail goes dark
-        // whole — and with it every ✕, because references are shared across
-        // modes (decision 2026-08-11). Image-to-image and edit light it back up.
+        // Text-to-image reads no source images at all, so its reference
+        // material rows go dark — and with them their ✕, because references
+        // are shared across modes (decision 2026-08-11). A text row stays lit
+        // either way: it feeds the prompt string, which t2i sends like any
+        // other mode. Image-to-image is the mode that lights the rest back up;
+        // this panel has exactly those two (`ImageGenMode`).
         modeTakesReferences={!imageSourcesOff}
         // Which modalities the lit rail offers, straight from the model's
         // precomputed source requirement rather than hardcoded to image.

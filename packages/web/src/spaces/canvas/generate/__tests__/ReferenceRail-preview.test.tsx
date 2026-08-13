@@ -138,10 +138,12 @@ describe('ReferenceRail — the hover preview gets the real modality', () => {
   });
 
   it('previews at full strength even in a mode that dims the rail', () => {
-    // The dim says "this mode does not use references"; it does not say "you
-    // may not look at this". User 2026-08-13: 「hover 的时候还是可以显示效果
-    // 图的」. The row's opacity is on the row, and the card is portaled out of
-    // it, so the preview is unaffected — and nothing re-applies the dim here.
+    // A preview's job is to say WHAT this row is; whether the mode can use it
+    // is said by the row's own dim and by the buttons (user 2026-08-13). The
+    // row's opacity is on the row, and the card is portaled out of it, so the
+    // preview is unaffected — and nothing re-applies the dim here. The prompt
+    // editor's `@` chip preview follows the same rule; the two used to
+    // disagree, so one image previewed two ways in one panel.
     render(
       <ReferenceRail
         references={ROWS}

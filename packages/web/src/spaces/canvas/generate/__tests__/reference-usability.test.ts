@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   insertRefusal,
+  isReferenceMaterial,
   removeRefusal,
   type ReferenceModeContext,
 } from '@web/spaces/canvas/generate/reference-usability';
@@ -180,24 +181,45 @@ describe('removeRefusal — the ✕ follows the dim, which reads on reference ma
   });
 });
 
-describe('insertRefusal — an unstated restriction is not an empty one', () => {
-  it('offers every media row while the model catalog has not resolved', () => {
-    // `undefined` means "no restriction stated" — the model has not loaded, so
-    // nothing is known about what this mode consumes. Encoding that as `[]`
-    // made a lit rail refuse every media row with a reason that was false, and
-    // it was stricter than the code this replaced (#1945 Gate 2 round 1).
+describe('insertRefusal — not knowing is its own answer', () => {
+  it('refuses every media row while the catalog is unresolved, and says why', () => {
+    // Three states, not two. Round 1 of Gate 2 found that spelling "the model
+    // has not loaded" as `[]` made the rail refuse with a reason that was
+    // false ("this mode's references don't take images"). The repair spelled
+    // it as "refuse nothing", which round 2 found was WORSE: it let an audio
+    // row be inserted during the load window, which the code this replaced
+    // never allowed. The defect was never the refusal — it was the reason.
     const unresolved: ReferenceModeContext = {
       takesReferences: true,
       allowedSourceTypes: undefined,
     };
-    for (const kind of ['image', 'audio', 'video', 'text'] as const) {
-      expect(insertRefusal(kind, unresolved), `${kind} while loading`).toBeNull();
+    for (const kind of ['image', 'audio', 'video'] as const) {
+      expect(insertRefusal(kind, unresolved), `${kind} while loading`).toBe(
+        'catalog-unresolved',
+      );
     }
+    // Text is not reference material, so the catalog has nothing to say
+    // about it.
+    expect(insertRefusal('text', unresolved)).toBeNull();
   });
 
-  it('still refuses everything when the mode itself takes no references', () => {
-    // The mode dimension does not depend on the model, so an unresolved
-    // catalog must not turn a dark rail into a live one.
+  it('refuses removal for the same reason, so the row is not half-frozen', () => {
+    // The x and the insert button answer the same question about a media row:
+    // is this mode using it. While the catalog is unresolved neither can say,
+    // so neither acts — otherwise a row could be thrown away on the strength
+    // of a state nobody could read.
+    const unresolved: ReferenceModeContext = {
+      takesReferences: true,
+      allowedSourceTypes: undefined,
+    };
+    expect(removeRefusal('image', unresolved)).toBeNull();
+    expect(removeRefusal('text', unresolved)).toBeNull();
+  });
+
+  it('reports the MODE reason first when the catalog is also unresolved', () => {
+    // The mode dimension does not depend on the model at all, so it answers
+    // first and an unresolved catalog cannot turn a dark rail into a live one.
+    // It is also the more actionable of the two: switch modes.
     const darkAndUnresolved: ReferenceModeContext = {
       takesReferences: false,
       allowedSourceTypes: undefined,
@@ -244,5 +266,25 @@ describe('insertRefusal — the rail and the @ picker give the same answer', () 
       'ref/image=ok',
       'talking_head/text=ok',
     ]);
+  });
+});
+
+describe('isReferenceMaterial — one name for the thing both dimensions read on', () => {
+  it('holds for the three media modalities and not for text', () => {
+    for (const kind of ['image', 'audio', 'video'] as const) {
+      expect(isReferenceMaterial(kind), kind).toBe(true);
+    }
+    expect(isReferenceMaterial('text')).toBe(false);
+  });
+
+  it('holds for modalities that carry an asset but cannot reach these nodes', () => {
+    // 3d / web are reference material by nature even though connection-rules
+    // does not let them reach an image or video node today. Answering by
+    // "is it text" and answering by "is it one of the three" diverge exactly
+    // here, and two spellings of one concept is how the rail ended up with a
+    // row that was lit but whose x was frozen.
+    for (const kind of ['3d', 'web'] as NodeKind[]) {
+      expect(isReferenceMaterial(kind), kind).toBe(true);
+    }
   });
 });

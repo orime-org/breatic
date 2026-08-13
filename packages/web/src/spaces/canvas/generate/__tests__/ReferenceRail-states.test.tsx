@@ -301,3 +301,44 @@ describe('ReferenceRail — a focus crop has no edge to delete', () => {
     );
   });
 });
+
+describe('ReferenceRail — while the model catalog is still loading', () => {
+  /**
+   * Renders a lit rail whose consumable types are not yet known.
+   * @returns The insert spy.
+   */
+  function renderUnresolved(): ReturnType<typeof vi.fn> {
+    const onInsert = vi.fn();
+    render(
+      <ReferenceRail
+        references={ROWS}
+        onInsert={onInsert}
+        onRemove={vi.fn()}
+        modeTakesReferences
+      />,
+    );
+    return onInsert;
+  }
+
+  it('refuses the media rows and says the catalog is loading', () => {
+    // Not "this mode's references don't take images" (false), and not silence
+    // followed by an insert that stops working a moment later.
+    const onInsert = renderUnresolved();
+    for (const id of ['e-image', 'e-audio', 'e-video']) {
+      expect(insertBtn(id), id).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(insertBtn(id));
+    }
+    expect(onInsert).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledTimes(3);
+    for (const call of vi.mocked(toast.warning).mock.calls) {
+      expect(call[0]).toBe('canvas.generatePanel.refuseInsertCatalogLoading');
+    }
+  });
+
+  it('still inserts the text row — the catalog has nothing to say about it', () => {
+    const onInsert = renderUnresolved();
+    fireEvent.click(insertBtn('e-text'));
+    expect(onInsert).toHaveBeenCalledTimes(1);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+});

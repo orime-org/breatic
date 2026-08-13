@@ -157,10 +157,11 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         onInsert={onInsertReference}
         // Reference-to-video is the only mode that reads the pool — the other
         // five take their sources from slots or take none (#1903, landed with
-        // #1927). So the rail goes dark in five of six, which also freezes
-        // every ✕: references are shared across modes, and a ✕ pressed here
-        // would throw away a source the user is coming back for (decision
-        // 2026-08-11).
+        // #1927). So the reference material rows go dark in five of six, which
+        // also freezes their ✕: references are shared across modes, and a ✕
+        // pressed here would throw away a source the user is coming back for
+        // (decision 2026-08-11). A text row is prompt material and stays lit
+        // and removable in all six.
         modeTakesReferences={modeTakesReferences(mode)}
         // Which modalities the lit rail actually offers. Read from the model
         // rather than hardcoded, so a future reference mode that eats video

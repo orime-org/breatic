@@ -11,6 +11,7 @@ import { toast } from '@web/lib/toast';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
   insertRefusal,
+  isReferenceMaterial,
   removeRefusal,
   type ReferenceModeContext,
   type ReferenceRefusal,
@@ -18,15 +19,6 @@ import {
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
-
-/**
- * Whether a row's modality carries an asset a preview could play or show.
- * @param kind - The upstream node's modality.
- * @returns True for image / audio / video.
- */
-function isMediaKind(kind: NodeKind): boolean {
-  return kind === 'image' || kind === 'audio' || kind === 'video';
-}
 
 /**
  * Maps a row's modality to the preview form that can show it. Text previews
@@ -65,14 +57,16 @@ interface ReferenceRailProps {
   /** Insert this reference's @-mention into the prompt at the cursor (chip click). */
   onInsert: (item: ReferenceRailItem) => void;
   /**
-   * Does the active mode consume the reference pool at all? False dims EVERY
-   * row and freezes every ✕ — references are shared across modes, so a row
-   * thrown away in a mode that ignores it would be gone on switching back
-   * (decision 2026-08-11), and that verdict does not vary by modality. Rows
-   * used to be dimmed by type instead, which left audio / video rows looking
-   * live and removable inside a mode that would never read them (#1930,
-   * #1940). The way out of a dark rail is in the refusal message: switch to a
-   * mode that uses references, or delete the edge on the canvas (#1934).
+   * Does the active mode consume the reference pool at all? False dims every
+   * REFERENCE MATERIAL row and freezes its ✕ — references are shared across
+   * modes, so a row thrown away in a mode that ignores it would be gone on
+   * switching back (decision 2026-08-11). A text row is prompt material and
+   * outside this rule entirely (user 2026-08-13). Among the rows it does
+   * govern the verdict never varies by modality: dimming by type is what left
+   * audio / video rows looking live and removable inside a mode that would
+   * never read them (#1930, #1940). The way out of a dark rail is in the
+   * refusal message: switch to a mode that uses references, or delete the edge
+   * on the canvas (#1934).
    */
   modeTakesReferences?: boolean;
   /**
@@ -128,11 +122,15 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   // afford to say so without being wrong about the other.
   const refuseInsert = React.useCallback(
     (refusal: ReferenceRefusal, kind: NodeKind): void => {
-      toast.warning(
-        refusal === 'mode-takes-no-references'
-          ? t('canvas.generatePanel.refuseInsertModeOff')
-          : t('canvas.generatePanel.refuseInsertTypeUnused', { kind }),
-      );
+      if (refusal === 'mode-takes-no-references') {
+        toast.warning(t('canvas.generatePanel.refuseInsertModeOff'));
+        return;
+      }
+      if (refusal === 'catalog-unresolved') {
+        toast.warning(t('canvas.generatePanel.refuseInsertCatalogLoading'));
+        return;
+      }
+      toast.warning(t('canvas.generatePanel.refuseInsertTypeUnused', { kind }));
     },
     [t],
   );
@@ -168,12 +166,11 @@ export const ReferenceRail = React.memo(function ReferenceRail({
         const removeRefused = removeRefusal(ref.sourceNodeType, modeCtx);
         // Empty-source hint (H, user 2026-07-12): a source that has produced
         // nothing has no preview to show, so say so rather than opening a
-        // blank card. Keyed on the ASSET, not the thumbnail: an audio node
-        // never has a thumbnail even when it is full, so the old test called
-        // every audio reference empty — while a coverless video (#1821) has a
-        // file to play and was being called empty too. Both answers were about
-        // whether a still existed, which is a different question.
-        const emptyHint = isMediaKind(ref.sourceNodeType)
+        // blank card. Keyed on the ASSET rather than the thumbnail, because
+        // the two answer different questions: a coverless video (#1821) has a
+        // file to play and no still, and used to be called empty on the
+        // strength of the missing still.
+        const emptyHint = isReferenceMaterial(ref.sourceNodeType)
           ? ref.mediaUrl
             ? undefined
             : t('canvas.generatePanel.emptyImageReference')
@@ -202,7 +199,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             // a dark row still shows its picture at full strength (user
             // 2026-08-13).
             className={`group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5 ${
-              modeTakesReferences || !isMediaKind(ref.sourceNodeType)
+              modeTakesReferences || !isReferenceMaterial(ref.sourceNodeType)
                 ? ''
                 : 'opacity-50'
             }`}

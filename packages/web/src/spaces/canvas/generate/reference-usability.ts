@@ -40,20 +40,28 @@ import type { SourceType } from '@breatic/shared';
 import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 
 /**
- * Why a rail control refuses to act. Each value maps to one toast — the two
- * refusals are not interchangeable, because they suggest different remedies:
- * one says switch modes, the other says this model does not eat that.
+ * Why a rail control refuses to act. Each value maps to one toast, because
+ * each suggests a different remedy: switch modes, pick a model whose
+ * references take this, or simply wait.
+ *
+ * `catalog-unresolved` is the one that is easy to get wrong twice. Spelling
+ * "the model has not loaded" as an empty allow-list made the rail refuse with
+ * a reason that was false; spelling it as "refuse nothing" let rows through
+ * that are never insertable once the answer arrives. It is neither — it is not
+ * knowing, which refuses and says so.
  */
 export type ReferenceRefusal =
   | 'mode-takes-no-references'
-  | 'source-type-unused';
+  | 'source-type-unused'
+  | 'catalog-unresolved';
 
 /** What the active mode does with the reference pool. */
 export interface ReferenceModeContext {
   /**
    * Does this mode consume the `@`-picked pool at all (`modeTakesReferences`
    * on the video panel, `!imageSourcesOff` on the image one)? This is the
-   * row-level dimension: false dims every row and freezes every ✕.
+   * row-level dimension: false dims every REFERENCE MATERIAL row and freezes
+   * its ✕. Text rows are outside it — see the module docstring.
    */
   takesReferences: boolean;
   /**
@@ -76,6 +84,22 @@ export interface ReferenceModeContext {
 }
 
 /**
+ * Whether a row is REFERENCE MATERIAL — the thing both dimensions read on.
+ *
+ * A named predicate rather than a check spelled out at each site: the dim, the
+ * ✕ and the empty hint all ask this one question, and when two of them spelled
+ * it differently ("is it one of the three media kinds" vs "is it not text")
+ * they disagreed about `3d` and `web` — one lit the row while the other froze
+ * its ✕. Text is the only modality that is not reference material, because it
+ * is prompt material: its content substitutes into the prompt string.
+ * @param kind - The upstream node's modality.
+ * @returns True for everything except text.
+ */
+export function isReferenceMaterial(kind: NodeKind): boolean {
+  return kind !== 'text';
+}
+
+/**
  * Decides whether a row can be inserted into the prompt as an `@`-mention —
  * the same call the `@` picker filters with, so the two entry points cannot
  * drift into disagreeing about one row.
@@ -87,18 +111,18 @@ export function insertRefusal(
   sourceNodeType: NodeKind,
   ctx: ReferenceModeContext,
 ): ReferenceRefusal | null {
-  // Text is prompt material, not reference material: its substitution feeds
-  // the prompt string in every mode (`video-task-payload.ts` sends
-  // `prompt: promptText` with no mode branch), so no mode can refuse it.
-  if (sourceNodeType === 'text') return null;
+  // Text is prompt material: its substitution feeds the prompt string in every
+  // mode (`video-task-payload.ts` sends `prompt: promptText` with no mode
+  // branch), so no mode and no model can refuse it.
+  if (!isReferenceMaterial(sourceNodeType)) return null;
   // Mode before modality when both would refuse: "switch to a mode that uses
   // references" is actionable, "this model's references do not take audio" is
-  // merely true.
+  // merely true. The mode also does not depend on the model, so it can answer
+  // even when nothing else can.
   if (!ctx.takesReferences) return 'mode-takes-no-references';
-  // Nothing stated about the consumable types: refuse nothing on those
-  // grounds. The mode dimension above still applies, so an unresolved catalog
-  // cannot turn a dark rail into a live one.
-  if (ctx.allowedSourceTypes === undefined) return null;
+  // Not knowing is its own answer, and it refuses. Saying yes here would offer
+  // rows that stop being insertable a moment later, once the catalog lands.
+  if (ctx.allowedSourceTypes === undefined) return 'catalog-unresolved';
   return (ctx.allowedSourceTypes as readonly string[]).includes(sourceNodeType)
     ? null
     : 'source-type-unused';
@@ -125,6 +149,6 @@ export function removeRefusal(
   sourceNodeType: NodeKind,
   ctx: ReferenceModeContext,
 ): ReferenceRefusal | null {
-  if (sourceNodeType === 'text') return null;
+  if (!isReferenceMaterial(sourceNodeType)) return null;
   return ctx.takesReferences ? null : 'mode-takes-no-references';
 }

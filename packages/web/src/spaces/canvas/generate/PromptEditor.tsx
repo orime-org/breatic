@@ -56,12 +56,6 @@ export interface PromptEditorHandle {
   serializePrompt: () => string | null;
 }
 
-/**
- * Default for `allowedSourceTypes`: no stated restriction. A module constant so
- * the ref holding it keeps a stable value across renders.
- */
-const ALL_SOURCE_TYPES: readonly SourceType[] = ['image', 'video', 'audio'];
-
 interface PromptEditorProps {
   /** The node's prompt Y.XmlFragment — the collaborative binding target. */
   fragment: Y.XmlFragment;
@@ -88,8 +82,12 @@ interface PromptEditorProps {
   /**
    * The source types the active mode consumes (`sourcesByMode[mode]`). Decides
    * which media rows the `@` picker offers, so that the picker and the rail's
-   * insert button answer one row the same way (#1945). Defaults to all three:
-   * a caller that does not state a restriction is not narrowed to nothing.
+   * insert button answer one row the same way (#1945).
+   *
+   * Passed through undefined-and-all: `undefined` means the model catalog has
+   * not resolved, and that has to reach the predicate intact. Substituting a
+   * concrete list here would tell the picker "every type is fine" during the
+   * load window and offer rows that stop being insertable a moment later.
    */
   allowedSourceTypes?: readonly SourceType[];
   /** Localized empty-state text for the `@` picker popup. */
@@ -132,7 +130,7 @@ export const PromptEditor = React.forwardRef<
     onAtMentionsChange,
     references,
     imageRefsDisabled,
-    allowedSourceTypes = ALL_SOURCE_TYPES,
+    allowedSourceTypes,
     mentionEmptyLabel,
     caretProvider = null,
   }: PromptEditorProps,
@@ -197,8 +195,6 @@ export const PromptEditor = React.forwardRef<
           // The chip's text-reference hover resolves live content through the
           // same pool ref (spec §9.1).
           getPool: () => poolRef.current,
-          // t2i → an image chip's hover preview greys out (unavailable).
-          getImageRefsDisabled: () => imageRefsDisabledRef.current,
         }),
       ],
       immediatelyRender: false,
@@ -288,7 +284,7 @@ export const PromptEditor = React.forwardRef<
   // remote case.
   React.useEffect(() => {
     suggestionRefreshRef.current?.();
-  }, [imageRefsDisabled, references]);
+  }, [imageRefsDisabled, allowedSourceTypes, references]);
 
   // Cascade-clear stale @-mention chips: when a reference edge is removed the
   // pool shrinks, so any @-mention pointing at a now-disconnected source must

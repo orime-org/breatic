@@ -323,7 +323,7 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     expect(screen.getByTestId('generate-ref-insert-a->me')).not.toHaveClass(
       'opacity-50',
     );
-    // Image row: refuses to insert. Both ✕ refuse, text included.
+    // Image row: refuses both insert and remove.
     expect(screen.getByTestId('generate-ref-insert-a->me')).toHaveAttribute(
       'aria-disabled',
       'true',
@@ -332,7 +332,7 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
       'aria-disabled',
       'true',
     );
-    // ...and its ✕ stays live, because this mode is already consuming it.
+    // The text row's ✕ stays live, because this mode is already using it.
     expect(screen.getByTestId('generate-ref-remove-b->me')).not.toHaveAttribute(
       'aria-disabled',
       'true',
