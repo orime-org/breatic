@@ -135,7 +135,7 @@
       "notSent": "That did not go out — check your connection.",
       "openFailed": "This chat could not be opened.",
       "retry": "Try again",
-      "connectionLost": "The connection dropped. This reply may be unfinished — reload the page to see all of it.",
+      "connectionLost": "The connection dropped, so this reply is not all here. Reload the page to read it again.",
       "loadEarlierFailed": "Earlier messages could not be loaded."
     },
     "message": {
