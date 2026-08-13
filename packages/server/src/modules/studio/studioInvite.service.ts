@@ -17,10 +17,12 @@
  *     links them, then sends the optional invite email (best-effort, when an
  *     origin is given). A second LIVE pending for the same (studio, invitee)
  *     hits the partial unique → ConflictError.
- *   - `confirmInvite`: the invitee accepts. In ONE tx: the accept CAS (the
- *     serialization point — concurrent confirms apply EXACTLY ONCE), then
- *     upsert the membership, mark the bell notification read, and notify the
- *     inviting admin via `studio.invite_accepted`.
+ *   - `confirmInvite`: the invitee accepts. In ONE tx: take the studio's row
+ *     (refusing if it has been soft-deleted), the accept CAS (the
+ *     serialization point — concurrent confirms apply EXACTLY ONCE), the member
+ *     ceiling behind that lock, then upsert the membership, mark the bell
+ *     notification read, and notify the inviting admin via
+ *     `studio.invite_accepted`.
  *   - `declineInvite`: the invitee declines (membership untouched).
  *   - `revokeInvite`: the admin cancels a pending invite in their studio.
  *
@@ -189,17 +191,23 @@ export async function createInvite(
  * The invitee confirms an invite — atomically turns the pending invite into a
  * real membership.
  *
- * In one transaction: (1) the accept CAS (`UPDATE … WHERE status='pending' AND
- * invited_user_id = receiver AND not expired`) — the serialization point, so
- * concurrent confirms (bell + email link, or a double click) apply EXACTLY
- * ONCE; (2) upsert the `studio_members` row (reviving a previously-kicked one);
- * (3) mark the bell notification read; (4) notify the inviting admin via
+ * In one transaction: (1) read which studio this invite points at, unlocked;
+ * (2) take that studio's row, then ask separately whether it is still live and
+ * refuse if not — the lock only serialises, it does not filter `deleted_at`;
+ * (3) the accept CAS (`UPDATE … WHERE status='pending' AND invited_user_id =
+ * receiver AND not expired`) — the serialization point, so concurrent confirms
+ * (bell + email link, or a double click) apply EXACTLY ONCE; (4) the studio's
+ * member ceiling, read and counted behind the lock taken in (2), so two
+ * simultaneous confirms cannot both take the last seat; (5) upsert the
+ * `studio_members` row (reviving a previously-kicked one); (6) mark the bell
+ * notification read; (7) notify the inviting admin via
  * `studio.invite_accepted`.
  * @param invitationId - The `studio_invitations` row id
  * @param receiverUserId - The invitee confirming (must own the invite)
- * @throws {NotFoundError} the invite is missing, already decided, expired, or
- *   not owned by `receiverUserId`
- * @throws {ConflictError} the user is somehow already an active member
+ * @throws {NotFoundError} the invite is missing, already decided, expired, not
+ *   owned by `receiverUserId`, or its studio has been soft-deleted
+ * @throws {ConflictError} the studio is at its member ceiling, or the user is
+ *   somehow already an active member
  */
 export async function confirmInvite(
   invitationId: string,
@@ -216,17 +224,24 @@ export async function confirmInvite(
       throw new NotFoundError(t("server.error.not_found"));
     }
 
-    // Taken BEFORE the CAS, and that order is not a preference: the studio
-    // delete cascade takes `studios` first and `studio_invitations` second, so
-    // a confirm that took them the other way round would close a deadlock
-    // cycle and one of the two would die with a 40P01 (a 500 for whoever lost).
+    // Taken BEFORE the CAS, matching the order the project side has to use
+    // against `deleteProject` (`projects` first, its invitations second). There
+    // is no studio-delete cascade to deadlock with YET — studio deletion is not
+    // built (#26) — so today this order costs nothing and prevents nothing.
+    // Keeping the two sides identical is the point: whoever builds #26 will
+    // take the `studios` row first, as every cascade here does, and this path
+    // is then already on the safe side of that cycle rather than needing to be
+    // found and changed.
+    //
     // This lock only serialises — it deliberately does not filter `deleted_at`
     // — so liveness is a separate question, asked right after.
     await studioRepo.lockStudio(targetStudioId, tx);
     if ((await studioRepo.getById(targetStudioId, tx)) === null) {
       // The studio went away while this invite sat in the bell. Accepting now
       // would leave a live member row on something nobody can open, which is
-      // the orphan every other project-scoped path takes this lock to prevent.
+      // the orphan every project-scoped path takes its lock to prevent. Nothing
+      // in the product soft-deletes a studio yet (#26); the integration case
+      // reaches this branch by doing it in SQL.
       throw new NotFoundError(t("server.error.not_found"));
     }
 
@@ -280,9 +295,10 @@ export async function confirmInvite(
       await notificationRepo.markRead(accepted.notificationId, receiverUserId, tx);
     }
 
-    const profiles = await studioRepo.getPersonalProfilesByCreators([
-      accepted.invitedUserId,
-    ]);
+    const profiles = await studioRepo.getPersonalProfilesByCreators(
+      [accepted.invitedUserId],
+      tx,
+    );
     const invitee = profiles.get(accepted.invitedUserId);
     await notificationService.createStudioInviteAccepted({
       userId: accepted.invitedBy,

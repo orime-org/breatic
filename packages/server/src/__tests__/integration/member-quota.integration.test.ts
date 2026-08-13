@@ -307,6 +307,14 @@ describe("studio member cap — accept time (the real gate)", () => {
     await expect(
       studioInviteService.confirmInvite(invitation, invitee.id),
     ).rejects.toMatchObject({ statusCode: 409 });
+    // The refusal is thrown inside the transaction, so the accept CAS rolls
+    // back with it: the invite is still there to accept once somebody leaves.
+    // Burning it would leave the invitee with a dead bell entry and no way
+    // back in even after room opens up.
+    const rows = await sql<{ status: string }[]>`
+      SELECT status FROM studio_invitations WHERE id = ${invitation}
+    `;
+    expect(rows[0]!.status).toBe("pending");
   });
 
   it("tells the invitee to ask an admin, and never tells them to upgrade", async () => {
@@ -430,6 +438,12 @@ describe("project collaborator cap — accept time (the real gate)", () => {
     await expect(
       projectInviteService.confirmInvite(invitation, invitee.id),
     ).rejects.toMatchObject({ statusCode: 409 });
+    // Same as the studio side: the accept CAS rolls back with the refusal, so
+    // the invite survives to be accepted once a seat frees up.
+    const rows = await sql<{ status: string }[]>`
+      SELECT status FROM project_invitations WHERE id = ${invitation}
+    `;
+    expect(rows[0]!.status).toBe("pending");
   });
 
   it("tells the invitee to ask the owner, and never tells them to upgrade", async () => {

@@ -160,12 +160,13 @@ export async function attachNotification(
 /**
  * Which studio an invitation points at, read WITHOUT a lock.
  *
- * `confirmInvite` is handed an invitation id and nothing else, but it has to
- * take the studio's row lock BEFORE the accept CAS: the studio-delete cascade
- * locks `studios` first and only then touches `studio_invitations`, so a
- * confirm that took those two in the other order would close a deadlock cycle.
- * This read exists to break that ordering problem, and reading it unlocked is
- * safe for two reasons — an invitation's `studio_id` never changes, and whether
+ * `confirmInvite` is handed an invitation id and nothing else, but it takes the
+ * studio's row lock BEFORE the accept CAS, so the id has to be reachable ahead
+ * of it. That order mirrors the project side, where `deleteProject` locks
+ * `projects` first and sweeps its invitations second and the opposite order
+ * would close a deadlock cycle; no studio-delete cascade exists yet (#26), so
+ * on this side the order is a precaution rather than a fix. Reading it unlocked
+ * is safe for two reasons — an invitation's `studio_id` never changes, and whether
  * the invite may still be accepted is decided by {@link acceptIfPending}, not
  * here. Rows that are soft-deleted or point at nothing are simply absent.
  * @param id - Invitation id

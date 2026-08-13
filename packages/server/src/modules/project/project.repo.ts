@@ -560,9 +560,10 @@ export async function deleteProject(id: string): Promise<void> {
 
     // Pending invites are the same shape and were the same defect: a live
     // pending row on a dead project holds its one-pending slot and its restrict
-    // FK forever, and `confirmInvite` never checks project liveness — so the
-    // invitee could still accept and land an active member row on a project
-    // nobody can open.
+    // FK forever. `confirmInvite` takes this same row before it writes, so a
+    // pending invite to a project swept here can no longer be accepted (that
+    // was not true until #87 — before it, an invitee could accept and land an
+    // active member row on a project nobody can open).
     await tx
       .update(projectInvitations)
       .set({ deletedAt: now })

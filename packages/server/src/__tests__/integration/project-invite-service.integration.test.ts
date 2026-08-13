@@ -95,9 +95,10 @@ beforeAll(async () => {
   pgClient = t.client;
 
   await db.insert(schema.users).values([
-    // On `pro` for the same reason as the studio suite: this account
+    // On `pro` because these cases are not about the ceiling: this account
     // administers the studio these projects live in, and both ceilings are read
-    // from that admin's tier.
+    // from its tier. On `base` the project ceiling is 4 collaborators, which
+    // several cases here would hit for a reason none of them is about.
     { id: OWNER, email: "owner@proj-test.dev", membershipTier: "pro" },
     { id: INVITEE, email: INVITEE_EMAIL },
     { id: STRANGER, email: "stranger@proj-test.dev" },

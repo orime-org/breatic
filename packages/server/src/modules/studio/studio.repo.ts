@@ -258,14 +258,22 @@ export async function getPersonalIdentitiesByCreators(
  * filter a user can match more than one row, and the query has no ordering —
  * so building the map by last-write-wins would pick an arbitrary row and could
  * show a stale name for someone who is perfectly present.
+ * A caller inside a transaction MUST pass the handle. Both `confirmInvite`
+ * transactions call this while holding a `studios` / `projects` row lock, and a
+ * read issued without the handle reaches for a second pooled connection while
+ * the first is still held — which is how a pool exhausts itself under
+ * concurrent writes, in a shape that does not recover: the connection the lock
+ * holder cannot get is the one it needs before it can commit and let go.
  * @param createdByUserIds - User UUIDs to resolve (empty input → empty map)
+ * @param tx - Enclosing transaction, when the caller is inside one
  * @returns Map of `userId → { name, slug, deleted }`
  */
 export async function getPersonalProfilesByCreators(
   createdByUserIds: string[],
+  tx?: DbTx,
 ): Promise<Map<string, { name: string; slug: string; deleted: boolean }>> {
   if (createdByUserIds.length === 0) return new Map();
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({
       createdByUserId: studios.createdByUserId,
       name: studios.name,

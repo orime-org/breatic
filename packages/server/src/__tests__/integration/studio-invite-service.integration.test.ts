@@ -83,10 +83,12 @@ beforeAll(async () => {
   pgClient = t.client;
 
   await db.insert(schema.users).values([
-    // On `pro`: this account administers a TEAM studio, which the `base` tier
-    // cannot even create (team_studios: 0) and whose member ceiling is 1 — the
-    // admin alone. A base fixture here would be a state the product cannot
-    // reach, and every invite in this file would be refused for that reason.
+    // On `pro` because these cases are not about the ceiling. `base` allows a
+    // single studio member — the admin's own seat — so a base fixture here
+    // would have every invite in the file refused for running out of room
+    // rather than for the reason each case is about. (A base account CAN end
+    // up administering a team studio: neither transfer nor a downgrade checks
+    // the tier. It just cannot invite anyone once there.)
     { id: INVITER, email: "inviter@svc-test.dev", membershipTier: "pro" },
     { id: INVITEE, email: INVITEE_EMAIL },
     { id: STRANGER, email: "stranger@svc-test.dev" },

@@ -127,12 +127,13 @@ let studioSeq = 0;
 /**
  * Insert a fresh team studio created by the given user; returns id + slug.
  *
- * The creator is moved to `pro` here rather than at the call sites, because
- * holding a team studio IS the tier statement: `base` cannot create one
- * (`team_studios: 0`) and its member ceiling is one seat, the admin's own. A
- * base creator would be a state the product cannot reach, and every invite
- * into the studio would then be refused for that reason rather than the one
- * the case is about.
+ * The creator is moved to `pro` here rather than at the call sites because
+ * every case in this file needs room for a second member: `base` allows one
+ * studio member, the admin's own seat, so a base creator would have every
+ * invite refused for running out of room rather than for the reason the case
+ * is about. (A base account can still end up administering a team studio —
+ * neither transfer nor a downgrade checks the tier — it just cannot invite
+ * anyone once there.)
  * @param createdByUserId - Becomes the studio's admin.
  * @returns The studio id and slug.
  */

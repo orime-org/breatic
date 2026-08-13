@@ -18,10 +18,11 @@
  *     links them. Returns the invitee + invitation id so the route layer can
  *     send the (optional) email. A second LIVE pending for the same
  *     (project, invitee) hits the partial unique → ConflictError.
- *   - `confirmInvite`: the invitee accepts. In ONE tx: the accept CAS (the
- *     serialization point — concurrent confirms apply EXACTLY ONCE), then
- *     upsert the membership, mark the bell notification read, and notify the
- *     inviting owner via `project.invite_accepted`.
+ *   - `confirmInvite`: the invitee accepts. In ONE tx: take the project's row
+ *     (refusing if it is gone), the accept CAS (the serialization point —
+ *     concurrent confirms apply EXACTLY ONCE), the collaborator ceiling behind
+ *     that lock, then upsert the membership, mark the bell notification read,
+ *     and notify the inviting owner via `project.invite_accepted`.
  *   - `declineInvite`: the invitee declines (membership untouched).
  *   - `revokeInvite`: the owner cancels a pending invite in their project.
  *
@@ -140,21 +141,26 @@ export async function createInvite(
   let shareToken = "";
   try {
     await db.transaction(async (tx) => {
-      // Reap any expired-but-still-'pending' invite for this (project, invitee)
-      // first: the one-pending partial unique index ignores expiry (a partial
+      // The project row comes FIRST, before anything in `project_invitations`,
+      // and that order is not a preference: `deleteProject` takes this row and
+      // only then sweeps the invitations of this project, so a path that took
+      // the two the other way round would close an AB/BA cycle with it. The
+      // window is as wide as the whole delete cascade, and the loser of a
+      // deadlock gets 40P01 — neither an `AppError` nor an `HTTPException`, so
+      // a 500. Pinned by `invite-lock-order.integration.test.ts`.
+      //
+      // The lock also refuses when the project is already gone: without it the
+      // insert below would commit after the cascade had swept this table,
+      // leaving a live pending invite on a dead project.
+      if (!(await projectRepo.lockLiveProject(projectId, tx))) {
+        throw new NotFoundError(t("server.error.not_found"));
+      }
+      // Reap any expired-but-still-'pending' invite for this (project, invitee):
+      // the one-pending partial unique index ignores expiry (a partial
       // predicate can't reference now()), so a timed-out invite would otherwise
       // trip it and reject the re-invite with a spurious "already invited"
       // (#1769). Same transaction → freeing the slot and taking it are atomic.
       await invitesRepo.expireStalePending(projectId, invitee.id, tx);
-            // Locks the project for the length of this transaction and refuses if it
-      // is already gone. Same window the request tables have: without the lock
-      // the insert commits after the delete cascade has swept this table,
-      // leaving a live pending invite on a dead project — and `confirmInvite`
-      // never checks project liveness, so the invitee could still accept and
-      // land an active member row on something nobody can open.
-      if (!(await projectRepo.lockLiveProject(projectId, tx))) {
-        throw new NotFoundError(t("server.error.not_found"));
-      }
       ({ id: invitationId, shareToken } = await invitesRepo.createPending({
         projectId,
         invitedUserId: invitee.id,
@@ -221,16 +227,22 @@ export async function createInvite(
  * The invitee confirms an invite — atomically turns the pending invite into a
  * real membership.
  *
- * In one transaction: (1) the accept CAS (`UPDATE … WHERE status='pending' AND
+ * In one transaction: (1) read which project this invite points at, unlocked;
+ * (2) take that project's row and refuse if it is gone — before the CAS,
+ * because `deleteProject` takes the two in that order and the opposite one
+ * deadlocks; (3) the accept CAS (`UPDATE … WHERE status='pending' AND
  * invited_user_id = receiver AND not expired`) — the serialization point, so
  * concurrent confirms (bell + email link, or a double click) apply EXACTLY
- * ONCE; (2) upsert the `project_members` row (reviving a previously-removed
- * one); (3) mark the bell notification read; (4) notify the inviting owner via
- * `project.invite_accepted`.
+ * ONCE; (4) the collaborator ceiling of the studio this project lives in, read
+ * and counted behind the lock taken in (2), so two simultaneous confirms cannot
+ * both take the last seat; (5) upsert the `project_members` row (reviving a
+ * previously-removed one); (6) mark the bell notification read; (7) notify the
+ * inviting owner via `project.invite_accepted`.
  * @param invitationId - The `project_invitations` row id
  * @param receiverUserId - The invitee confirming (must own the invite)
- * @throws {NotFoundError} the invite is missing, already decided, expired, or
- *   not owned by `receiverUserId`
+ * @throws {NotFoundError} the invite is missing, already decided, expired, not
+ *   owned by `receiverUserId`, or its project has been soft-deleted
+ * @throws {ConflictError} the project is at its collaborator ceiling
  */
 export async function confirmInvite(
   invitationId: string,
@@ -256,7 +268,7 @@ export async function confirmInvite(
     // that took them the other way round would close a deadlock cycle and one
     // of the two would die with a 40P01 (a 500 for whoever lost). Refusing when
     // it returns false is what keeps a live member row off a dead project —
-    // the orphan the note on `createInvite`'s lock has described all along.
+    // the orphan `deleteProject`'s cascade sweeps this table to prevent.
     if (!(await projectRepo.lockLiveProject(targetProjectId, tx))) {
       throw new NotFoundError(t("server.error.not_found"));
     }
@@ -310,9 +322,10 @@ export async function confirmInvite(
       );
     }
 
-    const profiles = await studioRepo.getPersonalProfilesByCreators([
-      accepted.invitedUserId,
-    ]);
+    const profiles = await studioRepo.getPersonalProfilesByCreators(
+      [accepted.invitedUserId],
+      tx,
+    );
     const invitee = profiles.get(accepted.invitedUserId);
     await notificationService.createProjectInviteAccepted({
       userId: accepted.invitedBy,
