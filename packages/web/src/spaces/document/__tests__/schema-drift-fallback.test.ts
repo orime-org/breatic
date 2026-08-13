@@ -90,6 +90,29 @@ const Anno = TiptapMark.create({
 });
 
 /**
+ * 内容规则是 `paragraph block*`：**开头**只收段落，段落之后收任何块。
+ *
+ * 真实的对应物就是 StarterKit 的 `listItem`（@tiptap/extension-list 的
+ * `content: "paragraph block*"`）。它是「父节点开头收不收」和「这个位置收不收」
+ * 分岔的地方 —— 未知块在列表项里永远排在那个段落后面。
+ */
+const Item = TiptapNode.create({
+  name: 'item',
+  content: 'paragraph block*',
+  parseHTML: () => [{ tag: 'li' }],
+  renderHTML: () => ['li', 0],
+});
+
+/** 只收 `item`，两个兜底都放不进去。 */
+const ItemList = TiptapNode.create({
+  name: 'itemList',
+  group: 'block',
+  content: 'item+',
+  parseHTML: () => [{ tag: 'ul' }],
+  renderHTML: () => ['ul', 0],
+});
+
+/**
  * 内容规则是 `text*`：只收文字，两个兜底类型一个都收不了。
  *
  * 两个版本都认识它。真实的对应物是 document space 的 `title`。
@@ -118,6 +141,8 @@ const COMMON: Extensions = [
   Text,
   Blockquote,
   Caption,
+  Item,
+  ItemList,
   Anno,
   UnsupportedBlock,
   UnsupportedInline,
@@ -314,6 +339,39 @@ describe('验收 6：名字认识的构造失败，保持上游自愈', () => {
     expect(clientA.getHTML()).not.toContain('data-unsupported-block');
     expect(clientB.getHTML()).not.toContain('data-unsupported-block');
     expect(clientA.getHTML()).toContain('tail');
+  });
+});
+
+describe('父节点的内容规则开头不收、但后面的位置收', () => {
+  it('列表项里排在段落后面的未知块，包成块级兜底，内容一个字节都不少', () => {
+    // `item` 的内容规则是 `paragraph block*`：**开头**只收段落，所以问
+    // `parentType.contentMatch.matchType(unsupportedBlock)`（那是内容表达式的
+    // 起始匹配点）会答「不收」。但未知块的真实位置在那个段落之后，`block*`
+    // 那一段完全收得下它。判据必须问「这个内容表达式里有没有一个位置收它」，
+    // 不是「开头收不收」—— 否则真实的 listItem 里每一个新块类型都会被删掉。
+    const staleDoc = new Y.Doc();
+    docs.push(staleDoc);
+    staleDoc.transact(() => {
+      const para = new Y.XmlElement('paragraph');
+      para.insert(0, [new Y.XmlText('要点')]);
+      const callout = new Y.XmlElement('callout');
+      const inner = new Y.XmlElement('paragraph');
+      inner.insert(0, [new Y.XmlText('里面的字')]);
+      callout.insert(0, [inner]);
+
+      const item = new Y.XmlElement('item');
+      item.insert(0, [para, callout]);
+      const list = new Y.XmlElement('itemList');
+      list.insert(0, [item]);
+      staleDoc.getXmlFragment('body').insert(0, [list]);
+    });
+
+    makeEditor(staleDoc);
+
+    const body = staleDoc.getXmlFragment('body').toString();
+    expect(body).toContain('<callout>');
+    expect(body).toContain('里面的字');
+    expect(body).toContain('要点');
   });
 });
 
