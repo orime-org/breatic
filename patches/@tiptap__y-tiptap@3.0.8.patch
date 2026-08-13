@@ -1,0 +1,148 @@
+diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
+index 653ffe79d5edb4a040555bb222f472af1e45edc8..39eb01bcdf9abb56849d8dc2cfd9949f266d0d74 100644
+--- a/dist/y-tiptap.cjs
++++ b/dist/y-tiptap.cjs
+@@ -999,6 +999,13 @@ const createNodeFromYElement = (
+     meta.mapping.set(el, node);
+     return node
+   } catch (e) {
++    // PATCHED PROBE: wrap the unknown element instead of deleting it.
++    const fallbackType = schema.nodes.unsupportedBlock;
++    if (fallbackType) {
++      const fallbackNode = fallbackType.create({ originalName: el.nodeName });
++      meta.mapping.set(el, fallbackNode);
++      return fallbackNode
++    }
+     // an error occured while creating the node. This is probably a result of a concurrent action.
+     /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
+       /** @type {Y.Item} */ (el._item).delete(transaction);
+@@ -1164,13 +1171,23 @@ const equalYTextPText = (ytext, ptexts) => {
+ 
+         const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
+ 
++        // PATCHED PROBE: a mark this client does not know is carried by the
++        // fallback mark; it holds the original value, so it counts as equal.
++        if (!pmark) {
++          const carried = pmarks.find(/** @param {any} mark */ mark =>
++            mark.type.name === 'unsupportedMark' && mark.attrs.originalName === yattrname);
++          if (carried) {
++            return true
++          }
++        }
++
+         // Ensure the pmark is present in the ptexts before checking equality. When replacing a mark with another mark
+         // the pmark will be missing from the ptexts and the equalAttrs will throw an error.
+         if (!pmark) {
+           return false
+         }
+ 
+-        return equalAttrs(attr, pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname)?.attrs)
++        return equalAttrs(attr, pmark.attrs)
+       })
+     )
+ };
+@@ -1538,7 +1555,17 @@ const attributesToMarks = (attrs, schema) => {
+   const marks = [];
+   for (const markName in attrs) {
+     // remove hashes if necessary
+-    marks.push(schema.mark(yattr2markname(markName), attrs[markName]));
++    const resolvedName = yattr2markname(markName);
++    // PATCHED PROBE: an unknown mark is carried by a fallback mark that keeps
++    // the original key and value, so a round trip through this client is lossless.
++    if (schema.marks[resolvedName] === undefined) {
++      const fallbackMarkType = schema.marks.unsupportedMark;
++      if (fallbackMarkType !== undefined) {
++        marks.push(fallbackMarkType.create({ originalName: markName, originalValue: attrs[markName] }));
++      }
++      continue
++    }
++    marks.push(schema.mark(resolvedName, attrs[markName]));
+   }
+   return marks
+ };
+@@ -1550,6 +1577,11 @@ const attributesToMarks = (attrs, schema) => {
+ const marksToAttributes = (marks, meta) => {
+   const pattrs = {};
+   marks.forEach((mark) => {
++    if (mark.type.name === 'unsupportedMark') {
++      // PATCHED PROBE: put the original key and value back untouched.
++      pattrs[mark.attrs.originalName] = mark.attrs.originalValue;
++      return
++    }
+     if (mark.type.name !== 'ychange') {
+       const isOverlapping = map__namespace.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type));
+       pattrs[isOverlapping ? `${mark.type.name}--${hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs;
+diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
+index 28c55820dff13cf3d5c303970f530c17eb38f757..a327106bbbcc087cd293e8a09f531765a5f5c7d6 100644
+--- a/dist/y-tiptap.js
++++ b/dist/y-tiptap.js
+@@ -965,6 +965,13 @@ const createNodeFromYElement = (
+     meta.mapping.set(el, node);
+     return node
+   } catch (e) {
++    // PATCHED PROBE: wrap the unknown element instead of deleting it.
++    const fallbackType = schema.nodes.unsupportedBlock;
++    if (fallbackType) {
++      const fallbackNode = fallbackType.create({ originalName: el.nodeName });
++      meta.mapping.set(el, fallbackNode);
++      return fallbackNode
++    }
+     // an error occured while creating the node. This is probably a result of a concurrent action.
+     /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
+       /** @type {Y.Item} */ (el._item).delete(transaction);
+@@ -1130,13 +1137,23 @@ const equalYTextPText = (ytext, ptexts) => {
+ 
+         const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
+ 
++        // PATCHED PROBE: a mark this client does not know is carried by the
++        // fallback mark; it holds the original value, so it counts as equal.
++        if (!pmark) {
++          const carried = pmarks.find(/** @param {any} mark */ mark =>
++            mark.type.name === 'unsupportedMark' && mark.attrs.originalName === yattrname);
++          if (carried) {
++            return true
++          }
++        }
++
+         // Ensure the pmark is present in the ptexts before checking equality. When replacing a mark with another mark
+         // the pmark will be missing from the ptexts and the equalAttrs will throw an error.
+         if (!pmark) {
+           return false
+         }
+ 
+-        return equalAttrs(attr, pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname)?.attrs)
++        return equalAttrs(attr, pmark.attrs)
+       })
+     )
+ };
+@@ -1504,7 +1521,17 @@ const attributesToMarks = (attrs, schema) => {
+   const marks = [];
+   for (const markName in attrs) {
+     // remove hashes if necessary
+-    marks.push(schema.mark(yattr2markname(markName), attrs[markName]));
++    const resolvedName = yattr2markname(markName);
++    // PATCHED PROBE: an unknown mark is carried by a fallback mark that keeps
++    // the original key and value, so a round trip through this client is lossless.
++    if (schema.marks[resolvedName] === undefined) {
++      const fallbackMarkType = schema.marks.unsupportedMark;
++      if (fallbackMarkType !== undefined) {
++        marks.push(fallbackMarkType.create({ originalName: markName, originalValue: attrs[markName] }));
++      }
++      continue
++    }
++    marks.push(schema.mark(resolvedName, attrs[markName]));
+   }
+   return marks
+ };
+@@ -1516,6 +1543,11 @@ const attributesToMarks = (attrs, schema) => {
+ const marksToAttributes = (marks, meta) => {
+   const pattrs = {};
+   marks.forEach((mark) => {
++    if (mark.type.name === 'unsupportedMark') {
++      // PATCHED PROBE: put the original key and value back untouched.
++      pattrs[mark.attrs.originalName] = mark.attrs.originalValue;
++      return
++    }
+     if (mark.type.name !== 'ychange') {
+       const isOverlapping = map.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type));
+       pattrs[isOverlapping ? `${mark.type.name}--${hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs;
