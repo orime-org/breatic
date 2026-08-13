@@ -97,8 +97,8 @@ beforeAll(async () => {
   await db.insert(schema.users).values([
     // On `pro` because these cases are not about the ceiling: this account
     // administers the studio these projects live in, and both ceilings are read
-    // from its tier. On `base` the project ceiling is 4 collaborators, which
-    // several cases here would hit for a reason none of them is about.
+    // from its tier. Kept level with the studio suite's fixture so that adding
+    // a case here later cannot quietly start failing on base's four.
     { id: OWNER, email: "owner@proj-test.dev", membershipTier: "pro" },
     { id: INVITEE, email: INVITEE_EMAIL },
     { id: STRANGER, email: "stranger@proj-test.dev" },
