@@ -27,6 +27,7 @@ import type { MessageData, SSEEventEnvelope } from '@breatic/shared';
 import { SSE_EVENT_NAMES, SSE_HEARTBEAT_TIMEOUT_MS, newId } from '@breatic/shared';
 
 import { chatApi } from '@web/data/api/chat';
+import { ApiException } from '@web/data/api/types';
 import type { OpenChatResult } from '@web/data/api/chat';
 import {
   StreamRefusedError,
@@ -87,29 +88,6 @@ export interface ConversationRuntime {
   failures: number;
   /** The reply of the most recent failure, for the panel to point at. */
   failedReplyId: string | null;
-  /**
-   * The last turn ended because the connection did.
-   *
-   * The mark left on the reply is the same one pressing stop leaves, and it
-   * has to be -- the server cannot tell the two apart either, and records
-   * both as stopped. So the reply alone cannot say which happened, and a
-   * reader who did not press anything is left looking at an answer that
-   * stopped for no reason they can see. Cleared when a new turn starts:
-   * trying again is what makes the last one old news.
-   */
-  connectionLost: boolean;
-  /**
-   * Reaching further back failed.
-   *
-   * Held rather than thrown. Every library that fetches for a view does the
-   * same -- RTK Query says rejections are captured rather than propagated,
-   * and SWR and Apollo both hand the failure back as a value -- because the
-   * caller is a click handler, and a rejection out of one is an unhandled
-   * rejection with nobody to catch it and nothing on screen either way.
-   * Cleared when the reader presses again, which is the way back: the button
-   * stays where it was, so trying again is pressing the same thing.
-   */
-  earlierFailed: boolean;
 }
 
 /** How far opening one project's chat has got. */
@@ -164,6 +142,67 @@ const loadingEarlier = new Map<string, Promise<void>>();
  * observer unsubscribes, and cancelling is the only property the check needs.
  */
 const visits = new Map<string, AbortController>();
+
+/**
+ * Something that went wrong, told once to whoever is looking.
+ *
+ * Told, not kept. Every one of these belongs to a moment the reader was in --
+ * they pressed send, or a reply they were watching stopped arriving -- and a
+ * moment does not wait around. Nobody watching means nobody is in that
+ * moment: the panel is collapsed, or they are reading another conversation.
+ * What they come back to is a conversation that stopped moving, which is how
+ * a reader of a stream knows something went wrong, and it needs no sentence
+ * from us repeating it later.
+ *
+ * The two kinds are not a matter of wording. Getting an answer at all means
+ * the network is fine, so `server` carries the sentence the server wrote --
+ * out of credits, too many requests, not allowed -- and `network` means no
+ * answer came back and there is nothing to quote.
+ */
+export type ChatMishap = {
+  /** The project it happened in. */
+  projectId: string;
+  /** The conversation, or null when there is not one yet to speak of. */
+  conversationId: string | null;
+} & ({ kind: 'network' } | { kind: 'server'; message: string });
+
+const watchers = new Set<(mishap: ChatMishap) => void>();
+
+/**
+ * Be told when something goes wrong, for as long as you are looking.
+ * @param watch - Called once per mishap.
+ * @returns Call to stop watching.
+ */
+export function watchChatMishaps(watch: (mishap: ChatMishap) => void): () => void {
+  watchers.add(watch);
+  return () => {
+    watchers.delete(watch);
+  };
+}
+
+/**
+ * Tell whoever is watching. Nobody watching means it is not told.
+ * @param mishap - What went wrong.
+ */
+function tell(mishap: ChatMishap): void {
+  for (const watch of watchers) watch(mishap);
+}
+
+/**
+ * Read a failed request as the reader would hear it.
+ * @param err - Whatever the call threw.
+ * @returns Which kind of mishap it is, and the server's own words when it
+ *   answered with any.
+ */
+function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
+  if (err instanceof StreamRefusedError) return { kind: 'server', message: err.message };
+  // An ApiException carries the status the server answered with, and zero
+  // when there was no answer to read one from.
+  if (err instanceof ApiException && err.status !== 0) {
+    return { kind: 'server', message: err.message };
+  }
+  return { kind: 'network' };
+}
 
 /**
  * The visit a project is on, starting one if it is not on any.
@@ -260,7 +299,7 @@ async function ensureLoaded(projectId: string): Promise<void> {
       const opened = await chatApi.openChat(projectId, visit.signal);
       if (visit.signal.aborted) return;
       adoptConversation(projectId, opened.current);
-    } catch {
+    } catch (err) {
       // What went wrong is the panel's to show, and it shows one thing for
       // every way this can fail: there is no conversation to write to. The
       // request itself is where a failure is worth its own words, and it says
@@ -272,6 +311,7 @@ async function ensureLoaded(projectId: string): Promise<void> {
       // away from did not work.
       if (visit.signal.aborted) return;
       useStore.setState((s) => ({ openStatus: { ...s.openStatus, [projectId]: 'failed' } }));
+      tell({ projectId, conversationId: null, ...readMishap(err) });
     } finally {
       opening.delete(projectId);
     }
@@ -308,8 +348,6 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
         oldestLoadedTurn: oldestTurnOf(opened.messages),
         failures: 0,
         failedReplyId: null,
-        connectionLost: false,
-        earlierFailed: false,
       },
     },
   }));
@@ -464,13 +502,8 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
     turn: { replyId, abort },
     // Whatever failed before this is no longer what is happening: it has
     // become part of the history, and the failure worth announcing from here
-    // on is this turn's, if it has one. The earlier page is in that list --
-    // the panel has one line to say things in, and a failure the reader has
-    // moved on from would otherwise hold it for the rest of the conversation,
-    // standing in front of the news that this very turn was cut off.
+    // on is this turn's, if it has one.
     failedReplyId: null,
-    connectionLost: false,
-    earlierFailed: false,
   }));
 
   // The stream says it is alive on a schedule of the server's, and this is
@@ -491,10 +524,11 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
       // already be under way. A watchdog that stopped "whatever is running"
       // would kill it on behalf of a turn that finished perfectly well.
       if (useStore.getState().conversations[conversationId]?.turn?.replyId !== replyId) return;
+      const projectId = useStore.getState().conversations[conversationId]?.projectId ?? '';
       stopTurn(conversationId);
-      // Ended the same way pressing stop does, so the reader is owed the same
-      // sentence a dropped socket earns: this was not you.
-      patchConversation(conversationId, (c) => ({ ...c, connectionLost: true }));
+      // Ended the same way pressing stop does, but the reader did not press
+      // anything, so unlike stop this one is worth a word.
+      tell({ projectId, conversationId, kind: 'network' });
     }, SSE_HEARTBEAT_TIMEOUT_MS);
   };
   expectAnotherBeat();
@@ -513,6 +547,20 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
       onError: (err: unknown) => {
         // Three endings, and the panel can only say something true about one
         // it can tell from the others.
+        // Every ending here is one the reader did not ask for, so each is
+        // worth one line. Which line depends only on whether the server got
+        // to answer: an answer at all means the network was fine.
+        if (
+          useStore.getState().conversations[conversationId]?.turn?.replyId === replyId ||
+          err instanceof StreamRefusedError ||
+          err instanceof StreamUnreachableError
+        ) {
+          tell({
+            projectId: useStore.getState().conversations[conversationId]?.projectId ?? '',
+            conversationId,
+            ...readMishap(err),
+          });
+        }
         if (err instanceof StreamRefusedError || err instanceof StreamUnreachableError) {
           // The server answered and said no, or the request never left.
           // Nothing was stored either way -- the server writes the user's own
@@ -530,8 +578,6 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
           // late belongs to a turn that already ended, and marking it would
           // put "stopped" on a reply that finished.
           patchMessage(conversationId, replyId, (m) => ({ ...m, interrupted: true as const }));
-          // And say which of the two it was, since the mark cannot.
-          patchConversation(conversationId, (c) => ({ ...c, connectionLost: true }));
         }
         finishTurn(conversationId, replyId);
       },
@@ -632,13 +678,14 @@ async function loadEarlier(conversationId: string): Promise<void> {
         hasMore: earlier.hasMore,
         oldestLoadedTurn: oldestTurnOf(earlier.messages) ?? c.oldestLoadedTurn,
       }));
-    } catch {
-      // What went wrong is not worth quoting: every way this can fail says
-      // the same thing to the reader, which is that what came before is still
-      // not on screen and the button is still there. Except when the visit is
-      // over, which includes this failure being the abort itself.
+    } catch (err) {
+      // Except when the visit is over, which includes this failure being the
+      // abort itself: nobody asked for this page any more.
       if (visit.signal.aborted) return;
-      patchConversation(conversationId, (c) => ({ ...c, earlierFailed: true }));
+      // Told once. The button is still there and still says there is more, so
+      // pressing it again is how the reader tries again -- and being told
+      // again is what tells them it failed again.
+      tell({ projectId: before.projectId, conversationId, ...readMishap(err) });
     } finally {
       loadingEarlier.delete(conversationId);
     }

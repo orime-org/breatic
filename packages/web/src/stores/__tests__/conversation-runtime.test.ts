@@ -19,12 +19,14 @@ vi.mock('@web/data/api/chat', () => ({
 }));
 
 import { chatApi } from '@web/data/api/chat';
-import { StreamDroppedError } from '@web/data/stream/sse';
+import { StreamDroppedError, StreamRefusedError, StreamUnreachableError } from '@web/data/stream/sse';
 import {
   conversationRuntime,
   useConversationRuntime,
+  watchChatMishaps,
   _resetForTests,
 } from '@web/stores/conversation-runtime';
+import type { ChatMishap } from '@web/stores/conversation-runtime';
 
 /** The stream handlers the store installed on its last send. */
 let handlers: {
@@ -259,36 +261,6 @@ describe('loading what came before', () => {
     expect(conversation()?.messages.map((m) => m.content)).toEqual(['oldest', 'earlier']);
   });
 
-  it('says so when it fails, rather than rejecting into a click handler', async () => {
-    openChatAnswers({ hasMore: true });
-    await conversationRuntime.ensureLoaded('p-1');
-    vi.mocked(chatApi.messagesBefore).mockRejectedValue(new Error('offline'));
-
-    // Not `.rejects`: the caller is an onClick, and a rejection out of one is
-    // an unhandled rejection with nobody to catch it.
-    await expect(conversationRuntime.loadEarlier('c-1')).resolves.toBeUndefined();
-
-    expect(conversation()?.earlierFailed).toBe(true);
-    // Still there, still saying there is more -- the button the reader
-    // pressed is the way to press it again.
-    expect(conversation()?.hasMore).toBe(true);
-  });
-
-  it('stops saying it failed once the reader presses again', async () => {
-    openChatAnswers({ hasMore: true });
-    await conversationRuntime.ensureLoaded('p-1');
-    vi.mocked(chatApi.messagesBefore).mockRejectedValueOnce(new Error('offline'));
-    await conversationRuntime.loadEarlier('c-1');
-    expect(conversation()?.earlierFailed).toBe(true);
-
-    vi.mocked(chatApi.messagesBefore).mockResolvedValue({
-      messages: [],
-      hasMore: false,
-    } as unknown as Awaited<ReturnType<typeof chatApi.messagesBefore>>);
-    await conversationRuntime.loadEarlier('c-1');
-
-    expect(conversation()?.earlierFailed).toBe(false);
-  });
 });
 
 describe('an answer that arrives after the reader has left', () => {
@@ -468,66 +440,130 @@ describe('opening again after it failed', () => {
   });
 });
 
-describe('a turn that ended because the connection did', () => {
-  it('says so, because from the reply alone it looks like the user stopped it', async () => {
+describe('telling the reader that something went wrong', () => {
+  /**
+   * Collect every mishap told while the given work runs.
+   * @param work - Run with a watcher attached.
+   * @returns What it was told, in order.
+   */
+  async function whatIsTold(work: () => Promise<void> | void): Promise<ChatMishap[]> {
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    await work();
+    stop();
+    return told;
+  }
+
+  it('calls it a network error when no answer came back at all', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    void conversationRuntime.send('p-1', 'hello');
-    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
-    handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'half an ans' } });
 
-    handlers.onError?.(new StreamDroppedError(new Error('socket died')));
+    const told = await whatIsTold(async () => {
+      void conversationRuntime.send('p-1', 'hello');
+      await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'half an ans' } });
+      handlers.onError?.(new StreamDroppedError(new Error('socket died')));
+    });
 
-    // The mark on the reply is the same one pressing stop leaves, and it has
-    // to be: the server cannot tell the two apart either, and records both as
-    // stopped. What the reader is owed is the difference -- their answer was
-    // cut off by the connection, not by them.
+    // The reply keeps the same mark pressing stop leaves -- the server cannot
+    // tell those apart either. What the reader gets is one line, once.
     expect(conversation()?.messages.at(-1)?.interrupted).toBe(true);
-    expect(conversation()?.connectionLost).toBe(true);
+    expect(told).toEqual([{ projectId: 'p-1', conversationId: 'c-1', kind: 'network' }]);
   });
 
-  it('stops saying it once a new turn is under way', async () => {
+  it('passes on what the server said, when the server answered', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+
+    const told = await whatIsTold(async () => {
+      void conversationRuntime.send('p-1', 'hello').catch(() => undefined);
+      await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+      handlers.onError?.(new StreamRefusedError(402, 'You are out of credits.'));
+      await vi.waitFor(() => expect(conversation()?.turn).toBeNull());
+    });
+
+    // Getting an answer at all means the network was fine, so this is not a
+    // network error -- and the server wrote the only sentence anyone wrote
+    // about it, in the reader's own language.
+    expect(told).toEqual([
+      { projectId: 'p-1', conversationId: 'c-1', kind: 'server', message: 'You are out of credits.' },
+    ]);
+  });
+
+  it('calls it a network error when the request never left', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+
+    const told = await whatIsTold(async () => {
+      void conversationRuntime.send('p-1', 'hello').catch(() => undefined);
+      await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+      handlers.onError?.(new StreamUnreachableError(new Error('offline')));
+      await vi.waitFor(() => expect(conversation()?.turn).toBeNull());
+    });
+
+    expect(told).toEqual([{ projectId: 'p-1', conversationId: 'c-1', kind: 'network' }]);
+  });
+
+  it('says nothing at all when the user was the one who stopped it', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+
+    const told = await whatIsTold(async () => {
+      void conversationRuntime.send('p-1', 'hello');
+      await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+      conversationRuntime.stopTurn('c-1');
+    });
+
+    // Pressing stop is the reader doing it on purpose. Nobody needs telling
+    // about what they just did.
+    expect(conversation()?.messages.at(-1)?.interrupted).toBe(true);
+    expect(told).toEqual([]);
+  });
+
+  it('says nothing at all when the reader left the project', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+
+    const told = await whatIsTold(async () => {
+      void conversationRuntime.send('p-1', 'hello');
+      await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+      conversationRuntime.leaveProject('p-1');
+    });
+
+    // Leaving closes every connection this project had, which is the reader
+    // disconnecting on purpose -- the same as pressing stop, and told the
+    // same way: not at all.
+    expect(told).toEqual([]);
+  });
+
+  it('is dropped when nobody is watching, rather than kept for later', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
     void conversationRuntime.send('p-1', 'hello');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+
+    // Nothing is watching: the panel is collapsed, or the reader is looking
+    // at another conversation.
     handlers.onError?.(new StreamDroppedError(new Error('socket died')));
-    expect(conversation()?.connectionLost).toBe(true);
 
-    void conversationRuntime.send('p-1', 'again');
-    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
-
-    // Trying again is what makes the last failure old news. A line still
-    // saying the connection is gone, over a reply arriving, is worse than no
-    // line at all.
-    expect(conversation()?.connectionLost).toBe(false);
+    // Attaching now is a reader coming back, and they are told nothing --
+    // what they see is a conversation that stopped moving, which is how they
+    // know. There is no state anywhere holding the news for them.
+    const told = await whatIsTold(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(told).toEqual([]);
   });
 
-  it('is not left standing in front of a later turn that dropped', async () => {
+  it('calls a page it could not reach back for a network error too', async () => {
     openChatAnswers({ hasMore: true });
     await conversationRuntime.ensureLoaded('p-1');
     vi.mocked(chatApi.messagesBefore).mockRejectedValueOnce(new Error('blip'));
-    await conversationRuntime.loadEarlier('c-1');
-    expect(conversation()?.earlierFailed).toBe(true);
 
-    // The reader moves on and sends something. Whatever failed before that is
-    // no longer what is happening -- and the panel has one line to say things
-    // in, which this would otherwise hold for the rest of the conversation.
-    void conversationRuntime.send('p-1', 'never mind, carry on');
-    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    const told = await whatIsTold(() => conversationRuntime.loadEarlier('c-1'));
 
-    expect(conversation()?.earlierFailed).toBe(false);
-  });
-
-  it('says nothing when the user was the one who stopped it', async () => {
-    openChatAnswers();
-    await conversationRuntime.ensureLoaded('p-1');
-    void conversationRuntime.send('p-1', 'hello');
-    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
-
-    conversationRuntime.stopTurn('c-1');
-
-    expect(conversation()?.messages.at(-1)?.interrupted).toBe(true);
-    expect(conversation()?.connectionLost).toBe(false);
+    expect(told).toEqual([{ projectId: 'p-1', conversationId: 'c-1', kind: 'network' }]);
+    // Still offering, because the reader may simply press it again.
+    expect(conversation()?.hasMore).toBe(true);
   });
 });

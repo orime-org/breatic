@@ -131,12 +131,8 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "这条回复没能完成，可以再发一次。",
-      "notSent": "没能送出去，检查一下网络。",
-      "openFailed": "这个聊天没能打开。",
-      "retry": "重试",
-      "connectionLost": "连接断了，这条回复没收完。刷新页面可以重新读一次。",
-      "loadEarlierFailed": "更早的消息没能加载出来。"
+      "network": "网络错误",
+      "turnFailed": "这条回复没能完成，可以再发一次。"
     },
     "message": {
       "interrupted": "已停止"

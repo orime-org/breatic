@@ -131,12 +131,8 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "這則回覆沒能完成，可以再發一次。",
-      "notSent": "沒能送出去，檢查一下網路。",
-      "openFailed": "這個聊天沒能開啟。",
-      "retry": "重試",
-      "connectionLost": "連線中斷了，這則回覆沒收完。重新整理頁面可以再讀一次。",
-      "loadEarlierFailed": "更早的訊息沒能載入。"
+      "network": "網路錯誤",
+      "turnFailed": "這則回覆沒能完成，可以再發一次。"
     },
     "message": {
       "interrupted": "已停止"

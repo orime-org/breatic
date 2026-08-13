@@ -131,12 +131,8 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요.",
-      "notSent": "보내지 못했습니다. 네트워크를 확인해 주세요.",
-      "openFailed": "이 채팅을 열지 못했습니다.",
-      "retry": "다시 시도",
-      "connectionLost": "연결이 끊겨 이 답변을 끝까지 받지 못했습니다. 페이지를 새로 고치면 다시 읽을 수 있습니다.",
-      "loadEarlierFailed": "이전 메시지를 불러오지 못했습니다."
+      "network": "네트워크 오류",
+      "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요."
     },
     "message": {
       "interrupted": "중지됨"

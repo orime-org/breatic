@@ -110,8 +110,6 @@ describe('resetProjectUiStores (#1771)', () => {
           oldestLoadedTurn: 1,
           failures: 0,
           failedReplyId: null,
-          connectionLost: false,
-          earlierFailed: false,
         },
       },
       currentByProject: { 'project-1': 'c-1' },

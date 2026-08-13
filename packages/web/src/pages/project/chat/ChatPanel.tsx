@@ -7,7 +7,6 @@ import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { useChatStore } from '@web/stores';
 import { useTranslation } from '@web/i18n/use-translation';
 
-import { StreamRefusedError } from '@web/data/stream/sse';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import { ChatNotice } from '@web/pages/project/chat/ChatNotice';
 import {
@@ -71,10 +70,8 @@ export function ChatPanel({
     canSend,
     streaming,
     hasMore,
-    connectionLost,
-    earlierFailed,
+    mishap,
     loadEarlier,
-    retryOpen,
     send,
     abort,
   } = useChatSession(projectId);
@@ -92,14 +89,6 @@ export function ChatPanel({
   // message list needs to know it happened — it is the one thing that should
   // bring the column back to the bottom after they have scrolled up to read.
   const [sentCount, setSentCount] = React.useState(0);
-  /**
-   * What the panel has to say about the last thing that went wrong.
-   *
-   * One line, on the composer, for every failure the panel can report. It is
-   * cleared by trying again — that is the only thing that makes the last
-   * failure old news, and it means the reader never has to dismiss anything.
-   */
-  const [notice, setNotice] = React.useState<string | null>(null);
 
   /**
    * Send the trimmed composer draft and clear the input.
@@ -112,22 +101,16 @@ export function ChatPanel({
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
     setSentCount((n) => n + 1);
-    setNotice(null);
     // Cleared here rather than when the reply ends. The composer is only live
     // when there is a conversation to write to, so by the time this runs the
     // message is already in the list — waiting for the whole turn would leave
     // the user's words sitting in the box beside their own sent bubble, and
     // wipe anything typed while the reply streamed in.
-    void send(trimmed).catch((err: unknown) => {
-      // Two failures, one line each, both on the composer. When the server
-      // answered it said why, in the reader's language — sse.ts goes to the
-      // trouble of reading that out of the error envelope, and dropping it
-      // here would waste the only sentence anyone wrote about this refusal.
-      // When it never answered there is nothing to quote, and the reader
-      // needs to know it was the connection and not their message.
-      setNotice(
-        err instanceof StreamRefusedError ? err.message : t('chat.error.notSent'),
-      );
+    void send(trimmed).catch(() => {
+      // Why it failed is the conversation's to say, and it already said it to
+      // everyone watching at the moment it happened. What is left here is the
+      // words.
+      //
       // It was not sent, and the server kept no record of it — so nothing of
       // the attempt is on screen to explain itself. Handing the words back is
       // the explanation: the message is where the user left it, ready to send
@@ -142,7 +125,7 @@ export function ChatPanel({
       if (useChatStore.getState().composerDraft === '') setDraft(trimmed);
     });
     clearDraft();
-  }, [draft, send, setDraft, clearDraft, t]);
+  }, [draft, send, setDraft, clearDraft]);
 
   /**
    * Pick a conversation out of the history sheet and close it.
@@ -161,59 +144,22 @@ export function ChatPanel({
   // identity for the life of the page -- switching language re-renders
   // without replacing it -- so a memo that depends on `t` and calls it inside
   // would go on showing the sentence in the language it first ran in.
-  const openFailedText = t('chat.error.openFailed');
-  const retryText = t('chat.error.retry');
-  const earlierFailedText = t('chat.error.loadEarlierFailed');
-  const connectionLostText = t('chat.error.connectionLost');
+  const networkErrorText = t('chat.error.network');
 
   /**
-   * What the one notice line is saying, and what to press about it.
+   * The one line, and it is only ever saying one thing.
    *
-   * Four things can be wrong and only one line to say them in, so they are
-   * ranked. Opening failed comes first because it rules the others out --
-   * with no conversation nothing can be sent and nothing can be reached back
-   * for. Then the two the reader is waiting on an answer to, the send ahead
-   * of the earlier page because their own words are what is at stake. The
-   * dropped connection comes last: it is the state the panel is in rather
-   * than the answer to something just pressed.
+   * Which of the two depends on nothing but whether an answer came back at
+   * all. An answer means the network was fine and the server wrote the only
+   * sentence anyone wrote about this -- in the reader's own language, which
+   * is why it is passed through rather than replaced. No answer means there
+   * is nothing to quote and nothing to add: two words, and no advice about
+   * what to do next, because that is the reader's own business.
    */
-  const noticeState = React.useMemo((): {
-    message: string | null;
-    action?: { label: string; onClick: () => void };
-  } => {
-    if (failedToOpen) {
-      return { message: openFailedText, action: { label: retryText, onClick: retryOpen } };
-    }
-    if (notice !== null) return { message: notice };
-    if (earlierFailed) return { message: earlierFailedText };
-    if (connectionLost) return { message: connectionLostText };
-    return { message: null };
-  }, [
-    failedToOpen,
-    notice,
-    earlierFailed,
-    connectionLost,
-    openFailedText,
-    retryText,
-    earlierFailedText,
-    connectionLostText,
-    retryOpen,
-  ]);
-
-  /**
-   * Reach further back, and let the line talk about that instead.
-   *
-   * There is one line for everything the panel has to say, and what it was
-   * saying belonged to something the reader has now moved on from. Left
-   * standing, it would still be there when this press fails too -- so the
-   * reader would press a button and watch absolutely nothing change. The
-   * conversation clears its own half of this the same way, when a turn
-   * starts.
-   */
-  const loadEarlierMessages = React.useCallback((): void => {
-    setNotice(null);
-    loadEarlier();
-  }, [loadEarlier]);
+  const notice = React.useMemo(() => {
+    if (mishap === null) return null;
+    return mishap.kind === 'server' ? mishap.message : networkErrorText;
+  }, [mishap, networkErrorText]);
 
   /** Load a quick-action label into the composer. Stable for the same reason. */
   const quickAction = React.useCallback(
@@ -242,15 +188,13 @@ export function ChatPanel({
         loading={isPending || failedToOpen}
         sentCount={sentCount}
         hasEarlier={hasMore}
-        onLoadEarlier={loadEarlierMessages}
+        onLoadEarlier={loadEarlier}
         onQuickAction={quickAction}
       />
-      {/* A chat that would not open is the same kind of news as a message
-          that would not send, and it belongs in the same place — a second
-          bar at the top of the panel would be one more spot to learn to
-          look at, and the two could disagree. Which of them this line is
-          saying, and why in that order, is worked out above. */}
-      <ChatNotice message={noticeState.message} action={noticeState.action} />
+      {/* One line, on the top edge of the composer, for everything this panel
+          has to say -- and it says each thing once. Nothing here is a state
+          the chat is in, so nothing here stays. */}
+      <ChatNotice message={notice} />
       <ChatComposer
         draft={draft}
         streaming={streaming}

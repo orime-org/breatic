@@ -5,8 +5,12 @@ import * as React from 'react';
 import type { MessageData } from '@breatic/shared';
 
 import { useChatStore } from '@web/stores';
-import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
-import type { ChatMessageData } from '@web/stores/conversation-runtime';
+import {
+  conversationRuntime,
+  useConversationRuntime,
+  watchChatMishaps,
+} from '@web/stores/conversation-runtime';
+import type { ChatMessageData, ChatMishap } from '@web/stores/conversation-runtime';
 import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
 
 export interface ChatSession {
@@ -34,30 +38,15 @@ export interface ChatSession {
   /** The conversation reaches back further than the messages on screen. */
   hasMore: boolean;
   /**
-   * The last turn ended because the connection did.
+   * What went wrong just now, for as long as that is still just now.
    *
-   * The reply carries the same mark pressing stop leaves, so without this the
-   * reader is looking at an answer that stopped for no reason they can see.
+   * Null the rest of the time, which is nearly always. Nothing that goes
+   * wrong here is a state the chat is in — it is a thing that happened, at a
+   * moment the reader was in, and it goes away on its own.
    */
-  connectionLost: boolean;
-  /**
-   * The last attempt to reach further back failed.
-   *
-   * Cleared by pressing the button again, which is still where it was — the
-   * failure took nothing off the screen, so the way to try again is the way
-   * it was tried the first time.
-   */
-  earlierFailed: boolean;
+  mishap: ChatMishap | null;
   /** Load the messages before the ones on screen. */
   loadEarlier: () => void;
-  /**
-   * Try opening the chat again.
-   *
-   * The one failure with nothing left on screen to press: no conversation
-   * means no composer and no messages, so without this the only way back was
-   * to reload the page — which is what the panel used to tell people to do.
-   */
-  retryOpen: () => void;
   /**
    * Send one message and stream the reply into the list.
    *
@@ -113,6 +102,16 @@ function toChatMessage(message: ChatMessageData, justFailed: boolean): ChatMessa
 const NO_MESSAGES: ChatMessageData[] = [];
 
 /**
+ * How long one line about something going wrong stays on screen.
+ *
+ * It goes away on its own because it is an event, not a state: the reader was
+ * told, and a reader who was looking elsewhere is not owed it later. Four
+ * seconds is what every other one-off message in this app lasts -- the toast
+ * library's own default, which the rest of the product uses unchanged.
+ */
+const MISHAP_LINGERS_MS = 4000;
+
+/**
  * The chat panel's view of the conversation it is showing.
  *
  * Reading only. What is happening in the conversation — the messages, and the
@@ -135,12 +134,6 @@ export function useChatSession(projectId: string): ChatSession {
   );
   const hasMore = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.hasMore ?? false) : false,
-  );
-  const connectionLost = useConversationRuntime((s) =>
-    conversationId ? (s.conversations[conversationId]?.connectionLost ?? false) : false,
-  );
-  const earlierFailed = useConversationRuntime((s) =>
-    conversationId ? (s.conversations[conversationId]?.earlierFailed ?? false) : false,
   );
   const failures = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.failures ?? 0) : 0,
@@ -181,9 +174,35 @@ export function useChatSession(projectId: string): ChatSession {
     if (conversationId) void conversationRuntime.loadEarlier(conversationId);
   }, [conversationId]);
 
-  const retryOpen = React.useCallback((): void => {
-    void conversationRuntime.ensureLoaded(projectId);
-  }, [projectId]);
+  /**
+   * What just went wrong here, until it stops being just now.
+   *
+   * Watched rather than read out of the conversation, because a panel that is
+   * not mounted watches nothing -- and that is the rule: what happens while
+   * the reader is elsewhere is not told to them when they come back. They
+   * come back to a conversation that stopped moving, which is how a reader of
+   * a stream knows.
+   */
+  const [mishap, setMishap] = React.useState<ChatMishap | null>(null);
+
+  React.useEffect(
+    () =>
+      watchChatMishaps((told) => {
+        if (told.projectId !== projectId) return;
+        // Only this conversation's. Another one may be streaming in the
+        // background -- that is allowed -- and its trouble is not this
+        // reader's to be interrupted by.
+        if (told.conversationId !== null && told.conversationId !== conversationId) return;
+        setMishap(told);
+      }),
+    [projectId, conversationId],
+  );
+
+  React.useEffect(() => {
+    if (mishap === null) return undefined;
+    const forgetting = setTimeout(() => setMishap(null), MISHAP_LINGERS_MS);
+    return () => clearTimeout(forgetting);
+  }, [mishap]);
 
   // What the panel was handed for each stored message last time round.
   //
@@ -218,10 +237,8 @@ export function useChatSession(projectId: string): ChatSession {
     canSend: conversationId !== undefined,
     streaming,
     hasMore,
-    connectionLost,
-    earlierFailed,
+    mishap,
     loadEarlier,
-    retryOpen,
     send,
     abort,
   };

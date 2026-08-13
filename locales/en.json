@@ -131,12 +131,8 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "This reply could not be finished. Try sending it again.",
-      "notSent": "That did not go out — check your connection.",
-      "openFailed": "This chat could not be opened.",
-      "retry": "Try again",
-      "connectionLost": "The connection dropped, so this reply is not all here. Reload the page to read it again.",
-      "loadEarlierFailed": "Earlier messages could not be loaded."
+      "network": "Network error",
+      "turnFailed": "This reply could not be finished. Try sending it again."
     },
     "message": {
       "interrupted": "Stopped"

@@ -35,6 +35,21 @@ function renderPanel(props: { projectId: string } = { projectId: 'p1' }): Return
 }
 
 /**
+ * Make the stream fail the way the real one does.
+ *
+ * `sseStream` catches everything, hands it to `onError` and then resolves
+ * (sse.ts:218-222) — it never rejects. A mock that rejects is modelling
+ * something the transport does not do, and a panel tested against it is
+ * tested against a shape it will never see.
+ * @param err - What went wrong, already classified the way sse.ts does it
+ */
+function streamFailsWith(err: unknown): void {
+  vi.mocked(chatApi.streamMessage).mockImplementation(async (_input, handlers) => {
+    handlers.onError?.(err);
+  });
+}
+
+/**
  * Answer the open call with a conversation carrying the given messages.
  * @param texts - What has been said in it, in order
  */
@@ -174,28 +189,23 @@ describe('ChatPanel', () => {
 
   it('says so on the composer when the message never went out', async () => {
     const user = userEvent.setup();
-    vi.mocked(chatApi.streamMessage).mockRejectedValue(
-      new StreamUnreachableError(new Error('offline')),
-    );
+    streamFailsWith(new StreamUnreachableError(new Error('offline')));
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
     useChatStore.getState().setComposerDraft('shorten this');
     await user.click(screen.getByTestId('chat-composer-send'));
 
-    // Everything else about this failure is something that did not happen:
-    // no bubble, no reply. Without a line saying so, the reader is left to
-    // work it out from an absence.
+    // No answer came back, so there is nothing to quote and nothing to add.
+    // Two words: what to do about it is the reader's own business.
     await waitFor(() =>
-      expect(screen.getByTestId('chat-notice')).toHaveTextContent('did not go out'),
+      expect(screen.getByTestId('chat-notice')).toHaveTextContent('Network error'),
     );
   });
 
   it('says what the server said when it refused', async () => {
     const user = userEvent.setup();
-    vi.mocked(chatApi.streamMessage).mockRejectedValue(
-      new StreamRefusedError(403, 'You do not have access to this project'),
-    );
+    streamFailsWith(new StreamRefusedError(403, 'You do not have access to this project'));
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
@@ -222,23 +232,17 @@ describe('ChatPanel', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1);
   });
 
-  it('offers a way back when the chat could not be opened', async () => {
-    const user = userEvent.setup();
-    vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('server said no'));
+  it('says one thing about a chat that would not open, and offers nothing', async () => {
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
     renderPanel();
 
-    await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
-    // The one failure that leaves nothing on screen to press: no conversation
-    // means no composer and no messages. Without this the only way back was
-    // to reload the page, which is what the panel used to tell people to do.
-    const retry = screen.getByTestId('chat-notice-action');
-
-    chatOpensWith(['back again']);
-    await user.click(retry);
-
-    await waitFor(() => expect(screen.getByText('back again')).toBeInTheDocument());
-    expect(screen.queryByTestId('chat-notice')).not.toBeInTheDocument();
-    expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled();
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-notice')).toHaveTextContent('Network error'),
+    );
+    // No button, no instruction. Reloading or trying again is the reader's own
+    // business, and telling them to do it adds nothing they cannot see.
+    expect(screen.queryByTestId('chat-notice-action')).not.toBeInTheDocument();
+    expect(screen.getByTestId('chat-composer-textarea')).toBeDisabled();
   });
 
   it('does not let anything be typed before the chat is open', async () => {
@@ -270,7 +274,7 @@ describe('ChatPanel', () => {
 
   it('hands the words back when the message could not be sent', async () => {
     const user = userEvent.setup();
-    vi.mocked(chatApi.streamMessage).mockRejectedValue(new Error('never left'));
+    streamFailsWith(new StreamUnreachableError(new Error('never left')));
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
     await waitFor(() =>
@@ -313,29 +317,25 @@ describe('a conversation longer than one page', () => {
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
   });
 
-  it('answers the press, rather than leaving the last failure standing', async () => {
-    const user = userEvent.setup();
-    vi.mocked(chatApi.streamMessage).mockRejectedValue(
-      new StreamUnreachableError(new Error('offline')),
-    );
+  it('stops saying it on its own, without waiting to be cleared', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    streamFailsWith(new StreamUnreachableError(new Error('offline')));
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
     useChatStore.getState().setComposerDraft('shorten this');
     await user.click(screen.getByTestId('chat-composer-send'));
-    await waitFor(() =>
-      expect(screen.getByTestId('chat-notice')).toHaveTextContent('did not go out'),
-    );
+    await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
 
-    // Still offline, so this fails too. The panel has one line to say things
-    // in, and it was already saying something older: without clearing it, the
-    // reader presses a button and absolutely nothing on screen changes.
-    vi.mocked(chatApi.messagesBefore).mockRejectedValue(new Error('offline'));
-    await user.click(screen.getByTestId('chat-load-earlier'));
-
-    await waitFor(() =>
-      expect(screen.getByTestId('chat-notice')).toHaveTextContent('Earlier messages'),
-    );
+    // It belongs to the moment it happened in, and that moment passes. A line
+    // that waited to be cleared would still be standing there when the next
+    // thing went wrong, saying the wrong thing about it.
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(screen.queryByTestId('chat-notice')).not.toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it('offers to load what came before, and stops offering once it has', async () => {
