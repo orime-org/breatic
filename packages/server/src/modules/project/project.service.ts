@@ -95,8 +95,10 @@ export async function assertAccess(
  * @param description - Optional description
  * @returns The newly created project entity
  * @throws {ForbiddenError} if the caller is not an `admin` or `maintainer`
- *   of `studioId` (studio credits are shared, so a plain guest may not
- *   spend them by creating a project)
+ *   of `studioId`
+ * @throws {NotFoundError} if no studio has that id
+ * @throws {ConflictError} if the studio already holds as many projects as its
+ *   tier allows
  */
 export async function create(
   userId: string,
@@ -144,7 +146,12 @@ export async function create(
  * looking enforced.
  * @param studioId - The studio the new project would land in
  * @param tx - The enclosing transaction; the lock is meaningless without one
- * @throws {NotFoundError} if no studio has that id
+ * @throws {NotFoundError} if no studio row has that id. Neither caller can
+ *   reach this today: `create` is already past `requireStudioCreateAccess`,
+ *   whose role lookup inner-joins a live `studios` row, and `duplicate` starts
+ *   from a live project, whose `studio_id` is a restrict FK. It is here because
+ *   `lockStudio` can answer "no such row" and swallowing that would turn a
+ *   corrupt state into a wrong ceiling
  * @throws {ConflictError} if the studio is already at its tier's ceiling
  */
 async function assertStudioHasProjectRoom(
@@ -164,11 +171,23 @@ async function assertStudioHasProjectRoom(
 /**
  * Authorize the caller to create a project in the target studio.
  *
- * Only a studio `admin` or `maintainer` may create (3-role model, spec §0.2):
- * a studio's credits are shared, so a plain `guest` (or a non-member,
- * role `null`) must not be able to spend them by creating projects. Today
- * only personal studios exist (single admin), so only `admin` is exercised
- * against real data; the `maintainer` branch activates with team studios.
+ * Only a studio `admin` or `maintainer` may create; a `guest` (or a non-member,
+ * role `null`) may not. That is the whole rule — a division of what each studio
+ * role can do. An earlier version of this comment justified it with "a studio's
+ * credits are shared, so a guest must not spend them", which was never the
+ * reason and is not one now (user 2026-08-13).
+ *
+ * Today only personal studios exist (single admin), so only `admin` is
+ * exercised against real data; the `maintainer` branch activates with team
+ * studios.
+ *
+ * **Creating is the only one of the four project-lifecycle actions that asks a
+ * STUDIO role.** Copying, deleting and transferring ownership all ask a
+ * PROJECT role (`viewer`, `owner`, `owner`), which is why a studio guest with
+ * `viewer` on one project can fork a new project into that studio today.
+ * user 2026-08-13 settled the direction: all four belong on the studio role.
+ * Tracked as its own task; not changed here, since it is a permission model
+ * decision rather than part of the per-studio project ceiling.
  * @param userId - Authenticated user UUID
  * @param studioId - The studio the project would be created in
  * @throws {ForbiddenError} if the caller is not an admin/maintainer of the studio
@@ -337,12 +356,26 @@ export async function update(
  *
  * The caller becomes the owner of the new project (same studio as
  * the source). Source must be visible to the caller (any active
- * membership counts; you can fork something you can read).
+ * membership counts; you can fork something you can read) — which is a
+ * PROJECT role, while creating a project asks a STUDIO role. That mismatch is
+ * a known open question, not a settled design; see `requireStudioCreateAccess`.
+ *
+ * Reads the source WITHOUT locking it, then waits for the studio row. If the
+ * source is deleted during that wait, the copy is still made from what was
+ * read — snapshot semantics, and deliberately so. The four other places that
+ * add something to a project (`projectInvite`, `roleUpgradeRequest`,
+ * `conversation`, `projectTransfer`) do take `lockLiveProject` first, but for a
+ * reason that does not apply here: what they insert HANGS OFF the project, so
+ * without the lock a live row commits against a dead project — undecidable and
+ * unreapable. A duplicate is a free-standing new project; deleting the source
+ * leaves it perfectly consistent. No invariant is broken, so no lock is taken.
  * @param sourceId - UUID of the project to duplicate
  * @param userId - Authenticated user UUID (becomes new project owner)
  * @returns The newly created duplicate project entity
  * @throws {NotFoundError} if the source project does not exist
  *   or the caller has no membership
+ * @throws {ConflictError} if the source's studio already holds as many
+ *   projects as its tier allows
  */
 export async function duplicate(
   sourceId: string,

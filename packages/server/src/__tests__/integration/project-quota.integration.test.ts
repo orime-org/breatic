@@ -253,6 +253,24 @@ describe("project count per studio — the create path", () => {
       message: "This studio's plan allows up to 10 projects. Upgrade to create more.",
     });
   });
+
+  it("puts a DIFFERENT tier's number in the sentence, so a hard-coded one shows", async () => {
+    // The case above cannot tell a hard-coded number from the real one: its
+    // studio is on `base`, whose ceiling is 10, so `t(..., { limit: 10 })`
+    // produces the exact string it expects. Gate 2 measured that — writing the
+    // number in left all 12 cases green.
+    //
+    // A second tier is what makes the pair discriminating: the two expected
+    // sentences differ, so no single literal satisfies both.
+    const admin = await insertUser("pro");
+    const studio = await insertStudio(admin);
+    await seedProjects(studio, admin, ceilingFor("pro"));
+    expect(ceilingFor("pro")).not.toBe(ceilingFor("base"));
+
+    await expect(createProject(admin, studio)).rejects.toMatchObject({
+      message: "This studio's plan allows up to 100 projects. Upgrade to create more.",
+    });
+  });
 });
 
 describe("project count per studio — the duplicate path", () => {

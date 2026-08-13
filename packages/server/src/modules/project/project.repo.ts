@@ -140,9 +140,12 @@ export async function lockLiveProject(
  * stays for referential integrity, but the capacity it occupied is released,
  * which is what a person deleting a project expects to have happened.
  *
- * A caller deciding whether one more may be created must pass the transaction
- * it already locked the studio row in; counting outside that transaction reads
- * a number another request may already have invalidated.
+ * A caller inside a transaction MUST pass it. Not for correctness — the studio
+ * row is already locked by then, so no other request can have an uncommitted
+ * insert in flight — but because a read issued without the handle reaches for
+ * a second pooled connection while the first is still held, which is how a
+ * pool exhausts itself under concurrent writes (same reason as
+ * {@link getProjectById}).
  * @param studioId - Studio whose projects to count
  * @param tx - Enclosing transaction, when the caller is inside one
  * @returns The count of that studio's live projects
@@ -361,18 +364,20 @@ export async function updateProjectMeta(
 }
 
 /**
- * Duplicate a project and all of its Yjs documents inside a single
- * transaction.
+ * Duplicate a project.
  *
- * Copies (with a new project UUID):
+ * Writes, in the caller's transaction:
  *   - The `projects` row (name with " (copy)" suffix, same
  *     description / thumbnail, same `studio_id`, new
  *     `created_by_user_id` = caller)
  *   - One `project_members` row with `role='owner'` for the caller
- *   - Every `yjs_documents` row whose name starts with
- *     `project-<sourceId>/` — rewriting the prefix to the new UUID
- *     so meta + every Canvas Space doc carries over (multi-doc
- *     layout per v10 spec §5.3)
+ *   - An outbox command telling collab to copy the Yjs documents
+ *
+ * The Yjs documents are NOT copied here. They live in a separate database
+ * that cannot join this transaction, so what happens in-band is the outbox
+ * row; collab does the copy afterwards. An earlier version of this comment
+ * claimed the function copied "every `yjs_documents` row" itself, which was
+ * never true of this code.
  *
  * Does NOT copy:
  *   - Conversations, messages, tasks, or node_history (these belong
