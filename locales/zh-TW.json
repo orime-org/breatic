@@ -38,7 +38,7 @@
       "remove_last_admin": "移除前請先轉讓 Admin。",
       "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。",
       "member_limit_reached": "{limit, plural, =0 {這個 Studio 的會員等級不支援新增成員，升級後即可新增。} other {這個 Studio 的會員等級最多可有 # 位成員，升級可新增更多。}}",
-      "member_limit_reached_for_invitee": "這個 Studio 的成員名額已滿，請聯絡它的管理員騰出名額。",
+      "member_limit_reached_for_invitee": "這個 Studio 的成員名額已滿，請聯絡它的 Admin 騰出名額。",
       "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
       "avatar_unsupported_type": "這個檔案無法作為圖片讀取，請換一張試試。"
     },

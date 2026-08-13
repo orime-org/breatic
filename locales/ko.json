@@ -38,7 +38,7 @@
       "remove_last_admin": "제거하기 전에 먼저 Admin을 이전하세요.",
       "cannot_change_admin_role": "Admin 역할은 이전을 통해서만 변경할 수 있습니다.",
       "member_limit_reached": "{limit, plural, =0 {이 Studio의 요금제에서는 멤버를 추가할 수 없습니다. 업그레이드하면 추가할 수 있습니다.} other {이 Studio의 요금제에서는 멤버를 최대 #명까지 둘 수 있습니다. 업그레이드하면 더 추가할 수 있습니다.}}",
-      "member_limit_reached_for_invitee": "이 Studio의 멤버 자리가 모두 찼습니다. 관리자에게 자리를 비워 달라고 요청하세요.",
+      "member_limit_reached_for_invitee": "이 Studio의 멤버 자리가 모두 찼습니다. Admin에게 자리를 비워 달라고 요청하세요.",
       "leave_last_admin": "이 Studio를 나가기 전에 먼저 Admin을 이전하세요.",
       "avatar_unsupported_type": "이 파일은 이미지로 읽을 수 없습니다. 다른 사진을 사용해 보세요."
     },

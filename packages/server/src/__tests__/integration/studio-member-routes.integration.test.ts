@@ -124,9 +124,23 @@ async function insertUserWithEmail(): Promise<{ id: string; email: string }> {
 }
 
 let studioSeq = 0;
-/** Insert a fresh team studio created by the given user; returns id + slug. */
+/**
+ * Insert a fresh team studio created by the given user; returns id + slug.
+ *
+ * The creator is moved to `pro` here rather than at the call sites, because
+ * holding a team studio IS the tier statement: `base` cannot create one
+ * (`team_studios: 0`) and its member ceiling is one seat, the admin's own. A
+ * base creator would be a state the product cannot reach, and every invite
+ * into the studio would then be refused for that reason rather than the one
+ * the case is about.
+ * @param createdByUserId - Becomes the studio's admin.
+ * @returns The studio id and slug.
+ */
 async function insertTeamStudio(createdByUserId: string): Promise<{ id: string; slug: string }> {
   const slug = `smr-studio-${studioSeq++}`;
+  await sql`
+    UPDATE users SET membership_tier = 'pro' WHERE id = ${createdByUserId}
+  `;
   const rows = await sql<{ id: string }[]>`
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${createdByUserId}, ${slug}, 'team', 'Route Test Team Studio')

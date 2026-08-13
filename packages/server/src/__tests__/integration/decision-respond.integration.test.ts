@@ -82,9 +82,12 @@ interface Scene {
  */
 async function seedScene(): Promise<Scene> {
   const tag = `dp-${seq++}-${Date.now()}`;
+  // On `pro`: this account administers the team studio seeded below, which
+  // `base` cannot even create (team_studios: 0) and whose member ceiling is one
+  // seat — the admin's own.
   const [owner] = await sql<{ id: string }[]>`
-    INSERT INTO users (email, email_verified)
-    VALUES (${`${tag}-o@example.com`}, true) RETURNING id
+    INSERT INTO users (email, email_verified, membership_tier)
+    VALUES (${`${tag}-o@example.com`}, true, 'pro') RETURNING id
   `;
   const [member] = await sql<{ id: string }[]>`
     INSERT INTO users (email, email_verified)

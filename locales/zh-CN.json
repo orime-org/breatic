@@ -41,7 +41,7 @@
       "remove_last_admin": "移除前请先转让 Admin。",
       "cannot_change_admin_role": "Admin 角色只能通过转让变更。",
       "member_limit_reached": "{limit, plural, =0 {这个 Studio 的会员等级不支持添加成员，升级后即可添加。} other {这个 Studio 的会员等级最多可有 # 位成员，升级可添加更多。}}",
-      "member_limit_reached_for_invitee": "这个 Studio 的成员名额已满，请联系它的管理员腾出名额。",
+      "member_limit_reached_for_invitee": "这个 Studio 的成员名额已满，请联系它的 Admin 腾出名额。",
       "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
       "avatar_unsupported_type": "这个文件无法作为图片读取，换一张试试。"
     },

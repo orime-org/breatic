@@ -39,11 +39,6 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-// Member caps come from config/limits.yaml; mock them so a small cap can be
-// forced per test. Default 100 keeps every other test (tiny member counts)
-// unaffected; the member-cap tests below lower it.
-
-const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
 // The decision window comes from the same config file. Pinned here to a value
 // that is deliberately NOT the shipped seven: the invite deadline, the token
 // TTL and the number the landing page prints are all supposed to come from the
@@ -51,8 +46,6 @@ const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
 // against a mock that also said 7.
 const decisionWindow = vi.hoisted(() => ({ days: 3 }));
 vi.mock("@server/config/limits.js", () => ({
-  getStudioMemberCap: () => capRefs.studio,
-  getProjectCollaboratorCap: () => capRefs.project,
   getDecisionWindowDays: () => decisionWindow.days,
   getDecisionWindowMs: () => decisionWindow.days * 24 * 60 * 60 * 1000,
   getDecisionWindowSeconds: () => decisionWindow.days * 24 * 60 * 60,
@@ -90,7 +83,11 @@ beforeAll(async () => {
   pgClient = t.client;
 
   await db.insert(schema.users).values([
-    { id: INVITER, email: "inviter@svc-test.dev" },
+    // On `pro`: this account administers a TEAM studio, which the `base` tier
+    // cannot even create (team_studios: 0) and whose member ceiling is 1 — the
+    // admin alone. A base fixture here would be a state the product cannot
+    // reach, and every invite in this file would be refused for that reason.
+    { id: INVITER, email: "inviter@svc-test.dev", membershipTier: "pro" },
     { id: INVITEE, email: INVITEE_EMAIL },
     { id: STRANGER, email: "stranger@svc-test.dev" },
   ]);
@@ -111,8 +108,6 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  capRefs.studio = 100;
-  capRefs.project = 100;
   // eslint-disable-next-line drizzle/enforce-delete-with-where -- intentional whole-table reset between tests
   await db.delete(schema.studioInvitations);
   // eslint-disable-next-line drizzle/enforce-delete-with-where -- intentional whole-table reset between tests
@@ -354,44 +349,11 @@ describe("declineInvite / revokeInvite", () => {
   });
 });
 
-describe("member cap (config/limits.yaml)", () => {
-  it("createInvite rejects when the studio is already at the member cap", async () => {
-    capRefs.studio = 1; // the admin alone already fills a cap of 1
-    await expect(
-      inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "guest"),
-    ).rejects.toBeInstanceOf(ConflictError);
-  });
-
-  it("confirmInvite rejects when the studio filled up after the invite was sent", async () => {
-    capRefs.studio = 2; // admin (1) → one seat free when the invite is created
-    const { invitationId } = await inviteService.createInvite(
-      "svc-team",
-      INVITER,
-      INVITEE_EMAIL,
-      "guest",
-    );
-    // The last seat is taken by someone else before the invitee confirms.
-    await db
-      .insert(schema.studioMembers)
-      .values({ studioId: TEAM, userId: STRANGER, role: "guest" });
-    await expect(
-      inviteService.confirmInvite(invitationId, INVITEE),
-    ).rejects.toBeInstanceOf(ConflictError);
-    // The invitee never became a member.
-    expect(await inviteeMemberRows()).toBe(0);
-  });
-
-  it("createInvite succeeds when the studio is below the member cap", async () => {
-    capRefs.studio = 5;
-    const res = await inviteService.createInvite(
-      "svc-team",
-      INVITER,
-      INVITEE_EMAIL,
-      "guest",
-    );
-    expect(res.invitationId).toBeTruthy();
-  });
-});
+// The member ceiling itself moved to config/membership.yaml, keyed by the
+// tier of the studio's current admin (task #87). Its cases — both check
+// points, the copy each reader gets, concurrency, and a confirm against a
+// deleted studio — live in `member-quota.integration.test.ts`, which can seed
+// accounts on chosen tiers. What stays here is the handshake.
 
 describe("the deadline the window actually enforces", () => {
   it("stamps the row deadline from the configured window, not a number of its own", async () => {

@@ -14,8 +14,6 @@ import { parse } from "yaml";
 import { MONOREPO_ROOT } from "@breatic/core";
 import {
   limitsConfigSchema,
-  getStudioMemberCap,
-  getProjectCollaboratorCap,
   getActivityFeedPageLimits,
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
@@ -26,23 +24,15 @@ import {
 } from "@server/config/limits.js";
 
 describe("limits config — schema", () => {
-  it("defaults both caps to 100 when keys are absent", () => {
-    const cfg = limitsConfigSchema.parse({});
-    expect(cfg.studio_member_cap).toBe(100);
-    expect(cfg.project_collaborator_cap).toBe(100);
-  });
-
   it("accepts explicit positive integers", () => {
-    const cfg = limitsConfigSchema.parse({
-      studio_member_cap: 250,
-      project_collaborator_cap: 50,
-    });
-    expect(cfg.studio_member_cap).toBe(250);
-    expect(cfg.project_collaborator_cap).toBe(50);
+    const cfg = limitsConfigSchema.parse({ activity_feed_page_max: 250 });
+    expect(cfg.activity_feed_page_max).toBe(250);
   });
 
-  it("rejects a non-positive cap", () => {
-    expect(() => limitsConfigSchema.parse({ studio_member_cap: 0 })).toThrow();
+  it("rejects a non-positive value", () => {
+    expect(() =>
+      limitsConfigSchema.parse({ activity_feed_page_max: 0 }),
+    ).toThrow();
   });
 
   it("defaults the canvas reference-pool cap to 50 and rejects non-positive (#1782)", () => {
@@ -54,18 +44,6 @@ describe("limits config — schema", () => {
 });
 
 describe("limits config — accessors read config/limits.yaml", () => {
-  it("getStudioMemberCap returns a positive integer", () => {
-    const cap = getStudioMemberCap();
-    expect(Number.isInteger(cap)).toBe(true);
-    expect(cap).toBeGreaterThan(0);
-  });
-
-  it("getProjectCollaboratorCap returns a positive integer", () => {
-    const cap = getProjectCollaboratorCap();
-    expect(Number.isInteger(cap)).toBe(true);
-    expect(cap).toBeGreaterThan(0);
-  });
-
   it("getCanvasReferencePoolCap returns a positive integer (#1782)", () => {
     const cap = getCanvasReferencePoolCap();
     expect(Number.isInteger(cap)).toBe(true);
@@ -117,8 +95,6 @@ describe("accessors are bound to their keys", () => {
   it("each accessor returns the value of its own key", () => {
     const shipped = limitsConfigSchema.parse(readShippedYaml());
 
-    expect(getStudioMemberCap()).toBe(shipped.studio_member_cap);
-    expect(getProjectCollaboratorCap()).toBe(shipped.project_collaborator_cap);
     expect(getCanvasReferencePoolCap()).toBe(shipped.canvas_reference_pool_cap);
     expect(getNodeHistoryPageSize()).toBe(shipped.node_history_page_size);
     expect(getDecisionWindowDays()).toBe(shipped.decision_window_days);
