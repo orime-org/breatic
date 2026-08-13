@@ -337,7 +337,7 @@ describe('a conversation longer than one page', () => {
 
     await screen.findByText('from further back');
     // Asked from where the loaded history reaches back to.
-    expect(chatApi.messagesBefore).toHaveBeenCalledWith('c1', 12);
+    expect(chatApi.messagesBefore).toHaveBeenCalledWith('c1', 12, expect.any(AbortSignal));
     // Nothing older left, so the offer goes away rather than sitting there
     // fetching nothing.
     await waitFor(() => expect(screen.queryByTestId('chat-load-earlier')).toBeNull());

@@ -205,7 +205,7 @@ describe('loading what came before', () => {
     await conversationRuntime.loadEarlier('c-1');
     // Asked from where the loaded history reaches back to, not from the
     // newest end: the cursor is the oldest turn on screen.
-    expect(chatApi.messagesBefore).toHaveBeenCalledWith('c-1', 7);
+    expect(chatApi.messagesBefore).toHaveBeenCalledWith('c-1', 7, expect.any(AbortSignal));
 
     // Two writers, two ends. The reply keeps growing at the tail while the
     // older messages arrive at the head.
@@ -335,6 +335,125 @@ describe('an answer that arrives after the reader has left', () => {
   });
 });
 
+describe('a request left over from a previous visit to the project', () => {
+  /**
+   * Answer the open call with one conversation holding the given messages.
+   * @param texts - What has been said in it, oldest first
+   * @param hasMore - The conversation reaches back further than this page
+   * @returns That answer, in the shape the api hands out
+   */
+  function answer(texts: string[], hasMore = false): Awaited<ReturnType<typeof chatApi.openChat>> {
+    return {
+      conversations: [{ id: 'c-1' }],
+      current: {
+        conversation: { id: 'c-1' },
+        messages: texts.map((text, i) => ({
+          id: `srv-${text}`,
+          role: 'user',
+          parts: [{ type: 'text', text }],
+          content: text,
+          ts: '2026-08-13T00:00:00Z',
+          turnIndex: 40 + i,
+        })),
+        hasMore,
+      },
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>;
+  }
+
+  it('does not land on the turn the next visit is running', async () => {
+    let landFirstVisit: (r: Awaited<ReturnType<typeof chatApi.openChat>>) => void = () => {};
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(
+      new Promise((resolve) => {
+        landFirstVisit = resolve;
+      }),
+    );
+    const firstVisit = conversationRuntime.ensureLoaded('p-1');
+
+    // Slow to open, which is the reason the reader backs out and comes in
+    // again -- so this is not an unusual sequence, it is the usual answer to
+    // a project that is taking too long.
+    conversationRuntime.leaveProject('p-1');
+    vi.mocked(chatApi.openChat).mockResolvedValueOnce(answer(['hello again']));
+    await conversationRuntime.ensureLoaded('p-1');
+
+    void conversationRuntime.send('p-1', 'my question');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    const running = conversation()!.turn!;
+    handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'half an answer' } });
+
+    landFirstVisit(answer(['hello again']));
+    await firstVisit;
+
+    // Adopting rebuilds the conversation from scratch, turn and all. Landing
+    // it here takes the running turn out of the only place anything can reach
+    // it: the stop button goes, and nothing else stops a turn -- so the model
+    // keeps going on the reader's account with the switch gone.
+    expect(conversation()?.turn?.replyId).toBe(running.replyId);
+    expect(conversation()?.messages.map((m) => m.content)).toContain('my question');
+    expect(conversation()?.messages.at(-1)?.content).toBe('half an answer');
+  });
+
+  it('does not turn a chat that is open and being read into one that failed', async () => {
+    let refuseFirstVisit: (e: unknown) => void = () => {};
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        refuseFirstVisit = reject;
+      }),
+    );
+    const firstVisit = conversationRuntime.ensureLoaded('p-1');
+
+    conversationRuntime.leaveProject('p-1');
+    vi.mocked(chatApi.openChat).mockResolvedValueOnce(answer(['readable history']));
+    await conversationRuntime.ensureLoaded('p-1');
+
+    refuseFirstVisit(new Error('timed out'));
+    await firstVisit;
+
+    // Otherwise the conversation on screen is replaced by an empty column
+    // saying the chat could not be opened -- about a request made for a
+    // screen the reader already left.
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('ready');
+  });
+
+  it('does not leave a hole in the middle of the message column', async () => {
+    vi.mocked(chatApi.openChat).mockResolvedValue(answer(['newest'], true));
+    await conversationRuntime.ensureLoaded('p-1');
+
+    let landPage: (p: Awaited<ReturnType<typeof chatApi.messagesBefore>>) => void = () => {};
+    vi.mocked(chatApi.messagesBefore).mockReturnValueOnce(
+      new Promise((resolve) => {
+        landPage = resolve;
+      }),
+    );
+    const earlier = conversationRuntime.loadEarlier('c-1');
+
+    conversationRuntime.leaveProject('p-1');
+    await conversationRuntime.ensureLoaded('p-1');
+
+    landPage({
+      messages: [
+        {
+          id: 'old',
+          role: 'user',
+          parts: [{ type: 'text', text: 'turn ten' }],
+          content: 'turn ten',
+          ts: '2026-08-01T00:00:00Z',
+          turnIndex: 10,
+        },
+      ],
+      hasMore: true,
+    } as unknown as Awaited<ReturnType<typeof chatApi.messagesBefore>>);
+    await earlier;
+
+    // The page was asked for from where the previous visit had read back to.
+    // Written onto the newest page the new visit adopted, it puts turn 10
+    // directly above turn 40 with nothing on screen saying what is missing --
+    // and moves the cursor past the gap, so no press can ever ask for it.
+    expect(conversation()?.messages.map((m) => m.content)).toEqual(['newest']);
+    expect(conversation()?.oldestLoadedTurn).toBe(40);
+  });
+});
+
 describe('opening again after it failed', () => {
   it('asks again, which is what the retry button does', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
@@ -382,6 +501,22 @@ describe('a turn that ended because the connection did', () => {
     // saying the connection is gone, over a reply arriving, is worse than no
     // line at all.
     expect(conversation()?.connectionLost).toBe(false);
+  });
+
+  it('is not left standing in front of a later turn that dropped', async () => {
+    openChatAnswers({ hasMore: true });
+    await conversationRuntime.ensureLoaded('p-1');
+    vi.mocked(chatApi.messagesBefore).mockRejectedValueOnce(new Error('blip'));
+    await conversationRuntime.loadEarlier('c-1');
+    expect(conversation()?.earlierFailed).toBe(true);
+
+    // The reader moves on and sends something. Whatever failed before that is
+    // no longer what is happening -- and the panel has one line to say things
+    // in, which this would otherwise hold for the rest of the conversation.
+    void conversationRuntime.send('p-1', 'never mind, carry on');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+
+    expect(conversation()?.earlierFailed).toBe(false);
   });
 
   it('says nothing when the user was the one who stopped it', async () => {

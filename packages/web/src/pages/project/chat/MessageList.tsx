@@ -170,9 +170,14 @@ function MessageListInner({
 /**
  * The column, rendered again only when what it shows has changed.
  *
- * Every piece of a streaming reply re-renders the panel above it, and without
- * this that re-render walks the whole column. The message objects the panel
- * hands over are reused for everything that did not change, so the default
- * comparison is enough to stop here.
+ * What this stops is the panel's other traffic: a keystroke in the composer,
+ * the history sheet opening, a notice appearing. None of them touch the
+ * messages, so the props do not move and the column is left alone.
+ *
+ * It does NOT stop the streaming re-render, and cannot: every piece of a
+ * reply replaces the message, which replaces the list, which is a new
+ * `messages` array here. What spares the column then is one level down --
+ * the panel reuses the view object of every message it is not rewriting, so
+ * `MessageBubble`'s own memo bails on all of them but the one being written.
  */
 export const MessageList = React.memo(MessageListInner);

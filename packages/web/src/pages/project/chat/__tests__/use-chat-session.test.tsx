@@ -101,7 +101,7 @@ describe('what the panel shows when it opens', () => {
     const { result } = render();
 
     await waitFor(() => expect(result.current.messages).toHaveLength(2));
-    expect(chatApi.openChat).toHaveBeenCalledWith('p-1');
+    expect(chatApi.openChat).toHaveBeenCalledWith('p-1', expect.any(AbortSignal));
     expect(result.current.messages.map((m) => m.content)).toEqual(['hello', 'hi there']);
   });
 
