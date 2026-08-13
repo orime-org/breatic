@@ -15,9 +15,12 @@
  * its arrival is the whole message -- and the client that has not seen one
  * for three intervals treats the stream as gone.
  *
- * The interval is configuration, not a constant: how long a stream may go
- * unheard-from is an operations knob, and the client's patience is derived
- * from it rather than picked separately.
+ * The real interval is five seconds, which would make this suite take a
+ * minute to watch a handful go by, so it is shortened here. What is being
+ * tested is that the frames are produced on whatever that interval is, not
+ * the figure itself -- the figure is one shared declaration read by both
+ * sides, and a test that restated it would only be asserting the constant
+ * equals itself.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -29,20 +32,23 @@ vi.mock("ai", () => ({
   stepCountIs: vi.fn(),
 }));
 
-/** Short enough that a test can watch several go by. */
-const HEARTBEAT_MS = 30;
+// Hoisted, because both are read by `vi.mock` factories, which run before the
+// file's own top-level statements.
+const { HEARTBEAT_MS, SILENCE_MS } = vi.hoisted(() => ({
+  /** Short enough that a test can watch several go by. */
+  HEARTBEAT_MS: 30,
+  /** How long the model stays quiet before it says anything. */
+  SILENCE_MS: 150,
+}));
 
-/** How long the model stays quiet before it says anything. */
-const SILENCE_MS = 150;
+vi.mock("@breatic/shared", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  SSE_HEARTBEAT_INTERVAL_MS: HEARTBEAT_MS,
+}));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
-  const base = await coreMock(importOriginal);
-  const agentConfig = base.getAgentConfig as () => Record<string, unknown>;
-  return {
-    ...base,
-    getAgentConfig: () => ({ ...agentConfig(), heartbeat_interval_ms: HEARTBEAT_MS }),
-  };
+  return coreMock(importOriginal);
 });
 
 vi.mock("@breatic/domain", async () => {

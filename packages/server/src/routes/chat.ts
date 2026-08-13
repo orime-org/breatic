@@ -10,6 +10,7 @@
  */
 
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { stream } from "hono/streaming";
 import { validate } from "@server/middleware/validate.js";
 
@@ -22,15 +23,15 @@ import {
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { conversationService } from "@server/modules";
-import { memoryService } from "@server/modules";
 import { attachmentService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { MainAgent } from "@server/agent/main-agent.js";
-import { serializeSSE } from "@server/agent/types.js";
+import { serializeSSE, SSEEventType } from "@server/agent/types.js";
+import type { SSEEvent } from "@server/agent/types.js";
 import { runWithContext } from "@breatic/core";
-import { compressForContext } from "@server/agent/message-compressor.js";
-import { getAgentConfig } from "@breatic/core";
+import { buildTurnContext } from "@server/agent/turn-context.js";
 import { assertSkillUsable } from "@breatic/domain";
+import { SSE_HEARTBEAT_INTERVAL_MS } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
 
 /**
@@ -58,6 +59,79 @@ function formatChipsForLLM(
     )
     .join("\n\n");
   return `## Attached Space content (snapshot — later canvas edits do not mutate these)\n\n${sections}\n\n## User message\n\n${message}`;
+}
+
+/**
+ * Stream one turn to the client, whichever entrance asked for it.
+ *
+ * Both entrances owe the client the same things — the same context to run
+ * against, the same headers, the same way out, the same proof the connection
+ * is alive — and differ only in which of the agent's two methods produces the
+ * events. Written once so a fix to any of those is a fix to both; the last
+ * time they were written twice, one of them was missing the way out.
+ * @param c - The request being answered.
+ * @param turn - Who is speaking, and where. All of it already checked.
+ * @param turn.userId - The authenticated user.
+ * @param turn.conversationId - Their conversation, confirmed writable.
+ * @param turn.projectId - The project it belongs to, confirmed theirs.
+ * @param events - Starts the turn. Called inside the request context, and
+ *   handed the signal that is raised when the client goes away.
+ * @returns The SSE response.
+ */
+async function streamTurn(
+  c: Context<{ Variables: AuthVariables }>,
+  turn: { userId: string; conversationId: string; projectId: string },
+  events: (signal: AbortSignal) => AsyncGenerator<SSEEvent>,
+): Promise<Response> {
+  const turnContext = await buildTurnContext(turn.userId, turn.conversationId, turn.projectId);
+
+  c.header("Content-Type", "text/event-stream");
+  c.header("Cache-Control", "no-cache");
+  c.header("Connection", "keep-alive");
+
+  // The first ring of the stop chain, and the only one that can hear the
+  // client leave. It cannot be inferred from the writes: `StreamingApi.write`
+  // catches and discards the error a dead socket produces, so a loop that only
+  // watched its writes would stream into nothing for as long as the model kept
+  // talking. See `routes/text-tools.ts`, which does the same for its own
+  // stream.
+  const stopped = new AbortController();
+
+  return stream(c, async (s) => {
+    s.onAbort(() => {
+      stopped.abort();
+    });
+
+    // Say the connection is alive on a schedule, because a turn that is
+    // thinking looks exactly like a turn that is dead: an open socket with
+    // nothing on it. Not awaited — a beat is worth nothing late, and waiting
+    // on it would put the model's own output behind it. Interleaving is not a
+    // risk: `write` encodes the whole frame and hands it over in one call, so
+    // a beat cannot land inside a chunk.
+    const beat = setInterval(() => {
+      void s.write(serializeSSE({ event: SSEEventType.HEARTBEAT, data: {} }));
+    }, SSE_HEARTBEAT_INTERVAL_MS);
+
+    try {
+      await runWithContext(
+        {
+          userId: turn.userId,
+          conversationId: turn.conversationId,
+          projectId: turn.projectId,
+          ...turnContext,
+        },
+        async () => {
+          for await (const event of events(stopped.signal)) {
+            await s.write(serializeSSE(event));
+          }
+        },
+      );
+    } finally {
+      // However the turn ended. A timer left running holds the process open
+      // and writes to a stream nobody is reading.
+      clearInterval(beat);
+    }
+  });
 }
 
 const chat = new Hono<{ Variables: AuthVariables }>();
@@ -93,52 +167,17 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
     body.project_id,
   );
 
-  // Build request context for this turn
-  const agentCfg = getAgentConfig();
-  const memoryContext = await memoryService.buildContext(
-    user.id, conversation.id, body.project_id, "agent_chat",
-  );
-  const conv = await conversationService.getConversation(conversation.id);
-  const lastTurn = conv?.lastConsolidatedTurn ?? 0;
-  const rawHistory = await conversationService.getMessagesForLlm(conversation.id, lastTurn);
-  const compressedHistory = compressForContext(rawHistory, agentCfg.full_detail_turns);
-
-  c.header("Content-Type", "text/event-stream");
-  c.header("Cache-Control", "no-cache");
-  c.header("Connection", "keep-alive");
-
   // Spec §10.18.2 v13: attach chips into the user message before the
   // LLM call. Chips are pre-frozen C1 snapshots (deep copies from the
   // frontend at attach time), so subsequent canvas mutations don't
   // affect the chat history.
   const messageWithChips = formatChipsForLLM(body.attached_chips, body.message);
 
-  // The first ring of the stop chain, and the only one that can hear the
-  // client leave. It cannot be inferred from the writes: `StreamingApi.write`
-  // catches and discards the error a dead socket produces, so a loop that only
-  // watched its writes would stream into nothing for as long as the model kept
-  // talking. See `routes/text-tools.ts`, which does the same for its own
-  // stream.
-  const stopped = new AbortController();
-
-  return stream(c, async (s) => {
-    s.onAbort(() => {
-      stopped.abort();
-    });
-    await runWithContext(
-      { userId: user.id, conversationId: conversation.id, projectId: body.project_id, memoryContext, compressedHistory },
-      async () => {
-        const agent = new MainAgent();
-        for await (const event of agent.chat(
-          messageWithChips,
-          body.resource_list,
-          stopped.signal,
-        )) {
-          await s.write(serializeSSE(event));
-        }
-      },
-    );
-  });
+  return streamTurn(
+    c,
+    { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
+    (signal) => new MainAgent().chat(messageWithChips, body.resource_list, signal),
+  );
 });
 
 /**
@@ -169,40 +208,17 @@ chat.post("/skill", validate("json", skillCommandSchema), async (c) => {
     body.project_id,
   );
 
-  // Build request context
-  const agentCfg = getAgentConfig();
-  const memoryContext = await memoryService.buildContext(
-    user.id, conversation.id, body.project_id, "agent_chat",
+  return streamTurn(
+    c,
+    { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
+    (signal) =>
+      new MainAgent().handleSkillCommand(
+        body.skill_name,
+        body.input,
+        body.resource_list,
+        signal,
+      ),
   );
-  const conv = await conversationService.getConversation(conversation.id);
-  const lastTurn = conv?.lastConsolidatedTurn ?? 0;
-  const rawHistory = await conversationService.getMessagesForLlm(conversation.id, lastTurn);
-  const compressedHistory = compressForContext(rawHistory, agentCfg.full_detail_turns);
-
-  c.header("Content-Type", "text/event-stream");
-  c.header("Cache-Control", "no-cache");
-  c.header("Connection", "keep-alive");
-
-  // Same first ring as `/message`. A stop wired to only one of the two
-  // entrances is a way in the user cannot get out of.
-  const stopped = new AbortController();
-
-  return stream(c, async (s) => {
-    s.onAbort(() => {
-      stopped.abort();
-    });
-    await runWithContext(
-      { userId: user.id, conversationId: conversation.id, projectId: body.project_id, memoryContext, compressedHistory },
-      async () => {
-        const agent = new MainAgent();
-        for await (const event of agent.handleSkillCommand(
-          body.skill_name, body.input, body.resource_list, stopped.signal,
-        )) {
-          await s.write(serializeSSE(event));
-        }
-      },
-    );
-  });
 });
 
 /**

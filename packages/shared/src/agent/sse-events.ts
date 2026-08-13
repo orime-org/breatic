@@ -77,9 +77,40 @@ export const SSE_EVENT_NAMES = {
 
   // System
   ERROR: "error",
+
+  // Nothing happened, and that is what it says. A turn can be quiet for a
+  // long time -- a slow first token, a tool being waited on -- and quiet is
+  // also what a dead socket looks like. Its arrival is the whole message, so
+  // it carries no data and a client that does not know the name may ignore
+  // it, which is the reason it is an event of its own rather than something
+  // folded into the events that mean something.
+  HEARTBEAT: "heartbeat",
 } as const;
 
 export type SSEEventName = (typeof SSE_EVENT_NAMES)[keyof typeof SSE_EVENT_NAMES];
+
+/**
+ * How often the server says the stream is alive, in milliseconds.
+ *
+ * A constant rather than deployment configuration, because it is not one
+ * side's business: the sender's cadence and the receiver's patience are the
+ * same fact, and a deployment that shortened one without the other would
+ * either declare healthy streams dead or wait longer than it meant to. The
+ * shared HTTP transport writes its retry budget down here for the same
+ * reason, after two configured copies drifted into two different meanings.
+ */
+export const SSE_HEARTBEAT_INTERVAL_MS = 5000;
+
+/**
+ * How long a client waits before treating a stream as gone.
+ *
+ * Three intervals. One missed beat is ordinary — a scheduler that ran late,
+ * a garbage collection — and acting on it would abandon turns that are fine;
+ * three in a row is not something a working connection produces. Derived from
+ * the interval and never written as a figure of its own, so the two cannot
+ * come to disagree.
+ */
+export const SSE_HEARTBEAT_TIMEOUT_MS = SSE_HEARTBEAT_INTERVAL_MS * 3;
 
 /**
  * One event as it appears on the wire.
