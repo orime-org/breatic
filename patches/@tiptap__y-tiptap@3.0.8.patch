@@ -1,8 +1,8 @@
 diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
-index 653ffe79d5edb4a040555bb222f472af1e45edc8..ef94f93f387f6f52b59b62d3b0f33dc5569082bf 100644
+index 653ffe79d5edb4a040555bb222f472af1e45edc8..62df3aab56a67fa1ff9a20df7ab229c5b3d8bfbc 100644
 --- a/dist/y-tiptap.cjs
 +++ b/dist/y-tiptap.cjs
-@@ -927,6 +927,39 @@ const createNodeFromYElement = (
+@@ -927,6 +927,61 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -22,17 +22,39 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..ef94f93f387f6f52b59b62d3b0f33dc5
 +  // positions fail differently: a block-level stand-in inside a paragraph is
 +  // not valid content, so the paragraph itself would fail to build and the
 +  // whole sentence would go.
++  //
++  // There is a THIRD answer, and leaving it out is what made this destructive:
++  // a parent can accept neither. `title` holds `text*`; `listItem` opens with
++  // `paragraph`. Neither takes a stand-in node of any kind, so forcing one in
++  // makes the PARENT fail to build, and the parent's failure lands in the
++  // untouched catch below, which deletes the parent — the title and every
++  // character in it, gone from the shared document. Answering "no stand-in
++  // here" instead leaves this one element to that same catch: it alone is
++  // removed, the parent and its text stay, and the client is stopped from
++  // editing anyway because the intercept sees a name it does not know.
 +  if (schema.nodes[el.nodeName] === undefined) {
 +    const parent = el.parent;
 +    const parentType =
 +      parent instanceof Y.XmlElement ? schema.nodes[parent.nodeName] : undefined;
 +    const inlineFallback = schema.nodes.unsupportedInline;
-+    const fallbackType =
++    const blockFallback = schema.nodes.unsupportedBlock;
++    /**
++     * @param {any} type
++     * @returns {boolean}
++     */
++    const parentAccepts = (type) =>
++      type !== undefined &&
 +      parentType !== undefined &&
-+      inlineFallback !== undefined &&
-+      parentType.contentMatch.matchType(inlineFallback) !== null
-+        ? inlineFallback
-+        : schema.nodes.unsupportedBlock;
++      parentType.contentMatch.matchType(type) !== null;
++    let fallbackType;
++    if (parentType === undefined) {
++      // The parent is the fragment root, which holds blocks.
++      fallbackType = blockFallback;
++    } else if (parentAccepts(inlineFallback)) {
++      fallbackType = inlineFallback;
++    } else if (parentAccepts(blockFallback)) {
++      fallbackType = blockFallback;
++    }
 +    if (fallbackType !== undefined) {
 +      const fallbackNode = fallbackType.create({ originalName: el.nodeName });
 +      meta.mapping.set(el, fallbackNode);
@@ -42,7 +64,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..ef94f93f387f6f52b59b62d3b0f33dc5
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -999,6 +1032,9 @@ const createNodeFromYElement = (
+@@ -999,6 +1054,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -52,7 +74,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..ef94f93f387f6f52b59b62d3b0f33dc5
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1164,13 +1200,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1164,13 +1222,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -77,7 +99,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..ef94f93f387f6f52b59b62d3b0f33dc5
        })
      )
  };
-@@ -1538,7 +1584,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1538,7 +1606,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -96,7 +118,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..ef94f93f387f6f52b59b62d3b0f33dc5
    }
    return marks
  };
-@@ -1550,6 +1606,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1550,6 +1628,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {
@@ -109,10 +131,10 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..ef94f93f387f6f52b59b62d3b0f33dc5
        const isOverlapping = map__namespace.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type));
        pattrs[isOverlapping ? `${mark.type.name}--${hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs;
 diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
-index 28c55820dff13cf3d5c303970f530c17eb38f757..e27c15e6564fb78877d84f17054428a72b1fb666 100644
+index 28c55820dff13cf3d5c303970f530c17eb38f757..b40c409e11083538ac87fa0e2b64baa094aab935 100644
 --- a/dist/y-tiptap.js
 +++ b/dist/y-tiptap.js
-@@ -893,6 +893,39 @@ const createNodeFromYElement = (
+@@ -893,6 +893,61 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -132,17 +154,39 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..e27c15e6564fb78877d84f17054428a7
 +  // positions fail differently: a block-level stand-in inside a paragraph is
 +  // not valid content, so the paragraph itself would fail to build and the
 +  // whole sentence would go.
++  //
++  // There is a THIRD answer, and leaving it out is what made this destructive:
++  // a parent can accept neither. `title` holds `text*`; `listItem` opens with
++  // `paragraph`. Neither takes a stand-in node of any kind, so forcing one in
++  // makes the PARENT fail to build, and the parent's failure lands in the
++  // untouched catch below, which deletes the parent — the title and every
++  // character in it, gone from the shared document. Answering "no stand-in
++  // here" instead leaves this one element to that same catch: it alone is
++  // removed, the parent and its text stay, and the client is stopped from
++  // editing anyway because the intercept sees a name it does not know.
 +  if (schema.nodes[el.nodeName] === undefined) {
 +    const parent = el.parent;
 +    const parentType =
 +      parent instanceof Y.XmlElement ? schema.nodes[parent.nodeName] : undefined;
 +    const inlineFallback = schema.nodes.unsupportedInline;
-+    const fallbackType =
++    const blockFallback = schema.nodes.unsupportedBlock;
++    /**
++     * @param {any} type
++     * @returns {boolean}
++     */
++    const parentAccepts = (type) =>
++      type !== undefined &&
 +      parentType !== undefined &&
-+      inlineFallback !== undefined &&
-+      parentType.contentMatch.matchType(inlineFallback) !== null
-+        ? inlineFallback
-+        : schema.nodes.unsupportedBlock;
++      parentType.contentMatch.matchType(type) !== null;
++    let fallbackType;
++    if (parentType === undefined) {
++      // The parent is the fragment root, which holds blocks.
++      fallbackType = blockFallback;
++    } else if (parentAccepts(inlineFallback)) {
++      fallbackType = inlineFallback;
++    } else if (parentAccepts(blockFallback)) {
++      fallbackType = blockFallback;
++    }
 +    if (fallbackType !== undefined) {
 +      const fallbackNode = fallbackType.create({ originalName: el.nodeName });
 +      meta.mapping.set(el, fallbackNode);
@@ -152,7 +196,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..e27c15e6564fb78877d84f17054428a7
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -965,6 +998,9 @@ const createNodeFromYElement = (
+@@ -965,6 +1020,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -162,7 +206,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..e27c15e6564fb78877d84f17054428a7
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1130,13 +1166,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1130,13 +1188,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -187,7 +231,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..e27c15e6564fb78877d84f17054428a7
        })
      )
  };
-@@ -1504,7 +1550,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1504,7 +1572,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -206,7 +250,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..e27c15e6564fb78877d84f17054428a7
    }
    return marks
  };
-@@ -1516,6 +1572,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1516,6 +1594,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {

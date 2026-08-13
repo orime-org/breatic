@@ -89,6 +89,19 @@ const Anno = TiptapMark.create({
   renderHTML: ({ HTMLAttributes }) => ['span', HTMLAttributes, 0],
 });
 
+/**
+ * 内容规则是 `text*`：只收文字，两个兜底类型一个都收不了。
+ *
+ * 两个版本都认识它。真实的对应物是 document space 的 `title`。
+ */
+const Caption = TiptapNode.create({
+  name: 'caption',
+  group: 'block',
+  content: 'text*',
+  parseHTML: () => [{ tag: 'figcaption' }],
+  renderHTML: () => ['figcaption', 0],
+});
+
 /** 内容规则是 `block+`，空了就不合法——用来造「同版本也会撞上」的那种失败。 */
 const Blockquote = TiptapNode.create({
   name: 'blockquote',
@@ -104,6 +117,7 @@ const COMMON: Extensions = [
   Paragraph,
   Text,
   Blockquote,
+  Caption,
   Anno,
   UnsupportedBlock,
   UnsupportedInline,
@@ -300,6 +314,40 @@ describe('验收 6：名字认识的构造失败，保持上游自愈', () => {
     expect(clientA.getHTML()).not.toContain('data-unsupported-block');
     expect(clientB.getHTML()).not.toContain('data-unsupported-block');
     expect(clientA.getHTML()).toContain('tail');
+  });
+});
+
+describe('父节点两种兜底都不收时', () => {
+  it('只有那个不认识的元素消失，父元素和它的文字都还在', () => {
+    // `text*` 的父节点两个兜底都收不了：行内兜底是个节点、不是文字，块级兜底
+    // 更不行。document space 真实的 `title` 就是这个形状（`listItem` 的
+    // `paragraph block*` 同理，首位必须是段落）。补丁挑兜底不能写成二选一 ——
+    // 那样会往 caption 里塞一个它收不了的块，caption 自己构造失败，落进那个
+    // 被原样留着的 catch，整段连文字一起从共享文档里消失。
+    //
+    // 这一份共享文档是手工用 Yjs API 造的，不经编辑器：本 build 的 caption 是
+    // `text*`，ProseMirror 解析 HTML 时会把 mention 拆到 caption 外面去 ——
+    // 它在保护自己的 schema，所以这个状态**本 build 的编辑器造不出来**。
+    // 而它正是「另一个 build 写进来的字节」，那边的 caption 收 mention。
+    const staleDoc = new Y.Doc();
+    docs.push(staleDoc);
+    staleDoc.transact(() => {
+      const caption = new Y.XmlElement('caption');
+      caption.insert(0, [
+        new Y.XmlText('Q3 '),
+        new Y.XmlElement('mention'),
+        new Y.XmlText('剧本'),
+      ]);
+      staleDoc.getXmlFragment('body').insert(0, [caption]);
+    });
+
+    makeEditor(staleDoc);
+
+    const staleBody = staleDoc.getXmlFragment('body').toString();
+    expect(staleBody).toContain('<caption>');
+    expect(staleBody).toContain('Q3 ');
+    expect(staleBody).toContain('剧本');
+    expect(staleBody).not.toContain('<mention>');
   });
 });
 
