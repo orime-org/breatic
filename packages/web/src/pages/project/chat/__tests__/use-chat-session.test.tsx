@@ -750,29 +750,50 @@ describe('when reopening the chat also fails', () => {
 });
 
 describe('when the panel goes away mid-stream', () => {
-  it('leaves nothing claiming a turn is still running', async () => {
+  it('leaves the turn running, because collapsing the column is not leaving', async () => {
     openChatAnswers([]);
-    const { result, unmount, client } = render();
+    const { result, unmount } = render();
     await waitFor(() => expect(result.current.isPending).toBe(false));
     await act(async () => {
       void result.current.send('hi');
     });
-    expect(useChatStore.getState().streaming).toBe(true);
     // The reply has to actually be on screen and marked, or what follows
     // passes against an empty list without testing anything.
     await waitFor(() => expect(result.current.messages.at(-1)?.streaming).toBe(true));
 
-    // Collapsing the chat column unmounts the panel. The store outlives it,
-    // so a flag left on strands the composer showing a stop button for a turn
-    // that ended, and nothing can be sent until it is clicked.
+    // Collapsing the agent column unmounts the panel. The user is still in
+    // the project and still paying for this turn; he put the panel away, he
+    // did not say stop. Tearing the request down here is what makes the
+    // answer he comes back for not exist.
     act(() => {
       unmount();
     });
 
-    expect(useChatStore.getState().streaming).toBe(false);
-    // The cache outlives the panel too. Left marked, the half-written reply
-    // still has its typing cursor when the column is opened again.
-    expect(cachedMessages(client).at(-1)?.streaming).toBeUndefined();
+    expect(handlers.signal?.aborted).toBe(false);
+  });
+
+  it('shows the same reply, still being written, when the column is opened again', async () => {
+    openChatAnswers([]);
+    const first = render();
+    await waitFor(() => expect(first.result.current.isPending).toBe(false));
+    await act(async () => {
+      void first.result.current.send('hi');
+    });
+    await waitFor(() => expect(first.result.current.messages.at(-1)?.streaming).toBe(true));
+
+    act(() => {
+      first.unmount();
+    });
+
+    // The model went on talking while the column was shut. Nobody was
+    // rendering, and that is the point: the turn belongs to the conversation.
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'half an ans' } });
+    });
+
+    const second = render();
+    await waitFor(() => expect(second.result.current.messages.at(-1)?.content).toBe('half an ans'));
+    expect(second.result.current.messages.at(-1)?.streaming).toBe(true);
   });
 });
 
