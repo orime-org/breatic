@@ -12,7 +12,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import * as Y from 'yjs';
-import { DOCUMENT_SCHEMA, DOCUMENT_SCHEMA_META_KEY } from '@breatic/shared';
+import {
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_META_KEY,
+  documentBodyFragment,
+} from '@breatic/shared';
 
 import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-schema-intercept';
 
@@ -54,11 +58,15 @@ function publish(
 
 /**
  * 往正文里塞一个这个 build 不认识的块。
+ *
+ * 走 `documentBodyFragment`，不写字面量的键名 —— 正文住在哪个片段只有
+ * `@breatic/shared` 那一处说了算，它故意不导出那个键名常量，就是为了不出现
+ * 第二个给它起名字的地方。测试自己抄一个，抄错了就跟实现一起错、然后一起绿。
  * @param bodyDoc - 正文文档。
  */
 function insertUnknownBlock(bodyDoc: Y.Doc): void {
   bodyDoc.transact(() => {
-    bodyDoc.getXmlFragment('body').insert(0, [new Y.XmlElement('taskList')]);
+    documentBodyFragment(bodyDoc).insert(0, [new Y.XmlElement('taskList')]);
   });
 }
 

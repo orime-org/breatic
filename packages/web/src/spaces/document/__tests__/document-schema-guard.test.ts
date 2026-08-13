@@ -11,7 +11,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
-import { DOCUMENT_SCHEMA } from '@breatic/shared';
+import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
 
 import { findUnknownContent } from '@web/spaces/document/document-schema-guard';
 
@@ -28,7 +28,7 @@ afterEach(() => {
 function fragment(): Y.XmlFragment {
   const doc = new Y.Doc();
   docs.push(doc);
-  return doc.getXmlFragment('body');
+  return documentBodyFragment(doc);
 }
 
 describe('全都认识时', () => {

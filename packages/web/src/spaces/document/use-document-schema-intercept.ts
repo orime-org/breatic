@@ -6,6 +6,7 @@ import type * as Y from 'yjs';
 import {
   DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
+  documentBodyFragment,
   documentSchemaDiffers,
 } from '@breatic/shared';
 
@@ -74,8 +75,13 @@ export function useDocumentSchemaIntercept({
   const derive = React.useCallback((): DocumentSchemaInterceptState => {
     const published = readPublished(metaDoc);
     const mismatch = documentSchemaDiffers(DOCUMENT_SCHEMA, published);
+    // Through `documentBodyFragment`, never a literal key. The key itself is
+    // deliberately not exported from `@breatic/shared` so that only one place
+    // names it; a second name here would be free to drift from it, and drifting
+    // means reading an empty fragment — condition two would answer "nothing
+    // unresolvable here" for every document, forever, without erroring once.
     const unknown = findUnknownContent(
-      bodyDoc.getXmlFragment('body'),
+      documentBodyFragment(bodyDoc),
       DOCUMENT_SCHEMA,
     );
     const at = published?.publishedAt;
