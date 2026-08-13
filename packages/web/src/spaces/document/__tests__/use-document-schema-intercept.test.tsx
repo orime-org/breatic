@@ -170,6 +170,23 @@ describe('条件一：跟 meta 里那份不一样', () => {
 });
 
 describe('条件二：这份文档里有解析不了的内容', () => {
+  it('只有条件二成立时，不给发布时间 —— 那句话在这里是假的', () => {
+    // 界面拿这个时间说的是「新版本是什么时候出的」。条件二成立、条件一不成立
+    // 的场景恰恰是「服务器发布的那份跟我一模一样」（前端先上线、collab 还没
+    // 重启），meta 里那个时间记的是**上一次**清单变化，跟「你落后了」毫无关系。
+    // 说不清的时候不说，跟面板「不知道就不编一个出来」是同一条。
+    const { metaDoc, bodyDoc } = pair();
+    publish(metaDoc, DOCUMENT_SCHEMA, '2026-01-01T00:00:00.000Z');
+    insertUnknownBlock(bodyDoc);
+
+    const { result } = renderHook(() =>
+      useDocumentSchemaIntercept({ metaDoc, bodyDoc }),
+    );
+
+    expect(result.current.intercepted).toBe(true);
+    expect(result.current.publishedAt).toBeNull();
+  });
+
   it('文档里有不认识的块 → 拦，哪怕 meta 说我们一样', () => {
     const { metaDoc, bodyDoc } = pair();
     publish(metaDoc);

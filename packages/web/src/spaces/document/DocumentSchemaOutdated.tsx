@@ -32,9 +32,10 @@ interface DocumentSchemaOutdatedProps {
  * does not help, they will refresh again; what they need from us is the facts,
  * not our judgement of what those facts imply.
  *
- * `publishedAt` is not a variant: it is one sentence that appears when the
- * server told us, and is absent when it did not. Nothing is invented to fill
- * the gap.
+ * `publishedAt` is not a variant: it is one sentence that appears when there is
+ * a truthful one to say, and is absent otherwise. Nothing is invented to fill
+ * the gap. The caller withholds it whenever the number would not mean what the
+ * sentence claims — see `use-document-schema-intercept`.
  *
  * ## Why the whole body, rather than a layer over the editor
  *

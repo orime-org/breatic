@@ -84,10 +84,17 @@ export function useDocumentSchemaIntercept({
       documentBodyFragment(bodyDoc),
       DOCUMENT_SCHEMA,
     );
+    // Only condition one carries a publish time. The message built from it says
+    // when the newer version went out, and that is only what this timestamp
+    // means when the published vocabulary is in fact not this one. Condition two
+    // firing on its own is the deployment window — the server is still
+    // publishing exactly this build's vocabulary, so the timestamp records the
+    // PREVIOUS change and has nothing to do with being behind. Saying nothing
+    // beats saying something untrue; the panel already handles not knowing.
     const at = published?.publishedAt;
     return {
       intercepted: mismatch || unknown.length > 0,
-      publishedAt: typeof at === 'string' ? at : null,
+      publishedAt: mismatch && typeof at === 'string' ? at : null,
     };
   }, [metaDoc, bodyDoc]);
 
