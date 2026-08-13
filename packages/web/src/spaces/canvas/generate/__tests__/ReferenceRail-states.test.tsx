@@ -1,0 +1,254 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * The reference rail's rendered state, mode by mode (#1945).
+ *
+ * `reference-usability.test.ts` pins the decision; this pins what the decision
+ * looks like on screen — which control is dark, which one still answers, and
+ * what it says when it refuses.
+ *
+ * `useTranslation` is stubbed to echo its key so the assertions name the
+ * message rather than its English wording: three refusals with three different
+ * remedies is the whole point, and comparing rendered prose would let two of
+ * them drift into saying the same thing without a test noticing.
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
+
+vi.mock('@web/lib/toast', () => ({
+  toast: {
+    warning: vi.fn(),
+    error: vi.fn(),
+    success: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+vi.mock('@web/i18n/use-translation', () => ({
+  useTranslation: () =>
+    // Echo the key, and append the ICU arguments when there are any, so a
+    // message that varies by row modality can be told apart from one that does
+    // not.
+    (key: string, vars?: Record<string, unknown>): string =>
+      vars ? `${key}(${JSON.stringify(vars)})` : key,
+}));
+
+import { toast } from '@web/lib/toast';
+
+/** One row per modality the connection rules let reach a video node. */
+const ROWS: ReferenceRailItem[] = [
+  {
+    refId: 'e-text',
+    sourceNodeId: 'n-text',
+    sourceNodeType: 'text',
+    sourceNodeName: 'Script',
+    textContent: 'a wide shot',
+  },
+  {
+    refId: 'e-image',
+    sourceNodeId: 'n-image',
+    sourceNodeType: 'image',
+    sourceNodeName: 'Character',
+    thumbnail: 'https://cdn/char.png',
+  },
+  {
+    refId: 'e-audio',
+    sourceNodeId: 'n-audio',
+    sourceNodeType: 'audio',
+    sourceNodeName: 'Narration',
+  },
+  {
+    refId: 'e-video',
+    sourceNodeId: 'n-video',
+    sourceNodeType: 'video',
+    sourceNodeName: 'Camera move',
+    thumbnail: 'https://cdn/cover.png',
+  },
+];
+
+const KEY = {
+  modeOff: 'canvas.generatePanel.refuseInsertModeOff',
+  removeOff: 'canvas.generatePanel.refuseRemoveModeOff',
+  typeUnused: 'canvas.generatePanel.refuseInsertTypeUnused',
+} as const;
+
+/**
+ * Renders the rail under one mode.
+ * @param takesReferences - Whether the mode consumes the reference pool.
+ * @param allowed - The source types the mode consumes (`sourcesByMode[mode]`).
+ * @returns The insert / remove spies.
+ */
+function renderRail(
+  takesReferences: boolean,
+  allowed: Array<'image' | 'video' | 'audio'>,
+): { onInsert: ReturnType<typeof vi.fn>; onRemove: ReturnType<typeof vi.fn> } {
+  const onInsert = vi.fn();
+  const onRemove = vi.fn();
+  render(
+    <ReferenceRail
+      references={ROWS}
+      onInsert={onInsert}
+      onRemove={onRemove}
+      modeTakesReferences={takesReferences}
+      allowedSourceTypes={allowed}
+    />,
+  );
+  return { onInsert, onRemove };
+}
+
+const insertBtn = (id: string): HTMLElement =>
+  screen.getByTestId(`generate-ref-insert-${id}`);
+const removeBtn = (id: string): HTMLElement =>
+  screen.getByTestId(`generate-ref-remove-${id}`);
+const row = (id: string): HTMLElement => screen.getByTestId(`generate-ref-${id}`);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe('ReferenceRail — a mode that ignores references dims the whole rail', () => {
+  it('dims every row, not just the image ones (#1930)', () => {
+    renderRail(false, []);
+    // The dim is the ROW's, so all four carry it — the old code applied it to
+    // image rows only, which left audio / video rows looking live in a mode
+    // that would not read them.
+    for (const id of ['e-text', 'e-image', 'e-audio', 'e-video']) {
+      expect(row(id), id).toHaveClass('opacity-50');
+    }
+  });
+
+  it('does not stack the row dim with a second dim on the controls', () => {
+    // 0.5 × 0.5 = 0.25 would make a dark row's controls read as broken rather
+    // than inactive. The row owns the dim; the buttons own only their own
+    // unusable state, which is expressed by aria-disabled, not opacity.
+    renderRail(false, []);
+    expect(insertBtn('e-image')).not.toHaveClass('opacity-50');
+    expect(removeBtn('e-image')).not.toHaveClass('opacity-50');
+  });
+
+  it('freezes every ✕ — including audio and video (#1940)', () => {
+    const { onRemove } = renderRail(false, []);
+    for (const id of ['e-text', 'e-image', 'e-audio', 'e-video']) {
+      expect(removeBtn(id), id).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(removeBtn(id));
+    }
+    expect(onRemove).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledTimes(4);
+    expect(toast.warning).toHaveBeenLastCalledWith(KEY.removeOff);
+  });
+
+  it('keeps the TEXT row insertable — it feeds the prompt, not the references', () => {
+    const { onInsert } = renderRail(false, []);
+    expect(insertBtn('e-text')).not.toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(insertBtn('e-text'));
+    expect(onInsert).toHaveBeenCalledTimes(1);
+    expect(onInsert.mock.calls[0]?.[0]?.refId).toBe('e-text');
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('refuses the media rows with the mode reason, not the modality one', () => {
+    const { onInsert } = renderRail(false, []);
+    for (const id of ['e-image', 'e-audio', 'e-video']) {
+      fireEvent.click(insertBtn(id));
+    }
+    expect(onInsert).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledTimes(3);
+    for (const call of vi.mocked(toast.warning).mock.calls) {
+      expect(call[0]).toBe(KEY.modeOff);
+    }
+  });
+});
+
+describe('ReferenceRail — a mode that uses references lights the rail up', () => {
+  it('leaves no row dimmed and every ✕ live, audio and video included (#1934)', () => {
+    const { onRemove } = renderRail(true, ['image']);
+    for (const id of ['e-text', 'e-image', 'e-audio', 'e-video']) {
+      expect(row(id), id).not.toHaveClass('opacity-50');
+      expect(removeBtn(id), id).not.toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(removeBtn(id));
+    }
+    expect(onRemove).toHaveBeenCalledTimes(4);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('inserts the types this run consumes and explains the ones it does not', () => {
+    const { onInsert } = renderRail(true, ['image']);
+    fireEvent.click(insertBtn('e-text'));
+    fireEvent.click(insertBtn('e-image'));
+    expect(onInsert).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(insertBtn('e-audio'));
+    fireEvent.click(insertBtn('e-video'));
+    expect(onInsert).toHaveBeenCalledTimes(2);
+    expect(toast.warning).toHaveBeenCalledTimes(2);
+    // The message names the modality, because "this model's references don't
+    // take audio" and "...don't take video" are different facts to the user.
+    expect(vi.mocked(toast.warning).mock.calls.map((c) => c[0])).toEqual([
+      `${KEY.typeUnused}({"kind":"audio"})`,
+      `${KEY.typeUnused}({"kind":"video"})`,
+    ]);
+  });
+
+  it('follows the allowed list rather than hardcoding image', () => {
+    // A future mode whose references eat video needs no change here — the
+    // list comes from the backend-computed sourcesByMode.
+    const { onInsert } = renderRail(true, ['image', 'video']);
+    fireEvent.click(insertBtn('e-video'));
+    expect(onInsert).toHaveBeenCalledTimes(1);
+    fireEvent.click(insertBtn('e-audio'));
+    expect(onInsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ReferenceRail — an unusable control still answers', () => {
+  it('never uses the HTML disabled attribute', () => {
+    // A disabled element dispatches neither click nor pointerenter, so it can
+    // neither explain itself nor show its hover preview — measured 2026-08-13,
+    // and the reason both requirements rule it out.
+    renderRail(false, []);
+    for (const id of ['e-image', 'e-audio', 'e-video']) {
+      expect(insertBtn(id), id).not.toBeDisabled();
+      expect(removeBtn(id), id).not.toBeDisabled();
+    }
+  });
+
+  it('leaves the cursor normal — the click does something, it explains', () => {
+    // `not-allowed` says "clicking achieves nothing", which is the opposite of
+    // what happens (user 2026-08-13). The Button primitive's base carries
+    // `disabled:cursor-not-allowed` (and `disabled:opacity-50`), but both are
+    // gated on the HTML attribute this component never sets — which is also
+    // why the row dim cannot stack with a second dim on the controls. So the
+    // check is not "the string is absent" but "nothing sets it unconditionally".
+    renderRail(false, []);
+    for (const btn of [insertBtn('e-image'), removeBtn('e-image')]) {
+      const unconditional = btn.className
+        .split(/\s+/)
+        .filter((c) => c.includes('not-allowed') && !c.startsWith('disabled:'));
+      expect(unconditional).toEqual([]);
+    }
+  });
+
+  it('stays keyboard-reachable, so Enter and Space reach the click handler', () => {
+    // A native <button> turns Enter / Space into a click itself, which is why
+    // there is no onKeyDown here: adding one would fire the toast twice in a
+    // real browser (once for the key, once for the click the browser
+    // synthesizes). What this level can check is the precondition — unlike
+    // `disabled`, `aria-disabled` leaves the button focusable and clickable,
+    // so the keyboard path exists at all. That the keys really do reach it is
+    // a browser behaviour, verified in the smoke run.
+    renderRail(false, []);
+    const btn = insertBtn('e-image');
+    expect(btn.tagName).toBe('BUTTON');
+    expect(btn).not.toHaveAttribute('tabindex', '-1');
+    btn.focus();
+    expect(document.activeElement).toBe(btn);
+    fireEvent.click(btn);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith(KEY.modeOff);
+  });
+});

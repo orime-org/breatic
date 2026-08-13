@@ -4,7 +4,7 @@
 import { ArrowUp, Globe, Languages, Sparkles, Star, X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry } from '@breatic/shared';
+import type { ModelEntry, SourceType } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -19,6 +19,13 @@ import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResoluti
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+
+/**
+ * Fallback for a model that has not resolved yet: no modality is offered.
+ * A module constant rather than a fresh `[]` so the memoised rail keeps a
+ * stable prop and can still bail out of re-rendering.
+ */
+const NO_SOURCE_TYPES: readonly SourceType[] = [];
 
 interface GeneratePanelProps {
   /** Catalog image models (already narrowed to the active mode). */
@@ -204,7 +211,15 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        imageRefsDisabled={imageSourcesOff}
+        // Text-to-image reads no source images at all, so its rail goes dark
+        // whole — and with it every ✕, because references are shared across
+        // modes (decision 2026-08-11). Image-to-image and edit light it back up.
+        modeTakesReferences={!imageSourcesOff}
+        // Which modalities the lit rail offers, straight from the model's
+        // precomputed source requirement rather than hardcoded to image.
+        allowedSourceTypes={
+          currentModel?.sourcesByMode[mode] ?? NO_SOURCE_TYPES
+        }
         pendingFocus={pendingFocus}
       />
 

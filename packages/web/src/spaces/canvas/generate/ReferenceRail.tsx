@@ -1,15 +1,30 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import type { SourceType } from '@breatic/shared';
 import { Crop, Loader2, X } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import { toast } from '@web/lib/toast';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
+import {
+  insertRefusal,
+  removeRefusal,
+  type ReferenceModeContext,
+  type ReferenceRefusal,
+} from '@web/spaces/canvas/generate/reference-usability';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
+import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+
+/**
+ * The default for {@link ReferenceRailProps.allowedSourceTypes} — every type,
+ * meaning the caller stated no restriction. A caller that knows the mode
+ * always passes the real list.
+ */
+const ALL_SOURCE_TYPES: readonly SourceType[] = ['image', 'video', 'audio'];
 
 interface ReferenceRailProps {
   /** The node's derived reference rows (from `deriveReferences`). */
@@ -25,23 +40,23 @@ interface ReferenceRailProps {
   /** Insert this reference's @-mention into the prompt at the cursor (chip click). */
   onInsert: (item: ReferenceRailItem) => void;
   /**
-   * Dim + de-activate the IMAGE rows only — set by a mode that ignores source
-   * images (scope ruled 2026-07-11, round-3 R3-4 = A). Two panels set it now:
-   * the image panel in text-to-image (mode toggle §2.5), and since #1927 the
-   * video panel in every mode but reference-to-video. Text rows stay fully
-   * interactive in both, because their @-chips still serialize into the
-   * prompt whatever the mode — the same scoping as the editor's chip dim,
-   * which greys image chips only.
-   *
-   * A dimmed row's ✕ is disabled too, and that is the point: references are
-   * shared across modes, so a row thrown away here would be gone when the
-   * user switches back (decision 2026-08-11). Getting it back means switching
-   * to a mode that uses it — image-to-image on the image panel,
-   * reference-to-video on the video one — or deleting the edge on the canvas.
-   * That a row can be ADDED in a mode that immediately dims it is a gap of
-   * its own, tracked as #1934.
+   * Does the active mode consume the reference pool at all? False dims EVERY
+   * row and freezes every ✕ — references are shared across modes, so a row
+   * thrown away in a mode that ignores it would be gone on switching back
+   * (decision 2026-08-11), and that verdict does not vary by modality. Rows
+   * used to be dimmed by type instead, which left audio / video rows looking
+   * live and removable inside a mode that would never read them (#1930,
+   * #1940). The way out of a dark rail is in the refusal message: switch to a
+   * mode that uses references, or delete the edge on the canvas (#1934).
    */
-  imageRefsDisabled?: boolean;
+  modeTakesReferences?: boolean;
+  /**
+   * The source types this mode's payload consumes — the backend-computed
+   * `ModelEntry.sourcesByMode[mode]`. Governs insertion only, and only for
+   * media rows: text is prompt material, so it inserts under every mode.
+   * Defaults to all three, meaning "no stated restriction".
+   */
+  allowedSourceTypes?: readonly SourceType[];
   /**
    * Focus crops whose upload is still in flight (#1782) — rendered as
    * disabled placeholder rows after the real entries; each disappears when
@@ -59,17 +74,42 @@ interface ReferenceRailProps {
  * @param root0.references - The derived reference rows.
  * @param root0.onRemove - Remove a reference by id.
  * @param root0.onInsert - Insert a reference's @-mention into the prompt.
- * @param root0.imageRefsDisabled - Dim + de-activate the image rows in a mode that ignores them.
+ * @param root0.modeTakesReferences - Whether the active mode consumes the reference pool.
+ * @param root0.allowedSourceTypes - The source types the active mode consumes.
+ * @param root0.pendingFocus - Focus crops whose upload is still in flight.
  * @returns The reference rail, or null when empty.
  */
 export const ReferenceRail = React.memo(function ReferenceRail({
   references,
   onRemove,
   onInsert,
-  imageRefsDisabled = false,
+  modeTakesReferences = true,
+  allowedSourceTypes = ALL_SOURCE_TYPES,
   pendingFocus = [],
 }: ReferenceRailProps): React.JSX.Element | null {
   const t = useTranslation();
+  const modeCtx: ReferenceModeContext = React.useMemo(
+    () => ({ takesReferences: modeTakesReferences, allowedSourceTypes }),
+    [modeTakesReferences, allowedSourceTypes],
+  );
+  // Three refusals, three messages. Insert and remove do NOT share the
+  // mode-off one even though they share its cause: the way out differs —
+  // insert wants a mode that reads references, remove wants that too but also
+  // has a second way out (delete the edge), and only remove's message can
+  // afford to say so without being wrong about the other.
+  const refuseInsert = React.useCallback(
+    (refusal: ReferenceRefusal, kind: NodeKind): void => {
+      toast.warning(
+        refusal === 'mode-takes-no-references'
+          ? t('canvas.generatePanel.refuseInsertModeOff')
+          : t('canvas.generatePanel.refuseInsertTypeUnused', { kind }),
+      );
+    },
+    [t],
+  );
+  const refuseRemove = React.useCallback((): void => {
+    toast.warning(t('canvas.generatePanel.refuseRemoveModeOff'));
+  }, [t]);
   if (references.length === 0 && pendingFocus.length === 0) return null;
   return (
     <div
@@ -79,13 +119,11 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     >
       {references.map((ref) => {
         const NodeIcon = getNodeIcon(ref.sourceNodeType);
-        // Legacy-edge parity with the @ picker (round-2 adversarial): a
-        // pre-rules incompatible edge (audio/video → image) stays listed so
-        // the user can REMOVE it, but inserting it as an @-mention would
-        // recreate the execute-time dead-end the connection rules eliminated
-        // — the picker refuses to offer it, so the rail refuses to insert it.
-        const insertable = canConnect(ref.sourceNodeType, 'image');
-        const inert = imageRefsDisabled && ref.sourceNodeType === 'image';
+        // The two dimensions, each answered by its own call. Insert asks about
+        // this row; remove asks only about the mode, which is what keeps the
+        // ✕ consistent across all four modalities.
+        const insertRefused = insertRefusal(ref.sourceNodeType, modeCtx);
+        const removeRefused = removeRefusal(modeCtx);
         // Empty-source hint (H, user 2026-07-12): an image / video with no
         // thumbnail or a text node with no content has no preview to show, so
         // tell the user it's not yet filled instead of showing nothing.
@@ -102,13 +140,18 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             key={ref.refId}
             role='listitem'
             data-testid={`generate-ref-${ref.refId}`}
-            // The dim (t2i inert image row) is applied EXPLICITLY on the visible
-            // elements — the insert button, the remove button, and the hover
-            // preview's `dimmed` — NOT as an ancestor `opacity` on this row.
-            // The preview's dim is its own `dimmed` prop (HoverPreview portals
-            // its card, so an ancestor opacity would not reach it anyway); the
-            // explicit prop keeps the chip and rail on one mechanism.
-            className='group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5'
+            // The dim belongs to the ROW, because what it says is about the
+            // whole row: this mode does not use references. Putting it on the
+            // controls instead (as it was until #1945) said it about them
+            // individually, which is why it could reach the image row's two
+            // buttons and no other row at all. The controls now carry no
+            // opacity of their own, so nothing multiplies down to 0.25.
+            //
+            // The hover preview is deliberately NOT dimmed: it is portaled, so
+            // this opacity does not reach it, and that is the wanted outcome —
+            // a dark row still shows its picture at full strength (user
+            // 2026-08-13: 「hover 的时候还是可以显示效果图的」).
+            className={`group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5 ${modeTakesReferences ? '' : 'opacity-50'}`}
           >
             <HoverPreview
               // A text reference previews its content; everything else (image /
@@ -121,7 +164,6 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               text={ref.textContent}
               alt={ref.sourceNodeName}
               emptyHint={emptyHint}
-              dimmed={inert}
               followCanvas
             >
               <Button
@@ -155,9 +197,20 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 // preventDefault on mousedown keeps the prompt editor focused, so
                 // the mention lands at the caret (not appended to the end).
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => onInsert(ref)}
-                disabled={inert || !insertable}
-                className={`flex items-center gap-1.5 rounded-overlay disabled:cursor-not-allowed ${inert ? 'opacity-50' : ''}`}
+                // aria-disabled, never the HTML `disabled` attribute: a
+                // disabled element dispatches neither click nor pointerenter,
+                // so it could neither explain its refusal nor open its hover
+                // preview — and both are required here. The cursor stays
+                // normal for the same reason: `not-allowed` would say
+                // "clicking achieves nothing" while clicking is exactly how
+                // the user finds out why (user 2026-08-13).
+                aria-disabled={insertRefused !== null}
+                onClick={() =>
+                  insertRefused
+                    ? refuseInsert(insertRefused, ref.sourceNodeType)
+                    : onInsert(ref)
+                }
+                className='flex items-center gap-1.5 rounded-overlay'
               >
                 {ref.thumbnail ? (
                   <img
@@ -215,9 +268,9 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                     ref.sourceNodeName || t('canvas.generatePanel.reference'),
                 },
               )}
-              onClick={() => onRemove(ref)}
-              disabled={inert}
-              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed ${inert ? 'opacity-50' : ''}`}
+              aria-disabled={removeRefused !== null}
+              onClick={() => (removeRefused ? refuseRemove() : onRemove(ref))}
+              className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
             >
               <X className='h-3 w-3' aria-hidden='true' />
             </Button>

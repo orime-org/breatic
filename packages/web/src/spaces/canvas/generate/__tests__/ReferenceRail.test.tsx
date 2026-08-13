@@ -256,56 +256,85 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     ];
     const onInsert = vi.fn();
     render(
-      <ReferenceRail references={refs} onRemove={() => {}} onInsert={onInsert} />,
+      <ReferenceRail
+        references={refs}
+        onRemove={() => {}}
+        onInsert={onInsert}
+        // The image panel in image-to-image: it reads the pool, and what it
+        // reads from it is images. Stating the mode is what #1945 changed —
+        // the verdict did not. It used to come from asking whether the row
+        // could connect to an image NODE, which happened to give the right
+        // answer on this panel and the wrong one on the video panel, where
+        // `audio → video` is a live connection rather than a legacy edge.
+        modeTakesReferences
+        allowedSourceTypes={['image']}
+      />,
     );
     const legacyInsert = screen.getByTestId('generate-ref-insert-aud->me');
-    expect(legacyInsert).toBeDisabled();
+    expect(legacyInsert).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(legacyInsert);
     expect(onInsert).not.toHaveBeenCalled();
-    expect(screen.getByTestId('generate-ref-remove-aud->me')).not.toBeDisabled();
-    expect(screen.getByTestId('generate-ref-insert-img->me')).not.toBeDisabled();
+    expect(
+      screen.getByTestId('generate-ref-remove-aud->me'),
+    ).not.toHaveAttribute('aria-disabled', 'true');
+    expect(
+      screen.getByTestId('generate-ref-insert-img->me'),
+    ).not.toHaveAttribute('aria-disabled', 'true');
   });
 
-  // Text-to-image scoping (round-3 R3-4, user ruled A 2026-07-11): t2i only
-  // ignores SOURCE IMAGES — text references still serialize into the prompt
-  // through their @-chips, so only the image rows go inert. Same口径 as the
-  // editor's chip dim, which greys image chips only.
-  it('dims + de-activates only the IMAGE rows when imageRefsDisabled (t2i)', () => {
-    const onInsert = vi.fn();
-    const onRemove = vi.fn();
+  // Text-to-image reads no source images at all (round-3 R3-4, user ruled A
+  // 2026-07-11) — that part is unchanged. What #1945 changed is the SCOPE of
+  // the dim. It used to be applied per row by modality, reaching image rows
+  // only, which is how audio and video rows stayed bright and removable in a
+  // mode that would never read them (#1930, #1940). The dim now belongs to the
+  // row and every row carries it, and so does the ✕: references are shared
+  // across modes, so throwing one away here loses it for the mode the user is
+  // coming back to (decision 2026-08-11).
+  //
+  // Insertion is the dimension that still tells text apart, because a text
+  // chip substitutes into the prompt STRING, which every mode sends. The full
+  // 24-combination matrix and the refusal messages live in
+  // `ReferenceRail-states.test.tsx`; this one keeps the t2i case anchored
+  // where the rest of the rail's rendering is pinned.
+  it('dims the whole rail when the mode takes no references, text row included', () => {
     render(
       <ReferenceRail
         references={REFS}
-        onRemove={onRemove}
-        onInsert={onInsert}
-        imageRefsDisabled
+        onRemove={() => {}}
+        onInsert={() => {}}
+        modeTakesReferences={false}
+        allowedSourceTypes={[]}
       />,
     );
-    // Both rows still render (edges stay visible); the rail itself is NOT
-    // blanket-dimmed — the dim lives on the image row.
+    // Both rows still render — the edges stay visible, they just cannot act.
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    // The dim is on each ROW, not on the rail container and not on the
+    // controls: one opacity, so a dark row's buttons cannot end up at 0.25.
     expect(screen.getByTestId('generate-reference-rail')).not.toHaveClass(
       'opacity-50',
     );
-    // Image row: dimmed + non-interactive. The dim is EXPLICIT on the visible
-    // controls (insert + remove) and on the hover preview's own `dimmed` prop,
-    // never an ancestor opacity on the row — the preview card is portaled, so an
-    // ancestor opacity would not reach it, and the prompt chip could not match
-    // that anyway; both stay on the one explicit `dimmed` mechanism.
-    expect(screen.getByTestId('generate-ref-insert-a->me')).toHaveClass(
+    expect(screen.getByTestId('generate-ref-a->me')).toHaveClass('opacity-50');
+    expect(screen.getByTestId('generate-ref-b->me')).toHaveClass('opacity-50');
+    expect(screen.getByTestId('generate-ref-insert-a->me')).not.toHaveClass(
       'opacity-50',
     );
-    expect(screen.getByTestId('generate-ref-insert-a->me')).toBeDisabled();
-    expect(screen.getByTestId('generate-ref-remove-a->me')).toBeDisabled();
-    // Text row: fully interactive — insert lands the @-chip, remove works.
-    expect(screen.getByTestId('generate-ref-insert-b->me')).not.toHaveClass(
-      'opacity-50',
+    // Image row: refuses to insert. Both ✕ refuse, text included.
+    expect(screen.getByTestId('generate-ref-insert-a->me')).toHaveAttribute(
+      'aria-disabled',
+      'true',
     );
-    const textInsert = screen.getByTestId('generate-ref-insert-b->me');
-    expect(textInsert).not.toBeDisabled();
-    fireEvent.click(textInsert);
-    expect(onInsert).toHaveBeenCalledWith(REFS[1]);
-    fireEvent.click(screen.getByTestId('generate-ref-remove-b->me'));
-    expect(onRemove).toHaveBeenCalledWith(REFS[1]);
+    expect(screen.getByTestId('generate-ref-remove-a->me')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByTestId('generate-ref-remove-b->me')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    // Text row still inserts — its chip feeds the prompt in every mode.
+    expect(screen.getByTestId('generate-ref-insert-b->me')).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 });

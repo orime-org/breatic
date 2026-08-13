@@ -4,7 +4,7 @@
 import { ArrowUp, Star, X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry } from '@breatic/shared';
+import type { ModelEntry, SourceType } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -26,6 +26,13 @@ import {
   videoParamsPickerHasOptions,
   type VideoParamsValue,
 } from '@web/spaces/canvas/generate/VideoParamsPicker';
+
+/**
+ * Fallback for a model that has not resolved yet: no modality is offered.
+ * A module constant rather than a fresh `[]` so the memoised rail keeps a
+ * stable prop and can still bail out of re-rendering.
+ */
+const NO_SOURCE_TYPES: readonly SourceType[] = [];
 
 interface VideoGeneratePanelProps {
   /** Catalog video models, already narrowed to the active mode. */
@@ -154,15 +161,20 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        // Dimmed under every mode but reference-to-video, which is the only
-        // one that feeds a reference IMAGE to the model — text-to-video takes
-        // no picture at all and the other four take theirs from slots, so an
-        // image `@` chip would contribute nothing to any of them (#1903,
-        // landed with #1927). Dimming also disables
-        // the row's ✕, and that is deliberate rather than a side effect:
-        // references are shared across modes, so a ✕ pressed here would throw
-        // away an image the user is coming back for (decision 2026-08-11).
-        imageRefsDisabled={!modeTakesReferences(mode)}
+        // Reference-to-video is the only mode that reads the pool — the other
+        // five take their sources from slots or take none (#1903, landed with
+        // #1927). So the rail goes dark in five of six, which also freezes
+        // every ✕: references are shared across modes, and a ✕ pressed here
+        // would throw away a source the user is coming back for (decision
+        // 2026-08-11).
+        modeTakesReferences={modeTakesReferences(mode)}
+        // Which modalities the lit rail actually offers. Read from the model
+        // rather than hardcoded, so a future reference mode that eats video
+        // needs no change here — the rule lives in domain's
+        // MODE_REQUIRED_SOURCES and arrives precomputed.
+        allowedSourceTypes={
+          currentModel?.sourcesByMode[mode] ?? NO_SOURCE_TYPES
+        }
       />
 
       {promptSlot}
