@@ -48,7 +48,7 @@
       "already_invited": "該使用者已有一個待確認的邀請。",
       "limit_reached": "{limit, plural, =0 {這個 Studio 的會員等級不支援建立 Project，升級後即可建立。} other {這個 Studio 的會員等級最多可建立 # 個 Project，升級可建立更多。}}",
       "collaborator_limit_reached": "{limit, plural, =0 {這個 Project 不支援新增協作者，升級後即可新增。} other {這個 Project 最多可有 # 位協作者，升級可新增更多。}}",
-      "collaborator_limit_reached_for_invitee": "這個 Project 的協作者名額已滿，請聯絡它的 owner 騰出名額。",
+      "collaborator_limit_reached_for_invitee": "這個 Project 的協作者名額已滿，請聯絡它的 Owner 騰出名額。",
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申請角色升級",
       "no_active_owner": "這個 Project 沒有在任的 Owner",
       "not_found": "找不到這個 Project"
