@@ -191,7 +191,7 @@ describe('what the guard judges by', () => {
 
     const tr = editor.state.tr;
     tr.delete(1, 3);
-    tr.setMeta(plugin, { from: 1, to: 3, text: '' });
+    tr.setMeta(plugin!, { from: 1, to: 3, text: '' });
     editor.view.dispatch(tr);
 
     expect(editor.state.doc.child(0).textContent).toBe('AB');
@@ -209,7 +209,7 @@ describe('what the guard judges by', () => {
 
     const tr = editor.state.tr;
     tr.insertText('X', bodyStart);
-    tr.setMeta(plugin, { from: bodyStart, to: bodyStart, text: 'X' });
+    tr.setMeta(plugin!, { from: bodyStart, to: bodyStart, text: 'X' });
     editor.view.dispatch(tr);
 
     expect(editor.state.doc.child(1).textContent).toBe('Xbody');

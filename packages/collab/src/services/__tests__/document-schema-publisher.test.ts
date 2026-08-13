@@ -20,10 +20,8 @@ import { publishDocumentSchema } from "@collab/services/document-schema-publishe
  * @param doc - meta 文档。
  * @returns 那个键下的值。
  */
-function readPublished(doc: Y.Doc): Record<string, unknown> | undefined {
-  return doc.getMap(DOCUMENT_SCHEMA_META_KEY).toJSON() as
-    | Record<string, unknown>
-    | undefined;
+function readPublished(doc: Y.Doc): Record<string, unknown> {
+  return doc.getMap(DOCUMENT_SCHEMA_META_KEY).toJSON();
 }
 
 describe("往 meta 里写这一版的 schema", () => {
@@ -33,8 +31,8 @@ describe("往 meta 里写这一版的 schema", () => {
 
     expect(wrote).toBe(true);
     const published = readPublished(doc);
-    expect(published?.nodes).toEqual(DOCUMENT_SCHEMA.nodes);
-    expect(published?.marks).toEqual(DOCUMENT_SCHEMA.marks);
+    expect(published.nodes).toEqual(DOCUMENT_SCHEMA.nodes);
+    expect(published.marks).toEqual(DOCUMENT_SCHEMA.marks);
     doc.destroy();
   });
 
@@ -42,7 +40,7 @@ describe("往 meta 里写这一版的 schema", () => {
     const doc = new Y.Doc();
     publishDocumentSchema(doc);
 
-    const at = readPublished(doc)?.publishedAt;
+    const at = readPublished(doc).publishedAt;
     expect(typeof at).toBe("string");
     expect(Number.isNaN(Date.parse(at as string))).toBe(false);
     doc.destroy();
@@ -51,14 +49,14 @@ describe("往 meta 里写这一版的 schema", () => {
   it("meta 里已经是同一份了，什么都不写", () => {
     const doc = new Y.Doc();
     publishDocumentSchema(doc);
-    const firstAt = readPublished(doc)?.publishedAt;
+    const firstAt = readPublished(doc).publishedAt;
 
     const wroteAgain = publishDocumentSchema(doc);
 
     expect(wroteAgain).toBe(false);
     // 时间戳没被刷新 —— 每次加载都重写会让「新版本什么时候发布的」变成
     // 「这份文档最近一次被打开是什么时候」，那句话就没有意义了。
-    expect(readPublished(doc)?.publishedAt).toBe(firstAt);
+    expect(readPublished(doc).publishedAt).toBe(firstAt);
     doc.destroy();
   });
 
@@ -75,8 +73,8 @@ describe("往 meta 里写这一版的 schema", () => {
 
     expect(wrote).toBe(true);
     const published = readPublished(doc);
-    expect(published?.nodes).toEqual(DOCUMENT_SCHEMA.nodes);
-    expect(published?.publishedAt).not.toBe("2020-01-01T00:00:00.000Z");
+    expect(published.nodes).toEqual(DOCUMENT_SCHEMA.nodes);
+    expect(published.publishedAt).not.toBe("2020-01-01T00:00:00.000Z");
     doc.destroy();
   });
 
@@ -87,7 +85,7 @@ describe("往 meta 里写这一版的 schema", () => {
     });
 
     expect(publishDocumentSchema(doc)).toBe(true);
-    expect(readPublished(doc)?.nodes).toEqual(DOCUMENT_SCHEMA.nodes);
+    expect(readPublished(doc).nodes).toEqual(DOCUMENT_SCHEMA.nodes);
     doc.destroy();
   });
 

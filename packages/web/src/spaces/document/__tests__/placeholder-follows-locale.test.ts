@@ -62,7 +62,7 @@ describe('the document placeholders', () => {
 
     /** What the title's placeholder decoration currently reads. */
     const titlePlaceholder = (): string =>
-      (editor.view.dom)
+      (editor.view.dom as HTMLElement)
         .querySelector('[data-placeholder]')
         ?.getAttribute('data-placeholder') ?? '';
 

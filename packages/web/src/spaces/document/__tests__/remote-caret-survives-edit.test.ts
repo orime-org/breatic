@@ -76,12 +76,12 @@ describe('a collaborator caret', () => {
     // out this client's own awareness state — so a count is unambiguous.
     /** How many collaborator carets are currently painted. */
     const caretCount = (): number =>
-      (editor.view.dom).querySelectorAll(
+      (editor.view.dom as HTMLElement).querySelectorAll(
         '.collaboration-carets__caret',
       ).length;
     /** The name shown on the painted caret, for identifying whose it is. */
     const caretLabel = (): string =>
-      (editor.view.dom)
+      (editor.view.dom as HTMLElement)
         .querySelector('.collaboration-carets__label')
         ?.textContent?.trim() ?? '';
 

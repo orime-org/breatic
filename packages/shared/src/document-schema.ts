@@ -134,10 +134,11 @@ function normalise(value: unknown): string | null {
   const readMarks = readHalf(marks);
   if (readNodes === null || readMarks === null) return null;
   if (Object.keys(readNodes).length === 0 && Object.keys(readMarks).length === 0) return null;
-  const sortedKeys = (half: Record<string, string[]>): string[] => Object.keys(half).sort();
+  // Sorted, so two vocabularies that agree compare equal regardless of the
+  // order their keys happen to be in.
   return JSON.stringify([
-    sortedKeys(readNodes).map((name) => [name, readNodes[name]]),
-    sortedKeys(readMarks).map((name) => [name, readMarks[name]]),
+    Object.keys(readNodes).sort().map((name) => [name, readNodes[name]]),
+    Object.keys(readMarks).sort().map((name) => [name, readMarks[name]]),
   ]);
 }
 
