@@ -3,15 +3,22 @@
 
 /**
  * y-tiptap 的补丁是**包级**的：画布的文本节点和生成面板的 prompt 编辑器
- * 用的是同一个 y-tiptap，所以它也作用在它们身上（验收 22）。
+ * 用的是同一个 y-tiptap，所以它也作用在它们身上（验收 21）。
  *
- * 而设计说这次不碰它们。这条测试把「不碰」钉住 —— 判据是补丁自己的那道门：
- * 它只有在 schema 里**存在**兜底类型时才改变行为，而兜底类型只注册进了
- * document space 的扩展。所以对另外两个编辑器，补丁走的是 y-tiptap 原来
- * 那条路，行为跟打补丁之前一模一样。
+ * 而设计说这次不碰它们。这条测试把「碰到什么程度」钉死 —— 两条路各不一样：
  *
- * 这里同时验两件事，缺一不可：那两个编辑器的 schema 里确实没有兜底类型
- * （门关着），以及它们遇到不认识的内容时确实还是原行为（门关着的后果）。
+ * **节点那条路一个字都没变**：补丁只在 schema 里**存在**兜底类型时才包，
+ * 而兜底类型只注册进了 document space 的扩展。所以另外两个编辑器遇到不认识
+ * 的块，照旧把它从共享文档里删掉。
+ *
+ * **标记那条路变了，而且是往好的方向变**：原版 `attributesToMarks` 对不认识
+ * 的标记名调 `schema.mark(名字)`，那会抛 TypeError（实测：读 undefined 的
+ * `create`），异常被 `createTextNodesFromYText` 接住 → **删掉整个 Y.XmlText**，
+ * 承载它的那段字一起没。补丁没有兜底类型时改成跳过那个标记，**文字保住、
+ * 只丢标记**。这不是「一模一样」，说成一模一样是假话。
+ *
+ * 这里验三件事：那两个编辑器的 schema 里确实没有兜底类型（门关着）· 节点那条
+ * 路的原行为没变 · 标记那条路现在保住文字。
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -104,5 +111,35 @@ describe('没有兜底类型的编辑器，行为跟打补丁之前一样', () =
     // 不是遗漏 —— 这次的范围只有 document space 正文。
     expect(staleDoc.getXmlFragment('body').toString()).not.toContain('<callout>');
     expect(staleDoc.getXmlFragment('body').toString()).toContain('<paragraph>');
+  });
+
+  it('遇到不认识的标记，文字保住了 —— 这条路的行为确实变了', () => {
+    const staleDoc = new Y.Doc();
+    docs.push(staleDoc);
+
+    // 手工造出「另一个 build 写进来的字节」：一段带 highlight 标记的文字。
+    // 本 build 不认识 highlight，也没有兜底标记可用。
+    staleDoc.transact(() => {
+      const para = new Y.XmlElement('paragraph');
+      const text = new Y.XmlText();
+      text.insert(0, 'keep me', { highlight: {} });
+      para.insert(0, [text]);
+      staleDoc.getXmlFragment('body').insert(0, [para]);
+    });
+
+    const editor = new Editor({
+      extensions: [
+        Document,
+        Paragraph,
+        Text,
+        Collaboration.configure({ fragment: staleDoc.getXmlFragment('body') }),
+      ],
+    });
+    editors.push(editor);
+
+    // 补丁之前这里是空的：`schema.mark('highlight')` 抛 TypeError，
+    // `createTextNodesFromYText` 接住之后把整个 Y.XmlText 删了。
+    expect(staleDoc.getXmlFragment('body').toString()).toContain('keep me');
+    expect(editor.getText()).toContain('keep me');
   });
 });

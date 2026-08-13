@@ -12,8 +12,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { t } from '@breatic/shared';
 
 import { DocumentSchemaOutdated } from '@web/spaces/document/DocumentSchemaOutdated';
+
+const RISK_UPLOADS = 'spaces.document.schemaOutdated.riskUploads';
+const RISK_HISTORY = 'spaces.document.schemaOutdated.riskHistory';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -29,11 +33,19 @@ describe('三件内容都在', () => {
   });
 
   it('两条风险都讲了：上传会被中断、撤销和重做会清空', () => {
+    // 断言的是**这两条各自的文案都渲染出来了**，不是「这一段够长」。
+    // 长度断言看着像在验内容，其实删掉任意一条都还过得去 —— 实测删掉
+    // 「撤销重做会清空」那句，这个文件的用例一条都不红。
+    //
+    // 「撤销重做会清空」是 user 2026-08-13 亲口要求补的那条风险，正是它最
+    // 需要被钉住。
+    const missing = [RISK_UPLOADS, RISK_HISTORY].filter((key) => t(key) === key);
+    expect(missing).toEqual([]); // key 不存在时 t() 原样返回它，两条会一起「相等」
+
     render(<DocumentSchemaOutdated publishedAt={null} />);
     const risks = screen.getByTestId('document-schema-outdated-risks');
-    // 两条各自成句，不是一句带过。
-    expect(risks).toHaveTextContent(/\S/);
-    expect(risks.textContent?.length ?? 0).toBeGreaterThan(20);
+    expect(risks).toHaveTextContent(t(RISK_UPLOADS));
+    expect(risks).toHaveTextContent(t(RISK_HISTORY));
   });
 
   it('给一颗刷新按钮，点了就刷新页面', async () => {
