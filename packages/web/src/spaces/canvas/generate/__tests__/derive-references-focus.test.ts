@@ -36,6 +36,10 @@ describe('focus pool entries', () => {
       sourceNodeType: 'image',
       sourceNodeName: 'Image Node 26',
       thumbnail: 'https://cdn/crop.png',
+      // A crop is its own asset: the row's 24x24 <img> and the hover card
+      // load the same URL. Both fields are set because the rail reads them
+      // for different things (#1945).
+      mediaUrl: 'https://cdn/crop.png',
       focus: true,
     });
   });
