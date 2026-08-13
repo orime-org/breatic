@@ -20,13 +20,15 @@ import { getAgentConfig } from "@breatic/core";
 import { env } from "@breatic/core";
 import { creditService } from "@breatic/domain";
 import { ASK_USER_SENTINEL } from "@breatic/domain";
+import type { MessagePart } from "@breatic/shared";
 import { SSEEventType } from "@server/agent/types.js";
 import type { SSEEvent } from "@server/agent/types.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { parseInteractionSentinel } from "@server/agent/interaction-sentinel.js";
+import { parseInteractionSentinel, stripSentinel } from "@server/agent/interaction-sentinel.js";
+import { toModelMessages } from "@server/agent/model-messages.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"]);
 
@@ -59,33 +61,7 @@ export class MainAgent {
     resources?: string[],
     signal?: AbortSignal,
   ): AsyncGenerator<SSEEvent> {
-    const { conversationId, memoryContext, compressedHistory } = this.ctx;
-
-    // Save user message. Capture the assigned turnIndex so billing can
-    // build a stable refKey (`turn:${conversationId}:${turnIndex}`) that
-    // survives retries — see core/src/modules/credit.service.ts `deductOnce`.
-    const turnIndex = await messageRepo.addMessage(conversationId, {
-      role: "user",
-      content: userMessage,
-    });
-    this.ctx.billing = { turnIndex };
-
-    // One factory decides model, instructions and tools — see
-    // domain/agent/agent-config.ts for why nothing else may assemble them.
-    const agentConfig = buildAgentConfig({
-      basePrompt: buildSystemPrompt(),
-      memoryContext,
-      interactive: true,
-    });
-
-    // Build messages array from pre-compressed history
-    const userContent = MainAgent.buildUserContent(userMessage, resources);
-    const messages = [
-      ...compressedHistory.map((m) => ({ role: m.role, content: m.content })),
-      { role: "user", content: userContent },
-    ] as ModelMessage[];
-
-    yield* this.runStream(agentConfig, messages, signal);
+    yield* this.runTurn(userMessage, resources, signal);
   }
 
   /**
@@ -103,37 +79,61 @@ export class MainAgent {
     resources?: string[],
     signal?: AbortSignal,
   ): AsyncGenerator<SSEEvent> {
-    const { conversationId, memoryContext, compressedHistory } = this.ctx;
-
     // Whether the skill exists is not asked here. `assertSkillUsable` on
     // the route has already answered it — with a 404 the client can act on,
     // before a message was saved or a stream opened. Asking again would be a
     // second answer to a settled question, which is how the two entry points
     // drifted apart in the first place.
+    yield* this.runTurn(`/skill ${skillName} ${userInput}`, resources, signal, skillName);
+  }
 
-    // Save user command. Capture the assigned turnIndex for billing refKey,
-    // same reason as `chat()` above.
+  /**
+   * Everything a turn does before the model is called, for either entry point.
+   *
+   * Both ways in — a message and a skill command — save what the user said,
+   * assemble the same config and the same history, and hand off to the same
+   * loop. They differ in one word: which skill, if any, scopes the tools.
+   *
+   * This exists as one function because the two used to be one copy each, and
+   * that is exactly how the prompt assembly drifted into the bug this batch
+   * fixed (task #75): a line changed on one side and not the other, with
+   * nothing to say so.
+   * @param said - What to record and send as the user's turn
+   * @param resources - Attached resource URLs, if any
+   * @param signal - Raised when the user stops the turn or the client leaves
+   * @param skillName - The skill scoping this turn, when it is a command
+   * @yields SSE events for the turn
+   */
+  private async *runTurn(
+    said: string,
+    resources: string[] | undefined,
+    signal: AbortSignal | undefined,
+    skillName?: string,
+  ): AsyncGenerator<SSEEvent> {
+    const { conversationId, memoryContext, compressedHistory } = this.ctx;
+
+    // Save what the user said. Capture the assigned turnIndex so billing can
+    // build a stable refKey (`turn:${conversationId}:${turnIndex}`) that
+    // survives retries — see core/src/modules/credit.service.ts `deductOnce`.
     const turnIndex = await messageRepo.addMessage(conversationId, {
       role: "user",
-      content: `/skill ${skillName} ${userInput}`,
+      parts: [{ type: "text", text: said }],
     });
     this.ctx.billing = { turnIndex };
 
+    // One factory decides model, instructions and tools — see
+    // domain/agent/agent-config.ts for why nothing else may assemble them.
     const agentConfig = buildAgentConfig({
-      skillName,
+      ...(skillName !== undefined ? { skillName } : {}),
       basePrompt: buildSystemPrompt(),
       memoryContext,
       interactive: true,
     });
 
-    const userContent = MainAgent.buildUserContent(
-      `/skill ${skillName} ${userInput}`,
-      resources,
-    );
-    const messages = [
-      ...compressedHistory.map((m) => ({ role: m.role, content: m.content })),
-      { role: "user", content: userContent },
-    ] as ModelMessage[];
+    const messages: ModelMessage[] = [
+      ...toModelMessages(compressedHistory),
+      { role: "user", content: MainAgent.buildUserContent(said, resources) },
+    ];
 
     yield* this.runStream(agentConfig, messages, signal);
   }
@@ -179,12 +179,50 @@ export class MainAgent {
       // in here ends the stream within milliseconds and no further model call
       // is made, and the SDK passes it on to every tool it invokes.
       abortSignal: signal,
+      // Both fields carry weight. Anthropic leaves extended thinking off
+      // unless asked, so without `type` there is no reasoning to forward at
+      // all; and on the adaptive tier the blocks arrive with empty text unless
+      // the summary is asked for by name, so without `display` the loop would
+      // forward nothing while looking like it works. `adaptive` leaves it to
+      // the model whether a given question needs thinking through, which is
+      // why this is not a cost paid on every turn.
+      ...(agentCfg.thinking_enabled
+        ? {
+            providerOptions: {
+              anthropic: { thinking: { type: "adaptive", display: "summarized" } },
+            },
+          }
+        : {}),
     });
 
     let fullResponse = "";
-    let thinkingContent = "";
     let creditsUsed = 0;
-    const toolCallLog: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+
+    // What this turn did, in the order it did it. One turn of the assistant is
+    // one message, and this is that message being built: prose, reasoning and
+    // tool use land here as they happen and go to the store together at the
+    // end. Writing them out as they arrive instead is what used to split one
+    // reply across three rows, leaving every reader to put it back together.
+    const replyParts: MessagePart[] = [];
+
+    // Prose and reasoning arrive in fragments, so they are held here until
+    // something ends the run — a tool call, or the turn itself. Without that,
+    // a reply that wrote, called a tool, then wrote again would store its two
+    // halves as one block and lose where the tool sat between them.
+    let pendingText = "";
+    let pendingReasoning = "";
+
+    /** Close off whatever prose and reasoning have accumulated. */
+    const flushPending = (): void => {
+      if (pendingReasoning) {
+        replyParts.push({ type: "reasoning", text: pendingReasoning });
+        pendingReasoning = "";
+      }
+      if (pendingText) {
+        replyParts.push({ type: "text", text: pendingText });
+        pendingText = "";
+      }
+    };
 
     // Tokens are counted off the stream as it goes past, never from
     // `result.usage`. That getter is not a passive read: on ai@7.0.58 it
@@ -233,11 +271,21 @@ export class MainAgent {
         switch (part.type) {
           case "text-delta":
             fullResponse += part.text;
+            pendingText += part.text;
             yield this.sse(SSEEventType.CHAT_CHUNK, { text: part.text });
             break;
 
           case "reasoning-delta":
-            thinkingContent += part.text;
+            pendingReasoning += part.text;
+            // `@ai-sdk/anthropic` raises one of these with no text when it
+            // forwards the block's signature; sending those on would be a
+            // stream of empty events for the panel to learn to ignore.
+            if (part.text) {
+              yield this.sse(SSEEventType.AGENT_THINKING, {
+                text: part.text,
+                blockId: part.id,
+              });
+            }
             break;
 
           case "finish-step":
@@ -267,44 +315,59 @@ export class MainAgent {
             break stream;
 
           case "tool-call":
-            toolCallLog.push({
-              id: part.toolCallId,
-              name: part.toolName,
-              arguments: part.input as Record<string, unknown>,
+            // Whatever was being written stops here, so the reply records
+            // that the tool ran at this point and not somewhere else.
+            flushPending();
+            replyParts.push({
+              type: "tool",
+              toolCallId: part.toolCallId,
+              toolName: part.toolName,
+              input: part.input as Record<string, unknown>,
+              status: "pending",
             });
             yield this.sse(SSEEventType.AGENT_TOOL_HINT, { hint: part.toolName });
             break;
 
-          case "tool-result": {
-            const toolCall = toolCallLog.find((tc) => tc.id === part.toolCallId);
+          // The SDK hands a failed tool back as its own part rather than
+          // throwing, the same way it does a failed provider call. Without
+          // this the call sits in the reply as "still running" for good.
+          case "tool-error": {
+            const failedIndex = replyParts.findIndex(
+              (p) => p.type === "tool" && p.toolCallId === part.toolCallId,
+            );
+            const failedCall = failedIndex >= 0 ? replyParts[failedIndex] : undefined;
+            if (failedCall?.type === "tool") {
+              replyParts[failedIndex] = {
+                ...failedCall,
+                status: "error",
+                errorMessage:
+                  part.error instanceof Error ? part.error.message : String(part.error),
+              };
+            }
+            break;
+          }
 
-            // Stringify output once; reused for sentinel detection,
-            // interaction-tool payload parse, and the `role: 'tool'`
-            // history message that the LLM sees on subsequent turns.
+          case "tool-result": {
+            // Stringify once; the same value is read for the marker, for the
+            // event payload, and for what gets stored.
             const output = "output" in part ? part.output : undefined;
             const resultStr = typeof output === "string" ? output : JSON.stringify(output);
 
-            // Pre-parse interaction-tool payload BEFORE persisting so the
-            // structured result lands on the assistant `tool_calls[0].result`
-            // record. History reload reads that field directly — sentinel
-            // decoding stays a backend protocol concern and never leaks
-            // into the frontend persistence boundary.
             const interaction = parseInteractionSentinel(resultStr);
 
-            if (toolCall) {
-              await messageRepo.addMessage(conversationId, {
-                role: "assistant",
-                content: "",
-                tool_calls: [
-                  interaction ? { ...toolCall, result: interaction.payload } : toolCall,
-                ],
-              });
-              await messageRepo.addMessage(conversationId, {
-                role: "tool",
-                content: resultStr,
-                tool_call_id: part.toolCallId,
-                name: toolCall.name,
-              });
+            // The call this answers is already in the reply, waiting. Replace
+            // it rather than mutate it in place, and store the result with its
+            // marker off — that marker is read here and has no reader after.
+            const callIndex = replyParts.findIndex(
+              (p) => p.type === "tool" && p.toolCallId === part.toolCallId,
+            );
+            const call = callIndex >= 0 ? replyParts[callIndex] : undefined;
+            if (call?.type === "tool") {
+              replyParts[callIndex] = {
+                ...call,
+                status: "success",
+                output: stripSentinel(resultStr),
+              };
             }
 
             if (resultStr.startsWith(ASK_USER_SENTINEL)) {
@@ -363,22 +426,44 @@ export class MainAgent {
       const exit = announced ?? "aborted";
       const stopped = exit === "aborted";
 
+      // Close off whatever the loop was in the middle of writing, then record
+      // how it ended. Both have to happen before the reply is handed over:
+      // this is the only point that knows the turn is over, and every ending
+      // arrives here, including the one where nobody is listening any more.
+      flushPending();
+      if (stopped) replyParts.push({ type: "interrupted" });
+      // The other way a turn ends without finishing. Recorded for the same
+      // reason: without it a failed turn and a turn that simply had little to
+      // say are the same row, and the panel can only say so much as it
+      // happens — a reload would read it as a finished answer.
+      if (announced === "failed") replyParts.push({ type: "failed" });
+
+      // A stored message is a record of something that already happened, so
+      // nothing in it may still say "running". A call in flight when the turn
+      // was stopped never gets a result — measured, see the `abort` case — and
+      // there is no later moment that would close it out.
+      // No message is set: nothing went wrong with the tool, the turn simply
+      // ended around it. What to say about that is the panel's to decide, and
+      // it says it in the reader's language.
+      for (const [i, part] of replyParts.entries()) {
+        if (part.type === "tool" && part.status === "pending") {
+          replyParts[i] = { ...part, status: "error" };
+        }
+      }
+
       const failures = await finalizeTurn({
         steps: {
-          // A stopped turn is stored whether or not it got a word out. The
-          // guard used to be the reply alone, which is right for every other
-          // ending -- nothing generated, nothing to keep -- and wrong for this
-          // one: a turn stopped after a tool call and before any prose would
-          // leave no trace at all, so coming back to the conversation would
-          // show no sign the turn had ever happened.
+          // Anything at all to record means a message. A stopped turn always
+          // has something -- the mark above -- so it is stored whether or not
+          // it got a word out: a turn stopped after a tool call and before any
+          // prose would otherwise leave no trace, and coming back to the
+          // conversation would show no sign it had ever happened.
           persist:
-            fullResponse || stopped
+            replyParts.length > 0
               ? async () => {
                   await messageRepo.addMessage(conversationId, {
                     role: "assistant",
-                    content: fullResponse,
-                    ...(thinkingContent ? { thinking: thinkingContent } : {}),
-                    ...(stopped ? { interrupted: true as const } : {}),
+                    parts: replyParts,
                   });
                 }
               : undefined,

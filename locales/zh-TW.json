@@ -109,9 +109,9 @@
       "hintNodes": "試試 @ 節點提問",
       "hintDirect": "或直接在下方輸入對話 ↓",
       "quick": {
-        "image": "生成一張賽博龐克風格圖",
-        "music": "配一段 lo-fi 背景音樂",
-        "writing": "幫我寫一段產品描述"
+        "findReference": "幫我找賽博龐克風格的參考圖",
+        "writePrompt": "幫我寫一個生成插畫的提示詞",
+        "refinePrompt": "幫我把這段提示詞改得更具體"
       }
     },
     "history": {
@@ -128,6 +128,17 @@
       "weeksAgo": "{count, plural, other {# 週前}}",
       "monthsAgo": "{count, plural, other {# 月前}}",
       "isoDate": "{date}"
+    },
+    "error": {
+      "turnFailed": "這則回覆沒能完成，可以再發一次。",
+      "notSent": "沒能送出去，檢查一下網路。",
+      "openFailed": "這個對話沒能開啟，重新整理頁面可以再試一次。"
+    },
+    "message": {
+      "interrupted": "已停止"
+    },
+    "tool": {
+      "unfinished": "未跑完就停止了"
     }
   },
   "canvas": {

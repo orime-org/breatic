@@ -94,7 +94,10 @@ export async function consolidateIfNeeded(
     ? await memoryRepo.getProjectMemory(projectId)
     : "";
 
-  // Build the consolidation prompt (skip thinking content, include tool details for quality)
+  // Build the consolidation prompt from what was said. Only the prose: the
+  // reasoning and the tool use live in each message's parts and none of it is
+  // read here, so the summary is drawn from the conversation as a reader
+  // would see it.
   const messagesText = messagesToConsolidate
     .map((m) => `[${m.role}]: ${m.content}`)
     .join("\n\n");

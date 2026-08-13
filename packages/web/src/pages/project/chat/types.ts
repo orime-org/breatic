@@ -14,7 +14,7 @@ export interface ToolCall {
   name: string;
   args: Record<string, unknown>;
   result?: unknown;
-  /** Pending when the worker hasn't returned yet. */
+  /** How far this use of the tool got, as the store recorded it. */
   status: 'pending' | 'success' | 'error';
   errorMessage?: string;
 }
@@ -22,11 +22,50 @@ export interface ToolCall {
 export interface ChatMessage {
   id: string;
   role: ChatRole;
-  /** Final-form content (HTML-sanitized server-side; safe to render). */
+  /**
+   * What this message says, as text.
+   *
+   * Nothing sanitises it — the chat path has no such step anywhere, on either
+   * side. It is safe today because it is drawn as text and never as markup.
+   * Anyone about to render it as markup has to answer the two questions in
+   * CLAUDE.md's XSS clause first, and the second one is the trap: handing it
+   * to a markdown renderer with raw HTML enabled counts.
+   */
   content: string;
   /** Optional hidden chain-of-thought, foldable in the UI. */
   thinking?: string;
   toolCalls?: ToolCall[];
   /** Streaming = the bubble is still receiving tokens. */
   streaming?: boolean;
+  /** The turn was stopped before it finished, so this is as far as it got. */
+  interrupted?: true;
+  /**
+   * The turn failed and this reply is as much of it as there is.
+   *
+   * Stored, like {@link ChatMessage.interrupted}: the server records failure
+   * as a part of the reply, so what is on screen while it happens and what a
+   * reload brings back say the same thing.
+   *
+   * Only ever `true`; its absence is the ordinary case.
+   */
+  failed?: true;
+  /**
+   * The failure happened just now, with the reader waiting on this reply.
+   *
+   * It is the difference between living through a failure and reading about
+   * one, and only the first is worth announcing — a reply that stops growing
+   * and a stop button turning back into send are both purely visual, so
+   * without this a screen reader user waits for an answer that is never
+   * coming.
+   *
+   * Unlike {@link ChatMessage.failed} this is kept nowhere the message goes.
+   * It belongs to the panel that watched it happen and is gone the moment
+   * that panel is: not in the cache, which outlives the column being
+   * collapsed, and not on the server, which would hand it back on reload.
+   * Either would have a failure from ten minutes ago still announcing itself
+   * as news.
+   *
+   * Only ever `true`; its absence is the ordinary case.
+   */
+  failedJustNow?: true;
 }

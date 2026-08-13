@@ -109,9 +109,9 @@
       "hintNodes": "@로 노드에 물어보세요",
       "hintDirect": "또는 아래에 프롬프트를 입력하세요 ↓",
       "quick": {
-        "image": "사이버펑크 스타일의 이미지 생성",
-        "music": "lo-fi 배경 음악 작곡",
-        "writing": "제품 설명 작성"
+        "findReference": "사이버펑크 스타일 참고 이미지를 찾아줘",
+        "writePrompt": "일러스트 생성 프롬프트를 써줘",
+        "refinePrompt": "이 프롬프트를 더 구체적으로 다듬어줘"
       }
     },
     "history": {
@@ -128,6 +128,17 @@
       "weeksAgo": "{count, plural, one {#주 전} other {#주 전}}",
       "monthsAgo": "{count, plural, one {#개월 전} other {#개월 전}}",
       "isoDate": "{date}"
+    },
+    "error": {
+      "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요.",
+      "notSent": "보내지 못했습니다. 네트워크를 확인해 주세요.",
+      "openFailed": "이 대화를 열지 못했습니다. 페이지를 새로고침하고 다시 시도해 주세요."
+    },
+    "message": {
+      "interrupted": "중지됨"
+    },
+    "tool": {
+      "unfinished": "완료되기 전에 중지됨"
     }
   },
   "canvas": {

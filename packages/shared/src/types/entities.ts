@@ -35,45 +35,52 @@ export interface ConversationEntity {
   deletedAt: Date | null;
 }
 
-/** Structured tool call info within a message. */
-export interface ToolCallInfo {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-  /**
-   * Parsed tool output for tools whose result drives a frontend UI render
-   * (e.g., v13 interaction tools `ask_user_choice` / `propose_canvas_action` /
-   * `show_search_results`). For LLM-only tools, the result lives in the
-   * paired `role: 'tool'` message and this field stays unset.
-   */
-  result?: Record<string, unknown>;
-}
-
 /**
  * One piece of a stored message.
  *
  * A message is not a single string: an assistant turn can carry reasoning,
  * visible prose and a tool call at once, and later work adds execution steps
  * and interactive cards to the same list. Storing the pieces as a list is the
- * shape the AI SDK itself uses for UI messages.
+ * shape the AI SDK itself uses for UI messages, and the shape every chat
+ * product renders from — a tool call is a foldable block inside the reply,
+ * not a reply of its own.
  *
- * The wire is still flat: the repository folds these back into
- * {@link MessageData} on every read, and nothing outside the repository has
- * seen a part. Keeping the SDK's shape in storage is what lets a later batch
- * send the pieces through as they are, without a second migration.
+ * These go out as they are. A reader that wants the pieces gets the pieces;
+ * the flat fields on {@link MessageData} sit beside them for readers that
+ * only want the prose. What does not happen is a reader receiving the flat
+ * form and having to guess the pieces back out of it.
  */
 export type MessagePart =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
+  /**
+   * One use of one tool, from the call to whatever came back.
+   *
+   * A call and its result are one thing that happened, so they are one part
+   * with a status rather than two parts to pair up by id. That pairing is
+   * what every reader would otherwise have to redo, and a reader that meets
+   * the call without the result — a turn stopped mid-tool — has to invent an
+   * answer for a state the store could have just told it.
+   */
   | {
-      type: "tool-call";
+      type: "tool";
       toolCallId: string;
       toolName: string;
       input: Record<string, unknown>;
-      /** Present only for tools whose output drives a frontend render. */
-      output?: Record<string, unknown>;
+      /** How far this use of the tool got. */
+      status: "pending" | "success" | "error";
+      /**
+       * What the tool returned, as the tool returned it.
+       *
+       * The interaction tools prefix their result with an internal marker that
+       * tells the turn loop which event to raise; that marker is consumed
+       * before this is written and never reaches the store. Absent while the
+       * status is still `pending`.
+       */
+      output?: string;
+      /** Why it failed. Only set when the status is `error`. */
+      errorMessage?: string;
     }
-  | { type: "tool-result"; toolCallId: string; toolName: string; output: string }
   /**
    * The turn this message belongs to was stopped before it finished.
    *
@@ -85,7 +92,20 @@ export type MessagePart =
    * text, no reasoning and no tool call, and a row with an empty list is
    * indistinguishable from nothing having happened.
    */
-  | { type: "interrupted" };
+  | { type: "interrupted" }
+  /**
+   * The turn could not be finished: the provider refused, or something in the
+   * loop threw. Whatever had been written stands, and this says it stopped
+   * there for a reason rather than because the model had said everything.
+   *
+   * A part for the same reason `interrupted` is one, and the same guarantee
+   * follows: a turn that fails before the model says a word produces nothing
+   * else, and a row with an empty list cannot be told apart from a turn that
+   * never happened. Being stopped and failing are the two ways a turn ends
+   * without finishing, and a reader has to tell them apart — one is something
+   * the user did, the other is something that went wrong.
+   */
+  | { type: "failed" };
 
 /**
  * Single message within a conversation, as the rest of the app handles it.
@@ -94,17 +114,31 @@ export type MessagePart =
  * between the two so callers keep working with one flat shape.
  */
 export interface MessageData {
-  role: "user" | "assistant" | "tool";
+  /**
+   * The row's own id. What a client keys its rendered list on — deriving a key
+   * from position or turn index would be making up something the store already
+   * knows.
+   *
+   * Absent only on a message that has not been written yet, which is how a
+   * caller assembling one for the store passes it in.
+   */
+  id?: string;
+  role: "user" | "assistant";
+  /**
+   * The pieces of this message, in the order they happened.
+   *
+   * This is the message. Everything below is a flat view derived from it, kept
+   * for readers that only need the prose.
+   */
+  parts: MessagePart[];
+  /** Every `text` part joined — what this message says, without the rest. */
   content: string;
   /** Creation time, ISO-formatted. Assigned by the store, never by callers. */
   ts: string;
   /** Turn index — increments on each user message. Assigned by the store. */
   turnIndex: number;
-  /** Model reasoning/thinking content (not sent back to LLM). */
+  /** The `reasoning` parts joined. Never sent back to the model. */
   thinking?: string;
-  tool_calls?: ToolCallInfo[];
-  tool_call_id?: string;
-  name?: string;
   /**
    * The turn was stopped before it finished, so `content` is as far as it got.
    *
@@ -112,10 +146,23 @@ export interface MessageData {
    * have to be written on every message that ever completed normally.
    */
   interrupted?: true;
+  /**
+   * The turn could not be finished, so `content` is as far as it got.
+   *
+   * Only ever `true`, for the same reason as {@link MessageData.interrupted}.
+   */
+  failed?: true;
 }
 
-/** A message as callers hand it in: the store assigns `ts` and `turnIndex`. */
-export type MessageInput = Omit<MessageData, "ts" | "turnIndex">;
+/**
+ * A message as a caller hands it to the store.
+ *
+ * Only what the caller knows: who is speaking and what happened. The id, the
+ * timestamp, the turn index and the sequence within the turn are the store's
+ * to assign, and `content` / `thinking` are read back off the parts rather
+ * than written twice.
+ */
+export type MessageInput = Pick<MessageData, "role" | "parts">;
 
 /** Task entity. */
 export interface TaskEntity {

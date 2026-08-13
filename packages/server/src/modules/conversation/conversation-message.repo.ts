@@ -23,12 +23,13 @@ import { and, asc, desc, eq, inArray, isNull, lte, gt, max } from "drizzle-orm";
 import { db, conversations, conversationMessages, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
-import type { MessageData, MessageInput, MessagePart, ToolCallInfo } from "@breatic/shared";
+import type { MessageData, MessageInput, MessagePart } from "@breatic/shared";
 
 const MAX_HISTORY = 50;
 
 /** A stored row, as far as the mapping functions care. */
 type StoredRow = {
+  id: string;
   role: string;
   turnIndex: number;
   parts: MessagePart[];
@@ -36,97 +37,37 @@ type StoredRow = {
 };
 
 /**
- * Split a caller's flat message into the pieces that get stored.
+ * Read a stored row back out.
  *
- * Reasoning comes before prose because it precedes the prose it produced;
- * tool calls come last, in the order the model emitted them.
- * @param input - The message as the caller handed it in
- * @returns The parts to store, in display order
- */
-function toParts(input: MessageInput): MessagePart[] {
-  if (input.role === "tool") {
-    return [
-      {
-        type: "tool-result",
-        toolCallId: input.tool_call_id ?? "",
-        toolName: input.name ?? "",
-        output: input.content,
-      },
-    ];
-  }
-
-  const parts: MessagePart[] = [];
-  if (input.thinking) {
-    parts.push({ type: "reasoning", text: input.thinking });
-  }
-  if (input.content) {
-    parts.push({ type: "text", text: input.content });
-  }
-  for (const call of input.tool_calls ?? []) {
-    parts.push({
-      type: "tool-call",
-      toolCallId: call.id,
-      toolName: call.name,
-      input: call.arguments,
-      ...(call.result !== undefined ? { output: call.result } : {}),
-    });
-  }
-  // Last, and outside every condition above: a turn stopped before it wrote
-  // anything has no text, no reasoning and no tool call, and this is the only
-  // part it leaves behind. Fold it into one of the branches above and the row
-  // for that turn stores an empty list, which reads back as nothing having
-  // happened -- the thing storing a stopped turn exists to prevent.
-  if (input.interrupted) {
-    parts.push({ type: "interrupted" });
-  }
-  return parts;
-}
-
-/**
- * Reassemble a stored row into the flat shape callers expect.
+ * The parts come through as they were written — they are the message. The
+ * flat fields beside them are derived here so that readers who only want the
+ * prose do not each write their own join, and so that a reader who wants the
+ * pieces is never handed a reassembly of them.
  * @param row - The stored row
  * @returns The message, with `ts` rendered from the row's creation time
  */
 function toMessageData(row: StoredRow): MessageData {
   const parts = row.parts ?? [];
-  const base = {
-    role: row.role as MessageData["role"],
-    ts: row.createdAt.toISOString(),
-    turnIndex: row.turnIndex,
-  };
-
-  const toolResult = parts.find((p) => p.type === "tool-result");
-  if (toolResult && toolResult.type === "tool-result") {
-    return {
-      ...base,
-      content: toolResult.output,
-      tool_call_id: toolResult.toolCallId,
-      name: toolResult.toolName,
-    };
-  }
 
   const text = parts
     .filter((p): p is Extract<MessagePart, { type: "text" }> => p.type === "text")
     .map((p) => p.text)
     .join("");
-  const reasoning = parts.find(
-    (p): p is Extract<MessagePart, { type: "reasoning" }> => p.type === "reasoning",
-  );
-  const calls: ToolCallInfo[] = parts
-    .filter((p): p is Extract<MessagePart, { type: "tool-call" }> => p.type === "tool-call")
-    .map((p) => ({
-      id: p.toolCallId,
-      name: p.toolName,
-      arguments: p.input,
-      ...(p.output !== undefined ? { result: p.output } : {}),
-    }));
+  const reasoning = parts
+    .filter((p): p is Extract<MessagePart, { type: "reasoning" }> => p.type === "reasoning")
+    .map((p) => p.text)
+    .join("");
 
   return {
-    ...base,
+    id: row.id,
+    role: row.role as MessageData["role"],
+    ts: row.createdAt.toISOString(),
+    turnIndex: row.turnIndex,
+    parts,
     content: text,
-    ...(reasoning ? { thinking: reasoning.text } : {}),
-    ...(calls.length > 0 ? { tool_calls: calls } : {}),
+    ...(reasoning ? { thinking: reasoning } : {}),
     ...(parts.some((p) => p.type === "interrupted") ? { interrupted: true as const } : {}),
+    ...(parts.some((p) => p.type === "failed") ? { failed: true as const } : {}),
   };
 }
 
@@ -194,7 +135,7 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
       role: message.role,
       turnIndex,
       seq,
-      parts: toParts(message),
+      parts: message.parts,
     });
 
     await tx
@@ -216,6 +157,7 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
 export async function getMessages(id: string, limit = MAX_HISTORY): Promise<MessageData[]> {
   const rows = await db
     .select({
+      id: conversationMessages.id,
       role: conversationMessages.role,
       turnIndex: conversationMessages.turnIndex,
       parts: conversationMessages.parts,
@@ -251,6 +193,7 @@ export async function getMessagesForLlm(
 ): Promise<MessageData[]> {
   const rows = await db
     .select({
+      id: conversationMessages.id,
       role: conversationMessages.role,
       turnIndex: conversationMessages.turnIndex,
       parts: conversationMessages.parts,
@@ -335,6 +278,7 @@ export async function getMessagesForConsolidation(
 
   const rows = await db
     .select({
+      id: conversationMessages.id,
       role: conversationMessages.role,
       turnIndex: conversationMessages.turnIndex,
       parts: conversationMessages.parts,

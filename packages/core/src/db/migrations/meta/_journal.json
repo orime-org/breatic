@@ -358,6 +358,13 @@
       "when": 1786492800000,
       "tag": "0050_chat_message_store",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1786579200000,
+      "tag": "0051_purge_pre_parts_messages",
+      "breakpoints": true
     }
   ]
 }

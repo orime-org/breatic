@@ -109,9 +109,9 @@
       "hintNodes": "Try asking @ a node",
       "hintDirect": "Or type your prompt below ↓",
       "quick": {
-        "image": "Generate a cyberpunk-style image",
-        "music": "Compose a lo-fi background track",
-        "writing": "Write a product description"
+        "findReference": "Find cyberpunk-style reference images",
+        "writePrompt": "Write a prompt for an illustration",
+        "refinePrompt": "Make my prompt more specific"
       }
     },
     "history": {
@@ -128,6 +128,17 @@
       "weeksAgo": "{count, plural, one {# week ago} other {# weeks ago}}",
       "monthsAgo": "{count, plural, one {# month ago} other {# months ago}}",
       "isoDate": "{date}"
+    },
+    "error": {
+      "turnFailed": "This reply could not be finished. Try sending it again.",
+      "notSent": "That did not go out — check your connection.",
+      "openFailed": "This chat could not be opened. Reload the page to try again."
+    },
+    "message": {
+      "interrupted": "Stopped"
+    },
+    "tool": {
+      "unfinished": "Stopped before it finished"
     }
   },
   "canvas": {

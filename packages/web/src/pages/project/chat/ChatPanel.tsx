@@ -5,23 +5,22 @@ import * as React from 'react';
 
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { useChatStore } from '@web/stores';
+import { useTranslation } from '@web/i18n/use-translation';
 
+import { StreamRefusedError } from '@web/data/stream/sse';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import { ChatNotice } from '@web/pages/project/chat/ChatNotice';
 import {
   ConversationHistorySheet,
   type ConversationSummary,
 } from '@web/pages/project/chat/ConversationHistorySheet';
 import { MessageList } from '@web/pages/project/chat/MessageList';
-import type { ChatMessage } from '@web/pages/project/chat/types';
+import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 
 interface ChatPanelProps {
-  /** Project this chat belongs to — for the title bar / API scoping. */
+  /** Project this chat belongs to — the chat is opened against it. */
   projectId: string;
-  /** Static demo messages until real conversation loading is wired in. */
-  initialMessages?: ReadonlyArray<ChatMessage>;
   conversations?: ReadonlyArray<ConversationSummary>;
-  onSend?: (text: string) => void;
-  onAbort?: () => void;
   /**
    * Called when the user picks a quick-action chip in the empty state.
    * Wiring loads the label into the composer draft so the user can edit
@@ -41,27 +40,23 @@ interface ChatPanelProps {
  * Project ChatPanel — private per-user agent chat. Does NOT participate
  * in Yjs (memory `project_chat_private_no_yjs`).
  *
- * PR 9 wires UI structure + composer state to `useChatStore`; the SSE
- * stream + REST history loader hooks into the same store in a later PR.
+ * The messages, and sending and stopping, all come from one hook so that the
+ * history and the reply being streamed are never two different lists.
  * @param root0 - The component props.
- * @param root0.projectId - The project this chat belongs to (title bar / API scoping).
- * @param root0.initialMessages - The messages to seed the list with.
+ * @param root0.projectId - The project this chat belongs to.
  * @param root0.conversations - The conversation summaries shown in the history sheet.
- * @param root0.onSend - Called with the trimmed text when a message is sent.
- * @param root0.onAbort - Called to abort the in-flight streaming response.
  * @param root0.onQuickAction - Called with a quick-action label from the empty state.
  * @param root0.disabled - When true, renders the panel disabled (viewers cannot interact).
  * @returns The per-user private chat column with message list, composer, and history sheet.
  */
 export function ChatPanel({
   projectId,
-  initialMessages = [],
   conversations = [],
-  onSend,
-  onAbort,
   onQuickAction,
   disabled = false,
 }: ChatPanelProps): React.JSX.Element {
+  const { messages, isPending, failedToOpen, canSend, send, abort } = useChatSession(projectId);
+  const t = useTranslation();
   const draft = useChatStore((s) => s.composerDraft);
   const setDraft = useChatStore((s) => s.setComposerDraft);
   const clearDraft = useChatStore((s) => s.clearComposerDraft);
@@ -72,6 +67,18 @@ export function ChatPanel({
   );
 
   const [historyOpen, setHistoryOpen] = useExclusiveOverlay('conversation-history');
+  // Sending is something the reader does, and this is where they do it. The
+  // message list needs to know it happened — it is the one thing that should
+  // bring the column back to the bottom after they have scrolled up to read.
+  const [sentCount, setSentCount] = React.useState(0);
+  /**
+   * What the panel has to say about the last thing that went wrong.
+   *
+   * One line, on the composer, for every failure the panel can report. It is
+   * cleared by trying again — that is the only thing that makes the last
+   * failure old news, and it means the reader never has to dismiss anything.
+   */
+  const [notice, setNotice] = React.useState<string | null>(null);
 
   /**
    * Send the trimmed composer draft and clear the input.
@@ -79,7 +86,36 @@ export function ChatPanel({
   const submit = (): void => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
-    onSend?.(trimmed);
+    setSentCount((n) => n + 1);
+    setNotice(null);
+    // Cleared here rather than when the reply ends. The composer is only live
+    // when there is a conversation to write to, so by the time this runs the
+    // message is already in the list — waiting for the whole turn would leave
+    // the user's words sitting in the box beside their own sent bubble, and
+    // wipe anything typed while the reply streamed in.
+    void send(trimmed).catch((err: unknown) => {
+      // Two failures, one line each, both on the composer. When the server
+      // answered it said why, in the reader's language — sse.ts goes to the
+      // trouble of reading that out of the error envelope, and dropping it
+      // here would waste the only sentence anyone wrote about this refusal.
+      // When it never answered there is nothing to quote, and the reader
+      // needs to know it was the connection and not their message.
+      setNotice(
+        err instanceof StreamRefusedError ? err.message : t('chat.error.notSent'),
+      );
+      // It was not sent, and the server kept no record of it — so nothing of
+      // the attempt is on screen to explain itself. Handing the words back is
+      // the explanation: the message is where the user left it, ready to send
+      // again, rather than gone with nothing to show for it.
+      //
+      // Only into a box that is still empty. The composer stays live for the
+      // whole turn and carrying on typing is the ordinary thing to do, so
+      // writing over whatever is in there would take away words that were
+      // never in trouble — with no message, no undo, and nowhere to look for
+      // them. Read from the store rather than the render that started the
+      // send, which closed over the draft as it was then.
+      if (useChatStore.getState().composerDraft === '') setDraft(trimmed);
+    });
     clearDraft();
   };
 
@@ -97,18 +133,26 @@ export function ChatPanel({
       }
     >
       <MessageList
-        messages={initialMessages}
+        messages={messages}
+        loading={isPending || failedToOpen}
+        sentCount={sentCount}
         onQuickAction={(label) => {
           if (onQuickAction) onQuickAction(label);
           else setDraft(label);
         }}
       />
+      {/* A chat that would not open is the same kind of news as a message
+          that would not send, and it belongs in the same place — a second
+          bar at the top of the panel would be one more spot to learn to
+          look at, and the two could disagree. */}
+      <ChatNotice message={failedToOpen ? t('chat.error.openFailed') : notice} />
       <ChatComposer
         draft={draft}
         streaming={streaming}
+        disabled={!canSend}
         onChange={setDraft}
         onSubmit={submit}
-        onAbort={onAbort}
+        onAbort={abort}
       />
       <ConversationHistorySheet
         open={historyOpen}
