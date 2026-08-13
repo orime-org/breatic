@@ -45,6 +45,7 @@
       "email_not_registered": "そのメールアドレスは登録されていません。",
       "already_member": "そのユーザーはすでにアクセス権を持っています。",
       "already_invited": "そのユーザーには保留中の招待があります。",
+      "limit_reached": "{limit, plural, =0 {この Studio のプランでは Project を作成できません。アップグレードすると作成できます。} other {この Studio のプランで作成できる Project は最大 # 件です。アップグレードするとさらに作成できます。}}",
       "collaborator_limit_reached": "この Project はコラボレーター数の上限に達しています。",
       "only_viewer_can_request_upgrade": "ロールの昇格を申請できるのは Viewer だけです",
       "no_active_owner": "この Project には現任の Owner がいません",
