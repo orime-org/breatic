@@ -19,7 +19,7 @@
  * progress rather than hand out a number, and they do filter.
  */
 
-import { and, asc, desc, eq, inArray, isNull, lte, gt, max } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, lte, gt, max } from "drizzle-orm";
 import { db, conversations, conversationMessages, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
@@ -160,13 +160,36 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
 }
 
 /**
- * Get the last N messages of a conversation.
- * @param id - Conversation UUID to read
- * @param limit - Maximum number of trailing messages (defaults to 50)
- * @returns The trailing messages in display order, empty when the
- *   conversation is missing or soft-deleted
+ * One page of a conversation, read from its newest end backwards.
+ *
+ * A page ends on a turn boundary, never inside one. Cutting at a message
+ * count instead would put a turn's question in one page and its answer in
+ * neither: the cursor for the next page is a turn, so a turn half-read is a
+ * turn half-lost, and on screen that is an answer with no question above it
+ * that no amount of loading earlier brings back.
  */
-export async function getMessages(id: string, limit = MAX_HISTORY): Promise<MessageData[]> {
+export interface MessagePage {
+  /** The messages, oldest first. */
+  messages: MessageData[];
+  /** There are older messages than these. */
+  hasMore: boolean;
+}
+
+/**
+ * Read one page of a conversation.
+ * @param id - Conversation UUID to read
+ * @param opts - Where to read from
+ * @param opts.beforeTurn - Read the page ending just before this turn. Absent
+ *   reads the newest page, which is what opening the conversation shows
+ * @returns That page in display order, empty when the conversation is missing
+ *   or soft-deleted
+ */
+export async function getMessages(
+  id: string,
+  opts: { beforeTurn?: number } = {},
+): Promise<MessagePage> {
+  // One more than a page holds, which is how a page learns there is anything
+  // behind it without a second query.
   const rows = await db
     .select({
       id: conversationMessages.id,
@@ -182,12 +205,28 @@ export async function getMessages(id: string, limit = MAX_HISTORY): Promise<Mess
         eq(conversationMessages.conversationId, id),
         isNull(conversationMessages.deletedAt),
         isNull(conversations.deletedAt),
+        ...(opts.beforeTurn === undefined
+          ? []
+          : [lt(conversationMessages.turnIndex, opts.beforeTurn)]),
       ),
     )
     .orderBy(desc(conversationMessages.turnIndex), desc(conversationMessages.seq))
-    .limit(limit);
+    .limit(MAX_HISTORY + 1);
 
-  return rows.reverse().map(toMessageData);
+  const hasMore = rows.length > MAX_HISTORY;
+
+  // Rows come newest first, so the last one is the oldest — and when there is
+  // more behind it, it is the turn the limit cut through. Drop it whole and
+  // it becomes the next page's job, complete. Unless it is the only turn
+  // here, in which case dropping it would return nothing and the reader could
+  // never get past it.
+  const oldestTurn = rows.at(-1)?.turnIndex;
+  const kept =
+    hasMore && rows.some((r) => r.turnIndex !== oldestTurn)
+      ? rows.filter((r) => r.turnIndex !== oldestTurn)
+      : rows;
+
+  return { messages: kept.reverse().map(toMessageData), hasMore };
 }
 
 /**

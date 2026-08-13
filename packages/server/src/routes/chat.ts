@@ -19,6 +19,7 @@ import {
   skillCommandSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,
+  chatEarlierMessagesQuerySchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -278,6 +279,31 @@ chat.get("/conversations/:id", async (c) => {
   const result = await conversationService.getWithMessages(conversationId, user.id);
   return c.json({ data: result });
 });
+
+/**
+ * `GET /chat/conversations/:id/messages` — the page before the one in hand.
+ *
+ * How a conversation longer than one page is read: the client holds the
+ * newest page from `/chat/open` and asks for what comes before it, turn by
+ * turn, as the reader scrolls back.
+ * @param c - Hono context with conversation ID param and `before_turn` query
+ * @returns That page, oldest first, and whether anything is older still
+ * @throws {AppError} `404` if not found, `403` if not the owner
+ */
+chat.get(
+  "/conversations/:id/messages",
+  validate("query", chatEarlierMessagesQuerySchema),
+  async (c) => {
+    const user = c.get("user");
+    const { before_turn: beforeTurn } = c.req.valid("query");
+    const page = await conversationService.getEarlierMessages(
+      c.req.param("id"),
+      user.id,
+      beforeTurn,
+    );
+    return c.json({ data: page });
+  },
+);
 
 /**
  * `DELETE /chat/conversations/:id` — delete a conversation.

@@ -115,8 +115,8 @@ describe("messages", () => {
     await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: "two" }], turnIndex: asked });
     await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "three" }] });
 
-    const msgs = await messageRepo.getMessages(conv.id);
-    expect(msgs.map((m) => m.content)).toEqual(["one", "two", "three"]);
+    const page = await messageRepo.getMessages(conv.id);
+    expect(page.messages.map((m) => m.content)).toEqual(["one", "two", "three"]);
   });
 
   it("opens a new turn on each user message", async () => {
@@ -157,7 +157,7 @@ describe("messages", () => {
       turnIndex: asked,
     });
 
-    const stored = await messageRepo.getMessages(conv.id);
+    const { messages: stored } = await messageRepo.getMessages(conv.id);
     const reply = stored.find((m) => m.role === "assistant");
 
     // Reading the conversation back has to show a1 under q1. Filed under the
@@ -217,7 +217,7 @@ describe("messages", () => {
 
     await conversationRepo.softDeleteConversation(conv.id);
 
-    expect(await messageRepo.getMessages(conv.id)).toEqual([]);
+    expect((await messageRepo.getMessages(conv.id)).messages).toEqual([]);
 
     // The FK is RESTRICT, so Postgres will not cascade for us — the service
     // layer has to stamp the children itself.
@@ -318,7 +318,7 @@ describe("a message survives the round trip through parts", () => {
       fc.asyncProperty(messageArb, async (message) => {
         const conv = await seedConversation(userId, projectId);
         await messageRepo.addMessage(conv.id, message);
-        const [stored] = await messageRepo.getMessages(conv.id, 1);
+        const [stored] = (await messageRepo.getMessages(conv.id)).messages;
 
         expect(stored!.role).toBe(message.role);
         expect(stored!.parts).toEqual(message.parts);
@@ -358,7 +358,7 @@ describe("a message survives the round trip through parts", () => {
       parts: [{ type: "interrupted" }],
       turnIndex: 1,
     });
-    const [stored] = await messageRepo.getMessages(conv.id, 1);
+    const [stored] = (await messageRepo.getMessages(conv.id)).messages;
 
     expect(stored).toMatchObject({ role: "assistant", content: "", interrupted: true });
     expect(stored!.parts).toEqual([{ type: "interrupted" }]);
@@ -377,10 +377,56 @@ describe("a message survives the round trip through parts", () => {
       parts: [{ type: "failed" }],
       turnIndex: 1,
     });
-    const [stored] = await messageRepo.getMessages(conv.id, 1);
+    const [stored] = (await messageRepo.getMessages(conv.id)).messages;
 
     expect(stored).toMatchObject({ role: "assistant", content: "", failed: true });
     expect(stored!.parts).toEqual([{ type: "failed" }]);
+  });
+});
+
+describe("reading a conversation longer than one page", () => {
+  it("hands out every message exactly once as the reader walks back", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+
+    // Thirty turns, one of which was stopped before the model said anything.
+    // That turn is one message where the others are two, which is what puts
+    // the page boundary inside a turn rather than neatly between two: the
+    // running total from the newest end goes 2, 3, 5, 7 ... and steps over
+    // fifty instead of landing on it.
+    for (let i = 1; i <= 30; i++) {
+      const turn = await messageRepo.addMessage(conv.id, {
+        role: "user",
+        parts: [{ type: "text", text: `q${i}` }],
+      });
+      if (i === 29) continue;
+      await messageRepo.addMessage(conv.id, {
+        role: "assistant",
+        parts: [{ type: "text", text: `a${i}` }],
+        turnIndex: turn,
+      });
+    }
+
+    const seen: string[] = [];
+    let page = await messageRepo.getMessages(conv.id);
+    expect(page.hasMore).toBe(true);
+    for (;;) {
+      seen.push(...page.messages.map((m) => m.id ?? ""));
+      if (!page.hasMore) break;
+      const oldest = Math.min(...page.messages.map((m) => m.turnIndex));
+      page = await messageRepo.getMessages(conv.id, { beforeTurn: oldest });
+    }
+
+    // Every message the conversation has, and no message twice. A boundary
+    // that cuts a turn in half loses whichever half falls outside both pages:
+    // on screen that is an answer with no question above it, and no amount of
+    // loading earlier ever brings it back.
+    const stored = await sql<{ id: string }[]>`
+      SELECT id::text FROM conversation_messages
+      WHERE conversation_id = ${conv.id} AND deleted_at IS NULL
+    `;
+    expect(seen.length).toBe(stored.length);
+    expect(new Set(seen).size).toBe(stored.length);
   });
 });
 

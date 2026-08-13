@@ -80,7 +80,7 @@ interface ChatComposerProps {
  * @param root0.onRemoveChip - Called with a chip id to detach that reference.
  * @returns The composer card with chips, textarea, and action buttons.
  */
-export function ChatComposer({
+function ChatComposerInner({
   draft,
   streaming,
   disabled,
@@ -241,3 +241,13 @@ export function ChatComposer({
 }
 
 export type { ReferenceChip };
+
+/**
+ * Rendered again only when its own props change.
+ *
+ * A reply arriving token by token re-renders the panel that owns this, and
+ * without this that re-render reaches here as well -- sixty times a second,
+ * for a component whose props did not move. Every callback it is handed is
+ * stable, which is what lets the comparison actually stop anything.
+ */
+export const ChatComposer = React.memo(ChatComposerInner);

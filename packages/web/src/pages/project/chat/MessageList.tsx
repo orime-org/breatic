@@ -3,7 +3,9 @@
 
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { useTranslation } from '@web/i18n/use-translation';
 import { ChatEmpty } from '@web/pages/project/chat/ChatEmpty';
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import type { ChatMessage } from '@web/pages/project/chat/types';
@@ -27,6 +29,10 @@ interface MessageListProps {
    * reply in the form it was stored — a change with no reader behind it.
    */
   sentCount?: number;
+  /** The conversation reaches back further than what is on screen. */
+  hasEarlier?: boolean;
+  /** Load what comes before the messages on screen. */
+  onLoadEarlier?: () => void;
   onQuickAction?: (label: string) => void;
 }
 
@@ -49,15 +55,20 @@ const AT_BOTTOM_SLACK_PX = 64;
  * @param root0.messages - The messages to render in order.
  * @param root0.loading - The conversation has not arrived yet.
  * @param root0.sentCount - How many times the reader has pressed send.
+ * @param root0.hasEarlier - The conversation reaches back further than this.
+ * @param root0.onLoadEarlier - Called to load what comes before these.
  * @param root0.onQuickAction - Called with a quick-action label from the empty state.
  * @returns The scrollable message column, or the empty-conversation state.
  */
-export function MessageList({
+function MessageListInner({
   messages,
   loading = false,
   sentCount,
+  hasEarlier = false,
+  onLoadEarlier,
   onQuickAction,
 }: MessageListProps): React.JSX.Element {
+  const t = useTranslation();
   const bottomRef = React.useRef<HTMLDivElement>(null);
   // Whether the reader was at the end last time they moved. Recorded as they
   // scroll rather than measured when new content arrives, because by then the
@@ -131,6 +142,21 @@ export function MessageList({
         <ChatEmpty onQuickAction={onQuickAction} />
       ) : (
         <div className='flex flex-col gap-2 p-3'>
+          {/* At the top, because that is where the conversation continues
+              upward. Without it a conversation past its first page simply
+              begins in the middle, with nothing on screen saying that what
+              came before is still there. */}
+          {hasEarlier ? (
+            <Button
+              variant='outline'
+              size='sm'
+              className='self-center'
+              onClick={onLoadEarlier}
+              data-testid='chat-load-earlier'
+            >
+              {t('chat.loadEarlier')}
+            </Button>
+          ) : null}
           {messages.map((m) => (
             <MessageBubble key={m.id} message={m} />
           ))}
@@ -140,3 +166,13 @@ export function MessageList({
     </ScrollArea>
   );
 }
+
+/**
+ * The column, rendered again only when what it shows has changed.
+ *
+ * Every piece of a streaming reply re-renders the panel above it, and without
+ * this that re-render walks the whole column. The message objects the panel
+ * hands over are reused for everything that did not change, so the default
+ * comparison is enough to stop here.
+ */
+export const MessageList = React.memo(MessageListInner);

@@ -15,6 +15,7 @@ import { chatApi } from '@web/data/api/chat';
 import { StreamRefusedError, StreamUnreachableError } from '@web/data/stream/sse';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { useChatStore } from '@web/stores';
+import { _resetForTests } from '@web/stores/conversation-runtime';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 /**
@@ -50,6 +51,7 @@ function chatOpensWith(texts: string[]): void {
         ts: '2026-08-11T00:00:00Z',
         turnIndex: 1,
       })),
+      hasMore: false,
     },
   } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
 }
@@ -58,6 +60,9 @@ describe('ChatPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useChatStore.getState().reset();
+    // The conversation runtime is a module singleton, so it carries whatever
+    // the last case left in it into the next one.
+    _resetForTests();
     chatOpensWith([]);
     vi.mocked(chatApi.streamMessage).mockResolvedValue(undefined);
   });

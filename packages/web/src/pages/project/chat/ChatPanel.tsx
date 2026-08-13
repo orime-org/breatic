@@ -55,12 +55,12 @@ export function ChatPanel({
   onQuickAction,
   disabled = false,
 }: ChatPanelProps): React.JSX.Element {
-  const { messages, isPending, failedToOpen, canSend, send, abort } = useChatSession(projectId);
+  const { messages, isPending, failedToOpen, canSend, streaming, hasMore, loadEarlier, send, abort } =
+    useChatSession(projectId);
   const t = useTranslation();
   const draft = useChatStore((s) => s.composerDraft);
   const setDraft = useChatStore((s) => s.setComposerDraft);
   const clearDraft = useChatStore((s) => s.clearComposerDraft);
-  const streaming = useChatStore((s) => s.streaming);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const setActiveConversationId = useChatStore(
     (s) => s.setActiveConversationId,
@@ -82,8 +82,12 @@ export function ChatPanel({
 
   /**
    * Send the trimmed composer draft and clear the input.
+   *
+   * Stable across renders, so that a reply arriving token by token does not
+   * hand the composer a new callback sixty times a second and take its own
+   * memoisation away.
    */
-  const submit = (): void => {
+  const submit = React.useCallback((): void => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
     setSentCount((n) => n + 1);
@@ -117,7 +121,29 @@ export function ChatPanel({
       if (useChatStore.getState().composerDraft === '') setDraft(trimmed);
     });
     clearDraft();
-  };
+  }, [draft, send, setDraft, clearDraft, t]);
+
+  /**
+   * Pick a conversation out of the history sheet and close it.
+   *
+   * Stable for the same reason as {@link submit}.
+   */
+  const pickConversation = React.useCallback(
+    (id: string): void => {
+      setActiveConversationId(id);
+      setHistoryOpen(false);
+    },
+    [setActiveConversationId, setHistoryOpen],
+  );
+
+  /** Load a quick-action label into the composer. Stable for the same reason. */
+  const quickAction = React.useCallback(
+    (label: string): void => {
+      if (onQuickAction) onQuickAction(label);
+      else setDraft(label);
+    },
+    [onQuickAction, setDraft],
+  );
 
   return (
     <div
@@ -136,10 +162,9 @@ export function ChatPanel({
         messages={messages}
         loading={isPending || failedToOpen}
         sentCount={sentCount}
-        onQuickAction={(label) => {
-          if (onQuickAction) onQuickAction(label);
-          else setDraft(label);
-        }}
+        hasEarlier={hasMore}
+        onLoadEarlier={loadEarlier}
+        onQuickAction={quickAction}
       />
       {/* A chat that would not open is the same kind of news as a message
           that would not send, and it belongs in the same place — a second
@@ -159,10 +184,7 @@ export function ChatPanel({
         onOpenChange={setHistoryOpen}
         conversations={conversations}
         activeId={activeConversationId ?? undefined}
-        onPick={(id) => {
-          setActiveConversationId(id);
-          setHistoryOpen(false);
-        }}
+        onPick={pickConversation}
       />
     </div>
   );

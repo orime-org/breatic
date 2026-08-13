@@ -139,7 +139,8 @@
     },
     "tool": {
       "unfinished": "未跑完就停止了"
-    }
+    },
+    "loadEarlier": "加载更早的消息"
   },
   "canvas": {
     "group": {

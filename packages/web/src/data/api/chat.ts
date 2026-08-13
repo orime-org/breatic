@@ -20,6 +20,14 @@ export interface ConversationDetail {
   messages: MessageData[];
 }
 
+/** One page of a conversation, and whether anything is older. */
+export interface MessagePage {
+  /** The messages, oldest first. */
+  messages: MessageData[];
+  /** There are older messages than these. */
+  hasMore: boolean;
+}
+
 /** Everything the panel needs to render, from one call. */
 export interface OpenChatResult {
   /** This user's conversations in this project, most recently used first. */
@@ -28,6 +36,8 @@ export interface OpenChatResult {
   current: {
     conversation: ConversationEntity;
     messages: MessageData[];
+    /** The conversation reaches back further than these messages do. */
+    hasMore: boolean;
   };
 }
 
@@ -73,6 +83,17 @@ export const chatApi = {
   openChat(projectId: string): Promise<OpenChatResult> {
     return apiPost<OpenChatResult, { project_id: string }>('/chat/open', {
       project_id: projectId,
+    });
+  },
+  /**
+   * Read the page of a conversation that comes before the one in hand.
+   * @param conversationId - The conversation to reach further back in
+   * @param beforeTurn - The oldest turn already on screen
+   * @returns That page, oldest first, and whether anything is older still
+   */
+  messagesBefore(conversationId: string, beforeTurn: number): Promise<MessagePage> {
+    return apiGet<MessagePage>(`/chat/conversations/${conversationId}/messages`, {
+      params: { before_turn: beforeTurn },
     });
   },
   listConversations(projectId: string) {

@@ -139,7 +139,8 @@
     },
     "tool": {
       "unfinished": "未跑完就停止了"
-    }
+    },
+    "loadEarlier": "載入更早的訊息"
   },
   "canvas": {
     "group": {

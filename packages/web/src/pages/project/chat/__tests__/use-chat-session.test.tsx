@@ -11,10 +11,9 @@
  * the same cache the history came from, and the screen reads only that.
  */
 
-import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager } from '@tanstack/react-query';
 import { SSE_EVENT_NAMES } from '@breatic/shared';
 import type { SSEEventEnvelope } from '@breatic/shared';
 
@@ -30,6 +29,7 @@ import {
 } from '@web/data/stream/sse';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 import { useChatStore } from '@web/stores';
+import { useConversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 
 /** The stream handlers the hook installed on its last send. */
 let handlers: {
@@ -38,19 +38,6 @@ let handlers: {
   onError?: (err: unknown) => void;
   signal?: AbortSignal;
 };
-
-/**
- * Wrap the hook in a query client of its own.
- * @param client - The client backing this render
- * @returns The wrapper component
- */
-function makeWrapper(
-  client: QueryClient,
-): (props: { children: React.ReactNode }) => React.JSX.Element {
-  return function Wrapper({ children }: { children: React.ReactNode }): React.JSX.Element {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-  };
-}
 
 /**
  * Answer the open call with one conversation and the given messages.
@@ -69,39 +56,36 @@ function openChatAnswers(messages: Array<{ id: string; role: string; text: strin
         ts: '2026-08-11T00:00:00Z',
         turnIndex: 1,
       })),
+      hasMore: false,
     },
   } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
 }
 
 /**
- * Render the hook against a fresh client.
+ * Render the hook.
  * @returns The render result, for reading `current` off it
  */
-function render(): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> & {
-  client: QueryClient;
-  } {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return {
-    ...renderHook(() => useChatSession('p-1'), { wrapper: makeWrapper(client) }),
-    client,
-  };
+function render(): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
+  return renderHook(() => useChatSession('p-1'));
 }
 
 /**
- * The messages as the cache holds them, readable after the panel is gone.
- * @param client - The client backing the render under test
- * @returns Those messages, or an empty list when nothing is cached
+ * The messages as the conversation holds them, readable after the panel is
+ * gone -- which is the whole point of their living there.
+ * @returns Those messages, or an empty list when nothing has been loaded
  */
-function cachedMessages(client: QueryClient): Array<{ streaming?: boolean; failed?: boolean }> {
-  const data = client.getQueryData(['chat-open', 'p-1']) as
-    | { current: { messages: Array<{ streaming?: boolean; failed?: boolean }> } }
-    | undefined;
-  return data?.current.messages ?? [];
+function storedMessages(): Array<{ streaming?: boolean; failed?: boolean }> {
+  const { conversations, currentByProject } = useConversationRuntime.getState();
+  const id = currentByProject['p-1'];
+  return id ? (conversations[id]?.messages ?? []) : [];
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   useChatStore.getState().reset();
+  // A module singleton outlives every test in the file, which is the same
+  // reason it outlives the panel.
+  _resetForTests();
   vi.mocked(chatApi.streamMessage).mockImplementation(async (_input, h) => {
     handlers = h;
   });
@@ -196,7 +180,7 @@ describe('sending a message', () => {
       void result.current.send('hi');
     });
 
-    expect(useChatStore.getState().streaming).toBe(true);
+    expect(result.current.streaming).toBe(true);
 
     act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_DONE, data: {} });
@@ -204,7 +188,7 @@ describe('sending a message', () => {
 
     // The composer reads this to decide between send and stop. Leaving it on
     // strands the user with a stop button and no way to send anything.
-    expect(useChatStore.getState().streaming).toBe(false);
+    expect(result.current.streaming).toBe(false);
   });
 
   it('stops streaming when the turn fails', async () => {
@@ -219,7 +203,7 @@ describe('sending a message', () => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'whatever' } });
     });
 
-    expect(useChatStore.getState().streaming).toBe(false);
+    expect(result.current.streaming).toBe(false);
     await waitFor(() => expect(result.current.messages.at(-1)?.failed).toBe(true));
   });
 
@@ -241,7 +225,7 @@ describe('sending a message', () => {
 
     // The server's ending never arrives on this path: the connection is gone
     // before it is written, so nothing but this clears the flag.
-    expect(useChatStore.getState().streaming).toBe(false);
+    expect(result.current.streaming).toBe(false);
     // And the reply itself has to stop claiming it is being written, or it
     // keeps its blinking cursor for as long as the panel stays open.
     await waitFor(() => expect(result.current.messages.at(-1)?.streaming).toBeUndefined());
@@ -317,7 +301,7 @@ describe('when the conversation it was writing to is gone', () => {
 
   it('marks a failure the reader is living through, apart from one they are reading about', async () => {
     openChatAnswers([]);
-    const { result, client } = render();
+    const { result } = render();
     await waitFor(() => expect(result.current.isPending).toBe(false));
     await act(async () => {
       void result.current.send('hi');
@@ -336,19 +320,15 @@ describe('when the conversation it was writing to is gone', () => {
       expect(result.current.messages.at(-1)?.failed).toBe(true);
       expect(result.current.messages.at(-1)?.failedJustNow).toBe(true);
     });
-    expect(cachedMessages(client).at(-1)?.failed).toBe(true);
-    expect(cachedMessages(client).at(-1)).not.toHaveProperty('failedJustNow');
+    expect(storedMessages().at(-1)?.failed).toBe(true);
+    expect(storedMessages().at(-1)).not.toHaveProperty('failedJustNow');
   });
 
   it('forgets that it just happened once the panel goes away', async () => {
     openChatAnswers([]);
-    // Nothing is stale, so opening the panel a second time reads the cache
-    // rather than the server — which is the point: what survives here is what
-    // was written into the cache, and nothing else.
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
-    });
-    const first = renderHook(() => useChatSession('p-1'), { wrapper: makeWrapper(client) });
+    // The conversation outlives the panel, which is the point: what survives
+    // here is what the conversation holds, and nothing else.
+    const first = render();
     await waitFor(() => expect(first.result.current.isPending).toBe(false));
     await act(async () => {
       void first.result.current.send('hi');
@@ -359,9 +339,9 @@ describe('when the conversation it was writing to is gone', () => {
     await waitFor(() => expect(first.result.current.messages.at(-1)?.failedJustNow).toBe(true));
 
     // Collapsing the agent column unmounts the panel; opening it again mounts
-    // a new one over the same cache.
+    // a new one over the same conversation.
     first.unmount();
-    const second = renderHook(() => useChatSession('p-1'), { wrapper: makeWrapper(client) });
+    const second = render();
     await waitFor(() => expect(second.result.current.messages).toHaveLength(2));
 
     // The failure is still there to read — it is part of the conversation.
@@ -375,7 +355,7 @@ describe('when the conversation it was writing to is gone', () => {
 
   it('takes back what the user said when the server refused to hear it', async () => {
     openChatAnswers([]);
-    const { result, client } = render();
+    const { result } = render();
     await waitFor(() => expect(result.current.isPending).toBe(false));
 
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
@@ -395,7 +375,7 @@ describe('when the conversation it was writing to is gone', () => {
     // does not contain, and it disappears on the next reload. Worse, the
     // composer takes the same words back as a draft, so the one sentence is
     // on screen twice: sent and unsent at once.
-    expect(cachedMessages(client)).toHaveLength(0);
+    expect(storedMessages()).toHaveLength(0);
   });
 });
 
@@ -431,7 +411,7 @@ describe('while a reply is being written', () => {
 describe('when the network comes back mid-reply', () => {
   it('does not let a background refetch swallow the turn being written', async () => {
     openChatAnswers([]);
-    const { result, client } = render();
+    const { result } = render();
     await waitFor(() => expect(result.current.isPending).toBe(false));
     await act(async () => {
       void result.current.send('hi');
@@ -461,101 +441,41 @@ describe('when the network comes back mid-reply', () => {
     // The chat was opened once, when the panel mounted, and not again — the
     // reconnect did not start a fetch at all.
     expect(vi.mocked(chatApi.openChat)).toHaveBeenCalledTimes(1);
-    expect(cachedMessages(client)).toHaveLength(2);
+    expect(storedMessages()).toHaveLength(2);
   });
 });
 
-describe('when a refetch started before the turn lands during it', () => {
-  it('does not let it overwrite the turn that started while it was in flight', async () => {
+describe('when the panel is opened again over a conversation already loaded', () => {
+  it('asks the server nothing, because there is nothing it could learn', async () => {
     openChatAnswers([{ id: 'm1', role: 'user', text: 'earlier' }]);
-    const { result } = render();
-    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    const first = render();
+    await waitFor(() => expect(first.result.current.messages).toHaveLength(1));
 
-    // A refetch is under way — `refetchOnMount` starts one whenever the panel
-    // is opened again over stale data, and at that moment there is no turn to
-    // protect, so the guard lets it go. Hold it open.
-    let land = (): void => {};
-    vi.mocked(chatApi.openChat).mockImplementationOnce(
-      async () =>
-        new Promise((resolve) => {
-          land = () =>
-            resolve({
-              conversations: [{ id: 'c-1' }],
-              current: { conversation: { id: 'c-1' }, messages: [] },
-            } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
-        }),
-    );
+    // A turn is running when the column is collapsed, which is the case that
+    // used to go wrong: a refetch started on the way back in would answer
+    // with a snapshot taken before this turn existed, and writing it would
+    // take the reply off the screen while it was still arriving.
     await act(async () => {
-      onlineManager.setOnline(false);
-      onlineManager.setOnline(true);
-      await new Promise((r) => setTimeout(r, 0));
-    });
-
-    // The reader sends before it comes back.
-    await act(async () => {
-      void result.current.send('hello');
+      void first.result.current.send('hello');
     });
     act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'A' } });
     });
-    await waitFor(() => expect(result.current.messages).toHaveLength(3));
+    await waitFor(() => expect(first.result.current.messages).toHaveLength(3));
 
-    // Now it lands. It was asked for before this turn existed, so it does not
-    // contain it — and the guard only ever looked at the moment a refetch
-    // starts, not the moment it writes.
-    await act(async () => {
-      land();
-      await new Promise((r) => setTimeout(r, 0));
-    });
-
-    expect(result.current.messages).toHaveLength(3);
-    expect(result.current.messages.at(-1)?.content).toBe('A');
-  });
-});
-
-describe('when a whole turn happens while a refetch is in flight', () => {
-  it('still does not let that refetch overwrite it', async () => {
-    openChatAnswers([{ id: 'm1', role: 'user', text: 'earlier' }]);
-    const { result } = render();
-    await waitFor(() => expect(result.current.messages).toHaveLength(1));
-
-    let land = (): void => {};
-    vi.mocked(chatApi.openChat).mockImplementationOnce(
-      async () =>
-        new Promise((resolve) => {
-          land = () =>
-            resolve({
-              conversations: [{ id: 'c-1' }],
-              current: { conversation: { id: 'c-1' }, messages: [] },
-            } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
-        }),
-    );
-    await act(async () => {
-      onlineManager.setOnline(false);
-      onlineManager.setOnline(true);
-      await new Promise((r) => setTimeout(r, 0));
-    });
-
-    // A whole turn runs and finishes inside that window — pressing stop, or a
-    // turn that fails in 200ms, both do it.
-    await act(async () => {
-      void result.current.send('hello');
-    });
     act(() => {
-      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'A' } });
-      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_DONE, data: {} });
+      first.unmount();
     });
-    await waitFor(() => expect(result.current.messages).toHaveLength(3));
+    const second = render();
+    await waitFor(() => expect(second.result.current.messages).toHaveLength(3));
 
-    // Only now does the refetch land. There is no turn running, so a guard
-    // that asks "is one running right now" says yes, write it — and what it
-    // writes was asked for before this turn existed.
-    await act(async () => {
-      land();
-      await new Promise((r) => setTimeout(r, 0));
-    });
-
-    expect(result.current.messages).toHaveLength(3);
+    // Opened once, when the first panel mounted. Not on the way back in, and
+    // not on a reconnect either -- there is no automatic refetch behind this
+    // any more, so the whole class of "a stale answer overwrote the turn" is
+    // not something a guard has to catch.
+    expect(vi.mocked(chatApi.openChat)).toHaveBeenCalledTimes(1);
+    expect(second.result.current.messages.at(-1)?.content).toBe('A');
+    expect(second.result.current.messages.at(-1)?.streaming).toBe(true);
   });
 });
 
@@ -576,7 +496,7 @@ describe('when one turn ends after the next has started', () => {
     act(() => {
       firstTurn.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'upstream said no' } });
     });
-    await waitFor(() => expect(useChatStore.getState().streaming).toBe(false));
+    await waitFor(() => expect(result.current.streaming).toBe(false));
 
     await act(async () => {
       void result.current.send('second');
@@ -588,7 +508,7 @@ describe('when one turn ends after the next has started', () => {
     act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'writing' } });
     });
-    expect(useChatStore.getState().streaming).toBe(true);
+    expect(result.current.streaming).toBe(true);
 
     // Now the first turn's `chat_done` arrives.
     act(() => {
@@ -599,7 +519,7 @@ describe('when one turn ends after the next has started', () => {
     // a send button over a reply still being written, and the request behind
     // it can no longer be stopped by anything — not the button, not closing
     // the panel.
-    expect(useChatStore.getState().streaming).toBe(true);
+    expect(result.current.streaming).toBe(true);
     expect(result.current.messages.at(-1)?.streaming).toBe(true);
   });
 });

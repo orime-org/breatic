@@ -9,15 +9,13 @@ describe('useChatStore', () => {
     useChatStore.setState({
       composerDraft: '',
       activeConversationId: null,
-      streaming: false,
     });
   });
 
-  it('initial state is empty draft, no conversation, not streaming', () => {
+  it('initial state is empty draft and no conversation', () => {
     const s = useChatStore.getState();
     expect(s.composerDraft).toBe('');
     expect(s.activeConversationId).toBeNull();
-    expect(s.streaming).toBe(false);
   });
 
   it('setComposerDraft + clearComposerDraft cycle', () => {
@@ -25,10 +23,5 @@ describe('useChatStore', () => {
     expect(useChatStore.getState().composerDraft).toBe('hi');
     useChatStore.getState().clearComposerDraft();
     expect(useChatStore.getState().composerDraft).toBe('');
-  });
-
-  it('setStreaming flips flag', () => {
-    useChatStore.getState().setStreaming(true);
-    expect(useChatStore.getState().streaming).toBe(true);
   });
 });

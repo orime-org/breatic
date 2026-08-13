@@ -44,13 +44,13 @@ describe('resetProjectUiStores (#1771)', () => {
 
   it('clears the open Generate panel and pick session (the reported symptom)', () => {
     expect(useCanvasStore.getState().panelHostId).toBe('node-1');
-    resetProjectUiStores();
+    resetProjectUiStores('project-1');
     expect(useCanvasStore.getState().panelHostId).toBeNull();
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
 
   it('clears all per-project SESSION state across the five stores', () => {
-    resetProjectUiStores();
+    resetProjectUiStores('project-1');
     const canvas = useCanvasStore.getState();
     expect(canvas.selectedNodeIds).toEqual([]);
     expect(canvas.panelHostId).toBeNull();
@@ -76,7 +76,7 @@ describe('resetProjectUiStores (#1771)', () => {
   });
 
   it('KEEPS layout / viewport / brush preferences (fresh session, not fresh preferences)', () => {
-    resetProjectUiStores();
+    resetProjectUiStores('project-1');
     // Canvas viewport preferences.
     expect(useCanvasStore.getState().minimapVisible).toBe(false);
     expect(useCanvasStore.getState().snapToGrid).toBe(true);

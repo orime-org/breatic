@@ -22,6 +22,7 @@ export {
   paginationSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,
+  chatEarlierMessagesQuerySchema,
 } from "@shared/schemas/api.js";
 
 export type {

@@ -139,7 +139,8 @@
     },
     "tool": {
       "unfinished": "완료되기 전에 중지됨"
-    }
+    },
+    "loadEarlier": "이전 메시지 불러오기"
   },
   "canvas": {
     "group": {

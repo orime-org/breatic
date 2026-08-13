@@ -171,6 +171,7 @@ export {
   paginationSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,
+  chatEarlierMessagesQuerySchema,
 } from "@shared/schemas/index.js";
 
 export type {

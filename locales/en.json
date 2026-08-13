@@ -139,7 +139,8 @@
     },
     "tool": {
       "unfinished": "Stopped before it finished"
-    }
+    },
+    "loadEarlier": "Load earlier messages"
   },
   "canvas": {
     "group": {

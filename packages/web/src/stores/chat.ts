@@ -5,27 +5,25 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
 /**
- * Chat composer + streaming store — per-user agent chat session UI state.
+ * What the chat panel itself is doing — the composer draft and which
+ * conversation is selected.
  *
- * Chat content is private and does NOT enter Yjs. This store holds the
- * composer draft, the current conversation id, and the SSE streaming flag.
+ * Chat content is private and does NOT enter Yjs.
  *
- * Where the messages themselves live is not settled here, on purpose. A line
- * at the foot of this comment used to answer it, written before there was
- * anything to hold — nothing renders a message from a server response today.
- * PR-3 batch 6 decides it, and it has to come out as one source: the reply
- * being streamed and the reply read back from the server are the same
- * message, and the screen must not show it twice or lose it at the handover.
+ * What is happening in a conversation is not here: the messages and the turn
+ * being run belong to the conversation and live in
+ * `stores/conversation-runtime`. A boolean saying a reply was streaming used
+ * to sit here as well, alongside two refs in the panel that said the same
+ * thing, and the three had to be kept in step by hand. The conversation now
+ * either has a turn or does not, which is one fact in one place.
  */
 interface ChatState {
   composerDraft: string;
   activeConversationId: string | null;
-  streaming: boolean;
   setComposerDraft: (draft: string) => void;
   clearComposerDraft: () => void;
   setActiveConversationId: (id: string | null) => void;
-  setStreaming: (streaming: boolean) => void;
-  /** Reset per-project chat session state (draft / active conversation / streaming) on project change (#1771). */
+  /** Reset per-project chat session state (draft / active conversation) on project change (#1771). */
   reset: () => void;
 }
 
@@ -33,7 +31,6 @@ export const useChatStore = create<ChatState>()(
   immer((set) => ({
     composerDraft: '',
     activeConversationId: null,
-    streaming: false,
     setComposerDraft: (draft) =>
       set((s) => {
         s.composerDraft = draft;
@@ -46,15 +43,10 @@ export const useChatStore = create<ChatState>()(
       set((s) => {
         s.activeConversationId = id;
       }),
-    setStreaming: (streaming) =>
-      set((s) => {
-        s.streaming = streaming;
-      }),
     reset: () =>
       set((s) => {
         s.composerDraft = '';
         s.activeConversationId = null;
-        s.streaming = false;
       }),
   })),
 );
