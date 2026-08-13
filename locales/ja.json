@@ -206,7 +206,6 @@
       "refuseRemoveModeOff": "参照はモード間で共有されます — 削除するには参照を使うモードに切り替えるか、キャンバスで接続線を削除してください",
       "refuseRemoveModeOffCrop": "参照はモード間で共有されます — この切り抜きを削除するには参照を使うモードに切り替えてください",
       "refuseInsertTypeUnused": "{kind, select, audio {このモードの参照は音声を受け付けません} video {このモードの参照は動画を受け付けません} other {このモードの参照はこの種類の素材を受け付けません}}",
-      "refuseInsertCatalogLoading": "モデル一覧を読み込み中です — 少し待つと参照が使えます",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",
       "mentionEmpty": "参照できる画像がありません — まず画像から線をつないでください",

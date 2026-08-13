@@ -24,8 +24,6 @@ import {
   type MentionOccurrence,
   type ChipDisplaySnapshot,
 } from '@web/spaces/canvas/generate/at-reference';
-import type { SourceType } from '@breatic/shared';
-
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
   MENTION_LABEL_ATTR,
@@ -79,17 +77,6 @@ interface PromptEditorProps {
    * ever asked the mode, and every panel that mounts it answers it its own way.
    */
   imageRefsDisabled: boolean;
-  /**
-   * The source types the active mode consumes (`sourcesByMode[mode]`). Decides
-   * which media rows the `@` picker offers, so that the picker and the rail's
-   * insert button answer one row the same way (#1945).
-   *
-   * Passed through undefined-and-all: `undefined` means the model catalog has
-   * not resolved, and that has to reach the predicate intact. Substituting a
-   * concrete list here would tell the picker "every type is fine" during the
-   * load window and offer rows that stop being insertable a moment later.
-   */
-  allowedSourceTypes?: readonly SourceType[];
   /** Localized empty-state text for the `@` picker popup. */
   mentionEmptyLabel: string;
   /**
@@ -130,7 +117,6 @@ export const PromptEditor = React.forwardRef<
     onAtMentionsChange,
     references,
     imageRefsDisabled,
-    allowedSourceTypes,
     mentionEmptyLabel,
     caretProvider = null,
   }: PromptEditorProps,
@@ -149,8 +135,6 @@ export const PromptEditor = React.forwardRef<
   // editor on a mode toggle.
   const imageRefsDisabledRef = React.useRef(imageRefsDisabled);
   imageRefsDisabledRef.current = imageRefsDisabled;
-  const allowedSourceTypesRef = React.useRef(allowedSourceTypes);
-  allowedSourceTypesRef.current = allowedSourceTypes;
   // The open `@` popup registers a refresh() here (collaboration residual 2): a
   // REMOTE mode / pool change fires no editor transaction, so the visible popup's
   // list would stay stale. The effect below calls it when `imageRefsDisabled` /
@@ -188,7 +172,6 @@ export const PromptEditor = React.forwardRef<
             // a row the picker offers is a row the rail would insert.
             getModeContext: () => ({
               takesReferences: !imageRefsDisabledRef.current,
-              allowedSourceTypes: allowedSourceTypesRef.current,
             }),
             refreshRef: suggestionRefreshRef,
           }),
@@ -284,7 +267,7 @@ export const PromptEditor = React.forwardRef<
   // remote case.
   React.useEffect(() => {
     suggestionRefreshRef.current?.();
-  }, [imageRefsDisabled, allowedSourceTypes, references]);
+  }, [imageRefsDisabled, references]);
 
   // Cascade-clear stale @-mention chips: when a reference edge is removed the
   // pool shrinks, so any @-mention pointing at a now-disconnected source must

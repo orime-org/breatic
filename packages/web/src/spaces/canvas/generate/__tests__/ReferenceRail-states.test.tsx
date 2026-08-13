@@ -80,13 +80,12 @@ const KEY = {
 /**
  * Renders the rail under one mode.
  * @param takesReferences - Whether the mode consumes the reference pool.
- * @param allowed - The source types the mode consumes (`sourcesByMode[mode]`).
  * @returns The insert / remove spies.
  */
-function renderRail(
-  takesReferences: boolean,
-  allowed: Array<'image' | 'video' | 'audio'>,
-): { onInsert: ReturnType<typeof vi.fn>; onRemove: ReturnType<typeof vi.fn> } {
+function renderRail(takesReferences: boolean): {
+  onInsert: ReturnType<typeof vi.fn>;
+  onRemove: ReturnType<typeof vi.fn>;
+} {
   const onInsert = vi.fn();
   const onRemove = vi.fn();
   render(
@@ -95,7 +94,6 @@ function renderRail(
       onInsert={onInsert}
       onRemove={onRemove}
       modeTakesReferences={takesReferences}
-      allowedSourceTypes={allowed}
     />,
   );
   return { onInsert, onRemove };
@@ -113,7 +111,7 @@ beforeEach(() => {
 
 describe('ReferenceRail — a mode that ignores references dims the whole rail', () => {
   it('dims every REFERENCE MATERIAL row, not just the image ones (#1930)', () => {
-    renderRail(false, []);
+    renderRail(false);
     for (const id of ['e-image', 'e-audio', 'e-video']) {
       expect(row(id), id).toHaveClass('opacity-50');
     }
@@ -123,7 +121,7 @@ describe('ReferenceRail — a mode that ignores references dims the whole rail',
     // User 2026-08-13: "整行统一变暗" is about the reference material; a text
     // row is prompt material and never dims. Painting it half-strength said it
     // was unusable while this very mode was consuming it.
-    renderRail(false, []);
+    renderRail(false);
     expect(row('e-text')).not.toHaveClass('opacity-50');
   });
 
@@ -131,13 +129,13 @@ describe('ReferenceRail — a mode that ignores references dims the whole rail',
     // 0.5 × 0.5 = 0.25 would make a dark row's controls read as broken rather
     // than inactive. The row owns the dim; the buttons own only their own
     // unusable state, which is expressed by aria-disabled, not opacity.
-    renderRail(false, []);
+    renderRail(false);
     expect(insertBtn('e-image')).not.toHaveClass('opacity-50');
     expect(removeBtn('e-image')).not.toHaveClass('opacity-50');
   });
 
   it('freezes every media ✕ — including audio and video (#1940)', () => {
-    const { onRemove } = renderRail(false, []);
+    const { onRemove } = renderRail(false);
     for (const id of ['e-image', 'e-audio', 'e-video']) {
       expect(removeBtn(id), id).toHaveAttribute('aria-disabled', 'true');
       fireEvent.click(removeBtn(id));
@@ -151,7 +149,7 @@ describe('ReferenceRail — a mode that ignores references dims the whole rail',
     // The reason for freezing a ✕ is "you would lose it before switching
     // back to the mode that uses it". A text row is used by THIS mode, so the
     // premise never holds.
-    const { onRemove } = renderRail(false, []);
+    const { onRemove } = renderRail(false);
     expect(removeBtn('e-text')).not.toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(removeBtn('e-text'));
     expect(onRemove).toHaveBeenCalledTimes(1);
@@ -160,7 +158,7 @@ describe('ReferenceRail — a mode that ignores references dims the whole rail',
   });
 
   it('keeps the TEXT row insertable — it feeds the prompt, not the references', () => {
-    const { onInsert } = renderRail(false, []);
+    const { onInsert } = renderRail(false);
     expect(insertBtn('e-text')).not.toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(insertBtn('e-text'));
     expect(onInsert).toHaveBeenCalledTimes(1);
@@ -169,7 +167,7 @@ describe('ReferenceRail — a mode that ignores references dims the whole rail',
   });
 
   it('refuses the media rows with the mode reason, not the modality one', () => {
-    const { onInsert } = renderRail(false, []);
+    const { onInsert } = renderRail(false);
     for (const id of ['e-image', 'e-audio', 'e-video']) {
       fireEvent.click(insertBtn(id));
     }
@@ -183,7 +181,7 @@ describe('ReferenceRail — a mode that ignores references dims the whole rail',
 
 describe('ReferenceRail — a mode that uses references lights the rail up', () => {
   it('leaves no row dimmed and every ✕ live, audio and video included (#1934)', () => {
-    const { onRemove } = renderRail(true, ['image']);
+    const { onRemove } = renderRail(true);
     for (const id of ['e-text', 'e-image', 'e-audio', 'e-video']) {
       expect(row(id), id).not.toHaveClass('opacity-50');
       expect(removeBtn(id), id).not.toHaveAttribute('aria-disabled', 'true');
@@ -194,7 +192,7 @@ describe('ReferenceRail — a mode that uses references lights the rail up', () 
   });
 
   it('inserts the types this run consumes and explains the ones it does not', () => {
-    const { onInsert } = renderRail(true, ['image']);
+    const { onInsert } = renderRail(true);
     fireEvent.click(insertBtn('e-text'));
     fireEvent.click(insertBtn('e-image'));
     expect(onInsert).toHaveBeenCalledTimes(2);
@@ -210,16 +208,6 @@ describe('ReferenceRail — a mode that uses references lights the rail up', () 
       `${KEY.typeUnused}({"kind":"video"})`,
     ]);
   });
-
-  it('follows the allowed list rather than hardcoding image', () => {
-    // A future mode whose references eat video needs no change here — the
-    // list comes from the backend-computed sourcesByMode.
-    const { onInsert } = renderRail(true, ['image', 'video']);
-    fireEvent.click(insertBtn('e-video'));
-    expect(onInsert).toHaveBeenCalledTimes(1);
-    fireEvent.click(insertBtn('e-audio'));
-    expect(onInsert).toHaveBeenCalledTimes(1);
-  });
 });
 
 describe('ReferenceRail — an unusable control still answers', () => {
@@ -227,7 +215,7 @@ describe('ReferenceRail — an unusable control still answers', () => {
     // A disabled element dispatches neither click nor pointerenter, so it can
     // neither explain itself nor show its hover preview — measured 2026-08-13,
     // and the reason both requirements rule it out.
-    renderRail(false, []);
+    renderRail(false);
     for (const id of ['e-image', 'e-audio', 'e-video']) {
       expect(insertBtn(id), id).not.toBeDisabled();
       expect(removeBtn(id), id).not.toBeDisabled();
@@ -241,7 +229,7 @@ describe('ReferenceRail — an unusable control still answers', () => {
     // gated on the HTML attribute this component never sets — which is also
     // why the row dim cannot stack with a second dim on the controls. So the
     // check is not "the string is absent" but "nothing sets it unconditionally".
-    renderRail(false, []);
+    renderRail(false);
     for (const btn of [insertBtn('e-image'), removeBtn('e-image')]) {
       const unconditional = btn.className
         .split(/\s+/)
@@ -258,7 +246,7 @@ describe('ReferenceRail — an unusable control still answers', () => {
     // `disabled`, `aria-disabled` leaves the button focusable and clickable,
     // so the keyboard path exists at all. That the keys really do reach it is
     // a browser behaviour, verified in the smoke run.
-    renderRail(false, []);
+    renderRail(false);
     const btn = insertBtn('e-image');
     expect(btn.tagName).toBe('BUTTON');
     expect(btn).not.toHaveAttribute('tabindex', '-1');
@@ -292,7 +280,6 @@ describe('ReferenceRail — a focus crop has no edge to delete', () => {
         onInsert={vi.fn()}
         onRemove={vi.fn()}
         modeTakesReferences={false}
-        allowedSourceTypes={[]}
       />,
     );
     fireEvent.click(screen.getByTestId('generate-ref-remove-focus:c1'));
@@ -302,43 +289,4 @@ describe('ReferenceRail — a focus crop has no edge to delete', () => {
   });
 });
 
-describe('ReferenceRail — while the model catalog is still loading', () => {
-  /**
-   * Renders a lit rail whose consumable types are not yet known.
-   * @returns The insert spy.
-   */
-  function renderUnresolved(): ReturnType<typeof vi.fn> {
-    const onInsert = vi.fn();
-    render(
-      <ReferenceRail
-        references={ROWS}
-        onInsert={onInsert}
-        onRemove={vi.fn()}
-        modeTakesReferences
-      />,
-    );
-    return onInsert;
-  }
 
-  it('refuses the media rows and says the catalog is loading', () => {
-    // Not "this mode's references don't take images" (false), and not silence
-    // followed by an insert that stops working a moment later.
-    const onInsert = renderUnresolved();
-    for (const id of ['e-image', 'e-audio', 'e-video']) {
-      expect(insertBtn(id), id).toHaveAttribute('aria-disabled', 'true');
-      fireEvent.click(insertBtn(id));
-    }
-    expect(onInsert).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledTimes(3);
-    for (const call of vi.mocked(toast.warning).mock.calls) {
-      expect(call[0]).toBe('canvas.generatePanel.refuseInsertCatalogLoading');
-    }
-  });
-
-  it('still inserts the text row — the catalog has nothing to say about it', () => {
-    const onInsert = renderUnresolved();
-    fireEvent.click(insertBtn('e-text'));
-    expect(onInsert).toHaveBeenCalledTimes(1);
-    expect(toast.warning).not.toHaveBeenCalled();
-  });
-});

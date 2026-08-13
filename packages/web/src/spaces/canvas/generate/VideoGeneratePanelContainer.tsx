@@ -610,15 +610,6 @@ function VideoGeneratePanelBody({
   // prompt editor's chips and its `@` popup. The rail reads the same table
   // inside the panel.
   const imageRefsDisabled = !modeTakesReferences(mode);
-  // The other half of that statement: WHICH modalities the mode consumes when
-  // it does read the pool. The rail gets this from the panel; the `@` popup
-  // gets it from here, and both call the same predicate with it — otherwise
-  // the rail would refuse an audio row while `@` still offered it (#1945).
-  const allowedSourceTypes = React.useMemo(
-    () =>
-      models.find((m) => m.name === vm.model)?.sourcesByMode[mode],
-    [models, vm.model, mode],
-  );
   // One string for every mode, deliberately. Making it follow the mode would
   // put it in `useEditor`'s dependency list (PromptEditor bakes it into the
   // extensions at creation), and @tiptap/react rebuilds the whole editor when
@@ -654,7 +645,6 @@ function VideoGeneratePanelBody({
           // to agree, or the rail would say "this mode cannot use that image"
           // while typing `@` still offered it at full strength.
           imageRefsDisabled={imageRefsDisabled}
-          allowedSourceTypes={allowedSourceTypes}
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
         />
@@ -679,7 +669,6 @@ function VideoGeneratePanelBody({
       // strength and the `@` popup would keep offering images the new mode
       // cannot use.
       imageRefsDisabled,
-      allowedSourceTypes,
       caretProvider,
     ],
   );

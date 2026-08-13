@@ -666,13 +666,6 @@ function GeneratePanelBody({
   // Text-to-image generates from scratch and ignores source images, so an
   // image `@` chip contributes nothing and the editor greys it (§2.4 C).
   const imageRefsOff = vm.mode === 't2i';
-  // Which modalities the lit rail offers, so the `@` popup and the rail's
-  // insert button answer one row the same way (#1945).
-  const allowedSourceTypes = React.useMemo(
-    () =>
-      models.find((m) => m.name === vm.model)?.sourcesByMode[vm.mode],
-    [models, vm.model, vm.mode],
-  );
   const promptSlot = React.useMemo(
     () =>
       fragment ? (
@@ -684,7 +677,6 @@ function GeneratePanelBody({
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
           imageRefsDisabled={imageRefsOff}
-          allowedSourceTypes={allowedSourceTypes}
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
         />
@@ -697,7 +689,6 @@ function GeneratePanelBody({
       handleAtMentionsChange,
       stableReferences,
       imageRefsOff,
-      allowedSourceTypes,
       caretProvider,
     ],
   );

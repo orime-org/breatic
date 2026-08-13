@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { SourceType } from '@breatic/shared';
 import { Crop, Loader2, X } from 'lucide-react';
 import * as React from 'react';
 
@@ -70,17 +69,6 @@ interface ReferenceRailProps {
    */
   modeTakesReferences?: boolean;
   /**
-   * The source types this mode's payload consumes — the backend-computed
-   * `ModelEntry.sourcesByMode[mode]`. Governs insertion only, and only for
-   * media rows: text is prompt material, so it inserts under every mode.
-   *
-   * Omitted (or undefined) means no restriction has been stated — the model
-   * catalog has not resolved, so nothing is known — and nothing is refused on
-   * those grounds. An explicit `[]` is the opposite: this mode consumes no
-   * source type at all.
-   */
-  allowedSourceTypes?: readonly SourceType[];
-  /**
    * Focus crops whose upload is still in flight (#1782) — rendered as
    * disabled placeholder rows after the real entries; each disappears when
    * its upload lands (a real focus row replaces it) or fails (toast).
@@ -98,7 +86,6 @@ interface ReferenceRailProps {
  * @param root0.onRemove - Remove a reference by id.
  * @param root0.onInsert - Insert a reference's @-mention into the prompt.
  * @param root0.modeTakesReferences - Whether the active mode consumes the reference pool.
- * @param root0.allowedSourceTypes - The source types the active mode consumes.
  * @param root0.pendingFocus - Focus crops whose upload is still in flight.
  * @returns The reference rail, or null when empty.
  */
@@ -107,13 +94,12 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   onRemove,
   onInsert,
   modeTakesReferences = true,
-  allowedSourceTypes,
   pendingFocus = [],
 }: ReferenceRailProps): React.JSX.Element | null {
   const t = useTranslation();
   const modeCtx: ReferenceModeContext = React.useMemo(
-    () => ({ takesReferences: modeTakesReferences, allowedSourceTypes }),
-    [modeTakesReferences, allowedSourceTypes],
+    () => ({ takesReferences: modeTakesReferences }),
+    [modeTakesReferences],
   );
   // Three refusals, three messages. Insert and remove do NOT share the
   // mode-off one even though they share its cause: the way out differs —
@@ -124,10 +110,6 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     (refusal: ReferenceRefusal, kind: NodeKind): void => {
       if (refusal === 'mode-takes-no-references') {
         toast.warning(t('canvas.generatePanel.refuseInsertModeOff'));
-        return;
-      }
-      if (refusal === 'catalog-unresolved') {
-        toast.warning(t('canvas.generatePanel.refuseInsertCatalogLoading'));
         return;
       }
       toast.warning(t('canvas.generatePanel.refuseInsertTypeUnused', { kind }));

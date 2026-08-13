@@ -34,37 +34,19 @@ const ROW_KINDS: NodeKind[] = ['text', 'image', 'audio', 'video'];
  * independent on purpose: `i2v` needs an image but takes it from a SLOT, not
  * from the rail, so its rail is dark even though its source list is non-empty.
  */
-const VIDEO_MODES: ReadonlyArray<{
-  mode: string;
-  ctx: ReferenceModeContext;
-}> = [
-  { mode: 't2v', ctx: { takesReferences: false, allowedSourceTypes: [] } },
-  {
-    mode: 'i2v',
-    ctx: { takesReferences: false, allowedSourceTypes: ['image'] },
-  },
-  {
-    mode: 'first_last',
-    ctx: { takesReferences: false, allowedSourceTypes: ['image'] },
-  },
-  {
-    mode: 'animate',
-    ctx: { takesReferences: false, allowedSourceTypes: ['image', 'video'] },
-  },
-  { mode: 'ref', ctx: { takesReferences: true, allowedSourceTypes: ['image'] } },
-  {
-    mode: 'talking_head',
-    ctx: { takesReferences: false, allowedSourceTypes: ['image', 'audio'] },
-  },
+const VIDEO_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceModeContext }> = [
+  { mode: 't2v', ctx: { takesReferences: false } },
+  { mode: 'i2v', ctx: { takesReferences: false } },
+  { mode: 'first_last', ctx: { takesReferences: false } },
+  { mode: 'animate', ctx: { takesReferences: false } },
+  { mode: 'ref', ctx: { takesReferences: true } },
+  { mode: 'talking_head', ctx: { takesReferences: false } },
 ];
 
 /** The image panel's two reference-relevant modes. */
-const IMAGE_MODES: ReadonlyArray<{
-  mode: string;
-  ctx: ReferenceModeContext;
-}> = [
-  { mode: 't2i', ctx: { takesReferences: false, allowedSourceTypes: [] } },
-  { mode: 'i2i', ctx: { takesReferences: true, allowedSourceTypes: ['image'] } },
+const IMAGE_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceModeContext }> = [
+  { mode: 't2i', ctx: { takesReferences: false } },
+  { mode: 'i2i', ctx: { takesReferences: true } },
 ];
 
 describe('insertRefusal — text rows are prompt material, not reference material', () => {
@@ -181,91 +163,29 @@ describe('removeRefusal — the ✕ follows the dim, which reads on reference ma
   });
 });
 
-describe('insertRefusal — not knowing is its own answer', () => {
-  it('refuses every media row while the catalog is unresolved, and says why', () => {
-    // Three states, not two. Round 1 of Gate 2 found that spelling "the model
-    // has not loaded" as `[]` made the rail refuse with a reason that was
-    // false ("this mode's references don't take images"). The repair spelled
-    // it as "refuse nothing", which round 2 found was WORSE: it let an audio
-    // row be inserted during the load window, which the code this replaced
-    // never allowed. The defect was never the refusal — it was the reason.
-    const unresolved: ReferenceModeContext = {
-      takesReferences: true,
-      allowedSourceTypes: undefined,
-    };
-    for (const kind of ['image', 'audio', 'video'] as const) {
-      expect(insertRefusal(kind, unresolved), `${kind} while loading`).toBe(
-        'catalog-unresolved',
-      );
+describe('insertRefusal — the criterion depends on nothing asynchronous', () => {
+  it('answers from the row and the mode alone, with no model context', () => {
+    // The context carries one field. There is no catalog to be unresolved, so
+    // there is no third state to name and no window during which the rail
+    // answers differently from how it will answer a second later. Three
+    // rounds of Gate 2 produced three different wrong answers to "what while
+    // the catalog is loading"; the question was the defect.
+    const ref: ReferenceModeContext = { takesReferences: true };
+    expect(Object.keys(ref)).toEqual(['takesReferences']);
+    expect(insertRefusal('image', ref)).toBeNull();
+    expect(insertRefusal('text', ref)).toBeNull();
+    expect(insertRefusal('audio', ref)).toBe('source-type-unused');
+    expect(insertRefusal('video', ref)).toBe('source-type-unused');
+  });
+
+  it('refuses every non-image reference row, because the pool is the image pool', () => {
+    // Not a lookup: the pool travels as `params.images` and `imageUrlOf`
+    // resolves only image sources, so this predicate and the execute-time
+    // fallback ask the same question and cannot disagree.
+    const ref: ReferenceModeContext = { takesReferences: true };
+    for (const kind of ['audio', 'video', '3d', 'web'] as NodeKind[]) {
+      expect(insertRefusal(kind, ref), kind).toBe('source-type-unused');
     }
-    // Text is not reference material, so the catalog has nothing to say
-    // about it.
-    expect(insertRefusal('text', unresolved)).toBeNull();
-  });
-
-  it('refuses removal for the same reason, so the row is not half-frozen', () => {
-    // The x and the insert button answer the same question about a media row:
-    // is this mode using it. While the catalog is unresolved neither can say,
-    // so neither acts — otherwise a row could be thrown away on the strength
-    // of a state nobody could read.
-    const unresolved: ReferenceModeContext = {
-      takesReferences: true,
-      allowedSourceTypes: undefined,
-    };
-    expect(removeRefusal('image', unresolved)).toBeNull();
-    expect(removeRefusal('text', unresolved)).toBeNull();
-  });
-
-  it('reports the MODE reason first when the catalog is also unresolved', () => {
-    // The mode dimension does not depend on the model at all, so it answers
-    // first and an unresolved catalog cannot turn a dark rail into a live one.
-    // It is also the more actionable of the two: switch modes.
-    const darkAndUnresolved: ReferenceModeContext = {
-      takesReferences: false,
-      allowedSourceTypes: undefined,
-    };
-    expect(insertRefusal('image', darkAndUnresolved)).toBe(
-      'mode-takes-no-references',
-    );
-    expect(insertRefusal('text', darkAndUnresolved)).toBeNull();
-  });
-
-  it('treats an explicitly empty list as a real restriction', () => {
-    // `[]` is a statement: this mode consumes no source type at all. It must
-    // stay distinguishable from "not known yet".
-    const nothing: ReferenceModeContext = {
-      takesReferences: true,
-      allowedSourceTypes: [],
-    };
-    expect(insertRefusal('image', nothing)).toBe('source-type-unused');
-    expect(insertRefusal('text', nothing)).toBeNull();
-  });
-});
-
-describe('insertRefusal — the rail and the @ picker give the same answer', () => {
-  it('agrees across all 24 video combinations', () => {
-    // The picker filters with `insertRefusal(...) === null`; the rail disables
-    // with the same call. This test is the contract that they are the same
-    // function — before #1945 the rail asked `canConnect(type, "image")` and
-    // the picker asked its own copy of it, hardcoded to the image panel's
-    // target modality even inside the video panel.
-    const seen: string[] = [];
-    for (const { mode, ctx } of VIDEO_MODES) {
-      for (const kind of ROW_KINDS) {
-        const refusal = insertRefusal(kind, ctx);
-        seen.push(`${mode}/${kind}=${refusal ?? 'ok'}`);
-      }
-    }
-    expect(seen).toHaveLength(24);
-    expect(seen.filter((s) => s.endsWith('=ok'))).toEqual([
-      't2v/text=ok',
-      'i2v/text=ok',
-      'first_last/text=ok',
-      'animate/text=ok',
-      'ref/text=ok',
-      'ref/image=ok',
-      'talking_head/text=ok',
-    ]);
   });
 });
 
@@ -286,5 +206,46 @@ describe('isReferenceMaterial — one name for the thing both dimensions read on
     for (const kind of ['3d', 'web'] as NodeKind[]) {
       expect(isReferenceMaterial(kind), kind).toBe(true);
     }
+  });
+});
+
+describe('insertRefusal — the rail and the @ picker give the same answer', () => {
+  it('agrees across all 24 video combinations', () => {
+    // The picker filters with `insertRefusal(...) === null`; the rail disables
+    // with the same call. This test is the contract that they are the same
+    // function — before #1945 the rail asked `canConnect(type, "image")` and
+    // the picker asked its own copy of it, hardcoded to the image panel's
+    // target modality even inside the video panel.
+    const seen: string[] = [];
+    for (const { mode, ctx } of VIDEO_MODES) {
+      for (const kind of ROW_KINDS) {
+        seen.push(`${mode}/${kind}=${insertRefusal(kind, ctx) ?? 'ok'}`);
+      }
+    }
+    expect(seen).toHaveLength(24);
+    expect(seen.filter((s) => s.endsWith('=ok'))).toEqual([
+      't2v/text=ok',
+      'i2v/text=ok',
+      'first_last/text=ok',
+      'animate/text=ok',
+      'ref/text=ok',
+      'ref/image=ok',
+      'talking_head/text=ok',
+    ]);
+  });
+
+  it('agrees across all 8 image combinations', () => {
+    const seen: string[] = [];
+    for (const { mode, ctx } of IMAGE_MODES) {
+      for (const kind of ROW_KINDS) {
+        seen.push(`${mode}/${kind}=${insertRefusal(kind, ctx) ?? 'ok'}`);
+      }
+    }
+    expect(seen).toHaveLength(8);
+    expect(seen.filter((s) => s.endsWith('=ok'))).toEqual([
+      't2i/text=ok',
+      'i2i/text=ok',
+      'i2i/image=ok',
+    ]);
   });
 });

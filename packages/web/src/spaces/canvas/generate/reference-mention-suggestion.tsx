@@ -41,10 +41,7 @@ type RefreshHandleRef = { current: (() => void) | null };
  * Used when no getter is wired, so a caller that does not know the mode is not
  * silently narrowed down to nothing.
  */
-const ANY_MODE: ReferenceModeContext = {
-  takesReferences: true,
-  allowedSourceTypes: ['image', 'video', 'audio'],
-};
+const ANY_MODE: ReferenceModeContext = { takesReferences: true };
 
 /**
  * Builds the `@` suggestion options for the reference-mention node.
@@ -75,7 +72,7 @@ export function makeReferenceSuggestion(input: {
   /**
    * Filters the LIVE pool to the rows offerable for a query under the CURRENT
    * mode. Extracted so every popup show path computes from the same live inputs
-   * (`getPool` + `imageRefsDisabled`): the plugin's `items()` on each keystroke,
+   * (`getPool` + `getModeContext`): the plugin's `items()` on each keystroke,
    * AND the focus re-show below. `@tiptap/suggestion` only re-runs `items()` on a
    * query / range change (its `handleChange`), so a mode toggle — which lives on
    * the canvas node, not the prompt doc — never triggered a recompute; a popup
@@ -115,10 +112,10 @@ export function makeReferenceSuggestion(input: {
     // rows the plugin hands back arrive a microtask late and an empty list
     // arrives first. Keeping it wired anyway is deliberate on two counts: the
     // plugin drives its `loading` state and its abort handling off this call,
-    // and it is the one public seam through which the filtering rules
-    // (connection compatibility, t2i excluding images) can be tested. Both
-    // paths run the same function, so there is no second source of truth to
-    // drift — only the same cheap filter run twice.
+    // and it is the one public seam through which the filtering rule (the
+    // rail's own insertRefusal) can be tested. Both paths run the same
+    // function, so there is no second source of truth to drift — only the
+    // same cheap filter run twice.
     items: ({ query }): ReferenceRailItem[] => computeItems(query),
     command: ({ editor, range, props }): void => {
       // No trailing space (user 2026-07-10): the gap between adjacent chips

@@ -267,7 +267,6 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
         // answer on this panel and the wrong one on the video panel, where
         // `audio → video` is a live connection rather than a legacy edge.
         modeTakesReferences
-        allowedSourceTypes={['image']}
       />,
     );
     const legacyInsert = screen.getByTestId('generate-ref-insert-aud->me');
@@ -287,9 +286,10 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
   // the dim. It used to be applied per row by modality, reaching image rows
   // only, which is how audio and video rows stayed bright and removable in a
   // mode that would never read them (#1930, #1940). The dim now belongs to the
-  // row and every row carries it, and so does the ✕: references are shared
-  // across modes, so throwing one away here loses it for the mode the user is
-  // coming back to (decision 2026-08-11).
+  // row — every REFERENCE MATERIAL row carries it, and so does its ✕:
+  // references are shared across modes, so throwing one away here loses it for
+  // the mode the user is coming back to (decision 2026-08-11). A text row is
+  // prompt material and outside the rule.
   //
   // The rule's subject is the REFERENCE MATERIAL: a text row substitutes into
   // the prompt STRING, which every mode sends, so it is outside the rule
@@ -304,7 +304,6 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
         onRemove={() => {}}
         onInsert={() => {}}
         modeTakesReferences={false}
-        allowedSourceTypes={[]}
       />,
     );
     // Both rows still render — the edges stay visible, they just cannot act.

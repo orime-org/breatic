@@ -113,7 +113,6 @@ describe('ReferenceRail — the hover preview gets the real modality', () => {
         onRemove={() => {}}
         onInsert={() => {}}
         modeTakesReferences
-        allowedSourceTypes={['image']}
       />,
     );
     const rows = declared();
@@ -150,7 +149,6 @@ describe('ReferenceRail — the hover preview gets the real modality', () => {
         onRemove={() => {}}
         onInsert={() => {}}
         modeTakesReferences={false}
-        allowedSourceTypes={[]}
       />,
     );
     for (const row of declared()) {
@@ -176,7 +174,6 @@ describe('ReferenceRail — the hover preview gets the real modality', () => {
         onRemove={() => {}}
         onInsert={() => {}}
         modeTakesReferences
-        allowedSourceTypes={['image']}
       />,
     );
     expect(declared()[0]).toMatchObject({ kind: 'video', src: '', poster: '' });
@@ -211,7 +208,6 @@ describe('ReferenceRail — the hover preview gets the real modality', () => {
         onRemove={() => {}}
         onInsert={() => {}}
         modeTakesReferences
-        allowedSourceTypes={['image']}
       />,
     );
     for (const row of declared()) {
@@ -235,7 +231,6 @@ describe('ReferenceRail — a focus crop previews the crop', () => {
         onRemove={() => {}}
         onInsert={() => {}}
         modeTakesReferences
-        allowedSourceTypes={['image']}
       />,
     );
     expect(declared()[0]).toMatchObject({

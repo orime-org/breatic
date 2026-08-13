@@ -163,11 +163,6 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         // (decision 2026-08-11). A text row is prompt material and stays lit
         // and removable in all six.
         modeTakesReferences={modeTakesReferences(mode)}
-        // Which modalities the lit rail actually offers. Read from the model
-        // rather than hardcoded, so a future reference mode that eats video
-        // needs no change here — the rule lives in domain's
-        // MODE_REQUIRED_SOURCES and arrives precomputed.
-        allowedSourceTypes={currentModel?.sourcesByMode[mode]}
       />
 
       {promptSlot}

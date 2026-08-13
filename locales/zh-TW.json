@@ -206,7 +206,6 @@
       "refuseRemoveModeOff": "參考在各檔之間共用 — 切到使用參考的檔才能刪掉它，或者在畫布上刪掉它那條連線",
       "refuseRemoveModeOffCrop": "參考在各檔之間共用 — 切到使用參考的檔才能刪掉這個裁剪",
       "refuseInsertTypeUnused": "{kind, select, audio {這一檔的參考不接受音訊} video {這一檔的參考不接受視訊} other {這一檔的參考不接受這類素材}}",
-      "refuseInsertCatalogLoading": "模型列表還在載入 — 稍等一下參考就能用了",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的畫面內容，@ 引用參考",
       "mentionEmpty": "還沒有可引用的圖 — 先從一張圖連線過來",

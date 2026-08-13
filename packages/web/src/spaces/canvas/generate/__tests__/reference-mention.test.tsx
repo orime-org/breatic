@@ -82,7 +82,6 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
-        allowedSourceTypes: ['image', 'video', 'audio'],
       }),
     });
     expect(suggestion.allowedPrefixes).toBeNull();
@@ -133,7 +132,6 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       // button, so a row offered here is a row the rail would insert.
       getModeContext: () => ({
         takesReferences: true,
-        allowedSourceTypes: ['image'],
       }),
     });
     const items = (
@@ -160,7 +158,6 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: false,
-        allowedSourceTypes: [],
       }),
     });
     const items = (
@@ -246,7 +243,6 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
-        allowedSourceTypes: ['image', 'video', 'audio'],
       }),
       // Driving onStart/onUpdate by hand has no real transaction to advance the
       // tracker plugin, so inject the local-keystroke signal these tests model
@@ -296,7 +292,6 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
-        allowedSourceTypes: ['image', 'video', 'audio'],
       }),
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
     });
@@ -515,7 +510,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
-        allowedSourceTypes: ['image', 'video', 'audio'],
       }),
       // `remote` models whether the edit was a remote peer's; the popup's
       // visibility hook is now the POSITIVE "was it a local user keystroke",
@@ -567,7 +561,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
-        allowedSourceTypes: ['image', 'video', 'audio'],
       }),
       // `remote` models whether the edit was a remote peer's; the popup's
       // visibility hook is now the POSITIVE "was it a local user keystroke",
@@ -604,7 +597,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
-        allowedSourceTypes: ['image', 'video', 'audio'],
       }),
       refreshRef,
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
@@ -650,7 +642,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
-        allowedSourceTypes: ['image', 'video', 'audio'],
       }),
       refreshRef,
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke

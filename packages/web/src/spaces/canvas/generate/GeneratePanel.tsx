@@ -212,9 +212,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         // other mode. Image-to-image is the mode that lights the rest back up;
         // this panel has exactly those two (`ImageGenMode`).
         modeTakesReferences={!imageSourcesOff}
-        // Which modalities the lit rail offers, straight from the model's
-        // precomputed source requirement rather than hardcoded to image.
-        allowedSourceTypes={currentModel?.sourcesByMode[mode]}
         pendingFocus={pendingFocus}
       />
 
