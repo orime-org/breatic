@@ -221,6 +221,17 @@ export {
 } from "@shared/document-body.js";
 
 export {
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_META_KEY,
+  documentSchemaDiffers,
+} from "@shared/document-schema.js";
+
+export type {
+  DocumentSchemaShape,
+  PublishedDocumentSchema,
+} from "@shared/document-schema.js";
+
+export {
   defaultAdjustValue,
   isAdjustValueNeutral,
   parseAdjustValue,
