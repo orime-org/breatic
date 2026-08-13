@@ -40,6 +40,7 @@ import { initCore } from "@breatic/core";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
+import { compressForContext } from "@server/agent/message-compressor.js";
 
 try {
   initCore(process.env);
@@ -408,7 +409,44 @@ describe("the memory chain still sees the same messages", () => {
 
     const forLlm = await messageRepo.getMessagesForLlm(conv.id, 1);
     expect(forLlm.map((m) => m.content)).toEqual(["new"]);
-    expect(forLlm[0]).not.toHaveProperty("turnIndex");
     expect(forLlm[0]).not.toHaveProperty("ts");
+  });
+
+  it("compresses the turns past the detail window, read the way the route reads them", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+
+    for (let i = 1; i <= 5; i++) {
+      await messageRepo.addMessage(conv.id, {
+        role: "user",
+        parts: [{ type: "text", text: `q${i}` }],
+      });
+      await messageRepo.addMessage(conv.id, {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool",
+            toolCallId: `call-${i}`,
+            toolName: "web_fetch",
+            input: { url: "https://example.com" },
+            status: "success",
+            output: "page text",
+          },
+          { type: "text", text: `a${i}` },
+        ],
+      });
+    }
+
+    // Both chat routes build the model's context in exactly these two steps,
+    // so the test takes them together: whether compression runs is a property
+    // of the pair, not of either half.
+    const forLlm = await messageRepo.getMessagesForLlm(conv.id, 0);
+    const context = compressForContext(forLlm, 3);
+
+    // Five turns, the last three kept whole. Turns 1 and 2 are old enough to
+    // lose their tool use -- that is the entire point of compressing them, and
+    // the older the conversation the larger the share of the context it saves.
+    const keptToolUse = context.filter((m) => m.parts.some((p) => p.type === "tool"));
+    expect(keptToolUse.map((m) => m.content)).toEqual(["a3", "a4", "a5"]);
   });
 });
