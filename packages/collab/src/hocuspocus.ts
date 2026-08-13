@@ -53,6 +53,7 @@ import {
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
+import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
 import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js";
@@ -264,6 +265,21 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // the 1h budget, and a doc unloaded while waiting is skipped.
     afterLoadDocument: async ({ documentName, document, instance }) => {
       const parsed = parseDocName(documentName);
+
+      // Publish this build's document-editor vocabulary, so a browser running
+      // an older one can find out before it offers to edit. Written here
+      // because the meta doc is read-only for every client, and idempotent
+      // because several instances load the same meta independently.
+      if (parsed?.kind === "meta") {
+        if (publishDocumentSchema(document)) {
+          logger.info(
+            { documentName, reason: "document_schema_published" },
+            "document_schema_published",
+          );
+        }
+        return;
+      }
+
       if (!parsed || parsed.kind !== "canvas") return;
       scheduleLoadSweep({
         documentName,
