@@ -1241,12 +1241,21 @@ describe('VideoGeneratePanelContainer', () => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
       const insert = await screen.findByTestId('generate-ref-insert-r-a');
-      expect(insert.classList.contains('opacity-50')).toBe(true);
-      expect(insert).toBeDisabled();
+      // #1945: the dim moved from the controls to the ROW, so it covers every
+      // REFERENCE MATERIAL row instead of the image ones alone (a text row is
+      // prompt material and stays lit), and the refusal is aria-disabled
+      // rather than the HTML attribute (which would block click and hover).
+      expect(
+        screen.getByTestId('generate-ref-r-a').classList.contains('opacity-50'),
+      ).toBe(true);
+      expect(insert).toHaveAttribute('aria-disabled', 'true');
       // And it cannot be thrown away while it is dimmed: references are shared
       // across modes, so a ✕ pressed here would lose an image the user is
       // coming back for (design decision 2026-08-11).
-      expect(screen.getByTestId('generate-ref-remove-r-a')).toBeDisabled();
+      expect(screen.getByTestId('generate-ref-remove-r-a')).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
     });
 
     it('keeps offering to add a reference in every mode', async () => {

@@ -54,6 +54,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
         sourceNodeType: 'image',
         sourceNodeName: 'Hero',
         thumbnail: 'https://cdn/hero.png',
+        mediaUrl: 'https://cdn/hero.png',
       },
     ]);
   });
@@ -79,13 +80,16 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
 
     const refs = deriveReferences('me', nodes, edges, NO_TEXT);
     expect(refs.map((r) => r.sourceNodeId)).toEqual(['a', 'b']);
-    // Video thumbnail is the cover frame (never the raw asset URL — #1821).
+    // Video thumbnail is the cover frame (never the raw asset URL — #1821);
+    // the raw asset URL rides along as `mediaUrl`, which is what the hover
+    // card plays (#1945). Two fields because they answer two questions.
     expect(refs[1]).toEqual({
       refId: 'b->me',
       sourceNodeId: 'b',
       sourceNodeType: 'video',
       sourceNodeName: 'B',
       thumbnail: 'b-cover.png',
+      mediaUrl: 'b.mp4',
     });
   });
 
@@ -261,5 +265,99 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
 
     expect(deriveReferences('me', before, edges, NO_TEXT)[0].sourceNodeName).toBe('Old');
     expect(deriveReferences('me', after, edges, NO_TEXT)[0].sourceNodeName).toBe('Renamed');
+  });
+});
+
+describe('deriveReferences — the media URL a hover preview can play (#1945)', () => {
+  // `thumbnail` and `mediaUrl` are two different things and the rail needs
+  // both: the 24×24 row image can only ever be a still, while the hover card
+  // plays the asset itself. Deriving one from the other is what kept audio and
+  // video references unplayable — `thumbnailOf` returns a video's COVER and
+  // nothing at all for audio, on purpose, because feeding a raw video URL to
+  // an `<img>` renders a broken image (#1821).
+  it('carries the asset URL for image / audio / video, alongside the thumbnail', () => {
+    const nodes: CanvasNodeView[] = [
+      node('img1', {
+        kind: 'image',
+        name: 'Hero',
+        status: 'idle',
+        content: 'https://cdn/hero.png',
+      }),
+      node('aud1', {
+        kind: 'audio',
+        name: 'Narration',
+        status: 'idle',
+        content: 'https://cdn/voice.m4a',
+      }),
+      node('vid1', {
+        kind: 'video',
+        name: 'Clip',
+        status: 'idle',
+        content: 'https://cdn/clip.mp4',
+        coverUrl: 'https://cdn/clip-cover.jpg',
+      }),
+      node('gen', { kind: 'image', name: 'Target', status: 'idle' }),
+    ];
+    const edges: CanvasEdge[] = [
+      edge('e1', 'img1', 'gen', 1),
+      edge('e2', 'aud1', 'gen', 2),
+      edge('e3', 'vid1', 'gen', 3),
+    ];
+    const rail = deriveReferences('gen', nodes, edges, NO_TEXT);
+    expect(
+      rail.map((r) => ({
+        kind: r.sourceNodeType,
+        thumbnail: r.thumbnail,
+        mediaUrl: r.mediaUrl,
+      })),
+    ).toEqual([
+      {
+        kind: 'image',
+        thumbnail: 'https://cdn/hero.png',
+        mediaUrl: 'https://cdn/hero.png',
+      },
+      // Audio has no still to show in the row, but it has something to play.
+      {
+        kind: 'audio',
+        thumbnail: undefined,
+        mediaUrl: 'https://cdn/voice.m4a',
+      },
+      // Video shows its cover in the row and plays the file in the card.
+      {
+        kind: 'video',
+        thumbnail: 'https://cdn/clip-cover.jpg',
+        mediaUrl: 'https://cdn/clip.mp4',
+      },
+    ]);
+  });
+
+  it('leaves mediaUrl unset for modalities with nothing to play', () => {
+    const nodes: CanvasNodeView[] = [
+      node('txt1', { kind: 'text', name: 'Script', status: 'idle' }),
+      node('gen', { kind: 'video', name: 'Target', status: 'idle' }),
+    ];
+    const rail = deriveReferences(
+      'gen',
+      nodes,
+      [edge('e1', 'txt1', 'gen', 1)],
+      new Map([['txt1', 'a wide shot']]),
+    );
+    expect(rail[0]?.mediaUrl).toBeUndefined();
+    expect(rail[0]?.textContent).toBe('a wide shot');
+  });
+
+  it('leaves mediaUrl unset while the source has not produced anything yet', () => {
+    const nodes: CanvasNodeView[] = [
+      node('vid1', { kind: 'video', name: 'Empty', status: 'idle' }),
+      node('gen', { kind: 'video', name: 'Target', status: 'idle' }),
+    ];
+    const rail = deriveReferences(
+      'gen',
+      nodes,
+      [edge('e1', 'vid1', 'gen', 1)],
+      NO_TEXT,
+    );
+    expect(rail[0]?.mediaUrl).toBeUndefined();
+    expect(rail[0]?.thumbnail).toBeUndefined();
   });
 });
