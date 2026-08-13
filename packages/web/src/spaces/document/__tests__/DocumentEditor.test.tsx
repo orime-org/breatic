@@ -254,14 +254,14 @@ describe('DocumentEditor', () => {
         editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
       });
       const inBody = ['undo', 'redo'].map((id) =>
-        (screen.getByTestId(`doc-tool-${id}`) as HTMLButtonElement).disabled,
+        (screen.getByTestId(`doc-tool-${id}`)).disabled,
       );
 
       act(() => {
         editor.commands.setTextSelection(2);
       });
       const inTitle = ['undo', 'redo'].map((id) =>
-        (screen.getByTestId(`doc-tool-${id}`) as HTMLButtonElement).disabled,
+        (screen.getByTestId(`doc-tool-${id}`)).disabled,
       );
 
       expect(inTitle).toEqual(inBody);

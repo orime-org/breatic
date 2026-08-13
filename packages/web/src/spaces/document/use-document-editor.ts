@@ -20,6 +20,7 @@ import type * as Y from 'yjs';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import {
+  evictDocumentEditor,
   getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
@@ -38,6 +39,21 @@ export interface UseDocumentEditorOptions {
   caretProvider: { awareness: unknown } | null;
   /** False puts the editor in read-only mode (viewer role, history preview). */
   editable?: boolean;
+  /**
+   * False means no editor at all: none is built, and one already built is
+   * destroyed. Used when this build must not open the document (its vocabulary
+   * no longer matches the server's, or the document holds something it cannot
+   * resolve).
+   *
+   * NOT the same as `editable: false`. That one keeps the editor and turns off
+   * typing — measured to write a locally patched-up shell back into the shared
+   * document when the root content rule has drifted, and to make an up-to-date
+   * peer throw while restoring its selection. Destroying does neither, and it
+   * also takes the keyboard out of reach, which a read-only editor does not:
+   * the four ways an older build destroys newer content all start with an
+   * editor that exists.
+   */
+  enabled?: boolean;
 }
 
 /**
@@ -53,6 +69,7 @@ export interface UseDocumentEditorOptions {
  * @param options.name - The canonical document name (cache key).
  * @param options.caretProvider - Provider whose awareness carries carets.
  * @param options.editable - False for read-only.
+ * @param options.enabled - False builds no editor and destroys one already built.
  * @returns The editor and its undo manager, or null while the wiring is absent.
  */
 export function useDocumentEditor({
@@ -60,6 +77,7 @@ export function useDocumentEditor({
   name,
   caretProvider,
   editable = true,
+  enabled = true,
 }: UseDocumentEditorOptions): DocumentEditorHandle | null {
   // From context, not from a prop: the roster is a project-level fact and every
   // layer between here and the project page used to have to forward it.
@@ -78,7 +96,7 @@ export function useDocumentEditor({
   // StrictMode double-invoke cannot produce a second editor.
   const handle = React.useMemo(
     () =>
-      caretProvider
+      enabled && caretProvider
         ? getDocumentEditor(doc, name, {
           caretProvider,
           resolveCollaboratorName: collaboratorNames?.resolve,
@@ -90,8 +108,15 @@ export function useDocumentEditor({
     // through `setEditable` in the effect below, which must not rebuild the
     // editor — that would discard the undo stack and the selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [doc, name, caretProvider, collaboratorNames?.resolve],
+    [doc, name, caretProvider, collaboratorNames?.resolve, enabled],
   );
+
+  // An editor built before the intercept took hold has to go, not merely stop
+  // being rendered: it stays in the doc-scoped cache, still bound to the shared
+  // document, and switching Space tabs would hand it back.
+  React.useEffect(() => {
+    if (!enabled) evictDocumentEditor(name);
+  }, [enabled, name]);
 
   // Editability flips without a rebuild — a role change or entering a history
   // preview must not discard the editor, its undo stack or its selection.

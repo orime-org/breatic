@@ -31,7 +31,7 @@ function realSchemaShape(): {
       buildDocumentExtensions({
         fragment: doc.getXmlFragment('body'),
         caretProvider: null,
-        undoManager: null,
+        undoManager: undefined,
         resolveCollaboratorName: () => null,
       }),
     );

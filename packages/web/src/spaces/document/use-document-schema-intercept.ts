@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import * as Y from 'yjs';
+import type * as Y from 'yjs';
 import {
   DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
@@ -33,7 +33,7 @@ interface UseDocumentSchemaInterceptInput {
  */
 function readPublished(metaDoc: Y.Doc): Record<string, unknown> | undefined {
   const map = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
-  return map.size === 0 ? undefined : (map.toJSON() as Record<string, unknown>);
+  return map.size === 0 ? undefined : (map.toJSON());
 }
 
 /**

@@ -10,6 +10,8 @@ import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
+import { DocumentSchemaOutdated } from '@web/spaces/document/DocumentSchemaOutdated';
+import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-schema-intercept';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { useDocumentHistory } from '@web/spaces/document/use-document-history';
@@ -87,6 +89,19 @@ export function DocumentSpace({
   // The editor belongs to the document, not to this component: switching Space
   // tabs remounts this body, and what the Y.Doc does not hold — undo stack,
   // selection, composition state — would go with it.
+  // This build's vocabulary against the one the server publishes, and against
+  // what this document actually holds. Read from the project's meta document —
+  // the same instance the project page is already subscribed to, since
+  // `getDoc` is keyed by name; nothing is opened here.
+  const metaDoc = React.useMemo(
+    () => getDoc(docName.projectMeta(projectId)),
+    [projectId],
+  );
+  const { intercepted, publishedAt } = useDocumentSchemaIntercept({
+    metaDoc,
+    bodyDoc: doc,
+  });
+
   const handle = useDocumentEditor({
     doc,
     name,
@@ -94,6 +109,10 @@ export function DocumentSpace({
     // Only the ROLE decides this. A refused or read-only connection is reported
     // to the user, not enforced against them — see above.
     editable: !readOnly,
+    // Whereas THIS is enforced: an older build's edits do not merely fail to
+    // save, they destroy what a newer one wrote. No editor is built while it
+    // holds, and one already built is destroyed.
+    enabled: !intercepted,
   });
   // Nothing is offered until the document's real content is in. Editing before
   // that is not a lesser version of editing this document — it is editing a
@@ -115,7 +134,9 @@ export function DocumentSpace({
       data-space-id={spaceId}
       className='flex h-full w-full flex-col bg-background'
     >
-      {unavailable ? (
+      {intercepted ? (
+        <DocumentSchemaOutdated publishedAt={publishedAt} />
+      ) : unavailable ? (
         <div
           role='alert'
           data-testid='document-space-unavailable'
