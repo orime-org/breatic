@@ -26,6 +26,11 @@ ruleTester.run("service-observability", serviceObservability, {
       filename: entry,
       code: `deps.logger.warn("x");\nstartHealthServer(1);`,
     },
+    // Either may be reached through a namespace import.
+    {
+      filename: entry,
+      code: `initLogger("collab");\ncore.startHealthServer(1);`,
+    },
     // Not a service entry: this rule has nothing to say about it.
     {
       filename: "/repo/packages/core/src/index.ts",
@@ -40,7 +45,10 @@ ruleTester.run("service-observability", serviceObservability, {
     {
       filename: entry,
       code: `export const x = 1;`,
-      errors: [{ messageId: "noLogger" }, { messageId: "noHealthServer" }],
+      errors: [
+        { messageId: "noLogger" },
+        { messageId: "noHealthServer" },
+      ],
     },
     {
       filename: entry,
@@ -57,13 +65,19 @@ ruleTester.run("service-observability", serviceObservability, {
     {
       filename: entry,
       code: `import { startHealthServer, createLogger } from "@breatic/core";`,
-      errors: [{ messageId: "noLogger" }, { messageId: "noHealthServer" }],
+      errors: [
+        { messageId: "noLogger" },
+        { messageId: "noHealthServer" },
+      ],
     },
     // A name mentioned in a comment or a string is not a call either.
     {
       filename: entry,
       code: `// createLogger("main") used to be here\nconst url = "https://x/startHealthServer";`,
-      errors: [{ messageId: "noLogger" }, { messageId: "noHealthServer" }],
+      errors: [
+        { messageId: "noLogger" },
+        { messageId: "noHealthServer" },
+      ],
     },
     // console is not a logger — another rule bans it in libraries, and
     // counting it here would let one rule satisfy what another forbids.

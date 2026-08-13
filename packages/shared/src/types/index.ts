@@ -78,6 +78,10 @@ export type {
 
 export { STUDIO_ROLE_RANK } from "@shared/types/studio.js";
 
+export type { MembershipTier } from "@shared/types/membership.js";
+
+export { MEMBERSHIP_TIERS } from "@shared/types/membership.js";
+
 export type {
   InvitableProjectRole,
   ProjectInvitationStatus,

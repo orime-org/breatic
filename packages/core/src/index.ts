@@ -57,6 +57,12 @@ export { getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
 export type { StorageConfig } from "@core/config/storage.js";
+export {
+  getMembershipConfig,
+  getMembershipLimits,
+  getDefaultMembershipTier,
+} from "@core/config/membership.js";
+export type { MembershipConfig, MembershipLimits } from "@core/config/membership.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
 export { getAgentConfig } from "@core/config/loader.js";
 export { getSkillRouting, resetSkillRouting, SKILL_SURFACES } from "@core/config/skill-routing.js";
@@ -129,6 +135,13 @@ export type {
   ActivityCursor,
 } from "@core/activity/project-activities.repo.js";
 export * as projectAuthService from "@core/auth/projectAuth.service.js";
+export {
+  getUserMembershipTier,
+  getStudioMembershipTier,
+  getLimitsForUser,
+  getLimitsForStudio,
+  lockLimitsForUser,
+} from "@core/auth/membership.repo.js";
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
