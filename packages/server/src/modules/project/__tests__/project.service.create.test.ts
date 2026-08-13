@@ -11,6 +11,15 @@
  * them by creating projects. The create still writes ONLY the business rows
  * (projects + project_members) inside one transaction — the Yjs meta doc is
  * lazy-seeded by collab on first load (after the two-DB cutover).
+ *
+ * That transaction also holds the studio's row and checks the per-studio
+ * project ceiling before writing (task #86). Those three calls are stubbed to
+ * a studio that exists with room to spare, because what this file is about is
+ * the authorization gate and the transaction boundary. Whether the ceiling
+ * itself holds — including under concurrency, and on the duplicate path — is
+ * pinned against a real Postgres in
+ * `__tests__/integration/project-quota.integration.test.ts`; a stubbed handle
+ * cannot serialise anything, so asserting it here would prove nothing.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -28,6 +37,13 @@ vi.mock("ai", () => ({
 
 vi.mock("@server/modules/project/project.repo.js", () => ({
   createProject: vi.fn(),
+  countLiveProjectsInStudio: vi.fn(async () => 0),
+}));
+
+// The quota gate takes the studio's row before counting. Both live in the
+// studio module, so they are stubbed rather than reaching a database.
+vi.mock("@server/modules/studio/studio.repo.js", () => ({
+  lockStudio: vi.fn(async () => true),
 }));
 
 // studioAuthService.loadStudioRole is the create-authz source of truth.
@@ -49,6 +65,17 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
         cb({ TX: true }),
       ),
     },
+    // A tier with room. The six ceilings are read as one object, so the whole
+    // shape is returned rather than the single field under test — a partial
+    // stub would pass here and break the moment another ceiling is read.
+    getLimitsForStudio: vi.fn(async () => ({
+      team_studios: 3,
+      projects_per_studio: 300,
+      concurrent_editors: 20,
+      studio_members: 100,
+      project_members: 40,
+      storage_bytes: 536870912000,
+    })),
   };
 });
 
