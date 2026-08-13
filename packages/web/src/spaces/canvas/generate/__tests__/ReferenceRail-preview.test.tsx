@@ -32,7 +32,6 @@ vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
     poster,
     text,
     emptyHint,
-    dimmed,
     children,
   }: {
     kind: string;
@@ -40,7 +39,6 @@ vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
     poster?: string;
     text?: string;
     emptyHint?: string;
-    dimmed?: boolean;
     children: React.ReactNode;
   }): React.JSX.Element => (
     <div
@@ -50,7 +48,6 @@ vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
       data-poster={poster ?? ''}
       data-text={text ?? ''}
       data-empty-hint={emptyHint ?? ''}
-      data-dimmed={dimmed === true ? 'true' : 'false'}
     >
       {children}
     </div>
@@ -101,7 +98,6 @@ function declared(): Array<Record<string, string>> {
     poster: el.getAttribute('data-poster') ?? '',
     text: el.getAttribute('data-text') ?? '',
     emptyHint: el.getAttribute('data-empty-hint') ?? '',
-    dimmed: el.getAttribute('data-dimmed') ?? '',
   }));
 }
 
@@ -134,26 +130,6 @@ describe('ReferenceRail — the hover preview gets the real modality', () => {
       src: 'https://cdn/clip.mp4',
       poster: 'https://cdn/cover.jpg',
     });
-  });
-
-  it('previews at full strength even in a mode that dims the rail', () => {
-    // A preview's job is to say WHAT this row is; whether the mode can use it
-    // is said by the row's own dim and by the buttons (user 2026-08-13). The
-    // row's opacity is on the row, and the card is portaled out of it, so the
-    // preview is unaffected — and nothing re-applies the dim here. The prompt
-    // editor's `@` chip preview follows the same rule; the two used to
-    // disagree, so one image previewed two ways in one panel.
-    render(
-      <ReferenceRail
-        references={ROWS}
-        onRemove={() => {}}
-        onInsert={() => {}}
-        modeTakesReferences={false}
-      />,
-    );
-    for (const row of declared()) {
-      expect(row.dimmed).toBe('false');
-    }
   });
 
   it('claims nothing to play when the source has produced nothing yet', () => {

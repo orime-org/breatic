@@ -15,10 +15,17 @@
  * modality could connect to an IMAGE node — the image panel's question, where
  * `audio → image` really is a pre-rules legacy edge, while on a video node
  * `audio → video` is a currently legal connection. The right question is not
- * about connections at all: the reference pool travels as `params.images` and
- * `imageUrlOf` resolves only image sources, so a reference row is usable when
- * it is an image. This predicate and the execute-time fallback ask the same
- * thing and cannot disagree.
+ * about connections at all: what the rail feeds is `params.images`, a list of
+ * image URLs, so a reference row is usable when it is an image.
+ *
+ * That list has TWO producers, and neither has anything to take from a
+ * non-image row. A node row goes through `mentionedImageUrls`, whose
+ * `imageUrlOf` resolves `kind === 'image'` and nothing else. A focus crop
+ * never reaches that function — its pool id is `focus:<id>`, which matches no
+ * canvas node — and is appended by the image panel's own `focusImages`
+ * branch, from a crop that is an image by construction. So this predicate is
+ * not re-evaluating one expression the payload also evaluates; it asks for
+ * the one property both producers require.
  *
  * Splitting them gives each control one question to answer:
  *
@@ -100,10 +107,10 @@ export function insertRefusal(
   // mode (`video-task-payload.ts` sends `prompt: promptText` with no mode
   // branch), so no mode and no model can refuse it.
   if (!isReferenceMaterial(sourceNodeType)) return null;
-  // Mode before modality when both would refuse: "switch to a mode that uses
-  // references" is actionable, "this model's references do not take audio" is
-  // merely true. The mode also does not depend on the model, so it can answer
-  // even when nothing else can.
+  // Mode before modality when both would refuse. The mode reason names the
+  // state the user can leave — this mode ignores references, another one does
+  // not — while the modality reason names a rule that holds everywhere and
+  // leaves nothing to do. Told both, the user can act on only one of them.
   if (!ctx.takesReferences) return 'mode-takes-no-references';
   // The pool is the image pool — see the module docstring. Everything else is
   // a legitimate connection (an edge carries creative intent as well as data

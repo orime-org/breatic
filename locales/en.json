@@ -214,7 +214,7 @@
       "refuseInsertModeOff": "This mode doesn't use reference material",
       "refuseRemoveModeOff": "References are shared across modes — switch to a mode that uses them to remove this one, or delete its edge on the canvas",
       "refuseRemoveModeOffCrop": "References are shared across modes — switch to a mode that uses them to remove this crop",
-      "refuseInsertTypeUnused": "{kind, select, audio {This mode's references don't take audio} video {This mode's references don't take video} other {This mode's references don't take this kind of material}}",
+      "refuseInsertTypeUnused": "{kind, select, audio {References take images only, not audio} video {References take images only, not video} other {References take images only, not this kind of material}}",
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",
       "mentionEmpty": "No connected references — draw an edge from an image first",

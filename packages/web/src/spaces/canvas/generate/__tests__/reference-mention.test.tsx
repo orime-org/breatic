@@ -384,7 +384,6 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
         emptyLabel: 'No references',
         getModeContext: () => ({
           takesReferences: !hideImages,
-          allowedSourceTypes: hideImages ? [] : ['image', 'video', 'audio'],
         }),
       });
       return (
@@ -413,7 +412,6 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: !hideImages,
-        allowedSourceTypes: hideImages ? [] : ['image', 'video', 'audio'],
       }),
       isLocalUserInput: () => true, // the manually-dispatched caret tr is local
     });

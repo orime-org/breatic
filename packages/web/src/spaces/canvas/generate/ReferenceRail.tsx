@@ -23,9 +23,11 @@ import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
  * Maps a row's modality to the preview form that can show it. Text previews
  * its body; the three media modalities preview themselves. Everything else
  * (3d / web / annotation / group) has no preview form of its own and falls
- * back to the image one, which renders the empty hint when there is no source
- * — the same degradation as before, now stated once instead of implied by a
- * blanket `'image'`.
+ * back to the image one, where — having no asset to show — it opens on the
+ * empty hint. That is a change from before, when only image and video rows
+ * could produce a hint at all and these opened no card; no product path
+ * creates such a row, because `connection-rules` lets neither an image nor a
+ * video node take one, so the change is unreachable rather than intended.
  * @param kind - The upstream node's modality.
  * @returns The preview form to declare.
  */
@@ -63,9 +65,10 @@ interface ReferenceRailProps {
    * outside this rule entirely (user 2026-08-13). Among the rows it does
    * govern the verdict never varies by modality: dimming by type is what left
    * audio / video rows looking live and removable inside a mode that would
-   * never read them (#1930, #1940). The way out of a dark rail is in the
-   * refusal message: switch to a mode that uses references, or delete the edge
-   * on the canvas (#1934).
+   * never read them (#1930, #1940). The ways out of a dark rail — switch to a
+   * mode that uses references, or delete the edge on the canvas — are named by
+   * the REMOVE message, the one refusal where the user is being denied
+   * something they asked to be rid of (#1934).
    */
   modeTakesReferences?: boolean;
   /**
@@ -101,11 +104,12 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     () => ({ takesReferences: modeTakesReferences }),
     [modeTakesReferences],
   );
-  // Three refusals, three messages. Insert and remove do NOT share the
-  // mode-off one even though they share its cause: the way out differs —
-  // insert wants a mode that reads references, remove wants that too but also
-  // has a second way out (delete the edge), and only remove's message can
-  // afford to say so without being wrong about the other.
+  // Two refusal reasons, four messages: the mode-off reason alone splits three
+  // ways. Insert names only the cause, because the mode selector is in this
+  // same panel and the whole rail is visibly dark. Remove has to name the ways
+  // out, because the user asked for the row to be GONE and is being told no.
+  // And a focus crop gets its own remove message, because one of those ways
+  // out — delete its edge — does not exist for it.
   const refuseInsert = React.useCallback(
     (refusal: ReferenceRefusal, kind: NodeKind): void => {
       if (refusal === 'mode-takes-no-references') {
@@ -151,14 +155,16 @@ export const ReferenceRail = React.memo(function ReferenceRail({
         // blank card. Keyed on the ASSET rather than the thumbnail, because
         // the two answer different questions: a coverless video (#1821) has a
         // file to play and no still, and used to be called empty on the
-        // strength of the missing still.
+        // strength of the missing still. `isReferenceMaterial` is
+        // `kind !== 'text'`, so the second arm is the text one already and
+        // needs no further test for it.
         const emptyHint = isReferenceMaterial(ref.sourceNodeType)
           ? ref.mediaUrl
             ? undefined
             : t('canvas.generatePanel.emptyImageReference')
-          : ref.sourceNodeType === 'text' && !ref.textContent
-            ? t('canvas.generatePanel.emptyTextReference')
-            : undefined;
+          : ref.textContent
+            ? undefined
+            : t('canvas.generatePanel.emptyTextReference');
         return (
           <div
             key={ref.refId}

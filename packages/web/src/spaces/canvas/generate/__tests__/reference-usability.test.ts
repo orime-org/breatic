@@ -26,13 +26,13 @@ import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 const ROW_KINDS: NodeKind[] = ['text', 'image', 'audio', 'video'];
 
 /**
- * The video panel's six modes, with what each one actually consumes.
+ * The video panel's six modes, with the one thing the rail asks of a mode.
  *
- * `takesReferences` mirrors `modeTakesReferences` (only `ref` collects the
- * `@` pool, #1927); `allowedSourceTypes` mirrors the backend-computed
- * `sourcesByMode[mode]` (domain's MODE_REQUIRED_SOURCES). The two are
- * independent on purpose: `i2v` needs an image but takes it from a SLOT, not
- * from the rail, so its rail is dark even though its source list is non-empty.
+ * `takesReferences` mirrors `modeTakesReferences` — only `ref` collects the
+ * `@` pool (#1927). It is NOT the same question as "does this mode need an
+ * image at all": `i2v` needs one but takes it from a SLOT, so its rail is
+ * dark while its backend source list is non-empty. The rail reads nothing
+ * model-indexed, which is why this fixture has one field and not two.
  */
 const VIDEO_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceModeContext }> = [
   { mode: 't2v', ctx: { takesReferences: false } },
@@ -85,10 +85,12 @@ describe('insertRefusal — media rows need BOTH conditions', () => {
 
   it('reports the MODE refusal, not the type one, when both would apply', () => {
     // An audio row under talking_head fails both tests — the mode does not
-    // take references AND audio is not in that mode's rail-consumable list.
-    // The mode reason wins because it is the one the user can act on: switch
-    // to a mode that uses references. Saying "this model's references do not
-    // take audio" here would be true and useless.
+    // take references at all, AND the reference pool is images only. The mode
+    // reason wins because it names the state the user can leave; the modality
+    // reason names a rule that holds in every mode and leaves nothing to do.
+    // (talking_head does consume audio — through its driving-audio SLOT, not
+    // through the rail. That is why the rail's refusal must not be read as
+    // "this audio node is useless here".)
     const talkingHead = VIDEO_MODES.find((m) => m.mode === 'talking_head')!.ctx;
     expect(insertRefusal('audio', talkingHead)).toBe(
       'mode-takes-no-references',
@@ -179,9 +181,10 @@ describe('insertRefusal — the criterion depends on nothing asynchronous', () =
   });
 
   it('refuses every non-image reference row, because the pool is the image pool', () => {
-    // Not a lookup: the pool travels as `params.images` and `imageUrlOf`
-    // resolves only image sources, so this predicate and the execute-time
-    // fallback ask the same question and cannot disagree.
+    // Not a lookup: what the rail feeds is `params.images`, a list of image
+    // URLs. Both of its producers — `imageUrlOf` for node rows, the image
+    // panel's `focusImages` append for crops — require an image, so a
+    // non-image row has nothing to give either one.
     const ref: ReferenceModeContext = { takesReferences: true };
     for (const kind of ['audio', 'video', '3d', 'web'] as NodeKind[]) {
       expect(insertRefusal(kind, ref), kind).toBe('source-type-unused');

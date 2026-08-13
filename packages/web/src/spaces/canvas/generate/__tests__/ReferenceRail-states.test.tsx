@@ -9,13 +9,15 @@
  * what it says when it refuses.
  *
  * `useTranslation` is stubbed to echo its key so the assertions name the
- * message rather than its English wording: three refusals with three different
- * remedies is the whole point, and comparing rendered prose would let two of
- * them drift into saying the same thing without a test noticing.
+ * message rather than its English wording: two refusal reasons split into four
+ * messages, and comparing rendered prose would let two of them drift into
+ * saying the same thing without a test noticing.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+
+import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
@@ -71,9 +73,11 @@ const ROWS: ReferenceRailItem[] = [
   },
 ];
 
+/** All four refusal messages the rail can send. */
 const KEY = {
   modeOff: 'canvas.generatePanel.refuseInsertModeOff',
   removeOff: 'canvas.generatePanel.refuseRemoveModeOff',
+  removeOffCrop: 'canvas.generatePanel.refuseRemoveModeOffCrop',
   typeUnused: 'canvas.generatePanel.refuseInsertTypeUnused',
 } as const;
 
@@ -107,6 +111,10 @@ const row = (id: string): HTMLElement => screen.getByTestId(`generate-ref-${id}`
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('ReferenceRail — a mode that ignores references dims the whole rail', () => {
@@ -201,8 +209,8 @@ describe('ReferenceRail — a mode that uses references lights the rail up', () 
     fireEvent.click(insertBtn('e-video'));
     expect(onInsert).toHaveBeenCalledTimes(2);
     expect(toast.warning).toHaveBeenCalledTimes(2);
-    // The message names the modality, because "this model's references don't
-    // take audio" and "...don't take video" are different facts to the user.
+    // The message names the modality the user just clicked, so the sentence
+    // reads about the row in front of them rather than about a category.
     expect(vi.mocked(toast.warning).mock.calls.map((c) => c[0])).toEqual([
       `${KEY.typeUnused}({"kind":"audio"})`,
       `${KEY.typeUnused}({"kind":"video"})`,
@@ -258,6 +266,49 @@ describe('ReferenceRail — an unusable control still answers', () => {
   });
 });
 
+describe('ReferenceRail — the dim does not reach the hover preview', () => {
+  it('opens the card outside the dimmed row, with no opacity above it', () => {
+    // A preview's job is to say WHAT this row is, never whether the mode can
+    // use it (user 2026-08-13). Two mechanisms could break that, and this
+    // renders the REAL HoverPreview so both are in scope: the card could stop
+    // being portaled (then the row's own `opacity-50` would inherit into it),
+    // or something above the card could carry an opacity of its own. Asserting
+    // instead on a `dimmed` prop would test neither — that prop no longer
+    // exists, so the assertion could only ever hold.
+    vi.useFakeTimers();
+    render(
+      <ReferenceRail
+        references={[
+          {
+            refId: 'e-image',
+            sourceNodeId: 'n-image',
+            sourceNodeType: 'image',
+            sourceNodeName: 'Character',
+            thumbnail: 'https://cdn/char.png',
+            mediaUrl: 'https://cdn/char.png',
+          },
+        ]}
+        onInsert={vi.fn()}
+        onRemove={vi.fn()}
+        modeTakesReferences={false}
+      />,
+    );
+    const dimmedRow = row('e-image');
+    expect(dimmedRow).toHaveClass('opacity-50');
+
+    fireEvent.pointerEnter(insertBtn('e-image'), { pointerType: 'mouse' });
+    act(() => {
+      vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS + 10);
+    });
+
+    const card = screen.getByTestId('hover-preview-content');
+    expect(dimmedRow.contains(card)).toBe(false);
+    for (let el = card as HTMLElement | null; el; el = el.parentElement) {
+      expect(el.className, el.tagName).not.toContain('opacity-');
+    }
+  });
+});
+
 describe('ReferenceRail — a focus crop has no edge to delete', () => {
   it('gives the crop row its own remove refusal', () => {
     // A focus crop is a standalone copy, not an edge projection — its ✕
@@ -283,9 +334,7 @@ describe('ReferenceRail — a focus crop has no edge to delete', () => {
       />,
     );
     fireEvent.click(screen.getByTestId('generate-ref-remove-focus:c1'));
-    expect(toast.warning).toHaveBeenCalledWith(
-      'canvas.generatePanel.refuseRemoveModeOffCrop',
-    );
+    expect(toast.warning).toHaveBeenCalledWith(KEY.removeOffCrop);
   });
 });
 

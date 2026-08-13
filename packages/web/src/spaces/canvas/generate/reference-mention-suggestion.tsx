@@ -37,9 +37,12 @@ import {
 type RefreshHandleRef = { current: (() => void) | null };
 
 /**
- * Default mode context: references are in play and every modality is on offer.
- * Used when no getter is wired, so a caller that does not know the mode is not
- * silently narrowed down to nothing.
+ * Default mode context, used when no getter is wired: references are in play,
+ * so the picker offers what any reference-taking mode offers — the text rows
+ * and the image rows. A caller that does not know the mode still gets the
+ * usable rows rather than an empty list; what it cannot get is a row no mode
+ * consumes, because `insertRefusal` refuses non-image reference material
+ * under every context.
  */
 const ANY_MODE: ReferenceModeContext = { takesReferences: true };
 
@@ -54,7 +57,7 @@ const ANY_MODE: ReferenceModeContext = { takesReferences: true };
  *   entirely — absent from the list, not listed and greyed (user
  *   2026-08-13). A getter
  *   because the mode lives on the canvas node, not in the prompt doc.
- *   Optional (default: offer everything).
+ *   Optional; omitting it assumes a reference-taking mode ({@link ANY_MODE}).
  * @param input.refreshRef - Ref the open popup writes a `refresh()` into so the
  *   React layer can refresh a visible popup on a remote mode/pool change (residual 2).
  * @param input.isLocalUserInput - Whether the last transaction was a local user
