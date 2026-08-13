@@ -8,7 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('@web/data/api/chat', () => ({
-  chatApi: { openChat: vi.fn(), streamMessage: vi.fn() },
+  chatApi: { openChat: vi.fn(), streamMessage: vi.fn(), messagesBefore: vi.fn() },
 }));
 
 import { chatApi } from '@web/data/api/chat';
@@ -58,7 +58,9 @@ function chatOpensWith(texts: string[]): void {
 
 describe('ChatPanel', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Reset, not clear: an unconsumed `mockImplementationOnce` left by an
+    // earlier case survives `clearAllMocks` and fires in the next one.
+    vi.resetAllMocks();
     useChatStore.getState().reset();
     // The conversation runtime is a module singleton, so it carries whatever
     // the last case left in it into the next one.
@@ -265,5 +267,60 @@ describe('ChatPanel', () => {
     await waitFor(() =>
       expect(useChatStore.getState().composerDraft).toBe('is anyone there'),
     );
+  });
+});
+
+describe('a conversation longer than one page', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    useChatStore.getState().reset();
+    _resetForTests();
+    vi.mocked(chatApi.openChat).mockResolvedValue({
+      conversations: [{ id: 'c1' }],
+      current: {
+        conversation: { id: 'c1' },
+        messages: [
+          {
+            id: 'm1',
+            role: 'user',
+            parts: [{ type: 'text', text: 'the oldest thing on screen' }],
+            content: 'the oldest thing on screen',
+            ts: '2026-08-13T00:00:00Z',
+            turnIndex: 12,
+          },
+        ],
+        hasMore: true,
+      },
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+  });
+
+  it('offers to load what came before, and stops offering once it has', async () => {
+    vi.mocked(chatApi.messagesBefore).mockResolvedValue({
+      messages: [
+        {
+          id: 'm0',
+          role: 'user',
+          parts: [{ type: 'text', text: 'from further back' }],
+          content: 'from further back',
+          ts: '2026-08-12T00:00:00Z',
+          turnIndex: 4,
+        },
+      ],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.messagesBefore>>);
+
+    renderPanel();
+    // Without this the conversation simply begins in the middle, with nothing
+    // on screen saying that what came before it is still there.
+    const button = await screen.findByTestId('chat-load-earlier');
+
+    await userEvent.click(button);
+
+    await screen.findByText('from further back');
+    // Asked from where the loaded history reaches back to.
+    expect(chatApi.messagesBefore).toHaveBeenCalledWith('c1', 12);
+    // Nothing older left, so the offer goes away rather than sitting there
+    // fetching nothing.
+    await waitFor(() => expect(screen.queryByTestId('chat-load-earlier')).toBeNull());
   });
 });

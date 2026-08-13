@@ -17,6 +17,15 @@ import {
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 
+/**
+ * What the history sheet is given before there is anything to give it.
+ *
+ * Module-level, because a default written at the parameter builds a new array
+ * on every render -- and a new array is a changed prop, so the sheet would be
+ * rendered again for every piece of a streaming reply.
+ */
+const NO_CONVERSATIONS: ReadonlyArray<ConversationSummary> = [];
+
 interface ChatPanelProps {
   /** Project this chat belongs to — the chat is opened against it. */
   projectId: string;
@@ -51,7 +60,7 @@ interface ChatPanelProps {
  */
 export function ChatPanel({
   projectId,
-  conversations = [],
+  conversations = NO_CONVERSATIONS,
   onQuickAction,
   disabled = false,
 }: ChatPanelProps): React.JSX.Element {

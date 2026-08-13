@@ -385,7 +385,15 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
   /** Start the wait for the next beat over, whatever just arrived. */
   const expectAnotherBeat = (): void => {
     clearTimeout(watchdog);
-    watchdog = setTimeout(() => stopTurn(conversationId), SSE_HEARTBEAT_TIMEOUT_MS);
+    watchdog = setTimeout(() => {
+      // Only the turn it was set for. A turn ends when the server says so,
+      // which is a moment before the socket closes and this is cleared -- and
+      // the composer is live for the whole of that gap, so the next turn can
+      // already be under way. A watchdog that stopped "whatever is running"
+      // would kill it on behalf of a turn that finished perfectly well.
+      if (useStore.getState().conversations[conversationId]?.turn?.replyId !== replyId) return;
+      stopTurn(conversationId);
+    }, SSE_HEARTBEAT_TIMEOUT_MS);
   };
   expectAnotherBeat();
 

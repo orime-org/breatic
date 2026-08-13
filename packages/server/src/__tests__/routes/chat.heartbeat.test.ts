@@ -125,6 +125,31 @@ function eventNames(wire: string): string[] {
     .map((line) => line.slice("event: ".length).trim());
 }
 
+describe("a turn that has ended", () => {
+  it("leaves no timer still beating", async () => {
+    // Only the interval functions are faked, so the mock agent's own wait and
+    // every promise in the request still run on real time. What is being
+    // observed is one thing: whether the timer this stream started is still
+    // registered once the stream is over.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      const app = createApp();
+      const res = await app.request(ENTRANCES[0]!.path, {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify(ENTRANCES[0]!.body),
+      });
+      await res.text();
+
+      // One per finished stream is a timer that never stops, writing to a
+      // socket nobody is reading and holding the process open behind it.
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("a turn that takes its time", () => {
   for (const entrance of ENTRANCES) {
     it(`keeps saying the stream is alive, from ${entrance.name}`, async () => {

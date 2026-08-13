@@ -242,7 +242,16 @@ describe('when the conversation it was writing to is gone', () => {
     // Another tab deleted this conversation. The user has already typed,
     // pressed enter, and watched their words appear — losing them here would
     // be losing something they did nothing wrong to lose.
-    openChatAnswers([]);
+    //
+    // The conversation has something in it, which matters: this used to be
+    // written with an empty one, and the code being tested picked the words
+    // to re-send by hunting for the last user message in the list. An empty
+    // list has no wrong message to find, so it could not have gone wrong here
+    // however it was written.
+    openChatAnswers([
+      { id: 'm1', role: 'user', text: 'an older question' },
+      { id: 'm2', role: 'assistant', text: 'an older answer' },
+    ]);
     const { result } = render();
     await waitFor(() => expect(result.current.isPending).toBe(false));
 
@@ -256,6 +265,11 @@ describe('when the conversation it was writing to is gone', () => {
 
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalledTimes(2));
     expect(chatApi.streamMessage).toHaveBeenCalledTimes(2);
+    // What the second attempt sent is what the user typed, not whatever the
+    // list happened to have in it.
+    expect(vi.mocked(chatApi.streamMessage).mock.calls[1]?.[0].message).toBe(
+      'find me references',
+    );
     expect(result.current.messages.map((m) => m.content)).toContain('find me references');
   });
 
