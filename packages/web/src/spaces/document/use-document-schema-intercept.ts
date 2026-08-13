@@ -1,0 +1,111 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+import * as React from 'react';
+import * as Y from 'yjs';
+import {
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_META_KEY,
+  documentSchemaDiffers,
+} from '@breatic/shared';
+
+import { findUnknownContent } from '@web/spaces/document/document-schema-guard';
+
+/** What the caller needs to decide whether to build an editor at all. */
+export interface DocumentSchemaInterceptState {
+  /** True when this build must not offer to edit this document. */
+  intercepted: boolean;
+  /** When the server's vocabulary was last published, for the message. */
+  publishedAt: string | null;
+}
+
+interface UseDocumentSchemaInterceptInput {
+  /** The project's meta document, where the server publishes its vocabulary. */
+  metaDoc: Y.Doc;
+  /** This Space's content document. */
+  bodyDoc: Y.Doc;
+}
+
+/**
+ * Read whichever vocabulary the server has published into meta.
+ * @param metaDoc - The project's meta document.
+ * @returns The published entry, or undefined when nothing is there yet.
+ */
+function readPublished(metaDoc: Y.Doc): Record<string, unknown> | undefined {
+  const map = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
+  return map.size === 0 ? undefined : (map.toJSON() as Record<string, unknown>);
+}
+
+/**
+ * Whether this build should refuse to open a document Space, and why the user
+ * is being told about it now.
+ *
+ * Two conditions, either one is enough:
+ *
+ *   1. What the server publishes is not what this build holds. Catches the
+ *      classes that leave no trace in the content — an attribute added to a
+ *      node both sides already know is dropped silently by ProseMirror, so
+ *      nothing about the document itself gives it away.
+ *   2. This document holds something this build cannot resolve. Catches the
+ *      deployment window where the browser bundle went out before collab
+ *      restarted, so meta still says everything is fine while the content
+ *      already disagrees.
+ *
+ * ## Derived, not stored
+ *
+ * Both conditions are read straight off the two Yjs documents on every render,
+ * and re-read whenever either changes. Nothing is kept: switching Space tabs
+ * unmounts this and mounting it again recomputes the same answer from the same
+ * two documents. A stored flag would have to be kept in step with them, and
+ * being out of step is the only way it could be wrong.
+ *
+ * Missing or malformed published data reads as "no mismatch" (see
+ * `documentSchemaDiffers`): not knowing what the server publishes is not the
+ * same as knowing it differs.
+ * @param root0 - The two documents to derive from.
+ * @param root0.metaDoc - The project's meta document.
+ * @param root0.bodyDoc - This Space's content document.
+ * @returns Whether to intercept, and the server's publish time.
+ */
+export function useDocumentSchemaIntercept({
+  metaDoc,
+  bodyDoc,
+}: UseDocumentSchemaInterceptInput): DocumentSchemaInterceptState {
+  const derive = React.useCallback((): DocumentSchemaInterceptState => {
+    const published = readPublished(metaDoc);
+    const mismatch = documentSchemaDiffers(DOCUMENT_SCHEMA, published);
+    const unknown = findUnknownContent(
+      bodyDoc.getXmlFragment('body'),
+      DOCUMENT_SCHEMA,
+    );
+    const at = published?.publishedAt;
+    return {
+      intercepted: mismatch || unknown.length > 0,
+      publishedAt: typeof at === 'string' ? at : null,
+    };
+  }, [metaDoc, bodyDoc]);
+
+  const [state, setState] = React.useState<DocumentSchemaInterceptState>(derive);
+
+  React.useEffect(() => {
+    /**
+     * Recompute from both documents.
+     * @returns Nothing.
+     */
+    const update = (): void => setState(derive());
+
+    // Both documents can change after mount and either changes the answer: the
+    // published vocabulary arrives on reconnect, and unresolvable content can
+    // arrive at any moment from a peer running a newer build.
+    metaDoc.on('update', update);
+    bodyDoc.on('update', update);
+    update();
+
+    return () => {
+      metaDoc.off('update', update);
+      bodyDoc.off('update', update);
+    };
+  }, [metaDoc, bodyDoc, derive]);
+
+  return state;
+}
