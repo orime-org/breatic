@@ -621,12 +621,11 @@
         "strike": "Strikethrough"
       },
       "schemaOutdated": {
-        "headline": "Document editor updated",
-        "body": "This page is running an older version, and editing here would damage what others have written.",
-        "published": "The new version went out {when}.",
-        "risksLead": "Two things to know before you refresh:",
-        "riskUploads": "uploads still in progress will be interrupted — you can switch to the Space they are in and check first;",
-        "riskHistory": "this document's undo and redo history will be cleared.",
+        "headline": "This document cannot be edited here",
+        "body": "This page's version does not match the server's, and editing here would damage what others have written.",
+        "published": "The server's version was published {when}.",
+        "risksLead": "Before you refresh:",
+        "riskUploads": "uploads still in progress will be interrupted — you can switch to the Space they are in and check first.",
         "action": "Refresh page"
       }
     }
