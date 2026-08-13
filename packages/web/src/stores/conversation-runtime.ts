@@ -12,9 +12,10 @@
  *
  * So the turn lives here instead, keyed by the conversation it belongs to. A
  * panel that mounts reads what is going on; a panel that goes away is a panel
- * that went away. The two endings that should stop a turn still do, and both
- * are things the user did rather than things React did: pressing stop, and
- * leaving the project.
+ * that went away. What still ends a turn early is what the user did -- pressing
+ * stop, or leaving the project -- and one thing they did not: the watchdog
+ * ending a stream that has stopped saying it is alive. None of the three is
+ * React unmounting a component, which is the whole of the change.
  *
  * Messages live here for the same reason -- a reply being written and the
  * history it is being appended to are one list, and a list only one of whose
