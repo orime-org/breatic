@@ -66,7 +66,17 @@ describe('拦截成立时', () => {
     expect(result.current).toBeNull();
   });
 
-  it('先建好了、后来才成立 → 那个实例被销毁', () => {
+  it('先建好了、后来才成立 → 这个 hook 不再把它交出去，但销毁不归它管', () => {
+    // **销毁的职责已经搬走了**，搬去了 `DocumentInterceptGuard`（测试在
+    // `pages/project/__tests__/SpaceDocSync.intercept.test.tsx`）。
+    //
+    // 原因是作用域对不上：这个 hook 只在用户正看着的那个 Space 上跑，而编辑器
+    // 是按文档缓存的、故意活过 tab 切换。销毁写在这儿，就永远够不着那些「已经
+    // 打开但没在看」的 document space —— 而那些恰恰是没有任何东西盯着的。
+    // 新家挂在**每个已打开 tab** 上，作用域才对。
+    //
+    // 这个 hook 剩下的那一半仍然要成立：`enabled` 一旦为假，它不再把编辑器
+    // 交给调用方，于是界面上不会再有一个能打字的东西。
     const { doc, name, caretProvider } = make();
 
     const { result, rerender } = renderHook(
@@ -82,7 +92,6 @@ describe('拦截成立时', () => {
     rerender({ enabled: false });
 
     expect(result.current).toBeNull();
-    expect(built?.isDestroyed).toBe(true);
   });
 
   it('销毁之后再渲染，也不会又建一个出来', () => {

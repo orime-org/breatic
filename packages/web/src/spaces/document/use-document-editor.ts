@@ -20,7 +20,6 @@ import type * as Y from 'yjs';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import {
-  evictDocumentEditor,
   getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
@@ -40,15 +39,19 @@ export interface UseDocumentEditorOptions {
   /** False puts the editor in read-only mode (viewer role, history preview). */
   editable?: boolean;
   /**
-   * False means no editor at all: none is built, and one already built is
-   * destroyed. Used when this build must not open the document (its vocabulary
-   * no longer matches the server's, or the document holds something it cannot
+   * False means no editor is BUILT. Used while the content has not arrived yet,
+   * and when this build must not open the document at all (its vocabulary no
+   * longer matches the server's, or the document holds something it cannot
    * resolve).
+   *
+   * Destroying an editor that already exists is not this flag's job — see the
+   * comment where it would have gone. `DocumentInterceptGuard` owns that, from
+   * a scope that covers every open tab rather than only the visible one.
    *
    * NOT the same as `editable: false`. That one keeps the editor and turns off
    * typing — measured to write a locally patched-up shell back into the shared
    * document when the root content rule has drifted, and to make an up-to-date
-   * peer throw while restoring its selection. Destroying does neither, and it
+   * peer throw while restoring its selection. Not building does neither, and it
    * also takes the keyboard out of reach, which a read-only editor does not:
    * the four ways an older build destroys newer content all start with an
    * editor that exists.
@@ -111,12 +114,12 @@ export function useDocumentEditor({
     [doc, name, caretProvider, collaboratorNames?.resolve, enabled],
   );
 
-  // An editor built before the intercept took hold has to go, not merely stop
-  // being rendered: it stays in the doc-scoped cache, still bound to the shared
-  // document, and switching Space tabs would hand it back.
-  React.useEffect(() => {
-    if (!enabled) evictDocumentEditor(name);
-  }, [enabled, name]);
+  // Destroying an editor that already exists is NOT done here, deliberately.
+  // This hook only runs while the Space is the visible one, and an editor
+  // outlives a tab switch by design — so a teardown living here would never
+  // reach the Spaces the user is not currently looking at, which are exactly
+  // the ones nothing else is watching. `DocumentInterceptGuard`, mounted once
+  // per OPEN tab, owns it. This hook owns the other half: whether to BUILD one.
 
   // Editability flips without a rebuild — a role change or entering a history
   // preview must not discard the editor, its undo stack or its selection.
