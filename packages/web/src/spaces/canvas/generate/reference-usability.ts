@@ -21,7 +21,8 @@
  *
  * Text rows sit outside both: their `@` chip substitutes into the prompt
  * STRING, which every mode sends, so they are never reference material and
- * never dim (user 2026-08-13: "文本不是参考素材，它送的是提示词").
+ * never dim: text is not reference material, it is prompt material (user
+ * 2026-08-13).
  */
 
 import type { SourceType } from '@breatic/shared';

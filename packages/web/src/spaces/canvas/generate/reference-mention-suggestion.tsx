@@ -54,7 +54,8 @@ const ANY_MODE: ReferenceModeContext = {
  * @param input.emptyLabel - Localized empty-state text for the popup.
  * @param input.getModeContext - Live getter for what the active mode does with
  *   references; rows the mode cannot consume are left out of the picker
- *   entirely (user 2026-08-13: 「出现列表里边就没有，根本就没有」). A getter
+ *   entirely — absent from the list, not listed and greyed (user
+ *   2026-08-13). A getter
  *   because the mode lives on the canvas node, not in the prompt doc.
  *   Optional (default: offer everything).
  * @param input.refreshRef - Ref the open popup writes a `refresh()` into so the

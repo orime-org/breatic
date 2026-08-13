@@ -185,7 +185,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             // The hover preview is deliberately NOT dimmed: it is portaled, so
             // this opacity does not reach it, and that is the wanted outcome —
             // a dark row still shows its picture at full strength (user
-            // 2026-08-13: 「hover 的时候还是可以显示效果图的」).
+            // 2026-08-13: a dark row still shows its picture on hover).
             className={`group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5 ${modeTakesReferences ? '' : 'opacity-50'}`}
           >
             <HoverPreview
