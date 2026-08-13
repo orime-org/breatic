@@ -6,9 +6,10 @@
  *
  * `create` takes a target `studioId` and authorizes the caller's CURRENT
  * studio role (spec §0.2 / §8.2): only `admin` or `maintainer` may create a
- * project — `guest` and non-members (role `null`) are rejected, because a
- * studio's credits are shared and a plain guest must not be able to spend
- * them by creating projects. The create still writes ONLY the business rows
+ * project — `guest` and non-members (role `null`) are rejected. That is the
+ * whole rule, a division of what each studio role can do; an earlier version
+ * of this comment justified it with shared studio credits, which was never the
+ * reason (user 2026-08-13). The create still writes ONLY the business rows
  * (projects + project_members) inside one transaction — the Yjs meta doc is
  * lazy-seeded by collab on first load (after the two-DB cutover).
  *
@@ -40,8 +41,8 @@ vi.mock("@server/modules/project/project.repo.js", () => ({
   countLiveProjectsInStudio: vi.fn(async () => 0),
 }));
 
-// The quota gate takes the studio's row before counting. Both live in the
-// studio module, so they are stubbed rather than reaching a database.
+// The gate takes the studio's row before counting it. That row lock is the
+// studio module's; the count itself is stubbed above, in the project repo.
 vi.mock("@server/modules/studio/studio.repo.js", () => ({
   lockStudio: vi.fn(async () => true),
 }));
@@ -124,7 +125,7 @@ describe("project.service.create — studio-scoped, admin/maintainer gate (spec 
     expect(result).toEqual({ id: "p-1", name: "My Cyberpunk Idea" });
   });
 
-  it("allows a maintainer to create (admin + maintainer may spend studio credits)", async () => {
+  it("allows a maintainer to create — the gate admits both studio roles", async () => {
     mockLoadStudioRole.mockResolvedValueOnce("maintainer");
 
     await create("u-1", "studio-9", "P", "p", "studio", "canvas");
@@ -132,7 +133,7 @@ describe("project.service.create — studio-scoped, admin/maintainer gate (spec 
     expect(projectRepo.createProject).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects a plain guest with ForbiddenError (cannot burn shared studio credits)", async () => {
+  it("rejects a plain guest with ForbiddenError", async () => {
     mockLoadStudioRole.mockResolvedValueOnce("guest");
 
     await expect(

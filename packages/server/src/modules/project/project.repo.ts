@@ -375,9 +375,10 @@ export async function updateProjectMeta(
  *
  * The Yjs documents are NOT copied here. They live in a separate database
  * that cannot join this transaction, so what happens in-band is the outbox
- * row; collab does the copy afterwards. An earlier version of this comment
- * claimed the function copied "every `yjs_documents` row" itself, which was
- * never true of this code.
+ * row; collab does the copy afterwards. This function DID copy them inline
+ * until the two-database split (`46b31ce3`, 2026-06-03) took
+ * `yjsDocumentsRepo.duplicateByProjectPrefix` out of it; the comment kept
+ * saying so for two months after that stopped being true.
  *
  * Does NOT copy:
  *   - Conversations, messages, tasks, or node_history (these belong

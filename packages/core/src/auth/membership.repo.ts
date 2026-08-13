@@ -20,8 +20,8 @@
  *     lock: a ceiling counted per studio is serialised on the STUDIO's row,
  *     which is not this module's to take (see `studioRepo.lockStudio`).
  *
- * Five more ceilings are coming — projects per studio, two kinds of member
- * cap, concurrent writable connections, storage — each with its own check
+ * Four more ceilings are coming — two kinds of member cap, concurrent
+ * writable connections, storage — each with its own check
  * point, so "look up the tier, then index the config" would otherwise end up
  * written out six to eight times across the codebase.
  *

@@ -95,8 +95,8 @@ export async function assertAccess(
  * @param description - Optional description
  * @returns The newly created project entity
  * @throws {ForbiddenError} if the caller is not an `admin` or `maintainer`
- *   of `studioId`
- * @throws {NotFoundError} if no studio has that id
+ *   of `studioId` — which is also what a missing or soft-deleted studio
+ *   produces, since the role lookup inner-joins a live `studios` row
  * @throws {ConflictError} if the studio already holds as many projects as its
  *   tier allows
  */
