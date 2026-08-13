@@ -19,6 +19,7 @@ vi.mock('@web/data/api/chat', () => ({
 }));
 
 import { chatApi } from '@web/data/api/chat';
+import { StreamDroppedError } from '@web/data/stream/sse';
 import {
   conversationRuntime,
   useConversationRuntime,
@@ -227,5 +228,53 @@ describe('loading what came before', () => {
     await conversationRuntime.loadEarlier('c-1');
 
     expect(chatApi.messagesBefore).not.toHaveBeenCalled();
+  });
+});
+
+describe('a turn that ended because the connection did', () => {
+  it('says so, because from the reply alone it looks like the user stopped it', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'half an ans' } });
+
+    handlers.onError?.(new StreamDroppedError(new Error('socket died')));
+
+    // The mark on the reply is the same one pressing stop leaves, and it has
+    // to be: the server cannot tell the two apart either, and records both as
+    // stopped. What the reader is owed is the difference -- their answer was
+    // cut off by the connection, not by them.
+    expect(conversation()?.messages.at(-1)?.interrupted).toBe(true);
+    expect(conversation()?.connectionLost).toBe(true);
+  });
+
+  it('stops saying it once a new turn is under way', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    handlers.onError?.(new StreamDroppedError(new Error('socket died')));
+    expect(conversation()?.connectionLost).toBe(true);
+
+    void conversationRuntime.send('p-1', 'again');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+
+    // Trying again is what makes the last failure old news. A line still
+    // saying the connection is gone, over a reply arriving, is worse than no
+    // line at all.
+    expect(conversation()?.connectionLost).toBe(false);
+  });
+
+  it('says nothing when the user was the one who stopped it', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+
+    conversationRuntime.stopTurn('c-1');
+
+    expect(conversation()?.messages.at(-1)?.interrupted).toBe(true);
+    expect(conversation()?.connectionLost).toBe(false);
   });
 });

@@ -86,6 +86,17 @@ export interface ConversationRuntime {
   failures: number;
   /** The reply of the most recent failure, for the panel to point at. */
   failedReplyId: string | null;
+  /**
+   * The last turn ended because the connection did.
+   *
+   * The mark left on the reply is the same one pressing stop leaves, and it
+   * has to be -- the server cannot tell the two apart either, and records
+   * both as stopped. So the reply alone cannot say which happened, and a
+   * reader who did not press anything is left looking at an answer that
+   * stopped for no reason they can see. Cleared when a new turn starts:
+   * trying again is what makes the last one old news.
+   */
+  connectionLost: boolean;
 }
 
 /** How far opening one project's chat has got. */
@@ -225,6 +236,7 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
         oldestLoadedTurn: oldestTurnOf(opened.messages),
         failures: 0,
         failedReplyId: null,
+        connectionLost: false,
       },
     },
   }));
@@ -372,6 +384,7 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
     // become part of the history, and the failure worth announcing from here
     // on is this turn's, if it has one.
     failedReplyId: null,
+    connectionLost: false,
   }));
 
   // The stream says it is alive on a schedule of the server's, and this is
@@ -393,6 +406,9 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
       // would kill it on behalf of a turn that finished perfectly well.
       if (useStore.getState().conversations[conversationId]?.turn?.replyId !== replyId) return;
       stopTurn(conversationId);
+      // Ended the same way pressing stop does, so the reader is owed the same
+      // sentence a dropped socket earns: this was not you.
+      patchConversation(conversationId, (c) => ({ ...c, connectionLost: true }));
     }, SSE_HEARTBEAT_TIMEOUT_MS);
   };
   expectAnotherBeat();
@@ -428,6 +444,8 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
           // late belongs to a turn that already ended, and marking it would
           // put "stopped" on a reply that finished.
           patchMessage(conversationId, replyId, (m) => ({ ...m, interrupted: true as const }));
+          // And say which of the two it was, since the mark cannot.
+          patchConversation(conversationId, (c) => ({ ...c, connectionLost: true }));
         }
         finishTurn(conversationId, replyId);
       },

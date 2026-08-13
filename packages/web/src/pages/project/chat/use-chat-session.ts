@@ -33,6 +33,13 @@ export interface ChatSession {
   streaming: boolean;
   /** The conversation reaches back further than the messages on screen. */
   hasMore: boolean;
+  /**
+   * The last turn ended because the connection did.
+   *
+   * The reply carries the same mark pressing stop leaves, so without this the
+   * reader is looking at an answer that stopped for no reason they can see.
+   */
+  connectionLost: boolean;
   /** Load the messages before the ones on screen. */
   loadEarlier: () => void;
   /**
@@ -113,6 +120,9 @@ export function useChatSession(projectId: string): ChatSession {
   const hasMore = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.hasMore ?? false) : false,
   );
+  const connectionLost = useConversationRuntime((s) =>
+    conversationId ? (s.conversations[conversationId]?.connectionLost ?? false) : false,
+  );
   const failures = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.failures ?? 0) : 0,
   );
@@ -185,6 +195,7 @@ export function useChatSession(projectId: string): ChatSession {
     canSend: conversationId !== undefined,
     streaming,
     hasMore,
+    connectionLost,
     loadEarlier,
     send,
     abort,

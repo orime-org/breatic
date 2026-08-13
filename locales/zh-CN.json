@@ -132,7 +132,8 @@
     "error": {
       "turnFailed": "这条回复没能完成，可以再发一次。",
       "notSent": "没能送出去，检查一下网络。",
-      "openFailed": "这个对话没能打开，刷新页面可以再试一次。"
+      "openFailed": "这个对话没能打开，刷新页面可以再试一次。",
+      "connectionLost": "连接断开了，回复停在了这里。"
     },
     "message": {
       "interrupted": "已停止"

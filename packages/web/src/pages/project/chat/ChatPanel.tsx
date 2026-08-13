@@ -64,8 +64,18 @@ export function ChatPanel({
   onQuickAction,
   disabled = false,
 }: ChatPanelProps): React.JSX.Element {
-  const { messages, isPending, failedToOpen, canSend, streaming, hasMore, loadEarlier, send, abort } =
-    useChatSession(projectId);
+  const {
+    messages,
+    isPending,
+    failedToOpen,
+    canSend,
+    streaming,
+    hasMore,
+    connectionLost,
+    loadEarlier,
+    send,
+    abort,
+  } = useChatSession(projectId);
   const t = useTranslation();
   const draft = useChatStore((s) => s.composerDraft);
   const setDraft = useChatStore((s) => s.setComposerDraft);
@@ -179,7 +189,18 @@ export function ChatPanel({
           that would not send, and it belongs in the same place — a second
           bar at the top of the panel would be one more spot to learn to
           look at, and the two could disagree. */}
-      <ChatNotice message={failedToOpen ? t('chat.error.openFailed') : notice} />
+      {/* Three things this one line can be saying, and they cannot happen at
+          once: the chat would not open, the message would not send, or the
+          connection dropped while a reply was arriving. The last one has
+          nowhere else to be said -- the mark left on a reply by a dropped
+          connection is the same one the reader's own stop button leaves. */}
+      <ChatNotice
+        message={
+          failedToOpen
+            ? t('chat.error.openFailed')
+            : (notice ?? (connectionLost ? t('chat.error.connectionLost') : null))
+        }
+      />
       <ChatComposer
         draft={draft}
         streaming={streaming}

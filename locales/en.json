@@ -132,7 +132,8 @@
     "error": {
       "turnFailed": "This reply could not be finished. Try sending it again.",
       "notSent": "That did not go out — check your connection.",
-      "openFailed": "This chat could not be opened. Reload the page to try again."
+      "openFailed": "This chat could not be opened. Reload the page to try again.",
+      "connectionLost": "The connection dropped, so the reply stopped where it is."
     },
     "message": {
       "interrupted": "Stopped"
