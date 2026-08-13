@@ -472,16 +472,27 @@ export async function listByUser(
 /**
  * Count active members per studio in one grouped query (avoids N+1).
  *
- * Backs `memberCount` for the container shell + switcher. A studio with no
- * active members is simply absent from the map (callers default to 0).
+ * Backs `memberCount` for the container shell + switcher, and the per-studio
+ * member ceiling. A studio with no active members is simply absent from the map
+ * (callers default to 0).
+ *
+ * A caller inside a transaction MUST pass the handle. Not for correctness —
+ * the gate holds the `studios` row by then, so no other confirm can have an
+ * uncommitted insert in flight — but because a read issued without it reaches
+ * for a second pooled connection while the first is still held, which is how a
+ * pool exhausts itself under concurrent writes. Worse here than elsewhere: the
+ * connection it cannot get is one the lock holder needs before it can release
+ * the lock, so everybody queued behind it waits too.
  * @param studioIds - Studio UUIDs to count (empty input → empty map)
+ * @param tx - Enclosing transaction, when the caller is inside one
  * @returns Map of `studioId → active member count`
  */
 export async function countMembersByStudioIds(
   studioIds: string[],
+  tx?: DbTx,
 ): Promise<Map<string, number>> {
   if (studioIds.length === 0) return new Map();
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({
       studioId: studioMembers.studioId,
       count: sql<number>`count(*)::int`,

@@ -158,6 +158,33 @@ export async function attachNotification(
 }
 
 /**
+ * Which studio an invitation points at, read WITHOUT a lock.
+ *
+ * `confirmInvite` is handed an invitation id and nothing else, but it has to
+ * take the studio's row lock BEFORE the accept CAS: the studio-delete cascade
+ * locks `studios` first and only then touches `studio_invitations`, so a
+ * confirm that took those two in the other order would close a deadlock cycle.
+ * This read exists to break that ordering problem, and reading it unlocked is
+ * safe for two reasons — an invitation's `studio_id` never changes, and whether
+ * the invite may still be accepted is decided by {@link acceptIfPending}, not
+ * here. Rows that are soft-deleted or point at nothing are simply absent.
+ * @param id - Invitation id
+ * @param tx - Optional drizzle transaction handle
+ * @returns The studio id, or null when no live invitation has that id
+ */
+export async function getTargetStudioId(
+  id: string,
+  tx?: DbTx,
+): Promise<string | null> {
+  const rows = await (tx ?? db)
+    .select({ studioId: studioInvitations.studioId })
+    .from(studioInvitations)
+    .where(and(eq(studioInvitations.id, id), isNull(studioInvitations.deletedAt)))
+    .limit(1);
+  return rows[0]?.studioId ?? null;
+}
+
+/**
  * Accept CAS — flip exactly one LIVE, non-expired pending invite owned by
  * `invitedUserId` to `accepted`, returning its membership fields.
  *

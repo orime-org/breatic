@@ -41,11 +41,10 @@ import * as invitesRepo from "@server/modules/project-invite/projectInvitations.
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
-import { getProjectCollaboratorCap } from "@server/config/limits.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildProjectInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { db } from "@breatic/core";
+import { db, getLimitsForStudio } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { projectMembersRepo } from "@breatic/core";
 import { type ProjectRole, t } from "@breatic/shared";
@@ -110,13 +109,23 @@ export async function createInvite(
   const existingRole = await projectMembersRepo.getRole(projectId, invitee.id);
   if (existingRole) throw new ConflictError(t("server.project.already_member"));
 
-  // Soft collaborator cap (config/limits.yaml). Counts EXPLICITLY invited
-  // members (`added_by IS NOT NULL`); the creator-owner and auto-materialized
-  // baseline viewers are exempt, so open-baseline viewing is never blocked.
-  // Fail EARLY here; the real guard is in confirmInvite.
+  // The collaborator ceiling belongs to the studio this project lives in —
+  // more precisely to whoever currently administers that studio, who need not
+  // be the person inviting. Counts EXPLICITLY invited members
+  // (`added_by IS NOT NULL`); the creator-owner and auto-materialized baseline
+  // viewers are exempt, so open-baseline viewing is never blocked. Failing
+  // EARLY here is a courtesy to the inviter; the gate is in `confirmInvite`,
+  // and only that one runs behind a row lock.
+  const { project_members: collaboratorLimit } = await getLimitsForStudio(
+    project.studioId,
+  );
   const collaboratorCount = await projectMembersRepo.countExplicitMembers(projectId);
-  if (collaboratorCount >= getProjectCollaboratorCap()) {
-    throw new ConflictError(t("server.project.collaborator_limit_reached"));
+  if (collaboratorCount >= collaboratorLimit) {
+    throw new ConflictError(
+      t("server.project.collaborator_limit_reached", {
+        limit: collaboratorLimit,
+      }),
+    );
   }
 
   const profiles = await studioRepo.getPersonalProfilesByCreators([
@@ -229,6 +238,29 @@ export async function confirmInvite(
 ): Promise<void> {
   let joinedActivity: { projectId: string; role: ProjectRole } | null = null;
   await db.transaction(async (tx) => {
+    // Which project this invite is for, read WITHOUT a lock. The id is only
+    // reachable through the invitation row, and the row lock below has to come
+    // before the accept CAS, so it has to be read first. Safe: an invitation's
+    // `project_id` never changes, and whether this invite may still be
+    // accepted is decided by the CAS, not by this read.
+    const targetProjectId = await invitesRepo.getTargetProjectId(
+      invitationId,
+      tx,
+    );
+    if (targetProjectId === null) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+
+    // Taken BEFORE the CAS, and that order is not a preference: `deleteProject`
+    // takes `projects` first and `project_invitations` second, so a confirm
+    // that took them the other way round would close a deadlock cycle and one
+    // of the two would die with a 40P01 (a 500 for whoever lost). Refusing when
+    // it returns false is what keeps a live member row off a dead project —
+    // the orphan the note on `createInvite`'s lock has described all along.
+    if (!(await projectRepo.lockLiveProject(targetProjectId, tx))) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+
     // Serialization point: only the first confirm flips status to accepted;
     // a losing/expired/wrong-user attempt matches zero rows → null → abort.
     const accepted = await invitesRepo.acceptIfPending(
@@ -238,16 +270,28 @@ export async function confirmInvite(
     );
     if (!accepted) throw new NotFoundError(t("server.error.not_found"));
 
-    // Soft collaborator cap — the REAL guard: the project may have filled up
-    // between sending and accepting. Counts committed explicit members (a
-    // 1-off race under simultaneous confirms is acceptable for a soft business
-    // cap; concurrency isn't a data-integrity invariant here). Auto-viewers
-    // and the owner are exempt (`added_by` null).
+    // The REAL gate. Between sending and accepting the project may have filled
+    // up, and unlike the invite-time hint this one runs behind the row lock
+    // taken above, so two simultaneous confirms cannot both see the same last
+    // seat. Counts committed explicit members; auto-viewers and the owner are
+    // exempt (`added_by` null). The project is re-read here rather than at the
+    // bottom of this transaction because the ceiling belongs to its studio.
+    const project = await projectRepo.getProjectById(accepted.projectId, tx);
+    if (!project) throw new NotFoundError(t("server.error.not_found"));
+    const { project_members: collaboratorLimit } = await getLimitsForStudio(
+      project.studioId,
+      tx,
+    );
     const collaboratorCount = await projectMembersRepo.countExplicitMembers(
       accepted.projectId,
+      tx,
     );
-    if (collaboratorCount >= getProjectCollaboratorCap()) {
-      throw new ConflictError(t("server.project.collaborator_limit_reached"));
+    if (collaboratorCount >= collaboratorLimit) {
+      // Different sentence from the invite-time one: the person reading this
+      // is the invitee, who holds neither the tier nor any way to raise it.
+      throw new ConflictError(
+        t("server.project.collaborator_limit_reached_for_invitee"),
+      );
     }
 
     await projectMembersRepo.upsertMember(
@@ -266,7 +310,6 @@ export async function confirmInvite(
       );
     }
 
-    const project = await projectRepo.getProjectById(accepted.projectId);
     const profiles = await studioRepo.getPersonalProfilesByCreators([
       accepted.invitedUserId,
     ]);
