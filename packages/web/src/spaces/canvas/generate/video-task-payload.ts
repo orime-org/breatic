@@ -7,10 +7,11 @@
  * Its own builder rather than a flag on the image one: the two share the task
  * envelope (which they get from `buildOverwriteTaskPayload`) and nothing else.
  * What goes in `params` is where they differ, and video's list grows with each
- * generation mode — first frame, end frame, character image, driving video —
- * none of which mean anything to an image task. The one field the two do share,
- * the reference pool, is still built on different terms: here it belongs to a
- * single mode (#1927), where on the image side it belongs to all but one.
+ * generation mode — first frame, end frame, character image, driving video,
+ * driving audio — none of which mean anything to an image task. The one field
+ * the two do share, the reference pool, is still built on different terms:
+ * here it belongs to a single mode (#1927), where on the image side it
+ * belongs to all but one.
  */
 
 import type { TaskCreateInput } from '@breatic/shared';

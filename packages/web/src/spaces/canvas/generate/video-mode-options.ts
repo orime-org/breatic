@@ -39,7 +39,7 @@ export interface VideoModeOption extends ModeOption {
   takesReferences: boolean;
 }
 
-/** The video modes offered so far (#1896 slices 1 to 5). */
+/** The video modes offered so far (#1896 slices 1 to 6). */
 export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
   {
     value: 't2v',
@@ -77,6 +77,17 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     // rail instead of a control the toolbar renders.
     slots: [],
     takesReferences: true,
+  },
+  {
+    value: 'talking_head',
+    label: 'Talking Head',
+    testId: 'generate-video-mode-talking-head',
+    // The character image is the same slot image animation collects: both
+    // modes want one picture of a person, and a slot shared across modes is
+    // how the first frame already works. The driving audio is the first slot
+    // in this panel that takes an audio node.
+    slots: ['characterImage', 'drivingAudio'],
+    takesReferences: false,
   },
 ];
 

@@ -200,6 +200,7 @@
       "selectEndFrameFromCanvas": "在畫布上選一張圖片作為尾幀",
       "selectCharacterImageFromCanvas": "在畫布上選一張圖片作為角色",
       "selectDrivingVideoFromCanvas": "在畫布上選一段影片來驅動動作",
+      "selectDrivingAudioFromCanvas": "在畫布上選一段音訊，口型跟著它動",
       "removeStyle": "移除風格參考",
       "returnToNode": "返回節點",
       "exitSelect": "退出",
@@ -256,13 +257,17 @@
       "removeEndFrame": "移除尾幀",
       "errorNoEndFrame": "先挑一張尾幀",
       "characterImage": "角色圖",
-      "characterImageTip": "挑一張要讓它動起來的圖",
+      "characterImageTip": "挑一張人物圖",
       "removeCharacterImage": "移除角色圖",
       "errorNoCharacterImage": "先挑一張角色圖",
       "drivingVideo": "驅動影片",
+      "drivingAudio": "驅動音訊",
       "drivingVideoTip": "挑一段影片，它的動作會被套到角色上",
+      "drivingAudioTip": "挑一段音訊，口型會跟著它動",
       "removeDrivingVideo": "移除驅動影片",
-      "errorNoDrivingVideo": "先挑一段驅動影片"
+      "removeDrivingAudio": "移除驅動音訊",
+      "errorNoDrivingVideo": "先挑一段驅動影片",
+      "errorNoDrivingAudio": "先挑一段驅動音訊"
     },
     "nodeMenu": {
       "generate": "生成",

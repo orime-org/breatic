@@ -62,6 +62,17 @@ describe('what a slot takes, and what it can show for it (#1918)', () => {
     expect(VIDEO_SLOTS.drivingVideo.storesCover).toBe(true);
   });
 
+  it('takes an audio node for the driving audio slot (#1935)', () => {
+    // The first slot that takes audio. It goes down the same non-image path as
+    // the driving video: an audio node carries no `coverUrl` of its own, so
+    // the stored `{url}` has no poster and the toolbar keeps showing the
+    // slot's icon — which is what every small row in the product does for
+    // audio. The waveform is audio's picture where there is room for one.
+    expect(VIDEO_SLOTS.drivingAudio.accepts).toBe('audio');
+    expect(VIDEO_SLOTS.drivingAudio.storesCover).toBe(true);
+    expect(VIDEO_SLOTS.drivingAudio.param).toBe('audio');
+  });
+
   it('makes every slot that cannot paint itself carry a poster', () => {
     // The toolbar shows a slot's pick with an `<img>`. That works only while
     // the picked URL is itself an image; a video URL renders as a blank
