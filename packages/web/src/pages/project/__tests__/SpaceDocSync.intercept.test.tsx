@@ -71,6 +71,7 @@ describe('一个开着但没在看的 document tab', () => {
     // 这个 tab 之前被看过，所以编辑器已经在缓存里、还绑着这份文档。
     const handle = getDocumentEditor(bodyDoc, name, {
       caretProvider: { awareness: socketAwareness } as never,
+      editable: true,
     });
     expect(handle.editor.isDestroyed).toBe(false);
 
@@ -94,6 +95,7 @@ describe('一个开着但没在看的 document tab', () => {
 
     const handle = getDocumentEditor(bodyDoc, name, {
       caretProvider: { awareness: socketAwareness } as never,
+      editable: true,
     });
 
     render(<SpaceDocSync projectId={PID} spaceId='s-ok' type='document' />);
