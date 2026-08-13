@@ -14,6 +14,7 @@ import {
   DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
   documentSchemaDiffers,
+  documentSchemaMatches,
 } from "@shared/document-schema.js";
 
 describe("这份清单本身", () => {
@@ -112,5 +113,47 @@ describe("判定：我这份跟 meta 里那份一样不一样", () => {
     expect(documentSchemaDiffers(mine, {})).toBe(false);
     expect(documentSchemaDiffers(mine, { nodes: "x", marks: {} })).toBe(false);
     expect(documentSchemaDiffers(mine, { nodes: { doc: "x" }, marks: {} })).toBe(false);
+  });
+});
+
+describe("判定：meta 里那份就是我这一份吗", () => {
+  const mine = {
+    nodes: { doc: [], paragraph: [], heading: ["level"] },
+    marks: { bold: [] },
+  };
+
+  it("完全一样 → 是", () => {
+    expect(documentSchemaMatches(mine, { ...mine, publishedAt: "x" })).toBe(true);
+  });
+
+  it("发布时间不同不影响 —— 它记的是「什么时候变的」，不参与比较", () => {
+    expect(documentSchemaMatches(mine, { ...mine, publishedAt: "2020-01-01" })).toBe(
+      true,
+    );
+  });
+
+  it("键的顺序不同、属性名顺序不同，仍然是同一份", () => {
+    expect(
+      documentSchemaMatches(
+        { nodes: { doc: [], heading: ["level"] }, marks: { bold: ["b", "a"] } },
+        { nodes: { heading: ["level"], doc: [] }, marks: { bold: ["a", "b"] } },
+      ),
+    ).toBe(true);
+  });
+
+  it("少一个节点类型 → 不是", () => {
+    expect(
+      documentSchemaMatches(mine, { nodes: { doc: [], paragraph: [] }, marks: { bold: [] } }),
+    ).toBe(false);
+  });
+
+  it("读不出来的一律不是 —— 跟 `documentSchemaDiffers` 不是互补关系", () => {
+    // 两个函数问的是不同的问题，「不知道」对两个问题都答否：
+    // 不知道服务器发布了什么，既不能说它跟我不一样（那会拦住用户），
+    // 也不能说它就是我这一份（那会让服务器永远不发布）。
+    expect(documentSchemaMatches(mine, undefined)).toBe(false);
+    expect(documentSchemaDiffers(mine, undefined)).toBe(false);
+    expect(documentSchemaMatches(mine, {})).toBe(false);
+    expect(documentSchemaMatches(mine, { nodes: "x", marks: {} })).toBe(false);
   });
 });

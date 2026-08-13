@@ -27,30 +27,14 @@
  */
 
 import type * as Y from "yjs";
-import { DOCUMENT_SCHEMA, DOCUMENT_SCHEMA_META_KEY } from "@breatic/shared";
+import {
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_META_KEY,
+  documentSchemaMatches,
+} from "@breatic/shared";
 
 /** Named transaction origin, so a debugger can see who wrote this. */
 export const DOCUMENT_SCHEMA_PUBLISH_ORIGIN = "document-schema-publish";
-
-/**
- * Whether what is already published says the same thing as this build.
- *
- * Compares only the vocabulary, never `publishedAt` — that field records when
- * the vocabulary last CHANGED. Including it would make every comparison differ
- * and rewrite the timestamp on every load, turning "when the new version went
- * out" into "when this document was last opened", which is not a fact anyone
- * needs and not what the client tells the user.
- * @param existing - Whatever sits under the key right now.
- * @returns True when it already matches this build exactly.
- */
-function alreadyMatches(existing: unknown): boolean {
-  if (typeof existing !== "object" || existing === null) return false;
-  const { nodes, marks } = existing as { nodes?: unknown; marks?: unknown };
-  return (
-    JSON.stringify(nodes) === JSON.stringify(DOCUMENT_SCHEMA.nodes) &&
-    JSON.stringify(marks) === JSON.stringify(DOCUMENT_SCHEMA.marks)
-  );
-}
 
 /**
  * Write this build's vocabulary into the meta document, if it is not there yet.
@@ -58,12 +42,19 @@ function alreadyMatches(existing: unknown): boolean {
  * Idempotent by design: several collab instances load the same meta document
  * independently, and a write on every load would broadcast a change to every
  * connected client for nothing.
+ *
+ * "Already the same" is decided by `documentSchemaMatches`, the same comparison
+ * the browser uses to decide whether to stop editing — one rule, shared. It
+ * ignores `publishedAt`, which records when the vocabulary last CHANGED;
+ * comparing it would differ every time and rewrite the timestamp on every load,
+ * turning "when the new version went out" into "when this document was last
+ * opened".
  * @param metaDoc - The project's meta document, as handed over by the load hook.
  * @returns True when this call wrote, false when the published copy already matched.
  */
 export function publishDocumentSchema(metaDoc: Y.Doc): boolean {
   const published = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
-  if (alreadyMatches(published.toJSON())) return false;
+  if (documentSchemaMatches(DOCUMENT_SCHEMA, published.toJSON())) return false;
 
   metaDoc.transact(() => {
     published.set("nodes", DOCUMENT_SCHEMA.nodes);

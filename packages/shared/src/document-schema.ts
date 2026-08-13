@@ -168,3 +168,33 @@ export function documentSchemaDiffers(
   if (ours === null) return false;
   return ours !== theirs;
 }
+
+/**
+ * Whether what the server published is already exactly this build's vocabulary.
+ *
+ * This is what the publishing side asks before writing: several collab
+ * instances load the same meta document independently, and rewriting on every
+ * load would broadcast a change to every connected client for nothing — and
+ * would turn `publishedAt` from "when the vocabulary changed" into "when this
+ * document was last opened".
+ *
+ * Not the negation of {@link documentSchemaDiffers}. The two answer different
+ * questions and unreadable server data answers no to BOTH: not knowing what is
+ * published is neither grounds to take the editor away from someone, nor
+ * grounds for the server to stay silent. Sharing one comparison is the point —
+ * two hand-written comparisons of the same thing drift, and the drift shows up
+ * as an editor that will not open or a server that never publishes.
+ * @param mine - This build's vocabulary.
+ * @param fromMeta - Whatever sits under the key in the project's meta document.
+ * @returns True only when both are readable vocabularies and they agree.
+ */
+export function documentSchemaMatches(
+  mine: DocumentSchemaShape,
+  fromMeta: unknown,
+): boolean {
+  const theirs = normalise(fromMeta);
+  if (theirs === null) return false;
+  const ours = normalise(mine);
+  if (ours === null) return false;
+  return ours === theirs;
+}

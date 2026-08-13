@@ -221,6 +221,7 @@ export {
 } from "@shared/document-body.js";
 
 export {
+  documentSchemaMatches,
   DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
   documentSchemaDiffers,

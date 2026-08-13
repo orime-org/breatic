@@ -60,6 +60,37 @@ describe("往 meta 里写这一版的 schema", () => {
     doc.destroy();
   });
 
+  it("已发布那份只是键的顺序和属性名顺序不同，仍算同一份，不重写", () => {
+    // 「一样不一样」这个判定只有一处，在 `@breatic/shared`：前端拿它决定拦不拦
+    // 用户，这里拿它决定写不写。两边各写一套逐字节比较，迟早会对同一份数据给
+    // 出两个答案 —— 一边说「服务器变了、拦住他」，一边说「已经是这份了、不用
+    // 写」，而两句话不可能同时对。
+    const doc = new Y.Doc();
+    const shuffled = doc.getMap(DOCUMENT_SCHEMA_META_KEY);
+    /**
+     * 把每个属性名数组倒过来，键也倒过来 —— 内容一个字没变。
+     * @param half - 清单的一半。
+     * @returns 顺序被打乱的同一份。
+     */
+    const shuffle = (
+      half: Record<string, readonly string[]>,
+    ): Record<string, string[]> =>
+      Object.fromEntries(
+        Object.entries(half)
+          .reverse()
+          .map(([name, attrs]) => [name, [...attrs].reverse()]),
+      );
+    doc.transact(() => {
+      shuffled.set("nodes", shuffle(DOCUMENT_SCHEMA.nodes));
+      shuffled.set("marks", shuffle(DOCUMENT_SCHEMA.marks));
+      shuffled.set("publishedAt", "2020-01-01T00:00:00.000Z");
+    });
+
+    expect(publishDocumentSchema(doc)).toBe(false);
+    expect(readPublished(doc).publishedAt).toBe("2020-01-01T00:00:00.000Z");
+    doc.destroy();
+  });
+
   it("meta 里那份跟这一版不一样，覆盖掉", () => {
     const doc = new Y.Doc();
     const stale = doc.getMap(DOCUMENT_SCHEMA_META_KEY);
