@@ -24,7 +24,7 @@ vi.mock('@microsoft/fetch-event-source', () => ({
   fetchEventSource: fetchEventSourceMock,
 }));
 
-import { sseStream } from '@web/data/stream/sse';
+import { sseStream, StreamDroppedError } from '@web/data/stream/sse';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 
 /** The option object `sseStream` handed to the library on the last call. */
@@ -168,5 +168,38 @@ describe('when the server answers with an envelope instead of a stream', () => {
       headers: { 'content-type': 'application/json' },
     });
     await expect(opts.onopen?.(broken)).rejects.toThrow();
+  });
+});
+
+describe('when a stream that had opened dies', () => {
+  it('says so once, not once per layer that noticed', async () => {
+    const onError = vi.fn();
+    fetchEventSourceMock.mockImplementation(
+      async (_url: string, opts: {
+        onopen: (r: Response) => Promise<void>;
+        onerror: (e: unknown) => void;
+      }) => {
+        await opts.onopen(
+          new Response('', { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+        );
+        // What the library does when the socket dies: hand the failure to the
+        // handler, and let whatever that handler throws come back out.
+        opts.onerror(new Error('socket died'));
+      },
+    );
+
+    await sseStream({
+      url: '/chat/message',
+      parseEvent: (d) => d,
+      onEvent: () => undefined,
+      onError,
+    });
+
+    // One failure is one thing that happened. Told twice, a caller that acts
+    // on it -- marking the reply, ending the turn, announcing it -- does all
+    // of that twice, and the second time it is acting on a turn that has
+    // already ended.
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(StreamDroppedError);
   });
 });

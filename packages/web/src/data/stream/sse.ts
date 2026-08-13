@@ -207,8 +207,11 @@ export async function sseStream<TEvent>({
         onClose?.();
       },
       onerror(err) {
-        onError?.(classify(err, opened));
-        // Re-throw so fetch-event-source stops retrying on hard errors.
+        // Only to stop the retrying: the library reads this handler's return
+        // value as "wait this long and try again", and treats a throw as the
+        // end. Reporting here as well is what told the caller twice -- the
+        // throw comes straight back out of `fetchEventSource` and into the
+        // catch below, which is the one place every failure passes through.
         throw err;
       },
     });
