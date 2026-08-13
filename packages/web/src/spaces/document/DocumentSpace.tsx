@@ -112,7 +112,17 @@ export function DocumentSpace({
     // Whereas THIS is enforced: an older build's edits do not merely fail to
     // save, they destroy what a newer one wrote. No editor is built while it
     // holds, and one already built is destroyed.
-    enabled: !intercepted,
+    //
+    // `hasEverSynced` is part of the same gate, and has to be: building an
+    // editor first and letting the content arrive into it means y-tiptap
+    // converts the Yjs document to a ProseMirror one, and that conversion
+    // DELETES from the shared document whatever it cannot represent. The
+    // deletion happens inside Yjs's type observers, which run before
+    // `doc.on('update')` — so the intercept, which counts unresolvable names in
+    // the document, looks after the names are already gone and answers "nothing
+    // here". Measured. Ordering it the other way round — content, then verdict,
+    // then editor — is what makes the verdict able to see anything at all.
+    enabled: hasEverSynced && !intercepted,
   });
   // Nothing is offered until the document's real content is in. Editing before
   // that is not a lesser version of editing this document — it is editing a
