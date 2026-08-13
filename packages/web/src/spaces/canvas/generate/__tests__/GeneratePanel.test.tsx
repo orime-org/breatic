@@ -213,7 +213,15 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
         },
       ],
     });
-    expect(screen.getByTestId('generate-ref-insert-e1')).toBeDisabled();
-    expect(screen.getByTestId('generate-ref-insert-e2')).not.toBeDisabled();
+    // #1945: the refusal is aria-disabled, not the HTML attribute — a disabled
+    // element could neither explain itself on click nor open its hover preview.
+    expect(screen.getByTestId('generate-ref-insert-e1')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByTestId('generate-ref-insert-e2')).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 });

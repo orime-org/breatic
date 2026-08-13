@@ -3,6 +3,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
+
+import type { SourceType } from '@breatic/shared';
 import type * as Y from 'yjs';
 
 import { canvasApi } from '@web/data/api/canvas';
@@ -65,6 +67,12 @@ import {
 } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
+
+/**
+ * Fallback when the model has not resolved: no modality is on offer. A module
+ * constant so the memoised value stays referentially stable.
+ */
+const NO_SOURCE_TYPES: readonly SourceType[] = [];
 
 /**
  * For the reference derivation that deliberately wants no body text. Shared so
@@ -609,6 +617,16 @@ function VideoGeneratePanelBody({
   // prompt editor's chips and its `@` popup. The rail reads the same table
   // inside the panel.
   const imageRefsDisabled = !modeTakesReferences(mode);
+  // The other half of that statement: WHICH modalities the mode consumes when
+  // it does read the pool. The rail gets this from the panel; the `@` popup
+  // gets it from here, and both call the same predicate with it — otherwise
+  // the rail would refuse an audio row while `@` still offered it (#1945).
+  const allowedSourceTypes = React.useMemo(
+    () =>
+      models.find((m) => m.name === vm.model)?.sourcesByMode[mode] ??
+      NO_SOURCE_TYPES,
+    [models, vm.model, mode],
+  );
   // One string for every mode, deliberately. Making it follow the mode would
   // put it in `useEditor`'s dependency list (PromptEditor bakes it into the
   // extensions at creation), and @tiptap/react rebuilds the whole editor when
@@ -644,6 +662,7 @@ function VideoGeneratePanelBody({
           // to agree, or the rail would say "this mode cannot use that image"
           // while typing `@` still offered it at full strength.
           imageRefsDisabled={imageRefsDisabled}
+          allowedSourceTypes={allowedSourceTypes}
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
         />
@@ -668,6 +687,7 @@ function VideoGeneratePanelBody({
       // strength and the `@` popup would keep offering images the new mode
       // cannot use.
       imageRefsDisabled,
+      allowedSourceTypes,
       caretProvider,
     ],
   );

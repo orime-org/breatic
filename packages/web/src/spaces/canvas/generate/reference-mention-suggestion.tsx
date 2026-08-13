@@ -23,7 +23,10 @@ import {
 
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
-import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
+import {
+  insertRefusal,
+  type ReferenceModeContext,
+} from '@web/spaces/canvas/generate/reference-usability';
 import { wasLastChangeLocalUserInput } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import {
   ReferenceMentionList,
@@ -34,13 +37,26 @@ import {
 type RefreshHandleRef = { current: (() => void) | null };
 
 /**
+ * Default mode context: references are in play and every modality is on offer.
+ * Used when no getter is wired, so a caller that does not know the mode is not
+ * silently narrowed down to nothing.
+ */
+const ANY_MODE: ReferenceModeContext = {
+  takesReferences: true,
+  allowedSourceTypes: ['image', 'video', 'audio'],
+};
+
+/**
  * Builds the `@` suggestion options for the reference-mention node.
  * @param input - Wiring inputs.
  * @param input.getPool - Reads the CURRENT reference pool (incoming edges); a
  *   getter so the editor need not rebuild when the pool changes.
  * @param input.emptyLabel - Localized empty-state text for the popup.
- * @param input.imageRefsDisabled - Live getter; when it returns true (t2i),
- *   image references are excluded from the picker. Optional (default: keep all).
+ * @param input.getModeContext - Live getter for what the active mode does with
+ *   references; rows the mode cannot consume are left out of the picker
+ *   entirely (user 2026-08-13: 「出现列表里边就没有，根本就没有」). A getter
+ *   because the mode lives on the canvas node, not in the prompt doc.
+ *   Optional (default: offer everything).
  * @param input.refreshRef - Ref the open popup writes a `refresh()` into so the
  *   React layer can refresh a visible popup on a remote mode/pool change (residual 2).
  * @param input.isLocalUserInput - Whether the last transaction was a local user
@@ -50,7 +66,7 @@ type RefreshHandleRef = { current: (() => void) | null };
 export function makeReferenceSuggestion(input: {
   getPool: () => ReferenceRailItem[];
   emptyLabel: string;
-  imageRefsDisabled?: () => boolean;
+  getModeContext?: () => ReferenceModeContext;
   refreshRef?: RefreshHandleRef;
   isLocalUserInput?: (editor: Editor) => boolean;
 }): Omit<SuggestionOptions<ReferenceRailItem>, 'editor'> {
@@ -69,22 +85,21 @@ export function makeReferenceSuggestion(input: {
    */
   const computeItems = (query: string): ReferenceRailItem[] => {
     const q = query.toLowerCase();
-    const hideImages = input.imageRefsDisabled?.() ?? false;
-    return input
-      .getPool()
-      // Connection rules (spec §9.1): new incompatible wires are rejected at
-      // the wire level, but a LEGACY edge (audio/video → image, created
-      // before the rules) may survive in old documents. Never offer it in
-      // the picker — an @-pick that can't feed image generation dead-ends at
-      // execute ("no source image"). The rail still lists the legacy row so
-      // the user can see and remove it.
-      .filter((r) => canConnect(r.sourceNodeType, 'image'))
-      // Text-to-image ignores source images, so image references are invalid:
-      // exclude them from the `@` picker (user 2026-07-18) — with only images
-      // in the pool the picker never opens. Text refs still feed the prompt.
-      .filter((r) => !(hideImages && r.sourceNodeType === 'image'))
-      .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
-      .slice(0, 8);
+    const modeCtx = input.getModeContext?.() ?? ANY_MODE;
+    return (
+      input
+        .getPool()
+        // The SAME call the rail's insert button makes (#1945), which is the
+        // point: a row the picker offers must be a row the rail would insert,
+        // and they used to answer separately — the rail asked whether the row
+        // could connect to an image node, and this filter asked its own copy
+        // of that plus a t2i special case. Both were the image panel's
+        // question, and on the video panel `audio → video` is a live
+        // connection rather than the legacy edge that question assumes.
+        .filter((r) => insertRefusal(r.sourceNodeType, modeCtx) === null)
+        .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
+        .slice(0, 8)
+    );
   };
   return {
     char: '@',

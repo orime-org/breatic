@@ -3,6 +3,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
+
+import type { SourceType } from '@breatic/shared';
 import { toast } from '@web/lib/toast';
 import type * as Y from 'yjs';
 
@@ -64,6 +66,12 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
+
+/**
+ * Fallback when the model has not resolved: no modality is on offer. A module
+ * constant so the memoised value stays referentially stable.
+ */
+const NO_SOURCE_TYPES: readonly SourceType[] = [];
 
 /**
  * For the two derivations below that deliberately want no body text. Shared so
@@ -665,6 +673,14 @@ function GeneratePanelBody({
   // Text-to-image generates from scratch and ignores source images, so an
   // image `@` chip contributes nothing and the editor greys it (§2.4 C).
   const imageRefsOff = vm.mode === 't2i';
+  // Which modalities the lit rail offers, so the `@` popup and the rail's
+  // insert button answer one row the same way (#1945).
+  const allowedSourceTypes = React.useMemo(
+    () =>
+      models.find((m) => m.name === vm.model)?.sourcesByMode[vm.mode] ??
+      NO_SOURCE_TYPES,
+    [models, vm.model, vm.mode],
+  );
   const promptSlot = React.useMemo(
     () =>
       fragment ? (
@@ -676,6 +692,7 @@ function GeneratePanelBody({
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
           imageRefsDisabled={imageRefsOff}
+          allowedSourceTypes={allowedSourceTypes}
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
         />
@@ -688,6 +705,7 @@ function GeneratePanelBody({
       handleAtMentionsChange,
       stableReferences,
       imageRefsOff,
+      allowedSourceTypes,
       caretProvider,
     ],
   );

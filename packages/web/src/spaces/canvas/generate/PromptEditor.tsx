@@ -24,6 +24,8 @@ import {
   type MentionOccurrence,
   type ChipDisplaySnapshot,
 } from '@web/spaces/canvas/generate/at-reference';
+import type { SourceType } from '@breatic/shared';
+
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
   MENTION_LABEL_ATTR,
@@ -54,6 +56,12 @@ export interface PromptEditorHandle {
   serializePrompt: () => string | null;
 }
 
+/**
+ * Default for `allowedSourceTypes`: no stated restriction. A module constant so
+ * the ref holding it keeps a stable value across renders.
+ */
+const ALL_SOURCE_TYPES: readonly SourceType[] = ['image', 'video', 'audio'];
+
 interface PromptEditorProps {
   /** The node's prompt Y.XmlFragment — the collaborative binding target. */
   fragment: Y.XmlFragment;
@@ -77,6 +85,13 @@ interface PromptEditorProps {
    * ever asked the mode, and every panel that mounts it answers it its own way.
    */
   imageRefsDisabled: boolean;
+  /**
+   * The source types the active mode consumes (`sourcesByMode[mode]`). Decides
+   * which media rows the `@` picker offers, so that the picker and the rail's
+   * insert button answer one row the same way (#1945). Defaults to all three:
+   * a caller that does not state a restriction is not narrowed to nothing.
+   */
+  allowedSourceTypes?: readonly SourceType[];
   /** Localized empty-state text for the `@` picker popup. */
   mentionEmptyLabel: string;
   /**
@@ -117,6 +132,7 @@ export const PromptEditor = React.forwardRef<
     onAtMentionsChange,
     references,
     imageRefsDisabled,
+    allowedSourceTypes = ALL_SOURCE_TYPES,
     mentionEmptyLabel,
     caretProvider = null,
   }: PromptEditorProps,
@@ -135,6 +151,8 @@ export const PromptEditor = React.forwardRef<
   // editor on a mode toggle.
   const imageRefsDisabledRef = React.useRef(imageRefsDisabled);
   imageRefsDisabledRef.current = imageRefsDisabled;
+  const allowedSourceTypesRef = React.useRef(allowedSourceTypes);
+  allowedSourceTypesRef.current = allowedSourceTypes;
   // The open `@` popup registers a refresh() here (collaboration residual 2): a
   // REMOTE mode / pool change fires no editor transaction, so the visible popup's
   // list would stay stale. The effect below calls it when `imageRefsDisabled` /
@@ -168,8 +186,12 @@ export const PromptEditor = React.forwardRef<
           suggestion: makeReferenceSuggestion({
             getPool: () => poolRef.current,
             emptyLabel: mentionEmptyLabel,
-            // t2i ignores source images → exclude image refs from the `@` picker.
-            imageRefsDisabled: () => imageRefsDisabledRef.current,
+            // Same verdict as the rail's insert button, from the same call:
+            // a row the picker offers is a row the rail would insert.
+            getModeContext: () => ({
+              takesReferences: !imageRefsDisabledRef.current,
+              allowedSourceTypes: allowedSourceTypesRef.current,
+            }),
             refreshRef: suggestionRefreshRef,
           }),
           // The chip's text-reference hover resolves live content through the

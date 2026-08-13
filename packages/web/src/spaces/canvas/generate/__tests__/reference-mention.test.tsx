@@ -80,7 +80,10 @@ describe('ReferenceMention — @ suggestion wiring', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [],
       emptyLabel: 'No references',
-      imageRefsDisabled: () => false,
+      getModeContext: () => ({
+        takesReferences: true,
+        allowedSourceTypes: ['image', 'video', 'audio'],
+      }),
     });
     expect(suggestion.allowedPrefixes).toBeNull();
   });
@@ -124,6 +127,14 @@ describe('ReferenceMention — @ suggestion wiring', () => {
           Parameters<typeof makeReferenceSuggestion>[0]['getPool']
         >,
       emptyLabel: 'No references',
+      // The image panel in image-to-image: it reads the pool, and images are
+      // what it reads. Stating the mode is what #1945 changed — the verdict
+      // did not. The picker now asks the same predicate as the rail's insert
+      // button, so a row offered here is a row the rail would insert.
+      getModeContext: () => ({
+        takesReferences: true,
+        allowedSourceTypes: ['image'],
+      }),
     });
     const items = (
       suggestion.items as unknown as (input: {
@@ -136,7 +147,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
   // t2i ignores source images, so the `@` picker must not offer image refs
   // (user 2026-07-18) — with only images in the pool the picker never opens.
   // Text refs still feed the prompt in t2i, so they stay.
-  it('excludes image references from the @ picker when imageRefsDisabled (t2i), keeping text', () => {
+  it('excludes image references from the @ picker when the mode takes none (t2i), keeping text', () => {
     const pool = [
       { refId: 'e1', sourceNodeId: 'a', sourceNodeType: 'image', sourceNodeName: 'Pic' },
       { refId: 'e2', sourceNodeId: 'b', sourceNodeType: 'text', sourceNodeName: 'Note' },
@@ -147,7 +158,10 @@ describe('ReferenceMention — @ suggestion wiring', () => {
           Parameters<typeof makeReferenceSuggestion>[0]['getPool']
         >,
       emptyLabel: 'No references',
-      imageRefsDisabled: () => true,
+      getModeContext: () => ({
+        takesReferences: false,
+        allowedSourceTypes: [],
+      }),
     });
     const items = (
       suggestion.items as unknown as (input: {
@@ -230,7 +244,10 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [row],
       emptyLabel: 'No references',
-      imageRefsDisabled: () => false,
+      getModeContext: () => ({
+        takesReferences: true,
+        allowedSourceTypes: ['image', 'video', 'audio'],
+      }),
       // Driving onStart/onUpdate by hand has no real transaction to advance the
       // tracker plugin, so inject the local-keystroke signal these tests model
       // (the popup opens because the user typed `@`).
@@ -277,7 +294,10 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
-      imageRefsDisabled: () => false,
+      getModeContext: () => ({
+        takesReferences: true,
+        allowedSourceTypes: ['image', 'video', 'audio'],
+      }),
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
     });
     const render = suggestion.render;
@@ -367,7 +387,10 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
       const s = makeReferenceSuggestion({
         getPool: () => pool,
         emptyLabel: 'No references',
-        imageRefsDisabled: () => hideImages,
+        getModeContext: () => ({
+          takesReferences: !hideImages,
+          allowedSourceTypes: hideImages ? [] : ['image', 'video', 'audio'],
+        }),
       });
       return (
         (s.items?.({
@@ -393,7 +416,10 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow, imageRow, focusRow],
       emptyLabel: 'No references',
-      imageRefsDisabled: () => hideImages,
+      getModeContext: () => ({
+        takesReferences: !hideImages,
+        allowedSourceTypes: hideImages ? [] : ['image', 'video', 'audio'],
+      }),
       isLocalUserInput: () => true, // the manually-dispatched caret tr is local
     });
     const render = suggestion.render;
@@ -487,7 +513,10 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      imageRefsDisabled: () => false,
+      getModeContext: () => ({
+        takesReferences: true,
+        allowedSourceTypes: ['image', 'video', 'audio'],
+      }),
       // `remote` models whether the edit was a remote peer's; the popup's
       // visibility hook is now the POSITIVE "was it a local user keystroke",
       // so inject its negation (a remote edit is not a local keystroke).
@@ -536,7 +565,10 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      imageRefsDisabled: () => false,
+      getModeContext: () => ({
+        takesReferences: true,
+        allowedSourceTypes: ['image', 'video', 'audio'],
+      }),
       // `remote` models whether the edit was a remote peer's; the popup's
       // visibility hook is now the POSITIVE "was it a local user keystroke",
       // so inject its negation (a remote edit is not a local keystroke).
@@ -570,7 +602,10 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
-      imageRefsDisabled: () => false,
+      getModeContext: () => ({
+        takesReferences: true,
+        allowedSourceTypes: ['image', 'video', 'audio'],
+      }),
       refreshRef,
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
     });
@@ -613,7 +648,10 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
-      imageRefsDisabled: () => false,
+      getModeContext: () => ({
+        takesReferences: true,
+        allowedSourceTypes: ['image', 'video', 'audio'],
+      }),
       refreshRef,
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
     });
