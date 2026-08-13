@@ -6,14 +6,8 @@
  *
  * Loads the operator-tunable numbers from `config/limits.yaml`:
  *
- *   - soft capacity caps — how many active members a studio may have, and how
- *     many people may be EXPLICITLY invited to a project (any role).
- *     Auto-materialized baseline viewers (open baseline — studio members who
- *     just opened the project) are EXEMPT and never counted toward the project
- *     cap, so it never blocks viewing access. Concurrency is bounded
- *     separately by collab's `max_connections_per_document`
- *     (config/collab.yaml).
  *   - page sizes for the activity feed and the node-history panel.
+ *   - the canvas reference-pool cap.
  *   - the decision window — how long someone has to answer an invitation, a
  *     transfer, or a role-upgrade request.
  *

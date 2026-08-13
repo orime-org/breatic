@@ -109,10 +109,10 @@ beforeAll(async () => {
     { createdByUserId: INVITEE, slug: "proj-invitee", type: "personal", name: "Invitee" },
     { createdByUserId: STRANGER, slug: "proj-stranger", type: "personal", name: "Stranger" },
   ]);
-  // Every studio the product creates gets its creator's `admin` row, personal
-  // ones included, and the collaborator ceiling is read through exactly that
-  // row. A fixture studio without one is a studio nobody administers, which
-  // the product has no way to produce.
+  // The collaborator ceiling is read through the `admin` row of the studio a
+  // project lives in, so the studio holding this fixture's project needs one.
+  // The other two studios above are only there to supply display names and are
+  // left without one — nothing in these cases resolves a ceiling through them.
   await db.insert(schema.studioMembers).values({
     studioId: STUDIO,
     userId: OWNER,

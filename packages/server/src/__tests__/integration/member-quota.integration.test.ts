@@ -291,6 +291,23 @@ describe("studio member cap — invite time (the early hint)", () => {
       message: "This studio's plan allows up to 10 members. Upgrade to add more.",
     });
   });
+
+  it("says a DIFFERENT tier's number, so a hard-coded one shows", async () => {
+    // The case above alone cannot tell `{ limit: memberLimit }` from
+    // `{ limit: 10 }`. This one is the other half of that pair: on `base` the
+    // ceiling is a single seat — the admin's own — which also exercises the
+    // ICU `one` branch rather than `other`.
+    const admin = await insertUser("base");
+    const studio = await insertStudio(admin.id);
+    const invitee = await insertUser("base");
+    expect(studioCeiling("base")).toBe(1);
+
+    await expect(
+      inviteToStudio(studio.slug, admin.id, invitee.email),
+    ).rejects.toMatchObject({
+      message: "This studio's plan allows 1 member. Upgrade to add more.",
+    });
+  });
 });
 
 describe("studio member cap — accept time (the real gate)", () => {
@@ -330,7 +347,7 @@ describe("studio member cap — accept time (the real gate)", () => {
     await expect(
       studioInviteService.confirmInvite(invitation, invitee.id),
     ).rejects.toMatchObject({
-      message: "This studio is full. Ask one of its admins to make room.",
+      message: "This studio is full. Ask its Admin to make room.",
     });
   });
 
@@ -422,6 +439,23 @@ describe("project collaborator cap — invite time (the early hint)", () => {
       message: "This project allows up to 4 collaborators. Upgrade to add more.",
     });
   });
+
+  it("says a DIFFERENT tier's number, so a hard-coded one shows", async () => {
+    // The other half of the pair, for the same reason as the studio side: one
+    // tier alone cannot tell the configured number from a literal.
+    const admin = await insertUser("pro");
+    const studio = await insertStudio(admin.id);
+    const project = await insertProject(studio.id, admin.id);
+    await seedProjectMembers(project, admin.id, projectCeiling("pro"));
+    const invitee = await insertUser("base");
+    expect(projectCeiling("pro")).not.toBe(projectCeiling("base"));
+
+    await expect(
+      inviteToProject(project, admin.id, invitee.email),
+    ).rejects.toMatchObject({
+      message: "This project allows up to 12 collaborators. Upgrade to add more.",
+    });
+  });
 });
 
 describe("project collaborator cap — accept time (the real gate)", () => {
@@ -458,7 +492,7 @@ describe("project collaborator cap — accept time (the real gate)", () => {
     await expect(
       projectInviteService.confirmInvite(invitation, invitee.id),
     ).rejects.toMatchObject({
-      message: "This project is full. Ask its owner to make room.",
+      message: "This project is full. Ask its Owner to make room.",
     });
   });
 

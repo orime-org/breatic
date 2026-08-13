@@ -231,7 +231,10 @@ export async function confirmInvite(
     // Keeping the two sides identical is the point: whoever builds #26 will
     // take the `studios` row first, as every cascade here does, and this path
     // is then already on the safe side of that cycle rather than needing to be
-    // found and changed.
+    // found and changed. `createInvite` above is NOT: it writes
+    // `studio_invitations` without taking the studio row at all, so #26 has to
+    // look at it as well (the project side had exactly this shape and it was a
+    // real cycle — see `invite-lock-order.integration.test.ts`).
     //
     // This lock only serialises — it deliberately does not filter `deleted_at`
     // — so liveness is a separate question, asked right after.
