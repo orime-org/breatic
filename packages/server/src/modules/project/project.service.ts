@@ -17,12 +17,14 @@
  */
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { projectAuthService, projectMembersRepo } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import { studioAuthService } from "@breatic/domain";
-import { db } from "@breatic/core";
+import { db, getLimitsForStudio } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
-import { NotFoundError, ForbiddenError } from "@breatic/core";
+import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 import { ROLE_RANK } from "@breatic/shared";
 import type {
   ProjectEntity,
@@ -107,8 +109,9 @@ export async function create(
 ): Promise<ProjectEntity> {
   await requireStudioCreateAccess(userId, studioId);
 
-  return db.transaction(async (tx) =>
-    projectRepo.createProject(
+  return db.transaction(async (tx) => {
+    await assertStudioHasProjectRoom(studioId, tx);
+    return projectRepo.createProject(
       tx,
       studioId,
       userId,
@@ -117,8 +120,45 @@ export async function create(
       visibility,
       spaceType,
       description,
-    ),
-  );
+    );
+  });
+}
+
+/**
+ * Refuse if the studio already holds as many projects as its tier allows.
+ *
+ * The ceiling belongs to the STUDIO and is read from the tier of its current
+ * admin — not from the tier of whoever is creating. A maintainer on the
+ * narrowest tier creating inside a studio run by a wide-tier account gets the
+ * wide ceiling, because the studio's capacity is paid for by whoever
+ * administers it. A transfer moves the studio onto the new admin's ceiling
+ * with no row here changing.
+ *
+ * Takes the studio's row first. Counting and then inserting is not a decision
+ * when two requests do it at once — both count, both see room, both insert.
+ * The row taken is the one the counted set belongs to, so two studios never
+ * wait on each other while every path that adds to ONE studio queues up.
+ *
+ * Both entry points must call this. `duplicateProject` puts the copy in the
+ * source's studio, so a gate on `create` alone leaves the ceiling false while
+ * looking enforced.
+ * @param studioId - The studio the new project would land in
+ * @param tx - The enclosing transaction; the lock is meaningless without one
+ * @throws {NotFoundError} if no studio has that id
+ * @throws {ConflictError} if the studio is already at its tier's ceiling
+ */
+async function assertStudioHasProjectRoom(
+  studioId: string,
+  tx: DbTx,
+): Promise<void> {
+  if (!(await studioRepo.lockStudio(studioId, tx))) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  const { projects_per_studio: limit } = await getLimitsForStudio(studioId, tx);
+  const used = await projectRepo.countLiveProjectsInStudio(studioId, tx);
+  if (used >= limit) {
+    throw new ConflictError(t("server.project.limit_reached", { limit }));
+  }
 }
 
 /**
@@ -309,9 +349,15 @@ export async function duplicate(
   userId: string,
 ): Promise<ProjectEntity> {
   await assertAccess(sourceId, userId, "viewer");
-  const copy = await projectRepo.duplicateProject(userId, sourceId);
-  if (!copy) throw new NotFoundError(t("server.error.not_found"));
-  return copy;
+
+  return db.transaction(async (tx) => {
+    // Read first, because the studio to lock is the SOURCE's — a copy lands
+    // beside the thing it was copied from and counts against that studio.
+    const source = await projectRepo.getProjectById(sourceId, tx);
+    if (!source) throw new NotFoundError(t("server.error.not_found"));
+    await assertStudioHasProjectRoom(source.studioId, tx);
+    return projectRepo.duplicateProject(tx, userId, source);
+  });
 }
 
 /**

@@ -16,7 +16,7 @@
  * the `yjs_documents` table.
  */
 
-import { eq, and, isNull, isNotNull, or, desc, inArray } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, or, desc, inArray, count } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectActivitiesRepo, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
@@ -130,6 +130,32 @@ export async function lockLiveProject(
     .for("update")
     .limit(1);
   return rows.length > 0;
+}
+
+/**
+ * How many live projects a studio currently holds.
+ *
+ * Backs the per-studio project ceiling, whose value comes from the tier of
+ * that studio's current admin. Soft-deleted projects do not count — the row
+ * stays for referential integrity, but the capacity it occupied is released,
+ * which is what a person deleting a project expects to have happened.
+ *
+ * A caller deciding whether one more may be created must pass the transaction
+ * it already locked the studio row in; counting outside that transaction reads
+ * a number another request may already have invalidated.
+ * @param studioId - Studio whose projects to count
+ * @param tx - Enclosing transaction, when the caller is inside one
+ * @returns The count of that studio's live projects
+ */
+export async function countLiveProjectsInStudio(
+  studioId: string,
+  tx?: DbTx,
+): Promise<number> {
+  const rows = await (tx ?? db)
+    .select({ n: count() })
+    .from(projects)
+    .where(and(eq(projects.studioId, studioId), isNull(projects.deletedAt)));
+  return rows[0]?.n ?? 0;
 }
 
 /**
@@ -360,56 +386,53 @@ export async function updateProjectMeta(
  * Asset URLs inside the Yjs blobs continue to point at the original
  * OSS / S3 objects. Duplication is metadata-only at the storage
  * layer; OSS de-dupes by content hash anyway.
+ *
+ * The transaction is the CALLER'S. It used to be opened here, which left no
+ * point at which the service could take the studio's row and check the
+ * project ceiling before the insert — the copy lands in the source's studio
+ * and counts against it exactly like a fresh project does.
+ * @param tx - The enclosing transaction, opened by the service
  * @param creatorUserId - Owner of the new project (must match caller
  *   at the service layer — this repo function does NOT itself check
  *   ownership of the source; that happens in project.service.ts)
- * @param sourceId - UUID of the project to duplicate
- * @returns The freshly created project entity, or `null` if the
- *   source project does not exist or is soft-deleted
+ * @param source - The project being copied, already loaded and verified live
+ *   by the caller (which needs its `studioId` to know what to lock)
+ * @returns The freshly created project entity
  */
 export async function duplicateProject(
+  tx: Tx,
   creatorUserId: string,
-  sourceId: string,
-): Promise<ProjectEntity | null> {
-  return db.transaction(async (tx) => {
-    const sourceRows = await tx
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, sourceId), isNull(projects.deletedAt)))
-      .limit(1);
-    const source = sourceRows[0];
-    if (!source) return null;
+  source: ProjectEntity,
+): Promise<ProjectEntity> {
+  const inserted = await tx
+    .insert(projects)
+    .values({
+      studioId: source.studioId,
+      createdByUserId: creatorUserId,
+      name: `${source.name} (copy)`,
+      slug: `${source.slug}-copy`.slice(0, 120),
+      visibility: source.visibility,
+      description: source.description,
+      thumbnailUrl: source.thumbnailUrl,
+    })
+    .returning();
+  const newProject = inserted[0]!;
 
-    const inserted = await tx
-      .insert(projects)
-      .values({
-        studioId: source.studioId,
-        createdByUserId: creatorUserId,
-        name: `${source.name} (copy)`,
-        slug: `${source.slug}-copy`.slice(0, 120),
-        visibility: source.visibility,
-        description: source.description,
-        thumbnailUrl: source.thumbnailUrl,
-      })
-      .returning();
-    const newProject = inserted[0]!;
+  await projectMembersRepo.insertOwner(newProject.id, creatorUserId, tx);
 
-    await projectMembersRepo.insertOwner(newProject.id, creatorUserId, tx);
-
-    // The Yjs document store is a SEPARATE database now, so the doc copy
-    // can't ride this business tx. Enqueue a lifecycle command in the
-    // same tx (atomic with the new project row); the relay forwards it
-    // to collab, which copies `project-{sourceId}/*` → `project-{newId}/*`
-    // in the yjs DB.
-    await insertOutboxEvent(tx, {
-      type: "project:duplicated",
-      sourceId,
-      newId: newProject.id,
-      ts: Date.now(),
-    });
-
-    return toEntity(newProject);
+  // The Yjs document store is a SEPARATE database now, so the doc copy
+  // can't ride this business tx. Enqueue a lifecycle command in the
+  // same tx (atomic with the new project row); the relay forwards it
+  // to collab, which copies `project-{sourceId}/*` → `project-{newId}/*`
+  // in the yjs DB.
+  await insertOutboxEvent(tx, {
+    type: "project:duplicated",
+    sourceId: source.id,
+    newId: newProject.id,
+    ts: Date.now(),
   });
+
+  return toEntity(newProject);
 }
 
 /**
