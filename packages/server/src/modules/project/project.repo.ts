@@ -476,13 +476,15 @@ export async function deleteProject(id: string): Promise<void> {
   await db.transaction(async (tx) => {
     const now = new Date();
 
-    // Taken FIRST, and every path that files a project-scoped REQUEST row
-    // (invite, transfer offer, role-upgrade request) takes it too (see
-    // `lockLiveProject`). Membership rows are NOT in that set:
-    // `materializeBaselineViewer` writes one with no lock and no transaction,
-    // so it can still commit after this cascade has swept the table. Without it a request filed concurrently commits
-    // after the cascade has already swept its table, leaving the orphan this
-    // whole cascade exists to prevent.
+    // Taken FIRST. Without it a request filed concurrently commits after the
+    // cascade has already swept its table, leaving the orphan this whole
+    // cascade exists to prevent — so every path that files a project-scoped
+    // REQUEST row (invite, transfer offer, role-upgrade request) takes it too
+    // (see `lockLiveProject`).
+    //
+    // Membership rows are NOT in that set: `materializeBaselineViewer` writes
+    // one with no lock and no transaction at all, so it can still commit after
+    // this cascade has swept the table. That gap predates this comment.
     await tx
       .select({ id: projects.id })
       .from(projects)

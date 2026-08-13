@@ -157,7 +157,7 @@ loader:`packages/core/src/config/membership.ts`。**惰性加载**:首次被调�
 | `projects_per_studio` | 10 | 100 | 300 | 9999 | 每个 studio 能建几个 project |
 | `concurrent_editors` | 2 | 6 | 20 | 9999 | 每个文档同时可写的**连接**数(不是人:一个人开四个标签页占四个) |
 | `studio_members` | 1 | 10 | 100 | 9999 | 一个 studio 的成员上限 |
-| `project_members` | 4 | 12 | 40 | 9999 | 一个 project 的成员上限 |
+| `project_members` | 4 | 12 | 40 | 9999 | 一个 project 能有几个**显式邀请进来**的协作者。owner 本人不计(他已经占了 `studio_members` 的一个位),开放基线自动物化的 viewer(同 studio 的人打开这个 project 就自动落一行)也不计——把后者算进去,大 studio 里任何 project 一开就满 |
 | `storage_bytes` | 5368709120 | 214748364800 | 536870912000 | 109951162777600 | 该账号所有 studio 的存储字节数之和的上限 |
 
 **档位只有这四个**。产品上还有企业版(决议里的「商务谈」),它的数值一家一谈、将来从数据库读,所以既不在这个文件里、也不在档位枚举里——在这儿编一组数字,会让被设成企业版的账号拿到谁都没谈过的额度而且不报错。

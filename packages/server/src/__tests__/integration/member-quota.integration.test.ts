@@ -496,6 +496,58 @@ describe("project collaborator cap — accept time (the real gate)", () => {
     });
   });
 
+  it("reads the ceiling from the studio's admin here too, not the project's owner", async () => {
+    // The invite-time twin has this case; without it here, reading the ceiling
+    // off any other account passes. Seeded between the two tiers so the two
+    // answers differ: five explicit members is over base's four and under pro's
+    // twelve, so this confirm may only succeed if the admin's tier is what is
+    // being read.
+    const admin = await insertUser("pro");
+    const owner = await insertUser("base");
+    const studio = await insertStudio(admin.id);
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${studio.id}, ${owner.id}, 'maintainer')
+    `;
+    const project = await insertProject(studio.id, owner.id);
+    await seedProjectMembers(project, owner.id, projectCeiling("base") + 1);
+    expect(projectCeiling("base") + 1).toBeLessThan(projectCeiling("pro"));
+    const invitee = await insertUser("base");
+    const invitation = await inviteToProject(project, owner.id, invitee.email);
+
+    await expect(
+      projectInviteService.confirmInvite(invitation, invitee.id),
+    ).resolves.toBeUndefined();
+  });
+
+  it("frees the seat a removed collaborator held", async () => {
+    // Removing somebody is how an owner makes room, so the count has to skip
+    // soft-deleted rows. Counting them forever would leave a project that has
+    // been at its ceiling once unable to ever admit anyone again.
+    const admin = await insertUser("base");
+    const studio = await insertStudio(admin.id);
+    const project = await insertProject(studio.id, admin.id);
+    await seedProjectMembers(project, admin.id, projectCeiling("base"));
+    const invitee = await insertUser("base");
+    // Sent while there is room, so the invite itself is not what is under test.
+    await sql`
+      UPDATE project_members SET deleted_at = now()
+      WHERE project_id = ${project} AND added_by IS NOT NULL
+        AND deleted_at IS NULL
+        AND user_id = (
+          SELECT user_id FROM project_members
+          WHERE project_id = ${project} AND added_by IS NOT NULL
+            AND deleted_at IS NULL
+          LIMIT 1
+        )
+    `;
+    const invitation = await inviteToProject(project, admin.id, invitee.email);
+
+    await expect(
+      projectInviteService.confirmInvite(invitation, invitee.id),
+    ).resolves.toBeUndefined();
+  });
+
   it("refuses a confirm once the project itself has been soft-deleted", async () => {
     const admin = await insertUser("base");
     const studio = await insertStudio(admin.id);
