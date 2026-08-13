@@ -293,11 +293,11 @@ describe('loading what came before', () => {
 
 describe('an answer that arrives after the reader has left', () => {
   it('is dropped, rather than putting the project back', async () => {
-    let answer: (r: unknown) => void = () => {};
+    let answer: (r: Awaited<ReturnType<typeof chatApi.openChat>>) => void = () => {};
     vi.mocked(chatApi.openChat).mockReturnValue(
       new Promise((resolve) => {
         answer = resolve;
-      }) as ReturnType<typeof chatApi.openChat>,
+      }),
     );
     const opened = conversationRuntime.ensureLoaded('p-1');
 
@@ -305,7 +305,7 @@ describe('an answer that arrives after the reader has left', () => {
     answer({
       conversations: [{ id: 'c-1' }],
       current: { conversation: { id: 'c-1' }, messages: [], hasMore: false },
-    });
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
     await opened;
 
     // Nothing clears these a second time: leaving already ran, and it is the
