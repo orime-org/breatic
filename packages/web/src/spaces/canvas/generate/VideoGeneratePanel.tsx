@@ -4,7 +4,7 @@
 import { ArrowUp, Star, X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry, SourceType } from '@breatic/shared';
+import type { ModelEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -27,12 +27,6 @@ import {
   type VideoParamsValue,
 } from '@web/spaces/canvas/generate/VideoParamsPicker';
 
-/**
- * Fallback for a model that has not resolved yet: no modality is offered.
- * A module constant rather than a fresh `[]` so the memoised rail keeps a
- * stable prop and can still bail out of re-rendering.
- */
-const NO_SOURCE_TYPES: readonly SourceType[] = [];
 
 interface VideoGeneratePanelProps {
   /** Catalog video models, already narrowed to the active mode. */
@@ -172,9 +166,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         // rather than hardcoded, so a future reference mode that eats video
         // needs no change here — the rule lives in domain's
         // MODE_REQUIRED_SOURCES and arrives precomputed.
-        allowedSourceTypes={
-          currentModel?.sourcesByMode[mode] ?? NO_SOURCE_TYPES
-        }
+        allowedSourceTypes={currentModel?.sourcesByMode[mode]}
       />
 
       {promptSlot}

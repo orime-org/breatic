@@ -133,34 +133,90 @@ describe('insertRefusal — media rows need BOTH conditions', () => {
   });
 });
 
-describe('removeRefusal — the ✕ follows the row dim, and only that', () => {
-  it('refuses removal in every mode that does not take references', () => {
+describe('removeRefusal — the ✕ follows the dim, which reads on reference material', () => {
+  it('refuses every MEDIA row in a mode that does not take references', () => {
     for (const { mode, ctx } of [...VIDEO_MODES, ...IMAGE_MODES].filter(
       (m) => !m.ctx.takesReferences,
     )) {
-      expect(removeRefusal(ctx), `remove in ${mode}`).toBe(
-        'mode-takes-no-references',
-      );
+      for (const kind of ['image', 'audio', 'video'] as const) {
+        expect(removeRefusal(kind, ctx), `remove ${kind} in ${mode}`).toBe(
+          'mode-takes-no-references',
+        );
+      }
     }
   });
 
-  it('allows removal in every mode that takes references', () => {
+  it('allows every media row in a mode that takes references', () => {
     for (const { mode, ctx } of [...VIDEO_MODES, ...IMAGE_MODES].filter(
       (m) => m.ctx.takesReferences,
     )) {
-      expect(removeRefusal(ctx), `remove in ${mode}`).toBeNull();
+      for (const kind of ['image', 'audio', 'video'] as const) {
+        expect(removeRefusal(kind, ctx), `remove ${kind} in ${mode}`).toBeNull();
+      }
     }
   });
 
-  it('does not vary with the row modality — a dark row is dark for all four', () => {
-    // The ✕ is the one control that must NOT read the row's type: it is the
-    // reason audio / video rows used to be removable inside a dimmed mode
-    // while image rows were not (#1940). `removeRefusal` takes no row
-    // argument at all, which is how that asymmetry is made unrepresentable.
-    const ref = VIDEO_MODES.find((m) => m.mode === 'ref')!.ctx;
-    const t2v = VIDEO_MODES.find((m) => m.mode === 't2v')!.ctx;
-    expect(removeRefusal(ref)).toBeNull();
-    expect(removeRefusal(t2v)).toBe('mode-takes-no-references');
+  it('never refuses a TEXT row, in any mode of either panel', () => {
+    // The dim rule reads on REFERENCE MATERIAL, and text is prompt material
+    // (user 2026-08-13, second clarification). The reason for freezing a ✕ is
+    // "this mode cannot use the row, so do not let you throw it away before
+    // switching back" — and a text row is consumed by every mode, so the
+    // premise never holds and there is nothing to hold in trust.
+    for (const { mode, ctx } of [...VIDEO_MODES, ...IMAGE_MODES]) {
+      expect(removeRefusal('text', ctx), `remove text in ${mode}`).toBeNull();
+    }
+  });
+
+  it('does not let the media rows disagree with each other', () => {
+    // The asymmetry this replaces: audio / video rows stayed removable inside
+    // a dimmed mode while image rows were frozen (#1940). All three media
+    // kinds now answer identically for a given mode.
+    for (const { mode, ctx } of VIDEO_MODES) {
+      const verdicts = (['image', 'audio', 'video'] as const).map((k) =>
+        removeRefusal(k, ctx),
+      );
+      expect(new Set(verdicts).size, `media rows disagree in ${mode}`).toBe(1);
+    }
+  });
+});
+
+describe('insertRefusal — an unstated restriction is not an empty one', () => {
+  it('offers every media row while the model catalog has not resolved', () => {
+    // `undefined` means "no restriction stated" — the model has not loaded, so
+    // nothing is known about what this mode consumes. Encoding that as `[]`
+    // made a lit rail refuse every media row with a reason that was false, and
+    // it was stricter than the code this replaced (#1945 Gate 2 round 1).
+    const unresolved: ReferenceModeContext = {
+      takesReferences: true,
+      allowedSourceTypes: undefined,
+    };
+    for (const kind of ['image', 'audio', 'video', 'text'] as const) {
+      expect(insertRefusal(kind, unresolved), `${kind} while loading`).toBeNull();
+    }
+  });
+
+  it('still refuses everything when the mode itself takes no references', () => {
+    // The mode dimension does not depend on the model, so an unresolved
+    // catalog must not turn a dark rail into a live one.
+    const darkAndUnresolved: ReferenceModeContext = {
+      takesReferences: false,
+      allowedSourceTypes: undefined,
+    };
+    expect(insertRefusal('image', darkAndUnresolved)).toBe(
+      'mode-takes-no-references',
+    );
+    expect(insertRefusal('text', darkAndUnresolved)).toBeNull();
+  });
+
+  it('treats an explicitly empty list as a real restriction', () => {
+    // `[]` is a statement: this mode consumes no source type at all. It must
+    // stay distinguishable from "not known yet".
+    const nothing: ReferenceModeContext = {
+      takesReferences: true,
+      allowedSourceTypes: [],
+    };
+    expect(insertRefusal('image', nothing)).toBe('source-type-unused');
+    expect(insertRefusal('text', nothing)).toBeNull();
   });
 });
 

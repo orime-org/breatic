@@ -112,14 +112,19 @@ beforeEach(() => {
 });
 
 describe('ReferenceRail — a mode that ignores references dims the whole rail', () => {
-  it('dims every row, not just the image ones (#1930)', () => {
+  it('dims every REFERENCE MATERIAL row, not just the image ones (#1930)', () => {
     renderRail(false, []);
-    // The dim is the ROW's, so all four carry it — the old code applied it to
-    // image rows only, which left audio / video rows looking live in a mode
-    // that would not read them.
-    for (const id of ['e-text', 'e-image', 'e-audio', 'e-video']) {
+    for (const id of ['e-image', 'e-audio', 'e-video']) {
       expect(row(id), id).toHaveClass('opacity-50');
     }
+  });
+
+  it('leaves the TEXT row lit — the dim rule reads on reference material', () => {
+    // User 2026-08-13: "整行统一变暗" is about the reference material; a text
+    // row is prompt material and never dims. Painting it half-strength said it
+    // was unusable while this very mode was consuming it.
+    renderRail(false, []);
+    expect(row('e-text')).not.toHaveClass('opacity-50');
   });
 
   it('does not stack the row dim with a second dim on the controls', () => {
@@ -131,15 +136,27 @@ describe('ReferenceRail — a mode that ignores references dims the whole rail',
     expect(removeBtn('e-image')).not.toHaveClass('opacity-50');
   });
 
-  it('freezes every ✕ — including audio and video (#1940)', () => {
+  it('freezes every media ✕ — including audio and video (#1940)', () => {
     const { onRemove } = renderRail(false, []);
-    for (const id of ['e-text', 'e-image', 'e-audio', 'e-video']) {
+    for (const id of ['e-image', 'e-audio', 'e-video']) {
       expect(removeBtn(id), id).toHaveAttribute('aria-disabled', 'true');
       fireEvent.click(removeBtn(id));
     }
     expect(onRemove).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledTimes(4);
+    expect(toast.warning).toHaveBeenCalledTimes(3);
     expect(toast.warning).toHaveBeenLastCalledWith(KEY.removeOff);
+  });
+
+  it('keeps the TEXT row removable — this mode is already using it', () => {
+    // The reason for freezing a ✕ is "you would lose it before switching
+    // back to the mode that uses it". A text row is used by THIS mode, so the
+    // premise never holds.
+    const { onRemove } = renderRail(false, []);
+    expect(removeBtn('e-text')).not.toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(removeBtn('e-text'));
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(onRemove.mock.calls[0]?.[0]?.refId).toBe('e-text');
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 
   it('keeps the TEXT row insertable — it feeds the prompt, not the references', () => {
@@ -250,5 +267,37 @@ describe('ReferenceRail — an unusable control still answers', () => {
     fireEvent.click(btn);
     expect(toast.warning).toHaveBeenCalledTimes(1);
     expect(toast.warning).toHaveBeenCalledWith(KEY.modeOff);
+  });
+});
+
+describe('ReferenceRail — a focus crop has no edge to delete', () => {
+  it('gives the crop row its own remove refusal', () => {
+    // A focus crop is a standalone copy, not an edge projection — its ✕
+    // removes the crop, never an edge (derive-references.ts). The shared
+    // message offers two ways out, one of which ("delete its edge on the
+    // canvas") does not exist for this row.
+    render(
+      <ReferenceRail
+        references={[
+          {
+            refId: 'focus:c1',
+            sourceNodeId: 'focus:c1',
+            sourceNodeType: 'image',
+            sourceNodeName: 'Face',
+            thumbnail: 'https://cdn/crop.png',
+            mediaUrl: 'https://cdn/crop.png',
+            focus: true,
+          },
+        ]}
+        onInsert={vi.fn()}
+        onRemove={vi.fn()}
+        modeTakesReferences={false}
+        allowedSourceTypes={[]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('generate-ref-remove-focus:c1'));
+    expect(toast.warning).toHaveBeenCalledWith(
+      'canvas.generatePanel.refuseRemoveModeOffCrop',
+    );
   });
 });

@@ -20,13 +20,6 @@ import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 
 /**
- * The default for {@link ReferenceRailProps.allowedSourceTypes} — every type,
- * meaning the caller stated no restriction. A caller that knows the mode
- * always passes the real list.
- */
-const ALL_SOURCE_TYPES: readonly SourceType[] = ['image', 'video', 'audio'];
-
-/**
  * Whether a row's modality carries an asset a preview could play or show.
  * @param kind - The upstream node's modality.
  * @returns True for image / audio / video.
@@ -86,7 +79,11 @@ interface ReferenceRailProps {
    * The source types this mode's payload consumes — the backend-computed
    * `ModelEntry.sourcesByMode[mode]`. Governs insertion only, and only for
    * media rows: text is prompt material, so it inserts under every mode.
-   * Defaults to all three, meaning "no stated restriction".
+   *
+   * Omitted (or undefined) means no restriction has been stated — the model
+   * catalog has not resolved, so nothing is known — and nothing is refused on
+   * those grounds. An explicit `[]` is the opposite: this mode consumes no
+   * source type at all.
    */
   allowedSourceTypes?: readonly SourceType[];
   /**
@@ -116,7 +113,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   onRemove,
   onInsert,
   modeTakesReferences = true,
-  allowedSourceTypes = ALL_SOURCE_TYPES,
+  allowedSourceTypes,
   pendingFocus = [],
 }: ReferenceRailProps): React.JSX.Element | null {
   const t = useTranslation();
@@ -139,9 +136,22 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     },
     [t],
   );
-  const refuseRemove = React.useCallback((): void => {
-    toast.warning(t('canvas.generatePanel.refuseRemoveModeOff'));
-  }, [t]);
+  const refuseRemove = React.useCallback(
+    (isCrop: boolean): void => {
+      // A focus crop is a standalone copy, not an edge projection — its ✕
+      // removes the crop, never an edge. The shared message offers two ways
+      // out and one of them, "delete its edge on the canvas", does not exist
+      // for this row, so the crop gets the half that is true for it.
+      toast.warning(
+        t(
+          isCrop
+            ? 'canvas.generatePanel.refuseRemoveModeOffCrop'
+            : 'canvas.generatePanel.refuseRemoveModeOff',
+        ),
+      );
+    },
+    [t],
+  );
   if (references.length === 0 && pendingFocus.length === 0) return null;
   return (
     <div
@@ -155,7 +165,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
         // this row; remove asks only about the mode, which is what keeps the
         // ✕ consistent across all four modalities.
         const insertRefused = insertRefusal(ref.sourceNodeType, modeCtx);
-        const removeRefused = removeRefusal(modeCtx);
+        const removeRefused = removeRefusal(ref.sourceNodeType, modeCtx);
         // Empty-source hint (H, user 2026-07-12): a source that has produced
         // nothing has no preview to show, so say so rather than opening a
         // blank card. Keyed on the ASSET, not the thumbnail: an audio node
@@ -176,17 +186,26 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             role='listitem'
             data-testid={`generate-ref-${ref.refId}`}
             // The dim belongs to the ROW, because what it says is about the
-            // whole row: this mode does not use references. Putting it on the
-            // controls instead (as it was until #1945) said it about them
+            // whole row: this mode does not use this reference. Putting it on
+            // the controls instead (as it was until #1945) said it about them
             // individually, which is why it could reach the image row's two
-            // buttons and no other row at all. The controls now carry no
-            // opacity of their own, so nothing multiplies down to 0.25.
+            // buttons and no other row at all. The controls carry no opacity
+            // of their own, so nothing multiplies down to 0.25.
+            //
+            // It reads on REFERENCE MATERIAL only. A text row is prompt
+            // material — every mode substitutes its content into the prompt
+            // string — so dimming it would say it was unusable while this very
+            // mode was consuming it (user 2026-08-13).
             //
             // The hover preview is deliberately NOT dimmed: it is portaled, so
             // this opacity does not reach it, and that is the wanted outcome —
             // a dark row still shows its picture at full strength (user
-            // 2026-08-13: a dark row still shows its picture on hover).
-            className={`group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5 ${modeTakesReferences ? '' : 'opacity-50'}`}
+            // 2026-08-13).
+            className={`group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5 ${
+              modeTakesReferences || !isMediaKind(ref.sourceNodeType)
+                ? ''
+                : 'opacity-50'
+            }`}
           >
             <HoverPreview
               // The row's REAL modality, so audio and video preview as
@@ -313,7 +332,9 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 },
               )}
               aria-disabled={removeRefused !== null}
-              onClick={() => (removeRefused ? refuseRemove() : onRemove(ref))}
+              onClick={() =>
+                removeRefused ? refuseRemove(ref.focus === true) : onRemove(ref)
+              }
               className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
             >
               <X className='h-3 w-3' aria-hidden='true' />

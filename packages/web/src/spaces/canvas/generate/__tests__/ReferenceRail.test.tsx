@@ -291,12 +291,13 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
   // across modes, so throwing one away here loses it for the mode the user is
   // coming back to (decision 2026-08-11).
   //
-  // Insertion is the dimension that still tells text apart, because a text
-  // chip substitutes into the prompt STRING, which every mode sends. The full
+  // The rule's subject is the REFERENCE MATERIAL: a text row substitutes into
+  // the prompt STRING, which every mode sends, so it is outside the rule
+  // entirely — lit, insertable and removable in every mode. The full
   // 24-combination matrix and the refusal messages live in
   // `ReferenceRail-states.test.tsx`; this one keeps the t2i case anchored
   // where the rest of the rail's rendering is pinned.
-  it('dims the whole rail when the mode takes no references, text row included', () => {
+  it('dims the reference-material rows when the mode takes no references', () => {
     render(
       <ReferenceRail
         references={REFS}
@@ -314,7 +315,11 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
       'opacity-50',
     );
     expect(screen.getByTestId('generate-ref-a->me')).toHaveClass('opacity-50');
-    expect(screen.getByTestId('generate-ref-b->me')).toHaveClass('opacity-50');
+    // The text row is prompt material and stays lit — the dim rule's subject
+    // is the reference material (user 2026-08-13, second clarification).
+    expect(screen.getByTestId('generate-ref-b->me')).not.toHaveClass(
+      'opacity-50',
+    );
     expect(screen.getByTestId('generate-ref-insert-a->me')).not.toHaveClass(
       'opacity-50',
     );
@@ -327,7 +332,8 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
       'aria-disabled',
       'true',
     );
-    expect(screen.getByTestId('generate-ref-remove-b->me')).toHaveAttribute(
+    // ...and its ✕ stays live, because this mode is already consuming it.
+    expect(screen.getByTestId('generate-ref-remove-b->me')).not.toHaveAttribute(
       'aria-disabled',
       'true',
     );

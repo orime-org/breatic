@@ -3,8 +3,6 @@
 
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
-
-import type { SourceType } from '@breatic/shared';
 import type * as Y from 'yjs';
 
 import { canvasApi } from '@web/data/api/canvas';
@@ -68,11 +66,6 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 
-/**
- * Fallback when the model has not resolved: no modality is on offer. A module
- * constant so the memoised value stays referentially stable.
- */
-const NO_SOURCE_TYPES: readonly SourceType[] = [];
 
 /**
  * For the reference derivation that deliberately wants no body text. Shared so
@@ -623,8 +616,7 @@ function VideoGeneratePanelBody({
   // the rail would refuse an audio row while `@` still offered it (#1945).
   const allowedSourceTypes = React.useMemo(
     () =>
-      models.find((m) => m.name === vm.model)?.sourcesByMode[mode] ??
-      NO_SOURCE_TYPES,
+      models.find((m) => m.name === vm.model)?.sourcesByMode[mode],
     [models, vm.model, mode],
   );
   // One string for every mode, deliberately. Making it follow the mode would

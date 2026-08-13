@@ -204,6 +204,7 @@
       "emptyTextReference": "暂无内容",
       "refuseInsertModeOff": "这一档不使用参考素材",
       "refuseRemoveModeOff": "参考在各档之间共用 — 切到使用参考的档才能删掉它，或者在画布上删掉它那条连线",
+      "refuseRemoveModeOffCrop": "参考在各档之间共用 — 切到使用参考的档才能删掉这个裁剪",
       "refuseInsertTypeUnused": "{kind, select, audio {这一档的参考不接受音频} video {这一档的参考不接受视频} other {这一档的参考不接受这类素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用参考",

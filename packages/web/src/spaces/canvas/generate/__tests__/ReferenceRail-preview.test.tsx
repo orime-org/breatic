@@ -19,7 +19,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import {
+  focusToRailItem,
+  type ReferenceRailItem,
+} from '@web/spaces/canvas/generate/derive-references';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 
 vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
@@ -153,9 +156,11 @@ describe('ReferenceRail — the hover preview gets the real modality', () => {
     }
   });
 
-  it('falls back to the thumbnail when the source has produced nothing yet', () => {
-    // A video node connected before it generated has neither cover nor asset;
-    // the preview must not claim to have something to play.
+  it('claims nothing to play when the source has produced nothing yet', () => {
+    // A video node connected before it generated has neither cover nor asset.
+    // There is no thumbnail fallback here on purpose — a thumbnail is a still
+    // and the media source is the asset, so the preview says the row is empty
+    // rather than pointing at something it cannot play.
     render(
       <ReferenceRail
         references={[
@@ -210,5 +215,31 @@ describe('ReferenceRail — the hover preview gets the real modality', () => {
     for (const row of declared()) {
       expect(row.emptyHint).toBe('');
     }
+  });
+});
+
+describe('ReferenceRail — a focus crop previews the crop', () => {
+  it('shows the crop rather than calling it empty', () => {
+    // Built by the row's OTHER producer. `deriveReferences` and
+    // `focusToRailItem` both make rail rows, so a field the rail now reads
+    // has to be set by both — this test exists because the first version of
+    // mediaUrl was set by one of them, which left every crop chip previewing
+    // "not generated yet" over a crop that was right there.
+    render(
+      <ReferenceRail
+        references={[
+          focusToRailItem({ id: 'c1', url: 'https://cdn/crop.png', name: 'Face' }),
+        ]}
+        onRemove={() => {}}
+        onInsert={() => {}}
+        modeTakesReferences
+        allowedSourceTypes={['image']}
+      />,
+    );
+    expect(declared()[0]).toMatchObject({
+      kind: 'image',
+      src: 'https://cdn/crop.png',
+      emptyHint: '',
+    });
   });
 });

@@ -204,6 +204,7 @@
       "emptyTextReference": "内容がありません",
       "refuseInsertModeOff": "このモードは参照素材を使いません",
       "refuseRemoveModeOff": "参照はモード間で共有されます — 削除するには参照を使うモードに切り替えるか、キャンバスで接続線を削除してください",
+      "refuseRemoveModeOffCrop": "参照はモード間で共有されます — この切り抜きを削除するには参照を使うモードに切り替えてください",
       "refuseInsertTypeUnused": "{kind, select, audio {このモードの参照は音声を受け付けません} video {このモードの参照は動画を受け付けません} other {このモードの参照はこの種類の素材を受け付けません}}",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",

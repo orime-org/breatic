@@ -108,6 +108,13 @@ export function focusToRailItem(crop: {
     sourceNodeType: 'image',
     sourceNodeName: crop.name,
     thumbnail: crop.url,
+    // A crop IS its own asset — one static image, so the row's `<img>` and the
+    // hover card load the same URL. Both fields are set because the rail reads
+    // them for different things, and a row that carried only one of them
+    // previewed as "not generated yet" over a crop that was right there
+    // (#1945 Gate 2 round 1). This function is the row type's second producer;
+    // a field `deriveReferences` sets has to be set here too.
+    mediaUrl: crop.url,
     focus: true,
   };
 }
