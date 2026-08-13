@@ -25,11 +25,17 @@ interface MentionableRow {
 
 /**
  * Reads an IMAGE node's asset URL — the only kind that can be a source image.
- * A connected non-image node (text / audio / video / 3d / web) can be
- * `@`-mentioned (the pool has no type filter), but its URL must never ride
- * into `params.images` as a source image, so every non-image kind yields
- * undefined (adversarial 2026-07-10). A source image is definitionally an
- * image; text content is a body, not a URL.
+ * Every non-image kind yields undefined: a source image is definitionally an
+ * image, and text content is a body rather than a URL (adversarial
+ * 2026-07-10).
+ *
+ * This is the LAST line, not the only one. The `@` picker stopped offering
+ * rows the active mode cannot consume — first for legacy edges (2026-07-11),
+ * then per mode and modality (#1945) — so in practice a non-image row rarely
+ * reaches here. It is kept unconditional anyway, because the pool is derived
+ * from collaborative edges and a chip can outlive the mode it was picked
+ * under: whatever the picker did, nothing but an image URL may ride into
+ * `params.images`.
  * @param data - The source node view.
  * @returns The image URL, or undefined when the source is not an image node.
  */
