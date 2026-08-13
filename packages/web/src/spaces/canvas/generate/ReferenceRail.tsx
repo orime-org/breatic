@@ -26,6 +26,38 @@ import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
  */
 const ALL_SOURCE_TYPES: readonly SourceType[] = ['image', 'video', 'audio'];
 
+/**
+ * Whether a row's modality carries an asset a preview could play or show.
+ * @param kind - The upstream node's modality.
+ * @returns True for image / audio / video.
+ */
+function isMediaKind(kind: NodeKind): boolean {
+  return kind === 'image' || kind === 'audio' || kind === 'video';
+}
+
+/**
+ * Maps a row's modality to the preview form that can show it. Text previews
+ * its body; the three media modalities preview themselves. Everything else
+ * (3d / web / annotation / group) has no preview form of its own and falls
+ * back to the image one, which renders the empty hint when there is no source
+ * — the same degradation as before, now stated once instead of implied by a
+ * blanket `'image'`.
+ * @param kind - The upstream node's modality.
+ * @returns The preview form to declare.
+ */
+function previewKindOf(kind: NodeKind): 'image' | 'text' | 'audio' | 'video' {
+  switch (kind) {
+    case 'text':
+      return 'text';
+    case 'audio':
+      return 'audio';
+    case 'video':
+      return 'video';
+    default:
+      return 'image';
+  }
+}
+
 interface ReferenceRailProps {
   /** The node's derived reference rows (from `deriveReferences`). */
   references: ReferenceRailItem[];
@@ -124,17 +156,20 @@ export const ReferenceRail = React.memo(function ReferenceRail({
         // ✕ consistent across all four modalities.
         const insertRefused = insertRefusal(ref.sourceNodeType, modeCtx);
         const removeRefused = removeRefusal(modeCtx);
-        // Empty-source hint (H, user 2026-07-12): an image / video with no
-        // thumbnail or a text node with no content has no preview to show, so
-        // tell the user it's not yet filled instead of showing nothing.
-        const emptyHint =
-          (ref.sourceNodeType === 'image' ||
-            ref.sourceNodeType === 'video') &&
-          !ref.thumbnail
-            ? t('canvas.generatePanel.emptyImageReference')
-            : ref.sourceNodeType === 'text' && !ref.textContent
-              ? t('canvas.generatePanel.emptyTextReference')
-              : undefined;
+        // Empty-source hint (H, user 2026-07-12): a source that has produced
+        // nothing has no preview to show, so say so rather than opening a
+        // blank card. Keyed on the ASSET, not the thumbnail: an audio node
+        // never has a thumbnail even when it is full, so the old test called
+        // every audio reference empty — while a coverless video (#1821) has a
+        // file to play and was being called empty too. Both answers were about
+        // whether a still existed, which is a different question.
+        const emptyHint = isMediaKind(ref.sourceNodeType)
+          ? ref.mediaUrl
+            ? undefined
+            : t('canvas.generatePanel.emptyImageReference')
+          : ref.sourceNodeType === 'text' && !ref.textContent
+            ? t('canvas.generatePanel.emptyTextReference')
+            : undefined;
         return (
           <div
             key={ref.refId}
@@ -154,13 +189,22 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             className={`group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5 ${modeTakesReferences ? '' : 'opacity-50'}`}
           >
             <HoverPreview
-              // A text reference previews its content; everything else (image /
-              // video with a cover thumbnail) previews that thumbnail as a
-              // static image. The rail only ever carries a thumbnail image, not
-              // a raw media URL, so video / audio references are NOT playable
-              // here (spec §2 — a faithful migration, unlike node history).
-              kind={ref.sourceNodeType === 'text' ? 'text' : 'image'}
-              src={ref.thumbnail}
+              // The row's REAL modality, so audio and video preview as
+              // something you can play — the same wiring the activity feed
+              // already uses (`ProjectActivityButton.tsx`). Declaring every
+              // non-text row as `image` was what made an audio reference
+              // preview nothing at all (it has no thumbnail by design) and a
+              // video reference preview a frozen cover.
+              //
+              // `src` is the asset itself and `poster` the still: a video
+              // plays its file and shows its cover meanwhile, and the 24×24
+              // `<img>` in the row below still uses `thumbnail`, because an
+              // `<img>` pointed at an `.mp4` is a broken image (#1821).
+              kind={previewKindOf(ref.sourceNodeType)}
+              src={
+                ref.sourceNodeType === 'text' ? undefined : ref.mediaUrl
+              }
+              poster={ref.sourceNodeType === 'video' ? ref.thumbnail : undefined}
               text={ref.textContent}
               alt={ref.sourceNodeName}
               emptyHint={emptyHint}

@@ -30,6 +30,21 @@ export interface ReferenceRailItem {
   /** Live thumbnail / preview URL when the upstream carries a visual payload. */
   thumbnail?: string;
   /**
+   * Live URL of the asset ITSELF, for a preview that plays it (#1945).
+   *
+   * Separate from {@link ReferenceRailItem.thumbnail} rather than derived from
+   * it, because the two answer different questions: the thumbnail is what a
+   * 24×24 `<img>` in the row can show — a video's cover, and nothing at all
+   * for audio — while this is what the hover card hands to `MediaPlayer`.
+   * Collapsing them is what left audio and video references unplayable: an
+   * `<img>` pointed at an `.mp4` renders a broken image (#1821), so the
+   * thumbnail deliberately refuses to be the media URL.
+   *
+   * Absent for modalities with nothing to play (text / 3d / web / annotation /
+   * group) and while the source has not produced anything yet.
+   */
+  mediaUrl?: string;
+  /**
    * Live text body when the upstream is a text node (spec §9.1): feeds the
    * backend-prompt chip substitution and the rail hover preview.
    */
@@ -144,6 +159,26 @@ function thumbnailOf(view: NodeView): string | undefined {
 }
 
 /**
+ * Picks the live URL of the asset itself for a source node view — what a
+ * playable preview loads, as opposed to what the row's `<img>` shows. All
+ * three media modalities keep it in the same place (`content`); the cover
+ * frame a video also carries is the thumbnail's business, not this one.
+ * @param view - The source node's view.
+ * @returns The asset URL, or undefined when the modality has nothing to play
+ *   or the source has produced nothing yet.
+ */
+function mediaUrlOf(view: NodeView): string | undefined {
+  switch (view.kind) {
+    case 'image':
+    case 'audio':
+    case 'video':
+      return view.content;
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Derives a node's reference rail from its incoming edges. Every edge whose
  * `target` is `nodeId` becomes one rail row resolved against the current node
  * set; a dangling edge (source node absent) is skipped. Rows are ordered by
@@ -207,6 +242,7 @@ export function deriveReferences(
       sourceNodeType: source.data.kind,
       sourceNodeName: nameOf(source.data),
       thumbnail: thumbnailOf(source.data),
+      mediaUrl: mediaUrlOf(source.data),
       textContent:
         source.data.kind === 'text' ? (textById.get(source.id) ?? '') : undefined,
     });
