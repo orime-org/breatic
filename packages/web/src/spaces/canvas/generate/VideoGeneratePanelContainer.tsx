@@ -66,7 +66,6 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 
-
 /**
  * For the reference derivation that deliberately wants no body text. Shared so
  * it does not allocate a map per call. Not frozen — `ReadonlyMap` is a

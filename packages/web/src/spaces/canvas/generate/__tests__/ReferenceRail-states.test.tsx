@@ -230,13 +230,18 @@ describe('ReferenceRail — an unusable control still answers', () => {
     }
   });
 
-  it('leaves the cursor normal — the click does something, it explains', () => {
+  it('sets no unconditional not-allowed cursor on an unusable control', () => {
     // `not-allowed` says "clicking achieves nothing", which is the opposite of
     // what happens (user 2026-08-13). The Button primitive's base carries
     // `disabled:cursor-not-allowed` (and `disabled:opacity-50`), but both are
     // gated on the HTML attribute this component never sets — which is also
-    // why the row dim cannot stack with a second dim on the controls. So the
-    // check is not "the string is absent" but "nothing sets it unconditionally".
+    // why the row dim cannot stack with a second dim on the controls.
+    //
+    // So this pins one half only: no class sets the cursor unconditionally.
+    // The other half — that the `disabled:` variants never fire — belongs to
+    // the test above, which pins the absent attribute; that is why this title
+    // claims the class and not the rendered cursor. jsdom applies no Tailwind,
+    // so the rendered cursor is not observable at this level either way.
     renderRail(false);
     for (const btn of [insertBtn('e-image'), removeBtn('e-image')]) {
       const unconditional = btn.className

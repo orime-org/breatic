@@ -97,7 +97,7 @@ describe('insertRefusal — media rows need BOTH conditions', () => {
     );
   });
 
-  it('refuses modalities outside the source-type vocabulary (3d / web / group)', () => {
+  it('refuses 3d / web / group / annotation rows too — none of them is an image', () => {
     const ref = VIDEO_MODES.find((m) => m.mode === 'ref')!.ctx;
     for (const kind of ['3d', 'web', 'group', 'annotation'] as NodeKind[]) {
       expect(insertRefusal(kind, ref), `${kind} row`).toBe('source-type-unused');

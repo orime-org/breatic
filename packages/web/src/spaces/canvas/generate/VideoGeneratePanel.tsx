@@ -27,7 +27,6 @@ import {
   type VideoParamsValue,
 } from '@web/spaces/canvas/generate/VideoParamsPicker';
 
-
 interface VideoGeneratePanelProps {
   /** Catalog video models, already narrowed to the active mode. */
   models: ModelEntry[];

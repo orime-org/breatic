@@ -20,7 +20,6 @@ import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 
-
 interface GeneratePanelProps {
   /** Catalog image models (already narrowed to the active mode). */
   models: ModelEntry[];

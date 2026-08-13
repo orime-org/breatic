@@ -65,7 +65,6 @@ import {
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
 
-
 /**
  * For the two derivations below that deliberately want no body text. Shared so
  * neither allocates a map per call, and so "no text here" reads as one decision

@@ -24,8 +24,9 @@ import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
  * its body; the three media modalities preview themselves. Everything else
  * (3d / web / annotation / group) has no preview form of its own and falls
  * back to the image one, where — having no asset to show — it opens on the
- * empty hint. That is a change from before, when only image and video rows
- * could produce a hint at all and these opened no card; no product path
+ * empty hint. That is a change from before: main gave a hint to an image or a
+ * video row with no thumbnail and to a text row with no body, so these four
+ * kinds fell through to `undefined` and opened no card at all. No product path
  * creates such a row, because `connection-rules` lets neither an image nor a
  * video node take one, so the change is unreachable rather than intended.
  * @param kind - The upstream node's modality.
@@ -145,9 +146,12 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     >
       {references.map((ref) => {
         const NodeIcon = getNodeIcon(ref.sourceNodeType);
-        // The two dimensions, each answered by its own call. Insert asks about
-        // this row; remove asks only about the mode, which is what keeps the
-        // ✕ consistent across all four modalities.
+        // The two dimensions, each answered by its own call. Both start from
+        // the row kind — a text row sits outside both — and then insert asks
+        // whether the row is an image while remove asks whether the mode uses
+        // references at all. `removeRefused` answers for the row dim as well
+        // as the ✕: they are the same question, and spelling it twice is how
+        // a row once ended up lit with its ✕ frozen (#1940).
         const insertRefused = insertRefusal(ref.sourceNodeType, modeCtx);
         const removeRefused = removeRefusal(ref.sourceNodeType, modeCtx);
         // Empty-source hint (H, user 2026-07-12): a source that has produced
@@ -187,9 +191,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             // a dark row still shows its picture at full strength (user
             // 2026-08-13).
             className={`group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5 ${
-              modeTakesReferences || !isReferenceMaterial(ref.sourceNodeType)
-                ? ''
-                : 'opacity-50'
+              removeRefused === null ? '' : 'opacity-50'
             }`}
           >
             <HoverPreview
