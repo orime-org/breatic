@@ -130,6 +130,38 @@ describe("messages", () => {
     expect(t2).toBe(t1 + 1);
   });
 
+  it("keeps a reply in the turn it answers, even when the next turn opened first", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+
+    // One user, two browser tabs. `openChat` hands both of them the same
+    // conversation, so both questions can be stored before either reply comes
+    // back -- the test above never sees this because it stores its reply while
+    // its own turn is still the newest one.
+    const asked = await messageRepo.addMessage(conv.id, {
+      role: "user",
+      parts: [{ type: "text", text: "q1" }],
+    });
+    await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q2" }] });
+
+    // The reply to the FIRST question arrives now. Which turn it belongs to is
+    // something only its caller knows: the store cannot read it off the table,
+    // because by this point the newest turn is somebody else's.
+    await messageRepo.addMessage(conv.id, {
+      role: "assistant",
+      parts: [{ type: "text", text: "a1" }],
+      turnIndex: asked,
+    });
+
+    const stored = await messageRepo.getMessages(conv.id);
+    const reply = stored.find((m) => m.role === "assistant");
+
+    // Reading the conversation back has to show a1 under q1. Filed under the
+    // later turn it reads as an answer to a question nobody asked there, and
+    // q1 reads as a question that was never answered.
+    expect(reply?.turnIndex).toBe(asked);
+  });
+
   it("parks on the conversation row, so two user messages cannot share a turn", async () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
