@@ -1,22 +1,58 @@
 diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
-index 653ffe79d5edb4a040555bb222f472af1e45edc8..39eb01bcdf9abb56849d8dc2cfd9949f266d0d74 100644
+index 653ffe79d5edb4a040555bb222f472af1e45edc8..ef94f93f387f6f52b59b62d3b0f33dc5569082bf 100644
 --- a/dist/y-tiptap.cjs
 +++ b/dist/y-tiptap.cjs
-@@ -999,6 +999,13 @@ const createNodeFromYElement = (
-     meta.mapping.set(el, node);
-     return node
-   } catch (e) {
-+    // PATCHED PROBE: wrap the unknown element instead of deleting it.
-+    const fallbackType = schema.nodes.unsupportedBlock;
-+    if (fallbackType) {
+@@ -927,6 +927,39 @@ const createNodeFromYElement = (
+   prevSnapshot,
+   computeYChange
+ ) => {
++  // PATCH: an element whose NAME this build does not know goes into a fallback
++  // node, instead of being deleted from the shared document.
++  //
++  // Decided here, before the try, rather than inside the catch below. The catch
++  // fires for every construction failure, and most of them have nothing to do
++  // with an unknown vocabulary: two clients on the SAME build, each deleting a
++  // different child of one blockquote, merge into an empty blockquote that
++  // `block+` rejects. Deleting that is y-tiptap healing itself, and answering
++  // it with a fallback would show two fully up-to-date people "unsupported
++  // content" and stop them editing. Asking only "is this name unknown" leaves
++  // every other failure to the repair below, untouched.
++  //
++  // Block or inline is decided by what the PARENT accepts, because the two
++  // positions fail differently: a block-level stand-in inside a paragraph is
++  // not valid content, so the paragraph itself would fail to build and the
++  // whole sentence would go.
++  if (schema.nodes[el.nodeName] === undefined) {
++    const parent = el.parent;
++    const parentType =
++      parent instanceof Y.XmlElement ? schema.nodes[parent.nodeName] : undefined;
++    const inlineFallback = schema.nodes.unsupportedInline;
++    const fallbackType =
++      parentType !== undefined &&
++      inlineFallback !== undefined &&
++      parentType.contentMatch.matchType(inlineFallback) !== null
++        ? inlineFallback
++        : schema.nodes.unsupportedBlock;
++    if (fallbackType !== undefined) {
 +      const fallbackNode = fallbackType.create({ originalName: el.nodeName });
 +      meta.mapping.set(el, fallbackNode);
 +      return fallbackNode
 +    }
++  }
+   const children = [];
+   /**
+    * @param {Y.XmlElement | Y.XmlText} type
+@@ -999,6 +1032,9 @@ const createNodeFromYElement = (
+     meta.mapping.set(el, node);
+     return node
+   } catch (e) {
++    // Left exactly as y-tiptap wrote it: a name this build DOES know that still
++    // will not build is a concurrent-edit artefact, and removing it is the
++    // repair. The fallback above never reaches here.
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1164,13 +1171,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1164,13 +1200,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -41,7 +77,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..39eb01bcdf9abb56849d8dc2cfd9949f
        })
      )
  };
-@@ -1538,7 +1555,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1538,7 +1584,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -60,7 +96,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..39eb01bcdf9abb56849d8dc2cfd9949f
    }
    return marks
  };
-@@ -1550,6 +1577,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1550,6 +1606,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {
@@ -73,24 +109,60 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..39eb01bcdf9abb56849d8dc2cfd9949f
        const isOverlapping = map__namespace.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type));
        pattrs[isOverlapping ? `${mark.type.name}--${hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs;
 diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
-index 28c55820dff13cf3d5c303970f530c17eb38f757..a327106bbbcc087cd293e8a09f531765a5f5c7d6 100644
+index 28c55820dff13cf3d5c303970f530c17eb38f757..e27c15e6564fb78877d84f17054428a72b1fb666 100644
 --- a/dist/y-tiptap.js
 +++ b/dist/y-tiptap.js
-@@ -965,6 +965,13 @@ const createNodeFromYElement = (
-     meta.mapping.set(el, node);
-     return node
-   } catch (e) {
-+    // PATCHED PROBE: wrap the unknown element instead of deleting it.
-+    const fallbackType = schema.nodes.unsupportedBlock;
-+    if (fallbackType) {
+@@ -893,6 +893,39 @@ const createNodeFromYElement = (
+   prevSnapshot,
+   computeYChange
+ ) => {
++  // PATCH: an element whose NAME this build does not know goes into a fallback
++  // node, instead of being deleted from the shared document.
++  //
++  // Decided here, before the try, rather than inside the catch below. The catch
++  // fires for every construction failure, and most of them have nothing to do
++  // with an unknown vocabulary: two clients on the SAME build, each deleting a
++  // different child of one blockquote, merge into an empty blockquote that
++  // `block+` rejects. Deleting that is y-tiptap healing itself, and answering
++  // it with a fallback would show two fully up-to-date people "unsupported
++  // content" and stop them editing. Asking only "is this name unknown" leaves
++  // every other failure to the repair below, untouched.
++  //
++  // Block or inline is decided by what the PARENT accepts, because the two
++  // positions fail differently: a block-level stand-in inside a paragraph is
++  // not valid content, so the paragraph itself would fail to build and the
++  // whole sentence would go.
++  if (schema.nodes[el.nodeName] === undefined) {
++    const parent = el.parent;
++    const parentType =
++      parent instanceof Y.XmlElement ? schema.nodes[parent.nodeName] : undefined;
++    const inlineFallback = schema.nodes.unsupportedInline;
++    const fallbackType =
++      parentType !== undefined &&
++      inlineFallback !== undefined &&
++      parentType.contentMatch.matchType(inlineFallback) !== null
++        ? inlineFallback
++        : schema.nodes.unsupportedBlock;
++    if (fallbackType !== undefined) {
 +      const fallbackNode = fallbackType.create({ originalName: el.nodeName });
 +      meta.mapping.set(el, fallbackNode);
 +      return fallbackNode
 +    }
++  }
+   const children = [];
+   /**
+    * @param {Y.XmlElement | Y.XmlText} type
+@@ -965,6 +998,9 @@ const createNodeFromYElement = (
+     meta.mapping.set(el, node);
+     return node
+   } catch (e) {
++    // Left exactly as y-tiptap wrote it: a name this build DOES know that still
++    // will not build is a concurrent-edit artefact, and removing it is the
++    // repair. The fallback above never reaches here.
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1130,13 +1137,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1130,13 +1166,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -115,7 +187,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a327106bbbcc087cd293e8a09f531765
        })
      )
  };
-@@ -1504,7 +1521,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1504,7 +1550,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -134,7 +206,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a327106bbbcc087cd293e8a09f531765
    }
    return marks
  };
-@@ -1516,6 +1543,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1516,6 +1572,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {
