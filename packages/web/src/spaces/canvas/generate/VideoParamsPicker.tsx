@@ -40,6 +40,36 @@ interface VideoParamsPickerProps {
 }
 
 /**
+ * The params this pill edits, for the has-anything check below.
+ *
+ * This list and the groups in the component are two copies of one fact, kept
+ * in step by hand: adding a group means adding its name here too, or a model
+ * declaring only the new param gets no pill and the group becomes unreachable.
+ */
+const EDITED_PARAMS = [
+  'aspect_ratio',
+  'resolution',
+  'duration',
+  'generate_audio',
+] as const;
+
+/**
+ * Whether this pill would have anything to show for a model (#1935).
+ *
+ * Each group already renders nothing when its model declares no options — see
+ * this component's own rule, "a model that does not declare a parameter simply
+ * has no group for it". This is the same question one level up, for the pill
+ * that holds the groups: a model declaring none of them (the talking-head one
+ * declares two sources and a seed, none of which this pill edits) would
+ * otherwise get a pill with an empty label that opens onto nothing.
+ * @param model - The model the panel currently has selected.
+ * @returns True when the model declares at least one param this pill edits.
+ */
+export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
+  return EDITED_PARAMS.some((name) => model.params?.[name] != null);
+}
+
+/**
  * The video panel's parameter picker: a pill showing the current
  * `ratio · resolution · duration` that opens a popover with those three as
  * identically-shaped option rows plus the audio switch.

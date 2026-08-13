@@ -109,9 +109,9 @@
       "hintNodes": "試試 @ 節點提問",
       "hintDirect": "或直接在下方輸入對話 ↓",
       "quick": {
-        "image": "生成一張賽博龐克風格圖",
-        "music": "配一段 lo-fi 背景音樂",
-        "writing": "幫我寫一段產品描述"
+        "findReference": "幫我找賽博龐克風格的參考圖",
+        "writePrompt": "幫我寫一個生成插畫的提示詞",
+        "refinePrompt": "幫我把這段提示詞改得更具體"
       }
     },
     "history": {
@@ -128,6 +128,17 @@
       "weeksAgo": "{count, plural, other {# 週前}}",
       "monthsAgo": "{count, plural, other {# 月前}}",
       "isoDate": "{date}"
+    },
+    "error": {
+      "turnFailed": "這則回覆沒能完成，可以再發一次。",
+      "notSent": "沒能送出去，檢查一下網路。",
+      "openFailed": "這個對話沒能開啟，重新整理頁面可以再試一次。"
+    },
+    "message": {
+      "interrupted": "已停止"
+    },
+    "tool": {
+      "unfinished": "未跑完就停止了"
     }
   },
   "canvas": {
@@ -200,6 +211,7 @@
       "selectEndFrameFromCanvas": "在畫布上選一張圖片作為尾幀",
       "selectCharacterImageFromCanvas": "在畫布上選一張圖片作為角色",
       "selectDrivingVideoFromCanvas": "在畫布上選一段影片來驅動動作",
+      "selectDrivingAudioFromCanvas": "在畫布上選一段音訊，口型跟著它動",
       "removeStyle": "移除風格參考",
       "returnToNode": "返回節點",
       "exitSelect": "退出",
@@ -256,13 +268,17 @@
       "removeEndFrame": "移除尾幀",
       "errorNoEndFrame": "先挑一張尾幀",
       "characterImage": "角色圖",
-      "characterImageTip": "挑一張要讓它動起來的圖",
+      "characterImageTip": "挑一張人物圖",
       "removeCharacterImage": "移除角色圖",
       "errorNoCharacterImage": "先挑一張角色圖",
       "drivingVideo": "驅動影片",
+      "drivingAudio": "驅動音訊",
       "drivingVideoTip": "挑一段影片，它的動作會被套到角色上",
+      "drivingAudioTip": "挑一段音訊，口型會跟著它動",
       "removeDrivingVideo": "移除驅動影片",
-      "errorNoDrivingVideo": "先挑一段驅動影片"
+      "removeDrivingAudio": "移除驅動音訊",
+      "errorNoDrivingVideo": "先挑一段驅動影片",
+      "errorNoDrivingAudio": "先挑一段驅動音訊"
     },
     "nodeMenu": {
       "generate": "生成",

@@ -108,7 +108,7 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
  *
  * The membership tier is written here, from `default_tier` in
  * `config/membership.yaml`. The column has a default of its own, but that one
- * exists for the rows migration 0051 found already in the table — leaving it
+ * exists for the rows migration 0052 found already in the table — leaving it
  * to decide where registrations land is what made the config field inert, and
  * on a self-hosted install (which configures the widest tier) every account
  * would instead arrive on `base`, unable to create a single team studio and

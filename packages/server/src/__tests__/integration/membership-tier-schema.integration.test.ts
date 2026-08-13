@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The membership tier column on `users` (task #16, migration 0051).
+ * The membership tier column on `users` (task #16, migration 0052).
  *
  * A tier decides capacity and collaboration scale — storage, team studios,
  * projects, members, simultaneous writable connections. It lives on the

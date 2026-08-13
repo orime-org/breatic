@@ -7,7 +7,6 @@ export type {
   MessageData,
   MessageInput,
   MessagePart,
-  ToolCallInfo,
   TaskEntity,
   NodeHistoryEntity,
   StudioAssetEntity,

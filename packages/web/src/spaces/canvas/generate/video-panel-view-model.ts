@@ -115,6 +115,29 @@ export interface VideoPanelViewModel {
    * all count against the same figure.
    */
   maxReferences: number | undefined;
+  /**
+   * Whether the active model takes a prompt at all (#1935). Read off the wire
+   * for the same reason as {@link VideoPanelViewModel.maxReferences}: what a
+   * model accepts is declared per model, so a demand belongs to the model
+   * rather than to the mode that happens to select it.
+   *
+   * What this measures is the model's catalog entry, not the endpoint behind
+   * it — the prompt travels as its own argument the whole way down and never
+   * passes the param check, so a model with no prompt field still receives
+   * any non-empty text that was typed.
+   *
+   * Among the models THIS PANEL can offer — the ones whose mode is one of its
+   * six — every one declares a prompt except the talking-head model, which is
+   * why demanding one everywhere else stays correct. Deliberately scoped to
+   * the panel rather than to the catalog: `catalog.video` also carries the
+   * mini-tool entries (upscaling, frame interpolation), and those declare no
+   * prompt either. The IMAGE panel derives nothing — see the reason stated at
+   * its own gate.
+   *
+   * True when the model is unknown: an unrecognised model is not a licence to
+   * skip the requirement every other mode has.
+   */
+  promptRequired: boolean;
 }
 
 /** Shared empty set for a prompt that mentions nothing (avoids a per-call allocation). */
@@ -336,5 +359,6 @@ export function buildVideoPanelViewModel(input: {
     references,
     referenceUrls,
     maxReferences: positiveCap(current?.params.images?.max_items),
+    promptRequired: current ? current.params.prompt != null : true,
   };
 }

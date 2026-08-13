@@ -6,25 +6,48 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { MessageData } from "@breatic/shared";
+import type { MessageData, MessagePart } from "@breatic/shared";
 import { groupByTurn, compressTurn, compressForContext } from "../../agent/message-compressor.js";
 
-/** Helper to build a message. */
+/**
+ * Helper to build a message.
+ *
+ * `content` is the prose; it becomes the text part, which is what the store
+ * would have derived it from. Anything richer — a tool call, reasoning — is
+ * passed as parts and the prose is appended after it, matching the order the
+ * turn loop writes them in.
+ * @param role - Who is speaking
+ * @param content - The prose, empty when the message has none
+ * @param turnIndex - The turn this message belongs to
+ * @param extras - Parts to place before the prose, and reasoning if any
+ * @returns A message in the shape the store hands out
+ */
 function msg(
-  role: "user" | "assistant" | "tool",
+  role: "user" | "assistant",
   content: string,
   turnIndex: number,
-  extras?: Partial<MessageData>,
+  extras?: { parts?: MessagePart[]; thinking?: string },
 ): MessageData {
-  return { role, content, ts: "2026-04-01T00:00:00Z", turnIndex, ...extras };
+  const leading = extras?.parts ?? [];
+  const reasoning: MessagePart[] = extras?.thinking
+    ? [{ type: "reasoning", text: extras.thinking }]
+    : [];
+  const prose: MessagePart[] = content ? [{ type: "text", text: content }] : [];
+  return {
+    role,
+    content,
+    parts: [...reasoning, ...leading, ...prose],
+    ts: "2026-04-01T00:00:00Z",
+    turnIndex,
+    ...(extras?.thinking ? { thinking: extras.thinking } : {}),
+  };
 }
 
 describe("groupByTurn", () => {
   it("should group messages by turnIndex", () => {
     const messages = [
       msg("user", "Hello", 1),
-      msg("assistant", "", 1, { tool_calls: [{ id: "tc1", name: "search", arguments: {} }] }),
-      msg("tool", '{"result": "found"}', 1, { tool_call_id: "tc1", name: "search" }),
+      msg("assistant", "", 1, { parts: [{ type: "tool", toolCallId: "tc1", toolName: "search", input: {}, status: "success" }] }),
       msg("assistant", "Here's what I found", 1),
       msg("user", "Thanks", 2),
       msg("assistant", "You're welcome", 2),
@@ -32,7 +55,7 @@ describe("groupByTurn", () => {
 
     const groups = groupByTurn(messages);
     expect(groups.size).toBe(2);
-    expect(groups.get(1)).toHaveLength(4);
+    expect(groups.get(1)).toHaveLength(3);
     expect(groups.get(2)).toHaveLength(2);
   });
 
@@ -45,10 +68,8 @@ describe("compressTurn", () => {
   it("should keep only user message + final assistant reply", () => {
     const turnMsgs = [
       msg("user", "Search for cyberpunk", 1),
-      msg("assistant", "", 1, { tool_calls: [{ id: "tc1", name: "search", arguments: {} }] }),
-      msg("tool", '{"urls": ["a.jpg"]}', 1, { tool_call_id: "tc1" }),
-      msg("assistant", "", 1, { tool_calls: [{ id: "tc2", name: "analyze", arguments: {} }] }),
-      msg("tool", '{"style": "neon"}', 1, { tool_call_id: "tc2" }),
+      msg("assistant", "", 1, { parts: [{ type: "tool", toolCallId: "tc1", toolName: "search", input: {}, status: "success" }] }),
+      msg("assistant", "", 1, { parts: [{ type: "tool", toolCallId: "tc2", toolName: "analyze", input: {}, status: "success" }] }),
       msg("assistant", "Found 3 cyberpunk reference images with neon style.", 1),
     ];
 
@@ -60,10 +81,13 @@ describe("compressTurn", () => {
     expect(compressed[1]!.content).toBe("Found 3 cyberpunk reference images with neon style.");
   });
 
-  it("should strip thinking and tool_calls from kept messages", () => {
+  it("should strip reasoning and tool use from kept messages", () => {
     const turnMsgs = [
       msg("user", "Hello", 1, { thinking: "user thinking somehow" }),
-      msg("assistant", "Hi there!", 1, { thinking: "I should greet", tool_calls: [{ id: "x", name: "y", arguments: {} }] }),
+      msg("assistant", "Hi there!", 1, {
+        thinking: "I should greet",
+        parts: [{ type: "tool", toolCallId: "x", toolName: "y", input: {}, status: "success" }],
+      }),
     ];
 
     const compressed = compressTurn(turnMsgs);
@@ -83,8 +107,7 @@ describe("compressTurn", () => {
   it("should skip assistant messages with empty content", () => {
     const turnMsgs = [
       msg("user", "Do something", 1),
-      msg("assistant", "", 1, { tool_calls: [{ id: "tc1", name: "action", arguments: {} }] }),
-      msg("tool", "done", 1),
+      msg("assistant", "", 1, { parts: [{ type: "tool", toolCallId: "tc1", toolName: "action", input: {}, status: "success" }] }),
       // No final text reply from assistant
     ];
 
@@ -99,14 +122,13 @@ describe("compressForContext", () => {
       msg("user", "Hello", 1),
       msg("assistant", "Hi", 1),
       msg("user", "Help", 2),
-      msg("assistant", "", 2, { tool_calls: [{ id: "tc1", name: "search", arguments: {} }] }),
-      msg("tool", "result", 2, { tool_call_id: "tc1" }),
+      msg("assistant", "", 2, { parts: [{ type: "tool", toolCallId: "tc1", toolName: "search", input: {}, status: "success" }] }),
       msg("assistant", "Here you go", 2),
     ];
 
     const result = compressForContext(messages, 3);
     // All 6 messages should be kept (only 2 turns, under the 3-turn limit)
-    expect(result).toHaveLength(6);
+    expect(result).toHaveLength(5);
   });
 
   it("should compress old turns and keep recent turns full", () => {
@@ -116,14 +138,12 @@ describe("compressForContext", () => {
     // Turn 4: user + assistant (2 msgs)
     const messages: MessageData[] = [
       msg("user", "Search X", 1),
-      msg("assistant", "", 1, { tool_calls: [{ id: "tc1", name: "search", arguments: {} }] }),
-      msg("tool", "found X", 1, { tool_call_id: "tc1" }),
+      msg("assistant", "", 1, { parts: [{ type: "tool", toolCallId: "tc1", toolName: "search", input: {}, status: "success" }] }),
       msg("assistant", "X result", 1),
       msg("user", "Search Y", 2),
       msg("assistant", "Y result", 2),
       msg("user", "Search Z", 3),
-      msg("assistant", "", 3, { tool_calls: [{ id: "tc2", name: "search", arguments: {} }] }),
-      msg("tool", "found Z", 3, { tool_call_id: "tc2" }),
+      msg("assistant", "", 3, { parts: [{ type: "tool", toolCallId: "tc2", toolName: "search", input: {}, status: "success" }] }),
       msg("assistant", "Z result", 3),
       msg("user", "Summary", 4),
       msg("assistant", "Here's the summary", 4),
@@ -134,19 +154,27 @@ describe("compressForContext", () => {
 
     // Turn 1 compressed: user + assistant = 2
     // Turn 2 compressed: user + assistant = 2
-    // Turn 3 full: 4 msgs
+    // Turn 3 full: 3 msgs
     // Turn 4 full: 2 msgs
-    // Total: 10
-    expect(result).toHaveLength(10);
+    // Total: 9
+    expect(result).toHaveLength(9);
 
     // First message should be from turn 1 (compressed)
     expect(result[0]!.content).toBe("Search X");
     expect(result[1]!.content).toBe("X result");
-    // No tool messages from turn 1
-    expect(result.filter((m) => m.role === "tool" && m.turnIndex === 1)).toHaveLength(0);
 
-    // Turn 3 should have tool messages
-    expect(result.filter((m) => m.role === "tool" && m.turnIndex === 3)).toHaveLength(1);
+    /**
+     * Whether a message carries any tool use.
+     * @param m - The message to inspect
+     * @returns True when at least one of its parts is a tool
+     */
+    const usedATool = (m: MessageData): boolean => m.parts.some((p) => p.type === "tool");
+
+    // An old turn is kept for what it established, not for how it got there.
+    expect(result.filter((m) => m.turnIndex === 1 && usedATool(m))).toHaveLength(0);
+
+    // A recent turn keeps the whole of it, tool use included.
+    expect(result.filter((m) => m.turnIndex === 3 && usedATool(m))).toHaveLength(1);
   });
 
   it("should strip thinking from all messages", () => {

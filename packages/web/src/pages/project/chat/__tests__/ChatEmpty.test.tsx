@@ -31,20 +31,22 @@ describe('ChatEmpty', () => {
     );
   });
 
-  it('renders all three quick-action buttons (image / music / pen)', () => {
+  it('offers the three things the agent is actually for', () => {
     render(<ChatEmpty />);
-    expect(screen.getByTestId('chat-empty-qa-image')).toBeInTheDocument();
-    expect(screen.getByTestId('chat-empty-qa-music')).toBeInTheDocument();
-    expect(screen.getByTestId('chat-empty-qa-pen')).toBeInTheDocument();
+    // Gathering material, and writing the prompts that use it. Generating
+    // the image is not one of them: that happens on the canvas.
+    expect(screen.getByTestId('chat-empty-qa-find-reference')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-empty-qa-write-prompt')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-empty-qa-refine-prompt')).toBeInTheDocument();
   });
 
   it('clicking a quick action fires onQuickAction with the label', async () => {
     const user = userEvent.setup();
     const onQuickAction = vi.fn();
     render(<ChatEmpty onQuickAction={onQuickAction} />);
-    await user.click(screen.getByTestId('chat-empty-qa-image'));
+    await user.click(screen.getByTestId('chat-empty-qa-find-reference'));
     expect(onQuickAction).toHaveBeenCalledWith(
-      'Generate a cyberpunk-style image',
+      'Find cyberpunk-style reference images',
     );
   });
 });

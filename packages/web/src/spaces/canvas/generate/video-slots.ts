@@ -5,9 +5,10 @@
  * Every source slot the video panel can offer, and everything one is made of.
  *
  * A slot is a pick-time COPY of one asset, with a role: the first frame, the
- * end frame, the character image animation drives, the driving video it takes
- * its motion from, and later a driving audio track. It is not a reference —
- * references are a relationship (an edge), a slot is a value.
+ * end frame, the character image (which animation drives and the talking head
+ * speaks), the driving video motion is taken from, and the driving audio lips
+ * follow. It is not a reference — references are a relationship (an edge), a
+ * slot is a value.
  *
  * Each slot's facts live here rather than spread across the toolbar, the
  * canvas click handler, the candidate highlighting and the payload builder.
@@ -16,7 +17,7 @@
  * fourth was not. A slot is one entry here plus the mode options that name it.
  */
 
-import { Image, UserRound, Video } from 'lucide-react';
+import { AudioLines, Image, UserRound, Video } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import type { NodeType } from '@breatic/shared';
@@ -28,14 +29,16 @@ export type VideoSlot =
   | 'firstFrame'
   | 'endFrame'
   | 'characterImage'
-  | 'drivingVideo';
+  | 'drivingVideo'
+  | 'drivingAudio';
 
 /** Node data fields a slot's pick is copied into. */
 export type VideoSlotField =
   | 'firstFrameUrl'
   | 'endFrameUrl'
   | 'characterImageUrl'
-  | 'drivingVideo';
+  | 'drivingVideo'
+  | 'drivingAudio';
 
 /** What one slot is made of. */
 export interface VideoSlotSpec {
@@ -136,6 +139,25 @@ export const VIDEO_SLOTS = {
     tipKey: 'canvas.generatePanel.drivingVideoTip',
     clearLabelKey: 'canvas.generatePanel.removeDrivingVideo',
     errorKey: 'canvas.generatePanel.errorNoDrivingVideo',
+  },
+  drivingAudio: {
+    field: 'drivingAudio',
+    // `storesCover` because audio is not an image, which is the whole test
+    // this flag applies — see the comment on it. An audio node happens to
+    // carry no poster, so the stored value is `{url}` and the toolbar keeps
+    // showing this slot's icon.
+    storesCover: true,
+    param: 'audio',
+    purpose: 'drivingAudio',
+    accepts: 'audio',
+    Icon: AudioLines,
+    testId: 'generate-video-tool-driving-audio',
+    thumbnailTestId: 'generate-video-driving-audio-thumbnail',
+    clearTestId: 'generate-video-driving-audio-clear',
+    labelKey: 'canvas.generatePanel.drivingAudio',
+    tipKey: 'canvas.generatePanel.drivingAudioTip',
+    clearLabelKey: 'canvas.generatePanel.removeDrivingAudio',
+    errorKey: 'canvas.generatePanel.errorNoDrivingAudio',
   },
 } as const satisfies Record<VideoSlot, VideoSlotSpec>;
 

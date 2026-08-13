@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
@@ -56,6 +56,18 @@ describe('ChatComposer', () => {
     ta.focus();
     await user.keyboard('{Enter}');
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('the Enter that picks an IME candidate does NOT submit', () => {
+    const { onSubmit } = setup({ draft: 'nihao' });
+    const ta = screen.getByTestId('chat-composer-textarea');
+    // Typing Chinese, Japanese or Korean means pressing Enter to accept what
+    // the IME is offering — several times per sentence. The browser marks
+    // that keystroke as part of the composition, and it is the only thing
+    // separating it from the Enter that means "send". Without the check, the
+    // first message a CJK reader ever sends is their raw keystrokes.
+    fireEvent.keyDown(ta, { key: 'Enter', code: 'Enter', isComposing: true, keyCode: 229 });
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('Shift+Enter does NOT submit', async () => {

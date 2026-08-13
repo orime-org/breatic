@@ -40,12 +40,13 @@ export function groupByTurn(messages: readonly MessageData[]): Map<number, Messa
  * Keeps:
  * - The first `role: "user"` message
  * - The last `role: "assistant"` message that has non-empty content
- *   (skips tool_call-only assistant messages)
+ *   (skips a reply that only used tools and never spoke)
  *
  * Drops:
- * - All `role: "tool"` messages (tool results)
- * - Intermediate `role: "assistant"` messages with only tool_calls
- * - The `thinking` field from all kept messages
+ * - Every message between those two
+ * - Everything but the prose out of the two it keeps: tool use lives in the
+ *   reply's own parts, so dropping those parts is what drops the tool use
+ * - The `thinking` field from both
  * @param turnMessages - All messages for a single turn, in order
  * @returns Compressed messages (1-2 items)
  */
@@ -55,21 +56,34 @@ export function compressTurn(turnMessages: readonly MessageData[]): MessageData[
   // Keep the user message
   const userMsg = turnMessages.find((m) => m.role === "user");
   if (userMsg) {
-    const { thinking: _th, tool_calls: _tc, ...clean } = userMsg;
-    result.push(clean);
+    result.push(proseOnly(userMsg));
   }
 
   // Keep the last assistant message with actual text content
   for (let i = turnMessages.length - 1; i >= 0; i--) {
     const msg = turnMessages[i]!;
     if (msg.role === "assistant" && msg.content.trim().length > 0) {
-      const { thinking: _th, tool_calls: _tc, ...clean } = msg;
-      result.push(clean);
+      result.push(proseOnly(msg));
       break;
     }
   }
 
   return result;
+}
+
+/**
+ * Reduce a message to what it said.
+ *
+ * An old turn is kept for what it established, not for how it got there, so
+ * the reasoning and the tool use go — the parts as well as the flat fields
+ * read off them, since the parts are the message and dropping only the flat
+ * view would leave the whole of it still there.
+ * @param msg - The message to reduce
+ * @returns The same message carrying its prose and nothing else
+ */
+function proseOnly(msg: MessageData): MessageData {
+  const { thinking: _thinking, ...rest } = msg;
+  return { ...rest, parts: msg.parts.filter((p) => p.type === "text") };
 }
 
 /**
@@ -89,7 +103,7 @@ export function compressForContext(
 
   if (turnIndices.length <= fullDetailTurns) {
     // All turns fit within the full-detail window — strip thinking only
-    return messages.map(({ thinking: _th, ...rest }) => rest as MessageData);
+    return messages.map(({ thinking: _th, ...rest }) => rest);
   }
 
   const cutoff = turnIndices[turnIndices.length - fullDetailTurns]!;

@@ -24,16 +24,15 @@
  * also re-enters the model's own context on the next request, which is the
  * other reason its home is the package the tools live in.
  *
- * Not to be read as "a browser never sees those strings". Two paths hand one
- * over: the tool message is persisted with the prefix intact
- * (`main-agent.ts`) and the conversation history endpoint returns it
- * verbatim, so a client rendering history receives it; and when the JSON
- * after a sentinel fails to parse, the loop deliberately passes the raw
- * string on (`{ raw: … }`, or `{ question: … }` on the ask-user path) so the
- * frontend can still show what the agent meant — unreachable through today's
+ * Not to be read as "a browser never sees those strings". Stored history no
+ * longer carries one: what a tool returned is stripped of its prefix before
+ * it is written down (`main-agent.ts` calls `stripSentinel`), so the history
+ * endpoint has none to hand out. One path remains — when the JSON after a
+ * sentinel fails to parse, the loop deliberately passes the raw string on
+ * (`{ raw: … }`, or `{ question: … }` on the ask-user path) so the frontend
+ * can still show what the agent meant. That is unreachable through today's
  * four tools, which all build their payload with `JSON.stringify`, but it is
- * what the loop is written to do. Whether history should carry the prefix is
- * a separate question from where the constants live.
+ * what the loop is written to do.
  */
 
 /**
@@ -53,9 +52,9 @@
  * The other direction is kept true by not writing names down early. A
  * contract listing an event nothing sends tells the browser to wait for
  * something that never arrives, and no amount of annotation makes that
- * sentence true; `agent_thinking` is the live example — the thinking stream
- * is a feature PR-3 batch 6 builds, and its name joins this list in the
- * change that emits it.
+ * sentence true. `agent_thinking` was the live example while it was still
+ * unbuilt; PR-3 batch 6 built it, so it joined the list in the same change
+ * that started emitting it.
  */
 export const SSE_EVENT_NAMES = {
   // Chat / Main Agent
@@ -65,6 +64,10 @@ export const SSE_EVENT_NAMES = {
   // Agent progress
   AGENT_TOOL_HINT: "agent_tool_hint",
   AGENT_ASK: "agent_ask",
+
+  // The model's own working, while it works. Each piece names the block it
+  // belongs to, so a turn that thinks twice does not read as one long thought.
+  AGENT_THINKING: "agent_thinking",
 
   // Interaction tools — the model calls these "tools" not to run something
   // but to carry structured data, and the browser renders a widget per name.

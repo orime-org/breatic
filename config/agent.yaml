@@ -52,6 +52,17 @@ web_fetch_timeout_ms: 30000
 # reasons of its own.
 web_search_timeout_ms: 10000
 
+# ── Thinking ──────────────────────────────────────────────
+# Whether to ask the provider for the model's working while it answers.
+#
+# Off, because asking currently gets nothing back. Measured 2026-08-11 against
+# claude-sonnet-4-6: with this on and the summary asked for by name, three
+# turns produced no reasoning at all — including one that spelled out "show
+# your reasoning step by step". Leaving it on would pay the wait on every turn
+# for an empty fold. What is missing is tracked separately; everything else
+# this needs is built and tested.
+thinking_enabled: false
+
 # ── LLM resilience ────────────────────────────────────────
 # Retry budget (maxRetries) for every LLM call, injected by the model-call
 # wrapper (generateTextRetry / streamTextRetry). AI SDK default is 2 (#1625).
