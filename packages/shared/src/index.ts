@@ -76,6 +76,7 @@ export type {
   PendingInvitationSummary,
   StudioMembersView,
   PersonalStudioRef,
+  MembershipTier,
   InvitableProjectRole,
   ProjectInvitationStatus,
   PendingProjectInvitationSummary,
@@ -91,6 +92,7 @@ export type {
 export {
   ROLE_RANK,
   STUDIO_ROLE_RANK,
+  MEMBERSHIP_TIERS,
   HANDLING_TIMEOUT_MS,
   canGenerate,
   membersChangedChannel,

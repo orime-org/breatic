@@ -30,7 +30,7 @@
     },
     "studio": {
       "slug_taken": "이미 사용 중인 Slug입니다. 다른 것을 선택하세요.",
-      "team_limit_reached": "팀 Studios 한도(50개)에 도달했습니다.",
+      "team_limit_reached": "{limit, plural, =0 {현재 요금제에서는 팀 Studio를 만들 수 없습니다. 업그레이드하면 만들 수 있습니다.} other {현재 요금제에서는 팀 Studio를 최대 #개까지 만들 수 있습니다. 업그레이드하면 더 만들 수 있습니다.}}",
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
       "already_member": "해당 사용자는 이미 멤버입니다.",
       "already_invited": "해당 사용자에게 이미 대기 중인 초대가 있습니다.",
@@ -45,6 +45,7 @@
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
       "already_member": "해당 사용자는 이미 접근 권한을 가지고 있습니다.",
       "already_invited": "해당 사용자에게 이미 대기 중인 초대가 있습니다.",
+      "limit_reached": "{limit, plural, =0 {이 Studio의 요금제에서는 Project를 만들 수 없습니다. 업그레이드하면 만들 수 있습니다.} other {이 Studio의 요금제에서는 Project를 최대 #개까지 만들 수 있습니다. 업그레이드하면 더 만들 수 있습니다.}}",
       "collaborator_limit_reached": "이 Project는 협업자 수 한도에 도달했습니다.",
       "only_viewer_can_request_upgrade": "역할 승급은 Viewer만 신청할 수 있습니다",
       "no_active_owner": "이 Project에는 현재 Owner가 없습니다",

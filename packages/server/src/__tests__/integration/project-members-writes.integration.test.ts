@@ -38,7 +38,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore } from "@breatic/core";
+import { initCore, db } from "@breatic/core";
 
 try {
   initCore(process.env);
@@ -159,6 +159,30 @@ async function allMemberRows(projectId: string): Promise<MemberRow[]> {
   `;
 }
 
+/**
+ * Copy a project through the repo the way the service does.
+ *
+ * `duplicateProject` takes the caller's transaction and an already-loaded
+ * source (task #86): the copy lands in the source's studio and counts against
+ * that studio's project ceiling, so the service has to hold the studio row and
+ * check the count between reading the source and inserting the copy. These
+ * cases are about the member rows, so they reproduce the shape without the
+ * gate.
+ * @param creatorUserId - Who makes the copy (becomes its owner).
+ * @param sourceId - The project being copied.
+ * @returns The new project entity.
+ */
+async function duplicateAsService(
+  creatorUserId: string,
+  sourceId: string,
+): Promise<{ id: string }> {
+  return db.transaction(async (tx) => {
+    const source = await projectRepo.getProjectById(sourceId, tx);
+    if (!source) throw new Error(`source project ${sourceId} not found`);
+    return projectRepo.duplicateProject(tx, creatorUserId, source);
+  });
+}
+
 describe("duplicateProject — the copy belongs to whoever made it", () => {
   it("gives the duplicator an owner row, and nobody else a row at all", async () => {
     const owner = await insertUser();
@@ -170,10 +194,9 @@ describe("duplicateProject — the copy belongs to whoever made it", () => {
     // The duplicator here is the source's editor, not its owner: a copy is a
     // fresh project, so the role that matters is the one the copy grants, not
     // the one its maker held on the original.
-    const copy = await projectRepo.duplicateProject(editor, sourceId);
-    expect(copy).not.toBeNull();
+    const copy = await duplicateAsService(editor, sourceId);
 
-    const rows = await allMemberRows(copy!.id);
+    const rows = await allMemberRows(copy.id);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       user_id: editor,
@@ -191,7 +214,7 @@ describe("duplicateProject — the copy belongs to whoever made it", () => {
     const sourceId = await insertProject(studioId, owner);
     await addMember(sourceId, editor, "editor", owner);
 
-    await projectRepo.duplicateProject(owner, sourceId);
+    await duplicateAsService(owner, sourceId);
 
     const rows = await allMemberRows(sourceId);
     expect(rows).toHaveLength(2);

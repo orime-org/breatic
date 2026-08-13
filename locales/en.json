@@ -30,7 +30,7 @@
     },
     "studio": {
       "slug_taken": "That Slug is already in use. Please choose another.",
-      "team_limit_reached": "You've reached the limit of 50 team studios.",
+      "team_limit_reached": "{limit, plural, =0 {Your plan does not include team studios. Upgrade to create one.} one {Your plan allows 1 team studio. Upgrade to create more.} other {Your plan allows up to # team studios. Upgrade to create more.}}",
       "email_not_registered": "No account is registered with that email.",
       "already_member": "That user is already a member.",
       "already_invited": "That user already has a pending invitation.",
@@ -45,6 +45,7 @@
       "email_not_registered": "No account is registered with that email.",
       "already_member": "That user already has access.",
       "already_invited": "That user already has a pending invitation.",
+      "limit_reached": "{limit, plural, =0 {This studio\u0027s plan does not allow creating projects. Upgrade to create one.} one {This studio\u0027s plan allows 1 project. Upgrade to create more.} other {This studio\u0027s plan allows up to # projects. Upgrade to create more.}}",
       "collaborator_limit_reached": "This project has reached its collaborator limit.",
       "only_viewer_can_request_upgrade": "Only a Viewer can request a role upgrade",
       "no_active_owner": "This project has no active Owner",

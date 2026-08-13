@@ -173,6 +173,41 @@ export async function countTeamStudiosAdministeredBy(
 }
 
 /**
+ * Take the studio's own row for the rest of the transaction.
+ *
+ * This is what serialises the checks against anything a studio holds a fixed
+ * number of — projects today, members next. Counting rows and then inserting
+ * is not a decision under concurrency: two transactions both count, both see
+ * room, and both insert. Measured on the account-level ceiling in block one —
+ * three simultaneous requests against a ceiling of one left two rows behind.
+ *
+ * The row to take is the one the COUNTED SET belongs to, which is not always
+ * the row the tier is read from. Both happen to be the account row when the
+ * set is "team studios this account administers", and that coincidence is why
+ * the rule was easy to get wrong: applied to a per-studio set it would take
+ * the admin's account row and make every studio that person administers queue
+ * against every other. Two studios take two different rows and never wait on
+ * each other.
+ *
+ * Deliberately does not filter `deleted_at`: this only serialises, and a
+ * caller that cares whether the studio is alive says so itself. Adding the
+ * predicate here would make the lock silently no-op on the row a concurrent
+ * delete is in the middle of soft-deleting.
+ * @param studioId - The studio whose row to lock
+ * @param tx - The enclosing transaction; the lock is meaningless without one
+ * @returns `true` when a row with that id exists and is now locked
+ */
+export async function lockStudio(studioId: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx
+    .select({ id: studios.id })
+    .from(studios)
+    .where(eq(studios.id, studioId))
+    .for("update")
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
  * Batch-resolve each user's active personal studio identity (`name` +
  * `avatarUrl`).
  *
