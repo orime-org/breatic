@@ -345,10 +345,17 @@ function finishTurn(conversationId: string, replyId: string): void {
 /**
  * Stop the turn a conversation is running, if it is running one.
  *
- * The one ending that means the reply was cut off, so it is marked as such
- * before the turn is forgotten. The server records the same thing on its
- * side; leaving it out here makes the identical message read as a finished
- * answer now and as a stopped one after a reload.
+ * The ending that means the reply was cut off, so it is marked as such
+ * before the turn is forgotten -- leaving it out makes the identical message
+ * read as a finished answer now and as a stopped one after a reload.
+ *
+ * When the user pressed stop or left the project, the server sees the client
+ * go and records the same thing. When the watchdog called this, it may not
+ * have: a connection that dies without a teardown tells the server nothing,
+ * so it can run the turn out and store the whole reply unmarked. The mark
+ * here is what this end of the wire knows, and the sentence the panel shows
+ * says only that much -- that the reply may be unfinished, and where the
+ * finished one is.
  * @param conversationId - The conversation to stop.
  */
 function stopTurn(conversationId: string): void {

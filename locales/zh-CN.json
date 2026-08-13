@@ -135,7 +135,7 @@
       "notSent": "没能送出去，检查一下网络。",
       "openFailed": "这个聊天没能打开。",
       "retry": "重试",
-      "connectionLost": "连接断开了，回复停在了这里。",
+      "connectionLost": "连接断了。这条回复可能没写完，刷新页面能看到完整的。",
       "loadEarlierFailed": "更早的消息没能加载出来。"
     },
     "message": {

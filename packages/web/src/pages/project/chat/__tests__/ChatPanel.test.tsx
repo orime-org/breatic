@@ -313,6 +313,31 @@ describe('a conversation longer than one page', () => {
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
   });
 
+  it('answers the press, rather than leaving the last failure standing', async () => {
+    const user = userEvent.setup();
+    vi.mocked(chatApi.streamMessage).mockRejectedValue(
+      new StreamUnreachableError(new Error('offline')),
+    );
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+
+    useChatStore.getState().setComposerDraft('shorten this');
+    await user.click(screen.getByTestId('chat-composer-send'));
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-notice')).toHaveTextContent('did not go out'),
+    );
+
+    // Still offline, so this fails too. The panel has one line to say things
+    // in, and it was already saying something older: without clearing it, the
+    // reader presses a button and absolutely nothing on screen changes.
+    vi.mocked(chatApi.messagesBefore).mockRejectedValue(new Error('offline'));
+    await user.click(screen.getByTestId('chat-load-earlier'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-notice')).toHaveTextContent('Earlier messages'),
+    );
+  });
+
   it('offers to load what came before, and stops offering once it has', async () => {
     vi.mocked(chatApi.messagesBefore).mockResolvedValue({
       messages: [

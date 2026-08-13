@@ -200,6 +200,21 @@ export function ChatPanel({
     retryOpen,
   ]);
 
+  /**
+   * Reach further back, and let the line talk about that instead.
+   *
+   * There is one line for everything the panel has to say, and what it was
+   * saying belonged to something the reader has now moved on from. Left
+   * standing, it would still be there when this press fails too -- so the
+   * reader would press a button and watch absolutely nothing change. The
+   * conversation clears its own half of this the same way, when a turn
+   * starts.
+   */
+  const loadEarlierMessages = React.useCallback((): void => {
+    setNotice(null);
+    loadEarlier();
+  }, [loadEarlier]);
+
   /** Load a quick-action label into the composer. Stable for the same reason. */
   const quickAction = React.useCallback(
     (label: string): void => {
@@ -227,7 +242,7 @@ export function ChatPanel({
         loading={isPending || failedToOpen}
         sentCount={sentCount}
         hasEarlier={hasMore}
-        onLoadEarlier={loadEarlier}
+        onLoadEarlier={loadEarlierMessages}
         onQuickAction={quickAction}
       />
       {/* A chat that would not open is the same kind of news as a message
