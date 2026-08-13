@@ -104,7 +104,7 @@ describe('insertRefusal — media rows need BOTH conditions', () => {
     }
   });
 
-  it('pins the image panel: dark in t2i, image-only in i2i', () => {
+  it('pins the image panel: every media row refused in t2i, image-only in i2i', () => {
     const t2i = IMAGE_MODES.find((m) => m.mode === 't2i')!.ctx;
     const i2i = IMAGE_MODES.find((m) => m.mode === 'i2i')!.ctx;
     for (const kind of ['image', 'audio', 'video'] as const) {
@@ -214,10 +214,11 @@ describe('isReferenceMaterial — one name for the thing both dimensions read on
 
 describe('insertRefusal — the rail and the @ picker give the same answer', () => {
   it('agrees across all 24 video combinations', () => {
-    // The picker filters with `insertRefusal(...) === null`; the rail disables
-    // with the same call. This test is the contract that they are the same
-    // function — before #1945 the rail asked `canConnect(type, "image")` and
-    // the picker asked its own copy of it, hardcoded to the image panel's
+    // The picker filters with `insertRefusal(...) === null` and the rail
+    // disables with the same call, so pinning that one function pins both.
+    // This block is that pinned table, not a check that the two call sites
+    // still share it — before #1945 the rail asked `canConnect(type, "image")`
+    // and the picker asked its own copy of it, hardcoded to the image panel's
     // target modality even inside the video panel.
     const seen: string[] = [];
     for (const { mode, ctx } of VIDEO_MODES) {

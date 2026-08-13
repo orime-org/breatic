@@ -158,11 +158,12 @@ describe('ReferenceRail — the hover preview gets the real modality', () => {
   });
 
   it('calls a row empty by its ASSET, not by whether it has a still', () => {
-    // Two rows that the old thumbnail-keyed test got backwards. An audio node
-    // never has a thumbnail, full or not, so every audio reference was called
-    // empty; a coverless video (#1821) has a file to play, and was called
-    // empty too. Both were answers to "is there a still?", which is not the
-    // question the hint asks.
+    // Two rows the old thumbnail-keyed hint got wrong in opposite ways. It was
+    // gated on the modality first — only image and video rows could receive
+    // it — so an audio node fell outside it entirely and opened no card at
+    // all; a coverless video (#1821) has a file to play and was called empty
+    // on the strength of the missing still. Both come from asking "is there a
+    // still?", which is not the question the hint means to ask.
     render(
       <ReferenceRail
         references={[

@@ -107,7 +107,8 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   );
   // Two refusal reasons, four messages: the mode-off reason alone splits three
   // ways. Insert names only the cause, because the mode selector is in this
-  // same panel and the whole rail is visibly dark. Remove has to name the ways
+  // same panel and every reference material row is visibly dark. Remove has to
+  // name the ways
   // out, because the user asked for the row to be GONE and is being told no.
   // And a focus crop gets its own remove message, because one of those ways
   // out — delete its edge — does not exist for it.
@@ -146,12 +147,13 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     >
       {references.map((ref) => {
         const NodeIcon = getNodeIcon(ref.sourceNodeType);
-        // The two dimensions, each answered by its own call. Both start from
-        // the row kind — a text row sits outside both — and then insert asks
-        // whether the row is an image while remove asks whether the mode uses
-        // references at all. `removeRefused` answers for the row dim as well
-        // as the ✕: they are the same question, and spelling it twice is how
-        // a row once ended up lit with its ✕ frozen (#1940).
+        // Both start from the row kind — a text row sits outside both. Remove
+        // then asks only whether the mode uses references at all; insert asks
+        // that too (mode first, so its message names the state the user can
+        // leave) and then whether the row is an image. `removeRefused` answers
+        // for the row dim as well as the ✕: they are the same question, and
+        // spelling it twice is how a row once ended up lit with its ✕ frozen
+        // (#1940).
         const insertRefused = insertRefusal(ref.sourceNodeType, modeCtx);
         const removeRefused = removeRefusal(ref.sourceNodeType, modeCtx);
         // Empty-source hint (H, user 2026-07-12): a source that has produced

@@ -27,12 +27,14 @@
  * not re-evaluating one expression the payload also evaluates; it asks for
  * the one property both producers require.
  *
- * Splitting them gives each control one question to answer:
+ * Splitting them gives each control the smallest question it can ask. Remove
+ * asks the mode question alone; insert asks it too — mode first, so its
+ * message names the state the user can leave — and then the modality one:
  *
- * | Dimension | Asked by | Decides |
+ * | Asked by | Asks | Decides |
  * |---|---|---|
- * | Does this mode use references at all | {@link removeRefusal} | row dim + ✕ |
- * | Is this row an image | {@link insertRefusal} | insert + `@` picker |
+ * | {@link removeRefusal} | Does this mode use references at all | row dim + ✕ |
+ * | {@link insertRefusal} | That, and then: is this row an image | insert + `@` picker |
  *
  * Both read on REFERENCE MATERIAL. A text row is prompt material — its `@`
  * chip substitutes into the prompt STRING, which every mode sends — so it sits

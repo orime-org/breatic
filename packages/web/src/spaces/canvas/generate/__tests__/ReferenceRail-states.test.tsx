@@ -117,7 +117,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('ReferenceRail — a mode that ignores references dims the whole rail', () => {
+describe('ReferenceRail — a mode that ignores references dims its reference material rows', () => {
   it('dims every REFERENCE MATERIAL row, not just the image ones (#1930)', () => {
     renderRail(false);
     for (const id of ['e-image', 'e-audio', 'e-video']) {

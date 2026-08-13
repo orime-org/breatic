@@ -1242,7 +1242,8 @@ describe('VideoGeneratePanelContainer', () => {
       });
       const insert = await screen.findByTestId('generate-ref-insert-r-a');
       // #1945: the dim moved from the controls to the ROW, so it covers every
-      // modality instead of images alone, and the refusal is aria-disabled
+      // REFERENCE MATERIAL row instead of the image ones alone (a text row is
+      // prompt material and stays lit), and the refusal is aria-disabled
       // rather than the HTML attribute (which would block click and hover).
       expect(
         screen.getByTestId('generate-ref-r-a').classList.contains('opacity-50'),
