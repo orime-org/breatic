@@ -43,8 +43,6 @@ loader:`packages/server/src/config/limits.ts`。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `studio_member_cap` | 100 | 单 studio 活跃成员上限(共享钱包滥用护栏)。**这一项将被会员档位取代**——接上之后取值来源换成 §7.2 的 `studio_members`,这里连同 loader 里的字段一起删 |
-| `project_collaborator_cap` | 100 | 单 project 显式邀请人数上限(基线 viewer 豁免不计)。**同上,将被 §7.2 的 `project_members` 取代** |
 | `activity_feed_page_default` | 50 | 活动流分页:客户端不传 `?limit` 时的页大小 |
 | `activity_feed_page_max` | 100 | 活动流分页:客户端 `?limit` 被裁剪到的硬上限 |
 | `canvas_reference_pool_cap` | 50 | 单画布节点参考池上限(参考边 + 聚焦图合计,#1782);经 `GET /canvas/limits` 下发,前端加入时 gate(池在 Yjs,server 不 gate 协作写);区别于按模型的 `images.max_items` 执行 payload 上限(#1735)。聚焦图另受前端硬顶 `MAX_FOCUS_ENTRIES`(200,`web data/focus-images.ts`)约束——旋钮调高于 200 时聚焦图仍在 200 处被拒(带 toast) |
