@@ -67,8 +67,10 @@ export interface HoverPreviewProps {
  * The content is portaled (escapes container `overflow` / ReactFlow transform
  * clipping) and carries `pointer-events: auto` so its play / seek stay clickable
  * even inside a modal Sheet (whose body is `pointer-events: none`). Media never
- * autoplays — click-to-play. With no source at all it renders the trigger
- * unchanged (no card).
+ * autoplays — click-to-play. With no source at all it opens no card, while
+ * still mounting the trigger inside the HoverCard: the wrapper's shape does
+ * not depend on having content, which is what lets a caller whose content
+ * comes and goes keep the same element (#1946).
  * @param root0 - Component props.
  * @param root0.kind - Content form (image / text / audio / video).
  * @param root0.src - Media / image URL.
@@ -161,7 +163,11 @@ export function HoverPreview({
       openDelay={HOVER_OPEN_DELAY_MS}
       closeDelay={HOVER_CLOSE_DELAY_MS}
       onOpenChange={(next) => {
-        setOpen(next);
+        // Nothing to show means nothing opens — and `open` must stay false so
+        // the viewport follower is not armed for a card that will never
+        // render. The wrapper still mounts (that is what keeps the trigger
+        // stable), but it costs nothing while empty.
+        setOpen(next && hasAnything);
         if (next) {
           if (resolveOnOpen) setResolved(resolveOnOpen());
         }

@@ -21,12 +21,13 @@
  * down, never off the wrapper's presence.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { AudioLines, UserRound } from 'lucide-react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { SlotTool, ToggleTool } from '@web/spaces/canvas/generate/generate-tools';
+import * as overlayFocus from '@web/lib/overlay-focus';
 import * as nodeIcon from '@web/spaces/canvas/lib/node-icon';
 
 vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
@@ -60,9 +61,17 @@ vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
  * value — the point is WHICH function the slot reaches, not what it renders.
  */
 const getNodeIconSpy = vi.spyOn(nodeIcon, 'getNodeIcon');
+/** Watches whether the tooltip's focus-open suppressor is installed at all. */
+const suppressSpy = vi.spyOn(overlayFocus, 'suppressTooltipFocusOpen');
 
 beforeEach(() => {
   getNodeIconSpy.mockClear();
+  suppressSpy.mockClear();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 /**
@@ -221,14 +230,29 @@ describe('SlotTool — the filled slot joins the shared hover preview (#1814)', 
     // be gone is the tip CONTENT: Radix describes the trigger with
     // aria-describedby only while a tip is available to it.
     slot({ pick: AUDIO_PICK });
-    expect(screen.getByTestId('slot')).not.toHaveAttribute('data-state', 'delayed-open');
-    expect(document.querySelector('[data-radix-popper-content-wrapper]')).toBeNull();
+    // Radix reflects the Root's open state on the trigger. A filled slot holds
+    // its tooltip shut, so this stays 'closed' however long you hover; the
+    // empty case below is the contrast that makes this assertion mean
+    // something (dropping the suppression turns that one red).
+    // Radix Tooltip opens off pointerMove, not pointerEnter.
+    fireEvent.pointerMove(screen.getByTestId('slot'));
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(screen.getByTestId('slot')).toHaveAttribute('data-state', 'closed');
+    expect(screen.queryByText('Pick an audio clip')).toBeNull();
   });
 
   it('keeps the tooltip while empty — that is what says WHAT to pick', () => {
-    // The tip is the empty slot's only way of saying what it wants.
+    // The tip is the empty slot's only way of saying what it wants, so here
+    // the same hover MUST open it. This is the half that fails if the
+    // suppression is dropped or applied to the wrong state.
     slot();
-    expect(screen.getByTestId('slot')).toHaveAttribute('data-state');
+    fireEvent.pointerMove(screen.getByTestId('slot'));
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(screen.getAllByText('Pick an audio clip').length).toBeGreaterThan(0);
   });
 });
 
@@ -322,16 +346,28 @@ describe('SlotTool — the wrapper stays put across a fill flip', () => {
 
 describe('SlotTool — the preview is reachable, or not declared at all', () => {
   it('does not muzzle its own preview against keyboard focus', () => {
-    // `suppressTooltipFocusOpen` stops the focus event in the capture phase,
-    // which also stops the SAME element's onFocus — and Radix HoverCard opens
-    // from onFocus. A filled slot carrying it can never preview from the
-    // keyboard, while the rail, the history rows and the prompt chips all can.
+    // `suppressTooltipFocusOpen` stops the focus event in the CAPTURE phase of
+    // React's synthetic chain, which also stops the same element's onFocus —
+    // and that is how a HoverCard opens. Measured by dispatching `focusin`,
+    // the event React actually delegates: a native `focus` listener never sees
+    // the suppressor at all and would hold for any implementation.
     slot({ pick: AUDIO_PICK });
-    let opened = false;
     const btn = screen.getByTestId('slot');
-    btn.addEventListener('focus', () => { opened = true; });
-    btn.focus();
-    expect(opened).toBe(true);
+    let reached = false;
+    btn.addEventListener('focusin', () => {
+      reached = true;
+    });
+    fireEvent.focusIn(btn);
+    expect(reached).toBe(true);
+    // The real claim: the suppressor is not installed while previewing.
+    slot({ pick: AUDIO_PICK });
+    expect(suppressSpy).not.toHaveBeenCalled();
+  });
+
+  it('still muzzles the tooltip focus-open while empty', () => {
+    slot();
+    fireEvent.focusIn(screen.getByTestId('slot'));
+    expect(suppressSpy).toHaveBeenCalled();
   });
 
   it('declares no preview on a slot that cannot open one', () => {

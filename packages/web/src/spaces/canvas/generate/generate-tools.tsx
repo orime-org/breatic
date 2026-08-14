@@ -123,8 +123,13 @@ const ToolTip = React.forwardRef<
   HTMLElement,
   { tip: string; suppressed?: boolean; children: React.ReactNode }
 >(function ToolTip({ tip, suppressed = false, children, ...rest }, ref) {
+  // Controlled in BOTH states, never `undefined`: handing Radix a boolean one
+  // render and nothing the next flips it between controlled and uncontrolled,
+  // which React warns about and which strands whatever open state it had. A
+  // slot crosses that boundary on every fill and every clear.
+  const [open, setOpen] = React.useState(false);
   return (
-    <Tooltip open={suppressed ? false : undefined}>
+    <Tooltip open={suppressed ? false : open} onOpenChange={setOpen}>
       <TooltipTrigger asChild>
         {/* `Slot` merges what an OUTER `asChild` trigger clones onto this
             component — pointer / focus handlers, data-state, the popper anchor
@@ -317,7 +322,8 @@ export function SlotTool({
           and undoing the fill empties the slot underneath the focus. */}
       <HoverPreview
         // `kind` is inert without a `src`; the empty state passes none, so
-        // HoverPreview withholds its card and the wrapper is a pass-through.
+        // HoverPreview withholds its card and stays inert — mounted, but with
+        // nothing to open and no viewport follower armed.
         kind={pick?.kind ?? 'image'}
         src={previews ? pick?.url : undefined}
         // A poster is a still, so only a video has use for one; an image's
