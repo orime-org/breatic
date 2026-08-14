@@ -6,14 +6,8 @@
  *
  * Loads the operator-tunable numbers from `config/limits.yaml`:
  *
- *   - soft capacity caps — how many active members a studio may have, and how
- *     many people may be EXPLICITLY invited to a project (any role).
- *     Auto-materialized baseline viewers (open baseline — studio members who
- *     just opened the project) are EXEMPT and never counted toward the project
- *     cap, so it never blocks viewing access. Concurrency is bounded
- *     separately by collab's `max_connections_per_document`
- *     (config/collab.yaml).
  *   - page sizes for the activity feed and the node-history panel.
+ *   - the canvas reference-pool cap.
  *   - the decision window — how long someone has to answer an invitation, a
  *     transfer, or a role-upgrade request.
  *
@@ -29,8 +23,6 @@ import { MONOREPO_ROOT } from "@breatic/core";
 
 /** Schema for `config/limits.yaml`. */
 export const limitsConfigSchema = z.object({
-  studio_member_cap: z.number().int().positive().default(100),
-  project_collaborator_cap: z.number().int().positive().default(100),
   activity_feed_page_default: z.number().int().positive().default(50),
   activity_feed_page_max: z.number().int().positive().default(100),
   canvas_reference_pool_cap: z.number().int().positive().default(50),
@@ -54,23 +46,6 @@ function loadConfig(): z.infer<typeof limitsConfigSchema> {
   const raw = readFileSync(resolve(dir, "limits.yaml"), "utf-8");
   _cached = limitsConfigSchema.parse(parse(raw) as unknown);
   return _cached;
-}
-
-/**
- * Max active members allowed in one studio (shared-credit team).
- * @returns The studio member cap.
- */
-export function getStudioMemberCap(): number {
-  return loadConfig().studio_member_cap;
-}
-
-/**
- * Max people EXPLICITLY invited to one project (any role); auto-
- * materialized baseline viewers are exempt and not counted here.
- * @returns The project collaborator cap.
- */
-export function getProjectCollaboratorCap(): number {
-  return loadConfig().project_collaborator_cap;
 }
 
 /**

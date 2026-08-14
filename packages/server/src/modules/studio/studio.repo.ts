@@ -176,7 +176,8 @@ export async function countTeamStudiosAdministeredBy(
  * Take the studio's own row for the rest of the transaction.
  *
  * This is what serialises the checks against anything a studio holds a fixed
- * number of — projects today, members next. Counting rows and then inserting
+ * number of — projects and members today (#86, #87); concurrent writable
+ * connections and storage are still to come. Counting rows and then inserting
  * is not a decision under concurrency: two transactions both count, both see
  * room, and both insert. Measured on the account-level ceiling in block one —
  * three simultaneous requests against a ceiling of one left two rows behind.
@@ -258,14 +259,22 @@ export async function getPersonalIdentitiesByCreators(
  * filter a user can match more than one row, and the query has no ordering —
  * so building the map by last-write-wins would pick an arbitrary row and could
  * show a stale name for someone who is perfectly present.
+ * A caller inside a transaction MUST pass the handle. Both `confirmInvite`
+ * transactions call this while holding a `studios` / `projects` row lock, and a
+ * read issued without the handle reaches for a second pooled connection while
+ * the first is still held — which is how a pool exhausts itself under
+ * concurrent writes, in a shape that does not recover: the connection the lock
+ * holder cannot get is the one it needs before it can commit and let go.
  * @param createdByUserIds - User UUIDs to resolve (empty input → empty map)
+ * @param tx - Enclosing transaction, when the caller is inside one
  * @returns Map of `userId → { name, slug, deleted }`
  */
 export async function getPersonalProfilesByCreators(
   createdByUserIds: string[],
+  tx?: DbTx,
 ): Promise<Map<string, { name: string; slug: string; deleted: boolean }>> {
   if (createdByUserIds.length === 0) return new Map();
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({
       createdByUserId: studios.createdByUserId,
       name: studios.name,
@@ -472,16 +481,27 @@ export async function listByUser(
 /**
  * Count active members per studio in one grouped query (avoids N+1).
  *
- * Backs `memberCount` for the container shell + switcher. A studio with no
- * active members is simply absent from the map (callers default to 0).
+ * Backs `memberCount` for the container shell + switcher, and the per-studio
+ * member ceiling. A studio with no active members is simply absent from the map
+ * (callers default to 0).
+ *
+ * A caller inside a transaction MUST pass the handle. Not for correctness —
+ * the gate holds the `studios` row by then, so no other confirm can have an
+ * uncommitted insert in flight — but because a read issued without it reaches
+ * for a second pooled connection while the first is still held, which is how a
+ * pool exhausts itself under concurrent writes. Worse here than elsewhere: the
+ * connection it cannot get is one the lock holder needs before it can release
+ * the lock, so everybody queued behind it waits too.
  * @param studioIds - Studio UUIDs to count (empty input → empty map)
+ * @param tx - Enclosing transaction, when the caller is inside one
  * @returns Map of `studioId → active member count`
  */
 export async function countMembersByStudioIds(
   studioIds: string[],
+  tx?: DbTx,
 ): Promise<Map<string, number>> {
   if (studioIds.length === 0) return new Map();
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({
       studioId: studioMembers.studioId,
       count: sql<number>`count(*)::int`,

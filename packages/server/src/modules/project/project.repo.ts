@@ -476,10 +476,15 @@ export async function deleteProject(id: string): Promise<void> {
   await db.transaction(async (tx) => {
     const now = new Date();
 
-    // Taken FIRST, and every path that adds a project-scoped row takes it too
-    // (see `lockLiveProject`). Without it a request filed concurrently commits
-    // after the cascade has already swept its table, leaving the orphan this
-    // whole cascade exists to prevent.
+    // Taken FIRST. Without it a request filed concurrently commits after the
+    // cascade has already swept its table, leaving the orphan this whole
+    // cascade exists to prevent — so every path that files a project-scoped
+    // REQUEST row (invite, transfer offer, role-upgrade request) takes it too
+    // (see `lockLiveProject`).
+    //
+    // Membership rows are NOT in that set: `materializeBaselineViewer` writes
+    // one with no lock and no transaction at all, so it can still commit after
+    // this cascade has swept the table. That gap predates this comment.
     await tx
       .select({ id: projects.id })
       .from(projects)
@@ -560,9 +565,10 @@ export async function deleteProject(id: string): Promise<void> {
 
     // Pending invites are the same shape and were the same defect: a live
     // pending row on a dead project holds its one-pending slot and its restrict
-    // FK forever, and `confirmInvite` never checks project liveness — so the
-    // invitee could still accept and land an active member row on a project
-    // nobody can open.
+    // FK forever. `confirmInvite` takes this same row before it writes, so a
+    // pending invite to a project swept here can no longer be accepted (that
+    // was not true until #87 — before it, an invitee could accept and land an
+    // active member row on a project nobody can open).
     await tx
       .update(projectInvitations)
       .set({ deletedAt: now })

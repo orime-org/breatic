@@ -37,7 +37,8 @@
       "cannot_modify_personal": "個人 Studio 無法管理成員。",
       "remove_last_admin": "移除前請先轉讓 Admin。",
       "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。",
-      "member_limit_reached": "該 Studio 已達到成員數上限。",
+      "member_limit_reached": "{limit, plural, =0 {這個 Studio 的會員等級不支援新增成員，升級後即可新增。} other {這個 Studio 的會員等級最多可有 # 位成員，升級可新增更多。}}",
+      "member_limit_reached_for_invitee": "這個 Studio 的成員名額已滿，請聯絡它的 Admin 騰出名額。",
       "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
       "avatar_unsupported_type": "這個檔案無法作為圖片讀取，請換一張試試。"
     },
@@ -46,7 +47,8 @@
       "already_member": "該使用者已有存取權限。",
       "already_invited": "該使用者已有一個待確認的邀請。",
       "limit_reached": "{limit, plural, =0 {這個 Studio 的會員等級不支援建立 Project，升級後即可建立。} other {這個 Studio 的會員等級最多可建立 # 個 Project，升級可建立更多。}}",
-      "collaborator_limit_reached": "該 Project 已達到協作者數上限。",
+      "collaborator_limit_reached": "{limit, plural, =0 {這個 Project 不支援新增協作者，升級後即可新增。} other {這個 Project 最多可有 # 位協作者，升級可新增更多。}}",
+      "collaborator_limit_reached_for_invitee": "這個 Project 的協作者名額已滿，請聯絡它的 Owner 騰出名額。",
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申請角色升級",
       "no_active_owner": "這個 Project 沒有在任的 Owner",
       "not_found": "找不到這個 Project"
