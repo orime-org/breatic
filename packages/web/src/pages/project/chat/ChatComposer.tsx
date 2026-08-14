@@ -266,8 +266,8 @@ function ChatComposerInner({
             told when it fills rather than when it appears: a live region
             inserted already holding its text is one many screen readers never
             announce. The wait used to be announced by the indicator itself,
-            which is exactly that -- and the indicator is now a button, whose
-            own role is the one worth having on a focused element. */}
+            which is exactly that -- and the indicator says nothing now, being
+            hidden and out of the tab order. */}
         <span className='sr-only' role='status'>
           {turnPhase === 'sending' ? t('chat.composer.sending') : ''}
         </span>

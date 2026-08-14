@@ -352,10 +352,12 @@ function tell(mishap: Omit<ChatMishap, 'at'>): void {
 }
 
 /**
- * Read a failed request as the reader would hear it.
+ * The sentence our own server wrote for this reader, if it wrote one.
+ *
+ * The whole of what this answers. What to say when it answers nothing is not
+ * the same question in every place that asks, so it is left to whoever asked.
  * @param err - Whatever the call threw.
- * @returns Which kind of mishap it is, and the server's own words when it
- *   answered with any.
+ * @returns The server's own words, or nothing when they are not the server's.
  */
 function serverSentence(err: unknown): string | undefined {
   // Only a sentence our own server wrote for this reader, whichever transport
@@ -660,11 +662,16 @@ function stopTurn(conversationId: string): void {
 /**
  * Is this event still about the turn that is running.
  *
- * Everything a turn ends with -- the server's own ending, an error, the reader
- * pressing stop -- can arrive after the turn it belongs to is over: the server
+ * An ending can arrive after the turn it belongs to is over: the server
  * finishes a failed turn by sending `error` and only then writing it down, and
  * the next turn can already be under way. Acting on one then would mark, end
  * or take the screen over on behalf of something nobody is waiting for.
+ *
+ * What asks this: the watchdog, the stream's error handler, and the `error`
+ * frame. The server's own ending -- `chat_done` -- does not, because what it
+ * reaches are two writes that carry the same question inside them: marking a
+ * message finds it by id, and `finishTurn` compares the running reply against
+ * the one it was given.
  * @param conversationId - The conversation the event arrived for.
  * @param replyId - The reply the event belongs to.
  * @returns The conversation when it is still running that turn.
