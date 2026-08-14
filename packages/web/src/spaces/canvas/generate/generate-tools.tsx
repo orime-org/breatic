@@ -11,6 +11,7 @@
  * each panel's row just arranges them.
  */
 
+import { Slot } from '@radix-ui/react-slot';
 import { X, type LucideIcon } from 'lucide-react';
 import * as React from 'react';
 
@@ -118,22 +119,28 @@ export function ToggleTool({
  * @param root0.children - The button the tooltip describes.
  * @returns The tooltip-wrapped button.
  */
-function ToolTip({
-  tip,
-  suppressed = false,
-  children,
-}: {
-  tip: string;
-  suppressed?: boolean;
-  children: React.ReactNode;
-}): React.JSX.Element {
+const ToolTip = React.forwardRef<
+  HTMLElement,
+  { tip: string; suppressed?: boolean; children: React.ReactNode }
+>(function ToolTip({ tip, suppressed = false, children, ...rest }, ref) {
   return (
     <Tooltip open={suppressed ? false : undefined}>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipTrigger asChild>
+        {/* `Slot` merges what an OUTER `asChild` trigger clones onto this
+            component — pointer / focus handlers, data-state, the popper anchor
+            ref — down onto the button. Taking `children` straight would swallow
+            all of it, since a plain function component keeps only the props it
+            destructures: that silently unwired the hover preview of every
+            filled slot, and the suite could not see it because it stubs
+            HoverPreview out (#1946 Gate 2 round 2). */}
+        <Slot ref={ref} {...rest}>
+          {children}
+        </Slot>
+      </TooltipTrigger>
       {suppressed ? null : <TooltipContent side='top'>{tip}</TooltipContent>}
     </Tooltip>
   );
-}
+});
 
 /**
  * What a slot holds, or `undefined` when it holds nothing.
