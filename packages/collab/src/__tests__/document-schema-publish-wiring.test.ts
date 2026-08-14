@@ -44,9 +44,7 @@ vi.mock("@hocuspocus/server", () => ({
 vi.mock("@breatic/core", async () => ({
   // 真的那份：这条测试要验「发布真的接上了」，而发布写进去的值就来自它。
   // 换成替身就等于自己规定了答案再去核对它。
-  getDocumentSchema: (
-    await vi.importActual<typeof import("@breatic/core")>("@breatic/core")
-  ).getDocumentSchema,
+  getDocumentSchema: (await vi.importActual("@breatic/core")).getDocumentSchema,
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),

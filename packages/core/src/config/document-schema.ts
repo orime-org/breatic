@@ -44,7 +44,6 @@ export function getDocumentSchema(): Readonly<DocumentSchema> {
 
 /**
  * Drop the cached copy. Tests only.
- * @returns Nothing.
  */
 export function _resetDocumentSchemaForTests(): void {
   _cached = null;
