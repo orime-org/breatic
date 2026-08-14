@@ -72,7 +72,7 @@ export interface UseDocumentEditorOptions {
  * @param options.name - The canonical document name (cache key).
  * @param options.caretProvider - Provider whose awareness carries carets.
  * @param options.editable - False for read-only.
- * @param options.enabled - False builds no editor and destroys one already built.
+ * @param options.enabled - False builds no editor. Destroying one that exists belongs to `DocumentInterceptGuard`, not here.
  * @returns The editor and its undo manager, or null while the wiring is absent.
  */
 export function useDocumentEditor({

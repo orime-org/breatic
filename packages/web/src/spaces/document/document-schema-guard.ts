@@ -24,10 +24,14 @@ import type { DocumentSchema } from '@breatic/shared';
  * ## What counts as unknown
  *
  * An element whose name is not in the vocabulary, and a mark whose name is not
- * in it. The fallback types ARE in the vocabulary, so content already wrapped
- * by some other client reads as known — correctly: whoever wrapped it had
- * already recognised that it was beyond them, and this build can represent the
- * wrapper.
+ * in it. The fallback types are in the vocabulary too, so an element carrying
+ * one of those names reads as known.
+ *
+ * That last part is a property of the check, not a case it handles: nothing
+ * writes a fallback name into the shared document. The patch builds a
+ * ProseMirror node and maps it, touching no Yjs bytes, and `marksToAttributes`
+ * puts the original key and value back on the way out — deliberately, so a
+ * client that cannot represent something never renames it for everyone else.
  */
 
 /**

@@ -59,11 +59,16 @@ export const DocumentSchemaOutdated = React.memo(function DocumentSchemaOutdated
 }: DocumentSchemaOutdatedProps): React.JSX.Element {
   const t = useTranslation();
 
-  const when = React.useMemo(() => {
-    if (publishedAt === null) return null;
-    const parsed = Date.parse(publishedAt);
-    return Number.isNaN(parsed) ? null : formatRelativeTime(publishedAt, t);
-  }, [publishedAt, t]);
+  // Computed on every render rather than memoised, and that is the fix: `t`'s
+  // identity never changes (the locale engine swaps its messages underneath and
+  // re-renders subscribers), so a memo keyed on it would never recompute — the
+  // relative time would stay in the language it was first rendered in while
+  // every other line on the panel switched. The call is a date subtraction and
+  // a lookup.
+  const when =
+    publishedAt !== null && !Number.isNaN(Date.parse(publishedAt))
+      ? formatRelativeTime(publishedAt, t)
+      : null;
 
   const reload = React.useCallback(() => {
     window.location.reload();

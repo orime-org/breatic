@@ -103,10 +103,24 @@ export function useDocumentSchemaIntercept({
 
   React.useEffect(() => {
     /**
-     * Recompute from both documents.
+     * Recompute from both documents, and keep the previous object when the
+     * answer has not moved.
+     *
+     * Yjs fires `update` on every keystroke, local and remote alike, and both
+     * documents are subscribed. Handing back a fresh object literal each time
+     * would fail `Object.is` on every one of them and re-render the subtree for
+     * an answer that changed on almost none — twice over, since the tab-scoped
+     * guard runs this hook as well.
      * @returns Nothing.
      */
-    const update = (): void => setState(derive());
+    const update = (): void =>
+      setState((prev) => {
+        const next = derive();
+        return prev.intercepted === next.intercepted &&
+          prev.publishedAt === next.publishedAt
+          ? prev
+          : next;
+      });
 
     // Both documents can change after mount and either changes the answer: the
     // published vocabulary arrives on reconnect, and unresolvable content can

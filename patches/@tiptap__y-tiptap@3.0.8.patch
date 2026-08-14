@@ -1,8 +1,8 @@
 diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
-index 653ffe79d5edb4a040555bb222f472af1e45edc8..91f9ed43cb04ef86f66400847d2b97017297025c 100644
+index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce039e900e 100644
 --- a/dist/y-tiptap.cjs
 +++ b/dist/y-tiptap.cjs
-@@ -927,6 +927,89 @@ const createNodeFromYElement = (
+@@ -927,6 +927,98 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -46,15 +46,24 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..91f9ed43cb04ef86f66400847d2b9701
 +     * Asking it directly answers "can this be the parent's first child",
 +     * which is a different question and answers no far too often: a list
 +     * item holds `paragraph block*`, so an unknown block sitting after that
-+     * paragraph — where every new block type in a list ends up — gets told
-+     * "nothing fits here" and is deleted, while the block stand-in is
++     * paragraph — where every new block type in a list ends up — got told
++     * "nothing fits here" and was deleted, while the block stand-in is
 +     * perfectly legal in the position it actually occupies.
 +     *
-+     * The match is a state machine, so walk it. Reaching an edge for the
-+     * type means some sequence of children puts it in a legal spot; the
-+     * element already sits in a legal spot for whatever it is, so the
-+     * stand-in belongs in the same one. If the parent still fails to build,
-+     * the untouched catch below handles it exactly as it would have.
++     * The match is a state machine, so walk it and ask whether the type is
++     * reachable at all.
++     *
++     * KNOWN IMPRECISION, and the reason it is left here: reachable-anywhere
++     * is not the same as legal-at-THIS-position. A parent with a mandatory
++     * prefix — `listItem` is the only one in this schema — answers yes for a
++     * block, so an unknown element sitting in that first slot would get a
++     * stand-in the parent cannot hold, the parent would fail to build, and
++     * the untouched catch below would delete the parent rather than the one
++     * element. Producing that input needs a build where an unknown type can
++     * be a list item's first child, i.e. a changed `listItem` content rule,
++     * which no version does. The exact question — walk the preceding
++     * siblings, then ask — is tracked rather than written here, because it
++     * has to reason about siblings this build may not recognise either.
 +     * @param {any} type
 +     * @returns {boolean}
 +     */
@@ -92,7 +101,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..91f9ed43cb04ef86f66400847d2b9701
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -999,6 +1082,9 @@ const createNodeFromYElement = (
+@@ -999,6 +1091,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -102,7 +111,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..91f9ed43cb04ef86f66400847d2b9701
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1164,13 +1250,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1164,13 +1259,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -127,7 +136,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..91f9ed43cb04ef86f66400847d2b9701
        })
      )
  };
-@@ -1538,7 +1634,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1538,7 +1643,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -146,7 +155,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..91f9ed43cb04ef86f66400847d2b9701
    }
    return marks
  };
-@@ -1550,6 +1656,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1550,6 +1665,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {
@@ -159,10 +168,10 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..91f9ed43cb04ef86f66400847d2b9701
        const isOverlapping = map__namespace.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type));
        pattrs[isOverlapping ? `${mark.type.name}--${hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs;
 diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
-index 28c55820dff13cf3d5c303970f530c17eb38f757..c8ac8ee44589a30ddf7ccdd7f075e7aba7d1f190 100644
+index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f68c66594b 100644
 --- a/dist/y-tiptap.js
 +++ b/dist/y-tiptap.js
-@@ -893,6 +893,89 @@ const createNodeFromYElement = (
+@@ -893,6 +893,98 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -206,15 +215,24 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..c8ac8ee44589a30ddf7ccdd7f075e7ab
 +     * Asking it directly answers "can this be the parent's first child",
 +     * which is a different question and answers no far too often: a list
 +     * item holds `paragraph block*`, so an unknown block sitting after that
-+     * paragraph — where every new block type in a list ends up — gets told
-+     * "nothing fits here" and is deleted, while the block stand-in is
++     * paragraph — where every new block type in a list ends up — got told
++     * "nothing fits here" and was deleted, while the block stand-in is
 +     * perfectly legal in the position it actually occupies.
 +     *
-+     * The match is a state machine, so walk it. Reaching an edge for the
-+     * type means some sequence of children puts it in a legal spot; the
-+     * element already sits in a legal spot for whatever it is, so the
-+     * stand-in belongs in the same one. If the parent still fails to build,
-+     * the untouched catch below handles it exactly as it would have.
++     * The match is a state machine, so walk it and ask whether the type is
++     * reachable at all.
++     *
++     * KNOWN IMPRECISION, and the reason it is left here: reachable-anywhere
++     * is not the same as legal-at-THIS-position. A parent with a mandatory
++     * prefix — `listItem` is the only one in this schema — answers yes for a
++     * block, so an unknown element sitting in that first slot would get a
++     * stand-in the parent cannot hold, the parent would fail to build, and
++     * the untouched catch below would delete the parent rather than the one
++     * element. Producing that input needs a build where an unknown type can
++     * be a list item's first child, i.e. a changed `listItem` content rule,
++     * which no version does. The exact question — walk the preceding
++     * siblings, then ask — is tracked rather than written here, because it
++     * has to reason about siblings this build may not recognise either.
 +     * @param {any} type
 +     * @returns {boolean}
 +     */
@@ -252,7 +270,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..c8ac8ee44589a30ddf7ccdd7f075e7ab
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -965,6 +1048,9 @@ const createNodeFromYElement = (
+@@ -965,6 +1057,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -262,7 +280,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..c8ac8ee44589a30ddf7ccdd7f075e7ab
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1130,13 +1216,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1130,13 +1225,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -287,7 +305,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..c8ac8ee44589a30ddf7ccdd7f075e7ab
        })
      )
  };
-@@ -1504,7 +1600,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1504,7 +1609,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -306,7 +324,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..c8ac8ee44589a30ddf7ccdd7f075e7ab
    }
    return marks
  };
-@@ -1516,6 +1622,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1516,6 +1631,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {
