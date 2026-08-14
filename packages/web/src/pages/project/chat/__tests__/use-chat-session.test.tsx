@@ -367,13 +367,14 @@ describe('when the conversation it was writing to is gone', () => {
     });
 
     await act(async () => {
-      await expect(result.current.send('hi')).rejects.toThrow();
+      await result.current.send('hi');
     });
 
     // A conversation refused the moment it was made is not a stale id, and
     // asking again would only ask again. The server kept no record of any of
-    // it, so nothing about it is left on screen either — `send` saying it was
-    // not sent is what the composer acts on.
+    // it, so nothing about it is left on screen either -- and nothing is
+    // thrown at the caller, because there is nothing for it to do: the words
+    // are still in the box and the reader can press send again.
     expect(chatApi.streamMessage).toHaveBeenCalledTimes(2);
     expect(result.current.messages.some((m) => m.failed)).toBe(false);
   });
@@ -388,7 +389,7 @@ describe('when the conversation it was writing to is gone', () => {
     });
 
     await act(async () => {
-      await expect(result.current.send('hi')).rejects.toThrow();
+      await result.current.send('hi');
     });
 
     // Being refused for lack of permission is not fixed by trying again, and
@@ -470,7 +471,7 @@ describe('when the conversation it was writing to is gone', () => {
     });
 
     await act(async () => {
-      await expect(result.current.send('let me in')).rejects.toThrow();
+      await result.current.send('let me in');
     });
 
     // The server stored nothing — not the reply, and not the message the
@@ -665,28 +666,40 @@ describe('when asking the server again fails', () => {
     // bubble off the screen tells the reader their history is gone, when it
     // is sitting in the cache untouched.
     expect(result.current.messages).toHaveLength(2);
-    expect(result.current.failedToOpen).toBe(false);
   });
 });
 
 describe('when the chat never opened', () => {
-  it('says so rather than looking like an empty conversation', async () => {
+  it('looks like an empty conversation, because that is what is on screen', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('server said no'));
     const { result } = render();
 
-    // An empty chat invites the user to start one. A chat that failed to open
-    // must not look like that, or every message they send disappears into it.
-    await waitFor(() => expect(result.current.failedToOpen).toBe(true));
+    // Nothing came back, so there is nothing to show, and that is the whole of
+    // it. The line about what went wrong was said once at the moment it
+    // happened; an empty list needs no second explanation, and a state saying
+    // "this could not be opened" would be one -- standing there for as long as
+    // the reader looks at it, about something they can neither fix nor retry.
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.messages).toEqual([]);
   });
 
-  it('does not swallow what the user typed', async () => {
-    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('server said no'));
+  it('starts a conversation when the reader sends anyway', async () => {
+    vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('server said no'));
     const { result } = render();
-    await waitFor(() => expect(result.current.failedToOpen).toBe(true));
+    await waitFor(() => expect(result.current.isPending).toBe(false));
 
-    // `send` resolving as if it worked is what let the composer clear the
-    // draft: the user pressed enter, their words vanished, nothing was sent.
-    await expect(result.current.send('please do not eat this')).rejects.toThrow();
+    // Pressing send is the whole of what they have to do. Opening happens on
+    // the way, and this is why nothing on the screen needs turning off: there
+    // is no dead end to keep them out of.
+    openChatAnswers([]);
+    await act(async () => {
+      void result.current.send('please do not eat this');
+    });
+
+    await waitFor(() => expect(chatApi.streamMessage).toHaveBeenCalled());
+    expect(vi.mocked(chatApi.streamMessage).mock.calls[0]?.[0].message).toBe(
+      'please do not eat this',
+    );
   });
 });
 
@@ -733,7 +746,7 @@ describe('when the request never reached the server', () => {
     // even what the user typed, which it writes as the first thing inside the
     // turn. Saying "Stopped" here announces that a reply was cut off when no
     // reply was ever begun.
-    await expect(result.current.send('is anyone there')).rejects.toThrow();
+    await result.current.send('is anyone there');
 
     const last = result.current.messages.at(-1);
     expect(last?.interrupted).toBeUndefined();
@@ -782,7 +795,7 @@ describe('when reopening the chat also fails', () => {
     vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('server said no'));
 
     await act(async () => {
-      await expect(result.current.send('find me references')).rejects.toThrow();
+      await result.current.send('find me references');
     });
 
     // Nothing was stored for this attempt — not the reply, and not what the

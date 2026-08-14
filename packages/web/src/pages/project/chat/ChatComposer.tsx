@@ -25,14 +25,6 @@ interface ChatComposerProps {
    * word of yet -- with nothing on screen for stopping it to take back.
    */
   turnPhase?: TurnPhase;
-  /**
-   * Nothing can be typed or sent yet, because there is nowhere to send it.
-   *
-   * True while the chat is still opening and after opening failed. Leaving
-   * the box live in those states lets a message be typed, sent, and dropped
-   * with nothing said about it.
-   */
-  disabled?: boolean;
   chips?: ReadonlyArray<ReferenceChip>;
   activeSkillLabel?: string;
   selectMode?: boolean;
@@ -77,7 +69,6 @@ interface ChatComposerProps {
  * @param root0 - The component props.
  * @param root0.draft - The current draft text in the input.
  * @param root0.turnPhase - How far along the turn is: idle, sending, running.
- * @param root0.disabled - Whether there is nowhere to send a message yet.
  * @param root0.chips - The reference chips attached to the next message.
  * @param root0.activeSkillLabel - The label of the currently selected skill, if any.
  * @param root0.selectMode - Whether canvas select mode is active.
@@ -92,7 +83,6 @@ interface ChatComposerProps {
 function ChatComposerInner({
   draft,
   turnPhase = 'idle',
-  disabled,
   chips = [],
   activeSkillLabel,
   selectMode,
@@ -104,7 +94,7 @@ function ChatComposerInner({
   onRemoveChip,
 }: ChatComposerProps): React.JSX.Element {
   const t = useTranslation();
-  const ready = draft.trim().length > 0 && turnPhase === 'idle' && !disabled;
+  const ready = draft.trim().length > 0 && turnPhase === 'idle';
 
   /**
    * Submit the draft message when the composer is in a ready state.
@@ -190,7 +180,6 @@ function ChatComposerInner({
         }}
         placeholder={t('chat.composer.placeholder')}
         rows={3}
-        disabled={disabled}
         className='block max-h-[200px] min-h-[72px] w-full resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none placeholder:text-muted-foreground'
         aria-label={t('chat.composer.inputAria')}
         data-testid='chat-composer-textarea'

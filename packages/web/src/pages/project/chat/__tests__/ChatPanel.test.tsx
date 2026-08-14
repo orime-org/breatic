@@ -150,11 +150,7 @@ describe('ChatPanel', () => {
   it('typing in the composer writes to the chat store draft', async () => {
     const user = userEvent.setup();
     renderPanel();
-    // The composer is off until there is a conversation to write to.
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled(),
-    );
     await user.type(screen.getByTestId('chat-composer-textarea'), 'Hi!');
     expect(useChatStore.getState().composerDraft).toBe('Hi!');
   });
@@ -272,18 +268,43 @@ describe('ChatPanel', () => {
     // No button, no instruction. Reloading or trying again is the reader's own
     // business, and telling them to do it adds nothing they cannot see.
     expect(screen.queryByTestId('chat-notice-action')).not.toBeInTheDocument();
-    expect(screen.getByTestId('chat-composer-textarea')).toBeDisabled();
   });
 
-  it('does not let anything be typed before the chat is open', async () => {
+  it('lets the reader type and send while the chat is still opening', async () => {
     // openChat never answers, which is the state every panel starts in.
     vi.mocked(chatApi.openChat).mockImplementation(() => new Promise(() => {}));
     renderPanel();
 
-    // Pressing enter here used to drop the keystroke with no request, no
-    // error and no bubble — the user cannot tell it was not sent.
+    // Turning the box off is how a keystroke used to be dropped in silence:
+    // the fix for that was to stop the reader typing, which is the wrong end
+    // of it. Sending is what opens a conversation when there is not one, so
+    // there is nothing here to protect them from.
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled();
+  });
+
+  it('leaves everything usable when the chat could not be opened', async () => {
+    const user = userEvent.setup();
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
+    streamStaysOpen();
+    renderPanel();
+
     await waitFor(() =>
-      expect(screen.getByTestId('chat-composer-textarea')).toBeDisabled(),
+      expect(screen.getByTestId('chat-notice')).toHaveTextContent('Network error'),
+    );
+
+    // Nothing is turned off and nothing is explained away. The reader types,
+    // presses send, and that is what opens a conversation and starts a turn.
+    expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled();
+    chatOpensWith([]);
+    useChatStore.getState().setComposerDraft('are you there');
+    await user.click(screen.getByTestId('chat-composer-send'));
+
+    await waitFor(() =>
+      expect(chatApi.streamMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'are you there' }),
+        expect.anything(),
+      ),
     );
   });
 

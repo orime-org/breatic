@@ -66,8 +66,6 @@ export function ChatPanel({
   const {
     messages,
     isPending,
-    failedToOpen,
-    canSend,
     turnPhase,
     hasMore,
     mishap,
@@ -78,7 +76,6 @@ export function ChatPanel({
   const t = useTranslation();
   const draft = useChatStore((s) => s.composerDraft);
   const setDraft = useChatStore((s) => s.setComposerDraft);
-  const clearDraft = useChatStore((s) => s.clearComposerDraft);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const setActiveConversationId = useChatStore(
     (s) => s.setActiveConversationId,
@@ -91,54 +88,21 @@ export function ChatPanel({
   const [sentCount, setSentCount] = React.useState(0);
 
   /**
-   * The draft as it stood when it was sent, until the box is emptied of it.
+   * Send what is in the box.
    *
-   * Null the rest of the time. Held as a ref and not as state because nothing
-   * renders differently for it: it is here so that emptying the box can tell
-   * the words that were sent from anything typed since.
-   */
-  const sent = React.useRef<string | null>(null);
-
-  /**
-   * Send the trimmed composer draft, leaving it in the box for now.
+   * The box is left exactly as it is. Emptying it belongs to the conversation,
+   * which is the only thing that learns the words got there -- and which goes
+   * on doing it after this panel is collapsed, unlike anything held here.
    *
    * Stable across renders, so that a reply arriving token by token does not
    * hand the composer a new callback sixty times a second and take its own
    * memoisation away.
    */
   const submit = React.useCallback((): void => {
-    const trimmed = draft.trim();
-    if (trimmed.length === 0) return;
+    if (draft.trim().length === 0) return;
     setSentCount((n) => n + 1);
-    // Kept in the box until the server says it has the message. Until then
-    // this is the only place the words exist -- nothing of the turn is on
-    // screen and nothing is stored anywhere -- so emptying it now would be
-    // the browser promising something it has no word on.
-    sent.current = draft;
-    void send(trimmed).catch(() => {
-      // Why it failed is the conversation's to say, and it already said it to
-      // everyone watching at the moment it happened. Nothing to do here but
-      // stop waiting to empty the box: the words are still in it, which is
-      // exactly where a message that was never sent belongs.
-      sent.current = null;
-    });
+    void send(draft);
   }, [draft, send]);
-
-  /**
-   * Empty the box once the server has the message.
-   *
-   * The turn's first event is the server handing back the conversation with
-   * the message in it, so from that moment the words exist somewhere else and
-   * the box has done its job. Anything typed since is left alone -- that was
-   * never sent, and taking it away would be taking words nobody asked to be
-   * taken, with no message and no undo.
-   */
-  React.useEffect(() => {
-    if (turnPhase !== 'running' || sent.current === null) return;
-    const words = sent.current;
-    sent.current = null;
-    if (useChatStore.getState().composerDraft === words) clearDraft();
-  }, [turnPhase, clearDraft]);
 
   /**
    * Pick a conversation out of the history sheet and close it.
@@ -198,7 +162,7 @@ export function ChatPanel({
     >
       <MessageList
         messages={messages}
-        loading={isPending || failedToOpen}
+        loading={isPending}
         sentCount={sentCount}
         hasEarlier={hasMore}
         onLoadEarlier={loadEarlier}
@@ -211,7 +175,6 @@ export function ChatPanel({
       <ChatComposer
         draft={draft}
         turnPhase={turnPhase}
-        disabled={!canSend}
         onChange={setDraft}
         onSubmit={submit}
         onAbort={abort}

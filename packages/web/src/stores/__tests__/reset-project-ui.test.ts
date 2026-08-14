@@ -105,7 +105,7 @@ describe('resetProjectUiStores (#1771)', () => {
         'c-1': {
           projectId: 'project-1',
           messages: [],
-          turn: { replyId: 'r-1', abort, started: true },
+          turn: { replyId: 'r-1', abort, started: true, said: 'what they asked' },
           hasMore: false,
           oldestLoadedTurn: 1,
           failures: 0,

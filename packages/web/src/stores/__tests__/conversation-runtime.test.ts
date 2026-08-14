@@ -20,6 +20,7 @@ vi.mock('@web/data/api/chat', () => ({
 
 import { chatApi } from '@web/data/api/chat';
 import { StreamDroppedError, StreamRefusedError, StreamUnreachableError } from '@web/data/stream/sse';
+import { useChatStore } from '@web/stores/chat';
 import {
   conversationRuntime,
   useConversationRuntime,
@@ -103,6 +104,7 @@ function conversation() {
 beforeEach(() => {
   vi.clearAllMocks();
   _resetForTests();
+  useChatStore.getState().reset();
   vi.mocked(chatApi.streamMessage).mockImplementation((_input, h) => {
     handlers = h;
     // Never settles, the way the real call does not until the socket closes.
@@ -114,6 +116,92 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe('saying something when the chat has not opened', () => {
+  it('opens one and runs the turn, rather than refusing', async () => {
+    // The chat could not be opened when the project came up -- the network was
+    // down, or the server was. Nothing about that stops the reader from typing
+    // and pressing send, and pressing send is what should get them going.
+    vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
+    await conversationRuntime.ensureLoaded('p-1');
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('failed');
+
+    openChatAnswers();
+    // Not awaited to completion: a turn runs for as long as the stream is
+    // open, and this one's stream stays open the way a real one does.
+    void conversationRuntime.send('p-1', 'hello');
+    // Waited for by the thing that only happens if this worked. `turn` is no
+    // good to wait on here: until the conversation exists there is nothing to
+    // read it off, and `undefined` passes a not-null check without meaning it.
+    await vi.waitFor(() => expect(chatApi.streamMessage).toHaveBeenCalled());
+
+    // The conversation was opened on the way, and the turn is running in it.
+    expect(chatApi.openChat).toHaveBeenCalledTimes(2);
+    expect(chatApi.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'c-1', message: 'hello' }),
+      expect.anything(),
+    );
+    expect(conversation()?.turn).not.toBeNull();
+  });
+
+  it('says so once when it cannot be opened either, and leaves the screen alone', async () => {
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+
+    await conversationRuntime.send('p-1', 'hello');
+    stop();
+
+    // One line, and nothing else happens: no turn, nothing written anywhere,
+    // and the words are still in the box because nothing took them out of it.
+    expect(told).toEqual([{ projectId: 'p-1', conversationId: null, kind: 'network' }]);
+    expect(chatApi.streamMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('the box the words were typed into', () => {
+  it('is emptied by the conversation, not by whoever is rendering it', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    useChatStore.getState().setComposerDraft('  hello  ');
+
+    void conversationRuntime.send('p-1', '  hello  ');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+
+    // Still in the box: nothing has said the server has it.
+    expect(useChatStore.getState().composerDraft).toBe('  hello  ');
+    // And what went out is the trimmed message, not the whitespace.
+    expect(chatApi.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'hello' }),
+      expect.anything(),
+    );
+
+    turnStarts(['earlier', 'hello']);
+
+    // Emptied here, by the store. The panel showing this conversation may have
+    // been collapsed the moment after the press -- that is a thing readers do,
+    // and this turn goes on without it -- so a rule that lives in the panel is
+    // a rule that stops running exactly when someone walks away from it.
+    expect(useChatStore.getState().composerDraft).toBe('');
+  });
+
+  it('keeps what was typed while waiting, and takes out only what went out', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    useChatStore.getState().setComposerDraft('hello');
+
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    // Carrying on typing is the ordinary thing to do; nothing stops them.
+    useChatStore.getState().setComposerDraft('hello and one more thing');
+
+    turnStarts(['earlier', 'hello']);
+
+    // The words that went out are gone from the box because they are in the
+    // conversation now. The ones typed since were never sent, so they stay.
+    expect(useChatStore.getState().composerDraft).toBe(' and one more thing');
+  });
 });
 
 describe('a turn that nobody is rendering', () => {
@@ -256,6 +344,52 @@ describe('loading what came before', () => {
     ]);
     expect(conversation()?.hasMore).toBe(false);
     expect(conversation()?.turn).not.toBeNull();
+  });
+
+  it('drops a page that no longer joins onto the list', async () => {
+    openChatAnswers({ hasMore: true });
+    await conversationRuntime.ensureLoaded('p-1');
+
+    let landPage: (p: Awaited<ReturnType<typeof chatApi.messagesBefore>>) => void = () => {};
+    vi.mocked(chatApi.messagesBefore).mockReturnValueOnce(
+      new Promise((resolve) => {
+        landPage = resolve;
+      }),
+    );
+    // Asked from turn 7, which is where the list reached back to.
+    const earlier = conversationRuntime.loadEarlier('c-1');
+
+    // Before it answers, the reader sends something and the turn opens by
+    // handing back the server's own page -- which starts at turn 60.
+    void conversationRuntime.send('p-1', 'a new question');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    turnStarts(['much later', 'a new question'], { firstTurnIndex: 60, hasMore: true });
+
+    landPage({
+      messages: [
+        {
+          id: 'm5',
+          role: 'user',
+          parts: [{ type: 'text', text: 'turn five' }],
+          content: 'turn five',
+          ts: '2026-08-01T00:00:00Z',
+          turnIndex: 5,
+        },
+      ],
+      hasMore: true,
+    } as unknown as Awaited<ReturnType<typeof chatApi.messagesBefore>>);
+    await earlier;
+
+    // This page was asked for from a list that no longer exists. Putting it at
+    // the head of the new one leaves turns 8 to 59 missing with nothing on
+    // screen saying so -- and moves the cursor past them, so no press could
+    // ever ask for them again.
+    expect(conversation()?.messages.map((m) => m.content)).toEqual([
+      'much later',
+      'a new question',
+      '',
+    ]);
+    expect(conversation()?.oldestLoadedTurn).toBe(60);
   });
 
   it('does nothing when there is nothing older', async () => {
@@ -496,6 +630,33 @@ describe('a request left over from a previous visit to the project', () => {
     expect(conversation()?.turn?.replyId).toBe(running.replyId);
     expect(conversation()?.messages.map((m) => m.content)).toContain('my question');
     expect(conversation()?.messages.at(-1)?.content).toBe('half an answer');
+  });
+
+  it('does not take the next visit\'s request off the books when it lands', async () => {
+    let landFirstVisit: (r: Awaited<ReturnType<typeof chatApi.openChat>>) => void = () => {};
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(
+      new Promise((resolve) => {
+        landFirstVisit = resolve;
+      }),
+    );
+    const firstVisit = conversationRuntime.ensureLoaded('p-1');
+
+    conversationRuntime.leaveProject('p-1');
+    // The second visit's request never answers, so it stays on the books for
+    // as long as it is running -- which is what a second caller joins.
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(new Promise(() => {}));
+    void conversationRuntime.ensureLoaded('p-1');
+
+    landFirstVisit(answer(['hello again']));
+    await firstVisit;
+
+    // The first visit's request is over and takes itself off the books. Taking
+    // the entry off by name takes off whatever is there, which by now is the
+    // second visit's -- and the next caller, finding nothing, asks the server
+    // all over again for something already on its way. Not awaited: joining
+    // the request still running is the whole point, and it does not answer.
+    void conversationRuntime.ensureLoaded('p-1');
+    expect(chatApi.openChat).toHaveBeenCalledTimes(2);
   });
 
   it('does not turn a chat that is open and being read into one that failed', async () => {

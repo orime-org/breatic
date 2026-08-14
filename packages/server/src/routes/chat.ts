@@ -29,7 +29,7 @@ import { projectService } from "@server/modules";
 import { MainAgent } from "@server/agent/main-agent.js";
 import { serializeSSE, SSEEventType } from "@server/agent/types.js";
 import type { SSEEvent } from "@server/agent/types.js";
-import { runWithContext } from "@breatic/core";
+import { runWithContext, logger } from "@breatic/core";
 import { assertSkillUsable } from "@breatic/domain";
 import { SSE_HEARTBEAT_INTERVAL_MS } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
@@ -118,6 +118,30 @@ async function streamTurn(
             await s.write(serializeSSE(event));
           }
         },
+      );
+    } catch (err) {
+      // A turn can die before it says anything -- storing the message, reading
+      // the memories, compressing the history, assembling the agent. Left to
+      // the framework, that ends the stream cleanly: the browser cannot tell it
+      // from a turn that finished, so it leaves an empty reply on screen with
+      // nothing to explain it, and the log gets a bare stack trace with no user
+      // and no conversation on it.
+      logger.error(
+        {
+          err,
+          userId: turn.userId,
+          conversationId: turn.conversationId,
+          projectId: turn.projectId,
+        },
+        "chat_turn_failed",
+      );
+      // What the client does with this is show one line and let the reader
+      // press send again. The sentence is not read: the browser writes its own.
+      await s.write(
+        serializeSSE({
+          event: SSEEventType.ERROR,
+          data: { message: "The turn could not be run." },
+        }),
       );
     } finally {
       // However the turn ended. A timer left running holds the process open

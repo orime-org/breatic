@@ -19,21 +19,6 @@ export interface ChatSession {
   /** True until the server has answered — not the same as an empty chat. */
   isPending: boolean;
   /**
-   * Opening the chat failed, so there is no conversation to write to.
-   *
-   * Distinct from an empty chat, which invites the user to start one. Showing
-   * that here is what let a message be typed, sent, and silently dropped.
-   */
-  failedToOpen: boolean;
-  /**
-   * There is a conversation to write to, so a message can be sent right now.
-   *
-   * False while the chat is still opening and after opening failed. The panel
-   * turns the composer off on both, because a message typed then has nowhere
-   * to go and would be dropped without a word.
-   */
-  canSend: boolean;
-  /**
    * How far along the turn is, if there is one.
    *
    * Three states and not a boolean, because the middle one is a state the
@@ -54,15 +39,16 @@ export interface ChatSession {
   /** Load the messages before the ones on screen. */
   loadEarlier: () => void;
   /**
-   * Send one message and stream the reply into the list.
+   * Send what is in the composer, opening a conversation if there is not one.
    *
-   * Resolves when the whole turn is over, but the message is in the list
-   * before the first await — so a caller that has checked `canSend`
-   * may treat the call itself as the send having happened.
-   * @throws {Error} When there is no conversation to send to — the caller
-   *   must not treat that as sent, or the text is gone with nothing said.
+   * Takes the draft as it stands, whitespace and all: what goes out is the
+   * trimmed message, and what is taken back out of the box is these same
+   * words, so the two have to be told apart by whoever does both.
+   *
+   * Never rejects. Whatever goes wrong is told to whoever is looking at the
+   * moment it happens, and nothing on the screen moves for it.
    */
-  send: (text: string) => Promise<void>;
+  send: (draft: string) => Promise<void>;
   /** Stop the turn in flight. */
   abort: () => void;
 }
@@ -170,7 +156,7 @@ export function useChatSession(projectId: string): ChatSession {
   const justFailed = failures > failuresAtMount.current ? failedReplyId : null;
 
   const send = React.useCallback(
-    (text: string): Promise<void> => conversationRuntime.send(projectId, text),
+    (draft: string): Promise<void> => conversationRuntime.send(projectId, draft),
     [projectId],
   );
 
@@ -241,8 +227,6 @@ export function useChatSession(projectId: string): ChatSession {
   return {
     messages,
     isPending: openStatus === 'idle' || openStatus === 'loading',
-    failedToOpen: openStatus === 'failed',
-    canSend: conversationId !== undefined,
     turnPhase,
     hasMore,
     mishap,

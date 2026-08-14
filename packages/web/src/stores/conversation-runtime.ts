@@ -29,6 +29,7 @@ import { SSE_EVENT_NAMES, SSE_HEARTBEAT_TIMEOUT_MS, newId } from '@breatic/share
 import { chatApi } from '@web/data/api/chat';
 import { ApiException } from '@web/data/api/types';
 import type { OpenChatResult } from '@web/data/api/chat';
+import { useChatStore } from '@web/stores/chat';
 import {
   StreamRefusedError,
   StreamUnreachableError,
@@ -57,6 +58,17 @@ interface Turn {
   replyId: string;
   /** Raised to stop it. */
   abort: AbortController;
+  /**
+   * What was in the composer when it was sent, so it can be taken out again.
+   *
+   * The box holds what has not been sent, and this turn is the only thing that
+   * knows when that stopped being true of these words. Kept here rather than
+   * in whatever is rendering the conversation, because the reader may collapse
+   * the panel the moment after pressing send -- the turn goes on without it,
+   * and a rule living in the panel would stop running exactly then, leaving
+   * the words in the box to be sent a second time.
+   */
+  said: string;
   /**
    * The server has said it stored the message and the turn is under way.
    *
@@ -129,6 +141,16 @@ interface ConversationRuntimeState {
  * recompute when a request starts and again when it lands.
  */
 const opening = new Map<string, Promise<void>>();
+
+/**
+ * Which request each project's entry above belongs to.
+ *
+ * A request left over from a previous visit finishes long after the visit that
+ * made it, and taking the entry off by name takes off whatever is there by
+ * then -- which is the current visit's, leaving the next caller to ask the
+ * server all over again for something already on its way.
+ */
+const registered = new Map<string, symbol>();
 
 /**
  * Earlier pages already being fetched, keyed by the conversation asked about.
@@ -312,6 +334,9 @@ async function ensureLoaded(projectId: string): Promise<void> {
   if (inFlight) return inFlight;
 
   const visit = currentVisit(projectId);
+  // Named before it is built, so the request can tell its own entry from the
+  // one whoever came after it registered under the same name.
+  const mine = Symbol(projectId);
   const attempt = (async (): Promise<void> => {
     useStore.setState((s) => ({ openStatus: { ...s.openStatus, [projectId]: 'loading' } }));
     try {
@@ -332,10 +357,19 @@ async function ensureLoaded(projectId: string): Promise<void> {
       useStore.setState((s) => ({ openStatus: { ...s.openStatus, [projectId]: 'failed' } }));
       tell({ projectId, conversationId: null, ...readMishap(err) });
     } finally {
-      opening.delete(projectId);
+      // Mine, not whatever this name points at by now. A request left over
+      // from a previous visit finishes long after the visit that made it, and
+      // taking the entry off by name takes off the one the current visit is
+      // waiting on -- so the next caller finds nothing and asks the server all
+      // over again for something already on its way.
+      if (registered.get(projectId) === mine) {
+        registered.delete(projectId);
+        opening.delete(projectId);
+      }
     }
   })();
 
+  registered.set(projectId, mine);
   opening.set(projectId, attempt);
   return attempt;
 }
@@ -467,6 +501,15 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
           ts: new Date().toISOString(),
           streaming: true,
         };
+        // The words are in the conversation now, so the box is no longer the
+        // only place they exist and no longer has to hold them. Only them:
+        // anything typed while waiting was never sent, and taking that away
+        // would take words nobody asked to have taken, with no message, no
+        // undo and nowhere to look for them.
+        const box = useChatStore.getState().composerDraft;
+        if (box.includes(c.turn.said)) {
+          useChatStore.getState().setComposerDraft(box.replace(c.turn.said, ''));
+        }
         return {
           ...c,
           messages: [...settled.map(toStored), reply],
@@ -536,11 +579,18 @@ type NeverRan = StreamRefusedError | StreamUnreachableError;
 
 /**
  * Run one turn against one conversation.
+ * @param projectId - The project it belongs to.
  * @param conversationId - The conversation to write it to.
- * @param text - What the user said.
+ * @param said - What was in the composer, as it stood there. Sent trimmed;
+ *   kept whole so the same words can be taken back out of the box.
  * @returns The refusal that ended it, when one did.
  */
-async function runTurn(conversationId: string, text: string): Promise<NeverRan | undefined> {
+async function runTurn(
+  projectId: string,
+  conversationId: string,
+  said: string,
+): Promise<NeverRan | undefined> {
+  const text = said.trim();
   // `newId` and not `crypto.randomUUID`: same v4 shape, but it is the
   // generator the rest of the app uses, and it works outside a secure context
   // where `crypto.randomUUID` is undefined.
@@ -556,7 +606,7 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
   const abort = new AbortController();
   patchConversation(conversationId, (c) => ({
     ...c,
-    turn: { replyId, abort, started: false },
+    turn: { replyId, abort, started: false, said },
     // Whatever failed before this is no longer what is happening: it has
     // become part of the history, and the failure worth announcing from here
     // on is this turn's, if it has one.
@@ -581,7 +631,6 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
       // already be under way. A watchdog that stopped "whatever is running"
       // would kill it on behalf of a turn that finished perfectly well.
       if (useStore.getState().conversations[conversationId]?.turn?.replyId !== replyId) return;
-      const projectId = useStore.getState().conversations[conversationId]?.projectId ?? '';
       stopTurn(conversationId);
       // Ended the same way pressing stop does, but the reader did not press
       // anything, so unlike stop this one is worth a word.
@@ -593,7 +642,7 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
   let neverRan: NeverRan | undefined;
 
   await chatApi.streamMessage(
-    { projectId: useStore.getState().conversations[conversationId]?.projectId ?? '', conversationId, message: text },
+    { projectId, conversationId, message: text },
     {
       signal: abort.signal,
       onEvent: (event) => {
@@ -612,11 +661,7 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
           err instanceof StreamRefusedError ||
           err instanceof StreamUnreachableError
         ) {
-          tell({
-            projectId: useStore.getState().conversations[conversationId]?.projectId ?? '',
-            conversationId,
-            ...readMishap(err),
-          });
+          tell({ projectId, conversationId, ...readMishap(err) });
         }
         if (err instanceof StreamRefusedError || err instanceof StreamUnreachableError) {
           // The server answered and said no, or the request never left. Either
@@ -649,44 +694,57 @@ const NOT_FOUND = 404;
 
 /**
  * Say one thing in a project's chat and stream the reply into it.
+ *
+ * Opens a conversation first when there is not one. Pressing send is the whole
+ * of what a reader has to do here: a chat that could not be opened when the
+ * project came up leaves nothing for them to fix and nothing to press twice,
+ * and the box they typed into stays exactly as they left it either way.
+ *
+ * Never rejects. Everything that can go wrong here is told to whoever is
+ * looking, once, at the moment it happens -- and nothing else on the screen
+ * moves, because nothing about it has changed.
  * @param projectId - The project whose chat this is.
- * @param text - What the user said.
- * @throws {Error} When there is no conversation to write to, or the attempt
- *   never reached the server. Both mean the words were not sent -- which is
- *   why the composer empties its box on the turn's first event rather than on
- *   the press, so there is nothing to hand back.
+ * @param said - What was in the composer, as it stood there.
  */
-async function send(projectId: string, text: string): Promise<void> {
-  const conversationId = useStore.getState().currentByProject[projectId];
-  if (!conversationId) throw new Error('chat is not open');
+async function send(projectId: string, said: string): Promise<void> {
+  if (said.trim().length === 0) return;
 
-  const ending = await runTurn(conversationId, text);
+  if (useStore.getState().currentByProject[projectId] === undefined) {
+    await ensureLoaded(projectId);
+  }
+  const conversationId = useStore.getState().currentByProject[projectId];
+  // Opening said why it could not, to everyone who was looking. There is
+  // nothing to add and nothing to undo: no turn was started, and the words are
+  // where the reader left them.
+  if (!conversationId) return;
+
+  const ending = await runTurn(projectId, conversationId, said);
   if (!ending) return;
-  if (ending instanceof StreamUnreachableError) throw ending;
 
   // Only one refusal is worth a second try. A conversation can be deleted
   // from another tab while this one still holds its id, and that is not
   // something the user did or can act on; every other refusal -- no
-  // permission, a project that is gone -- says trying again is pointless.
-  if (ending.status !== NOT_FOUND) throw ending;
+  // permission, a project that is gone, the request never leaving at all --
+  // has already been told and says trying again is pointless.
+  if (!(ending instanceof StreamRefusedError) || ending.status !== NOT_FOUND) return;
 
-  // Opening a fresh one can fail too, and when it does the turn is over with
-  // nothing to show for it. Letting that out is what hands the words back;
-  // making up a reply here would put a turn on screen the server has no
-  // record of.
   const visit = currentVisit(projectId);
-  const fresh = await chatApi.openChat(projectId, visit.signal);
-  // Left while this was on its way, so there is no screen to put a
-  // conversation on and nobody waiting for the words to go out again.
-  if (visit.signal.aborted) return;
-  adoptConversation(projectId, fresh.current);
+  try {
+    const fresh = await chatApi.openChat(projectId, visit.signal);
+    // Left while this was on its way, so there is no screen to put a
+    // conversation on and nobody waiting for the words to go out again.
+    if (visit.signal.aborted) return;
+    adoptConversation(projectId, fresh.current);
 
-  // A plain turn, not a resumed one: the first attempt never put anything on
-  // screen, and adopting the new conversation replaced the list besides.
-  // Nothing of the attempt is left to reuse, so the words go on again with the
-  // turn that is re-sending them.
-  const secondEnding = await runTurn(fresh.current.conversation.id, text);
-  if (secondEnding) throw secondEnding;
+    // A plain turn, not a resumed one: the first attempt never put anything on
+    // screen, and adopting the new conversation replaced the list besides.
+    // Nothing of the attempt is left to reuse, so the words go on again with
+    // the turn that is re-sending them.
+    await runTurn(projectId, fresh.current.conversation.id, said);
+  } catch (err) {
+    if (visit.signal.aborted) return;
+    tell({ projectId, conversationId: null, ...readMishap(err) });
+  }
 }
 
 /**
@@ -709,9 +767,6 @@ async function loadEarlier(conversationId: string): Promise<void> {
 
   const visit = currentVisit(before.projectId);
   const attempt = (async (): Promise<void> => {
-    // Pressing again is what makes the last failure old news, and pressing
-    // again is what just happened.
-    patchConversation(conversationId, (c) => ({ ...c, earlierFailed: false }));
     try {
       const earlier = await chatApi.messagesBefore(conversationId, beforeTurn, visit.signal);
       // `beforeTurn` was read from the list this visit is looking at. If the
@@ -720,6 +775,15 @@ async function loadEarlier(conversationId: string): Promise<void> {
       // with nothing on screen saying so -- and move the cursor past the gap,
       // so no press could ever ask for it.
       if (visit.signal.aborted) return;
+      // And the list has to still reach back to where this page was asked
+      // from. A turn beginning replaces the whole list with the server's own
+      // page, which starts somewhere else entirely; putting this one at its
+      // head leaves everything between them missing with nothing on screen
+      // saying so, and moves the cursor past the gap so no press could ever
+      // ask for it.
+      if (useStore.getState().conversations[conversationId]?.oldestLoadedTurn !== beforeTurn) {
+        return;
+      }
       patchConversation(conversationId, (c) => ({
         ...c,
         messages: [...earlier.messages.map(toStored), ...c.messages],
@@ -782,6 +846,7 @@ function leaveProject(projectId: string): void {
     return { conversations: kept, currentByProject, openStatus };
   });
   opening.delete(projectId);
+  registered.delete(projectId);
 }
 
 /**
@@ -795,6 +860,7 @@ function leaveProject(projectId: string): void {
  */
 export function _resetForTests(): void {
   opening.clear();
+  registered.clear();
   loadingEarlier.clear();
   visits.clear();
   useStore.setState({ conversations: {}, currentByProject: {}, openStatus: {} });

@@ -36,13 +36,16 @@ const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bm
 /**
  * Main Agent for streaming chat interactions.
  *
- * Reads userId, conversationId, projectId, memoryContext, and compressedHistory
- * from the AsyncLocalStorage request context (set by route handler).
+ * Reads who is speaking and where -- userId, conversationId, projectId -- from
+ * the AsyncLocalStorage request context (set by the route handler). What the
+ * turn runs against is not in there: the memories and the compressed history
+ * are read here, after the turn has said what it holds, because they are this
+ * turn's own working rather than anything about the request.
  */
 export class MainAgent {
   /**
    * The current request-scoped store (userId, conversationId, projectId,
-   * memoryContext, compressedHistory, billing) from AsyncLocalStorage.
+   * billing) from AsyncLocalStorage.
    * @returns The active request context for this agent turn.
    */
   private get ctx(): ReturnType<typeof getContext> {
