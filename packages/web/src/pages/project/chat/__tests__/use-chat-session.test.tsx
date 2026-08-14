@@ -43,11 +43,14 @@ let handlers: {
  * Answer the open call with one conversation and the given messages.
  * @param messages - What has been said in it so far
  */
-function openChatAnswers(messages: Array<{ id: string; role: string; text: string }>): void {
+function openChatAnswers(
+  messages: Array<{ id: string; role: string; text: string }>,
+  conversationId = 'c-1',
+): void {
   vi.mocked(chatApi.openChat).mockResolvedValue({
-    conversations: [{ id: 'c-1' }],
+    conversations: [{ id: conversationId }],
     current: {
-      conversation: { id: 'c-1' },
+      conversation: { id: conversationId },
       messages: messages.map((m) => ({
         id: m.id,
         role: m.role,
@@ -356,6 +359,16 @@ describe('when the conversation it was writing to is gone', () => {
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
       h.onError?.(new StreamRefusedError(404, 'Resource not found'));
     });
+    // A 404 says the conversation asked about is gone or not this project's,
+    // so opening again cannot hand back the same one: `openChat` returns the
+    // project's own most recent, or makes a new one.
+    openChatAnswers(
+      [
+        { id: 'm1', role: 'user', text: 'an older question' },
+        { id: 'm2', role: 'assistant', text: 'an older answer' },
+      ],
+      'c-2',
+    );
 
     await act(async () => {
       await result.current.send('find me references');
@@ -384,6 +397,7 @@ describe('when the conversation it was writing to is gone', () => {
     vi.mocked(chatApi.streamMessage).mockImplementation(async (_input, h) => {
       h.onError?.(new StreamRefusedError(404, 'Resource not found'));
     });
+    openChatAnswers([], 'c-2');
 
     await act(async () => {
       await result.current.send('hi');

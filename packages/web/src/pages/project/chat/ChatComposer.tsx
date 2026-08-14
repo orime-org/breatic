@@ -257,7 +257,9 @@ export type { ReferenceChip };
  *
  * A reply arriving token by token re-renders the panel that owns this, and
  * without this that re-render reaches here as well -- sixty times a second,
- * for a component whose props did not move. Every callback it is handed is
- * stable, which is what lets the comparison actually stop anything.
+ * for a component whose props did not move. Every callback it is handed keeps
+ * the same identity across those renders, which is what lets the comparison
+ * actually stop anything; `draft` is the one prop that does change, and it
+ * changes only when the reader types.
  */
 export const ChatComposer = React.memo(ChatComposerInner);

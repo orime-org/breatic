@@ -99,10 +99,15 @@ export function ChatPanel({
    * memoisation away.
    */
   const submit = React.useCallback((): void => {
-    if (draft.trim().length === 0) return;
+    // Read at the press rather than closed over, which is what lets this
+    // callback be the same one across renders. Handed to a memoised composer
+    // that is re-rendered for every keystroke otherwise -- and the claim that
+    // its props are stable was, until this, not true of this one.
+    const typed = useChatStore.getState().composerDraft;
+    if (typed.trim().length === 0) return;
     setSentCount((n) => n + 1);
-    void send(draft);
-  }, [draft, send]);
+    void send(typed);
+  }, [send]);
 
   /**
    * Pick a conversation out of the history sheet and close it.
@@ -177,7 +182,10 @@ export function ChatPanel({
       {/* One line, on the top edge of the composer, for everything this panel
           has to say -- and it says each thing once. Nothing here is a state
           the chat is in, so nothing here stays. */}
-      <ChatNotice message={notice} />
+      {/* Keyed by which telling this is, so the same sentence twice is torn
+          down and put up again -- otherwise React leaves the line alone and
+          the second failure is invisible and unspoken. */}
+      <ChatNotice key={mishap?.at ?? 'none'} message={notice} />
       <ChatComposer
         draft={draft}
         turnPhase={turnPhase}

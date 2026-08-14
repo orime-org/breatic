@@ -20,6 +20,7 @@ vi.mock('@web/data/api/chat', () => ({
 
 import { chatApi } from '@web/data/api/chat';
 import { StreamDroppedError, StreamRefusedError, StreamUnreachableError } from '@web/data/stream/sse';
+import { ApiException } from '@web/data/api/types';
 import { useChatStore } from '@web/stores/chat';
 import {
   conversationRuntime,
@@ -156,7 +157,7 @@ describe('saying something when the chat has not opened', () => {
 
     // One line, and nothing else happens: no turn, nothing written anywhere,
     // and the words are still in the box because nothing took them out of it.
-    expect(told).toEqual([{ projectId: 'p-1', conversationId: null, kind: 'network' }]);
+    expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', conversationId: null, kind: 'network' })]);
     expect(chatApi.streamMessage).not.toHaveBeenCalled();
   });
 });
@@ -221,6 +222,87 @@ describe('a conversation the server no longer has', () => {
     // adopt.
     void conversationRuntime.send('p-1', 'hello');
     expect(chatApi.streamMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('what the message column is told while a chat is re-opened', () => {
+  it('is not told the chat is loading all over again', async () => {
+    // Opening failed when the reader arrived, so pressing send is what opens
+    // one -- and that is a whole request during which the column must not
+    // change: what it holds is what it held.
+    vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
+    await conversationRuntime.ensureLoaded('p-1');
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('failed');
+
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(new Promise(() => {}));
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(chatApi.openChat).toHaveBeenCalledTimes(2));
+
+    // `loading` is what the panel renders nothing for. Going back to it here
+    // would take the column away -- on a re-open it is the conversation on
+    // screen that disappears, and a press is what caused it.
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('failed');
+  });
+
+  it('keeps a chat that opened once from being called unopenable later', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('ready');
+
+    // The conversation is gone, so the turn is refused and a replacement is
+    // opened -- and that open fails too, with the reader still looking at the
+    // messages the first one brought.
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(new StreamRefusedError(404, 'Resource not found'));
+    });
+    vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
+    await conversationRuntime.send('p-1', 'hello');
+
+    // Saying it could not be opened would take those messages off the screen
+    // over a request the reader never made.
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('ready');
+    expect(conversation()?.messages.map((m) => m.content)).toEqual(['earlier']);
+  });
+});
+
+describe('a turn that fails with its reply already on screen', () => {
+  it('lets the bubble say it, rather than saying it twice', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    // The turn started, so the reply is on screen and can carry the mark.
+    turnStarts(['earlier', 'hello']);
+    handlers.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'upstream' } });
+    stop();
+
+    // The bubble renders the same sentence the line would. Two of them is one
+    // failure announced twice, and two alerts for a screen reader.
+    expect(conversation()?.messages.at(-1)?.failed).toBe(true);
+    expect(told).toEqual([]);
+  });
+});
+
+describe('an answer that did not come from our server', () => {
+  it('is not passed off as a sentence written for the reader', async () => {
+    // A gateway timing out answers with its own body, so there is no message
+    // of ours in it -- what the library leaves behind is English written for
+    // a developer, and it has never been through `t()`.
+    vi.mocked(chatApi.openChat).mockRejectedValueOnce(
+      new ApiException({ status: 502, message: 'Request failed with status code 502' }),
+    );
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    await conversationRuntime.ensureLoaded('p-1');
+    stop();
+
+    expect(told).toEqual([
+      expect.objectContaining({ projectId: 'p-1', conversationId: null, kind: 'network' }),
+    ]);
   });
 });
 
@@ -329,7 +411,7 @@ describe('a turn the server gives up on', () => {
     // There is no bubble to mark -- the reply has not been made yet -- so a
     // mark on a message is not a way of saying this. Without a word here the
     // reader watches the waiting indicator stop and nothing else happen.
-    expect(told).toEqual([{ projectId: 'p-1', conversationId: 'c-1', kind: 'turn' }]);
+    expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', conversationId: 'c-1', kind: 'turn' })]);
     expect(conversation()?.turn).toBeNull();
   });
 });
@@ -938,7 +1020,7 @@ describe('telling the reader that something went wrong', () => {
     // The reply keeps the same mark pressing stop leaves -- the server cannot
     // tell those apart either. What the reader gets is one line, once.
     expect(conversation()?.messages.at(-1)?.interrupted).toBe(true);
-    expect(told).toEqual([{ projectId: 'p-1', conversationId: 'c-1', kind: 'network' }]);
+    expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', conversationId: 'c-1', kind: 'network' })]);
   });
 
   it('passes on what the server said, when the server answered', async () => {
@@ -956,7 +1038,12 @@ describe('telling the reader that something went wrong', () => {
     // network error -- and the server wrote the only sentence anyone wrote
     // about it, in the reader's own language.
     expect(told).toEqual([
-      { projectId: 'p-1', conversationId: 'c-1', kind: 'server', message: 'You are out of credits.' },
+      expect.objectContaining({
+        projectId: 'p-1',
+        conversationId: 'c-1',
+        kind: 'server',
+        message: 'You are out of credits.',
+      }),
     ]);
   });
 
@@ -971,7 +1058,7 @@ describe('telling the reader that something went wrong', () => {
       await vi.waitFor(() => expect(conversation()?.turn).toBeNull());
     });
 
-    expect(told).toEqual([{ projectId: 'p-1', conversationId: 'c-1', kind: 'network' }]);
+    expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', conversationId: 'c-1', kind: 'network' })]);
   });
 
   it('says nothing at all when the user was the one who stopped it', async () => {
@@ -1033,7 +1120,7 @@ describe('telling the reader that something went wrong', () => {
 
     const told = await whatIsTold(() => conversationRuntime.loadEarlier('c-1'));
 
-    expect(told).toEqual([{ projectId: 'p-1', conversationId: 'c-1', kind: 'network' }]);
+    expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', conversationId: 'c-1', kind: 'network' })]);
     // Still offering, because the reader may simply press it again.
     expect(conversation()?.hasMore).toBe(true);
   });

@@ -273,6 +273,17 @@ const visits = new Map<string, AbortController>();
  * answer came back and there is nothing to quote.
  */
 export type ChatMishap = {
+  /**
+   * Which telling this is.
+   *
+   * Two failures in a row say the same words, and a line that says the same
+   * words is a line React leaves alone -- the DOM does not move and a screen
+   * reader announces nothing. So the reader presses send a second time, it
+   * fails a second time, and nothing whatever happens on screen. This is what
+   * makes each telling its own: the panel keys the line by it, so the same
+   * sentence is torn down and put up again, which is both visible and spoken.
+   */
+  at: number;
   /** The project it happened in. */
   projectId: string;
   /** The conversation, or null when there is not one yet to speak of. */
@@ -288,6 +299,9 @@ export type ChatMishap = {
 );
 
 const watchers = new Set<(mishap: ChatMishap) => void>();
+
+/** How many have been told, which is what makes each one its own. */
+let told = 0;
 
 /**
  * Be told when something goes wrong, for as long as you are looking.
@@ -305,8 +319,10 @@ export function watchChatMishaps(watch: (mishap: ChatMishap) => void): () => voi
  * Tell whoever is watching. Nobody watching means it is not told.
  * @param mishap - What went wrong.
  */
-function tell(mishap: ChatMishap): void {
-  for (const watch of watchers) watch(mishap);
+function tell(mishap: Omit<ChatMishap, 'at'>): void {
+  told += 1;
+  const withIdentity = { ...mishap, at: told } as ChatMishap;
+  for (const watch of watchers) watch(withIdentity);
 }
 
 /**
@@ -317,9 +333,12 @@ function tell(mishap: ChatMishap): void {
  */
 function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
   if (err instanceof StreamRefusedError) return { kind: 'server', message: err.message };
-  // An ApiException carries the status the server answered with, and zero
-  // when there was no answer to read one from.
-  if (err instanceof ApiException && err.status !== 0) {
+  // Only a sentence our own server wrote for this reader. An answer coming
+  // back is not the same thing: a gateway that timed out also answers, and
+  // what its body yields is the library's English -- written for a developer,
+  // naming transport details, and never passed through `t()`. The SSE
+  // transport draws the same line one layer over.
+  if (err instanceof ApiException && err.status !== 0 && err.fromServer === true) {
     return { kind: 'server', message: err.message };
   }
   return { kind: 'network' };
@@ -426,7 +445,17 @@ async function ensureLoaded(projectId: string): Promise<void> {
  */
 async function openAndAdopt(projectId: string): Promise<void> {
   const visit = currentVisit(projectId);
-  useStore.setState((s) => ({ openStatus: { ...s.openStatus, [projectId]: 'loading' } }));
+  // Only from the start. This says what the chat has come to be, not whether
+  // a request is out -- that is what `opening` and `sendingByProject` are for.
+  // Going back to `loading` for a re-open takes the whole message column off
+  // the screen (the list renders nothing while this says loading), and a
+  // re-open is something a press causes: the reader would press send and watch
+  // their conversation disappear.
+  useStore.setState((s) =>
+    s.openStatus[projectId] === undefined || s.openStatus[projectId] === 'idle'
+      ? { openStatus: { ...s.openStatus, [projectId]: 'loading' } }
+      : s,
+  );
   try {
     const opened = await chatApi.openChat(projectId, visit.signal);
     if (visit.signal.aborted) return;
@@ -437,7 +466,14 @@ async function openAndAdopt(projectId: string): Promise<void> {
     // reader is looking at now with the news that a request they walked away
     // from did not work.
     if (visit.signal.aborted) return;
-    useStore.setState((s) => ({ openStatus: { ...s.openStatus, [projectId]: 'failed' } }));
+    // Not over a chat that has opened before. There is a conversation on
+    // screen and it is still readable; saying it could not be opened would
+    // take it away over a request the reader did not make.
+    useStore.setState((s) =>
+      s.openStatus[projectId] === 'ready'
+        ? s
+        : { openStatus: { ...s.openStatus, [projectId]: 'failed' } },
+    );
     tell({ projectId, conversationId: null, ...readMishap(err) });
   }
 }
@@ -514,9 +550,13 @@ function finishTurn(conversationId: string, replyId: string): void {
  * on what happened to it, and this end cannot tell which: a path that broke
  * silently leaves the server finishing the turn and storing the whole reply
  * unmarked, while a server that went away stored nothing at all -- not even
- * the part that had already arrived here. So the sentence the panel shows
- * claims nothing about the other end. It says the reply is not all here and
- * offers to read it again, which is true in every one of those cases.
+ * the part that had already arrived here.
+ *
+ * The mark is put on anyway, and what it renders is one word: "Stopped". That
+ * is the honest cost of this, written down rather than argued away -- on the
+ * silent-break path the server may hold a finished reply with no such mark,
+ * so a reload can make the word disappear. The alternative is worse: a reply
+ * that stops mid-sentence with nothing at all said about it.
  *
  * A turn the server has not answered yet has no reply on screen to mark, and
  * marking it is skipped rather than special-cased: there is no message with
@@ -530,6 +570,27 @@ function stopTurn(conversationId: string): void {
   patchMessage(conversationId, turn.replyId, (m) => ({ ...m, interrupted: true as const }));
   turn.abort.abort();
   finishTurn(conversationId, turn.replyId);
+}
+
+/**
+ * Is this event still about the turn that is running.
+ *
+ * Everything a turn ends with -- the server's own ending, an error, the reader
+ * pressing stop -- can arrive after the turn it belongs to is over: the server
+ * finishes a failed turn by sending `error` and only then writing it down, and
+ * the next turn can already be under way. Acting on one then would mark, end
+ * or take the screen over on behalf of something nobody is waiting for.
+ * @param conversationId - The conversation the event arrived for.
+ * @param replyId - The reply the event belongs to.
+ * @returns The conversation when it is still running that turn.
+ */
+function stillRunning(
+  conversationId: string,
+  replyId: string,
+): (ConversationRuntime & { turn: Turn }) | undefined {
+  const conversation = useStore.getState().conversations[conversationId];
+  if (!conversation || conversation.turn?.replyId !== replyId) return undefined;
+  return { ...conversation, turn: conversation.turn };
 }
 
 /**
@@ -551,17 +612,13 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
     // thing here the server does not know better than we do.
     case SSE_EVENT_NAMES.CHAT_TURN_STARTED: {
       const settled = (event.data.messages ?? []) as MessageData[];
-      // Read, decide, then write -- the same shape as the ERROR branch below.
-      // A conversation is rebuilt by a pure function of what it held, and this
-      // has to reach into another store; doing it inside that function would
-      // be changing the world from inside the description of a change.
-      const running = useStore.getState().conversations[conversationId];
-      // Belonging to a turn that is already over -- stopped, or given up on by
-      // the watchdog -- this describes a conversation nobody is waiting for an
-      // answer about, and taking the screen over on its behalf would hand back
-      // a reply slot nothing will ever finish writing.
-      const started = running?.turn;
-      if (started?.replyId !== replyId) break;
+      // Read, decide, then write. A conversation is rebuilt by a pure function
+      // of what it held, and this has to reach into another store; doing it
+      // inside that function would be changing the world from inside the
+      // description of a change.
+      const running = stillRunning(conversationId, replyId);
+      if (!running) break;
+      const started = running.turn;
 
       // The words are in the conversation now, so the box no longer has to
       // hold them. Only when it still holds exactly them: once the reader has
@@ -624,10 +681,8 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
       break;
 
     case SSE_EVENT_NAMES.ERROR: {
-      // Belonging to a turn that is already over, this says nothing about the
-      // one running now -- the same reason the settle-up checks.
-      const failing = useStore.getState().conversations[conversationId];
-      if (failing?.turn?.replyId !== replyId) break;
+      const failing = stillRunning(conversationId, replyId);
+      if (!failing) break;
       // What the server says here is a hardcoded English sentence; the panel
       // shows its own wording, so only the fact matters.
       patchMessage(conversationId, replyId, (m) => ({ ...m, failed: true }));
@@ -636,12 +691,15 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
         failures: c.failures + 1,
         failedReplyId: replyId,
       }));
-      // Said out loud as well, because the mark above has somewhere to land
-      // only once the reply exists -- and a turn can fail before that, while
-      // the server is still storing the message and reading the conversation
-      // back. Then there is no bubble to mark and the marks land on nothing:
-      // the reader would see the waiting stop and nothing else happen.
-      tell({ projectId: failing.projectId, conversationId, kind: 'turn' });
+      // Only when there is no bubble to say it. A turn can fail before the
+      // reply exists -- while the server is still storing the message and
+      // reading the conversation back -- and then the marks above land on
+      // nothing and the reader sees the waiting stop and nothing else happen.
+      // Once the bubble is there it says the same sentence itself, and saying
+      // it twice is two alerts for one failure.
+      if (!failing.messages.some((m) => m.id === replyId)) {
+        tell({ projectId: failing.projectId, conversationId, kind: 'turn' });
+      }
       finishTurn(conversationId, replyId);
       break;
     }
@@ -706,9 +764,14 @@ async function runTurn(
   // what listens for it. A connection that dies without closing produces no
   // error and no close -- the socket simply never says anything again -- so
   // without this the turn would wait for a reply that is never coming, with
-  // the composer disabled the whole time. Missing beats end the turn the same
+  // no way to send anything for as long as it lasted. Missing beats end the turn the same
   // way pressing stop does, because from here the two are the same fact:
   // nothing more is coming.
+  // Armed before the request goes out, so the wait it measures starts at the
+  // press: a connection that never opens is exactly the case nothing else
+  // reports, and the budget has to cover it. The cost of that choice is that
+  // setting the connection up spends the same budget, so a network slow enough
+  // to take fifteen seconds getting a socket open ends the turn.
   let watchdog: ReturnType<typeof setTimeout> | undefined;
   /** Start the wait for the next beat over, whatever just arrived. */
   const expectAnotherBeat = (): void => {
@@ -857,10 +920,16 @@ async function sendOnce(projectId: string, said: string): Promise<void> {
   // Not `ensureLoaded`: by its reckoning this project is open already. What
   // is needed is a new one, because the one on screen is the one the server
   // just said it does not have.
-  await whileOpening(projectId, () => openAndAdopt(projectId));
+  await whileOpening(projectId, () =>
+    joinOrStart(opening, projectId, () => openAndAdopt(projectId)),
+  );
   const fresh = useStore.getState().currentByProject[projectId];
   // Opening said why it could not, and the words are still in the box.
-  if (!fresh) return;
+  // Compared against the one that was refused, not just checked for being
+  // there: a failed open leaves the old id in place, and running the turn
+  // against it again would send the same words to the conversation the server
+  // has just said it does not have -- refused again, re-opened again.
+  if (!fresh || fresh === conversationId) return;
 
   // A plain turn, not a resumed one: the first attempt never put anything on
   // screen, and adopting the new conversation replaced the list besides.

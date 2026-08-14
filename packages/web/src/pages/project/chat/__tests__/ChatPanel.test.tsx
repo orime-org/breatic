@@ -229,6 +229,27 @@ describe('ChatPanel', () => {
     );
   });
 
+  it('says it again when it fails again, in the same words', async () => {
+    const user = userEvent.setup();
+    streamFailsWith(new StreamUnreachableError(new Error('offline')));
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+
+    useChatStore.getState().setComposerDraft('is anyone there');
+    await user.click(screen.getByTestId('chat-composer-send'));
+    const firstLine = await screen.findByTestId('chat-notice');
+
+    // Straight away, while the first line is still up -- which is when a
+    // reader presses again, not four seconds later.
+    await user.click(screen.getByTestId('chat-composer-send'));
+
+    // Same words, so a line left in place is a line React does not touch: the
+    // DOM would not move and a screen reader would announce nothing. The
+    // second failure has to be its own line.
+    await waitFor(() => expect(screen.getByTestId('chat-notice')).not.toBe(firstLine));
+    expect(chatApi.streamMessage).toHaveBeenCalledTimes(2);
+  });
+
   it('says what the server said when it refused', async () => {
     const user = userEvent.setup();
     streamFailsWith(new StreamRefusedError(403, 'You do not have access to this project'));
