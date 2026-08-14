@@ -209,7 +209,7 @@ interface SlotToolProps {
  * tree), and a running pick shows as a foreground ring (the white-fill active
  * style would hide behind the image).
  *
- * A slot hovers into the shared `HoverPreview` (#1814) the reference rail, the
+ * A slot hovers into the shared `HoverPreview` (#1622) the reference rail, the
  * prompt chips, the history rows and the activity feed already use — ONE hover
  * surface, whatever the slot holds. Filled, it plays the audio or video and
  * shows the image large. Empty, the same card carries `tip` as its hint, which

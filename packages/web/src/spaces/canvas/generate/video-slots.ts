@@ -76,7 +76,7 @@ export interface VideoSlotSpec {
   clearTestId: string;
   /** Translation key for the slot's label. */
   labelKey: string;
-  /** Translation key for its tooltip. */
+  /** Translation key for the one line saying what to go pick — the slot's hover card carries it as the hint while empty (#1946). */
   tipKey: string;
   /** Translation key for the clear badge's accessible name. */
   clearLabelKey: string;

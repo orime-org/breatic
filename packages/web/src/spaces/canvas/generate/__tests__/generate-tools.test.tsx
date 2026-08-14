@@ -192,7 +192,7 @@ describe('SlotTool — a filled slot covers its button with what it holds', () =
   });
 });
 
-describe('SlotTool — the filled slot joins the shared hover preview (#1814)', () => {
+describe('SlotTool — the filled slot joins the shared hover preview (#1622)', () => {
   it('previews an audio pick as playable audio, following the canvas', () => {
     slot({ pick: AUDIO_PICK });
     const preview = screen.getByTestId('slot-preview');
