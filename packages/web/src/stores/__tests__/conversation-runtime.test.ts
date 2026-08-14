@@ -307,6 +307,93 @@ describe('an answer that arrives after the reader has left', () => {
   });
 });
 
+describe('a turn that begins by settling up', () => {
+  it('takes the server\'s conversation whole, and keeps the reply being written', async () => {
+    openChatAnswers({ hasMore: false });
+    await conversationRuntime.ensureLoaded('p-1');
+    void conversationRuntime.send('p-1', 'a new question');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'the rep' } });
+
+    // What the browser holds right now: one earlier message from opening, the
+    // local copy of what was just said, and a reply half written.
+    expect(conversation()?.messages.map((m) => m.content)).toEqual([
+      'earlier',
+      'a new question',
+      'the rep',
+    ]);
+
+    handlers.onEvent({
+      event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
+      data: {
+        messages: [
+          {
+            id: 'srv-old',
+            role: 'user',
+            parts: [{ type: 'text', text: 'earlier' }],
+            content: 'earlier',
+            ts: '2026-08-13T00:00:00Z',
+            turnIndex: 7,
+          },
+          {
+            id: 'srv-new',
+            role: 'user',
+            parts: [{ type: 'text', text: 'a new question' }],
+            content: 'a new question',
+            ts: '2026-08-14T00:00:00Z',
+            turnIndex: 8,
+          },
+        ],
+        hasMore: true,
+      },
+    });
+
+    // Everything before the reply is now the server's own record -- including
+    // the message just sent, which arrives with a real id in place of the
+    // local one the browser made up.
+    expect(conversation()?.messages.map((m) => m.id)).toEqual([
+      'srv-old',
+      'srv-new',
+      conversation()?.turn?.replyId,
+    ]);
+    // And the reply keeps growing, because it is the one thing the server
+    // could not have sent: it has not been written down yet.
+    handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'ly' } });
+    expect(conversation()?.messages.at(-1)?.content).toBe('the reply');
+    expect(conversation()?.turn).not.toBeNull();
+  });
+
+  it('resets how far back the list reaches, so the cursor matches the list', async () => {
+    openChatAnswers({ hasMore: false });
+    await conversationRuntime.ensureLoaded('p-1');
+    void conversationRuntime.send('p-1', 'a new question');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+
+    handlers.onEvent({
+      event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
+      data: {
+        messages: [
+          {
+            id: 'srv-new',
+            role: 'user',
+            parts: [{ type: 'text', text: 'a new question' }],
+            content: 'a new question',
+            ts: '2026-08-14T00:00:00Z',
+            turnIndex: 40,
+          },
+        ],
+        hasMore: true,
+      },
+    });
+
+    // The list was replaced, so what the reader had pulled up from further
+    // back is gone -- and the cursor has to say so, or the next press would
+    // ask from a turn that is no longer on screen and leave a hole.
+    expect(conversation()?.hasMore).toBe(true);
+    expect(conversation()?.oldestLoadedTurn).toBe(40);
+  });
+});
+
 describe('a request left over from a previous visit to the project', () => {
   /**
    * Answer the open call with one conversation holding the given messages.

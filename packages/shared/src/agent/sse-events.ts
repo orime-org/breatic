@@ -58,6 +58,21 @@
  */
 export const SSE_EVENT_NAMES = {
   // Chat / Main Agent
+
+  // The turn has begun, and here is the conversation as the server has it.
+  //
+  // Sent once the user's own message is stored and before the model is asked
+  // anything, which makes it two things at once. It is the answer to "did
+  // this get through", arriving long before the first word of a reply and
+  // without the client having to assume anything. And it is the conversation
+  // settling up for whatever came before: a turn cut off by a dropped socket
+  // leaves the browser holding half a reply the server never recorded, or a
+  // reply the server did record in full while the browser stopped receiving
+  // it, and neither side can fix that from where it stands. So every turn
+  // starts by saying what is actually stored, and the browser takes it whole.
+  // The same page `POST /chat/open` hands out, for the same reason: opening a
+  // conversation and starting a turn in one are the same question about it.
+  CHAT_TURN_STARTED: "chat_turn_started",
   CHAT_CHUNK: "chat_chunk",
   CHAT_DONE: "chat_done",
 

@@ -121,6 +121,24 @@ export class MainAgent {
       parts: [{ type: "text", text: said }],
     });
 
+    // Now say what the conversation holds, before asking the model anything.
+    //
+    // Two things at once, and both are about the client not having to assume
+    // anything. It is the answer to "did that get through" — sent the moment
+    // it is true, rather than left to be inferred from a reply that may be
+    // seconds away. And it settles up for whatever came before: a stream is
+    // one-directional and connections go without warning, so the browser can
+    // be holding half a reply nobody recorded, or missing the end of one that
+    // was recorded in full, and it cannot tell which from where it stands. So
+    // every turn opens by handing over the stored truth, and the browser
+    // takes it whole.
+    //
+    // Read after the write above, never before: the page has to contain the
+    // message this very turn is about, or a browser that replaces what it
+    // holds would take the reader's own words back off the screen.
+    const settled = await messageRepo.getMessages(conversationId);
+    yield this.sse(SSEEventType.CHAT_TURN_STARTED, { ...settled });
+
     // One factory decides model, instructions and tools — see
     // domain/agent/agent-config.ts for why nothing else may assemble them.
     const agentConfig = buildAgentConfig({

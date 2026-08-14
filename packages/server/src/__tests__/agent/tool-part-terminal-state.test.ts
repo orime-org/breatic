@@ -49,7 +49,16 @@ vi.mock("@breatic/domain", async () => {
   };
 });
 
-vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage }));
+/**
+ * What the conversation holds, for the settle-up every turn opens with.
+ *
+ * Empty because these cases are about what happens after that: the point of
+ * the event is that the browser takes the server's version, and a version
+ * with nothing in it is the version that gets out of the way.
+ */
+const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
+
+vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage, getMessages }));
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 

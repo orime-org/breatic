@@ -414,6 +414,32 @@ function stopTurn(conversationId: string): void {
  */
 function applyEvent(conversationId: string, replyId: string, event: SSEEventEnvelope): void {
   switch (event.event) {
+    // The server saying what it holds, at the one moment it can be sure the
+    // reader is waiting: they pressed send, so a list changing under them
+    // reads as their message arriving rather than as the screen jumping.
+    //
+    // Taken whole, because that is the point of it -- a browser that kept
+    // any of its own version would be keeping exactly the part that might be
+    // wrong. Everything except the reply being written: that one has not been
+    // stored yet, so the server could not have sent it, and it is the only
+    // thing here the server does not know better than we do.
+    case SSE_EVENT_NAMES.CHAT_TURN_STARTED: {
+      const settled = (event.data.messages ?? []) as MessageData[];
+      patchConversation(conversationId, (c) => {
+        const reply = c.messages.find((m) => m.id === replyId);
+        return {
+          ...c,
+          messages: reply ? [...settled.map(toStored), reply] : settled.map(toStored),
+          hasMore: Boolean(event.data.hasMore),
+          // The list was replaced, so anything the reader had pulled up from
+          // further back went with it. Saying otherwise would send the next
+          // press asking from a turn no longer on screen, leaving a gap.
+          oldestLoadedTurn: oldestTurnOf(settled) ?? c.oldestLoadedTurn,
+        };
+      });
+      break;
+    }
+
     case SSE_EVENT_NAMES.CHAT_CHUNK:
       patchMessage(conversationId, replyId, (m) => ({
         ...m,
