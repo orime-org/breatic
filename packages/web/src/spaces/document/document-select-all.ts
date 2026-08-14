@@ -35,7 +35,7 @@
 
 import { Extension } from '@tiptap/core';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
-import { AllSelection, Selection, TextSelection } from '@tiptap/pm/state';
+import { Selection, TextSelection } from '@tiptap/pm/state';
 import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 
 import { BodySelection } from '@web/spaces/document/document-body-selection';
@@ -124,6 +124,15 @@ function currentBlockRange(state: EditorState): Range {
 /**
  * Which side of the document the caret is on.
  *
+ * One question answers every selection shape: is `$from` inside a block that
+ * holds text? A whole-body selection and an `AllSelection` both start at a
+ * position between top-level blocks, whose parent is the document node, and a
+ * document is not a textblock — so both come back "neither" and get answered
+ * with the whole body, which for them is also the tier that holds. Testing for
+ * those two types by name would say the same thing twice, and it was what made
+ * the order of the checks below load-bearing: `$from.start()` at depth 0 is
+ * position 0, inside the title.
+ *
  * Asked of `$from`, not of the selection's shape. A selection that is not
  * collapsed still has a `$from`, and it is what the rule means by "where the
  * caret is": a double-clicked word in the title is a press made in the title,
@@ -132,8 +141,6 @@ function currentBlockRange(state: EditorState): Range {
  * @returns Which side the next press acts on.
  */
 function sideOfCaret(state: EditorState): 'title' | 'body' | 'neither' {
-  if (state.selection instanceof AllSelection) return 'neither';
-  if (state.selection instanceof BodySelection) return 'body';
   const { $from } = state.selection;
   if ($from.parent.type.name === DOCUMENT_TITLE_NODE) return 'title';
   // The question is whether the position is INSIDE a block that holds text,
@@ -163,10 +170,6 @@ function nextSelection(state: EditorState): Selection | null {
   const block = selectionOverRange(state, currentBlockRange(state));
   const body = bodySelection(state);
   const current: Range = { from: state.selection.from, to: state.selection.to };
-  // The top tier holds: once the whole body is selected there is nowhere
-  // further to go, and answering with the caret's block would SHRINK the
-  // selection — which is what a third press did before this branch existed.
-  if (body && sameRange(current, { from: body.from, to: body.to })) return body;
   // A selection that already spans more than one block is past the first tier,
   // so the next tier is the whole body. Answering with the block the caret
   // started in would shrink it, and this key means widen. Measured in the
