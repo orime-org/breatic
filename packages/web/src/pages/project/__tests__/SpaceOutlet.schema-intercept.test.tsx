@@ -54,6 +54,19 @@ describe('服务器那份跟我不一样时', () => {
     expect(screen.getByTestId('document-schema-outdated')).toBeInTheDocument();
   });
 
+  it('面板是整块取代编辑区 —— 工具栏和正文都不在（验收 19 的第一件）', () => {
+    // 「面板出现」跟「编辑区没了」是两件事：面板出现在编辑区上方也满足前者，
+    // 而那样工具栏还在、按钮还按得动。这一条钉的是后者。
+    publishDifferentSchema();
+
+    render(<SpaceOutlet projectId={PROJECT} spaceId='s1' type='document' />);
+
+    expect(screen.getByTestId('document-schema-outdated')).toBeInTheDocument();
+    expect(screen.queryByTestId('document-toolbar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('document-editor-content')).not.toBeInTheDocument();
+    // 外壳（`document-space`）留着是对的：面板就装在它里面，四个分支共用它。
+  });
+
   it('同一个 project 里的第二个 document space 一样被拦', () => {
     publishDifferentSchema();
 

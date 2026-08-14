@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * `DOCUMENT_SCHEMA` 那份清单是手写的，因为 collab 那边建不出 ProseMirror
- * schema —— 它没有编辑器。这条测试把真实的 schema 建出来跟它比。
+ * 清单是手写在 `config/document-schema.yaml` 里的，因为 collab 那边建不出
+ * ProseMirror schema —— 它没有编辑器，只能读那个文件。这条测试把真实的
+ * schema 建出来跟它比。
  *
  * 少了这条，「加一个扩展 / 给某个节点加一个属性」的人不会有任何理由去打开
- * shared 那个文件，而清单没跟上时判定照样通过、遮罩永远不出现，没有任何
- * 报错说得出哪儿不对（Gate 1 第四轮 direction-1）。
+ * 那个 yaml，而清单没跟上时判定照样通过、遮罩永远不出现，没有任何报错说得
+ * 出哪儿不对（Gate 1 第四轮 direction-1）。
+ *
+ * 版本号不用管：它是从清单算出来的（`documentSchemaVersion`），改了清单它
+ * 自己就变了。
  */
 
 import { describe, it, expect } from 'vitest';
