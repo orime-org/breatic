@@ -220,9 +220,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       redis: authRedis,
       // The ceiling belongs to the studio that owns this project, read from
       // its current admin's membership tier (#88). It is looked up per
-      // handshake and deliberately not cached: a handshake happens once per
-      // socket, and a stale ceiling would outlive a tier change or a studio
-      // transfer with nothing to invalidate it.
+      // handshake and deliberately not cached: a stale ceiling would outlive
+      // a tier change or a studio transfer with nothing to invalidate it.
+      //
+      // A handshake is per DOCUMENT, not per socket — one socket carries the
+      // meta doc plus every open Space, and `onAuthenticate` fires for each
+      // (@hocuspocus/server 4.6.0 keys its hook payloads by document). Meta
+      // and viewers skip the ceiling entirely (`auth.ts`), so the real cost
+      // is one lookup per Space document opened.
       resolveConnectionLimit: getProjectConcurrentEditorLimit,
       // Cluster-wide count via the cross-instance registry (#1421), NOT
       // the local `getConnectionsCount()` (which only sees this process).

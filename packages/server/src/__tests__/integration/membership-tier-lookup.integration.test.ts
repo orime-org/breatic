@@ -251,10 +251,10 @@ describe("getStudioMembershipTier", () => {
  * these turn a tier into the six numbers, and they are the only place that
  * conversion happens.
  *
- * Why it matters that there is exactly one such place: two more ceilings are
- * still to come (concurrent connections, storage), each with its own check
- * point. Four are already enforced through these functions — team studios,
- * projects per studio, and the two kinds of member cap. Written as "look up
+ * Why it matters that there is exactly one such place: five ceilings already
+ * go through these functions — team studios, projects per studio, the two
+ * kinds of member cap, and since #88 the concurrent-connection one tested
+ * below. Storage is the one still to come. Written as "look up
  * the tier, then index the config" at every one of them, the pair would end up
  * copied six to eight times — and the enterprise tier, whose ceilings are
  * negotiated per customer and will be read from the database, would then have
