@@ -579,8 +579,14 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
         turn: null,
         hasMore: opened.hasMore,
         oldestLoadedTurn: oldestTurnOf(opened.messages),
-        failures: 0,
-        failedReplyId: null,
+        // Carried over, unlike everything above it. What the server has just
+        // described is the conversation; how many of its turns failed while
+        // this reader was sitting here is not something it knows or is
+        // saying anything about. Restarting it at zero under a panel holding
+        // a baseline from before would make the next failure read as older
+        // than the one it is compared against, and go unannounced.
+        failures: s.conversations[conversationId]?.failures ?? 0,
+        failedReplyId: s.conversations[conversationId]?.failedReplyId ?? null,
       },
     },
   }));

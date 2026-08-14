@@ -1417,3 +1417,62 @@ describe('the wait between the press and the server answering', () => {
     // honest result of not knowing.
   });
 });
+
+describe('a send that outlives the visit that made it', () => {
+  it('does not put the words on a replacement after the reader has gone', async () => {
+    // The first attempt is refused, a replacement opens, and the reader walks
+    // out of the project in between. Sending now runs a turn on a conversation
+    // this visit is not looking at -- and `leaveProject` has already dropped
+    // the entry, so nothing registers the turn and nothing can stop it: the
+    // model runs on their account with the switch out of reach.
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(new StreamRefusedError(404, 'Resource not found', true));
+    });
+    let handOver: (r: Awaited<ReturnType<typeof chatApi.openChat>>) => void = () => {};
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(
+      new Promise((resolve) => {
+        handOver = resolve;
+      }),
+    );
+
+    const sending = conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(chatApi.openChat).toHaveBeenCalledTimes(2));
+    conversationRuntime.leaveProject('p-1');
+    handOver({
+      conversations: [{ id: 'c-2' }],
+      current: { conversation: { id: 'c-2' }, messages: [], hasMore: false },
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+    await sending;
+
+    expect(chatApi.streamMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a conversation handed back under the id it already had', () => {
+  it('keeps the count of what failed while the reader was here', async () => {
+    // The count answers "did one fail while I was watching", and the panel
+    // holds it against where it stood when this conversation came up. Rebuilt
+    // from an answer describing the same conversation, it must not restart --
+    // the server is not describing how many turns failed in front of a reader,
+    // and a count that restarts under a baseline that does not is a failure
+    // nobody is told about.
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    useConversationRuntime.setState((s) => ({
+      conversations: {
+        ...s.conversations,
+        'c-1': { ...s.conversations['c-1']!, failures: 2, failedReplyId: 'r-2' },
+      },
+    }));
+
+    // The same answer arrives again -- a re-open that hands back the same one.
+    await conversationRuntime.ensureLoaded('p-1');
+    useConversationRuntime.setState((s) => ({ openStatus: { ...s.openStatus, 'p-1': 'idle' } }));
+    await conversationRuntime.ensureLoaded('p-1');
+
+    expect(conversation()?.failures).toBe(2);
+    expect(conversation()?.failedReplyId).toBe('r-2');
+  });
+});
