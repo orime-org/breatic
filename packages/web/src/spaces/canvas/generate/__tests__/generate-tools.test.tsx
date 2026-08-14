@@ -64,8 +64,9 @@ vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
  * value — the point is WHICH function the slot reaches, not what it renders.
  */
 const getNodeIconSpy = vi.spyOn(nodeIcon, 'getNodeIcon');
-/** Watches whether the tooltip's focus-open suppressor is installed at all —
- * a slot must never install one, in either fill state. */
+/** Watches whether the focus-open suppressor is installed. A slot is a pick
+ * trigger, so it must install one in BOTH fill states — see the two tests that
+ * read this spy for what would otherwise pop over the canvas. */
 const suppressSpy = vi.spyOn(overlayFocus, 'suppressTooltipFocusOpen');
 
 beforeEach(() => {
