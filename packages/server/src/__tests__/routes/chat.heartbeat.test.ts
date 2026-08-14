@@ -150,6 +150,34 @@ describe("a turn that has ended", () => {
   });
 });
 
+describe("the first beat", () => {
+  it("does not wait for the interval, because the client's clock is already running", async () => {
+    // The reader's browser starts counting at the press, and everything
+    // between that and the stream opening -- the network, authorising,
+    // checking the conversation is writable -- makes no sound on its clock.
+    // A first beat one whole interval after the socket opens spends that
+    // budget on nothing, and a turn that is doing fine gets killed for it
+    // with "network error" on screen.
+    //
+    // The intervals are frozen here on purpose: what has to arrive is a beat
+    // that owes nothing to the timer.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      const app = createApp();
+      const res = await app.request(ENTRANCES[0]!.path, {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify(ENTRANCES[0]!.body),
+      });
+
+      const names = eventNames(await res.text());
+      expect(names[0]).toBe("heartbeat");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("a turn that takes its time", () => {
   for (const entrance of ENTRANCES) {
     it(`keeps saying the stream is alive, from ${entrance.name}`, async () => {

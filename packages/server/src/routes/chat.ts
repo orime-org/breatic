@@ -106,9 +106,18 @@ async function streamTurn(
     // on it would put the model's own output behind it. Interleaving is not a
     // risk: `write` encodes the whole frame and hands it over in one call, so
     // a beat cannot land inside a chunk.
-    const beat = setInterval(() => {
+    /** Say it once. */
+    const sayAlive = (): void => {
       void s.write(serializeSSE({ event: SSEEventType.HEARTBEAT, data: {} }));
-    }, SSE_HEARTBEAT_INTERVAL_MS);
+    };
+    // Once as soon as there is a socket to say it on, before the schedule
+    // starts. The reader's browser began counting at the press, and the
+    // network and the two checks before this made no sound on that clock; a
+    // first beat one whole interval later spends the client's whole budget
+    // on the work this turn does before it can speak, and a turn that is
+    // doing fine gets killed for it.
+    sayAlive();
+    const beat = setInterval(sayAlive, SSE_HEARTBEAT_INTERVAL_MS);
 
     try {
       await runWithContext(
