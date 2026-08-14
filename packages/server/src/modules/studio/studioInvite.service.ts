@@ -17,10 +17,12 @@
  *     links them, then sends the optional invite email (best-effort, when an
  *     origin is given). A second LIVE pending for the same (studio, invitee)
  *     hits the partial unique → ConflictError.
- *   - `confirmInvite`: the invitee accepts. In ONE tx: the accept CAS (the
- *     serialization point — concurrent confirms apply EXACTLY ONCE), then
- *     upsert the membership, mark the bell notification read, and notify the
- *     inviting admin via `studio.invite_accepted`.
+ *   - `confirmInvite`: the invitee accepts. In ONE tx: take the studio's row
+ *     (refusing if it has been soft-deleted), the accept CAS (the
+ *     serialization point — concurrent confirms apply EXACTLY ONCE), the member
+ *     ceiling behind that lock, then upsert the membership, mark the bell
+ *     notification read, and notify the inviting admin via
+ *     `studio.invite_accepted`.
  *   - `declineInvite`: the invitee declines (membership untouched).
  *   - `revokeInvite`: the admin cancels a pending invite in their studio.
  *
@@ -37,8 +39,7 @@ import * as notificationService from "@server/modules/notification/notification.
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { buildStudioInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { getStudioMemberCap } from "@server/config/limits.js";
-import { db } from "@breatic/core";
+import { db, getLimitsForStudio } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
@@ -97,13 +98,19 @@ export async function createInvite(
   const existingRole = await studioMembersRepo.getRole(studio.id, invitee.id);
   if (existingRole) throw new ConflictError(t("server.studio.already_member"));
 
-  // Soft member cap (config/limits.yaml). Fail EARLY at invite time for a
-  // good UX. The real guard is in confirmInvite — the studio may fill up
-  // between sending and accepting. Counts active members (admin included).
+  // The member ceiling of whoever currently administers this studio. Failing
+  // EARLY here is for the admin's benefit — they learn there is no room before
+  // an email goes out. It is NOT the gate: the studio can fill up between
+  // sending and accepting, which is what the check in `confirmInvite` is for,
+  // and only that one runs behind a row lock. Counts active members, the admin
+  // among them.
+  const { studio_members: memberLimit } = await getLimitsForStudio(studio.id);
   const memberCount =
     (await studioRepo.countMembersByStudioIds([studio.id])).get(studio.id) ?? 0;
-  if (memberCount >= getStudioMemberCap()) {
-    throw new ConflictError(t("server.studio.member_limit_reached"));
+  if (memberCount >= memberLimit) {
+    throw new ConflictError(
+      t("server.studio.member_limit_reached", { limit: memberLimit }),
+    );
   }
 
   const profiles = await studioRepo.getPersonalProfilesByCreators([
@@ -184,23 +191,63 @@ export async function createInvite(
  * The invitee confirms an invite — atomically turns the pending invite into a
  * real membership.
  *
- * In one transaction: (1) the accept CAS (`UPDATE … WHERE status='pending' AND
- * invited_user_id = receiver AND not expired`) — the serialization point, so
- * concurrent confirms (bell + email link, or a double click) apply EXACTLY
- * ONCE; (2) upsert the `studio_members` row (reviving a previously-kicked one);
- * (3) mark the bell notification read; (4) notify the inviting admin via
+ * In one transaction: (1) read which studio this invite points at, unlocked;
+ * (2) take that studio's row, then ask separately whether it is still live and
+ * refuse if not — the lock only serialises, it does not filter `deleted_at`;
+ * (3) the accept CAS (`UPDATE … WHERE status='pending' AND invited_user_id =
+ * receiver AND not expired`) — the serialization point, so concurrent confirms
+ * (bell + email link, or a double click) apply EXACTLY ONCE; (4) the studio's
+ * member ceiling, read and counted behind the lock taken in (2), so two
+ * simultaneous confirms cannot both take the last seat; (5) upsert the
+ * `studio_members` row (reviving a previously-kicked one); (6) mark the bell
+ * notification read; (7) notify the inviting admin via
  * `studio.invite_accepted`.
  * @param invitationId - The `studio_invitations` row id
  * @param receiverUserId - The invitee confirming (must own the invite)
- * @throws {NotFoundError} the invite is missing, already decided, expired, or
- *   not owned by `receiverUserId`
- * @throws {ConflictError} the user is somehow already an active member
+ * @throws {NotFoundError} the invite is missing, already decided, expired, not
+ *   owned by `receiverUserId`, or its studio has been soft-deleted
+ * @throws {ConflictError} the studio is at its member ceiling, or the user is
+ *   somehow already an active member
  */
 export async function confirmInvite(
   invitationId: string,
   receiverUserId: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    // Which studio this invite is for, read WITHOUT a lock. The id is only
+    // reachable through the invitation row, and the row lock below has to come
+    // before the accept CAS, so it has to be read first. Safe: an invitation's
+    // `studio_id` never changes, and whether this invite may still be accepted
+    // is decided by the CAS, not by this read.
+    const targetStudioId = await invitesRepo.getTargetStudioId(invitationId, tx);
+    if (targetStudioId === null) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+
+    // Taken BEFORE the CAS, matching the order the project side has to use
+    // against `deleteProject` (`projects` first, its invitations second). There
+    // is no studio-delete cascade to deadlock with YET — studio deletion is not
+    // built (#26) — so today this order costs nothing and prevents nothing.
+    // Keeping the two sides identical is the point: whoever builds #26 will
+    // take the `studios` row first, as every cascade here does, and this path
+    // is then already on the safe side of that cycle rather than needing to be
+    // found and changed. `createInvite` above is NOT: it writes
+    // `studio_invitations` without taking the studio row at all, so #26 has to
+    // look at it as well (the project side had exactly this shape and it was a
+    // real cycle — see `invite-lock-order.integration.test.ts`).
+    //
+    // This lock only serialises — it deliberately does not filter `deleted_at`
+    // — so liveness is a separate question, asked right after.
+    await studioRepo.lockStudio(targetStudioId, tx);
+    if ((await studioRepo.getById(targetStudioId, tx)) === null) {
+      // The studio went away while this invite sat in the bell. Accepting now
+      // would leave a live member row on something nobody can open, which is
+      // the orphan every project-scoped path takes its lock to prevent. Nothing
+      // in the product soft-deletes a studio yet (#26); the integration case
+      // reaches this branch by doing it in SQL.
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+
     // Serialization point: only the first confirm flips status to accepted;
     // a losing/expired/wrong-user attempt matches zero rows → null → abort.
     const accepted = await invitesRepo.acceptIfPending(
@@ -210,16 +257,23 @@ export async function confirmInvite(
     );
     if (!accepted) throw new NotFoundError(t("server.error.not_found"));
 
-    // Soft member cap — the REAL guard: between sending and accepting, the
-    // studio may have filled up (other confirms). Counts committed active
-    // members (a 1-off race under simultaneous confirms is acceptable for a
-    // soft business cap; concurrency isn't a data-integrity invariant here).
+    // The REAL gate. Between sending and accepting the studio may have filled
+    // up, and unlike the invite-time hint this one runs behind the row lock
+    // above, so two simultaneous confirms cannot both see the same last seat.
+    const { studio_members: memberLimit } = await getLimitsForStudio(
+      accepted.studioId,
+      tx,
+    );
     const memberCount =
-      (await studioRepo.countMembersByStudioIds([accepted.studioId])).get(
+      (await studioRepo.countMembersByStudioIds([accepted.studioId], tx)).get(
         accepted.studioId,
       ) ?? 0;
-    if (memberCount >= getStudioMemberCap()) {
-      throw new ConflictError(t("server.studio.member_limit_reached"));
+    if (memberCount >= memberLimit) {
+      // Different sentence from the invite-time one: the person reading this
+      // is the invitee, who holds neither the tier nor any way to raise it.
+      throw new ConflictError(
+        t("server.studio.member_limit_reached_for_invitee"),
+      );
     }
 
     const inserted = await studioMembersRepo.upsertMember(
@@ -244,9 +298,10 @@ export async function confirmInvite(
       await notificationRepo.markRead(accepted.notificationId, receiverUserId, tx);
     }
 
-    const profiles = await studioRepo.getPersonalProfilesByCreators([
-      accepted.invitedUserId,
-    ]);
+    const profiles = await studioRepo.getPersonalProfilesByCreators(
+      [accepted.invitedUserId],
+      tx,
+    );
     const invitee = profiles.get(accepted.invitedUserId);
     await notificationService.createStudioInviteAccepted({
       userId: accepted.invitedBy,

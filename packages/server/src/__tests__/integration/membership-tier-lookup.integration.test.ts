@@ -232,13 +232,14 @@ describe("getStudioMembershipTier", () => {
  * these turn a tier into the six numbers, and they are the only place that
  * conversion happens.
  *
- * Why it matters that there is exactly one such place: five more ceilings are
- * coming (projects, two kinds of member cap, concurrent connections,
- * storage), each with its own check point. Written as "look up the tier, then
- * index the config" at every one of them, the pair would end up copied six to
- * eight times — and the enterprise tier, whose ceilings are negotiated per
- * customer and will be read from the database, would then have to be threaded
- * through every copy. Miss one and that customer is quietly held to the
+ * Why it matters that there is exactly one such place: two more ceilings are
+ * still to come (concurrent connections, storage), each with its own check
+ * point. Four are already enforced through these functions — team studios,
+ * projects per studio, and the two kinds of member cap. Written as "look up
+ * the tier, then index the config" at every one of them, the pair would end up
+ * copied six to eight times — and the enterprise tier, whose ceilings are
+ * negotiated per customer and will be read from the database, would then have
+ * to be threaded through every copy. Miss one and that customer is quietly held to the
  * standard tier on that one path, with no error.
  */
 describe("getLimitsForUser", () => {

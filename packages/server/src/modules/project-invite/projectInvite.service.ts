@@ -18,10 +18,11 @@
  *     links them. Returns the invitee + invitation id so the route layer can
  *     send the (optional) email. A second LIVE pending for the same
  *     (project, invitee) hits the partial unique → ConflictError.
- *   - `confirmInvite`: the invitee accepts. In ONE tx: the accept CAS (the
- *     serialization point — concurrent confirms apply EXACTLY ONCE), then
- *     upsert the membership, mark the bell notification read, and notify the
- *     inviting owner via `project.invite_accepted`.
+ *   - `confirmInvite`: the invitee accepts. In ONE tx: take the project's row
+ *     (refusing if it is gone), the accept CAS (the serialization point —
+ *     concurrent confirms apply EXACTLY ONCE), the collaborator ceiling behind
+ *     that lock, then upsert the membership, mark the bell notification read,
+ *     and notify the inviting owner via `project.invite_accepted`.
  *   - `declineInvite`: the invitee declines (membership untouched).
  *   - `revokeInvite`: the owner cancels a pending invite in their project.
  *
@@ -41,11 +42,10 @@ import * as invitesRepo from "@server/modules/project-invite/projectInvitations.
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
-import { getProjectCollaboratorCap } from "@server/config/limits.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildProjectInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { db } from "@breatic/core";
+import { db, getLimitsForStudio } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { projectMembersRepo } from "@breatic/core";
 import { type ProjectRole, t } from "@breatic/shared";
@@ -110,13 +110,23 @@ export async function createInvite(
   const existingRole = await projectMembersRepo.getRole(projectId, invitee.id);
   if (existingRole) throw new ConflictError(t("server.project.already_member"));
 
-  // Soft collaborator cap (config/limits.yaml). Counts EXPLICITLY invited
-  // members (`added_by IS NOT NULL`); the creator-owner and auto-materialized
-  // baseline viewers are exempt, so open-baseline viewing is never blocked.
-  // Fail EARLY here; the real guard is in confirmInvite.
+  // The collaborator ceiling belongs to the studio this project lives in —
+  // more precisely to whoever currently administers that studio, who need not
+  // be the person inviting. Counts EXPLICITLY invited members
+  // (`added_by IS NOT NULL`); the creator-owner and auto-materialized baseline
+  // viewers are exempt, so open-baseline viewing is never blocked. Failing
+  // EARLY here is a courtesy to the inviter; the gate is in `confirmInvite`,
+  // and only that one runs behind a row lock.
+  const { project_members: collaboratorLimit } = await getLimitsForStudio(
+    project.studioId,
+  );
   const collaboratorCount = await projectMembersRepo.countExplicitMembers(projectId);
-  if (collaboratorCount >= getProjectCollaboratorCap()) {
-    throw new ConflictError(t("server.project.collaborator_limit_reached"));
+  if (collaboratorCount >= collaboratorLimit) {
+    throw new ConflictError(
+      t("server.project.collaborator_limit_reached", {
+        limit: collaboratorLimit,
+      }),
+    );
   }
 
   const profiles = await studioRepo.getPersonalProfilesByCreators([
@@ -131,21 +141,26 @@ export async function createInvite(
   let shareToken = "";
   try {
     await db.transaction(async (tx) => {
-      // Reap any expired-but-still-'pending' invite for this (project, invitee)
-      // first: the one-pending partial unique index ignores expiry (a partial
+      // The project row comes FIRST, before anything in `project_invitations`,
+      // and that order is not a preference: `deleteProject` takes this row and
+      // only then sweeps the invitations of this project, so a path that took
+      // the two the other way round would close an AB/BA cycle with it. The
+      // window is as wide as the whole delete cascade, and the loser of a
+      // deadlock gets 40P01 — neither an `AppError` nor an `HTTPException`, so
+      // a 500. Pinned by `invite-lock-order.integration.test.ts`.
+      //
+      // The lock also refuses when the project is already gone: without it the
+      // insert below would commit after the cascade had swept this table,
+      // leaving a live pending invite on a dead project.
+      if (!(await projectRepo.lockLiveProject(projectId, tx))) {
+        throw new NotFoundError(t("server.error.not_found"));
+      }
+      // Reap any expired-but-still-'pending' invite for this (project, invitee):
+      // the one-pending partial unique index ignores expiry (a partial
       // predicate can't reference now()), so a timed-out invite would otherwise
       // trip it and reject the re-invite with a spurious "already invited"
       // (#1769). Same transaction → freeing the slot and taking it are atomic.
       await invitesRepo.expireStalePending(projectId, invitee.id, tx);
-            // Locks the project for the length of this transaction and refuses if it
-      // is already gone. Same window the request tables have: without the lock
-      // the insert commits after the delete cascade has swept this table,
-      // leaving a live pending invite on a dead project — and `confirmInvite`
-      // never checks project liveness, so the invitee could still accept and
-      // land an active member row on something nobody can open.
-      if (!(await projectRepo.lockLiveProject(projectId, tx))) {
-        throw new NotFoundError(t("server.error.not_found"));
-      }
       ({ id: invitationId, shareToken } = await invitesRepo.createPending({
         projectId,
         invitedUserId: invitee.id,
@@ -212,16 +227,22 @@ export async function createInvite(
  * The invitee confirms an invite — atomically turns the pending invite into a
  * real membership.
  *
- * In one transaction: (1) the accept CAS (`UPDATE … WHERE status='pending' AND
+ * In one transaction: (1) read which project this invite points at, unlocked;
+ * (2) take that project's row and refuse if it is gone — before the CAS,
+ * because `deleteProject` takes the two in that order and the opposite one
+ * deadlocks; (3) the accept CAS (`UPDATE … WHERE status='pending' AND
  * invited_user_id = receiver AND not expired`) — the serialization point, so
  * concurrent confirms (bell + email link, or a double click) apply EXACTLY
- * ONCE; (2) upsert the `project_members` row (reviving a previously-removed
- * one); (3) mark the bell notification read; (4) notify the inviting owner via
- * `project.invite_accepted`.
+ * ONCE; (4) the collaborator ceiling of the studio this project lives in, read
+ * and counted behind the lock taken in (2), so two simultaneous confirms cannot
+ * both take the last seat; (5) upsert the `project_members` row (reviving a
+ * previously-removed one); (6) mark the bell notification read; (7) notify the
+ * inviting owner via `project.invite_accepted`.
  * @param invitationId - The `project_invitations` row id
  * @param receiverUserId - The invitee confirming (must own the invite)
- * @throws {NotFoundError} the invite is missing, already decided, expired, or
- *   not owned by `receiverUserId`
+ * @throws {NotFoundError} the invite is missing, already decided, expired, not
+ *   owned by `receiverUserId`, or its project has been soft-deleted
+ * @throws {ConflictError} the project is at its collaborator ceiling
  */
 export async function confirmInvite(
   invitationId: string,
@@ -229,6 +250,29 @@ export async function confirmInvite(
 ): Promise<void> {
   let joinedActivity: { projectId: string; role: ProjectRole } | null = null;
   await db.transaction(async (tx) => {
+    // Which project this invite is for, read WITHOUT a lock. The id is only
+    // reachable through the invitation row, and the row lock below has to come
+    // before the accept CAS, so it has to be read first. Safe: an invitation's
+    // `project_id` never changes, and whether this invite may still be
+    // accepted is decided by the CAS, not by this read.
+    const targetProjectId = await invitesRepo.getTargetProjectId(
+      invitationId,
+      tx,
+    );
+    if (targetProjectId === null) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+
+    // Taken BEFORE the CAS, and that order is not a preference: `deleteProject`
+    // takes `projects` first and `project_invitations` second, so a confirm
+    // that took them the other way round would close a deadlock cycle and one
+    // of the two would die with a 40P01 (a 500 for whoever lost). Refusing when
+    // it returns false is what keeps a live member row off a dead project —
+    // the orphan `deleteProject`'s cascade sweeps this table to prevent.
+    if (!(await projectRepo.lockLiveProject(targetProjectId, tx))) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+
     // Serialization point: only the first confirm flips status to accepted;
     // a losing/expired/wrong-user attempt matches zero rows → null → abort.
     const accepted = await invitesRepo.acceptIfPending(
@@ -238,16 +282,28 @@ export async function confirmInvite(
     );
     if (!accepted) throw new NotFoundError(t("server.error.not_found"));
 
-    // Soft collaborator cap — the REAL guard: the project may have filled up
-    // between sending and accepting. Counts committed explicit members (a
-    // 1-off race under simultaneous confirms is acceptable for a soft business
-    // cap; concurrency isn't a data-integrity invariant here). Auto-viewers
-    // and the owner are exempt (`added_by` null).
+    // The REAL gate. Between sending and accepting the project may have filled
+    // up, and unlike the invite-time hint this one runs behind the row lock
+    // taken above, so two simultaneous confirms cannot both see the same last
+    // seat. Counts committed explicit members; auto-viewers and the owner are
+    // exempt (`added_by` null). The project is re-read here rather than at the
+    // bottom of this transaction because the ceiling belongs to its studio.
+    const project = await projectRepo.getProjectById(accepted.projectId, tx);
+    if (!project) throw new NotFoundError(t("server.error.not_found"));
+    const { project_members: collaboratorLimit } = await getLimitsForStudio(
+      project.studioId,
+      tx,
+    );
     const collaboratorCount = await projectMembersRepo.countExplicitMembers(
       accepted.projectId,
+      tx,
     );
-    if (collaboratorCount >= getProjectCollaboratorCap()) {
-      throw new ConflictError(t("server.project.collaborator_limit_reached"));
+    if (collaboratorCount >= collaboratorLimit) {
+      // Different sentence from the invite-time one: the person reading this
+      // is the invitee, who holds neither the tier nor any way to raise it.
+      throw new ConflictError(
+        t("server.project.collaborator_limit_reached_for_invitee"),
+      );
     }
 
     await projectMembersRepo.upsertMember(
@@ -266,10 +322,10 @@ export async function confirmInvite(
       );
     }
 
-    const project = await projectRepo.getProjectById(accepted.projectId);
-    const profiles = await studioRepo.getPersonalProfilesByCreators([
-      accepted.invitedUserId,
-    ]);
+    const profiles = await studioRepo.getPersonalProfilesByCreators(
+      [accepted.invitedUserId],
+      tx,
+    );
     const invitee = profiles.get(accepted.invitedUserId);
     await notificationService.createProjectInviteAccepted({
       userId: accepted.invitedBy,

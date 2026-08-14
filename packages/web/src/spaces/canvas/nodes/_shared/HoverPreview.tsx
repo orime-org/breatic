@@ -42,14 +42,6 @@ export interface HoverPreviewProps {
    * blank during the close animation.
    */
   resolveOnOpen?: () => { text?: string; emptyHint?: string };
-  /** Dim the image preview (#1815 unavailable t2i reference). */
-  dimmed?: boolean;
-  /**
-   * Resolves the dim state at HOVER-OPEN time (#1815 `@` image chip on a mode
-   * toggle; same live-at-open reason as {@link HoverPreviewProps.resolveOnOpen}).
-   * When present it OVERRIDES `dimmed`.
-   */
-  resolveDimmed?: () => boolean;
   /**
    * Keep the open card glued to its trigger while the ReactFlow canvas pans /
    * zooms (#1814 node history, which lives inside the canvas). Activity-feed
@@ -85,8 +77,6 @@ export interface HoverPreviewProps {
  * @param root0.alt - Image alt text.
  * @param root0.emptyHint - Hint shown when the source is empty.
  * @param root0.resolveOnOpen - Live text/hint resolver read at hover-open (overrides text/emptyHint).
- * @param root0.dimmed - Dim the image preview (unavailable reference).
- * @param root0.resolveDimmed - Live dim resolver read at hover-open (overrides dimmed).
  * @param root0.followCanvas - Follow the ReactFlow viewport while open (canvas surfaces).
  * @param root0.children - The trigger element (thumbnail / chip).
  * @returns The trigger with (when it has content) a hover preview.
@@ -99,8 +89,6 @@ export function HoverPreview({
   alt = '',
   emptyHint,
   resolveOnOpen,
-  dimmed = false,
-  resolveDimmed,
   followCanvas = false,
   children,
 }: HoverPreviewProps): React.JSX.Element {
@@ -111,9 +99,6 @@ export function HoverPreview({
   const [resolved, setResolved] = React.useState<
     { text?: string; emptyHint?: string } | undefined
   >(() => resolveOnOpen?.());
-  const [resolvedDimmed, setResolvedDimmed] = React.useState<boolean | undefined>(
-    () => resolveDimmed?.(),
-  );
   // Track open so the canvas-follow nudge is inert while closed and the
   // live-at-open resolvers fire at the right moment.
   const [open, setOpen] = React.useState(false);
@@ -121,7 +106,6 @@ export function HoverPreview({
 
   const previewText = resolveOnOpen ? resolved?.text : text;
   const previewHint = resolveOnOpen ? resolved?.emptyHint : emptyHint;
-  const previewDimmed = resolveDimmed ? resolvedDimmed === true : dimmed;
 
   // No image, no text, no hint, no resolver → render the trigger unchanged (no
   // card), so an unhandled / empty source gets nothing rather than an empty box.
@@ -151,7 +135,7 @@ export function HoverPreview({
           src={src}
           alt={alt}
           draggable={false}
-          className={'block w-full' + (previewDimmed ? ' opacity-50' : '')}
+          className='block w-full'
         />
       </div>
     );
@@ -175,7 +159,6 @@ export function HoverPreview({
         setOpen(next);
         if (next) {
           if (resolveOnOpen) setResolved(resolveOnOpen());
-          if (resolveDimmed) setResolvedDimmed(resolveDimmed());
         }
       }}
     >

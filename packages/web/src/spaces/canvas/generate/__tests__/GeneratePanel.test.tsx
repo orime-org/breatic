@@ -192,10 +192,12 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.getByTestId('generate-mode-trigger')).not.toBeDisabled();
   });
 
-  it('dims only the IMAGE reference rows in t2i (text rows stay insertable)', () => {
+  it('refuses insert on the image row in t2i, text row stays insertable', () => {
     // Round-3 R3-4, user ruled A (2026-07-11): t2i ignores source images but
-    // text references still feed the prompt via @-chips — the panel must pass
-    // the scoped flag so image rows go inert while text rows stay live.
+    // text references still feed the prompt via @-chips. What this asserts is
+    // the INSERT verdict; the dim itself is pinned in
+    // ReferenceRail-states.test.tsx, and since #1945 it reads on reference
+    // material rather than on image rows specifically.
     setup({
       mode: 't2i',
       references: [
@@ -213,7 +215,15 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
         },
       ],
     });
-    expect(screen.getByTestId('generate-ref-insert-e1')).toBeDisabled();
-    expect(screen.getByTestId('generate-ref-insert-e2')).not.toBeDisabled();
+    // #1945: the refusal is aria-disabled, not the HTML attribute — a disabled
+    // element could neither explain itself on click nor open its hover preview.
+    expect(screen.getByTestId('generate-ref-insert-e1')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByTestId('generate-ref-insert-e2')).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 });

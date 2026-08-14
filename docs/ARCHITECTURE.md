@@ -208,7 +208,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制、单文档连接数上限(`max_connections_per_document`,默认 100;满了**降级只读**非拒绝) |
 | `config/pricing.yaml` | 积分**购买包**(5 档一次性购买,不是订阅/会员,test+live Stripe ID) |
 | `config/skill-routing.yaml` | 哪个 skill 能在哪用、谁能调起(`surfaces` / `user_invocable` / `model_invocable`)。**缺了它每个 skill 都哪儿都不许用**,两个服务启动时读一次、读不了就 `exit(1)`。加载器 `packages/core/src/config/skill-routing.ts` |
-| `config/limits.yaml` | 成员容量**业务软上限**(`studio_member_cap` / `project_collaborator_cap`,默认各 100;project 只数显式邀请的成员,owner + 自动 viewer 豁免)。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)|
+| `config/limits.yaml` | 分页大小 · 画布参考池上限 · 答复期限等业务旋钮。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)。**成员容量不在这儿** —— studio 成员数和 project 协作者数都按会员档位查 `config/membership.yaml`,键是该 studio 当前 admin 的档位 |
 | `config/models/*.yaml` | AI 模型路由(按模态分目录,model-centric) |
 
 ### Logging
