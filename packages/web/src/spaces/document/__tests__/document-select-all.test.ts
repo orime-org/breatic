@@ -27,7 +27,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { DocumentSelectAll } from '@web/spaces/document/document-select-all';
+import { SELECT_ALL_KEY } from '@web/spaces/document/document-select-all';
 
 const editors: Editor[] = [];
 
@@ -57,21 +57,26 @@ function open(bodyHtml = '', title = 'TITLE'): Editor {
 }
 
 /**
- * 按一次 `Ctrl+A`。
+ * 按一次 `Ctrl+A`，派真实的 DOM 事件。
  *
- * 走 `someProp` 而不是 `editor.commands`：命令那条路会另外 dispatch 一个从**运行前**
- * 的状态取来的事务，把处理器自己派发的东西盖掉（`document-title-keymap.test` 实测过）。
+ * **必须走真事件，问 `someProp` 不算数**：绑定挂在 `handleDOMEvents.keydown` 上，
+ * 而 `someProp('handleKeyDown')` 问的是另一个 prop，那条路上只有 `@tiptap/core`
+ * 自带的 `selectAll`——问它得到的是「没改过的 tiptap 会怎样」，不是我们会怎样。
+ * 更要紧的是 `someProp` 绕过了 `prosemirror-view` 的 `editable` 闸门
+ * （`initInput` 的 `view.editable || !(event.type in editHandlers)`，而 `keydown`
+ * 就在 `editHandlers` 里），只读编辑器上到底跑不跑，只有派真事件才答得出来。
  * @param editor - 收这个键的编辑器。
- * @returns 这个键有没有被谁认领。
+ * @returns 这个键有没有被认领 —— 认领的那一方要挡掉浏览器自己的全选。
  */
 function pressCtrlA(editor: Editor): boolean {
-  let handled = false;
-  editor.view.someProp('handleKeyDown', (f) => {
-    // `handleKeyDown` 的签名是 `boolean | void`：没认领的处理器可以什么都不返回。
-    handled = f(editor.view, new KeyboardEvent('keydown', { key: 'a', ctrlKey: true })) === true;
-    return handled;
+  const event = new KeyboardEvent('keydown', {
+    key: 'a',
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
   });
-  return handled;
+  editor.view.dom.dispatchEvent(event);
+  return event.defaultPrevented;
 }
 
 /** 标题节点占多少位置 —— 正文的一切都在它之后。 */
@@ -393,34 +398,13 @@ describe('绑的是哪个键', () => {
     // 这是这份代码里唯一属于我们的那个决定：写 `Mod-a`，让库去解析成
     // mac 的 Cmd 或其它平台的 Ctrl。写死 `Ctrl-a` 会在 mac 上顶掉
     // @tiptap/core 绑在那儿的 selectTextblockStart（dist/index.js:5233）。
-    const keys = Object.keys(
-      (
-        DocumentSelectAll.config.addKeyboardShortcuts as unknown as () => Record<
-          string,
-          unknown
-        >
-      ).call({ editor: null }),
-    );
-
-    expect(keys).toEqual(['Mod-a']);
+    //
+    // 断言的是那个常量本身，因为它就是喂给 `keydownHandler` 的那个值——
+    // 键名进了闭包，从插件上读不出来。
+    expect(SELECT_ALL_KEY).toBe('Mod-a');
   });
 });
 
-describe('只读的人', () => {
-  it('viewer 的分级跟 editor 完全一样', () => {
-    // user 2026-08-14：Ctrl+A 不改变任何数据内容，所以角色不进这个判断。
-    const editor = open('<p>first</p><p>second</p>');
-    editor.setEditable(false);
-    caretIn(editor, 2, 1);
-
-    pressCtrlA(editor);
-    expect(selection(editor)).toEqual(blockRange(editor, 2));
-
-    pressCtrlA(editor);
-    expect(selection(editor).from).toBe(titleSize(editor));
-    expect(touchesTitle(editor)).toBe(false);
-  });
-});
 
 describe('正文里有不能放光标的块（atom）时，全部正文要覆盖它们', () => {
   it('正文全是分割线：按一次覆盖全部三条，不是只有第一条', () => {
@@ -484,7 +468,7 @@ describe('容器里的 atom 和 GapCursor 也算「哪儿都不在」', () => {
   });
 
   it('引用块边界的 GapCursor，按一次给全部正文', () => {
-    // 形状取的是探针验过有 depthconst editor = open('<p>lead</p><blockquote><hr><p>x</p></blockquote>');gt;0 合法位置的那个（设计文档 §9.3）。
+    // 形状取的是探针验过、确实有一个 depth > 0 合法 GapCursor 的那个（设计文档 §9.3）。
     const editor = open('<hr><blockquote><hr><p>x</p><hr></blockquote>');
     const reaches = GapCursor as unknown as { valid(pos: ResolvedPos): boolean };
     let gap = -1;
@@ -504,5 +488,79 @@ describe('容器里的 atom 和 GapCursor 也算「哪儿都不在」', () => {
 
     expect(selection(editor).from).toBe(titleSize(editor));
     expect(selection(editor).to).toBe(editor.state.doc.content.size);
+  });
+});
+
+describe('只读的人（viewer）按下去也一样分级', () => {
+  // user 2026-08-14 拍定：Ctrl+A 不改变任何数据内容，所以角色不进这个判断。
+  //
+  // 只读有**两条**路，产品两条都在走（`use-document-editor.ts`：建的时候传
+  // `editable`，权限变了调 `setEditable`），所以两条各测各的。
+  /**
+   * 一份只读的文档。
+   * @param bodyHtml - 标题之后的正文 HTML。
+   * @returns 绑好的、editable 为 false 的编辑器。
+   */
+  function openReadOnly(bodyHtml: string): Editor {
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document', 'TITLE'));
+    const editor = new Editor({
+      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
+      editable: false,
+    });
+    editors.push(editor);
+    editor.commands.setContent(`<h1 class="doc-title">TITLE</h1>${bodyHtml}`);
+    return editor;
+  }
+
+  it('正文里按一次选当前这一块，跟可编辑时一样', () => {
+    const editor = openReadOnly('<p>AAA</p><p>BBB</p>');
+    const block = blockRange(editor, 2);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, block.from + 1)),
+    );
+
+    pressCtrlA(editor);
+
+    expect(selection(editor)).toEqual(block);
+  });
+
+  it('再按一次给全部正文，还是碰不到标题', () => {
+    const editor = openReadOnly('<p>AAA</p><p>BBB</p>');
+    const block = blockRange(editor, 2);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, block.from + 1)),
+    );
+
+    pressCtrlA(editor);
+    pressCtrlA(editor);
+
+    expect(selection(editor).from).toBe(titleSize(editor));
+    expect(selection(editor).to).toBe(editor.state.doc.content.size);
+    expect(touchesTitle(editor), '只读时也不许选到标题').toBe(false);
+  });
+
+  it('标题上按一次只选标题', () => {
+    const editor = openReadOnly('<p>AAA</p>');
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 2)));
+
+    pressCtrlA(editor);
+
+    expect(selection(editor)).toEqual(titleRange(editor));
+  });
+
+  it('本来可编辑、权限被收走之后切成只读，也一样分级', () => {
+    // 另一条路：不是建的时候就只读，而是跑着跑着被 `setEditable(false)` 关掉。
+    const editor = open('<p>first</p><p>second</p>');
+    editor.setEditable(false);
+    caretIn(editor, 2, 1);
+
+    pressCtrlA(editor);
+    expect(selection(editor)).toEqual(blockRange(editor, 2));
+
+    pressCtrlA(editor);
+    expect(selection(editor).from).toBe(titleSize(editor));
+    expect(selection(editor).to).toBe(editor.state.doc.content.size);
+    expect(touchesTitle(editor)).toBe(false);
   });
 });
