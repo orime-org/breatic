@@ -97,9 +97,13 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         Icon={Box}
         onPick={onStyle}
         active={styleActive}
-        // The style slot holds an image, so its pick IS its picture.
-        filled={styleThumbnail !== undefined}
-        thumbnail={styleThumbnail}
+        // The style slot holds an image, so its pick IS its picture — asset
+        // and thumbnail are the same URL, and it can never be full without one.
+        pick={
+          styleThumbnail === undefined
+            ? undefined
+            : { kind: 'image', url: styleThumbnail, thumbnail: styleThumbnail }
+        }
         onClear={onClearStyle}
         disabled={styleDisabled}
         clearLabel={t('canvas.generatePanel.removeStyle')}

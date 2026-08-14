@@ -20,7 +20,6 @@
 import { AudioLines, Image, UserRound, Video } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-import type { NodeType } from '@breatic/shared';
 
 import type { PickPurpose } from '@web/stores/canvas';
 
@@ -61,8 +60,13 @@ export interface VideoSlotSpec {
   /**
    * The node type this slot takes. Read by both the candidate highlighting
    * and the click that fills the slot, so the two cannot disagree.
+   *
+   * Narrower than `NodeType` deliberately: what a slot holds is also what its
+   * button shows and what its hover preview renders (#1946), and those two can
+   * only handle an asset form. Declaring a slot for anything else would fail
+   * to type-check here rather than render an empty card at runtime.
    */
-  accepts: NodeType;
+  accepts: 'image' | 'video' | 'audio';
   /** Icon shown while the slot is empty. */
   Icon: LucideIcon;
   /** Test id of the slot control. */

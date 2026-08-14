@@ -86,6 +86,7 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
       />
       {slots.map((slot) => {
         const spec = VIDEO_SLOTS[slot];
+        const url = slotUrls[slot];
         return (
           <SlotTool
             key={slot}
@@ -95,8 +96,17 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
             Icon={spec.Icon}
             onPick={() => onPickSlot(slot)}
             active={activeSlot === slot}
-            filled={slotUrls[slot] !== undefined}
-            thumbnail={slotThumbnails[slot]}
+            // The asset URL is what makes a slot full — a thumbnail is only
+            // what it can PAINT, and audio never has one (#1946).
+            pick={
+              url === undefined
+                ? undefined
+                : {
+                  kind: spec.accepts,
+                  url,
+                  thumbnail: slotThumbnails[slot],
+                }
+            }
             onClear={() => onClearSlot(slot)}
             // Never gated once shown: a slot only renders for the modes that
             // collect it, so there is no state where it is visible but

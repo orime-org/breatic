@@ -112,7 +112,10 @@ describe('SlotTool — a filled slot covers its button with what it holds', () =
     // renders the same glyph for the same node, and #1946 exists to make the
     // two agree.
     expect(iconClasses(container)).toContain('lucide-music');
-    expect(screen.queryByText('Driving audio')).not.toBeVisible();
+    // `toBeVisible` is useless here: it reads computed style, and jsdom loads
+    // no Tailwind, so `invisible` produces no `visibility: hidden` and every
+    // implementation would pass. The class itself is the observable claim.
+    expect(screen.getByText('Driving audio').className).toContain('invisible');
   });
 
   it('covers a coverless video pick with the video node icon', () => {
@@ -140,7 +143,11 @@ describe('SlotTool — a filled slot covers its button with what it holds', () =
     slot({ pick: AUDIO_PICK });
     const label = screen.getByText('Driving audio');
     expect(label).toBeInTheDocument();
-    expect(label).not.toBeVisible();
+    expect(label.className).toContain('invisible');
+    // The slot's own icon holds its half of the footprint the same way.
+    const own = document.querySelector('svg.lucide-audio-lines');
+    expect(own).not.toBeNull();
+    expect(own?.getAttribute('class')).toContain('invisible');
   });
 
   it('takes the filled icon from the same source the reference rail uses', () => {
