@@ -21,8 +21,8 @@
  * down, never off the wrapper's presence.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { AudioLines, UserRound } from 'lucide-react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -35,12 +35,14 @@ vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
     kind,
     src,
     poster,
+    emptyHint,
     followCanvas,
     children,
   }: {
     kind: string;
     src?: string;
     poster?: string;
+    emptyHint?: string;
     followCanvas?: boolean;
     children: React.ReactNode;
   }): React.JSX.Element => (
@@ -49,6 +51,7 @@ vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
       data-kind={kind}
       data-src={src ?? ''}
       data-poster={poster ?? ''}
+      data-empty-hint={emptyHint ?? ''}
       data-follow-canvas={followCanvas === true ? 'yes' : 'no'}
     >
       {children}
@@ -61,17 +64,13 @@ vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
  * value — the point is WHICH function the slot reaches, not what it renders.
  */
 const getNodeIconSpy = vi.spyOn(nodeIcon, 'getNodeIcon');
-/** Watches whether the tooltip's focus-open suppressor is installed at all. */
+/** Watches whether the tooltip's focus-open suppressor is installed at all —
+ * a slot must never install one, in either fill state. */
 const suppressSpy = vi.spyOn(overlayFocus, 'suppressTooltipFocusOpen');
 
 beforeEach(() => {
   getNodeIconSpy.mockClear();
   suppressSpy.mockClear();
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-});
-
-afterEach(() => {
-  vi.useRealTimers();
 });
 
 /**
@@ -217,42 +216,48 @@ describe('SlotTool — the filled slot joins the shared hover preview (#1814)', 
     expect(preview).toHaveAttribute('data-poster', 'https://cdn/cover.jpg');
   });
 
-  it('hands the preview nothing while the slot is empty', () => {
-    // The wrapper stays mounted (focus fix), so emptiness shows as an absent
-    // src — which is exactly what makes HoverPreview withhold its card.
+  it('hands the preview no asset while the slot is empty', () => {
+    // Emptiness reaches the preview as an absent src, which is what makes it
+    // show the hint below instead of a media player.
     slot();
     expect(screen.getByTestId('slot-preview')).toHaveAttribute('data-src', '');
   });
 
-  it('lets the preview REPLACE the tooltip, not sit beside it', () => {
-    // Two floating cards on one trigger would open together. The rail carries
-    // no tooltip for the same reason. The wrapper stays mounted, so what must
-    // be gone is the tip CONTENT: Radix describes the trigger with
-    // aria-describedby only while a tip is available to it.
-    slot({ pick: AUDIO_PICK });
-    // Radix reflects the Root's open state on the trigger. A filled slot holds
-    // its tooltip shut, so this stays 'closed' however long you hover; the
-    // empty case below is the contrast that makes this assertion mean
-    // something (dropping the suppression turns that one red).
-    // Radix Tooltip opens off pointerMove, not pointerEnter.
-    fireEvent.pointerMove(screen.getByTestId('slot'));
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-    expect(screen.getByTestId('slot')).toHaveAttribute('data-state', 'closed');
-    expect(screen.queryByText('Pick an audio clip')).toBeNull();
+  it('sends the tip through the preview while empty — nothing else says what to pick', () => {
+    // An empty slot's icon and label name the ROLE ('Driving audio'); the tip
+    // is the only thing that says what to go do about it. It travels as the
+    // card's hint so this element keeps hosting exactly one hover surface.
+    slot();
+    expect(screen.getByTestId('slot-preview')).toHaveAttribute(
+      'data-empty-hint',
+      'Pick an audio clip',
+    );
   });
 
-  it('keeps the tooltip while empty — that is what says WHAT to pick', () => {
-    // The tip is the empty slot's only way of saying what it wants, so here
-    // the same hover MUST open it. This is the half that fails if the
-    // suppression is dropped or applied to the wrong state.
-    slot();
-    fireEvent.pointerMove(screen.getByTestId('slot'));
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-    expect(screen.getAllByText('Pick an audio clip').length).toBeGreaterThan(0);
+  it('drops the tip once the slot is filled — the asset speaks for itself', () => {
+    slot({ pick: AUDIO_PICK });
+    expect(screen.getByTestId('slot-preview')).toHaveAttribute(
+      'data-empty-hint',
+      '',
+    );
+  });
+
+  it('gives the slot ONE hover surface, never a tooltip beside the preview', () => {
+    // Two floating cards on one trigger open together and then have to take
+    // turns; every mechanism for that turn-taking failed (#1946). The rail
+    // carries no tooltip for the same reason.
+    //
+    // Radix stamps `data-state` on a TooltipTrigger — and, in the shipped
+    // tree, on a HoverCardTrigger too. Here HoverPreview is stubbed to a plain
+    // div, so a TooltipTrigger is the only thing that could put that attribute
+    // on the button: its absence means no tooltip wraps it. Neither fill state
+    // may have one, since the whole failure was them taking turns.
+    const empty = slot();
+    expect(screen.getByTestId('slot')).not.toHaveAttribute('data-state');
+    empty.unmount();
+
+    slot({ pick: AUDIO_PICK });
+    expect(screen.getByTestId('slot')).not.toHaveAttribute('data-state');
   });
 });
 
@@ -364,10 +369,15 @@ describe('SlotTool — the preview is reachable, or not declared at all', () => 
     expect(suppressSpy).not.toHaveBeenCalled();
   });
 
-  it('still muzzles the tooltip focus-open while empty', () => {
+  it('does not muzzle the empty slot either — its hint is a card, not a tip', () => {
+    // That suppressor exists to stop a Radix TOOLTIP from opening on focus. A
+    // slot has none in either state, so installing it here would only muzzle
+    // the hint card — and reaching the hint by keyboard is the point of
+    // putting it on a card at all. The rail's preview trigger carries no
+    // suppressor for the same reason.
     slot();
     fireEvent.focusIn(screen.getByTestId('slot'));
-    expect(suppressSpy).toHaveBeenCalled();
+    expect(suppressSpy).not.toHaveBeenCalled();
   });
 
   it('declares no preview on a slot that cannot open one', () => {

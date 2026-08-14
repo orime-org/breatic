@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import type { RenderResult } from '@testing-library/react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { AudioLines } from 'lucide-react';
 
@@ -33,15 +34,14 @@ afterEach(() => {
 });
 
 /**
- * Renders a slot with the real preview and hovers it.
+ * A slot with the real preview, at whatever fill state the caller passes.
  * @param overrides - Props overriding the defaults.
- * @returns The slot button, after the hover delay has elapsed.
+ * @returns The element tree to render.
  */
-async function hoverSlot(
+function slotTree(
   overrides: Partial<React.ComponentProps<typeof SlotTool>> = {},
-): Promise<HTMLElement> {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  render(
+): React.JSX.Element {
+  return (
     <TooltipProvider delayDuration={100}>
       <SlotTool
         testId='slot'
@@ -57,14 +57,65 @@ async function hoverSlot(
         tip='Pick an audio clip'
         {...overrides}
       />
-    </TooltipProvider>,
+    </TooltipProvider>
   );
+}
+
+/**
+ * Renders a slot with the real preview and hovers it.
+ * @param overrides - Props overriding the defaults.
+ * @returns The slot button, after the hover delay has elapsed.
+ */
+async function hoverSlot(
+  overrides: Partial<React.ComponentProps<typeof SlotTool>> = {},
+): Promise<HTMLElement> {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  render(slotTree(overrides));
   const btn = screen.getByTestId('slot');
   fireEvent.pointerEnter(btn);
   await act(async () => {
     vi.advanceTimersByTime(1200);
   });
   return btn;
+}
+
+/**
+ * Hovers a slot the way a mouse does — Radix's tooltip opens off `pointermove`,
+ * not `pointerenter` — and lets the open delay elapse.
+ * @param btn - The slot button.
+ */
+async function mouseOver(btn: HTMLElement): Promise<void> {
+  fireEvent.pointerEnter(btn);
+  fireEvent.pointerMove(btn, { pointerType: 'mouse' });
+  await act(async () => {
+    vi.advanceTimersByTime(600);
+  });
+}
+
+/**
+ * Moves the pointer off a slot and lets any close animation settle.
+ * @param btn - The slot button.
+ */
+async function mouseOut(btn: HTMLElement): Promise<void> {
+  fireEvent.pointerLeave(btn);
+  await act(async () => {
+    vi.advanceTimersByTime(600);
+  });
+}
+
+/**
+ * Re-renders the same slot at a different fill state and settles the timers.
+ * @param view - The render result to update.
+ * @param overrides - Props for the new state.
+ */
+async function refill(
+  view: RenderResult,
+  overrides: Partial<React.ComponentProps<typeof SlotTool>>,
+): Promise<void> {
+  view.rerender(slotTree(overrides));
+  await act(async () => {
+    vi.advanceTimersByTime(600);
+  });
 }
 
 describe('SlotTool — hovering a filled slot really opens its preview', () => {
@@ -84,9 +135,13 @@ describe('SlotTool — hovering a filled slot really opens its preview', () => {
     expect(screen.getByTestId('hover-preview-content')).toBeInTheDocument();
   });
 
-  it('opens NO card for an empty slot', async () => {
+  it('opens the card on an empty slot too, carrying the hint', async () => {
+    // The empty slot's hover surface is the same card, saying what to go pick
+    // — the job a tooltip used to do beside it (#1946).
     await hoverSlot();
-    expect(screen.queryByTestId('hover-preview-content')).toBeNull();
+    expect(screen.getByTestId('hover-preview-content')).toHaveTextContent(
+      'Pick an audio clip',
+    );
   });
 
   it('opens NO card for a filled slot that is disabled', async () => {
@@ -95,5 +150,40 @@ describe('SlotTool — hovering a filled slot really opens its preview', () => {
       disabled: true,
     });
     expect(screen.queryByTestId('hover-preview-content')).toBeNull();
+  });
+});
+
+describe('SlotTool — a tooltip only ever shows on the slot under the pointer', () => {
+  const AUDIO = { kind: 'audio', url: 'https://cdn/voice.m4a' } as const;
+
+  it('stays shut after a filled slot is hovered, left, and then cleared', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const view = render(slotTree({ pick: AUDIO }));
+    const btn = screen.getByTestId('slot');
+
+    // The gesture this change exists for: hovering a filled slot to preview it.
+    await mouseOver(btn);
+    await mouseOut(btn);
+
+    // The slot empties — a collaborator clearing it, or an undo. The pointer is
+    // elsewhere by now, so nothing about this slot should appear.
+    await refill(view, {});
+
+    expect(screen.queryByText('Pick an audio clip')).toBeNull();
+  });
+
+  it('stays shut after an empty slot is hovered, left, filled, and cleared', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const view = render(slotTree({}));
+    const btn = screen.getByTestId('slot');
+
+    await mouseOver(btn);
+    expect(screen.getByText('Pick an audio clip')).toBeInTheDocument();
+    await mouseOut(btn);
+
+    await refill(view, { pick: AUDIO });
+    await refill(view, {});
+
+    expect(screen.queryByText('Pick an audio clip')).toBeNull();
   });
 });

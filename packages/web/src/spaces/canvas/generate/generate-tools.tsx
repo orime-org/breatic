@@ -11,7 +11,6 @@
  * each panel's row just arranges them.
  */
 
-import { Slot } from '@radix-ui/react-slot';
 import { X, type LucideIcon } from 'lucide-react';
 import * as React from 'react';
 
@@ -108,44 +107,30 @@ export function ToggleTool({
  * the app mounts one provider (App.tsx) whose delayDuration is the
  * calibrated timing every chrome tooltip shares; nesting another here put
  * these tips on their own schedule (user 2026-07-17).
- * `suppressed` withholds the content rather than the whole wrapper: a caller
- * that stops needing the tip (a slot that just got filled, which previews
- * instead) must not change the element type at this position, or React would
- * unmount and remount the button underneath and take keyboard focus with it
- * (#1946).
+ *
+ * One hover surface per element: nothing that carries a hover preview also
+ * carries a tip. A slot used to have both and needed a mechanism to keep them
+ * from colliding — see the note on SlotTool's preview for why that mechanism
+ * could not hold (#1946).
  * @param root0 - Component props.
  * @param root0.tip - The tooltip text.
- * @param root0.suppressed - Keep the wrapper but never open the tip.
  * @param root0.children - The button the tooltip describes.
  * @returns The tooltip-wrapped button.
  */
-const ToolTip = React.forwardRef<
-  HTMLElement,
-  { tip: string; suppressed?: boolean; children: React.ReactNode }
->(function ToolTip({ tip, suppressed = false, children, ...rest }, ref) {
-  // Controlled in BOTH states, never `undefined`: handing Radix a boolean one
-  // render and nothing the next flips it between controlled and uncontrolled,
-  // which React warns about and which strands whatever open state it had. A
-  // slot crosses that boundary on every fill and every clear.
-  const [open, setOpen] = React.useState(false);
+function ToolTip({
+  tip,
+  children,
+}: {
+  tip: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
   return (
-    <Tooltip open={suppressed ? false : open} onOpenChange={setOpen}>
-      <TooltipTrigger asChild>
-        {/* `Slot` merges what an OUTER `asChild` trigger clones onto this
-            component — pointer / focus handlers, data-state, the popper anchor
-            ref — down onto the button. Taking `children` straight would swallow
-            all of it, since a plain function component keeps only the props it
-            destructures: that silently unwired the hover preview of every
-            filled slot, and the suite could not see it because it stubs
-            HoverPreview out (#1946 Gate 2 round 2). */}
-        <Slot ref={ref} {...rest}>
-          {children}
-        </Slot>
-      </TooltipTrigger>
-      {suppressed ? null : <TooltipContent side='top'>{tip}</TooltipContent>}
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side='top'>{tip}</TooltipContent>
     </Tooltip>
   );
-});
+}
 
 /**
  * What a slot holds, or `undefined` when it holds nothing.
@@ -261,10 +246,10 @@ export function SlotTool({
 }: SlotToolProps): React.JSX.Element {
   const HeldIcon = pick ? getNodeIcon(pick.kind) : null;
   // A disabled button dispatches no pointerenter and takes no focus, so both of
-  // the HoverCard's open paths are dead — declaring a preview there promises
-  // something the user can never get (the style slot after switching to a model
-  // without style support).
-  const previews = pick !== undefined && !disabled;
+  // the HoverCard's open paths are dead — declaring anything to show there
+  // promises something the user can never get (the style slot after switching
+  // to a model without style support).
+  const hoverable = !disabled;
   const button = (
     <Button
       type='button'
@@ -274,12 +259,6 @@ export function SlotTool({
       data-testid={testId}
       aria-label={label}
       onClick={onPick}
-      // Suppressing the focus-open belongs to the tooltip alone. It stops the
-      // focus event in the capture phase, which also stops the SAME element's
-      // onFocus — and that is how a HoverCard opens, so leaving it on while
-      // previewing would muzzle the preview for keyboard users, alone among the
-      // five places that share this preview.
-      onFocusCapture={previews ? undefined : suppressTooltipFocusOpen}
       disabled={disabled}
       aria-pressed={active}
       className={
@@ -313,29 +292,30 @@ export function SlotTool({
   );
   return (
     <div className='relative'>
-      {/* BOTH wrappers stay mounted in both states, and each decides for itself
-          whether to open. Alternating them instead — preview when filled,
-          tooltip when empty — swaps the component at this position, so React
-          unmounts and remounts the button and keyboard focus sitting on it
-          drops to <body>. Reachable one-handed: Tab to the slot, then Cmd+Z,
-          since the undo gate excludes only INPUT / TEXTAREA / contenteditable
-          and undoing the fill empties the slot underneath the focus. */}
+      {/* ONE hover surface, whatever the slot holds — the shape the reference
+          rail and the prompt chips already have. A slot briefly had two, a
+          preview for the filled state and a tooltip for the empty one, which
+          left this element hosting two overlays that had to take turns. Both
+          ways of arranging that turn-taking failed: swapping the components
+          remounts the button and drops keyboard focus to <body>, and keeping
+          both mounted while forcing the tooltip shut let Radix write an open
+          state the tooltip could no longer clear, so clearing the slot popped
+          a tip onto the canvas with the pointer nowhere near it (#1946). */}
       <HoverPreview
-        // `kind` is inert without a `src`; the empty state passes none, so
-        // HoverPreview withholds its card and stays inert — mounted, but with
-        // nothing to open and no viewport follower armed.
+        // `kind` is inert without a `src`, which is what the empty state
+        // passes — it shows the hint below instead.
         kind={pick?.kind ?? 'image'}
-        src={previews ? pick?.url : undefined}
+        src={hoverable ? pick?.url : undefined}
         // A poster is a still, so only a video has use for one; an image's
         // thumbnail IS its asset and audio has neither.
-        poster={previews && pick?.kind === 'video' ? pick.thumbnail : undefined}
+        poster={hoverable && pick?.kind === 'video' ? pick.thumbnail : undefined}
+        // What an empty slot needs said is which asset to go pick. It travels
+        // as the card's hint, the same prop the rail uses to say what an empty
+        // reference is waiting for.
+        emptyHint={hoverable && pick === undefined ? tip : undefined}
         followCanvas
       >
-        {/* The tooltip says WHAT to pick, which only an empty slot needs; a
-            filled one has the preview instead, the way the rail does. */}
-        <ToolTip tip={tip} suppressed={previews}>
-          {button}
-        </ToolTip>
+        {button}
       </HoverPreview>
       {pick ? (
         <Button

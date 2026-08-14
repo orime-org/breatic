@@ -20,7 +20,6 @@
 import { AudioLines, Image, UserRound, Video } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-
 import type { PickPurpose } from '@web/stores/canvas';
 
 /** The source slots the video panel knows how to offer. */
