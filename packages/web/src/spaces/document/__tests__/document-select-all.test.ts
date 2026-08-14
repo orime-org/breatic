@@ -8,10 +8,14 @@
  * 这一块、再按一次选全部正文；标题上只选标题、再按不扩大；光标哪儿都不在时选全部正文。
  * 核心一句是**从正文出发永远选不到标题，从标题出发永远选不到正文**。
  *
- * 这里跑的是 `Ctrl-a` 那一路。mac 的 `Cmd-a` 在
- * `document-select-all-mac.test.ts` 里 —— `prosemirror-keymap` 在模块加载时按
- * `navigator.platform` 把 `Mod-` 定死成其中一个，jsdom 那个值是空串，所以两条路
- * 没法在同一个文件里都跑到。
+ * 键名绑的是 `Mod-a`，一条平台无关的写法：`prosemirror-keymap` 在模块加载时读
+ * `navigator.platform`，mac 上把它解析成 `Cmd-a`、其它平台解析成 `Ctrl-a`（源码
+ * :81 原话「You can use `Mod-` as a shorthand for `Cmd-` on Mac and `Ctrl-` on
+ * other platforms」）。**那个解析是库的行为，不在这里测** —— 这里只钉两样：绑的
+ * 键名确实是 `Mod-a`（见文件末尾那条），以及按下去之后选中什么。
+ *
+ * 行为用例跑在 jsdom 默认环境下，那里 `navigator.platform` 是空串、`Mod-` 解析成
+ * `Ctrl-`，所以事件用 `ctrlKey`。
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -23,6 +27,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import { DocumentSelectAll } from '@web/spaces/document/document-select-all';
 
 const editors: Editor[] = [];
 
@@ -62,7 +67,8 @@ function open(bodyHtml = '', title = 'TITLE'): Editor {
 function pressCtrlA(editor: Editor): boolean {
   let handled = false;
   editor.view.someProp('handleKeyDown', (f) => {
-    handled = f(editor.view, new KeyboardEvent('keydown', { key: 'a', ctrlKey: true }));
+    // `handleKeyDown` 的签名是 `boolean | void`：没认领的处理器可以什么都不返回。
+    handled = f(editor.view, new KeyboardEvent('keydown', { key: 'a', ctrlKey: true })) === true;
     return handled;
   });
   return handled;
@@ -358,6 +364,24 @@ describe('档位是从选区现场推导的，不是数按了几次', () => {
     pressCtrlA(editor);
 
     expect(selection(editor)).toEqual(blockRange(editor, 3));
+  });
+});
+
+describe('绑的是哪个键', () => {
+  it('用平台无关的 Mod-a，不是写死某一个平台的键', () => {
+    // 这是这份代码里唯一属于我们的那个决定：写 `Mod-a`，让库去解析成
+    // mac 的 Cmd 或其它平台的 Ctrl。写死 `Ctrl-a` 会在 mac 上顶掉
+    // @tiptap/core 绑在那儿的 selectTextblockStart（dist/index.js:5233）。
+    const keys = Object.keys(
+      (
+        DocumentSelectAll.config.addKeyboardShortcuts as unknown as () => Record<
+          string,
+          unknown
+        >
+      ).call({ editor: null }),
+    );
+
+    expect(keys).toEqual(['Mod-a']);
   });
 });
 
