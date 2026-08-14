@@ -177,27 +177,27 @@ interface ConversationRuntimeState {
  * the next caller to ask the server all over again for something already on
  * its way.
  */
-type InFlight = Map<string, { work: Promise<void>; owner: symbol }>;
+type InFlight<T = void> = Map<string, { work: Promise<T>; owner: symbol }>;
 
 /**
  * Do this once per key, and let anyone asking meanwhile wait on the same one.
  * @param entries - Where requests of this kind are registered.
  * @param key - What the request is about: a project, or a conversation.
  * @param start - Makes the request. Must not reject; nothing here can catch.
- * @returns When it is done, whether it was started here or joined.
+ * @returns What it answered, whether it was started here or joined.
  */
-function joinOrStart(
-  entries: InFlight,
+function joinOrStart<T>(
+  entries: InFlight<T>,
   key: string,
-  start: () => Promise<void>,
-): Promise<void> {
+  start: () => Promise<T>,
+): Promise<T> {
   const joined = entries.get(key);
   if (joined) return joined.work;
 
   const owner = Symbol(key);
-  const work = (async (): Promise<void> => {
+  const work = (async (): Promise<T> => {
     try {
-      await start();
+      return await start();
     } finally {
       if (entries.get(key)?.owner === owner) entries.delete(key);
     }
@@ -206,8 +206,19 @@ function joinOrStart(
   return work;
 }
 
+/**
+ * What opening a chat answered with when it could not.
+ *
+ * Wrapped rather than handed back bare, so that "it did not work" is a
+ * different answer from "it worked" whatever was thrown.
+ */
+interface OpenFailure {
+  /** Whatever the call threw, for whoever decides what to say about it. */
+  failed: unknown;
+}
+
 /** Chats being opened, keyed by project. */
-const opening: InFlight = new Map();
+const opening: InFlight<OpenFailure | undefined> = new Map();
 
 
 /**
@@ -430,22 +441,31 @@ function oldestTurnOf(messages: readonly MessageData[]): number | null {
  */
 async function ensureLoaded(projectId: string): Promise<void> {
   if (useStore.getState().openStatus[projectId] === 'ready') return;
-  return joinOrStart(opening, projectId, () => openAndAdopt(projectId));
+  const failure = await joinOrStart(opening, projectId, () => openAndAdopt(projectId));
+  // Said here rather than where it happened, because whether it is worth
+  // saying depends on what the caller was going to do about it. This caller
+  // was going to show the chat, and now there is none to show.
+  if (failure) tell({ projectId, conversationId: null, ...readMishap(failure.failed) });
 }
 
 /**
  * Ask the server for this project's chat and put the answer on screen.
  *
- * Never rejects: what went wrong is said to whoever is looking, once, and
- * nothing else about the screen changes. Written once because both callers owe
- * the reader the same things -- the same status while it runs, the same words
- * when it fails, the same check that the visit which asked is still the one on
- * screen. The second caller is the turn that finds its conversation gone;
- * having its own copy of this was how one of them came to leave the status
- * saying `loading` for ever.
+ * Never rejects, and says nothing: what went wrong is handed back, because
+ * one of the two callers is a send that is going to try again and a line
+ * about a failure that healed itself is a line about nothing.
+ *
+ * Written once because both callers owe the reader the same things -- the
+ * same status while it runs, the same check that the visit which asked is
+ * still the one on screen. The second caller is the turn that finds its
+ * conversation gone; having its own copy of this was how one of them came to
+ * leave the status saying `loading` for ever.
  * @param projectId - The project whose chat to open.
+ * @returns What went wrong, or nothing when there is a conversation on screen
+ *   -- and nothing as well when the visit that asked is over, which is not a
+ *   failure anyone is owed a word about.
  */
-async function openAndAdopt(projectId: string): Promise<void> {
+async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined> {
   const visit = currentVisit(projectId);
   // Only from the start. This says what the chat has come to be, not whether
   // a request is out -- that is what `opening` and `sendingByProject` are for.
@@ -460,14 +480,15 @@ async function openAndAdopt(projectId: string): Promise<void> {
   );
   try {
     const opened = await chatApi.openChat(projectId, visit.signal);
-    if (visit.signal.aborted) return;
+    if (visit.signal.aborted) return undefined;
     adoptConversation(projectId, opened.current);
+    return undefined;
   } catch (err) {
     // Except when the visit that asked is over, which includes this refusal
-    // being the abort itself. Saying so then would replace a conversation the
-    // reader is looking at now with the news that a request they walked away
-    // from did not work.
-    if (visit.signal.aborted) return;
+    // being the abort itself. Reporting it then would have the caller replace
+    // a conversation the reader is looking at now with the news that a
+    // request they walked away from did not work.
+    if (visit.signal.aborted) return undefined;
     // Not over a chat that has opened before. There is a conversation on
     // screen and it is still readable; saying it could not be opened would
     // take it away over a request the reader did not make.
@@ -476,7 +497,7 @@ async function openAndAdopt(projectId: string): Promise<void> {
         ? s
         : { openStatus: { ...s.openStatus, [projectId]: 'failed' } },
     );
-    tell({ projectId, conversationId: null, ...readMishap(err) });
+    return { failed: err };
   }
 }
 
@@ -810,10 +831,17 @@ async function runTurn(
         // Every ending here is one the reader did not ask for, so each is
         // worth one line. Which line depends only on whether the server got
         // to answer: an answer at all means the network was fine.
+        //
+        // Except the one the caller is about to act on. It opens a
+        // replacement and sends the same words again, and a line about a
+        // failure that healed itself is a line about nothing -- worse, it is
+        // followed by a second one when the recovery fails, which is one
+        // press announced twice. Whoever tries again is the one who speaks.
         if (
-          stillRunning(conversationId, replyId) !== undefined ||
-          err instanceof StreamRefusedError ||
-          err instanceof StreamUnreachableError
+          !worthASecondAttempt(err) &&
+          (stillRunning(conversationId, replyId) !== undefined ||
+            err instanceof StreamRefusedError ||
+            err instanceof StreamUnreachableError)
         ) {
           tell({ projectId, conversationId, ...readMishap(err) });
         }
@@ -847,6 +875,27 @@ async function runTurn(
 const NOT_FOUND = 404;
 
 /**
+ * Is this ending one a second attempt could get past.
+ *
+ * A conversation can be deleted from another tab while this one still holds
+ * its id, and that is not something the reader did or can act on -- so the
+ * send opens a replacement and puts the same words on it, and neither the
+ * refusal nor the recovery is worth a word. Every other refusal says trying
+ * again is pointless, and is told.
+ *
+ * Note what this does not say: that a second attempt will work. The same 404
+ * comes back from a project that is gone or that the reader has been taken
+ * off, and then opening a replacement asks the same question of the same
+ * project. Whoever tries is the one who finds out, which is why they are also
+ * the one who speaks.
+ * @param ending - How the turn ended.
+ * @returns True when a replacement conversation is worth opening.
+ */
+function worthASecondAttempt(ending: unknown): boolean {
+  return ending instanceof StreamRefusedError && ending.status === NOT_FOUND;
+}
+
+/**
  * Say one thing in a project's chat and stream the reply into it.
  *
  * Opens a conversation first when there is not one. Pressing send is the whole
@@ -878,13 +927,14 @@ async function send(projectId: string, said: string): Promise<void> {
  * Both are a whole request long, and both used to leave a live send button up.
  * @param projectId - The project being sent to.
  * @param work - What to do while the mark is up. Must not reject.
+ * @returns Whatever the work answered.
  */
-async function whileOpening(projectId: string, work: () => Promise<void>): Promise<void> {
+async function whileOpening<T>(projectId: string, work: () => Promise<T>): Promise<T> {
   useStore.setState((s) => ({
     sendingByProject: { ...s.sendingByProject, [projectId]: true as const },
   }));
   try {
-    await work();
+    return await work();
   } finally {
     useStore.setState((s) => {
       if (!s.sendingByProject[projectId]) return s;
@@ -912,26 +962,30 @@ async function sendOnce(projectId: string, said: string): Promise<void> {
   const ending = await runTurn(projectId, conversationId, said);
   if (!ending) return;
 
-  // Only one refusal is worth a second try. A conversation can be deleted
-  // from another tab while this one still holds its id, and that is not
-  // something the user did or can act on; every other refusal -- no
-  // permission, a project that is gone, the request never leaving at all --
-  // has already been told and says trying again is pointless.
-  if (!(ending instanceof StreamRefusedError) || ending.status !== NOT_FOUND) return;
+  // Every other refusal has already been told by the turn: it says trying
+  // again is pointless, and there is nothing here that could get past it.
+  if (!worthASecondAttempt(ending)) return;
 
   // Not `ensureLoaded`: by its reckoning this project is open already. What
   // is needed is a new one, because the one on screen is the one the server
   // just said it does not have.
-  await whileOpening(projectId, () =>
+  const reopen = await whileOpening(projectId, () =>
     joinOrStart(opening, projectId, () => openAndAdopt(projectId)),
   );
   const fresh = useStore.getState().currentByProject[projectId];
-  // Opening said why it could not, and the words are still in the box.
   // Compared against the one that was refused, not just checked for being
   // there: a failed open leaves the old id in place, and running the turn
   // against it again would send the same words to the conversation the server
   // has just said it does not have -- refused again, re-opened again.
-  if (!fresh || fresh === conversationId) return;
+  if (!fresh || fresh === conversationId) {
+    // Now the press gets its one line, here, because this is where it is
+    // known there is nothing more to try. The words are still in the box.
+    // What is quoted is the newer of the two answers when there is one: a
+    // reader whose access was taken away mid-send is owed that, not the
+    // sentence about the conversation the first attempt went looking for.
+    tell({ projectId, conversationId: null, ...readMishap(reopen ? reopen.failed : ending) });
+    return;
+  }
 
   // A plain turn, not a resumed one: the first attempt never put anything on
   // screen, and adopting the new conversation replaced the list besides.

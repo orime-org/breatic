@@ -265,6 +265,65 @@ describe('what the message column is told while a chat is re-opened', () => {
   });
 });
 
+describe('one press, one line', () => {
+  /**
+   * Set the first turn up to be refused with the one refusal worth retrying.
+   *
+   * The conversation on screen has been deleted from another tab, which is
+   * the case this whole recovery exists for.
+   */
+  async function theConversationIsGone(): Promise<void> {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(new StreamRefusedError(404, 'Resource not found', true));
+    });
+  }
+
+  it('says nothing when the words went out on a replacement instead', async () => {
+    await theConversationIsGone();
+    vi.mocked(chatApi.openChat).mockResolvedValue({
+      conversations: [{ id: 'c-2' }],
+      current: { conversation: { id: 'c-2' }, messages: [], hasMore: false },
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(chatApi.streamMessage).toHaveBeenCalledTimes(2));
+    stop();
+
+    // The reader pressed send and their words went to the server. Nothing
+    // about that needs a line -- what the first attempt hit was ours to
+    // recover from, and we did.
+    expect(told).toEqual([]);
+    expect(chatApi.streamMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ conversationId: 'c-2', message: 'hello' }),
+      expect.anything(),
+    );
+  });
+
+  it('says it once, not twice, when there is no replacement to be had', async () => {
+    // 404 is also what a project answers once the reader has been taken off
+    // it, or once it is gone -- and then opening a replacement asks the same
+    // question of the same project and gets the same answer.
+    await theConversationIsGone();
+    vi.mocked(chatApi.openChat).mockRejectedValue(
+      new ApiException({ status: 404, message: '未找到', fromServer: true }),
+    );
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    await conversationRuntime.send('p-1', 'hello');
+    stop();
+
+    // Two lines is one press announced twice: the panel keys the line by
+    // which telling it is, so the second tears the first down and puts an
+    // identical one up, and a screen reader reads it out again.
+    expect(told).toHaveLength(1);
+  });
+});
+
 describe('a turn that fails with its reply already on screen', () => {
   it('lets the bubble say it, rather than saying it twice', async () => {
     openChatAnswers();
