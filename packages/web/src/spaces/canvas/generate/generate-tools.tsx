@@ -180,7 +180,7 @@ interface SlotToolProps {
   clearLabel: string;
   /** Localized tool label ("Style" / "First frame"). */
   label: string;
-  /** Hover tooltip describing the slot. */
+  /** One line saying what to go pick — the hover card's hint while empty. */
   tip: string;
 }
 
@@ -209,17 +209,17 @@ interface SlotToolProps {
  * tree), and a running pick shows as a foreground ring (the white-fill active
  * style would hide behind the image).
  *
- * A filled slot hovers into the shared `HoverPreview` (#1814) the reference
- * rail, the prompt chips, the history rows and the activity feed already use:
- * audio and video play, an image shows large. The preview REPLACES the tooltip
- * while filled — the rail carries no tooltip for the same reason, and two
- * floating cards on one trigger would open together. An empty slot keeps the
- * tooltip, which is what says WHAT to pick.
+ * A slot hovers into the shared `HoverPreview` (#1814) the reference rail, the
+ * prompt chips, the history rows and the activity feed already use — ONE hover
+ * surface, whatever the slot holds. Filled, it plays the audio or video and
+ * shows the image large. Empty, the same card carries `tip` as its hint, which
+ * is what says WHAT to pick. Focus never opens it: a slot is a pick trigger and
+ * the canvas hands focus back to it when a pick ends (#1946).
  * @param root0 - Component props.
  * @param root0.testId - Stable test id for the slot button.
  * @param root0.thumbnailTestId - Stable test id for the thumbnail image.
  * @param root0.clearTestId - Stable test id for the ✕ clear badge.
- * @param root0.Icon - The icon shown while the slot is empty.
+ * @param root0.Icon - The icon shown while the slot is empty — what it WANTS.
  * @param root0.onPick - Enter / exit the pick.
  * @param root0.active - Whether this slot's pick is running.
  * @param root0.pick - What the slot holds, or undefined when it holds nothing.
@@ -227,7 +227,7 @@ interface SlotToolProps {
  * @param root0.disabled - Whether picking is unavailable.
  * @param root0.clearLabel - Localized ✕ aria-label.
  * @param root0.label - Localized tool label.
- * @param root0.tip - Hover tooltip describing the slot.
+ * @param root0.tip - One line saying what to go pick (the empty state's hint).
  * @returns The slot tool.
  */
 export function SlotTool({
@@ -259,6 +259,14 @@ export function SlotTool({
       data-testid={testId}
       aria-label={label}
       onClick={onPick}
+      // A slot is a pick TRIGGER, and ending a pick hands focus back to it by
+      // testId (CanvasSpace `onExitPick` over PICK_PURPOSE_UI) — from Escape
+      // and from the banner's Exit button. Radix HoverCard opens on focus and
+      // closes only on pointer-leave or blur, so without this the card would
+      // sit over the canvas after every exit with the pointer nowhere near it.
+      // The card is a pointer affordance; `aria-label` is what carries this
+      // button's meaning to a screen reader.
+      onFocusCapture={suppressTooltipFocusOpen}
       disabled={disabled}
       aria-pressed={active}
       className={

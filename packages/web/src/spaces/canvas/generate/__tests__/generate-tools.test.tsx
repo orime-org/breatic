@@ -16,9 +16,9 @@
  * the slot DECLARES it holds, and asserting on a rendered MediaPlayer would be
  * asserting on HoverPreview's own behaviour, which has its own tests.
  *
- * Note both wrappers stay MOUNTED in either state — that is the point of
- * #1946's focus fix — so "no preview" is read off the props the slot hands
- * down, never off the wrapper's presence.
+ * The slot has ONE hover wrapper and it stays mounted in either fill state, so
+ * "no preview" is read off the props the slot hands down, never off the
+ * wrapper's presence.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -76,8 +76,8 @@ beforeEach(() => {
 /**
  * Renders one slot tool with no-op defaults, overridable per test.
  *
- * Wrapped in the app-level TooltipProvider the way the real panels are —
- * the tools carry no provider of their own, so a bare Radix Tooltip throws.
+ * No TooltipProvider: a slot carries no tooltip. ToggleTool still does, so the
+ * one test that renders it brings its own.
  * @param overrides - Props overriding the defaults.
  * @returns The render result.
  */
@@ -85,22 +85,20 @@ function slot(
   overrides: Partial<React.ComponentProps<typeof SlotTool>> = {},
 ): ReturnType<typeof render> {
   return render(
-    <TooltipProvider delayDuration={100}>
-      <SlotTool
-        testId='slot'
-        thumbnailTestId='slot-thumb'
-        clearTestId='slot-clear'
-        Icon={AudioLines}
-        onPick={() => {}}
-        onClear={() => {}}
-        active={false}
-        disabled={false}
-        clearLabel='Remove driving audio'
-        label='Driving audio'
-        tip='Pick an audio clip'
-        {...overrides}
-      />
-    </TooltipProvider>,
+    <SlotTool
+      testId='slot'
+      thumbnailTestId='slot-thumb'
+      clearTestId='slot-clear'
+      Icon={AudioLines}
+      onPick={() => {}}
+      onClear={() => {}}
+      active={false}
+      disabled={false}
+      clearLabel='Remove driving audio'
+      label='Driving audio'
+      tip='Pick an audio clip'
+      {...overrides}
+    />,
   );
 }
 
@@ -302,22 +300,20 @@ describe('SlotTool — the wrapper stays put across a fill flip', () => {
     before.focus();
     expect(document.activeElement).toBe(before);
     rerender(
-      <TooltipProvider delayDuration={100}>
-        <SlotTool
-          testId='slot'
-          thumbnailTestId='slot-thumb'
-          clearTestId='slot-clear'
-          Icon={AudioLines}
-          onPick={() => {}}
-          onClear={() => {}}
-          active={false}
-          disabled={false}
-          clearLabel='Remove driving audio'
-          label='Driving audio'
-          tip='Pick an audio clip'
-          pick={AUDIO_PICK}
-        />
-      </TooltipProvider>,
+      <SlotTool
+        testId='slot'
+        thumbnailTestId='slot-thumb'
+        clearTestId='slot-clear'
+        Icon={AudioLines}
+        onPick={() => {}}
+        onClear={() => {}}
+        active={false}
+        disabled={false}
+        clearLabel='Remove driving audio'
+        label='Driving audio'
+        tip='Pick an audio clip'
+        pick={AUDIO_PICK}
+      />,
     );
     expect(screen.getByTestId('slot')).toBe(before);
     expect(document.activeElement).toBe(before);
@@ -328,21 +324,19 @@ describe('SlotTool — the wrapper stays put across a fill flip', () => {
     const before = screen.getByTestId('slot');
     before.focus();
     rerender(
-      <TooltipProvider delayDuration={100}>
-        <SlotTool
-          testId='slot'
-          thumbnailTestId='slot-thumb'
-          clearTestId='slot-clear'
-          Icon={AudioLines}
-          onPick={() => {}}
-          onClear={() => {}}
-          active={false}
-          disabled={false}
-          clearLabel='Remove driving audio'
-          label='Driving audio'
-          tip='Pick an audio clip'
-        />
-      </TooltipProvider>,
+      <SlotTool
+        testId='slot'
+        thumbnailTestId='slot-thumb'
+        clearTestId='slot-clear'
+        Icon={AudioLines}
+        onPick={() => {}}
+        onClear={() => {}}
+        active={false}
+        disabled={false}
+        clearLabel='Remove driving audio'
+        label='Driving audio'
+        tip='Pick an audio clip'
+      />,
     );
     expect(screen.getByTestId('slot')).toBe(before);
     expect(document.activeElement).toBe(before);
@@ -350,34 +344,26 @@ describe('SlotTool — the wrapper stays put across a fill flip', () => {
 });
 
 describe('SlotTool — the preview is reachable, or not declared at all', () => {
-  it('does not muzzle its own preview against keyboard focus', () => {
-    // `suppressTooltipFocusOpen` stops the focus event in the CAPTURE phase of
-    // React's synthetic chain, which also stops the same element's onFocus —
-    // and that is how a HoverCard opens. Measured by dispatching `focusin`,
-    // the event React actually delegates: a native `focus` listener never sees
-    // the suppressor at all and would hold for any implementation.
+  it('refuses to open its card from focus while filled', () => {
+    // A slot is a pick TRIGGER: `CanvasSpace.onExitPick` looks it up by testId
+    // through PICK_PURPOSE_UI and calls `.focus()` on it when a pick ends —
+    // reached by Escape and by the pick banner's Exit button. Radix HoverCard
+    // opens on focus (react-hover-card dist :93) and closes only on
+    // pointer-leave or blur, so without the suppressor the media preview would
+    // sit over the canvas after every exit with the pointer nowhere near it.
     slot({ pick: AUDIO_PICK });
-    const btn = screen.getByTestId('slot');
-    let reached = false;
-    btn.addEventListener('focusin', () => {
-      reached = true;
-    });
-    fireEvent.focusIn(btn);
-    expect(reached).toBe(true);
-    // The real claim: the suppressor is not installed while previewing.
-    slot({ pick: AUDIO_PICK });
-    expect(suppressSpy).not.toHaveBeenCalled();
+    fireEvent.focusIn(screen.getByTestId('slot'));
+    expect(suppressSpy).toHaveBeenCalled();
   });
 
-  it('does not muzzle the empty slot either — its hint is a card, not a tip', () => {
-    // That suppressor exists to stop a Radix TOOLTIP from opening on focus. A
-    // slot has none in either state, so installing it here would only muzzle
-    // the hint card — and reaching the hint by keyboard is the point of
-    // putting it on a card at all. The rail's preview trigger carries no
-    // suppressor for the same reason.
+  it('refuses to open its card from focus while empty too', () => {
+    // Same exit path, same restored focus — the hint card must not pop either.
+    // Measured on `focusin`, the event React actually delegates: the suppressor
+    // works on the synthetic capture chain, so a native `focus` listener would
+    // never see it and the assertion would hold for any implementation.
     slot();
     fireEvent.focusIn(screen.getByTestId('slot'));
-    expect(suppressSpy).not.toHaveBeenCalled();
+    expect(suppressSpy).toHaveBeenCalled();
   });
 
   it('declares no preview on a slot that cannot open one', () => {

@@ -20,7 +20,6 @@ import type { RenderResult } from '@testing-library/react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { AudioLines } from 'lucide-react';
 
-import { TooltipProvider } from '@web/components/ui/tooltip';
 import { SlotTool } from '@web/spaces/canvas/generate/generate-tools';
 
 // The viewport follower reaches for the ReactFlow DOM, which is not mounted
@@ -42,22 +41,20 @@ function slotTree(
   overrides: Partial<React.ComponentProps<typeof SlotTool>> = {},
 ): React.JSX.Element {
   return (
-    <TooltipProvider delayDuration={100}>
-      <SlotTool
-        testId='slot'
-        thumbnailTestId='slot-thumb'
-        clearTestId='slot-clear'
-        Icon={AudioLines}
-        onPick={() => {}}
-        onClear={() => {}}
-        active={false}
-        disabled={false}
-        clearLabel='Remove driving audio'
-        label='Driving audio'
-        tip='Pick an audio clip'
-        {...overrides}
-      />
-    </TooltipProvider>
+    <SlotTool
+      testId='slot'
+      thumbnailTestId='slot-thumb'
+      clearTestId='slot-clear'
+      Icon={AudioLines}
+      onPick={() => {}}
+      onClear={() => {}}
+      active={false}
+      disabled={false}
+      clearLabel='Remove driving audio'
+      label='Driving audio'
+      tip='Pick an audio clip'
+      {...overrides}
+    />
   );
 }
 
@@ -80,13 +77,12 @@ async function hoverSlot(
 }
 
 /**
- * Hovers a slot the way a mouse does — Radix's tooltip opens off `pointermove`,
- * not `pointerenter` — and lets the open delay elapse.
+ * Hovers a slot the way a mouse does and lets the open delay elapse. Radix's
+ * HoverCard trigger opens off `pointerenter` (react-hover-card dist :91).
  * @param btn - The slot button.
  */
 async function mouseOver(btn: HTMLElement): Promise<void> {
   fireEvent.pointerEnter(btn);
-  fireEvent.pointerMove(btn, { pointerType: 'mouse' });
   await act(async () => {
     vi.advanceTimersByTime(600);
   });
@@ -153,7 +149,38 @@ describe('SlotTool — hovering a filled slot really opens its preview', () => {
   });
 });
 
-describe('SlotTool — a tooltip only ever shows on the slot under the pointer', () => {
+describe('SlotTool — the card answers the pointer, never restored focus', () => {
+  it('stays shut when the app focuses the slot after a pick ends', async () => {
+    // A slot IS a pick trigger: ending a pick returns focus to it by testId
+    // (CanvasSpace onExitPick over PICK_PURPOSE_UI), reached by Escape and by
+    // the pick banner's Exit button. Radix HoverCard opens on focus and closes
+    // only on pointer-leave or blur, so a card opened this way sits over the
+    // canvas with the pointer nowhere near it until something else takes focus.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(slotTree({ pick: { kind: 'audio', url: 'https://cdn/voice.m4a' } }));
+
+    screen.getByTestId('slot').focus();
+    await act(async () => {
+      vi.advanceTimersByTime(1200);
+    });
+
+    expect(screen.queryByTestId('hover-preview-content')).toBeNull();
+  });
+
+  it('stays shut on a focused empty slot too', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(slotTree({}));
+
+    screen.getByTestId('slot').focus();
+    await act(async () => {
+      vi.advanceTimersByTime(1200);
+    });
+
+    expect(screen.queryByTestId('hover-preview-content')).toBeNull();
+  });
+});
+
+describe('SlotTool — nothing pops on a slot the pointer has left', () => {
   const AUDIO = { kind: 'audio', url: 'https://cdn/voice.m4a' } as const;
 
   it('stays shut after a filled slot is hovered, left, and then cleared', async () => {
