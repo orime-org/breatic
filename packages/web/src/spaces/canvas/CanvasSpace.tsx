@@ -2171,11 +2171,21 @@ function CanvasSpaceInner({
         y: rect.top + rect.height / 2,
       });
       processFiles(files, center);
+    } else if (readOnly) {
+      // SAY IT. The button that posted this lives in project chrome, so it
+      // does not know this canvas is read-only and stays enabled — and the
+      // person has already opened a file picker and chosen a file by the time
+      // we get here. Dropping that silently is the exact shape the repo bans
+      // (`packages/web/CLAUDE.md`: a blocked command-style entry raises a
+      // warning, never a silent no-op), and it is worse than usual here
+      // because the state is invisible: nothing about the menu looks different.
+      warnNodeGate(t('spaces.readOnlyNotice'));
     }
     consumePendingUpload();
   }, [
     pendingUploadFiles,
     readOnly,
+    t,
     screenToFlowPosition,
     processFiles,
     consumePendingUpload,
@@ -2215,6 +2225,13 @@ function CanvasSpaceInner({
     const type = pendingNodeCreate;
     const rect = containerRef.current?.getBoundingClientRect();
     if (readOnly || !rect || !isCreatableNodeType(type)) {
+      // Same reasoning as the upload mailbox above: the menu item that posted
+      // this is in chrome and stays enabled, so a silent drop leaves somebody
+      // clicking a live-looking button that does nothing. Only the read-only
+      // case is announced — the other two are impossible states (no viewport
+      // rect, or a type nothing can post) rather than a refusal aimed at a
+      // person.
+      if (readOnly) warnNodeGate(t('spaces.readOnlyNotice'));
       consumePendingNodeCreate();
       return;
     }
@@ -2229,6 +2246,7 @@ function CanvasSpaceInner({
   }, [
     pendingNodeCreate,
     readOnly,
+    t,
     consumePendingNodeCreate,
     screenToFlowPosition,
     createNode,
@@ -3779,7 +3797,7 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // instead of one per editor that could drift apart.
   const canvasDocName = docName.canvasSpace(props.projectId, props.spaceId);
   const canvasDoc = React.useMemo(() => getDoc(canvasDocName), [canvasDocName]);
-  const { provider: caretProvider, writeAccess } = useSocket({
+  const { provider: caretProvider, writeAccess, status } = useSocket({
     name: canvasDocName,
     doc: canvasDoc,
   });
@@ -3815,8 +3833,20 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // The message names no cause because the wire carries none — the server
   // sends one "readonly" for a viewer, for a full document and for a ceiling
   // it could not resolve alike. It states the fact and both ways out instead.
+  //
+  // A REFUSAL IS EXCLUDED, and it has to be asked about separately because
+  // `writeAccess` cannot tell the two apart: `use-socket` sets `denied` both
+  // when the server degrades a connection AND when it refuses one outright
+  // (:197-200 from the settled facts, :230-236 on the live rejection, whose
+  // comment calls a refusal "the strongest form of your updates go nowhere").
+  // A refusal means the Space is gone, the membership was revoked or the
+  // session expired — telling that person to ask a teammate to close the
+  // document is an instruction that cannot help them. The document space
+  // excludes it for the same reason (`&& !refused`).
   const t = useTranslation();
-  const degraded = writeAccess === 'denied' && !(props.readOnly ?? false);
+  const refused = status === 'authFailed';
+  const degraded =
+    writeAccess === 'denied' && !refused && !(props.readOnly ?? false);
   React.useEffect(() => {
     if (degraded) toast.warning(t('spaces.readOnlyNotice'));
   }, [degraded, t]);

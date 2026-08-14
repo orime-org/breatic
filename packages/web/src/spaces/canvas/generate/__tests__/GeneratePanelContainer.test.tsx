@@ -8,7 +8,7 @@ import { ReactFlow } from '@xyflow/react';
 import type { ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }));
 
 // Pass through the tooltip primitives: real Radix Tooltip throws without the
@@ -74,11 +74,13 @@ type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
 function mountContainer(graph?: {
   nodes?: ContainerProps['nodes'];
   edges?: ContainerProps['edges'];
+  /** Whether the canvas is read-only — the role's, or this connection's. */
+  readOnly?: boolean;
 }): ReturnType<typeof render> {
   const canvas: CanvasContextValue = {
     projectId: 'p',
     spaceId: 's',
-    readOnly: false,
+    readOnly: graph?.readOnly ?? false,
     caretProvider: null,
   };
   return render(
@@ -417,3 +419,17 @@ describe('GeneratePanelContainer — body subscription set', () => {
     listSpy.mockRestore();
   });
 });
+
+// The submit-time connection gate (#88) has NO TEST YET, and that is an
+// outstanding debt rather than an oversight.
+//
+// The gate itself is in place (`GeneratePanelContainer.tsx`, first check in
+// `onExecute`): a read-only connection is refused with a warning instead of
+// queueing a task. What is missing is a case that drives it, because every
+// catalog fixture in this file is empty, which leaves the Execute button
+// disabled — a click never reaches `onExecute` at all, so an assertion here
+// would pass without exercising anything.
+//
+// Writing it needs a catalog with one usable image model plus a node state
+// that satisfies `canExecuteGenerate`. Recorded so the next person does not
+// read the silence as coverage.

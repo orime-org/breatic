@@ -809,6 +809,69 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     warnSpy.mockRestore();
   });
 
+  it('says why when a read-only canvas drops an upload posted from the chrome menu', () => {
+    // The left floating menu lives in project chrome and posts its intent into
+    // the canvas store; the canvas consumes it. On a read-only canvas the
+    // canvas dropped that intent WITHOUT A WORD — the file picker had already
+    // opened, the person had already chosen a file, and nothing happened.
+    //
+    // The repo rule for this is explicit (`packages/web/CLAUDE.md`, node-gate
+    // section): a command-style entry that gets blocked must raise a
+    // `toast.warning`; a silent no-op is banned precisely because the person
+    // acted and got no answer. The menu button stays enabled — this state is
+    // temporary and clears itself when a seat frees up, unlike the viewer role
+    // which is permanent and greys the button.
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+    warnSpy.mockClear();
+    act(() => {
+      useCanvasStore.getState().requestUpload([
+        new File(['x'], 'a.png', { type: 'image/png' }),
+      ]);
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+
+  it('says why when a read-only canvas drops a node-create posted from the chrome menu', () => {
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+    warnSpy.mockClear();
+    act(() => {
+      useCanvasStore.getState().requestNodeCreate('text');
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+
+  it('says nothing about seats when the document was refused outright', () => {
+    // `writeAccess: 'denied'` covers two states that need different answers.
+    // use-socket sets it BOTH when the server degrades a connection to
+    // read-only AND when it refuses one outright — :197-200 on the settled
+    // facts, :230-236 on the live rejection, whose comment calls a refusal
+    // "the strongest form of your updates go nowhere".
+    //
+    // A refusal means the Space was deleted, the membership was revoked, or
+    // the session expired. Telling that person to ask a teammate to close the
+    // document hands them an instruction that cannot possibly help. The
+    // document space excludes it for this reason (`&& !refused`).
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    vi.mocked(useSocket).mockReturnValue({
+      provider: null,
+      synced: false,
+      hasEverSynced: false,
+      status: 'authFailed',
+      writeAccess: 'denied',
+      authFailedReason: 'Forbidden',
+    });
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it('a granted connection leaves an editor writable', () => {
     // The other direction, so the case above cannot pass by making the canvas
     // read-only for everybody.

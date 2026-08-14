@@ -63,7 +63,8 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { MEMBERSHIP_TIERS, type MembershipTier } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
-import { projects, studioMembers, studios, users } from "@core/db/schema.js";
+import { studioMembers, studios, users } from "@core/db/schema.js";
+import * as projectsRepo from "@core/project/projects.repo.js";
 import { getMembershipLimits, type MembershipLimits } from "@core/config/membership.js";
 
 const KNOWN_TIERS: ReadonlySet<string> = new Set(MEMBERSHIP_TIERS);
@@ -329,14 +330,12 @@ export async function getProjectConcurrentEditorLimit(
   projectId: string,
   tx?: DbTx,
 ): Promise<number> {
-  const rows = await (tx ?? db)
-    .select({ studioId: projects.studioId })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
-    .limit(1);
-
-  const row = rows[0];
-  if (row === undefined) {
+  // `findOwnerStudioId` owns this query — its own docstring says a query
+  // written twice is a query that comes apart, which is what the
+  // one-table-one-repo rule exists to prevent. Writing the same select here
+  // is exactly the drift it warns about, so this goes through it.
+  const studioId = await projectsRepo.findOwnerStudioId(projectId);
+  if (studioId === undefined) {
     // Plain Error, like its siblings above: reaching here means a live
     // connection is being made to a document of a project that is gone, which
     // is our data being inconsistent rather than anything the user did. The
@@ -344,5 +343,5 @@ export async function getProjectConcurrentEditorLimit(
     // only thing that says WHICH project.
     throw new Error(`No live project ${projectId}`);
   }
-  return (await getLimitsForStudio(row.studioId, tx)).concurrent_editors;
+  return (await getLimitsForStudio(studioId, tx)).concurrent_editors;
 }
