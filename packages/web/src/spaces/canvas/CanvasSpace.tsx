@@ -482,7 +482,10 @@ function toFlowEdge(edge: CanvasEdge): Edge {
  * @param root0 - Space body props from the project space outlet.
  * @param root0.projectId - Owning project id.
  * @param root0.spaceId - Canvas space id.
- * @param root0.readOnly - Viewer read-only mode; blocks node creation.
+ * @param root0.readOnly - This connection may only look. The viewer role, a
+ * document already at its concurrent-editor ceiling, and a ceiling that could
+ * not be resolved all fold into this one flag before it gets here; every write
+ * path below is gated on it, not just node creation.
  * @returns The ReactFlow canvas surface.
  */
 function CanvasSpaceInner({

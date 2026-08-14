@@ -62,7 +62,6 @@ loader:`packages/collab/src/config.ts`。**只有行为参数,没有端口** —
 | `store_alert_timeout_ms` | 3000 | 发告警邮件的超时。**这是唯一一个超时,而且它管的不是存盘** —— 邮件传输层没配任何超时,继承 nodemailer 默认的两分钟连接超时,而卸载闸要等这封信发完。库故障期间 SMTP 又不通的话,每份正在卸载的文档都会被挂住两分钟——内存被文档填满,正是整套设计要消灭的那个故障从另一扇门进来。信里不带内容(救援文件在发信之前就已经落盘),所以放弃等它不会丢任何东西 |
 | `store_alert_window_ms` | 600000(10 分钟) | 同一份文档在这个窗口内只发一封告警。一次库故障 = 每份打开的文档每轮一次失败,不去重会刷屏 |
 | `max_document_bytes` | 10485760(10 MB) | 单 Yjs 文档字节上限(0 = 不限) |
-| `max_connections_per_document` | 100 | 单文档跨实例连接数上限(0 = 不限)。**这一项将被会员档位取代**——接上之后取值来源换成 §7.2 的 `concurrent_editors`,这里连同 loader 里的字段一起删 |
 | `max_documents_per_socket` | 1000 | 一条 socket 要能承载多少文档(= 一个 project 的 Space 数 + meta)。库里**几个**「超了就关掉整条 socket」的上限都从这一个数推导(`infra/socket-ceilings.ts`),因为只抬其中一个不算修 —— 下一个照样撞、症状一模一样。字节上限和静默超时实测远够用,故意保留库默认值 |
 | `throttle_max_attempts` | 200 | 单 IP 60s 窗口内连接尝试上限,超则 ban |
 | `throttle_ban_time` | 1(分钟) | ban 时长(**单位是分钟**,扩展内部乘 60×1000) |
@@ -162,7 +161,7 @@ loader:`packages/core/src/config/membership.ts`。**惰性加载**:首次被调�
 
 **档位只有这四个**。产品上还有企业版(决议里的「商务谈」),它的数值一家一谈、将来从数据库读,所以既不在这个文件里、也不在档位枚举里——在这儿编一组数字,会让被设成企业版的账号拿到谁都没谈过的额度而且不报错。
 
-**目前四项真的在拦人**:`team_studios` · `projects_per_studio` · `studio_members` · `project_members`。其余两项(`concurrent_editors` · `storage_bytes`)配置已就位、检查点随后续几批接上。
+**目前五项真的在拦人**:`team_studios` · `projects_per_studio` · `studio_members` · `project_members` · `concurrent_editors`。剩下的 `storage_bytes` 配置已就位、检查点随后续那一批接上。
 
 ## 8. 连接 / 存储上传韧性(代码内,非 yaml)
 

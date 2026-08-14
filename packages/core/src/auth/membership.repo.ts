@@ -318,8 +318,9 @@ export async function lockLimitsForUser(
  * negotiated enterprise tier will be read from the database, and a call point
  * that walked its own path would keep answering from the config file after
  * that lands, with a number that looks perfectly valid. The extra primary-key
- * lookup is affordable here: a handshake happens once per socket, not per
- * edit.
+ * lookup is affordable here: this runs once per DOCUMENT handshake — one
+ * socket carries several, so opening a project costs one for the meta doc and
+ * one for the Space being opened — which is still nowhere near per edit.
  * @param projectId - The project whose documents the ceiling applies to
  * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
  * @returns How many connections to one of its documents may write at once
