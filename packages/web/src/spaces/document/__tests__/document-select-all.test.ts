@@ -12,7 +12,7 @@
  * `navigator.platform`，mac 上把它解析成 `Cmd-a`、其它平台解析成 `Ctrl-a`（源码
  * :81 原话「You can use `Mod-` as a shorthand for `Cmd-` on Mac and `Ctrl-` on
  * other platforms」）。**那个解析是库的行为，不在这里测** —— 这里只钉两样：绑的
- * 键名确实是 `Mod-a`（见文件末尾那条），以及按下去之后选中什么。
+ * 键名确实是 `Mod-a`（见「绑的是哪个键」那组），以及按下去之后选中什么。
  *
  * 行为用例跑在 jsdom 默认环境下，那里 `navigator.platform` 是空串、`Mod-` 解析成
  * `Ctrl-`，所以事件用 `ctrlKey`。
@@ -351,6 +351,8 @@ describe('这个键永远由我们认领', () => {
     caretIn(editor, 0, 1);
     pressCtrlA(editor);
 
+    // 「被认领」的判据是这个键的默认行为被挡掉了：我们的处理器返回 true 时
+    // 自己调 `preventDefault`，而没人认领的键会原样冒上去、让浏览器全选整页。
     expect(pressCtrlA(editor), '第二次按下同样要被认领').toBe(true);
     // 交回去的症状就是选区变成整篇：core 的 selectAll 产出 AllSelection 0..N。
     expect(selection(editor)).toEqual(titleRange(editor));
