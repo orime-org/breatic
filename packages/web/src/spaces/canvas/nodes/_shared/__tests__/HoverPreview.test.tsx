@@ -50,7 +50,8 @@ describe('HoverPreview', () => {
     );
     const trigger = screen.getByTestId('trigger');
     openCard(trigger);
-    // Empty source: the trigger passes through unwrapped and no card ever opens.
+    // Empty source: no card ever opens. The trigger stays mounted inside the
+    // HoverCard either way — its shape is pinned by its own test below.
     expect(screen.queryByTestId('hover-preview-content')).not.toBeInTheDocument();
     expect(trigger).toBeInTheDocument();
   });
@@ -209,4 +210,33 @@ describe('HoverPreview', () => {
     expect(resolveOnOpen).toHaveBeenCalled();
   });
 
+});
+
+describe('HoverPreview — its shape does not depend on having content', () => {
+  it('keeps the SAME trigger element when content arrives, and its focus', () => {
+    // The wrapper used to return a bare fragment while empty, so a caller whose
+    // content comes and goes had its trigger unmounted and remounted — taking
+    // keyboard focus with it (#1946: a generate slot being filled or cleared).
+    // Reverting that is invisible to every other assertion here, which only
+    // ever check that no CARD opens.
+    const view = (src?: string): React.JSX.Element => (
+      <HoverPreview kind='image' src={src}>
+        <button type='button' data-testid='trigger'>
+          x
+        </button>
+      </HoverPreview>
+    );
+    const { rerender } = render(view());
+    const before = screen.getByTestId('trigger');
+    before.focus();
+    expect(document.activeElement).toBe(before);
+
+    rerender(view('https://cdn/pic.png'));
+    expect(screen.getByTestId('trigger')).toBe(before);
+    expect(document.activeElement).toBe(before);
+
+    rerender(view());
+    expect(screen.getByTestId('trigger')).toBe(before);
+    expect(document.activeElement).toBe(before);
+  });
 });

@@ -191,9 +191,10 @@ function readSlotUrls(content: ContentNodeView | undefined): VideoSlotUrls {
  *
  * The same URL as the pick for a slot holding an image, and the copied poster
  * for one holding something an `<img>` cannot paint. A slot whose poster is
- * missing shows nothing at all rather than falling back to the asset: handed a
- * video URL the `<img>` draws a blank square, and with `alt=''` not even a
- * broken-image marker, whereas an empty slot still shows its icon and label.
+ * missing is absent from this map rather than falling back to the asset:
+ * handed a video URL the `<img>` draws a blank square, and with `alt=''` not
+ * even a broken-image marker. Absent here does not mean the slot looks empty —
+ * the toolbar covers it with the asset node's icon instead (#1946).
  * @param content - The node's content view, if it has one.
  * @returns The URLs to display, by slot.
  */
