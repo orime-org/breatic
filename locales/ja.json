@@ -622,7 +622,7 @@
         "description": "Timeline viewer は timeline-space 実装時に接続。ここではトラックのスナップショットを表示します(クリップコピー可)。"
       }
     },
-    "readOnlyNotice": "この Space は現在閲覧のみです —— 同時に編集できる人数が上限に達しています。",
+    "readOnlyNotice": "この Space は現在閲覧のみです —— 変更を加えても保存されません。",
     "lockedAria": "ロック中",
     "document": {
       "loading": "エディターを読み込み中…",

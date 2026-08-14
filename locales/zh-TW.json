@@ -622,7 +622,7 @@
         "description": "Timeline viewer 在 timeline-space 實作時接入;此處展示軌道快照,支援複製片段。"
       }
     },
-    "readOnlyNotice": "這個 Space 現在只能檢視 —— 同時編輯的人已滿。",
+    "readOnlyNotice": "這個 Space 現在只能檢視 —— 你做的變更不會被儲存。",
     "lockedAria": "已鎖定",
     "document": {
       "loading": "正在載入編輯器…",

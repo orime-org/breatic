@@ -622,7 +622,7 @@
         "description": "Timeline viewer plugs in when timeline-space ships; here we show a track snapshot, with clip copy."
       }
     },
-    "readOnlyNotice": "You can only view this Space right now — it is at its limit of people editing at once.",
+    "readOnlyNotice": "You can only view this Space right now — anything you change will not be saved.",
     "lockedAria": "Locked",
     "document": {
       "loading": "Loading editor…",
