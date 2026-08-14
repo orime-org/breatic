@@ -34,10 +34,8 @@
  */
 
 import { Extension } from '@tiptap/core';
-import { keydownHandler } from '@tiptap/pm/keymap';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
-import { AllSelection, Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
-import type { EditorView } from '@tiptap/pm/view';
+import { AllSelection, Selection, TextSelection } from '@tiptap/pm/state';
 import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 
 import { BodySelection } from '@web/spaces/document/document-body-selection';
@@ -216,79 +214,36 @@ export function selectOneTierOut(
 
 
 /**
- * The key this claims, in `prosemirror-keymap`'s notation.
- *
- * `Mod-` is the platform-independent spelling: the library resolves it to
- * `Cmd` on macOS and `Ctrl` elsewhere. Writing `Ctrl-a` outright would take
- * over `selectTextblockStart`, which `@tiptap/core` binds there on macOS.
- */
-export const SELECT_ALL_KEY = 'Mod-a';
-
-/**
  * The `Mod-a` binding.
  *
- * ## Why this is a DOM handler and not `addKeyboardShortcuts`
+ * `priority` is above `@tiptap/core`'s `Keymap` extension so this is asked
+ * first; `DocumentTitle` claims its own keys at the same height for the same
+ * reason.
  *
- * A read-only editor has to answer `Mod-a` the same way an editable one does:
- * selecting is reading, and a viewer who presses it expects the same tiers.
- * But `addKeyboardShortcuts` ends up in `handleKeyDown`, and that prop is only
- * reached from `prosemirror-view`'s `editHandlers.keydown`, which the input
- * dispatcher gates behind `view.editable || !(event.type in editHandlers)`
- * (`prosemirror-view@1.42.2:3123`) — `keydown` is in `editHandlers` (`:3176`).
- * With `editable` false the press never reaches the binding, and the browser's
- * own select-all takes the page instead. Measured: three read-only cases where
- * the selection did not move at all.
+ * `Mod-` resolves once, when `prosemirror-keymap` is first evaluated, to
+ * `Cmd` on macOS and `Ctrl` everywhere else — it is not both at once. Binding
+ * `Ctrl-a` as well would be wrong rather than thorough: on macOS `@tiptap/core`
+ * already binds it to `selectTextblockStart`.
  *
- * `handleDOMEvents` is the one prop that runs before that gate —
- * `runCustomHandler` is called on the way in, unconditionally (`:3122`,
- * `:3154`). That is where this has to live.
- *
- * Two things follow from moving:
- *
- * - The key name is still parsed by `prosemirror-keymap`, through
- *   `keydownHandler`. `Mod-` resolves once, when that module is first
- *   evaluated, to `Cmd` on macOS and `Ctrl` everywhere else. Binding `Ctrl-a`
- *   as well would be wrong rather than thorough: on macOS `@tiptap/core`
- *   already binds it to `selectTextblockStart`.
- * - The default has to be suppressed here. `editHandlers.keydown` calls
- *   `preventDefault` for a handled `handleKeyDown` (`:3204`); nothing does
- *   that for `handleDOMEvents`, and leaving it would let the browser select
- *   the page on top of our selection.
- *
- * `priority` keeps the extension above `@tiptap/core`'s `Keymap`, whose
- * `Mod-a` is `selectAll`; `DocumentTitle` claims its own keys at the same
- * height. Ordering is doubly assured now — a `handleDOMEvents` that claims the
- * event stops the dispatcher before any `handleKeyDown` is asked.
+ * This answers for an editable editor. A read-only one never gets here at all,
+ * and moving the binding does not change that: measured in a browser, a
+ * read-only editor's DOM carries `contenteditable="false"` and no `tabindex`,
+ * so clicking the text leaves focus on `body` and the key press never reaches
+ * the editor's DOM node in the first place. What a viewer should get from this
+ * key belongs with the rest of read-only behaviour, which is a separate piece
+ * of work.
  */
 export const DocumentSelectAll = Extension.create({
   name: 'documentSelectAll',
   priority: 1000,
 
   /**
-   * The plugin carrying the binding.
-   * @returns The single plugin.
+   * Bind the key.
+   * @returns The key bindings, by key name.
    */
-  addProseMirrorPlugins() {
-    const onKeyDown = keydownHandler({ [SELECT_ALL_KEY]: selectOneTierOut });
-    return [
-      new Plugin({
-        key: new PluginKey('documentSelectAll'),
-        props: {
-          handleDOMEvents: {
-            /**
-             * Claim `Mod-a`, whether or not the editor is editable.
-             * @param view - The view the key was pressed in.
-             * @param event - The key press.
-             * @returns Whether this took the key.
-             */
-            keydown: (view: EditorView, event: KeyboardEvent): boolean => {
-              if (!onKeyDown(view, event)) return false;
-              event.preventDefault();
-              return true;
-            },
-          },
-        },
-      }),
-    ];
+  addKeyboardShortcuts() {
+    return {
+      'Mod-a': () => selectOneTierOut(this.editor.state, this.editor.view.dispatch),
+    };
   },
 });

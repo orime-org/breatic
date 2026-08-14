@@ -14,6 +14,11 @@
  * other platforms」）。**那个解析是库的行为，不在这里测** —— 这里只钉两样：绑的
  * 键名确实是 `Mod-a`（见「绑的是哪个键」那组），以及按下去之后选中什么。
  *
+ * **只读（viewer）不在这份测试的范围里**（user 2026-08-14 定：归只读模式那个独立任务）。
+ * 那条路上真浏览器实测过：不可编辑时编辑器 DOM 是 `contenteditable="false"` 且没有
+ * `tabindex`，点正文焦点落在 body 上，按键根本到不了编辑器，跟这个扩展绑在哪个 prop
+ * 上无关。
+ *
  * 行为用例跑在 jsdom 默认环境下，那里 `navigator.platform` 是空串、`Mod-` 解析成
  * `Ctrl-`，所以事件用 `ctrlKey`。
  */
@@ -27,7 +32,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { SELECT_ALL_KEY } from '@web/spaces/document/document-select-all';
+import { DocumentSelectAll } from '@web/spaces/document/document-select-all';
 
 const editors: Editor[] = [];
 
@@ -401,9 +406,16 @@ describe('绑的是哪个键', () => {
     // mac 的 Cmd 或其它平台的 Ctrl。写死 `Ctrl-a` 会在 mac 上顶掉
     // @tiptap/core 绑在那儿的 selectTextblockStart（dist/index.js:5233）。
     //
-    // 断言的是那个常量本身，因为它就是喂给 `keydownHandler` 的那个值——
-    // 键名进了闭包，从插件上读不出来。
-    expect(SELECT_ALL_KEY).toBe('Mod-a');
+    const keys = Object.keys(
+      (
+        DocumentSelectAll.config.addKeyboardShortcuts as unknown as () => Record<
+          string,
+          unknown
+        >
+      ).call({ editor: null }),
+    );
+
+    expect(keys).toEqual(['Mod-a']);
   });
 });
 
@@ -490,79 +502,5 @@ describe('容器里的 atom 和 GapCursor 也算「哪儿都不在」', () => {
 
     expect(selection(editor).from).toBe(titleSize(editor));
     expect(selection(editor).to).toBe(editor.state.doc.content.size);
-  });
-});
-
-describe('只读的人（viewer）按下去也一样分级', () => {
-  // user 2026-08-14 拍定：Ctrl+A 不改变任何数据内容，所以角色不进这个判断。
-  //
-  // 只读有**两条**路，产品两条都在走（`use-document-editor.ts`：建的时候传
-  // `editable`，权限变了调 `setEditable`），所以两条各测各的。
-  /**
-   * 一份只读的文档。
-   * @param bodyHtml - 标题之后的正文 HTML。
-   * @returns 绑好的、editable 为 false 的编辑器。
-   */
-  function openReadOnly(bodyHtml: string): Editor {
-    const doc = new Y.Doc();
-    Y.applyUpdate(doc, encodeInitialSpaceContent('document', 'TITLE'));
-    const editor = new Editor({
-      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
-      editable: false,
-    });
-    editors.push(editor);
-    editor.commands.setContent(`<h1 class="doc-title">TITLE</h1>${bodyHtml}`);
-    return editor;
-  }
-
-  it('正文里按一次选当前这一块，跟可编辑时一样', () => {
-    const editor = openReadOnly('<p>AAA</p><p>BBB</p>');
-    const block = blockRange(editor, 2);
-    editor.view.dispatch(
-      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, block.from + 1)),
-    );
-
-    pressCtrlA(editor);
-
-    expect(selection(editor)).toEqual(block);
-  });
-
-  it('再按一次给全部正文，还是碰不到标题', () => {
-    const editor = openReadOnly('<p>AAA</p><p>BBB</p>');
-    const block = blockRange(editor, 2);
-    editor.view.dispatch(
-      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, block.from + 1)),
-    );
-
-    pressCtrlA(editor);
-    pressCtrlA(editor);
-
-    expect(selection(editor).from).toBe(titleSize(editor));
-    expect(selection(editor).to).toBe(editor.state.doc.content.size);
-    expect(touchesTitle(editor), '只读时也不许选到标题').toBe(false);
-  });
-
-  it('标题上按一次只选标题', () => {
-    const editor = openReadOnly('<p>AAA</p>');
-    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 2)));
-
-    pressCtrlA(editor);
-
-    expect(selection(editor)).toEqual(titleRange(editor));
-  });
-
-  it('本来可编辑、权限被收走之后切成只读，也一样分级', () => {
-    // 另一条路：不是建的时候就只读，而是跑着跑着被 `setEditable(false)` 关掉。
-    const editor = open('<p>first</p><p>second</p>');
-    editor.setEditable(false);
-    caretIn(editor, 2, 1);
-
-    pressCtrlA(editor);
-    expect(selection(editor)).toEqual(blockRange(editor, 2));
-
-    pressCtrlA(editor);
-    expect(selection(editor).from).toBe(titleSize(editor));
-    expect(selection(editor).to).toBe(editor.state.doc.content.size);
-    expect(touchesTitle(editor)).toBe(false);
   });
 });
