@@ -621,9 +621,9 @@
         "strike": "删除线"
       },
       "schemaOutdated": {
-        "headline": "这份文档在这里不能编辑",
-        "body": "这个页面的版本跟服务器对不上，继续编辑会破坏别人写的内容。",
-        "published": "服务器那份发布于{when}。",
+        "headline": "文档编辑器已更新",
+        "body": "这个页面用的还是旧版本，继续编辑会破坏别人写的内容。",
+        "published": "新版本发布于{when}。",
         "risksLead": "刷新前请留意：",
         "riskUploads": "正在进行的上传会被中断，可以先切到对应的 Space 看一眼。",
         "action": "刷新页面"

@@ -621,9 +621,9 @@
         "strike": "刪除線"
       },
       "schemaOutdated": {
-        "headline": "這份文件在這裡不能編輯",
-        "body": "這個頁面的版本跟伺服器對不上，繼續編輯會破壞別人寫的內容。",
-        "published": "伺服器那份發布於{when}。",
+        "headline": "文件編輯器已更新",
+        "body": "這個頁面用的還是舊版本，繼續編輯會破壞別人寫的內容。",
+        "published": "新版本發布於{when}。",
         "risksLead": "重新整理前請留意：",
         "riskUploads": "正在進行的上傳會被中斷，可以先切到對應的 Space 看一眼。",
         "action": "重新整理頁面"

@@ -16,20 +16,11 @@ interface DocumentSchemaOutdatedProps {
 /**
  * What fills a document Space when this build must not open it.
  *
- * The situation is outside what we promise: this page's vocabulary and the
- * server's have parted ways, and there is nothing to fix on our side or theirs
- * except loading the matching code. So this does the three things such a
- * message owes them and stops there — says what happened, says what refreshing
- * costs, and leaves the refreshing to them.
- *
- * ## It never says who is newer
- *
- * The verdict behind it asks whether the two vocabularies DIFFER, not which
- * came first, and that is deliberate: a rollback leaves the server behind this
- * page rather than ahead of it, and stops editing for exactly the same reason.
- * So the copy states the mismatch and the publish time as facts, and claims no
- * direction — a panel that told a rolled-forward user they were "running an
- * older version" would simply be wrong, and it is the same one panel.
+ * The situation is outside what we promise: the person is running a version
+ * that can no longer represent what this document holds, and there is nothing
+ * to fix on our side or theirs except getting the newer code. So this does the
+ * three things such a message owes them and stops there — says what happened,
+ * says what refreshing costs, and leaves the refreshing to them.
  *
  * ## Only one risk, because only one is real
  *
