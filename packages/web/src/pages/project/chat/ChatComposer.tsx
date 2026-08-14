@@ -112,6 +112,31 @@ function ChatComposerInner({
   const submit = (): void => {
     if (!ready) return;
     onSubmit();
+    handOverTheKeyboard();
+  };
+
+  /**
+   * Stop the turn, and hand the keyboard over on the way out.
+   *
+   * The same rule as {@link submit} and the same reason: this element is
+   * about to be a different button. Stopping turns it back into Send, and a
+   * reader who wrote their next message while waiting would send it with the
+   * very next keypress, having aimed at stop.
+   */
+  const abort = (): void => {
+    onAbort?.();
+    handOverTheKeyboard();
+  };
+
+  /**
+   * Put the keyboard where nothing changes meaning underneath it.
+   *
+   * The one slot in this row serves send, the wait and stop in turn, which is
+   * what keeps focus from falling to the body when the phase changes -- and
+   * what makes standing there dangerous. The box is where the reader acts
+   * next anyway.
+   */
+  const handOverTheKeyboard = (): void => {
     box.current?.focus();
   };
 
@@ -176,6 +201,13 @@ function ChatComposerInner({
       <textarea
         ref={box}
         value={draft}
+        // Nothing goes in between the press and the server answering. The box
+        // still shows what was sent, because this end cannot say it arrived --
+        // and a letter typed now would join that sentence with nothing to tell
+        // the two apart afterwards, which is the whole of why emptying it
+        // later ever needed a rule. Read-only rather than disabled: it keeps
+        // the keyboard the press handed it, and a disabled control loses that.
+        readOnly={turnPhase === 'sending'}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           // Typing Chinese, Japanese or Korean means pressing Enter to accept
@@ -237,7 +269,7 @@ function ChatComposerInner({
             variant={null}
             size={null}
             aria-label='Abort'
-            onClick={onAbort}
+            onClick={abort}
             data-testid='chat-composer-abort'
             className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error'
           >

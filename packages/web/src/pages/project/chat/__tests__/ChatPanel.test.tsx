@@ -188,7 +188,7 @@ describe('ChatPanel', () => {
     expect(screen.getByTestId('chat-composer-abort')).toBeInTheDocument();
   });
 
-  it('does not wipe what was typed while the server was still answering', async () => {
+  it('takes nothing into the box while the server has not answered', async () => {
     const user = userEvent.setup();
     streamStaysOpen();
     renderPanel();
@@ -198,19 +198,21 @@ describe('ChatPanel', () => {
     await user.click(screen.getByTestId('chat-composer-send'));
     await waitFor(() => expect(chatApi.streamMessage).toHaveBeenCalled());
 
-    // The box is not locked, so typing on is the ordinary thing to do.
-    act(() => {
-      useChatStore.getState().setComposerDraft('second thought');
-    });
+    // The box shows what was sent and accepts nothing more, so there is never
+    // a moment where it holds one sentence of ours and another of theirs.
+    const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
+    expect(box.readOnly).toBe(true);
+    await user.type(box, ' and one more thing');
+    expect(useChatStore.getState().composerDraft).toBe('first question');
+
     act(() => {
       turnStarts(['first question']);
     });
 
-    // Emptying the box is for taking away the words that were sent, not the
-    // ones typed since -- those would go with no message, no undo, and nowhere
-    // to look for them.
-    await waitFor(() => expect(chatApi.streamMessage).toHaveBeenCalledTimes(1));
-    expect(useChatStore.getState().composerDraft).toBe('second thought');
+    // And then it is emptied, with no rule applied to the text: only one
+    // thing could have been in it.
+    await waitFor(() => expect(useChatStore.getState().composerDraft).toBe(''));
+    expect(screen.getByTestId('chat-composer-textarea')).toHaveProperty('readOnly', false);
   });
 
   it('says so on the composer when the message never went out', async () => {

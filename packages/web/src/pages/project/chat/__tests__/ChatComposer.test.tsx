@@ -112,6 +112,73 @@ describe('ChatComposer', () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
+  it('takes nothing typed between the press and the server answering', () => {
+    // The press has gone out and nothing has come back. The box still shows
+    // what was sent, because this end cannot say it arrived -- and it takes
+    // no more, because anything typed now would be mixed into that sentence
+    // with no way to tell the two apart afterwards. There is nothing to
+    // decide here: it simply does not accept input yet.
+    const onChange = vi.fn();
+    render(
+      <ChatComposer
+        draft='what I asked'
+        turnPhase='sending'
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+      />,
+    );
+    const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
+
+    expect(box.readOnly).toBe(true);
+  });
+
+  it('does not send on Enter while the last press is still unanswered', () => {
+    const onSubmit = vi.fn();
+    render(
+      <ChatComposer
+        draft='what I asked'
+        turnPhase='sending'
+        onChange={vi.fn()}
+        onSubmit={onSubmit}
+        onAbort={vi.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByTestId('chat-composer-textarea'), { key: 'Enter' });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('takes input again once the server has answered', () => {
+    render(
+      <ChatComposer
+        draft=''
+        turnPhase='running'
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+      />,
+    );
+    const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
+    expect(box.readOnly).toBe(false);
+  });
+
+  it('hands the keyboard to the box when stop is pressed, too', () => {
+    // Same element, same rule: what it does is about to change, so nobody is
+    // left standing on it. Stopping turns it back into Send, and a reader who
+    // has typed their next message while waiting would send it with the very
+    // next keypress.
+    const props = { draft: 'my next question', onChange: vi.fn(), onSubmit: vi.fn(), onAbort: vi.fn() };
+    render(<ChatComposer {...props} turnPhase='running' />);
+    const stop = screen.getByTestId('chat-composer-abort');
+    stop.focus();
+
+    fireEvent.click(stop);
+
+    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-textarea'));
+  });
+
   it('keeps the wait out of the tab order, because there is nothing to do with it', () => {
     // The slot the indicator stands in becomes the stop button a moment
     // later. Anything focusable there can be tabbed to and then changes into

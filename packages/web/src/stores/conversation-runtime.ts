@@ -59,17 +59,6 @@ interface Turn {
   /** Raised to stop it. */
   abort: AbortController;
   /**
-   * What was in the composer when it was sent, so it can be taken out again.
-   *
-   * The box holds what has not been sent, and this turn is the only thing that
-   * knows when that stopped being true of these words. Kept here rather than
-   * in whatever is rendering the conversation, because the reader may collapse
-   * the panel the moment after pressing send -- the turn goes on without it,
-   * and a rule living in the panel would stop running exactly then, leaving
-   * the words in the box to be sent a second time.
-   */
-  said: string;
-  /**
    * The server has said it stored the message and the turn is under way.
    *
    * False for as long as the request is out and unanswered. What separates the
@@ -713,16 +702,13 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
       const started = running.turn;
 
       // The words are in the conversation now, so the box no longer has to
-      // hold them. Only when it still holds exactly them: once the reader has
-      // touched it, nothing in there is ours to take. No rule written on the
-      // text can tell "our words are still there" from "what they are typing
-      // happens to look like them" -- and every rule that tries takes letters
-      // off a sentence they are still writing, with no message and no undo.
-      // Leaving a sent line in the box is a line they can delete; taking their
-      // letters is not.
-      if (useChatStore.getState().composerDraft === started.said) {
-        useChatStore.getState().setComposerDraft('');
-      }
+      // hold them. Emptied whatever is in it, because only one thing can be:
+      // the box takes nothing between the press and this event, so there is
+      // no sentence of the reader's own in there to take away. Three rules
+      // were tried for telling their letters from ours before it was clear
+      // that the question only exists if the box accepts input while it is
+      // showing something it did not get from them.
+      useChatStore.getState().setComposerDraft('');
 
       patchConversation(conversationId, (c) => {
         // The place the reply will be written into, made here because this is
@@ -845,7 +831,7 @@ async function runTurn(
   const abort = new AbortController();
   patchConversation(conversationId, (c) => ({
     ...c,
-    turn: { replyId, abort, started: false, said },
+    turn: { replyId, abort, started: false },
     // Whatever failed before this is no longer what is happening: it has
     // become part of the history, and the failure worth announcing from here
     // on is this turn's, if it has one.

@@ -551,65 +551,23 @@ describe('the box the words were typed into', () => {
     expect(useChatStore.getState().composerDraft).toBe('');
   });
 
-  it('keeps everything when the reader carried on typing', async () => {
+  it('is emptied whatever it happens to hold, because only one thing can be in it', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
     useChatStore.getState().setComposerDraft('hello');
 
     void conversationRuntime.send('p-1', 'hello');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
-    // Carrying on typing is the ordinary thing to do; nothing stops them.
-    useChatStore.getState().setComposerDraft('hello and one more thing');
 
     turnStarts(['earlier', 'hello']);
 
-    // Cutting the front off would be right here and wrong in the sibling case
-    // below, and nothing in the text says which one this is. So the box keeps
-    // what it has: a sent line left in it is one the reader can delete, and
-    // deleting it is not something this end can get wrong.
-    expect(useChatStore.getState().composerDraft).toBe('hello and one more thing');
-  });
-});
-
-describe('what the box is left holding', () => {
-  it('is left alone once the reader has touched it at all', async () => {
-    openChatAnswers();
-    await conversationRuntime.ensureLoaded('p-1');
-    useChatStore.getState().setComposerDraft('ok');
-
-    void conversationRuntime.send('p-1', 'ok');
-    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
-    // Cleared it and started the next sentence, which happens to begin with
-    // the same two letters -- as short openings do.
-    useChatStore.getState().setComposerDraft('ok, now make it blue');
-
-    turnStarts(['earlier', 'ok']);
-
-    // Nothing in the box is ours to take once it has been edited: no rule
-    // written on the text can tell "our words are still there" from "what
-    // they typed happens to look like them", and every rule that tries takes
-    // letters off the front of a sentence they are still writing.
-    expect(useChatStore.getState().composerDraft).toBe('ok, now make it blue');
-  });
-
-  it('is left alone when what is in it is not what went out', async () => {
-    openChatAnswers();
-    await conversationRuntime.ensureLoaded('p-1');
-    useChatStore.getState().setComposerDraft('hi');
-
-    void conversationRuntime.send('p-1', 'hi');
-    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
-    // They cleared the box and started something else while waiting. It
-    // happens to contain those two letters, which is not the same as being
-    // the words that went out.
-    useChatStore.getState().setComposerDraft('This is the next one');
-
-    turnStarts(['earlier', 'hi']);
-
-    // Taking out the first thing that looks the same would leave them holding
-    // "Ts is the next one" -- rewritten in front of them, with nothing said
-    // and no way back.
-    expect(useChatStore.getState().composerDraft).toBe('This is the next one');
+    // No rule is applied to the text and none is needed. The box takes
+    // nothing between the press and this event, so there is nothing of the
+    // reader's own in there for a rule to get wrong. Three were tried --
+    // exact, contains, starts-with -- before it was clear the question only
+    // exists if the box accepts input while it is showing something it did
+    // not get from them.
+    expect(useChatStore.getState().composerDraft).toBe('');
   });
 });
 
@@ -1424,5 +1382,38 @@ describe('telling the reader that something went wrong', () => {
     expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', conversationId: 'c-1', kind: 'network' })]);
     // Still offering, because the reader may simply press it again.
     expect(conversation()?.hasMore).toBe(true);
+  });
+});
+
+describe('the wait between the press and the server answering', () => {
+  it('has two ways out, and the one that fails leaves the words where they are', async () => {
+    // The reader pressed send and nothing came back. What ends this is one of
+    // two things: the server says it has the message, or the connection stops
+    // saying it is alive. This is the second.
+    vi.useFakeTimers();
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    useChatStore.getState().setComposerDraft('the one I sent');
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    void conversationRuntime.send('p-1', 'the one I sent');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    expect(turnPhaseOf(useConversationRuntime.getState(), 'p-1')).toBe('sending');
+
+    vi.advanceTimersByTime(SSE_HEARTBEAT_TIMEOUT_MS + 1);
+    stop();
+
+    // Nothing of this turn ever reached the screen, so nothing has to be
+    // taken off it. The words never went anywhere this end can vouch for, so
+    // they are still in the box and the button is a send button again --
+    // pressing it is the whole of what there is to do.
+    expect(useChatStore.getState().composerDraft).toBe('the one I sent');
+    expect(turnPhaseOf(useConversationRuntime.getState(), 'p-1')).toBe('idle');
+    expect(told).toHaveLength(1);
+    // Sending it again can store the same question twice -- the first may have
+    // arrived and been written down before the line went. That is not a thing
+    // this end can find out, and two identical questions in a row is the
+    // honest result of not knowing.
   });
 });
