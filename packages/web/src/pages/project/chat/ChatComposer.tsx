@@ -95,13 +95,24 @@ function ChatComposerInner({
 }: ChatComposerProps): React.JSX.Element {
   const t = useTranslation();
   const ready = draft.trim().length > 0 && turnPhase === 'idle';
+  const box = React.useRef<HTMLTextAreaElement>(null);
 
   /**
    * Submit the draft message when the composer is in a ready state.
+   *
+   * Hands the keyboard to the box on the way out. Whoever pressed this with
+   * the keyboard is standing on a button that is about to be a different
+   * one -- the same element serves send, the wait and stop, which is what
+   * keeps the focus from falling to the body when the phase changes. Left
+   * standing there, their next keypress reaches stop: they would be ending
+   * the answer they just asked for, having aimed at nothing of the sort.
+   * The box is where they act next anyway, and it is the one thing here that
+   * does not change meaning underneath them.
    */
   const submit = (): void => {
     if (!ready) return;
     onSubmit();
+    box.current?.focus();
   };
 
   return (
@@ -163,6 +174,7 @@ function ChatComposerInner({
         </div>
       </div>
       <textarea
+        ref={box}
         value={draft}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -204,25 +216,21 @@ function ChatComposerInner({
         </Button>
         {turnPhase === 'sending' ? (
           // The press landed and the server has not spoken yet. Something has
-          // to stand here or the press reads as having done nothing, and
-          // there is nothing to press that would help -- but it is still a
-          // button, because whoever sent this with the keyboard is standing
-          // on one. Rendering anything else here takes that element out and
-          // puts a different one in, and their focus goes with it. Said with
-          // `aria-disabled` rather than `disabled`: the disabled attribute
-          // takes an element out of the tab order, so the browser blurs it
-          // and the focus is lost the same way.
-          <Button
-            type='button'
-            variant={null}
-            size={null}
-            aria-disabled='true'
-            aria-label={t('chat.composer.sending')}
+          // to stand here or the press reads as having done nothing -- but it
+          // is not a control: there is nothing to press that would help, so
+          // there is nothing to reach with the keyboard either. Kept out of
+          // the tab order for a reason beyond having no use: a moment later
+          // this slot is the stop button, and anything focusable here can be
+          // tabbed to and then turn into something else underneath whoever
+          // is standing on it. What it has to say is said by the live region
+          // below, which is where a reader hears it anyway.
+          <span
             data-testid='chat-composer-sending'
-            className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 cursor-default items-center justify-center rounded-chrome text-muted-foreground'
+            aria-hidden='true'
+            className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground'
           >
-            <Loader2 className='h-4 w-4 animate-spin' aria-hidden='true' />
-          </Button>
+            <Loader2 className='h-4 w-4 animate-spin' />
+          </span>
         ) : turnPhase === 'running' ? (
           <Button
             type='button'

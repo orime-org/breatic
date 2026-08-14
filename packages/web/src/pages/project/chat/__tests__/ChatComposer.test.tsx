@@ -54,11 +54,15 @@ describe('ChatComposer', () => {
     expect(screen.getByTestId('chat-composer-sending')).toBeInTheDocument();
   });
 
-  it('keeps the keyboard where it was when the press starts the wait', () => {
-    // Whoever sent this with the keyboard is standing on the send button. If
-    // what stands in its place is a different kind of element, React takes
-    // the old one out and puts a new one in -- and focus falls to the body,
-    // so the next Tab starts over from the top of the page.
+  it('hands the keyboard to the box when the press is made', () => {
+    // Whoever sent this with the keyboard is standing on the send button, and
+    // that button is about to be a stop button: same slot, same element, a
+    // different thing to press. Leaving them there means their next keypress
+    // stops the answer they just asked for. Letting the element go instead
+    // drops them on the body, and their next Tab starts from the top of the
+    // page. So the press hands the keyboard somewhere that is neither -- the
+    // box they were typing in, which is where they act next anyway and which
+    // does not change meaning underneath them.
     const props = {
       draft: 'hello',
       onChange: vi.fn(),
@@ -66,18 +70,86 @@ describe('ChatComposer', () => {
       onAbort: vi.fn(),
     };
     const { rerender } = render(<ChatComposer {...props} turnPhase='idle' />);
-    screen.getByTestId('chat-composer-send').focus();
+    const send = screen.getByTestId('chat-composer-send');
+    send.focus();
 
+    fireEvent.click(send);
     rerender(<ChatComposer {...props} turnPhase='sending' />);
 
+    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-textarea'));
+  });
+
+  it('does not leave the keyboard on the button that becomes stop', () => {
+    const onAbort = vi.fn();
+    const props = { draft: 'hello', onChange: vi.fn(), onSubmit: vi.fn(), onAbort };
+    const { rerender } = render(<ChatComposer {...props} turnPhase='idle' />);
+    const send = screen.getByTestId('chat-composer-send');
+    send.focus();
+    fireEvent.click(send);
+
+    rerender(<ChatComposer {...props} turnPhase='sending' />);
+    rerender(<ChatComposer {...props} turnPhase='running' />);
+
+    // Pressing the key again -- a double click, or Enter held down -- must not
+    // reach stop, because nobody aimed at stop.
+    expect(document.activeElement).not.toBe(screen.getByTestId('chat-composer-abort'));
+  });
+
+  it('still has the keyboard somewhere once the turn is over', () => {
+    // The turn ends, the box is empty, and the send button goes back to being
+    // disabled -- which takes it out of the tab order, so a browser blurs it.
+    // That is the same loss one step later, and it happens on every send.
+    const props = { draft: 'hello', onChange: vi.fn(), onSubmit: vi.fn(), onAbort: vi.fn() };
+    const { rerender } = render(<ChatComposer {...props} turnPhase='idle' />);
+    const send = screen.getByTestId('chat-composer-send');
+    send.focus();
+    fireEvent.click(send);
+
+    rerender(<ChatComposer {...props} draft='' turnPhase='running' />);
+    rerender(<ChatComposer {...props} draft='' turnPhase='idle' />);
+
+    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-textarea'));
     expect(document.activeElement).not.toBe(document.body);
-    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-sending'));
+  });
+
+  it('keeps the wait out of the tab order, because there is nothing to do with it', () => {
+    // The slot the indicator stands in becomes the stop button a moment
+    // later. Anything focusable there can be tabbed to and then changes into
+    // something else underneath the reader. It is not a control -- there is
+    // nothing to press -- so it does not belong in the tab order at all, and
+    // what it has to say is said by the live region instead.
+    render(
+      <ChatComposer
+        draft='hello'
+        turnPhase='sending'
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+      />,
+    );
+    const waiting = screen.getByTestId('chat-composer-sending');
+
+    expect(waiting.tagName).not.toBe('BUTTON');
+    waiting.focus();
+    expect(document.activeElement).not.toBe(waiting);
   });
 
   it('says what the wait is about, for a reader who cannot see it spin', async () => {
+    // Said by the live region rather than by the spinner. A region that is
+    // already on the page when its text arrives is one screen readers
+    // announce; one that appears holding its text is one many of them never
+    // do. The spinner itself is hidden -- it would otherwise say the same
+    // thing a second time, in a place nobody can reach.
     setup({ draft: 'hello', turnPhase: 'sending' });
     await expectNoA11yViolations(document.body);
-    expect(screen.getByTestId('chat-composer-sending')).toHaveAccessibleName('Sending');
+    expect(screen.getByRole('status')).toHaveTextContent('Sending');
+    expect(screen.getByTestId('chat-composer-sending')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('has nothing to announce when nothing is being waited for', () => {
+    setup({ draft: 'hello', turnPhase: 'idle' });
+    // The region stays, so that it is here before it has anything to say.
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 
   it('send is disabled while the draft is empty', () => {
