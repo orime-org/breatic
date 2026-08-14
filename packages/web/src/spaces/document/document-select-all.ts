@@ -97,6 +97,21 @@ function bodySelection(state: EditorState): Selection | null {
 }
 
 /**
+ * Whether the selection reaches into more than one block.
+ *
+ * Asked of the two ends' parent nodes rather than of the positions, because
+ * two positions in the same paragraph are one block however far apart they
+ * are, and two positions either side of a block boundary are two blocks
+ * however close together.
+ * @param state - Editor state to read.
+ * @returns True when the ends sit in different blocks.
+ */
+function spansSeveralBlocks(state: EditorState): boolean {
+  const { $from, $to } = state.selection;
+  return $from.parent !== $to.parent;
+}
+
+/**
  * The range of the block the caret is in.
  * @param state - Editor state to read.
  * @returns That block's content range.
@@ -152,6 +167,12 @@ function nextSelection(state: EditorState): Selection | null {
   // further to go, and answering with the caret's block would SHRINK the
   // selection — which is what a third press did before this branch existed.
   if (body && sameRange(current, { from: body.from, to: body.to })) return body;
+  // A selection that already spans more than one block is past the first tier,
+  // so the next tier is the whole body. Answering with the block the caret
+  // started in would shrink it, and this key means widen. Measured in the
+  // browser before this branch: dragging across three paragraphs selected 361
+  // characters, and one press cut that to 344 — the first block alone.
+  if (spansSeveralBlocks(state)) return body ?? block;
   // Already exactly this block: the press means "widen". Anything else —
   // a caret, part of the block, a stretch across blocks — collapses to the
   // block the caret is in, which is the first tier.

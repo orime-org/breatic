@@ -152,12 +152,26 @@ export class BodySelection extends Selection {
 // throwing. `AllSelection` and `CellSelection` register themselves the same
 // way, at module scope.
 //
-// The guard is for the test runner, not for production. `jsonID` is
-// `if (id in classesById) throw` — one registration per process — and this
-// package's vitest config resets the module registry between files while
-// keeping one process, so this module is evaluated once per test file. In the
-// browser it is evaluated once and the catch never runs. Only that one error
-// is swallowed; anything else is rethrown.
+// `Selection.jsonID` does two things: it puts the class in a registry keyed by
+// id, and it writes the id onto the class's prototype. The registry is
+// per-process and rejects a second use of the same id, and the throw is the
+// first statement — so on a second call NEITHER thing happens, including the
+// prototype write, which is independent of the registry.
+//
+// That second call does not happen in a browser, where this module is
+// evaluated once. It happens under vitest: this package runs one process for
+// the whole package and resets the module registry between files, so our
+// source is re-evaluated per file while `prosemirror-state` in node_modules is
+// not. Every file after the first got a `BodySelection` whose instances had no
+// `jsonID` — and `@tiptap/y-tiptap` reads exactly that property to decide how
+// to restore a selection across a remote change, so the restore fell through
+// to its `TextSelection` default and the collaboration tests passed or failed
+// depending on which file ran first.
+//
+// So the prototype write is done here when the registry rejects the id. The
+// registry keeps pointing at the first class, which is correct: every
+// evaluation produces the same behaviour, and `Selection.fromJSON` returning
+// the first one is indistinguishable from returning this one.
 try {
   Selection.jsonID('body', BodySelection);
 } catch (error) {
@@ -165,4 +179,5 @@ try {
     error instanceof RangeError &&
     error.message.includes('Duplicate use of selection JSON ID');
   if (!alreadyRegistered) throw error;
+  (BodySelection.prototype as { jsonID?: string }).jsonID = 'body';
 }

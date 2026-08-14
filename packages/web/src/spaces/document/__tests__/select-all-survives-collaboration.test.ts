@@ -14,6 +14,14 @@
  * `TextSelection.between`**（`y-tiptap.js:374`）。`TextSelection` 的端点必须落在
  * inline content 上，正是 `BodySelection` 存在的理由要绕开的那件事 —— 于是正文首尾
  * 那种放不进光标的块（分割线、`unsupportedBlock`）会被挤出选区。
+ *
+ * **判据用 `selection.toJSON().type`，不用 `instanceof BodySelection`。** 后者在这里
+ * 问的是「是不是同一个类对象」，而那在浏览器里恒真、在这个测试进程里恒假：这个包一个
+ * 进程跑完，文件之间重置模块注册表，所以我们的源码每个文件重新求值一份新的
+ * `BodySelection` 类，而 `prosemirror-state` 的 `jsonID` 注册表在 node_modules 里不
+ * 被重置、只认第一份。重建出来的是第一份类的实例，行为一模一样、类对象不同。
+ * `type` 直接说「它仍然是一个 body 选区」，两种环境下都成立，而且照样测得出 patch
+ * 有没有生效 —— 没生效就会是 `'text'`。
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -23,7 +31,6 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { BodySelection } from '@web/spaces/document/document-body-selection';
 
 const editors: Editor[] = [];
 const docs: Y.Doc[] = [];
@@ -80,8 +87,8 @@ describe('别人编辑之后，「全部正文」还得是全部正文', () => {
     );
     pressCtrlA(a.editor);
     pressCtrlA(a.editor);
-    expect(a.editor.state.selection, '前提：按两次之后拿到的是 BodySelection').toBeInstanceOf(
-      BodySelection,
+    expect(a.editor.state.selection.toJSON().type, '前提：按两次之后拿到的是 body 选区').toBe(
+      'body',
     );
     const before = { from: a.editor.state.selection.from, to: a.editor.state.selection.to };
     expect(before.to).toBe(a.editor.state.doc.content.size);
@@ -91,9 +98,9 @@ describe('别人编辑之后，「全部正文」还得是全部正文', () => {
     Y.applyUpdate(a.doc, Y.encodeStateAsUpdate(b.doc));
 
     expect(
-      a.editor.state.selection,
+      a.editor.state.selection.toJSON().type,
       '别人编辑之后 A 的选区仍该是「全部正文」，不是一个向内收缩的文本选区',
-    ).toBeInstanceOf(BodySelection);
+    ).toBe('body');
     expect(
       a.editor.state.selection.to,
       '末尾那条分割线不许掉出选区',
@@ -116,7 +123,7 @@ describe('别人编辑之后，「全部正文」还得是全部正文', () => {
     );
     pressCtrlA(a.editor);
     pressCtrlA(a.editor);
-    expect(a.editor.state.selection).toBeInstanceOf(BodySelection);
+    expect(a.editor.state.selection.toJSON().type).toBe('body');
 
     // B 删掉最后一个段落。
     const bDoc = b.editor.state.doc;
@@ -124,8 +131,8 @@ describe('别人编辑之后，「全部正文」还得是全部正文', () => {
     b.editor.view.dispatch(b.editor.state.tr.delete(lastStart, bDoc.content.size));
     Y.applyUpdate(a.doc, Y.encodeStateAsUpdate(b.doc));
 
-    expect(a.editor.state.selection, '删掉一块之后仍该是「全部正文」').toBeInstanceOf(
-      BodySelection,
+    expect(a.editor.state.selection.toJSON().type, '删掉一块之后仍该是「全部正文」').toBe(
+      'body',
     );
     expect(a.editor.state.selection.from).toBe(a.editor.state.doc.child(0).nodeSize);
     expect(a.editor.state.selection.to).toBe(a.editor.state.doc.content.size);
@@ -147,7 +154,7 @@ describe('别人编辑之后，「全部正文」还得是全部正文', () => {
     );
     pressCtrlA(a.editor);
     pressCtrlA(a.editor);
-    expect(a.editor.state.selection).toBeInstanceOf(BodySelection);
+    expect(a.editor.state.selection.toJSON().type).toBe('body');
 
     const bDoc = b.editor.state.doc;
     expect(() => {

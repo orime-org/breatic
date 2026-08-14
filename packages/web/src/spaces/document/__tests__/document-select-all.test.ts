@@ -232,6 +232,40 @@ describe('光标在正文里', () => {
   });
 });
 
+describe('选区已经跨过一块以上时，按下去要继续扩大', () => {
+  it('用鼠标从第一块拖到第三块，按一次给全部正文，不是缩回第一块', () => {
+    // 真浏览器量到的：跨块拖选 361 字，按一次变成 344 字（光标所在那一块）——
+    // 一个意为「扩大」的键先把选区缩小了。规则说「按一次选当前这一块」，指的是
+    // 起点，跨块的选区已经越过第一档了。
+    const editor = open('<p>first</p><p>second</p><p>third</p>');
+    const from = blockRange(editor, 1).from;
+    const to = blockRange(editor, 3).to;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)),
+    );
+
+    pressCtrlA(editor);
+
+    expect(selection(editor).from).toBe(titleSize(editor));
+    expect(selection(editor).to).toBe(editor.state.doc.content.size);
+    expect(touchesTitle(editor)).toBe(false);
+  });
+
+  it('跨块选区只覆盖两块中间的一部分时，同样给全部正文', () => {
+    const editor = open('<p>first</p><p>second</p><p>third</p>');
+    const from = blockRange(editor, 1).from + 2;
+    const to = blockRange(editor, 2).to - 1;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)),
+    );
+
+    pressCtrlA(editor);
+
+    expect(selection(editor).from).toBe(titleSize(editor));
+    expect(selection(editor).to).toBe(editor.state.doc.content.size);
+  });
+});
+
 describe('光标在标题里', () => {
   it('按一次只选中标题，碰不到正文', () => {
     const editor = open('<p>body</p>');
