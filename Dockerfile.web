@@ -11,6 +11,10 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/server/package.json packages/server/
 COPY packages/collab/package.json packages/collab/
 COPY packages/web/package.json packages/web/
+# Before install, not with the source: the root package.json declares
+# `pnpm.patchedDependencies`, and pnpm hashes the patch file itself while
+# resolving. Without it here, install stops at ENOENT.
+COPY patches/ patches/
 
 RUN pnpm install --frozen-lockfile --ignore-scripts=false
 
@@ -18,6 +22,11 @@ RUN pnpm install --frozen-lockfile --ignore-scripts=false
 COPY packages/ packages/
 COPY tsconfig.base.json turbo.json ./
 COPY locales/ locales/
+# The document editor's vocabulary. `packages/web/vite.config.mts` reads it at
+# the top of the config module — before any mode branch — and compiles it into
+# the bundle, so a missing file stops the build rather than shipping a bundle
+# that disagrees with the server.
+COPY config/ config/
 
 # Build shared (dependency) then web
 RUN pnpm turbo build --filter=@breatic/shared
