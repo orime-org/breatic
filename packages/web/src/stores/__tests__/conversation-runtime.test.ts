@@ -267,16 +267,22 @@ describe('what the message column is told while a chat is re-opened', () => {
 
 describe('one press, one line', () => {
   /**
-   * Set the first turn up to be refused with the one refusal worth retrying.
+   * Open a chat, then set the next turn up to be refused.
    *
-   * The conversation on screen has been deleted from another tab, which is
-   * the case this whole recovery exists for.
+   * The refusal is the caller's to choose, and it is the only one queued --
+   * a helper that queued one of its own would leave it behind for whichever
+   * case runs next when a test only sends once.
+   * @param refusal - How the server answers the turn. Defaults to the one
+   *   refusal worth retrying: the conversation on screen has been deleted
+   *   from another tab, which is what this whole recovery exists for.
    */
-  async function theConversationIsGone(): Promise<void> {
+  async function theConversationIsGone(
+    refusal: StreamRefusedError = new StreamRefusedError(404, 'Resource not found', true),
+  ): Promise<void> {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
-      h.onError?.(new StreamRefusedError(404, 'Resource not found', true));
+      h.onError?.(refusal);
     });
   }
 
@@ -301,6 +307,76 @@ describe('one press, one line', () => {
       expect.objectContaining({ conversationId: 'c-2', message: 'hello' }),
       expect.anything(),
     );
+  });
+
+  it('says it once when the replacement is refused too, rather than nothing at all', async () => {
+    // The replacement opens, the words go out on it, and it is refused as
+    // well -- another tab deleting this one too, or a route that answers 404
+    // whatever is asked of it. Nobody tries a third time, so this is the
+    // attempt that ran out of options and the one that owes the reader a line.
+    await theConversationIsGone();
+    vi.mocked(chatApi.openChat).mockResolvedValue({
+      conversations: [{ id: 'c-2' }],
+      current: { conversation: { id: 'c-2' }, messages: [], hasMore: false },
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+    // Every send is refused, the first one included.
+    vi.mocked(chatApi.streamMessage).mockImplementation(async (_input, h) => {
+      h.onError?.(new StreamRefusedError(404, 'Resource not found', true));
+    });
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    await conversationRuntime.send('p-1', 'hello');
+    stop();
+
+    expect(chatApi.streamMessage).toHaveBeenCalledTimes(2);
+    expect(told).toHaveLength(1);
+  });
+
+  it('does not re-send the words on a 404 nobody of ours wrote', async () => {
+    // A proxy or gateway answering 404 for an unrouted path looks identical
+    // here to our own "that conversation is gone" -- unless the refusal is
+    // asked where its message came from. Opening a replacement and putting
+    // the reader's words on it is not something to do on a status no part of
+    // our server produced.
+    await theConversationIsGone(new StreamRefusedError(404, 'Not Found', false));
+    vi.mocked(chatApi.openChat).mockClear();
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    await conversationRuntime.send('p-1', 'hello');
+    stop();
+
+    expect(chatApi.openChat).not.toHaveBeenCalled();
+    expect(chatApi.streamMessage).toHaveBeenCalledTimes(1);
+    expect(told).toHaveLength(1);
+  });
+
+  it('says nothing to a visit the reader has already left', async () => {
+    // Opening the replacement is a whole request, and the reader can walk out
+    // of the project during it. What comes back then is news about a
+    // conversation from a visit that is over -- and the panel of the visit
+    // they are on now is the one watching.
+    await theConversationIsGone();
+    // Held open, then refused the way an aborted request really is refused.
+    let giveUp: (e: unknown) => void = () => {};
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(
+      new Promise((_res, rej) => {
+        giveUp = rej;
+      }),
+    );
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    const sending = conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(chatApi.openChat).toHaveBeenCalledTimes(2));
+
+    conversationRuntime.leaveProject('p-1');
+    giveUp(new DOMException('aborted', 'AbortError'));
+    await sending;
+    stop();
+
+    expect(told).toEqual([]);
   });
 
   it('says it once, not twice, when there is no replacement to be had', async () => {
@@ -1158,6 +1234,21 @@ describe('telling the reader that something went wrong', () => {
    * @param work - Run with a watcher attached.
    * @returns What it was told, in order.
    */
+  /**
+   * Answer the next turn with a refusal, the way the transport really does.
+   *
+   * `sseStream` never rejects: it catches, hands the failure to `onError`
+   * from the catch at the end of its own body, and returns. So a refusal and
+   * the end of the call are one moment, and whoever is waiting on the call
+   * hears about it.
+   * @param refusal - What the turn ends with.
+   */
+  function refuseTheTurn(refusal: unknown): void {
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(refusal);
+    });
+  }
+
   async function whatIsTold(work: () => Promise<void> | void): Promise<ChatMishap[]> {
     const told: ChatMishap[] = [];
     const stop = watchChatMishaps((m) => told.push(m));
@@ -1187,12 +1278,15 @@ describe('telling the reader that something went wrong', () => {
   it('passes on what the server said, when the server answered', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
+    // Refused and done with, which is the shape the transport really has:
+    // `sseStream` hands the failure to `onError` from the catch at the end of
+    // its own body and returns. Driving `onError` on a call that then hangs
+    // would be modelling a transport we do not have -- and the send is what
+    // decides whether a refusal is the last word, so it has to get there.
+    refuseTheTurn(new StreamRefusedError(402, 'You are out of credits.', true));
 
     const told = await whatIsTold(async () => {
-      void conversationRuntime.send('p-1', 'hello').catch(() => undefined);
-      await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
-      handlers.onError?.(new StreamRefusedError(402, 'You are out of credits.', true));
-      await vi.waitFor(() => expect(conversation()?.turn).toBeNull());
+      await conversationRuntime.send('p-1', 'hello');
     });
 
     // Getting an answer at all means the network was fine, so this is not a
@@ -1211,12 +1305,10 @@ describe('telling the reader that something went wrong', () => {
   it('calls it a network error when the request never left', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
+    refuseTheTurn(new StreamUnreachableError(new Error('offline')));
 
     const told = await whatIsTold(async () => {
-      void conversationRuntime.send('p-1', 'hello').catch(() => undefined);
-      await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
-      handlers.onError?.(new StreamUnreachableError(new Error('offline')));
-      await vi.waitFor(() => expect(conversation()?.turn).toBeNull());
+      await conversationRuntime.send('p-1', 'hello');
     });
 
     expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', conversationId: 'c-1', kind: 'network' })]);

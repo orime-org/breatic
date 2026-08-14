@@ -826,41 +826,31 @@ async function runTurn(
       },
       onClose: () => finishTurn(conversationId, replyId),
       onError: (err: unknown) => {
-        // Three endings, and the panel can only say something true about one
-        // it can tell from the others.
-        // Every ending here is one the reader did not ask for, so each is
-        // worth one line. Which line depends only on whether the server got
-        // to answer: an answer at all means the network was fine.
-        //
-        // Except the one the caller is about to act on. It opens a
-        // replacement and sends the same words again, and a line about a
-        // failure that healed itself is a line about nothing -- worse, it is
-        // followed by a second one when the recovery fails, which is one
-        // press announced twice. Whoever tries again is the one who speaks.
-        if (
-          !worthASecondAttempt(err) &&
-          (stillRunning(conversationId, replyId) !== undefined ||
-            err instanceof StreamRefusedError ||
-            err instanceof StreamUnreachableError)
-        ) {
-          tell({ projectId, conversationId, ...readMishap(err) });
-        }
+        // Two endings, and which one it is decides who says so.
         if (err instanceof StreamRefusedError || err instanceof StreamUnreachableError) {
           // The server answered and said no, or the request never left. Either
-          // way the turn never ran, which the caller needs to know: one of the
-          // two is worth trying again, and the words are still in the box.
+          // way the turn never ran and the words are still in the box -- and
+          // whether that is worth a word depends on what the caller does next,
+          // because one of the two refusals is worth trying again. Handed over
+          // rather than announced here: a line about a failure that healed
+          // itself is a line about nothing, and this end cannot tell which it
+          // is going to be.
           neverRan = err;
-        } else if (
-          err instanceof StreamDroppedError &&
-          stillRunning(conversationId, replyId) !== undefined
-        ) {
-          // The stream opened and then died. The server sees that as the
-          // client going away and cannot tell it from the user pressing stop,
-          // so it records the turn as stopped and this says the same. Guarded
-          // on this still being the turn that is running: an error arriving
-          // late belongs to a turn that already ended, and marking it would
-          // put "stopped" on a reply that finished.
-          patchMessage(conversationId, replyId, (m) => ({ ...m, interrupted: true as const }));
+        } else if (stillRunning(conversationId, replyId) !== undefined) {
+          // The stream opened and then died. Nothing follows this -- there is
+          // no attempt to wait on and nobody to hand it to -- so it is said
+          // here, by the only ending that knows it is the last one.
+          //
+          // Guarded on this still being the turn that is running: an error
+          // arriving late belongs to a turn that already ended, and acting on
+          // it would mark or announce it over the turn that came after.
+          if (err instanceof StreamDroppedError) {
+            // The server sees this as the client going away and cannot tell it
+            // from the user pressing stop, so it records the turn as stopped
+            // and this says the same.
+            patchMessage(conversationId, replyId, (m) => ({ ...m, interrupted: true as const }));
+          }
+          tell({ projectId, conversationId, ...readMishap(err) });
         }
         finishTurn(conversationId, replyId);
       },
@@ -888,11 +878,19 @@ const NOT_FOUND = 404;
  * off, and then opening a replacement asks the same question of the same
  * project. Whoever tries is the one who finds out, which is why they are also
  * the one who speaks.
+ *
+ * The status alone is not enough to ask this of. A proxy answering 404 for a
+ * path it does not know sends the same number as our own "that conversation
+ * is gone", and acting on it opens a conversation and puts the reader's words
+ * on it over an answer no part of our server produced. So the refusal has to
+ * be one of ours before any of that is worth doing.
  * @param ending - How the turn ended.
  * @returns True when a replacement conversation is worth opening.
  */
 function worthASecondAttempt(ending: unknown): boolean {
-  return ending instanceof StreamRefusedError && ending.status === NOT_FOUND;
+  return (
+    ending instanceof StreamRefusedError && ending.fromServer && ending.status === NOT_FOUND
+  );
 }
 
 /**
@@ -950,6 +948,20 @@ async function whileOpening<T>(projectId: string, work: () => Promise<T>): Promi
  * @param said - What was in the composer, as it stood there.
  */
 async function sendOnce(projectId: string, said: string): Promise<void> {
+  // Held from the start, not read again later. Leaving the project raises
+  // this one and forgets it, so asking for the visit afterwards would hand
+  // back a fresh, unraised signal -- and every line below would be spoken to
+  // the visit the reader is on now about the one they walked out of.
+  const visit = currentVisit(projectId);
+  /**
+   * Say this, unless the reader has walked out of the project since.
+   * @param mishap - Which conversation it is about, and what to say.
+   */
+  const tellThisVisit = (mishap: Omit<ChatMishap, 'at' | 'projectId'>): void => {
+    if (visit.signal.aborted) return;
+    tell({ projectId, ...mishap } as Omit<ChatMishap, 'at'>);
+  };
+
   if (useStore.getState().currentByProject[projectId] === undefined) {
     await whileOpening(projectId, () => ensureLoaded(projectId));
   }
@@ -962,9 +974,13 @@ async function sendOnce(projectId: string, said: string): Promise<void> {
   const ending = await runTurn(projectId, conversationId, said);
   if (!ending) return;
 
-  // Every other refusal has already been told by the turn: it says trying
-  // again is pointless, and there is nothing here that could get past it.
-  if (!worthASecondAttempt(ending)) return;
+  // The turn hands back every ending it could not be the last word on, and
+  // this is where the last word is decided -- so every path out of here that
+  // stops trying says so exactly once.
+  if (!worthASecondAttempt(ending)) {
+    tellThisVisit({ conversationId, ...readMishap(ending) });
+    return;
+  }
 
   // Not `ensureLoaded`: by its reckoning this project is open already. What
   // is needed is a new one, because the one on screen is the one the server
@@ -978,12 +994,13 @@ async function sendOnce(projectId: string, said: string): Promise<void> {
   // against it again would send the same words to the conversation the server
   // has just said it does not have -- refused again, re-opened again.
   if (!fresh || fresh === conversationId) {
-    // Now the press gets its one line, here, because this is where it is
-    // known there is nothing more to try. The words are still in the box.
     // What is quoted is the newer of the two answers when there is one: a
     // reader whose access was taken away mid-send is owed that, not the
     // sentence about the conversation the first attempt went looking for.
-    tell({ projectId, conversationId: null, ...readMishap(reopen ? reopen.failed : ending) });
+    tellThisVisit({
+      conversationId: null,
+      ...readMishap(reopen ? reopen.failed : ending),
+    });
     return;
   }
 
@@ -991,7 +1008,12 @@ async function sendOnce(projectId: string, said: string): Promise<void> {
   // screen, and adopting the new conversation replaced the list besides.
   // Nothing of the attempt is left to reuse, so the words go on again with the
   // turn that is re-sending them.
-  await runTurn(projectId, fresh, said);
+  //
+  // Once, not until it works. A second refusal is the answer, not an invitation
+  // to open a third conversation -- and it is this end of the line, so it is
+  // said rather than handed on to nobody.
+  const retry = await runTurn(projectId, fresh, said);
+  if (retry) tellThisVisit({ conversationId: fresh, ...readMishap(retry) });
 }
 
 /**
