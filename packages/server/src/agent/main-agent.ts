@@ -44,8 +44,8 @@ const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bm
  */
 export class MainAgent {
   /**
-   * The current request-scoped store (userId, conversationId, projectId,
-   * billing) from AsyncLocalStorage.
+   * The current request-scoped store (userId, conversationId, projectId) from
+   * AsyncLocalStorage.
    * @returns The active request context for this agent turn.
    */
   private get ctx(): ReturnType<typeof getContext> {

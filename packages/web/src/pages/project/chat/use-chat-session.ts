@@ -7,6 +7,7 @@ import type { MessageData } from '@breatic/shared';
 import { useChatStore } from '@web/stores';
 import {
   conversationRuntime,
+  turnPhaseOf,
   useConversationRuntime,
   watchChatMishaps,
 } from '@web/stores/conversation-runtime';
@@ -121,15 +122,7 @@ export function useChatSession(projectId: string): ChatSession {
   const stored = useConversationRuntime(
     (s) => (conversationId ? s.conversations[conversationId]?.messages : undefined) ?? NO_MESSAGES,
   );
-  const turnPhase = useConversationRuntime((s): TurnPhase => {
-    const turn = conversationId ? s.conversations[conversationId]?.turn : null;
-    if (turn) return turn.started ? 'running' : 'sending';
-    // No turn yet does not mean nothing is happening: pressing send with no
-    // conversation opens one first, and the reader has been waiting since the
-    // press. Reading only the turn would leave a live send button up for the
-    // whole of that request.
-    return s.sendingByProject[projectId] ? 'sending' : 'idle';
-  });
+  const turnPhase = useConversationRuntime((s) => turnPhaseOf(s, projectId));
   const hasMore = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.hasMore ?? false) : false,
   );

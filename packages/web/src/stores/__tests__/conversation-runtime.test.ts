@@ -23,6 +23,7 @@ import { StreamDroppedError, StreamRefusedError, StreamUnreachableError } from '
 import { useChatStore } from '@web/stores/chat';
 import {
   conversationRuntime,
+  turnPhaseOf,
   useConversationRuntime,
   watchChatMishaps,
   _resetForTests,
@@ -195,7 +196,31 @@ describe('pressing send twice while the conversation is still being opened', () 
     // What the panel renders as the waiting indicator reads this. Left until
     // the conversation exists, the whole opening request is a window with a
     // live send button on it.
-    expect(conversationRuntime.isSending('p-1')).toBe(true);
+    expect(turnPhaseOf(useConversationRuntime.getState(), 'p-1')).toBe('sending');
+  });
+});
+
+describe('a conversation the server no longer has', () => {
+  it('is still one send, while the next one is being opened', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+
+    // The first attempt is refused: another tab deleted this conversation.
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(new StreamRefusedError(404, 'Resource not found'));
+    });
+    // Opening the replacement takes a request, and that request hangs.
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(new Promise(() => {}));
+
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(chatApi.openChat).toHaveBeenCalledTimes(2));
+
+    // This is the same gap as the one before the first turn: no turn exists
+    // and a conversation is being opened. Pressing send again here runs the
+    // sentence a second time, on a conversation the first press is about to
+    // adopt.
+    void conversationRuntime.send('p-1', 'hello');
+    expect(chatApi.streamMessage).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -225,7 +250,7 @@ describe('the box the words were typed into', () => {
     expect(useChatStore.getState().composerDraft).toBe('');
   });
 
-  it('keeps what was typed while waiting, and takes out only what went out', async () => {
+  it('keeps everything when the reader carried on typing', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
     useChatStore.getState().setComposerDraft('hello');
@@ -237,13 +262,35 @@ describe('the box the words were typed into', () => {
 
     turnStarts(['earlier', 'hello']);
 
-    // The words that went out are gone from the box because they are in the
-    // conversation now. The ones typed since were never sent, so they stay.
-    expect(useChatStore.getState().composerDraft).toBe(' and one more thing');
+    // Cutting the front off would be right here and wrong in the sibling case
+    // below, and nothing in the text says which one this is. So the box keeps
+    // what it has: a sent line left in it is one the reader can delete, and
+    // deleting it is not something this end can get wrong.
+    expect(useChatStore.getState().composerDraft).toBe('hello and one more thing');
   });
 });
 
 describe('what the box is left holding', () => {
+  it('is left alone once the reader has touched it at all', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    useChatStore.getState().setComposerDraft('ok');
+
+    void conversationRuntime.send('p-1', 'ok');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    // Cleared it and started the next sentence, which happens to begin with
+    // the same two letters -- as short openings do.
+    useChatStore.getState().setComposerDraft('ok, now make it blue');
+
+    turnStarts(['earlier', 'ok']);
+
+    // Nothing in the box is ours to take once it has been edited: no rule
+    // written on the text can tell "our words are still there" from "what
+    // they typed happens to look like them", and every rule that tries takes
+    // letters off the front of a sentence they are still writing.
+    expect(useChatStore.getState().composerDraft).toBe('ok, now make it blue');
+  });
+
   it('is left alone when what is in it is not what went out', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
@@ -473,6 +520,51 @@ describe('loading what came before', () => {
       '',
     ]);
     expect(conversation()?.oldestLoadedTurn).toBe(60);
+  });
+
+  it('asks again when the list has moved on, rather than joining the old request', async () => {
+    openChatAnswers({ hasMore: true });
+    await conversationRuntime.ensureLoaded('p-1');
+
+    // The first page, asked for from turn 7, never answers. The second is
+    // answered, so what is being watched is whether a second one is made.
+    vi.mocked(chatApi.messagesBefore).mockImplementation((_id, beforeTurn) =>
+      beforeTurn === 7
+        ? new Promise(() => {})
+        : Promise.resolve({
+          messages: [
+            {
+              id: 'm59',
+              role: 'user',
+              parts: [{ type: 'text', text: 'turn fifty-nine' }],
+              content: 'turn fifty-nine',
+              ts: '2026-08-13T00:00:00Z',
+              turnIndex: 59,
+            },
+          ],
+          hasMore: true,
+        } as unknown as Awaited<ReturnType<typeof chatApi.messagesBefore>>),
+    );
+    void conversationRuntime.loadEarlier('c-1');
+
+    // A turn begins and hands back the server's own page, which starts at 60.
+    void conversationRuntime.send('p-1', 'a new question');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    turnStarts(['much later', 'a new question'], { firstTurnIndex: 60, hasMore: true });
+
+    void conversationRuntime.loadEarlier('c-1');
+
+    // Joining the one still on its way would be waiting on an answer that is
+    // going to be dropped -- it was asked from a list that no longer exists.
+    // The reader pressed a button and nothing at all would happen.
+    await vi.waitFor(() => expect(chatApi.messagesBefore).toHaveBeenCalledTimes(2));
+    expect(chatApi.messagesBefore).toHaveBeenLastCalledWith('c-1', 60, expect.any(AbortSignal));
+    expect(conversation()?.messages.map((m) => m.content)).toEqual([
+      'turn fifty-nine',
+      'much later',
+      'a new question',
+      '',
+    ]);
   });
 
   it('does nothing when there is nothing older', async () => {

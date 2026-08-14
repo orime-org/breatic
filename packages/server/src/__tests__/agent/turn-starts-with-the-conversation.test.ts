@@ -35,12 +35,11 @@ const getMessages = vi.fn(async () => ({
 const consolidateIfNeeded = vi.fn(async () => undefined);
 const streamTextRetry = vi.fn();
 
-vi.mock("@server/agent/turn-context.js", () => ({
-  buildTurnContext: vi.fn(async () => ({
-    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
-    compressedHistory: [],
-  })),
+const buildTurnContext = vi.fn(async () => ({
+  memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+  compressedHistory: [],
 }));
+vi.mock("@server/agent/turn-context.js", () => ({ buildTurnContext }));
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(),
@@ -110,6 +109,7 @@ describe("a turn that begins by settling up", () => {
     streamTextRetry.mockClear();
     addMessage.mockClear();
     getMessages.mockClear();
+    buildTurnContext.mockClear();
   });
 
   it("is a name both sides know", () => {
@@ -132,6 +132,36 @@ describe("a turn that begins by settling up", () => {
       ],
       hasMore: true,
     });
+  });
+
+  it("does none of the slow work before it has said this much", async () => {
+    streamTextRetry.mockReturnValue({
+      fullStream: (async function* () {})(),
+      text: Promise.resolve(""),
+      totalUsage: Promise.resolve({ totalTokens: 0 }),
+    });
+
+    await runWithContext(
+      { userId: "u1", conversationId: "c1", projectId: "p1" },
+      async () => {
+        const turn = new MainAgent().chat("a new question");
+        // Pulled one event at a time, because what is being watched is what
+        // has happened by the time the first one is out -- draining the whole
+        // turn would say nothing about the order.
+        const first = await turn.next();
+        expect((first.value as { event: string }).event).toBe(
+          SSE_EVENT_NAMES.CHAT_TURN_STARTED,
+        );
+
+        // Three round trips -- the memories, the history, the compression --
+        // and every one of them is time the reader spends looking at a screen
+        // where nothing has happened. Their own message does not appear until
+        // this event is out, so all of it belongs after.
+        expect(buildTurnContext).not.toHaveBeenCalled();
+
+        await turn.return(undefined);
+      },
+    );
   });
 
   it("reads the conversation only after storing what the user said", async () => {

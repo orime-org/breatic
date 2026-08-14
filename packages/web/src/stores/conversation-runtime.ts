@@ -121,6 +121,25 @@ export interface ConversationRuntime {
   failedReplyId: string | null;
 }
 
+/**
+ * How far along the send a project has under way, if it has one.
+ *
+ * The one place this is decided. A turn carries the wait for all but the first
+ * moment of one, and a project-level mark carries it before there is a turn --
+ * two halves of one fact, so anything asking either question asks here. What
+ * reads it: the panel, to know whether to draw a send button, a waiting
+ * indicator or a stop button; and `send`, to refuse a second press.
+ * @param state - The runtime as it stands.
+ * @param projectId - The project asked about.
+ * @returns Idle, sending, or running.
+ */
+export function turnPhaseOf(state: ConversationRuntimeState, projectId: string): TurnPhase {
+  const conversationId = state.currentByProject[projectId];
+  const turn = conversationId ? state.conversations[conversationId]?.turn : null;
+  if (turn) return turn.started ? 'running' : 'sending';
+  return state.sendingByProject[projectId] ? 'sending' : 'idle';
+}
+
 /** How far opening one project's chat has got. */
 export type OpenStatus = 'idle' | 'loading' | 'ready' | 'failed';
 
@@ -190,6 +209,7 @@ function joinOrStart(
 /** Chats being opened, keyed by project. */
 const opening: InFlight = new Map();
 
+
 /**
  * Earlier pages already being fetched, keyed by the conversation asked about.
  *
@@ -202,6 +222,20 @@ const opening: InFlight = new Map();
  * RTK Query keys it by endpoint and arguments, Apollo has it on by default.
  */
 const loadingEarlier: InFlight = new Map();
+/**
+ * Forget every page still on its way to one conversation.
+ *
+ * Pages are registered under the conversation *and* the cursor they ask from
+ * (see `loadEarlier`), so there can be more than one, and none of them can be
+ * found by the conversation's name alone.
+ * @param conversationId - The conversation being left behind.
+ */
+function forgetEarlierPages(conversationId: string): void {
+  for (const key of [...loadingEarlier.keys()]) {
+    if (key.startsWith(`${conversationId}:`)) loadingEarlier.delete(key);
+  }
+}
+
 
 /**
  * The visit each project is currently on.
@@ -517,12 +551,31 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
     // thing here the server does not know better than we do.
     case SSE_EVENT_NAMES.CHAT_TURN_STARTED: {
       const settled = (event.data.messages ?? []) as MessageData[];
+      // Read, decide, then write -- the same shape as the ERROR branch below.
+      // A conversation is rebuilt by a pure function of what it held, and this
+      // has to reach into another store; doing it inside that function would
+      // be changing the world from inside the description of a change.
+      const running = useStore.getState().conversations[conversationId];
+      // Belonging to a turn that is already over -- stopped, or given up on by
+      // the watchdog -- this describes a conversation nobody is waiting for an
+      // answer about, and taking the screen over on its behalf would hand back
+      // a reply slot nothing will ever finish writing.
+      const started = running?.turn;
+      if (started?.replyId !== replyId) break;
+
+      // The words are in the conversation now, so the box no longer has to
+      // hold them. Only when it still holds exactly them: once the reader has
+      // touched it, nothing in there is ours to take. No rule written on the
+      // text can tell "our words are still there" from "what they are typing
+      // happens to look like them" -- and every rule that tries takes letters
+      // off a sentence they are still writing, with no message and no undo.
+      // Leaving a sent line in the box is a line they can delete; taking their
+      // letters is not.
+      if (useChatStore.getState().composerDraft === started.said) {
+        useChatStore.getState().setComposerDraft('');
+      }
+
       patchConversation(conversationId, (c) => {
-        // Belonging to a turn that is already over -- stopped, or given up on
-        // by the watchdog -- this describes a conversation nobody is waiting
-        // for an answer about, and taking the screen over on its behalf would
-        // hand back a reply slot nothing will ever finish writing.
-        if (c.turn?.replyId !== replyId) return c;
         // The place the reply will be written into, made here because this is
         // the moment there is a reply to expect. Empty, and marked as being
         // written, so the bubble can show the turn is under way before the
@@ -535,19 +588,10 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
           ts: new Date().toISOString(),
           streaming: true,
         };
-        // The words are in the conversation now, so the box is no longer the
-        // only place they exist and no longer has to hold them. Only them:
-        // anything typed while waiting was never sent, and taking that away
-        // would take words nobody asked to have taken, with no message, no
-        // undo and nowhere to look for them.
-        const box = useChatStore.getState().composerDraft;
-        if (box.startsWith(c.turn.said)) {
-          useChatStore.getState().setComposerDraft(box.slice(c.turn.said.length));
-        }
         return {
           ...c,
           messages: [...settled.map(toStored), reply],
-          turn: { ...c.turn, started: true },
+          turn: { ...started, started: true },
           hasMore: Boolean(event.data.hasMore),
           // The list was replaced, so anything the reader had pulled up from
           // further back went with it. Saying otherwise would send the next
@@ -649,9 +693,6 @@ async function runTurn(
   // in front of the reader. The turn's first event says what is stored, and
   // that is when this turn appears.
   const abort = new AbortController();
-  // From here the turn is what says a send is under way, so the project-level
-  // mark that covered the gap before it existed comes off.
-  stopSayingSending(projectId);
   patchConversation(conversationId, (c) => ({
     ...c,
     turn: { replyId, abort, started: false, said },
@@ -756,35 +797,36 @@ const NOT_FOUND = 404;
  */
 async function send(projectId: string, said: string): Promise<void> {
   if (said.trim().length === 0) return;
-  // One send at a time in a project. The turn covers all of one but its first
-  // moment, and that moment is exactly where two presses land as two turns:
-  // the same sentence stored twice, the model asked twice, both charged for,
-  // and the first turn overwritten by the second so nothing on screen can
-  // stop it.
-  if (isSending(projectId)) return;
-  useStore.setState((s) => ({
-    sendingByProject: { ...s.sendingByProject, [projectId]: true as const },
-  }));
-
-  try {
-    await sendOnce(projectId, said);
-  } finally {
-    // Ordinarily the turn took this over long ago (see `runTurn`); this is
-    // for the send that never got one.
-    stopSayingSending(projectId);
-  }
+  // One send at a time in a project. Two presses in the gap before a turn
+  // exists land as two turns: the same sentence stored twice, the model asked
+  // twice, both charged for, and the first turn overwritten by the second so
+  // nothing on screen can stop it.
+  if (turnPhaseOf(useStore.getState(), projectId) !== 'idle') return;
+  await sendOnce(projectId, said);
 }
 
 /**
- * Take the project's send mark off.
- * @param projectId - The project it was set for.
+ * Hold the project's send mark for as long as this takes.
+ *
+ * For the stretches of a send with no turn to carry the wait -- opening a
+ * conversation, and opening a replacement for one the server no longer has.
+ * Both are a whole request long, and both used to leave a live send button up.
+ * @param projectId - The project being sent to.
+ * @param work - What to do while the mark is up. Must not reject.
  */
-function stopSayingSending(projectId: string): void {
-  useStore.setState((s) => {
-    if (!s.sendingByProject[projectId]) return s;
-    const { [projectId]: _sending, ...rest } = s.sendingByProject;
-    return { sendingByProject: rest };
-  });
+async function whileOpening(projectId: string, work: () => Promise<void>): Promise<void> {
+  useStore.setState((s) => ({
+    sendingByProject: { ...s.sendingByProject, [projectId]: true as const },
+  }));
+  try {
+    await work();
+  } finally {
+    useStore.setState((s) => {
+      if (!s.sendingByProject[projectId]) return s;
+      const { [projectId]: _sending, ...rest } = s.sendingByProject;
+      return { sendingByProject: rest };
+    });
+  }
 }
 
 /**
@@ -794,7 +836,7 @@ function stopSayingSending(projectId: string): void {
  */
 async function sendOnce(projectId: string, said: string): Promise<void> {
   if (useStore.getState().currentByProject[projectId] === undefined) {
-    await ensureLoaded(projectId);
+    await whileOpening(projectId, () => ensureLoaded(projectId));
   }
   const conversationId = useStore.getState().currentByProject[projectId];
   // Opening said why it could not, to everyone who was looking. There is
@@ -815,7 +857,7 @@ async function sendOnce(projectId: string, said: string): Promise<void> {
   // Not `ensureLoaded`: by its reckoning this project is open already. What
   // is needed is a new one, because the one on screen is the one the server
   // just said it does not have.
-  await openAndAdopt(projectId);
+  await whileOpening(projectId, () => openAndAdopt(projectId));
   const fresh = useStore.getState().currentByProject[projectId];
   // Opening said why it could not, and the words are still in the box.
   if (!fresh) return;
@@ -843,7 +885,11 @@ async function loadEarlier(conversationId: string): Promise<void> {
   const beforeTurn = before.oldestLoadedTurn;
   const visit = currentVisit(before.projectId);
 
-  return joinOrStart(loadingEarlier, conversationId, async (): Promise<void> => {
+  // Keyed by what it asks for, not just who it asks about. A second press
+  // after the list has moved on asks from a different cursor, and joining the
+  // one still on its way would be waiting on a page that is going to be
+  // dropped -- the reader would have pressed a button and had nothing happen.
+  return joinOrStart(loadingEarlier, `${conversationId}:${beforeTurn}`, async (): Promise<void> => {
     try {
       const earlier = await chatApi.messagesBefore(conversationId, beforeTurn, visit.signal);
       // `beforeTurn` was read from the list this visit is looking at. If the
@@ -893,11 +939,11 @@ function leaveProject(projectId: string): void {
 
   for (const [id] of leaving) {
     stopTurn(id);
-    // Its page is on its way to a conversation this visit will not be reading
-    // any more. Dropped rather than left to settle, because a press made
-    // after coming back would otherwise join this request instead of making
-    // one -- and this one is going to write nothing.
-    loadingEarlier.delete(id);
+    // Its pages are on their way to a conversation this visit will not be
+    // reading any more. Dropped rather than left to settle, because a press
+    // made after coming back would otherwise join one of these instead of
+    // making its own -- and these are going to write nothing.
+    forgetEarlierPages(id);
   }
 
   // Raised, not replaced: every request already in flight holds this signal,
@@ -942,25 +988,8 @@ export function _resetForTests(): void {
 
 export const useConversationRuntime = useStore;
 
-/**
- * Is something already being sent in this project.
- *
- * True from the press until the turn it started is over -- the mark below
- * covers the part before there is a turn, the turn itself covers the rest, and
- * they hand over in `runTurn`.
- * @param projectId - The project asked about.
- * @returns True while a send is under way.
- */
-function isSending(projectId: string): boolean {
-  const state = useStore.getState();
-  if (state.sendingByProject[projectId] === true) return true;
-  const conversationId = state.currentByProject[projectId];
-  return conversationId ? state.conversations[conversationId]?.turn != null : false;
-}
-
 export const conversationRuntime = {
   ensureLoaded,
-  isSending,
   send,
   stopTurn,
   loadEarlier,
