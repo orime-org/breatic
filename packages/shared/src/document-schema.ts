@@ -106,11 +106,18 @@ const SIXTY_FOUR_BITS = 0xffffffffffffffffn;
  * @returns A string that is equal for exactly the vocabularies that agree.
  */
 function canonicalForm(schema: DocumentSchema): string {
-  const half = (types: Record<string, string[]>): [string, string[]][] =>
-    Object.keys(types)
-      .sort()
-      .map((name) => [name, types[name] ?? []]);
-  return JSON.stringify([half(schema.nodes), half(schema.marks)]);
+  return JSON.stringify([orderedPairs(schema.nodes), orderedPairs(schema.marks)]);
+}
+
+/**
+ * One half of a vocabulary as name/attributes pairs in name order.
+ * @param types - Type name to its attribute names.
+ * @returns The same entries, sorted by type name.
+ */
+function orderedPairs(types: Record<string, string[]>): [string, string[]][] {
+  return Object.keys(types)
+    .sort()
+    .map((name) => [name, types[name] ?? []]);
 }
 
 /**
