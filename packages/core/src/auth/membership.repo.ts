@@ -20,10 +20,11 @@
  *     lock: a ceiling counted per studio is serialised on the STUDIO's row,
  *     which is not this module's to take (see `studioRepo.lockStudio`).
  *
- * Two more ceilings are still to come — concurrent writable connections and
- * storage; the two kinds of member cap landed with #87. Each has its own check
- * point, so "look up the tier, then index the config" would otherwise end up
- * written out six to eight times across the codebase.
+ * One ceiling is still to come — storage. The two kinds of member cap landed
+ * with #87 and the concurrent writable connection ceiling with #88 (see
+ * `getProjectConcurrentEditorLimit` below). Each has its own check point, so
+ * "look up the tier, then index the config" would otherwise end up written out
+ * six to eight times across the codebase.
  *
  * There are two routes from an id to a tier here, not one: an account's tier
  * is its own column, a studio's is its admin's. Both end at
@@ -320,17 +321,26 @@ export async function lockLimitsForUser(
  * that lands, with a number that looks perfectly valid. The extra primary-key
  * lookup is affordable here: this runs once per SPACE-DOCUMENT handshake, and
  * nowhere near per edit. The meta doc does not reach it at all — `auth.ts`
- * skips the whole ceiling decision for meta and for viewers — so opening a
- * project costs one lookup, for the Space being opened.
+ * skips the whole ceiling decision for meta and for viewers. So the cost of
+ * opening a project is one lookup per OPEN Space tab, not one for the project:
+ * every open tab attaches its own document and each one handshakes (see the
+ * web side's `SpaceDocSync`). Three open tabs, three lookups.
+ * Unlike its siblings above it takes NO transaction handle, and that is not an
+ * omission: the two queries it makes could not both honour one. Resolving the
+ * owning studio goes through `projectsRepo.findOwnerStudioId`, which takes no
+ * handle, so a handle passed here would cover the tier lookup and silently
+ * leave the studio lookup outside the caller's snapshot — a contract that is
+ * true of half the function. Its one caller, collab's `onAuthenticate`, is not
+ * in a transaction and does not need one: it decides a ceiling for a
+ * connection, it does not write. Should a caller ever need both queries in one
+ * snapshot, `findOwnerStudioId` has to learn about handles first.
  * @param projectId - The project whose documents the ceiling applies to
- * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
  * @returns How many connections to one of its documents may write at once
  * @throws {Error} if no live project has that id, or the studio that owns it
  *   has no live admin, or that admin's stored tier is not one this build knows
  */
 export async function getProjectConcurrentEditorLimit(
   projectId: string,
-  tx?: DbTx,
 ): Promise<number> {
   // `findOwnerStudioId` owns this query — its own docstring says a query
   // written twice is a query that comes apart, which is what the
@@ -345,5 +355,5 @@ export async function getProjectConcurrentEditorLimit(
     // only thing that says WHICH project.
     throw new Error(`No live project ${projectId}`);
   }
-  return (await getLimitsForStudio(studioId, tx)).concurrent_editors;
+  return (await getLimitsForStudio(studioId)).concurrent_editors;
 }
