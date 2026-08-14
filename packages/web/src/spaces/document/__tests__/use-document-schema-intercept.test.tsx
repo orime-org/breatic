@@ -13,10 +13,11 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import * as Y from 'yjs';
 import {
-  DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
   documentBodyFragment,
 } from '@breatic/shared';
+
+import { DOCUMENT_SCHEMA } from '@web/spaces/document/document-schema';
 
 import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-schema-intercept';
 
@@ -39,19 +40,22 @@ function pair(): { metaDoc: Y.Doc; bodyDoc: Y.Doc } {
 
 /**
  * 往 meta 里写一份 schema，模拟服务器发布过。
+ *
+ * 判定看的是 `version`，清单跟着它走、不参与比较（user 2026-08-14）。
  * @param metaDoc - meta 文档。
- * @param shape - 要发布的清单；不给就发布跟本 build 一样的。
+ * @param version - 服务器那一版；不给就跟本 build 同版。
  * @param publishedAt - 发布时间。
  */
 function publish(
   metaDoc: Y.Doc,
-  shape: { nodes: unknown; marks: unknown } = DOCUMENT_SCHEMA,
+  version: number = DOCUMENT_SCHEMA.version,
   publishedAt = '2026-08-13T06:20:00.000Z',
 ): void {
   metaDoc.transact(() => {
     const map = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
-    map.set('nodes', shape.nodes);
-    map.set('marks', shape.marks);
+    map.set('version', version);
+    map.set('nodes', DOCUMENT_SCHEMA.nodes);
+    map.set('marks', DOCUMENT_SCHEMA.marks);
     map.set('publishedAt', publishedAt);
   });
 }
@@ -93,13 +97,10 @@ describe('两个条件都不成立', () => {
   });
 });
 
-describe('条件一：跟 meta 里那份不一样', () => {
-  it('服务器多了一个节点类型 → 拦', () => {
+describe('条件一：版本号跟 meta 里的不一样', () => {
+  it('服务器那一版更新 → 拦', () => {
     const { metaDoc, bodyDoc } = pair();
-    publish(metaDoc, {
-      nodes: { ...DOCUMENT_SCHEMA.nodes, taskList: [] },
-      marks: DOCUMENT_SCHEMA.marks,
-    });
+    publish(metaDoc, DOCUMENT_SCHEMA.version + 1);
 
     const { result } = renderHook(() =>
       useDocumentSchemaIntercept({ metaDoc, bodyDoc }),
@@ -108,11 +109,9 @@ describe('条件一：跟 meta 里那份不一样', () => {
     expect(result.current.intercepted).toBe(true);
   });
 
-  it('服务器少了一个节点类型（回滚方向）→ 一样拦', () => {
+  it('服务器那一版更旧 → 一样拦 —— 问的是一不一样，不是谁新谁旧', () => {
     const { metaDoc, bodyDoc } = pair();
-    const fewer = { ...DOCUMENT_SCHEMA.nodes };
-    delete (fewer as Record<string, unknown>).blockquote;
-    publish(metaDoc, { nodes: fewer, marks: DOCUMENT_SCHEMA.marks });
+    publish(metaDoc, DOCUMENT_SCHEMA.version + 1000);
 
     const { result } = renderHook(() =>
       useDocumentSchemaIntercept({ metaDoc, bodyDoc }),
@@ -121,27 +120,27 @@ describe('条件一：跟 meta 里那份不一样', () => {
     expect(result.current.intercepted).toBe(true);
   });
 
-  it('已知节点多了一个属性 → 拦（这一类兜底看不见）', () => {
+  it('版本号一样时，清单内容不管长什么样都不拦', () => {
+    // 判定只看版本号。清单跟着版本号一起发布，它自己不参与比较 ——
+    // 改了扩展就得把配置文件里的版本号加一，有一致性测试盯着那件事。
     const { metaDoc, bodyDoc } = pair();
-    publish(metaDoc, {
-      nodes: { ...DOCUMENT_SCHEMA.nodes, heading: ['align', 'level'] },
-      marks: DOCUMENT_SCHEMA.marks,
+    metaDoc.transact(() => {
+      const map = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
+      map.set('version', DOCUMENT_SCHEMA.version);
+      map.set('nodes', { taskList: [] });
+      map.set('marks', {});
     });
 
     const { result } = renderHook(() =>
       useDocumentSchemaIntercept({ metaDoc, bodyDoc }),
     );
 
-    expect(result.current.intercepted).toBe(true);
+    expect(result.current.intercepted).toBe(false);
   });
 
   it('把服务器那份告诉界面用的发布时间带出来', () => {
     const { metaDoc, bodyDoc } = pair();
-    publish(
-      metaDoc,
-      { nodes: { ...DOCUMENT_SCHEMA.nodes, taskList: [] }, marks: DOCUMENT_SCHEMA.marks },
-      '2026-08-13T06:20:00.000Z',
-    );
+    publish(metaDoc, DOCUMENT_SCHEMA.version + 1, '2026-08-13T06:20:00.000Z');
 
     const { result } = renderHook(() =>
       useDocumentSchemaIntercept({ metaDoc, bodyDoc }),
@@ -158,12 +157,7 @@ describe('条件一：跟 meta 里那份不一样', () => {
     );
     expect(result.current.intercepted).toBe(false);
 
-    act(() => {
-      publish(metaDoc, {
-        nodes: { ...DOCUMENT_SCHEMA.nodes, taskList: [] },
-        marks: DOCUMENT_SCHEMA.marks,
-      });
-    });
+    act(() => publish(metaDoc, DOCUMENT_SCHEMA.version + 1));
 
     expect(result.current.intercepted).toBe(true);
   });
@@ -176,7 +170,7 @@ describe('条件二：这份文档里有解析不了的内容', () => {
     // 重启），meta 里那个时间记的是**上一次**清单变化，跟「你落后了」毫无关系。
     // 说不清的时候不说，跟面板「不知道就不编一个出来」是同一条。
     const { metaDoc, bodyDoc } = pair();
-    publish(metaDoc, DOCUMENT_SCHEMA, '2026-01-01T00:00:00.000Z');
+    publish(metaDoc, DOCUMENT_SCHEMA.version, '2026-01-01T00:00:00.000Z');
     insertUnknownBlock(bodyDoc);
 
     const { result } = renderHook(() =>

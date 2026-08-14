@@ -11,7 +11,8 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
-import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared';
+import { DOCUMENT_SCHEMA } from '@web/spaces/document/document-schema';
 
 import { findUnknownContent } from '@web/spaces/document/document-schema-guard';
 

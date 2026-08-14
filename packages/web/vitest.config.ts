@@ -1,7 +1,19 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
+import { readFileSync } from 'node:fs';
+import { parse as parseYaml } from 'yaml';
+
+// Mirror vite.config.mts: the document Space vocabulary is substituted at build
+// time from `config/document-schema.yaml`, so tests need the same substitution
+// or every module that reads it fails to load.
+const documentSchema = parseYaml(
+  readFileSync(path.resolve(__dirname, '../../config/document-schema.yaml'), 'utf-8'),
+);
 
 export default defineConfig({
+  define: {
+    '__DOCUMENT_SCHEMA__': JSON.stringify(documentSchema),
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],

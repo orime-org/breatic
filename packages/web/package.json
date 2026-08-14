@@ -170,7 +170,8 @@
     "vite-plugin-svg-icons": "^2.0.1",
     "vitest": "catalog:",
     "vitest-axe": "^0.1.0",
-    "y-protocols": "catalog:"
+    "y-protocols": "catalog:",
+    "yaml": "catalog:"
   },
   "overrides": {
     "react-slider": {

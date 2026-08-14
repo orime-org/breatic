@@ -3,198 +3,129 @@
 
 /**
  * What a document Space's editor is able to represent, as plain data, plus the
- * check for whether this build's idea of it still matches the server's.
+ * check for whether this build's copy still matches the server's.
  *
- * ## Why both ends need it
+ * ## The data itself is not here — it is in `config/document-schema.yaml`
  *
- * A document Space stores its content as a Yjs XML fragment whose element
- * names ARE the editor's node names — the storage format and the editor's
- * vocabulary are one and the same thing, and that vocabulary is compiled into
- * the browser bundle. A tab left open across a release is running yesterday's
- * vocabulary against today's content: it cannot represent what it has not
- * heard of, and y-tiptap's answer to something it cannot represent is to
- * delete it from the shared document.
+ * This module holds the SHAPE and the comparison; the values live in that one
+ * file, and both ends read it. collab loads it at startup and publishes it into
+ * each project's meta document; the browser gets it compiled in at build time
+ * (`packages/web/vite.config.mts` reads the file and defines it). Neither side
+ * hand-keeps a second copy, so there is nothing to drift.
  *
- * So a client has to be able to ask "is my vocabulary still the one the server
- * is publishing" before it offers to edit. The server answers by writing this
- * list into the project's meta document under {@link DOCUMENT_SCHEMA_META_KEY};
- * the client compares it against the copy compiled into its own bundle. Two
- * builds made at different moments hold different copies, and that difference
- * is precisely the signal.
+ * ## Why both ends need it at all
  *
- * This lives in shared because it is the one package both the browser and
- * collab can import. A second hand-kept copy on either side would be the same
- * agreement written down twice, and the halves would drift in silence: the
- * check would keep passing while the vocabularies diverged.
+ * A document Space stores its content as a Yjs XML fragment whose element names
+ * ARE the editor's node names — the storage format and the editor's vocabulary
+ * are one and the same thing, and that vocabulary ships inside the browser
+ * bundle. A tab left open across a release is running yesterday's vocabulary
+ * against today's content: it cannot represent what it has not heard of, and
+ * y-tiptap's answer to something it cannot represent is to delete it from the
+ * shared document.
  *
- * ## Why the list is the identity, rather than a version number beside it
+ * So a client has to be able to ask "is my copy still the one the server is
+ * publishing" before it offers to edit. The server answers by writing this
+ * entry into the project's meta document under {@link DOCUMENT_SCHEMA_META_KEY};
+ * the client compares versions.
  *
- * A hand-written version number is a second thing to remember. Whoever adds a
- * node type edits the extensions; nothing about that edit makes them open this
- * file, and if they do not, the number still matches, the check still passes,
- * and the protection is gone with no error to show for it. The list cannot
- * drift from itself: change the vocabulary and the comparison changes with it.
+ * ## The comparison is on `version`, and it asks whether they DIFFER
  *
- * The attribute names are in the list for the same reason. Adding an attribute
- * to a node that both sides already know (a heading gaining an alignment, say)
- * changes nothing about the names, and the fallback never fires for it —
- * ProseMirror drops an unknown attribute silently rather than raising. This
- * comparison is the only thing that catches that class at all.
+ * Not which is newer. Whatever the reason two sides disagree, the client that
+ * disagrees must stop editing — showing the panel is always the safe side, and
+ * a client that is somehow ahead of the server has no business writing content
+ * the rest cannot read either.
  *
- * The list here is written by hand, because collab cannot build a ProseMirror
- * schema — it has no editor. A test in the web package builds the real schema
- * from the registered extensions and asserts this list matches it, so the two
- * cannot part ways without a red test.
+ * The lists travel with the version because the version alone says nothing
+ * about what actually changed. Attribute names are in them for a reason of
+ * their own: adding an attribute to a node both sides already know leaves no
+ * trace in the content, since ProseMirror drops an unknown attribute silently
+ * rather than raising.
  */
 
-/** A vocabulary: every node and mark name, each with its attribute names sorted. */
-export interface DocumentSchemaShape {
-  /** Node type name → its attribute names, sorted. */
-  nodes: Record<string, readonly string[]>;
-  /** Mark type name → its attribute names, sorted. */
-  marks: Record<string, readonly string[]>;
-}
+import { z } from "zod";
 
 /** The top-level key the server writes this under in a project's meta document. */
 export const DOCUMENT_SCHEMA_META_KEY = "documentSchema";
 
 /**
- * What the server writes: the vocabulary, plus when it was written.
+ * The shape `config/document-schema.yaml` is parsed against.
  *
- * `publishedAt` is not part of the comparison — it exists so the client can
- * tell the user when the version they are behind went out, rather than
- * presenting the interruption with no context at all.
+ * Attribute lists are sorted on the way in so two copies that agree compare
+ * equal regardless of the order they happen to be written in.
  */
-export interface PublishedDocumentSchema extends DocumentSchemaShape {
-  /** ISO timestamp of the moment the server last wrote a changed vocabulary. */
-  publishedAt: string;
-}
+export const documentSchemaConfigSchema = z.object({
+  /** Bumped by hand whenever the lists below change. The comparison reads only this. */
+  version: z.number().int().positive(),
+  /** Node type name to its attribute names. */
+  nodes: z.record(z.string(), z.array(z.string())).transform(sortAttributeLists),
+  /** Mark type name to its attribute names. */
+  marks: z.record(z.string(), z.array(z.string())).transform(sortAttributeLists),
+});
+
+/** A document Space's editor vocabulary, as both ends hold it. */
+export type DocumentSchema = z.infer<typeof documentSchemaConfigSchema>;
 
 /**
- * This build's vocabulary for a document Space.
- *
- * Kept in step with `web/spaces/document/document-extensions` by
- * `document-schema-matches-extensions.test.ts`, which builds the real schema
- * and compares. Adding an extension, or an attribute to one, turns that test
- * red until this list says the same thing.
+ * Sort each attribute list so two copies compare equal regardless of order.
+ * @param half - One half of a vocabulary, straight out of the config file.
+ * @returns The same half with every attribute list sorted.
  */
-export const DOCUMENT_SCHEMA: DocumentSchemaShape = {
-  nodes: {
-    blockquote: [],
-    bulletList: [],
-    codeBlock: ["language"],
-    doc: [],
-    hardBreak: [],
-    heading: ["level"],
-    horizontalRule: [],
-    listItem: [],
-    orderedList: ["start", "type"],
-    paragraph: [],
-    text: [],
-    title: [],
-    unsupportedBlock: ["originalName"],
-    unsupportedInline: ["originalName"],
-  },
-  marks: {
-    bold: [],
-    code: [],
-    italic: [],
-    link: ["class", "href", "rel", "target", "title"],
-    strike: [],
-    underline: [],
-    unsupportedMark: ["originalName", "originalValue"],
-  },
-};
-
-/**
- * Read one half of a vocabulary out of untrusted data.
- * @param value - The candidate, straight out of a Yjs map.
- * @returns The half with attribute names sorted, or null if it is not one.
- */
-function readHalf(value: unknown): Record<string, string[]> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+function sortAttributeLists(
+  half: Record<string, string[]>,
+): Record<string, string[]> {
   const out: Record<string, string[]> = {};
-  for (const [name, attrs] of Object.entries(value)) {
-    if (!Array.isArray(attrs)) return null;
-    if (attrs.some((attr) => typeof attr !== "string")) return null;
-    out[name] = [...(attrs as string[])].sort();
-  }
+  for (const [name, attrs] of Object.entries(half)) out[name] = [...attrs].sort();
   return out;
 }
 
 /**
- * Normalise a candidate vocabulary so two of them can be compared.
- * @param value - The candidate, straight out of a Yjs map.
- * @returns A comparable string, or null if the value is not a vocabulary.
+ * Read the version out of whatever sits under the key in a meta document.
+ * @param fromMeta - The published entry, or anything at all.
+ * @returns The version, or null when there is not a usable one there.
  */
-function normalise(value: unknown): string | null {
-  if (typeof value !== "object" || value === null) return null;
-  const { nodes, marks } = value as { nodes?: unknown; marks?: unknown };
-  const readNodes = readHalf(nodes);
-  const readMarks = readHalf(marks);
-  if (readNodes === null || readMarks === null) return null;
-  if (Object.keys(readNodes).length === 0 && Object.keys(readMarks).length === 0) return null;
-  // Sorted, so two vocabularies that agree compare equal regardless of the
-  // order their keys happen to be in.
-  return JSON.stringify([
-    Object.keys(readNodes).sort().map((name) => [name, readNodes[name]]),
-    Object.keys(readMarks).sort().map((name) => [name, readMarks[name]]),
-  ]);
+export function publishedSchemaVersion(fromMeta: unknown): number | null {
+  if (typeof fromMeta !== "object" || fromMeta === null) return null;
+  const { version } = fromMeta as { version?: unknown };
+  if (typeof version !== "number" || !Number.isInteger(version) || version <= 0) {
+    return null;
+  }
+  return version;
 }
 
 /**
  * Whether this build's vocabulary differs from the one the server published.
  *
- * Asks whether the two DIFFER, not which is newer. A rollback leaves the
- * server behind this build rather than ahead of it, and that direction is just
- * as much a reason to stop: content this build can produce is content the
- * rolled-back majority cannot read.
- *
  * Absent or malformed server data answers false. Not knowing what the server
  * publishes is not the same as knowing it differs, and a project whose meta
  * predates this key — or a shape we ourselves wrote wrong — is no reason to
  * take the editor away from someone.
- * @param mine - This build's vocabulary.
+ * @param mine - This build's version, from the config compiled into it.
  * @param fromMeta - Whatever sits under the key in the project's meta document.
- * @returns True only when both are readable vocabularies and they differ.
+ * @returns True only when the server published a usable version and it differs.
  */
-export function documentSchemaDiffers(
-  mine: DocumentSchemaShape,
-  fromMeta: unknown,
-): boolean {
-  const theirs = normalise(fromMeta);
+export function documentSchemaDiffers(mine: number, fromMeta: unknown): boolean {
+  const theirs = publishedSchemaVersion(fromMeta);
   if (theirs === null) return false;
-  const ours = normalise(mine);
-  if (ours === null) return false;
-  return ours !== theirs;
+  return theirs !== mine;
 }
 
 /**
- * Whether what the server published is already exactly this build's vocabulary.
+ * Whether what the server published is already exactly this build's version.
  *
  * This is what the publishing side asks before writing: several collab
  * instances load the same meta document independently, and rewriting on every
- * load would broadcast a change to every connected client for nothing — and
- * would turn `publishedAt` from "when the vocabulary changed" into "when this
- * document was last opened".
+ * load would broadcast a change to every connected client for nothing.
  *
  * Not the negation of {@link documentSchemaDiffers}. The two answer different
  * questions and unreadable server data answers no to BOTH: not knowing what is
  * published is neither grounds to take the editor away from someone, nor
- * grounds for the server to stay silent. Sharing one comparison is the point —
- * two hand-written comparisons of the same thing drift, and the drift shows up
- * as an editor that will not open or a server that never publishes.
- * @param mine - This build's vocabulary.
+ * grounds for the server to stay silent.
+ * @param mine - This build's version.
  * @param fromMeta - Whatever sits under the key in the project's meta document.
- * @returns True only when both are readable vocabularies and they agree.
+ * @returns True only when the server published a usable version and it matches.
  */
-export function documentSchemaMatches(
-  mine: DocumentSchemaShape,
-  fromMeta: unknown,
-): boolean {
-  const theirs = normalise(fromMeta);
+export function documentSchemaMatches(mine: number, fromMeta: unknown): boolean {
+  const theirs = publishedSchemaVersion(fromMeta);
   if (theirs === null) return false;
-  const ours = normalise(mine);
-  if (ours === null) return false;
-  return ours === theirs;
+  return theirs === mine;
 }

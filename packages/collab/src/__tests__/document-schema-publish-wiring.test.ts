@@ -16,11 +16,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
 import {
-  DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
   projectMetaDocName,
   spaceContentDocName,
 } from "@breatic/shared";
+import { getDocumentSchema } from "@breatic/core";
 
 const { serverSpy } = vi.hoisted(() => ({ serverSpy: vi.fn() }));
 
@@ -41,7 +41,12 @@ vi.mock("@hocuspocus/server", () => ({
   },
 }));
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async () => ({
+  // 真的那份：这条测试要验「发布真的接上了」，而发布写进去的值就来自它。
+  // 换成替身就等于自己规定了答案再去核对它。
+  getDocumentSchema: (
+    await vi.importActual<typeof import("@breatic/core")>("@breatic/core")
+  ).getDocumentSchema,
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -130,8 +135,8 @@ describe("meta 文档加载时", () => {
       instance: { documents: new Map() },
     });
 
-    expect(published(doc).nodes).toEqual(DOCUMENT_SCHEMA.nodes);
-    expect(published(doc).marks).toEqual(DOCUMENT_SCHEMA.marks);
+    expect(published(doc).nodes).toEqual(getDocumentSchema().nodes);
+    expect(published(doc).marks).toEqual(getDocumentSchema().marks);
     expect(typeof published(doc).publishedAt).toBe("string");
     doc.destroy();
   });

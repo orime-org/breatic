@@ -4,11 +4,12 @@
 import * as React from 'react';
 import type * as Y from 'yjs';
 import {
-  DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
   documentBodyFragment,
   documentSchemaDiffers,
 } from '@breatic/shared';
+
+import { DOCUMENT_SCHEMA } from '@web/spaces/document/document-schema';
 
 import { findUnknownContent } from '@web/spaces/document/document-schema-guard';
 
@@ -74,7 +75,7 @@ export function useDocumentSchemaIntercept({
 }: UseDocumentSchemaInterceptInput): DocumentSchemaInterceptState {
   const derive = React.useCallback((): DocumentSchemaInterceptState => {
     const published = readPublished(metaDoc);
-    const mismatch = documentSchemaDiffers(DOCUMENT_SCHEMA, published);
+    const mismatch = documentSchemaDiffers(DOCUMENT_SCHEMA.version, published);
     // Through `documentBodyFragment`, never a literal key. The key itself is
     // deliberately not exported from `@breatic/shared` so that only one place
     // names it; a second name here would be free to drift from it, and drifting

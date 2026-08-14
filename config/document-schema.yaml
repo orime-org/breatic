@@ -1,0 +1,58 @@
+# Document Space editor vocabulary.
+#
+# A document Space stores its content as a Yjs XML fragment whose element names
+# ARE the editor's node names, so the storage format and the editor's vocabulary
+# are one and the same thing. A tab left open across a release runs yesterday's
+# vocabulary against today's content: it cannot represent what it has not heard
+# of, and y-tiptap's answer to something it cannot represent is to delete it
+# from the shared document.
+#
+# So both ends read this one file. collab loads it at startup and publishes it
+# into each project's meta document; the browser gets it compiled into its
+# bundle at build time (vite.config.mts reads this file and defines it). A
+# client whose `version` differs from the one in meta stops offering to edit.
+#
+# ## Bump `version` whenever the lists below change
+#
+# The comparison is on `version` alone, not on the lists. Changing an extension
+# without bumping this number means every client keeps believing it is current
+# while its vocabulary no longer matches — no error, no warning, the protection
+# simply is not there. A test builds the real ProseMirror schema from the
+# registered extensions and fails when it disagrees with the lists here, so a
+# forgotten list edit turns a test red; the number is on you.
+version: 1
+
+# Node type name -> its attribute names, sorted.
+#
+# Attribute names are here because adding an attribute to a node both sides
+# already know (a heading gaining an alignment, say) leaves no trace in the
+# content at all — ProseMirror drops an unknown attribute silently rather than
+# raising, so the fallback never fires for it.
+nodes:
+  blockquote: []
+  bulletList: []
+  codeBlock: ["language"]
+  doc: []
+  hardBreak: []
+  heading: ["level"]
+  horizontalRule: []
+  listItem: []
+  orderedList: ["start", "type"]
+  paragraph: []
+  text: []
+  title: []
+  # The three stand-in types. They must exist in every version: content one
+  # build cannot represent is wrapped in these rather than deleted, and a
+  # client that meets an already-wrapped element has to recognise the wrapper.
+  unsupportedBlock: ["originalName"]
+  unsupportedInline: ["originalName"]
+
+# Mark type name -> its attribute names, sorted.
+marks:
+  bold: []
+  code: []
+  italic: []
+  link: ["class", "href", "rel", "target", "title"]
+  strike: []
+  underline: []
+  unsupportedMark: ["originalName", "originalValue"]

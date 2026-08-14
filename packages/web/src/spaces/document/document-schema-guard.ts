@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as Y from 'yjs';
-import type { DocumentSchemaShape } from '@breatic/shared';
+import type { DocumentSchema } from '@breatic/shared';
 
 /**
  * Whether a document Space's stored content holds anything this build has no
@@ -53,7 +53,7 @@ function markNameOf(key: string): string {
  */
 export function findUnknownContent(
   body: Y.XmlFragment,
-  schema: DocumentSchemaShape,
+  schema: DocumentSchema,
 ): string[] {
   const unknown = new Set<string>();
 

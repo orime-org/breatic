@@ -976,6 +976,9 @@ importers:
       y-protocols:
         specifier: 'catalog:'
         version: 1.0.7(yjs@13.6.32)
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
 
   packages/worker:
     dependencies:

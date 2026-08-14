@@ -11,7 +11,8 @@
 
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
-import { DOCUMENT_SCHEMA, DOCUMENT_SCHEMA_META_KEY } from "@breatic/shared";
+import { DOCUMENT_SCHEMA_META_KEY } from "@breatic/shared";
+import { getDocumentSchema } from "@breatic/core";
 
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 
@@ -31,8 +32,9 @@ describe("往 meta 里写这一版的 schema", () => {
 
     expect(wrote).toBe(true);
     const published = readPublished(doc);
-    expect(published.nodes).toEqual(DOCUMENT_SCHEMA.nodes);
-    expect(published.marks).toEqual(DOCUMENT_SCHEMA.marks);
+    expect(published.version).toBe(getDocumentSchema().version);
+    expect(published.nodes).toEqual(getDocumentSchema().nodes);
+    expect(published.marks).toEqual(getDocumentSchema().marks);
     doc.destroy();
   });
 
@@ -60,30 +62,16 @@ describe("往 meta 里写这一版的 schema", () => {
     doc.destroy();
   });
 
-  it("已发布那份只是键的顺序和属性名顺序不同，仍算同一份，不重写", () => {
-    // 「一样不一样」这个判定只有一处，在 `@breatic/shared`：前端拿它决定拦不拦
-    // 用户，这里拿它决定写不写。两边各写一套逐字节比较，迟早会对同一份数据给
-    // 出两个答案 —— 一边说「服务器变了、拦住他」，一边说「已经是这份了、不用
-    // 写」，而两句话不可能同时对。
+  it("版本号一样就不重写，哪怕清单内容被人改过", () => {
+    // 判定只看版本号（user 2026-08-14）。清单跟着版本号走，不参与比较 ——
+    // 改了扩展就得把版本号加一，那是写配置文件的人的事，有一致性测试盯着。
     const doc = new Y.Doc();
-    const shuffled = doc.getMap(DOCUMENT_SCHEMA_META_KEY);
-    /**
-     * 把每个属性名数组倒过来，键也倒过来 —— 内容一个字没变。
-     * @param half - 清单的一半。
-     * @returns 顺序被打乱的同一份。
-     */
-    const shuffle = (
-      half: Record<string, readonly string[]>,
-    ): Record<string, string[]> =>
-      Object.fromEntries(
-        Object.entries(half)
-          .reverse()
-          .map(([name, attrs]) => [name, [...attrs].reverse()]),
-      );
     doc.transact(() => {
-      shuffled.set("nodes", shuffle(DOCUMENT_SCHEMA.nodes));
-      shuffled.set("marks", shuffle(DOCUMENT_SCHEMA.marks));
-      shuffled.set("publishedAt", "2020-01-01T00:00:00.000Z");
+      const map = doc.getMap(DOCUMENT_SCHEMA_META_KEY);
+      map.set("version", getDocumentSchema().version);
+      map.set("nodes", { paragraph: [] });
+      map.set("marks", {});
+      map.set("publishedAt", "2020-01-01T00:00:00.000Z");
     });
 
     expect(publishDocumentSchema(doc)).toBe(false);
@@ -91,10 +79,11 @@ describe("往 meta 里写这一版的 schema", () => {
     doc.destroy();
   });
 
-  it("meta 里那份跟这一版不一样，覆盖掉", () => {
+  it("meta 里那版比这一版旧，覆盖掉", () => {
     const doc = new Y.Doc();
-    const stale = doc.getMap(DOCUMENT_SCHEMA_META_KEY);
     doc.transact(() => {
+      const stale = doc.getMap(DOCUMENT_SCHEMA_META_KEY);
+      stale.set("version", getDocumentSchema().version + 1000);
       stale.set("nodes", { paragraph: [] });
       stale.set("marks", {});
       stale.set("publishedAt", "2020-01-01T00:00:00.000Z");
@@ -104,7 +93,8 @@ describe("往 meta 里写这一版的 schema", () => {
 
     expect(wrote).toBe(true);
     const published = readPublished(doc);
-    expect(published.nodes).toEqual(DOCUMENT_SCHEMA.nodes);
+    expect(published.version).toBe(getDocumentSchema().version);
+    expect(published.nodes).toEqual(getDocumentSchema().nodes);
     expect(published.publishedAt).not.toBe("2020-01-01T00:00:00.000Z");
     doc.destroy();
   });
@@ -112,11 +102,11 @@ describe("往 meta 里写这一版的 schema", () => {
   it("meta 里那份形状是坏的，也覆盖掉", () => {
     const doc = new Y.Doc();
     doc.transact(() => {
-      doc.getMap(DOCUMENT_SCHEMA_META_KEY).set("nodes", "not an object");
+      doc.getMap(DOCUMENT_SCHEMA_META_KEY).set("version", "not a number");
     });
 
     expect(publishDocumentSchema(doc)).toBe(true);
-    expect(readPublished(doc).nodes).toEqual(DOCUMENT_SCHEMA.nodes);
+    expect(readPublished(doc).version).toBe(getDocumentSchema().version);
     doc.destroy();
   });
 
