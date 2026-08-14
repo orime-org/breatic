@@ -148,8 +148,8 @@ export const VIDEO_SLOTS = {
     field: 'drivingAudio',
     // `storesCover` because audio is not an image, which is the whole test
     // this flag applies — see the comment on it. An audio node happens to
-    // carry no poster, so the stored value is `{url}` and the toolbar keeps
-    // showing this slot's icon.
+    // carry no poster, so the stored value is `{url}` and the toolbar covers
+    // the button with the AUDIO NODE's icon instead of a thumbnail (#1946).
     storesCover: true,
     param: 'audio',
     purpose: 'drivingAudio',
@@ -207,8 +207,8 @@ function usableUrl(value: unknown): string | undefined {
  * was accepted and billed.
  *
  * An empty string is a string and no URL. A poster that is missing or
- * malformed leaves the slot showing its icon rather than an empty frame,
- * which at least names what it holds.
+ * malformed leaves the slot covering itself with the asset node's icon rather
+ * than an empty frame, which at least names what it holds (#1946).
  * @param spec - The slot being read, which states its stored shape.
  * @param value - The raw node-data value for that slot's field.
  * @returns The asset URL and what to show for it, or null when there is no pick.

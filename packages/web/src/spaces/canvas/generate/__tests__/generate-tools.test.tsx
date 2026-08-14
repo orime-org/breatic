@@ -15,6 +15,10 @@
  * `HoverPreview` is stubbed to expose its props: the claim under test is what
  * the slot DECLARES it holds, and asserting on a rendered MediaPlayer would be
  * asserting on HoverPreview's own behaviour, which has its own tests.
+ *
+ * Note both wrappers stay MOUNTED in either state — that is the point of
+ * #1946's focus fix — so "no preview" is read off the props the slot hands
+ * down, never off the wrapper's presence.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -204,20 +208,25 @@ describe('SlotTool — the filled slot joins the shared hover preview (#1814)', 
     expect(preview).toHaveAttribute('data-poster', 'https://cdn/cover.jpg');
   });
 
-  it('opens no preview while the slot is empty — there is nothing to preview', () => {
+  it('hands the preview nothing while the slot is empty', () => {
+    // The wrapper stays mounted (focus fix), so emptiness shows as an absent
+    // src — which is exactly what makes HoverPreview withhold its card.
     slot();
-    expect(screen.queryByTestId('slot-preview')).toBeNull();
+    expect(screen.getByTestId('slot-preview')).toHaveAttribute('data-src', '');
   });
 
   it('lets the preview REPLACE the tooltip, not sit beside it', () => {
     // Two floating cards on one trigger would open together. The rail carries
-    // no tooltip for the same reason. Radix marks a tooltip trigger with
-    // `data-state`; a filled slot must not be one.
+    // no tooltip for the same reason. The wrapper stays mounted, so what must
+    // be gone is the tip CONTENT: Radix describes the trigger with
+    // aria-describedby only while a tip is available to it.
     slot({ pick: AUDIO_PICK });
-    expect(screen.getByTestId('slot')).not.toHaveAttribute('data-state');
+    expect(screen.getByTestId('slot')).not.toHaveAttribute('data-state', 'delayed-open');
+    expect(document.querySelector('[data-radix-popper-content-wrapper]')).toBeNull();
   });
 
   it('keeps the tooltip while empty — that is what says WHAT to pick', () => {
+    // The tip is the empty slot's only way of saying what it wants.
     slot();
     expect(screen.getByTestId('slot')).toHaveAttribute('data-state');
   });
@@ -250,6 +259,98 @@ describe('SlotTool — a running pick reads on the button while filled', () => {
 function classes(el: HTMLElement): string[] {
   return [...el.classList];
 }
+
+describe('SlotTool — the wrapper stays put across a fill flip', () => {
+  it('keeps the SAME button element when a pick arrives', () => {
+    // Alternating wrapper components at this position makes React unmount and
+    // remount the button, which drops keyboard focus to <body>. Reachable with
+    // one hand: Tab to the slot, then Cmd+Z — the undo gate
+    // (CanvasSpace isEditableTarget) excludes INPUT / TEXTAREA / contenteditable
+    // only, so a focused BUTTON does not stop it, and undoing the fill empties
+    // the slot underneath the focus.
+    const { rerender } = slot();
+    const before = screen.getByTestId('slot');
+    before.focus();
+    expect(document.activeElement).toBe(before);
+    rerender(
+      <TooltipProvider delayDuration={100}>
+        <SlotTool
+          testId='slot'
+          thumbnailTestId='slot-thumb'
+          clearTestId='slot-clear'
+          Icon={AudioLines}
+          onPick={() => {}}
+          onClear={() => {}}
+          active={false}
+          disabled={false}
+          clearLabel='Remove driving audio'
+          label='Driving audio'
+          tip='Pick an audio clip'
+          pick={AUDIO_PICK}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByTestId('slot')).toBe(before);
+    expect(document.activeElement).toBe(before);
+  });
+
+  it('keeps the SAME button element when the pick is cleared', () => {
+    const { rerender } = slot({ pick: AUDIO_PICK });
+    const before = screen.getByTestId('slot');
+    before.focus();
+    rerender(
+      <TooltipProvider delayDuration={100}>
+        <SlotTool
+          testId='slot'
+          thumbnailTestId='slot-thumb'
+          clearTestId='slot-clear'
+          Icon={AudioLines}
+          onPick={() => {}}
+          onClear={() => {}}
+          active={false}
+          disabled={false}
+          clearLabel='Remove driving audio'
+          label='Driving audio'
+          tip='Pick an audio clip'
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByTestId('slot')).toBe(before);
+    expect(document.activeElement).toBe(before);
+  });
+});
+
+describe('SlotTool — the preview is reachable, or not declared at all', () => {
+  it('does not muzzle its own preview against keyboard focus', () => {
+    // `suppressTooltipFocusOpen` stops the focus event in the capture phase,
+    // which also stops the SAME element's onFocus — and Radix HoverCard opens
+    // from onFocus. A filled slot carrying it can never preview from the
+    // keyboard, while the rail, the history rows and the prompt chips all can.
+    slot({ pick: AUDIO_PICK });
+    let opened = false;
+    const btn = screen.getByTestId('slot');
+    btn.addEventListener('focus', () => { opened = true; });
+    btn.focus();
+    expect(opened).toBe(true);
+  });
+
+  it('declares no preview on a slot that cannot open one', () => {
+    // An HTML-disabled button dispatches no pointerenter and takes no focus, so
+    // both of the HoverCard's open paths are dead. Declaring a preview there
+    // promises something the user can never get (the style slot after switching
+    // to a model without style support).
+    slot({ pick: IMAGE_PICK, disabled: true });
+    expect(screen.getByTestId('slot-preview')).toHaveAttribute('data-src', '');
+  });
+
+  it('still previews a filled slot that is enabled', () => {
+    slot({ pick: IMAGE_PICK, disabled: false });
+    expect(screen.getByTestId('slot-preview')).toHaveAttribute(
+      'data-src',
+      'https://cdn/face.png',
+    );
+  });
+});
 
 describe('SlotTool / ToggleTool — the toolbar buttons carry a 1px border', () => {
   it('borders a slot tool with the WIDTH utility, not just the colour', () => {

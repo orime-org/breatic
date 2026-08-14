@@ -107,22 +107,30 @@ export function ToggleTool({
  * the app mounts one provider (App.tsx) whose delayDuration is the
  * calibrated timing every chrome tooltip shares; nesting another here put
  * these tips on their own schedule (user 2026-07-17).
+ * `suppressed` withholds the content rather than the whole wrapper: a caller
+ * that stops needing the tip (a slot that just got filled, which previews
+ * instead) must not change the element type at this position, or React would
+ * unmount and remount the button underneath and take keyboard focus with it
+ * (#1946).
  * @param root0 - Component props.
  * @param root0.tip - The tooltip text.
+ * @param root0.suppressed - Keep the wrapper but never open the tip.
  * @param root0.children - The button the tooltip describes.
  * @returns The tooltip-wrapped button.
  */
 function ToolTip({
   tip,
+  suppressed = false,
   children,
 }: {
   tip: string;
+  suppressed?: boolean;
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <Tooltip>
+    <Tooltip open={suppressed ? false : undefined}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side='top'>{tip}</TooltipContent>
+      {suppressed ? null : <TooltipContent side='top'>{tip}</TooltipContent>}
     </Tooltip>
   );
 }
@@ -240,6 +248,11 @@ export function SlotTool({
   tip,
 }: SlotToolProps): React.JSX.Element {
   const HeldIcon = pick ? getNodeIcon(pick.kind) : null;
+  // A disabled button dispatches no pointerenter and takes no focus, so both of
+  // the HoverCard's open paths are dead — declaring a preview there promises
+  // something the user can never get (the style slot after switching to a model
+  // without style support).
+  const previews = pick !== undefined && !disabled;
   const button = (
     <Button
       type='button'
@@ -249,7 +262,12 @@ export function SlotTool({
       data-testid={testId}
       aria-label={label}
       onClick={onPick}
-      onFocusCapture={suppressTooltipFocusOpen}
+      // Suppressing the focus-open belongs to the tooltip alone. It stops the
+      // focus event in the capture phase, which also stops the SAME element's
+      // onFocus — and that is how a HoverCard opens, so leaving it on while
+      // previewing would muzzle the preview for keyboard users, alone among the
+      // five places that share this preview.
+      onFocusCapture={previews ? undefined : suppressTooltipFocusOpen}
       disabled={disabled}
       aria-pressed={active}
       className={
@@ -283,20 +301,29 @@ export function SlotTool({
   );
   return (
     <div className='relative'>
-      {pick ? (
-        <HoverPreview
-          kind={pick.kind}
-          src={pick.url}
-          // A poster is a still, so only a video has use for one; an image's
-          // thumbnail IS its asset and audio has neither.
-          poster={pick.kind === 'video' ? pick.thumbnail : undefined}
-          followCanvas
-        >
+      {/* BOTH wrappers stay mounted in both states, and each decides for itself
+          whether to open. Alternating them instead — preview when filled,
+          tooltip when empty — swaps the component at this position, so React
+          unmounts and remounts the button and keyboard focus sitting on it
+          drops to <body>. Reachable one-handed: Tab to the slot, then Cmd+Z,
+          since the undo gate excludes only INPUT / TEXTAREA / contenteditable
+          and undoing the fill empties the slot underneath the focus. */}
+      <HoverPreview
+        // `kind` is inert without a `src`; the empty state passes none, so
+        // HoverPreview withholds its card and the wrapper is a pass-through.
+        kind={pick?.kind ?? 'image'}
+        src={previews ? pick?.url : undefined}
+        // A poster is a still, so only a video has use for one; an image's
+        // thumbnail IS its asset and audio has neither.
+        poster={previews && pick?.kind === 'video' ? pick.thumbnail : undefined}
+        followCanvas
+      >
+        {/* The tooltip says WHAT to pick, which only an empty slot needs; a
+            filled one has the preview instead, the way the rail does. */}
+        <ToolTip tip={tip} suppressed={previews}>
           {button}
-        </HoverPreview>
-      ) : (
-        <ToolTip tip={tip}>{button}</ToolTip>
-      )}
+        </ToolTip>
+      </HoverPreview>
       {pick ? (
         <Button
           type='button'

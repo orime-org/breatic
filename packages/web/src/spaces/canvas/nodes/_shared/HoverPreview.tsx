@@ -107,9 +107,14 @@ export function HoverPreview({
   const previewText = resolveOnOpen ? resolved?.text : text;
   const previewHint = resolveOnOpen ? resolved?.emptyHint : emptyHint;
 
-  // No image, no text, no hint, no resolver → render the trigger unchanged (no
-  // card), so an unhandled / empty source gets nothing rather than an empty box.
-  if (!src && !text && !emptyHint && !resolveOnOpen) return <>{children}</>;
+  // No image, no text, no hint, no resolver → the card never opens, so an
+  // unhandled / empty source gets nothing rather than an empty box. Expressed
+  // by withholding the CONTENT rather than by returning the bare trigger: the
+  // wrapper's shape must not depend on whether there is something to show,
+  // because a caller whose content comes and goes (a generate slot being filled
+  // and cleared) would otherwise have its trigger unmounted and remounted on
+  // every flip — dropping keyboard focus to <body> (#1946).
+  const hasAnything = Boolean(src || text || emptyHint || resolveOnOpen);
 
   const isMedia = kind === 'audio' || kind === 'video';
   let content: React.ReactNode = null;
@@ -163,19 +168,21 @@ export function HoverPreview({
       }}
     >
       <HoverCardTrigger asChild>{children}</HoverCardTrigger>
-      <HoverCardContent
-        data-testid='hover-preview-content'
-        side={followCanvas ? 'top' : 'left'}
-        avoidCollisions={followCanvas ? false : undefined}
-        // Re-enable clicks inside a modal Sheet: the modal sets the body to
-        // `pointer-events: none`, which the portaled content inherits; an
-        // explicit `auto` on the content lets its play / seek subtree be
-        // clicked (verified with elementFromPoint). Harmless outside a modal
-        // (already auto there). See the hover-preview spec §3.10 / INV-11.
-        style={{ pointerEvents: 'auto' }}
-      >
-        {content}
-      </HoverCardContent>
+      {hasAnything ? (
+        <HoverCardContent
+          data-testid='hover-preview-content'
+          side={followCanvas ? 'top' : 'left'}
+          avoidCollisions={followCanvas ? false : undefined}
+          // Re-enable clicks inside a modal Sheet: the modal sets the body to
+          // `pointer-events: none`, which the portaled content inherits; an
+          // explicit `auto` on the content lets its play / seek subtree be
+          // clicked (verified with elementFromPoint). Harmless outside a modal
+          // (already auto there). See the hover-preview spec §3.10 / INV-11.
+          style={{ pointerEvents: 'auto' }}
+        >
+          {content}
+        </HoverCardContent>
+      ) : null}
     </HoverCard>
   );
 }

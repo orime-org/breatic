@@ -25,9 +25,10 @@ interface VideoGenerateToolbarProps {
   /** What is picked, by slot; a slot missing from here renders empty. */
   slotUrls: VideoSlotUrls;
   /**
-   * What to SHOW for each pick — the picked image itself for an image slot,
+   * What to PAINT for each pick — the picked image itself for an image slot,
    * the copied poster for a slot holding something an `<img>` cannot paint.
-   * A slot missing from here keeps its icon and label.
+   * A slot missing from here is not empty: it covers itself with the asset
+   * node's icon instead (#1946). Fullness is `slotUrls`, never this.
    */
   slotThumbnails: VideoSlotUrls;
   /** The slot whose pick is running, if any — highlights that one control. */
