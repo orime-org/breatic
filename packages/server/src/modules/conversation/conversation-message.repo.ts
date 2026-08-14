@@ -247,11 +247,13 @@ export async function getMessages(
  * was unreachable for as long as this function stripped it.
  * @param id - Conversation UUID
  * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
+ * @param beforeTurn - Stop short of this turn, leaving the running turn out
  * @returns Unconsolidated messages, without the model's reasoning
  */
 export async function getMessagesForLlm(
   id: string,
   lastConsolidatedTurn = 0,
+  beforeTurn?: number,
 ): Promise<MessageData[]> {
   const rows = await db
     .select({
@@ -267,6 +269,13 @@ export async function getMessagesForLlm(
       and(
         eq(conversationMessages.conversationId, id),
         gt(conversationMessages.turnIndex, lastConsolidatedTurn),
+        // The turn being run is not history: its own message is put in front
+        // of the model separately, and a copy here would be the model reading
+        // the same question twice -- and a candidate for compression, which
+        // could shorten the very thing being asked.
+        ...(beforeTurn === undefined
+          ? []
+          : [lt(conversationMessages.turnIndex, beforeTurn)]),
         isNull(conversationMessages.deletedAt),
         isNull(conversations.deletedAt),
       ),

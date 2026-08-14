@@ -22,6 +22,7 @@ import { creditService } from "@breatic/domain";
 import { ASK_USER_SENTINEL } from "@breatic/domain";
 import type { MessagePart } from "@breatic/shared";
 import { SSEEventType } from "@server/agent/types.js";
+import { buildTurnContext } from "@server/agent/turn-context.js";
 import type { SSEEvent } from "@server/agent/types.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
@@ -110,7 +111,7 @@ export class MainAgent {
     signal: AbortSignal | undefined,
     skillName?: string,
   ): AsyncGenerator<SSEEvent> {
-    const { conversationId, memoryContext, compressedHistory } = this.ctx;
+    const { userId, conversationId, projectId } = this.ctx;
 
     // Save what the user said. The turn it opened is what the rest of this
     // run is filed under: the reply goes in it, and billing builds a stable
@@ -138,6 +139,24 @@ export class MainAgent {
     // holds would take the reader's own words back off the screen.
     const settled = await messageRepo.getMessages(conversationId);
     yield this.sse(SSEEventType.CHAT_TURN_STARTED, { ...settled });
+
+    // Only now the work that takes a while: three round trips for memory,
+    // the conversation and its history, and then the compression. All of it
+    // used to run before the stream was even opened, so the reader watched an
+    // unchanged screen through the whole of it — their own message did not
+    // appear until it was done.
+    //
+    // The running turn is left out of that history on purpose. Its message is
+    // put in front of the model separately, a few lines below, so a copy in
+    // the history would be the same question asked twice — and it would be a
+    // candidate for compression, which could shorten the very thing being
+    // asked.
+    const { memoryContext, compressedHistory } = await buildTurnContext(
+      userId,
+      conversationId,
+      projectId ?? "",
+      turnIndex,
+    );
 
     // One factory decides model, instructions and tools — see
     // domain/agent/agent-config.ts for why nothing else may assemble them.

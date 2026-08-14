@@ -29,12 +29,14 @@ export interface TurnContext {
  * @param userId - Who is speaking.
  * @param conversationId - The conversation, already checked as this user's.
  * @param projectId - The project it belongs to.
+ * @param runningTurn - The turn being run, left out of the history it builds
  * @returns The memory and the history the turn runs against.
  */
 export async function buildTurnContext(
   userId: string,
   conversationId: string,
   projectId: string,
+  runningTurn: number,
 ): Promise<TurnContext> {
   const agentCfg = getAgentConfig();
   const memoryContext = await memoryService.buildContext(
@@ -51,6 +53,7 @@ export async function buildTurnContext(
   const rawHistory = await conversationService.getMessagesForLlm(
     conversationId,
     conversation?.lastConsolidatedTurn ?? 0,
+    runningTurn,
   );
 
   return {

@@ -39,6 +39,12 @@ const deductOnce = vi.fn(async (..._args: unknown[]) => undefined);
 /** Set when the code under test reads `usage`, which is what consumes a stream. */
 const usageRead = vi.fn();
 
+vi.mock("@server/agent/turn-context.js", () => ({
+  buildTurnContext: vi.fn(async () => ({
+    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    compressedHistory: [],
+  })),
+}));
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(),
@@ -157,12 +163,6 @@ describe("a turn cut short by the client", () => {
       {
         userId: "u1",
         conversationId: "c1",
-        memoryContext: {
-          userMemory: "",
-          projectMemory: "",
-          conversationMemory: "",
-        },
-        compressedHistory: [],
       },
       async () => {
         const agent = new MainAgent();

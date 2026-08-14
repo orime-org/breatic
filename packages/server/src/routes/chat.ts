@@ -30,7 +30,6 @@ import { MainAgent } from "@server/agent/main-agent.js";
 import { serializeSSE, SSEEventType } from "@server/agent/types.js";
 import type { SSEEvent } from "@server/agent/types.js";
 import { runWithContext } from "@breatic/core";
-import { buildTurnContext } from "@server/agent/turn-context.js";
 import { assertSkillUsable } from "@breatic/domain";
 import { SSE_HEARTBEAT_INTERVAL_MS } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
@@ -84,8 +83,6 @@ async function streamTurn(
   turn: { userId: string; conversationId: string; projectId: string },
   events: (signal: AbortSignal) => AsyncGenerator<SSEEvent>,
 ): Promise<Response> {
-  const turnContext = await buildTurnContext(turn.userId, turn.conversationId, turn.projectId);
-
   c.header("Content-Type", "text/event-stream");
   c.header("Cache-Control", "no-cache");
   c.header("Connection", "keep-alive");
@@ -115,12 +112,7 @@ async function streamTurn(
 
     try {
       await runWithContext(
-        {
-          userId: turn.userId,
-          conversationId: turn.conversationId,
-          projectId: turn.projectId,
-          ...turnContext,
-        },
+        { userId: turn.userId, conversationId: turn.conversationId, projectId: turn.projectId },
         async () => {
           for await (const event of events(stopped.signal)) {
             await s.write(serializeSSE(event));

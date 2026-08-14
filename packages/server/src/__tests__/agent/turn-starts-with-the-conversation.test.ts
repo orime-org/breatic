@@ -35,6 +35,12 @@ const getMessages = vi.fn(async () => ({
 const consolidateIfNeeded = vi.fn(async () => undefined);
 const streamTextRetry = vi.fn();
 
+vi.mock("@server/agent/turn-context.js", () => ({
+  buildTurnContext: vi.fn(async () => ({
+    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    compressedHistory: [],
+  })),
+}));
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(),
@@ -91,8 +97,6 @@ async function eventsFromOneTurn(): Promise<Array<{ event: string; data: unknown
       userId: "u1",
       conversationId: "c1",
       projectId: "p1",
-      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
-      compressedHistory: [],
     },
     async () => {
       for await (const event of new MainAgent().chat("a new question")) raised.push(event);

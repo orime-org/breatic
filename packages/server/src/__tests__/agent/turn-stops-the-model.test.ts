@@ -30,6 +30,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type * as DomainModule from "@breatic/domain";
 
 const dnsLookupMock = vi.fn();
+vi.mock("@server/agent/turn-context.js", () => ({
+  buildTurnContext: vi.fn(async () => ({
+    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    compressedHistory: [],
+  })),
+}));
 vi.mock("node:dns/promises", () => ({
   lookup: (...args: unknown[]) => dnsLookupMock(...args),
 }));
@@ -150,8 +156,6 @@ async function timeTurn(signal: AbortSignal): Promise<number> {
       userId: "u1",
       conversationId: "c1",
       projectId: "p1",
-      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
-      compressedHistory: [],
     },
     async () => {
       for await (const _event of new MainAgent().chat("hi", undefined, signal)) {

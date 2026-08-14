@@ -39,6 +39,12 @@ const buildAgentConfig = vi.hoisted(() => vi.fn());
 /** Set when the code under test reads `usage`, which is what consumes a stream. */
 const usageRead = vi.fn();
 
+vi.mock("@server/agent/turn-context.js", () => ({
+  buildTurnContext: vi.fn(async () => ({
+    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    compressedHistory: [],
+  })),
+}));
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(),
@@ -124,8 +130,6 @@ async function runSkillTurn(skillName: string): Promise<string[]> {
     {
       userId: "u1",
       conversationId: "c1",
-      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
-      compressedHistory: [],
     },
     async () => {
       for await (const e of new MainAgent().handleSkillCommand(skillName, "go")) {
@@ -152,8 +156,6 @@ async function runTurnFull(signal?: AbortSignal): Promise<Emitted[]> {
     {
       userId: "u1",
       conversationId: "c1",
-      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
-      compressedHistory: [],
     },
     async () => {
       for await (const e of new MainAgent().chat("hi", undefined, signal)) {
@@ -252,7 +254,6 @@ describe("what a skill command hands the model", () => {
       skillName: "creative_research",
       interactive: true,
       basePrompt: "system",
-      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
     });
   });
 });

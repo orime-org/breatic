@@ -11,7 +11,6 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { MemoryContext, MessageData } from "@breatic/shared";
 
 /** Shape of the per-request context store. */
 export interface RequestStore {
@@ -21,10 +20,6 @@ export interface RequestStore {
   conversationId: string;
   /** Associated project ID (may be undefined). */
   projectId?: string;
-  /** Three-layer memory context, loaded once per request. */
-  memoryContext: MemoryContext;
-  /** Compressed conversation history (old turns compressed, recent full). */
-  compressedHistory: readonly MessageData[];
 }
 
 /** The AsyncLocalStorage instance shared across the application. */

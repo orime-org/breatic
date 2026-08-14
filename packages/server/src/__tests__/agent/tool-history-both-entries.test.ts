@@ -22,6 +22,15 @@ const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1
 const consolidateIfNeeded = vi.fn(async () => undefined);
 const streamTextRetry = vi.fn();
 
+vi.mock("@server/agent/turn-context.js", () => ({
+  buildTurnContext: vi.fn(async () => ({
+    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    // The history is what this case is about: a turn now reads it itself,
+    // after storing the message and answering the browser, so this is where
+    // it comes from.
+    compressedHistory: HISTORY,
+  })),
+}));
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(),
@@ -136,8 +145,6 @@ async function turn(
       userId: "u1",
       conversationId: "c1",
       projectId: "p1",
-      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
-      compressedHistory: HISTORY,
     },
     async () => {
       for await (const _ of run(new MainAgent())) {
