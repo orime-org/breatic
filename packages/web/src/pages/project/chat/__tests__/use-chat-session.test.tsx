@@ -172,6 +172,25 @@ describe('sending a message', () => {
     expect(result.current.turnPhase).toBe('idle');
   });
 
+  it('is waiting from the press, even before there is a conversation', async () => {
+    // Nothing has been opened yet: this is the reader's first message in a
+    // project whose chat could not be opened when they arrived.
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(new Promise(() => {}));
+    const { result } = render();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    expect(result.current.turnPhase).toBe('idle');
+
+    await act(async () => {
+      void result.current.send('are you there');
+    });
+
+    // Sending opens a conversation first, which is a whole request. Read off
+    // the turn alone this would still say `idle`, and the panel would keep a
+    // live send button up for the length of it -- a second press there runs
+    // the same sentence as a second turn.
+    expect(result.current.turnPhase).toBe('sending');
+  });
+
   it('shows what the user said as soon as the server says it has it', async () => {
     openChatAnswers([]);
     const { result } = render();
