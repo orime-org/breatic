@@ -784,7 +784,7 @@ async function runTurn(
       // the composer is live for the whole of that gap, so the next turn can
       // already be under way. A watchdog that stopped "whatever is running"
       // would kill it on behalf of a turn that finished perfectly well.
-      if (useStore.getState().conversations[conversationId]?.turn?.replyId !== replyId) return;
+      if (!stillRunning(conversationId, replyId)) return;
       stopTurn(conversationId);
       // Ended the same way pressing stop does, but the reader did not press
       // anything, so unlike stop this one is worth a word.
@@ -811,7 +811,7 @@ async function runTurn(
         // worth one line. Which line depends only on whether the server got
         // to answer: an answer at all means the network was fine.
         if (
-          useStore.getState().conversations[conversationId]?.turn?.replyId === replyId ||
+          stillRunning(conversationId, replyId) !== undefined ||
           err instanceof StreamRefusedError ||
           err instanceof StreamUnreachableError
         ) {
@@ -824,7 +824,7 @@ async function runTurn(
           neverRan = err;
         } else if (
           err instanceof StreamDroppedError &&
-          useStore.getState().conversations[conversationId]?.turn?.replyId === replyId
+          stillRunning(conversationId, replyId) !== undefined
         ) {
           // The stream opened and then died. The server sees that as the
           // client going away and cannot tell it from the user pressing stop,

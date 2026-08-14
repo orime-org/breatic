@@ -501,6 +501,72 @@ describe('leaving the project', () => {
   });
 });
 
+describe('an error that arrives after the turn it belongs to has ended', () => {
+  /**
+   * Run one turn to its end, start a second, and hand back the first one's.
+   *
+   * The socket closing is what ends a turn, and the transport can report the
+   * failure that closed it afterwards -- so the first turn's handlers outlive
+   * it. The second turn has to be under way for this to be worth guarding: a
+   * conversation running nothing is one every check turns away anyway, and
+   * what these cases are about is a late ending landing on the turn that came
+   * after it. Its own first event has not arrived yet, which is why the reply
+   * the first turn wrote is still the last one on the list.
+   * @returns The handlers of the turn that has ended, and its reply's id.
+   */
+  async function aLateEnding(): Promise<{ ended: typeof handlers; itsReplyId: string }> {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    turnStarts(['earlier', 'hello']);
+
+    const ended = handlers;
+    const itsReplyId = conversation()?.messages.at(-1)?.id ?? '';
+    ended.onClose?.();
+    expect(conversation()?.turn).toBeNull();
+
+    void conversationRuntime.send('p-1', 'and another');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    expect(conversation()?.turn?.replyId).not.toBe(itsReplyId);
+
+    return { ended, itsReplyId };
+  }
+
+  it('does not mark a reply that finished as one that was cut off', async () => {
+    const { ended, itsReplyId } = await aLateEnding();
+
+    ended.onError?.(new StreamDroppedError(new Error('socket closed')));
+
+    // The reply is on the record as finished. Marking it now would put
+    // "stopped" on an answer the reader watched arrive in full.
+    const its = conversation()?.messages.find((m) => m.id === itsReplyId);
+    expect(its?.interrupted).toBeUndefined();
+  });
+
+  it('says nothing, because nobody is waiting on it', async () => {
+    const { ended } = await aLateEnding();
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+
+    ended.onError?.(new StreamDroppedError(new Error('socket closed')));
+    stop();
+
+    // A line about a turn that is over reads as a line about the one on
+    // screen now, which is running perfectly well.
+    expect(told).toEqual([]);
+  });
+
+  it('leaves the turn that is running alone', async () => {
+    const { ended } = await aLateEnding();
+    const running = conversation()?.turn?.replyId;
+
+    ended.onError?.(new StreamDroppedError(new Error('socket closed')));
+
+    expect(conversation()?.turn?.replyId).toBe(running);
+  });
+});
+
 describe('the watchdog that ends a silent turn', () => {
   it('ends the turn when the stream stops saying it is alive', async () => {
     vi.useFakeTimers();
