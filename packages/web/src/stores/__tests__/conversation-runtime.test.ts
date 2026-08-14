@@ -465,11 +465,13 @@ describe('an answer that did not come from our server', () => {
     ]);
   });
 
-  it('is not passed off as one on the stream either, which draws the same line', async () => {
+  it('is not called a network error either, because something did answer', async () => {
     // The same gateway, one layer over: the stream was refused before it
     // opened and there was no sentence of ours in the body, so the transport
-    // filled the refusal with its own generic one. It reads like a sentence
-    // the server wrote about this request, and it is not.
+    // filled the refusal with its own generic one. Two things are true and
+    // the reader is owed both: it is not a sentence our server wrote, and the
+    // network was fine -- something answered. What is left to say is the only
+    // thing that holds: this reply is not coming, send it again.
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
@@ -481,7 +483,22 @@ describe('an answer that did not come from our server', () => {
     await conversationRuntime.send('p-1', 'hello');
     stop();
 
-    expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', kind: 'network' })]);
+    expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', kind: 'turn' })]);
+  });
+
+  it('is still a network error when nothing answered at all', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(new StreamUnreachableError(new Error('offline')));
+    });
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    await conversationRuntime.send('p-1', 'hello');
+    stop();
+
+    expect(told).toEqual([expect.objectContaining({ kind: 'network' })]);
   });
 
   it('still passes on the one the server did write', async () => {

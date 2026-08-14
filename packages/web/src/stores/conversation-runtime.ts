@@ -357,18 +357,56 @@ function tell(mishap: Omit<ChatMishap, 'at'>): void {
  * @returns Which kind of mishap it is, and the server's own words when it
  *   answered with any.
  */
-function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
+function serverSentence(err: unknown): string | undefined {
   // Only a sentence our own server wrote for this reader, whichever transport
   // brought it. An answer coming back is not the same thing: a gateway that
   // timed out also answers, and there is nothing of ours in what it sends --
   // so each transport says whether the message it is carrying came out of our
-  // envelope, and this asks both of them the same question.
-  if (err instanceof StreamRefusedError && err.fromServer) {
-    return { kind: 'server', message: err.message };
-  }
-  if (err instanceof ApiException && err.status !== 0 && err.fromServer === true) {
-    return { kind: 'server', message: err.message };
-  }
+  // envelope, and this asks both of them the same question and nothing else.
+  if (err instanceof StreamRefusedError && err.fromServer) return err.message;
+  if (err instanceof ApiException && err.fromServer) return err.message;
+  return undefined;
+}
+
+/**
+ * Read a failed request as the reader would hear it.
+ *
+ * For the two requests that fetch rather than run a turn: opening the chat,
+ * and reaching further back. Either the server wrote a sentence about it or
+ * nothing did.
+ *
+ * A third case exists and is not told apart here: something answered, but
+ * with nothing of ours in it. Saying "network error" for that is not right --
+ * the network worked -- and there is no sentence yet that fits both of these
+ * requests, so one has to be written before this can tell the difference.
+ * The turn has one, and {@link readTurnMishap} uses it.
+ * @param err - Whatever the call threw.
+ * @returns Which kind of mishap it is, and the server's own words when it
+ *   answered with any.
+ */
+function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
+  const said = serverSentence(err);
+  return said === undefined ? { kind: 'network' } : { kind: 'server', message: said };
+}
+
+/**
+ * Read a turn's ending as the reader would hear it.
+ *
+ * Three endings rather than two, because this is the one path with something
+ * true to say about the third. A refusal means the request reached something
+ * that answered: the network is not what went wrong, and if what answered was
+ * not ours then the only thing left that holds is that this reply is not
+ * coming and the words can go again.
+ * @param ending - How the turn ended.
+ * @returns Which kind of mishap it is, and the server's own words when it
+ *   answered with any.
+ */
+function readTurnMishap(
+  ending: unknown,
+): { kind: 'network' } | { kind: 'turn' } | { kind: 'server'; message: string } {
+  const said = serverSentence(ending);
+  if (said !== undefined) return { kind: 'server', message: said };
+  if (ending instanceof StreamRefusedError) return { kind: 'turn' };
   return { kind: 'network' };
 }
 
@@ -874,7 +912,7 @@ async function runTurn(
             // and this says the same.
             patchMessage(conversationId, replyId, (m) => ({ ...m, interrupted: true as const }));
           }
-          tell({ projectId, conversationId, ...readMishap(err) });
+          tell({ projectId, conversationId, ...readTurnMishap(err) });
         }
         finishTurn(conversationId, replyId);
       },
@@ -1002,7 +1040,7 @@ async function sendOnce(projectId: string, said: string): Promise<void> {
   // this is where the last word is decided -- so every path out of here that
   // stops trying says so exactly once.
   if (!worthASecondAttempt(ending)) {
-    tellThisVisit({ conversationId, ...readMishap(ending) });
+    tellThisVisit({ conversationId, ...readTurnMishap(ending) });
     return;
   }
 
@@ -1023,7 +1061,7 @@ async function sendOnce(projectId: string, said: string): Promise<void> {
     // sentence about the conversation the first attempt went looking for.
     tellThisVisit({
       conversationId: null,
-      ...readMishap(reopen ? reopen.failed : ending),
+      ...readTurnMishap(reopen ? reopen.failed : ending),
     });
     return;
   }
@@ -1037,7 +1075,7 @@ async function sendOnce(projectId: string, said: string): Promise<void> {
   // to open a third conversation -- and it is this end of the line, so it is
   // said rather than handed on to nobody.
   const retry = await runTurn(projectId, fresh, said);
-  if (retry) tellThisVisit({ conversationId: fresh, ...readMishap(retry) });
+  if (retry) tellThisVisit({ conversationId: fresh, ...readTurnMishap(retry) });
 }
 
 /**
