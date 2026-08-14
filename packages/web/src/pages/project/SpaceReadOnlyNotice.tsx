@@ -15,6 +15,11 @@ interface SpaceReadOnlyNoticeProps {
   projectId: string;
   spaceId: string;
   type: SpaceType;
+  /**
+   * True when this person's ROLE is view-only. Load-bearing, not decoration —
+   * see the note on causes in {@link SpaceReadOnlyNotice}.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -24,15 +29,46 @@ interface SpaceReadOnlyNoticeProps {
  * document of its own (timeline today) has no connection to report on, and the
  * outer component returns before this one mounts. Same shape as
  * `SpaceDocSync` / `SpaceDocAttach` next door, for the same reason.
- * @param root0 - Which document to report on.
+ * @param root0 - Which document to report on, and who is looking at it.
  * @param root0.name - Canonical document name.
- * @returns The notice, or null while this connection may write.
+ * @param root0.readOnly - True when this person's role is view-only.
+ * @returns The notice, or null when this connection's read-only is not a degrade.
  */
-function DocReadOnlyNotice({ name }: { name: string }): React.JSX.Element | null {
+function DocReadOnlyNotice({
+  name,
+  readOnly,
+}: {
+  name: string;
+  readOnly: boolean;
+}): React.JSX.Element | null {
   const t = useTranslation();
   const doc = React.useMemo(() => getDoc(name), [name]);
-  const { degraded } = useSocket({ name, doc });
-  if (!degraded) return null;
+  const { writeAccess, status } = useSocket({ name, doc });
+
+  // The server sends ONE flag for three different causes (collab
+  // `hooks/auth.ts`: `readOnly = kind === "meta" || role === "viewer" ||
+  // atCapacity`) and the wire carries no reason. So "did the server say no" is
+  // not the question — "was this person's editing taken away" is, and the two
+  // other causes are ruled out from what this side already knows:
+  //
+  //   the role  — a viewer is read-only in every Space, always. Nothing was
+  //               taken away, so there is nothing to announce. It comes from
+  //               the caller, because a connection does not carry a role.
+  //   meta      — no client may ever write it. Ruled out by construction:
+  //               `DOC_NAME_BUILDERS` only ever names a Space's own document.
+  //   a refusal — the Space was deleted, the membership was revoked, the
+  //               session expired. Writes are denied for that too, and it is
+  //               told apart by `authFailed`. Telling that person to wait for
+  //               a seat is an instruction they cannot carry out; each Space
+  //               says that one its own way.
+  //
+  // What is left is the connection being read-only while the role can write:
+  // the document is at its tier's ceiling, or that ceiling could not be
+  // resolved. The two are deliberately NOT distinguished — from where the user
+  // sits they are one event with one answer (user 2026-08-14).
+  const degraded = writeAccess === 'denied' && status !== 'authFailed';
+  if (readOnly || !degraded) return null;
+
   return (
     <div
       role='status'
@@ -56,7 +92,17 @@ function DocReadOnlyNotice({ name }: { name: string }): React.JSX.Element | null
 }
 
 /**
- * Says so when the server granted THIS Space's connection read-only access.
+ * Says so when THIS Space's connection was granted read-only although this
+ * person's role can write.
+ *
+ * ## What it does and does not announce
+ *
+ * Only a connection-level degrade — the document is at the ceiling its tier
+ * allows, or that ceiling could not be resolved at all. A viewer is told
+ * nothing (read-only is their role, not something taken away), the project
+ * meta document never reaches here, and a refused document is left to the
+ * Space itself. The three exclusions are worked out in
+ * {@link DocReadOnlyNotice}, where the connection state is.
  *
  * ## Why it lives inside the Space rather than in the page chrome
  *
@@ -69,30 +115,27 @@ function DocReadOnlyNotice({ name }: { name: string }): React.JSX.Element | null
  * ## Why it is not a toast
  *
  * It used to be one, and a toast is the wrong shape: it disappears after four
- * seconds, while this is a STATE that holds until somebody leaves or the page
- * reconnects. Whoever missed those four seconds only finds out by watching
- * their edits fail to stick.
- *
- * ## Why a refusal gets nothing from here
- *
- * `useSocket` separates the two. A DEGRADE (this document is at its tier's
- * ceiling, or the ceiling could not be resolved) clears itself when a seat
- * frees up, so "wait, or reconnect" is advice this person can act on. A
- * REFUSAL means the Space was deleted, the membership was revoked or the
- * session expired; that needs a different message, and each Space still says
- * that one its own way.
- * @param root0 - Which Space's connection to report on.
+ * seconds, while this holds for as long as the connection does. Whoever missed
+ * those four seconds only finds out by watching their edits fail to stick.
+ * @param root0 - Which Space's connection to report on, and who is looking.
  * @param root0.projectId - Project the Space belongs to.
  * @param root0.spaceId - The Space.
  * @param root0.type - Space type, which decides the document name.
+ * @param root0.readOnly - True when this person's role is view-only.
  * @returns The notice, or null for a Space type with no document.
  */
 export function SpaceReadOnlyNotice({
   projectId,
   spaceId,
   type,
+  readOnly = false,
 }: SpaceReadOnlyNoticeProps): React.JSX.Element | null {
   const buildName = DOC_NAME_BUILDERS[type];
   if (!buildName) return null;
-  return <DocReadOnlyNotice name={buildName(projectId, spaceId)} />;
+  return (
+    <DocReadOnlyNotice
+      name={buildName(projectId, spaceId)}
+      readOnly={readOnly}
+    />
+  );
 }

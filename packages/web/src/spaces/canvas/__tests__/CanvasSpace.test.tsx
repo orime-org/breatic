@@ -242,7 +242,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       hasEverSynced: true,
       status: 'connected',
       writeAccess: 'granted',
-      degraded: false,
       authFailedReason: null,
     });
     mockUseCanvasSpace.mockReturnValue(

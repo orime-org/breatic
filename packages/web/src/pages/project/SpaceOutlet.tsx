@@ -44,16 +44,24 @@ export function SpaceOutlet({
   }
   const Body = def.bodyComponent;
   // The read-only notice is anchored INSIDE the Space, so the wrapper owns the
-  // positioning context. Every Space type gets it from this one place: whether
-  // a connection may write is decided per document, and every type has to
-  // answer for its own — putting it here means a new type is covered the day
-  // it registers, exactly like the outlet itself.
+  // positioning context. It sits here rather than in each Space body because
+  // whether a connection may write is decided per document and every type has
+  // to answer for its own — one place, and each type's body stays out of it.
+  //
+  // `readOnly` goes to BOTH: the body uses it to gate editing, and the notice
+  // uses it to stay quiet for a viewer, whose read-only is their role rather
+  // than something the server took away.
+  //
+  // A newly registered Space type is NOT covered by this alone — the notice
+  // resolves a document name through `DOC_NAME_BUILDERS`, and a type missing
+  // from that table renders nothing. Adding a type means both tables.
   return (
     <div className='relative h-full w-full'>
       <SpaceReadOnlyNotice
         projectId={projectId}
         spaceId={spaceId}
         type={type}
+        readOnly={readOnly}
       />
       <Body
         projectId={projectId}

@@ -99,22 +99,6 @@ interface SocketState {
    */
   writeAccess: WriteAccess;
   /**
-   * Whether the server DEGRADED this connection to read-only, as opposed to
-   * refusing the document outright.
-   *
-   * {@link writeAccess} is `denied` for both, and they need different answers:
-   * a degrade clears itself when a seat frees up, so saying so is useful; a
-   * refusal means the Space was deleted, membership was revoked or the session
-   * expired, and telling that person to wait for a seat is an instruction they
-   * cannot carry out. Derived here so both Spaces read one answer instead of
-   * each hand-deriving it.
-   *
-   * The ROLE is deliberately not folded in — this is the connection's state,
-   * and a viewer is read-only whatever the connection says. Callers that care
-   * add the role themselves.
-   */
-  degraded: boolean;
-  /**
    * If `status === 'authFailed'`, the server-provided reason string
    * (e.g. `"Forbidden"`). Used by future ErrorState code to discriminate
    * 401 (re-login) vs 403 (request-access) without re-introspection.
@@ -305,18 +289,6 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
     hasEverSynced,
     status,
     writeAccess,
-    // A DEGRADE, told apart from a REFUSAL. `writeAccess` is 'denied' for
-    // both, so the only thing separating "this document is full" from "the
-    // server refused this document outright" is that a refusal also sets
-    // `authFailed`. They need different answers — a degrade clears itself
-    // when a seat frees up and is worth saying so; a refusal means the Space
-    // was deleted, membership was revoked or the session expired, and the
-    // seats message would be an instruction the person cannot carry out.
-    //
-    // Derived HERE, once, because both Spaces need it: hand-deriving it in
-    // each is the shape that drifts. What each Space still adds on top is
-    // the ROLE — a viewer is read-only by definition and is told nothing.
-    degraded: writeAccess === 'denied' && status !== 'authFailed',
     authFailedReason,
   };
 }
