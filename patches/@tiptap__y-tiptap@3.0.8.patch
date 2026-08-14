@@ -2,7 +2,7 @@ diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
 index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce039e900e 100644
 --- a/dist/y-tiptap.cjs
 +++ b/dist/y-tiptap.cjs
-@@ -927,6 +927,98 @@ const createNodeFromYElement = (
+@@ -927,6 +927,99 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -30,8 +30,9 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
 +  // untouched catch below, which deletes the parent — the title and every
 +  // character in it, gone from the shared document. Answering "no stand-in
 +  // here" instead leaves this one element to that same catch: it alone is
-+  // removed, the parent and its text stay, and the client is stopped from
-+  // editing anyway because the intercept sees a name it does not know.
++  // removed — one element lost instead of the parent and every character in
++  // it. Nobody is told: Yjs runs type observers before it emits `update`, so
++  // the intercept reads a document the name has already been removed from.
 +  if (schema.nodes[el.nodeName] === undefined) {
 +    const parent = el.parent;
 +    const parentType =
@@ -101,7 +102,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -999,6 +1091,9 @@ const createNodeFromYElement = (
+@@ -999,6 +1092,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -111,7 +112,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1164,13 +1259,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1164,13 +1260,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -136,7 +137,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
        })
      )
  };
-@@ -1538,7 +1643,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1538,7 +1644,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -155,7 +156,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
    }
    return marks
  };
-@@ -1550,6 +1665,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1550,6 +1666,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {
@@ -171,7 +172,7 @@ diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
 index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f68c66594b 100644
 --- a/dist/y-tiptap.js
 +++ b/dist/y-tiptap.js
-@@ -893,6 +893,98 @@ const createNodeFromYElement = (
+@@ -893,6 +893,99 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -199,8 +200,9 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f6
 +  // untouched catch below, which deletes the parent — the title and every
 +  // character in it, gone from the shared document. Answering "no stand-in
 +  // here" instead leaves this one element to that same catch: it alone is
-+  // removed, the parent and its text stay, and the client is stopped from
-+  // editing anyway because the intercept sees a name it does not know.
++  // removed — one element lost instead of the parent and every character in
++  // it. Nobody is told: Yjs runs type observers before it emits `update`, so
++  // the intercept reads a document the name has already been removed from.
 +  if (schema.nodes[el.nodeName] === undefined) {
 +    const parent = el.parent;
 +    const parentType =
@@ -270,7 +272,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f6
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -965,6 +1057,9 @@ const createNodeFromYElement = (
+@@ -965,6 +1058,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -280,7 +282,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f6
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1130,13 +1225,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1130,13 +1226,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -305,7 +307,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f6
        })
      )
  };
-@@ -1504,7 +1609,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1504,7 +1610,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -324,7 +326,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f6
    }
    return marks
  };
-@@ -1516,6 +1631,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1516,6 +1632,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {
