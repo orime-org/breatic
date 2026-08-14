@@ -8,8 +8,8 @@
  * ## The data itself is not here — it is in `config/document-schema.yaml`
  *
  * This module holds the SHAPE and the comparison; the values live in that one
- * file, and both ends read it. collab loads it at startup and publishes it into
- * each project's meta document; the browser gets it compiled in at build time
+ * file, and both ends read it. collab loads it when it loads a project's meta
+ * document and publishes it there; the browser gets it compiled in at build time
  * (`packages/web/vite.config.mts` reads the file and defines it). Neither side
  * hand-keeps a second copy, so there is nothing to drift.
  *

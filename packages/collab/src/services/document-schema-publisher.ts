@@ -12,8 +12,10 @@
  * publishes.
  *
  * This is the publishing half. The values come from
- * `config/document-schema.yaml`, read once at startup by `getDocumentSchema()`;
- * the browser has the same file compiled into its bundle and compares versions.
+ * `config/document-schema.yaml`, read on the first call to `getDocumentSchema()`
+ * and cached from then on — which, since this is its only caller, means the
+ * first meta document this process loads. The browser has the same file
+ * compiled into its bundle and compares versions.
  *
  * WHY THE SERVER WRITES IT: the meta document is read-only for every client
  * (`hooks/auth.ts` sets `connectionConfig.readOnly` for `kind === "meta"`), and
