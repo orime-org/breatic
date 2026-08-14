@@ -1,8 +1,38 @@
 diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
-index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce039e900e 100644
+index 653ffe79d5edb4a040555bb222f472af1e45edc8..7c32c712968dd4edcdddd4affe4ee5b60fa58d93 100644
 --- a/dist/y-tiptap.cjs
 +++ b/dist/y-tiptap.cjs
-@@ -927,6 +927,99 @@ const createNodeFromYElement = (
+@@ -379,6 +379,29 @@ const restoreRelativeSelection = (tr, relSel, binding, oldDoc) => {
+       if (selection !== null) {
+         tr.setSelection(selection);
+       }
++    } else if (relSel.type === 'body') {
++      // PATCH: a selection type of ours, restored by name.
++      //
++      // Without this branch it falls to the `else` below and is rebuilt as a
++      // `TextSelection.between`, which is exactly what BodySelection exists to
++      // avoid: TextSelection endpoints must sit in inline content, so a body
++      // starting or ending with a divider loses that block from the selection
++      // on every remote edit. y-prosemirror#24 reports the same thing for
++      // prosemirror-tables' CellSelection and was closed NOT_PLANNED;
++      // y-prosemirror#266 asks upstream for a general mechanism and is open.
++      // Tiptap's own answer is the `nodeRange` branch just above, added in
++      // ueberdosis/y-tiptap#35. This is the same move for `body`.
++      //
++      // No positions are carried across: BodySelection derives its range from
++      // the document it is given (as AllSelection does), so `fromJSON` needs
++      // the doc and nothing else. That also means there is nothing to clamp.
++      // A failure to construct falls back to a cursor at the document start,
++      // which is always a valid position.
++      try {
++        tr.setSelection(prosemirrorState.Selection.fromJSON(tr.doc, { type: 'body' }));
++      } catch (e) {
++        tr.setSelection(prosemirrorState.TextSelection.near(tr.doc.resolve(0)));
++      }
+     } else {
+       let anchor = relativePositionToAbsolutePosition(
+         binding.doc,
+@@ -927,6 +950,99 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -102,7 +132,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -999,6 +1092,9 @@ const createNodeFromYElement = (
+@@ -999,6 +1115,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -112,7 +142,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1164,13 +1260,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1164,13 +1283,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -137,7 +167,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
        })
      )
  };
-@@ -1538,7 +1644,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1538,7 +1667,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -156,7 +186,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
    }
    return marks
  };
-@@ -1550,6 +1666,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1550,6 +1689,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {
@@ -169,10 +199,40 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
        const isOverlapping = map__namespace.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type));
        pattrs[isOverlapping ? `${mark.type.name}--${hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs;
 diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
-index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f68c66594b 100644
+index 28c55820dff13cf3d5c303970f530c17eb38f757..2f6e1ceef6a8bf0c8bf11e320ed4907751d0688b 100644
 --- a/dist/y-tiptap.js
 +++ b/dist/y-tiptap.js
-@@ -893,6 +893,99 @@ const createNodeFromYElement = (
+@@ -345,6 +345,29 @@ const restoreRelativeSelection = (tr, relSel, binding, oldDoc) => {
+       if (selection !== null) {
+         tr.setSelection(selection);
+       }
++    } else if (relSel.type === 'body') {
++      // PATCH: a selection type of ours, restored by name.
++      //
++      // Without this branch it falls to the `else` below and is rebuilt as a
++      // `TextSelection.between`, which is exactly what BodySelection exists to
++      // avoid: TextSelection endpoints must sit in inline content, so a body
++      // starting or ending with a divider loses that block from the selection
++      // on every remote edit. y-prosemirror#24 reports the same thing for
++      // prosemirror-tables' CellSelection and was closed NOT_PLANNED;
++      // y-prosemirror#266 asks upstream for a general mechanism and is open.
++      // Tiptap's own answer is the `nodeRange` branch just above, added in
++      // ueberdosis/y-tiptap#35. This is the same move for `body`.
++      //
++      // No positions are carried across: BodySelection derives its range from
++      // the document it is given (as AllSelection does), so `fromJSON` needs
++      // the doc and nothing else. That also means there is nothing to clamp.
++      // A failure to construct falls back to a cursor at the document start,
++      // which is always a valid position.
++      try {
++        tr.setSelection(Selection.fromJSON(tr.doc, { type: 'body' }));
++      } catch (e) {
++        tr.setSelection(TextSelection.near(tr.doc.resolve(0)));
++      }
+     } else {
+       let anchor = relativePositionToAbsolutePosition(
+         binding.doc,
+@@ -893,6 +916,99 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -272,7 +332,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f6
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -965,6 +1058,9 @@ const createNodeFromYElement = (
+@@ -965,6 +1081,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -282,7 +342,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f6
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1130,13 +1226,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1130,13 +1249,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -307,7 +367,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f6
        })
      )
  };
-@@ -1504,7 +1610,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1504,7 +1633,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -326,7 +386,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f6
    }
    return marks
  };
-@@ -1516,6 +1632,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1516,6 +1655,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {

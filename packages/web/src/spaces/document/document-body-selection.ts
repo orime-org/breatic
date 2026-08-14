@@ -24,52 +24,96 @@
  *
  * ## What it does NOT do
  *
- * It carries a range and nothing else. Replacement, mapping and equality are
- * the base class's, and content extraction is the default slice of the range,
- * which is what copying a stretch of blocks should produce anyway.
+ * Replacement and content extraction are the base class's: what gets copied,
+ * cut or typed over is the default slice of the range, which is what a stretch
+ * of blocks should produce anyway. Mapping, equality and serialisation are
+ * defined here — see the class comment for why.
  */
 
 import { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import type { Mappable } from '@tiptap/pm/transform';
 import { Selection } from '@tiptap/pm/state';
+
+/**
+ * Where the body starts in a document — the position just past the title.
+ *
+ * The title is always the first block; the content rule `title block*` admits
+ * nothing else there.
+ * @param doc - The document to measure.
+ * @returns The first position belonging to the body.
+ */
+function bodyStart(doc: ProseMirrorNode): number {
+  return doc.child(0).nodeSize;
+}
 
 /**
  * A selection spanning the body, endpoints included whether or not they hold
  * inline content.
+ *
+ * ## Defined by the document, not by a pair of coordinates
+ *
+ * "The whole body" is a description of a document, so the range is derived
+ * from whatever document the selection is asked about, rather than carried
+ * around as two numbers. `AllSelection` is built the same way and for the same
+ * reason: its `map` ignores the mapping and returns `new AllSelection(doc)`,
+ * its `toJSON` stores no positions, and its `fromJSON` rebuilds from the doc
+ * alone (`prosemirror-state@1.4.4`).
+ *
+ * This is what makes the selection survive things that move text around. A
+ * coordinate pair has to be mapped, and every mapping is a chance to land
+ * somewhere it should not — measured, a title that swallows the body's first
+ * block maps the start position to inside the title. Deriving instead of
+ * mapping removes the question.
  */
 export class BodySelection extends Selection {
   /**
-   * Select from one document position to another.
-   * @param doc - The document the positions belong to.
-   * @param from - Where the body starts.
-   * @param to - Where the body ends.
+   * Select the whole body of a document.
+   * @param doc - The document to select the body of.
    */
-  constructor(doc: ProseMirrorNode, from: number, to: number) {
-    super(doc.resolve(from), doc.resolve(to));
+  constructor(doc: ProseMirrorNode) {
+    super(doc.resolve(bodyStart(doc)), doc.resolve(doc.content.size));
   }
 
   /**
-   * Move the selection through a change to the document.
-   *
-   * Both ends are mapped with a bias that keeps them on the outside of an
-   * insertion, so a block added at either edge of the body stays inside the
-   * selection rather than falling out of it.
-   * @param doc - The document after the change.
-   * @param mapping - How positions moved.
-   * @returns The selection in the new document.
+   * Whether a document has a body to select at all.
+   * @param doc - The document to check.
+   * @returns True when there is at least one block after the title.
    */
-  map(doc: ProseMirrorNode, mapping: Mappable): Selection {
-    const from = mapping.map(this.from, -1);
-    const to = mapping.map(this.to, 1);
-    // The body can be emptied by the change that is being mapped through; a
-    // range that has collapsed or inverted is no longer a body selection, and
-    // the base class knows what a valid selection near a position is.
-    if (to <= from) return Selection.near(doc.resolve(from));
-    return new BodySelection(doc, from, to);
+  static hasBody(doc: ProseMirrorNode): boolean {
+    return doc.content.size > bodyStart(doc);
+  }
+
+  /**
+   * The body of a document, or the nearest valid selection when it is empty.
+   *
+   * `title block*` allows zero blocks after the title, and a document in that
+   * shape has nothing in its body to select. The only place a selection can go
+   * is the title — not a choice this makes, but what the document is.
+   * @param doc - The document to select the body of.
+   * @returns The body selection, or a valid selection near where it would be.
+   */
+  static of(doc: ProseMirrorNode): Selection {
+    if (!BodySelection.hasBody(doc)) return Selection.near(doc.resolve(doc.content.size), -1);
+    return new BodySelection(doc);
+  }
+
+  /**
+   * Carry the selection into a changed document.
+   *
+   * The mapping is deliberately unused: the body of the new document is what
+   * this selects, whatever moved. Same shape as `AllSelection.map`.
+   * @param doc - The document after the change.
+   * @returns The body of that document.
+   */
+  map(doc: ProseMirrorNode): Selection {
+    return BodySelection.of(doc);
   }
 
   /**
    * Whether this is the same selection as another.
+   *
+   * Two body selections over the same document are the same selection; there
+   * is only one body. Positions are compared as well so that a stale one
+   * belonging to an older document does not compare equal to a current one.
    * @param other - The selection to compare with.
    * @returns True when both are body selections over the same range.
    */
@@ -83,29 +127,23 @@ export class BodySelection extends Selection {
 
   /**
    * The serialisable form, for `Selection.fromJSON`.
+   *
+   * No positions, for the same reason `AllSelection.toJSON` stores none: the
+   * range is a function of the document, so storing coordinates would let a
+   * stale pair override the real answer on the way back in.
    * @returns The plain object a stored selection round-trips through.
    */
-  toJSON(): { type: string; anchor: number; head: number } {
-    return { type: 'body', anchor: this.anchor, head: this.head };
+  toJSON(): { type: string } {
+    return { type: 'body' };
   }
 
   /**
    * Rebuild from the serialised form.
-   * @param doc - The document the positions belong to.
-   * @param json - What `toJSON` produced.
-   * @param json.anchor - Where the selection was anchored.
-   * @param json.head - Where the selection's head was.
-   * @returns The selection.
-   * @throws {RangeError} When the stored object is not a body selection.
+   * @param doc - The document to select the body of.
+   * @returns The body of that document.
    */
-  static fromJSON(
-    doc: ProseMirrorNode,
-    json: { anchor?: unknown; head?: unknown },
-  ): BodySelection {
-    if (typeof json.anchor !== 'number' || typeof json.head !== 'number') {
-      throw new RangeError('Invalid input for BodySelection.fromJSON');
-    }
-    return new BodySelection(doc, json.anchor, json.head);
+  static fromJSON(doc: ProseMirrorNode): Selection {
+    return BodySelection.of(doc);
   }
 }
 

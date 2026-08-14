@@ -83,31 +83,17 @@ function titleRange(state: EditorState): Range {
  * block and the whole body. Producing the answer once, here, is what keeps
  * the comparison honest.
  *
- * Both ends go through `Selection.near` rather than arithmetic on the title's
- * size, because the body's first block may be a container: with a list first,
- * the first text position is two levels in (`bulletList > listItem >
- * paragraph`), and measured, `near` lands on it while `titleSize + 1` does
- * not.
- *
- * What `near` cannot be trusted with is the answer when there is nothing to
- * find. Its contract is to search the other way if the first direction comes
- * up empty, so with an empty body it walks back INTO the title — measured, it
- * returns a cursor at position 2, inside the title node. Same for the
- * selection `between` builds: with a body holding only a divider, neither end
- * is inline content and it lands at position 6, inside a 7-wide title. Both
- * are caught by the same check — anything that starts before the body starts
- * is not an answer about the body.
+ * `BodySelection` derives its own range from the document, so there is no
+ * arithmetic to get wrong here and nothing to normalise: the ends are the
+ * body's own boundaries whatever the blocks at them are made of. Reaching for
+ * the nearest inline content instead is what dropped a leading or trailing
+ * divider out of "the whole body".
  * @param state - Editor state to read.
  * @returns The body's selection, or null when there is nothing to select.
  */
 function bodySelection(state: EditorState): Selection | null {
-  const bodyStart = state.doc.child(0).nodeSize;
-  if (state.doc.content.size <= bodyStart) return null;
-  // The ends are the body's own boundaries, not the nearest place a cursor can
-  // go. `BodySelection` holds them whatever the blocks there are made of —
-  // reaching for inline content is what dropped a leading or trailing divider
-  // out of "the whole body".
-  return new BodySelection(state.doc, bodyStart, state.doc.content.size);
+  if (!BodySelection.hasBody(state.doc)) return null;
+  return new BodySelection(state.doc);
 }
 
 /**
