@@ -332,12 +332,14 @@ function tell(mishap: Omit<ChatMishap, 'at'>): void {
  *   answered with any.
  */
 function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
-  if (err instanceof StreamRefusedError) return { kind: 'server', message: err.message };
-  // Only a sentence our own server wrote for this reader. An answer coming
-  // back is not the same thing: a gateway that timed out also answers, and
-  // what its body yields is the library's English -- written for a developer,
-  // naming transport details, and never passed through `t()`. The SSE
-  // transport draws the same line one layer over.
+  // Only a sentence our own server wrote for this reader, whichever transport
+  // brought it. An answer coming back is not the same thing: a gateway that
+  // timed out also answers, and there is nothing of ours in what it sends --
+  // so each transport says whether the message it is carrying came out of our
+  // envelope, and this asks both of them the same question.
+  if (err instanceof StreamRefusedError && err.fromServer) {
+    return { kind: 'server', message: err.message };
+  }
   if (err instanceof ApiException && err.status !== 0 && err.fromServer === true) {
     return { kind: 'server', message: err.message };
   }

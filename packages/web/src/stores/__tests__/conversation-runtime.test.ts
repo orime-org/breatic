@@ -208,7 +208,7 @@ describe('a conversation the server no longer has', () => {
 
     // The first attempt is refused: another tab deleted this conversation.
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
-      h.onError?.(new StreamRefusedError(404, 'Resource not found'));
+      h.onError?.(new StreamRefusedError(404, 'Resource not found', true));
     });
     // Opening the replacement takes a request, and that request hangs.
     vi.mocked(chatApi.openChat).mockReturnValueOnce(new Promise(() => {}));
@@ -253,7 +253,7 @@ describe('what the message column is told while a chat is re-opened', () => {
     // opened -- and that open fails too, with the reader still looking at the
     // messages the first one brought.
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
-      h.onError?.(new StreamRefusedError(404, 'Resource not found'));
+      h.onError?.(new StreamRefusedError(404, 'Resource not found', true));
     });
     vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
     await conversationRuntime.send('p-1', 'hello');
@@ -302,6 +302,42 @@ describe('an answer that did not come from our server', () => {
 
     expect(told).toEqual([
       expect.objectContaining({ projectId: 'p-1', conversationId: null, kind: 'network' }),
+    ]);
+  });
+
+  it('is not passed off as one on the stream either, which draws the same line', async () => {
+    // The same gateway, one layer over: the stream was refused before it
+    // opened and there was no sentence of ours in the body, so the transport
+    // filled the refusal with its own generic one. It reads like a sentence
+    // the server wrote about this request, and it is not.
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(new StreamRefusedError(502, 'Internal server error', false));
+    });
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    await conversationRuntime.send('p-1', 'hello');
+    stop();
+
+    expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', kind: 'network' })]);
+  });
+
+  it('still passes on the one the server did write', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
+      h.onError?.(new StreamRefusedError(402, '积分不足', true));
+    });
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    await conversationRuntime.send('p-1', 'hello');
+    stop();
+
+    expect(told).toEqual([
+      expect.objectContaining({ kind: 'server', message: '积分不足' }),
     ]);
   });
 });
@@ -766,7 +802,7 @@ describe('a turn that begins by settling up', () => {
     void conversationRuntime.send('p-1', 'a new question').catch(() => undefined);
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
 
-    handlers.onError?.(new StreamRefusedError(402, 'You are out of credits.'));
+    handlers.onError?.(new StreamRefusedError(402, 'You are out of credits.', true));
     await vi.waitFor(() => expect(conversation()?.turn).toBeNull());
 
     // Nothing to take back: the browser never wrote the question down, so a
@@ -1030,7 +1066,7 @@ describe('telling the reader that something went wrong', () => {
     const told = await whatIsTold(async () => {
       void conversationRuntime.send('p-1', 'hello').catch(() => undefined);
       await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
-      handlers.onError?.(new StreamRefusedError(402, 'You are out of credits.'));
+      handlers.onError?.(new StreamRefusedError(402, 'You are out of credits.', true));
       await vi.waitFor(() => expect(conversation()?.turn).toBeNull());
     });
 

@@ -252,7 +252,7 @@ describe('ChatPanel', () => {
 
   it('says what the server said when it refused', async () => {
     const user = userEvent.setup();
-    streamFailsWith(new StreamRefusedError(403, 'You do not have access to this project'));
+    streamFailsWith(new StreamRefusedError(403, 'You do not have access to this project', true));
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 

@@ -61,10 +61,14 @@ export class StreamRefusedError extends Error {
    * Build a refusal from what the server answered with.
    * @param status - The HTTP status the server answered with
    * @param message - What to tell the user, from the server when it said
+   * @param fromServer - The message came out of our own envelope, which is
+   *   what makes it a sentence written for this reader rather than one this
+   *   file supplied because the refusal needed to carry something
    */
   constructor(
     readonly status: number,
     message: string,
+    readonly fromServer: boolean,
   ) {
     super(message);
     this.name = 'StreamRefusedError';
@@ -98,8 +102,15 @@ async function readEnvelopeOrOpen(response: Response): Promise<void> {
     // nothing of ours to read, so fall through to the generic message.
   }
   // Never the library's string: it is hardcoded English and names transport
-  // details the user has no use for.
-  throw new StreamRefusedError(response.status, message ?? t('server.error.internal'));
+  // details the user has no use for. The fallback is not that string, but it
+  // is still not the server's answer about this request -- so the refusal
+  // carries whether the sentence in it came out of our envelope, and whoever
+  // shows it decides what to do with one that did not.
+  throw new StreamRefusedError(
+    response.status,
+    message ?? t('server.error.internal'),
+    message !== undefined,
+  );
 }
 
 /**

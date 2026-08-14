@@ -357,7 +357,7 @@ describe('when the conversation it was writing to is gone', () => {
     await waitFor(() => expect(result.current.isPending).toBe(false));
 
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
-      h.onError?.(new StreamRefusedError(404, 'Resource not found'));
+      h.onError?.(new StreamRefusedError(404, 'Resource not found', true));
     });
     // A 404 says the conversation asked about is gone or not this project's,
     // so opening again cannot hand back the same one: `openChat` returns the
@@ -395,7 +395,7 @@ describe('when the conversation it was writing to is gone', () => {
     await waitFor(() => expect(result.current.isPending).toBe(false));
 
     vi.mocked(chatApi.streamMessage).mockImplementation(async (_input, h) => {
-      h.onError?.(new StreamRefusedError(404, 'Resource not found'));
+      h.onError?.(new StreamRefusedError(404, 'Resource not found', true));
     });
     openChatAnswers([], 'c-2');
 
@@ -418,7 +418,7 @@ describe('when the conversation it was writing to is gone', () => {
     await waitFor(() => expect(result.current.isPending).toBe(false));
 
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
-      h.onError?.(new StreamRefusedError(403, 'Forbidden'));
+      h.onError?.(new StreamRefusedError(403, 'Forbidden', true));
     });
 
     await act(async () => {
@@ -500,7 +500,7 @@ describe('when the conversation it was writing to is gone', () => {
       // Being refused mid-flight: the request reached the server and came
       // back as an ordinary response, so the stream never opened and the
       // turn never ran.
-      h.onError?.(new StreamRefusedError(403, 'Forbidden'));
+      h.onError?.(new StreamRefusedError(403, 'Forbidden', true));
     });
 
     await act(async () => {
@@ -823,7 +823,7 @@ describe('when reopening the chat also fails', () => {
     // The conversation is gone, and the attempt to open a fresh one fails too
     // — the server is down, or the project went away with it.
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
-      h.onError?.(new StreamRefusedError(404, 'Resource not found'));
+      h.onError?.(new StreamRefusedError(404, 'Resource not found', true));
     });
     vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('server said no'));
 
