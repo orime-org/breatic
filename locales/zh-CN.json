@@ -40,7 +40,8 @@
       "cannot_modify_personal": "个人 Studio 不能管理成员。",
       "remove_last_admin": "移除前请先转让 Admin。",
       "cannot_change_admin_role": "Admin 角色只能通过转让变更。",
-      "member_limit_reached": "该 Studio 已达到成员数上限。",
+      "member_limit_reached": "{limit, plural, =0 {这个 Studio 的会员等级不支持添加成员，升级后即可添加。} other {这个 Studio 的会员等级最多可有 # 位成员，升级可添加更多。}}",
+      "member_limit_reached_for_invitee": "这个 Studio 的成员名额已满，请联系它的 Admin 腾出名额。",
       "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
       "avatar_unsupported_type": "这个文件无法作为图片读取，换一张试试。"
     },
@@ -49,7 +50,8 @@
       "already_member": "该用户已有访问权限。",
       "already_invited": "该用户已有一个待确认的邀请。",
       "limit_reached": "{limit, plural, =0 {这个 Studio 的会员等级不支持创建 Project，升级后即可创建。} other {这个 Studio 的会员等级最多可创建 # 个 Project，升级可创建更多。}}",
-      "collaborator_limit_reached": "该 Project 已达到协作者数上限。",
+      "collaborator_limit_reached": "{limit, plural, =0 {这个 Project 不支持添加协作者，升级后即可添加。} other {这个 Project 最多可有 # 位协作者，升级可添加更多。}}",
+      "collaborator_limit_reached_for_invitee": "这个 Project 的协作者名额已满，请联系它的 Owner 腾出名额。",
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申请角色升级",
       "no_active_owner": "这个 Project 没有在任的 Owner",
       "not_found": "找不到这个 Project"
@@ -640,6 +642,14 @@
         "orderedList": "有序列表",
         "quote": "引用",
         "strike": "删除线"
+      },
+      "schemaOutdated": {
+        "headline": "文档编辑器已更新",
+        "body": "这个页面用的还是旧版本，继续编辑会破坏别人写的内容。",
+        "published": "新版本发布于{when}。",
+        "risksLead": "刷新前请留意：",
+        "riskUploads": "正在进行的上传会被中断，可以先切到对应的 Space 看一眼。",
+        "action": "刷新页面"
       }
     }
   },

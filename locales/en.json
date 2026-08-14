@@ -37,7 +37,8 @@
       "cannot_modify_personal": "A personal studio cannot have its members managed.",
       "remove_last_admin": "Transfer the admin role before removing this member.",
       "cannot_change_admin_role": "The admin role can only be changed by transferring it.",
-      "member_limit_reached": "This studio has reached its member limit.",
+      "member_limit_reached": "{limit, plural, =0 {This studio's plan does not allow adding members. Upgrade to add some.} one {This studio's plan allows 1 member. Upgrade to add more.} other {This studio's plan allows up to # members. Upgrade to add more.}}",
+      "member_limit_reached_for_invitee": "This studio is full. Ask its Admin to make room.",
       "leave_last_admin": "Transfer the admin role before leaving this Studio.",
       "avatar_unsupported_type": "That file could not be read as an image. Try a different picture."
     },
@@ -45,8 +46,9 @@
       "email_not_registered": "No account is registered with that email.",
       "already_member": "That user already has access.",
       "already_invited": "That user already has a pending invitation.",
-      "limit_reached": "{limit, plural, =0 {This studio\u0027s plan does not allow creating projects. Upgrade to create one.} one {This studio\u0027s plan allows 1 project. Upgrade to create more.} other {This studio\u0027s plan allows up to # projects. Upgrade to create more.}}",
-      "collaborator_limit_reached": "This project has reached its collaborator limit.",
+      "limit_reached": "{limit, plural, =0 {This studio's plan does not allow creating projects. Upgrade to create one.} one {This studio's plan allows 1 project. Upgrade to create more.} other {This studio's plan allows up to # projects. Upgrade to create more.}}",
+      "collaborator_limit_reached": "{limit, plural, =0 {This project does not allow collaborators. Upgrade to add some.} one {This project allows 1 collaborator. Upgrade to add more.} other {This project allows up to # collaborators. Upgrade to add more.}}",
+      "collaborator_limit_reached_for_invitee": "This project is full. Ask its Owner to make room.",
       "only_viewer_can_request_upgrade": "Only a Viewer can request a role upgrade",
       "no_active_owner": "This project has no active Owner",
       "not_found": "Project not found"
@@ -640,6 +642,14 @@
         "orderedList": "Ordered list",
         "quote": "Quote",
         "strike": "Strikethrough"
+      },
+      "schemaOutdated": {
+        "headline": "Document editor updated",
+        "body": "This page is running an older version, and editing here would damage what others have written.",
+        "published": "The new version went out {when}.",
+        "risksLead": "Before you refresh:",
+        "riskUploads": "uploads still in progress will be interrupted — you can switch to the Space they are in and check first.",
+        "action": "Refresh page"
       }
     }
   },

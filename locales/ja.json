@@ -37,7 +37,8 @@
       "cannot_modify_personal": "個人 Studio はメンバーを管理できません。",
       "remove_last_admin": "削除する前に Admin 権限を譲渡してください。",
       "cannot_change_admin_role": "Admin ロールは譲渡によってのみ変更できます。",
-      "member_limit_reached": "この Studio はメンバー数の上限に達しています。",
+      "member_limit_reached": "{limit, plural, =0 {この Studio のプランではメンバーを追加できません。アップグレードすると追加できます。} other {この Studio のプランのメンバーは最大 # 人です。アップグレードするとさらに追加できます。}}",
+      "member_limit_reached_for_invitee": "この Studio のメンバー枠は満員です。Admin に空きを作ってもらってください。",
       "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
       "avatar_unsupported_type": "このファイルは画像として読み取れませんでした。別の画像をお試しください。"
     },
@@ -46,7 +47,8 @@
       "already_member": "そのユーザーはすでにアクセス権を持っています。",
       "already_invited": "そのユーザーには保留中の招待があります。",
       "limit_reached": "{limit, plural, =0 {この Studio のプランでは Project を作成できません。アップグレードすると作成できます。} other {この Studio のプランで作成できる Project は最大 # 件です。アップグレードするとさらに作成できます。}}",
-      "collaborator_limit_reached": "この Project はコラボレーター数の上限に達しています。",
+      "collaborator_limit_reached": "{limit, plural, =0 {この Project ではコラボレーターを追加できません。アップグレードすると追加できます。} other {この Project のコラボレーターは最大 # 人です。アップグレードするとさらに追加できます。}}",
+      "collaborator_limit_reached_for_invitee": "この Project のコラボレーター枠は満員です。Owner に空きを作ってもらってください。",
       "only_viewer_can_request_upgrade": "ロールの昇格を申請できるのは Viewer だけです",
       "no_active_owner": "この Project には現任の Owner がいません",
       "not_found": "Project が見つかりません"
@@ -640,6 +642,14 @@
         "orderedList": "番号付きリスト",
         "quote": "引用",
         "strike": "取り消し線"
+      },
+      "schemaOutdated": {
+        "headline": "ドキュメントエディターが更新されました",
+        "body": "このページは古いバージョンで動作しており、ここで編集すると他の人が書いた内容を壊してしまいます。",
+        "published": "新しいバージョンは{when}に公開されました。",
+        "risksLead": "再読み込みの前にご注意ください：",
+        "riskUploads": "進行中のアップロードは中断されます。該当する Space に切り替えて先に確認できます。",
+        "action": "ページを再読み込み"
       }
     }
   },

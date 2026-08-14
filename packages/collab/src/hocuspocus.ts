@@ -53,6 +53,7 @@ import {
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
+import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
 import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js";
@@ -264,6 +265,38 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // the 1h budget, and a doc unloaded while waiting is skipped.
     afterLoadDocument: async ({ documentName, document, instance }) => {
       const parsed = parseDocName(documentName);
+
+      // Publish this build's document-editor vocabulary, so a browser running
+      // an older one can find out before it offers to edit. Written here
+      // because the meta doc is read-only for every client, and idempotent
+      // because several instances load the same meta independently.
+      if (parsed?.kind === "meta") {
+        // Caught here because hocuspocus does not catch for us: it wraps
+        // `onLoadDocument` and leaves `afterLoadDocument` bare, so a throw
+        // reaches the connection setup, which answers the client
+        // "permission-denied" and logs nothing. Every client opens meta first,
+        // so that reads on screen as "you cannot open any project" with
+        // nothing on the server saying why.
+        //
+        // Failing to publish means clients read no vocabulary from meta, which
+        // already means "do not intercept" — the safe side. So the load
+        // continues.
+        try {
+          if (publishDocumentSchema(document)) {
+            logger.info(
+              { documentName, reason: "document_schema_published" },
+              "document_schema_published",
+            );
+          }
+        } catch (err) {
+          logger.error(
+            { err, documentName, reason: "document_schema_publish_failed" },
+            "document_schema_publish_failed",
+          );
+        }
+        return;
+      }
+
       if (!parsed || parsed.kind !== "canvas") return;
       scheduleLoadSweep({
         documentName,

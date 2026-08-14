@@ -59,6 +59,15 @@ const ALLOWED_STARTERKIT_OVERRIDES: Readonly<Record<string, string>> = {
  */
 const ADDED_NODES: Readonly<Record<string, string>> = {
   title: 'the undeletable first block that keeps the shared fragment inhabited',
+  unsupportedBlock:
+    'where a block this build has no vocabulary for is kept, instead of being deleted from the shared document',
+  unsupportedInline:
+    'the same for an inline element — that one is dropped while the document merely loads, with no edit involved',
+};
+
+const ADDED_MARKS: Readonly<Record<string, string>> = {
+  unsupportedMark:
+    'carries a mark this build has no vocabulary for, with its original key and value, so a round trip through this client is lossless',
 };
 
 /**
@@ -87,9 +96,11 @@ describe('the document schema', () => {
       ...Object.keys(ADDED_NODES),
     ].sort();
     expect(Object.keys(ours.nodes).sort()).toEqual(expected);
-    // Marks are untouched: the title refuses all of them rather than adding
-    // one of its own.
-    expect(Object.keys(ours.marks).sort()).toEqual(Object.keys(stock.marks).sort());
+    // The title refuses every mark rather than adding one of its own, so the
+    // only additions here are the fallbacks.
+    expect(Object.keys(ours.marks).sort()).toEqual(
+      [...Object.keys(stock.marks), ...Object.keys(ADDED_MARKS)].sort(),
+    );
   });
 
   it('declares the same attributes on every node it shares with StarterKit', () => {
