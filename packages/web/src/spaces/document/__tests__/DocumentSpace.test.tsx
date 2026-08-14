@@ -6,6 +6,8 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
+import * as React from 'react';
+
 import { toast } from '@web/lib/toast';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
@@ -35,6 +37,7 @@ vi.mock('@web/data/yjs/use-socket', () => ({
     hasEverSynced: boolean;
     status: string;
     writeAccess: string;
+    degraded: boolean;
     authFailedReason: string | null;
   } => ({
     provider: { awareness: socketAwareness },
@@ -42,9 +45,33 @@ vi.mock('@web/data/yjs/use-socket', () => ({
     hasEverSynced: socketState.hasEverSynced,
     status: socketState.status,
     writeAccess: socketState.writeAccess,
+    // Derived the same way the real hook derives it, because that is what this
+    // double stands in for: 'denied' covers both a degrade and a refusal, and
+    // only a refusal also sets `authFailed`.
+    degraded:
+      socketState.writeAccess === 'denied' &&
+      socketState.status !== 'authFailed',
     authFailedReason: socketState.authFailedReason,
   }),
 }));
+
+// Captures what the container hands the editor chrome. The toolbar's own
+// `disabled` cannot answer this in jsdom (see the degrade case below), so the
+// wiring is asserted where it is decided.
+const editorProps: { readOnly?: boolean } = {};
+vi.mock('@web/spaces/document/DocumentEditor', async (importActual) => {
+  const actual =
+    await importActual<typeof import('@web/spaces/document/DocumentEditor')>();
+  return {
+    ...actual,
+    DocumentEditor: (
+      props: Parameters<typeof actual.DocumentEditor>[0],
+    ): React.JSX.Element => {
+      editorProps.readOnly = props.readOnly;
+      return React.createElement(actual.DocumentEditor, props);
+    },
+  };
+});
 
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -149,6 +176,34 @@ describe('DocumentSpace', () => {
         document.querySelector('.ProseMirror')?.getAttribute('contenteditable'),
       ).toBe('false'),
     );
+  });
+
+  it('shuts the formatting toolbar on a degraded connection too', async () => {
+    // Stopping the keyboard is not enough. Every toolbar command runs
+    // `editor.chain().focus().toggleX().run()`, which dispatches into the same
+    // shared Y.Doc whether or not the editor is editable — @tiptap/core's
+    // `createChain` has no editability test. A degraded person who cannot type
+    // could otherwise still bold, quote, list, undo and redo, and the server
+    // would drop every one of those in silence.
+    //
+    // Asserted on the PROP rather than on `disabled`, because in jsdom the
+    // buttons are disabled anyway: `state.available` comes from
+    // `tool.canRun(editor)`, which is false on an empty document with no
+    // selection. A `toBeDisabled()` assertion here passes with or without the
+    // gate — it was written that way first, and the control case that was
+    // supposed to keep it honest failed, which is what exposed it.
+    socketState.writeAccess = 'denied';
+    render(<DocumentSpace projectId='p1' spaceId='doc-capped' />);
+    await screen.findByTestId('document-toolbar');
+    await waitFor(() => expect(editorProps.readOnly).toBe(true));
+  });
+
+  it('leaves the formatting toolbar alone on a healthy connection', async () => {
+    // The control for the case above: without it, "readOnly is true" could be
+    // the component's default rather than the degrade's doing.
+    render(<DocumentSpace projectId='p1' spaceId='doc-healthy' />);
+    await screen.findByTestId('document-toolbar');
+    await waitFor(() => expect(editorProps.readOnly).toBe(false));
   });
 
   it('does not nag a viewer about being read-only — they already know', async () => {

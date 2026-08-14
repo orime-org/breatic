@@ -242,6 +242,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       hasEverSynced: true,
       status: 'connected',
       writeAccess: 'granted',
+      degraded: false,
       authFailedReason: null,
     });
     mockUseCanvasSpace.mockReturnValue(
@@ -791,6 +792,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       hasEverSynced: true,
       status: 'connected',
       writeAccess: 'denied',
+      degraded: true,
       authFailedReason: null,
     });
     mockUseCanvasSpace.mockReturnValue(
@@ -823,6 +825,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       hasEverSynced: true,
       status: 'connected',
       writeAccess: 'denied',
+      degraded: true,
       authFailedReason: null,
     });
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
@@ -842,6 +845,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       hasEverSynced: true,
       status: 'connected',
       writeAccess: 'denied',
+      degraded: true,
       authFailedReason: null,
     });
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
@@ -905,6 +909,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       hasEverSynced: false,
       status: 'authFailed',
       writeAccess: 'denied',
+      degraded: false,
       authFailedReason: 'Forbidden',
     });
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
@@ -922,6 +927,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       hasEverSynced: true,
       status: 'connected',
       writeAccess: 'granted',
+      degraded: false,
       authFailedReason: null,
     });
     mockUseCanvasSpace.mockReturnValue(

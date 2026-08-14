@@ -3823,7 +3823,11 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // instead of one per editor that could drift apart.
   const canvasDocName = docName.canvasSpace(props.projectId, props.spaceId);
   const canvasDoc = React.useMemo(() => getDoc(canvasDocName), [canvasDocName]);
-  const { provider: caretProvider, writeAccess, status } = useSocket({
+  const {
+    provider: caretProvider,
+    writeAccess,
+    degraded: connectionDegraded,
+  } = useSocket({
     name: canvasDocName,
     doc: canvasDoc,
   });
@@ -3863,19 +3867,17 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // sends one "readonly" for a viewer, for a full document and for a ceiling
   // it could not resolve alike. It states the fact and both ways out instead.
   //
-  // A REFUSAL IS EXCLUDED, and it has to be asked about separately because
-  // `writeAccess` cannot tell the two apart: `use-socket` sets `denied` both
-  // when the server degrades a connection AND when it refuses one outright
-  // (:197-200 from the settled facts, :230-236 on the live rejection, whose
-  // comment calls a refusal "the strongest form of your updates go nowhere").
-  // A refusal means the Space is gone, the membership was revoked or the
-  // session expired — telling that person to ask a teammate to close the
-  // document is an instruction that cannot help them. The document space
-  // excludes it for the same reason (`&& !refused`).
+  // A REFUSAL IS EXCLUDED. `use-socket` tells the two apart and hands over one
+  // `degraded` answer, so this no longer re-derives it — both Spaces asking
+  // the same question and each writing its own answer is the shape that
+  // drifts. A refusal means the Space is gone, the membership was revoked or
+  // the session expired; telling that person to ask a teammate to close the
+  // document is an instruction that cannot help them.
+  //
+  // What is added here is the ROLE: a viewer is read-only by definition and is
+  // told nothing, which `useSocket` cannot know.
   const t = useTranslation();
-  const refused = status === 'authFailed';
-  const degraded =
-    writeAccess === 'denied' && !refused && !(props.readOnly ?? false);
+  const degraded = connectionDegraded && !(props.readOnly ?? false);
   React.useEffect(() => {
     if (degraded) toast.warning(t('spaces.readOnlyNotice'));
   }, [degraded, t]);

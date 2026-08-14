@@ -50,7 +50,12 @@ export function DocumentSpace({
   // this component is remounted on every Space-tab switch, and a latch that
   // resets there would show a loading placeholder in front of content the
   // local Y.Doc already holds.
-  const { provider, hasEverSynced, status, writeAccess } = useSocket({
+  const {
+    provider,
+    hasEverSynced,
+    status,
+    degraded: connectionDegraded,
+  } = useSocket({
     name,
     doc,
   });
@@ -71,13 +76,10 @@ export function DocumentSpace({
   //
   // A viewer is not told: their read-only is their role, shown everywhere else.
   const refused = status === 'authFailed';
-  const writesRefused = writeAccess === 'denied' && !readOnly;
-  // A DEGRADE, told apart from a refusal: `writeAccess` is 'denied' for both,
-  // so the only thing that separates "the document is full" from "the server
-  // refused this document outright" is that a refusal sets `authFailed`.
-  // The two get different answers below — the notice, and whether the editor
-  // still takes typing.
-  const degraded = writesRefused && !refused;
+  // The connection says it was degraded rather than refused (derived once, in
+  // `useSocket`); this Space adds the ROLE on top, because a viewer is
+  // read-only by definition and is told nothing.
+  const degraded = connectionDegraded && !readOnly;
 
   // The one case where nothing can be shown: refused before any content ever
   // arrived, so there is no document to display. That is not "disabled", it is
@@ -161,7 +163,14 @@ export function DocumentSpace({
         <DocumentEditor
           editor={editor}
           history={history}
-          readOnly={readOnly}
+          // The MERGED value, not the role. Stopping the keyboard is not
+          // enough: every toolbar command runs `chain().focus().toggleX()`,
+          // which dispatches into the shared Y.Doc whether or not the editor
+          // is editable — @tiptap/core's `createChain` has no editability
+          // test. A degraded person who cannot type could otherwise still
+          // bold, quote, list, undo and redo, and the server would drop every
+          // one of those in silence.
+          readOnly={readOnly || degraded}
         />
       ) : (
         <div
