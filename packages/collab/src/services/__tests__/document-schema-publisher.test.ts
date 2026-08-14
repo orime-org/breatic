@@ -11,10 +11,19 @@
 
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
-import { DOCUMENT_SCHEMA_META_KEY } from "@breatic/shared";
+import { DOCUMENT_SCHEMA_META_KEY, documentSchemaVersion } from "@breatic/shared";
 import { getDocumentSchema } from "@breatic/core";
 
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
+
+/** 这一版算出来的版本号 —— 跟 publisher 写进 meta 的那个是同一个算法。 */
+const MY_VERSION = documentSchemaVersion(getDocumentSchema());
+
+/** 随便另一个版本号，只要不等于 MY_VERSION。 */
+const OTHER_VERSION = documentSchemaVersion({
+  nodes: { paragraph: [] },
+  marks: {},
+});
 
 /**
  * 读 meta 文档里那份 schema。
@@ -32,7 +41,7 @@ describe("往 meta 里写这一版的 schema", () => {
 
     expect(wrote).toBe(true);
     const published = readPublished(doc);
-    expect(published.version).toBe(getDocumentSchema().version);
+    expect(published.version).toBe(MY_VERSION);
     expect(published.nodes).toEqual(getDocumentSchema().nodes);
     expect(published.marks).toEqual(getDocumentSchema().marks);
     doc.destroy();
@@ -63,12 +72,12 @@ describe("往 meta 里写这一版的 schema", () => {
   });
 
   it("版本号一样就不重写，哪怕清单内容被人改过", () => {
-    // 判定只看版本号（user 2026-08-14）。清单跟着版本号走，不参与比较 ——
-    // 改了扩展就得把版本号加一，那是写配置文件的人的事，有一致性测试盯着。
+    // 判定只看版本号（user 2026-08-14）。清单跟着版本号走、不参与比较；
+    // 而版本号是从清单算出来的，所以「清单变了版本号没变」造不出来。
     const doc = new Y.Doc();
     doc.transact(() => {
       const map = doc.getMap(DOCUMENT_SCHEMA_META_KEY);
-      map.set("version", getDocumentSchema().version);
+      map.set("version", MY_VERSION);
       map.set("nodes", { paragraph: [] });
       map.set("marks", {});
       map.set("publishedAt", "2020-01-01T00:00:00.000Z");
@@ -79,11 +88,11 @@ describe("往 meta 里写这一版的 schema", () => {
     doc.destroy();
   });
 
-  it("meta 里那版比这一版旧，覆盖掉", () => {
+  it("meta 里那版跟这一版不是同一个，覆盖掉", () => {
     const doc = new Y.Doc();
     doc.transact(() => {
       const stale = doc.getMap(DOCUMENT_SCHEMA_META_KEY);
-      stale.set("version", getDocumentSchema().version + 1000);
+      stale.set("version", OTHER_VERSION);
       stale.set("nodes", { paragraph: [] });
       stale.set("marks", {});
       stale.set("publishedAt", "2020-01-01T00:00:00.000Z");
@@ -93,20 +102,20 @@ describe("往 meta 里写这一版的 schema", () => {
 
     expect(wrote).toBe(true);
     const published = readPublished(doc);
-    expect(published.version).toBe(getDocumentSchema().version);
+    expect(published.version).toBe(MY_VERSION);
     expect(published.nodes).toEqual(getDocumentSchema().nodes);
     expect(published.publishedAt).not.toBe("2020-01-01T00:00:00.000Z");
     doc.destroy();
   });
 
-  it("meta 里那份形状是坏的，也覆盖掉", () => {
+  it("meta 里那份是上一代那个手写的数字，也覆盖掉", () => {
     const doc = new Y.Doc();
     doc.transact(() => {
-      doc.getMap(DOCUMENT_SCHEMA_META_KEY).set("version", "not a number");
+      doc.getMap(DOCUMENT_SCHEMA_META_KEY).set("version", 1);
     });
 
     expect(publishDocumentSchema(doc)).toBe(true);
-    expect(readPublished(doc).version).toBe(getDocumentSchema().version);
+    expect(readPublished(doc).version).toBe(MY_VERSION);
     doc.destroy();
   });
 

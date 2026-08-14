@@ -223,6 +223,7 @@ export {
 export {
   documentSchemaConfigSchema,
   documentSchemaMatches,
+  documentSchemaVersion,
   publishedSchemaVersion,
   DOCUMENT_SCHEMA_META_KEY,
   documentSchemaDiffers,

@@ -1,7 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { documentSchemaConfigSchema, type DocumentSchema } from '@breatic/shared';
+import {
+  documentSchemaConfigSchema,
+  documentSchemaVersion,
+  type DocumentSchema,
+} from '@breatic/shared';
 
 /**
  * Substituted at build time by `vite.config.mts`, which reads
@@ -18,9 +22,9 @@ declare const __DOCUMENT_SCHEMA__: unknown;
  * `vite.config.mts` reads that file at config time and substitutes it for
  * `__DOCUMENT_SCHEMA__`, so what lands in the bundle is a plain object literal
  * — the browser never parses YAML and never fetches anything. It is the same
- * file collab reads at startup, which is the point: a second hand-kept copy on
- * either side would be the same agreement written down twice, and the halves
- * would drift in silence while the check kept passing.
+ * file collab reads, which is the point: a second hand-kept copy on either side
+ * would be the same agreement written down twice, and the halves would drift in
+ * silence while the check kept passing.
  *
  * Parsed rather than cast, because a substituted literal is exactly as
  * trustworthy as the file behind it. If that file is malformed the failure
@@ -30,3 +34,13 @@ declare const __DOCUMENT_SCHEMA__: unknown;
  */
 export const DOCUMENT_SCHEMA: DocumentSchema =
   documentSchemaConfigSchema.parse(__DOCUMENT_SCHEMA__);
+
+/**
+ * This build's version of that vocabulary — what gets compared against meta.
+ *
+ * Computed here rather than read from the config, so that it cannot be left
+ * behind when the lists change; see `documentSchemaVersion` for why that
+ * mattered enough to stop writing it by hand. collab computes it the same way
+ * from the same file, so the two agree exactly when the vocabularies do.
+ */
+export const DOCUMENT_SCHEMA_VERSION = documentSchemaVersion(DOCUMENT_SCHEMA);

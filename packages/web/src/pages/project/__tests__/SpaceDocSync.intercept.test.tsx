@@ -20,7 +20,10 @@ import { render } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { DOCUMENT_SCHEMA_META_KEY } from '@breatic/shared';
-import { DOCUMENT_SCHEMA } from '@web/spaces/document/document-schema';
+import {
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_VERSION,
+} from '@web/spaces/document/document-schema';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
@@ -57,7 +60,7 @@ afterEach(() => {
 function publishDifferent(metaDoc: Y.Doc): void {
   metaDoc.transact(() => {
     const map = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
-    map.set('version', DOCUMENT_SCHEMA.version + 1);
+    map.set('version', 'another-build');
     map.set('nodes', DOCUMENT_SCHEMA.nodes);
     map.set('marks', DOCUMENT_SCHEMA.marks);
     map.set('publishedAt', '2026-08-13T06:20:00.000Z');
@@ -91,7 +94,7 @@ describe('一个开着但没在看的 document tab', () => {
     const metaDoc = getDoc(docName.projectMeta(PID));
     metaDoc.transact(() => {
       const map = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
-      map.set('version', DOCUMENT_SCHEMA.version);
+      map.set('version', DOCUMENT_SCHEMA_VERSION);
       map.set('nodes', DOCUMENT_SCHEMA.nodes);
       map.set('marks', DOCUMENT_SCHEMA.marks);
     });

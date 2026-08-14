@@ -35,11 +35,21 @@
  * a client that is somehow ahead of the server has no business writing content
  * the rest cannot read either.
  *
- * The lists travel with the version because the version alone says nothing
- * about what actually changed. Attribute names are in them for a reason of
- * their own: adding an attribute to a node both sides already know leaves no
- * trace in the content, since ProseMirror drops an unknown attribute silently
- * rather than raising.
+ * ## `version` is computed from the lists, never written by hand
+ *
+ * A hand-kept number has to be remembered alongside every list change, and the
+ * one check that goes red when a list changes — the web-side test that builds
+ * the real ProseMirror schema and compares it against this vocabulary — does
+ * not look at the number at all. Update the lists, watch it go green, walk
+ * away, and the drift guard is off for the two classes only it can catch.
+ * Deriving the number removes the step that could be forgotten.
+ *
+ * The lists travel with the version into meta because the version alone says
+ * nothing about WHAT changed; when two sides disagree they are what makes the
+ * disagreement readable. Attribute names are in them for a reason of their own:
+ * adding an attribute to a node both sides already know leaves no trace in the
+ * content, since ProseMirror drops an unknown attribute silently rather than
+ * raising — so nothing but the version can catch it.
  */
 
 import { z } from "zod";
@@ -50,12 +60,13 @@ export const DOCUMENT_SCHEMA_META_KEY = "documentSchema";
 /**
  * The shape `config/document-schema.yaml` is parsed against.
  *
+ * No version field: it is {@link documentSchemaVersion} of these two lists.
+ *
  * Attribute lists are sorted on the way in so two copies that agree compare
- * equal regardless of the order they happen to be written in.
+ * equal regardless of the order they happen to be written in — which is also
+ * what lets the version ignore attribute order without sorting again.
  */
 export const documentSchemaConfigSchema = z.object({
-  /** Bumped by hand whenever the lists below change. The comparison reads only this. */
-  version: z.number().int().positive(),
   /** Node type name to its attribute names. */
   nodes: z.record(z.string(), z.array(z.string())).transform(sortAttributeLists),
   /** Mark type name to its attribute names. */
@@ -78,17 +89,62 @@ function sortAttributeLists(
   return out;
 }
 
+/** FNV-1a, 64-bit. Offset basis and prime are the constants from the FNV spec. */
+const FNV_OFFSET_BASIS = 0xcbf29ce484222325n;
+const FNV_PRIME = 0x100000001b3n;
+const SIXTY_FOUR_BITS = 0xffffffffffffffffn;
+
+/**
+ * The one string a vocabulary reduces to before it is hashed.
+ *
+ * JSON does the escaping, so a type named `a:b` cannot be confused with a pair
+ * named `a` and `b`, and the two halves are separate arrays, so a node and a
+ * mark sharing a name stay distinct. Type names are sorted here because object
+ * key order is insertion order and the config file's is arbitrary; attribute
+ * lists are already sorted by {@link documentSchemaConfigSchema}.
+ * @param schema - The vocabulary to serialise.
+ * @returns A string that is equal for exactly the vocabularies that agree.
+ */
+function canonicalForm(schema: DocumentSchema): string {
+  const half = (types: Record<string, string[]>): [string, string[]][] =>
+    Object.keys(types)
+      .sort()
+      .map((name) => [name, types[name] ?? []]);
+  return JSON.stringify([half(schema.nodes), half(schema.marks)]);
+}
+
+/**
+ * This vocabulary's version — the thing both ends compare.
+ *
+ * Derived rather than declared, so that changing the lists changes it without
+ * anyone having to remember. Equality is all that is ever asked of it, so a
+ * digest serves as well as a counter and cannot be left behind.
+ * @param schema - A vocabulary, as parsed from the config file.
+ * @returns Sixteen lowercase hex characters.
+ */
+export function documentSchemaVersion(schema: DocumentSchema): string {
+  const bytes = new TextEncoder().encode(canonicalForm(schema));
+  let hash = FNV_OFFSET_BASIS;
+  for (const byte of bytes) {
+    hash = ((hash ^ BigInt(byte)) * FNV_PRIME) & SIXTY_FOUR_BITS;
+  }
+  return hash.toString(16).padStart(16, "0");
+}
+
 /**
  * Read the version out of whatever sits under the key in a meta document.
+ *
+ * A number there is what the previous generation wrote, when the version was
+ * hand-kept in the config file. It reads as nothing rather than as a version:
+ * "unreadable" already means "do not intercept", and the next collab to load
+ * this meta overwrites it with the computed one.
  * @param fromMeta - The published entry, or anything at all.
  * @returns The version, or null when there is not a usable one there.
  */
-export function publishedSchemaVersion(fromMeta: unknown): number | null {
+export function publishedSchemaVersion(fromMeta: unknown): string | null {
   if (typeof fromMeta !== "object" || fromMeta === null) return null;
   const { version } = fromMeta as { version?: unknown };
-  if (typeof version !== "number" || !Number.isInteger(version) || version <= 0) {
-    return null;
-  }
+  if (typeof version !== "string" || version.length === 0) return null;
   return version;
 }
 
@@ -103,7 +159,7 @@ export function publishedSchemaVersion(fromMeta: unknown): number | null {
  * @param fromMeta - Whatever sits under the key in the project's meta document.
  * @returns True only when the server published a usable version and it differs.
  */
-export function documentSchemaDiffers(mine: number, fromMeta: unknown): boolean {
+export function documentSchemaDiffers(mine: string, fromMeta: unknown): boolean {
   const theirs = publishedSchemaVersion(fromMeta);
   if (theirs === null) return false;
   return theirs !== mine;
@@ -124,7 +180,7 @@ export function documentSchemaDiffers(mine: number, fromMeta: unknown): boolean 
  * @param fromMeta - Whatever sits under the key in the project's meta document.
  * @returns True only when the server published a usable version and it matches.
  */
-export function documentSchemaMatches(mine: number, fromMeta: unknown): boolean {
+export function documentSchemaMatches(mine: string, fromMeta: unknown): boolean {
   const theirs = publishedSchemaVersion(fromMeta);
   if (theirs === null) return false;
   return theirs === mine;

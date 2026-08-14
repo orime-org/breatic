@@ -16,7 +16,10 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { DOCUMENT_SCHEMA_META_KEY } from '@breatic/shared';
-import { DOCUMENT_SCHEMA } from '@web/spaces/document/document-schema';
+import {
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_VERSION,
+} from '@web/spaces/document/document-schema';
 
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -35,7 +38,7 @@ function publishDifferentSchema(): void {
   const meta = getDoc(docName.projectMeta(PROJECT));
   meta.transact(() => {
     const map = meta.getMap(DOCUMENT_SCHEMA_META_KEY);
-    map.set('version', DOCUMENT_SCHEMA.version + 1);
+    map.set('version', 'another-build');
     map.set('nodes', DOCUMENT_SCHEMA.nodes);
     map.set('marks', DOCUMENT_SCHEMA.marks);
     map.set('publishedAt', '2026-08-13T06:20:00.000Z');
@@ -84,7 +87,7 @@ describe('服务器那份跟我一样时', () => {
     const meta = getDoc(docName.projectMeta(PROJECT));
     meta.transact(() => {
       const map = meta.getMap(DOCUMENT_SCHEMA_META_KEY);
-      map.set('version', DOCUMENT_SCHEMA.version);
+      map.set('version', DOCUMENT_SCHEMA_VERSION);
       map.set('nodes', DOCUMENT_SCHEMA.nodes);
       map.set('marks', DOCUMENT_SCHEMA.marks);
       map.set('publishedAt', '2026-08-13T06:20:00.000Z');

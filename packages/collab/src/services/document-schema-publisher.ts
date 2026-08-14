@@ -28,7 +28,11 @@
  */
 
 import type * as Y from "yjs";
-import { DOCUMENT_SCHEMA_META_KEY, documentSchemaMatches } from "@breatic/shared";
+import {
+  DOCUMENT_SCHEMA_META_KEY,
+  documentSchemaMatches,
+  documentSchemaVersion,
+} from "@breatic/shared";
 import { getDocumentSchema } from "@breatic/core";
 
 /** Named transaction origin, so a debugger can see who wrote this. */
@@ -53,11 +57,12 @@ export const DOCUMENT_SCHEMA_PUBLISH_ORIGIN = "document-schema-publish";
  */
 export function publishDocumentSchema(metaDoc: Y.Doc): boolean {
   const mine = getDocumentSchema();
+  const version = documentSchemaVersion(mine);
   const published = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
-  if (documentSchemaMatches(mine.version, published.toJSON())) return false;
+  if (documentSchemaMatches(version, published.toJSON())) return false;
 
   metaDoc.transact(() => {
-    published.set("version", mine.version);
+    published.set("version", version);
     published.set("nodes", mine.nodes);
     published.set("marks", mine.marks);
     published.set("publishedAt", new Date().toISOString());
