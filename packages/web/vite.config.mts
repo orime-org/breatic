@@ -4,24 +4,8 @@ import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
-import { readFileSync } from 'node:fs';
-import { parse as parseYaml } from 'yaml';
 import { resolveDevPort } from './dev-ports.mjs';
 import { resolveProxyTargets } from './proxy-targets.mjs';
-
-// The document Space's editor vocabulary, read from the SAME file collab reads
-// (`config/document-schema.yaml`) and compiled into the bundle here. One file,
-// two ends, no hand-kept second copy — a client compares the version it was
-// built with against the one collab published into the project's meta document,
-// and stops offering to edit when they differ. The version is computed from the
-// vocabulary, so both ends reach the same one without either declaring it.
-//
-// Read at config time, not imported at runtime: the browser cannot read files,
-// and a build must fail loudly if this one is missing rather than ship a bundle
-// with no vocabulary in it.
-const documentSchema = parseYaml(
-  readFileSync(path.resolve(__dirname, '../../config/document-schema.yaml'), 'utf-8'),
-);
 
 // need to add breatic Index to serve
 // import sirv from 'sirv'
@@ -54,7 +38,6 @@ export default defineConfig(({ command, mode }) => {
     // Inject backend-only env vars into frontend (avoids duplicating VITE_ prefixed vars)
     define: {
       '__GOOGLE_CLIENT_ID__': JSON.stringify(env.GOOGLE_CLIENT_ID || ''),
-      '__DOCUMENT_SCHEMA__': JSON.stringify(documentSchema),
     },
     plugins: [
       react(),

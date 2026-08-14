@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { getSchema } from '@tiptap/core';
-import { DOCUMENT_SCHEMA } from '@web/spaces/document/document-schema';
+import { DOCUMENT_SCHEMA } from '@breatic/shared';
 import * as Y from 'yjs';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';

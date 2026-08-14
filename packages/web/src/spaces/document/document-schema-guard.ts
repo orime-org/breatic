@@ -35,6 +35,21 @@ import type { DocumentSchema } from '@breatic/shared';
  */
 
 /**
+ * A mark storage key's hash suffix, exactly as y-tiptap defines it.
+ *
+ * Copied character for character from `hashedMarkNameRegex` in
+ * `@tiptap/y-tiptap@3.0.8`'s `dist/y-tiptap.js`, because the module does not
+ * export it. It has to be the same rule: y-tiptap decides what a stored key
+ * means, and reading it by a rule of our own means disagreeing with it on some
+ * input. A looser one — cutting at the last `--` — reads a mark genuinely named
+ * `some--mark` as `some`, and then reports a name nobody has.
+ *
+ * Upgrading `@tiptap/*` means re-checking this against the new source, the same
+ * way the y-tiptap patch has to be.
+ */
+const HASHED_MARK_NAME = /(.*)(--[a-zA-Z0-9+/=]{8})$/;
+
+/**
  * Strip the hash y-tiptap appends to an overlapping mark's storage key.
  *
  * A mark that does not exclude itself is stored as `name--HASH`, so that two
@@ -45,8 +60,25 @@ import type { DocumentSchema } from '@breatic/shared';
  * @returns The mark name without the hash suffix.
  */
 function markNameOf(key: string): string {
-  const at = key.lastIndexOf('--');
-  return at === -1 ? key : key.slice(0, at);
+  return HASHED_MARK_NAME.exec(key)?.[1] ?? key;
+}
+
+/**
+ * Whether a name is one of the type names in a vocabulary.
+ *
+ * `Object.hasOwn`, not `in`: the vocabulary is a plain object parsed from YAML,
+ * so it carries `Object.prototype`, and `in` answers yes to `toString`,
+ * `constructor` and the rest. The patch asks the same question of ProseMirror's
+ * `schema.nodes`, which is built with `Object.create(null)` and has no
+ * prototype — so `in` here means the two sides answer differently about the
+ * same document, one wrapping a name in a fallback while the other reports
+ * nothing to intercept.
+ * @param types - One half of a vocabulary.
+ * @param name - The stored type name.
+ * @returns True when this build has that type.
+ */
+function knows(types: Record<string, string[]>, name: string): boolean {
+  return Object.hasOwn(types, name);
 }
 
 /**
@@ -70,13 +102,13 @@ export function findUnknownContent(
       node.toDelta().forEach((run: { attributes?: Record<string, unknown> }) => {
         Object.keys(run.attributes ?? {}).forEach((key) => {
           const name = markNameOf(key);
-          if (!(name in schema.marks)) unknown.add(name);
+          if (!knows(schema.marks, name)) unknown.add(name);
         });
       });
       return;
     }
     if (!(node instanceof Y.XmlElement)) return;
-    if (!(node.nodeName in schema.nodes)) unknown.add(node.nodeName);
+    if (!knows(schema.nodes, node.nodeName)) unknown.add(node.nodeName);
     node.forEach(visit);
   };
 

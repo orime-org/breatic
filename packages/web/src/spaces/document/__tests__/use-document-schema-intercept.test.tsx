@@ -13,14 +13,11 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import * as Y from 'yjs';
 import {
+  DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
+  DOCUMENT_SCHEMA_VERSION,
   documentBodyFragment,
 } from '@breatic/shared';
-
-import {
-  DOCUMENT_SCHEMA,
-  DOCUMENT_SCHEMA_VERSION,
-} from '@web/spaces/document/document-schema';
 
 import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-schema-intercept';
 

@@ -15,11 +15,11 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { DOCUMENT_SCHEMA_META_KEY } from '@breatic/shared';
 import {
   DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_META_KEY,
   DOCUMENT_SCHEMA_VERSION,
-} from '@web/spaces/document/document-schema';
+} from '@breatic/shared';
 
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { docName, getDoc } from '@web/data/yjs/manager';

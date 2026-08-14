@@ -16,13 +16,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
 import {
+  DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
   projectMetaDocName,
   spaceContentDocName,
 } from "@breatic/shared";
-import { getDocumentSchema } from "@breatic/core";
 
-const { serverSpy } = vi.hoisted(() => ({ serverSpy: vi.fn() }));
+const { serverSpy, loggerSpy } = vi.hoisted(() => ({
+  serverSpy: vi.fn(),
+  loggerSpy: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
 
 vi.mock("@hocuspocus/extension-redis", () => ({
   Redis: class {
@@ -41,16 +44,8 @@ vi.mock("@hocuspocus/server", () => ({
   },
 }));
 
-vi.mock("@breatic/core", async () => ({
-  // 真的那份：这条测试要验「发布真的接上了」，而发布写进去的值就来自它。
-  // 换成替身就等于自己规定了答案再去核对它。
-  getDocumentSchema: (await vi.importActual("@breatic/core")).getDocumentSchema,
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
+vi.mock("@breatic/core", () => ({
+  createLogger: () => loggerSpy,
   createRedisClient: vi.fn(() => ({ on: vi.fn() })),
   getRedis: vi.fn(() => ({ on: vi.fn() })),
   getCollabRedis: vi.fn(() => ({ on: vi.fn() })),
@@ -121,6 +116,7 @@ describe("meta 文档加载时", () => {
   let hook: LoadHook;
 
   beforeEach(async () => {
+    loggerSpy.error.mockClear();
     hook = await loadHook();
   });
 
@@ -133,8 +129,8 @@ describe("meta 文档加载时", () => {
       instance: { documents: new Map() },
     });
 
-    expect(published(doc).nodes).toEqual(getDocumentSchema().nodes);
-    expect(published(doc).marks).toEqual(getDocumentSchema().marks);
+    expect(published(doc).nodes).toEqual(DOCUMENT_SCHEMA.nodes);
+    expect(published(doc).marks).toEqual(DOCUMENT_SCHEMA.marks);
     expect(typeof published(doc).publishedAt).toBe("string");
     doc.destroy();
   });
@@ -181,6 +177,38 @@ describe("别的文档加载时", () => {
       instance: { documents: new Map() },
     });
 
+    expect(published(doc)).toEqual({});
+    doc.destroy();
+  });
+});
+
+describe("发布这一步自己抛了异常的时候", () => {
+  it("加载不失败、错误进日志 —— 而不是把每个人挡在门外还不留痕", async () => {
+    // hocuspocus 不给 `afterLoadDocument` 兜底（它只包了 `onLoadDocument`），
+    // 抛出去会一路冒到建连那层，那里回客户端一句「没权限」、一行日志都不打。
+    // 每个客户端第一份文档就是 meta，所以那等于「所有 project 都打不开」，
+    // 而服务器上没有任何东西指向真正的原因。
+    const hook = await loadHook();
+    const doc = new Y.Doc();
+    // 让写入那一步抛：发布现在只碰这份 Yjs 文档，没有别的外部输入了。
+    vi.spyOn(doc, "transact").mockImplementation(() => {
+      throw new Error("这份文档写不进去");
+    });
+    loggerSpy.error.mockClear();
+
+    await expect(
+      hook({
+        documentName: projectMetaDocName(PID),
+        document: doc,
+        instance: { documents: new Map() },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(loggerSpy.error).toHaveBeenCalledTimes(1);
+    expect(loggerSpy.error.mock.calls[0]?.[0]).toMatchObject({
+      reason: "document_schema_publish_failed",
+    });
+    // 发布失败 = meta 里读不出词表 = 「不拦截」，本来就是安全的那一边。
     expect(published(doc)).toEqual({});
     doc.destroy();
   });

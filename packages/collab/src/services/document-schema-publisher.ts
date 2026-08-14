@@ -11,11 +11,9 @@
  * find out, before it offers to edit, whether it still matches what the server
  * publishes.
  *
- * This is the publishing half. The values come from
- * `config/document-schema.yaml`, read on the first call to `getDocumentSchema()`
- * and cached from then on — which, since this is its only caller, means the
- * first meta document this process loads. The browser has the same file
- * compiled into its bundle and compares versions.
+ * This is the publishing half. The values are `DOCUMENT_SCHEMA` in
+ * `@breatic/shared`, the same constant the browser imports and compares
+ * against — one declaration, both ends, nothing to read and nothing to drift.
  *
  * WHY THE SERVER WRITES IT: the meta document is read-only for every client
  * (`hooks/auth.ts` sets `connectionConfig.readOnly` for `kind === "meta"`), and
@@ -31,11 +29,11 @@
 
 import type * as Y from "yjs";
 import {
+  DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
+  DOCUMENT_SCHEMA_VERSION,
   documentSchemaMatches,
-  documentSchemaVersion,
 } from "@breatic/shared";
-import { getDocumentSchema } from "@breatic/core";
 
 /** Named transaction origin, so a debugger can see who wrote this. */
 export const DOCUMENT_SCHEMA_PUBLISH_ORIGIN = "document-schema-publish";
@@ -49,34 +47,31 @@ export const DOCUMENT_SCHEMA_PUBLISH_ORIGIN = "document-schema-publish";
  *
  * "Already the same" is the version — the same comparison the browser uses to
  * decide whether to stop editing, one rule, shared — AND the publish time,
- * because both come from the config file and a correction to the date has to
- * reach clients too. Every value written here is read from that file, so a
- * process that has already published writes nothing on later loads.
+ * because a correction to the date has to reach clients too. Every value
+ * written here is a constant, so a process that has already published writes
+ * nothing on later loads.
  * @param metaDoc - The project's meta document, as handed over by the load hook.
  * @returns True when this call wrote, false when the published copy already matched.
- * @throws {Error} When `config/document-schema.yaml` is missing or invalid.
  */
 export function publishDocumentSchema(metaDoc: Y.Doc): boolean {
-  const mine = getDocumentSchema();
-  const version = documentSchemaVersion(mine);
   const published = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
   const current = published.toJSON();
   if (
-    documentSchemaMatches(version, current) &&
-    current.publishedAt === mine.publishedAt
+    documentSchemaMatches(DOCUMENT_SCHEMA_VERSION, current) &&
+    current.publishedAt === DOCUMENT_SCHEMA.publishedAt
   ) {
     return false;
   }
 
   metaDoc.transact(() => {
-    published.set("version", version);
-    published.set("nodes", mine.nodes);
-    published.set("marks", mine.marks);
-    // Straight from the config file, in UTC. Not `new Date()` — that would be
-    // the moment this process first loaded THIS project's meta, which for a
+    published.set("version", DOCUMENT_SCHEMA_VERSION);
+    published.set("nodes", DOCUMENT_SCHEMA.nodes);
+    published.set("marks", DOCUMENT_SCHEMA.marks);
+    // The vocabulary's own release date, in UTC. Not `new Date()` — that would
+    // be the moment this process first loaded THIS project's meta, which for a
     // project nobody has opened since the release is days late and reads on
     // screen as "the new version went out just now".
-    published.set("publishedAt", mine.publishedAt);
+    published.set("publishedAt", DOCUMENT_SCHEMA.publishedAt);
   }, DOCUMENT_SCHEMA_PUBLISH_ORIGIN);
 
   return true;

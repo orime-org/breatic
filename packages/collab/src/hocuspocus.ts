@@ -271,10 +271,27 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // because the meta doc is read-only for every client, and idempotent
       // because several instances load the same meta independently.
       if (parsed?.kind === "meta") {
-        if (publishDocumentSchema(document)) {
-          logger.info(
-            { documentName, reason: "document_schema_published" },
-            "document_schema_published",
+        // Caught here because hocuspocus does not catch for us: it wraps
+        // `onLoadDocument` and leaves `afterLoadDocument` bare, so a throw
+        // reaches the connection setup, which answers the client
+        // "permission-denied" and logs nothing. Every client opens meta first,
+        // so that reads on screen as "you cannot open any project" with no
+        // trace on the server pointing at the config file.
+        //
+        // Failing to publish means clients read no vocabulary from meta, which
+        // already means "do not intercept" — the safe side. So the load
+        // continues.
+        try {
+          if (publishDocumentSchema(document)) {
+            logger.info(
+              { documentName, reason: "document_schema_published" },
+              "document_schema_published",
+            );
+          }
+        } catch (err) {
+          logger.error(
+            { err, documentName, reason: "document_schema_publish_failed" },
+            "document_schema_publish_failed",
           );
         }
         return;

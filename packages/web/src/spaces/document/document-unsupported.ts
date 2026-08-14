@@ -15,8 +15,11 @@ import { Mark, Node } from '@tiptap/core';
  *
  * These three types are where the patched y-tiptap puts such content instead.
  * They carry the original name so the console can say what was lost, and the
- * mark carries the original value so a round trip through this client leaves
- * the shared document byte-for-byte as it was.
+ * mark carries the original value so the Yjs-to-ProseMirror-and-back trip
+ * through this client leaves the shared document byte-for-byte as it was.
+ *
+ * That is the only trip they take. None of them can be parsed from HTML — see
+ * the note where a `parseHTML` would have gone.
  *
  * ## They have to ship before they are needed
  *
@@ -62,10 +65,12 @@ export const UnsupportedBlock = Node.create({
     return { [ORIGINAL_NAME]: { default: null } };
   },
 
-  parseHTML() {
-    return [{ tag: 'div[data-unsupported-block]' }];
-  },
-
+  // No `parseHTML`. Nothing in this Space ever hands ProseMirror HTML to parse
+  // (no `setContent`, no `getHTML`), and an entry that did exist could not work:
+  // `renderHTML` cannot emit what it does not know how to read back, so a name
+  // would come in as null and be written to the shared document as the literal
+  // key "null". These types are built by the y-tiptap patch straight from Yjs
+  // and go back the same way.
   renderHTML({ HTMLAttributes }) {
     return [
       'div',
@@ -94,10 +99,7 @@ export const UnsupportedInline = Node.create({
     return { [ORIGINAL_NAME]: { default: null } };
   },
 
-  parseHTML() {
-    return [{ tag: 'span[data-unsupported-inline]' }];
-  },
-
+  // No `parseHTML`, for the reason on `UnsupportedBlock`.
   renderHTML({ HTMLAttributes }) {
     return [
       'span',
@@ -132,10 +134,9 @@ export const UnsupportedMark = Mark.create({
     };
   },
 
-  parseHTML() {
-    return [{ tag: 'span[data-unsupported-mark]' }];
-  },
-
+  // No `parseHTML`, for the reason on `UnsupportedBlock`, and here the value
+  // matters as well as the name: `renderHTML` deliberately does not put
+  // `originalValue` in the DOM, so an HTML round trip could never be lossless.
   renderHTML({ HTMLAttributes }) {
     return [
       'span',

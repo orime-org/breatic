@@ -5,13 +5,19 @@
  * What a document Space's editor is able to represent, as plain data, plus the
  * check for whether this build's copy still matches the server's.
  *
- * ## The data itself is not here — it is in `config/document-schema.yaml`
+ * ## One constant, both ends import it
  *
- * This module holds the SHAPE and the comparison; the values live in that one
- * file, and both ends read it. collab loads it when it loads a project's meta
- * document and publishes it there; the browser gets it compiled in at build time
- * (`packages/web/vite.config.mts` reads the file and defines it). Neither side
- * hand-keeps a second copy, so there is nothing to drift.
+ * The vocabulary lives here because both ends need it and one of them is a
+ * browser. It was briefly a YAML file that collab read with `readFileSync` and
+ * the browser got through a build-time `define`, which bought nothing — the
+ * browser half was compiled in either way, so editing the file was still a
+ * release, not an operational knob — and cost eight places that could break:
+ * a loader in core, a read plus a define in `vite.config.mts`, the same define
+ * mirrored in `vitest.config.ts`, a wrapper module in web, a `COPY` line in
+ * `Dockerfile.web` (which was missing, so the frontend image could not build
+ * at all), a `--include` on collab's watcher, and a row in the config docs.
+ * One exported constant has none of that, and TypeScript checks it at compile
+ * time instead of zod checking it at load time.
  *
  * ## Why both ends need it at all
  *
@@ -52,52 +58,78 @@
  * raising — so nothing but the version can catch it.
  */
 
-import { z } from "zod";
-
 /** The top-level key the server writes this under in a project's meta document. */
 export const DOCUMENT_SCHEMA_META_KEY = "documentSchema";
 
-/**
- * The shape `config/document-schema.yaml` is parsed against.
- *
- * No version field: it is {@link documentSchemaVersion} of these two lists.
- *
- * Attribute lists are sorted on the way in so two copies that agree compare
- * equal regardless of the order they happen to be written in — which is also
- * what lets the version ignore attribute order without sorting again.
- */
-export const documentSchemaConfigSchema = z.object({
+/** A document Space's editor vocabulary, as both ends hold it. */
+export interface DocumentSchema {
   /**
    * When this vocabulary went out, as UTC. The panel says "the new version went
    * out {when}", and only a person knows when that was — it cannot be derived
-   * from anything, which is why it is written here rather than computed.
+   * from anything, which is why it is written by hand while the version beside
+   * it is computed.
    *
-   * UTC is required rather than merely accepted (an offset like `+08:00` is
-   * rejected): one instant travels to every client, and each renders it in its
-   * own time zone.
+   * UTC, in the `Z` form: one instant travels to every client and each renders
+   * it in its own time zone.
    */
-  publishedAt: z.iso.datetime(),
+  publishedAt: string;
   /** Node type name to its attribute names. */
-  nodes: z.record(z.string(), z.array(z.string())).transform(sortAttributeLists),
+  nodes: Record<string, string[]>;
   /** Mark type name to its attribute names. */
-  marks: z.record(z.string(), z.array(z.string())).transform(sortAttributeLists),
-});
-
-/** A document Space's editor vocabulary, as both ends hold it. */
-export type DocumentSchema = z.infer<typeof documentSchemaConfigSchema>;
+  marks: Record<string, string[]>;
+}
 
 /**
- * Sort each attribute list so two copies compare equal regardless of order.
- * @param half - One half of a vocabulary, straight out of the config file.
- * @returns The same half with every attribute list sorted.
+ * This build's document Space vocabulary — the one both ends import.
+ *
+ * Keep it in step with `buildDocumentExtensions` in `packages/web`. That is not
+ * left to memory: `document-schema-matches-extensions.test.ts` builds the real
+ * ProseMirror schema from the registered extensions and fails when it disagrees
+ * with these two lists, down to attribute names.
+ *
+ * Set {@link DocumentSchema.publishedAt} whenever either list changes. Nothing
+ * checks it — nothing can, since no code knows when a release happened — but
+ * getting it wrong only misdates a sentence on a panel, while the version
+ * beside it, which decides who stops editing, is computed from the lists.
  */
-function sortAttributeLists(
-  half: Record<string, string[]>,
-): Record<string, string[]> {
-  const out: Record<string, string[]> = {};
-  for (const [name, attrs] of Object.entries(half)) out[name] = [...attrs].sort();
-  return out;
-}
+export const DOCUMENT_SCHEMA: DocumentSchema = {
+  publishedAt: "2026-08-14T00:00:00Z",
+
+  // Attribute names are here because adding an attribute to a node both sides
+  // already know (a heading gaining an alignment, say) leaves no trace in the
+  // content at all — ProseMirror drops an unknown attribute silently rather
+  // than raising, so the fallback never fires for it.
+  nodes: {
+    blockquote: [],
+    bulletList: [],
+    codeBlock: ["language"],
+    doc: [],
+    hardBreak: [],
+    heading: ["level"],
+    horizontalRule: [],
+    listItem: [],
+    orderedList: ["start", "type"],
+    paragraph: [],
+    text: [],
+    title: [],
+    // The three stand-in types. They must exist in every version: content one
+    // build cannot represent is wrapped in these rather than deleted, and a
+    // client that meets an already-wrapped element has to recognise the
+    // wrapper.
+    unsupportedBlock: ["originalName"],
+    unsupportedInline: ["originalName"],
+  },
+
+  marks: {
+    bold: [],
+    code: [],
+    italic: [],
+    link: ["class", "href", "rel", "target", "title"],
+    strike: [],
+    underline: [],
+    unsupportedMark: ["originalName", "originalValue"],
+  },
+};
 
 /** FNV-1a, 64-bit. Offset basis and prime are the constants from the FNV spec. */
 const FNV_OFFSET_BASIS = 0xcbf29ce484222325n;
@@ -109,9 +141,9 @@ const SIXTY_FOUR_BITS = 0xffffffffffffffffn;
  *
  * JSON does the escaping, so a type named `a:b` cannot be confused with a pair
  * named `a` and `b`, and the two halves are separate arrays, so a node and a
- * mark sharing a name stay distinct. Type names are sorted here because object
- * key order is insertion order and the config file's is arbitrary; attribute
- * lists are already sorted by {@link documentSchemaConfigSchema}.
+ * mark sharing a name stay distinct. Both type names and attribute names are
+ * sorted here rather than assumed to arrive sorted, so the answer depends on
+ * nothing but the vocabulary itself.
  *
  * `publishedAt` is deliberately not in here. The version decides who gets shut
  * out of editing, and correcting a date is not a reason to shut anyone out.
@@ -130,7 +162,7 @@ function canonicalForm(schema: DocumentSchema): string {
 function orderedPairs(types: Record<string, string[]>): [string, string[]][] {
   return Object.keys(types)
     .sort()
-    .map((name) => [name, types[name] ?? []]);
+    .map((name) => [name, [...(types[name] ?? [])].sort()]);
 }
 
 /**
@@ -139,7 +171,7 @@ function orderedPairs(types: Record<string, string[]>): [string, string[]][] {
  * Derived rather than declared, so that changing the lists changes it without
  * anyone having to remember. Equality is all that is ever asked of it, so a
  * digest serves as well as a counter and cannot be left behind.
- * @param schema - A vocabulary, as parsed from the config file.
+ * @param schema - A vocabulary.
  * @returns Sixteen lowercase hex characters.
  */
 export function documentSchemaVersion(schema: DocumentSchema): string {
@@ -150,6 +182,22 @@ export function documentSchemaVersion(schema: DocumentSchema): string {
   }
   return hash.toString(16).padStart(16, "0");
 }
+
+/**
+ * This build's version of that vocabulary — what gets compared against meta.
+ *
+ * Computed, never written by hand. A hand-kept number has to be remembered
+ * alongside every list change, and the one check that goes red when a list
+ * changes does not look at it: update the lists, watch that test go green, walk
+ * away, and the guard is off for the two classes only it can catch (an
+ * attribute added to a node or mark both sides already know leaves no trace in
+ * the content, so the fallback check is blind to it).
+ *
+ * Declared here rather than beside {@link DOCUMENT_SCHEMA} because it runs at
+ * module load and everything it reaches — the hash constants above — has to be
+ * initialised by then. `const` does not hoist.
+ */
+export const DOCUMENT_SCHEMA_VERSION: string = documentSchemaVersion(DOCUMENT_SCHEMA);
 
 /**
  * Read the version out of whatever sits under the key in a meta document.

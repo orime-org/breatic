@@ -4,15 +4,12 @@
 import * as React from 'react';
 import type * as Y from 'yjs';
 import {
+  DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
+  DOCUMENT_SCHEMA_VERSION,
   documentBodyFragment,
   documentSchemaDiffers,
 } from '@breatic/shared';
-
-import {
-  DOCUMENT_SCHEMA,
-  DOCUMENT_SCHEMA_VERSION,
-} from '@web/spaces/document/document-schema';
 
 import { findUnknownContent } from '@web/spaces/document/document-schema-guard';
 

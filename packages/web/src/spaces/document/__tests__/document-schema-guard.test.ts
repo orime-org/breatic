@@ -12,7 +12,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
-import { DOCUMENT_SCHEMA } from '@web/spaces/document/document-schema';
+import { DOCUMENT_SCHEMA } from '@breatic/shared';
 
 import { findUnknownContent } from '@web/spaces/document/document-schema-guard';
 
@@ -59,8 +59,9 @@ describe('全都认识时', () => {
     const para = new Y.XmlElement('paragraph');
     const text = new Y.XmlText();
     text.insert(0, 'bold bit', { bold: {} });
-    // y-tiptap 给可重叠标记的键加 hash，判定前必须剥掉。
-    text.insert(8, ' linked', { 'link--abc123': { href: 'x' } });
+    // y-tiptap 给可重叠标记的键加 hash，判定前必须剥掉。真键长这样：
+    // 名字 + `--` + 正好 8 个 base64 字符（实测 `anno--/mqlLOIu`）。
+    text.insert(8, ' linked', { 'link--Ab3+/x9=': { href: 'x' } });
     para.insert(0, [text]);
     body.insert(0, [para]);
 
@@ -109,11 +110,46 @@ describe('有不认识的东西时', () => {
     const body = fragment();
     const para = new Y.XmlElement('paragraph');
     const text = new Y.XmlText();
-    text.insert(0, 'commented', { 'comment--9xYz': { id: 'c1' } });
+    text.insert(0, 'commented', { 'comment--9xYzQw1/': { id: 'c1' } });
     para.insert(0, [text]);
     body.insert(0, [para]);
 
     expect(findUnknownContent(body, DOCUMENT_SCHEMA)).toEqual(['comment']);
+  });
+
+  it('名字在 Object.prototype 上的，照样报不认识', () => {
+    // 清单是从 yaml 解析出来的普通对象，带着 Object.prototype。用 `in`
+    // 问「认不认识」会让 toString / constructor 这些名字恒为真，而补丁
+    // 那边问的是同一个问题、答案相反（prosemirror 的 schema.nodes 是
+    // Object.create(null) 建的）—— 两边对同一份文档给出相反的结论。
+    const body = fragment();
+    body.insert(0, [new Y.XmlElement('toString')]);
+    const para = new Y.XmlElement('paragraph');
+    const text = new Y.XmlText();
+    // 分开写：对象字面量里的 `constructor` 会被 TypeScript 当成
+    // Object.prototype.constructor 那个签名去核对，塞不进去。
+    const protoMark: Record<string, object> = { constructor: {} };
+    text.insert(0, 'x', protoMark);
+    para.insert(0, [text]);
+    body.insert(1, [para]);
+
+    expect(findUnknownContent(body, DOCUMENT_SCHEMA)).toEqual([
+      'toString',
+      'constructor',
+    ]);
+  });
+
+  it('名字里带 `--` 但后缀不是 8 位 base64 的，不当 hash 剥', () => {
+    // 剥的规则要跟 y-tiptap 逐字一致（它是 `/(.*)(--[a-zA-Z0-9+/=]{8})$/`）。
+    // 无条件切在最后一个 `--` 会把这种名字剥成 `some`，报错报的就是别人的名字。
+    const body = fragment();
+    const para = new Y.XmlElement('paragraph');
+    const text = new Y.XmlText();
+    text.insert(0, 'x', { 'some--mark': {} });
+    para.insert(0, [text]);
+    body.insert(0, [para]);
+
+    expect(findUnknownContent(body, DOCUMENT_SCHEMA)).toEqual(['some--mark']);
   });
 
   it('同一个名字出现多次只报一次，多个不同的都报', () => {

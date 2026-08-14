@@ -11,13 +11,17 @@
 
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
-import { DOCUMENT_SCHEMA_META_KEY, documentSchemaVersion } from "@breatic/shared";
-import { getDocumentSchema } from "@breatic/core";
+import {
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_META_KEY,
+  DOCUMENT_SCHEMA_VERSION,
+  documentSchemaVersion,
+} from "@breatic/shared";
 
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 
-/** 这一版算出来的版本号 —— 跟 publisher 写进 meta 的那个是同一个算法。 */
-const MY_VERSION = documentSchemaVersion(getDocumentSchema());
+/** 这一版算出来的版本号 —— 跟 publisher 写进 meta 的那个是同一个。 */
+const MY_VERSION = DOCUMENT_SCHEMA_VERSION;
 
 /** 随便另一个版本号，只要不等于 MY_VERSION。 */
 const OTHER_VERSION = documentSchemaVersion({
@@ -43,24 +47,24 @@ describe("往 meta 里写这一版的 schema", () => {
     expect(wrote).toBe(true);
     const published = readPublished(doc);
     expect(published.version).toBe(MY_VERSION);
-    expect(published.nodes).toEqual(getDocumentSchema().nodes);
-    expect(published.marks).toEqual(getDocumentSchema().marks);
+    expect(published.nodes).toEqual(DOCUMENT_SCHEMA.nodes);
+    expect(published.marks).toEqual(DOCUMENT_SCHEMA.marks);
     doc.destroy();
   });
 
-  it("写进去的 publishedAt 就是配置文件里那个值，不是「现在」", () => {
+  it("写进去的 publishedAt 就是词表上那个值，不是「现在」", () => {
     // 它说的是「服务器现在跑的这一份是什么时候发的」。用 new Date() 记的是
     // 「这个进程第一次加载这个 project 的 meta」——一个没人打开过的 project
     // 跨过一次发版之后，那个值会晚上好几天，面板会写成「刚刚发布」。
     const doc = new Y.Doc();
     publishDocumentSchema(doc);
 
-    expect(readPublished(doc).publishedAt).toBe(getDocumentSchema().publishedAt);
+    expect(readPublished(doc).publishedAt).toBe(DOCUMENT_SCHEMA.publishedAt);
     doc.destroy();
   });
 
-  it("写进去的是 UTC —— 配置的校验只收带 Z 的那种写法", () => {
-    // 一个时刻发给所有人，各自的浏览器按自己的时区渲染。
+  it("写进去的是 UTC —— 一个时刻发给所有人", () => {
+    // 各自的浏览器按自己的时区渲染它。
     const doc = new Y.Doc();
     publishDocumentSchema(doc);
 
@@ -85,13 +89,13 @@ describe("往 meta 里写这一版的 schema", () => {
     doc.transact(() => {
       const map = doc.getMap(DOCUMENT_SCHEMA_META_KEY);
       map.set("version", MY_VERSION);
-      map.set("nodes", getDocumentSchema().nodes);
-      map.set("marks", getDocumentSchema().marks);
+      map.set("nodes", DOCUMENT_SCHEMA.nodes);
+      map.set("marks", DOCUMENT_SCHEMA.marks);
       map.set("publishedAt", "2020-01-01T00:00:00Z");
     });
 
     expect(publishDocumentSchema(doc)).toBe(true);
-    expect(readPublished(doc).publishedAt).toBe(getDocumentSchema().publishedAt);
+    expect(readPublished(doc).publishedAt).toBe(DOCUMENT_SCHEMA.publishedAt);
     doc.destroy();
   });
 
@@ -104,7 +108,7 @@ describe("往 meta 里写这一版的 schema", () => {
       map.set("version", MY_VERSION);
       map.set("nodes", { paragraph: [] });
       map.set("marks", {});
-      map.set("publishedAt", getDocumentSchema().publishedAt);
+      map.set("publishedAt", DOCUMENT_SCHEMA.publishedAt);
     });
 
     expect(publishDocumentSchema(doc)).toBe(false);
@@ -127,8 +131,8 @@ describe("往 meta 里写这一版的 schema", () => {
     expect(wrote).toBe(true);
     const published = readPublished(doc);
     expect(published.version).toBe(MY_VERSION);
-    expect(published.nodes).toEqual(getDocumentSchema().nodes);
-    expect(published.publishedAt).toBe(getDocumentSchema().publishedAt);
+    expect(published.nodes).toEqual(DOCUMENT_SCHEMA.nodes);
+    expect(published.publishedAt).toBe(DOCUMENT_SCHEMA.publishedAt);
     doc.destroy();
   });
 

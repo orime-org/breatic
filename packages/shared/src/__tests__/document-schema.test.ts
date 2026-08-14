@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * document space 的 schema 契约：配置文件长什么样、版本号怎么算出来，以及
- * 「我这份跟服务器那份一样不一样」的判定。
+ * document space 的词表本身、版本号怎么算出来，以及「我这份跟服务器那份一样
+ * 不一样」的判定。
  *
- * 数据本身不在这儿，在 `config/document-schema.yaml`：collab 第一次加载某个
- * project 的 meta 文档时读它，前端打包时把同一份打进 bundle。这里只有形状、
- * 版本号的算法和判定。
+ * **词表是 `@breatic/shared` 里的一个常量，两端 import 同一个符号**
+ * （user 2026-08-14 拍板，从外部配置文件改回来）。
  *
- * **版本号不是人写的，是从两张清单算出来的**（user 2026-08-14 拍板 A 方案）：
- * 手写的数字要靠人记得跟着清单一起改，而唯一会因为清单变化变红的那条一致性
- * 测试根本不看它 —— 改完清单转绿，人就走了，属性漂移那两类从此裸奔。
+ * **版本号不是人写的，是从两张清单算出来的**：手写的数字要靠人记得跟着清单
+ * 一起改，而唯一会因为清单变化变红的那条一致性测试根本不看它 —— 改完清单
+ * 转绿，人就走了，属性漂移那两类从此裸奔。
  *
  * **判定看的是版本号，问的是「一不一样」**，不是谁新谁旧（user 2026-08-14）。
  */
@@ -19,8 +18,10 @@
 import { describe, it, expect } from "vitest";
 
 import {
+  DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
-  documentSchemaConfigSchema,
+  DOCUMENT_SCHEMA_VERSION,
+  type DocumentSchema,
   documentSchemaDiffers,
   documentSchemaMatches,
   documentSchemaVersion,
@@ -28,71 +29,50 @@ import {
 } from "@shared/document-schema.js";
 
 /**
- * 把两张清单过一遍配置形状，拿到算版本号要的那个类型。
+ * 拼一份词表，用来算版本号。
  * @param nodes - 节点清单。
  * @param marks - 标记清单。
- * @returns 解析后的清单。
+ * @param publishedAt - 发布时刻。
+ * @returns 那份词表。
  */
 function parse(
   nodes: Record<string, string[]>,
   marks: Record<string, string[]> = {},
   publishedAt = "2026-08-14T00:00:00Z",
-): ReturnType<typeof documentSchemaConfigSchema.parse> {
-  return documentSchemaConfigSchema.parse({ publishedAt, nodes, marks });
+): DocumentSchema {
+  return { publishedAt, nodes, marks };
 }
 
-describe("配置文件的形状", () => {
+describe("这一份词表本身", () => {
   it("键名就是 meta 文档里那个顶层键", () => {
     expect(DOCUMENT_SCHEMA_META_KEY).toBe("documentSchema");
   });
 
-  it("收两张清单加一个发布时间 —— 没有版本号这一项", () => {
-    const parsed = parse({ doc: [], heading: ["level"] }, { bold: [] });
-    expect(parsed.nodes.heading).toEqual(["level"]);
-    expect(parsed.marks.bold).toEqual([]);
-    expect(parsed.publishedAt).toBe("2026-08-14T00:00:00Z");
-    expect("version" in parsed).toBe(false);
+  it("两张清单都在，三个兜底类型也在", () => {
+    // 兜底类型必须每一版都有：一个 build 表示不了的内容会被包进它们而不是
+    // 删掉，而下一个客户端碰到已经被包过的元素得认得出这个包装。
+    expect(Object.keys(DOCUMENT_SCHEMA.nodes).length).toBeGreaterThan(0);
+    expect(Object.keys(DOCUMENT_SCHEMA.marks).length).toBeGreaterThan(0);
+    expect(DOCUMENT_SCHEMA.nodes.unsupportedBlock).toEqual(["originalName"]);
+    expect(DOCUMENT_SCHEMA.nodes.unsupportedInline).toEqual(["originalName"]);
+    expect(DOCUMENT_SCHEMA.marks.unsupportedMark).toEqual([
+      "originalName",
+      "originalValue",
+    ]);
   });
 
-  it("配置里写了 version 也不会被收进来 —— 那个字段已经没有了", () => {
-    const parsed = documentSchemaConfigSchema.parse({
-      version: 3,
-      publishedAt: "2026-08-14T00:00:00Z",
-      nodes: {},
-      marks: {},
-    });
-    expect("version" in parsed).toBe(false);
+  it("发布时间是带 Z 的 ISO 时刻 —— 一个时刻发给所有人，各自按本地时区渲染", () => {
+    // 这是人写的、机器算不出来的东西（只有人知道这一版什么时候发的），
+    // 所以没有校验器盯它，靠这一条钉住形状。
+    expect(DOCUMENT_SCHEMA.publishedAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/,
+    );
+    expect(Number.isNaN(Date.parse(DOCUMENT_SCHEMA.publishedAt))).toBe(false);
   });
 
-  it("发布时间必须在，而且必须是带 Z 的 ISO 时刻", () => {
-    // 面板拿它说「新版本发布于 X」。这一版什么时候发的，只有人知道、
-    // 机器算不出来，所以它是配置的一部分，跟两张清单一起写。
-    const lists = { nodes: {}, marks: {} };
-    expect(() => documentSchemaConfigSchema.parse({ ...lists })).toThrow();
-    expect(() =>
-      documentSchemaConfigSchema.parse({ publishedAt: "2026-08-14", ...lists }),
-    ).toThrow();
-    expect(() =>
-      documentSchemaConfigSchema.parse({
-        publishedAt: "2026-08-14T00:00:00+08:00",
-        ...lists,
-      }),
-    ).toThrow();
-  });
-
-  it("属性名进来时就排好序 —— 两份内容相同的清单不该因为写的顺序不同而看起来不同", () => {
-    const parsed = parse({ heading: ["level", "align"] }, { link: ["target", "href"] });
-    expect(parsed.nodes.heading).toEqual(["align", "level"]);
-    expect(parsed.marks.link).toEqual(["href", "target"]);
-  });
-
-  it("两张清单都必须在", () => {
-    const at = "2026-08-14T00:00:00Z";
-    expect(() => documentSchemaConfigSchema.parse({ publishedAt: at, nodes: {} })).toThrow();
-    expect(() => documentSchemaConfigSchema.parse({ publishedAt: at, marks: {} })).toThrow();
-    expect(() =>
-      documentSchemaConfigSchema.parse({ publishedAt: at, nodes: [], marks: {} }),
-    ).toThrow();
+  it("导出的版本号就是这份词表算出来的那个", () => {
+    expect(DOCUMENT_SCHEMA_VERSION).toBe(documentSchemaVersion(DOCUMENT_SCHEMA));
+    expect(DOCUMENT_SCHEMA_VERSION).toMatch(/^[0-9a-f]{16}$/);
   });
 });
 
@@ -105,6 +85,7 @@ describe("版本号从清单算出来", () => {
   });
 
   it("写的顺序不算数 —— 节点顺序、属性顺序换了，版本号不变", () => {
+    // 没有任何东西在写进来的路上帮忙排序了，所以算的时候自己排两层。
     const written = documentSchemaVersion(
       parse({ heading: ["level", "align"], doc: [] }, { link: ["target", "href"] }),
     );

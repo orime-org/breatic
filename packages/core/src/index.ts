@@ -55,7 +55,6 @@ export { initCore, getConfig, getRawEnvVar } from "@core/config/runtime.js";
 export type { CoreConfig } from "@core/config/schema.js";
 export { getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
-export { getDocumentSchema } from "@core/config/document-schema.js";
 export { getStorageConfig } from "@core/config/storage.js";
 export type { StorageConfig } from "@core/config/storage.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";

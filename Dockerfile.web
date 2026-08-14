@@ -22,11 +22,6 @@ RUN pnpm install --frozen-lockfile --ignore-scripts=false
 COPY packages/ packages/
 COPY tsconfig.base.json turbo.json ./
 COPY locales/ locales/
-# The document editor's vocabulary. `packages/web/vite.config.mts` reads it at
-# the top of the config module — before any mode branch — and compiles it into
-# the bundle, so a missing file stops the build rather than shipping a bundle
-# that disagrees with the server.
-COPY config/ config/
 
 # Build shared (dependency) then web
 RUN pnpm turbo build --filter=@breatic/shared

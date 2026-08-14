@@ -221,12 +221,13 @@ export {
 } from "@shared/document-body.js";
 
 export {
-  documentSchemaConfigSchema,
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_META_KEY,
+  DOCUMENT_SCHEMA_VERSION,
+  documentSchemaDiffers,
   documentSchemaMatches,
   documentSchemaVersion,
   publishedSchemaVersion,
-  DOCUMENT_SCHEMA_META_KEY,
-  documentSchemaDiffers,
 } from "@shared/document-schema.js";
 
 export type { DocumentSchema } from "@shared/document-schema.js";
