@@ -131,8 +131,25 @@ interface MutableConnectionConfig {
  */
 export interface CreateAuthHookOptions {
   redis: Redis;
-  /** Max concurrent connections per document (0 = unlimited). */
-  maxConnectionsPerDoc: number;
+  /**
+   * How many writable connections one of this project's documents may hold
+   * at once, read from the membership tier of the studio that owns the
+   * project (#88). It is a per-project lookup rather than a constant
+   * because the answer belongs to that studio's current admin, and
+   * adminship transfers.
+   *
+   * ZERO IS A REAL ZERO — not one writable connection. Every ceiling in
+   * `config/membership.yaml` reads that way (`base.team_studios: 0` is a
+   * genuine zero), and there is no sentinel for "unlimited": a deployment
+   * that does not want to cap this writes a number nobody reaches.
+   *
+   * THROWING IS EXPECTED and does not refuse the connection: the lookup
+   * raises when our own data is wrong (a tier value outside the enum after
+   * a hand-written UPDATE, a missing account, a studio with no live admin).
+   * What it answers is how many may WRITE, and reading does not depend on
+   * it, so the caller degrades the connection to read-only and logs.
+   */
+  resolveConnectionLimit: (projectId: string) => Promise<number>;
   /**
    * Count the document's live connections CLUSTER-WIDE (via the
    * cross-instance registry, #1421) — not just this process's local
@@ -159,13 +176,13 @@ export interface CreateAuthHookOptions {
  * `connected` and `onDisconnect` (presence), and `beforeHandleMessage`.
  * @param root0 - Hook construction options.
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
- * @param root0.maxConnectionsPerDoc - Per-document concurrent-connection cap (0 = unlimited); at the cap, extra connections degrade to read-only. The meta doc is exempt.
+ * @param root0.resolveConnectionLimit - Reads the writable-connection ceiling for a project from its studio's membership tier; a zero is a real zero, and a throw degrades this connection to read-only rather than refusing it. The meta doc never asks.
  * @param root0.countConnections - Counts a document's live connections cluster-wide (this connection not included) to evaluate the cap.
- * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` — always for the meta doc, and for view-only members or at-capacity documents — and returns the user context, or throws to reject the connection.
+ * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` — always for the meta doc, and for view-only members, at-capacity documents or an unresolvable ceiling — and returns the user context, or throws to reject the connection.
  */
 export function createAuthHook({
   redis,
-  maxConnectionsPerDoc,
+  resolveConnectionLimit,
   countConnections,
 }: CreateAuthHookOptions) {
   return async ({
@@ -328,30 +345,70 @@ export function createAuthHook({
       //     writable: a viewer is already read-only, so we skip the Redis
       //     round-trip (the degrade log below then applies only to a real
       //     drop of an editor / owner).
+      //   - THE OWNER GETS NO RESERVED SEAT. One predicate, everybody on
+      //     it. Reserving a seat would leave every document one usable
+      //     seat short for as long as the owner is not in it, and none of
+      //     Confluence / Figma / Miro / Google Docs reserves one (Google
+      //     prioritises the owner once a file is full, which never leaves
+      //     a seat empty). An owner who is shut out asks a teammate to
+      //     leave — user 2026-08-14, reversing the 2026-08-12 position.
+      //   - A ceiling of ZERO is a real zero (no writable connection),
+      //     like every other quota in the repo. The `> 0` guard that used
+      //     to sit here meant "unlimited" and failed in the permissive
+      //     direction: lowering a tier to 0 to stop concurrent editing
+      //     would silently have allowed unlimited concurrent editing.
       let atCapacity = false;
-      if (
-        role !== "viewer" &&
-        parsed.kind !== "meta" &&
-        maxConnectionsPerDoc > 0
-      ) {
-        const liveCount = await countConnections(documentName);
-        atCapacity = liveCount >= maxConnectionsPerDoc;
-        if (atCapacity) {
-          // Permanent structured log. The cap degrade was previously
-          // silent (baseline smoke found no ops signal) — oncall /
-          // metrics need to see when a doc hits the cap and an otherwise-
-          // writable member drops to read-only.
-          logger.warn(
+      if (role !== "viewer" && parsed.kind !== "meta") {
+        // Resolving the ceiling is the one step here that can fail on OUR
+        // data rather than on anything the user did: a tier value outside
+        // the enum after a hand-written UPDATE, a missing account, a
+        // studio with no live admin. Letting that reach the catch-all
+        // below would re-throw and close the socket, taking away the
+        // ability to READ — which does not depend on this number at all.
+        // So it is caught here and the connection is degraded instead
+        // (user 2026-08-14). Reading cannot damage anything, so there is
+        // nothing for a fail-fast to protect.
+        let cap: number | null = null;
+        try {
+          cap = await resolveConnectionLimit(parsed.projectId);
+        } catch (err) {
+          atCapacity = true;
+          // The row an operator has to go fix is a `users` row, and only
+          // the error itself knows which: `membership.repo.ts` puts the
+          // account id and the offending value in its message. Carry it
+          // through or the trail says merely "some studio has bad data".
+          logger.error(
             {
+              err,
               userId,
               documentName,
               projectId: parsed.projectId,
-              liveCount,
-              cap: maxConnectionsPerDoc,
-              reason: "connection_cap_degraded",
+              reason: "connection_limit_unresolved",
             },
-            "connection_cap_degraded",
+            "connection_limit_unresolved",
           );
+        }
+
+        if (cap !== null) {
+          const liveCount = await countConnections(documentName);
+          atCapacity = liveCount >= cap;
+          if (atCapacity) {
+            // Permanent structured log. The cap degrade was previously
+            // silent (baseline smoke found no ops signal) — oncall /
+            // metrics need to see when a doc hits the cap and an otherwise-
+            // writable member drops to read-only.
+            logger.warn(
+              {
+                userId,
+                documentName,
+                projectId: parsed.projectId,
+                liveCount,
+                cap,
+                reason: "connection_cap_degraded",
+              },
+              "connection_cap_degraded",
+            );
+          }
         }
       }
       // The meta doc is read-only for EVERY client, whatever their role.
