@@ -187,6 +187,23 @@ describe('光标在正文里', () => {
     expect(touchesTitle(editor)).toBe(false);
   });
 
+  it('正文末块是 atom 时，第三次按下也不再扩大', () => {
+    // 真机咬出来的：那份文档最后一个块是 `unsupportedBlock`（#105 的兜底类型，
+    // 也是 atom）。算范围用 `Selection.near` 拿到的是 atom 的外沿，造选区用
+    // `TextSelection.between` 会把那一端往内缩 —— 两把尺，于是「已经是全部正文」
+    // 这道判定永远不命中，选区在第一块和全部正文之间来回跳。
+    const editor = open('<p>first</p><p>second</p><hr>');
+    caretIn(editor, 1, 1);
+
+    pressCtrlA(editor);
+    pressCtrlA(editor);
+    const afterTwo = selection(editor);
+    pressCtrlA(editor);
+
+    expect(selection(editor)).toEqual(afterTwo);
+    expect(touchesTitle(editor)).toBe(false);
+  });
+
   it('正文只有一块时，第一次给那一块、第二次给全部正文（两者范围相同）', () => {
     const editor = open('<p>only</p>');
     caretIn(editor, 1, 1);

@@ -67,7 +67,19 @@ function titleRange(state: EditorState): Range {
 }
 
 /**
- * The body's full range, or null when the body holds nothing selectable.
+ * The selection covering the whole body, or null when there is nothing there.
+ *
+ * **This returns a SELECTION, not a range, and that is the whole point.** An
+ * earlier version computed a range here and built the selection somewhere
+ * else, which meant two different rulers: the range came from
+ * `Selection.near`, and `TextSelection.between` then moved an endpoint that
+ * did not sit in inline content. The tier check compared the live selection
+ * against the range, the two never matched, and a third press SHRANK back to
+ * the caret's block. Measured in the browser on a document whose last block
+ * is an `unsupportedBlock`: the range said `9..3805`, the selection actually
+ * dispatched was `9..3803`, and pressing again bounced between the first
+ * block and the whole body. Producing the answer once, here, is what keeps
+ * the comparison honest.
  *
  * Both ends go through `Selection.near` rather than arithmetic on the title's
  * size, because the body's first block may be a container: with a list first,
@@ -78,19 +90,28 @@ function titleRange(state: EditorState): Range {
  * What `near` cannot be trusted with is the answer when there is nothing to
  * find. Its contract is to search the other way if the first direction comes
  * up empty, so with an empty body it walks back INTO the title — measured, it
- * returns a cursor at position 2, inside the title node. Hence the check
- * below: a result that starts before the body starts means the body had
- * nothing to offer, and the caller must not build a selection out of it.
+ * returns a cursor at position 2, inside the title node. Same for the
+ * selection `between` builds: with a body holding only a divider, neither end
+ * is inline content and it lands at position 6, inside a 7-wide title. Both
+ * are caught by the same check — anything that starts before the body starts
+ * is not an answer about the body.
  * @param state - Editor state to read.
- * @returns The body's range, or null when there is nothing there to select.
+ * @returns The body's selection, or null when there is nothing to select.
  */
-function bodyRange(state: EditorState): Range | null {
+function bodySelection(state: EditorState): Selection | null {
   const bodyStart = state.doc.child(0).nodeSize;
   if (state.doc.content.size <= bodyStart) return null;
-  const from = Selection.near(state.doc.resolve(bodyStart), 1).from;
-  const to = Selection.near(state.doc.resolve(state.doc.content.size), -1).to;
-  if (from < bodyStart || to < from) return null;
-  return { from, to };
+  const head = Selection.near(state.doc.resolve(bodyStart), 1);
+  const tail = Selection.near(state.doc.resolve(state.doc.content.size), -1);
+  if (head.from < bodyStart || tail.to < head.from) return null;
+  const text = TextSelection.between(
+    state.doc.resolve(head.from),
+    state.doc.resolve(tail.to),
+  );
+  // `between` reaches outward for inline content and can land in the title;
+  // when it does, the node selection `near` found is the right answer for a
+  // body made of atoms.
+  return text.from >= bodyStart ? text : head;
 }
 
 /**
@@ -124,26 +145,48 @@ function sideOfCaret(state: EditorState): 'title' | 'body' | 'neither' {
 }
 
 /**
- * What the next press should select.
+ * The selection the next press should produce.
+ *
+ * Every branch returns the selection itself rather than a range someone else
+ * turns into one — see {@link bodySelection} for what the two-ruler version
+ * cost.
  * @param state - Editor state to read.
- * @returns The range to select, or null when there is nothing to select.
+ * @returns The selection to apply, or null when there is nothing to select.
  */
-function nextRange(state: EditorState): Range | null {
+function nextSelection(state: EditorState): Selection | null {
   const side = sideOfCaret(state);
-  if (side === 'title') return titleRange(state);
-  if (side === 'neither') return bodyRange(state);
+  if (side === 'title') return selectionOverRange(state, titleRange(state));
+  if (side === 'neither') return bodySelection(state);
 
-  const block = currentBlockRange(state);
-  const body = bodyRange(state);
+  const block = selectionOverRange(state, currentBlockRange(state));
+  const body = bodySelection(state);
   const current: Range = { from: state.selection.from, to: state.selection.to };
   // The top tier holds: once the whole body is selected there is nowhere
   // further to go, and answering with the caret's block would SHRINK the
   // selection — which is what a third press did before this branch existed.
-  if (body && sameRange(current, body)) return body;
+  if (body && sameRange(current, { from: body.from, to: body.to })) return body;
   // Already exactly this block: the press means "widen". Anything else —
   // a caret, part of the block, a stretch across blocks — collapses to the
   // block the caret is in, which is the first tier.
-  return sameRange(current, block) ? body : block;
+  return block && sameRange(current, { from: block.from, to: block.to })
+    ? body
+    : block;
+}
+
+/**
+ * A text selection over a range that is known to sit in inline content.
+ *
+ * Used for the title and for the caret's own block — both are textblocks by
+ * construction, so `between` has somewhere to land and cannot wander.
+ * @param state - Editor state to read.
+ * @param range - The range to cover.
+ * @returns The selection over it.
+ */
+function selectionOverRange(state: EditorState, range: Range): Selection {
+  return TextSelection.between(
+    state.doc.resolve(range.from),
+    state.doc.resolve(range.to),
+  );
 }
 
 /**
@@ -162,54 +205,12 @@ export function selectOneTierOut(
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
 ): boolean {
-  const range = nextRange(state);
-  if (!range || !dispatch) return true;
-  const selection = selectionOver(state, range);
-  if (!selection) return true;
+  const selection = nextSelection(state);
+  if (!selection || !dispatch) return true;
   dispatch(state.tr.setSelection(selection));
   return true;
 }
 
-/**
- * A selection covering a range, or null when one cannot be built without
- * crossing into the title.
- *
- * `TextSelection.between` is the right tool for a range of text, and it is
- * what the ordinary case needs. Its endpoints have to sit in inline content
- * though, and when neither end does — a body whose only block is a divider —
- * it searches outward and comes back INSIDE THE TITLE. Measured: with the
- * body holding one `horizontalRule`, a range of 7..8 turns into a cursor at
- * 6, one position inside a 7-wide title.
- *
- * So the result is checked against the body's own start, and a selection that
- * failed to stay inside it falls back to what `Selection.near` found — a node
- * selection on that block, which is the correct answer for that shape.
- *
- * **Known limit, ProseMirror's rather than ours**: with the body's FIRST
- * block a divider and text after it, `between` starts the range at the text
- * instead, so "the whole body" leaves that divider out. There is no selection
- * type that spans a leading atom plus following text — `AllSelection` exists
- * precisely because `TextSelection` cannot express it, and it covers the
- * title too. Selecting one block short is the safe direction: the tier that
- * matters is the one that must never reach the title.
- * @param state - Editor state to read.
- * @param range - The range to cover.
- * @returns A selection, or null when nothing safe can be built.
- */
-function selectionOver(state: EditorState, range: Range): Selection | null {
-  const bodyStart = state.doc.child(0).nodeSize;
-  const text = TextSelection.between(
-    state.doc.resolve(range.from),
-    state.doc.resolve(range.to),
-  );
-  // A title-side range legitimately starts before `bodyStart`; only a range
-  // that was meant for the body has to be checked against it.
-  if (range.from >= bodyStart && text.from < bodyStart) {
-    const fallback = Selection.near(state.doc.resolve(range.from), 1);
-    return fallback.from >= bodyStart ? fallback : null;
-  }
-  return text;
-}
 
 /**
  * The `Mod-a` binding.
