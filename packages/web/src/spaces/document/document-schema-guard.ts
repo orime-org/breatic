@@ -66,8 +66,8 @@ function markNameOf(key: string): string {
 /**
  * Whether a name is one of the type names in a vocabulary.
  *
- * `Object.hasOwn`, not `in`: the vocabulary is a plain object parsed from YAML,
- * so it carries `Object.prototype`, and `in` answers yes to `toString`,
+ * `Object.hasOwn`, not `in`: the vocabulary is a plain object literal, so it
+ * carries `Object.prototype`, and `in` answers yes to `toString`,
  * `constructor` and the rest. The patch asks the same question of ProseMirror's
  * `schema.nodes`, which is built with `Object.create(null)` and has no
  * prototype — so `in` here means the two sides answer differently about the

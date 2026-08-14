@@ -41,8 +41,10 @@ interface DocumentSchemaOutdatedProps {
  *
  * `publishedAt` is not a variant: it is one sentence that appears when there is
  * a truthful one to say, and is absent otherwise. Nothing is invented to fill
- * the gap. The caller withholds it whenever the number would not mean what the
- * sentence claims — see `use-document-schema-intercept`.
+ * the gap. It is the server vocabulary's own release date, so it says the same
+ * true thing on whichever check tripped; the caller passes it through either
+ * way and withholds it only when meta carries no date at all — see
+ * `use-document-schema-intercept`.
  *
  * ## Why the whole body, rather than a layer over the editor
  *

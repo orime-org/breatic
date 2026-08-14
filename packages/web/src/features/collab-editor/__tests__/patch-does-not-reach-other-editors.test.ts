@@ -75,7 +75,7 @@ describe('共用的协作扩展本身不带兜底类型', () => {
   });
 });
 
-describe('没有兜底类型的编辑器，行为跟打补丁之前一样', () => {
+describe('没有兜底类型的编辑器，补丁只碰到该碰的那半', () => {
   it('遇到不认识的块，照旧把它从共享文档里删掉', () => {
     const freshDoc = new Y.Doc();
     const staleDoc = new Y.Doc();

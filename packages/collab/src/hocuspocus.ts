@@ -275,8 +275,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         // `onLoadDocument` and leaves `afterLoadDocument` bare, so a throw
         // reaches the connection setup, which answers the client
         // "permission-denied" and logs nothing. Every client opens meta first,
-        // so that reads on screen as "you cannot open any project" with no
-        // trace on the server pointing at the config file.
+        // so that reads on screen as "you cannot open any project" with
+        // nothing on the server saying why.
         //
         // Failing to publish means clients read no vocabulary from meta, which
         // already means "do not intercept" — the safe side. So the load

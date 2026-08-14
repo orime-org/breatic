@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * 清单是手写在 `config/document-schema.yaml` 里的，因为 collab 那边建不出
- * ProseMirror schema —— 它没有编辑器，只能读那个文件。这条测试把真实的
- * schema 建出来跟它比。
+ * 清单是手写在 `@breatic/shared` 的 `DOCUMENT_SCHEMA` 常量里的，因为 collab
+ * 那边建不出 ProseMirror schema —— 它没有编辑器，只能拿着这份常量。这条测试
+ * 把真实的 schema 建出来跟它比。
  *
  * 少了这条，「加一个扩展 / 给某个节点加一个属性」的人不会有任何理由去打开
- * 那个 yaml，而清单没跟上时判定照样通过、遮罩永远不出现，没有任何报错说得
+ * 那个常量，而清单没跟上时判定照样通过、面板永远不出现，没有任何报错说得
  * 出哪儿不对（Gate 1 第四轮 direction-1）。
  *
  * 版本号不用管：它是从清单算出来的（`documentSchemaVersion`），改了清单它

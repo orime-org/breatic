@@ -53,13 +53,15 @@ function readPublished(metaDoc: Y.Doc): Record<string, unknown> | undefined {
  *      restarted, so meta still says everything is fine while the content
  *      already disagrees.
  *
- * ## Derived, not stored
+ * ## Derived, not stored across mounts
  *
- * Both conditions are read straight off the two Yjs documents on every render,
- * and re-read whenever either changes. Nothing is kept: switching Space tabs
- * unmounts this and mounting it again recomputes the same answer from the same
- * two documents. A stored flag would have to be kept in step with them, and
- * being out of step is the only way it could be wrong.
+ * Both conditions are read straight off the two Yjs documents once on mount and
+ * again whenever either document changes. The answer is held in component state
+ * so renders in between reuse it, but nothing outlives the mount: switching
+ * Space tabs unmounts this, and mounting it again derives the same answer from
+ * the same two documents. A flag kept anywhere more durable would have to be
+ * held in step with them, and being out of step is the only way it could be
+ * wrong.
  *
  * Missing or malformed published data reads as "no mismatch" (see
  * `documentSchemaDiffers`): not knowing what the server publishes is not the
@@ -86,7 +88,7 @@ export function useDocumentSchemaIntercept({
       DOCUMENT_SCHEMA,
     );
     // The publish time goes through whichever condition fired. It is the server
-    // vocabulary's own release date, written by hand in the config file and
+    // vocabulary's own release date, written by hand on `DOCUMENT_SCHEMA` and
     // republished unchanged, so it says the same true thing either way: this is
     // when what the server runs went out. Gating it on condition one would give
     // the panel two different sets of words depending on which check tripped,

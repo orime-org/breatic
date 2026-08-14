@@ -98,18 +98,10 @@ describe('两个条件都不成立', () => {
 });
 
 describe('条件一：版本号跟 meta 里的不一样', () => {
-  it('服务器那一版更新 → 拦', () => {
-    const { metaDoc, bodyDoc } = pair();
-    publish(metaDoc, 'another-build');
-
-    const { result } = renderHook(() =>
-      useDocumentSchemaIntercept({ metaDoc, bodyDoc }),
-    );
-
-    expect(result.current.intercepted).toBe(true);
-  });
-
-  it('服务器那一版更旧 → 一样拦 —— 问的是一不一样，不是谁新谁旧', () => {
+  it('meta 里那份跟我不一样就拦 —— 摘要只有相等不相等，没有谁新谁旧', () => {
+    // 这里只有一条，不是两条。版本号是两张清单的摘要，两个摘要之间不存在
+    // 「谁更新」这个属性，所以造不出「服务器那一版更旧」这个输入 —— 早先
+    // 那两条用例名各写一个方向，用例体却逐字相同，第二条什么都没测到。
     const { metaDoc, bodyDoc } = pair();
     publish(metaDoc, 'another-build');
 
@@ -122,7 +114,8 @@ describe('条件一：版本号跟 meta 里的不一样', () => {
 
   it('版本号一样时，清单内容不管长什么样都不拦', () => {
     // 判定只看版本号。清单跟着版本号一起发布，它自己不参与比较 ——
-    // 改了扩展就得把配置文件里的版本号加一，有一致性测试盯着那件事。
+    // 而版本号就是这两张清单的摘要，改了清单它自己就变，没有要人记得改的
+    // 数字。
     const { metaDoc, bodyDoc } = pair();
     metaDoc.transact(() => {
       const map = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
@@ -165,7 +158,7 @@ describe('条件一：版本号跟 meta 里的不一样', () => {
 
 describe('条件二：这份文档里有解析不了的内容', () => {
   it('只有条件二成立时，发布时间照样给 —— 它说的是服务器那份什么时候发的', () => {
-    // 那个时间是配置文件里人写的、服务器原样发布出来的，说的是「服务器现在
+    // 那个时间是 `DOCUMENT_SCHEMA` 里人写的、服务器原样发布出来的，说的是「服务器现在
     // 跑的这一份是什么时候出的」。哪个条件触发的都不影响这句话为真，所以不
     // 按条件掐掉它 —— 掐掉会让面板按触发条件变成两套说法。
     const { metaDoc, bodyDoc } = pair();

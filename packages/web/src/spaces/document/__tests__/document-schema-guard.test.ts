@@ -118,7 +118,7 @@ describe('有不认识的东西时', () => {
   });
 
   it('名字在 Object.prototype 上的，照样报不认识', () => {
-    // 清单是从 yaml 解析出来的普通对象，带着 Object.prototype。用 `in`
+    // 清单是个普通对象字面量，带着 Object.prototype。用 `in`
     // 问「认不认识」会让 toString / constructor 这些名字恒为真，而补丁
     // 那边问的是同一个问题、答案相反（prosemirror 的 schema.nodes 是
     // Object.create(null) 建的）—— 两边对同一份文档给出相反的结论。

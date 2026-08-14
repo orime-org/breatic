@@ -24,8 +24,8 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
 +  // whole sentence would go.
 +  //
 +  // There is a THIRD answer, and leaving it out is what made this destructive:
-+  // a parent can accept neither. `title` holds `text*`; `listItem` opens with
-+  // `paragraph`. Neither takes a stand-in node of any kind, so forcing one in
++  // a parent can accept neither. `title` holds `text*`: text and no node of
++  // any kind, so forcing a stand-in into it
 +  // makes the PARENT fail to build, and the parent's failure lands in the
 +  // untouched catch below, which deletes the parent — the title and every
 +  // character in it, gone from the shared document. Answering "no stand-in
@@ -194,8 +194,8 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f6
 +  // whole sentence would go.
 +  //
 +  // There is a THIRD answer, and leaving it out is what made this destructive:
-+  // a parent can accept neither. `title` holds `text*`; `listItem` opens with
-+  // `paragraph`. Neither takes a stand-in node of any kind, so forcing one in
++  // a parent can accept neither. `title` holds `text*`: text and no node of
++  // any kind, so forcing a stand-in into it
 +  // makes the PARENT fail to build, and the parent's failure lands in the
 +  // untouched catch below, which deletes the parent — the title and every
 +  // character in it, gone from the shared document. Answering "no stand-in

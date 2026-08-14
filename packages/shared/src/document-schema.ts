@@ -202,8 +202,8 @@ export const DOCUMENT_SCHEMA_VERSION: string = documentSchemaVersion(DOCUMENT_SC
 /**
  * Read the version out of whatever sits under the key in a meta document.
  *
- * A number there is what the previous generation wrote, when the version was
- * hand-kept in the config file. It reads as nothing rather than as a version:
+ * A number there is what an earlier shape of this wrote, when the version was
+ * a counter kept by hand. It reads as nothing rather than as a version:
  * "unreadable" already means "do not intercept", and the next collab to load
  * this meta overwrites it with the computed one.
  * @param fromMeta - The published entry, or anything at all.
@@ -223,7 +223,7 @@ export function publishedSchemaVersion(fromMeta: unknown): string | null {
  * publishes is not the same as knowing it differs, and a project whose meta
  * predates this key — or a shape we ourselves wrote wrong — is no reason to
  * take the editor away from someone.
- * @param mine - This build's version, from the config compiled into it.
+ * @param mine - This build's version, computed from `DOCUMENT_SCHEMA`.
  * @param fromMeta - Whatever sits under the key in the project's meta document.
  * @returns True only when the server published a usable version and it differs.
  */
