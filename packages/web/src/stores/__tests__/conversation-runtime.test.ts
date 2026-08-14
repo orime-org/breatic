@@ -422,6 +422,12 @@ describe('one press, one line', () => {
     // which telling it is, so the second tears the first down and puts an
     // identical one up, and a screen reader reads it out again.
     expect(told).toHaveLength(1);
+    // And it is the newer of the two answers. Both are ours and they say
+    // different things: the first is about the conversation this press went
+    // looking for, the second about the project the reader has just been
+    // taken off. Quoting the first would send them after a conversation when
+    // the news is that the project is no longer theirs.
+    expect(told[0]).toMatchObject({ kind: 'server', message: '未找到' });
   });
 });
 

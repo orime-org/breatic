@@ -142,15 +142,25 @@ export function useChatSession(projectId: string): ChatSession {
   }, [conversationId, setActiveConversationId]);
 
   /**
-   * How many turns had already failed here when this panel opened.
+   * How many turns had already failed in this conversation when it came up.
    *
    * What a reader needs announced is a failure they are living through, not
    * every failure the conversation ever had — those come back with the
    * history and would be read out again on every open. The conversation
-   * counts them; the panel remembers where the count stood when it arrived.
+   * counts them; this remembers where the count stood when it arrived.
+   *
+   * Kept per conversation and not per mount. The count belongs to the
+   * conversation and starts at zero in a new one, while the conversation on
+   * screen can be replaced without this panel going anywhere — a press into
+   * one another tab deleted opens a replacement. Held against a number
+   * carried over from the conversation before it, the first failure in the
+   * new one reads as old news and is never announced.
    */
-  const failuresAtMount = React.useRef(failures);
-  const justFailed = failures > failuresAtMount.current ? failedReplyId : null;
+  const arrivedAt = React.useRef({ conversationId, failures });
+  if (arrivedAt.current.conversationId !== conversationId) {
+    arrivedAt.current = { conversationId, failures };
+  }
+  const justFailed = failures > arrivedAt.current.failures ? failedReplyId : null;
 
   const send = React.useCallback(
     (draft: string): Promise<void> => conversationRuntime.send(projectId, draft),

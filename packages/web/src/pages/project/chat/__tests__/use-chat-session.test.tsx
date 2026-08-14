@@ -919,3 +919,81 @@ describe('the model thinking out loud', () => {
     await waitFor(() => expect(result.current.messages.at(-1)?.thinking).toBe('let me think'));
   });
 });
+
+describe('a failure the reader is living through', () => {
+  it('is announced even when the conversation changed under the panel', async () => {
+    // "Did one fail while I was watching" is answered by comparing a counter
+    // against where it stood when the panel arrived. The counter belongs to
+    // the conversation, and the conversation can be replaced without the
+    // panel going anywhere -- a press into one another tab deleted opens a
+    // replacement, whose count starts at zero. Held against a number carried
+    // over from the one before, the first failure in the new conversation
+    // reads as old news and is not announced at all.
+    _resetForTests();
+    useConversationRuntime.setState({
+      conversations: {
+        'c-1': {
+          projectId: 'p-1',
+          messages: [
+            { id: 'r-old', role: 'assistant', parts: [], content: 'x', ts: 'now', failed: true },
+          ],
+          turn: null,
+          hasMore: false,
+          oldestLoadedTurn: 1,
+          failures: 1,
+          failedReplyId: 'r-old',
+        },
+      },
+      currentByProject: { 'p-1': 'c-1' },
+      openStatus: { 'p-1': 'ready' },
+    });
+
+    const { result } = render();
+    // The one it arrived with is history, and history is not announced.
+    await waitFor(() => expect(result.current.messages.at(-1)?.id).toBe('r-old'));
+    expect(result.current.messages.at(-1)?.failedJustNow).toBeUndefined();
+
+    // The conversation is replaced under the panel. A fresh one has failed
+    // nothing yet, which is what `adoptConversation` writes.
+    act(() => {
+      useConversationRuntime.setState((s) => ({
+        conversations: {
+          ...s.conversations,
+          'c-2': {
+            projectId: 'p-1',
+            messages: [
+              { id: 'r-new', role: 'assistant', parts: [], content: '', ts: 'now' },
+            ],
+            turn: null,
+            hasMore: false,
+            oldestLoadedTurn: 1,
+            failures: 0,
+            failedReplyId: null,
+          },
+        },
+        currentByProject: { 'p-1': 'c-2' },
+      }));
+    });
+    await waitFor(() => expect(result.current.messages.at(-1)?.id).toBe('r-new'));
+
+    // And then a turn fails in it, with the reader watching.
+    act(() => {
+      useConversationRuntime.setState((s) => ({
+        conversations: {
+          ...s.conversations,
+          'c-2': {
+            ...s.conversations['c-2']!,
+            messages: [
+              { id: 'r-new', role: 'assistant', parts: [], content: '', ts: 'now', failed: true },
+            ],
+            failures: 1,
+            failedReplyId: 'r-new',
+          },
+        },
+      }));
+    });
+
+    await waitFor(() => expect(result.current.messages.at(-1)?.failed).toBe(true));
+    expect(result.current.messages.at(-1)?.failedJustNow).toBe(true);
+  });
+});
