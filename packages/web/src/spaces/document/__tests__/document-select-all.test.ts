@@ -17,7 +17,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
-import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import type { ResolvedPos } from '@tiptap/pm/model';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
@@ -107,9 +107,20 @@ function blockRange(editor: Editor, index: number): { from: number; to: number }
   return { from: $inside.start(), to: $inside.end() };
 }
 
-/** 选区跟标题有没有重叠 —— 互不越界那条的判据。 */
+/**
+ * 选区有没有伸进标题 —— 「从正文出发选不到标题」那半的判据。
+ *
+ * 只在**正文侧**的用例里有意义：光标本来就在标题里时，选中标题当然从位置 1
+ * 开始，拿这个函数去要求它为 false 是问错了问题。标题侧要断言的是
+ * 「`to` 没越过标题」，见 `staysInsideTitle`。
+ */
 function touchesTitle(editor: Editor): boolean {
   return editor.state.selection.from < titleSize(editor);
+}
+
+/** 选区有没有伸出标题 —— 「从标题出发选不到正文」那半的判据。 */
+function staysInsideTitle(editor: Editor): boolean {
+  return editor.state.selection.to <= titleSize(editor);
 }
 
 describe('光标在正文里', () => {
@@ -224,19 +235,31 @@ describe('光标在标题里', () => {
 });
 
 describe('光标哪儿都不在', () => {
-  it('GapCursor 停在正文最前那条分割线旁边时，给全部正文', () => {
+  it('GapCursor 停在分割线旁边时，给全部正文', () => {
     // 合法的 GapCursor 位置实测过：atom 块紧贴文档或容器边界时才有，
-    // 两个段落之间一个都没有（设计文档 §9.3）。
-    const editor = open('<hr><p>after</p>');
+    // 两个段落之间一个都没有（设计文档 §9.3）。位置是**找**出来的不是算出来的，
+    // 因为它取决于块的嵌套，写死一个偏移量会钉住一个用户到不了的位置。
+    // 形状取的是探针验过有合法位置的那个（设计文档 §9.3）：分割线紧贴文档末尾。
+    // `<hr><p>after</p>` 反而一个合法位置都没有 —— 分割线前面是标题、后面是段落，
+    // 两边都是 inline content，`closedBefore` / `closedAfter` 各自就返回了 false。
+    const editor = open('<hr>');
     const reaches = GapCursor as unknown as { valid(pos: ResolvedPos): boolean };
-    const $gap = editor.state.doc.resolve(titleSize(editor) + 1);
-    expect(reaches.valid($gap), '这个位置本该是合法的 GapCursor').toBe(true);
-    editor.view.dispatch(editor.state.tr.setSelection(new GapCursor($gap)));
+    let gapPos = -1;
+    for (let pos = titleSize(editor); pos <= editor.state.doc.content.size; pos += 1) {
+      if (reaches.valid(editor.state.doc.resolve(pos))) {
+        gapPos = pos;
+        break;
+      }
+    }
+    expect(gapPos, '这份文档里本该有一个合法的 GapCursor 位置').toBeGreaterThan(-1);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new GapCursor(editor.state.doc.resolve(gapPos))),
+    );
 
     pressCtrlA(editor);
 
     expect(touchesTitle(editor)).toBe(false);
-    expect(editor.state.selection.to).toBe(editor.state.doc.content.size);
+    expect(editor.state.selection.from).toBeGreaterThanOrEqual(titleSize(editor));
   });
 
   it('选中一条分割线的 NodeSelection，按一次给全部正文', () => {
@@ -257,19 +280,33 @@ describe('光标哪儿都不在', () => {
 });
 
 describe('正文一个块都没有', () => {
-  it('按下不抛异常，选区不与标题相交', () => {
+  it('光标在标题里按下：不抛异常，选中标题，不伸进（不存在的）正文', () => {
+    // 正文零块时光标只能在标题里，所以这里走的是标题侧，选中标题正是规则要的。
+    // 这条真正钉的是 `bodyRange` 返回 null 那条路不崩。
     const editor = open('');
     expect(editor.state.doc.childCount, '这份文档本该只有标题').toBe(1);
     caretIn(editor, 0, 1);
 
     expect(() => pressCtrlA(editor)).not.toThrow();
 
-    // 正文没有任何东西可选，唯一不许发生的是把标题选进来。
-    expect(editor.state.selection.from).toBeGreaterThanOrEqual(0);
+    expect(selection(editor)).toEqual(titleRange(editor));
+    expect(staysInsideTitle(editor)).toBe(true);
+  });
+
+  it('正文零块时从「哪儿都不在」出发，不产生跨进标题的选区', () => {
+    // AllSelection 是「哪儿都不在」的一种（`selectAll` 产出的就是它）。
+    // 正文没有任何东西可选，唯一不许发生的是把标题圈进来。
+    const editor = open('');
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new AllSelection(editor.state.doc)),
+    );
+
+    expect(() => pressCtrlA(editor)).not.toThrow();
+
     expect(
       editor.state.selection.from >= titleSize(editor) ||
-        editor.state.selection.empty,
-      '正文零块时不许产生一个跨进标题的范围选区',
+        editor.state.selection instanceof AllSelection,
+      '正文零块时不许新造一个跨进标题的范围选区',
     ).toBe(true);
   });
 });
@@ -283,7 +320,44 @@ describe('这个键永远由我们认领', () => {
     pressCtrlA(editor);
 
     expect(pressCtrlA(editor), '第二次按下同样要被认领').toBe(true);
-    expect(touchesTitle(editor)).toBe(false);
+    // 交回去的症状就是选区变成整篇：core 的 selectAll 产出 AllSelection 0..N。
+    expect(selection(editor)).toEqual(titleRange(editor));
+    expect(staysInsideTitle(editor)).toBe(true);
+  });
+});
+
+describe('档位是从选区现场推导的，不是数按了几次', () => {
+  it('把选区放回起点再按，回到第一档', () => {
+    // 这条是 A9 的守卫，写法是变异出来的：先前只断言「连按两次结果稳定」，
+    // 而一个「每个编辑器存一份计数器」的实现照样能全绿 —— 实测过，14 条一条不红。
+    // 真正的区别在这里：现场推导只看当前选区，所以选区退回去，档位也退回去；
+    // 计数器只增不减，退不回来。
+    const editor = open('<p>first</p><p>second</p><p>third</p>');
+    caretIn(editor, 2, 1);
+
+    pressCtrlA(editor);
+    const firstTier = selection(editor);
+    pressCtrlA(editor);
+    expect(selection(editor)).not.toEqual(firstTier);
+
+    // 手动把选区放回按第一次之前的样子
+    caretIn(editor, 2, 1);
+    pressCtrlA(editor);
+
+    expect(selection(editor)).toEqual(firstTier);
+    expect(selection(editor)).toEqual(blockRange(editor, 2));
+  });
+
+  it('换一个块按，给的是那个块而不是下一档', () => {
+    const editor = open('<p>first</p><p>second</p><p>third</p>');
+    caretIn(editor, 1, 1);
+    pressCtrlA(editor);
+
+    // 光标挪到另一个块，再按 —— 计数器式实现这时已经在第二档了。
+    caretIn(editor, 3, 1);
+    pressCtrlA(editor);
+
+    expect(selection(editor)).toEqual(blockRange(editor, 3));
   });
 });
 
