@@ -160,6 +160,45 @@ describe('saying something when the chat has not opened', () => {
   });
 });
 
+describe('pressing send twice while the conversation is still being opened', () => {
+  it('runs one turn, not two', async () => {
+    // The first press has to open a conversation before it can send anything,
+    // and that is a whole request. The reader sees nothing move and presses
+    // again -- which is what people do.
+    let openIt: (r: Awaited<ReturnType<typeof chatApi.openChat>>) => void = () => {};
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(
+      new Promise((resolve) => {
+        openIt = resolve;
+      }),
+    );
+
+    void conversationRuntime.send('p-1', 'hello');
+    void conversationRuntime.send('p-1', 'hello');
+    openIt({
+      conversations: [{ id: 'c-1' }],
+      current: { conversation: { id: 'c-1' }, messages: [], hasMore: false },
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+    await vi.waitFor(() => expect(chatApi.streamMessage).toHaveBeenCalled());
+
+    // Two turns would store the same sentence twice, ask the model twice and
+    // charge for both -- and the first of them would be invisible: its turn is
+    // overwritten by the second, so nothing on screen can stop it.
+    expect(chatApi.streamMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('is already waiting from the press, not from the conversation', async () => {
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(new Promise(() => {}));
+
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+
+    // What the panel renders as the waiting indicator reads this. Left until
+    // the conversation exists, the whole opening request is a window with a
+    // live send button on it.
+    expect(conversationRuntime.isSending('p-1')).toBe(true);
+  });
+});
+
 describe('the box the words were typed into', () => {
   it('is emptied by the conversation, not by whoever is rendering it', async () => {
     openChatAnswers();
@@ -201,6 +240,50 @@ describe('the box the words were typed into', () => {
     // The words that went out are gone from the box because they are in the
     // conversation now. The ones typed since were never sent, so they stay.
     expect(useChatStore.getState().composerDraft).toBe(' and one more thing');
+  });
+});
+
+describe('what the box is left holding', () => {
+  it('is left alone when what is in it is not what went out', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    useChatStore.getState().setComposerDraft('hi');
+
+    void conversationRuntime.send('p-1', 'hi');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    // They cleared the box and started something else while waiting. It
+    // happens to contain those two letters, which is not the same as being
+    // the words that went out.
+    useChatStore.getState().setComposerDraft('This is the next one');
+
+    turnStarts(['earlier', 'hi']);
+
+    // Taking out the first thing that looks the same would leave them holding
+    // "Ts is the next one" -- rewritten in front of them, with nothing said
+    // and no way back.
+    expect(useChatStore.getState().composerDraft).toBe('This is the next one');
+  });
+});
+
+describe('a turn the server gives up on', () => {
+  it('says so, even when it fails before the conversation comes back', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    // The server stored nothing and hands back nothing: the failure arrives
+    // before the event that would have put this turn on screen.
+    handlers.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'internal' } });
+    stop();
+
+    // There is no bubble to mark -- the reply has not been made yet -- so a
+    // mark on a message is not a way of saying this. Without a word here the
+    // reader watches the waiting indicator stop and nothing else happen.
+    expect(told).toEqual([{ projectId: 'p-1', conversationId: 'c-1', kind: 'turn' }]);
+    expect(conversation()?.turn).toBeNull();
   });
 });
 

@@ -157,7 +157,7 @@ export class MainAgent {
     const { memoryContext, compressedHistory } = await buildTurnContext(
       userId,
       conversationId,
-      projectId ?? "",
+      projectId,
       turnIndex,
     );
 

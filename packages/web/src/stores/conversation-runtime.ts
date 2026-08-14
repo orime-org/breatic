@@ -131,26 +131,64 @@ interface ConversationRuntimeState {
   currentByProject: Record<string, string>;
   /** How far each project's open call has got. */
   openStatus: Record<string, OpenStatus>;
+  /**
+   * Which projects have a send under way that has no turn yet.
+   *
+   * A turn is the natural home for "something is being sent here", and it is
+   * where this lives for all but the first moment of one. That moment is the
+   * gap: pressing send when there is no conversation opens one first, a whole
+   * request during which the turn does not exist. Waiting begins when the
+   * reader presses, not when a conversation turns up to hold it, so the wait
+   * needs somewhere to be recorded before there is a turn -- and the project
+   * is what there is.
+   */
+  sendingByProject: Record<string, true>;
 }
 
 /**
- * Opens already under way, so a second caller waits rather than asking again.
+ * Requests under way, so a second caller joins rather than asking again.
  *
  * Outside the state because a promise is not something to render; nothing
- * subscribes to it and putting it in state would make every subscriber
+ * subscribes to these and putting them in state would make every subscriber
  * recompute when a request starts and again when it lands.
+ *
+ * Each entry carries who started it. A request left over from a previous visit
+ * finishes long after the visit that made it, and an entry taken off by name
+ * takes off whatever is there by then -- which is the current visit's, leaving
+ * the next caller to ask the server all over again for something already on
+ * its way.
  */
-const opening = new Map<string, Promise<void>>();
+type InFlight = Map<string, { work: Promise<void>; owner: symbol }>;
 
 /**
- * Which request each project's entry above belongs to.
- *
- * A request left over from a previous visit finishes long after the visit that
- * made it, and taking the entry off by name takes off whatever is there by
- * then -- which is the current visit's, leaving the next caller to ask the
- * server all over again for something already on its way.
+ * Do this once per key, and let anyone asking meanwhile wait on the same one.
+ * @param entries - Where requests of this kind are registered.
+ * @param key - What the request is about: a project, or a conversation.
+ * @param start - Makes the request. Must not reject; nothing here can catch.
+ * @returns When it is done, whether it was started here or joined.
  */
-const registered = new Map<string, symbol>();
+function joinOrStart(
+  entries: InFlight,
+  key: string,
+  start: () => Promise<void>,
+): Promise<void> {
+  const joined = entries.get(key);
+  if (joined) return joined.work;
+
+  const owner = Symbol(key);
+  const work = (async (): Promise<void> => {
+    try {
+      await start();
+    } finally {
+      if (entries.get(key)?.owner === owner) entries.delete(key);
+    }
+  })();
+  entries.set(key, { work, owner });
+  return work;
+}
+
+/** Chats being opened, keyed by project. */
+const opening: InFlight = new Map();
 
 /**
  * Earlier pages already being fetched, keyed by the conversation asked about.
@@ -163,7 +201,7 @@ const registered = new Map<string, symbol>();
  * every library that fetches for a view does this: SWR calls it deduping,
  * RTK Query keys it by endpoint and arguments, Apollo has it on by default.
  */
-const loadingEarlier = new Map<string, Promise<void>>();
+const loadingEarlier: InFlight = new Map();
 
 /**
  * The visit each project is currently on.
@@ -205,7 +243,15 @@ export type ChatMishap = {
   projectId: string;
   /** The conversation, or null when there is not one yet to speak of. */
   conversationId: string | null;
-} & ({ kind: 'network' } | { kind: 'server'; message: string });
+} & (
+  | { kind: 'network' }
+  | { kind: 'server'; message: string }
+  // The stream reached us and the server said this turn is over without
+  // saying anything a reader could act on. Not `server`: that one carries the
+  // sentence the server wrote for the reader, and this one has none -- what
+  // comes down the wire here is an English string written for us.
+  | { kind: 'turn' }
+);
 
 const watchers = new Set<(mishap: ChatMishap) => void>();
 
@@ -262,6 +308,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   conversations: {},
   currentByProject: {},
   openStatus: {},
+  sendingByProject: {},
 }));
 
 /**
@@ -327,51 +374,38 @@ function oldestTurnOf(messages: readonly MessageData[]): number | null {
  * @returns When there is a conversation to write to, or the attempt failed.
  */
 async function ensureLoaded(projectId: string): Promise<void> {
-  const status = useStore.getState().openStatus[projectId];
-  if (status === 'ready') return;
+  if (useStore.getState().openStatus[projectId] === 'ready') return;
+  return joinOrStart(opening, projectId, () => openAndAdopt(projectId));
+}
 
-  const inFlight = opening.get(projectId);
-  if (inFlight) return inFlight;
-
+/**
+ * Ask the server for this project's chat and put the answer on screen.
+ *
+ * Never rejects: what went wrong is said to whoever is looking, once, and
+ * nothing else about the screen changes. Written once because both callers owe
+ * the reader the same things -- the same status while it runs, the same words
+ * when it fails, the same check that the visit which asked is still the one on
+ * screen. The second caller is the turn that finds its conversation gone;
+ * having its own copy of this was how one of them came to leave the status
+ * saying `loading` for ever.
+ * @param projectId - The project whose chat to open.
+ */
+async function openAndAdopt(projectId: string): Promise<void> {
   const visit = currentVisit(projectId);
-  // Named before it is built, so the request can tell its own entry from the
-  // one whoever came after it registered under the same name.
-  const mine = Symbol(projectId);
-  const attempt = (async (): Promise<void> => {
-    useStore.setState((s) => ({ openStatus: { ...s.openStatus, [projectId]: 'loading' } }));
-    try {
-      const opened = await chatApi.openChat(projectId, visit.signal);
-      if (visit.signal.aborted) return;
-      adoptConversation(projectId, opened.current);
-    } catch (err) {
-      // What went wrong is the panel's to show, and it shows one thing for
-      // every way this can fail: there is no conversation to write to. The
-      // request itself is where a failure is worth its own words, and it says
-      // them there.
-      //
-      // Except when the visit that asked is over, which includes this refusal
-      // being the abort itself. Saying so then would replace a conversation
-      // the reader is looking at now with the news that a request they walked
-      // away from did not work.
-      if (visit.signal.aborted) return;
-      useStore.setState((s) => ({ openStatus: { ...s.openStatus, [projectId]: 'failed' } }));
-      tell({ projectId, conversationId: null, ...readMishap(err) });
-    } finally {
-      // Mine, not whatever this name points at by now. A request left over
-      // from a previous visit finishes long after the visit that made it, and
-      // taking the entry off by name takes off the one the current visit is
-      // waiting on -- so the next caller finds nothing and asks the server all
-      // over again for something already on its way.
-      if (registered.get(projectId) === mine) {
-        registered.delete(projectId);
-        opening.delete(projectId);
-      }
-    }
-  })();
-
-  registered.set(projectId, mine);
-  opening.set(projectId, attempt);
-  return attempt;
+  useStore.setState((s) => ({ openStatus: { ...s.openStatus, [projectId]: 'loading' } }));
+  try {
+    const opened = await chatApi.openChat(projectId, visit.signal);
+    if (visit.signal.aborted) return;
+    adoptConversation(projectId, opened.current);
+  } catch (err) {
+    // Except when the visit that asked is over, which includes this refusal
+    // being the abort itself. Saying so then would replace a conversation the
+    // reader is looking at now with the news that a request they walked away
+    // from did not work.
+    if (visit.signal.aborted) return;
+    useStore.setState((s) => ({ openStatus: { ...s.openStatus, [projectId]: 'failed' } }));
+    tell({ projectId, conversationId: null, ...readMishap(err) });
+  }
 }
 
 /**
@@ -507,8 +541,8 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
         // would take words nobody asked to have taken, with no message, no
         // undo and nowhere to look for them.
         const box = useChatStore.getState().composerDraft;
-        if (box.includes(c.turn.said)) {
-          useChatStore.getState().setComposerDraft(box.replace(c.turn.said, ''));
+        if (box.startsWith(c.turn.said)) {
+          useChatStore.getState().setComposerDraft(box.slice(c.turn.said.length));
         }
         return {
           ...c,
@@ -545,7 +579,11 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
       finishTurn(conversationId, replyId);
       break;
 
-    case SSE_EVENT_NAMES.ERROR:
+    case SSE_EVENT_NAMES.ERROR: {
+      // Belonging to a turn that is already over, this says nothing about the
+      // one running now -- the same reason the settle-up checks.
+      const failing = useStore.getState().conversations[conversationId];
+      if (failing?.turn?.replyId !== replyId) break;
       // What the server says here is a hardcoded English sentence; the panel
       // shows its own wording, so only the fact matters.
       patchMessage(conversationId, replyId, (m) => ({ ...m, failed: true }));
@@ -554,8 +592,15 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
         failures: c.failures + 1,
         failedReplyId: replyId,
       }));
+      // Said out loud as well, because the mark above has somewhere to land
+      // only once the reply exists -- and a turn can fail before that, while
+      // the server is still storing the message and reading the conversation
+      // back. Then there is no bubble to mark and the marks land on nothing:
+      // the reader would see the waiting stop and nothing else happen.
+      tell({ projectId: failing.projectId, conversationId, kind: 'turn' });
       finishTurn(conversationId, replyId);
       break;
+    }
 
     // The stream saying it is alive. Its arrival is the whole message, and
     // the watchdog that resets on it is set up where the turn is run.
@@ -604,6 +649,9 @@ async function runTurn(
   // in front of the reader. The turn's first event says what is stored, and
   // that is when this turn appears.
   const abort = new AbortController();
+  // From here the turn is what says a send is under way, so the project-level
+  // mark that covered the gap before it existed comes off.
+  stopSayingSending(projectId);
   patchConversation(conversationId, (c) => ({
     ...c,
     turn: { replyId, abort, started: false, said },
@@ -708,7 +756,43 @@ const NOT_FOUND = 404;
  */
 async function send(projectId: string, said: string): Promise<void> {
   if (said.trim().length === 0) return;
+  // One send at a time in a project. The turn covers all of one but its first
+  // moment, and that moment is exactly where two presses land as two turns:
+  // the same sentence stored twice, the model asked twice, both charged for,
+  // and the first turn overwritten by the second so nothing on screen can
+  // stop it.
+  if (isSending(projectId)) return;
+  useStore.setState((s) => ({
+    sendingByProject: { ...s.sendingByProject, [projectId]: true as const },
+  }));
 
+  try {
+    await sendOnce(projectId, said);
+  } finally {
+    // Ordinarily the turn took this over long ago (see `runTurn`); this is
+    // for the send that never got one.
+    stopSayingSending(projectId);
+  }
+}
+
+/**
+ * Take the project's send mark off.
+ * @param projectId - The project it was set for.
+ */
+function stopSayingSending(projectId: string): void {
+  useStore.setState((s) => {
+    if (!s.sendingByProject[projectId]) return s;
+    const { [projectId]: _sending, ...rest } = s.sendingByProject;
+    return { sendingByProject: rest };
+  });
+}
+
+/**
+ * Open a conversation if there is not one, then run the turn in it.
+ * @param projectId - The project whose chat this is.
+ * @param said - What was in the composer, as it stood there.
+ */
+async function sendOnce(projectId: string, said: string): Promise<void> {
   if (useStore.getState().currentByProject[projectId] === undefined) {
     await ensureLoaded(projectId);
   }
@@ -728,23 +812,19 @@ async function send(projectId: string, said: string): Promise<void> {
   // has already been told and says trying again is pointless.
   if (!(ending instanceof StreamRefusedError) || ending.status !== NOT_FOUND) return;
 
-  const visit = currentVisit(projectId);
-  try {
-    const fresh = await chatApi.openChat(projectId, visit.signal);
-    // Left while this was on its way, so there is no screen to put a
-    // conversation on and nobody waiting for the words to go out again.
-    if (visit.signal.aborted) return;
-    adoptConversation(projectId, fresh.current);
+  // Not `ensureLoaded`: by its reckoning this project is open already. What
+  // is needed is a new one, because the one on screen is the one the server
+  // just said it does not have.
+  await openAndAdopt(projectId);
+  const fresh = useStore.getState().currentByProject[projectId];
+  // Opening said why it could not, and the words are still in the box.
+  if (!fresh) return;
 
-    // A plain turn, not a resumed one: the first attempt never put anything on
-    // screen, and adopting the new conversation replaced the list besides.
-    // Nothing of the attempt is left to reuse, so the words go on again with
-    // the turn that is re-sending them.
-    await runTurn(projectId, fresh.current.conversation.id, said);
-  } catch (err) {
-    if (visit.signal.aborted) return;
-    tell({ projectId, conversationId: null, ...readMishap(err) });
-  }
+  // A plain turn, not a resumed one: the first attempt never put anything on
+  // screen, and adopting the new conversation replaced the list besides.
+  // Nothing of the attempt is left to reuse, so the words go on again with the
+  // turn that is re-sending them.
+  await runTurn(projectId, fresh, said);
 }
 
 /**
@@ -761,12 +841,9 @@ async function loadEarlier(conversationId: string): Promise<void> {
   const before = useStore.getState().conversations[conversationId];
   if (!before || !before.hasMore || before.oldestLoadedTurn === null) return;
   const beforeTurn = before.oldestLoadedTurn;
-
-  const inFlight = loadingEarlier.get(conversationId);
-  if (inFlight) return inFlight;
-
   const visit = currentVisit(before.projectId);
-  const attempt = (async (): Promise<void> => {
+
+  return joinOrStart(loadingEarlier, conversationId, async (): Promise<void> => {
     try {
       const earlier = await chatApi.messagesBefore(conversationId, beforeTurn, visit.signal);
       // `beforeTurn` was read from the list this visit is looking at. If the
@@ -778,9 +855,7 @@ async function loadEarlier(conversationId: string): Promise<void> {
       // And the list has to still reach back to where this page was asked
       // from. A turn beginning replaces the whole list with the server's own
       // page, which starts somewhere else entirely; putting this one at its
-      // head leaves everything between them missing with nothing on screen
-      // saying so, and moves the cursor past the gap so no press could ever
-      // ask for it.
+      // head leaves the same gap for the same reason.
       if (useStore.getState().conversations[conversationId]?.oldestLoadedTurn !== beforeTurn) {
         return;
       }
@@ -798,13 +873,8 @@ async function loadEarlier(conversationId: string): Promise<void> {
       // pressing it again is how the reader tries again -- and being told
       // again is what tells them it failed again.
       tell({ projectId: before.projectId, conversationId, ...readMishap(err) });
-    } finally {
-      loadingEarlier.delete(conversationId);
     }
-  })();
-
-  loadingEarlier.set(conversationId, attempt);
-  return attempt;
+  });
 }
 
 /**
@@ -843,10 +913,10 @@ function leaveProject(projectId: string): void {
     }
     const { [projectId]: _current, ...currentByProject } = s.currentByProject;
     const { [projectId]: _status, ...openStatus } = s.openStatus;
-    return { conversations: kept, currentByProject, openStatus };
+    const { [projectId]: _sending, ...sendingByProject } = s.sendingByProject;
+    return { conversations: kept, currentByProject, openStatus, sendingByProject };
   });
   opening.delete(projectId);
-  registered.delete(projectId);
 }
 
 /**
@@ -860,16 +930,37 @@ function leaveProject(projectId: string): void {
  */
 export function _resetForTests(): void {
   opening.clear();
-  registered.clear();
   loadingEarlier.clear();
   visits.clear();
-  useStore.setState({ conversations: {}, currentByProject: {}, openStatus: {} });
+  useStore.setState({
+    conversations: {},
+    currentByProject: {},
+    openStatus: {},
+    sendingByProject: {},
+  });
 }
 
 export const useConversationRuntime = useStore;
 
+/**
+ * Is something already being sent in this project.
+ *
+ * True from the press until the turn it started is over -- the mark below
+ * covers the part before there is a turn, the turn itself covers the rest, and
+ * they hand over in `runTurn`.
+ * @param projectId - The project asked about.
+ * @returns True while a send is under way.
+ */
+function isSending(projectId: string): boolean {
+  const state = useStore.getState();
+  if (state.sendingByProject[projectId] === true) return true;
+  const conversationId = state.currentByProject[projectId];
+  return conversationId ? state.conversations[conversationId]?.turn != null : false;
+}
+
 export const conversationRuntime = {
   ensureLoaded,
+  isSending,
   send,
   stopTurn,
   loadEarlier,

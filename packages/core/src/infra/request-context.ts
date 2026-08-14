@@ -18,8 +18,16 @@ export interface RequestStore {
   userId: string;
   /** Current conversation ID. */
   conversationId: string;
-  /** Associated project ID (may be undefined). */
-  projectId?: string;
+  /**
+   * The project the conversation belongs to.
+   *
+   * Required, because every entrance confirms it before it starts a turn --
+   * chat is refused outright for a project that is not the caller's. Left
+   * optional, the one thing downstream of it has to invent a value for the
+   * case that cannot happen, and what it invented was the empty string: not a
+   * project id, and no longer obviously wrong to anything reading it.
+   */
+  projectId: string;
 }
 
 /** The AsyncLocalStorage instance shared across the application. */
@@ -35,7 +43,7 @@ const storage = new AsyncLocalStorage<RequestStore>();
  * @returns The callback's return value
  * @example
  * ```ts
- * runWithContext({ userId, conversationId, memoryContext, compressedHistory }, async () => {
+ * runWithContext({ userId, conversationId, projectId }, async () => {
  *   const agent = new MainAgent();
  *   yield* agent.chat(message);
  * });

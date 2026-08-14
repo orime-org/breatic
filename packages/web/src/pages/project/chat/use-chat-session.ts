@@ -123,8 +123,12 @@ export function useChatSession(projectId: string): ChatSession {
   );
   const turnPhase = useConversationRuntime((s): TurnPhase => {
     const turn = conversationId ? s.conversations[conversationId]?.turn : null;
-    if (!turn) return 'idle';
-    return turn.started ? 'running' : 'sending';
+    if (turn) return turn.started ? 'running' : 'sending';
+    // No turn yet does not mean nothing is happening: pressing send with no
+    // conversation opens one first, and the reader has been waiting since the
+    // press. Reading only the turn would leave a live send button up for the
+    // whole of that request.
+    return s.sendingByProject[projectId] ? 'sending' : 'idle';
   });
   const hasMore = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.hasMore ?? false) : false,

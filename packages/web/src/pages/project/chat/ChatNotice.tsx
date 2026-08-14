@@ -16,8 +16,8 @@ interface ChatNoticeProps {
  * to the whole window — the canvas on the right has its own concerns and a
  * message about a chat that could not be opened has nothing to do with them.
  * Every failure the panel can report comes through here: the send that never
- * left, the one the server refused, the chat that would not open. There is no
- * second channel and nothing here is temporary.
+ * left, the one the server refused, the turn it gave up on, the chat that
+ * would not open. There is no second channel.
  *
  * Nothing here is a state the chat is in, so nothing here stays: each of
  * these is a thing that happened at a moment the reader was in, and the

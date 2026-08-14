@@ -18,10 +18,12 @@ describe('useChatStore', () => {
     expect(s.activeConversationId).toBeNull();
   });
 
-  it('setComposerDraft + clearComposerDraft cycle', () => {
+  it('holds what is being typed until something takes it out', () => {
+    // Taking it out belongs to the conversation, which is the only thing that
+    // learns the words got somewhere -- see `stores/conversation-runtime`.
     useChatStore.getState().setComposerDraft('hi');
     expect(useChatStore.getState().composerDraft).toBe('hi');
-    useChatStore.getState().clearComposerDraft();
+    useChatStore.getState().reset();
     expect(useChatStore.getState().composerDraft).toBe('');
   });
 });

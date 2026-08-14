@@ -130,6 +130,7 @@ async function runSkillTurn(skillName: string): Promise<string[]> {
     {
       userId: "u1",
       conversationId: "c1",
+      projectId: "p1",
     },
     async () => {
       for await (const e of new MainAgent().handleSkillCommand(skillName, "go")) {
@@ -156,6 +157,7 @@ async function runTurnFull(signal?: AbortSignal): Promise<Emitted[]> {
     {
       userId: "u1",
       conversationId: "c1",
+      projectId: "p1",
     },
     async () => {
       for await (const e of new MainAgent().chat("hi", undefined, signal)) {

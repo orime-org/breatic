@@ -163,6 +163,7 @@ describe("a turn cut short by the client", () => {
       {
         userId: "u1",
         conversationId: "c1",
+        projectId: "p1",
       },
       async () => {
         const agent = new MainAgent();

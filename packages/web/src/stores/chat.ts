@@ -21,7 +21,6 @@ interface ChatState {
   composerDraft: string;
   activeConversationId: string | null;
   setComposerDraft: (draft: string) => void;
-  clearComposerDraft: () => void;
   setActiveConversationId: (id: string | null) => void;
   /** Reset per-project chat session state (draft / active conversation) on project change (#1771). */
   reset: () => void;
@@ -34,10 +33,6 @@ export const useChatStore = create<ChatState>()(
     setComposerDraft: (draft) =>
       set((s) => {
         s.composerDraft = draft;
-      }),
-    clearComposerDraft: () =>
-      set((s) => {
-        s.composerDraft = '';
       }),
     setActiveConversationId: (id) =>
       set((s) => {

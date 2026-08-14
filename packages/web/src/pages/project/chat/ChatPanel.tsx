@@ -122,6 +122,7 @@ export function ChatPanel({
   // without replacing it -- so a memo that depends on `t` and calls it inside
   // would go on showing the sentence in the language it first ran in.
   const networkErrorText = t('chat.error.network');
+  const turnFailedText = t('chat.error.turnFailed');
 
   /**
    * The one line, and it is only ever saying one thing.
@@ -135,8 +136,13 @@ export function ChatPanel({
    */
   const notice = React.useMemo(() => {
     if (mishap === null) return null;
-    return mishap.kind === 'server' ? mishap.message : networkErrorText;
-  }, [mishap, networkErrorText]);
+    // The server wrote this one for the reader, in their own language.
+    if (mishap.kind === 'server') return mishap.message;
+    // It answered, but with nothing a reader could act on -- so this end says
+    // the one thing that is true: the reply is not coming, send it again.
+    if (mishap.kind === 'turn') return turnFailedText;
+    return networkErrorText;
+  }, [mishap, networkErrorText, turnFailedText]);
 
   /** Load a quick-action label into the composer. Stable for the same reason. */
   const quickAction = React.useCallback(

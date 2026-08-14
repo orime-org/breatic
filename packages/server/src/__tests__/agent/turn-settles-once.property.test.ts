@@ -180,6 +180,7 @@ async function settle(
     {
       userId: "u1",
       conversationId: "c1",
+      projectId: "p1",
     },
     async () => {
       for await (const event of new MainAgent().chat("hi")) {
