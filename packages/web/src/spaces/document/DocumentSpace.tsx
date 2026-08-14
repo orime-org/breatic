@@ -81,7 +81,7 @@ export function DocumentSpace({
     if (refused && hasEverSynced) toast.error(t('spaces.document.refusedNotice'));
   }, [refused, hasEverSynced, t]);
   React.useEffect(() => {
-    if (writesRefused && !refused) toast.warning(t('spaces.document.readOnlyNotice'));
+    if (writesRefused && !refused) toast.warning(t('spaces.readOnlyNotice'));
   }, [writesRefused, refused, t]);
 
   // The editor belongs to the document, not to this component: switching Space

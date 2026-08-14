@@ -730,6 +730,113 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(node?.className).not.toContain('draggable');
   });
 
+  // A connection the server degraded to read-only makes the canvas read-only
+  // too, even though the person is still an editor (#88).
+  //
+  // The two layers are separate on purpose: the ROLE says what this person may
+  // do in this project and does not change; the CONNECTION says what this
+  // socket may do right now, and it overrides the role while it is read-only.
+  // A document that is full is exactly that case — an editor arrives, finds
+  // every writable seat taken, and this particular connection cannot write
+  // until a seat frees up.
+  //
+  // Without this the canvas believes it is writable: uploads and generation
+  // both go over HTTP rather than Yjs, so they would succeed — burning storage
+  // and credits — while the node they belong to never reaches the server.
+  it('a connection degraded to read-only makes the canvas read-only, whatever the role says', () => {
+    vi.mocked(useSocket).mockReturnValue({
+      provider: null,
+      synced: true,
+      hasEverSynced: true,
+      status: 'connected',
+      writeAccess: 'denied',
+      authFailedReason: null,
+    });
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    // No `readOnly` prop: this person's role is editor.
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const node = document.querySelector('.react-flow__node');
+    expect(node).not.toBeNull();
+    expect(node?.className).not.toContain('draggable');
+  });
+
+  it('tells the person why the canvas went read-only, and how to get out of it', () => {
+    // Without this the degrade is silent: the canvas simply stops responding
+    // to edits and nothing on screen says why or what to do. The notice is
+    // the same one the document space raises — one state, one message.
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    vi.mocked(useSocket).mockReturnValue({
+      provider: null,
+      synced: true,
+      hasEverSynced: true,
+      status: 'connected',
+      writeAccess: 'denied',
+      authFailedReason: null,
+    });
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+
+  it('says nothing to a viewer, whose read-only is their role and shown elsewhere', () => {
+    // A viewer is read-only everywhere and already knows it; announcing it on
+    // every space they open would be noise. This mirrors the document space,
+    // which excludes the role for the same reason.
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    vi.mocked(useSocket).mockReturnValue({
+      provider: null,
+      synced: true,
+      hasEverSynced: true,
+      status: 'connected',
+      writeAccess: 'denied',
+      authFailedReason: null,
+    });
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('a granted connection leaves an editor writable', () => {
+    // The other direction, so the case above cannot pass by making the canvas
+    // read-only for everybody.
+    vi.mocked(useSocket).mockReturnValue({
+      provider: null,
+      synced: true,
+      hasEverSynced: true,
+      status: 'connected',
+      writeAccess: 'granted',
+      authFailedReason: null,
+    });
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const node = document.querySelector('.react-flow__node');
+    expect(node?.className).toContain('draggable');
+  });
+
   it('editor canvas renders nodes as draggable', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({

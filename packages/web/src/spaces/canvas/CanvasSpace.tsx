@@ -3779,23 +3779,61 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // instead of one per editor that could drift apart.
   const canvasDocName = docName.canvasSpace(props.projectId, props.spaceId);
   const canvasDoc = React.useMemo(() => getDoc(canvasDocName), [canvasDocName]);
-  const { provider: caretProvider } = useSocket({
+  const { provider: caretProvider, writeAccess } = useSocket({
     name: canvasDocName,
     doc: canvasDoc,
   });
+
+  // Two layers decide whether this canvas can be changed, and the connection
+  // overrides the role (#88).
+  //
+  //   role       — what this person may do in this project. Does not change.
+  //   connection — what THIS socket may do right now. The server settles it at
+  //                the handshake and it wins while it says read-only.
+  //
+  // The case that makes the second layer necessary is a full document: an
+  // editor arrives, every writable seat is taken, and this connection is
+  // degraded. Their role is untouched; this connection simply cannot write
+  // until a seat frees up.
+  //
+  // Merging them here rather than at each gate is what makes it complete:
+  // everything downstream already reads one `readOnly`, including the two
+  // gates that would otherwise cost real money — uploading a file and
+  // submitting a generation both travel over HTTP, not Yjs, so they would
+  // succeed while the node they belong to never reaches the server. Bytes
+  // billed to the studio, credits spent, nothing to show for it.
+  const readOnly = (props.readOnly ?? false) || writeAccess === 'denied';
+
+  // Say so, once per transition. A degrade with no message leaves the canvas
+  // quietly refusing edits with nothing on screen to explain it — and the way
+  // out is not guessable, because what frees a seat is somebody else leaving.
+  //
+  // A VIEWER IS NOT TOLD: their read-only is their role, it is shown
+  // everywhere else already, and announcing it on every space they open would
+  // be noise. Same exclusion the document space makes.
+  //
+  // The message names no cause because the wire carries none — the server
+  // sends one "readonly" for a viewer, for a full document and for a ceiling
+  // it could not resolve alike. It states the fact and both ways out instead.
+  const t = useTranslation();
+  const degraded = writeAccess === 'denied' && !(props.readOnly ?? false);
+  React.useEffect(() => {
+    if (degraded) toast.warning(t('spaces.readOnlyNotice'));
+  }, [degraded, t]);
+
   const canvas = React.useMemo<CanvasContextValue>(
     () => ({
       projectId: props.projectId,
       spaceId: props.spaceId,
-      readOnly: props.readOnly ?? false,
+      readOnly,
       caretProvider,
     }),
-    [props.projectId, props.spaceId, props.readOnly, caretProvider],
+    [props.projectId, props.spaceId, readOnly, caretProvider],
   );
   return (
     <CanvasContext.Provider value={canvas}>
       <ReactFlowProvider>
-        <CanvasSpaceInner {...props} />
+        <CanvasSpaceInner {...props} readOnly={readOnly} />
       </ReactFlowProvider>
     </CanvasContext.Provider>
   );
