@@ -204,16 +204,25 @@ function ChatComposerInner({
         </Button>
         {turnPhase === 'sending' ? (
           // The press landed and the server has not spoken yet. Something has
-          // to stand here or the press reads as having done nothing, and it
-          // cannot be a button: there is nothing to press that would help.
-          <span
-            data-testid='chat-composer-sending'
-            role='status'
+          // to stand here or the press reads as having done nothing, and
+          // there is nothing to press that would help -- but it is still a
+          // button, because whoever sent this with the keyboard is standing
+          // on one. Rendering anything else here takes that element out and
+          // puts a different one in, and their focus goes with it. Said with
+          // `aria-disabled` rather than `disabled`: the disabled attribute
+          // takes an element out of the tab order, so the browser blurs it
+          // and the focus is lost the same way.
+          <Button
+            type='button'
+            variant={null}
+            size={null}
+            aria-disabled='true'
             aria-label={t('chat.composer.sending')}
-            className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground'
+            data-testid='chat-composer-sending'
+            className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 cursor-default items-center justify-center rounded-chrome text-muted-foreground'
           >
             <Loader2 className='h-4 w-4 animate-spin' aria-hidden='true' />
-          </span>
+          </Button>
         ) : turnPhase === 'running' ? (
           <Button
             type='button'
@@ -245,6 +254,15 @@ function ChatComposerInner({
             <ArrowUp className='h-4 w-4' />
           </Button>
         )}
+        {/* Here whether or not there is anything to say, so that a reader is
+            told when it fills rather than when it appears: a live region
+            inserted already holding its text is one many screen readers never
+            announce. The wait used to be announced by the indicator itself,
+            which is exactly that -- and the indicator is now a button, whose
+            own role is the one worth having on a focused element. */}
+        <span className='sr-only' role='status'>
+          {turnPhase === 'sending' ? t('chat.composer.sending') : ''}
+        </span>
       </div>
     </div>
   );

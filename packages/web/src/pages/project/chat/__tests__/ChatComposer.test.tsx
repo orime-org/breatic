@@ -54,6 +54,26 @@ describe('ChatComposer', () => {
     expect(screen.getByTestId('chat-composer-sending')).toBeInTheDocument();
   });
 
+  it('keeps the keyboard where it was when the press starts the wait', () => {
+    // Whoever sent this with the keyboard is standing on the send button. If
+    // what stands in its place is a different kind of element, React takes
+    // the old one out and puts a new one in -- and focus falls to the body,
+    // so the next Tab starts over from the top of the page.
+    const props = {
+      draft: 'hello',
+      onChange: vi.fn(),
+      onSubmit: vi.fn(),
+      onAbort: vi.fn(),
+    };
+    const { rerender } = render(<ChatComposer {...props} turnPhase='idle' />);
+    screen.getByTestId('chat-composer-send').focus();
+
+    rerender(<ChatComposer {...props} turnPhase='sending' />);
+
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-sending'));
+  });
+
   it('says what the wait is about, for a reader who cannot see it spin', async () => {
     setup({ draft: 'hello', turnPhase: 'sending' });
     await expectNoA11yViolations(document.body);
