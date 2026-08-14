@@ -63,7 +63,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { MEMBERSHIP_TIERS, type MembershipTier } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
-import { studioMembers, studios, users } from "@core/db/schema.js";
+import { projects, studioMembers, studios, users } from "@core/db/schema.js";
 import { getMembershipLimits, type MembershipLimits } from "@core/config/membership.js";
 
 const KNOWN_TIERS: ReadonlySet<string> = new Set(MEMBERSHIP_TIERS);
@@ -302,4 +302,47 @@ export async function lockLimitsForUser(
   tx: DbTx,
 ): Promise<MembershipLimits> {
   return getMembershipLimits(await readUserTier(userId, tx, true));
+}
+
+/**
+ * How many writable connections one document of this project may hold at once.
+ *
+ * The collab handshake's entry point (#88). It is the only call point that
+ * starts from a project rather than from a studio or an account, because a
+ * document name is all collab has: project → studio → that studio's admin →
+ * tier.
+ *
+ * It reaches the tier through {@link getLimitsForStudio} rather than joining
+ * its own way there. That is not tidiness — those two functions are where the
+ * negotiated enterprise tier will be read from the database, and a call point
+ * that walked its own path would keep answering from the config file after
+ * that lands, with a number that looks perfectly valid. The extra primary-key
+ * lookup is affordable here: a handshake happens once per socket, not per
+ * edit.
+ * @param projectId - The project whose documents the ceiling applies to
+ * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
+ * @returns How many connections to one of its documents may write at once
+ * @throws {Error} if no live project has that id, or the studio that owns it
+ *   has no live admin, or that admin's stored tier is not one this build knows
+ */
+export async function getProjectConcurrentEditorLimit(
+  projectId: string,
+  tx?: DbTx,
+): Promise<number> {
+  const rows = await (tx ?? db)
+    .select({ studioId: projects.studioId })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
+    .limit(1);
+
+  const row = rows[0];
+  if (row === undefined) {
+    // Plain Error, like its siblings above: reaching here means a live
+    // connection is being made to a document of a project that is gone, which
+    // is our data being inconsistent rather than anything the user did. The
+    // id is in the message because collab logs this verbatim and it is the
+    // only thing that says WHICH project.
+    throw new Error(`No live project ${projectId}`);
+  }
+  return (await getLimitsForStudio(row.studioId, tx)).concurrent_editors;
 }

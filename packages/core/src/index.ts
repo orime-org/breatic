@@ -140,6 +140,7 @@ export {
   getStudioMembershipTier,
   getLimitsForUser,
   getLimitsForStudio,
+  getProjectConcurrentEditorLimit,
   lockLimitsForUser,
 } from "@core/auth/membership.repo.js";
 
