@@ -180,19 +180,34 @@ interface ConversationRuntimeState {
 type InFlight<T = void> = Map<string, { work: Promise<T>; owner: symbol }>;
 
 /**
+ * What one request answered, and whether this caller is the one who made it.
+ *
+ * Two callers wanting the same thing share one request, and some of what is
+ * owed for it is owed once rather than once each -- a line about it having
+ * failed, above all. So the answer comes back saying which of the two this
+ * caller is.
+ */
+interface Answered<T> {
+  /** What the request answered. The same value for everyone waiting on it. */
+  answer: T;
+  /** This call is the one that made the request, rather than joining it. */
+  started: boolean;
+}
+
+/**
  * Do this once per key, and let anyone asking meanwhile wait on the same one.
  * @param entries - Where requests of this kind are registered.
  * @param key - What the request is about: a project, or a conversation.
  * @param start - Makes the request. Must not reject; nothing here can catch.
- * @returns What it answered, whether it was started here or joined.
+ * @returns What it answered, and whether this call is the one that asked.
  */
-function joinOrStart<T>(
+async function joinOrStart<T>(
   entries: InFlight<T>,
   key: string,
   start: () => Promise<T>,
-): Promise<T> {
+): Promise<Answered<T>> {
   const joined = entries.get(key);
-  if (joined) return joined.work;
+  if (joined) return { answer: await joined.work, started: false };
 
   const owner = Symbol(key);
   const work = (async (): Promise<T> => {
@@ -203,7 +218,7 @@ function joinOrStart<T>(
     }
   })();
   entries.set(key, { work, owner });
-  return work;
+  return { answer: await work, started: true };
 }
 
 /**
@@ -441,11 +456,20 @@ function oldestTurnOf(messages: readonly MessageData[]): number | null {
  */
 async function ensureLoaded(projectId: string): Promise<void> {
   if (useStore.getState().openStatus[projectId] === 'ready') return;
-  const failure = await joinOrStart(opening, projectId, () => openAndAdopt(projectId));
+  const { answer: failure, started } = await joinOrStart(opening, projectId, () =>
+    openAndAdopt(projectId),
+  );
   // Said here rather than where it happened, because whether it is worth
   // saying depends on what the caller was going to do about it. This caller
   // was going to show the chat, and now there is none to show.
-  if (failure) tell({ projectId, conversationId: null, ...readMishap(failure.failed) });
+  //
+  // Once per failed request, not once per caller: a press made while the
+  // panel's own request is still out joins that request rather than making a
+  // second one, and one request that failed is one line owed. The caller that
+  // asked is the one that answers for it.
+  if (failure && started) {
+    tell({ projectId, conversationId: null, ...readMishap(failure.failed) });
+  }
 }
 
 /**
@@ -985,7 +1009,7 @@ async function sendOnce(projectId: string, said: string): Promise<void> {
   // Not `ensureLoaded`: by its reckoning this project is open already. What
   // is needed is a new one, because the one on screen is the one the server
   // just said it does not have.
-  const reopen = await whileOpening(projectId, () =>
+  const { answer: reopen } = await whileOpening(projectId, () =>
     joinOrStart(opening, projectId, () => openAndAdopt(projectId)),
   );
   const fresh = useStore.getState().currentByProject[projectId];
@@ -1036,7 +1060,7 @@ async function loadEarlier(conversationId: string): Promise<void> {
   // after the list has moved on asks from a different cursor, and joining the
   // one still on its way would be waiting on a page that is going to be
   // dropped -- the reader would have pressed a button and had nothing happen.
-  return joinOrStart(loadingEarlier, `${conversationId}:${beforeTurn}`, async (): Promise<void> => {
+  await joinOrStart(loadingEarlier, `${conversationId}:${beforeTurn}`, async (): Promise<void> => {
     try {
       const earlier = await chatApi.messagesBefore(conversationId, beforeTurn, visit.signal);
       // `beforeTurn` was read from the list this visit is looking at. If the

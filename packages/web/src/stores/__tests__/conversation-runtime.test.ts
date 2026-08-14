@@ -352,6 +352,31 @@ describe('one press, one line', () => {
     expect(told).toHaveLength(1);
   });
 
+  it('says it once per failed request, however many callers were waiting on it', async () => {
+    // The panel asks for the chat when it mounts. The reader types and
+    // presses send before that lands, and the send asks for the same thing --
+    // which joins the request already out rather than making a second one.
+    // One request fails; one line is owed.
+    let refuse: (e: unknown) => void = () => {};
+    vi.mocked(chatApi.openChat).mockReturnValueOnce(
+      new Promise((_res, rej) => {
+        refuse = rej;
+      }),
+    );
+    const mounting = conversationRuntime.ensureLoaded('p-1');
+
+    const told: ChatMishap[] = [];
+    const stop = watchChatMishaps((m) => told.push(m));
+    const sending = conversationRuntime.send('p-1', 'hello');
+    refuse(new Error('offline'));
+    await mounting;
+    await sending;
+    stop();
+
+    expect(chatApi.openChat).toHaveBeenCalledTimes(1);
+    expect(told).toHaveLength(1);
+  });
+
   it('says nothing to a visit the reader has already left', async () => {
     // Opening the replacement is a whole request, and the reader can walk out
     // of the project during it. What comes back then is news about a
