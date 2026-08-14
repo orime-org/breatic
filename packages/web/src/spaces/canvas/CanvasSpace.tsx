@@ -687,6 +687,16 @@ function CanvasSpaceInner({
     (result: { crop: CropRect; sourceSrc: string }): boolean => {
       const session = useCanvasStore.getState().pickSession;
       if (session?.purpose !== 'focus') return false;
+      // Connection gate (#88), asked after the session check so a stray
+      // confirm from another kind of pick stays a silent no-op rather than
+      // raising a notice nobody asked for. This path does not go through
+      // fillUpload — it exports the crop and uploads it itself — so it needs
+      // its own: a read-only connection may not put a new object in storage
+      // and bill the studio for it.
+      if (readOnly) {
+        warnNodeGate(t('spaces.readOnlyNotice'));
+        return false;
+      }
       const panelNodeId = session.nodeId;
       const graph = useCanvasGraphStore.getState();
       const source = graph.flowNodes.find((n) => n.id === focusCropTargetId);
@@ -859,7 +869,7 @@ function CanvasSpaceInner({
       );
       return true;
     },
-    [focusCropTargetId, projectId, spaceId, t],
+    [focusCropTargetId, projectId, spaceId, readOnly, t],
   );
   // Pick-end focus catch-all (adversarial round-2, a11y): the Exit hand-off
   // only works when the trigger is enabled + mounted. When it is disabled (a
@@ -2856,6 +2866,18 @@ function CanvasSpaceInner({
       // window. Re-read fresh Yjs here — the single fill choke point for both
       // the picker-fill and the retry paths — so a node frozen since the picker
       // opened is never written. Mirrors the generate submit gate.
+      //
+      // The connection can go read-only inside that same window (#88), and one
+      // fill path — resetNodeToEmptyImage, which rasterises and lands here —
+      // has no earlier connection gate at all. So it is asked FIRST, ahead of
+      // the node gate: read-only means the server's data cannot change, and a
+      // fill presigns, PUTs an object the studio is billed for, and registers
+      // it — all of which happen over HTTP and would succeed while this
+      // socket's Yjs writes are dropped.
+      if (readOnly) {
+        warnNodeGate(t('spaces.readOnlyNotice'));
+        return;
+      }
       const gateBlock = evaluateNodeGate(
         {
           locked: isNodeLocked(projectId, spaceId, nodeId),
@@ -2944,6 +2966,7 @@ function CanvasSpaceInner({
       projectId,
       spaceId,
       userId,
+      readOnly,
       t,
       failUploadNode,
       reportUploadedAsset,
@@ -3820,9 +3843,12 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // Merging them here rather than at each gate is what makes it complete:
   // everything downstream already reads one `readOnly`, including the two
   // gates that would otherwise cost real money — uploading a file and
-  // submitting a generation both travel over HTTP, not Yjs, so they would
-  // succeed while the node they belong to never reaches the server. Bytes
-  // billed to the studio, credits spent, nothing to show for it.
+  // submitting a generation both travel over HTTP rather than Yjs, so they
+  // go through however read-only this socket is, billing the studio for
+  // stored bytes and spent credits. And the result is not lost either, which
+  // is the point: collab writes a generated node into the document itself,
+  // so refusing here is what keeps a read-only connection from changing the
+  // server's data by proxy.
   const readOnly = (props.readOnly ?? false) || writeAccess === 'denied';
 
   // Say so, once per transition. A degrade with no message leaves the canvas

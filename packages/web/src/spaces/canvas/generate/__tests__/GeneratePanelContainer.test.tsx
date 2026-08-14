@@ -437,9 +437,10 @@ describe('GeneratePanelContainer — body subscription set', () => {
 // is refused with a warning instead of queueing a task. It has to live there
 // rather than in the button's disabled state, for the same reason the node
 // gate does — someone who clicks and gets nothing learns nothing. And what is
-// at stake is not cosmetic: this request travels over HTTP, not Yjs, so the
-// task queues and the studio is billed while the connection that would carry
-// the result cannot write.
+// at stake is not cosmetic: this request travels over HTTP rather than Yjs, so
+// it goes through however read-only the socket is. The studio is billed, and
+// the result node is written into the document by collab itself, so a
+// read-only connection ends up changing the server's data by proxy.
 //
 // Every other case in this file mounts an EMPTY catalog, which leaves Execute
 // disabled — a click there never reaches `onExecute`, so asserting on the gate

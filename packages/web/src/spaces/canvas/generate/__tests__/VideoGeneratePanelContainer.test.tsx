@@ -174,6 +174,8 @@ interface BoardOverrides {
   >;
   /** Edges the container derives the reference rail from. */
   edges?: Parameters<typeof VideoGeneratePanelContainer>[0]['edges'];
+  /** Whether this connection may only look — the role's, or the seat cap's. */
+  readOnly?: boolean;
 }
 
 /**
@@ -195,7 +197,7 @@ function mountContainer(
   const canvas: CanvasContextValue = {
     projectId: 'p',
     spaceId: 's',
-    readOnly: false,
+    readOnly: board.readOnly ?? false,
     caretProvider: null,
   };
   return render(
@@ -483,11 +485,11 @@ describe('VideoGeneratePanelContainer', () => {
      * for the submit arrow to become live.
      * @returns The submit button.
      */
-    async function openReadyPanel(): Promise<HTMLElement> {
+    async function openReadyPanel(readOnly = false): Promise<HTMLElement> {
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
       seedVideoNode();
       typePrompt('a drone shot over a canyon at dawn');
-      mountContainer('video');
+      mountContainer('video', undefined, { readOnly });
       act(() => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
@@ -549,6 +551,19 @@ describe('VideoGeneratePanelContainer', () => {
       const payload = create.mock.calls[0]![0];
       expect(payload.model).toBe('veo-3.1-lite');
       expect(payload.params.duration).toBe(4);
+    });
+
+    // The submit-time connection gate (#88). A connection may only look — the
+    // viewer role, or the document already holding as many writers as the
+    // tier allows — and read-only means the server's data cannot change.
+    // Submitting a generation changes it twice over: collab writes the result
+    // node into the document server-side, and the studio is billed credits.
+    it('refuses to queue a video task on a read-only connection', async () => {
+      const create = vi.spyOn(canvasApi, 'createTask');
+      const execute = await openReadyPanel(true);
+      fireEvent.click(execute);
+      expect(create).not.toHaveBeenCalled();
+      expect(vi.mocked(toast.warning)).toHaveBeenCalledTimes(1);
     });
 
     it('closes the panel once the task is accepted', async () => {

@@ -129,11 +129,16 @@ describe('DocumentSpace', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
   });
 
-  it('says so when the server grants only read-only, without enforcing it', async () => {
-    // The server authenticates a connection read-only for a viewer, for a
-    // member over the document's connection cap, and for a refused document
-    // alike — the wire carries no cause. Whatever the reason, the client says
-    // what it knows and leaves the editor alone.
+  it('stops taking typing when the server degrades the connection to read-only', async () => {
+    // Changed 2026-08-14 (user, #88): this used to say so and leave the editor
+    // alone. Read-only means the server's data cannot change, and the canvas
+    // enforces exactly that — two Spaces giving opposite answers to one server
+    // signal is a difference that drifts.
+    //
+    // The refusal case above is NOT this case and keeps its 2026-08-02
+    // behaviour: a refused document stays editable so its content can still be
+    // copied out. Told apart by `status === 'authFailed'`, which a degrade
+    // never sets.
     socketState.writeAccess = 'denied';
     render(<DocumentSpace projectId='p1' spaceId='doc-capped' />);
     await screen.findByTestId('document-toolbar');
@@ -142,7 +147,7 @@ describe('DocumentSpace', () => {
     await waitFor(() =>
       expect(
         document.querySelector('.ProseMirror')?.getAttribute('contenteditable'),
-      ).toBe('true'),
+      ).toBe('false'),
     );
   });
 

@@ -730,6 +730,45 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(node?.className).not.toContain('draggable');
   });
 
+  // The empty-image reset is a fill path that carries no connection gate of
+  // its own: it rasterises a blank PNG and hands it to `fillUpload`, which is
+  // where every fill lands (the picker's, the retry's and this one's). The
+  // gate therefore lives in `fillUpload`, and this drives the one path that
+  // reaches it with nothing in front.
+  //
+  // Presigning is the assertion point because it is the first thing that
+  // leaves the browser: it PUTs an object the studio is billed for, over
+  // HTTP, which succeeds however read-only this socket's Yjs writes are.
+  it('a read-only connection cannot upload through the empty-image reset', async () => {
+    const blankSpy = vi
+      .spyOn(blankPng, 'generateBlankPng')
+      .mockResolvedValue(new File(['x'], 'blank.png', { type: 'image/png' }));
+    const cfgSpy = vi.spyOn(assetsApi, 'fetchUploadConfig');
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+    act(() => {
+      useCanvasStore.setState({ panelHostId: 'n1', panelKind: 'resetEmpty' });
+    });
+    fireEvent.click(await screen.findByTestId('empty-image-execute'));
+    await waitFor(() => expect(warnSpy).toHaveBeenCalled());
+    expect(cfgSpy).not.toHaveBeenCalled();
+    blankSpy.mockRestore();
+    cfgSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
   // A connection the server degraded to read-only makes the canvas read-only
   // too, even though the person is still an editor (#88).
   //
@@ -741,8 +780,10 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // until a seat frees up.
   //
   // Without this the canvas believes it is writable: uploads and generation
-  // both go over HTTP rather than Yjs, so they would succeed — burning storage
-  // and credits — while the node they belong to never reaches the server.
+  // both go over HTTP rather than Yjs, so they go through however read-only
+  // this socket is — burning storage and credits — and collab writes the
+  // generated node into the document itself, so the read-only connection ends
+  // up changing the server's data by proxy.
   it('a connection degraded to read-only makes the canvas read-only, whatever the role says', () => {
     vi.mocked(useSocket).mockReturnValue({
       provider: null,

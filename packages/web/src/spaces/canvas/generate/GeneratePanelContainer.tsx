@@ -544,9 +544,14 @@ function GeneratePanelBody({
     // nothing learns nothing. And it is read HERE, at submit, not captured
     // when the panel opened — which is the whole point.
     //
-    // What is at stake is not cosmetic. This request travels over HTTP, not
-    // Yjs: the task queues and the studio is billed, while the connection
-    // that would carry the resulting node cannot write.
+    // What is at stake is not cosmetic. Read-only means the server's data
+    // cannot change, and a generation changes it twice over: the studio is
+    // billed credits, and the result node is written into the document by
+    // COLLAB ITSELF — `services/task-listener.ts` opens its own connection to
+    // apply it — so the node lands no matter how read-only this socket is.
+    // The earlier version of this comment had that backwards, claiming the
+    // node could never reach the server; the reason to refuse is the opposite
+    // of what it said.
     if (readOnly) {
       warnNodeGate(t('spaces.readOnlyNotice'));
       return;

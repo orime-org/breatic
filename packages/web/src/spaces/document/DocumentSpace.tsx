@@ -70,6 +70,12 @@ export function DocumentSpace({
   // A viewer is not told: their read-only is their role, shown everywhere else.
   const refused = status === 'authFailed';
   const writesRefused = writeAccess === 'denied' && !readOnly;
+  // A DEGRADE, told apart from a refusal: `writeAccess` is 'denied' for both,
+  // so the only thing that separates "the document is full" from "the server
+  // refused this document outright" is that a refusal sets `authFailed`.
+  // The two get different answers below — the notice, and whether the editor
+  // still takes typing.
+  const degraded = writesRefused && !refused;
 
   // The one case where nothing can be shown: refused before any content ever
   // arrived, so there is no document to display. That is not "disabled", it is
@@ -81,8 +87,8 @@ export function DocumentSpace({
     if (refused && hasEverSynced) toast.error(t('spaces.document.refusedNotice'));
   }, [refused, hasEverSynced, t]);
   React.useEffect(() => {
-    if (writesRefused && !refused) toast.warning(t('spaces.readOnlyNotice'));
-  }, [writesRefused, refused, t]);
+    if (degraded) toast.warning(t('spaces.readOnlyNotice'));
+  }, [degraded, t]);
 
   // The editor belongs to the document, not to this component: switching Space
   // tabs remounts this body, and what the Y.Doc does not hold — undo stack,
@@ -91,9 +97,18 @@ export function DocumentSpace({
     doc,
     name,
     caretProvider: provider,
-    // Only the ROLE decides this. A refused or read-only connection is reported
-    // to the user, not enforced against them — see above.
-    editable: !readOnly,
+    // Two of the three states stop typing, and the third deliberately does
+    // not. The ROLE (a viewer) stops it, as it always has. A connection the
+    // server DEGRADED to read-only stops it too since 2026-08-14 (#88): a
+    // degrade means this socket may not change the server's data, the canvas
+    // enforces exactly that, and one server signal answered two opposite ways
+    // in two Spaces is a difference that drifts.
+    //
+    // A REFUSED document still takes typing — decision 2026-08-02, unchanged.
+    // A document that goes dead tells the person only that something broke and
+    // takes away content they may want to copy out; one that still accepts
+    // typing while saying the server refused it tells them where the fault is.
+    editable: !readOnly && !degraded,
   });
   // Nothing is offered until the document's real content is in. Editing before
   // that is not a lesser version of editing this document — it is editing a
