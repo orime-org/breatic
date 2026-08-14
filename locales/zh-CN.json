@@ -33,14 +33,15 @@
     },
     "studio": {
       "slug_taken": "该 Slug 已被使用，请换一个。",
-      "team_limit_reached": "你已达到 50 个团队 Studios 的上限。",
+      "team_limit_reached": "{limit, plural, =0 {你当前的会员等级不支持创建团队 Studio，升级后即可创建。} other {你当前的会员等级最多可创建 # 个团队 Studio，升级可创建更多。}}",
       "email_not_registered": "该邮箱未注册。",
       "already_member": "该用户已是成员。",
       "already_invited": "该用户已有一个待确认的邀请。",
       "cannot_modify_personal": "个人 Studio 不能管理成员。",
       "remove_last_admin": "移除前请先转让 Admin。",
       "cannot_change_admin_role": "Admin 角色只能通过转让变更。",
-      "member_limit_reached": "该 Studio 已达到成员数上限。",
+      "member_limit_reached": "{limit, plural, =0 {这个 Studio 的会员等级不支持添加成员，升级后即可添加。} other {这个 Studio 的会员等级最多可有 # 位成员，升级可添加更多。}}",
+      "member_limit_reached_for_invitee": "这个 Studio 的成员名额已满，请联系它的 Admin 腾出名额。",
       "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
       "avatar_unsupported_type": "这个文件无法作为图片读取，换一张试试。"
     },
@@ -48,7 +49,9 @@
       "email_not_registered": "该邮箱未注册。",
       "already_member": "该用户已有访问权限。",
       "already_invited": "该用户已有一个待确认的邀请。",
-      "collaborator_limit_reached": "该 Project 已达到协作者数上限。",
+      "limit_reached": "{limit, plural, =0 {这个 Studio 的会员等级不支持创建 Project，升级后即可创建。} other {这个 Studio 的会员等级最多可创建 # 个 Project，升级可创建更多。}}",
+      "collaborator_limit_reached": "{limit, plural, =0 {这个 Project 不支持添加协作者，升级后即可添加。} other {这个 Project 最多可有 # 位协作者，升级可添加更多。}}",
+      "collaborator_limit_reached_for_invitee": "这个 Project 的协作者名额已满，请联系它的 Owner 腾出名额。",
       "only_viewer_can_request_upgrade": "只有 Viewer 可以申请角色升级",
       "no_active_owner": "这个 Project 没有在任的 Owner",
       "not_found": "找不到这个 Project"
@@ -109,9 +112,9 @@
       "hintNodes": "试试 @ 节点提问",
       "hintDirect": "或直接在下方输入对话 ↓",
       "quick": {
-        "image": "生成一张赛博朋克风格图",
-        "music": "配一段 lo-fi 背景音乐",
-        "writing": "帮我写一段产品描述"
+        "findReference": "帮我找赛博朋克风格的参考图",
+        "writePrompt": "帮我写一个生成插画的提示词",
+        "refinePrompt": "帮我把这段提示词改得更具体"
       }
     },
     "history": {
@@ -128,6 +131,17 @@
       "weeksAgo": "{count, plural, other {# 周前}}",
       "monthsAgo": "{count, plural, other {# 月前}}",
       "isoDate": "{date}"
+    },
+    "error": {
+      "turnFailed": "这条回复没能完成，可以再发一次。",
+      "notSent": "没能送出去，检查一下网络。",
+      "openFailed": "这个对话没能打开，刷新页面可以再试一次。"
+    },
+    "message": {
+      "interrupted": "已停止"
+    },
+    "tool": {
+      "unfinished": "未跑完就停止了"
     }
   },
   "canvas": {
@@ -191,6 +205,10 @@
       "referenceTip": "从画布选图作为参考",
       "emptyImageReference": "尚未生成或上传",
       "emptyTextReference": "暂无内容",
+      "refuseInsertModeOff": "这一档不使用参考素材",
+      "refuseRemoveModeOff": "参考在各档之间共用 — 切到使用参考的档才能删掉它，或者在画布上删掉它那条连线",
+      "refuseRemoveModeOffCrop": "参考在各档之间共用 — 切到使用参考的档才能删掉这个裁剪",
+      "refuseInsertTypeUnused": "{kind, select, audio {参考只收图片，不收音频} video {参考只收图片，不收视频} other {参考只收图片，不收这类素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用参考",
       "mentionEmpty": "还没有可引用的图 — 先从一张图连线过来",
@@ -200,6 +218,7 @@
       "selectEndFrameFromCanvas": "在画布上选一张图片作为尾帧",
       "selectCharacterImageFromCanvas": "在画布上选一张图片作为角色",
       "selectDrivingVideoFromCanvas": "在画布上选一段视频来驱动动作",
+      "selectDrivingAudioFromCanvas": "在画布上选一段音频，口型跟着它动",
       "removeStyle": "移除风格参考",
       "returnToNode": "返回节点",
       "exitSelect": "退出",
@@ -256,13 +275,17 @@
       "removeEndFrame": "移除尾帧",
       "errorNoEndFrame": "先挑一张尾帧",
       "characterImage": "角色图",
-      "characterImageTip": "挑一张要让它动起来的图",
+      "characterImageTip": "挑一张人物图",
       "removeCharacterImage": "移除角色图",
       "errorNoCharacterImage": "先挑一张角色图",
       "drivingVideo": "驱动视频",
+      "drivingAudio": "驱动音频",
       "drivingVideoTip": "挑一段视频，它的动作会被套到角色上",
+      "drivingAudioTip": "挑一段音频，口型会跟着它动",
       "removeDrivingVideo": "移除驱动视频",
-      "errorNoDrivingVideo": "先挑一段驱动视频"
+      "removeDrivingAudio": "移除驱动音频",
+      "errorNoDrivingVideo": "先挑一段驱动视频",
+      "errorNoDrivingAudio": "先挑一段驱动音频"
     },
     "nodeMenu": {
       "generate": "生成",

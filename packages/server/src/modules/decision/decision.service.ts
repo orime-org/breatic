@@ -213,7 +213,7 @@ async function readDisplayName(userId: string): Promise<string> {
  * merely looked at the project before answering would otherwise have their
  * pending EDITOR invite ruled moot: they never got what was offered, they
  * cannot answer, and re-inviting is refused as already-a-member. Accepting
- * upserts the row (`projectInvite.service.ts:251`), so a lower-ranked member
+ * upserts the row (`projectInvite.confirmInvite`), so a lower-ranked member
  * answering yes is exactly the upgrade the invite was for.
  * @param container - Which studio or project.
  * @param userId - The recipient.

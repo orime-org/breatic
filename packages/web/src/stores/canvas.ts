@@ -48,16 +48,23 @@ export type HistoryCommand = 'undo' | 'redo';
  *     frame mode ends. Independent of the first frame in every way — either
  *     one can be picked or replaced at any time, and only execute asks for
  *     both (user 2026-08-10).
- *   - `characterImage` — the same, into `characterImageUrl` (#1918): the
- *     figure image animation drives. Its own slot rather than the first
- *     frame's, though both travel as `image`, because a pick survives a mode
- *     switch and these two mean different things.
+ *   - `characterImage` — the same, into `characterImageUrl` (#1918): one
+ *     picture of a person, for both modes that animate one — the figure
+ *     image animation drives, and the portrait the talking head speaks with
+ *     (#1935). Its own slot rather than the first frame's, though both travel
+ *     as `image`, because a pick survives a mode switch and these two mean
+ *     different things.
  *   - `drivingVideo` — the same, into `drivingVideo` (#1918), but from a
  *     VIDEO node: the performance whose motion is transferred onto the
  *     character. The first SLOT pick that takes something other than an image
  *     (`reference` has always taken any node the edge rules allow), so
  *     it copies the node's poster alongside the asset — the toolbar shows a
  *     pick with an `<img>` and a video URL would paint nothing.
+ *   - `drivingAudio` — the same, into `drivingAudio` (#1935), but from an
+ *     AUDIO node: the track the talking head's lips follow. Stored in the
+ *     same one-field shape as `drivingVideo` for the same reason, though an
+ *     audio node has no poster to copy, so the toolbar keeps showing the
+ *     slot's icon.
  */
 export type PickPurpose =
   | 'reference'
@@ -66,7 +73,8 @@ export type PickPurpose =
   | 'firstFrame'
   | 'endFrame'
   | 'characterImage'
-  | 'drivingVideo';
+  | 'drivingVideo'
+  | 'drivingAudio';
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a
@@ -215,6 +223,8 @@ interface CanvasState {
   startCharacterImagePick: (nodeId: string) => void;
   /** Enter the driving-video pick for a video node (#1918). */
   startDrivingVideoPick: (nodeId: string) => void;
+  /** Enter the driving-audio pick for a video node (#1935). */
+  startDrivingAudioPick: (nodeId: string) => void;
   /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
   startFocusPick: (nodeId: string) => void;
   /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
@@ -422,6 +432,10 @@ export const useCanvasStore = create<CanvasState>()(
     startDrivingVideoPick: (nodeId) =>
       set((s) => {
         s.pickSession = { nodeId, purpose: 'drivingVideo' };
+      }),
+    startDrivingAudioPick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'drivingAudio' };
       }),
     startFocusPick: (nodeId) =>
       set((s) => {

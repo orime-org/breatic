@@ -39,7 +39,7 @@ export interface VideoModeOption extends ModeOption {
   takesReferences: boolean;
 }
 
-/** The video modes offered so far (#1896 slices 1 to 5). */
+/** The video modes offered so far (#1896 slices 1 to 6). */
 export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
   {
     value: 't2v',
@@ -78,6 +78,17 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     slots: [],
     takesReferences: true,
   },
+  {
+    value: 'talking_head',
+    label: 'Talking Head',
+    testId: 'generate-video-mode-talking-head',
+    // The character image is the same slot image animation collects: both
+    // modes want one picture of a person, and a slot shared across modes is
+    // how the first frame already works. The driving audio is the first slot
+    // in this panel that takes an audio node.
+    slots: ['characterImage', 'drivingAudio'],
+    takesReferences: false,
+  },
 ];
 
 /** No slots — shared so every "this mode collects nothing" answer is one array. */
@@ -102,8 +113,12 @@ export function slotsForMode(mode: string): readonly VideoSlot[] {
  * One statement, four readers: the payload puts the picked URLs in `images`
  * only for a mode that says yes, the view model only collects them for such a
  * mode, the execute gate checks how many were picked only for that mode, and
- * both places that SHOW references — the rail's image rows, and the prompt
- * editor's chips plus its `@` picker — dim for every mode that says no. Deriving it from the mode list rather than from a model's declared
+ * the places that SHOW references react to it — the rail's reference material
+ * rows and the prompt editor's chips dim for every mode that says no, while
+ * the `@` picker drops those rows from the list altogether rather than
+ * greying them (user 2026-08-13). (A text row is prompt material: it neither
+ * dims nor drops, #1945.)
+ * Deriving it from the mode list rather than from a model's declared
  * params is what keeps the four slot-collecting modes untouched — they take
  * their sources through controls, whatever their model happens to declare.
  * @param mode - The active mode.

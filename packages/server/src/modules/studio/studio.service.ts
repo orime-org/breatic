@@ -24,6 +24,7 @@ import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { db } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
+import { lockLimitsForUser } from "@breatic/core";
 import { studioMembersRepo, studioAuthService } from "@breatic/domain";
 import {
   t,
@@ -73,20 +74,29 @@ export async function createPersonalStudio(
   }
 }
 
-/** Per-user cap on active team studios (user decision B, 2026-06-09). */
-const TEAM_STUDIO_LIMIT = 50;
+
 
 /**
  * Create a team studio with the creator as its sole admin, atomically.
  *
- * Unlike a personal studio, a user may own up to `TEAM_STUDIO_LIMIT` active
- * team studios. The studio row + the creator's admin `studio_members` row are
- * written in one transaction (mirrors `createPersonalStudio`); the per-user
- * limit is checked inside the same transaction. The limit is a soft cap —
- * concurrent creates may marginally exceed it, which is acceptable for a
- * non-integrity guard (the hard data-integrity invariant is the global-unique
- * slug, backed by `studios_slug_idx`). A taken slug (lost the unique-index
- * race) surfaces as a typed `ConflictError`.
+ * Unlike a personal studio, how many active team studios a user may administer
+ * comes from their membership tier (`config/membership.yaml`). The studio row +
+ * the creator's admin `studio_members` row are written in one transaction
+ * (mirrors `createPersonalStudio`); the limit is checked inside the same
+ * transaction, on that same handle so the check does not reach for a second
+ * pooled connection. Base is zero, so an account on that tier is refused
+ * before anything is written.
+ *
+ * `lockLimitsForUser` takes the account's row for the rest of the
+ * transaction, which is what makes the ceiling hold when two requests arrive
+ * together: without it both count, both see room, and both insert. That was
+ * tolerable while the number was an internal cap of 50; it is not now that it
+ * is what somebody paid for. Different accounts lock different rows and never
+ * wait on each other.
+ *
+ * A taken slug (lost the `studios_slug_idx` race) surfaces as a typed
+ * `ConflictError` — that one stays a race by design, since global slug
+ * uniqueness is the index's job, not this function's.
  * @param userId - The authenticated user's UUID (becomes the studio admin)
  * @param name - The display name (independent of the slug)
  * @param slug - The validated, globally-unique URL handle
@@ -101,9 +111,16 @@ export async function createTeamStudio(
 ): Promise<Studio> {
   try {
     return await db.transaction(async (tx) => {
+      const { team_studios: limit } = await lockLimitsForUser(userId, tx);
       const count = await studioRepo.countTeamStudiosAdministeredBy(userId, tx);
-      if (count >= TEAM_STUDIO_LIMIT) {
-        throw new ConflictError(t("server.studio.team_limit_reached"));
+      if (count >= limit) {
+        // The number goes INTO the sentence. It used to be written into the
+        // catalogs ("the limit of 50 team studios"), which was true while the
+        // cap was a constant and became false for every tier the moment it
+        // stopped being one.
+        throw new ConflictError(
+          t("server.studio.team_limit_reached", { limit }),
+        );
       }
       const studio = await studioRepo.createTeamStudio(userId, slug, name, tx);
       await studioMembersRepo.insertAdmin(studio.id, userId, tx);

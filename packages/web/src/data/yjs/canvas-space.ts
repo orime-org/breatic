@@ -655,7 +655,8 @@ export function setNodeStyleImage(
  * Write a slot's pick onto a node's data map — the whole pick, one key.
  *
  * Shared by every slot (style, first frame, end frame, character image,
- * driving video): they differ only in which key they own, and the guard
+ * driving video, driving audio): they differ only in which key they own,
+ * and the guard
  * sequence around the write — resolve the doc, find the node, confirm the data
  * map is a `Y.Map` — is the same question every time.
  *

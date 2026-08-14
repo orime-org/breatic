@@ -9,13 +9,14 @@
  * sentinel-prefixed JSON string from `execute()`. main-agent intercepts
  * the matching sentinel inside the `tool-result` part of the stream,
  * yields the right SSE event so the frontend can render a UI widget,
- * and persists the parsed payload onto `tool_calls[0].result` so a
+ * and stores the payload on the tool part of the reply it belongs to, so a
  * page reload can rebuild the same widget from history.
  *
  * Keeping sentinel decode out of `main-agent.ts` lets us unit-test the
  * parse logic in isolation without mocking the AI SDK stream.
  */
 import {
+  ASK_USER_SENTINEL,
   ASK_USER_CHOICE_SENTINEL,
   PROPOSE_CANVAS_ACTION_SENTINEL,
   SHOW_SEARCH_RESULTS_SENTINEL,
@@ -78,4 +79,35 @@ export function parseInteractionSentinel(resultStr: string): ParsedInteraction |
     }
   }
   return null;
+}
+
+/**
+ * Every marker a tool can prefix its result with.
+ *
+ * The three above plus the one `ask_user_question` uses, which the turn loop
+ * reads directly rather than through {@link parseInteractionSentinel}. This
+ * list is what makes "strip whatever marker is there" a single answer instead
+ * of one answer per caller.
+ */
+const ALL_SENTINELS: readonly string[] = [
+  ASK_USER_SENTINEL,
+  ...INTERACTION_TOOL_SENTINELS.map((s) => s.sentinel),
+];
+
+/**
+ * Take the marker off a tool result.
+ *
+ * A marker says which event the turn should raise; that question is answered
+ * the moment it is read, and nothing downstream — not the model, not the
+ * browser — has any use for it. So what gets stored and what gets sent on is
+ * what the tool actually returned.
+ * @param resultStr - The raw `execute()` output of a tool.
+ * @returns The same string with its leading marker removed, or unchanged when
+ * it carries none.
+ */
+export function stripSentinel(resultStr: string): string {
+  for (const sentinel of ALL_SENTINELS) {
+    if (resultStr.startsWith(sentinel)) return resultStr.slice(sentinel.length);
+  }
+  return resultStr;
 }

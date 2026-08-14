@@ -168,15 +168,16 @@ export const PromptEditor = React.forwardRef<
           suggestion: makeReferenceSuggestion({
             getPool: () => poolRef.current,
             emptyLabel: mentionEmptyLabel,
-            // t2i ignores source images → exclude image refs from the `@` picker.
-            imageRefsDisabled: () => imageRefsDisabledRef.current,
+            // Same verdict as the rail's insert button, from the same call:
+            // a row the picker offers is a row the rail would insert.
+            getModeContext: () => ({
+              takesReferences: !imageRefsDisabledRef.current,
+            }),
             refreshRef: suggestionRefreshRef,
           }),
           // The chip's text-reference hover resolves live content through the
           // same pool ref (spec §9.1).
           getPool: () => poolRef.current,
-          // t2i → an image chip's hover preview greys out (unavailable).
-          getImageRefsDisabled: () => imageRefsDisabledRef.current,
         }),
       ],
       immediatelyRender: false,

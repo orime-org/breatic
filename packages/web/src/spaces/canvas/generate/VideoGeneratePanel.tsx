@@ -23,6 +23,7 @@ import {
 } from '@web/spaces/canvas/generate/video-mode-options';
 import {
   VideoParamsPicker,
+  videoParamsPickerHasOptions,
   type VideoParamsValue,
 } from '@web/spaces/canvas/generate/VideoParamsPicker';
 
@@ -153,15 +154,14 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        // Dimmed under every mode but reference-to-video, which is the only
-        // one that feeds a reference IMAGE to the model — text-to-video takes
-        // no picture at all and the other three take theirs from slots, so an
-        // image `@` chip would contribute nothing to any of them (#1903,
-        // landed with #1927). Dimming also disables
-        // the row's ✕, and that is deliberate rather than a side effect:
-        // references are shared across modes, so a ✕ pressed here would throw
-        // away an image the user is coming back for (decision 2026-08-11).
-        imageRefsDisabled={!modeTakesReferences(mode)}
+        // Reference-to-video is the only mode that reads the pool — the other
+        // five take their sources from slots or take none (#1903, landed with
+        // #1927). So the reference material rows go dark in five of six, which
+        // also freezes their ✕: references are shared across modes, and a ✕
+        // pressed here would throw away a source the user is coming back for
+        // (decision 2026-08-11). A text row is prompt material and stays lit
+        // and removable in all six.
+        modeTakesReferences={modeTakesReferences(mode)}
       />
 
       {promptSlot}
@@ -175,7 +175,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           disabled={catalogEmpty}
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
-        {currentModel ? (
+        {currentModel && videoParamsPickerHasOptions(currentModel) ? (
           <VideoParamsPicker
             model={currentModel}
             value={params}

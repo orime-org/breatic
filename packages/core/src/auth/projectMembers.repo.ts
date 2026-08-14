@@ -237,11 +237,23 @@ export async function listTransferCandidates(
  * `added_by = null` and are intentionally EXCLUDED — the project
  * collaborator cap bounds the explicit invite roster only, and must never
  * block open-baseline viewing access.
+ *
+ * A caller inside a transaction MUST pass the handle. Not for correctness —
+ * the gate holds the `projects` row by then, so no other confirm can have an
+ * uncommitted insert in flight — but because a read issued without it reaches
+ * for a second pooled connection while the first is still held, which is how a
+ * pool exhausts itself under concurrent writes. Worse here than elsewhere: the
+ * connection it cannot get is one the lock holder needs before it can release
+ * the lock, so everybody queued behind it waits too.
  * @param projectId - Project UUID
+ * @param tx - Enclosing transaction, when the caller is inside one
  * @returns Count of active explicitly-invited members.
  */
-export async function countExplicitMembers(projectId: string): Promise<number> {
-  const rows = await db
+export async function countExplicitMembers(
+  projectId: string,
+  tx?: DbTx,
+): Promise<number> {
+  const rows = await (tx ?? db)
     .select({ count: sql<number>`count(*)::int` })
     .from(projectMembers)
     .where(

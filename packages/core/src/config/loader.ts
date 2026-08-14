@@ -46,6 +46,16 @@ const agentConfigSchema = z.object({
   web_fetch_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(30000),
   /** The same, for one `web_search` request. */
   web_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
+  /**
+   * Whether to ask the provider for the model's working while it answers.
+   *
+   * Defaults off: asking currently gets nothing back. Measured 2026-08-11
+   * against claude-sonnet-4-6 with the summary asked for by name — three
+   * turns, no reasoning, one of them a question that spelled out "show your
+   * reasoning step by step". The pipeline that carries it is built and
+   * tested; what is missing is on the provider side.
+   */
+  thinking_enabled: z.boolean().default(false),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
 });

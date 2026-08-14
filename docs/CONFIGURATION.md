@@ -43,8 +43,6 @@ loader:`packages/server/src/config/limits.ts`。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `studio_member_cap` | 100 | 单 studio 活跃成员上限(共享钱包滥用护栏) |
-| `project_collaborator_cap` | 100 | 单 project 显式邀请人数上限(基线 viewer 豁免不计) |
 | `activity_feed_page_default` | 50 | 活动流分页:客户端不传 `?limit` 时的页大小 |
 | `activity_feed_page_max` | 100 | 活动流分页:客户端 `?limit` 被裁剪到的硬上限 |
 | `canvas_reference_pool_cap` | 50 | 单画布节点参考池上限(参考边 + 聚焦图合计,#1782);经 `GET /canvas/limits` 下发,前端加入时 gate(池在 Yjs,server 不 gate 协作写);区别于按模型的 `images.max_items` 执行 payload 上限(#1735)。聚焦图另受前端硬顶 `MAX_FOCUS_ENTRIES`(200,`web data/focus-images.ts`)约束——旋钮调高于 200 时聚焦图仍在 200 处被拒(带 toast) |
@@ -64,7 +62,7 @@ loader:`packages/collab/src/config.ts`。**只有行为参数,没有端口** —
 | `store_alert_timeout_ms` | 3000 | 发告警邮件的超时。**这是唯一一个超时,而且它管的不是存盘** —— 邮件传输层没配任何超时,继承 nodemailer 默认的两分钟连接超时,而卸载闸要等这封信发完。库故障期间 SMTP 又不通的话,每份正在卸载的文档都会被挂住两分钟——内存被文档填满,正是整套设计要消灭的那个故障从另一扇门进来。信里不带内容(救援文件在发信之前就已经落盘),所以放弃等它不会丢任何东西 |
 | `store_alert_window_ms` | 600000(10 分钟) | 同一份文档在这个窗口内只发一封告警。一次库故障 = 每份打开的文档每轮一次失败,不去重会刷屏 |
 | `max_document_bytes` | 10485760(10 MB) | 单 Yjs 文档字节上限(0 = 不限) |
-| `max_connections_per_document` | 100 | 单文档跨实例连接数上限(0 = 不限) |
+| `max_connections_per_document` | 100 | 单文档跨实例连接数上限(0 = 不限)。**这一项将被会员档位取代**——接上之后取值来源换成 §7.2 的 `concurrent_editors`,这里连同 loader 里的字段一起删 |
 | `max_documents_per_socket` | 1000 | 一条 socket 要能承载多少文档(= 一个 project 的 Space 数 + meta)。库里**几个**「超了就关掉整条 socket」的上限都从这一个数推导(`infra/socket-ceilings.ts`),因为只抬其中一个不算修 —— 下一个照样撞、症状一模一样。字节上限和静默超时实测远够用,故意保留库默认值 |
 | `throttle_max_attempts` | 200 | 单 IP 60s 窗口内连接尝试上限,超则 ban |
 | `throttle_ban_time` | 1(分钟) | ban 时长(**单位是分钟**,扩展内部乘 60×1000) |
@@ -115,6 +113,7 @@ loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `llm_max_retries` | 2 | 每次 LLM 调用的重试次数(maxRetries),由 model-call wrapper 统一注入(#1625 Slice 3)|
+| `thinking_enabled` | false | 要不要向 provider 索取模型的思考过程。**默认关,因为现在要了也拿不到** —— 2026-08-11 对 claude-sonnet-4-6 实测,按名字要了摘要仍然三轮零 reasoning,其中一轮的提问明写「show your reasoning step by step」。开着只会每轮白等一次、换一个空的折叠块。承载它的那条通路已经建好也测过,缺的在 provider 那一侧 |
 | `skill_agent_max_steps` | 15 | worker 跑一个 skill 时的步数上限。跟 `max_tool_iterations`(主对话 40)分开:主对话有人在等、可以多轮,worker 是一个有边界的后台任务 |
 | `web_fetch_timeout_ms` | 30000 | `web_fetch` **一次投递**的时长上限,不是整次抓取的:统一 HTTP 传输层最多投递 3 次,每次都拿这个数;跟着重定向走时每一跳还要再乘一遍。上界是定时器能装下的最大延迟(2147483647),超了定时器会把它悄悄改写成 1 毫秒,所以在配置加载时就拒 |
 | `web_search_timeout_ms` | 10000 | 同上,给 `web_search`。它是一次请求、没有重定向,所以给得比抓网页短:搜索接口要么答要么不答,而一个网页可能因为自己的原因慢 |
@@ -134,6 +133,36 @@ loader:`packages/core/src/config/skill-routing.ts`。这三个答案原本在各
 `surfaces` 取值:`chat` · `canvas` · `image_node` · `video_node` · `document`,写错会在启动时报错而不是静默隐藏这个 skill。
 
 **没列进这个文件的 skill,哪儿都不能用** —— 沉默从不授予任何权限。
+
+## 7.2 `config/membership.yaml` — 会员档位的六项上限
+
+loader:`packages/core/src/config/membership.ts`。**惰性加载**:首次被调用时才读文件跑 zod 校验,之后返回内存里那份冻结的副本——所以配置残缺是在首次用到它的那一刻抛 `ZodError`(注册写档位、或某个配额检查),不是启动那一刻。**没有任何服务入口在启动时预热它。**
+
+把写错的文件挡在生产之外的是 CI:`packages/core/src/config/__tests__/membership.test.ts` 加载的就是仓库里这份真文件并断言它的内容,而 `config/` 随镜像构建(`Dockerfile` 的 `COPY config/`),所以改这份文件必然过一遍 CI。给所有惰性配置做统一的启动检测对自托管(他们改自己那份、不经过我们的 CI)有价值,但那要一个机制覆盖全部配置,不是给其中一份单独加一段,是另一件事。
+
+**这个文件跟别处不同的两点,先说清楚**:
+
+| 特点 | 说明 |
+|---|---|
+| **没有任何 `.default()`** | 少写一项就是首次调用那一刻抛 `ZodError`。配额悄悄回落到一个我们编的数,会让写配置的人以为自己写的那份正在生效 |
+| **没有「无限制」这个概念** | 每个值都是普通的非负整数上限,判定一律 `count >= limit`,代码里没有针对特定值的分支。想表达不设限就填一个够不着的数(计数填 9999,存储填 100 TiB)。所以 `base.team_studios: 0` 就是真值零——那一档确实一个团队 studio 都不能建 |
+
+`default_tier`:新注册账号落哪一档,**在 `createUser` 里写入**。这一个字段就是自托管部署和我们线上服务的区别,没有单独的「自托管模式」开关。数据库列另有一个 `base` 默认值,那是给迁移当时表里已有的行用的,不是新注册的兜底。
+
+`tiers.*`:四档各六项。**前三档(`base` / `pro` / `team`)的数值来自 2026-07-30 会员分档决议,那份是权威**;`self_hosted` 不在那份决议里——它是部署形态不是价目表上的一档,数值由部署方自己填,下表那一列只是发货时给的一组够不着的默认值,随便改。
+
+| 参数 | base | pro | team | self_hosted | 含义 |
+|---|---|---|---|---|---|
+| `team_studios` | 0 | 1 | 3 | 9999 | 这个账号自己能管几个团队 studio |
+| `projects_per_studio` | 10 | 100 | 300 | 9999 | 每个 studio 能建几个 project |
+| `concurrent_editors` | 2 | 6 | 20 | 9999 | 每个文档同时可写的**连接**数(不是人:一个人开四个标签页占四个) |
+| `studio_members` | 1 | 10 | 100 | 9999 | 一个 studio 的成员上限 |
+| `project_members` | 4 | 12 | 40 | 9999 | 一个 project 能有几个**显式邀请进来**的协作者。owner 本人不计(他已经占了 `studio_members` 的一个位),开放基线自动物化的 viewer(同 studio 的人打开这个 project 就自动落一行)也不计——把后者算进去,大 studio 里任何 project 一开就满 |
+| `storage_bytes` | 5368709120 | 214748364800 | 536870912000 | 109951162777600 | 该账号所有 studio 的存储字节数之和的上限 |
+
+**档位只有这四个**。产品上还有企业版(决议里的「商务谈」),它的数值一家一谈、将来从数据库读,所以既不在这个文件里、也不在档位枚举里——在这儿编一组数字,会让被设成企业版的账号拿到谁都没谈过的额度而且不报错。
+
+**目前四项真的在拦人**:`team_studios` · `projects_per_studio` · `studio_members` · `project_members`。其余两项(`concurrent_editors` · `storage_bytes`)配置已就位、检查点随后续几批接上。
 
 ## 8. 连接 / 存储上传韧性(代码内,非 yaml)
 

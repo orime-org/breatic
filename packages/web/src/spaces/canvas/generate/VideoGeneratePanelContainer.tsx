@@ -386,6 +386,7 @@ function VideoGeneratePanelBody({
     (s) => s.startCharacterImagePick,
   );
   const startDrivingVideoPick = useCanvasStore((s) => s.startDrivingVideoPick);
+  const startDrivingAudioPick = useCanvasStore((s) => s.startDrivingAudioPick);
   const referencePicking = useCanvasStore(
     (s) =>
       s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
@@ -398,12 +399,14 @@ function VideoGeneratePanelBody({
       endFrame: startEndFramePick,
       characterImage: startCharacterImagePick,
       drivingVideo: startDrivingVideoPick,
+      drivingAudio: startDrivingAudioPick,
     }),
     [
       startFirstFramePick,
       startEndFramePick,
       startCharacterImagePick,
       startDrivingVideoPick,
+      startDrivingAudioPick,
     ],
   );
   /** The slot whose pick is running on this node, if any. */
@@ -510,6 +513,7 @@ function VideoGeneratePanelBody({
         model: fresh.model,
         nodeStatus: fresh.nodeStatus,
         isSubmitting: false,
+        promptRequired: fresh.promptRequired,
       })
     ) {
       return;
@@ -695,6 +699,7 @@ function VideoGeneratePanelBody({
         model: vm.model,
         nodeStatus: vm.nodeStatus,
         isSubmitting,
+        promptRequired: vm.promptRequired,
       })}
       promptSlot={promptSlot}
       onExit={closeActivePanel}

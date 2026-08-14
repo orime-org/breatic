@@ -91,4 +91,30 @@ describe("validateParams (#1672 behavior pins)", () => {
     });
     expect(cleaned.aspect_ratio).toBe("1:1");
   });
+
+  it("pins the talking-head model's declaration: two sources, no prompt (#1935)", () => {
+    // The panel makes two decisions about this model by reading what it does
+    // NOT declare: it demands no prompt (`params.prompt != null` in the video
+    // panel's view model) and it renders no params pill (none of the four the
+    // pill edits). Both read the catalog, so a `prompt` added here -- the
+    // obvious edit when someone gives this mode a dialogue script (#1936), or
+    // a copy-paste from another model -- would silently switch the demand back
+    // on. This is where that shows up: `validateParams` keeps a declared key
+    // and drops an undeclared one, so the last assertion is the pin.
+    //
+    // The input shape is synthetic on purpose. Production never sends a prompt
+    // through this pass -- `runAigcDirect` lifts it out of the params first and
+    // carries it to the provider as its own argument -- so this is not a claim
+    // about where a typed prompt goes. It is a claim about the catalog.
+    const [name, cleaned] = validateParams("video", "omnihuman-1.5", {
+      image: "https://cdn/portrait.png",
+      audio: "https://cdn/speech.mp3",
+      prompt: "a drone shot over a canyon",
+    });
+    expect(name).toBe("omnihuman-1.5");
+    expect(cleaned.image).toBe("https://cdn/portrait.png");
+    expect(cleaned.audio).toBe("https://cdn/speech.mp3");
+    expect(cleaned.seed).toBe(-1);
+    expect("prompt" in cleaned).toBe(false);
+  });
 });

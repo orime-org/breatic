@@ -1,0 +1,34 @@
+-- Every account carries a membership tier.
+--
+-- The tiers were ratified on 2026-07-30 and decide capacity and collaboration
+-- scale — storage, team studios, projects, members, simultaneous writable
+-- connections. They never decide what a person can create: every generation
+-- feature and every model stays available on all four.
+--
+-- The column goes on `users` rather than on `studios` because the tier follows
+-- the person. Which tier governs a given studio's ceilings is a separate
+-- question with a settled answer — the tier of that studio's current admin —
+-- so a studio transfer moves the studio onto whoever ends up administering it
+-- without any row here changing.
+--
+-- `users` used to hold `membership_type` / `membership_expires_at`; the 0010
+-- migration dropped them back when the product carried no tiers at all. This
+-- is not that pair coming back. There is no expiry column: an expiry is a
+-- billing fact, and billing (Stripe subscriptions) is deliberately not part of
+-- this change — the tier here is a value that can be read and enforced, and
+-- what makes it change is the next piece of work.
+--
+-- The DEFAULT is what lets a NOT NULL column land on a table that already has
+-- rows, and it is `base` because that is the most restrictive tier: a row that
+-- silently arrived on an unlimited one would carry ceilings nobody reaches and
+-- nothing would surface it.
+--
+-- This default is NOT the same thing as `default_tier` in
+-- config/membership.yaml. That one decides where newly registered accounts
+-- land and is what distinguishes a self-hosted install from our hosted
+-- service; this one only backstops a write that names no tier at all.
+--
+-- Hand-written (drizzle-kit generate needs a TTY here; same pattern as
+-- 0018/0025/0026/0049: .sql + _journal entry, no snapshot).
+
+ALTER TABLE "users" ADD COLUMN "membership_tier" varchar(16) DEFAULT 'base' NOT NULL;

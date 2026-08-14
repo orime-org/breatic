@@ -19,13 +19,14 @@ import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
  * the mode option means adding a mode cannot forget to state it.
  */
 describe('video mode options (#1904)', () => {
-  it('offers the five modes built so far, text-to-video first', () => {
+  it('offers the six modes built so far, text-to-video first', () => {
     expect(VIDEO_MODE_OPTIONS.map((o) => o.value)).toEqual([
       't2v',
       'i2v',
       'first_last',
       'animate',
       'ref',
+      'talking_head',
     ]);
   });
 
@@ -39,6 +40,20 @@ describe('video mode options (#1904)', () => {
     expect(slotsForMode('i2v')).toEqual(['firstFrame']);
     expect(slotsForMode('first_last')).toEqual(['firstFrame', 'endFrame']);
     expect(slotsForMode('animate')).toEqual(['characterImage', 'drivingVideo']);
+    expect(slotsForMode('talking_head')).toEqual([
+      'characterImage',
+      'drivingAudio',
+    ]);
+  });
+
+  it('reuses the character image for the talking head (#1935)', () => {
+    // The registry's own list of roles anticipated exactly this slot before it
+    // existed ("and later a driving audio track", since rewritten to name the
+    // slot outright), and a slot shared across modes is how the first frame
+    // already works (image-to-video and first-last). Both modes want the same
+    // thing of it: a picture of a person.
+    expect(slotsForMode('talking_head')[0]).toBe('characterImage');
+    expect(slotsForMode('animate')[0]).toBe('characterImage');
   });
 
   it('keeps the character image apart from the first frame (#1918)', () => {
@@ -56,7 +71,6 @@ describe('video mode options (#1904)', () => {
     // the image panel). Collecting slots for it would render controls the
     // submit then ignores.
     expect(slotsForMode('t2i')).toEqual([]);
-    expect(slotsForMode('talking_head')).toEqual([]);
   });
 
   it('names a slot registry entry for every slot a mode asks for', () => {
@@ -102,13 +116,13 @@ describe('reference-to-video (#1927)', () => {
     expect(modeTakesReferences('i2v')).toBe(false);
     expect(modeTakesReferences('first_last')).toBe(false);
     expect(modeTakesReferences('animate')).toBe(false);
+    expect(modeTakesReferences('talking_head')).toBe(false);
   });
 
   it('takes no references for a mode this panel does not offer', () => {
     // Same reason `slotsForMode` answers empty: the node's `mode` field is
     // shared with the image panel and can hold a value this panel never shows.
     expect(modeTakesReferences('t2i')).toBe(false);
-    expect(modeTakesReferences('talking_head')).toBe(false);
   });
 
   it('states the appetite on every option, so adding a mode cannot forget', () => {

@@ -23,10 +23,12 @@
  * written.
  *
  * Nor is there anything here about a name the contract declares but nothing
- * emits, because the contract does not carry such names. `agent_thinking` is
- * a feature PR-3 batch 6 builds (spec item 27: the backend emits it and the
- * browser renders it); its name joins the contract when it is emitted, not
- * before. A contract that lists what does not run is a contract that lies,
+ * emits, because the contract does not carry such names. `agent_thinking` was
+ * the standing example while it was unbuilt; PR-3 batch 6 built it (spec item
+ * 27: the backend emits it and the browser renders it), so its name joined
+ * the contract in the same change that started emitting it — which is the
+ * rule, not an exception to it.
+ * A contract that lists what does not run is a contract that lies,
  * and an earlier version of this file tried to manage that lie by scanning
  * source text for emit sites — which cannot work, since whether something is
  * emitted is a runtime fact and text is not.

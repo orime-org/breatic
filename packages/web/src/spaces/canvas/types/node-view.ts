@@ -110,10 +110,11 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   endFrameUrl?: string;
   /**
-   * Character image URL for the image-animation mode (#1918, wire
-   * `data.characterImageUrl`) — a pick-time COPY on the same terms as
-   * `firstFrameUrl`. Sent as `params.image` at execute time; kept apart from
-   * the first frame because a pick survives a mode switch.
+   * Character image URL for the modes that animate a person — image animation
+   * (#1918) and the talking head (#1935) — wire `data.characterImageUrl`. A
+   * pick-time COPY on the same terms as `firstFrameUrl`. Sent as
+   * `params.image` at execute time; kept apart from the first frame because a
+   * pick survives a mode switch.
    */
   characterImageUrl?: string;
   /**
@@ -123,6 +124,13 @@ interface ContentNodeViewBase extends NodeViewCommon {
    * converges as a unit under concurrent picks.
    */
   drivingVideo?: { url: string; cover?: string };
+  /**
+   * The driving audio for the talking-head mode (#1935, wire
+   * `data.drivingAudio`) — `url` is sent as `params.audio` at execute time.
+   * Same one-field shape as `drivingVideo` above and for the same reason;
+   * `cover` is always absent, since an audio node has no poster to copy.
+   */
+  drivingAudio?: { url: string; cover?: string };
   /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
@@ -287,6 +295,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     endFrameUrl: data.endFrameUrl,
     characterImageUrl: data.characterImageUrl,
     drivingVideo: data.drivingVideo,
+    drivingAudio: data.drivingAudio,
     focusImages: data.focusImages,
   };
   switch (type) {

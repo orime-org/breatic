@@ -30,14 +30,15 @@
     },
     "studio": {
       "slug_taken": "その Slug はすでに使用されています。別のものを選んでください。",
-      "team_limit_reached": "チーム Studios の上限(50 個)に達しました。",
+      "team_limit_reached": "{limit, plural, =0 {現在のプランではチーム Studio を作成できません。アップグレードすると作成できます。} other {現在のプランで作成できるチーム Studio は最大 # 個です。アップグレードするとさらに作成できます。}}",
       "email_not_registered": "そのメールアドレスは登録されていません。",
       "already_member": "そのユーザーはすでにメンバーです。",
       "already_invited": "そのユーザーには保留中の招待があります。",
       "cannot_modify_personal": "個人 Studio はメンバーを管理できません。",
       "remove_last_admin": "削除する前に Admin 権限を譲渡してください。",
       "cannot_change_admin_role": "Admin ロールは譲渡によってのみ変更できます。",
-      "member_limit_reached": "この Studio はメンバー数の上限に達しています。",
+      "member_limit_reached": "{limit, plural, =0 {この Studio のプランではメンバーを追加できません。アップグレードすると追加できます。} other {この Studio のプランのメンバーは最大 # 人です。アップグレードするとさらに追加できます。}}",
+      "member_limit_reached_for_invitee": "この Studio のメンバー枠は満員です。Admin に空きを作ってもらってください。",
       "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
       "avatar_unsupported_type": "このファイルは画像として読み取れませんでした。別の画像をお試しください。"
     },
@@ -45,7 +46,9 @@
       "email_not_registered": "そのメールアドレスは登録されていません。",
       "already_member": "そのユーザーはすでにアクセス権を持っています。",
       "already_invited": "そのユーザーには保留中の招待があります。",
-      "collaborator_limit_reached": "この Project はコラボレーター数の上限に達しています。",
+      "limit_reached": "{limit, plural, =0 {この Studio のプランでは Project を作成できません。アップグレードすると作成できます。} other {この Studio のプランで作成できる Project は最大 # 件です。アップグレードするとさらに作成できます。}}",
+      "collaborator_limit_reached": "{limit, plural, =0 {この Project ではコラボレーターを追加できません。アップグレードすると追加できます。} other {この Project のコラボレーターは最大 # 人です。アップグレードするとさらに追加できます。}}",
+      "collaborator_limit_reached_for_invitee": "この Project のコラボレーター枠は満員です。Owner に空きを作ってもらってください。",
       "only_viewer_can_request_upgrade": "ロールの昇格を申請できるのは Viewer だけです",
       "no_active_owner": "この Project には現任の Owner がいません",
       "not_found": "Project が見つかりません"
@@ -109,9 +112,9 @@
       "hintNodes": "@ でノードに質問してみよう",
       "hintDirect": "または下に直接プロンプトを入力 ↓",
       "quick": {
-        "image": "サイバーパンク風の画像を生成",
-        "music": "lo-fi な BGM を作る",
-        "writing": "プロダクトの説明文を書く"
+        "findReference": "サイバーパンク風の参考画像を探して",
+        "writePrompt": "イラスト生成のプロンプトを書いて",
+        "refinePrompt": "このプロンプトをもっと具体的にして"
       }
     },
     "history": {
@@ -128,6 +131,17 @@
       "weeksAgo": "{count, plural, other {# 週間前}}",
       "monthsAgo": "{count, plural, other {# ヶ月前}}",
       "isoDate": "{date}"
+    },
+    "error": {
+      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。",
+      "notSent": "送信できませんでした。接続を確認してください。",
+      "openFailed": "このチャットを開けませんでした。ページを再読み込みしてもう一度お試しください。"
+    },
+    "message": {
+      "interrupted": "停止しました"
+    },
+    "tool": {
+      "unfinished": "完了前に停止しました"
     }
   },
   "canvas": {
@@ -191,6 +205,10 @@
       "referenceTip": "キャンバスから画像を選んで参照にします",
       "emptyImageReference": "まだ生成・アップロードされていません",
       "emptyTextReference": "内容がありません",
+      "refuseInsertModeOff": "このモードは参照素材を使いません",
+      "refuseRemoveModeOff": "参照はモード間で共有されます — 削除するには参照を使うモードに切り替えるか、キャンバスで接続線を削除してください",
+      "refuseRemoveModeOffCrop": "参照はモード間で共有されます — この切り抜きを削除するには参照を使うモードに切り替えてください",
+      "refuseInsertTypeUnused": "{kind, select, audio {参照は画像のみで、音声は使えません} video {参照は画像のみで、動画は使えません} other {参照は画像のみで、この種類の素材は使えません}}",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",
       "mentionEmpty": "参照できる画像がありません — まず画像から線をつないでください",
@@ -200,6 +218,7 @@
       "selectEndFrameFromCanvas": "キャンバスで最後のフレームにする画像を選択",
       "selectCharacterImageFromCanvas": "キャンバスでキャラクターにする画像を選択",
       "selectDrivingVideoFromCanvas": "キャンバスで動きの元にする動画を選択",
+      "selectDrivingAudioFromCanvas": "キャンバスで口の動きに合わせる音声を選択",
       "removeStyle": "スタイル参照を削除",
       "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
@@ -256,13 +275,17 @@
       "removeEndFrame": "最後のフレームを削除",
       "errorNoEndFrame": "最後のフレームを選んでください",
       "characterImage": "キャラクター",
-      "characterImageTip": "動かす画像を選ぶ",
+      "characterImageTip": "人物の画像を選ぶ",
       "removeCharacterImage": "キャラクターを削除",
       "errorNoCharacterImage": "キャラクター画像を選んでください",
       "drivingVideo": "動きの元の動画",
+      "drivingAudio": "口の動きの元の音声",
       "drivingVideoTip": "動きをコピーする動画を選ぶ",
+      "drivingAudioTip": "口の動きに合わせる音声を選ぶ",
       "removeDrivingVideo": "動きの元の動画を削除",
-      "errorNoDrivingVideo": "動きの元になる動画を選んでください"
+      "removeDrivingAudio": "口の動きの元の音声を削除",
+      "errorNoDrivingVideo": "動きの元になる動画を選んでください",
+      "errorNoDrivingAudio": "口の動きの元になる音声を選んでください"
     },
     "nodeMenu": {
       "generate": "生成",

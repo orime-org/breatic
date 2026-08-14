@@ -124,9 +124,24 @@ async function insertUserWithEmail(): Promise<{ id: string; email: string }> {
 }
 
 let studioSeq = 0;
-/** Insert a fresh team studio created by the given user; returns id + slug. */
+/**
+ * Insert a fresh team studio created by the given user; returns id + slug.
+ *
+ * The creator is moved to `pro` here rather than at the call sites because
+ * every case in this file needs room for a second member: `base` allows one
+ * studio member, the admin's own seat, so a base creator would have every
+ * invite refused for running out of room rather than for the reason the case
+ * is about. (A base account can still end up administering a team studio —
+ * neither transfer nor a downgrade checks the tier — it just cannot invite
+ * anyone once there.)
+ * @param createdByUserId - Becomes the studio's admin.
+ * @returns The studio id and slug.
+ */
 async function insertTeamStudio(createdByUserId: string): Promise<{ id: string; slug: string }> {
   const slug = `smr-studio-${studioSeq++}`;
+  await sql`
+    UPDATE users SET membership_tier = 'pro' WHERE id = ${createdByUserId}
+  `;
   const rows = await sql<{ id: string }[]>`
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${createdByUserId}, ${slug}, 'team', 'Route Test Team Studio')

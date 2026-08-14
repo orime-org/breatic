@@ -30,14 +30,15 @@
     },
     "studio": {
       "slug_taken": "That Slug is already in use. Please choose another.",
-      "team_limit_reached": "You've reached the limit of 50 team studios.",
+      "team_limit_reached": "{limit, plural, =0 {Your plan does not include team studios. Upgrade to create one.} one {Your plan allows 1 team studio. Upgrade to create more.} other {Your plan allows up to # team studios. Upgrade to create more.}}",
       "email_not_registered": "No account is registered with that email.",
       "already_member": "That user is already a member.",
       "already_invited": "That user already has a pending invitation.",
       "cannot_modify_personal": "A personal studio cannot have its members managed.",
       "remove_last_admin": "Transfer the admin role before removing this member.",
       "cannot_change_admin_role": "The admin role can only be changed by transferring it.",
-      "member_limit_reached": "This studio has reached its member limit.",
+      "member_limit_reached": "{limit, plural, =0 {This studio's plan does not allow adding members. Upgrade to add some.} one {This studio's plan allows 1 member. Upgrade to add more.} other {This studio's plan allows up to # members. Upgrade to add more.}}",
+      "member_limit_reached_for_invitee": "This studio is full. Ask its Admin to make room.",
       "leave_last_admin": "Transfer the admin role before leaving this Studio.",
       "avatar_unsupported_type": "That file could not be read as an image. Try a different picture."
     },
@@ -45,7 +46,9 @@
       "email_not_registered": "No account is registered with that email.",
       "already_member": "That user already has access.",
       "already_invited": "That user already has a pending invitation.",
-      "collaborator_limit_reached": "This project has reached its collaborator limit.",
+      "limit_reached": "{limit, plural, =0 {This studio's plan does not allow creating projects. Upgrade to create one.} one {This studio's plan allows 1 project. Upgrade to create more.} other {This studio's plan allows up to # projects. Upgrade to create more.}}",
+      "collaborator_limit_reached": "{limit, plural, =0 {This project does not allow collaborators. Upgrade to add some.} one {This project allows 1 collaborator. Upgrade to add more.} other {This project allows up to # collaborators. Upgrade to add more.}}",
+      "collaborator_limit_reached_for_invitee": "This project is full. Ask its Owner to make room.",
       "only_viewer_can_request_upgrade": "Only a Viewer can request a role upgrade",
       "no_active_owner": "This project has no active Owner",
       "not_found": "Project not found"
@@ -109,9 +112,9 @@
       "hintNodes": "Try asking @ a node",
       "hintDirect": "Or type your prompt below ↓",
       "quick": {
-        "image": "Generate a cyberpunk-style image",
-        "music": "Compose a lo-fi background track",
-        "writing": "Write a product description"
+        "findReference": "Find cyberpunk-style reference images",
+        "writePrompt": "Write a prompt for an illustration",
+        "refinePrompt": "Make my prompt more specific"
       }
     },
     "history": {
@@ -128,6 +131,17 @@
       "weeksAgo": "{count, plural, one {# week ago} other {# weeks ago}}",
       "monthsAgo": "{count, plural, one {# month ago} other {# months ago}}",
       "isoDate": "{date}"
+    },
+    "error": {
+      "turnFailed": "This reply could not be finished. Try sending it again.",
+      "notSent": "That did not go out — check your connection.",
+      "openFailed": "This chat could not be opened. Reload the page to try again."
+    },
+    "message": {
+      "interrupted": "Stopped"
+    },
+    "tool": {
+      "unfinished": "Stopped before it finished"
     }
   },
   "canvas": {
@@ -200,6 +214,10 @@
       "referenceTip": "Pick images from the canvas as references",
       "emptyImageReference": "Not generated or uploaded yet",
       "emptyTextReference": "No content yet",
+      "refuseInsertModeOff": "This mode doesn't use reference material",
+      "refuseRemoveModeOff": "References are shared across modes — switch to a mode that uses them to remove this one, or delete its edge on the canvas",
+      "refuseRemoveModeOffCrop": "References are shared across modes — switch to a mode that uses them to remove this crop",
+      "refuseInsertTypeUnused": "{kind, select, audio {References take images only, not audio} video {References take images only, not video} other {References take images only, not this kind of material}}",
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",
       "mentionEmpty": "No connected references — draw an edge from an image first",
@@ -209,6 +227,7 @@
       "selectEndFrameFromCanvas": "Pick an image on the canvas to be the end frame",
       "selectCharacterImageFromCanvas": "Pick an image on the canvas to be the character",
       "selectDrivingVideoFromCanvas": "Pick a video on the canvas to drive the motion",
+      "selectDrivingAudioFromCanvas": "Pick an audio track on the canvas for the lips to follow",
       "removeStyle": "Remove style reference",
       "returnToNode": "Return to node",
       "exitSelect": "Exit",
@@ -265,13 +284,17 @@
       "removeEndFrame": "Remove end frame",
       "errorNoEndFrame": "Pick an end frame",
       "characterImage": "Character",
-      "characterImageTip": "Pick the image to animate",
+      "characterImageTip": "Pick the image of the character",
       "removeCharacterImage": "Remove character",
       "errorNoCharacterImage": "Pick a character image",
       "drivingVideo": "Driving video",
+      "drivingAudio": "Driving audio",
       "drivingVideoTip": "Pick the video whose motion is copied",
+      "drivingAudioTip": "Pick the audio the lips follow",
       "removeDrivingVideo": "Remove driving video",
-      "errorNoDrivingVideo": "Pick a driving video"
+      "removeDrivingAudio": "Remove driving audio",
+      "errorNoDrivingVideo": "Pick a driving video",
+      "errorNoDrivingAudio": "Pick a driving audio track"
     },
     "edge": {
       "delete": "Delete connection"

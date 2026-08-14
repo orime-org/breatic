@@ -8,7 +8,7 @@
  */
 
 import { eq, and, isNull, inArray } from "drizzle-orm";
-import { db } from "@breatic/core";
+import { db, getDefaultMembershipTier } from "@breatic/core";
 import { users } from "@breatic/core";
 import type { UserEntity } from "@breatic/shared";
 
@@ -105,11 +105,25 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
 
 /**
  * Create a new user.
+ *
+ * The membership tier is written here, from `default_tier` in
+ * `config/membership.yaml`. The column has a default of its own, but that one
+ * exists for the rows migration 0052 found already in the table — leaving it
+ * to decide where registrations land is what made the config field inert, and
+ * on a self-hosted install (which configures the widest tier) every account
+ * would instead arrive on `base`, unable to create a single team studio and
+ * told to upgrade on a deployment with nothing to upgrade to.
+ *
+ * Both sign-up paths, email and Google, come through here, so this is the
+ * only place that decision is made.
  * @param data - User fields to insert
  * @param data.email - Email address (unique per active user)
  * @param data.hashedPassword - Optional bcrypt password hash (absent for OAuth-only sign-ups)
  * @param data.googleId - Optional linked Google account identifier
  * @returns The created UserEntity
+ * @throws {z.ZodError} if `config/membership.yaml` is malformed — the file is
+ *   read on first use and on a fresh server this is often that first use, so
+ *   a broken file surfaces here, as a failed registration
  */
 export async function createUser(data: {
   email: string;
@@ -122,6 +136,7 @@ export async function createUser(data: {
       email: data.email,
       hashedPassword: data.hashedPassword,
       googleId: data.googleId,
+      membershipTier: getDefaultMembershipTier(),
     })
     .returning();
   return toEntity(rows[0]!);

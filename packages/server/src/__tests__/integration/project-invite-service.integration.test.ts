@@ -45,11 +45,6 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-// Member caps come from config/limits.yaml; mock them so a small cap can be
-// forced per test. Default 100 keeps every other test (tiny member counts)
-// unaffected; the collaborator-cap tests below lower it.
-
-const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
 // The decision window comes from the same config file. Pinned here to a value
 // that is deliberately NOT the shipped seven: the invite deadline, the token
 // TTL and the number the landing page prints are all supposed to come from the
@@ -57,8 +52,6 @@ const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
 // against a mock that also said 7.
 const decisionWindow = vi.hoisted(() => ({ days: 3 }));
 vi.mock("@server/config/limits.js", () => ({
-  getStudioMemberCap: () => capRefs.studio,
-  getProjectCollaboratorCap: () => capRefs.project,
   getDecisionWindowDays: () => decisionWindow.days,
   getDecisionWindowMs: () => decisionWindow.days * 24 * 60 * 60 * 1000,
   getDecisionWindowSeconds: () => decisionWindow.days * 24 * 60 * 60,
@@ -67,6 +60,7 @@ vi.mock("@server/config/limits.js", () => ({
 import { eq, and, isNull, sql } from "drizzle-orm";
 import {
   initCore,
+  getMembershipLimits,
   schema,
   createTestDb,
   projectMembersRepo,
@@ -101,7 +95,11 @@ beforeAll(async () => {
   pgClient = t.client;
 
   await db.insert(schema.users).values([
-    { id: OWNER, email: "owner@proj-test.dev" },
+    // On `pro` because these cases are not about the ceiling: this account
+    // administers the studio these projects live in, and both ceilings are read
+    // from its tier. Kept level with the studio suite's fixture so that adding
+    // a case here later cannot quietly start failing on base's four.
+    { id: OWNER, email: "owner@proj-test.dev", membershipTier: "pro" },
     { id: INVITEE, email: INVITEE_EMAIL },
     { id: STRANGER, email: "stranger@proj-test.dev" },
   ]);
@@ -111,6 +109,15 @@ beforeAll(async () => {
     { createdByUserId: INVITEE, slug: "proj-invitee", type: "personal", name: "Invitee" },
     { createdByUserId: STRANGER, slug: "proj-stranger", type: "personal", name: "Stranger" },
   ]);
+  // The collaborator ceiling is read through the `admin` row of the studio a
+  // project lives in, so the studio holding this fixture's project needs one.
+  // The other two studios above are only there to supply display names and are
+  // left without one — nothing in these cases resolves a ceiling through them.
+  await db.insert(schema.studioMembers).values({
+    studioId: STUDIO,
+    userId: OWNER,
+    role: "admin",
+  });
   await db.insert(schema.projects).values({
     id: PROJECT,
     studioId: STUDIO,
@@ -133,8 +140,6 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  capRefs.studio = 100;
-  capRefs.project = 100;
   // eslint-disable-next-line drizzle/enforce-delete-with-where -- intentional whole-table reset between tests
   await db.delete(schema.projectInvitations);
   // eslint-disable-next-line drizzle/enforce-delete-with-where -- intentional whole-table reset between tests
@@ -557,82 +562,32 @@ describe("re-invite lifecycle (#1769)", () => {
   });
 });
 
-describe("collaborator cap (config/limits.yaml)", () => {
-  it("createInvite rejects with Conflict once the explicit-collaborator cap is reached", async () => {
-    capRefs.project = 1;
-    // Fill the explicit roster: one invited member (addedBy non-null = counted).
-    await db.insert(schema.projectMembers).values({
-      projectId: PROJECT,
-      userId: STRANGER,
-      role: "editor",
-      addedBy: OWNER,
-    });
-    expect(await projectMembersRepo.countExplicitMembers(PROJECT)).toBe(1);
-
-    await expect(
-      inviteService.createInvite(PROJECT, OWNER, INVITEE_EMAIL, "editor"),
-    ).rejects.toBeInstanceOf(ConflictError);
-    // The early guard fired — no pending invite was created.
-    expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(0);
-  });
-
-  it("confirmInvite rejects with Conflict (the REAL guard) when the cap filled after the invite was sent", async () => {
-    capRefs.project = 1;
-    // Invite goes out while there is still room (explicit count 0 < 1).
-    const { invitationId } = await inviteService.createInvite(
-      PROJECT,
-      OWNER,
-      INVITEE_EMAIL,
-      "editor",
-    );
-    // Someone else fills the last slot before the invitee accepts.
-    await db.insert(schema.projectMembers).values({
-      projectId: PROJECT,
-      userId: STRANGER,
-      role: "editor",
-      addedBy: OWNER,
-    });
-
-    await expect(
-      inviteService.confirmInvite(invitationId, INVITEE),
-    ).rejects.toBeInstanceOf(ConflictError);
-    // The invitee did NOT become a member…
-    expect(await projectMembersRepo.getRole(PROJECT, INVITEE)).toBeNull();
-    expect(await inviteeMemberRows()).toBe(0);
-    // …and the failed confirm rolled back the accept CAS — the invite is still
-    // live (the slot did not get burned by the rejected attempt).
-    expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(1);
-  });
-
-  it("createInvite succeeds while below the cap (boundary: count < cap)", async () => {
-    capRefs.project = 5;
-    await db.insert(schema.projectMembers).values({
-      projectId: PROJECT,
-      userId: STRANGER,
-      role: "viewer",
-      addedBy: OWNER,
-    });
-    // explicit count 1 < 5 → allowed.
-    const { invitationId } = await inviteService.createInvite(
-      PROJECT,
-      OWNER,
-      INVITEE_EMAIL,
-      "editor",
-    );
-    expect(invitationId).toBeTruthy();
-    expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(1);
-  });
-
+// The collaborator ceiling itself moved to config/membership.yaml, keyed by
+// the tier of the admin of the studio this project lives in (task #87). Its
+// cases — both check points, the copy each reader gets, concurrency, and a
+// confirm against a deleted project — live in
+// `member-quota.integration.test.ts`, which can seed accounts on chosen tiers.
+// What stays here is the invariant that the ceiling must never touch: open
+// baseline access.
+describe("open baseline is never gated by the collaborator ceiling", () => {
   it("INVARIANT: a baseline viewer materializes even at cap and is NOT counted (open baseline never blocked)", async () => {
-    capRefs.project = 1;
-    // The explicit collaborator roster is full.
-    await db.insert(schema.projectMembers).values({
-      projectId: PROJECT,
-      userId: STRANGER,
-      role: "editor",
-      addedBy: OWNER,
-    });
-    expect(await projectMembersRepo.countExplicitMembers(PROJECT)).toBe(1);
+    // Fill the explicit roster to this studio admin's real ceiling. Reading it
+    // from the shipped config rather than pinning a number keeps the case
+    // honest if the tier's numbers are ever retuned.
+    const ceiling = getMembershipLimits("pro").project_members;
+    for (let i = 0; i < ceiling; i++) {
+      const [filler] = await db
+        .insert(schema.users)
+        .values({ email: `baseline-filler-${i}@svc-test.dev` })
+        .returning({ id: schema.users.id });
+      await db.insert(schema.projectMembers).values({
+        projectId: PROJECT,
+        userId: filler!.id,
+        role: "editor",
+        addedBy: OWNER,
+      });
+    }
+    expect(await projectMembersRepo.countExplicitMembers(PROJECT)).toBe(ceiling);
 
     // A studio member opening the project auto-materializes as a baseline viewer
     // (addedBy null). Even with the cap full, this MUST succeed — open-baseline
@@ -640,8 +595,8 @@ describe("collaborator cap (config/limits.yaml)", () => {
     await projectMembersRepo.materializeBaselineViewer(PROJECT, INVITEE);
 
     expect(await projectMembersRepo.getRole(PROJECT, INVITEE)).toBe("viewer");
-    // …and the auto-viewer does NOT consume cap budget — the explicit count is
-    // still 1 (only STRANGER), proving baseline viewers are exempt.
-    expect(await projectMembersRepo.countExplicitMembers(PROJECT)).toBe(1);
+    // …and the auto-viewer does NOT consume ceiling budget — the explicit count
+    // is unchanged, proving baseline viewers are exempt.
+    expect(await projectMembersRepo.countExplicitMembers(PROJECT)).toBe(ceiling);
   });
 });

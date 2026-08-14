@@ -110,9 +110,9 @@ describe("messages", () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 
-    await messageRepo.addMessage(conv.id, { role: "user", content: "one" });
-    await messageRepo.addMessage(conv.id, { role: "assistant", content: "two" });
-    await messageRepo.addMessage(conv.id, { role: "user", content: "three" });
+    await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "one" }] });
+    await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: "two" }] });
+    await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "three" }] });
 
     const msgs = await messageRepo.getMessages(conv.id);
     expect(msgs.map((m) => m.content)).toEqual(["one", "two", "three"]);
@@ -122,9 +122,9 @@ describe("messages", () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 
-    const t1 = await messageRepo.addMessage(conv.id, { role: "user", content: "q1" });
-    const r1 = await messageRepo.addMessage(conv.id, { role: "assistant", content: "a1" });
-    const t2 = await messageRepo.addMessage(conv.id, { role: "user", content: "q2" });
+    const t1 = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q1" }] });
+    const r1 = await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: "a1" }] });
+    const t2 = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q2" }] });
 
     expect(r1).toBe(t1);
     expect(t2).toBe(t1 + 1);
@@ -162,9 +162,9 @@ describe("messages", () => {
     // parked" — the first append is still there, so a probe that stops at one
     // would return before the second append had issued a single statement and
     // the two would then run in sequence, passing for the wrong reason.
-    const first = messageRepo.addMessage(conv.id, { role: "user", content: "p" });
+    const first = messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "p" }] });
     await waitUntilBlockedOn(sql, ["conversations", "for update"], 1);
-    const second = messageRepo.addMessage(conv.id, { role: "user", content: "q" });
+    const second = messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q" }] });
     await waitUntilBlockedOn(sql, ["conversations", "for update"], 2);
 
     releaseGate();
@@ -177,7 +177,7 @@ describe("messages", () => {
   it("hides its messages once the conversation is soft-deleted", async () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
-    await messageRepo.addMessage(conv.id, { role: "user", content: "one" });
+    await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "one" }] });
 
     await conversationRepo.softDeleteConversation(conv.id);
 
@@ -207,10 +207,10 @@ describe("deleting a conversation while it is still being written to", () => {
     for (let round = 0; round < 5; round++) {
       const { userId, projectId } = await seedProject();
       const conv = await seedConversation(userId, projectId);
-      await messageRepo.addMessage(conv.id, { role: "user", content: "already here" });
+      await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "already here" }] });
 
       await Promise.allSettled([
-        messageRepo.addMessage(conv.id, { role: "assistant", content: "still writing" }),
+        messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: "still writing" }] }),
         conversationRepo.softDeleteConversation(conv.id),
       ]);
 
@@ -228,53 +228,45 @@ describe("deleting a conversation while it is still being written to", () => {
 });
 
 describe("a message survives the round trip through parts", () => {
-  // Five shapes reach `addMessage` today (main-agent.ts): a plain user
-  // message, a skill command, an assistant announcing a tool call, the tool
-  // result that follows it, and an assistant reply that may carry reasoning.
-  // Storage now splits a message into `parts`, so every one of those shapes
-  // has to come back out unchanged — a lossy mapping silently eats tool
-  // results or reasoning, and nothing else in the system would notice.
-  const messageArb = fc.oneof(
+  // A message is its parts, so what goes in has to come back out piece for
+  // piece. A lossy mapping here silently eats a tool call or the reasoning
+  // behind a reply, and nothing else in the system would notice.
+  const partArb = fc.oneof(
     fc.record({
-      role: fc.constantFrom("user" as const, "assistant" as const),
-      content: fc.string({ minLength: 1 }),
+      type: fc.constant("text" as const),
+      text: fc.string({ minLength: 1 }),
     }),
     fc.record({
-      role: fc.constant("assistant" as const),
-      content: fc.string({ minLength: 1 }),
-      thinking: fc.string({ minLength: 1 }),
+      type: fc.constant("reasoning" as const),
+      text: fc.string({ minLength: 1 }),
     }),
     fc.record({
-      role: fc.constant("assistant" as const),
-      content: fc.constant(""),
-      tool_calls: fc.array(
-        fc.record({
-          id: fc.uuid(),
-          name: fc.string({ minLength: 1 }),
-          arguments: fc.dictionary(fc.string({ minLength: 1 }), fc.jsonValue()),
-          result: fc.option(
-            fc.dictionary(fc.string({ minLength: 1 }), fc.jsonValue()),
-            { nil: undefined },
-          ),
-        }),
-        { minLength: 1, maxLength: 3 },
-      ),
+      type: fc.constant("tool" as const),
+      toolCallId: fc.uuid(),
+      toolName: fc.string({ minLength: 1 }),
+      // Round-tripped through JSON before it is used, so the generator only
+      // produces values JSON can carry. It cannot carry negative zero —
+      // `JSON.stringify(-0)` is `"0"` — and vitest's `toEqual` tells the two
+      // apart, so a generated -0 failed this property about one run in five
+      // while every other value passed. Normalising the input rather than the
+      // stored result keeps the property intact: a real storage defect still
+      // shows up as a difference.
+      input: fc
+        .dictionary(fc.string({ minLength: 1 }), fc.jsonValue())
+        .map((d) => JSON.parse(JSON.stringify(d)) as Record<string, unknown>),
+      status: fc.constantFrom("pending" as const, "success" as const, "error" as const),
+      output: fc.string(),
     }),
-    fc.record({
-      role: fc.constant("tool" as const),
-      content: fc.string(),
-      tool_call_id: fc.uuid(),
-      name: fc.string({ minLength: 1 }),
-    }),
-    // A turn the user stopped, with whatever it had written by then.
-    fc.record({
-      role: fc.constant("assistant" as const),
-      content: fc.string(),
-      interrupted: fc.constant(true as const),
-    }),
+    fc.record({ type: fc.constant("interrupted" as const) }),
+    fc.record({ type: fc.constant("failed" as const) }),
   );
 
-  it("comes back with every field it went in with", async () => {
+  const messageArb = fc.record({
+    role: fc.constantFrom("user" as const, "assistant" as const),
+    parts: fc.array(partArb, { minLength: 1, maxLength: 4 }),
+  });
+
+  it("comes back with every part it went in with", async () => {
     const { userId, projectId } = await seedProject();
 
     await fc.assert(
@@ -283,13 +275,22 @@ describe("a message survives the round trip through parts", () => {
         await messageRepo.addMessage(conv.id, message);
         const [stored] = await messageRepo.getMessages(conv.id, 1);
 
-        // `ts` and `turnIndex` are assigned by the store, not the caller.
-        const { ts: _ts, turnIndex: _turn, ...roundTripped } = stored!;
-        expect(roundTripped).toEqual(message);
+        expect(stored!.role).toBe(message.role);
+        expect(stored!.parts).toEqual(message.parts);
+
+        // The flat fields are read off the parts, never stored beside them.
+        const prose = message.parts
+          .filter((p) => p.type === "text")
+          .map((p) => (p as { text: string }).text)
+          .join("");
+        expect(stored!.content).toBe(prose);
 
         // `ts` is created_at rendered as ISO — one source of truth, not a
         // second timestamp the caller has to keep in sync.
         expect(new Date(stored!.ts).toString()).not.toBe("Invalid Date");
+
+        // The row's own id comes back, which is what a client keys on.
+        expect(stored!.id).toMatch(/^[0-9a-f-]{36}$/);
 
         await conversationRepo.softDeleteConversation(conv.id);
       }),
@@ -309,12 +310,30 @@ describe("a message survives the round trip through parts", () => {
 
     await messageRepo.addMessage(conv.id, {
       role: "assistant",
-      content: "",
-      interrupted: true,
+      parts: [{ type: "interrupted" }],
     });
     const [stored] = await messageRepo.getMessages(conv.id, 1);
 
     expect(stored).toMatchObject({ role: "assistant", content: "", interrupted: true });
+    expect(stored!.parts).toEqual([{ type: "interrupted" }]);
+  });
+
+  it("keeps a turn that failed before it said anything distinguishable from nothing", async () => {
+    // The other ending that does not finish. Same guarantee as above and for
+    // the same reason: a turn that fails on its first token has nothing else
+    // to store, so without the marker the row is an empty list — and what the
+    // user said would sit alone with no answer and no reason.
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+
+    await messageRepo.addMessage(conv.id, {
+      role: "assistant",
+      parts: [{ type: "failed" }],
+    });
+    const [stored] = await messageRepo.getMessages(conv.id, 1);
+
+    expect(stored).toMatchObject({ role: "assistant", content: "", failed: true });
+    expect(stored!.parts).toEqual([{ type: "failed" }]);
   });
 });
 
@@ -324,8 +343,8 @@ describe("the memory chain still sees the same messages", () => {
     const conv = await seedConversation(userId, projectId);
 
     for (let i = 0; i < 5; i++) {
-      await messageRepo.addMessage(conv.id, { role: "user", content: `q${i}` });
-      await messageRepo.addMessage(conv.id, { role: "assistant", content: `a${i}` });
+      await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: `q${i}` }] });
+      await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: `a${i}` }] });
     }
     await conversationRepo.updateConsolidatedTurn(conv.id, 2);
 
@@ -338,8 +357,8 @@ describe("the memory chain still sees the same messages", () => {
     const conv = await seedConversation(userId, projectId);
 
     for (let i = 1; i <= 6; i++) {
-      await messageRepo.addMessage(conv.id, { role: "user", content: `q${i}` });
-      await messageRepo.addMessage(conv.id, { role: "assistant", content: `a${i}` });
+      await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: `q${i}` }] });
+      await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: `a${i}` }] });
     }
 
     // Turns 1..6 exist, 1 is already consolidated, the last 2 are kept back:
@@ -352,8 +371,8 @@ describe("the memory chain still sees the same messages", () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 
-    await messageRepo.addMessage(conv.id, { role: "user", content: "old" });
-    await messageRepo.addMessage(conv.id, { role: "user", content: "new" });
+    await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "old" }] });
+    await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "new" }] });
 
     const forLlm = await messageRepo.getMessagesForLlm(conv.id, 1);
     expect(forLlm.map((m) => m.content)).toEqual(["new"]);

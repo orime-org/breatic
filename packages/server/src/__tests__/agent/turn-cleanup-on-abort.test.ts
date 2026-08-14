@@ -168,7 +168,11 @@ describe("a turn cut short by the client", () => {
     const saved = addMessage.mock.calls.map(([, msg]) => msg);
     expect(
       saved.some(
-        (msg) => msg.role === "assistant" && String(msg.content).includes("hello"),
+        (msg) =>
+          msg.role === "assistant" &&
+          (msg.parts as Array<{ type: string; text?: string }>).some(
+            (part) => part.type === "text" && String(part.text).includes("hello"),
+          ),
       ),
     ).toBe(true);
     expect(consolidateIfNeeded).toHaveBeenCalled();

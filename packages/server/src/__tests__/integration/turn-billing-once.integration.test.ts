@@ -180,7 +180,7 @@ describe("turn numbers do not collide", () => {
 
     const assigned = await Promise.all(
       Array.from({ length: 8 }, (_unused, i) =>
-        addMessage(conversationId, { role: "user", content: `message ${i}` }),
+        addMessage(conversationId, { role: "user", parts: [{ type: "text", text: `message ${i}` }] }),
       ),
     );
 

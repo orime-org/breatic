@@ -113,18 +113,27 @@ const partArbitrary = fc.oneof(
  * @returns How many wrap-up messages the turn owes.
  */
 function wrapUpsOwed(parts: readonly Part[]): number {
-  let prose = "";
+  // Anything the turn did is worth recording, not just what it said. A turn
+  // that called a tool and never got a word out used to leave nothing behind;
+  // now the call itself is part of the reply, so there is something to store.
+  //
+  // The two endings that did not finish — stopped and failed — are stored
+  // whatever else happened, because each leaves a mark of its own saying so.
+  // Without that a turn that failed on its first token would leave no trace,
+  // and what the user said would sit alone with no answer and no reason.
+  let didSomething = false;
   let askedTheUser = false;
   for (const part of parts) {
-    if (part.type === "error") return prose ? 1 : 0;
+    if (part.type === "error") return 1;
     if (part.type === "abort") return 1;
-    if (part.type === "finish-step" && askedTheUser) return prose ? 1 : 0;
-    if (part.type === "text-delta") prose += String(part.text);
+    if (part.type === "finish-step" && askedTheUser) return didSomething ? 1 : 0;
+    if (part.type === "text-delta") didSomething = true;
+    if (part.type === "tool-call") didSomething = true;
     if (part.type === "tool-result" && String(part.output).startsWith("__ASK_USER__")) {
       askedTheUser = true;
     }
   }
-  return prose ? 1 : 0;
+  return didSomething ? 1 : 0;
 }
 
 /** A stream that plays the given parts and records nothing else. */

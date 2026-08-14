@@ -16,6 +16,14 @@ interface ReferenceChip {
 interface ChatComposerProps {
   draft: string;
   streaming?: boolean;
+  /**
+   * Nothing can be typed or sent yet, because there is nowhere to send it.
+   *
+   * True while the chat is still opening and after opening failed. Leaving
+   * the box live in those states lets a message be typed, sent, and dropped
+   * with nothing said about it.
+   */
+  disabled?: boolean;
   chips?: ReadonlyArray<ReferenceChip>;
   activeSkillLabel?: string;
   selectMode?: boolean;
@@ -60,6 +68,7 @@ interface ChatComposerProps {
  * @param root0 - The component props.
  * @param root0.draft - The current draft text in the input.
  * @param root0.streaming - Whether a response is currently streaming.
+ * @param root0.disabled - Whether there is nowhere to send a message yet.
  * @param root0.chips - The reference chips attached to the next message.
  * @param root0.activeSkillLabel - The label of the currently selected skill, if any.
  * @param root0.selectMode - Whether canvas select mode is active.
@@ -74,6 +83,7 @@ interface ChatComposerProps {
 export function ChatComposer({
   draft,
   streaming,
+  disabled,
   chips = [],
   activeSkillLabel,
   selectMode,
@@ -85,7 +95,7 @@ export function ChatComposer({
   onRemoveChip,
 }: ChatComposerProps): React.JSX.Element {
   const t = useTranslation();
-  const ready = draft.trim().length > 0 && !streaming;
+  const ready = draft.trim().length > 0 && !streaming && !disabled;
 
   /**
    * Submit the draft message when the composer is in a ready state.
@@ -157,13 +167,21 @@ export function ChatComposer({
         value={draft}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
+          // Typing Chinese, Japanese or Korean means pressing Enter to accept
+          // what the IME is offering, several times per sentence. The browser
+          // marks that keystroke as part of the composition, and that mark is
+          // the only thing separating it from the Enter that means "send" —
+          // both arrive as `key === 'Enter'` with no modifier. Without this
+          // check the first message a CJK reader ever sends is the raw
+          // keystrokes they were still choosing between.
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             submit();
           }
         }}
         placeholder={t('chat.composer.placeholder')}
         rows={3}
+        disabled={disabled}
         className='block max-h-[200px] min-h-[72px] w-full resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none placeholder:text-muted-foreground'
         aria-label={t('chat.composer.inputAria')}
         data-testid='chat-composer-textarea'
