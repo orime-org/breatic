@@ -35,6 +35,11 @@ import { buildCollabExtensions } from '@web/features/collab-editor/collab-extens
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { DocumentClickToWrite } from '@web/spaces/document/document-click-to-write';
 import { BodyHeading } from '@web/spaces/document/document-heading';
+import {
+  UnsupportedBlock,
+  UnsupportedInline,
+  UnsupportedMark,
+} from '@web/spaces/document/document-unsupported';
 import { DocumentPlaceholders } from '@web/spaces/document/document-placeholders';
 import { DocumentTitle } from '@web/spaces/document/document-title';
 import { DocumentTitleIsPlainText } from '@web/spaces/document/document-title-plain-text';
@@ -139,6 +144,13 @@ export function buildDocumentExtensions(
       heading: false,
     }),
     BodyHeading,
+    // Somewhere to put content this build has no vocabulary for. Registered
+    // now, while there is nothing to catch: a fallback only works if the
+    // client that meets the unknown content already has it, and the tabs this
+    // whole problem is about are the ones already open.
+    UnsupportedBlock,
+    UnsupportedInline,
+    UnsupportedMark,
   ];
 
   // The collaboration wiring is shared with every other collaborative editor —
