@@ -36,8 +36,9 @@ import {
 function parse(
   nodes: Record<string, string[]>,
   marks: Record<string, string[]> = {},
+  publishedAt = "2026-08-14T00:00:00Z",
 ): ReturnType<typeof documentSchemaConfigSchema.parse> {
-  return documentSchemaConfigSchema.parse({ nodes, marks });
+  return documentSchemaConfigSchema.parse({ publishedAt, nodes, marks });
 }
 
 describe("配置文件的形状", () => {
@@ -45,20 +46,38 @@ describe("配置文件的形状", () => {
     expect(DOCUMENT_SCHEMA_META_KEY).toBe("documentSchema");
   });
 
-  it("只收两张清单 —— 配置里没有版本号这一项", () => {
+  it("收两张清单加一个发布时间 —— 没有版本号这一项", () => {
     const parsed = parse({ doc: [], heading: ["level"] }, { bold: [] });
     expect(parsed.nodes.heading).toEqual(["level"]);
     expect(parsed.marks.bold).toEqual([]);
+    expect(parsed.publishedAt).toBe("2026-08-14T00:00:00Z");
     expect("version" in parsed).toBe(false);
   });
 
   it("配置里写了 version 也不会被收进来 —— 那个字段已经没有了", () => {
     const parsed = documentSchemaConfigSchema.parse({
       version: 3,
+      publishedAt: "2026-08-14T00:00:00Z",
       nodes: {},
       marks: {},
     });
     expect("version" in parsed).toBe(false);
+  });
+
+  it("发布时间必须在，而且必须是带 Z 的 ISO 时刻", () => {
+    // 面板拿它说「新版本发布于 X」。这一版什么时候发的，只有人知道、
+    // 机器算不出来，所以它是配置的一部分，跟两张清单一起写。
+    const lists = { nodes: {}, marks: {} };
+    expect(() => documentSchemaConfigSchema.parse({ ...lists })).toThrow();
+    expect(() =>
+      documentSchemaConfigSchema.parse({ publishedAt: "2026-08-14", ...lists }),
+    ).toThrow();
+    expect(() =>
+      documentSchemaConfigSchema.parse({
+        publishedAt: "2026-08-14T00:00:00+08:00",
+        ...lists,
+      }),
+    ).toThrow();
   });
 
   it("属性名进来时就排好序 —— 两份内容相同的清单不该因为写的顺序不同而看起来不同", () => {
@@ -68,9 +87,12 @@ describe("配置文件的形状", () => {
   });
 
   it("两张清单都必须在", () => {
-    expect(() => documentSchemaConfigSchema.parse({ nodes: {} })).toThrow();
-    expect(() => documentSchemaConfigSchema.parse({ marks: {} })).toThrow();
-    expect(() => documentSchemaConfigSchema.parse({ nodes: [], marks: {} })).toThrow();
+    const at = "2026-08-14T00:00:00Z";
+    expect(() => documentSchemaConfigSchema.parse({ publishedAt: at, nodes: {} })).toThrow();
+    expect(() => documentSchemaConfigSchema.parse({ publishedAt: at, marks: {} })).toThrow();
+    expect(() =>
+      documentSchemaConfigSchema.parse({ publishedAt: at, nodes: [], marks: {} }),
+    ).toThrow();
   });
 });
 
@@ -120,6 +142,15 @@ describe("版本号从清单算出来", () => {
     const asNode = documentSchemaVersion(parse({ code: [] }, {}));
     const asMark = documentSchemaVersion(parse({}, { code: [] }));
     expect(asNode).not.toBe(asMark);
+  });
+
+  it("发布时间不进版本号 —— 只改发布时间不该把所有人拦住", () => {
+    // 版本号是判据。它跟着清单走，不跟着这个时间走：改一次时间就让
+    // 全部客户端进拦截状态，而他们的词表跟服务器一模一样。
+    const lists = { doc: [], heading: ["level"] };
+    const early = documentSchemaVersion(parse(lists, {}, "2026-01-01T00:00:00Z"));
+    const late = documentSchemaVersion(parse(lists, {}, "2026-08-14T00:00:00Z"));
+    expect(late).toBe(early);
   });
 
   it("名字里带分隔符也分得开", () => {

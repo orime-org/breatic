@@ -21,6 +21,7 @@ const MY_VERSION = documentSchemaVersion(getDocumentSchema());
 
 /** 随便另一个版本号，只要不等于 MY_VERSION。 */
 const OTHER_VERSION = documentSchemaVersion({
+  publishedAt: "2020-01-01T00:00:00Z",
   nodes: { paragraph: [] },
   marks: {},
 });
@@ -47,13 +48,23 @@ describe("往 meta 里写这一版的 schema", () => {
     doc.destroy();
   });
 
-  it("写进去的那份带 publishedAt，是个能解析的时间", () => {
+  it("写进去的 publishedAt 就是配置文件里那个值，不是「现在」", () => {
+    // 它说的是「服务器现在跑的这一份是什么时候发的」。用 new Date() 记的是
+    // 「这个进程第一次加载这个 project 的 meta」——一个没人打开过的 project
+    // 跨过一次发版之后，那个值会晚上好几天，面板会写成「刚刚发布」。
     const doc = new Y.Doc();
     publishDocumentSchema(doc);
 
-    const at = readPublished(doc).publishedAt;
-    expect(typeof at).toBe("string");
-    expect(Number.isNaN(Date.parse(at as string))).toBe(false);
+    expect(readPublished(doc).publishedAt).toBe(getDocumentSchema().publishedAt);
+    doc.destroy();
+  });
+
+  it("写进去的是 UTC —— 配置的校验只收带 Z 的那种写法", () => {
+    // 一个时刻发给所有人，各自的浏览器按自己的时区渲染。
+    const doc = new Y.Doc();
+    publishDocumentSchema(doc);
+
+    expect(readPublished(doc).publishedAt).toMatch(/Z$/);
     doc.destroy();
   });
 
@@ -65,14 +76,27 @@ describe("往 meta 里写这一版的 schema", () => {
     const wroteAgain = publishDocumentSchema(doc);
 
     expect(wroteAgain).toBe(false);
-    // 时间戳没被刷新 —— 每次加载都重写会让「新版本什么时候发布的」变成
-    // 「这份文档最近一次被打开是什么时候」，那句话就没有意义了。
     expect(readPublished(doc).publishedAt).toBe(firstAt);
     doc.destroy();
   });
 
-  it("版本号一样就不重写，哪怕清单内容被人改过", () => {
-    // 判定只看版本号（user 2026-08-14）。清单跟着版本号走、不参与比较；
+  it("版本号一样但发布时间不一样，也要重写 —— 改对一个日期得让人看到", () => {
+    const doc = new Y.Doc();
+    doc.transact(() => {
+      const map = doc.getMap(DOCUMENT_SCHEMA_META_KEY);
+      map.set("version", MY_VERSION);
+      map.set("nodes", getDocumentSchema().nodes);
+      map.set("marks", getDocumentSchema().marks);
+      map.set("publishedAt", "2020-01-01T00:00:00Z");
+    });
+
+    expect(publishDocumentSchema(doc)).toBe(true);
+    expect(readPublished(doc).publishedAt).toBe(getDocumentSchema().publishedAt);
+    doc.destroy();
+  });
+
+  it("版本号和发布时间都一样就不重写，哪怕清单内容被人改过", () => {
+    // 拦不拦只看版本号（user 2026-08-14）。清单跟着版本号走、不参与比较；
     // 而版本号是从清单算出来的，所以「清单变了版本号没变」造不出来。
     const doc = new Y.Doc();
     doc.transact(() => {
@@ -80,11 +104,11 @@ describe("往 meta 里写这一版的 schema", () => {
       map.set("version", MY_VERSION);
       map.set("nodes", { paragraph: [] });
       map.set("marks", {});
-      map.set("publishedAt", "2020-01-01T00:00:00.000Z");
+      map.set("publishedAt", getDocumentSchema().publishedAt);
     });
 
     expect(publishDocumentSchema(doc)).toBe(false);
-    expect(readPublished(doc).publishedAt).toBe("2020-01-01T00:00:00.000Z");
+    expect(readPublished(doc).nodes).toEqual({ paragraph: [] });
     doc.destroy();
   });
 
@@ -104,7 +128,7 @@ describe("往 meta 里写这一版的 schema", () => {
     const published = readPublished(doc);
     expect(published.version).toBe(MY_VERSION);
     expect(published.nodes).toEqual(getDocumentSchema().nodes);
-    expect(published.publishedAt).not.toBe("2020-01-01T00:00:00.000Z");
+    expect(published.publishedAt).toBe(getDocumentSchema().publishedAt);
     doc.destroy();
   });
 

@@ -67,6 +67,16 @@ export const DOCUMENT_SCHEMA_META_KEY = "documentSchema";
  * what lets the version ignore attribute order without sorting again.
  */
 export const documentSchemaConfigSchema = z.object({
+  /**
+   * When this vocabulary went out, as UTC. The panel says "the new version went
+   * out {when}", and only a person knows when that was — it cannot be derived
+   * from anything, which is why it is written here rather than computed.
+   *
+   * UTC is required rather than merely accepted (an offset like `+08:00` is
+   * rejected): one instant travels to every client, and each renders it in its
+   * own time zone.
+   */
+  publishedAt: z.iso.datetime(),
   /** Node type name to its attribute names. */
   nodes: z.record(z.string(), z.array(z.string())).transform(sortAttributeLists),
   /** Mark type name to its attribute names. */
@@ -102,6 +112,9 @@ const SIXTY_FOUR_BITS = 0xffffffffffffffffn;
  * mark sharing a name stay distinct. Type names are sorted here because object
  * key order is insertion order and the config file's is arbitrary; attribute
  * lists are already sorted by {@link documentSchemaConfigSchema}.
+ *
+ * `publishedAt` is deliberately not in here. The version decides who gets shut
+ * out of editing, and correcting a date is not a reason to shut anyone out.
  * @param schema - The vocabulary to serialise.
  * @returns A string that is equal for exactly the vocabularies that agree.
  */

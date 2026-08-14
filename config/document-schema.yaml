@@ -23,6 +23,17 @@
 # real ProseMirror schema from the registered extensions and fails when it
 # disagrees with the lists here, and that test never looked at the number.
 
+# ## When this vocabulary went out — set it whenever the lists below change
+#
+# collab reads this value and publishes it into each project's meta document,
+# and the panel a stopped client sees says "the new version went out {when}".
+# Nothing can derive it: only a person knows when a release happened. It is
+# NOT part of the version, so correcting a date shuts nobody out.
+#
+# UTC, and the `Z` form only — an offset like +08:00 fails to load. One instant
+# goes to everyone and each browser renders it in its own time zone.
+publishedAt: "2026-08-14T00:00:00Z"
+
 # Node type name -> its attribute names, sorted.
 #
 # Attribute names are here because adding an attribute to a node both sides

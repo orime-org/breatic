@@ -47,12 +47,11 @@ export const DOCUMENT_SCHEMA_PUBLISH_ORIGIN = "document-schema-publish";
  * independently, and a write on every load would broadcast a change to every
  * connected client for nothing.
  *
- * "Already the same" is decided by `documentSchemaMatches` on the version, the
- * same comparison the browser uses to decide whether to stop editing — one
- * rule, shared. `publishedAt` is not part of it: it records when the vocabulary
- * last CHANGED, and comparing it would differ every time and rewrite the
- * timestamp on every load, turning "when the new version went out" into "when
- * this document was last opened".
+ * "Already the same" is the version — the same comparison the browser uses to
+ * decide whether to stop editing, one rule, shared — AND the publish time,
+ * because both come from the config file and a correction to the date has to
+ * reach clients too. Every value written here is read from that file, so a
+ * process that has already published writes nothing on later loads.
  * @param metaDoc - The project's meta document, as handed over by the load hook.
  * @returns True when this call wrote, false when the published copy already matched.
  * @throws {Error} When `config/document-schema.yaml` is missing or invalid.
@@ -61,13 +60,23 @@ export function publishDocumentSchema(metaDoc: Y.Doc): boolean {
   const mine = getDocumentSchema();
   const version = documentSchemaVersion(mine);
   const published = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
-  if (documentSchemaMatches(version, published.toJSON())) return false;
+  const current = published.toJSON();
+  if (
+    documentSchemaMatches(version, current) &&
+    current.publishedAt === mine.publishedAt
+  ) {
+    return false;
+  }
 
   metaDoc.transact(() => {
     published.set("version", version);
     published.set("nodes", mine.nodes);
     published.set("marks", mine.marks);
-    published.set("publishedAt", new Date().toISOString());
+    // Straight from the config file, in UTC. Not `new Date()` — that would be
+    // the moment this process first loaded THIS project's meta, which for a
+    // project nobody has opened since the release is days late and reads on
+    // screen as "the new version went out just now".
+    published.set("publishedAt", mine.publishedAt);
   }, DOCUMENT_SCHEMA_PUBLISH_ORIGIN);
 
   return true;
