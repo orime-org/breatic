@@ -364,21 +364,25 @@ describe('正文一个块都没有', () => {
     expect(staysInsideTitle(editor)).toBe(true);
   });
 
-  it('正文零块时从「哪儿都不在」出发，不产生跨进标题的选区', () => {
-    // AllSelection 是「哪儿都不在」的一种（`selectAll` 产出的就是它）。
-    // 正文没有任何东西可选，唯一不许发生的是把标题圈进来。
+  it('正文零块时从「哪儿都不在」出发，选区原样不动，键仍然被认领', () => {
+    // AllSelection 是「哪儿都不在」的一种（`selectAll` 产出的就是它）。正文没有
+    // 任何东西可选，正确的答案是**什么都不做**：不换选区，也不把键交回去。
+    //
+    // 断言必须是「选区没变」，不能是「from 没跨进标题」那种宽松条件 —— 变异实测：
+    // 去掉 `hasBody` 那道守卫，得到的是正文起点处的一个空选区，它的 from 恰好等于
+    // 标题的 nodeSize，宽松条件照样通过。
     const editor = open('');
     editor.view.dispatch(
       editor.state.tr.setSelection(new AllSelection(editor.state.doc)),
     );
+    const before = selection(editor);
 
-    expect(() => pressCtrlA(editor)).not.toThrow();
+    const claimed = pressCtrlA(editor);
 
-    expect(
-      editor.state.selection.from >= titleSize(editor) ||
-        editor.state.selection instanceof AllSelection,
-      '正文零块时不许新造一个跨进标题的范围选区',
-    ).toBe(true);
+    expect(selection(editor), '正文零块时不许换掉用户的选区').toEqual(before);
+    expect(editor.state.selection, '类型也不许换').toBeInstanceOf(AllSelection);
+    // 交回去就落到 @tiptap/core 的 selectAll，那会产出一个含标题的 AllSelection。
+    expect(claimed, '没东西可选也要吃掉这个键').toBe(true);
   });
 });
 

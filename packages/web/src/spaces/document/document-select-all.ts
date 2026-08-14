@@ -208,6 +208,14 @@ function selectionOverRange(state: EditorState, range: Range): Selection {
  * `Keymap`, whose binding is `selectAll` — the exact behaviour this exists to
  * replace. "Does not widen any further" means giving back the same range, not
  * leaving the key to someone else.
+ *
+ * There is one case where it reports handled without selecting anything: a
+ * document whose body has no blocks at all, with the caret in neither side.
+ * Nothing to select is not the same as nothing to do — the key still belongs
+ * to us, and leaving the selection untouched is the answer. (Whoever took the
+ * key there would end up selecting the title, which is all the document holds,
+ * so this particular case is about who owns the key rather than about keeping
+ * the title out of a selection.)
  * @param state - Editor state to read.
  * @param dispatch - Applies the transaction.
  * @returns True, always.
