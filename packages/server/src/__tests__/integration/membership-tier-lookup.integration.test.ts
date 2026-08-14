@@ -48,6 +48,7 @@ import {
   getStudioMembershipTier,
   getLimitsForUser,
   getLimitsForStudio,
+  getProjectConcurrentEditorLimit,
   getMembershipLimits,
 } from "@breatic/core";
 
@@ -117,6 +118,24 @@ async function insertTeamStudio(adminUserId: string): Promise<string> {
     VALUES (${st!.id}, ${adminUserId}, 'admin')
   `;
   return st!.id;
+}
+
+/**
+ * A project inside a studio.
+ * @param studioId - The studio that owns it.
+ * @param createdBy - Whoever created it; not what decides the ceilings.
+ * @returns The project id.
+ */
+async function insertProject(
+  studioId: string,
+  createdBy: string,
+): Promise<string> {
+  const [p] = await sql<{ id: string }[]>`
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioId}, ${createdBy}, 'Project', ${`tier-pr-${seq++}`})
+    RETURNING id
+  `;
+  return p!.id;
 }
 
 describe("getUserMembershipTier", () => {
@@ -316,5 +335,105 @@ describe("getLimitsForStudio", () => {
     expect(err!.message).toContain(studioId);
     expect(err!.message).toContain(adminUserId);
     expect(err!.message).toContain("TEAM");
+  });
+});
+
+/**
+ * The collab handshake's entry point (#88).
+ *
+ * The per-document ceiling on writable connections belongs to the studio that
+ * owns the project, so collab has one more hop than the other quota call
+ * points: document name → project → studio → that studio's admin → tier.
+ *
+ * It goes through `getLimitsForStudio` rather than joining its own way to the
+ * tier. That is not tidiness: those two functions are where the negotiated
+ * enterprise tier will be read from the database, and a call point that walks
+ * its own path would keep quietly answering from the config file after that
+ * lands — with a number that looks perfectly valid.
+ */
+describe("getProjectConcurrentEditorLimit", () => {
+  it("answers with the tier of the studio that owns the project", async () => {
+    const { userId } = await insertUser("pro");
+    const studioId = await insertTeamStudio(userId);
+    const projectId = await insertProject(studioId, userId);
+    await expect(getProjectConcurrentEditorLimit(projectId)).resolves.toBe(
+      getMembershipLimits("pro").concurrent_editors,
+    );
+  });
+
+  it("is not decided by whoever created the project", async () => {
+    // A `base` member creating a project inside a `team` studio must not drag
+    // the whole document down to their own ceiling — the studio pays for it.
+    // `projects.created_by_user_id` is immutable and says nothing about who
+    // pays today, which is exactly the trap the studio-level lookup avoids.
+    const admin = await insertUser("team");
+    const creator = await insertUser("base");
+    const studioId = await insertTeamStudio(admin.userId);
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${studioId}, ${creator.userId}, 'maintainer')
+    `;
+    const projectId = await insertProject(studioId, creator.userId);
+    await expect(getProjectConcurrentEditorLimit(projectId)).resolves.toBe(
+      getMembershipLimits("team").concurrent_editors,
+    );
+  });
+
+  it("follows a transfer of the studio to the new admin", async () => {
+    // Same property the studio lookup has, restated at this entry point
+    // because collab reaches the tier by its own route and could have picked
+    // up the immutable creator instead somewhere along it.
+    const from = await insertUser("team");
+    const to = await insertUser("base");
+    const studioId = await insertTeamStudio(from.userId);
+    const projectId = await insertProject(studioId, from.userId);
+    expect(await getProjectConcurrentEditorLimit(projectId)).toBe(
+      getMembershipLimits("team").concurrent_editors,
+    );
+
+    await sql`
+      UPDATE studio_members SET role = 'maintainer'
+      WHERE studio_id = ${studioId} AND user_id = ${from.userId}
+    `;
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${studioId}, ${to.userId}, 'admin')
+    `;
+
+    expect(await getProjectConcurrentEditorLimit(projectId)).toBe(
+      getMembershipLimits("base").concurrent_editors,
+    );
+  });
+
+  it("throws for a project that does not exist", async () => {
+    await expect(
+      getProjectConcurrentEditorLimit("00000000-0000-0000-0000-000000000000"),
+    ).rejects.toThrow();
+  });
+
+  it("throws for a soft-deleted project", async () => {
+    // A deleted project has no live studio to bill, and answering with a
+    // number would let a document that should be gone keep enforcing one.
+    // The collab side turns any throw here into a read-only connection, so
+    // this does not lock anybody out — it declines to invent a ceiling.
+    const { userId } = await insertUser("pro");
+    const studioId = await insertTeamStudio(userId);
+    const projectId = await insertProject(studioId, userId);
+    await sql`UPDATE projects SET deleted_at = now() WHERE id = ${projectId}`;
+    await expect(
+      getProjectConcurrentEditorLimit(projectId),
+    ).rejects.toThrow();
+  });
+
+  it("names the project when it cannot be resolved", async () => {
+    // The collab log carries this message verbatim; without the id in it, an
+    // operator gets "some project somewhere has no studio".
+    const missing = "00000000-0000-0000-0000-000000000000";
+    const err = await getProjectConcurrentEditorLimit(missing).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    expect(err, "expected a throw").not.toBeNull();
+    expect(err!.message).toContain(missing);
   });
 });
