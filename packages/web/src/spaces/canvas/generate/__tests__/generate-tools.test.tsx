@@ -17,13 +17,13 @@
  * asserting on HoverPreview's own behaviour, which has its own tests.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AudioLines, UserRound } from 'lucide-react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { SlotTool, ToggleTool } from '@web/spaces/canvas/generate/generate-tools';
-import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
+import * as nodeIcon from '@web/spaces/canvas/lib/node-icon';
 
 vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
   HoverPreview: ({
@@ -50,6 +50,16 @@ vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
     </div>
   ),
 }));
+
+/**
+ * Watches the icon resolver the reference rail uses, keeping its real return
+ * value — the point is WHICH function the slot reaches, not what it renders.
+ */
+const getNodeIconSpy = vi.spyOn(nodeIcon, 'getNodeIcon');
+
+beforeEach(() => {
+  getNodeIconSpy.mockClear();
+});
 
 /**
  * Renders one slot tool with no-op defaults, overridable per test.
@@ -151,12 +161,23 @@ describe('SlotTool — a filled slot covers its button with what it holds', () =
   });
 
   it('takes the filled icon from the same source the reference rail uses', () => {
-    // Not "both happen to render a music note today": the rail resolves its
-    // icon through getNodeIcon, and this pins the slot to that same function.
-    const { container } = slot({ pick: AUDIO_PICK });
-    const RailIcon = getNodeIcon('audio');
-    const { container: railLike } = render(<RailIcon />);
-    expect(iconClasses(container)).toContain(iconClasses(railLike)[0]);
+    // Comparing the rendered glyph proves nothing: the rival table
+    // (MODALITY_ICONS, the subject of #1954) maps audio to Music too, so a slot
+    // wired to it renders an identical note. Gate 2 swapped the source and this
+    // file stayed green. So watch the FUNCTION: the rail resolves its icon
+    // through getNodeIcon, and the slot must reach the same one.
+    slot({ pick: AUDIO_PICK });
+    expect(getNodeIconSpy).toHaveBeenCalledWith('audio');
+  });
+
+  it('asks getNodeIcon for the video form when it holds a video', () => {
+    slot({ pick: COVERLESS_VIDEO });
+    expect(getNodeIconSpy).toHaveBeenCalledWith('video');
+  });
+
+  it('never asks for an icon while empty — there is nothing held', () => {
+    slot();
+    expect(getNodeIconSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -187,12 +208,60 @@ describe('SlotTool — the filled slot joins the shared hover preview (#1814)', 
     slot();
     expect(screen.queryByTestId('slot-preview')).toBeNull();
   });
+
+  it('lets the preview REPLACE the tooltip, not sit beside it', () => {
+    // Two floating cards on one trigger would open together. The rail carries
+    // no tooltip for the same reason. Radix marks a tooltip trigger with
+    // `data-state`; a filled slot must not be one.
+    slot({ pick: AUDIO_PICK });
+    expect(screen.getByTestId('slot')).not.toHaveAttribute('data-state');
+  });
+
+  it('keeps the tooltip while empty — that is what says WHAT to pick', () => {
+    slot();
+    expect(screen.getByTestId('slot')).toHaveAttribute('data-state');
+  });
 });
 
+describe('SlotTool — a running pick reads on the button while filled', () => {
+  it('rings the button when the pick is running on a filled slot', () => {
+    // The white-fill active style hides behind the cover, so a filled slot
+    // that is re-picking says so with a ring instead (A10).
+    slot({ pick: AUDIO_PICK, active: true });
+    expect(classes(screen.getByTestId('slot'))).toContain('ring-foreground');
+  });
+
+  it('does not ring a filled slot that is idle', () => {
+    slot({ pick: AUDIO_PICK });
+    expect(classes(screen.getByTestId('slot'))).not.toContain('ring-foreground');
+  });
+});
+
+/**
+ * The Tailwind class list of an element, as discrete tokens.
+ *
+ * A regex over the whole string cannot tell `border` from `border-border`:
+ * `\b` treats the hyphen as a word boundary, so the colour-only utility
+ * satisfies it while rendering no border at all (preflight sets border-width
+ * to 0). Gate 2 dropped the width class and this file stayed green.
+ * @param el - The element to read.
+ * @returns Its class names.
+ */
+function classes(el: HTMLElement): string[] {
+  return [...el.classList];
+}
+
 describe('SlotTool / ToggleTool — the toolbar buttons carry a 1px border', () => {
-  it('borders a slot tool', () => {
+  it('borders a slot tool with the WIDTH utility, not just the colour', () => {
     slot();
-    expect(screen.getByTestId('slot').className).toMatch(/\bborder\b/);
+    const c = classes(screen.getByTestId('slot'));
+    expect(c).toContain('border');
+    expect(c).toContain('border-border');
+  });
+
+  it('borders a filled slot too', () => {
+    slot({ pick: AUDIO_PICK });
+    expect(classes(screen.getByTestId('slot'))).toContain('border');
   });
 
   it('borders a toggle tool', () => {
@@ -208,6 +277,8 @@ describe('SlotTool / ToggleTool — the toolbar buttons carry a 1px border', () 
         />
       </TooltipProvider>,
     );
-    expect(screen.getByTestId('toggle').className).toMatch(/\bborder\b/);
+    const c = classes(screen.getByTestId('toggle'));
+    expect(c).toContain('border');
+    expect(c).toContain('border-border');
   });
 });
