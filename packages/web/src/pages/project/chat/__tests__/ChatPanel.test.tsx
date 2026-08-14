@@ -11,6 +11,9 @@ vi.mock('@web/data/api/chat', () => ({
   chatApi: { openChat: vi.fn(), streamMessage: vi.fn(), messagesBefore: vi.fn() },
 }));
 
+import { SSE_EVENT_NAMES } from '@breatic/shared';
+import type { SSEEventEnvelope } from '@breatic/shared';
+
 import { chatApi } from '@web/data/api/chat';
 import { StreamRefusedError, StreamUnreachableError } from '@web/data/stream/sse';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
@@ -47,6 +50,47 @@ function streamFailsWith(err: unknown): void {
   vi.mocked(chatApi.streamMessage).mockImplementation(async (_input, handlers) => {
     handlers.onError?.(err);
   });
+}
+
+/** The stream handlers the panel's last send installed. */
+let handlers: {
+  onEvent: (e: SSEEventEnvelope) => void;
+  onClose?: () => void;
+  onError?: (err: unknown) => void;
+};
+
+/**
+ * Hold the stream open, the way a real turn does for as long as it runs.
+ *
+ * Nothing is answered until a case says so, which is what makes the wait
+ * between pressing send and the server's first word observable at all.
+ */
+function streamStaysOpen(): void {
+  vi.mocked(chatApi.streamMessage).mockImplementation((_input, h) => {
+    handlers = h;
+    return new Promise<void>(() => {});
+  });
+}
+
+/**
+ * Say the turn has begun, which is the server's first word on every turn.
+ * @param texts - What the server says the conversation now holds, in order
+ */
+function turnStarts(texts: string[]): void {
+  handlers.onEvent({
+    event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
+    data: {
+      messages: texts.map((text, i) => ({
+        id: `srv${i}`,
+        role: 'user',
+        parts: [{ type: 'text', text }],
+        content: text,
+        ts: '2026-08-14T00:00:00Z',
+        turnIndex: 10 + i,
+      })),
+      hasMore: false,
+    },
+  } as unknown as SSEEventEnvelope);
 }
 
 /**
@@ -115,8 +159,9 @@ describe('ChatPanel', () => {
     expect(useChatStore.getState().composerDraft).toBe('Hi!');
   });
 
-  it('clicking Send sends the trimmed draft and clears it', async () => {
+  it('sends the trimmed draft, and empties the box when the server has it', async () => {
     const user = userEvent.setup();
+    streamStaysOpen();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
@@ -129,19 +174,27 @@ describe('ChatPanel', () => {
         expect.anything(),
       ),
     );
-    expect(useChatStore.getState().composerDraft).toBe('');
+    // Still in the box, because so far nothing has confirmed it went anywhere.
+    // Emptying it now is a promise the browser is in no position to make: the
+    // words would be gone from the only place they exist, with nothing on
+    // screen to show for them.
+    expect(useChatStore.getState().composerDraft).toBe('  test  ');
+    // And nothing to press: not send again, and not stop.
+    expect(screen.getByTestId('chat-composer-sending')).toBeInTheDocument();
+
+    act(() => {
+      turnStarts(['test']);
+    });
+
+    // The server has the message and has handed the conversation back. Now the
+    // box is empty, and the stop button is the one thing worth pressing.
+    await waitFor(() => expect(useChatStore.getState().composerDraft).toBe(''));
+    expect(screen.getByTestId('chat-composer-abort')).toBeInTheDocument();
   });
 
-  it('clears the composer as soon as the message is sent, not when the reply ends', async () => {
+  it('does not wipe what was typed while the server was still answering', async () => {
     const user = userEvent.setup();
-    // Hold the stream open, the way a real turn does for as long as it runs.
-    let endTurn = (): void => {};
-    vi.mocked(chatApi.streamMessage).mockImplementation(
-      async () =>
-        new Promise<void>((resolve) => {
-          endTurn = resolve;
-        }),
-    );
+    streamStaysOpen();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
@@ -149,42 +202,19 @@ describe('ChatPanel', () => {
     await user.click(screen.getByTestId('chat-composer-send'));
     await waitFor(() => expect(chatApi.streamMessage).toHaveBeenCalled());
 
-    // The words are on screen as a sent message. Leaving them in the box too
-    // reads as a send that did not take, and anything typed while waiting is
-    // wiped the moment the reply finishes.
-    expect(useChatStore.getState().composerDraft).toBe('');
-    endTurn();
-  });
-
-  it('does not overwrite what was typed while a failed send was in flight', async () => {
-    const user = userEvent.setup();
-    let failTurn = (): void => {};
-    vi.mocked(chatApi.streamMessage).mockImplementation(
-      async () =>
-        new Promise<void>((_resolve, reject) => {
-          failTurn = () => reject(new StreamUnreachableError(new Error('offline')));
-        }),
-    );
-    renderPanel();
-    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
-
-    useChatStore.getState().setComposerDraft('shorten this for me');
-    await user.click(screen.getByTestId('chat-composer-send'));
-    await waitFor(() => expect(useChatStore.getState().composerDraft).toBe(''));
-
-    // The composer is live for the whole turn, so carrying on typing is the
-    // ordinary thing to do.
-    useChatStore.getState().setComposerDraft('and three titles too');
-
-    await act(async () => {
-      failTurn();
-      await new Promise((r) => setTimeout(r, 0));
+    // The box is not locked, so typing on is the ordinary thing to do.
+    act(() => {
+      useChatStore.getState().setComposerDraft('second thought');
+    });
+    act(() => {
+      turnStarts(['first question']);
     });
 
-    // Handing back the words that were not sent must not take away the words
-    // that were typed since. They are gone with no message, no undo, and no
-    // sign of where they went.
-    expect(useChatStore.getState().composerDraft).toBe('and three titles too');
+    // Emptying the box is for taking away the words that were sent, not the
+    // ones typed since -- those would go with no message, no undo, and nowhere
+    // to look for them.
+    await waitFor(() => expect(chatApi.streamMessage).toHaveBeenCalledTimes(1));
+    expect(useChatStore.getState().composerDraft).toBe('second thought');
   });
 
   it('says so on the composer when the message never went out', async () => {
@@ -272,7 +302,7 @@ describe('ChatPanel', () => {
     expect(useChatStore.getState().composerDraft).toBe('please do not eat this');
   });
 
-  it('hands the words back when the message could not be sent', async () => {
+  it('leaves the words where they are when the message never went out', async () => {
     const user = userEvent.setup();
     streamFailsWith(new StreamUnreachableError(new Error('never left')));
     renderPanel();
@@ -284,12 +314,14 @@ describe('ChatPanel', () => {
     useChatStore.getState().setComposerDraft('is anyone there');
     await user.click(screen.getByTestId('chat-composer-send'));
 
-    // Nothing was stored, and nothing of the attempt is left on screen — so
-    // if the words are not handed back they are simply gone, and the user has
-    // to type the whole thing again.
+    // Nothing was stored and nothing of the attempt is on screen, so the box
+    // is the only place these words exist. They are still in it because the
+    // one thing that empties it never happened -- there is no handing back to
+    // get wrong, and nothing to get wrong it on top of.
     await waitFor(() =>
-      expect(useChatStore.getState().composerDraft).toBe('is anyone there'),
+      expect(screen.queryByTestId('chat-composer-sending')).toBeNull(),
     );
+    expect(useChatStore.getState().composerDraft).toBe('is anyone there');
   });
 });
 

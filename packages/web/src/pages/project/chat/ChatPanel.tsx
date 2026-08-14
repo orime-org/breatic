@@ -68,7 +68,7 @@ export function ChatPanel({
     isPending,
     failedToOpen,
     canSend,
-    streaming,
+    turnPhase,
     hasMore,
     mishap,
     loadEarlier,
@@ -91,7 +91,16 @@ export function ChatPanel({
   const [sentCount, setSentCount] = React.useState(0);
 
   /**
-   * Send the trimmed composer draft and clear the input.
+   * The draft as it stood when it was sent, until the box is emptied of it.
+   *
+   * Null the rest of the time. Held as a ref and not as state because nothing
+   * renders differently for it: it is here so that emptying the box can tell
+   * the words that were sent from anything typed since.
+   */
+  const sent = React.useRef<string | null>(null);
+
+  /**
+   * Send the trimmed composer draft, leaving it in the box for now.
    *
    * Stable across renders, so that a reply arriving token by token does not
    * hand the composer a new callback sixty times a second and take its own
@@ -101,31 +110,35 @@ export function ChatPanel({
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
     setSentCount((n) => n + 1);
-    // Cleared here rather than when the reply ends. The composer is only live
-    // when there is a conversation to write to, so by the time this runs the
-    // message is already in the list — waiting for the whole turn would leave
-    // the user's words sitting in the box beside their own sent bubble, and
-    // wipe anything typed while the reply streamed in.
+    // Kept in the box until the server says it has the message. Until then
+    // this is the only place the words exist -- nothing of the turn is on
+    // screen and nothing is stored anywhere -- so emptying it now would be
+    // the browser promising something it has no word on.
+    sent.current = draft;
     void send(trimmed).catch(() => {
       // Why it failed is the conversation's to say, and it already said it to
-      // everyone watching at the moment it happened. What is left here is the
-      // words.
-      //
-      // It was not sent, and the server kept no record of it — so nothing of
-      // the attempt is on screen to explain itself. Handing the words back is
-      // the explanation: the message is where the user left it, ready to send
-      // again, rather than gone with nothing to show for it.
-      //
-      // Only into a box that is still empty. The composer stays live for the
-      // whole turn and carrying on typing is the ordinary thing to do, so
-      // writing over whatever is in there would take away words that were
-      // never in trouble — with no message, no undo, and nowhere to look for
-      // them. Read from the store rather than the render that started the
-      // send, which closed over the draft as it was then.
-      if (useChatStore.getState().composerDraft === '') setDraft(trimmed);
+      // everyone watching at the moment it happened. Nothing to do here but
+      // stop waiting to empty the box: the words are still in it, which is
+      // exactly where a message that was never sent belongs.
+      sent.current = null;
     });
-    clearDraft();
-  }, [draft, send, setDraft, clearDraft]);
+  }, [draft, send]);
+
+  /**
+   * Empty the box once the server has the message.
+   *
+   * The turn's first event is the server handing back the conversation with
+   * the message in it, so from that moment the words exist somewhere else and
+   * the box has done its job. Anything typed since is left alone -- that was
+   * never sent, and taking it away would be taking words nobody asked to be
+   * taken, with no message and no undo.
+   */
+  React.useEffect(() => {
+    if (turnPhase !== 'running' || sent.current === null) return;
+    const words = sent.current;
+    sent.current = null;
+    if (useChatStore.getState().composerDraft === words) clearDraft();
+  }, [turnPhase, clearDraft]);
 
   /**
    * Pick a conversation out of the history sheet and close it.
@@ -197,7 +210,7 @@ export function ChatPanel({
       <ChatNotice message={notice} />
       <ChatComposer
         draft={draft}
-        streaming={streaming}
+        turnPhase={turnPhase}
         disabled={!canSend}
         onChange={setDraft}
         onSubmit={submit}

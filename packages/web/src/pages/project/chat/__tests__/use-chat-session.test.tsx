@@ -62,6 +62,30 @@ function openChatAnswers(messages: Array<{ id: string; role: string; text: strin
 }
 
 /**
+ * Say the turn has begun, which is the server's first word on every turn.
+ *
+ * Until this arrives the browser has put nothing on screen: the reply has
+ * nowhere to be written yet, and the question is only the server's to show.
+ * @param texts - What the server says the conversation now holds, oldest first
+ */
+function turnStarts(texts: string[]): void {
+  handlers.onEvent({
+    event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
+    data: {
+      messages: texts.map((text, i) => ({
+        id: `srv-${i}`,
+        role: i % 2 === 0 ? 'user' : 'assistant',
+        parts: [{ type: 'text', text }],
+        content: text,
+        ts: '2026-08-14T00:00:00Z',
+        turnIndex: 10 + i,
+      })),
+      hasMore: false,
+    },
+  } as unknown as SSEEventEnvelope);
+}
+
+/**
  * Render the hook.
  * @returns The render result, for reading `current` off it
  */
@@ -117,13 +141,53 @@ describe('what the panel shows when it opens', () => {
 });
 
 describe('sending a message', () => {
-  it('shows what the user said before the server has said anything', async () => {
+  it('is three states, and the middle one has no stop in it', async () => {
+    openChatAnswers([]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+
+    expect(result.current.turnPhase).toBe('idle');
+
+    await act(async () => {
+      void result.current.send('hi');
+    });
+
+    // The request is out and the server has not answered. Nothing of this turn
+    // is on screen, so there is nothing for stopping it to take back -- and
+    // whether it is running at all is not something this end knows yet.
+    expect(result.current.turnPhase).toBe('sending');
+
+    act(() => {
+      turnStarts(['hi']);
+    });
+
+    // Now the server has said it: the message is stored and the turn is its
+    // to finish. From here stopping means something.
+    expect(result.current.turnPhase).toBe('running');
+
+    act(() => {
+      handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_DONE, data: {} });
+    });
+
+    expect(result.current.turnPhase).toBe('idle');
+  });
+
+  it('shows what the user said as soon as the server says it has it', async () => {
     openChatAnswers([]);
     const { result } = render();
     await waitFor(() => expect(result.current.isPending).toBe(false));
 
     await act(async () => {
       void result.current.send('find me references');
+    });
+
+    // Not before. The browser can put its own copy of the question on screen
+    // the moment the press lands, but it would be showing something it has no
+    // word on -- and taking it down again on every refusal.
+    expect(result.current.messages.map((m) => m.content)).not.toContain('find me references');
+
+    act(() => {
+      turnStarts(['find me references']);
     });
 
     await waitFor(() =>
@@ -137,6 +201,9 @@ describe('sending a message', () => {
     await waitFor(() => expect(result.current.isPending).toBe(false));
     await act(async () => {
       void result.current.send('hi');
+    });
+    act(() => {
+      turnStarts(['hi']);
     });
 
     act(() => {
@@ -160,6 +227,9 @@ describe('sending a message', () => {
     await act(async () => {
       void result.current.send('hi');
     });
+    act(() => {
+      turnStarts(['hi']);
+    });
 
     // Without this the bubble sits empty and still until the first token,
     // and the typing cursor in MessageBubble has nothing to render from.
@@ -179,8 +249,11 @@ describe('sending a message', () => {
     await act(async () => {
       void result.current.send('hi');
     });
+    act(() => {
+      turnStarts(['hi']);
+    });
 
-    expect(result.current.streaming).toBe(true);
+    expect(result.current.turnPhase).toBe('running');
 
     act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_DONE, data: {} });
@@ -188,7 +261,7 @@ describe('sending a message', () => {
 
     // The composer reads this to decide between send and stop. Leaving it on
     // strands the user with a stop button and no way to send anything.
-    expect(result.current.streaming).toBe(false);
+    expect(result.current.turnPhase).toBe('idle');
   });
 
   it('stops streaming when the turn fails', async () => {
@@ -198,12 +271,15 @@ describe('sending a message', () => {
     await act(async () => {
       void result.current.send('hi');
     });
+    act(() => {
+      turnStarts(['hi']);
+    });
 
     act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'whatever' } });
     });
 
-    expect(result.current.streaming).toBe(false);
+    expect(result.current.turnPhase).toBe('idle');
     await waitFor(() => expect(result.current.messages.at(-1)?.failed).toBe(true));
   });
 
@@ -213,6 +289,9 @@ describe('sending a message', () => {
     await waitFor(() => expect(result.current.isPending).toBe(false));
     await act(async () => {
       void result.current.send('hi');
+    });
+    act(() => {
+      turnStarts(['hi']);
     });
 
     // Wait for the reply to actually be on screen and marked, or the
@@ -225,7 +304,7 @@ describe('sending a message', () => {
 
     // The server's ending never arrives on this path: the connection is gone
     // before it is written, so nothing but this clears the flag.
-    expect(result.current.streaming).toBe(false);
+    expect(result.current.turnPhase).toBe('idle');
     // And the reply itself has to stop claiming it is being written, or it
     // keeps its blinking cursor for as long as the panel stays open.
     await waitFor(() => expect(result.current.messages.at(-1)?.streaming).toBeUndefined());
@@ -265,6 +344,11 @@ describe('when the conversation it was writing to is gone', () => {
 
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalledTimes(2));
     expect(chatApi.streamMessage).toHaveBeenCalledTimes(2);
+    // The second attempt is the one that got through, so it is the one that
+    // hands the conversation back.
+    act(() => {
+      turnStarts(['an older question', 'an older answer', 'find me references']);
+    });
     // What the second attempt sent is what the user typed, not whatever the
     // list happened to have in it.
     expect(vi.mocked(chatApi.streamMessage).mock.calls[1]?.[0].message).toBe(
@@ -320,6 +404,9 @@ describe('when the conversation it was writing to is gone', () => {
     await act(async () => {
       void result.current.send('hi');
     });
+    act(() => {
+      turnStarts(['hi']);
+    });
 
     act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'upstream said no' } });
@@ -346,6 +433,9 @@ describe('when the conversation it was writing to is gone', () => {
     await waitFor(() => expect(first.result.current.isPending).toBe(false));
     await act(async () => {
       void first.result.current.send('hi');
+    });
+    act(() => {
+      turnStarts(['hi']);
     });
     act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'upstream said no' } });
@@ -404,6 +494,9 @@ describe('while a reply is being written', () => {
     await act(async () => {
       void result.current.send('and now this');
     });
+    act(() => {
+      turnStarts(['an earlier question', 'an earlier answer', 'and now this']);
+    });
     const settled = result.current.messages.slice(0, 2);
 
     act(() => {
@@ -429,6 +522,9 @@ describe('when the network comes back mid-reply', () => {
     await waitFor(() => expect(result.current.isPending).toBe(false));
     await act(async () => {
       void result.current.send('hi');
+    });
+    act(() => {
+      turnStarts(['hi']);
     });
     act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'Half a' } });
@@ -473,6 +569,9 @@ describe('when the panel is opened again over a conversation already loaded', ()
       void first.result.current.send('hello');
     });
     act(() => {
+      turnStarts(['earlier', 'hello']);
+    });
+    act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'A' } });
     });
     await waitFor(() => expect(first.result.current.messages).toHaveLength(3));
@@ -503,6 +602,9 @@ describe('when one turn ends after the next has started', () => {
       void result.current.send('first');
     });
     const firstTurn = handlers;
+    act(() => {
+      turnStarts(['first']);
+    });
 
     // The first turn fails. The server is not finished with it — it still has
     // to write the turn down and charge for it before it sends `chat_done` —
@@ -510,19 +612,21 @@ describe('when one turn ends after the next has started', () => {
     act(() => {
       firstTurn.onEvent({ event: SSE_EVENT_NAMES.ERROR, data: { message: 'upstream said no' } });
     });
-    await waitFor(() => expect(result.current.streaming).toBe(false));
+    await waitFor(() => expect(result.current.turnPhase).toBe('idle'));
 
     await act(async () => {
       void result.current.send('second');
     });
-    // The second turn's own messages have to be on screen before its stream
-    // can be spoken to — `runTurn` cancels any fetch still on its way back
-    // before it writes them, so that takes a turn of the microtask queue.
+    // The second turn's own messages come with its first event, and that is
+    // what puts them on screen: four in all, the first pair and this one.
+    act(() => {
+      turnStarts(['first', 'the first reply', 'second']);
+    });
     await waitFor(() => expect(result.current.messages).toHaveLength(4));
     act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'writing' } });
     });
-    expect(result.current.streaming).toBe(true);
+    expect(result.current.turnPhase).toBe('running');
 
     // Now the first turn's `chat_done` arrives.
     act(() => {
@@ -533,7 +637,7 @@ describe('when one turn ends after the next has started', () => {
     // a send button over a reply still being written, and the request behind
     // it can no longer be stopped by anything — not the button, not closing
     // the panel.
-    expect(result.current.streaming).toBe(true);
+    expect(result.current.turnPhase).toBe('running');
     expect(result.current.messages.at(-1)?.streaming).toBe(true);
   });
 });
@@ -595,6 +699,9 @@ describe('when the connection dies mid-reply', () => {
       void result.current.send('hi');
     });
     act(() => {
+      turnStarts(['hi']);
+    });
+    act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'Half a sen' } });
     });
 
@@ -640,6 +747,9 @@ describe('when a stale error arrives after the turn is over', () => {
     await waitFor(() => expect(result.current.isPending).toBe(false));
     await act(async () => {
       void result.current.send('hi');
+    });
+    act(() => {
+      turnStarts(['hi']);
     });
     act(() => {
       handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'All done.' } });
@@ -691,6 +801,9 @@ describe('when the panel goes away mid-stream', () => {
     await act(async () => {
       void result.current.send('hi');
     });
+    act(() => {
+      turnStarts(['hi']);
+    });
     // The reply has to actually be on screen and marked, or what follows
     // passes against an empty list without testing anything.
     await waitFor(() => expect(result.current.messages.at(-1)?.streaming).toBe(true));
@@ -712,6 +825,9 @@ describe('when the panel goes away mid-stream', () => {
     await waitFor(() => expect(first.result.current.isPending).toBe(false));
     await act(async () => {
       void first.result.current.send('hi');
+    });
+    act(() => {
+      turnStarts(['hi']);
     });
     await waitFor(() => expect(first.result.current.messages.at(-1)?.streaming).toBe(true));
 
@@ -738,6 +854,9 @@ describe('the model thinking out loud', () => {
     await waitFor(() => expect(result.current.isPending).toBe(false));
     await act(async () => {
       void result.current.send('hi');
+    });
+    act(() => {
+      turnStarts(['hi']);
     });
 
     act(() => {

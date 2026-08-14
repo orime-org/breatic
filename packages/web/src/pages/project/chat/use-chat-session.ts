@@ -10,7 +10,7 @@ import {
   useConversationRuntime,
   watchChatMishaps,
 } from '@web/stores/conversation-runtime';
-import type { ChatMessageData, ChatMishap } from '@web/stores/conversation-runtime';
+import type { ChatMessageData, ChatMishap, TurnPhase } from '@web/stores/conversation-runtime';
 import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
 
 export interface ChatSession {
@@ -33,8 +33,14 @@ export interface ChatSession {
    * to go and would be dropped without a word.
    */
   canSend: boolean;
-  /** A reply is being written right now. */
-  streaming: boolean;
+  /**
+   * How far along the turn is, if there is one.
+   *
+   * Three states and not a boolean, because the middle one is a state the
+   * reader is in: they pressed send and nothing has come back. What they can
+   * do differs in all three -- send, wait, or stop.
+   */
+  turnPhase: TurnPhase;
   /** The conversation reaches back further than the messages on screen. */
   hasMore: boolean;
   /**
@@ -129,9 +135,11 @@ export function useChatSession(projectId: string): ChatSession {
   const stored = useConversationRuntime(
     (s) => (conversationId ? s.conversations[conversationId]?.messages : undefined) ?? NO_MESSAGES,
   );
-  const streaming = useConversationRuntime((s) =>
-    conversationId ? s.conversations[conversationId]?.turn != null : false,
-  );
+  const turnPhase = useConversationRuntime((s): TurnPhase => {
+    const turn = conversationId ? s.conversations[conversationId]?.turn : null;
+    if (!turn) return 'idle';
+    return turn.started ? 'running' : 'sending';
+  });
   const hasMore = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.hasMore ?? false) : false,
   );
@@ -235,7 +243,7 @@ export function useChatSession(projectId: string): ChatSession {
     isPending: openStatus === 'idle' || openStatus === 'loading',
     failedToOpen: openStatus === 'failed',
     canSend: conversationId !== undefined,
-    streaming,
+    turnPhase,
     hasMore,
     mishap,
     loadEarlier,

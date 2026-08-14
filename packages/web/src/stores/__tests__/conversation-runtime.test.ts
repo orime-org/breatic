@@ -62,6 +62,37 @@ function openChatAnswers({ hasMore = false }: { hasMore?: boolean } = {}): void 
 }
 
 /**
+ * Say the turn has begun, which is the server's first word on every turn.
+ *
+ * Nothing of a turn is on screen before this arrives: the question is the
+ * server's to hand back, and the reply has nowhere to be written yet. So the
+ * cases below send this wherever they go on to assert about either.
+ * @param texts - What the server says the conversation holds, oldest first
+ * @param opts - What else the answer says
+ * @param opts.firstTurnIndex - The turn the oldest of them belongs to
+ * @param opts.hasMore - The conversation reaches back further than this page
+ */
+function turnStarts(
+  texts: string[],
+  { firstTurnIndex = 7, hasMore = false }: { firstTurnIndex?: number; hasMore?: boolean } = {},
+): void {
+  handlers.onEvent({
+    event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
+    data: {
+      messages: texts.map((text, i) => ({
+        id: `srv-${text}`,
+        role: 'user',
+        parts: [{ type: 'text', text }],
+        content: text,
+        ts: '2026-08-14T00:00:00Z',
+        turnIndex: firstTurnIndex + i,
+      })),
+      hasMore,
+    },
+  } as unknown as SSEEventEnvelope);
+}
+
+/**
  * The conversation as the store holds it.
  * @returns Its runtime entry, or undefined once it has been dropped
  */
@@ -93,6 +124,7 @@ describe('a turn that nobody is rendering', () => {
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
 
     // No panel is involved in any of this. The pieces arrive and land.
+    turnStarts(['earlier', 'hello']);
     handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'half an ' } });
     handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'answer' } });
 
@@ -140,6 +172,7 @@ describe('the watchdog that ends a silent turn', () => {
     await conversationRuntime.ensureLoaded('p-1');
     void conversationRuntime.send('p-1', 'hello');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    turnStarts(['earlier', 'hello']);
 
     vi.advanceTimersByTime(SSE_HEARTBEAT_TIMEOUT_MS + 1);
 
@@ -160,6 +193,7 @@ describe('the watchdog that ends a silent turn', () => {
     // The server says the turn is done. It has not closed the socket yet --
     // it still has the reply to write down and the turn to charge for -- but
     // the composer is already live again, so the reader sends the next one.
+    turnStarts(['earlier', 'first']);
     handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'done' } });
     handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_DONE, data: {} });
     expect(conversation()?.turn).toBeNull();
@@ -188,6 +222,7 @@ describe('loading what came before', () => {
     await conversationRuntime.ensureLoaded('p-1');
     void conversationRuntime.send('p-1', 'hello');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    turnStarts(['earlier', 'hello'], { hasMore: true });
     handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'grow' } });
 
     vi.mocked(chatApi.messagesBefore).mockResolvedValue({
@@ -308,56 +343,66 @@ describe('an answer that arrives after the reader has left', () => {
 });
 
 describe('a turn that begins by settling up', () => {
-  it('takes the server\'s conversation whole, and keeps the reply being written', async () => {
+  it('puts nothing on screen until the server says it has the message', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    void conversationRuntime.send('p-1', 'a new question');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+
+    // The request is out and nothing else has happened. Nothing the browser
+    // made up is on screen: not the question, which the server may yet refuse
+    // to store, and not an empty reply, which nothing is writing to.
+    expect(conversation()?.messages.map((m) => m.content)).toEqual(['earlier']);
+    expect(conversation()?.turn?.started).toBe(false);
+
+    turnStarts(['earlier', 'a new question']);
+
+    // Now there is a turn to show: the conversation as the server has it, and
+    // one empty place at the end for the reply to be written into.
+    expect(conversation()?.turn?.started).toBe(true);
+    expect(conversation()?.messages.map((m) => m.content)).toEqual([
+      'earlier',
+      'a new question',
+      '',
+    ]);
+    expect(conversation()?.messages.at(-1)?.id).toBe(conversation()?.turn?.replyId);
+    expect(conversation()?.messages.at(-1)?.streaming).toBe(true);
+  });
+
+  it('leaves nothing behind when the server refuses to take the message', async () => {
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    void conversationRuntime.send('p-1', 'a new question').catch(() => undefined);
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+
+    handlers.onError?.(new StreamRefusedError(402, 'You are out of credits.'));
+    await vi.waitFor(() => expect(conversation()?.turn).toBeNull());
+
+    // Nothing to take back: the browser never wrote the question down, so a
+    // refusal leaves the conversation exactly as it was.
+    expect(conversation()?.messages.map((m) => m.content)).toEqual(['earlier']);
+  });
+
+  it('takes the server\'s conversation whole, and writes the reply onto the end', async () => {
     openChatAnswers({ hasMore: false });
     await conversationRuntime.ensureLoaded('p-1');
     void conversationRuntime.send('p-1', 'a new question');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
-    handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'the rep' } });
 
-    // What the browser holds right now: one earlier message from opening, the
-    // local copy of what was just said, and a reply half written.
-    expect(conversation()?.messages.map((m) => m.content)).toEqual([
-      'earlier',
-      'a new question',
-      'the rep',
-    ]);
+    turnStarts(['earlier', 'a new question'], { hasMore: true });
 
-    handlers.onEvent({
-      event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
-      data: {
-        messages: [
-          {
-            id: 'srv-old',
-            role: 'user',
-            parts: [{ type: 'text', text: 'earlier' }],
-            content: 'earlier',
-            ts: '2026-08-13T00:00:00Z',
-            turnIndex: 7,
-          },
-          {
-            id: 'srv-new',
-            role: 'user',
-            parts: [{ type: 'text', text: 'a new question' }],
-            content: 'a new question',
-            ts: '2026-08-14T00:00:00Z',
-            turnIndex: 8,
-          },
-        ],
-        hasMore: true,
-      },
-    });
-
-    // Everything before the reply is now the server's own record -- including
-    // the message just sent, which arrives with a real id in place of the
-    // local one the browser made up.
+    // Everything before the reply is the server's own record and nothing else.
+    // Keeping any of the browser's version would be keeping exactly the part
+    // that might be wrong -- a reply the server never stored, or one it
+    // stored while this end stopped hearing about it.
     expect(conversation()?.messages.map((m) => m.id)).toEqual([
-      'srv-old',
-      'srv-new',
+      'srv-earlier',
+      'srv-a new question',
       conversation()?.turn?.replyId,
     ]);
-    // And the reply keeps growing, because it is the one thing the server
+    // And the reply grows on the end, because it is the one thing the server
     // could not have sent: it has not been written down yet.
+    handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'the rep' } });
     handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'ly' } });
     expect(conversation()?.messages.at(-1)?.content).toBe('the reply');
     expect(conversation()?.turn).not.toBeNull();
@@ -438,6 +483,7 @@ describe('a request left over from a previous visit to the project', () => {
     void conversationRuntime.send('p-1', 'my question');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
     const running = conversation()!.turn!;
+    turnStarts(['hello again', 'my question'], { firstTurnIndex: 40 });
     handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'half an answer' } });
 
     landFirstVisit(answer(['hello again']));
@@ -548,6 +594,7 @@ describe('telling the reader that something went wrong', () => {
     const told = await whatIsTold(async () => {
       void conversationRuntime.send('p-1', 'hello');
       await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+      turnStarts(['earlier', 'hello']);
       handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text: 'half an ans' } });
       handlers.onError?.(new StreamDroppedError(new Error('socket died')));
     });
@@ -598,6 +645,7 @@ describe('telling the reader that something went wrong', () => {
     const told = await whatIsTold(async () => {
       void conversationRuntime.send('p-1', 'hello');
       await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+      turnStarts(['earlier', 'hello']);
       conversationRuntime.stopTurn('c-1');
     });
 

@@ -57,7 +57,26 @@ interface Turn {
   replyId: string;
   /** Raised to stop it. */
   abort: AbortController;
+  /**
+   * The server has said it stored the message and the turn is under way.
+   *
+   * False for as long as the request is out and unanswered. What separates the
+   * two is not how far along the reply is -- it is whether anything of this
+   * turn exists anywhere but in this browser. Before, nothing does: the words
+   * are only in the box the reader typed them into, and this end cannot say
+   * whether they ever arrived. After, the server has them, has handed the
+   * whole conversation back, and is working.
+   */
+  started: boolean;
 }
+
+/**
+ * How far along the turn a conversation is running is, if it is running one.
+ *
+ * Three states rather than two booleans, so the fourth combination -- running
+ * and not sent -- cannot be written down.
+ */
+export type TurnPhase = 'idle' | 'sending' | 'running';
 
 /** Everything known about one conversation. */
 export interface ConversationRuntime {
@@ -396,6 +415,11 @@ function finishTurn(conversationId: string, replyId: string): void {
  * the part that had already arrived here. So the sentence the panel shows
  * claims nothing about the other end. It says the reply is not all here and
  * offers to read it again, which is true in every one of those cases.
+ *
+ * A turn the server has not answered yet has no reply on screen to mark, and
+ * marking it is skipped rather than special-cased: there is no message with
+ * that id, so the rewrite finds nothing to rewrite. That is the right outcome
+ * too -- nothing of that turn was ever shown, so nothing is left half-said.
  * @param conversationId - The conversation to stop.
  */
 function stopTurn(conversationId: string): void {
@@ -426,10 +450,27 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
     case SSE_EVENT_NAMES.CHAT_TURN_STARTED: {
       const settled = (event.data.messages ?? []) as MessageData[];
       patchConversation(conversationId, (c) => {
-        const reply = c.messages.find((m) => m.id === replyId);
+        // Belonging to a turn that is already over -- stopped, or given up on
+        // by the watchdog -- this describes a conversation nobody is waiting
+        // for an answer about, and taking the screen over on its behalf would
+        // hand back a reply slot nothing will ever finish writing.
+        if (c.turn?.replyId !== replyId) return c;
+        // The place the reply will be written into, made here because this is
+        // the moment there is a reply to expect. Empty, and marked as being
+        // written, so the bubble can show the turn is under way before the
+        // first word of it arrives.
+        const reply: ChatMessageData = {
+          id: replyId,
+          role: 'assistant',
+          parts: [],
+          content: '',
+          ts: new Date().toISOString(),
+          streaming: true,
+        };
         return {
           ...c,
-          messages: reply ? [...settled.map(toStored), reply] : settled.map(toStored),
+          messages: [...settled.map(toStored), reply],
+          turn: { ...c.turn, started: true },
           hasMore: Boolean(event.data.hasMore),
           // The list was replaced, so anything the reader had pulled up from
           // further back went with it. Saying otherwise would send the next
@@ -500,32 +541,22 @@ type NeverRan = StreamRefusedError | StreamUnreachableError;
  * @returns The refusal that ended it, when one did.
  */
 async function runTurn(conversationId: string, text: string): Promise<NeverRan | undefined> {
-  const now = new Date().toISOString();
   // `newId` and not `crypto.randomUUID`: same v4 shape, but it is the
   // generator the rest of the app uses, and it works outside a secure context
   // where `crypto.randomUUID` is undefined.
   const replyId = `local-reply-${newId()}`;
-  const said: ChatMessageData = {
-    id: `local-user-${newId()}`,
-    role: 'user',
-    parts: [{ type: 'text', text }],
-    content: text,
-    ts: now,
-  };
-  const reply: ChatMessageData = {
-    id: replyId,
-    role: 'assistant',
-    parts: [],
-    content: '',
-    ts: now,
-    streaming: true,
-  };
 
+  // Nothing is written to the list here -- not the question, not a place for
+  // the reply. Both used to be, and both were the browser saying something it
+  // could not know: that the words got through, and that an answer to them is
+  // coming. Neither survives a server that refuses the turn, and putting them
+  // up meant taking them down again, which is a screen that changes its mind
+  // in front of the reader. The turn's first event says what is stored, and
+  // that is when this turn appears.
   const abort = new AbortController();
   patchConversation(conversationId, (c) => ({
     ...c,
-    messages: [...c.messages, said, reply],
-    turn: { replyId, abort },
+    turn: { replyId, abort, started: false },
     // Whatever failed before this is no longer what is happening: it has
     // become part of the history, and the failure worth announcing from here
     // on is this turn's, if it has one.
@@ -588,10 +619,9 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
           });
         }
         if (err instanceof StreamRefusedError || err instanceof StreamUnreachableError) {
-          // The server answered and said no, or the request never left.
-          // Nothing was stored either way -- the server writes the user's own
-          // message inside the turn, which never ran -- so there is nothing
-          // to leave on screen.
+          // The server answered and said no, or the request never left. Either
+          // way the turn never ran, which the caller needs to know: one of the
+          // two is worth trying again, and the words are still in the box.
           neverRan = err;
         } else if (
           err instanceof StreamDroppedError &&
@@ -611,14 +641,6 @@ async function runTurn(conversationId: string, text: string): Promise<NeverRan |
   );
 
   clearTimeout(watchdog);
-
-  if (neverRan) {
-    const dropped = new Set([replyId, said.id ?? '']);
-    patchConversation(conversationId, (c) => ({
-      ...c,
-      messages: c.messages.filter((m) => !dropped.has(m.id ?? '')),
-    }));
-  }
   return neverRan;
 }
 
@@ -630,9 +652,9 @@ const NOT_FOUND = 404;
  * @param projectId - The project whose chat this is.
  * @param text - What the user said.
  * @throws {Error} When there is no conversation to write to, or the attempt
- *   never reached the server. Both mean the words were not sent, and the
- *   composer hands them back rather than clearing on a send that did not
- *   happen.
+ *   never reached the server. Both mean the words were not sent -- which is
+ *   why the composer empties its box on the turn's first event rather than on
+ *   the press, so there is nothing to hand back.
  */
 async function send(projectId: string, text: string): Promise<void> {
   const conversationId = useStore.getState().currentByProject[projectId];
@@ -659,10 +681,10 @@ async function send(projectId: string, text: string): Promise<void> {
   if (visit.signal.aborted) return;
   adoptConversation(projectId, fresh.current);
 
-  // A plain turn, not a resumed one: the first attempt took both its messages
-  // back off the screen when it was refused, and adopting the new
-  // conversation replaced the list besides. Nothing of the attempt is left to
-  // reuse, so the words go on again with the turn that is re-sending them.
+  // A plain turn, not a resumed one: the first attempt never put anything on
+  // screen, and adopting the new conversation replaced the list besides.
+  // Nothing of the attempt is left to reuse, so the words go on again with the
+  // turn that is re-sending them.
   const secondEnding = await runTurn(fresh.current.conversation.id, text);
   if (secondEnding) throw secondEnding;
 }

@@ -37,8 +37,27 @@ describe('ChatComposer', () => {
   });
 
   it('renders the abort button while streaming', () => {
-    setup({ streaming: true });
+    setup({ turnPhase: 'running' });
     expect(screen.getByTestId('chat-composer-abort')).toBeInTheDocument();
+  });
+
+  it('offers nothing to press between the send and the server answering', () => {
+    setup({ draft: 'hello', turnPhase: 'sending' });
+
+    // Neither button belongs here. Send would ask the same thing twice, and
+    // stop would claim to stop something nobody has confirmed is running --
+    // and there is nothing on screen yet for stopping it to undo.
+    expect(screen.queryByTestId('chat-composer-send')).toBeNull();
+    expect(screen.queryByTestId('chat-composer-abort')).toBeNull();
+    // Something has to be there in their place, or the press reads as having
+    // done nothing at all.
+    expect(screen.getByTestId('chat-composer-sending')).toBeInTheDocument();
+  });
+
+  it('says what the wait is about, for a reader who cannot see it spin', async () => {
+    setup({ draft: 'hello', turnPhase: 'sending' });
+    await expectNoA11yViolations(document.body);
+    expect(screen.getByTestId('chat-composer-sending')).toHaveAccessibleName('Sending');
   });
 
   it('send is disabled while the draft is empty', () => {
@@ -81,7 +100,7 @@ describe('ChatComposer', () => {
 
   it('clicking abort fires onAbort while streaming', async () => {
     const user = userEvent.setup();
-    const { onAbort } = setup({ streaming: true });
+    const { onAbort } = setup({ turnPhase: 'running' });
     await user.click(screen.getByTestId('chat-composer-abort'));
     expect(onAbort).toHaveBeenCalledTimes(1);
   });
