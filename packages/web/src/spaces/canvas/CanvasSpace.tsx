@@ -482,10 +482,7 @@ function toFlowEdge(edge: CanvasEdge): Edge {
  * @param root0 - Space body props from the project space outlet.
  * @param root0.projectId - Owning project id.
  * @param root0.spaceId - Canvas space id.
- * @param root0.readOnly - This connection may only look. The viewer role, a
- * document already at its concurrent-editor ceiling, and a ceiling that could
- * not be resolved all fold into this one flag before it gets here; every write
- * path below is gated on it, not just node creation.
+ * @param root0.readOnly - Viewer read-only mode; blocks node creation.
  * @returns The ReactFlow canvas surface.
  */
 function CanvasSpaceInner({
@@ -687,16 +684,6 @@ function CanvasSpaceInner({
     (result: { crop: CropRect; sourceSrc: string }): boolean => {
       const session = useCanvasStore.getState().pickSession;
       if (session?.purpose !== 'focus') return false;
-      // Connection gate (#88), asked after the session check so a stray
-      // confirm from another kind of pick stays a silent no-op rather than
-      // raising a notice nobody asked for. This path does not go through
-      // fillUpload — it exports the crop and uploads it itself — so it needs
-      // its own: a read-only connection may not put a new object in storage
-      // and bill the studio for it.
-      if (readOnly) {
-        warnNodeGate(t('spaces.readOnlyNotice'));
-        return false;
-      }
       const panelNodeId = session.nodeId;
       const graph = useCanvasGraphStore.getState();
       const source = graph.flowNodes.find((n) => n.id === focusCropTargetId);
@@ -869,7 +856,7 @@ function CanvasSpaceInner({
       );
       return true;
     },
-    [focusCropTargetId, projectId, spaceId, readOnly, t],
+    [focusCropTargetId, projectId, spaceId, t],
   );
   // Pick-end focus catch-all (adversarial round-2, a11y): the Exit hand-off
   // only works when the trigger is enabled + mounted. When it is disabled (a
@@ -2184,21 +2171,11 @@ function CanvasSpaceInner({
         y: rect.top + rect.height / 2,
       });
       processFiles(files, center);
-    } else if (readOnly) {
-      // SAY IT. The button that posted this lives in project chrome, so it
-      // does not know this canvas is read-only and stays enabled — and the
-      // person has already opened a file picker and chosen a file by the time
-      // we get here. Dropping that silently is the exact shape the repo bans
-      // (`packages/web/CLAUDE.md`: a blocked command-style entry raises a
-      // warning, never a silent no-op), and it is worse than usual here
-      // because the state is invisible: nothing about the menu looks different.
-      warnNodeGate(t('spaces.readOnlyNotice'));
     }
     consumePendingUpload();
   }, [
     pendingUploadFiles,
     readOnly,
-    t,
     screenToFlowPosition,
     processFiles,
     consumePendingUpload,
@@ -2238,13 +2215,6 @@ function CanvasSpaceInner({
     const type = pendingNodeCreate;
     const rect = containerRef.current?.getBoundingClientRect();
     if (readOnly || !rect || !isCreatableNodeType(type)) {
-      // Same reasoning as the upload mailbox above: the menu item that posted
-      // this is in chrome and stays enabled, so a silent drop leaves somebody
-      // clicking a live-looking button that does nothing. Only the read-only
-      // case is announced — the other two are impossible states (no viewport
-      // rect, or a type nothing can post) rather than a refusal aimed at a
-      // person.
-      if (readOnly) warnNodeGate(t('spaces.readOnlyNotice'));
       consumePendingNodeCreate();
       return;
     }
@@ -2259,7 +2229,6 @@ function CanvasSpaceInner({
   }, [
     pendingNodeCreate,
     readOnly,
-    t,
     consumePendingNodeCreate,
     screenToFlowPosition,
     createNode,
@@ -2866,18 +2835,6 @@ function CanvasSpaceInner({
       // window. Re-read fresh Yjs here — the single fill choke point for both
       // the picker-fill and the retry paths — so a node frozen since the picker
       // opened is never written. Mirrors the generate submit gate.
-      //
-      // The connection can go read-only inside that same window (#88), and one
-      // fill path — resetNodeToEmptyImage, which rasterises and lands here —
-      // has no earlier connection gate at all. So it is asked FIRST, ahead of
-      // the node gate: read-only means the server's data cannot change, and a
-      // fill presigns, PUTs an object the studio is billed for, and registers
-      // it — all of which happen over HTTP and would succeed while this
-      // socket's Yjs writes are dropped.
-      if (readOnly) {
-        warnNodeGate(t('spaces.readOnlyNotice'));
-        return;
-      }
       const gateBlock = evaluateNodeGate(
         {
           locked: isNodeLocked(projectId, spaceId, nodeId),
@@ -2966,7 +2923,6 @@ function CanvasSpaceInner({
       projectId,
       spaceId,
       userId,
-      readOnly,
       t,
       failUploadNode,
       reportUploadedAsset,
@@ -3823,78 +3779,23 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // instead of one per editor that could drift apart.
   const canvasDocName = docName.canvasSpace(props.projectId, props.spaceId);
   const canvasDoc = React.useMemo(() => getDoc(canvasDocName), [canvasDocName]);
-  const {
-    provider: caretProvider,
-    writeAccess,
-    degraded: connectionDegraded,
-  } = useSocket({
+  const { provider: caretProvider } = useSocket({
     name: canvasDocName,
     doc: canvasDoc,
   });
-
-  // Two layers decide whether this canvas can be changed, and the connection
-  // overrides the role (#88).
-  //
-  //   role       — what this person may do in this project. Does not change.
-  //   connection — what THIS socket may do right now. The server settles it at
-  //                the handshake and it wins while it says read-only.
-  //
-  // The case that makes the second layer necessary is a full document: an
-  // editor arrives, every writable seat is taken, and this connection is
-  // degraded. Their role is untouched; this connection simply cannot write
-  // until a seat frees up.
-  //
-  // Merging them here rather than at each gate is what makes it complete:
-  // everything downstream already reads one `readOnly`, including the two
-  // gates that would otherwise cost real money — uploading a file and
-  // submitting a generation both travel over HTTP rather than Yjs, so they
-  // go through however read-only this socket is, billing the studio for
-  // stored bytes and spent credits. And the result is not lost either, which
-  // is the point: collab writes a generated node into the document itself,
-  // so refusing here is what keeps a read-only connection from changing the
-  // server's data by proxy.
-  const readOnly = (props.readOnly ?? false) || writeAccess === 'denied';
-
-  // Say so, once per transition. A degrade with no message leaves the canvas
-  // quietly refusing edits with nothing on screen to explain it — and the way
-  // out is not guessable, because what frees a seat is somebody else leaving.
-  //
-  // A VIEWER IS NOT TOLD: their read-only is their role, it is shown
-  // everywhere else already, and announcing it on every space they open would
-  // be noise. Same exclusion the document space makes.
-  //
-  // The message names no cause because the wire carries none — the server
-  // sends one "readonly" for a viewer, for a full document and for a ceiling
-  // it could not resolve alike. It states the fact and both ways out instead.
-  //
-  // A REFUSAL IS EXCLUDED. `use-socket` tells the two apart and hands over one
-  // `degraded` answer, so this no longer re-derives it — both Spaces asking
-  // the same question and each writing its own answer is the shape that
-  // drifts. A refusal means the Space is gone, the membership was revoked or
-  // the session expired; telling that person to ask a teammate to close the
-  // document is an instruction that cannot help them.
-  //
-  // What is added here is the ROLE: a viewer is read-only by definition and is
-  // told nothing, which `useSocket` cannot know.
-  const t = useTranslation();
-  const degraded = connectionDegraded && !(props.readOnly ?? false);
-  React.useEffect(() => {
-    if (degraded) toast.warning(t('spaces.readOnlyNotice'));
-  }, [degraded, t]);
-
   const canvas = React.useMemo<CanvasContextValue>(
     () => ({
       projectId: props.projectId,
       spaceId: props.spaceId,
-      readOnly,
+      readOnly: props.readOnly ?? false,
       caretProvider,
     }),
-    [props.projectId, props.spaceId, readOnly, caretProvider],
+    [props.projectId, props.spaceId, props.readOnly, caretProvider],
   );
   return (
     <CanvasContext.Provider value={canvas}>
       <ReactFlowProvider>
-        <CanvasSpaceInner {...props} readOnly={readOnly} />
+        <CanvasSpaceInner {...props} />
       </ReactFlowProvider>
     </CanvasContext.Provider>
   );

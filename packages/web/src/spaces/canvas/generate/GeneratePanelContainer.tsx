@@ -135,7 +135,7 @@ function GeneratePanelBody({
   // the board publishes through the same one — a second acquire here would
   // work (useSocket reference-counts the shared provider) but would leave two
   // answers in the codebase to "whose caret is this".
-  const { caretProvider, readOnly } = useCanvasContext();
+  const { caretProvider } = useCanvasContext();
 
   const { data: catalog } = useQuery({
     queryKey: ['models'],
@@ -533,30 +533,6 @@ function GeneratePanelBody({
     // Execute is an actionable message, not a dead control (the button is
     // disabled only while handling). Editing the prompt stays allowed; the gate
     // blocks the submit alone.
-    // Connection gate (#88). Read-only now arrives MID-SESSION: a blip, a
-    // reconnect, and the server hands back a degraded connection because the
-    // document filled while this tab was asleep. The panel that was already
-    // open stays open and its Execute stays live, so the open-time gate on
-    // the menu item does not cover this.
-    //
-    // It has to be refused here rather than by disabling the button, for the
-    // same reason the node gate below is: a person who clicks and gets
-    // nothing learns nothing. And it is read HERE, at submit, not captured
-    // when the panel opened — which is the whole point.
-    //
-    // What is at stake is not cosmetic. Read-only means the server's data
-    // cannot change, and a generation changes it twice over: the studio is
-    // billed credits, and the result node is written into the document by
-    // COLLAB ITSELF — `services/task-listener.ts` opens its own connection to
-    // apply it — so the node lands no matter how read-only this socket is.
-    // The earlier version of this comment had that backwards, claiming the
-    // node could never reach the server; the reason to refuse is the opposite
-    // of what it said.
-    if (readOnly) {
-      warnNodeGate(t('spaces.readOnlyNotice'));
-      return;
-    }
-
     const gateBlock = evaluateNodeGate(
       {
         locked: isNodeLocked(projectId, spaceId, nodeId),
@@ -668,7 +644,6 @@ function GeneratePanelBody({
     spaceId,
     freshVm,
     closeActivePanel,
-    readOnly,
     t,
   ]);
 

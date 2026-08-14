@@ -3,6 +3,7 @@
 
 import type * as React from 'react';
 
+import { SpaceReadOnlyNotice } from '@web/pages/project/SpaceReadOnlyNotice';
 import { SPACE_TYPES, type SpaceType } from '@web/spaces';
 
 interface SpaceOutletProps {
@@ -42,11 +43,23 @@ export function SpaceOutlet({
     );
   }
   const Body = def.bodyComponent;
+  // The read-only notice is anchored INSIDE the Space, so the wrapper owns the
+  // positioning context. Every Space type gets it from this one place: whether
+  // a connection may write is decided per document, and every type has to
+  // answer for its own — putting it here means a new type is covered the day
+  // it registers, exactly like the outlet itself.
   return (
-    <Body
-      projectId={projectId}
-      spaceId={spaceId}
-      readOnly={readOnly}
-    />
+    <div className='relative h-full w-full'>
+      <SpaceReadOnlyNotice
+        projectId={projectId}
+        spaceId={spaceId}
+        type={type}
+      />
+      <Body
+        projectId={projectId}
+        spaceId={spaceId}
+        readOnly={readOnly}
+      />
+    </div>
   );
 }

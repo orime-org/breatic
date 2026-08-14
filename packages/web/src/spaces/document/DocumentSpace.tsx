@@ -50,36 +50,24 @@ export function DocumentSpace({
   // this component is remounted on every Space-tab switch, and a latch that
   // resets there would show a loading placeholder in front of content the
   // local Y.Doc already holds.
-  const {
-    provider,
-    hasEverSynced,
-    status,
-    degraded: connectionDegraded,
-  } = useSocket({
+  const { provider, hasEverSynced, status } = useSocket({
     name,
     doc,
   });
 
-  // This Space's own document was refused, or the server granted it read-only.
-  // Both are told to the user, and since 2026-08-14 they part company on what
-  // else happens: a REFUSAL leaves the editor alive (decision 2026-08-02 — an
-  // editor that still accepts typing while a message says the server refused
-  // it tells the user exactly where the fault is; one that goes dead tells
-  // them only that something broke, and takes away content they may want to
-  // copy out), while a DEGRADE stops it, because a degrade means this socket
-  // may not change the server's data and the canvas enforces exactly that.
+  // This Space's own document was REFUSED — deleted, membership revoked, or the
+  // session expired. It is told to the user and does NOT disable the editor:
+  // showing the problem where it is and leaving everything else working is the
+  // rule (decision 2026-08-02). An editor that still accepts typing while a
+  // message says the server refused it tells the user exactly where the fault
+  // is; one that goes dead tells them only that something broke, and takes away
+  // content they may want to copy out.
   //
-  // The message cannot name a cause, because the wire does not carry one — the
-  // server sends "readonly" / "read-write" and sets it for a viewer, for a
-  // member over the connection cap, and for a refused document alike. So it
-  // states the fact and what follows from it.
-  //
-  // A viewer is not told: their read-only is their role, shown everywhere else.
+  // A DEGRADE is the other thing `writeAccess: 'denied'` can mean, and it is no
+  // longer handled here (#88): `SpaceReadOnlyNotice` announces it, every Space
+  // type gets that from the outlet, and it stays on screen for as long as the
+  // state holds instead of four seconds.
   const refused = status === 'authFailed';
-  // The connection says it was degraded rather than refused (derived once, in
-  // `useSocket`); this Space adds the ROLE on top, because a viewer is
-  // read-only by definition and is told nothing.
-  const degraded = connectionDegraded && !readOnly;
 
   // The one case where nothing can be shown: refused before any content ever
   // arrived, so there is no document to display. That is not "disabled", it is
@@ -90,9 +78,6 @@ export function DocumentSpace({
   React.useEffect(() => {
     if (refused && hasEverSynced) toast.error(t('spaces.document.refusedNotice'));
   }, [refused, hasEverSynced, t]);
-  React.useEffect(() => {
-    if (degraded) toast.warning(t('spaces.readOnlyNotice'));
-  }, [degraded, t]);
 
   // The editor belongs to the document, not to this component: switching Space
   // tabs remounts this body, and what the Y.Doc does not hold — undo stack,
@@ -101,18 +86,9 @@ export function DocumentSpace({
     doc,
     name,
     caretProvider: provider,
-    // Two of the three states stop typing, and the third deliberately does
-    // not. The ROLE (a viewer) stops it, as it always has. A connection the
-    // server DEGRADED to read-only stops it too since 2026-08-14 (#88): a
-    // degrade means this socket may not change the server's data, the canvas
-    // enforces exactly that, and one server signal answered two opposite ways
-    // in two Spaces is a difference that drifts.
-    //
-    // A REFUSED document still takes typing — decision 2026-08-02, unchanged.
-    // A document that goes dead tells the person only that something broke and
-    // takes away content they may want to copy out; one that still accepts
-    // typing while saying the server refused it tells them where the fault is.
-    editable: !readOnly && !degraded,
+    // Only the ROLE decides this. A refused or read-only connection is reported
+    // to the user, not enforced against them — see above.
+    editable: !readOnly,
   });
   // Nothing is offered until the document's real content is in. Editing before
   // that is not a lesser version of editing this document — it is editing a
@@ -163,14 +139,7 @@ export function DocumentSpace({
         <DocumentEditor
           editor={editor}
           history={history}
-          // The MERGED value, not the role. Stopping the keyboard is not
-          // enough: every toolbar command runs `chain().focus().toggleX()`,
-          // which dispatches into the shared Y.Doc whether or not the editor
-          // is editable — @tiptap/core's `createChain` has no editability
-          // test. A degraded person who cannot type could otherwise still
-          // bold, quote, list, undo and redo, and the server would drop every
-          // one of those in silence.
-          readOnly={readOnly || degraded}
+          readOnly={readOnly}
         />
       ) : (
         <div

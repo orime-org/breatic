@@ -21,7 +21,7 @@ interface SpaceDocSyncProps {
  * The doc NAME carries the Space kind, so a canvas and a document Space that
  * happen to share an id still resolve to two separate documents.
  */
-const DOC_NAME_BUILDERS: Partial<
+export const DOC_NAME_BUILDERS: Partial<
   Record<SpaceType, (projectId: string, spaceId: string) => string>
 > = {
   canvas: docName.canvasSpace,

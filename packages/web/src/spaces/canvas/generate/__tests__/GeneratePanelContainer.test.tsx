@@ -2,20 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
-import type { ModelCatalog, ModelEntry } from '@breatic/shared';
 import type { ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn() },
 }));
 
 // Pass through the tooltip primitives: real Radix Tooltip throws without the
@@ -58,12 +51,8 @@ vi.mock('@web/data/yjs/use-text-body', async (importActual) => {
   return { ...actual, useTextBodies: vi.fn(actual.useTextBodies) };
 });
 
-import * as Y from 'yjs';
 import { toast } from 'sonner';
 
-import { addNode, getPromptFragment } from '@web/data/yjs/canvas-space';
-import { _resetForTests } from '@web/data/yjs/manager';
-import { canvasApi } from '@web/data/api/canvas';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useSocket } from '@web/data/yjs/use-socket';
@@ -85,13 +74,11 @@ type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
 function mountContainer(graph?: {
   nodes?: ContainerProps['nodes'];
   edges?: ContainerProps['edges'];
-  /** Whether the canvas is read-only — the role's, or this connection's. */
-  readOnly?: boolean;
 }): ReturnType<typeof render> {
   const canvas: CanvasContextValue = {
     projectId: 'p',
     spaceId: 's',
-    readOnly: graph?.readOnly ?? false,
+    readOnly: false,
     caretProvider: null,
   };
   return render(
@@ -428,130 +415,5 @@ describe('GeneratePanelContainer — body subscription set', () => {
     const ids = vi.mocked(useTextBodies).mock.lastCall?.[2];
     expect(ids).toEqual(['wired-a', 'wired-b']);
     listSpy.mockRestore();
-  });
-});
-
-// The submit-time connection gate (#88).
-//
-// The gate is the first check in `onExecute`: a connection that may only look
-// is refused with a warning instead of queueing a task. It has to live there
-// rather than in the button's disabled state, for the same reason the node
-// gate does — someone who clicks and gets nothing learns nothing. And what is
-// at stake is not cosmetic: this request travels over HTTP rather than Yjs, so
-// it goes through however read-only the socket is. The studio is billed, and
-// the result node is written into the document by collab itself, so a
-// read-only connection ends up changing the server's data by proxy.
-//
-// Every other case in this file mounts an EMPTY catalog, which leaves Execute
-// disabled — a click there never reaches `onExecute`, so asserting on the gate
-// would pass without exercising it. These two cases build a catalog with one
-// usable image model and a node state that satisfies `canExecuteGenerate`, and
-// the second one is what proves the first is doing anything: if the fixture
-// stopped producing a clickable button, the writable case fails loudly instead
-// of the read-only case passing quietly.
-describe('GeneratePanelContainer — submit-time connection gate (#88)', () => {
-  /** One usable text-to-image model — enough for Execute to become clickable. */
-  const T2I: ModelEntry = {
-    name: 'nano-banana',
-    display_name: 'Nano Banana',
-    modality: 'image',
-    mode: 't2i',
-    description: '',
-    guide: '',
-    tier: 'recommended',
-    cost_per_call: 5,
-    generation_time: 10,
-    params: {
-      aspect_ratio: { description: '', values: ['1:1'], default: '1:1' },
-    },
-    providers: [],
-    sourcesByMode: { t2i: [] },
-  };
-
-  /**
-   * Seeds the target node in the canvas doc and writes a prompt into it.
-   *
-   * The prompt has to go through Yjs rather than the `nodes` prop: the image
-   * panel always demands one (`promptRequired: true`), and the container reads
-   * it out of the node's prompt fragment.
-   */
-  function seedNodeWithPrompt(): void {
-    addNode('p', 's', {
-      id: 'target',
-      type: 'image',
-      position: { x: 0, y: 0 },
-      data: {
-        name: 'I',
-        createdAt: 1000,
-        createdBy: 'u1',
-        locked: false,
-        state: 'idle',
-        attachments: [],
-      },
-    } as Parameters<typeof addNode>[2]);
-    const fragment = getPromptFragment('p', 's', 'target');
-    if (!fragment) throw new Error('addNode must run first');
-    const paragraph = new Y.XmlElement('paragraph');
-    paragraph.insert(0, [new Y.XmlText('a lighthouse at dusk')]);
-    fragment.insert(0, [paragraph]);
-  }
-
-  /**
-   * Opens the panel on a board where Execute is clickable.
-   * @param readOnly - Whether this connection may only look.
-   * @returns The enabled Execute button.
-   */
-  async function openReadyPanel(readOnly: boolean): Promise<HTMLElement> {
-    vi.spyOn(modelsApi, 'list').mockResolvedValue({
-      image: [T2I],
-      video: [],
-      audio: [],
-      tts: [],
-      three_d: [],
-      understand: [],
-      total: 1,
-    } satisfies ModelCatalog);
-    seedNodeWithPrompt();
-    mountContainer({
-      readOnly,
-      nodes: [
-        { id: 'target', data: { kind: 'image', status: 'idle', model: T2I.name } },
-      ],
-    });
-    act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
-    });
-    const execute = await screen.findByTestId('generate-execute');
-    await waitFor(() => expect(execute).not.toBeDisabled());
-    return execute;
-  }
-
-  beforeEach(() => {
-    vi.mocked(toast.warning).mockClear();
-    _resetForTests();
-    useCanvasStore.setState({
-      panelHostId: null,
-      panelKind: null,
-      pickSession: null,
-    });
-  });
-
-  it('refuses to queue a task on a read-only connection, and says why', async () => {
-    const create = vi.spyOn(canvasApi, 'createTask');
-    const execute = await openReadyPanel(true);
-    fireEvent.click(execute);
-    expect(create).not.toHaveBeenCalled();
-    expect(vi.mocked(toast.warning)).toHaveBeenCalledTimes(1);
-  });
-
-  it('queues the task when the connection may write', async () => {
-    const create = vi
-      .spyOn(canvasApi, 'createTask')
-      .mockResolvedValue({ id: 't1' } as Awaited<
-        ReturnType<typeof canvasApi.createTask>
-      >);
-    const execute = await openReadyPanel(false);
-    fireEvent.click(execute);
-    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
   });
 });

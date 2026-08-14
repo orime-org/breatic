@@ -126,7 +126,7 @@ function VideoGeneratePanelBody({
 }): React.JSX.Element {
   const t = useTranslation();
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
-  const { caretProvider, readOnly } = useCanvasContext();
+  const { caretProvider } = useCanvasContext();
 
   const { data: catalog } = useQuery({
     queryKey: ['models'],
@@ -479,27 +479,6 @@ function VideoGeneratePanelBody({
     // Every execute-critical value is read SYNCHRONOUSLY here, never from a
     // render closure that React batching and live collaboration make stale.
     if (submittingRef.current) return;
-
-    // Connection gate (#88), the same one the image panel carries. Read-only
-    // arrives MID-SESSION — a blip, a reconnect, and the server hands back a
-    // degraded connection because the document filled while this tab was
-    // asleep — so the open-time gate on the node menu does not cover a panel
-    // that is already open, and its Execute stays live.
-    //
-    // Refused HERE rather than by grey-ing the button, for the same reason
-    // the node gate below is: a person who clicks and gets nothing learns
-    // nothing. Read at submit, not captured when the panel opened.
-    //
-    // Read-only means the server's data cannot change, and a generation
-    // changes it twice over: the studio is billed credits, and the result
-    // node is written into the document by COLLAB ITSELF
-    // (`services/task-listener.ts` opens its own connection to apply it), so
-    // the node lands no matter how read-only this socket is.
-    if (readOnly) {
-      warnNodeGate(t('spaces.readOnlyNotice'));
-      return;
-    }
-
     // A node a collaborator deleted since the panel opened is refused by the
     // execute gate below: it derives from a fresh graph read, so a vanished
     // node has no status and `canExecuteGenerate` returns false. There is no
@@ -619,7 +598,7 @@ function VideoGeneratePanelBody({
       submittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [nodeId, projectId, spaceId, freshVm, closeActivePanel, readOnly, t]);
+  }, [nodeId, projectId, spaceId, freshVm, closeActivePanel, t]);
 
   // EVERY localized string below is depended on BY VALUE, not via `t`: `t` is a
   // stable module-level function whose identity never changes on an in-session

@@ -622,7 +622,7 @@
         "description": "Timeline viewer 在 timeline-space 实施时接入; 此处展示轨道快照,支持复制片段。"
       }
     },
-    "readOnlyNotice": "你现在只能查看 —— 你的改动不会被保存。刷新页面可以再试一次；如果同时编辑的人已满，请让团队里的某个人先关掉它。",
+    "readOnlyNotice": "这个 Space 现在只能查看 —— 同时编辑的人已满。",
     "lockedAria": "已锁定",
     "document": {
       "loading": "正在加载编辑器…",
@@ -643,7 +643,8 @@
         "quote": "引用",
         "strike": "删除线"
       }
-    }
+    },
+    "readOnlyReconnect": "重新连接"
   },
   "menu": {
     "createAria": "创建菜单",

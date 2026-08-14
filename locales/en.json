@@ -622,7 +622,7 @@
         "description": "Timeline viewer plugs in when timeline-space ships; here we show a track snapshot, with clip copy."
       }
     },
-    "readOnlyNotice": "You can only view this right now — your changes will not be saved. Refresh to try again, or ask a teammate to close it if everyone's seats are taken.",
+    "readOnlyNotice": "You can only view this Space right now — it is at its limit of people editing at once.",
     "lockedAria": "Locked",
     "document": {
       "loading": "Loading editor…",
@@ -643,7 +643,8 @@
         "quote": "Quote",
         "strike": "Strikethrough"
       }
-    }
+    },
+    "readOnlyReconnect": "Reconnect"
   },
   "menu": {
     "createAria": "Create menu",
