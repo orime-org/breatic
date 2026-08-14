@@ -217,7 +217,10 @@ function makeServer(): Hocuspocus {
     onAuthenticate: createAuthHook({
       // The hook only forwards this to core's session store, which is mocked.
       redis: {} as never,
-      maxConnectionsPerDoc: 0,
+      // The ceiling is not this suite's subject. It used to say `0`, which
+      // meant "unlimited" back when this was a constant; zero is now a real
+      // zero (#88), so say the intent with a number nobody reaches.
+      resolveConnectionLimit: async (): Promise<number> => 1000,
       countConnections: async (): Promise<number> => 0,
     }),
     onStateless: async ({

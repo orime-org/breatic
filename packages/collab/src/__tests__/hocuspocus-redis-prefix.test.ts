@@ -65,6 +65,10 @@ vi.mock("@breatic/core", () => ({
   // mailer, and its rescue directory resolves from the monorepo root.
   sendMail: vi.fn(async () => ({ status: "skipped", reason: "backend_disabled" })),
   MONOREPO_ROOT: "/tmp",
+  // Injected into the auth hook as the per-project writable-connection
+  // ceiling (#88). Nothing here exercises the ceiling, but the wiring reads
+  // the export at module scope, so it has to exist.
+  getProjectConcurrentEditorLimit: vi.fn(async () => 100),
 }));
 
 vi.mock("@collab/services/persistence.js", () => ({
