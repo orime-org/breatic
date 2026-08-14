@@ -163,10 +163,12 @@ describe('光标在正文里', () => {
     pressCtrlA(editor);
     pressCtrlA(editor);
 
+    // 「全部正文」覆盖每个正文块的**完整节点**（含块本身），所以两端是正文的
+    // 边界而不是首末块的文字起止 —— 这是 BodySelection 带来的语义，也是能把
+    // 分割线这类放不进光标的块选中的原因。
     const all = selection(editor);
-    expect(all.from).toBeGreaterThanOrEqual(titleSize(editor));
-    expect(all.from).toBe(blockRange(editor, 1).from);
-    expect(all.to).toBe(blockRange(editor, 3).to);
+    expect(all.from).toBe(titleSize(editor));
+    expect(all.to).toBe(editor.state.doc.content.size);
     expect(touchesTitle(editor)).toBe(false);
   });
 
@@ -182,8 +184,8 @@ describe('光标在正文里', () => {
     pressCtrlA(editor);
 
     expect(selection(editor)).toEqual(afterTwo);
-    expect(afterTwo.from).toBe(blockRange(editor, 1).from);
-    expect(afterTwo.to).toBe(blockRange(editor, 2).to);
+    expect(afterTwo.from).toBe(titleSize(editor));
+    expect(afterTwo.to).toBe(editor.state.doc.content.size);
     expect(touchesTitle(editor)).toBe(false);
   });
 
@@ -212,8 +214,10 @@ describe('光标在正文里', () => {
     const first = selection(editor);
     pressCtrlA(editor);
 
+    // 第一档仍是那一块的文字；第二档是正文边界，两者不再是同一个范围。
     expect(first).toEqual(blockRange(editor, 1));
-    expect(selection(editor)).toEqual(first);
+    expect(selection(editor).from).toBe(titleSize(editor));
+    expect(selection(editor).to).toBe(editor.state.doc.content.size);
     expect(touchesTitle(editor)).toBe(false);
   });
 });
@@ -298,7 +302,7 @@ describe('光标哪儿都不在', () => {
     pressCtrlA(editor);
 
     expect(touchesTitle(editor)).toBe(false);
-    expect(editor.state.selection.from).toBe(blockRange(editor, 1).from);
+    expect(editor.state.selection.from).toBe(titleSize(editor));
   });
 });
 
@@ -413,7 +417,92 @@ describe('只读的人', () => {
     expect(selection(editor)).toEqual(blockRange(editor, 2));
 
     pressCtrlA(editor);
-    expect(selection(editor).from).toBe(blockRange(editor, 1).from);
+    expect(selection(editor).from).toBe(titleSize(editor));
     expect(touchesTitle(editor)).toBe(false);
+  });
+});
+
+describe('正文里有不能放光标的块（atom）时，全部正文要覆盖它们', () => {
+  it('正文全是分割线：按一次覆盖全部三条，不是只有第一条', () => {
+    // 业界依据：ProseMirror 官方 guide 明写「allows 3rd-party code to define new
+    // selection types」，官方 `AllSelection` 和官方表格包的 `CellSelection` 都是
+    // `Selection` 子类。所以「选不中 atom」不是限制，是我们没写那个类型。
+    const editor = open('<hr><hr><hr>');
+    const doc = editor.state.doc;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(NodeSelection.create(doc, titleSize(editor))),
+    );
+
+    pressCtrlA(editor);
+
+    const s = editor.state.selection;
+    expect(s.from).toBe(titleSize(editor));
+    expect(s.to).toBe(editor.state.doc.content.size);
+  });
+
+  it('正文末块是分割线：全部正文含那一条', () => {
+    const editor = open('<p>first</p><hr>');
+    caretIn(editor, 1, 1);
+
+    pressCtrlA(editor);
+    pressCtrlA(editor);
+
+    expect(selection(editor).to).toBe(editor.state.doc.content.size);
+    expect(touchesTitle(editor)).toBe(false);
+  });
+
+  it('正文首块是分割线：全部正文含那一条', () => {
+    const editor = open('<hr><p>after</p>');
+    caretIn(editor, 2, 1);
+
+    pressCtrlA(editor);
+    pressCtrlA(editor);
+
+    expect(selection(editor).from).toBe(titleSize(editor));
+    expect(touchesTitle(editor)).toBe(false);
+  });
+});
+
+describe('容器里的 atom 和 GapCursor 也算「哪儿都不在」', () => {
+  it('引用块里的分割线被选中，按一次给全部正文，不是给一个空选区', () => {
+    const editor = open('<p>keep me</p><blockquote><hr><hr></blockquote>');
+    let hr = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (hr < 0 && n.type.name === 'horizontalRule') hr = pos;
+      return true;
+    });
+    editor.view.dispatch(
+      editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, hr)),
+    );
+
+    pressCtrlA(editor);
+
+    const s = editor.state.selection;
+    expect(s.empty, '按全选不该得到一个空选区').toBe(false);
+    expect(s.from).toBe(titleSize(editor));
+    expect(s.to).toBe(editor.state.doc.content.size);
+  });
+
+  it('引用块边界的 GapCursor，按一次给全部正文', () => {
+    // 形状取的是探针验过有 depthconst editor = open('<p>lead</p><blockquote><hr><p>x</p></blockquote>');gt;0 合法位置的那个（设计文档 §9.3）。
+    const editor = open('<hr><blockquote><hr><p>x</p><hr></blockquote>');
+    const reaches = GapCursor as unknown as { valid(pos: ResolvedPos): boolean };
+    let gap = -1;
+    for (let p = titleSize(editor); p <= editor.state.doc.content.size; p += 1) {
+      const $p = editor.state.doc.resolve(p);
+      if (reaches.valid($p) && $p.depth > 0) {
+        gap = p;
+        break;
+      }
+    }
+    expect(gap, '这份文档本该有一个容器内的合法 GapCursor').toBeGreaterThan(-1);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new GapCursor(editor.state.doc.resolve(gap))),
+    );
+
+    pressCtrlA(editor);
+
+    expect(selection(editor).from).toBe(titleSize(editor));
+    expect(selection(editor).to).toBe(editor.state.doc.content.size);
   });
 });

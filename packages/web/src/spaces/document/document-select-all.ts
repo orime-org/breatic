@@ -38,6 +38,8 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { AllSelection, Selection, TextSelection } from '@tiptap/pm/state';
 import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 
+import { BodySelection } from '@web/spaces/document/document-body-selection';
+
 /** A pair of document positions, resolved and ready to select between. */
 interface Range {
   from: number;
@@ -101,17 +103,11 @@ function titleRange(state: EditorState): Range {
 function bodySelection(state: EditorState): Selection | null {
   const bodyStart = state.doc.child(0).nodeSize;
   if (state.doc.content.size <= bodyStart) return null;
-  const head = Selection.near(state.doc.resolve(bodyStart), 1);
-  const tail = Selection.near(state.doc.resolve(state.doc.content.size), -1);
-  if (head.from < bodyStart || tail.to < head.from) return null;
-  const text = TextSelection.between(
-    state.doc.resolve(head.from),
-    state.doc.resolve(tail.to),
-  );
-  // `between` reaches outward for inline content and can land in the title;
-  // when it does, the node selection `near` found is the right answer for a
-  // body made of atoms.
-  return text.from >= bodyStart ? text : head;
+  // The ends are the body's own boundaries, not the nearest place a cursor can
+  // go. `BodySelection` holds them whatever the blocks there are made of —
+  // reaching for inline content is what dropped a leading or trailing divider
+  // out of "the whole body".
+  return new BodySelection(state.doc, bodyStart, state.doc.content.size);
 }
 
 /**
@@ -136,11 +132,16 @@ function currentBlockRange(state: EditorState): Range {
  */
 function sideOfCaret(state: EditorState): 'title' | 'body' | 'neither' {
   if (state.selection instanceof AllSelection) return 'neither';
+  if (state.selection instanceof BodySelection) return 'body';
   const { $from } = state.selection;
   if ($from.parent.type.name === DOCUMENT_TITLE_NODE) return 'title';
-  // `depth === 0` puts $from between blocks rather than inside one: a gap
-  // cursor, or a node selection on a block-level atom.
-  if ($from.depth === 0) return 'neither';
+  // The question is whether the position is INSIDE a block that holds text,
+  // not how deep it sits. `depth === 0` only catches the top level, so a gap
+  // cursor beside a divider in a quote, or a node selection on a divider in a
+  // list item, came back as "in the body" and got answered with the block
+  // around it — measured, that produced an empty selection in a paragraph the
+  // user was never in.
+  if (!$from.parent.isTextblock) return 'neither';
   return 'body';
 }
 
