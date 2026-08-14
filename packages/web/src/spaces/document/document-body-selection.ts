@@ -28,6 +28,14 @@
  * cut or typed over is the default slice of the range, which is what a stretch
  * of blocks should produce anyway. Mapping, equality and serialisation are
  * defined here — see the class comment for why.
+ *
+ * `getBookmark` is the base class's too, and that one does clamp: it hands the
+ * range to `TextSelection.between`, which pulls the ends to inline content and
+ * so drops a leading or trailing divider. Nothing asks for it here — bookmarks
+ * are `prosemirror-history`'s way of restoring a selection across an undo, and
+ * this editor undoes through Yjs instead (measured: the plugin list holds
+ * `y-undo`, no history plugin). Adding one before there is a caller would be
+ * guessing at what it should restore.
  */
 
 import { Node as ProseMirrorNode } from '@tiptap/pm/model';

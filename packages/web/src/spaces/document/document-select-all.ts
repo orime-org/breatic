@@ -99,16 +99,25 @@ function bodySelection(state: EditorState): Selection | null {
 /**
  * Whether the selection reaches into more than one block.
  *
- * Asked of the two ends' parent nodes rather than of the positions, because
- * two positions in the same paragraph are one block however far apart they
- * are, and two positions either side of a block boundary are two blocks
- * however close together.
+ * `sameParent` compares where each end's parent block starts, which is what
+ * "the same block" means: two positions in one paragraph are one block however
+ * far apart they are, and two positions either side of a block boundary are
+ * two blocks however close together.
+ *
+ * **Not `$from.parent !== $to.parent`.** ProseMirror nodes are immutable and
+ * get shared rather than copied, so two genuinely different blocks can be the
+ * same JS object. Measured: duplicating a stretch of text the way a drag-copy
+ * does (`selection.content()` then `replaceRange`) leaves the copy pointing at
+ * the original's node, and a selection running from one to the other has
+ * `$from.parent === $to.parent` while `$from.sameParent($to)` is false. Object
+ * identity answered "one block" and the press shrank the selection instead of
+ * widening it.
  * @param state - Editor state to read.
  * @returns True when the ends sit in different blocks.
  */
 function spansSeveralBlocks(state: EditorState): boolean {
   const { $from, $to } = state.selection;
-  return $from.parent !== $to.parent;
+  return !$from.sameParent($to);
 }
 
 /**
@@ -176,9 +185,18 @@ function nextSelection(state: EditorState): Selection | null {
   // browser before this branch: dragging across three paragraphs selected 361
   // characters, and one press cut that to 344 — the first block alone.
   if (spansSeveralBlocks(state)) return body ?? block;
-  // Already exactly this block: the press means "widen". Anything else —
-  // a caret, part of the block, a stretch across blocks — collapses to the
-  // block the caret is in, which is the first tier.
+  // Already exactly this block: the press means "widen". Anything less — a
+  // caret, or part of the block — collapses to the block, which is the first
+  // tier.
+  //
+  // An empty block is the one place those two readings are the same range, so
+  // the first press there goes straight to the whole body. That is not a case
+  // this misses; it is what deriving the tier from the selection means. The
+  // tier and the caret are the same zero-length range in an empty block, so no
+  // rule stated in terms of the current selection can tell a first press from
+  // a second one — answering "this block" would stay there forever instead.
+  // Storing a press count would separate them, and not storing one is the
+  // decision this whole design rests on (see the file header).
   return block && sameRange(current, { from: block.from, to: block.to })
     ? body
     : block;

@@ -90,14 +90,19 @@ describe('正文一个块都没有的时候', () => {
     expect(BodySelection.hasBody(doc('<p>one</p>'))).toBe(true);
   });
 
-  it('of 不返回 body 选区，而是一个合法的选区', () => {
+  it('of 不返回 body 选区，而是一个落在标题里的合法选区', () => {
+    // 正文零块时文档只剩标题，选区没有别的地方可去 —— 这是内容规则
+    // `title block*` 决定的，不是选区逻辑挑的。断言要说清它落在哪儿：
+    // 「不越界」那种宽松条件对任何值都成立，等于没断言。
     const d = doc();
 
     const sel = BodySelection.of(d);
 
     expect(sel.toJSON().type).not.toBe('body');
-    expect(sel.from).toBeGreaterThanOrEqual(0);
-    expect(sel.to).toBeLessThanOrEqual(d.content.size);
+    expect(sel.$from.parent.type.name, '只剩标题时它只能落在标题里').toBe(
+      d.child(0).type.name,
+    );
+    expect(sel.empty, '而且是个光标，不是一段选中的标题').toBe(true);
   });
 
   it('map 到一份空正文的文档上，同样退回合法选区', () => {
@@ -157,5 +162,49 @@ describe('序列化', () => {
     const sel = new BodySelection(doc('<p>one</p>'));
 
     expect((sel as unknown as { jsonID?: string }).jsonID).toBe('body');
+  });
+});
+
+describe('拿这个选区去做事', () => {
+  /**
+   * 一个绑好的编辑器，正文按给的 HTML 铺。
+   * @param bodyHtml - 标题之后的正文 HTML。
+   * @returns 那个编辑器。
+   */
+  function open(bodyHtml: string): Editor {
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, encodeInitialSpaceContent('document', 'TITLE'));
+    const editor = new Editor({
+      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(ydoc) }),
+    });
+    editors.push(editor);
+    editor.commands.setContent(`<h1 class="doc-title">TITLE</h1>${bodyHtml}`);
+    return editor;
+  }
+
+  it('把它整个删掉，正文清空而标题一个字不动', () => {
+    // 替换和取内容都用基类的实现，这条钉的就是那个决定的结果 —— 真机 smoke 走的
+    // 也是这一步（选中全部正文按 Delete）。
+    const editor = open('<p>one</p><hr><p>two</p>');
+    const title = editor.state.doc.child(0).textContent;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new BodySelection(editor.state.doc)),
+    );
+
+    editor.view.dispatch(editor.state.tr.deleteSelection());
+
+    expect(editor.state.doc.child(0).textContent, '标题不许被碰').toBe(title);
+    expect(BodySelection.hasBody(editor.state.doc), '正文该空了').toBe(false);
+  });
+
+  it('取出来的内容是整段正文，含放不进光标的块，且不含标题', () => {
+    const editor = open('<p>one</p><hr>');
+    const sel = new BodySelection(editor.state.doc);
+
+    const slice = sel.content();
+
+    expect(slice.content.childCount, '两个块都要在里面').toBe(2);
+    expect(slice.content.child(0).type.name).toBe('paragraph');
+    expect(slice.content.child(1).type.name, '分割线也要在').toBe('horizontalRule');
   });
 });

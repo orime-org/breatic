@@ -64,12 +64,12 @@ function open(bodyHtml = '', title = 'TITLE'): Editor {
 /**
  * 按一次 `Ctrl+A`，派真实的 DOM 事件。
  *
- * **必须走真事件，问 `someProp` 不算数**：绑定挂在 `handleDOMEvents.keydown` 上，
- * 而 `someProp('handleKeyDown')` 问的是另一个 prop，那条路上只有 `@tiptap/core`
- * 自带的 `selectAll`——问它得到的是「没改过的 tiptap 会怎样」，不是我们会怎样。
- * 更要紧的是 `someProp` 绕过了 `prosemirror-view` 的 `editable` 闸门
- * （`initInput` 的 `view.editable || !(event.type in editHandlers)`，而 `keydown`
- * 就在 `editHandlers` 里），只读编辑器上到底跑不跑，只有派真事件才答得出来。
+ * **走真事件，不问 `someProp`**。绑定确实在 `handleKeyDown` 里
+ * （`addKeyboardShortcuts` → `prosemirror-keymap` → 那个 prop），所以
+ * `someProp('handleKeyDown')` 问得到它；但它**绕过了 `prosemirror-view` 的
+ * `editable` 闸门**（`initInput` 的 `view.editable || !(event.type in
+ * editHandlers)`，而 `keydown` 就在 `editHandlers` 里），也绕过了 `preventDefault`
+ * 那一步。派真事件走的才是产品走的那条路，而这里没有任何理由不走它。
  * @param editor - 收这个键的编辑器。
  * @returns 这个键有没有被认领 —— 认领的那一方要挡掉浏览器自己的全选。
  */
@@ -163,6 +163,61 @@ describe('光标在正文里', () => {
     pressCtrlA(editor);
 
     expect(selection(editor)).toEqual(block);
+    expect(touchesTitle(editor)).toBe(false);
+  });
+
+  it('光标停在空块里，按一次直接给全部正文 —— 空块上这两档是同一个范围', () => {
+    // 写字时最常见的位置：正文末尾按 Enter 新起一段，那一段是空的。
+    //
+    // 空块上「选中这一块」和「光标停在这一块」是**同一个零长度范围**，所以任何
+    // 「拿当前选区去推档位」的规则都分不出第一次按和第二次按 —— 答「这一块」会
+    // 永远停在那儿出不去（实测过：加一条「塌缩就给这一块」之后，按两次仍是
+    // 15..15，到不了全部正文）。要分开只能存按了几次，而**不存次数正是这个设计
+    // 的前提**（见 `document-select-all.ts` 文件头和「档位是从选区现场推导的」
+    // 那一组）。所以这里钉住的是真实行为，不是遗憾。
+    const editor = open('<p>alpha</p><p></p>');
+    const empty = blockRange(editor, 2);
+    expect(empty.from, '前提：第二个块是空的').toBe(empty.to);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, empty.from)),
+    );
+
+    pressCtrlA(editor);
+
+    expect(selection(editor).from).toBe(titleSize(editor));
+    expect(selection(editor).to).toBe(editor.state.doc.content.size);
+    expect(touchesTitle(editor), '跳档也不许碰到标题').toBe(false);
+  });
+
+  it('空块里连按两次，停在全部正文不再变', () => {
+    const editor = open('<p>alpha</p><p></p>');
+    const empty = blockRange(editor, 2);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, empty.from)),
+    );
+
+    pressCtrlA(editor);
+    const afterOne = selection(editor);
+    pressCtrlA(editor);
+
+    expect(selection(editor)).toEqual(afterOne);
+  });
+
+  it('选区从块首开始但没覆盖整块时，按一次给整块 —— 双击首词、按 Home 都是这个形状', () => {
+    // 变异实测逮出来的缺口：把「选区是否恰好等于这一块」的判据改成只比起点，
+    // 整套用例一条都不红 —— 因为没有一个用例的选区是从块首开始的（每个
+    // `caretIn` 都传了非零 offset）。而双击第一个词、按 Home、点行首都落在这儿。
+    const editor = open('<p>first</p><p>second word</p>');
+    const block = blockRange(editor, 2);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, block.from, block.from + 3),
+      ),
+    );
+
+    pressCtrlA(editor);
+
+    expect(selection(editor), '只选了块首几个字，第一档该给整块').toEqual(block);
     expect(touchesTitle(editor)).toBe(false);
   });
 
@@ -262,6 +317,37 @@ describe('选区已经跨过一块以上时，按下去要继续扩大', () => {
     pressCtrlA(editor);
 
     expect(selection(editor).from).toBe(titleSize(editor));
+    expect(selection(editor).to).toBe(editor.state.doc.content.size);
+  });
+  it('两块内容一样时也算跨块 —— 复制出来的块跟原块是同一个节点对象', () => {
+    // ProseMirror 的节点不可变，复制一段内容时**产出的块跟原块是同一个 JS 对象**
+    // （实测：拖拽复制走 `selection.content()` + `replaceRange`，两个位置的
+    // `$from.parent === $to.parent` 为 true，而它们分属两个块）。所以「是不是同一个
+    // 块」不能问对象身份，要问 `ResolvedPos.sameParent` —— 它比的是父块内容的起点
+    // 位置，位置是唯一的。
+    const editor = open('<p>one</p><p>two</p><p>three</p>');
+    const d0 = editor.state.doc;
+    const slice = d0.slice(blockRange(editor, 1).from, d0.content.size - 2, true);
+    editor.view.dispatch(
+      editor.state.tr.replaceRange(d0.content.size, d0.content.size, slice),
+    );
+    const doc = editor.state.doc;
+    const twins: number[] = [];
+    doc.descendants((n, pos) => {
+      if (n.isBlock && n.textContent === 'two') twins.push(pos);
+      return true;
+    });
+    expect(twins.length, '前提：复制之后有两个内容相同的块').toBe(2);
+    const a = doc.resolve(twins[0] + 1);
+    const b = doc.resolve(twins[1] + 1);
+    expect(a.parent === b.parent, '前提：这两个块共用一个节点对象').toBe(true);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(doc, a.pos, b.pos)),
+    );
+
+    pressCtrlA(editor);
+
+    expect(selection(editor).from, '跨两个块，按一次要给全部正文').toBe(titleSize(editor));
     expect(selection(editor).to).toBe(editor.state.doc.content.size);
   });
 });
