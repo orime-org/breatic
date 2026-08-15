@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * `Mod-a`, one tier at a time, with the title and the body sealed off from
- * each other.
+ * `Mod-a` selects everything on the caret's side, with the title and the body
+ * sealed off from each other.
  *
- * The rule (decided 2026-08-11): in the body, one press takes the block the
- * caret is in and a second takes the whole body; in the title, a press takes
- * the title and a second changes nothing; with the caret in neither, a press
- * takes the whole body. **From the body you can never reach the title, and
- * from the title you can never reach the body.**
+ * One press, one answer (decided 2026-08-15): in the body it takes the whole
+ * body, in the title it takes the title, and with the caret in neither it takes
+ * the whole body. Pressing again changes nothing. **From the body you can never
+ * reach the title, and from the title you can never reach the body.**
+ *
+ * There is no second tier. An earlier version took the caret's own block first
+ * and the whole body on a second press; that is a feature of some editors and
+ * not of this key. ProseMirror's own basic example is one tier, measured: a
+ * press selects 515 characters and a second press selects the same 515.
  *
  * ## Why this is ours to write
  *
@@ -38,8 +42,6 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Selection, TextSelection } from '@tiptap/pm/state';
 import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 
-import { BodySelection } from '@web/spaces/document/document-body-selection';
-
 /** A pair of document positions, resolved and ready to select between. */
 interface Range {
   from: number;
@@ -47,76 +49,58 @@ interface Range {
 }
 
 /**
- * Whether two ranges are the same one.
- * @param a - One range.
- * @param b - The other.
- * @returns True when both ends match.
+ * Where the body starts — everything the title occupies comes before it.
+ * @param state - Editor state to read.
+ * @returns The position just past the title node.
  */
-function sameRange(a: Range, b: Range): boolean {
-  return a.from === b.from && a.to === b.to;
+function bodyStart(state: EditorState): number {
+  return state.doc.child(0).nodeSize;
 }
 
 /**
- * The selection covering the whole body, or null when there is nothing there.
+ * The selection covering the whole body, or null when the body has no blocks.
  *
- * **This returns a SELECTION, not a range, and that is the whole point.** An
- * earlier version computed a range here and built the selection somewhere
- * else, which meant two different rulers: the range came from
- * `Selection.near`, and `TextSelection.between` then moved an endpoint that
- * did not sit in inline content. The tier check compared the live selection
- * against the range, the two never matched, and a third press SHRANK back to
- * the caret's block. Measured in the browser on a document whose last block
- * is an `unsupportedBlock`: the range said `9..3805`, the selection actually
- * dispatched was `9..3803`, and pressing again bounced between the first
- * block and the whole body. Producing the answer once, here, is what keeps
- * the comparison honest.
+ * `TextSelection.between` is handed the body's two boundary positions and moves
+ * each end to the nearest text position, which is what makes this an ordinary
+ * text selection: both ends sit in inline content. That matters beyond
+ * tidiness. `createParagraphNear`, `deleteSelection` and the rest of
+ * `prosemirror-commands` decide whether they apply by asking
+ * `$from.parent.inlineContent`, so a selection whose ends sit on block
+ * boundaries makes Enter, a typed character and Delete behave differently from
+ * every other editor. Measured with a selection type of our own whose ends were
+ * the body's boundaries: pressing Enter over the whole body deleted nothing and
+ * appended an empty paragraph instead.
  *
- * `BodySelection` derives its own range from the document, so there is no
- * arithmetic to get wrong here and nothing to normalise: the ends are the
- * body's own boundaries whatever the blocks at them are made of. Reaching for
- * the nearest inline content instead is what dropped a leading or trailing
- * divider out of "the whole body".
+ * Which end moves which way is not left to chance. `between` derives its bias
+ * from the two positions (`prosemirror-state` `TextSelection.between`): the
+ * anchor comes before the head here, so the head searches backwards from the
+ * body's end and the anchor forwards from its start — each toward the body,
+ * neither toward the title.
+ *
+ * **There is no guard for "the body has blocks but none of them holds text".**
+ * The only textless block this schema still has is `unsupportedBlock`, which is
+ * an atom, renders as an empty `div` with no styling, and cannot be reached: a
+ * document containing one is intercepted and the editor is never built
+ * (`use-document-schema-intercept`). The divider used to be the other one, and
+ * it is gone.
  * @param state - Editor state to read.
  * @returns The body's selection, or null when there is nothing to select.
  */
 function bodySelection(state: EditorState): Selection | null {
-  if (!BodySelection.hasBody(state.doc)) return null;
-  return new BodySelection(state.doc);
-}
-
-/**
- * Whether the selection reaches into more than one block.
- *
- * `sameParent` compares where each end's parent block starts, which is what
- * "the same block" means: two positions in one paragraph are one block however
- * far apart they are, and two positions either side of a block boundary are
- * two blocks however close together.
- *
- * **Not `$from.parent !== $to.parent`.** ProseMirror nodes are immutable and
- * get shared rather than copied, so two genuinely different blocks can be the
- * same JS object. Measured: duplicating a stretch of text the way a drag-copy
- * does (`selection.content()` then `replaceRange`) leaves the copy pointing at
- * the original's node, and a selection running from one to the other has
- * `$from.parent === $to.parent` while `$from.sameParent($to)` is false. Object
- * identity answered "one block" and the press shrank the selection instead of
- * widening it.
- * @param state - Editor state to read.
- * @returns True when the ends sit in different blocks.
- */
-function spansSeveralBlocks(state: EditorState): boolean {
-  const { $from, $to } = state.selection;
-  return !$from.sameParent($to);
+  const start = bodyStart(state);
+  const end = state.doc.content.size;
+  if (start >= end) return null;
+  return TextSelection.between(state.doc.resolve(start), state.doc.resolve(end));
 }
 
 /**
  * The range of the block the caret is in.
  *
- * Answers for the title as well as for a body block: the title is a block like
- * any other as far as this is concerned, and asking `$from` where its own
- * block starts and ends needs no knowledge of which block that is. An earlier
- * version had a separate `titleRange` that computed `1 .. 1 + child(0).content
- * .size` — the same two numbers by a different route, carrying two assumptions
- * of its own (that the title starts at 1, and that it is the first child).
+ * Only the title reaches this now, and asking `$from` where its own block
+ * starts and ends needs no knowledge of which block that is. An earlier version
+ * had a separate `titleRange` that computed `1 .. 1 + child(0).content.size` —
+ * the same two numbers by a different route, carrying two assumptions of its
+ * own (that the title starts at 1, and that it is the first child).
  * @param state - Editor state to read.
  * @returns That block's content range.
  */
@@ -132,95 +116,59 @@ function currentBlockRange(state: EditorState): Range {
  * holds text? A whole-body selection and an `AllSelection` both start at a
  * position between top-level blocks, whose parent is the document node, and a
  * document is not a textblock — so both come back "neither" and get answered
- * with the whole body, which for them is also the tier that holds. Testing for
- * those two types by name would say the same thing twice, and it was what made
- * the order of the checks below load-bearing: `$from.start()` at depth 0 is
- * position 0, inside the title.
+ * with the whole body, which is also the right answer for them.
  *
  * Asked of `$from`, not of the selection's shape. A selection that is not
  * collapsed still has a `$from`, and it is what the rule means by "where the
  * caret is": a double-clicked word in the title is a press made in the title,
  * and answering otherwise is how a press there ends up selecting the body.
  * @param state - Editor state to read.
- * @returns Which side the next press acts on.
+ * @returns Which side the press acts on.
  */
 function sideOfCaret(state: EditorState): 'title' | 'body' | 'neither' {
   const { $from } = state.selection;
   if ($from.parent.type.name === DOCUMENT_TITLE_NODE) return 'title';
   // The question is whether the position is INSIDE a block that holds text,
-  // not how deep it sits. `depth === 0` only catches the top level, so a gap
-  // cursor beside a divider in a quote, or a node selection on a divider in a
-  // list item, came back as "in the body" and got answered with the block
-  // around it — measured, that produced an empty selection in a paragraph the
-  // user was never in.
+  // not how deep it sits. `depth === 0` only catches the top level, so a node
+  // selection on a block inside a list item came back as "in the body" and got
+  // answered with the block around it — measured, that produced an empty
+  // selection in a paragraph the user was never in.
   if (!$from.parent.isTextblock) return 'neither';
   return 'body';
 }
 
 /**
- * The selection the next press should produce.
+ * The selection the press should produce.
  *
- * Every branch returns the selection itself rather than a range someone else
- * turns into one — see {@link bodySelection} for what the two-ruler version
- * cost.
+ * "Neither" maps to the body, and that is not the same case as an empty body.
+ * A whole block being selected is the common way to get there: `Mod`-clicking a
+ * paragraph makes a `NodeSelection` (`prosemirror-view` builds one when the
+ * platform's select-node modifier is held, and `document-click-to-write` passes
+ * modified clicks straight through), and a selection over a whole block sits
+ * OUTSIDE that block, at document level, so `$from.parent` is the document.
+ * Answering that with the title would mean: click a paragraph, press this key,
+ * type one character, and the document's name is gone — the one outcome this
+ * whole extension exists to prevent.
  * @param state - Editor state to read.
  * @returns The selection to apply, or null when there is nothing to select.
  */
 function nextSelection(state: EditorState): Selection | null {
-  const side = sideOfCaret(state);
-  if (side === 'title') return selectionOverRange(state, currentBlockRange(state));
-  if (side === 'neither') return bodySelection(state);
-
-  const block = selectionOverRange(state, currentBlockRange(state));
-  const body = bodySelection(state);
-  const current: Range = { from: state.selection.from, to: state.selection.to };
-  // A selection that already spans more than one block is past the first tier,
-  // so the next tier is the whole body. Answering with the block the caret
-  // started in would shrink it, and this key means widen. Measured in the
-  // browser before this branch: dragging across three paragraphs selected 361
-  // characters, and one press cut that to 344 — the first block alone.
-  if (spansSeveralBlocks(state)) return body ?? block;
-  // Already exactly this block: the press means "widen". Anything less — a
-  // caret, or part of the block — collapses to the block, which is the first
-  // tier.
-  //
-  // An empty block is the one place those two readings are the same range, so
-  // the first press there goes straight to the whole body. That is not a case
-  // this misses; it is what deriving the tier from the selection means. The
-  // tier and the caret are the same zero-length range in an empty block, so no
-  // rule stated in terms of the current selection can tell a first press from
-  // a second one — answering "this block" would stay there forever instead.
-  // Storing a press count would separate them, and not storing one is the
-  // decision this whole design rests on (see the file header).
-  return block && sameRange(current, { from: block.from, to: block.to })
-    ? body
-    : block;
-}
-
-/**
- * A text selection over a range that is known to sit in inline content.
- *
- * Used for the title and for the caret's own block — both are textblocks by
- * construction, so `between` has somewhere to land and cannot wander.
- * @param state - Editor state to read.
- * @param range - The range to cover.
- * @returns The selection over it.
- */
-function selectionOverRange(state: EditorState, range: Range): Selection {
+  if (sideOfCaret(state) !== 'title') return bodySelection(state);
+  const title = currentBlockRange(state);
   return TextSelection.between(
-    state.doc.resolve(range.from),
-    state.doc.resolve(range.to),
+    state.doc.resolve(title.from),
+    state.doc.resolve(title.to),
   );
 }
 
 /**
- * Select one tier out from where the caret is.
+ * Select everything on the caret's side of the document.
  *
  * **Always reports the key as handled**, including when it selects what was
  * already selected. Declining would hand `Mod-a` back to `@tiptap/core`'s
  * `Keymap`, whose binding is `selectAll` — the exact behaviour this exists to
- * replace. "Does not widen any further" means giving back the same range, not
- * leaving the key to someone else.
+ * replace. "Nothing changes" means giving back the same range, not leaving the
+ * key to someone else.
  *
  * There is one case where it reports handled without selecting anything: a
  * document whose body has no blocks at all, with the caret in neither side.
@@ -233,7 +181,7 @@ function selectionOverRange(state: EditorState, range: Range): Selection {
  * @param dispatch - Applies the transaction.
  * @returns True, always.
  */
-export function selectOneTierOut(
+function selectThisSide(
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
 ): boolean {
@@ -242,7 +190,6 @@ export function selectOneTierOut(
   dispatch(state.tr.setSelection(selection));
   return true;
 }
-
 
 /**
  * The `Mod-a` binding.
@@ -274,7 +221,7 @@ export const DocumentSelectAll = Extension.create({
    */
   addKeyboardShortcuts() {
     return {
-      'Mod-a': () => selectOneTierOut(this.editor.state, this.editor.view.dispatch),
+      'Mod-a': () => selectThisSide(this.editor.state, this.editor.view.dispatch),
     };
   },
 });

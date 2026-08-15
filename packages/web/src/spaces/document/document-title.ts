@@ -293,8 +293,8 @@ const mergeBodyStartIntoTitle: Command = (state, dispatch) => {
  * Delete at the end of the title — the same fold, reached from the other side.
  *
  * Declines for the same reasons and leaves the key to the editor, which pulls
- * the body's first block up, lifts a container's first textblock out, or
- * removes a divider, exactly as it does at every other boundary in the body.
+ * the body's first block up or lifts a container's first textblock out,
+ * exactly as it does at every other boundary in the body.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction.
  * @returns True when this handled the key.
