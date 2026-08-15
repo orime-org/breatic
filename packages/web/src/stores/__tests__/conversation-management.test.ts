@@ -168,14 +168,14 @@ describe('starting another conversation', () => {
     // they had typed still in front of them.
     openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
-    conversationRuntime.setDraft('c-1', 'half a sentence');
+    conversationRuntime.setDraft(PROJECT, 'c-1', 'half a sentence');
     vi.mocked(chatApi.createConversation).mockRejectedValue(new Error('offline'));
 
     await conversationRuntime.startNew(PROJECT);
 
     expect(currentId()).toBe('c-1');
     expect(listedIds()).toEqual(['c-1']);
-    expect(conversationRuntime.draftOf('c-1')).toBe('half a sentence');
+    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('half a sentence');
   });
 
   it('puts the new one at the top, where the most recent one belongs', async () => {
@@ -230,7 +230,7 @@ describe('naming a conversation', () => {
     openAnswers([{ id: 'c-1', title: null }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
 
-    conversationRuntime.takeTitle(PROJECT, 'c-1', 'find me a reference');
+    conversationRuntime.noteActivity(PROJECT, 'c-1', 'find me a reference');
 
     const listed = useConversationRuntime.getState().listByProject[PROJECT];
     expect(listed?.[0]?.title).toBe('find me a reference');
@@ -317,10 +317,10 @@ describe('what each conversation has half-typed', () => {
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
 
-    conversationRuntime.setDraft('c-1', 'half a thought');
+    conversationRuntime.setDraft(PROJECT, 'c-1', 'half a thought');
     await conversationRuntime.switchTo(PROJECT, 'c-2');
 
-    expect(conversationRuntime.draftOf('c-2')).toBe('');
+    expect(conversationRuntime.draftOf(PROJECT, 'c-2')).toBe('');
   });
 
   it('gives back what was left in a conversation on returning to it', async () => {
@@ -332,7 +332,7 @@ describe('what each conversation has half-typed', () => {
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
 
-    conversationRuntime.setDraft('c-1', 'half a thought');
+    conversationRuntime.setDraft(PROJECT, 'c-1', 'half a thought');
     await conversationRuntime.switchTo(PROJECT, 'c-2');
     vi.mocked(chatApi.readConversation).mockResolvedValue({
       conversation: { id: 'c-1', title: 'first' },
@@ -341,16 +341,77 @@ describe('what each conversation has half-typed', () => {
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
     await conversationRuntime.switchTo(PROJECT, 'c-1');
 
-    expect(conversationRuntime.draftOf('c-1')).toBe('half a thought');
+    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('half a thought');
   });
 
   it('forgets every draft in a project once the reader leaves it', async () => {
     openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
-    conversationRuntime.setDraft('c-1', 'half a thought');
+    conversationRuntime.setDraft(PROJECT, 'c-1', 'half a thought');
 
     conversationRuntime.leaveProject(PROJECT);
 
-    expect(conversationRuntime.draftOf('c-1')).toBe('');
+    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('');
+  });
+});
+
+describe('what the list says about when a conversation was last used', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('moves the one just spoken in to the top, and freshens its time', () => {
+    // The list is the server's answer from when the project opened, and the
+    // server will not mention it again until the project is re-opened. So
+    // speaking in a conversation has to be recorded here, or the row goes on
+    // claiming it was last used days ago -- and `remove` reads this order to
+    // decide where to land.
+    const old = '2026-08-01T00:00:00Z';
+    useConversationRuntime.setState({
+      listByProject: {
+        [PROJECT]: [
+          { id: 'c-1', title: 'first', updatedAt: old },
+          { id: 'c-2', title: 'second', updatedAt: old },
+        ] as never,
+      },
+    });
+
+    conversationRuntime.noteActivity(PROJECT, 'c-2', 'said something');
+
+    const listed = useConversationRuntime.getState().listByProject[PROJECT]!;
+    expect(listed.map((c) => c.id)).toEqual(['c-2', 'c-1']);
+    expect(listed[0]!.title).toBe('said something');
+    expect(listed[0]!.updatedAt).not.toBe(old);
+  });
+});
+
+describe('typing before the conversation has arrived', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('keeps what was typed, and hands it to the conversation that turns up', async () => {
+    // There is no conversation to keep it under for the length of one round
+    // trip, and that is exactly when a reader opens a project and starts
+    // typing. Dropping it made the box eat their sentence.
+    conversationRuntime.setDraft(PROJECT, undefined, 'typed while loading');
+    expect(conversationRuntime.draftOf(PROJECT, undefined)).toBe('typed while loading');
+
+    openAnswers([{ id: 'c-1', title: null }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('typed while loading');
+  });
+
+  it('does not write over a sentence the conversation already had', async () => {
+    conversationRuntime.setDraft(PROJECT, 'c-1', 'typed in the conversation');
+    conversationRuntime.setDraft(PROJECT, undefined, 'typed while loading');
+
+    openAnswers([{ id: 'c-1', title: null }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('typed in the conversation');
   });
 });

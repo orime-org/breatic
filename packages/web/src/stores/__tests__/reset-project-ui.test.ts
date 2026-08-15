@@ -31,7 +31,6 @@ describe('resetProjectUiStores (#1771)', () => {
     useUIStore.getState().setSidebarOpen(false); // preference
     useUIStore.getState().setChatPanelCollapsed(true); // preference
 
-    useChatStore.getState().setComposerDraft('half-typed message');
     useChatStore.getState().setActiveConversationId('conv-1');
 
     useInpaintStore.getState().setMaskDataUrl('data:image/png;base64,AAAA');
@@ -63,7 +62,6 @@ describe('resetProjectUiStores (#1771)', () => {
     expect(ui.drawerOpen).toBe(false);
 
     const chat = useChatStore.getState();
-    expect(chat.composerDraft).toBe('');
     expect(chat.activeConversationId).toBeNull();
 
     const inpaint = useInpaintStore.getState();

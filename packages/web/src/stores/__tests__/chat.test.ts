@@ -6,24 +6,19 @@ import { useChatStore } from '@web/stores/chat';
 
 describe('useChatStore', () => {
   beforeEach(() => {
-    useChatStore.setState({
-      composerDraft: '',
-      activeConversationId: null,
-    });
+    useChatStore.setState({ activeConversationId: null });
   });
 
-  it('initial state is empty draft and no conversation', () => {
-    const s = useChatStore.getState();
-    expect(s.composerDraft).toBe('');
-    expect(s.activeConversationId).toBeNull();
+  it('starts with no conversation selected', () => {
+    expect(useChatStore.getState().activeConversationId).toBeNull();
   });
 
-  it('holds what is being typed until something takes it out', () => {
-    // Taking it out belongs to the conversation, which is the only thing that
-    // learns the words got somewhere -- see `stores/conversation-runtime`.
-    useChatStore.getState().setComposerDraft('hi');
-    expect(useChatStore.getState().composerDraft).toBe('hi');
+  it('forgets the selection on reset', () => {
+    // The draft used to live here too. It belongs to a conversation, not to a
+    // panel, so it moved to `stores/conversation-runtime` -- one per
+    // conversation rather than one for the column.
+    useChatStore.getState().setActiveConversationId('c-1');
     useChatStore.getState().reset();
-    expect(useChatStore.getState().composerDraft).toBe('');
+    expect(useChatStore.getState().activeConversationId).toBeNull();
   });
 });

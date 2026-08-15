@@ -18,29 +18,21 @@ import { immer } from 'zustand/middleware/immer';
  * either has a turn or does not, which is one fact in one place.
  */
 interface ChatState {
-  composerDraft: string;
   activeConversationId: string | null;
-  setComposerDraft: (draft: string) => void;
   setActiveConversationId: (id: string | null) => void;
-  /** Reset per-project chat session state (draft / active conversation) on project change (#1771). */
+  /** Reset per-project chat session state on project change (#1771). */
   reset: () => void;
 }
 
 export const useChatStore = create<ChatState>()(
   immer((set) => ({
-    composerDraft: '',
     activeConversationId: null,
-    setComposerDraft: (draft) =>
-      set((s) => {
-        s.composerDraft = draft;
-      }),
     setActiveConversationId: (id) =>
       set((s) => {
         s.activeConversationId = id;
       }),
     reset: () =>
       set((s) => {
-        s.composerDraft = '';
         s.activeConversationId = null;
       }),
   })),

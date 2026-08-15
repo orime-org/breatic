@@ -52,6 +52,7 @@ vi.mock('@web/pages/project/chat/ConversationHistorySheet', async () => {
 
 import { chatApi } from '@web/data/api/chat';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
+import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
 import { useChatStore } from '@web/stores';
@@ -81,7 +82,7 @@ describe('a reply arriving piece by piece', () => {
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
     await act(async () => {
-      useChatStore.getState().setComposerDraft('hello');
+      conversationRuntime.setDraft('p1', 'c1', 'hello');
     });
     await act(async () => {
       // Sent through the store rather than the composer, because the composer

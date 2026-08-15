@@ -36,6 +36,7 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
   const conversations = useConversationRuntime((s) => s.listByProject[projectId]);
   const currentId = useConversationRuntime((s) => s.currentByProject[projectId]);
   const currentTitle = conversations?.find((c) => c.id === currentId)?.title ?? null;
+  const unreachable = status === 'failed';
 
   /** Ask for this project's chat again, after it could not be read. */
   const reload = React.useCallback((): void => {
@@ -67,19 +68,32 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
       // one a document space uses, in both themes.
       className='relative flex w-[320px] shrink-0 flex-col border-r border-border bg-background'
     >
-      <AgentColHeader
-        conversationName={currentTitle ?? t('chat.conversation.untitled')}
-        conversationCount={conversations?.length ?? 0}
-        onOpenHistory={openHistory}
-        onNewConversation={startNew}
-        onRenameConversation={renameCurrent}
-      />
-      <ChatPanel
-        projectId={projectId}
-        historyOpen={historyOpen}
-        onHistoryOpenChange={setHistoryOpen}
-      />
-      {status === 'failed' ? <ChatUnreachable onReload={reload} /> : null}
+      {/* Everything under the scrim leaves the tab order with it. A scrim
+          that only covers pixels still lets Tab walk into the buttons behind
+          it, and the sheet one of them opens is portalled to the body at a
+          higher layer -- so it would draw on top of the thing meant to be
+          blocking it. `inert` is what makes "cannot be operated" true rather
+          than merely looking true. */}
+      <div
+        className='contents'
+        // `inert` is a platform attribute React's DOM typings do not carry
+        // yet; the cast hands it through untouched.
+        {...({ inert: unreachable ? '' : undefined } as unknown as React.HTMLAttributes<HTMLDivElement>)}
+      >
+        <AgentColHeader
+          conversationName={currentTitle ?? t('chat.conversation.untitled')}
+          conversationCount={conversations?.length ?? 0}
+          onOpenHistory={openHistory}
+          onNewConversation={startNew}
+          onRenameConversation={renameCurrent}
+        />
+        <ChatPanel
+          projectId={projectId}
+          historyOpen={historyOpen}
+          onHistoryOpenChange={setHistoryOpen}
+        />
+      </div>
+      {unreachable ? <ChatUnreachable onReload={reload} /> : null}
     </aside>
   );
 }

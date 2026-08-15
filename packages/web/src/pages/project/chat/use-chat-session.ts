@@ -175,8 +175,10 @@ export function useChatSession(projectId: string): ChatSession {
   const conversations = useConversationRuntime(
     (s) => s.listByProject[projectId] ?? NO_CONVERSATIONS,
   );
-  const draft = useConversationRuntime((s) =>
-    conversationId ? (s.draftByConversation[conversationId] ?? '') : '',
+  // Under the conversation when there is one, under the project until then --
+  // typing while the open call is still out has to land somewhere.
+  const draft = useConversationRuntime(
+    (s) => s.draftByConversation[conversationId ?? `project:${projectId}`] ?? '',
   );
 
   React.useEffect(() => {
@@ -222,10 +224,8 @@ export function useChatSession(projectId: string): ChatSession {
   }, [conversationId]);
 
   const setDraft = React.useCallback(
-    (text: string): void => {
-      if (conversationId) conversationRuntime.setDraft(conversationId, text);
-    },
-    [conversationId],
+    (text: string): void => conversationRuntime.setDraft(projectId, conversationId, text),
+    [projectId, conversationId],
   );
 
   const switchTo = React.useCallback(
@@ -266,7 +266,19 @@ export function useChatSession(projectId: string): ChatSession {
         // Only this conversation's. Another one may be streaming in the
         // background -- that is allowed -- and its trouble is not this
         // reader's to be interrupted by.
-        if (told.conversationId !== null && told.conversationId !== conversationId) return;
+        // Except when the reader did it on purpose. Renaming or deleting a
+        // conversation from the list is something they pressed and are waiting
+        // to hear back about, and it is usually about a conversation other
+        // than the one on screen -- that is what the list is for. The
+        // question this filter asks is "is this the reader's own doing", not
+        // "which conversation was it about".
+        if (
+          told.deliberate !== true &&
+          told.conversationId !== null &&
+          told.conversationId !== conversationId
+        ) {
+          return;
+        }
         setMishap(told);
       }),
     [projectId, conversationId],

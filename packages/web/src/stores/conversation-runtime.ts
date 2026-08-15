@@ -308,6 +308,15 @@ const visits = new Map<string, AbortController>();
  */
 export type ChatMishap = {
   /**
+   * The reader did this on purpose and is waiting to hear back.
+   *
+   * What separates a rename they just pressed from a turn failing in some
+   * other conversation in the background. The panel shows only its own
+   * conversation's trouble -- except for this, which is theirs whichever
+   * conversation it was about.
+   */
+  deliberate?: boolean;
+  /**
    * Which telling this is.
    *
    * Two failures in a row say the same words, and a line that says the same
@@ -595,28 +604,59 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
  */
 function adoptConversation(projectId: string, opened: OpenChatResult['current']): void {
   const conversationId = opened.conversation.id;
-  useStore.setState((s) => ({
-    openStatus: { ...s.openStatus, [projectId]: 'ready' },
-    currentByProject: { ...s.currentByProject, [projectId]: conversationId },
-    conversations: {
-      ...s.conversations,
-      [conversationId]: {
-        projectId,
-        messages: opened.messages.map(toStored),
-        turn: null,
-        hasMore: opened.hasMore,
-        oldestLoadedTurn: oldestTurnOf(opened.messages),
-        // Carried over, unlike everything above it. What the server has just
-        // described is the conversation; how many of its turns failed while
-        // this reader was sitting here is not something it knows or is
-        // saying anything about. Restarting it at zero under a panel holding
-        // a baseline from before would make the next failure read as older
-        // than the one it is compared against, and go unannounced.
-        failures: s.conversations[conversationId]?.failures ?? 0,
-        failedReplyId: s.conversations[conversationId]?.failedReplyId ?? null,
+  useStore.setState((s) => {
+    const held = s.conversations[conversationId];
+    // The one thing this answer does NOT describe: a turn still running here.
+    // A reply is written to the database when the turn ends, so a turn under
+    // way is not a state the server has contradicted -- it is one the server
+    // has not written down yet. Dropping it took the reply off the screen,
+    // took the stop button with it, and left the request with nothing holding
+    // its abort handle: the model went on running, and on billing, with the
+    // switch out of reach.
+    const running = held?.turn ?? null;
+    const reply = running
+      ? held?.messages.find((m) => m.id === running.replyId)
+      : undefined;
+    const page = opened.messages.map(toStored);
+
+    // Anything typed while this was loading was kept under the project,
+    // because there was no conversation to keep it under. There is now.
+    const waiting = s.draftByConversation[projectDraftKey(projectId)];
+    const drafts = { ...s.draftByConversation };
+    if (waiting !== undefined) {
+      delete drafts[projectDraftKey(projectId)];
+      // Only into an empty box: a conversation being re-read may already hold
+      // a sentence of its own, and that one was typed in it.
+      if (!drafts[conversationId]) drafts[conversationId] = waiting;
+    }
+
+    return {
+      draftByConversation: drafts,
+      openStatus: { ...s.openStatus, [projectId]: 'ready' },
+      currentByProject: { ...s.currentByProject, [projectId]: conversationId },
+      conversations: {
+        ...s.conversations,
+        [conversationId]: {
+          projectId,
+          // The reply being written goes back on the end, where it was. It is
+          // not in the page: the server cannot hand back something it has not
+          // stored.
+          messages: reply ? [...page, reply] : page,
+          turn: running,
+          hasMore: opened.hasMore,
+          oldestLoadedTurn: oldestTurnOf(opened.messages),
+          // Carried over, unlike everything above it. What the server has just
+          // described is the conversation; how many of its turns failed while
+          // this reader was sitting here is not something it knows or is
+          // saying anything about. Restarting it at zero under a panel holding
+          // a baseline from before would make the next failure read as older
+          // than the one it is compared against, and go unannounced.
+          failures: held?.failures ?? 0,
+          failedReplyId: held?.failedReplyId ?? null,
+        },
       },
-    },
-  }));
+    };
+  });
 }
 
 /**
@@ -745,7 +785,7 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
       // This conversation's box, and no other. Another conversation may be
       // holding a sentence its reader has not sent, and this turn landing
       // here says nothing about that one.
-      setDraft(conversationId, '');
+      setDraft(running.projectId, conversationId, '');
 
       // The name arrives on this event because this turn may be the one that
       // gave the conversation its name -- the first message in a conversation
@@ -753,7 +793,7 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
       // that has still not been named is a fact the list needs as much as a
       // name is.
       if ('title' in event.data) {
-        takeTitle(running.projectId, conversationId, event.data.title as string | null);
+        noteActivity(running.projectId, conversationId, event.data.title as string | null);
       }
 
       patchConversation(conversationId, (c) => {
@@ -1172,6 +1212,14 @@ async function loadEarlier(conversationId: string): Promise<void> {
 }
 
 /**
+ * The conversation each project's reader last asked to see.
+ *
+ * Outside the state because nothing renders it: it exists so an answer can ask
+ * "am I still the one being waited for" before it writes.
+ */
+const switchingTo = new Map<string, string>();
+
+/**
  * Write a conversation's name into the list the reader chooses from.
  * @param projectId - The project whose list to change.
  * @param conversationId - The conversation being named.
@@ -1191,18 +1239,36 @@ function applyTitle(projectId: string, conversationId: string, title: string | n
 }
 
 /**
- * Take the name a turn has just given its conversation.
+ * Record that something was just said in a conversation.
  *
- * A conversation is named after the first thing said in it, and the server
- * says so on the event that opens the turn. Nothing else on that stream ever
- * mentions the name, so without this the list and the header go on showing
- * the placeholder until the reader leaves the project and comes back.
+ * Three things at once, because they are one event. The name, which the server
+ * decides on the first message and mentions nowhere else on the stream. The
+ * time, which the row shows and which the server will not tell us about again
+ * until the project is re-opened. And the order, because the list is sorted
+ * most recently used first and that is the order `remove` reads to pick where
+ * to land -- a list that never re-sorts makes both of those wrong the moment
+ * the reader speaks in anything but the top one.
  * @param projectId - The project the conversation is in.
- * @param conversationId - The conversation that has been named.
- * @param title - What it is called now.
+ * @param conversationId - The conversation just spoken in.
+ * @param title - What it is called now, or null if it still has no name.
  */
-function takeTitle(projectId: string, conversationId: string, title: string | null): void {
-  applyTitle(projectId, conversationId, title);
+function noteActivity(projectId: string, conversationId: string, title: string | null): void {
+  useStore.setState((s) => {
+    const listed = s.listByProject[projectId];
+    if (!listed) return s;
+    const spokenIn = listed.find((c) => c.id === conversationId);
+    if (!spokenIn) return s;
+    const now = new Date().toISOString();
+    return {
+      listByProject: {
+        ...s.listByProject,
+        [projectId]: [
+          { ...spokenIn, title, updatedAt: now },
+          ...listed.filter((c) => c.id !== conversationId),
+        ],
+      },
+    };
+  });
 }
 
 /**
@@ -1217,20 +1283,26 @@ function takeTitle(projectId: string, conversationId: string, title: string | nu
  */
 async function switchTo(projectId: string, conversationId: string): Promise<void> {
   // Already the one on screen. Asking again would replace a conversation with
-  // an identical copy of itself and throw away the turn running in it.
+  // an identical copy of itself for no reason.
   if (useStore.getState().currentByProject[projectId] === conversationId) return;
 
+  // Which conversation the reader last asked for. Two presses in a row are two
+  // requests, and the answers come back in whatever order the network gives
+  // them -- without this the slower one lands last and the reader ends up in a
+  // conversation they did not choose, with the list agreeing.
+  switchingTo.set(projectId, conversationId);
   const visit = currentVisit(projectId);
   try {
     const read = await chatApi.readConversation(conversationId);
     if (visit.signal.aborted) return;
+    if (switchingTo.get(projectId) !== conversationId) return;
     adoptConversation(projectId, read);
   } catch (err) {
     // Nothing moves. The reader stays where they were, which is a place that
     // still works, rather than landing on a conversation with no messages in
     // it because the request for them failed.
     if (visit.signal.aborted) return;
-    tell({ projectId, conversationId, ...readMishap(err) });
+    tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
   }
 }
 
@@ -1258,7 +1330,7 @@ async function startNew(projectId: string): Promise<void> {
     adoptConversation(projectId, { conversation: created, messages: [], hasMore: false });
   } catch (err) {
     if (visit.signal.aborted) return;
-    tell({ projectId, conversationId: null, ...readMishap(err) });
+    tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
   }
 }
 
@@ -1284,7 +1356,7 @@ async function rename(
     applyTitle(projectId, conversationId, renamed.title);
   } catch (err) {
     if (visit.signal.aborted) return;
-    tell({ projectId, conversationId, ...readMishap(err) });
+    tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
   }
 }
 
@@ -1310,7 +1382,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
     // is worse than one that failed to lose it, because only the second is
     // something the reader can retry.
     if (visit.signal.aborted) return;
-    tell({ projectId, conversationId, ...readMishap(err) });
+    tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
     return;
   }
   if (visit.signal.aborted) return;
@@ -1334,36 +1406,85 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
   });
 
   if (!wasOnScreen) return;
+
+  // The conversation the panel was showing has just gone, and the next one is
+  // a round trip away. Saying so is what keeps the empty-conversation greeting
+  // off the screen in between -- the panel draws nothing until this says
+  // ready, which is the same gate that covers opening. Without it the panel
+  // saw "ready, and no messages" and drew a whole screenful of greeting.
+  useStore.setState((s) => ({
+    openStatus: { ...s.openStatus, [projectId]: 'loading' },
+  }));
+
   const next = remaining[0];
   if (next) {
-    await switchTo(projectId, next.id);
+    // Not `switchTo`: that one returns early when the id it is given is
+    // already the current one, and the current one is the conversation just
+    // deleted only when this is the last press of two. Read it directly.
+    const visit = currentVisit(projectId);
+    try {
+      const read = await chatApi.readConversation(next.id);
+      if (visit.signal.aborted) return;
+      switchingTo.set(projectId, next.id);
+      adoptConversation(projectId, read);
+    } catch (err) {
+      if (visit.signal.aborted) return;
+      useStore.setState((s) => ({
+        openStatus: { ...s.openStatus, [projectId]: 'failed' },
+      }));
+      tell({ projectId, conversationId: next.id, deliberate: true, ...readMishap(err) });
+    }
     return;
   }
   // None left. `openAndAdopt` rather than `ensureLoaded`, because by that
   // one's reckoning this project is open already and it would return without
   // asking for the conversation that no longer exists.
   const failure = await openAndAdopt(projectId);
-  if (failure) tell({ projectId, conversationId: null, ...readMishap(failure.failed) });
+  if (failure) {
+    useStore.setState((s) => ({
+      openStatus: { ...s.openStatus, [projectId]: 'failed' },
+    }));
+    tell({ projectId, conversationId: null, deliberate: true, ...readMishap(failure.failed) });
+  }
 }
 
 /**
- * Hold what is half-typed in a conversation.
- * @param conversationId - The conversation it was typed in.
+ * Where a draft is kept while the conversation it belongs to is still loading.
+ *
+ * A draft belongs to a conversation, and for a moment on every visit there is
+ * no conversation to belong to -- the open call is still out. Typing in that
+ * moment used to be dropped on the floor: nowhere to put it meant the box
+ * showed nothing back. So it goes under the project until there is somewhere
+ * better, and moves the moment there is.
+ * @param projectId - The project being read.
+ * @returns The key drafts are kept under while no conversation is on screen.
+ */
+function projectDraftKey(projectId: string): string {
+  return `project:${projectId}`;
+}
+
+/**
+ * Hold what is half-typed, under the conversation if there is one.
+ * @param projectId - The project being read.
+ * @param conversationId - The conversation it was typed in, if one is on screen.
  * @param text - What is in the box.
  */
-function setDraft(conversationId: string, text: string): void {
+function setDraft(projectId: string, conversationId: string | undefined, text: string): void {
+  const key = conversationId ?? projectDraftKey(projectId);
   useStore.setState((s) => ({
-    draftByConversation: { ...s.draftByConversation, [conversationId]: text },
+    draftByConversation: { ...s.draftByConversation, [key]: text },
   }));
 }
 
 /**
- * Read back what was half-typed in a conversation.
- * @param conversationId - The conversation asked about.
+ * Read back what was half-typed.
+ * @param projectId - The project being read.
+ * @param conversationId - The conversation asked about, if one is on screen.
  * @returns What is in its box, empty when nothing was left there.
  */
-function draftOf(conversationId: string): string {
-  return useStore.getState().draftByConversation[conversationId] ?? '';
+function draftOf(projectId: string, conversationId: string | undefined): string {
+  const key = conversationId ?? projectDraftKey(projectId);
+  return useStore.getState().draftByConversation[key] ?? '';
 }
 
 /**
@@ -1459,7 +1580,7 @@ export const conversationRuntime = {
   startNew,
   rename,
   remove,
-  takeTitle,
+  noteActivity,
   setDraft,
   draftOf,
 };

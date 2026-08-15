@@ -237,6 +237,21 @@ describe("A conversation takes its name from the first thing said in it", () => 
     expect(title!.endsWith("…")).toBe(true);
   });
 
+  it("never cuts an emoji in half", async () => {
+    // A cut by code unit lands inside a surrogate pair, and half a pair is
+    // stored -- and read back -- as the replacement character, permanently, in
+    // the name of a conversation.
+    const { projectId, cookie } = await seedProject();
+    const conversationId = await openAndGetId(projectId, cookie);
+    const limit = getAgentConfig().conversation_title_max_chars;
+    // Put the emoji exactly where a cut by code unit would land.
+    await say("a".repeat(limit - 2) + "\u{1F600} and more after it", projectId, conversationId, cookie);
+
+    const title = await storedTitle(conversationId);
+    expect(title).not.toContain("\uFFFD");
+    expect(title!.endsWith("\u2026")).toBe(true);
+  });
+
   it("keeps a first message that already fits, ellipsis and all", async () => {
     // The pair to the one above: without it, cutting everything to the limit
     // regardless of length would pass.

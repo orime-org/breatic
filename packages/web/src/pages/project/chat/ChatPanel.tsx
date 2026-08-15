@@ -129,7 +129,7 @@ export function ChatPanel({
     // that is re-rendered for every keystroke otherwise -- and the claim that
     // its props are stable was, until this, not true of this one.
     const conversationId = useConversationRuntime.getState().currentByProject[projectId];
-    const typed = conversationId ? conversationRuntime.draftOf(conversationId) : '';
+    const typed = conversationRuntime.draftOf(projectId, conversationId);
     if (typed.trim().length === 0) return;
     setSentCount((n) => n + 1);
     void send(typed);
@@ -206,6 +206,13 @@ export function ChatPanel({
       }
     >
       <MessageList
+        // Keyed by the conversation, so switching mounts a fresh list. What
+        // that resets is the one thing a switch has to reset and nothing else
+        // could: whether the reader was following the bottom. It lived in a
+        // ref that only a press of send cleared, so arriving in a new
+        // conversation put the reader wherever the last one had been scrolled
+        // to.
+        key={currentId ?? 'none'}
         messages={messages}
         ready={ready}
         skeleton={skeleton}
