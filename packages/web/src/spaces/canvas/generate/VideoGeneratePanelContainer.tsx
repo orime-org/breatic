@@ -530,13 +530,21 @@ function VideoGeneratePanelBody({
       warnNodeGate(t(gateBlock.toastKey));
       return;
     }
+    const fresh = freshVm(new Set(atMentionedRef.current));
     // Serialize the backend prompt AT CLICK TIME: a text chip substitutes its
     // source node's CURRENT words, and that node may have been edited since
     // the last prompt keystroke — the ref would carry the stale substitution.
     // Falls back to the ref when the editor is gone (unmounting).
-    const freshPrompt =
-      promptEditorRef.current?.serializePrompt() ?? promptTextRef.current;
-    const fresh = freshVm(new Set(atMentionedRef.current));
+    //
+    // A model that declares no `prompt` sends none, and that takes this
+    // explicit branch (#1950): not mounting the editor only stops someone
+    // typing HERE. The mirror still holds whatever was typed under the
+    // previous mode — `handlePromptChange` is the only writer and nothing
+    // clears it, and the editor does not call back on unmount — so without
+    // this line a talking-head task would carry the last mode's words.
+    const freshPrompt = fresh.promptRequired
+      ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
+      : '';
     if (
       !canExecuteGenerate({
         promptText: freshPrompt,
@@ -658,10 +666,23 @@ function VideoGeneratePanelBody({
   // container with everything typed into it). So the panel opens without an
   // editor and its arrow can never light; saying why is what keeps that from
   // reading as the feature being broken.
-  const noPromptNotice = t('canvas.generatePanel.videoNoPrompt');
+  // The model decides, not the mode (#1935, #1950): a model that declares no
+  // `prompt` has nothing to do with one, so the editor does not mount and a
+  // line says what this mode runs on instead. Unmounting rather than hiding —
+  // there is nothing to type into it here, and a mounted collaborative editor
+  // costs a TipTap instance plus its bindings. The cost is the prompt's undo
+  // history, which lives on the editor instance and dies with it (#1961).
+  const promptNotUsedNotice = t('canvas.generatePanel.videoPromptNotUsed');
   const promptSlot = React.useMemo(
     () =>
-      fragment ? (
+      !vm.promptRequired ? (
+        <p
+          data-testid='generate-video-prompt-not-used'
+          className='px-1 py-2 text-xs text-muted-foreground'
+        >
+          {promptNotUsedNotice}
+        </p>
+      ) : fragment ? (
         <PromptEditor
           ref={promptEditorRef}
           fragment={fragment}
@@ -677,19 +698,13 @@ function VideoGeneratePanelBody({
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
         />
-      ) : (
-        <p
-          data-testid='generate-video-no-prompt'
-          className='px-1 py-2 text-xs text-muted-foreground'
-        >
-          {noPromptNotice}
-        </p>
-      ),
+      ) : null,
     [
+      vm.promptRequired,
+      promptNotUsedNotice,
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
-      noPromptNotice,
       stableReferences,
       handlePromptChange,
       handleAtMentionsChange,

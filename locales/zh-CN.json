@@ -266,7 +266,6 @@
       "videoPromptPlaceholder": "描述你想生成的视频，@ 引用参考",
       "errorNoReferenceMention": "这一档需要参考图 —— 先把图连到这个节点，再在提示词里输入 @ 引用它。",
       "videoMentionEmpty": "还没有可引用的参考",
-      "videoNoPrompt": "这个节点建得比视频生成早，没有提示词。新建一个视频节点就能生成。",
       "firstFrame": "首帧",
       "firstFrameTip": "挑一张图作为视频的第一帧",
       "removeFirstFrame": "移除首帧",
@@ -286,7 +285,8 @@
       "removeDrivingVideo": "移除驱动视频",
       "removeDrivingAudio": "移除驱动音频",
       "errorNoDrivingVideo": "先挑一段驱动视频",
-      "errorNoDrivingAudio": "先挑一段驱动音频"
+      "errorNoDrivingAudio": "先挑一段驱动音频",
+      "videoPromptNotUsed": "这一档跟着音频走。要改内容，去换音频。"
     },
     "nodeMenu": {
       "generate": "生成",

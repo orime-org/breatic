@@ -275,7 +275,6 @@
       "videoPromptPlaceholder": "Describe the video you want to generate, @ to add a reference",
       "errorNoReferenceMention": "This mode needs a reference image — connect one to this node and type @ in the prompt to use it",
       "videoMentionEmpty": "No references to mention yet",
-      "videoNoPrompt": "This node was made before videos could be generated, so it has no prompt. Create a new video node to generate one.",
       "firstFrame": "First frame",
       "firstFrameTip": "Pick an image to start the video from",
       "removeFirstFrame": "Remove first frame",
@@ -295,7 +294,8 @@
       "removeDrivingVideo": "Remove driving video",
       "removeDrivingAudio": "Remove driving audio",
       "errorNoDrivingVideo": "Pick a driving video",
-      "errorNoDrivingAudio": "Pick a driving audio track"
+      "errorNoDrivingAudio": "Pick a driving audio track",
+      "videoPromptNotUsed": "This mode follows the audio. Change the audio to change what is said."
     },
     "edge": {
       "delete": "Delete connection"
