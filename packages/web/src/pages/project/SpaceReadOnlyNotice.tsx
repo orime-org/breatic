@@ -118,10 +118,11 @@ function DocReadOnlyNotice({
  * Space beside it has room. Note what "connection" means on each side: the
  * browser opens ONE WebSocket per tab and attaches each Space's document to it
  * (`data/yjs/collab-socket.tsx`), while the server counts seats per document,
- * keyed by socket — so one tab with three Spaces open holds one socket and
- * three seats, one in each document's ledger. A notice in the page chrome
- * would claim something about the whole project that is not true of it
- * (user 2026-08-14).
+ * keyed by socket. So one tab with three Spaces open holds one socket and up
+ * to three seats — one in each document's ledger, and only for the documents
+ * this connection may actually write, since a read-only attachment takes no
+ * seat at all. A notice in the page chrome would claim something about the
+ * whole project that is not true of it (user 2026-08-14).
  *
  * ## Why it is not a toast
  *

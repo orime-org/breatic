@@ -20,11 +20,14 @@
  * on it. Gating these on a seat would mean a full canvas stops someone from
  * opening a BLANK Space beside it.
  *
- * The meta document is exempt from connection-level read-only for the same
- * reason it is exempt from the ceiling: no client writes it. Every change here
- * is made by collab itself over `openDirectConnection` as the system user, so
- * the read-only flag on the caller's meta connection describes the client's
- * inability to write meta directly — not this caller's authority.
+ * A meta connection is ALWAYS read-only — `auth.ts` sets that flag for every
+ * client on the meta document, ahead of any role or ceiling question. What is
+ * exempt is this authorization: these RPCs deliberately do not consult that
+ * flag, for the same reason meta is exempt from the ceiling — no client writes
+ * meta directly. Every change here is made by collab itself over
+ * `openDirectConnection` as the system user, so the flag on the caller's meta
+ * connection describes what the client may do with the document, not what this
+ * caller may ask for.
  *
  * Every operation follows §6 of the 2026-08-02 step-order design:
  *

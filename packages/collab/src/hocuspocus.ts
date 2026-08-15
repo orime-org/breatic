@@ -307,10 +307,10 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     //
     // ONLY WRITABLE CONNECTIONS TAKE A SEAT (#88). `connectionConfig` here
     // is the very object the auth hook mutated: the framework builds one per
-    // document per connection (ClientConnection.ts:620), hands that same
-    // object to onAuthenticate (:373) and spreads it into this payload
-    // (:433). So `readOnly` has already settled, and reading it needs no
-    // second channel through `context`.
+    // document per connection (ClientConnection.ts:620), spreads that same
+    // `hookPayload` into the onAuthenticate call (:518) and into this
+    // `connected` one (:433). So `readOnly` has already settled by the time
+    // this runs, and reading it needs no second channel through `context`.
     connected: async ({
       documentName,
       socketId,

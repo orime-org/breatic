@@ -373,17 +373,28 @@ export function createAuthHook({
           cap = await resolveConnectionLimit(parsed.projectId);
         } catch (err) {
           atCapacity = true;
-          // Only the error itself says WHICH row to go fix, and the three
-          // ways this throws point at three different tables:
+          // Carry `err` through verbatim: the structured fields beside it
+          // narrow the search but never name the row, and without the message
+          // the trail says merely "some studio has bad data".
+          //
+          // How much the message narrows it varies, and it is worth knowing
+          // which case you are in before going to look:
           //
           //   `Unknown membership tier "X" on account <uid>, the admin of
-          //     studio <sid>`      → a `users` row; carries the value too
-          //   `No live admin for studio <sid>`  → a `studio_members` row
-          //   `No live project <pid>`           → a `projects` row
-          //
-          // So carry `err` through verbatim. The structured fields beside it
-          // narrow the search but never name the row on their own — without
-          // the message the trail says merely "some studio has bad data".
+          //     studio <sid>`  — the one that names its row outright: that
+          //     `users` row, and the offending value with it.
+          //   `No live admin for studio <sid>`  — narrows to a studio, NOT to
+          //     a table. `readStudioAdmin` joins three of them and any of four
+          //     liveness conditions failing yields this same string, so the bad
+          //     row may be in `studios`, in `studio_members`, or in the admin's
+          //     `users` row. Its own docstring lists all three.
+          //   `No live project <pid>`  — a `projects` row.
+          //   anything else  — most likely the config file. `getLimitsForStudio`
+          //     ends at `getMembershipLimits`, which lazily reads and validates
+          //     `config/membership.yaml` on first use, so a malformed file
+          //     surfaces here as a ZodError naming no row at all. That one is
+          //     not per-studio: it degrades every writable connection in the
+          //     deployment until the file is fixed.
           logger.error(
             {
               err,
