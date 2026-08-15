@@ -30,6 +30,7 @@ import {
   SheetTitle,
 } from '@web/components/ui/sheet';
 import { cn } from '@web/lib/utils';
+import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 
@@ -202,6 +203,11 @@ function ConversationRowView({
             data-testid='conversation-rename-input'
             ref={box}
             defaultValue={row.title ?? ''}
+            // The same cap the server enforces. Without it a pasted name over
+            // the limit comes back as a flat validation error that says
+            // nothing about length, while the box in the header simply stops
+            // taking characters -- one thing, two behaviours.
+            maxLength={CONVERSATION_TITLE_MAX_CHARS}
             placeholder={t('chat.conversation.renamePlaceholder')}
             aria-label={t('chat.conversation.rename')}
             className='m-3 min-w-0 flex-1 rounded-content-sm border border-active-border bg-background px-2 py-1 text-sm text-foreground outline-none'

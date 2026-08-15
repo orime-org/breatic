@@ -150,7 +150,7 @@ export const chatApi = {
     projectId: string,
     after?: { updatedAt: string; id: string },
     signal?: AbortSignal,
-  ) {
+  ): Promise<ConversationListPage> {
     return apiGet<ConversationListPage>('/chat/conversations', {
       params: {
         project_id: projectId,

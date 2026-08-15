@@ -519,3 +519,29 @@ describe('a new conversation that could not be created', () => {
     expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-new-2');
   });
 });
+
+describe('the window between deleting a conversation and landing on the next', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not read the gate through a conversation that is gone', async () => {
+    // 「一个 project 一次一轮」这道闸门是顺着当前会话指针读出来的。指针还指着
+    // 一条已经删掉的会话时,读到的是空,而空被判成「什么都没在跑」—— 于是这
+    // 段时间里连按发送就是两轮,两轮都要花钱。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
+    vi.mocked(chatApi.readConversation).mockImplementation(() => new Promise(() => {}));
+    void conversationRuntime.remove(P, 'c-1');
+    await vi.waitFor(() =>
+      expect(useConversationRuntime.getState().openStatus[P]).toBe('loading'),
+    );
+
+    const state = useConversationRuntime.getState();
+    expect(state.currentByProject[P]).toBeUndefined();
+    expect(state.conversations['c-1']).toBeUndefined();
+  });
+});

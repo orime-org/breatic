@@ -415,10 +415,11 @@ export type ChatCreateConversationInput = z.infer<typeof chatCreateConversationS
 /**
  * How long a conversation's name may be.
  *
- * One number, because both ends enforce it: the box the reader types into and
- * the column it is stored in. Two numbers means the shorter one silently
- * rewrites names the longer one accepted -- and the reader never asked for
- * that, they only opened the box and closed it again.
+ * One number, because three places enforce it: the two boxes a reader can
+ * type a name into and the schema this sits beside. Two numbers means the
+ * shorter one silently rewrites names the longer one accepted -- and the
+ * reader never asked for that, they only opened a box and closed it again.
+ * The column is `varchar(200)`; keep them in step.
  */
 export const CONVERSATION_TITLE_MAX_CHARS = 200;
 

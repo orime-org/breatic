@@ -610,13 +610,10 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // else. Dropping it whole would leave the sheet showing one row where the
     // project has dozens, and take `hasMore` with it, so paging could not
     // recover them either.
-    // Being overtaken says another navigation is more recent, not that it
-    // succeeded. If it did, a conversation is on screen and this answer must
-    // not replace it; if it failed, nothing is on screen and this answer is
-    // still the right thing to show -- and the only thing that can say the
-    // chat is open at all.
-    const occupied = useStore.getState().currentByProject[projectId] !== undefined;
-    const landed = stillAwaited(projectId, nav) || !occupied;
+    // A press that failed takes its navigation back, so being overtaken here
+    // means something later actually stands -- and this answer, assembled
+    // before it, must not replace what the reader chose.
+    const landed = stillAwaited(projectId, nav);
     if (landed) adoptConversation(projectId, opened.current);
     useStore.setState((st) => {
       const held = st.listByProject[projectId] ?? [];
@@ -641,21 +638,9 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // Not over a chat that has opened before. There is a conversation on
     // screen and it is still readable; saying it could not be opened would
     // take it away over a request the reader did not make.
-    const why = readMishap(err);
-    useStore.setState((s) =>
-      s.openStatus[projectId] === 'ready'
-        ? s
-        : {
-          openStatus: { ...s.openStatus, [projectId]: 'failed' },
-          openFailure:
-              why.kind === 'server'
-                ? { ...s.openFailure, [projectId]: why.message }
-                : (() => {
-                  const { [projectId]: _gone, ...rest } = s.openFailure;
-                  return rest;
-                })(),
-        },
-    );
+    if (useStore.getState().openStatus[projectId] !== 'ready') {
+      markUnreadable(projectId, err);
+    }
     return { failed: err };
   }
 }
@@ -706,6 +691,9 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
     return {
       draftByConversation: drafts,
       openStatus: { ...s.openStatus, [projectId]: 'ready' },
+      // Whatever went wrong last time is over. A reason kept past it would
+      // be shown as the reason for whatever goes wrong next.
+      openFailure: (({ [projectId]: _gone, ...rest }) => rest)(s.openFailure),
       currentByProject: { ...s.currentByProject, [projectId]: conversationId },
       conversations: {
         ...s.conversations,
@@ -1334,11 +1322,59 @@ function stillAwaited(projectId: string, token: number): boolean {
  * @param projectId - The project.
  * @param token - What {@link intendToNavigate} handed back.
  */
+/**
+ * Say this project's chat could not be read, and why.
+ *
+ * The status and the reason are one fact, so they are written in one place.
+ * Left to each failing path to remember, the scrim ends up wearing a reason
+ * from some earlier failure, or none at all while the server had said exactly
+ * what was wrong.
+ * @param projectId - The project.
+ * @param err - What came back.
+ */
+function markUnreadable(projectId: string, err: unknown): void {
+  const why = readMishap(err);
+  useStore.setState((s) => ({
+    openStatus: { ...s.openStatus, [projectId]: 'failed' as OpenStatus },
+    openFailure:
+      why.kind === 'server'
+        ? { ...s.openFailure, [projectId]: why.message }
+        : (({ [projectId]: _gone, ...rest }) => rest)(s.openFailure),
+  }));
+}
+
+/**
+ * Take back a navigation that did not happen.
+ *
+ * A press that failed asked for nothing in the end, so it must not go on
+ * outranking what came before it -- an answer already on its way was the
+ * reader's previous choice, and with this press gone it is their current one
+ * again. Only the latest can be taken back; anything newer has already made
+ * this one irrelevant.
+ * @param projectId - The project.
+ * @param token - What {@link intendToNavigate} handed back.
+ */
+function abandonNavigation(projectId: string, token: number): void {
+  if (navigations.get(projectId) === token) navigations.set(projectId, token - 1);
+}
+
+/**
+ * End a navigation that failed with nobody behind it to finish the job.
+ * @param projectId - The project.
+ * @param token - What {@link intendToNavigate} handed back.
+ */
 function settleIfStranded(projectId: string, token: number): void {
   if (!stillAwaited(projectId, token)) return;
   useStore.setState((s) =>
     s.openStatus[projectId] === 'loading'
-      ? { openStatus: { ...s.openStatus, [projectId]: 'failed' } }
+      ? {
+        openStatus: { ...s.openStatus, [projectId]: 'failed' },
+        // Nothing came back to quote here -- what failed was a different
+        // request, and its own sentence went to the notice line. Any reason
+        // still held is from some earlier failure and must not be worn as
+        // this one's.
+        openFailure: (({ [projectId]: _gone, ...rest }) => rest)(s.openFailure),
+      }
       : s,
   );
 }
@@ -1428,8 +1464,10 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
     // it because the request for them failed.
     if (visit.signal.aborted) return;
     tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
-    // Nothing landed, so the panel is still waiting on this one. If a delete
-    // put it in the loading state on the way here, this is where that ends.
+    // Nothing landed, so this press asked for nothing; an answer still on its
+    // way is the reader's choice again. If a delete put the panel in the
+    // loading state on the way here, this is where that ends.
+    abandonNavigation(projectId, nav);
     settleIfStranded(projectId, nav);
   }
 }
@@ -1469,9 +1507,11 @@ async function startNew(projectId: string): Promise<void> {
   } catch (err) {
     if (visit.signal.aborted) return;
     tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
-    // This press may have overtaken a landing that had already promised the
-    // panel a conversation -- the one a delete goes looking for, say. That
-    // one stepped aside for this; nobody else is coming.
+    // This press asked for nothing in the end. Whatever it overtook -- an
+    // opening still on its way, a delete looking for somewhere to land -- is
+    // the reader's choice again, so the claim goes back before anything else
+    // is decided.
+    abandonNavigation(projectId, nav);
     settleIfStranded(projectId, nav);
   }
 }
@@ -1612,21 +1652,30 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
   const remaining = (useStore.getState().listByProject[projectId] ?? []).filter(
     (c) => c.id !== conversationId,
   );
+  // Read now, not before the request went out. Whether this conversation is
+  // the one on screen is a question about the moment it disappears, and in
+  // between the reader may have picked another row -- deciding at the start
+  // would pull them off it. Read before the write below, because that write
+  // is what makes the answer unavailable.
+  const wasOnScreen = useStore.getState().currentByProject[projectId] === conversationId;
+
   useStore.setState((s) => {
     const { [conversationId]: _gone, ...conversations } = s.conversations;
     const { [conversationId]: _draft, ...draftByConversation } = s.draftByConversation;
+    // The pointer goes with what it pointed at. Left behind it names a
+    // conversation that is not there, and everything reading through it --
+    // including the gate that allows one turn at a time -- finds nothing and
+    // concludes nothing is happening.
+    const { [projectId]: _was, ...withoutCurrent } = s.currentByProject;
     return {
       conversations,
+      currentByProject: wasOnScreen ? withoutCurrent : s.currentByProject,
       draftByConversation,
       listByProject: { ...s.listByProject, [projectId]: remaining },
     };
   });
 
-  // Read now, not before the request went out. Whether this conversation is
-  // the one on screen is a question about the moment it disappears, and in
-  // between the reader may have picked another row -- deciding at the start
-  // would pull them off it.
-  if (useStore.getState().currentByProject[projectId] !== conversationId) return;
+  if (!wasOnScreen) return;
 
   // Landing somewhere else is a navigation like any other, and it has to be
   // ordered against the reader's own: whatever they pressed after this must
@@ -1659,11 +1708,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
       // may have picked a row themselves in the meantime and be reading it;
       // this failure is about a conversation they no longer care about, and
       // blacking out the column over it would take away one that works.
-      if (stillAwaited(projectId, nav)) {
-        useStore.setState((s) => ({
-          openStatus: { ...s.openStatus, [projectId]: 'failed' },
-        }));
-      }
+      if (stillAwaited(projectId, nav)) markUnreadable(projectId, err);
       tell({ projectId, conversationId: next.id, deliberate: true, ...readMishap(err) });
     }
     return;
@@ -1673,9 +1718,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
   // asking for the conversation that no longer exists.
   const failure = await openAndAdopt(projectId);
   if (failure) {
-    useStore.setState((s) => ({
-      openStatus: { ...s.openStatus, [projectId]: 'failed' },
-    }));
+    markUnreadable(projectId, failure.failed);
     tell({ projectId, conversationId: null, deliberate: true, ...readMishap(failure.failed) });
   }
 }
