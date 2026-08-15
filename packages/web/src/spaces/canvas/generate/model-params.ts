@@ -115,3 +115,38 @@ export function paramsStoreOf(
   if (!entry) return {};
   return { [current]: resolveParamsForModel(entry, content?.params ?? {}) };
 }
+
+/** What a model switch resolves to: the live params plus every record to persist. */
+export interface ModelSwitchResult {
+  /** The params now in effect — the picked model's declared set. */
+  params: Record<string, unknown>;
+  /** Every per-model record to write back, this switch's included. */
+  paramsByModel: Record<string, Record<string, unknown>>;
+}
+
+/**
+ * Resolves what to persist when a model becomes the selected one, whether the
+ * user picked it directly or a mode switch brought it in.
+ *
+ * The picked model reads its OWN record and nothing else. A model being used
+ * for the first time therefore starts from its own declared defaults — the
+ * model being left has no way to reach it, which is the whole point of #1948.
+ *
+ * Every record is returned, not just this one, because the caller writes the
+ * whole thing: the store it was built from may hold a record migrated out of
+ * a pre-#1948 node (see {@link paramsStoreOf}), and that record only survives
+ * if this write carries it along.
+ * @param content - The node's model / params / per-model records.
+ * @param picked - The model becoming the selected one.
+ * @param models - The catalog models this panel offers.
+ * @returns The params in effect and every per-model record to persist.
+ */
+export function resolveModelSwitch(
+  content: ParamsStoreSource | undefined,
+  picked: ModelEntry,
+  models: readonly ModelEntry[],
+): ModelSwitchResult {
+  const store = paramsStoreOf(content, models);
+  const params = resolveParamsForModel(picked, store[picked.name] ?? {});
+  return { params, paramsByModel: { ...store, [picked.name]: params } };
+}

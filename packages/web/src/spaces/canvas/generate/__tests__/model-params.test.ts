@@ -6,6 +6,7 @@ import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import {
   paramsStoreOf,
+  resolveModelSwitch,
   resolveParamsForModel,
 } from '@web/spaces/canvas/generate/model-params';
 
@@ -190,5 +191,78 @@ describe('paramsStoreOf — per-model records, with a one-time migration for old
         CATALOG,
       ),
     ).toEqual({});
+  });
+});
+
+describe('resolveModelSwitch — the picked model brings its own record (#1948)', () => {
+  // Mirrors the real declarations this defect was found on: two models in the
+  // SAME mode whose defaults differ, one of which does not constrain the value
+  // at all. `veo` defaults to 8 and allows [4,6,8]; `kling` defaults to 5 and
+  // states no `values`, so nothing invalidates a value carried into it.
+  const DURATION_LIST: ParamDescriptor = {
+    description: 'Duration',
+    values: [4, 6, 8],
+    default: 8,
+  };
+  const DURATION_FREE: ParamDescriptor = {
+    description: 'Duration',
+    type: 'int',
+    default: 5,
+  };
+  const veo = model({ duration: DURATION_LIST }, 'veo');
+  const kling = model({ duration: DURATION_FREE }, 'kling');
+  const CATALOG = [veo, kling];
+
+  it('gives a model never used before its OWN defaults, not the outgoing model’s values', () => {
+    // The defect: `veo`'s default 8 was written into the shared param set, and
+    // `kling` states no `values`, so nothing rejected it — the user landed on
+    // 8 seconds under a model whose own recommendation is 5.
+    const { params } = resolveModelSwitch(
+      { model: 'veo', params: { duration: 8 }, paramsByModel: { veo: { duration: 8 } } },
+      kling,
+      CATALOG,
+    );
+    expect(params).toEqual({ duration: 5 });
+  });
+
+  it('restores the picked model’s own record when it has one', () => {
+    const { params } = resolveModelSwitch(
+      {
+        model: 'veo',
+        params: { duration: 8 },
+        paramsByModel: { veo: { duration: 8 }, kling: { duration: 12 } },
+      },
+      kling,
+      CATALOG,
+    );
+    expect(params).toEqual({ duration: 12 });
+  });
+
+  it('returns every record to persist, leaving the other models’ untouched', () => {
+    const { paramsByModel } = resolveModelSwitch(
+      { model: 'veo', params: { duration: 6 }, paramsByModel: { veo: { duration: 6 } } },
+      kling,
+      CATALOG,
+    );
+    expect(paramsByModel).toEqual({
+      veo: { duration: 6 },
+      kling: { duration: 5 },
+    });
+  });
+
+  it('carries a migrated old node’s record into what gets persisted', () => {
+    // An old node has no paramsByModel. Switching away from its current model
+    // must persist BOTH the migrated record for the model being left and the
+    // new one — otherwise the user's settings on the outgoing model are gone
+    // the moment they try another model.
+    const { paramsByModel } = resolveModelSwitch(
+      { model: 'veo', params: { duration: 6 } },
+      kling,
+      CATALOG,
+    );
+    expect(paramsByModel).toEqual({
+      veo: { duration: 6 },
+      kling: { duration: 5 },
+    });
   });
 });
