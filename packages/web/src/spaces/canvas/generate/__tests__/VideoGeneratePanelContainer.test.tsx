@@ -1440,6 +1440,29 @@ describe('VideoGeneratePanelContainer', () => {
       ).toBeInTheDocument();
     });
 
+    it('5.3 从口播档切回别的档，编辑器回来，之前打的字还在', async () => {
+      // 这一档只是不显示、不发送，不删。字存在协作片段里，编辑器重新挂上
+      // 就该原样读回来 —— 六档共用一份提示词（#1919 在追），切回去发现自己
+      // 写的没了是数据损失。
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const t2v = { mode: 't2v', model: 'veo-3.1' };
+      seedVideoNode(t2v);
+      typePrompt('一段写给文生视频的描述');
+      const view = mountContainer('video', t2v);
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const before = await screen.findByTestId('generate-prompt-editor');
+      expect(before.textContent).toContain('一段写给文生视频的描述');
+      view.rerender(
+        panelTree('video', { mode: 'talking_head', model: 'omnihuman-1.5' }),
+      );
+      await screen.findByTestId('generate-video-prompt-not-used');
+      view.rerender(panelTree('video', t2v));
+      const after = await screen.findByTestId('generate-prompt-editor');
+      expect(after.textContent).toContain('一段写给文生视频的描述');
+    });
+
     it('5.4 在别的档打过字之后切到口播档执行，载荷里的 prompt 是空串', async () => {
       // 提交路径的兜底是 `editor?.serializePrompt() ?? promptTextRef.current`
       // （容器 :537-538）。那个镜像只在 `handlePromptChange` 里写、从没人清，
