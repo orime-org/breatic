@@ -279,7 +279,16 @@ describe('buildVideoPanelViewModel', () => {
         duration: { description: '', min: 3, max: 15, default: 5 },
       },
     });
-    const nodes = [node('n1', videoView({ params: { duration: 12 } }))];
+    // `model` is what a real node always carries alongside `params`: both are
+    // written together by setNodeModel, and node-factory creates neither. Since
+    // #1948 a param set belongs to a model, so a fixture without one describes
+    // a node that cannot exist — and would be read as "nothing to migrate".
+    const nodes = [
+      node(
+        'n1',
+        videoView({ model: 'kling-o3-pro', params: { duration: 12 } }),
+      ),
+    ];
     const vm = buildVm({
       nodeId: 'n1',
       nodes,
@@ -536,20 +545,82 @@ describe('resolveVideoModeSwitch', () => {
     );
   });
 
-  it('reconciles params against the resolved model', () => {
-    // A value the target model still allows survives the switch; one it does
-    // not falls back to that model's default. A param the model never declares
-    // is preserved rather than dropped (user 2026-07-18): the param set lives
-    // on the node independently of which model is active, and the worker drops
-    // undeclared params at generation time, so nothing leaks upstream.
+  it('gives the target mode’s model its OWN params, not the outgoing mode’s (#1948)', () => {
+    // The defect this slice fixes, in its smallest form. `animate` left
+    // resolution=480p on the node; the model i2v resolves to has never been
+    // used, so it must start from its own default — 480p is a value nobody
+    // chose, it is just what the previous mode's model defaults to.
+    const animate = makeModel('wan', {
+      mode: 'animate',
+      params: {
+        resolution: { description: '', values: ['480p', '720p'], default: '480p' },
+      },
+    });
+    const seedance = makeModel('seedance', {
+      mode: 'i2v',
+      params: {
+        resolution: {
+          description: '',
+          values: ['480p', '720p', '1080p'],
+          default: '720p',
+        },
+      },
+    });
     const content = {
-      modelByMode: {},
-      params: { aspect_ratio: '9:16', resolution: '4k', keptForLater: 'x' },
+      model: 'wan',
+      modelByMode: { i2v: 'seedance' },
+      params: { resolution: '480p' },
+      paramsByModel: { wan: { resolution: '480p' } },
     };
-    const { params } = resolveVideoModeSwitch(content, 'i2v', [both]);
-    expect(params.aspect_ratio).toBe('9:16');
+    const { model, params } = resolveVideoModeSwitch(content, 'i2v', [
+      animate,
+      seedance,
+    ]);
+    expect(model).toBe('seedance');
     expect(params.resolution).toBe('720p');
-    expect(params.keptForLater).toBe('x');
+  });
+
+  it('restores the target model’s own record when it has one', () => {
+    const content = {
+      model: 'veo',
+      modelByMode: { i2v: 'wan' },
+      params: { aspect_ratio: '16:9' },
+      paramsByModel: { veo: { aspect_ratio: '16:9' }, wan: { aspect_ratio: '9:16' } },
+    };
+    const { params } = resolveVideoModeSwitch(content, 'i2v', [t2v, both, i2v]);
+    expect(params.aspect_ratio).toBe('9:16');
+  });
+
+  it('keeps one record for a model offered under two modes (#1948)', () => {
+    // `kling` serves both i2v and first_last in the real catalog, and its
+    // declaration is one set — splitting it per mode would invent a
+    // distinction the model never made.
+    const content = {
+      model: 'kling',
+      modelByMode: { i2v: 'kling', first_last: 'kling' },
+      params: { aspect_ratio: '9:16' },
+      paramsByModel: { kling: { aspect_ratio: '9:16' } },
+    };
+    const { params } = resolveVideoModeSwitch(content, 'i2v', [t2v, both, i2v]);
+    expect(params.aspect_ratio).toBe('9:16');
+  });
+
+  it('returns every record to persist, migrating an old node on the way (#1948)', () => {
+    // No paramsByModel: this node predates the field. The model it is on keeps
+    // its settings, and they come back with the write so they are not lost the
+    // moment the user switches mode.
+    const content = {
+      model: 'veo',
+      modelByMode: { i2v: 'wan' },
+      params: { aspect_ratio: '9:16' },
+    };
+    const { paramsByModel } = resolveVideoModeSwitch(content, 'i2v', [
+      t2v,
+      both,
+      i2v,
+    ]);
+    expect(paramsByModel.veo?.aspect_ratio).toBe('9:16');
+    expect(paramsByModel.wan?.aspect_ratio).toBe('16:9'); // wan's own default
   });
 
   it('returns an empty model when the target mode offers none', () => {
@@ -559,6 +630,7 @@ describe('resolveVideoModeSwitch', () => {
     expect(resolveVideoModeSwitch(undefined, 'i2v', [t2v])).toEqual({
       model: '',
       params: {},
+      paramsByModel: {},
     });
   });
 });

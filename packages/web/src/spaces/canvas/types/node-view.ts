@@ -89,6 +89,12 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   modelByMode?: Record<string, string>;
   /**
+   * Per-model params (wire `data.paramsByModel`, #1948), keyed by model id.
+   * Each record is exactly that model's declared param set; selecting a model
+   * restores its own record rather than inheriting the outgoing model's.
+   */
+  paramsByModel?: Record<string, Record<string, unknown>>;
+  /**
    * Style-reference image URL (image-node style slice #1664, wire
    * `data.styleImageUrl`) — a pick-time COPY of the source image's URL, no
    * relationship to the upstream node. The panel renders it in the Style tool
@@ -290,6 +296,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     params: data.params,
     mode: data.mode,
     modelByMode: data.modelByMode,
+    paramsByModel: data.paramsByModel,
     styleImageUrl: data.styleImageUrl,
     firstFrameUrl: data.firstFrameUrl,
     endFrameUrl: data.endFrameUrl,

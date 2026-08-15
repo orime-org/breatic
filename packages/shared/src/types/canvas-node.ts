@@ -376,7 +376,7 @@ export interface CanvasNodeFields {
     prompt?: unknown;
     /** Model id from config/models/*.yaml. */
     model?: string;
-    /** Model-specific params for the Generate request. */
+    /** Model-specific params for the Generate request — the selected model's set. */
     params?: Record<string, unknown>;
     /**
      * Per-mode memory of the last-chosen model name, keyed by the generation
@@ -385,6 +385,18 @@ export interface CanvasNodeFields {
      * available one otherwise).
      */
     modelByMode?: Record<string, string>;
+    /**
+     * Per-model params, keyed by model id (#1948). Each record holds exactly
+     * that model's declared param set, so selecting a model restores what it
+     * was left at and a model used for the first time starts from its own
+     * defaults. Values never travel between two models' records — which is
+     * what keeps a mode switch from handing the outgoing model's settings to
+     * the incoming one.
+     *
+     * Absent on nodes created before #1948; those carry `params` alone, which
+     * is migrated to the model they were last on (see `paramsStoreOf`).
+     */
+    paramsByModel?: Record<string, Record<string, unknown>>;
     /**
      * Style-reference image URL (image-node style slice, #1664) — a COPY of
      * the picked image's asset URL, snapshotted at pick time (user decision

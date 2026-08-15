@@ -25,7 +25,7 @@ import {
   filterModelsByMode,
   resolveModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
 import { mentionedImageUrls } from '@web/spaces/canvas/generate/reference-urls';
 import {
@@ -253,18 +253,25 @@ export function nodeVideoMode(
  * @returns The model to select and the params reconciled against it.
  */
 export function resolveVideoModeSwitch(
-  content: Pick<ContentNodeView, 'modelByMode' | 'params'> | undefined,
+  content:
+    | Pick<ContentNodeView, 'model' | 'modelByMode' | 'params' | 'paramsByModel'>
+    | undefined,
   mode: VideoGenMode,
   models: ModelEntry[],
-): { model: string; params: Record<string, unknown> } {
+): {
+  model: string;
+  params: Record<string, unknown>;
+  paramsByModel: Record<string, Record<string, unknown>>;
+} {
   const modeModels = selectVideoModeModels(models, mode);
   const model =
     resolveModelForMode(mode, content?.modelByMode ?? {}, modeModels) ?? '';
   const picked = modeModels.find((m) => m.name === model);
-  return {
-    model,
-    params: picked ? resolveParamsForModel(picked, content?.params ?? {}) : {},
-  };
+  if (!picked) return { model, params: {}, paramsByModel: {} };
+  // The whole catalog, not this mode's slice: the model being LEFT is what a
+  // pre-#1948 node's params get migrated onto, and it belongs to another mode.
+  const { params, paramsByModel } = resolveModelSwitch(content, picked, models);
+  return { model, params, paramsByModel };
 }
 
 /**
@@ -348,7 +355,13 @@ export function buildVideoPanelViewModel(input: {
 
   return {
     model,
-    params: current ? resolveParamsForModel(current, content?.params ?? {}) : {},
+    // Resolved from the model's OWN record, the same way a switch resolves it
+    // (#1948). It matters here too: `model` above falls back to the first
+    // offered one when the stored pick has left the catalog, and reconciling
+    // the outgoing model's params against that fallback is the very leak this
+    // slice closes. The records this returns are dropped — rendering reads,
+    // it does not persist.
+    params: current ? resolveModelSwitch(content, current, models).params : {},
     // `?? 0` covers only the model-not-found case (empty catalog / stale
     // model); when current is found, cost_per_call is a trusted number.
     creditEstimate: current?.cost_per_call ?? 0,
