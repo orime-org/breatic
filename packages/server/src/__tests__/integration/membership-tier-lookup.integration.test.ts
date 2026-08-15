@@ -26,6 +26,14 @@
  *   5. A studio with no live admin throws rather than falling back to a tier.
  *      That state is data corruption, and a silent fallback would let every
  *      quota on that studio be enforced against a number nobody chose.
+ *
+ * Two cases that used to live here — "the message names the account and the
+ * value" and its studio counterpart — moved to
+ * `packages/core/src/auth/__tests__/membership-tier-narrowing.test.ts` with
+ * #105. Both reached the guard by writing a bad tier into the column first,
+ * and the CHECK constraint that block added makes that write impossible. What
+ * they pinned is unchanged and now driven directly; the contract that changed
+ * is only how a bad value gets in front of the guard.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -269,24 +277,6 @@ describe("getLimitsForUser", () => {
     );
   });
 
-  it("names the account and the value when the column holds a tier we do not have", async () => {
-    // `membership_tier` is a bare varchar with no CHECK constraint, and until
-    // the enterprise work lands a hand-written UPDATE is how an operator moves
-    // someone off base. A typo there used to reach `getMembershipLimits`,
-    // return undefined, and get dereferenced — the person creating a studio
-    // saw a 500 whose log line said only "Cannot read properties of
-    // undefined". It stays a 500 (our data is wrong, not their input); what
-    // this pins is that the log names which account and which value.
-    const [u] = await sql<{ id: string }[]>`
-      INSERT INTO users (email, email_verified, membership_tier)
-      VALUES (${`tier-bad-${seq++}@example.test`}, true, 'Pro')
-      RETURNING id
-    `;
-    const userId = u!.id;
-    await expect(getLimitsForUser(userId)).rejects.toThrow(
-      new RegExp(`${userId}[\\s\\S]*Pro|Pro[\\s\\S]*${userId}`),
-    );
-  });
 });
 
 describe("getLimitsForStudio", () => {
@@ -315,27 +305,6 @@ describe("getLimitsForStudio", () => {
     );
   });
 
-  it("names the studio, the ACCOUNT, and the value when the tier is not one we have", async () => {
-    // The row an operator has to go fix is a `users` row, so the studio id on
-    // its own does not finish the job — it is the thing they have in hand,
-    // not the thing they must edit. The lookup already joins `users` to read
-    // the tier, so the account id is one column away.
-    const [u] = await sql<{ id: string }[]>`
-      INSERT INTO users (email, email_verified, membership_tier)
-      VALUES (${`tier-bad-${seq++}@example.test`}, true, 'TEAM')
-      RETURNING id
-    `;
-    const adminUserId = u!.id;
-    const studioId = await insertTeamStudio(adminUserId);
-    const err = await getLimitsForStudio(studioId).then(
-      () => null,
-      (e: unknown) => e as Error,
-    );
-    expect(err, "expected a throw").not.toBeNull();
-    expect(err!.message).toContain(studioId);
-    expect(err!.message).toContain(adminUserId);
-    expect(err!.message).toContain("TEAM");
-  });
 });
 
 /**
