@@ -12,6 +12,7 @@ import {
 } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 
+import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 
 interface AgentColHeaderProps {
@@ -23,21 +24,22 @@ interface AgentColHeaderProps {
 
 /**
  * Agent column header — sits above the ChatPanel:
- *   [💬 open history] [count chip] [conversation name (editable)] [+ new]
+ *   [💬 open history] [conversation name (editable)] [+ new]
  *
- * Layout (2026-05-21 user spec, revised):
- *   - History trigger uses `MessagesSquare` icon (the mock's original
- *     glyph) — semantics "list of past conversations", which the user
- *     judged more accurate than `PanelLeftOpen` ("open a side panel")
- *     after seeing the first cut.
- *   - Count chip sits immediately to the right of the icon, NOT inside
- *     the title, so it visually pairs with the history action ("how many
- *     conversations behind that button").
- *   - Conversation name uses `TitleEditable` (same as TopBar project
- *     title) — click to edit, Enter / blur commit, Escape cancel.
+ * The history trigger uses `MessagesSquare` rather than `PanelLeftOpen`:
+ * what is behind it is a list of past conversations, not a side panel.
  *
- * History sheet + composer state lives in the chat store; this header
- * just wires the triggers.
+ * No count. How many conversations a project holds is not something a reader
+ * needs to know -- what they need is which one they are in -- and the list is
+ * paged, so the number held here would not be the total anyway.
+ *
+ * The name uses `TitleEditable`, the same box as the project title in the top
+ * bar, with the length a conversation name may run to rather than the default
+ * that box carries for project names.
+ *
+ * Which conversation is on screen, and the list to choose from, live in the
+ * conversation runtime; the column above assembles them and this header just
+ * wires the triggers.
  * @param root0 - Component props.
  * @param root0.conversationName - Current conversation name shown in the editable title.
  * @param root0.onOpenHistory - Opens the conversation history sheet.
@@ -79,6 +81,7 @@ export function AgentColHeader({
           value={conversationName}
           onChange={onRenameConversation}
           maxWidth={180}
+          maxLength={CONVERSATION_TITLE_MAX_CHARS}
         />
       </div>
       <Tooltip>

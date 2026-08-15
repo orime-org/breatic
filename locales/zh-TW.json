@@ -121,7 +121,7 @@
       "title": "Session 列表",
       "description": "切換或回顧之前的對話。",
       "empty": "尚無歷史對話",
-      "moreFailed": "無法載入更早的對話。往下滑可以再試一次。"
+      "moreFailed": "無法載入更早的對話，再試一次"
     },
     "relative": {
       "justNow": "剛剛",
@@ -153,12 +153,14 @@
       "deleteBody": "對話裡說過的內容會一起刪除，無法復原。",
       "deleteConfirm": "刪除",
       "deleteCancel": "取消",
-      "startNew": "新增對話"
+      "startNew": "新增對話",
+      "rowActions": "重新命名或刪除這條對話"
     },
     "load": {
       "failedTitle": "網路錯誤",
       "failedBody": "沒能讀取這個 Project 的對話。",
-      "retry": "重新載入"
+      "retry": "重新載入",
+      "refusedTitle": "打不開這個對話"
     }
   },
   "canvas": {

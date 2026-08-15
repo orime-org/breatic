@@ -121,7 +121,7 @@
       "title": "Session list",
       "description": "Switch to or review previous conversations.",
       "empty": "No previous conversations",
-      "moreFailed": "Could not load older conversations. Scroll down to try again."
+      "moreFailed": "Could not load older conversations. Try again"
     },
     "relative": {
       "justNow": "just now",
@@ -153,12 +153,14 @@
       "deleteBody": "Everything said in it goes with it. This cannot be undone.",
       "deleteConfirm": "Delete",
       "deleteCancel": "Cancel",
-      "startNew": "New conversation"
+      "startNew": "New conversation",
+      "rowActions": "Rename or delete this conversation"
     },
     "load": {
       "failedTitle": "Network error",
       "failedBody": "Could not read this project's conversations.",
-      "retry": "Reload"
+      "retry": "Reload",
+      "refusedTitle": "Cannot open this chat"
     }
   },
   "canvas": {

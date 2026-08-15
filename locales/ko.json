@@ -121,7 +121,7 @@
       "title": "세션 목록",
       "description": "이전 대화로 전환하거나 다시 확인할 수 있습니다.",
       "empty": "이전 대화가 없습니다",
-      "moreFailed": "이전 대화를 불러오지 못했습니다. 아래로 스크롤하면 다시 시도합니다."
+      "moreFailed": "이전 대화를 불러오지 못했습니다. 다시 시도"
     },
     "relative": {
       "justNow": "방금 전",
@@ -153,12 +153,14 @@
       "deleteBody": "대화에서 나눈 내용도 함께 삭제되며 되돌릴 수 없습니다.",
       "deleteConfirm": "삭제",
       "deleteCancel": "취소",
-      "startNew": "새 대화"
+      "startNew": "새 대화",
+      "rowActions": "이 대화 이름 바꾸기 또는 삭제"
     },
     "load": {
       "failedTitle": "네트워크 오류",
       "failedBody": "이 Project의 대화를 읽지 못했습니다.",
-      "retry": "다시 불러오기"
+      "retry": "다시 불러오기",
+      "refusedTitle": "이 대화를 열 수 없습니다"
     }
   },
   "canvas": {

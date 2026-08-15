@@ -459,3 +459,63 @@ describe('the landing after a delete, when the reader has moved on', () => {
     expect(useConversationRuntime.getState().openStatus[P]).toBe('ready');
   });
 });
+
+describe('a new conversation that could not be created', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not black out a chat that opened perfectly well', async () => {
+    // 失败的是创建,不是读取。会话列表这一刻就在手里,而蒙版说的是
+    // 「你的会话读不回来」—— 它盖住的正是那句真正该被读到的提示。
+    let releaseOpen: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseOpen = () =>
+            resolve({
+              conversations: [{ id: 'c-1', title: 'one' }],
+              hasMoreConversations: false,
+              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+            } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+        }),
+    );
+    const opening = conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.createConversation).mockRejectedValue(new Error('offline'));
+    await conversationRuntime.startNew(P);
+
+    releaseOpen?.();
+    await opening;
+
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('ready');
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-1');
+  });
+
+  it('lists both when two are asked for in a row', async () => {
+    // 两次按下就是两次创建,服务端也确实建了两条。「别落在第一条上」和
+    // 「别列出第一条」是两件事,提前返回把它们合成了一件。
+    opens([{ id: 'c-1', title: 'one' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    const made: Array<() => void> = [];
+    vi.mocked(chatApi.createConversation).mockImplementation(
+      (_p) =>
+        new Promise((resolve) => {
+          const n = made.length + 1;
+          made.push(() => resolve({ id: `c-new-${n}`, title: null } as never));
+        }),
+    );
+    const first = conversationRuntime.startNew(P);
+    const second = conversationRuntime.startNew(P);
+    made[0]?.();
+    made[1]?.();
+    await Promise.all([first, second]);
+
+    const ids = (useConversationRuntime.getState().listByProject[P] ?? []).map((c) => c.id);
+    expect(ids).toContain('c-new-1');
+    expect(ids).toContain('c-new-2');
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-new-2');
+  });
+});

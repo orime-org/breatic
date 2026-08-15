@@ -164,6 +164,14 @@ interface ConversationRuntimeState {
    */
   listMoreFailed: Record<string, boolean>;
   /**
+   * Why this project's chat could not be read, when the server said why.
+   *
+   * The scrim covers the line that would otherwise carry it, so it has to say
+   * it itself. Absent means nothing came back to say -- the request did not
+   * reach anything -- and the scrim falls back to saying so.
+   */
+  openFailure: Record<string, string>;
+  /**
    * What is half-typed in each conversation, keyed by conversation.
    *
    * One per conversation and not one per panel: switching conversations puts
@@ -466,6 +474,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   listByProject: {},
   listHasMore: {},
   listMoreFailed: {},
+  openFailure: {},
   draftByConversation: {},
   openStatus: {},
   sendingByProject: {},
@@ -601,7 +610,13 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // else. Dropping it whole would leave the sheet showing one row where the
     // project has dozens, and take `hasMore` with it, so paging could not
     // recover them either.
-    const landed = stillAwaited(projectId, nav);
+    // Being overtaken says another navigation is more recent, not that it
+    // succeeded. If it did, a conversation is on screen and this answer must
+    // not replace it; if it failed, nothing is on screen and this answer is
+    // still the right thing to show -- and the only thing that can say the
+    // chat is open at all.
+    const occupied = useStore.getState().currentByProject[projectId] !== undefined;
+    const landed = stillAwaited(projectId, nav) || !occupied;
     if (landed) adoptConversation(projectId, opened.current);
     useStore.setState((st) => {
       const held = st.listByProject[projectId] ?? [];
@@ -626,10 +641,20 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // Not over a chat that has opened before. There is a conversation on
     // screen and it is still readable; saying it could not be opened would
     // take it away over a request the reader did not make.
+    const why = readMishap(err);
     useStore.setState((s) =>
       s.openStatus[projectId] === 'ready'
         ? s
-        : { openStatus: { ...s.openStatus, [projectId]: 'failed' } },
+        : {
+          openStatus: { ...s.openStatus, [projectId]: 'failed' },
+          openFailure:
+              why.kind === 'server'
+                ? { ...s.openFailure, [projectId]: why.message }
+                : (() => {
+                  const { [projectId]: _gone, ...rest } = s.openFailure;
+                  return rest;
+                })(),
+        },
     );
     return { failed: err };
   }
@@ -1429,7 +1454,9 @@ async function startNew(projectId: string): Promise<void> {
     // asked for last, so the row it creates is the one to land on -- and the
     // check inside that switch will see this number and leave the screen
     // alone.
-    if (!stillAwaited(projectId, nav)) return;
+    // The row goes in either way. This conversation exists on the server now,
+    // and a list that leaves it out is wrong about what the project holds --
+    // being overtaken only decides which conversation to land on.
     useStore.setState((s) => ({
       listByProject: {
         ...s.listByProject,
@@ -1437,6 +1464,7 @@ async function startNew(projectId: string): Promise<void> {
         [projectId]: [created, ...(s.listByProject[projectId] ?? [])],
       },
     }));
+    if (!stillAwaited(projectId, nav)) return;
     adoptConversation(projectId, { conversation: created, messages: [], hasMore: false });
   } catch (err) {
     if (visit.signal.aborted) return;
@@ -1731,6 +1759,7 @@ function leaveProject(projectId: string): void {
     const { [projectId]: _listed, ...listByProject } = s.listByProject;
     const { [projectId]: _more, ...listHasMore } = s.listHasMore;
     const { [projectId]: _moreFailed, ...listMoreFailed } = s.listMoreFailed;
+    const { [projectId]: _why, ...openFailure } = s.openFailure;
     // The drafts of every conversation in this project go with it. A draft
     // belongs to a conversation the reader was in, and coming back re-opens
     // the project from the server -- so keeping them would hand a returning
@@ -1753,6 +1782,7 @@ function leaveProject(projectId: string): void {
       listByProject,
       listHasMore,
       listMoreFailed,
+      openFailure,
       draftByConversation: keptDrafts,
     };
   });
@@ -1787,6 +1817,7 @@ export function _resetForTests(): void {
     listByProject: {},
     listHasMore: {},
     listMoreFailed: {},
+    openFailure: {},
     draftByConversation: {},
     openStatus: {},
     sendingByProject: {},

@@ -412,9 +412,19 @@ export type ChatCreateConversationInput = z.infer<typeof chatCreateConversationS
  * is refused rather than stored — a row showing an empty name reads as a
  * rendering fault, which is worse than the default title it replaced.
  */
+/**
+ * How long a conversation's name may be.
+ *
+ * One number, because both ends enforce it: the box the reader types into and
+ * the column it is stored in. Two numbers means the shorter one silently
+ * rewrites names the longer one accepted -- and the reader never asked for
+ * that, they only opened the box and closed it again.
+ */
+export const CONVERSATION_TITLE_MAX_CHARS = 200;
+
 export const chatRenameConversationSchema = z.object({
   project_id: z.string().uuid(),
-  title: z.string().trim().min(1).max(200),
+  title: z.string().trim().min(1).max(CONVERSATION_TITLE_MAX_CHARS),
 });
 export type ChatRenameConversationInput = z.infer<typeof chatRenameConversationSchema>;
 

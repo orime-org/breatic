@@ -37,6 +37,11 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
   const currentId = useConversationRuntime((s) => s.currentByProject[projectId]);
   const currentTitle = conversations?.find((c) => c.id === currentId)?.title ?? null;
   const unreachable = status === 'failed';
+  // What the server said, when it said anything. The scrim covers the line
+  // that would otherwise carry it, so it has to say it itself -- otherwise a
+  // reader who was removed from the project reads "network error" while their
+  // network is fine, and the sentence that would have told them is underneath.
+  const why = useConversationRuntime((s) => s.openFailure[projectId]);
 
   // A sheet is portalled to the body and `inert` only reaches down the tree it
   // is on, so the scrim below cannot cover one that is already open: it would
@@ -102,13 +107,15 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
           onHistoryOpenChange={setHistoryOpen}
         />
       </div>
-      {unreachable ? <ChatUnreachable onReload={reload} /> : null}
+      {unreachable ? <ChatUnreachable onReload={reload} reason={why} /> : null}
     </aside>
   );
 }
 
 interface ChatUnreachableProps {
   onReload: () => void;
+  /** What the server said, if it said anything. */
+  reason?: string;
 }
 
 /**
@@ -127,9 +134,10 @@ interface ChatUnreachableProps {
  * broken.
  * @param root0 - The component props.
  * @param root0.onReload - Called when the reader asks to try again.
+ * @param root0.reason - What the server said, if it said anything.
  * @returns The scrim.
  */
-function ChatUnreachable({ onReload }: ChatUnreachableProps): React.JSX.Element {
+function ChatUnreachable({ onReload, reason }: ChatUnreachableProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <div
@@ -142,9 +150,9 @@ function ChatUnreachable({ onReload }: ChatUnreachableProps): React.JSX.Element 
       }}
     >
       <span className='text-sm font-semibold text-status-error-foreground'>
-        {t('chat.load.failedTitle')}
+        {reason === undefined ? t('chat.load.failedTitle') : t('chat.load.refusedTitle')}
       </span>
-      <span className='text-xs text-muted-foreground'>{t('chat.load.failedBody')}</span>
+      <span className='text-xs text-muted-foreground'>{reason ?? t('chat.load.failedBody')}</span>
       <Button variant='outline' size='sm' onClick={onReload} data-testid='chat-reload'>
         {t('chat.load.retry')}
       </Button>

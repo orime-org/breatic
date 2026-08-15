@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -322,5 +322,35 @@ describe('when the next page cannot be fetched', () => {
     renderSheetFor({ hasMore: true, onReachEnd: vi.fn(), nextPageFailed: true });
 
     expect(screen.getByTestId('conversation-list-more-failed')).toBeInTheDocument();
+  });
+
+  it('can be asked again from that line, for a list too short to scroll', async () => {
+    // 滑一下是自然的那条路,但列表比抽屉还短时根本滚不动 —— 而列表正是靠
+    // 这个抽屉自己的删除变短的。那时候如果只认滚动,就一条路都不剩了。
+    const onReachEnd = vi.fn();
+    renderSheetFor({ hasMore: true, onReachEnd, nextPageFailed: true });
+    const asked = onReachEnd.mock.calls.length;
+
+    await userEvent.click(screen.getByTestId('conversation-list-more-failed'));
+
+    expect(onReachEnd).toHaveBeenCalledTimes(asked + 1);
+  });
+});
+
+describe('when the sheet is taken away mid-confirmation', () => {
+  it('takes the delete confirmation with it', async () => {
+    // 确认框是抽屉的兄弟、还 portal 到 body,所以关掉抽屉留不下它,盖住这一列
+    // 的蒙版也够不着它 —— 它会浮在一个自称完全不可操作的界面上,而按下去
+    // 真的会删掉数据。
+    const { rerender } = renderSheetFor({});
+    await userEvent.click(screen.getByTestId('conversation-menu-c2'));
+    await userEvent.click(await screen.findByTestId('conversation-delete-c2'));
+    expect(screen.getByTestId('conversation-delete-dialog')).toBeInTheDocument();
+
+    rerender({ open: false });
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('conversation-delete-dialog')).toBeNull(),
+    );
   });
 });

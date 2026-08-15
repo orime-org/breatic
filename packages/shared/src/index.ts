@@ -176,6 +176,7 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  CONVERSATION_TITLE_MAX_CHARS,
 } from "@shared/schemas/index.js";
 
 export type {

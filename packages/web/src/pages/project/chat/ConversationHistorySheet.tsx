@@ -260,7 +260,7 @@ function ConversationRowView({
                     type='button'
                     variant='chrome-ghost'
                     size='chrome'
-                    aria-label={t('chat.conversation.rename')}
+                    aria-label={t('chat.conversation.rowActions')}
                     data-testid={`conversation-menu-${row.id}`}
                   >
                     <MoreVertical className='h-4 w-4' />
@@ -327,6 +327,15 @@ function ConversationHistorySheetInner({
   // asked whether they mean it. Null the rest of the time, which is what
   // keeps the dialog closed.
   const [deleting, setDeleting] = React.useState<string | null>(null);
+
+  // The confirm dialog is a sibling of the sheet, not a child, and it is
+  // portalled to the body -- so closing the sheet leaves it on screen, and a
+  // scrim over the column cannot cover it either. It asks about a row in a
+  // list that is no longer being shown; pressing its delete would act on a
+  // column that says it cannot be operated.
+  React.useEffect(() => {
+    if (!open) setDeleting(null);
+  }, [open]);
   const { scrollerRef, sentinelRef } = useScrolledToEnd({
     enabled: hasMore,
     onReachEnd,
@@ -404,13 +413,20 @@ function ConversationHistorySheetInner({
                 got to the end of what has been fetched. */}
             <div ref={sentinelRef} data-testid='conversation-list-end' />
             {nextPageFailed ? (
-              <p
-                className='px-4 py-3 text-xs text-status-error-foreground'
-                role='status'
+              // A button and not just a line of text. Scrolling is the other
+              // way to ask again, and it is the natural one -- but a list
+              // shorter than the sheet cannot be scrolled at all, and one gets
+              // that short by deleting rows, which is something this very
+              // sheet does. Then there would be no way left to ask.
+              <Button
+                variant='outline'
+                size='sm'
+                className='m-3 self-start'
+                onClick={onReachEnd}
                 data-testid='conversation-list-more-failed'
               >
                 {t('chat.history.moreFailed')}
-              </p>
+              </Button>
             ) : null}
           </ScrollArea>
         </div>
