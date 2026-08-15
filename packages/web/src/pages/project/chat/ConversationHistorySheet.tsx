@@ -167,7 +167,13 @@ function ConversationRowView({
     <li role='listitem'>
       <div
         className={cn(
-          'group flex items-center gap-3 border-b border-border px-4 py-3 transition-colors',
+          // `relative` so the menu can float over the row's own region rather
+          // than sit beside it. Beside it was the first cut, and it left the
+          // row's padding and the gap between the two as dead strips: a press
+          // on the left edge of a row, or just left of the menu, landed on the
+          // container and selected nothing. Measured in the browser -- jsdom
+          // has no layout, so nothing here could have caught it.
+          'group relative flex items-center border-b border-border transition-colors',
           // The active row uses the accent fill, the same one hover uses.
           // `bg-muted` is a recess and made the active row darker than its
           // siblings -- `SpaceDrawer` carries the same note for the same
@@ -183,7 +189,7 @@ function ConversationRowView({
             defaultValue={row.title ?? ''}
             placeholder={t('chat.conversation.renamePlaceholder')}
             aria-label={t('chat.conversation.rename')}
-            className='min-w-0 flex-1 rounded-content-sm border border-active-border bg-background px-2 py-1 text-sm text-foreground outline-none'
+            className='m-3 min-w-0 flex-1 rounded-content-sm border border-active-border bg-background px-2 py-1 text-sm text-foreground outline-none'
             onKeyDown={(e) => {
               if (e.key === 'Enter') commit(e.currentTarget.value);
               if (e.key === 'Escape') setRenaming(false);
@@ -198,9 +204,10 @@ function ConversationRowView({
               size={null}
               onClick={() => onPick(row.id)}
               aria-current={isActive ? 'true' : undefined}
-              // Takes the whole row apart from the menu, so pressing anywhere
-              // in the row that is not the menu selects the conversation.
-              className='flex min-w-0 flex-1 items-start gap-3 text-left'
+              // The whole row, edge to edge, with room kept on the right so
+              // the text never runs under the menu floating there. Pressing
+              // anywhere but that menu selects the conversation.
+              className='flex w-full min-w-0 items-start gap-3 py-3 pl-4 pr-12 text-left'
               data-testid={`conversation-open-${row.id}`}
             >
               <span
@@ -228,7 +235,7 @@ function ConversationRowView({
                 </span>
               </span>
             </Button>
-            <div className='shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100'>
+            <div className='absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100'>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
