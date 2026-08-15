@@ -52,26 +52,24 @@ export function DocumentSpace({
   // this component is remounted on every Space-tab switch, and a latch that
   // resets there would show a loading placeholder in front of content the
   // local Y.Doc already holds.
-  const { provider, hasEverSynced, status, writeAccess } = useSocket({
+  const { provider, hasEverSynced, status } = useSocket({
     name,
     doc,
   });
 
-  // This Space's own document was refused, or the server granted it read-only.
-  // Both are told to the user and NEITHER disables the editor: showing the
-  // problem where it is, and leaving everything else working, is the rule
-  // (decision 2026-08-02). An editor that still accepts typing while a message
-  // says the server refused it tells the user exactly where the fault is; an
-  // editor that goes dead tells them only that something broke.
+  // This Space's own document was REFUSED — deleted, membership revoked, or the
+  // session expired. It is told to the user and does NOT disable the editor:
+  // showing the problem where it is and leaving everything else working is the
+  // rule (decision 2026-08-02). An editor that still accepts typing while a
+  // message says the server refused it tells the user exactly where the fault
+  // is; one that goes dead tells them only that something broke, and takes away
+  // content they may want to copy out.
   //
-  // The message cannot name a cause, because the wire does not carry one — the
-  // server sends "readonly" / "read-write" and sets it for a viewer, for a
-  // member over the connection cap, and for a refused document alike. So it
-  // states the fact and what follows from it.
-  //
-  // A viewer is not told: their read-only is their role, shown everywhere else.
+  // A DEGRADE is the other thing `writeAccess: 'denied'` can mean, and it is no
+  // longer handled here (#88): `SpaceReadOnlyNotice` announces it, every Space
+  // type gets that from the outlet, and it stays on screen for as long as the
+  // state holds instead of four seconds.
   const refused = status === 'authFailed';
-  const writesRefused = writeAccess === 'denied' && !readOnly;
 
   // The one case where nothing can be shown: refused before any content ever
   // arrived, so there is no document to display. That is not "disabled", it is
@@ -82,9 +80,6 @@ export function DocumentSpace({
   React.useEffect(() => {
     if (refused && hasEverSynced) toast.error(t('spaces.document.refusedNotice'));
   }, [refused, hasEverSynced, t]);
-  React.useEffect(() => {
-    if (writesRefused && !refused) toast.warning(t('spaces.document.readOnlyNotice'));
-  }, [writesRefused, refused, t]);
 
   // The editor belongs to the document, not to this component: switching Space
   // tabs remounts this body, and what the Y.Doc does not hold — undo stack,

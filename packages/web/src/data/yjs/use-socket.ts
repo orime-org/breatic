@@ -40,11 +40,12 @@ export type ConnectionStatus =
  * Whether the SERVER has granted this connection permission to write.
  *
  * Distinct from the role the UI already knows about. A connection comes back
- * read-only for one of three reasons: the user is a viewer, the document is
- * already at its connection cap, or the document is the project meta doc,
- * which no client may write regardless of role. Only the middle one is a
- * surprise to the UI — a member it believes may edit cannot. The server
- * answers this on the wire at
+ * read-only for one of four reasons: the user is a viewer; the document
+ * already holds as many writers as the owning studio's tier allows; the
+ * ceiling could not be resolved at all, which degrades rather than refuses
+ * (#88); or the document is the project meta doc, which no client may write
+ * regardless of role. The two middle ones are the surprise to the UI — a
+ * member it believes may edit cannot. The server answers this on the wire at
  * authentication time; anything it refuses afterwards is discarded silently,
  * with no error and no disconnect, so this is the only warning a client gets.
  *

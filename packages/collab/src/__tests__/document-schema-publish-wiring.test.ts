@@ -51,6 +51,10 @@ vi.mock("@breatic/core", () => ({
   getCollabRedis: vi.fn(() => ({ on: vi.fn() })),
   sendMail: vi.fn(async () => ({ status: "skipped", reason: "backend_disabled" })),
   MONOREPO_ROOT: "/tmp",
+  // Injected into the auth hook as the per-project writable-connection ceiling
+  // (#88). Nothing here exercises the ceiling, but `hocuspocus.ts` reads the
+  // export at module scope, so a mock without it fails at import time.
+  getProjectConcurrentEditorLimit: vi.fn(async () => 100),
 }));
 
 vi.mock("@collab/services/persistence.js", () => ({

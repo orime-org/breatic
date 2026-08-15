@@ -30,7 +30,6 @@ describe("getCollabConfig", () => {
 
     expect(cfg.debounce).toBeGreaterThan(0);
     expect(cfg.max_debounce).toBeGreaterThanOrEqual(cfg.debounce);
-    expect(cfg.max_connections_per_document).toBeGreaterThanOrEqual(0);
     expect(cfg.handling_lease.default_budget_ms).toBeGreaterThan(0);
     expect(typeof cfg.quiet).toBe("boolean");
     expect(typeof cfg.unload_immediately).toBe("boolean");

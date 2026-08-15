@@ -623,6 +623,7 @@
         "description": "Timeline viewer 在 timeline-space 实施时接入; 此处展示轨道快照,支持复制片段。"
       }
     },
+    "readOnlyNotice": "这个 Space 现在只能查看 —— 你做的改动不会被保存。",
     "lockedAria": "已锁定",
     "document": {
       "loading": "正在加载编辑器…",
@@ -630,7 +631,6 @@
         "text": "这个文档打不开。它可能已被删除，或者你已经没有访问权限了。",
         "action": "重试"
       },
-      "readOnlyNotice": "这个文档现在只能查看 —— 你输入的内容不会被保存。",
       "refusedNotice": "与这个文档的连接被拒绝了。你看到的内容可能不是最新的，改动也不会被保存。",
       "placeholder": "开始写作…",
       "titlePlaceholder": "未命名文档",
@@ -652,7 +652,8 @@
         "riskUploads": "正在进行的上传会被中断，可以先切到对应的 Space 看一眼。",
         "action": "刷新页面"
       }
-    }
+    },
+    "readOnlyReconnect": "重新连接"
   },
   "menu": {
     "createAria": "创建菜单",

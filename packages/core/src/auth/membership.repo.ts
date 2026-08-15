@@ -20,10 +20,11 @@
  *     lock: a ceiling counted per studio is serialised on the STUDIO's row,
  *     which is not this module's to take (see `studioRepo.lockStudio`).
  *
- * Two more ceilings are still to come — concurrent writable connections and
- * storage; the two kinds of member cap landed with #87. Each has its own check
- * point, so "look up the tier, then index the config" would otherwise end up
- * written out six to eight times across the codebase.
+ * One ceiling is still to come — storage. The two kinds of member cap landed
+ * with #87 and the concurrent writable connection ceiling with #88 (see
+ * `getProjectConcurrentEditorLimit` below). Each has its own check point, so
+ * "look up the tier, then index the config" would otherwise end up written out
+ * six to eight times across the codebase.
  *
  * There are two routes from an id to a tier here, not one: an account's tier
  * is its own column, a studio's is its admin's. Both end at
@@ -64,6 +65,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { MEMBERSHIP_TIERS, type MembershipTier } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
 import { studioMembers, studios, users } from "@core/db/schema.js";
+import * as projectsRepo from "@core/project/projects.repo.js";
 import { getMembershipLimits, type MembershipLimits } from "@core/config/membership.js";
 
 const KNOWN_TIERS: ReadonlySet<string> = new Set(MEMBERSHIP_TIERS);
@@ -302,4 +304,60 @@ export async function lockLimitsForUser(
   tx: DbTx,
 ): Promise<MembershipLimits> {
   return getMembershipLimits(await readUserTier(userId, tx, true));
+}
+
+/**
+ * How many writable connections one document of this project may hold at once.
+ *
+ * The collab handshake's entry point (#88). It is the only call point that has
+ * to resolve the owning studio ITSELF, because a document name is all collab
+ * has: project → studio → that studio's admin → tier. The two invite paths
+ * (`projectInvite.service.ts`) also begin from a project id, but each has
+ * already loaded the project row for other reasons and reads `studioId` off
+ * it, so they call `getLimitsForStudio` directly.
+ *
+ * It reaches the tier through {@link getLimitsForStudio} rather than joining
+ * its own way there. That is not tidiness — those two functions are where the
+ * negotiated enterprise tier will be read from the database, and a call point
+ * that walked its own path would keep answering from the config file after
+ * that lands, with a number that looks perfectly valid. The extra primary-key
+ * lookup is affordable here: this runs once per SPACE-DOCUMENT handshake, and
+ * nowhere near per edit. The meta doc does not reach it at all — `auth.ts`
+ * skips the whole ceiling decision for meta and for viewers. So the cost of
+ * opening a project is one lookup per open Space tab THAT HAS A DOCUMENT, not
+ * one for the project: each such tab attaches its own document and each one
+ * handshakes (see the web side's `SpaceDocSync`, whose `DOC_NAME_BUILDERS`
+ * decides which types have one — timeline has none today and costs nothing).
+ * Three open canvases, three lookups.
+ * Unlike its siblings above it takes NO transaction handle, and that is not an
+ * omission: the two queries it makes could not both honour one. Resolving the
+ * owning studio goes through `projectsRepo.findOwnerStudioId`, which takes no
+ * handle, so a handle passed here would cover the tier lookup and silently
+ * leave the studio lookup outside the caller's snapshot — a contract that is
+ * true of half the function. Its one caller, collab's `onAuthenticate`, is not
+ * in a transaction and does not need one: it decides a ceiling for a
+ * connection, it does not write. Should a caller ever need both queries in one
+ * snapshot, `findOwnerStudioId` has to learn about handles first.
+ * @param projectId - The project whose documents the ceiling applies to
+ * @returns How many connections to one of its documents may write at once
+ * @throws {Error} if no live project has that id, or the studio that owns it
+ *   has no live admin, or that admin's stored tier is not one this build knows
+ */
+export async function getProjectConcurrentEditorLimit(
+  projectId: string,
+): Promise<number> {
+  // `findOwnerStudioId` owns this query — its own docstring says a query
+  // written twice is a query that comes apart, which is what the
+  // one-table-one-repo rule exists to prevent. Writing the same select here
+  // is exactly the drift it warns about, so this goes through it.
+  const studioId = await projectsRepo.findOwnerStudioId(projectId);
+  if (studioId === undefined) {
+    // Plain Error, like its siblings above: reaching here means a live
+    // connection is being made to a document of a project that is gone, which
+    // is our data being inconsistent rather than anything the user did. The
+    // id is in the message because collab logs this verbatim and it is the
+    // only thing that says WHICH project.
+    throw new Error(`No live project ${projectId}`);
+  }
+  return (await getLimitsForStudio(studioId)).concurrent_editors;
 }
