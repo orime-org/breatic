@@ -39,8 +39,8 @@ import {
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { filterModelsByMode } from '@web/spaces/canvas/generate/mode-selection';
 import {
-  paramsStoreOf,
   resolveModelSwitch,
+  resolveParamsEdit,
 } from '@web/spaces/canvas/generate/model-params';
 import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
 import {
@@ -391,17 +391,16 @@ function VideoGeneratePanelBody({
 
   const onChangeParams = React.useCallback(
     (partial: VideoParamsValue) => {
-      const fresh = freshVm();
-      const next = { ...fresh.params, ...partial };
-      // The edit lands on the model it was made on, so coming back to that
-      // model finds it (#1948). Both fields are written together.
-      const content = freshContent();
-      setNodeParams(projectId, spaceId, nodeId, next, {
-        ...paramsStoreOf(content, models),
-        ...(fresh.model ? { [fresh.model]: next } : {}),
-      });
+      // The edit lands on the record of the model it was made on, so coming
+      // back to that model finds it (#1948).
+      const { params, paramsByModel } = resolveParamsEdit(
+        freshContent(),
+        partial,
+        models,
+      );
+      setNodeParams(projectId, spaceId, nodeId, params, paramsByModel);
     },
-    [projectId, spaceId, nodeId, freshVm, freshContent, models],
+    [projectId, spaceId, nodeId, freshContent, models],
   );
 
   // Reference and first frame are TOGGLES: start the pick when this node is not

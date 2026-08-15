@@ -7,6 +7,7 @@ import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import {
   paramsStoreOf,
   resolveModelSwitch,
+  resolveParamsEdit,
   resolveParamsForModel,
 } from '@web/spaces/canvas/generate/model-params';
 
@@ -182,9 +183,10 @@ describe('paramsStoreOf — per-model records, with a one-time migration for old
   });
 
   it('prefers stored records even when they are empty (migration is one-time)', () => {
-    // An empty object means "this node has been through the new code path" —
-    // migrating again would resurrect the old params after the user cleared
-    // them.
+    // The field's presence is the signal, not its contents: migrating on top
+    // of an existing (even empty) one would be a second migration. No write
+    // path produces an empty one today — this pins the guard, not a reachable
+    // state.
     expect(
       paramsStoreOf(
         { model: 'banana', params: { aspect_ratio: '16:9' }, paramsByModel: {} },
@@ -264,5 +266,68 @@ describe('resolveModelSwitch — the picked model brings its own record (#1948)'
       veo: { duration: 6 },
       kling: { duration: 5 },
     });
+  });
+});
+
+describe('resolveParamsEdit — a param edit lands on the model it was made on (#1948)', () => {
+  const banana = model({ aspect_ratio: RATIO, camera: CAMERA }, 'banana');
+  const midjourney = model({ aspect_ratio: RATIO }, 'midjourney');
+  const CATALOG = [banana, midjourney];
+
+  it('merges the change into the current model’s record', () => {
+    const r = resolveParamsEdit(
+      {
+        model: 'banana',
+        params: { aspect_ratio: '1:1', camera: 'Sony A7' },
+        paramsByModel: { banana: { aspect_ratio: '1:1', camera: 'Sony A7' } },
+      },
+      { aspect_ratio: '16:9' },
+      CATALOG,
+    );
+    expect(r.params).toEqual({ aspect_ratio: '16:9', camera: 'Sony A7' });
+    expect(r.paramsByModel.banana).toEqual({
+      aspect_ratio: '16:9',
+      camera: 'Sony A7',
+    });
+  });
+
+  it('leaves the OTHER models’ records untouched', () => {
+    // The defect a missing store merge produces: editing one model's params
+    // wipes every other model's record, so 9.5 (switch away and back) silently
+    // stops holding.
+    const r = resolveParamsEdit(
+      {
+        model: 'banana',
+        params: { aspect_ratio: '1:1' },
+        paramsByModel: {
+          banana: { aspect_ratio: '1:1' },
+          midjourney: { aspect_ratio: '16:9' },
+        },
+      },
+      { aspect_ratio: '4:3' },
+      CATALOG,
+    );
+    expect(r.paramsByModel.midjourney).toEqual({ aspect_ratio: '16:9' });
+  });
+
+  it('carries a migrated old node’s record into what gets persisted', () => {
+    const r = resolveParamsEdit(
+      { model: 'banana', params: { aspect_ratio: '1:1' } },
+      { aspect_ratio: '16:9' },
+      CATALOG,
+    );
+    expect(r.paramsByModel).toEqual({ banana: { aspect_ratio: '16:9' } });
+  });
+
+  it('persists nothing under an empty model id', () => {
+    // The panel only renders param controls once a model resolves, so this is
+    // a guard rather than a reachable state — it must not write a "" record.
+    const r = resolveParamsEdit(
+      { params: { aspect_ratio: '1:1' } },
+      { aspect_ratio: '16:9' },
+      CATALOG,
+    );
+    expect(r.params).toEqual({ aspect_ratio: '16:9' });
+    expect(r.paramsByModel).toEqual({});
   });
 });

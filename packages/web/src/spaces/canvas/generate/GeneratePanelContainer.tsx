@@ -45,10 +45,11 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import { resolveMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
 import {
-  paramsStoreOf,
   resolveModelSwitch,
+  resolveParamsEdit,
 } from '@web/spaces/canvas/generate/model-params';
 import {
   buildGeneratePanelViewModel,
@@ -353,7 +354,6 @@ function GeneratePanelBody({
       // OWN params rather than the outgoing model's (#1948). Both read the
       // node fresh from Yjs — a collaborator may have moved either since this
       // render.
-      const fresh = freshVm();
       const content = freshContent();
       const { params, paramsByModel } = resolveModelSwitch(
         content,
@@ -364,13 +364,13 @@ function GeneratePanelBody({
         projectId,
         spaceId,
         nodeId,
-        fresh.mode,
+        resolveMode(content?.mode),
         modelId,
         params,
         paramsByModel,
       );
     },
-    [models, projectId, spaceId, nodeId, freshVm, freshContent, t],
+    [models, projectId, spaceId, nodeId, freshContent, t],
   );
 
   const onToggleMode = React.useCallback(
@@ -398,17 +398,16 @@ function GeneratePanelBody({
 
   const onChangeParams = React.useCallback(
     (partial: { aspect_ratio?: string; resolution?: string } & CameraValue) => {
-      const fresh = freshVm();
-      const next = { ...fresh.params, ...partial };
-      // The edit lands on the model it was made on, so coming back to that
-      // model finds it (#1948). Both fields are written together.
-      const content = freshContent();
-      setNodeParams(projectId, spaceId, nodeId, next, {
-        ...paramsStoreOf(content, models),
-        ...(fresh.model ? { [fresh.model]: next } : {}),
-      });
+      // The edit lands on the record of the model it was made on, so coming
+      // back to that model finds it (#1948).
+      const { params, paramsByModel } = resolveParamsEdit(
+        freshContent(),
+        partial,
+        models,
+      );
+      setNodeParams(projectId, spaceId, nodeId, params, paramsByModel);
     },
-    [projectId, spaceId, nodeId, freshVm, freshContent, models],
+    [projectId, spaceId, nodeId, freshContent, models],
   );
 
   // The Reference / Style buttons are TOGGLES (G, user 2026-07-12): start the

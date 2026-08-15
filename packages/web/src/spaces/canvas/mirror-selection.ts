@@ -33,8 +33,9 @@ function sameValue(a: unknown, b: unknown): boolean {
  * fresh every doc change, so a reference compare is always false; this compares
  * the flat fields (content / status / name / locked / …) and array fields
  * element-wise. A nested non-array object inside data (`params` /
- * `modelByMode` — whole-object rewrites whose stored reference is stable via
- * `toJSON` until actually replaced) compares by reference: unchanged → same
+ * `modelByMode` / `paramsByModel` — whole-object rewrites whose stored
+ * reference is stable via `toJSON` until actually replaced) compares by
+ * reference: unchanged → same
  * ref → equal; rewritten → new ref → changed. (`handlingBy` never reaches
  * here — `toNodeView` folds it into the derived `status` STRING, so a
  * handling transition is caught by the status value compare.)

@@ -592,16 +592,23 @@ describe('resolveVideoModeSwitch', () => {
   });
 
   it('keeps one record for a model offered under two modes (#1948)', () => {
-    // `kling` serves both i2v and first_last in the real catalog, and its
-    // declaration is one set — splitting it per mode would invent a
-    // distinction the model never made.
+    // `kling-o3-pro-i2v` and `seedance-1.5-pro-i2v` each serve i2v AND
+    // first_last in the real catalog, and each declares ONE param set —
+    // splitting the record per mode would invent a distinction the model
+    // never made. The switch here targets the OTHER of its two modes, which
+    // is the only way this differs from the case above.
+    const dual = makeModel('kling', { mode: ['i2v', 'first_last'] });
     const content = {
       model: 'kling',
       modelByMode: { i2v: 'kling', first_last: 'kling' },
       params: { aspect_ratio: '9:16' },
       paramsByModel: { kling: { aspect_ratio: '9:16' } },
     };
-    const { params } = resolveVideoModeSwitch(content, 'i2v', [t2v, both, i2v]);
+    const { model, params } = resolveVideoModeSwitch(content, 'first_last', [
+      t2v,
+      dual,
+    ]);
+    expect(model).toBe('kling');
     expect(params.aspect_ratio).toBe('9:16');
   });
 

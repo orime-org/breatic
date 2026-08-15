@@ -361,7 +361,9 @@ export function buildVideoPanelViewModel(input: {
     // the outgoing model's params against that fallback is the very leak this
     // slice closes. The records this returns are dropped — rendering reads,
     // it does not persist.
-    params: current ? resolveModelSwitch(content, current, models).params : {},
+    params: current
+      ? resolveModelSwitch(content, current, input.models).params
+      : {},
     // `?? 0` covers only the model-not-found case (empty catalog / stale
     // model); when current is found, cost_per_call is a trusted number.
     creditEstimate: current?.cost_per_call ?? 0,

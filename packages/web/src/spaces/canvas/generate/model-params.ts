@@ -84,9 +84,12 @@ export function resolveParamsForModel(
  * The node's per-model param records, migrating a pre-#1948 node on the way.
  *
  * A node that already has `paramsByModel` is returned as-is, INCLUDING an
- * empty one: empty means the node has been through this code path and the
- * user has since cleared it, so migrating again would resurrect params they
- * got rid of.
+ * empty one: the field's presence is what says "this node has been through
+ * the new code path", so migrating on top of it would be a second migration.
+ * No path writes an empty one today — every write goes through
+ * {@link resolveModelSwitch} or {@link resolveParamsEdit}, and both persist at
+ * least the current model's record — so this reads as a guard for a shape we
+ * do not produce rather than as a case anyone can reach.
  *
  * A node without it predates #1948 and carries a single `params` set. That set
  * belongs to the ONE model it was last on, so it is handed to that model and
@@ -149,4 +152,39 @@ export function resolveModelSwitch(
   const store = paramsStoreOf(content, models);
   const params = resolveParamsForModel(picked, store[picked.name] ?? {});
   return { params, paramsByModel: { ...store, [picked.name]: params } };
+}
+
+/**
+ * Resolves what to persist when the user changes a param.
+ *
+ * The edit lands on the record of the model it was made on, so coming back to
+ * that model finds it and no OTHER model's record is disturbed — dropping the
+ * rest of the store here is what would silently break "switch away and back
+ * keeps the value".
+ *
+ * An absent model id persists no record rather than one keyed by the empty
+ * string. The panels only render param controls once a model resolves, so this
+ * is a guard rather than a reachable state.
+ * Takes the change as an OBJECT rather than a `Record`: each panel's control
+ * hands over its own shaped value (`VideoParamsValue`, the image ratio /
+ * camera pair), and those interfaces have no index signature — widening them
+ * at the call site would need a cast, which is exactly the kind of assertion
+ * that stops the compiler from checking what is being written.
+ * @param content - The node's model / params / per-model records.
+ * @param partial - The params the control changed, merged over the current set.
+ * @param models - The catalog models this panel offers.
+ * @returns The params in effect and every per-model record to persist.
+ */
+export function resolveParamsEdit(
+  content: ParamsStoreSource | undefined,
+  partial: object,
+  models: readonly ModelEntry[],
+): ModelSwitchResult {
+  const store = paramsStoreOf(content, models);
+  const current = content?.model;
+  const params = { ...(content?.params ?? {}), ...partial };
+  return {
+    params,
+    paramsByModel: current ? { ...store, [current]: params } : store,
+  };
 }

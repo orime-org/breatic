@@ -436,6 +436,29 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     });
   });
 
+  it('setNodeParams writes both fields inside ONE transaction', () => {
+    // The TSDoc on all three setters makes this load-bearing: a collaborator
+    // must never observe the params in effect disagreeing with the record they
+    // came from. Asserting the two VALUES cannot see this — they end up equal
+    // either way — so this counts transactions instead.
+    addNode(PID, SID, sampleFields('image'));
+    const d = doc();
+    const touched: string[] = [];
+    d.on('afterTransaction', () => {
+      const data = (d.getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+        'data',
+      ) as Y.Map<unknown>;
+      touched.push(
+        [data.get('params') ? 'params' : '', data.get('paramsByModel') ? 'byModel' : '']
+          .filter(Boolean)
+          .join('+'),
+      );
+    });
+    setNodeParams(PID, SID, 'n1', { aspect_ratio: '16:9' }, { flux: { aspect_ratio: '16:9' } });
+    // One transaction, and by the time it closed BOTH fields were present.
+    expect(touched).toEqual(['params+byModel']);
+  });
+
   it('setNodeModel merges the pick into an existing modelByMode, keeping other modes', () => {
     addNode(
       PID,
