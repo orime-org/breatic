@@ -104,7 +104,8 @@
         "label": "選擇 Skill 限定 agent 行為",
         "title": "選擇 Skill"
       },
-      "send": "傳送"
+      "send": "傳送",
+      "sending": "傳送中"
     },
     "empty": {
       "greetingWithName": "嗨,{name}!",
@@ -133,16 +134,16 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "這則回覆沒能完成，可以再發一次。",
-      "notSent": "沒能送出去，檢查一下網路。",
-      "openFailed": "這個對話沒能開啟，重新整理頁面可以再試一次。"
+      "network": "網路錯誤",
+      "turnFailed": "這則回覆沒能完成，可以再發一次。"
     },
     "message": {
       "interrupted": "已停止"
     },
     "tool": {
       "unfinished": "未跑完就停止了"
-    }
+    },
+    "loadEarlier": "載入更早的訊息"
   },
   "canvas": {
     "group": {

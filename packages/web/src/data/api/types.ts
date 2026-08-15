@@ -22,6 +22,20 @@ export interface ApiError {
   message: string;
   /** Optional backend `error.code` for typed handling. */
   code?: string;
+  /**
+   * The message above came out of our own error envelope.
+   *
+   * False when it is the library's -- which happens whenever something other
+   * than our server answers, a gateway timing out being the ordinary case.
+   * That sentence is written in English, for a developer, and names transport
+   * details; anything about to show a message to a reader has to be able to
+   * tell the two apart. The SSE transport makes the same distinction.
+   *
+   * Optional because tests build this shape by hand; absent reads as false,
+   * which is the safe way round. Production has one place that builds it --
+   * `normalizeError` -- and that one always says.
+   */
+  fromServer?: boolean;
 }
 
 /**
@@ -31,6 +45,8 @@ export interface ApiError {
 export class ApiException extends Error {
   readonly status: number;
   readonly code?: string;
+  /** Whether {@link Error.message} is a sentence our own server wrote. */
+  readonly fromServer: boolean;
 
   /**
    * Build an `ApiException` from a normalized API error.
@@ -41,6 +57,7 @@ export class ApiException extends Error {
     this.name = 'ApiException';
     this.status = error.status;
     this.code = error.code;
+    this.fromServer = error.fromServer === true;
   }
 }
 

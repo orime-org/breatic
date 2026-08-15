@@ -9,26 +9,21 @@ describe('useChatStore', () => {
     useChatStore.setState({
       composerDraft: '',
       activeConversationId: null,
-      streaming: false,
     });
   });
 
-  it('initial state is empty draft, no conversation, not streaming', () => {
+  it('initial state is empty draft and no conversation', () => {
     const s = useChatStore.getState();
     expect(s.composerDraft).toBe('');
     expect(s.activeConversationId).toBeNull();
-    expect(s.streaming).toBe(false);
   });
 
-  it('setComposerDraft + clearComposerDraft cycle', () => {
+  it('holds what is being typed until something takes it out', () => {
+    // Taking it out belongs to the conversation, which is the only thing that
+    // learns the words got somewhere -- see `stores/conversation-runtime`.
     useChatStore.getState().setComposerDraft('hi');
     expect(useChatStore.getState().composerDraft).toBe('hi');
-    useChatStore.getState().clearComposerDraft();
+    useChatStore.getState().reset();
     expect(useChatStore.getState().composerDraft).toBe('');
-  });
-
-  it('setStreaming flips flag', () => {
-    useChatStore.getState().setStreaming(true);
-    expect(useChatStore.getState().streaming).toBe(true);
   });
 });

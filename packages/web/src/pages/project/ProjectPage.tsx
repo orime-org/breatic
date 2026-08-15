@@ -168,7 +168,7 @@ function ProjectWorkspace({
   // unmount and a project-id change; runs on leave only (a fresh entry stays
   // untouched). A `key={projectId}` remount would not help — module singletons
   // don't reset with component-local state.
-  React.useEffect(() => () => resetProjectUiStores(), [projectId]);
+  React.useEffect(() => () => resetProjectUiStores(projectId), [projectId]);
 
   const projectName = projectQuery.data?.name ?? 'Untitled project';
   // Fail-safe default: if `myRole` is missing (glitch / pre-load race),

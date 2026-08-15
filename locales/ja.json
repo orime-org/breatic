@@ -104,7 +104,8 @@
         "label": "Skill を選んで agent の動作を絞り込む",
         "title": "Skill を選択"
       },
-      "send": "送信"
+      "send": "送信",
+      "sending": "送信中"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
@@ -133,16 +134,16 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。",
-      "notSent": "送信できませんでした。接続を確認してください。",
-      "openFailed": "このチャットを開けませんでした。ページを再読み込みしてもう一度お試しください。"
+      "network": "ネットワークエラー",
+      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。"
     },
     "message": {
       "interrupted": "停止しました"
     },
     "tool": {
       "unfinished": "完了前に停止しました"
-    }
+    },
+    "loadEarlier": "以前のメッセージを読み込む"
   },
   "canvas": {
     "group": {

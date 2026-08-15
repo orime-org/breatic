@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -103,7 +103,7 @@ function relativeTime(iso: string, now = Date.now()): RelativeTime {
  * @param root0.onPick - Called with a conversation id when a row is selected.
  * @returns The left-side sheet listing the project's previous conversations.
  */
-export function ConversationHistorySheet({
+function ConversationHistorySheetInner({
   open,
   onOpenChange,
   conversations,
@@ -189,3 +189,13 @@ export function ConversationHistorySheet({
 }
 
 export { relativeTime };
+
+/**
+ * Rendered again only when its own props change.
+ *
+ * A reply arriving token by token re-renders the panel that owns this, and
+ * without this that re-render reaches here as well -- sixty times a second,
+ * for a component whose props did not move. Every callback it is handed is
+ * stable, which is what lets the comparison actually stop anything.
+ */
+export const ConversationHistorySheet = React.memo(ConversationHistorySheetInner);

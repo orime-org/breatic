@@ -104,7 +104,8 @@
         "label": "스킬을 선택하여 에이전트의 동작 범위를 지정하세요",
         "title": "스킬 선택"
       },
-      "send": "전송"
+      "send": "전송",
+      "sending": "보내는 중"
     },
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
@@ -133,16 +134,16 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요.",
-      "notSent": "보내지 못했습니다. 네트워크를 확인해 주세요.",
-      "openFailed": "이 대화를 열지 못했습니다. 페이지를 새로고침하고 다시 시도해 주세요."
+      "network": "네트워크 오류",
+      "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요."
     },
     "message": {
       "interrupted": "중지됨"
     },
     "tool": {
       "unfinished": "완료되기 전에 중지됨"
-    }
+    },
+    "loadEarlier": "이전 메시지 불러오기"
   },
   "canvas": {
     "group": {

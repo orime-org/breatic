@@ -104,7 +104,8 @@
         "label": "Pick a Skill to scope the agent's behavior",
         "title": "Pick Skill"
       },
-      "send": "Send"
+      "send": "Send",
+      "sending": "Sending"
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",
@@ -133,16 +134,16 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "This reply could not be finished. Try sending it again.",
-      "notSent": "That did not go out — check your connection.",
-      "openFailed": "This chat could not be opened. Reload the page to try again."
+      "network": "Network error",
+      "turnFailed": "This reply could not be finished. Try sending it again."
     },
     "message": {
       "interrupted": "Stopped"
     },
     "tool": {
       "unfinished": "Stopped before it finished"
-    }
+    },
+    "loadEarlier": "Load earlier messages"
   },
   "canvas": {
     "group": {

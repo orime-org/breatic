@@ -37,8 +37,186 @@ describe('ChatComposer', () => {
   });
 
   it('renders the abort button while streaming', () => {
-    setup({ streaming: true });
+    setup({ turnPhase: 'running' });
     expect(screen.getByTestId('chat-composer-abort')).toBeInTheDocument();
+  });
+
+  it('offers nothing to press between the send and the server answering', () => {
+    setup({ draft: 'hello', turnPhase: 'sending' });
+
+    // Neither button belongs here. Send would ask the same thing twice, and
+    // stop would claim to stop something nobody has confirmed is running --
+    // and there is nothing on screen yet for stopping it to undo.
+    expect(screen.queryByTestId('chat-composer-send')).toBeNull();
+    expect(screen.queryByTestId('chat-composer-abort')).toBeNull();
+    // Something has to be there in their place, or the press reads as having
+    // done nothing at all.
+    expect(screen.getByTestId('chat-composer-sending')).toBeInTheDocument();
+  });
+
+  it('hands the keyboard to the box when the press is made', () => {
+    // Whoever sent this with the keyboard is standing on the send button, and
+    // that button is about to be a stop button: same slot, same element, a
+    // different thing to press. Leaving them there means their next keypress
+    // stops the answer they just asked for. Letting the element go instead
+    // drops them on the body, and their next Tab starts from the top of the
+    // page. So the press hands the keyboard somewhere that is neither -- the
+    // box they were typing in, which is where they act next anyway and which
+    // does not change meaning underneath them.
+    const props = {
+      draft: 'hello',
+      onChange: vi.fn(),
+      onSubmit: vi.fn(),
+      onAbort: vi.fn(),
+    };
+    const { rerender } = render(<ChatComposer {...props} turnPhase='idle' />);
+    const send = screen.getByTestId('chat-composer-send');
+    send.focus();
+
+    fireEvent.click(send);
+    rerender(<ChatComposer {...props} turnPhase='sending' />);
+
+    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-textarea'));
+  });
+
+  it('does not leave the keyboard on the button that becomes stop', () => {
+    const onAbort = vi.fn();
+    const props = { draft: 'hello', onChange: vi.fn(), onSubmit: vi.fn(), onAbort };
+    const { rerender } = render(<ChatComposer {...props} turnPhase='idle' />);
+    const send = screen.getByTestId('chat-composer-send');
+    send.focus();
+    fireEvent.click(send);
+
+    rerender(<ChatComposer {...props} turnPhase='sending' />);
+    rerender(<ChatComposer {...props} turnPhase='running' />);
+
+    // Pressing the key again -- a double click, or Enter held down -- must not
+    // reach stop, because nobody aimed at stop.
+    expect(document.activeElement).not.toBe(screen.getByTestId('chat-composer-abort'));
+  });
+
+  it('still has the keyboard somewhere once the turn is over', () => {
+    // The turn ends, the box is empty, and the send button goes back to being
+    // disabled -- which takes it out of the tab order, so a browser blurs it.
+    // That is the same loss one step later, and it happens on every send.
+    const props = { draft: 'hello', onChange: vi.fn(), onSubmit: vi.fn(), onAbort: vi.fn() };
+    const { rerender } = render(<ChatComposer {...props} turnPhase='idle' />);
+    const send = screen.getByTestId('chat-composer-send');
+    send.focus();
+    fireEvent.click(send);
+
+    rerender(<ChatComposer {...props} draft='' turnPhase='running' />);
+    rerender(<ChatComposer {...props} draft='' turnPhase='idle' />);
+
+    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-textarea'));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('takes nothing typed between the press and the server answering', () => {
+    // The press has gone out and nothing has come back. The box still shows
+    // what was sent, because this end cannot say it arrived -- and it takes
+    // no more, because anything typed now would be mixed into that sentence
+    // with no way to tell the two apart afterwards. There is nothing to
+    // decide here: it simply does not accept input yet.
+    const onChange = vi.fn();
+    render(
+      <ChatComposer
+        draft='what I asked'
+        turnPhase='sending'
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+      />,
+    );
+    const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
+
+    expect(box.readOnly).toBe(true);
+  });
+
+  it('does not send on Enter while the last press is still unanswered', () => {
+    const onSubmit = vi.fn();
+    render(
+      <ChatComposer
+        draft='what I asked'
+        turnPhase='sending'
+        onChange={vi.fn()}
+        onSubmit={onSubmit}
+        onAbort={vi.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByTestId('chat-composer-textarea'), { key: 'Enter' });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('takes input again once the server has answered', () => {
+    render(
+      <ChatComposer
+        draft=''
+        turnPhase='running'
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+      />,
+    );
+    const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
+    expect(box.readOnly).toBe(false);
+  });
+
+  it('hands the keyboard to the box when stop is pressed, too', () => {
+    // Same element, same rule: what it does is about to change, so nobody is
+    // left standing on it. Stopping turns it back into Send, and a reader who
+    // has typed their next message while waiting would send it with the very
+    // next keypress.
+    const props = { draft: 'my next question', onChange: vi.fn(), onSubmit: vi.fn(), onAbort: vi.fn() };
+    render(<ChatComposer {...props} turnPhase='running' />);
+    const stop = screen.getByTestId('chat-composer-abort');
+    stop.focus();
+
+    fireEvent.click(stop);
+
+    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-textarea'));
+  });
+
+  it('keeps the wait out of the tab order, because there is nothing to do with it', () => {
+    // The slot the indicator stands in becomes the stop button a moment
+    // later. Anything focusable there can be tabbed to and then changes into
+    // something else underneath the reader. It is not a control -- there is
+    // nothing to press -- so it does not belong in the tab order at all, and
+    // what it has to say is said by the live region instead.
+    render(
+      <ChatComposer
+        draft='hello'
+        turnPhase='sending'
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+      />,
+    );
+    const waiting = screen.getByTestId('chat-composer-sending');
+
+    expect(waiting.tagName).not.toBe('BUTTON');
+    waiting.focus();
+    expect(document.activeElement).not.toBe(waiting);
+  });
+
+  it('says what the wait is about, for a reader who cannot see it spin', async () => {
+    // Said by the live region rather than by the spinner. A region that is
+    // already on the page when its text arrives is one screen readers
+    // announce; one that appears holding its text is one many of them never
+    // do. The spinner itself is hidden -- it would otherwise say the same
+    // thing a second time, in a place nobody can reach.
+    setup({ draft: 'hello', turnPhase: 'sending' });
+    await expectNoA11yViolations(document.body);
+    expect(screen.getByRole('status')).toHaveTextContent('Sending');
+    expect(screen.getByTestId('chat-composer-sending')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('has nothing to announce when nothing is being waited for', () => {
+    setup({ draft: 'hello', turnPhase: 'idle' });
+    // The region stays, so that it is here before it has anything to say.
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 
   it('send is disabled while the draft is empty', () => {
@@ -81,7 +259,7 @@ describe('ChatComposer', () => {
 
   it('clicking abort fires onAbort while streaming', async () => {
     const user = userEvent.setup();
-    const { onAbort } = setup({ streaming: true });
+    const { onAbort } = setup({ turnPhase: 'running' });
     await user.click(screen.getByTestId('chat-composer-abort'));
     expect(onAbort).toHaveBeenCalledTimes(1);
   });
