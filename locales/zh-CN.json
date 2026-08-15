@@ -152,8 +152,7 @@
       "deleteBody": "对话里说过的内容会一起删掉，无法撤销。",
       "deleteConfirm": "删除",
       "deleteCancel": "取消",
-      "startNew": "新建对话",
-      "countAria": "{count, plural, other {# 条对话}}"
+      "startNew": "新建对话"
     },
     "load": {
       "failedTitle": "网络错误",

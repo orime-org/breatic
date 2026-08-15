@@ -152,8 +152,7 @@
       "deleteBody": "会話の内容もすべて削除されます。元に戻せません。",
       "deleteConfirm": "削除",
       "deleteCancel": "キャンセル",
-      "startNew": "新規会話",
-      "countAria": "{count, plural, other {# 件の会話}}"
+      "startNew": "新規会話"
     },
     "load": {
       "failedTitle": "ネットワークエラー",

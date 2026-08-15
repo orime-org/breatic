@@ -152,8 +152,7 @@
       "deleteBody": "대화에서 나눈 내용도 함께 삭제되며 되돌릴 수 없습니다.",
       "deleteConfirm": "삭제",
       "deleteCancel": "취소",
-      "startNew": "새 대화",
-      "countAria": "{count, plural, other {대화 #개}}"
+      "startNew": "새 대화"
     },
     "load": {
       "failedTitle": "네트워크 오류",

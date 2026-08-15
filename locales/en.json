@@ -152,8 +152,7 @@
       "deleteBody": "Everything said in it goes with it. This cannot be undone.",
       "deleteConfirm": "Delete",
       "deleteCancel": "Cancel",
-      "startNew": "New conversation",
-      "countAria": "{count, plural, one {# conversation} other {# conversations}}"
+      "startNew": "New conversation"
     },
     "load": {
       "failedTitle": "Network error",
