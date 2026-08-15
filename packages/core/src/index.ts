@@ -10,9 +10,11 @@
  * `@breatic/collab` also depends on this package: it reaches for the
  * shared infrastructure (connection factories / logging / config)
  * AND the shared authentication kernel (session-store + the
- * `projectMembers` repo + `loadProjectRole`). Auth / session / role
- * is "must be identical across every backend service" logic, so it
- * lives here once instead of being hand-rolled per service. collab
+ * `projectMembers` repo + `loadProjectRole` + `membership.repo`, from
+ * which it takes the per-document writable-connection ceiling). Auth /
+ * session / role / tier is "must be identical across every backend
+ * service" logic, so it lives here once instead of being hand-rolled
+ * per service. collab
  * does NOT touch `@breatic/domain` (server+worker-only AIGC business).
  */
 
@@ -116,9 +118,14 @@ export { setSession, getSession, deleteSession, deleteAllSessions, sessionCookie
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 
 // ── Shared auth kernel (collab + server share these) ──────────────
-// project_members repo + the `loadProjectRole` primitive, used by
-// server `requireRole` middleware AND collab `onAuthenticate` (auth
-// must be identical across services). Server-private domain (auth /
+// Everything a backend service needs to answer "who is this and what may
+// they do here": the project_members repo, the `loadProjectRole`
+// primitive (server `requireRole` middleware AND collab
+// `onAuthenticate` — auth must be identical across services), the
+// projects and activity repos, and `membership.repo` — the one door to
+// the tier ceilings, which is why collab reads
+// `getProjectConcurrentEditorLimit` from here rather than walking to a
+// tier its own way. Server-private domain (auth /
 // project / payment / user.repo / stripe / mailer / pricing / ...)
 // lives in @server/src; AIGC business shared by server+worker (credit /
 // task / node-history / agent / model-catalog / canvas-lock) lives in
