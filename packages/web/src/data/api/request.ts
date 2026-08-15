@@ -81,16 +81,18 @@ function normalizeError(err: unknown): ApiError {
     const data = err.response?.data as
       | { error?: { code?: string; message?: string } }
       | undefined;
+    const written = data?.error?.message;
     return {
       status,
-      message: data?.error?.message ?? err.message,
+      message: written ?? err.message,
       code: data?.error?.code,
+      fromServer: written !== undefined,
     };
   }
   if (err instanceof Error) {
-    return { status: 0, message: err.message };
+    return { status: 0, message: err.message, fromServer: false };
   }
-  return { status: 0, message: 'Unknown error' };
+  return { status: 0, message: 'Unknown error', fromServer: false };
 }
 
 export const request = createClient();

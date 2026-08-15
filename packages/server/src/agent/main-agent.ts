@@ -22,6 +22,7 @@ import { creditService } from "@breatic/domain";
 import { ASK_USER_SENTINEL } from "@breatic/domain";
 import type { MessagePart } from "@breatic/shared";
 import { SSEEventType } from "@server/agent/types.js";
+import { buildTurnContext } from "@server/agent/turn-context.js";
 import type { SSEEvent } from "@server/agent/types.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
@@ -35,13 +36,16 @@ const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bm
 /**
  * Main Agent for streaming chat interactions.
  *
- * Reads userId, conversationId, projectId, memoryContext, and compressedHistory
- * from the AsyncLocalStorage request context (set by route handler).
+ * Reads who is speaking and where -- userId, conversationId, projectId -- from
+ * the AsyncLocalStorage request context (set by the route handler). What the
+ * turn runs against is not in there: the memories and the compressed history
+ * are read here, after the turn has said what it holds, because they are this
+ * turn's own working rather than anything about the request.
  */
 export class MainAgent {
   /**
-   * The current request-scoped store (userId, conversationId, projectId,
-   * memoryContext, compressedHistory, billing) from AsyncLocalStorage.
+   * The current request-scoped store (userId, conversationId, projectId) from
+   * AsyncLocalStorage.
    * @returns The active request context for this agent turn.
    */
   private get ctx(): ReturnType<typeof getContext> {
@@ -110,16 +114,52 @@ export class MainAgent {
     signal: AbortSignal | undefined,
     skillName?: string,
   ): AsyncGenerator<SSEEvent> {
-    const { conversationId, memoryContext, compressedHistory } = this.ctx;
+    const { userId, conversationId, projectId } = this.ctx;
 
-    // Save what the user said. Capture the assigned turnIndex so billing can
-    // build a stable refKey (`turn:${conversationId}:${turnIndex}`) that
-    // survives retries — see core/src/modules/credit.service.ts `deductOnce`.
+    // Save what the user said. The turn it opened is what the rest of this
+    // run is filed under: the reply goes in it, and billing builds a stable
+    // refKey from it (`turn:${conversationId}:${turnIndex}`) that survives
+    // retries — see domain/src/credit/credit.service.ts `deductOnce`.
     const turnIndex = await messageRepo.addMessage(conversationId, {
       role: "user",
       parts: [{ type: "text", text: said }],
     });
-    this.ctx.billing = { turnIndex };
+
+    // Now say what the conversation holds, before asking the model anything.
+    //
+    // Two things at once, and both are about the client not having to assume
+    // anything. It is the answer to "did that get through" — sent the moment
+    // it is true, rather than left to be inferred from a reply that may be
+    // seconds away. And it settles up for whatever came before: a stream is
+    // one-directional and connections go without warning, so the browser can
+    // be holding half a reply nobody recorded, or missing the end of one that
+    // was recorded in full, and it cannot tell which from where it stands. So
+    // every turn opens by handing over the stored truth, and the browser
+    // takes it whole.
+    //
+    // Read after the write above, never before: the page has to contain the
+    // message this very turn is about, or a browser that replaces what it
+    // holds would take the reader's own words back off the screen.
+    const settled = await messageRepo.getMessages(conversationId);
+    yield this.sse(SSEEventType.CHAT_TURN_STARTED, { ...settled });
+
+    // Only now the work that takes a while: three round trips for memory,
+    // the conversation and its history, and then the compression. All of it
+    // used to run before the stream was even opened, so nothing of the turn
+    // could reach the reader until it was done — the first word of the reply
+    // included, which is the one thing they were waiting for.
+    //
+    // The running turn is left out of that history on purpose. Its message is
+    // put in front of the model separately, a few lines below, so a copy in
+    // the history would be the same question asked twice — and it would be a
+    // candidate for compression, which could shorten the very thing being
+    // asked.
+    const { memoryContext, compressedHistory } = await buildTurnContext(
+      userId,
+      conversationId,
+      projectId,
+      turnIndex,
+    );
 
     // One factory decides model, instructions and tools — see
     // domain/agent/agent-config.ts for why nothing else may assemble them.
@@ -135,7 +175,7 @@ export class MainAgent {
       { role: "user", content: MainAgent.buildUserContent(said, resources) },
     ];
 
-    yield* this.runStream(agentConfig, messages, signal);
+    yield* this.runStream(agentConfig, messages, turnIndex, signal);
   }
 
   /**
@@ -149,21 +189,20 @@ export class MainAgent {
    * itself, is set out where `announced` is declared.
    * @param agentConfig - Model, instructions and tools, from the one factory that decides them.
    * @param messages - Conversation history plus the current user message.
+   * @param turnIndex - The turn this run answers. A parameter and not a
+   *   context field: it is known one line before the call, both the reply and
+   *   the charge are filed under it, and neither has anything sensible to do
+   *   with a turn it could not identify.
    * @param signal - Raised when the user stops the turn or the client goes away.
    * @yields SSE events — chat chunks, tool hints, interaction prompts, an error, and the ending.
    */
   private async *runStream(
     agentConfig: ResolvedAgentConfig,
     messages: ModelMessage[],
+    turnIndex: number,
     signal?: AbortSignal,
   ): AsyncGenerator<SSEEvent> {
     const { userId, conversationId, projectId } = this.ctx;
-    // Read with the others, not from inside the `finally`. `this.ctx` reaches
-    // into AsyncLocalStorage, which is only guaranteed to be there while the
-    // caller is still driving this generator — and the whole point of the
-    // cleanup below is to survive exits where that is not the case. Three
-    // context fields were already captured here and this was the odd one out.
-    const billingTurnIndex = this.ctx.billing?.turnIndex;
     const agentCfg = getAgentConfig();
 
     const result = streamTextRetry({
@@ -464,6 +503,7 @@ export class MainAgent {
                   await messageRepo.addMessage(conversationId, {
                     role: "assistant",
                     parts: replyParts,
+                    turnIndex,
                   });
                 }
               : undefined,
@@ -471,14 +511,11 @@ export class MainAgent {
             if (tokensUsed === 0) return;
 
             creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
-            if (billingTurnIndex === undefined) {
-              throw new Error("MainAgent.runStream: billing.turnIndex not initialized");
-            }
             // The turn-scoped refKey makes this idempotent: an SSE reconnect
             // or a re-entry on the same turn will not double-charge.
             await creditService.deductOnce(
               userId,
-              `turn:${conversationId}:${billingTurnIndex}`,
+              `turn:${conversationId}:${turnIndex}`,
               creditsUsed,
               "Agent chat",
               {

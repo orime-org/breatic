@@ -157,12 +157,20 @@ export interface MessageData {
 /**
  * A message as a caller hands it to the store.
  *
- * Only what the caller knows: who is speaking and what happened. The id, the
- * timestamp, the turn index and the sequence within the turn are the store's
- * to assign, and `content` / `thinking` are read back off the parts rather
- * than written twice.
+ * Only what the caller knows: who is speaking, what happened, and — for a
+ * reply — which turn it answers. The id, the timestamp, the sequence within
+ * the turn are the store's to assign, and `content` / `thinking` are read
+ * back off the parts rather than written twice.
+ *
+ * The two roles differ on the turn index because they genuinely differ: a
+ * question opens a turn, so its number is the store's to hand out, while a
+ * reply joins one that already exists. Saying so here is what makes a reply
+ * with no turn to answer impossible to write down, rather than something a
+ * rule has to catch.
  */
-export type MessageInput = Pick<MessageData, "role" | "parts">;
+export type MessageInput =
+  | (Pick<MessageData, "parts"> & { role: "user" })
+  | (Pick<MessageData, "parts" | "turnIndex"> & { role: "assistant" });
 
 /** Task entity. */
 export interface TaskEntity {

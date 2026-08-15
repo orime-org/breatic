@@ -129,16 +129,22 @@ describe('DocumentSpace', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
   });
 
-  it('says so when the server grants only read-only, without enforcing it', async () => {
-    // The server authenticates a connection read-only for a viewer, for a
-    // member over the document's connection cap, and for a refused document
-    // alike — the wire carries no cause. Whatever the reason, the client says
-    // what it knows and leaves the editor alone.
+  it('leaves the degrade notice to the outlet, and still takes typing', async () => {
+    // Changed 2026-08-14 (#88). This used to raise a toast here. A degrade is a
+    // STATE — it holds for as long as this connection does — and a toast is
+    // for events: it goes away after four seconds, and whoever missed them
+    // finds out by watching their edits fail to stick. It is now announced by
+    // `SpaceReadOnlyNotice`, inside the Space, for as long as it lasts, and
+    // every Space type gets it from the outlet rather than each writing one.
+    //
+    // What this Space still owns is the REFUSAL (the case above). And the
+    // editor stays editable either way — enforcing read-only in the frontend
+    // is a separate piece of work, deliberately not in this change.
     socketState.writeAccess = 'denied';
     render(<DocumentSpace projectId='p1' spaceId='doc-capped' />);
     await screen.findByTestId('document-toolbar');
 
-    await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    expect(toast.warning).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(
         document.querySelector('.ProseMirror')?.getAttribute('contenteditable'),
@@ -146,15 +152,13 @@ describe('DocumentSpace', () => {
     );
   });
 
-  it('does not nag a viewer about being read-only — they already know', async () => {
-    // A viewer's read-only is their role, shown by the UI everywhere else, so
-    // announcing it would be noise on every document they ever open.
-    socketState.writeAccess = 'denied';
-    render(<DocumentSpace projectId='p1' spaceId='doc-viewer' readOnly />);
-    await screen.findByTestId('document-toolbar');
-
-    expect(toast.warning).not.toHaveBeenCalled();
-  });
+  // Removed 2026-08-14 (#88): "does not nag a viewer about being read-only".
+  // It guarded the `!readOnly` term of a toast this Space no longer raises, so
+  // it had become true no matter what the code did, and the case above already
+  // asserts the same silence under weaker conditions. The rule it protected did
+  // not go away — it moved with the notice, and is asserted where the notice
+  // now lives (`SpaceReadOnlyNotice.test.tsx`, "says nothing to a viewer"),
+  // where deleting the role term does turn it red.
 
   it('shows the content again immediately after a Space-tab switch', async () => {
     // Switching Space tabs unmounts and remounts this body — `SpaceOutlet` is

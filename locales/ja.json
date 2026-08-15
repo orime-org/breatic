@@ -104,7 +104,8 @@
         "label": "Skill を選んで agent の動作を絞り込む",
         "title": "Skill を選択"
       },
-      "send": "送信"
+      "send": "送信",
+      "sending": "送信中"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
@@ -133,16 +134,16 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。",
-      "notSent": "送信できませんでした。接続を確認してください。",
-      "openFailed": "このチャットを開けませんでした。ページを再読み込みしてもう一度お試しください。"
+      "network": "ネットワークエラー",
+      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。"
     },
     "message": {
       "interrupted": "停止しました"
     },
     "tool": {
       "unfinished": "完了前に停止しました"
-    }
+    },
+    "loadEarlier": "以前のメッセージを読み込む"
   },
   "canvas": {
     "group": {
@@ -622,6 +623,7 @@
         "description": "Timeline viewer は timeline-space 実装時に接続。ここではトラックのスナップショットを表示します(クリップコピー可)。"
       }
     },
+    "readOnlyNotice": "この Space は現在閲覧のみです —— 変更を加えても保存されません。",
     "lockedAria": "ロック中",
     "document": {
       "loading": "エディターを読み込み中…",
@@ -629,7 +631,6 @@
         "text": "このドキュメントを開けませんでした。削除されたか、アクセス権がなくなった可能性があります。",
         "action": "再試行"
       },
-      "readOnlyNotice": "このドキュメントは現在読み取り専用です — 入力した内容は保存されません。",
       "refusedNotice": "このドキュメントへの接続が拒否されました。表示中の内容は最新ではない可能性があり、変更も保存されません。",
       "placeholder": "書き始めましょう…",
       "titlePlaceholder": "無題のドキュメント",
@@ -651,7 +652,8 @@
         "riskUploads": "進行中のアップロードは中断されます。該当する Space に切り替えて先に確認できます。",
         "action": "ページを再読み込み"
       }
-    }
+    },
+    "readOnlyReconnect": "再接続"
   },
   "menu": {
     "createAria": "作成メニュー",

@@ -27,6 +27,7 @@
  * defect survived -- every test was green the whole time.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { SSE_EVENT_NAMES } from "@breatic/shared";
 import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
 
@@ -38,6 +39,12 @@ const deductOnce = vi.fn(async (..._args: unknown[]) => undefined);
 /** Set when the code under test reads `usage`, which is what consumes a stream. */
 const usageRead = vi.fn();
 
+vi.mock("@server/agent/turn-context.js", () => ({
+  buildTurnContext: vi.fn(async () => ({
+    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    compressedHistory: [],
+  })),
+}));
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(),
@@ -91,9 +98,17 @@ vi.mock("@server/modules", async (importOriginal) => {
 
 // These three are what the turn owes, and each is imported from its own
 // module rather than through a barrel, so each is stubbed where it lives.
+/**
+ * What the conversation holds, for the settle-up every turn opens with.
+ *
+ * Empty because these cases are about what happens after that: the point of
+ * the event is that the browser takes the server's version, and a version
+ * with nothing in it is the version that gets out of the way.
+ */
+const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
+
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
-  addMessage,
-}));
+  addMessage, getMessages }));
 
 vi.mock("@server/agent/memory-consolidator.js", () => ({
   consolidateIfNeeded,
@@ -148,16 +163,17 @@ describe("a turn cut short by the client", () => {
       {
         userId: "u1",
         conversationId: "c1",
-        memoryContext: {
-          userMemory: "",
-          projectMemory: "",
-          conversationMemory: "",
-        },
-        compressedHistory: [],
+        projectId: "p1",
       },
       async () => {
         const agent = new MainAgent();
         const gen = agent.chat("hi");
+        // Every turn opens by handing over the stored conversation, which is
+        // not part of what this case is about -- so it is pulled and set
+        // aside, and the two pulls below are the model's own output, far
+        // enough in to have passed the step the billing figure comes from.
+        const settleUp = await gen.next();
+        expect(settleUp.value?.event).toBe(SSE_EVENT_NAMES.CHAT_TURN_STARTED);
         await gen.next();
         await gen.next();
         // The browser goes away.

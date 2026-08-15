@@ -40,7 +40,24 @@ describe('opening chat in a project', () => {
   it('posts the project under the name the server reads', async () => {
     await chatApi.openChat('p-1');
 
-    expect(apiPost).toHaveBeenCalledWith('/chat/open', { project_id: 'p-1' });
+    expect(apiPost).toHaveBeenCalledWith(
+      '/chat/open',
+      { project_id: 'p-1' },
+      { signal: undefined },
+    );
+  });
+
+  it('hands the signal down, so the caller can say it no longer wants this', async () => {
+    const abort = new AbortController();
+    await chatApi.openChat('p-1', abort.signal);
+
+    // The answer replaces the whole conversation on screen. A caller who has
+    // moved on needs it not to arrive, not merely to be ignored on arrival.
+    expect(apiPost).toHaveBeenCalledWith(
+      '/chat/open',
+      { project_id: 'p-1' },
+      { signal: abort.signal },
+    );
   });
 });
 

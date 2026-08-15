@@ -11,7 +11,6 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { MemoryContext, MessageData } from "@breatic/shared";
 
 /** Shape of the per-request context store. */
 export interface RequestStore {
@@ -19,27 +18,16 @@ export interface RequestStore {
   userId: string;
   /** Current conversation ID. */
   conversationId: string;
-  /** Associated project ID (may be undefined). */
-  projectId?: string;
-  /** Three-layer memory context, loaded once per request. */
-  memoryContext: MemoryContext;
-  /** Compressed conversation history (old turns compressed, recent full). */
-  compressedHistory: readonly MessageData[];
   /**
-   * Billing state for the current turn. Set by MainAgent after saving the
-   * user message (so we have a stable `turnIndex`), consumed by
-   * `deductOnce` call sites for idempotent billing refKeys.
+   * The project the conversation belongs to.
    *
-   * - `turnIndex` — the conversation turn this request is processing,
-   *   used to build `turn:${conversationId}:${turnIndex}`, the refKey that
-   *   makes a turn's billing idempotent across a reconnect or a re-entry.
-   *
-   * Optional because not every code path uses AsyncLocalStorage (tests,
-   * background jobs). Callers that need it must null-check.
+   * Required, because every entrance confirms it before it starts a turn --
+   * chat is refused outright for a project that is not the caller's. Left
+   * optional, the one thing downstream of it has to invent a value for the
+   * case that cannot happen, and what it invented was the empty string: not a
+   * project id, and no longer obviously wrong to anything reading it.
    */
-  billing?: {
-    turnIndex: number;
-  };
+  projectId: string;
 }
 
 /** The AsyncLocalStorage instance shared across the application. */
@@ -55,7 +43,7 @@ const storage = new AsyncLocalStorage<RequestStore>();
  * @returns The callback's return value
  * @example
  * ```ts
- * runWithContext({ userId, conversationId, memoryContext, compressedHistory }, async () => {
+ * runWithContext({ userId, conversationId, projectId }, async () => {
  *   const agent = new MainAgent();
  *   yield* agent.chat(message);
  * });

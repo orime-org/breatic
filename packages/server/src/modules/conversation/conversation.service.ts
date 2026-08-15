@@ -85,7 +85,12 @@ export async function openChat(
   projectId: string,
 ): Promise<{
   conversations: ConversationEntity[];
-  current: { conversation: ConversationEntity; messages: MessageData[] };
+  current: {
+    conversation: ConversationEntity;
+    messages: MessageData[];
+    /** The conversation reaches back further than these messages do. */
+    hasMore: boolean;
+  };
 }> {
   await projectService.assertAccess(projectId, userId, "editor");
 
@@ -123,13 +128,35 @@ export async function openChat(
     return { ...created, projectId };
   });
 
+  const page = await messageRepo.getMessages(conversation.id);
   return {
     conversations: await conversationRepo.listConversations(userId, { projectId }),
     current: {
       conversation,
-      messages: await messageRepo.getMessages(conversation.id),
+      messages: page.messages,
+      // Said here rather than left for the client to discover, because the
+      // only way to discover it is to ask for a page that may well be empty.
+      hasMore: page.hasMore,
     },
   };
+}
+
+/**
+ * Read the page of a conversation that comes before the one in hand.
+ * @param conversationId - Conversation UUID
+ * @param userId - Requesting user UUID
+ * @param beforeTurn - The oldest turn the caller already has
+ * @returns That page, oldest first, and whether anything is older still
+ * @throws {NotFoundError} if the conversation does not exist
+ * @throws {ForbiddenError} if userId does not match the conversation owner
+ */
+export async function getEarlierMessages(
+  conversationId: string,
+  userId: string,
+  beforeTurn: number,
+): Promise<messageRepo.MessagePage> {
+  await validateOwnership(conversationId, userId);
+  return messageRepo.getMessages(conversationId, { beforeTurn });
 }
 
 /**
@@ -198,8 +225,8 @@ export async function getWithMessages(
   userId: string,
 ): Promise<{ conversation: ConversationEntity; messages: MessageData[] }> {
   const conversation = await validateOwnership(conversationId, userId);
-  const messages = await messageRepo.getMessages(conversationId);
-  return { conversation, messages };
+  const page = await messageRepo.getMessages(conversationId);
+  return { conversation, messages: page.messages };
 }
 
 /**
@@ -223,16 +250,22 @@ export async function getConversation(
  *
  * Thin pass-through to the conversation repository so route handlers
  * reach the data layer through the service (prohibition #1). Skips
- * already-consolidated turns and strips internal-only fields.
+ * already-consolidated turns and drops the flat `thinking` field, which is
+ * only a view of the reasoning parts and would otherwise be read twice.
  * @param id - Conversation UUID
  * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
+ * @param beforeTurn - Stop short of this turn. The turn being run is not its
+ *   own history: its message goes in front of the model separately, so a copy
+ *   here would ask the same question twice — and would be a candidate for
+ *   compression, which could shorten the very thing being asked.
  * @returns Messages from turns after the consolidated boundary
  */
 export async function getMessagesForLlm(
   id: string,
   lastConsolidatedTurn = 0,
+  beforeTurn?: number,
 ): Promise<MessageData[]> {
-  return messageRepo.getMessagesForLlm(id, lastConsolidatedTurn);
+  return messageRepo.getMessagesForLlm(id, lastConsolidatedTurn, beforeTurn);
 }
 
 /**

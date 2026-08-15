@@ -3,6 +3,7 @@
 
 import { useCanvasStore } from '@web/stores/canvas';
 import { useChatStore } from '@web/stores/chat';
+import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { useInpaintStore } from '@web/stores/inpaint';
 import { useMiniToolStore } from '@web/stores/mini-tool';
 import { useUIStore } from '@web/stores/ui';
@@ -21,8 +22,17 @@ import { useUIStore } from '@web/stores/ui';
  *   - brush preferences (`useInpaintStore` size / color / opacity / tool).
  * Deliberately UNTOUCHED: `useSpaceOperationsStore` — it refcounts real in-flight
  * upload work, not UI panel state; clearing it could mask a lost local write-back.
+ * @param projectId - The project being left. Its conversations are dropped by
+ *   name rather than by clearing everything, because the runtime holds them
+ *   keyed by conversation and another project's may be in there too.
  */
-export function resetProjectUiStores(): void {
+export function resetProjectUiStores(projectId: string): void {
+  // Chat is not only panel state: a turn may be running, and leaving says
+  // more plainly than any dropped connection that nobody is listening. It is
+  // stopped rather than abandoned, because once this project is off the
+  // screen there is no stop button anywhere for it — the model would keep
+  // going on the user's account with the switch out of reach.
+  conversationRuntime.leaveProject(projectId);
   useCanvasStore.getState().reset();
   useUIStore.getState().reset();
   useChatStore.getState().reset();

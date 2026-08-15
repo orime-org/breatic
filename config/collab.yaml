@@ -42,9 +42,12 @@ presence_stale_after_ms: 90000
 max_document_bytes: 10485760     # 10 MB
 
 # ── Connection Limits ─────────────────────────────
-# Max WebSocket connections per document (0 = unlimited).
-max_connections_per_document: 100
-
+# The per-document ceiling on WRITABLE connections is NOT here. It comes from
+# the membership tier of the studio that owns the project — `concurrent_editors`
+# in config/membership.yaml — so it differs per project and cannot be a
+# process-wide constant (#88). A connection beyond it is degraded to read-only,
+# not refused.
+#
 # How many documents one socket must be able to carry.
 #
 # One browser tab holds ONE socket for a project and puts every document it
