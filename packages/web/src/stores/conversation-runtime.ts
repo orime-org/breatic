@@ -154,6 +154,16 @@ interface ConversationRuntimeState {
    */
   listHasMore: Record<string, boolean>;
   /**
+   * The last attempt at the next page of conversations did not arrive.
+   *
+   * In the store because the panel renders it -- both as a line in the list
+   * and as the thing that puts the end-of-list watcher back on duty. Nothing
+   * about a failed page moves, so the end of the list never crosses back into
+   * view on its own; a fresh watcher reports where things stand as it starts,
+   * and that is what makes reaching the end count a second time.
+   */
+  listMoreFailed: Record<string, boolean>;
+  /**
    * What is half-typed in each conversation, keyed by conversation.
    *
    * One per conversation and not one per panel: switching conversations puts
@@ -455,6 +465,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   currentByProject: {},
   listByProject: {},
   listHasMore: {},
+  listMoreFailed: {},
   draftByConversation: {},
   openStatus: {},
   sendingByProject: {},
@@ -1440,17 +1451,6 @@ async function startNew(projectId: string): Promise<void> {
 const fetchingMore = new Set<string>();
 
 /**
- * Projects whose last attempt at a next page did not arrive.
- *
- * Held so that reaching the end again counts as asking again. The watcher that
- * notices the end of the list only fires as it is crossed, and a failure moves
- * nothing -- the end stays exactly where it was, in view, and never crosses
- * anything again. Without this the reader would be stuck at the bottom of a
- * list that has more to give, with nothing left that could ask for it.
- */
-const lastPageFailed = new Set<string>();
-
-/**
  * Fetch the page of conversations after the ones already listed.
  *
  * Does nothing while a request is already out, and nothing when the list is
@@ -1479,7 +1479,9 @@ async function loadMoreConversations(projectId: string): Promise<void> {
 
   const visit = currentVisit(projectId);
   fetchingMore.add(projectId);
-  lastPageFailed.delete(projectId);
+  useStore.setState((st) => ({
+    listMoreFailed: { ...st.listMoreFailed, [projectId]: false },
+  }));
   try {
     const page = await chatApi.listConversations(
       projectId,
@@ -1502,7 +1504,9 @@ async function loadMoreConversations(projectId: string): Promise<void> {
     });
   } catch (err) {
     if (visit.signal.aborted) return;
-    lastPageFailed.add(projectId);
+    useStore.setState((st) => ({
+      listMoreFailed: { ...st.listMoreFailed, [projectId]: true },
+    }));
     // The reader reached the end themselves, so this is an answer to something
     // they did.
     tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
@@ -1511,18 +1515,6 @@ async function loadMoreConversations(projectId: string): Promise<void> {
   }
 }
 
-/**
- * Whether the last attempt at a next page failed.
- *
- * Read by the panel so the watcher that notices the end of the list can be
- * rebuilt: a fresh watcher reports where things stand as soon as it starts, so
- * an end that is already in view counts again.
- * @param projectId - The project.
- * @returns True when the last attempt failed and nothing has been tried since.
- */
-function nextPageFailed(projectId: string): boolean {
-  return lastPageFailed.has(projectId);
-}
 
 /**
  * Give a conversation the name its owner typed.
@@ -1724,6 +1716,7 @@ function leaveProject(projectId: string): void {
     const { [projectId]: _sending, ...sendingByProject } = s.sendingByProject;
     const { [projectId]: _listed, ...listByProject } = s.listByProject;
     const { [projectId]: _more, ...listHasMore } = s.listHasMore;
+    const { [projectId]: _moreFailed, ...listMoreFailed } = s.listMoreFailed;
     // The drafts of every conversation in this project go with it. A draft
     // belongs to a conversation the reader was in, and coming back re-opens
     // the project from the server -- so keeping them would hand a returning
@@ -1745,6 +1738,7 @@ function leaveProject(projectId: string): void {
       sendingByProject,
       listByProject,
       listHasMore,
+      listMoreFailed,
       draftByConversation: keptDrafts,
     };
   });
@@ -1755,7 +1749,6 @@ function leaveProject(projectId: string): void {
   // scroll to the end do nothing at all, silently, until that dead request
   // came back on its own.
   fetchingMore.delete(projectId);
-  lastPageFailed.delete(projectId);
   navigations.delete(projectId);
 }
 
@@ -1777,6 +1770,7 @@ export function _resetForTests(): void {
     currentByProject: {},
     listByProject: {},
     listHasMore: {},
+    listMoreFailed: {},
     draftByConversation: {},
     openStatus: {},
     sendingByProject: {},
@@ -1794,7 +1788,6 @@ export const conversationRuntime = {
   switchTo,
   startNew,
   loadMoreConversations,
-  nextPageFailed,
   rename,
   remove,
   setDraft,

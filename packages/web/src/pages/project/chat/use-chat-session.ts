@@ -192,6 +192,9 @@ export function useChatSession(projectId: string): ChatSession {
   const hasMoreConversations = useConversationRuntime(
     (s) => s.listHasMore[projectId] ?? false,
   );
+  const nextPageFailed = useConversationRuntime(
+    (s) => s.listMoreFailed[projectId] ?? false,
+  );
   // Under the conversation when there is one, under the project until then --
   // typing while the open call is still out has to land somewhere.
   const draft = useConversationRuntime(
@@ -281,13 +284,6 @@ export function useChatSession(projectId: string): ChatSession {
    */
   const [mishap, setMishap] = React.useState<ChatMishap | null>(null);
 
-  // Read off the mishap counter rather than subscribed to: the failure lives
-  // outside the store, and what changes when it happens is that a mishap is
-  // told. Recomputing then is exactly when the answer can have changed.
-  const nextPageFailed = React.useMemo(
-    () => conversationRuntime.nextPageFailed(projectId),
-    [projectId, mishap],
-  );
 
   React.useEffect(
     () =>
