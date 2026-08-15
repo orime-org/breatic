@@ -370,7 +370,7 @@ function GeneratePanelBody({
         paramsByModel,
       );
     },
-    [models, projectId, spaceId, nodeId, freshVm, t],
+    [models, projectId, spaceId, nodeId, freshVm, freshContent, t],
   );
 
   const onToggleMode = React.useCallback(
