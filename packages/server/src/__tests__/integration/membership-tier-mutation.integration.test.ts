@@ -398,8 +398,8 @@ describe("the enterprise tier, which has no ceilings to give", () => {
   it("refuses to answer with numbers nobody negotiated, and says whose account", async () => {
     // Enterprise ceilings are agreed per customer and will be read from the
     // database when that work happens. Putting a set of them in the config
-    // file today would hand an account a quota nobody agreed to, and nothing
-    // would surface it. So the tier is legal to store and impossible to price:
+    // file before then would hand an account a quota nobody agreed to, and
+    // nothing would surface it. So the tier is legal to store and impossible to price:
     // the lookup fails, naming the account so it can be fixed.
     const userId = await insertUser("enterprise");
 

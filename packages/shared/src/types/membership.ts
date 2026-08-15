@@ -50,8 +50,8 @@ export type MembershipTier = (typeof MEMBERSHIP_TIERS)[number];
  * Enterprise is absent, and that absence is the whole point. Its numbers are
  * agreed per customer, so there is no single set of them to put in a config
  * file; they will be read from the database when that work happens. Writing a
- * set today would hand an account put on that tier a quota nobody negotiated,
- * and nothing would surface it.
+ * set before then would hand an account put on that tier a quota nobody
+ * negotiated, and nothing would surface it.
  *
  * So the tier is legal to store and impossible to price: the constraint
  * accepts the word, and asking for its ceilings fails loudly, naming the
