@@ -31,6 +31,7 @@ import {
 } from '@web/components/ui/sheet';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 
 /**
  * One conversation as a row shows it.
@@ -56,6 +57,10 @@ interface ConversationHistorySheetProps {
   onRename: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onStartNew: () => void;
+  /** The project has conversations older than the ones listed. */
+  hasMore: boolean;
+  /** Called when the reader reaches the end of what has been fetched. */
+  onReachEnd: () => void;
 }
 
 /**
@@ -286,6 +291,8 @@ function ConversationRowView({
  * @param root0.onRename - Called with an id and the name that was typed.
  * @param root0.onDelete - Called with an id once the reader has confirmed.
  * @param root0.onStartNew - Called when the reader asks for another conversation.
+ * @param root0.hasMore - The project has conversations older than the ones listed.
+ * @param root0.onReachEnd - Called when the reader reaches the end of what has been fetched.
  * @returns The left-side sheet listing the project's conversations.
  */
 function ConversationHistorySheetInner({
@@ -297,12 +304,18 @@ function ConversationHistorySheetInner({
   onRename,
   onDelete,
   onStartNew,
+  hasMore,
+  onReachEnd,
 }: ConversationHistorySheetProps): React.JSX.Element {
   const t = useTranslation();
   // Which conversation the reader has asked to delete, while they are being
   // asked whether they mean it. Null the rest of the time, which is what
   // keeps the dialog closed.
   const [deleting, setDeleting] = React.useState<string | null>(null);
+  const { scrollerRef, sentinelRef } = useScrolledToEnd({
+    enabled: hasMore,
+    onReachEnd,
+  });
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -332,31 +345,38 @@ function ConversationHistorySheetInner({
           </Button>
         </SheetHeader>
         {/* ScrollArea (#1773): overlay scrollbar — appears only while
-            scrolling, no layout space, hover changes color only. */}
-        <ScrollArea className='min-h-0 flex-1'>
-          <ul
-            className='flex flex-col gap-px'
-            data-testid='conversation-history-list'
-            role='list'
-          >
-            {conversations.length === 0 ? (
-              <li className='px-4 py-3 text-sm text-muted-foreground'>
-                {t('chat.history.empty')}
-              </li>
-            ) : (
-              conversations.map((c) => (
-                <ConversationRowView
-                  key={c.id}
-                  row={c}
-                  isActive={c.id === activeId}
-                  onPick={onPick}
-                  onRename={onRename}
-                  onAskDelete={setDeleting}
-                />
-              ))
-            )}
-          </ul>
-        </ScrollArea>
+            scrolling, no layout space, hover changes color only. The wrapper
+            is what the end-of-list watcher reads the scrolling element from;
+            Radix puts that one level in. */}
+        <div ref={scrollerRef} className='flex min-h-0 flex-1 flex-col'>
+          <ScrollArea className='min-h-0 flex-1'>
+            <ul
+              className='flex flex-col gap-px'
+              data-testid='conversation-history-list'
+              role='list'
+            >
+              {conversations.length === 0 ? (
+                <li className='px-4 py-3 text-sm text-muted-foreground'>
+                  {t('chat.history.empty')}
+                </li>
+              ) : (
+                conversations.map((c) => (
+                  <ConversationRowView
+                    key={c.id}
+                    row={c}
+                    isActive={c.id === activeId}
+                    onPick={onPick}
+                    onRename={onRename}
+                    onAskDelete={setDeleting}
+                  />
+                ))
+              )}
+            </ul>
+            {/* After the last row, so coming into view means the reader has
+                got to the end of what has been fetched. */}
+            <div ref={sentinelRef} data-testid='conversation-list-end' />
+          </ScrollArea>
+        </div>
       </SheetContent>
 
       {/* Asked before anything goes, which is what this repo does with every

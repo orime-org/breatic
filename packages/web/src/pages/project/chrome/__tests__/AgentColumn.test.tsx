@@ -81,6 +81,18 @@ describe('when the conversations cannot be read', () => {
     expect(within(column).getByTestId('agent-col-header')).toBeInTheDocument();
   });
 
+  it('takes what it covers out of the tab order', async () => {
+    // 一层只挡像素的蒙版，Tab 照样走得进它底下的按钮，而其中一个按钮打开的
+    // 抽屉 portal 到 body、层级在蒙版之上 —— 于是「被挡住的东西」画在蒙版上面
+    // 并且完全可用。「不可操作」要成立，被盖的内容必须真的退出 tab 序。
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
+    renderColumn();
+    await screen.findByTestId('chat-unreachable');
+
+    const header = screen.getByTestId('agent-col-header');
+    expect(header.closest('[inert]')).not.toBeNull();
+  });
+
   it('gives the reader one thing to do about it', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
     renderColumn();
@@ -138,8 +150,7 @@ describe('when they can', () => {
   });
 
   it('counts the conversations, not the messages', async () => {
-    // The chip sits beside the button that opens the list, and what is behind
-    // that button is conversations.
+    // 分页之后手上这份数组的长度不是总数,而这个数本来就不必显示。
     opensWith([
       { id: 'c-1', title: 'one' },
       { id: 'c-2', title: 'two' },
@@ -147,8 +158,7 @@ describe('when they can', () => {
     ]);
     renderColumn();
 
-    await waitFor(() =>
-      expect(screen.getByTestId('conversation-count-chip')).toHaveTextContent('3'),
-    );
+    await waitFor(() => expect(screen.getByTestId('agent-col-header')).toBeInTheDocument());
+    expect(screen.queryByTestId('conversation-count-chip')).toBeNull();
   });
 });

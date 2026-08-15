@@ -10,7 +10,7 @@
  * instead.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -52,6 +52,8 @@ function renderSheet(over: Partial<React.ComponentProps<typeof ConversationHisto
       onRename={onRename}
       onDelete={onDelete}
       onStartNew={onStartNew}
+      hasMore={false}
+      onReachEnd={vi.fn()}
       {...over}
     />,
   );
@@ -173,5 +175,67 @@ describe('the shape of a row', () => {
     for (const button of screen.getAllByRole('button')) {
       expect(button.querySelector('button')).toBeNull();
     }
+  });
+});
+
+describe('backing out of a rename', () => {
+  it('leaves the list open', async () => {
+    // Escape 在这里的意思是「不改了」，只该撤销这一次改名。这一按若继续冒泡，
+    // 抽屉自己的关闭机制会收到它，读者连会话列表一起失去，要重新打开。
+    const onOpenChange = vi.fn();
+    renderSheet({ onOpenChange });
+
+    await userEvent.click(screen.getByTestId('conversation-menu-c2'));
+    await userEvent.click(await screen.findByTestId('conversation-rename-c2'));
+
+    const box = await screen.findByTestId('conversation-rename-input');
+    box.focus();
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByTestId('conversation-rename-input')).toBeNull();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+});
+
+describe('reaching the end of the list', () => {
+  let fire: (() => void) | undefined;
+
+  beforeEach(() => {
+    // jsdom 没有 IntersectionObserver。这个替身把回调存下来，让用例自己决定
+    // 「末尾进入视野」是什么时候发生的。
+    fire = undefined;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
+          fire = () => cb([{ isIntersecting: true }]);
+        }
+        observe(): void {}
+        disconnect(): void {}
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('asks for the next page', () => {
+    const onReachEnd = vi.fn();
+    renderSheet({ hasMore: true, onReachEnd });
+
+    fire?.();
+
+    expect(onReachEnd).toHaveBeenCalled();
+  });
+
+  it('asks for nothing once the list has run out', () => {
+    const onReachEnd = vi.fn();
+    renderSheet({ hasMore: false, onReachEnd });
+
+    // 列完了就没有观察者，末尾进入视野也不该有人被叫。
+    fire?.();
+
+    expect(onReachEnd).not.toHaveBeenCalled();
   });
 });

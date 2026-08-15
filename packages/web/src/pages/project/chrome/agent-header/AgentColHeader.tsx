@@ -16,8 +16,6 @@ import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 
 interface AgentColHeaderProps {
   conversationName: string;
-  /** How many conversations sit behind the history button. */
-  conversationCount: number;
   onOpenHistory: () => void;
   onNewConversation: () => void;
   onRenameConversation: (next: string) => void;
@@ -42,15 +40,13 @@ interface AgentColHeaderProps {
  * just wires the triggers.
  * @param root0 - Component props.
  * @param root0.conversationName - Current conversation name shown in the editable title.
- * @param root0.conversationCount - Number of conversations displayed in the count chip.
  * @param root0.onOpenHistory - Opens the conversation history sheet.
  * @param root0.onNewConversation - Starts a new conversation.
  * @param root0.onRenameConversation - Commits a new conversation name when the title is edited.
- * @returns The agent column header row with history, count chip, editable title, and new-conversation actions.
+ * @returns The agent column header row with history, editable title, and new-conversation actions.
  */
 export function AgentColHeader({
   conversationName,
-  conversationCount,
   onOpenHistory,
   onNewConversation,
   onRenameConversation,
@@ -78,13 +74,6 @@ export function AgentColHeader({
           {t('chrome.tooltip.openHistory')}
         </TooltipContent>
       </Tooltip>
-      <span
-        className='inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-muted px-[6px] text-2xs font-medium tabular-nums text-muted-foreground'
-        data-testid='conversation-count-chip'
-        aria-label={t('chrome.aria.conversationCount', { count: conversationCount })}
-      >
-        {conversationCount}
-      </span>
       <div className='flex min-w-0 flex-1 items-center'>
         <TitleEditable
           value={conversationName}

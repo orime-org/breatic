@@ -82,6 +82,8 @@ export function ChatPanel({
     send,
     abort,
     conversations,
+    hasMoreConversations,
+    loadMoreConversations,
     currentId,
     draft,
     setDraft,
@@ -244,6 +246,8 @@ export function ChatPanel({
         onRename={rename}
         onDelete={remove}
         onStartNew={startNewConversation}
+        hasMore={hasMoreConversations}
+        onReachEnd={loadMoreConversations}
       />
     </div>
   );

@@ -82,7 +82,6 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
       >
         <AgentColHeader
           conversationName={currentTitle ?? t('chat.conversation.untitled')}
-          conversationCount={conversations?.length ?? 0}
           onOpenHistory={openHistory}
           onNewConversation={startNew}
           onRenameConversation={renameCurrent}

@@ -9,6 +9,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 import {
   NodeHistoryRow,
   type HistoryModality,
@@ -80,30 +81,10 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
   onClose,
 }: NodeHistoryPanelProps): React.JSX.Element {
   const t = useTranslation();
-  const scrollRef = React.useRef<HTMLDivElement>(null);
-  const sentinelRef = React.useRef<HTMLDivElement>(null);
-
-  // Infinite scroll: observe a sentinel against the ScrollArea viewport (Radix
-  // stamps `[data-radix-scroll-area-viewport]` on the actual scroller, so we
-  // query it rather than extend the shared primitive). Re-subscribes when the
-  // paging state changes; onLoadMore is stable (the hook useCallbacks it).
-  React.useEffect(() => {
-    const sentinel = sentinelRef.current;
-    const viewport = scrollRef.current?.querySelector(
-      '[data-radix-scroll-area-viewport]',
-    );
-    if (!sentinel || !viewport || !hasNextPage) return;
-    const io = new IntersectionObserver(
-      (obsEntries) => {
-        if (obsEntries[0]?.isIntersecting && !isFetchingNextPage) onLoadMore();
-      },
-      { root: viewport, rootMargin: '80px' },
-    );
-    io.observe(sentinel);
-    return () => {
-      io.disconnect();
-    };
-  }, [hasNextPage, isFetchingNextPage, onLoadMore]);
+  const { scrollerRef, sentinelRef } = useScrolledToEnd({
+    enabled: hasNextPage && !isFetchingNextPage,
+    onReachEnd: onLoadMore,
+  });
 
   return (
     // `nowheel` + `nodrag`: the panel floats over the ReactFlow canvas, which
@@ -195,7 +176,7 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
           </span>
         </div>
       ) : (
-        <div ref={scrollRef}>
+        <div ref={scrollerRef}>
           <ScrollArea viewportClassName='max-h-[318px] px-1.5 pb-1.5'>
             <div className='flex flex-col gap-0.5'>
               {entries.map((entry) => (

@@ -237,6 +237,21 @@ describe("A conversation takes its name from the first thing said in it", () => 
     expect(title!.endsWith("…")).toBe(true);
   });
 
+  it("does not put an ellipsis on a title it did not cut", async () => {
+    // 判断「够不够长」和执行截断必须用同一把尺。前者按 UTF-16 码元数、后者按
+    // 码点数时，一句全是 emoji 的话会走进截断分支却一个字都切不掉，名字末尾
+    // 凭空多一个表示「后面还有」的省略号。
+    const { projectId, cookie } = await seedProject();
+    const conversationId = await openAndGetId(projectId, cookie);
+    const limit = getAgentConfig().conversation_title_max_chars;
+    // 码点数比上限少一个，码元数是它的两倍、比上限多。
+    const said = "\u{1F600}".repeat(limit - 1);
+    await say(said, projectId, conversationId, cookie);
+
+    const title = await storedTitle(conversationId);
+    expect(title).toBe(said);
+  });
+
   it("never cuts an emoji in half", async () => {
     // A cut by code unit lands inside a surrogate pair, and half a pair is
     // stored -- and read back -- as the replacement character, permanently, in

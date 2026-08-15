@@ -28,7 +28,6 @@ function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
   render(
     <AgentColHeader
       conversationName='Onboarding'
-      conversationCount={3}
       onOpenHistory={onOpenHistory}
       onNewConversation={onNewConversation}
       onRenameConversation={onRenameConversation}
@@ -54,11 +53,11 @@ describe('AgentColHeader', () => {
     expect(screen.getByText('Bug triage')).toBeInTheDocument();
   });
 
-  it('renders the count chip immediately right of the history icon', () => {
-    setup({ conversationCount: 12 });
-    expect(screen.getByTestId('conversation-count-chip')).toHaveTextContent(
-      '12',
-    );
+  it('does not say how many conversations there are', () => {
+    // 会话总数对读者没有用处：他要知道的是自己现在在哪一条里。
+    // 列表一分页，手上这份数组的长度也不再是总数了。
+    setup();
+    expect(screen.queryByTestId('conversation-count-chip')).toBeNull();
   });
 
   it('clicking history opens it', async () => {

@@ -32,6 +32,8 @@ const NOOPS = {
   onRename: () => undefined,
   onDelete: () => undefined,
   onStartNew: () => undefined,
+  hasMore: false,
+  onReachEnd: () => undefined,
 };
 
 describe('relativeTime', () => {

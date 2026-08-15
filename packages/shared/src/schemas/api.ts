@@ -358,6 +358,12 @@ export type PaginationInput = z.infer<typeof paginationSchema>;
  */
 export const chatConversationsQuerySchema = paginationSchema.extend({
   project_id: z.string().uuid().optional(),
+  // Overrides the shared default on purpose. How many conversations a page
+  // holds is a runtime knob that lives in `config/agent.yaml`, and the two
+  // routes that list them have to agree on it; a default here would be a
+  // second answer to the same question, in a package that cannot read the
+  // config. Absent means "whatever the server is configured for".
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 export type ChatConversationsQueryInput = z.infer<typeof chatConversationsQuerySchema>;
 

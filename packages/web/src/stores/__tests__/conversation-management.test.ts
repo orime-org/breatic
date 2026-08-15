@@ -17,6 +17,7 @@ vi.mock('@web/data/api/chat', () => ({
     streamMessage: vi.fn(),
     messagesBefore: vi.fn(),
     readConversation: vi.fn(),
+    listConversations: vi.fn(),
     createConversation: vi.fn(),
     renameConversation: vi.fn(),
     deleteConversation: vi.fn(),
@@ -36,13 +37,17 @@ const PROJECT = 'p-1';
  * Answer the open call with a list and whichever one is current.
  * @param conversations - The list as the server would give it
  * @param currentId - Which of them the panel lands on
+ * @param over - What else the answer says
+ * @param over.hasMoreConversations - The list goes on past this page
  */
 function openAnswers(
   conversations: Array<{ id: string; title: string | null }>,
   currentId: string,
+  over: { hasMoreConversations?: boolean } = {},
 ): void {
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations,
+    hasMoreConversations: over.hasMoreConversations ?? false,
     current: {
       conversation: conversations.find((c) => c.id === currentId)!,
       messages: [],
@@ -413,5 +418,94 @@ describe('typing before the conversation has arrived', () => {
     await conversationRuntime.ensureLoaded(PROJECT);
 
     expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('typed in the conversation');
+  });
+});
+
+describe('a list longer than one page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('adds the next page to the end of the one on screen', async () => {
+    // 「加载更多」不是「重新加载」：已经在屏幕上的那些行一行不动，新的接在后面。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1', { hasMoreConversations: true });
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [{ id: 'c-2', title: 'two' }],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+    await conversationRuntime.loadMoreConversations(PROJECT);
+
+    const listed = useConversationRuntime.getState().listByProject[PROJECT] ?? [];
+    expect(listed.map((c) => c.id)).toEqual(['c-1', 'c-2']);
+    expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(false);
+  });
+
+  it('asks for the rows after the ones it already has', async () => {
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1', { hasMoreConversations: true });
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+    await conversationRuntime.loadMoreConversations(PROJECT);
+
+    expect(chatApi.listConversations).toHaveBeenCalledWith(
+      PROJECT,
+      expect.objectContaining({ offset: 1 }),
+    );
+  });
+
+  it('does not ask again once the list has run out', async () => {
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1', { hasMoreConversations: false });
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    await conversationRuntime.loadMoreConversations(PROJECT);
+
+    expect(chatApi.listConversations).not.toHaveBeenCalled();
+  });
+
+  it('keeps the rows it has when the next page cannot be fetched', async () => {
+    // 拉不到下一页说明的是「还有一段没拿到」，不是「已经拿到的那些不算数了」。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1', { hasMoreConversations: true });
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    vi.mocked(chatApi.listConversations).mockRejectedValue(new Error('offline'));
+    await conversationRuntime.loadMoreConversations(PROJECT);
+
+    const listed = useConversationRuntime.getState().listByProject[PROJECT] ?? [];
+    expect(listed.map((c) => c.id)).toEqual(['c-1']);
+    // 还有一段没拿到，所以下一次滑到底还要再试。
+    expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(true);
+  });
+
+  it('only has one request out at a time', async () => {
+    // 滚动会连着触发很多次。每一次都发一个请求，拿回来的是同一段行，
+    // 它们会被接在列表后面变成重复的行。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1', { hasMoreConversations: true });
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    vi.mocked(chatApi.listConversations).mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({ conversations: [{ id: 'c-2', title: 'two' }], hasMore: true } as never),
+            5,
+          ),
+        ),
+    );
+    await Promise.all([
+      conversationRuntime.loadMoreConversations(PROJECT),
+      conversationRuntime.loadMoreConversations(PROJECT),
+      conversationRuntime.loadMoreConversations(PROJECT),
+    ]);
+
+    expect(chatApi.listConversations).toHaveBeenCalledTimes(1);
+    const listed = useConversationRuntime.getState().listByProject[PROJECT] ?? [];
+    expect(listed.map((c) => c.id)).toEqual(['c-1', 'c-2']);
   });
 });

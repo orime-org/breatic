@@ -31,7 +31,7 @@ import { projectService } from "@server/modules";
 import { MainAgent } from "@server/agent/main-agent.js";
 import { serializeSSE, SSEEventType } from "@server/agent/types.js";
 import type { SSEEvent } from "@server/agent/types.js";
-import { runWithContext, logger } from "@breatic/core";
+import { runWithContext, logger, getAgentConfig } from "@breatic/core";
 import { assertSkillUsable } from "@breatic/domain";
 import { SSE_HEARTBEAT_INTERVAL_MS } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
@@ -265,7 +265,7 @@ chat.get(
     const { limit, offset, project_id: projectId } = c.req.valid("query");
     const page = await conversationService.list(user.id, {
       projectId,
-      limit,
+      limit: limit ?? getAgentConfig().conversation_page_size,
       offset,
     });
     return c.json({ data: page });

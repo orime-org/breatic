@@ -21,6 +21,7 @@ vi.mock('@web/data/api/chat', () => ({
     streamMessage: vi.fn(),
     messagesBefore: vi.fn(),
     readConversation: vi.fn(),
+    listConversations: vi.fn(),
     createConversation: vi.fn(),
     renameConversation: vi.fn(),
     deleteConversation: vi.fn(),
@@ -154,5 +155,103 @@ describe('deleting the conversation on screen', () => {
     // `failed` also puts the scrim up, which is the right answer when the
     // conversation meant to replace it could not be read.
     expect(useConversationRuntime.getState().openStatus[P]).not.toBe('ready');
+  });
+});
+
+describe('a new conversation started while a switch is still out', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('leaves the reader in the one they just created', async () => {
+    // 按 + 是读者最后一次明示的导航。在途的那次切换比它早，落地却比它晚，
+    // 于是读者被从刚建的会话里拽回去，而新建的那条挂在列表顶上没人进去。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    let releaseRead: (() => void) | undefined;
+    vi.mocked(chatApi.readConversation).mockImplementation(
+      (id) =>
+        new Promise((resolve) => {
+          releaseRead = () =>
+            resolve({
+              conversation: { id, title: id },
+              messages: [],
+              hasMore: false,
+            } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+        }),
+    );
+    const switching = conversationRuntime.switchTo(P, 'c-2');
+
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 'c-new',
+      title: null,
+    } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
+    await conversationRuntime.startNew(P);
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-new');
+
+    releaseRead?.();
+    await switching;
+
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-new');
+  });
+});
+
+describe('picking another row while a delete is in flight', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('leaves the reader on the row they picked', async () => {
+    // 删除的落点是「删完之后该显示哪条」，它在请求发出前就把答案定死了。
+    // 读者在这一趟往返里点了另一行，那才是他最后一次明示的选择。
+    opens([
+      { id: 'c-1', title: 'one' },
+      { id: 'c-2', title: 'two' },
+      { id: 'c-3', title: 'three' },
+    ]);
+    await conversationRuntime.ensureLoaded(P);
+
+    let releaseDelete: (() => void) | undefined;
+    vi.mocked(chatApi.deleteConversation).mockImplementation(
+      () => new Promise<void>((resolve) => (releaseDelete = resolve)),
+    );
+    vi.mocked(chatApi.readConversation).mockImplementation((id) =>
+      Promise.resolve({
+        conversation: { id, title: id },
+        messages: [],
+        hasMore: false,
+      } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>),
+    );
+
+    const removing = conversationRuntime.remove(P, 'c-1');
+    await conversationRuntime.switchTo(P, 'c-3');
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-3');
+
+    releaseDelete?.();
+    await removing;
+
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-3');
+  });
+});
+
+describe('a draft typed before the project had a conversation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not follow the reader back into the project', async () => {
+    // 这半句话是在上一次访问里打的。它没有归属会话，所以按「属于哪条会话」
+    // 筛选的清理看不见它，回来时会被搬进这次打开的那条会话。
+    opens([{ id: 'c-1', title: 'one' }]);
+    conversationRuntime.setDraft(P, undefined, 'half a sentence');
+    conversationRuntime.leaveProject(P);
+
+    await conversationRuntime.ensureLoaded(P);
+
+    expect(conversationRuntime.draftOf(P, 'c-1')).toBe('');
   });
 });

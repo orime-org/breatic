@@ -23,7 +23,6 @@ const NEW_KEYS_EN: ReadonlyArray<readonly [string, string]> = [
   ['chrome.aria.creditsBalance', 'Credits balance'],
   ['chrome.aria.addCredits', 'Add credits'],
   ['chrome.aria.home', 'Home'],
-  ['chrome.aria.conversationCount', '{count} conversations'],
   ['chrome.aria.scrollTabsLeft', 'Scroll tabs left'],
   ['chrome.aria.scrollTabsRight', 'Scroll tabs right'],
   ['chrome.aria.spacesToolbar', 'Spaces'],

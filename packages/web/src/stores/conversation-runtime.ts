@@ -146,6 +146,14 @@ interface ConversationRuntimeState {
    */
   listByProject: Record<string, ConversationOnTheWire[]>;
   /**
+   * The project has conversations older than the ones listed above.
+   *
+   * Answered by the server rather than worked out from the length of the list:
+   * a page that filled the window and a page that happened to be the last one
+   * look identical from here.
+   */
+  listHasMore: Record<string, boolean>;
+  /**
    * What is half-typed in each conversation, keyed by conversation.
    *
    * One per conversation and not one per panel: switching conversations puts
@@ -446,6 +454,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   conversations: {},
   currentByProject: {},
   listByProject: {},
+  listHasMore: {},
   draftByConversation: {},
   openStatus: {},
   sendingByProject: {},
@@ -570,6 +579,7 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // opened at all.
     useStore.setState((st) => ({
       listByProject: { ...st.listByProject, [projectId]: opened.conversations },
+      listHasMore: { ...st.listHasMore, [projectId]: opened.hasMoreConversations },
     }));
     return undefined;
   } catch (err) {
@@ -1335,6 +1345,59 @@ async function startNew(projectId: string): Promise<void> {
 }
 
 /**
+ * Projects with a request out for their next page of conversations.
+ *
+ * Reaching the bottom of a list fires as often as the reader keeps scrolling,
+ * and every one of those would ask for the same window again -- the answers
+ * would arrive one after another and each would be appended, so the same rows
+ * would appear two and three times over.
+ */
+const fetchingMore = new Set<string>();
+
+/**
+ * Fetch the page of conversations after the ones already listed.
+ *
+ * Does nothing when the list is known to be complete, and nothing while a
+ * request for the next page is already out. The window starts at however many
+ * rows are held: every write to this list -- a new conversation at the top, a
+ * deleted one gone, one moved up after being spoken in -- moves the server's
+ * ordering the same way, so the count of rows held is the count to skip.
+ *
+ * A failure leaves the rows already listed exactly as they are and says so
+ * once. What could not be read is the part that has not arrived yet, not the
+ * part that has; and `listHasMore` stays true, so reaching the bottom again
+ * tries again.
+ * @param projectId - The project whose list to extend.
+ */
+async function loadMoreConversations(projectId: string): Promise<void> {
+  const state = useStore.getState();
+  if (!state.listHasMore[projectId]) return;
+  if (fetchingMore.has(projectId)) return;
+
+  const held = state.listByProject[projectId] ?? [];
+  const visit = currentVisit(projectId);
+  fetchingMore.add(projectId);
+  try {
+    const page = await chatApi.listConversations(projectId, { offset: held.length });
+    if (visit.signal.aborted) return;
+    useStore.setState((s) => ({
+      listByProject: {
+        ...s.listByProject,
+        [projectId]: [...(s.listByProject[projectId] ?? []), ...page.conversations],
+      },
+      listHasMore: { ...s.listHasMore, [projectId]: page.hasMore },
+    }));
+  } catch (err) {
+    if (visit.signal.aborted) return;
+    // The reader reached the bottom themselves, so this is an answer to
+    // something they did.
+    tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
+  } finally {
+    fetchingMore.delete(projectId);
+  }
+}
+
+/**
  * Give a conversation the name its owner typed.
  *
  * The list is written only once the server has stored it. Showing the new name
@@ -1562,6 +1625,7 @@ export function _resetForTests(): void {
     conversations: {},
     currentByProject: {},
     listByProject: {},
+    listHasMore: {},
     draftByConversation: {},
     openStatus: {},
     sendingByProject: {},
@@ -1578,6 +1642,7 @@ export const conversationRuntime = {
   leaveProject,
   switchTo,
   startNew,
+  loadMoreConversations,
   rename,
   remove,
   noteActivity,

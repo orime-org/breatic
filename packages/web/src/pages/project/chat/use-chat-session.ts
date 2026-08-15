@@ -69,8 +69,12 @@ export interface ChatSession {
   send: (draft: string) => Promise<void>;
   /** Stop the turn in flight. */
   abort: () => void;
-  /** Every conversation this reader has here, most recently used first. */
+  /** The conversations fetched so far here, most recently used first. */
   conversations: ConversationOnTheWire[];
+  /** The project has conversations older than the ones listed. */
+  hasMoreConversations: boolean;
+  /** Fetch the page after the ones listed. */
+  loadMoreConversations: () => void;
   /** Which one is on screen, for the list to mark. */
   currentId: string | undefined;
   /** What this conversation has half-typed, and how to change it. */
@@ -175,6 +179,9 @@ export function useChatSession(projectId: string): ChatSession {
   const conversations = useConversationRuntime(
     (s) => s.listByProject[projectId] ?? NO_CONVERSATIONS,
   );
+  const hasMoreConversations = useConversationRuntime(
+    (s) => s.listHasMore[projectId] ?? false,
+  );
   // Under the conversation when there is one, under the project until then --
   // typing while the open call is still out has to land somewhere.
   const draft = useConversationRuntime(
@@ -230,6 +237,11 @@ export function useChatSession(projectId: string): ChatSession {
 
   const switchTo = React.useCallback(
     (id: string): void => void conversationRuntime.switchTo(projectId, id),
+    [projectId],
+  );
+
+  const loadMoreConversations = React.useCallback(
+    (): void => void conversationRuntime.loadMoreConversations(projectId),
     [projectId],
   );
 
@@ -327,6 +339,8 @@ export function useChatSession(projectId: string): ChatSession {
     send,
     abort,
     conversations,
+    hasMoreConversations,
+    loadMoreConversations,
     currentId: conversationId,
     draft,
     setDraft,

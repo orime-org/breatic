@@ -48,10 +48,18 @@ export interface MessagePage {
   hasMore: boolean;
 }
 
+/** One page of a project's conversations, and whether more follow it. */
+export interface ConversationListPage {
+  conversations: ConversationOnTheWire[];
+  hasMore: boolean;
+}
+
 /** Everything the panel needs to render, from one call. */
 export interface OpenChatResult {
-  /** This user's conversations in this project, most recently used first. */
+  /** The first page of this user's conversations here, most recently used first. */
   conversations: ConversationOnTheWire[];
+  /** The list goes on past that page, and the next one is a request away. */
+  hasMoreConversations: boolean;
   /** The one to show, and what has been said in it. */
   current: {
     conversation: ConversationOnTheWire;
@@ -129,11 +137,24 @@ export const chatApi = {
       signal,
     });
   },
-  listConversations(projectId: string) {
-    return apiGet<{ conversations: ConversationSummary[] }>(
-      '/chat/conversations',
-      { params: { projectId } },
-    );
+  /**
+   * One page of this project's conversations, most recently used first.
+   *
+   * `project_id` is the name the server reads. Spelling it any other way is
+   * not rejected -- the filter simply goes missing, and the answer becomes
+   * every conversation this user has in every project.
+   * How many rows come back is the server's to decide -- it is a runtime knob
+   * in `config/agent.yaml`, and the call that opens the panel reads the same
+   * one. Naming a size here would be a second answer to that question.
+   * @param projectId - The project to list.
+   * @param page - Where the window starts.
+   * @param page.offset - How many rows to skip before it starts.
+   * @returns The page, and whether the list goes on past it.
+   */
+  listConversations(projectId: string, page: { offset: number }) {
+    return apiGet<ConversationListPage>('/chat/conversations', {
+      params: { project_id: projectId, offset: page.offset },
+    });
   },
   /**
    * Read one conversation with the newest page of its messages.
