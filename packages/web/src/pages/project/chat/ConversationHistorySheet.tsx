@@ -195,6 +195,9 @@ function ConversationRowView({
             placeholder={t('chat.conversation.renamePlaceholder')}
             aria-label={t('chat.conversation.rename')}
             className='m-3 min-w-0 flex-1 rounded-content-sm border border-active-border bg-background px-2 py-1 text-sm text-foreground outline-none'
+            // Marks what an Escape means while the focus is in here. The
+            // sheet reads it before dismissing; see `onEscapeKeyDown` below.
+            data-renaming
             onKeyDown={(e) => {
               if (e.key === 'Enter') commit(e.currentTarget.value);
               if (e.key === 'Escape') setRenaming(false);
@@ -320,6 +323,15 @@ function ConversationHistorySheetInner({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        onEscapeKeyDown={(e) => {
+          // An Escape typed into a rename box means "leave the name alone",
+          // not "close the list". Radix listens for it on the document in the
+          // capture phase, so the box itself cannot stop it getting here --
+          // it can only say what the press was for, and this is where that is
+          // read. Marking it handled leaves the sheet open; the box's own
+          // handler then backs the rename out.
+          if (document.activeElement?.hasAttribute('data-renaming')) e.preventDefault();
+        }}
         side='left-floating'
         // flex column so the header stays fixed and the ScrollArea below
         // (flex-1 min-h-0) takes exactly the remaining height (#1773).

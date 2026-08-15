@@ -231,22 +231,19 @@ describe('a conversation the server no longer has', () => {
 });
 
 describe('what the message column is told while a chat is re-opened', () => {
-  it('is not told the chat is loading all over again', async () => {
-    // Opening failed when the reader arrived, so pressing send is what opens
-    // one -- and that is a whole request during which the column must not
-    // change: what it holds is what it held.
+  it('says it is trying again when a chat that could not be read is re-opened', async () => {
+    // 打开失败之后,屏幕上没有会话 —— 蒙版盖着整列。所以再打开一次不会
+    // 拿走任何东西,而说一句「在读了」正是重试该有的样子:蒙版让位给等待,
+    // 再失败一次蒙版再回来。
     vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
     await conversationRuntime.ensureLoaded('p-1');
     expect(useConversationRuntime.getState().openStatus['p-1']).toBe('failed');
 
     vi.mocked(chatApi.openChat).mockReturnValueOnce(new Promise(() => {}));
-    void conversationRuntime.send('p-1', 'hello');
+    void conversationRuntime.ensureLoaded('p-1');
     await vi.waitFor(() => expect(chatApi.openChat).toHaveBeenCalledTimes(2));
 
-    // `loading` is what the panel renders nothing for. Going back to it here
-    // would take the column away -- on a re-open it is the conversation on
-    // screen that disappears, and a press is what caused it.
-    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('failed');
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('loading');
   });
 
   it('keeps a chat that opened once from being called unopenable later', async () => {

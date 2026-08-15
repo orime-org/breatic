@@ -37,8 +37,7 @@ interface ChatEmptyProps {
  * zero messages. Mirrors the chrome-baseline mock `chat-empty`:
  *
  *   Hi, <name>!                              ← bold foreground greeting
- *   Try asking @ a node                      ← muted instruction
- *   Or type your prompt below ↓
+ *   Type your prompt below ↓                 ← muted instruction
  *   [🖼️ Find me a reference]                 ← stacked quick actions,
  *   [✨ Write a prompt for this]                see QUICK_ACTIONS above
  *   [✏️ Refine this prompt]

@@ -8,6 +8,7 @@ import { useChatStore } from '@web/stores';
 
 import {
   conversationRuntime,
+  projectDraftKey,
   turnPhaseOf,
   useConversationRuntime,
   watchChatMishaps,
@@ -185,7 +186,7 @@ export function useChatSession(projectId: string): ChatSession {
   // Under the conversation when there is one, under the project until then --
   // typing while the open call is still out has to land somewhere.
   const draft = useConversationRuntime(
-    (s) => s.draftByConversation[conversationId ?? `project:${projectId}`] ?? '',
+    (s) => s.draftByConversation[conversationId ?? projectDraftKey(projectId)] ?? '',
   );
 
   React.useEffect(() => {

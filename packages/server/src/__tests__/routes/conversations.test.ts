@@ -28,6 +28,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
+import { getAgentConfig } from "@breatic/core";
 
 const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 
@@ -38,22 +39,28 @@ describe("Conversation routes", () => {
   });
 
   describe("GET /chat/conversations — list", () => {
-    it("returns conversation list", async () => {
-      mocks.conversationService.list.mockResolvedValue([
-        { id: "conv-1", title: "Chat 1" },
-        { id: "conv-2", title: "Chat 2" },
-      ]);
+    it("returns one page, and whether the list goes on past it", async () => {
+      mocks.conversationService.list.mockResolvedValue({
+        conversations: [
+          { id: "conv-1", title: "Chat 1" },
+          { id: "conv-2", title: "Chat 2" },
+        ],
+        hasMore: true,
+      });
 
       const app = createApp();
       const res = await app.request("/api/v1/chat/conversations", { headers: AUTH });
 
       expect(res.status).toBe(200);
-      const body = await res.json() as { data: unknown[] };
-      expect(body.data).toHaveLength(2);
-      // Default call shape: no project filter, default limit/offset.
+      const body = await res.json() as { data: { conversations: unknown[]; hasMore: boolean } };
+      expect(body.data.conversations).toHaveLength(2);
+      expect(body.data.hasMore).toBe(true);
+      // A caller that names no window gets the configured page size. The size
+      // is not the schema's to default, because the call that opens the panel
+      // reads the same one and the two have to agree.
       expect(mocks.conversationService.list).toHaveBeenCalledWith(expect.any(String), {
         projectId: undefined,
-        limit: 20,
+        limit: getAgentConfig().conversation_page_size,
         offset: 0,
       });
     });

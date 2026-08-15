@@ -162,12 +162,16 @@ export async function openChat(
 function titleFromMessage(said: string, limit: number): string | null {
   const collapsed = said.replace(/\s+/g, " ").trim();
   if (collapsed.length === 0) return null;
-  if (collapsed.length <= limit) return collapsed;
-  // Cut by code point, not by code unit. A `slice` lands inside a surrogate
-  // pair whenever the character at the boundary is an emoji, and half a pair
-  // is stored, and read back, as the replacement character -- permanently, in
-  // the name of a conversation.
-  return `${[...collapsed].slice(0, limit - 1).join("")}…`;
+  // Counted in code points, and cut in code points. Measuring in UTF-16 code
+  // units instead would send a line of emoji down the cutting branch without
+  // there being anything to cut: the title comes back whole with an ellipsis
+  // on the end announcing a remainder that does not exist. Cutting by code
+  // unit is the other half of the same mistake -- it lands inside a surrogate
+  // pair, and half a pair is stored, and read back, as the replacement
+  // character, permanently, in the name of a conversation.
+  const characters = [...collapsed];
+  if (characters.length <= limit) return collapsed;
+  return `${characters.slice(0, limit - 1).join("")}…`;
 }
 
 /**

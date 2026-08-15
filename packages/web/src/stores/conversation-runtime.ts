@@ -558,22 +558,33 @@ async function ensureLoaded(projectId: string): Promise<void> {
  *   failure anyone is owed a word about.
  */
 async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined> {
+  const nav = intendToNavigate(projectId);
   const visit = currentVisit(projectId);
-  // Only from the start. This says what the chat has come to be, not whether
-  // a request is out -- that is what `opening` and `sendingByProject` are for.
-  // Going back to `loading` for a re-open takes the whole message column off
-  // the screen (the list renders nothing while this says loading), and a
-  // re-open is something a press causes: the reader would press send and watch
-  // their conversation disappear.
+  // Everything except a chat that is already on screen. What this must not do
+  // is take a conversation away from someone reading it: the message column
+  // draws nothing while this says loading, so a re-open behind a chat that
+  // works would blank it -- and a re-open is something a press causes, so the
+  // reader would press send and watch their conversation disappear.
+  //
+  // A chat that could not be read has nothing to take away. Saying loading
+  // there is the whole of what a retry looks like: the scrim goes, the wait is
+  // shown, and a second failure brings the scrim back. Without it the retry
+  // button changed nothing on screen at all -- the only word about it went to
+  // the notice line, which that same scrim is covering.
   useStore.setState((s) =>
-    s.openStatus[projectId] === undefined || s.openStatus[projectId] === 'idle'
-      ? { openStatus: { ...s.openStatus, [projectId]: 'loading' } }
-      : s,
+    s.openStatus[projectId] === 'ready'
+      ? s
+      : { openStatus: { ...s.openStatus, [projectId]: 'loading' } },
   );
   try {
     const opened = await chatApi.openChat(projectId, visit.signal);
     if (visit.signal.aborted) return undefined;
-    adoptConversation(projectId, opened.current);
+    // The reader can press "new conversation" while this is still out -- the
+    // header is drawn before the answer arrives. What they pressed is later
+    // than this, so the conversation they made is the one to stay on; only
+    // the list below is still worth taking.
+    const landed = stillAwaited(projectId, nav);
+    if (landed) adoptConversation(projectId, opened.current);
     // The list arrives with the same answer and used to be dropped here, which
     // is why the history sheet had nothing to show even once it could be
     // opened at all.
@@ -603,10 +614,13 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
 /**
  * Put a conversation and its newest page on screen for a project.
  *
- * Rebuilds the entry rather than merging into it, turn included: this is an
- * answer describing the whole conversation, so anything kept from before it
- * would be state the server has just contradicted. That is also why callers
- * must not reach here with an answer to a visit that is over -- see
+ * Rebuilds the entry rather than merging into it: this is an answer describing
+ * the whole conversation, so what it does describe replaces what was held.
+ * A turn still running here is the exception, and the reason is the same one
+ * -- it is the part of this conversation the answer does not describe, because
+ * it has not reached the server yet. It is carried across, along with the
+ * reply being written and the failures shown beside it. That is also why
+ * callers must not reach here with an answer to a visit that is over -- see
  * {@link visits} -- and why every one of them checks first.
  * @param projectId - The project showing it.
  * @param opened - The conversation, its newest page, and whether the
@@ -1222,12 +1236,41 @@ async function loadEarlier(conversationId: string): Promise<void> {
 }
 
 /**
- * The conversation each project's reader last asked to see.
+ * How many times each project's reader has asked to be somewhere.
  *
  * Outside the state because nothing renders it: it exists so an answer can ask
- * "am I still the one being waited for" before it writes.
+ * "is the reader still waiting for me" before it puts a conversation on
+ * screen. Every route that writes `currentByProject` takes a number before it
+ * asks for anything and checks it before it writes -- a switch, a new
+ * conversation, and the first open all land here, and any of them can be
+ * overtaken by a later press.
+ *
+ * A count rather than the conversation being waited for, because one of those
+ * routes does not know what it is landing on until the server answers: a new
+ * conversation has no id until it has been created.
  */
-const switchingTo = new Map<string, string>();
+const navigations = new Map<string, number>();
+
+/**
+ * Record that the reader has asked to be somewhere in this project.
+ * @param projectId - The project being navigated.
+ * @returns The number to check back with before landing.
+ */
+function intendToNavigate(projectId: string): number {
+  const next = (navigations.get(projectId) ?? 0) + 1;
+  navigations.set(projectId, next);
+  return next;
+}
+
+/**
+ * Whether the reader is still waiting for the navigation with this number.
+ * @param projectId - The project.
+ * @param token - What {@link intendToNavigate} handed back.
+ * @returns True while nothing later has been asked for.
+ */
+function stillAwaited(projectId: string, token: number): boolean {
+  return navigations.get(projectId) === token;
+}
 
 /**
  * Write a conversation's name into the list the reader chooses from.
@@ -1292,20 +1335,21 @@ function noteActivity(projectId: string, conversationId: string, title: string |
  * @param conversationId - The conversation to show.
  */
 async function switchTo(projectId: string, conversationId: string): Promise<void> {
+  // Taken before the early return below, not after. Picking the row already on
+  // screen is still the reader saying where they want to be, and it has to
+  // cancel whatever is on its way -- otherwise a switch they started and then
+  // changed their mind about lands anyway, a moment later.
+  const nav = intendToNavigate(projectId);
+
   // Already the one on screen. Asking again would replace a conversation with
   // an identical copy of itself for no reason.
   if (useStore.getState().currentByProject[projectId] === conversationId) return;
 
-  // Which conversation the reader last asked for. Two presses in a row are two
-  // requests, and the answers come back in whatever order the network gives
-  // them -- without this the slower one lands last and the reader ends up in a
-  // conversation they did not choose, with the list agreeing.
-  switchingTo.set(projectId, conversationId);
   const visit = currentVisit(projectId);
   try {
     const read = await chatApi.readConversation(conversationId);
     if (visit.signal.aborted) return;
-    if (switchingTo.get(projectId) !== conversationId) return;
+    if (!stillAwaited(projectId, nav)) return;
     adoptConversation(projectId, read);
   } catch (err) {
     // Nothing moves. The reader stays where they were, which is a place that
@@ -1326,10 +1370,17 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
  * @param projectId - The project to start one in.
  */
 async function startNew(projectId: string): Promise<void> {
+  const nav = intendToNavigate(projectId);
   const visit = currentVisit(projectId);
   try {
     const created = await chatApi.createConversation(projectId);
     if (visit.signal.aborted) return;
+    // A switch started before this press may still be out. It was asked for
+    // first and will answer whenever it answers, but this is what the reader
+    // asked for last, so the row it creates is the one to land on -- and the
+    // check inside that switch will see this number and leave the screen
+    // alone.
+    if (!stillAwaited(projectId, nav)) return;
     useStore.setState((s) => ({
       listByProject: {
         ...s.listByProject,
@@ -1436,7 +1487,6 @@ async function rename(
  */
 async function remove(projectId: string, conversationId: string): Promise<void> {
   const visit = currentVisit(projectId);
-  const wasOnScreen = useStore.getState().currentByProject[projectId] === conversationId;
 
   try {
     await chatApi.deleteConversation(conversationId);
@@ -1468,7 +1518,16 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
     };
   });
 
-  if (!wasOnScreen) return;
+  // Read now, not before the request went out. Whether this conversation is
+  // the one on screen is a question about the moment it disappears, and in
+  // between the reader may have picked another row -- deciding at the start
+  // would pull them off it.
+  if (useStore.getState().currentByProject[projectId] !== conversationId) return;
+
+  // Landing somewhere else is a navigation like any other, and it has to be
+  // ordered against the reader's own: whatever they pressed after this must
+  // win over the row this picks for them.
+  const nav = intendToNavigate(projectId);
 
   // The conversation the panel was showing has just gone, and the next one is
   // a round trip away. Saying so is what keeps the empty-conversation greeting
@@ -1488,7 +1547,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
     try {
       const read = await chatApi.readConversation(next.id);
       if (visit.signal.aborted) return;
-      switchingTo.set(projectId, next.id);
+      if (!stillAwaited(projectId, nav)) return;
       adoptConversation(projectId, read);
     } catch (err) {
       if (visit.signal.aborted) return;
@@ -1522,7 +1581,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
  * @param projectId - The project being read.
  * @returns The key drafts are kept under while no conversation is on screen.
  */
-function projectDraftKey(projectId: string): string {
+export function projectDraftKey(projectId: string): string {
   return `project:${projectId}`;
 }
 
@@ -1593,7 +1652,13 @@ function leaveProject(projectId: string): void {
     // the project from the server -- so keeping them would hand a returning
     // reader half a sentence they typed in a session they have left.
     const keptDrafts: Record<string, string> = {};
+    const waitingKey = projectDraftKey(projectId);
     for (const [id, draft] of Object.entries(s.draftByConversation)) {
+      // The one typed before this project had a conversation is keyed by the
+      // project, not by a conversation, so asking which conversation it
+      // belongs to finds nothing and keeps it -- and the next visit hands it
+      // to whichever conversation happens to open.
+      if (id === waitingKey) continue;
       if (s.conversations[id]?.projectId !== projectId) keptDrafts[id] = draft;
     }
     return {

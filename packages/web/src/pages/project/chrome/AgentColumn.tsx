@@ -74,12 +74,12 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
           higher layer -- so it would draw on top of the thing meant to be
           blocking it. `inert` is what makes "cannot be operated" true rather
           than merely looking true. */}
-      <div
-        className='contents'
-        // `inert` is a platform attribute React's DOM typings do not carry
-        // yet; the cast hands it through untouched.
-        {...({ inert: unreachable ? '' : undefined } as unknown as React.HTMLAttributes<HTMLDivElement>)}
-      >
+      {/* A boolean, not an empty string. React 19 treats `inert=""` as false
+          and removes the attribute outright, which leaves a scrim that stops
+          the mouse and nothing else: Tab still walks into the header beneath
+          it, and the sheet one of those buttons opens is portalled to the body
+          above the scrim, fully usable. */}
+      <div className='contents' inert={unreachable}>
         <AgentColHeader
           conversationName={currentTitle ?? t('chat.conversation.untitled')}
           onOpenHistory={openHistory}
