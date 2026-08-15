@@ -5,16 +5,30 @@
  * Model-param reconciliation for the Generate panel.
  *
  * Each model in the catalog defines its own param set (aspect ratio,
- * resolution, model-specific knobs) with allowed `values` + a `default`.
- * When the user switches model, the previously chosen params may no longer be
- * valid for the new model, so they are reconciled: a still-valid value is
- * kept, an invalid one falls back to the new model's default, and a param the
- * new model does not define is preserved untouched (user 2026-07-18 — see
- * {@link resolveParamsForModel} for why, and where such a param is dropped
- * instead).
+ * resolution, model-specific knobs) with allowed `values` + a `default`, and
+ * the node keeps ONE RECORD PER MODEL under `data.paramsByModel` (#1948).
+ * Selecting a model reconciles its own record against its own declaration: a
+ * still-valid value is kept, an invalid one falls back to that model's
+ * default, and a key the model does not declare is dropped.
+ *
+ * Nothing flows between two models' records. A value the user chose on one
+ * model is still there when they come back to it, because it never left that
+ * model's record — not because it was carried along. That is what makes a
+ * mode switch safe: the mode's model brings its own record, and the model the
+ * user is leaving keeps its own.
  */
 
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
+
+/** What {@link paramsStoreOf} reads off a node to build its per-model records. */
+export interface ParamsStoreSource {
+  /** The node's currently selected model id. */
+  model?: string;
+  /** The params in effect right now (the pre-#1948 single set on old nodes). */
+  params?: Record<string, unknown>;
+  /** Per-model records, absent on nodes that predate #1948. */
+  paramsByModel?: Record<string, Record<string, unknown>>;
+}
 
 /**
  * Resolves the value for a single param against the current selection: keeps a
@@ -38,31 +52,66 @@ function resolveParamValue(
 }
 
 /**
- * Reconciles the current Generate params against a (possibly newly selected)
- * model: for every param the model defines, keep the current value if valid
- * else use the model's default. Params the model does NOT define are PRESERVED
- * as-is (user 2026-07-18): a param set lives in `node.data.params` independent
- * of which model is active, so switching to a model that lacks it (e.g. camera
- * knobs → Midjourney) and back does not lose the value — only models that
- * declare a param read it, and the worker's `validateParams` drops any param
- * the target model does not declare at generation time (no leak to the provider).
+ * Reconciles one model's own param record against its own declaration: for
+ * every param the model defines, keep the current value if valid else use the
+ * model's default. Keys the model does NOT declare are dropped, so the result
+ * is exactly the model's declared param set (#1948).
+ *
+ * Dropping is safe now that records are per model: the input is either that
+ * model's own record or nothing at all, so an undeclared key can only come
+ * from a stale declaration (a param we removed from the catalog) or from the
+ * one-time migration of a pre-#1948 node — neither is worth carrying, and
+ * both would ride into the request payload, where the worker drops them and
+ * logs `unknown_param_dropped`.
  * @param model - The model whose param set to reconcile against.
- * @param current - The current param selection (from `node.data.params`).
- * @returns A new params object: reconciled declared params + preserved others.
+ * @param current - That model's stored record (empty for a model never used).
+ * @returns A new params object holding exactly the model's declared params.
  */
 export function resolveParamsForModel(
   model: ModelEntry,
   current: Record<string, unknown>,
 ): Record<string, unknown> {
-  // Start from the full current set so params the new model does not declare
-  // survive the switch (they stay in Yjs, dormant until a model that reads them
-  // is selected again).
-  const next: Record<string, unknown> = { ...current };
+  const next: Record<string, unknown> = {};
   // model.params is trusted (the catalog is sanitized at the API boundary): it
-  // is always a Record<string, ParamDescriptor>. A model with no param set
-  // leaves the current params untouched.
+  // is always a Record<string, ParamDescriptor>.
   for (const [key, descriptor] of Object.entries(model.params)) {
     next[key] = resolveParamValue(descriptor, current[key]);
   }
   return next;
+}
+
+/**
+ * The node's per-model param records, migrating a pre-#1948 node on the way.
+ *
+ * A node that already has `paramsByModel` is returned as-is, INCLUDING an
+ * empty one: empty means the node has been through this code path and the
+ * user has since cleared it, so migrating again would resurrect params they
+ * got rid of.
+ *
+ * A node without it predates #1948 and carries a single `params` set. That set
+ * belongs to the ONE model it was last on, so it is handed to that model and
+ * to no other — handing it to every model the user later picks is precisely
+ * the defect this slice fixes. It is passed through
+ * {@link resolveParamsForModel} on the way, which strips the keys belonging to
+ * models the node visited before (`end_image` / `video` / `images` on the
+ * video side) so they never reach a request payload.
+ *
+ * Nothing to migrate (no content, no model yet, or a model that has left the
+ * catalog and therefore has no declaration to filter against) yields empty
+ * records: every model then starts from its own defaults, which is the correct
+ * reading of "we cannot tell which of these values the user chose".
+ * @param content - The node's model / params / per-model records.
+ * @param models - The catalog models this panel offers, used to find the current model's declaration.
+ * @returns The per-model records to read from and write back.
+ */
+export function paramsStoreOf(
+  content: ParamsStoreSource | undefined,
+  models: readonly ModelEntry[],
+): Record<string, Record<string, unknown>> {
+  if (content?.paramsByModel) return content.paramsByModel;
+  const current = content?.model;
+  if (!current) return {};
+  const entry = models.find((m) => m.name === current);
+  if (!entry) return {};
+  return { [current]: resolveParamsForModel(entry, content?.params ?? {}) };
 }
