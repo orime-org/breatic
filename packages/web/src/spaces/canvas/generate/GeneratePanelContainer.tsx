@@ -45,7 +45,11 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
+import {
+  paramsStoreOf,
+  resolveModelSwitch,
+} from '@web/spaces/canvas/generate/model-params';
 import {
   buildGeneratePanelViewModel,
   selectModeModels,
@@ -305,6 +309,21 @@ function GeneratePanelBody({
     [projectId, spaceId, nodeId, models],
   );
 
+  /**
+   * The node's live content view, or undefined when the node is gone or is not
+   * a content node. Read fresh at click time for the same reason freshVm is: a
+   * collaborator may have changed the model, the params or the per-model
+   * records since this render.
+   * @returns The node's content view, or undefined.
+   */
+  const freshContent = React.useCallback(():
+    | ContentNodeView
+    | undefined => {
+    const graph = readCanvasGraph(projectId, spaceId);
+    const data = graph.nodes.find((n) => n.id === nodeId)?.data;
+    return data && 'status' in data ? data : undefined;
+  }, [projectId, spaceId, nodeId]);
+
   const canExecute = canExecuteGenerate({
     promptText,
     model: vm.model,
@@ -329,16 +348,26 @@ function GeneratePanelBody({
         toast.error(t('canvas.generatePanel.modelUnavailable'));
         return;
       }
-      // Record the pick under the ACTIVE mode (freshVm re-reads live Yjs) so a
-      // later toggle back to this mode restores it (modelByMode memory).
+      // Record the pick under the ACTIVE mode so a later toggle back to this
+      // mode restores it (modelByMode memory), and give the picked model its
+      // OWN params rather than the outgoing model's (#1948). Both read the
+      // node fresh from Yjs — a collaborator may have moved either since this
+      // render.
       const fresh = freshVm();
+      const content = freshContent();
+      const { params, paramsByModel } = resolveModelSwitch(
+        content,
+        picked,
+        models,
+      );
       setNodeModel(
         projectId,
         spaceId,
         nodeId,
         fresh.mode,
         modelId,
-        resolveParamsForModel(picked, fresh.params),
+        params,
+        paramsByModel,
       );
     },
     [models, projectId, spaceId, nodeId, freshVm, t],
@@ -351,29 +380,35 @@ function GeneratePanelBody({
       // switch in one Yjs transaction. resolveModeSwitch resolves fresh for the
       // target mode (its remembered pick → recommended → first) — the current
       // model belongs to the old mode and is deliberately not carried over.
-      const graph = readCanvasGraph(projectId, spaceId);
-      const nodeData = graph.nodes.find((n) => n.id === nodeId)?.data;
-      const content = nodeData && 'status' in nodeData ? nodeData : undefined;
-      const { model, params } = resolveModeSwitch(content, newMode, models);
+      const { model, params, paramsByModel } = resolveModeSwitch(
+        freshContent(),
+        newMode,
+        models,
+      );
       // Never persist an empty model: the catalog may still be loading / have
       // failed (models === []), or the target mode may offer nothing. Writing
       // model='' + params={} would clobber the node's stored model AND params
       // in Yjs — params does NOT self-heal. Bail (the toggle is also disabled
       // while the catalog is empty; this backstops the target-mode-empty case).
       if (!model) return;
-      setNodeMode(projectId, spaceId, nodeId, newMode, model, params);
+      setNodeMode(projectId, spaceId, nodeId, newMode, model, params, paramsByModel);
     },
-    [models, projectId, spaceId, nodeId],
+    [models, projectId, spaceId, nodeId, freshContent],
   );
 
   const onChangeParams = React.useCallback(
     (partial: { aspect_ratio?: string; resolution?: string } & CameraValue) => {
-      setNodeParams(projectId, spaceId, nodeId, {
-        ...freshVm().params,
-        ...partial,
+      const fresh = freshVm();
+      const next = { ...fresh.params, ...partial };
+      // The edit lands on the model it was made on, so coming back to that
+      // model finds it (#1948). Both fields are written together.
+      const content = freshContent();
+      setNodeParams(projectId, spaceId, nodeId, next, {
+        ...paramsStoreOf(content, models),
+        ...(fresh.model ? { [fresh.model]: next } : {}),
       });
     },
-    [projectId, spaceId, nodeId, freshVm],
+    [projectId, spaceId, nodeId, freshVm, freshContent, models],
   );
 
   // The Reference / Style buttons are TOGGLES (G, user 2026-07-12): start the

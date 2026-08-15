@@ -607,20 +607,31 @@ export function setNodeLocked(
 }
 
 /**
- * Set a content node's Generate model params (aspect ratio, resolution, …).
- * Written as a whole plain object into the nested `data` Y.Map — a scalar,
- * last-write-wins field (concurrent param edits replace the whole object; an
- * acceptable trade-off for these low-frequency picks). Frontend-owned.
+ * Set a content node's Generate model params (aspect ratio, resolution, …)
+ * together with the per-model records they belong to (#1948).
+ *
+ * Both are whole plain objects written into the nested `data` Y.Map as scalar,
+ * last-write-wins fields (concurrent param edits replace the whole object; an
+ * acceptable trade-off for these low-frequency picks), in ONE transaction so
+ * collaborators never see the params in effect disagree with the record they
+ * came from. Frontend-owned.
+ *
+ * `paramsByModel` is written WHOLE, not merged: only the caller holds the
+ * model catalog, so only it can tell a record that should persist from one
+ * that should not (a pre-#1948 node's migrated set, a model that left the
+ * catalog). Merging here would resurrect what the caller dropped.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the node whose params to set.
- * @param params - The model-specific params object.
+ * @param params - The params now in effect for the selected model.
+ * @param paramsByModel - Every per-model record to persist, this one included.
  */
 export function setNodeParams(
   projectId: string,
   spaceId: string,
   nodeId: string,
   params: Record<string, unknown>,
+  paramsByModel: Record<string, Record<string, unknown>>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -628,7 +639,10 @@ export function setNodeParams(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => data.set('params', params), CANVAS_UNDO);
+  doc.transact(() => {
+    data.set('params', params);
+    data.set('paramsByModel', paramsByModel);
+  }, CANVAS_UNDO);
 }
 
 /**
@@ -907,7 +921,8 @@ export function removeNodeFocusImage(
  * @param nodeId - Id of the node whose model to switch.
  * @param mode - The active generation sub-mode this pick belongs to (e.g. 't2i').
  * @param model - The new model id.
- * @param params - The params reconciled for the new model (see resolveParamsForModel).
+ * @param params - The params reconciled for the new model (see resolveModelSwitch).
+ * @param paramsByModel - Every per-model record to persist (#1948), written whole.
  */
 export function setNodeModel(
   projectId: string,
@@ -916,6 +931,7 @@ export function setNodeModel(
   mode: string,
   model: string,
   params: Record<string, unknown>,
+  paramsByModel: Record<string, Record<string, unknown>>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -926,6 +942,9 @@ export function setNodeModel(
   doc.transact(() => {
     data.set('model', model);
     data.set('params', params);
+    // Whole, not merged — the caller holds the catalog and decides what
+    // persists (see setNodeParams for why).
+    data.set('paramsByModel', paramsByModel);
     const prev = data.get('modelByMode');
     const base =
       prev != null && typeof prev === 'object'
@@ -950,6 +969,7 @@ export function setNodeModel(
  * @param mode - The new generation sub-mode (e.g. 't2i' / 'i2i').
  * @param model - The model to select for the new mode.
  * @param params - The params reconciled for that model.
+ * @param paramsByModel - Every per-model record to persist (#1948), written whole.
  */
 export function setNodeMode(
   projectId: string,
@@ -958,6 +978,7 @@ export function setNodeMode(
   mode: string,
   model: string,
   params: Record<string, unknown>,
+  paramsByModel: Record<string, Record<string, unknown>>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -969,6 +990,9 @@ export function setNodeMode(
     data.set('mode', mode);
     data.set('model', model);
     data.set('params', params);
+    // Whole, not merged — the caller holds the catalog and decides what
+    // persists (see setNodeParams for why).
+    data.set('paramsByModel', paramsByModel);
   }, CANVAS_UNDO);
 }
 

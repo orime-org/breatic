@@ -38,7 +38,11 @@ import {
 } from '@web/spaces/canvas/generate/derive-references';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { filterModelsByMode } from '@web/spaces/canvas/generate/mode-selection';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import {
+  paramsStoreOf,
+  resolveModelSwitch,
+} from '@web/spaces/canvas/generate/model-params';
+import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -255,6 +259,19 @@ function VideoGeneratePanelBody({
     [projectId, spaceId, nodeId, models],
   );
 
+  /**
+   * The node's live content view, or undefined when the node is gone or is not
+   * a content node. Read fresh at click time for the same reason freshVm is: a
+   * collaborator may have changed the model, the params or the per-model
+   * records since this render.
+   * @returns The node's content view, or undefined.
+   */
+  const freshContent = React.useCallback((): ContentNodeView | undefined => {
+    const graph = readCanvasGraph(projectId, spaceId);
+    const data = graph.nodes.find((n) => n.id === nodeId)?.data;
+    return data && 'status' in data ? data : undefined;
+  }, [projectId, spaceId, nodeId]);
+
   // Stable identities for the memoized children: the view model rebuilds on
   // every canvas mutation, so a freshly-filtered array or a rebuilt params
   // object would defeat their React.memo on each frame of any node drag.
@@ -326,17 +343,25 @@ function VideoGeneratePanelBody({
       }
       const graph = readCanvasGraph(projectId, spaceId);
       // Record the pick under the mode that is ACTIVE right now, so a later
-      // switch back to it restores this model rather than the default.
+      // switch back to it restores this model rather than the default, and
+      // give the picked model its OWN params rather than the outgoing
+      // model's (#1948).
+      const { params, paramsByModel } = resolveModelSwitch(
+        freshContent(),
+        picked,
+        models,
+      );
       setNodeModel(
         projectId,
         spaceId,
         nodeId,
         nodeVideoMode(graph.nodes, nodeId),
         modelId,
-        resolveParamsForModel(picked, freshVm().params),
+        params,
+        paramsByModel,
       );
     },
-    [models, projectId, spaceId, nodeId, freshVm, t],
+    [models, projectId, spaceId, nodeId, freshContent, t],
   );
 
   const onToggleMode = React.useCallback(
@@ -348,29 +373,35 @@ function VideoGeneratePanelBody({
       // Read the node fresh — a collaborator may have changed its per-mode
       // model memory or its params since this render — and write the switch in
       // one transaction.
-      const graph = readCanvasGraph(projectId, spaceId);
-      const data = graph.nodes.find((n) => n.id === nodeId)?.data;
-      const content = data && 'status' in data ? data : undefined;
-      const { model, params } = resolveVideoModeSwitch(content, target, models);
+      const { model, params, paramsByModel } = resolveVideoModeSwitch(
+        freshContent(),
+        target,
+        models,
+      );
       // Never persist an empty model: the catalog may still be loading / have
       // failed, or the target mode may offer nothing. Writing model='' plus
       // params={} would clobber the node's stored model AND params, and params
       // do not self-heal. (The toggle is also disabled while no offered mode
       // has a model; this backstops the target-mode-empty case.)
       if (!model) return;
-      setNodeMode(projectId, spaceId, nodeId, target, model, params);
+      setNodeMode(projectId, spaceId, nodeId, target, model, params, paramsByModel);
     },
-    [models, projectId, spaceId, nodeId],
+    [models, projectId, spaceId, nodeId, freshContent],
   );
 
   const onChangeParams = React.useCallback(
     (partial: VideoParamsValue) => {
-      setNodeParams(projectId, spaceId, nodeId, {
-        ...freshVm().params,
-        ...partial,
+      const fresh = freshVm();
+      const next = { ...fresh.params, ...partial };
+      // The edit lands on the model it was made on, so coming back to that
+      // model finds it (#1948). Both fields are written together.
+      const content = freshContent();
+      setNodeParams(projectId, spaceId, nodeId, next, {
+        ...paramsStoreOf(content, models),
+        ...(fresh.model ? { [fresh.model]: next } : {}),
       });
     },
-    [projectId, spaceId, nodeId, freshVm],
+    [projectId, spaceId, nodeId, freshVm, freshContent, models],
   );
 
   // Reference and first frame are TOGGLES: start the pick when this node is not
