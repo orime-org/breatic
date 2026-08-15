@@ -309,10 +309,12 @@ export async function lockLimitsForUser(
 /**
  * How many writable connections one document of this project may hold at once.
  *
- * The collab handshake's entry point (#88). It is the only call point that
- * starts from a project rather than from a studio or an account, because a
- * document name is all collab has: project → studio → that studio's admin →
- * tier.
+ * The collab handshake's entry point (#88). It is the only call point that has
+ * to resolve the owning studio ITSELF, because a document name is all collab
+ * has: project → studio → that studio's admin → tier. The two invite paths
+ * (`projectInvite.service.ts`) also begin from a project id, but each has
+ * already loaded the project row for other reasons and reads `studioId` off
+ * it, so they call `getLimitsForStudio` directly.
  *
  * It reaches the tier through {@link getLimitsForStudio} rather than joining
  * its own way there. That is not tidiness — those two functions are where the

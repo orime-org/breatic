@@ -20,8 +20,8 @@ import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 // three of the four cannot see the outlet pointing it at the wrong document —
 // and pointing it at the wrong document is silent, because the wrong document
 // is simply never at its ceiling. Round 5 measured it: with only `readOnly` and
-// `type` recorded, swapping `projectId` and `spaceId` left all 310 tests in
-// this directory green.
+// `type` recorded, swapping `projectId` and `spaceId` left every test in this
+// directory green.
 vi.mock('@web/pages/project/SpaceReadOnlyNotice', () => ({
   SpaceReadOnlyNotice: ({
     projectId,
@@ -57,7 +57,7 @@ describe('SpaceOutlet', () => {
 
   it('points the body at THIS Space of THIS project', () => {
     // The sibling of the notice assertion above. Round 6 measured that
-    // swapping these two on the body was invisible to all 63 tests in this
+    // swapping these two on the body was invisible to every test in this
     // directory — the existing body cases only ask WHICH component rendered.
     // A body pointed at the wrong document silently shows another Space's
     // content, which is worse than the notice being wrong.
