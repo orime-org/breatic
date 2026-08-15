@@ -2,9 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
+import type { ModelCatalog, ModelEntry } from '@breatic/shared';
 import type { ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
@@ -61,6 +68,8 @@ import {
   type CanvasContextValue,
 } from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
+import { addNode, readCanvasGraph } from '@web/data/yjs/canvas-space';
+import { _resetForTests } from '@web/data/yjs/manager';
 import { useCanvasStore } from '@web/stores';
 
 type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
@@ -90,7 +99,15 @@ function mountContainer(graph?: {
       {/* A REAL ReactFlow with the target node: GeneratePanelBody mounts
           inside a NodeToolbar, which renders its children only when the node
           exists in ReactFlow's store — a bare provider never mounts the
-          body (caught wiring the caret-awareness test). */}
+          body (caught wiring the caret-awareness test). The canvas here
+          exists only so NodeToolbar renders.
+
+          Drive clicks with `fireEvent`, not `userEvent`: a userEvent pointer
+          sequence bubbles to ReactFlow's d3-zoom, whose d3-drag reads
+          `event.view.document` — null in jsdom, an unhandled error. Radix
+          popovers open under a bare click; what does need waiting for is the
+          trigger becoming enabled once the catalog resolves (measured — that,
+          not the event kind, is what makes an early click miss). */}
       <ReactFlow
         nodes={[
           { id: 'target', position: { x: 0, y: 0 }, data: {} },
@@ -414,6 +431,198 @@ describe('GeneratePanelContainer — body subscription set', () => {
     });
     const ids = vi.mocked(useTextBodies).mock.lastCall?.[2];
     expect(ids).toEqual(['wired-a', 'wired-b']);
+    listSpy.mockRestore();
+  });
+});
+
+/**
+ * A text-to-image model whose ratio list has two entries, so picking one is a
+ * real change rather than a no-op on the default.
+ */
+const T2I_MODEL: ModelEntry = {
+  name: 'nano-banana',
+  display_name: 'Nano Banana',
+  modality: 'image',
+  mode: 't2i',
+  description: '',
+  guide: '',
+  tier: 'recommended',
+  cost_per_call: 5,
+  generation_time: 10,
+  params: {
+    aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
+  },
+  providers: [],
+  sourcesByMode: { t2i: [] },
+};
+
+/** An image-to-image model, so a switch to i2i has something to resolve to. */
+const I2I_MODEL: ModelEntry = {
+  ...T2I_MODEL,
+  name: 'nano-edit',
+  display_name: 'Nano Edit',
+  mode: 'i2i',
+  params: {
+    aspect_ratio: { description: '', values: ['1:1', '4:3'], default: '4:3' },
+  },
+  sourcesByMode: { i2i: ['image'] },
+};
+
+/**
+ * A catalog carrying the image model above.
+ * @param models - Which image models the catalog offers; defaults to t2i only.
+ * @returns The catalog payload `modelsApi.list()` resolves to.
+ */
+function imageCatalog(models: ModelEntry[] = [T2I_MODEL]): ModelCatalog {
+  return {
+    image: models,
+    video: [],
+    audio: [],
+    tts: [],
+    three_d: [],
+    understand: [],
+    total: models.length,
+  };
+}
+
+/**
+ * Seeds a real image node in the canvas-space doc. The container reads the
+ * node fresh from Yjs on every write, so a case that asserts what got written
+ * needs the node to actually be there — the React props alone are not it.
+ */
+function seedImageNode(): void {
+  addNode('p', 's', {
+    id: 'target',
+    type: 'image',
+    position: { x: 0, y: 0 },
+    data: {
+      name: 'I',
+      createdAt: 1000,
+      createdBy: 'u1',
+      locked: false,
+      state: 'idle',
+      attachments: [],
+    },
+  } as Parameters<typeof addNode>[2]);
+}
+
+describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948)', () => {
+  beforeEach(() => {
+    _resetForTests();
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  it('记在面板正在渲染的模型名下，不是节点存着的那个', async () => {
+    // 新建的节点根本没写过 model（node-factory 不写），而面板已经解析出第一个
+    // 可用模型并渲染了它的控件。此时按存的那个记账等于记进空名下，控件下一帧
+    // 弹回默认值。
+    //
+    // 这一条钉的是容器传了哪个值 —— 纯函数那侧钉的是「给对了模型名会怎样」，
+    // 两者不是一件事：Gate 2 第 3 轮实测把这次修复整个回退回原 bug，全套测试
+    // 没有一条变红。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog());
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    fireEvent.click(await screen.findByTestId('generate-ratio-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-ratio-option-16:9'));
+    await waitFor(() => {
+      const data = readCanvasGraph('p', 's').nodes.find(
+        (n) => n.id === 'target',
+      )?.data;
+      const records = (
+        data as { paramsByModel?: Record<string, Record<string, unknown>> }
+      ).paramsByModel;
+      expect(records).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
+    });
+    listSpy.mockRestore();
+  });
+
+  it('切档写下新档的模型和它自己那份记录，旧模型的记录留着', async () => {
+    // 这一条是下面 9.8 的对照组：9.8 断言「什么都没被写」，而「这个面板的切档
+    // 压根不写任何东西」也满足那个断言 —— 少了这一条，两者分不开。Gate 2 第 5
+    // 轮实测：把容器的 onToggleMode 整个换成空函数，这个文件 8 条全绿。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL, I2I_MODEL]));
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    fireEvent.click(await screen.findByTestId('generate-ratio-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-ratio-option-16:9'));
+    await waitFor(() => {
+      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
+        ?.data as { paramsByModel?: Record<string, unknown> };
+      expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
+    });
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-mode-i2i'));
+    await waitFor(() => {
+      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
+        ?.data as {
+        mode?: string;
+        model?: string;
+        paramsByModel?: Record<string, unknown>;
+      };
+      expect(d.mode).toBe('i2i');
+      expect(d.model).toBe('nano-edit');
+      // 新模型拿自己声明的默认值 4:3，不继承 t2i 那边选的 16:9；而 t2i 那份
+      // 记录原样留着，切回去还是 16:9。
+      expect(d.paramsByModel).toEqual({
+        'nano-banana': { aspect_ratio: '16:9' },
+        'nano-edit': { aspect_ratio: '4:3' },
+      });
+    });
+    listSpy.mockRestore();
+  });
+
+  it('目标档解不出模型时整个写入放弃，已有的记录一条都不丢 (9.8)', async () => {
+    // 这一片让这道防护要保的东西变多了：以前失守清掉的是一份参数，现在会把
+    // 所有模型的记录一起清空。
+    //
+    // 防护写在容器的 `if (!model) return`，纯函数测试摸不到它 —— Gate 2 第 4
+    // 轮实测：删掉这一行，684 条测试没有一条变红，而视频侧同一行删掉当场红。
+    // 「什么都没写」这个断言要跟上面那条正向的一起读才成立。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      // 只有 t2i 一档有模型，i2i 档解不出
+      .mockResolvedValue(imageCatalog([T2I_MODEL]));
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    // 先让参数记录落一份下来，才验得出「一条都不丢」。
+    fireEvent.click(await screen.findByTestId('generate-ratio-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-ratio-option-16:9'));
+    await waitFor(() => {
+      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
+        ?.data as { paramsByModel?: Record<string, unknown> };
+      expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
+    });
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-mode-i2i'));
+    await waitFor(() => {
+      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
+        ?.data as {
+        mode?: string;
+        model?: string;
+        paramsByModel?: Record<string, unknown>;
+      };
+      // 一个字段都没被动过。
+      expect(d.mode).toBeUndefined();
+      expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
+    });
     listSpy.mockRestore();
   });
 });

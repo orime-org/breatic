@@ -4,17 +4,26 @@
 import { describe, it, expect } from 'vitest';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import {
+  paramsStoreOf,
+  resolveModelSwitch,
+  resolveParamsEdit,
+  resolveParamsForModel,
+} from '@web/spaces/canvas/generate/model-params';
 
 /**
  * Builds a minimal image {@link ModelEntry} with the given params.
  * @param params - The model's param descriptors.
+ * @param name - Model id (defaults to `nano`).
  * @returns A model entry usable by resolveParamsForModel.
  */
-function model(params: Record<string, ParamDescriptor>): ModelEntry {
+function model(
+  params: Record<string, ParamDescriptor>,
+  name = 'nano',
+): ModelEntry {
   return {
-    name: 'nano',
-    display_name: 'Nano',
+    name,
+    display_name: name,
     modality: 'image',
     mode: 'text-to-image',
     description: '',
@@ -38,8 +47,7 @@ const RESOLUTION: ParamDescriptor = {
   values: ['1K', '2K'],
   default: '1K',
 };
-
-describe('resolveParamsForModel — keep valid, reset invalid, PRESERVE undeclared params on model switch', () => {
+describe('resolveParamsForModel — keep valid, reset invalid, DROP undeclared', () => {
   it('keeps a current value that is valid for the new model', () => {
     const out = resolveParamsForModel(model({ aspect_ratio: RATIO }), {
       aspect_ratio: '16:9',
@@ -63,30 +71,22 @@ describe('resolveParamsForModel — keep valid, reset invalid, PRESERVE undeclar
     expect(out).toEqual({ aspect_ratio: '1:1', resolution: '1K' });
   });
 
-  it('preserves params the new model does not define (they live in Yjs independent of model)', () => {
-    // user 2026-07-18: a param set persists in node.data.params regardless of
-    // which model is active; only models that declare it read it. Switching to a
-    // model that lacks the param must NOT drop it (it survives the round-trip).
+  it('drops params the model does not declare (#1948)', () => {
+    // Params are stored per model now, so a set never mixes two models' keys.
+    // Anything the model does not declare has no reason to be in its record:
+    // keeping it would put a foreign key in the request payload, where the
+    // worker drops it and logs `unknown_param_dropped`.
     const out = resolveParamsForModel(model({ aspect_ratio: RATIO }), {
       aspect_ratio: '1:1',
-      camera: 'Canon EOS R5', // not a param of this model — must survive
+      camera: 'Canon EOS R5', // not a param of this model
     });
-    expect(out).toEqual({ aspect_ratio: '1:1', camera: 'Canon EOS R5' });
+    expect(out).toEqual({ aspect_ratio: '1:1' });
   });
 
-  it('round-trips camera params through a model that lacks them (banana → midjourney → banana)', () => {
-    const CAMERA: ParamDescriptor = {
-      description: 'Camera',
-      values: ['Canon EOS R5', 'Sony A7'],
-      default: 'Canon EOS R5',
-    };
-    const banana = model({ aspect_ratio: RATIO, camera: CAMERA });
-    const midjourney = model({ aspect_ratio: RATIO }); // declares no camera
-    const onBanana = { aspect_ratio: '1:1', camera: 'Sony A7' };
-    const onMidjourney = resolveParamsForModel(midjourney, onBanana);
-    expect(onMidjourney.camera).toBe('Sony A7'); // preserved, not dropped
-    const backToBanana = resolveParamsForModel(banana, onMidjourney);
-    expect(backToBanana.camera).toBe('Sony A7'); // still there → banana reads it
+  it('outputs an empty set for a model that declares no params (#1948)', () => {
+    expect(resolveParamsForModel(model({}), { aspect_ratio: '16:9' })).toEqual(
+      {},
+    );
   });
 
   it('keeps a current value for a free (values-less) param, else uses its default', () => {
@@ -105,15 +105,148 @@ describe('resolveParamsForModel — keep valid, reset invalid, PRESERVE undeclar
     });
   });
 
-  it('leaves current params untouched for a model with no params (does not wipe them)', () => {
-    expect(resolveParamsForModel(model({}), { aspect_ratio: '16:9' })).toEqual({
-      aspect_ratio: '16:9',
+  // Malformed-catalog robustness (null / non-object / array params, null
+  // descriptors, non-array values) is enforced ONCE at the API boundary —
+  // see sanitizeModelCatalog + model-catalog.schema.test.ts. resolveParamsForModel
+  // consumes the sanitized, trusted ModelEntry, so those impossible-after-boundary
+  // states are not re-tested here.
+});
+
+describe('paramsStoreOf — 节点的按模型记录 (#1948)', () => {
+  it('有记录就原样返回', () => {
+    const stored = { banana: { aspect_ratio: '16:9' } };
+    expect(paramsStoreOf({ paramsByModel: stored })).toEqual(stored);
+  });
+
+  it('没有内容时是空的', () => {
+    expect(paramsStoreOf(undefined)).toEqual({});
+  });
+
+  it('上线前的老节点一个记录都没有，不做任何兼容处理', () => {
+    // user 2026-08-15 拍定：Yjs 里的老数据一律不迁移、不兼容。
+    //
+    // fixture 必须带上老节点真实的形状（Yjs 文档里仍有 model 和 params —— 前者
+    // 现在也还在类型里，这一片删掉的只有 params），否则这条测试什么都保护不到 —— 它最初喂的是
+    // 一个空对象，跟上一条测的 undefined 完全等价，把整套迁移分支加回去它照样
+    // 绿（Gate 2 第 4 轮实测）。
+    const oldNode = {
+      model: 'banana',
+      params: { aspect_ratio: '16:9', camera: 'Sony A7' },
+    } as unknown as Parameters<typeof paramsStoreOf>[0];
+    expect(paramsStoreOf(oldNode)).toEqual({});
+  });
+
+  it('记录是空对象时如实返回空，不当成「还没有记录」区别对待', () => {
+    expect(paramsStoreOf({ paramsByModel: {} })).toEqual({});
+  });
+});
+
+describe('resolveModelSwitch — the picked model brings its own record (#1948)', () => {
+  // Mirrors the shape this defect was found on: a model that does not
+  // constrain its value at all. `kling` defaults to 5 and states no `values`,
+  // so nothing invalidates a value carried into it — which is why a record
+  // from another model must never reach it in the first place.
+  const DURATION_FREE: ParamDescriptor = {
+    description: 'Duration',
+    type: 'int',
+    default: 5,
+  };
+  const kling = model({ duration: DURATION_FREE }, 'kling');
+
+  it('gives a model never used before its OWN defaults, not the outgoing model’s values', () => {
+    // The defect: `veo`'s default 8 was written into the shared param set, and
+    // `kling` states no `values`, so nothing rejected it — the user landed on
+    // 8 seconds under a model whose own recommendation is 5.
+    const { params } = resolveModelSwitch(
+      { paramsByModel: { veo: { duration: 8 } } },
+      kling,
+    );
+    expect(params).toEqual({ duration: 5 });
+  });
+
+  it('restores the picked model’s own record when it has one', () => {
+    const { params } = resolveModelSwitch(
+      { paramsByModel: { veo: { duration: 8 }, kling: { duration: 12 } } },
+      kling,
+    );
+    expect(params).toEqual({ duration: 12 });
+  });
+
+  it('returns every record to persist, leaving the other models’ untouched', () => {
+    const { paramsByModel } = resolveModelSwitch(
+      { paramsByModel: { veo: { duration: 6 } } },
+      kling,
+    );
+    expect(paramsByModel).toEqual({
+      veo: { duration: 6 },
+      kling: { duration: 5 },
     });
   });
 
-  // Malformed-catalog robustness (null / non-object / array params, null
-  // descriptors, non-array values) is now enforced ONCE at the API boundary —
-  // see sanitizeModelCatalog + model-catalog.schema.test.ts. resolveParamsForModel
-  // consumes the sanitized, trusted ModelEntry, so those impossible-after-boundary
-  // states are no longer re-tested here.
+});
+
+describe('resolveParamsEdit — a param edit lands on the model it was made on (#1948)', () => {
+  it('merges the change into the current model’s record', () => {
+    const r = resolveParamsEdit(
+      { paramsByModel: { banana: { aspect_ratio: '1:1', camera: 'Sony A7' } } },
+      { aspect_ratio: '16:9' },
+      'banana',
+    );
+    expect(r.banana).toEqual({
+      aspect_ratio: '16:9',
+      camera: 'Sony A7',
+    });
+  });
+
+  it('leaves the OTHER models’ records untouched', () => {
+    // The defect a missing store merge produces: editing one model's params
+    // wipes every other model's record, so 9.5 (switch away and back) silently
+    // stops holding.
+    const r = resolveParamsEdit(
+      {
+        paramsByModel: {
+          banana: { aspect_ratio: '1:1' },
+          midjourney: { aspect_ratio: '16:9' },
+        },
+      },
+      { aspect_ratio: '4:3' },
+      'banana',
+    );
+    expect(r.midjourney).toEqual({ aspect_ratio: '16:9' });
+  });
+
+  it('别的模型的记录原样留着，这次没碰的一个都不丢', () => {
+    const r = resolveParamsEdit(
+      { paramsByModel: { banana: { aspect_ratio: '1:1', camera: 'Sony A7' } } },
+      { aspect_ratio: '16:9' },
+      'midjourney',
+    );
+    expect(r).toEqual({
+      banana: { aspect_ratio: '1:1', camera: 'Sony A7' },
+      midjourney: { aspect_ratio: '16:9' },
+    });
+  });
+
+  it('persists nothing under an empty model id', () => {
+    // The panels pass the RESOLVED model, which is '' only while the catalog
+    // is empty or the mode offers nothing — and then no param control renders
+    // at all. A guard, not a reachable state; it must not write a "" record.
+    const r = resolveParamsEdit(undefined, { aspect_ratio: '16:9' }, '');
+    expect(r).toEqual({});
+  });
+});
+
+describe('resolveParamsEdit — a fresh node has no stored model (#1948 Gate 2 round 2)', () => {
+  it('persists the edit under the model the panel is SHOWING, not the stored one', () => {
+    // node-factory writes no `model`, and nothing persists one on panel open —
+    // the panel resolves the first offered model and renders its controls. An
+    // edit made there has to land on THAT model, or it is written nowhere and
+    // the control snaps back to the default on the next render.
+    const r = resolveParamsEdit(
+      undefined, // fresh node: no records at all
+      { aspect_ratio: '16:9' },
+      'nano', // what the panel resolved and is showing
+    );
+    expect(r).toEqual({ nano: { aspect_ratio: '16:9' } });
+  });
 });

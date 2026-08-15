@@ -7,6 +7,8 @@ import type { ModelEntry } from '@breatic/shared';
 
 import {
   filterModelsByMode,
+  pickModelForMode,
+  resolveModeSwitch,
   resolveModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 
@@ -16,12 +18,14 @@ import {
  * @param mode - The model's `mode` (string or array).
  * @param modality - The model's modality (the filter ignores it; both panels
  *   pass their own catalog bucket).
+ * @param params - The model's declared params (only the resolvers read these).
  * @returns A ModelEntry-shaped object.
  */
 function model(
   name: string,
   mode: string | string[],
   modality: ModelEntry['modality'] = 'image',
+  params: ModelEntry['params'] = {},
 ): ModelEntry {
   return {
     name,
@@ -33,7 +37,7 @@ function model(
     tier: 'optional',
     cost_per_call: 5,
     generation_time: 10,
-    params: {},
+    params,
     providers: [],
     sourcesByMode: {},
   };
@@ -149,5 +153,82 @@ describe('resolveModelForMode', () => {
     expect(resolveModelForMode('i2v', memory, [kling])).toBe('kling');
     // A pick remembered under ANOTHER mode never leaks into this one.
     expect(resolveModelForMode('t2v', { i2v: 'kling' }, [veo])).toBe('veo');
+  });
+});
+
+describe('pickModelForMode — 渲染时挑模型，两个面板共用 (#1948)', () => {
+  const nano = model('nano', 't2i');
+  const midjourney = model('midjourney', 't2i');
+
+  it('存的模型还在这个模式的列表里，就用它', () => {
+    expect(pickModelForMode('midjourney', 't2i', {}, [nano, midjourney])).toBe(
+      'midjourney',
+    );
+  });
+
+  it('存的模型不在列表里，落到这个模式记住的那个', () => {
+    // 这一条正是视频面板原来漏掉的那层。协作时一个人挑模型（只写 model）
+    // 撞上另一个人切模式（写 mode + model），节点上会留下「新模式 + 旧模式的
+    // 模型」；此时该恢复的是用户自己在这个模式下选过的那个。
+    expect(
+      pickModelForMode('editor', 't2i', { t2i: 'midjourney' }, [
+        nano,
+        midjourney,
+      ]),
+    ).toBe('midjourney');
+  });
+
+  it('存的和记住的都不在列表里，落到第一个', () => {
+    expect(
+      pickModelForMode('editor', 't2i', { t2i: 'gone' }, [nano, midjourney]),
+    ).toBe('nano');
+  });
+
+  it('这个模式一个模型都没有时给空字符串', () => {
+    expect(pickModelForMode('nano', 'i2i', {}, [])).toBe('');
+  });
+
+  it('视频的模式一样走这条路，签名不认识面板类型', () => {
+    const veo = model('veo', 't2v', 'video');
+    expect(pickModelForMode('kling', 't2v', { t2v: 'veo' }, [veo])).toBe('veo');
+  });
+});
+
+describe('resolveModeSwitch — 切模式，两个面板共用 (#1948)', () => {
+  const nano = model('nano', 't2i', 'image', {
+    aspect_ratio: { default: '1:1', values: ['1:1', '16:9'], description: '' },
+  });
+  const editor = model('editor', 'i2i', 'image', {
+    aspect_ratio: { default: '4:3', values: ['4:3', '16:9'], description: '' },
+  });
+
+  it('目标模式的模型带自己的参数记录，不继承来的那个模式的值', () => {
+    const content = {
+      modelByMode: { t2i: 'nano' },
+      paramsByModel: { nano: { aspect_ratio: '16:9' } },
+    };
+    const r = resolveModeSwitch(content, 'i2i', [nano, editor]);
+    expect(r.model).toBe('editor');
+    expect(r.paramsByModel[r.model]).toEqual({ aspect_ratio: '4:3' });
+    // 离开的那个模型的记录原样留着，切回来还在。
+    expect(r.paramsByModel.nano).toEqual({ aspect_ratio: '16:9' });
+  });
+
+  it('目标模式一个模型都没有时，模型和记录都是空的（调用方据此放弃写入）', () => {
+    const r = resolveModeSwitch({ modelByMode: { t2i: 'nano' } }, 'i2i', [nano]);
+    expect(r.model).toBe('');
+    expect(r.paramsByModel).toEqual({});
+  });
+
+  it('视频的六个模式走的是同一个函数', () => {
+    const veo = model('veo', 't2v', 'video', {
+      duration: { default: 8, values: [4, 8], description: '' },
+    });
+    const kling = model('kling', 'i2v', 'video', {
+      duration: { default: 5, values: [5, 10], description: '' },
+    });
+    const r = resolveModeSwitch({ modelByMode: { t2v: 'veo' } }, 'i2v', [veo, kling]);
+    expect(r.model).toBe('kling');
+    expect(r.paramsByModel[r.model]).toEqual({ duration: 5 });
   });
 });

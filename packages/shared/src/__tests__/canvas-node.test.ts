@@ -287,7 +287,7 @@ describe("CanvasNodeFields", () => {
         prompt: "a painting of a sunset",
         mode: "t2i",
         model: "flux-dev",
-        params: { steps: 30, guidance: 7.5 },
+        paramsByModel: { "flux-dev": { steps: 30, guidance: 7.5 } },
       },
     };
     expect(node.data.state).toBe("handling");

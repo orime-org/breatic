@@ -388,29 +388,83 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     ]);
   });
 
-  it('setNodeParams writes the generate model params into the node data', () => {
+  it('setNodeParams writes the per-model records', () => {
     addNode(PID, SID, sampleFields('image'));
-    setNodeParams(PID, SID, 'n1', { aspect_ratio: '16:9', resolution: '2K' });
+    setNodeParams(PID, SID, 'n1', {
+      flux: { aspect_ratio: '16:9', resolution: '2K' },
+    });
     const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
-    expect(data.get('params')).toEqual({ aspect_ratio: '16:9', resolution: '2K' });
+    expect(data.get('paramsByModel')).toEqual({
+      flux: { aspect_ratio: '16:9', resolution: '2K' },
+    });
   });
 
-  it('setNodeModel writes model + params + records the mode memory in one transaction', () => {
+  it('setNodeModel writes the model, its records, and the per-mode memory', () => {
     addNode(
       PID,
       SID,
-      sampleFields('image', { mode: 't2i', model: 'old', params: { aspect_ratio: '1:1' } }),
+      sampleFields('image', {
+        mode: 't2i',
+        model: 'old',
+        paramsByModel: { old: { aspect_ratio: '1:1' } },
+      }),
     );
-    setNodeModel(PID, SID, 'n1', 't2i', 'nano_banana_pro', { aspect_ratio: '16:9' });
+    setNodeModel(
+      PID,
+      SID,
+      'n1',
+      't2i',
+      'nano_banana_pro',
+      { old: { aspect_ratio: '1:1' }, nano_banana_pro: { aspect_ratio: '16:9' } },
+    );
     const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
     expect(data.get('model')).toBe('nano_banana_pro');
-    expect(data.get('params')).toEqual({ aspect_ratio: '16:9' });
     // The pick is remembered under its mode so a later toggle back restores it.
     expect(data.get('modelByMode')).toEqual({ t2i: 'nano_banana_pro' });
+    // …and the model being left keeps its own params, so coming back to it
+    // restores what it was at (#1948).
+    expect(data.get('paramsByModel')).toEqual({
+      old: { aspect_ratio: '1:1' },
+      nano_banana_pro: { aspect_ratio: '16:9' },
+    });
+  });
+
+  it('setNodeModel writes its three fields inside ONE transaction', () => {
+    // Same reason as the setNodeMode counterpart below: its TSDoc promises one
+    // transaction, and asserting the VALUES cannot tell one from three because
+    // they end up equal either way. Measured: splitting the transact into three
+    // left all 3817 tests in the package green, so nothing was pinning it.
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { mode: 't2i', model: 'flux' }),
+    );
+    const d = doc();
+    const seen: string[] = [];
+    d.on('afterTransaction', () => {
+      const data = (d.getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+        'data',
+      ) as Y.Map<unknown>;
+      seen.push(
+        [
+          data.get('model') === 'sdxl' ? 'model' : '',
+          data.get('paramsByModel') ? 'records' : '',
+          (data.get('modelByMode') as Record<string, string> | undefined)?.t2i
+            === 'sdxl'
+            ? 'memory'
+            : '',
+        ]
+          .filter(Boolean)
+          .join('+'),
+      );
+    });
+    setNodeModel(PID, SID, 'n1', 't2i', 'sdxl', { sdxl: {} });
+    // One transaction, and by the time it closed all three were in place.
+    expect(seen).toEqual(['model+records+memory']);
   });
 
   it('setNodeModel merges the pick into an existing modelByMode, keeping other modes', () => {
@@ -426,27 +480,85 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(data.get('modelByMode')).toEqual({ i2i: 'mj-i2i', t2i: 'flux' });
   });
 
-  it('setNodeMode writes mode + model + params atomically (toggle), NOT touching modelByMode', () => {
+  it('setNodeModel replaces the per-model records wholesale, not merging them', () => {
+    // Which model this write belongs to is something only the caller knows —
+    // it just resolved which model the panel is showing. Merging here would
+    // let a record the caller deliberately dropped survive.
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', {
+        model: 'flux',
+        paramsByModel: { stale: { aspect_ratio: '1:1' } },
+      }),
+    );
+    setNodeModel(PID, SID, 'n1', 't2i', 'flux', { flux: {} });
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('paramsByModel')).toEqual({ flux: {} });
+  });
+
+  it('setNodeMode writes its three fields inside ONE transaction', () => {
+    // The TSDoc says a collaborator must never observe the new mode paired
+    // with the old model. Asserting the VALUES cannot see that — they end up
+    // equal whether it is one transaction or three — so this counts them.
+    // Gate 2 round 4 measured why it is needed: splitting the transact into
+    // three left all 248 tests in this directory green.
+    addNode(PID, SID, sampleFields('image', { mode: 't2i', model: 'flux' }));
+    const d = doc();
+    const seen: string[] = [];
+    d.on('afterTransaction', () => {
+      const data = (d.getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+        'data',
+      ) as Y.Map<unknown>;
+      seen.push(
+        [
+          data.get('mode') === 'i2i' ? 'mode' : '',
+          data.get('model') === 'mj-i2i' ? 'model' : '',
+          data.get('paramsByModel') ? 'records' : '',
+        ]
+          .filter(Boolean)
+          .join('+'),
+      );
+    });
+    setNodeMode(PID, SID, 'n1', 'i2i', 'mj-i2i', { 'mj-i2i': {} });
+    // One transaction, and by the time it closed all three were in place.
+    expect(seen).toEqual(['mode+model+records']);
+  });
+
+  it('setNodeMode writes mode + model + records atomically (toggle), NOT touching modelByMode', () => {
     addNode(
       PID,
       SID,
       sampleFields('image', {
         mode: 't2i',
         model: 'flux',
-        params: { aspect_ratio: '16:9' },
+        paramsByModel: { flux: { aspect_ratio: '16:9' } },
         modelByMode: { t2i: 'flux' },
       }),
     );
     // Toggle to i2i, selecting the resolved model + reconciled params for it.
-    setNodeMode(PID, SID, 'n1', 'i2i', 'mj-i2i', { aspect_ratio: '1:1' });
+    setNodeMode(
+      PID,
+      SID,
+      'n1',
+      'i2i',
+      'mj-i2i',
+      { flux: { aspect_ratio: '16:9' }, 'mj-i2i': { aspect_ratio: '1:1' } },
+    );
     const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
     expect(data.get('mode')).toBe('i2i');
     expect(data.get('model')).toBe('mj-i2i');
-    expect(data.get('params')).toEqual({ aspect_ratio: '1:1' });
     // A toggle is not an explicit pick — the per-mode memory is left as-is.
     expect(data.get('modelByMode')).toEqual({ t2i: 'flux' });
+    // The mode being left keeps its model's params (#1948).
+    expect(data.get('paramsByModel')).toEqual({
+      flux: { aspect_ratio: '16:9' },
+      'mj-i2i': { aspect_ratio: '1:1' },
+    });
   });
 
   it('setNodeParams / setNodeModel / setNodeMode are no-ops when the node is missing', () => {

@@ -27,9 +27,9 @@ import {
 } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
   filterModelsByMode,
-  resolveModelForMode,
+  pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
 import { mentionedImageUrls } from '@web/spaces/canvas/generate/reference-urls';
 import type {
@@ -127,66 +127,20 @@ function asContentView(data: NodeView | undefined): ContentNodeView | undefined 
 }
 
 /**
- * Picks the effective model id for the active mode: the node's stored model
- * when it is still offered under this mode, else the mode's remembered pick,
- * else the first model offered for the mode (user 2026-07-11 — `recommended`
- * is a curation badge, not a default rule). Empty string when the mode
- * offers no model.
- * @param stored - The node's stored model id (may be absent / stale / wrong-mode).
- * @param mode - The active generation sub-mode.
- * @param modelByMode - The node's per-mode model memory.
- * @param modeModels - The catalog models offered under the active mode.
- * @returns The effective model id, or empty string when the mode has no models.
- */
-function pickModelForMode(
-  stored: string | undefined,
-  mode: ImageGenMode,
-  modelByMode: Record<string, string> | undefined,
-  modeModels: ModelEntry[],
-): string {
-  if (stored && modeModels.some((m) => m.name === stored)) return stored;
-  return resolveModelForMode(mode, modelByMode ?? {}, modeModels) ?? '';
-}
-
-/**
- * Resolves the model + reconciled params to persist when TOGGLING a node to a
- * new generation mode. Mirrors {@link buildGeneratePanelViewModel}'s
- * model/params derivation but for an ARBITRARY target mode (not the node's
- * stored one), so the container can compute what `setNodeMode` should write.
- * The node's current model is intentionally NOT preferred — a toggle resolves
- * fresh for the target mode (its remembered pick → first).
- * @param content - The node's current content view, read for `modelByMode` + `params` (may be undefined).
- * @param mode - The target generation sub-mode.
- * @param models - The full catalog image models (unfiltered).
- * @returns The model id + reconciled params to persist for the target mode.
- */
-export function resolveModeSwitch(
-  content: Pick<ContentNodeView, 'modelByMode' | 'params'> | undefined,
-  mode: ImageGenMode,
-  models: ModelEntry[],
-): { model: string; params: Record<string, unknown> } {
-  const generatable = models.filter((m) => isImageGenerationMode(m.mode));
-  const modeModels = filterModelsByMode(generatable, mode);
-  const model =
-    resolveModelForMode(mode, content?.modelByMode ?? {}, modeModels) ?? '';
-  const picked = modeModels.find((m) => m.name === model);
-  const params = picked
-    ? resolveParamsForModel(picked, content?.params ?? {})
-    : {};
-  return { model, params };
-}
-
-/**
  * Narrows the sanitized catalog to the models offered under a panel mode.
  *
- * models is trusted (sanitizeModelCatalog at the API boundary). Offers only
- * generatable image models — text-to-image / image-to-image / edit — dropping
- * pure tools (background removal, upscale), which belong in the mini-tool
- * system; then narrows to the ACTIVE mode (mode toggle 2026-07-09) so the
- * picker shows one clean list per mode. Exported so the container can memoize
- * the SAME selection on [models, mode] alone — the view-model rebuilds every
- * canvas graph mutation, and a freshly-filtered array each time would defeat
- * the React.memo on the pickers (round-2 adversarial; memo discipline).
+ * models is trusted (sanitizeModelCatalog at the API boundary). Narrowing to
+ * the ACTIVE mode (mode toggle 2026-07-09) is the whole job: a mini-tool entry
+ * (background removal, upscale) declares none of the panel modes, so it fails
+ * the mode test on its own. There is no separate "is this generatable" pass —
+ * one was here until #1948, and it could not remove anything the mode test
+ * keeps, because every panel mode IS a generation mode.
+ *
+ * Exported so the container can memoize the SAME selection on [models, mode]
+ * alone — the view-model rebuilds every canvas graph mutation, and a freshly
+ * filtered array each time would defeat the React.memo on the pickers
+ * (round-2 adversarial; memo discipline). It also keeps the image mode union
+ * on the signature, which the shared narrowing takes as a plain string.
  * @param models - The sanitized catalog models.
  * @param mode - The active generation sub-mode.
  * @returns The models offered under that mode.
@@ -195,8 +149,7 @@ export function selectModeModels(
   models: ModelEntry[],
   mode: ImageGenMode,
 ): ModelEntry[] {
-  const generatable = models.filter((m) => isImageGenerationMode(m.mode));
-  return filterModelsByMode(generatable, mode);
+  return filterModelsByMode(models, mode);
 }
 
 /**
@@ -227,20 +180,24 @@ export function buildGeneratePanelViewModel(input: {
   const content = asContentView(nodes.find((n) => n.id === nodeId)?.data);
   const mode = resolveMode(content?.mode);
   // Wide filter kept separately: catalogEmpty means "no generatable model in
-  // ANY mode" (it gates the whole panel), while `models` narrows to the
-  // active mode via the same selection the container memoizes.
+  // ANY mode" (it gates the whole panel), which is a different question from
+  // "what does this mode offer" and the only remaining use of this predicate.
   const generatable = input.models.filter((m) => isImageGenerationMode(m.mode));
-  const models = filterModelsByMode(generatable, mode);
+  const models = selectModeModels(input.models, mode);
 
   const model = pickModelForMode(content?.model, mode, content?.modelByMode, models);
   const current = models.find((m) => m.name === model);
-  const params = current ? resolveParamsForModel(current, content?.params ?? {}) : {};
+  // Resolved from the model's OWN record, the same way a switch resolves it
+  // (#1948). The records this returns are dropped — rendering reads, it does
+  // not persist.
+  const params = current ? resolveModelSwitch(content, current).params : {};
 
   const references = deriveReferences(nodeId, nodes, edges, input.textById);
   // t2i generates from scratch and ignores source images (design §2.5): the
   // rail still renders (greyed in the panel) but contributes NO reference URLs
-  // to the execute payload. i2i sends them. (Style images — a future slice —
-  // will be the one exception that survives t2i.)
+  // to the execute payload. i2i sends them. (Style images are the exception
+  // that survives t2i — resolved 30 lines down from the node's own
+  // styleImageUrl, and they ride the payload in every mode.)
   // i2i sends ONLY the @-picked source images (design B): a reference that is
   // connected but not @-mentioned contributes nothing; no @ at all → empty, and
   // the #1675 execute gate then blocks submitting an i2i task with no source.

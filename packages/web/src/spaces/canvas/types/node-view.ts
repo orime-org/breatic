@@ -26,7 +26,7 @@
  * or unknown `type`.
  *
  * Content views also project the Generate panel's inputs (prompt / model /
- * params / mode / modelByMode). The Generate panel reads them via the view
+ * paramsByModel / mode / modelByMode). The Generate panel reads them via the view
  * (panel-view-model consumes `CanvasNodeView.data`, which IS this view), and
  * writes back to the wire through the canvas-space setters.
  */
@@ -75,12 +75,10 @@ interface ContentNodeViewBase extends NodeViewCommon {
   prompt?: unknown;
   /** Selected model id. */
   model?: string;
-  /** Model-specific request params. */
-  params?: Record<string, unknown>;
   /**
    * Generation sub-mode (wire `data.mode`) — the manual toggle state, one
    * value set per modality (image: `t2i` / `i2i`). Projected so the Generate
-   * panel reads it via the view like model / params.
+   * panel reads it via the view like model / paramsByModel.
    */
   mode?: string;
   /**
@@ -88,6 +86,12 @@ interface ContentNodeViewBase extends NodeViewCommon {
    * keyed by generation sub-mode. Drives model restoration on a mode toggle.
    */
   modelByMode?: Record<string, string>;
+  /**
+   * Per-model params (wire `data.paramsByModel`, #1948), keyed by model id.
+   * Each record is exactly that model's declared param set; selecting a model
+   * restores its own record rather than inheriting the outgoing model's.
+   */
+  paramsByModel?: Record<string, Record<string, unknown>>;
   /**
    * Style-reference image URL (image-node style slice #1664, wire
    * `data.styleImageUrl`) — a pick-time COPY of the source image's URL, no
@@ -277,9 +281,9 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const errorMessage = data.errorMessage;
   const locked = data.locked;
   // Common content-view fields: the editable name (node name header), the
-  // derived status, and the Generate panel inputs (prompt / model / params /
-  // mode / modelByMode) — the panel reads these via the view and writes back
-  // to the wire through the canvas-space setters.
+  // derived status, and the Generate panel inputs (prompt / model / mode /
+  // modelByMode / paramsByModel) — the panel reads these via the view and
+  // writes back to the wire through the canvas-space setters.
   const contentCommon = {
     name: data.name,
     status,
@@ -287,9 +291,9 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     locked,
     prompt: data.prompt,
     model: data.model,
-    params: data.params,
     mode: data.mode,
     modelByMode: data.modelByMode,
+    paramsByModel: data.paramsByModel,
     styleImageUrl: data.styleImageUrl,
     firstFrameUrl: data.firstFrameUrl,
     endFrameUrl: data.endFrameUrl,
