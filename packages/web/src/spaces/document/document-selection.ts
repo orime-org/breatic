@@ -2,44 +2,52 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * `Mod-a` selects everything on the caret's side, with the title and the body
- * sealed off from each other.
+ * **A selection in this document never spans the title and the body.**
  *
- * One press, one answer (decided 2026-08-15): in the body it takes the whole
- * body, in the title it takes the title, and with the caret in neither it takes
- * the whole body. Pressing again changes nothing. **From the body you can never
- * reach the title, and from the title you can never reach the body.**
+ * That is one rule, and it is why the two things in this file live together.
+ * The title is the document's NAME: the AI slice replaces what is selected, so
+ * a rewrite landing on the name is destructive in a way no undo makes
+ * acceptable to ship. Whether the selection got there by a key or by a mouse
+ * makes no difference to that, and splitting the answer across two files would
+ * be writing one rule twice.
  *
- * There is no second tier. An earlier version took the caret's own block first
- * and the whole body on a second press; that is a feature of some editors and
- * not of this key. ProseMirror's own basic example is one tier, measured: a
- * press selects 515 characters and a second press selects the same 515.
- *
- * ## Why this is ours to write
- *
- * `@tiptap/core` ships its own `Keymap` extension binding `Mod-a` to
- * `selectAll()`, and that command is the defect: measured, it produces an
- * `AllSelection` starting at 0, which is inside the title. The title is the
- * document's name — the AI slice replaces what is selected, and a rewrite
- * landing on the name is destructive in a way no undo makes acceptable to
- * ship.
- *
- * The reason this cannot be left to the editor is structural: our title is
- * the first block of the same ProseMirror document as the body (content rule
+ * The reason this cannot be left to the editor is structural: our title is the
+ * first block of the same ProseMirror document as the body (content rule
  * `title block*`), so "everything" genuinely includes it. Editors whose title
  * is a separate field get this for free.
  *
+ * ## The two ways in
+ *
+ * **`Mod-a`.** One press, one answer (decided 2026-08-15): in the body it takes
+ * the whole body, in the title it takes the title, and with the caret in
+ * neither it takes the whole body. Pressing again changes nothing. There is no
+ * second tier — an earlier version took the caret's own block first and the
+ * whole body on a second press, which is a feature of some editors and not of
+ * this key. ProseMirror's own basic example is one tier, measured: a press
+ * selects 515 characters and a second press selects the same 515.
+ *
+ * `@tiptap/core` ships its own `Keymap` extension binding this key to
+ * `selectAll()`, and that command is the defect: measured, it produces an
+ * `AllSelection` starting at 0, which is inside the title.
+ *
+ * **Dragging.** Measured 2026-08-15 in a browser, before this: dragging up from
+ * the body's first paragraph onto the title gave `6..15` on a document whose
+ * title occupies `0..9` — the last two characters of the name were selected,
+ * and one keystroke would have taken them. `createSelectionBetween` is where
+ * that is answered, below.
+ *
  * ## Why it does not live in `document-title`
  *
- * That file defines the title node, and each of its keys asks "is the caret
- * in the title" and declines when it is not. This one has to answer for both
- * sides in the same press, so putting it there would give the title node the
+ * That file defines the title node, and each of its keys asks "is the caret in
+ * the title" and declines when it is not. Both halves here have to answer for
+ * both sides at once, so putting them there would give the title node the
  * body's selection logic.
  */
 
 import { Extension } from '@tiptap/core';
+import type { ResolvedPos } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
-import { Selection, TextSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
 
 /** A pair of document positions, resolved and ready to select between. */
@@ -192,7 +200,92 @@ function selectThisSide(
 }
 
 /**
- * The `Mod-a` binding.
+ * Whether a position sits in the title rather than in the body.
+ *
+ * Asked of the POSITION, not of the node it resolves inside. A drag can end on
+ * a boundary between blocks, where the parent is the document and neither
+ * "is a title" nor "is a body block" answers anything; the title occupies
+ * `0 .. titleSize` whatever the shape of what lives there.
+ * @param $pos - The position to place.
+ * @returns True when it is inside the title.
+ * @throws {RangeError} Never — reading the first child of a document whose
+ * content rule opens with the title.
+ */
+function inTitle($pos: ResolvedPos): boolean {
+  return $pos.pos < $pos.doc.child(0).nodeSize;
+}
+
+/**
+ * The far end of the anchor's own side — where a head that strayed belongs.
+ *
+ * The anchor is where the mouse went down, so it is what says which side the
+ * user is selecting, and the head is the end that moves back. Clamping the
+ * anchor instead would make a drag that overshoots by one character silently
+ * switch sides.
+ *
+ * **The head is not a parameter**, because by the time this is reached it
+ * carries no information: the only caller asks it when the two ends are on
+ * opposite sides, so knowing where the anchor is already says which side the
+ * head strayed from and how far back it has to come.
+ *
+ * Answering with a text position rather than the boundary itself matters for
+ * the same reason it does in {@link bodySelection}: `prosemirror-commands` asks
+ * `$from.parent.inlineContent` before it does anything, so a selection ending
+ * on a block boundary makes the next keystroke behave unlike every other
+ * editor.
+ * @param state - Editor state to read.
+ * @param $anchor - Where the drag started.
+ * @returns The position to clamp the head to, or null when there is none.
+ */
+function farEndOfAnchorSide(
+  state: EditorState,
+  $anchor: ResolvedPos,
+): ResolvedPos | null {
+  const { doc } = state;
+  const boundary = bodyStart(state);
+  if (inTitle($anchor)) {
+    // Into the title: the last position its text reaches.
+    return doc.resolve(boundary - 1);
+  }
+  // Into the body: the first position its text reaches. `Selection.near`
+  // searching forwards lands on it whatever the first block turns out to be —
+  // a paragraph, a heading, or a quote holding one.
+  const near = Selection.near(doc.resolve(boundary), 1);
+  return near.from >= boundary ? doc.resolve(near.from) : null;
+}
+
+/**
+ * Answer ProseMirror's question about a selection it is about to build.
+ *
+ * This is the official hook for it — `prosemirror-view@1.42.2:2401` reads
+ * `createSelectionBetween` and falls back to `TextSelection.between` when no
+ * plugin answers, and it is what `prosemirror-gapcursor` and
+ * `prosemirror-tables` use for their own selection shapes. It is asked for
+ * every selection the DOM produces, which is what makes it the right place: a
+ * drag, a shift-click and a double-click that runs over the boundary all
+ * arrive here.
+ *
+ * Returning null means "no opinion", and that is the answer for every
+ * selection that stays on one side — the editor's own handling is what should
+ * apply there.
+ * @param state - Editor state to read.
+ * @param $anchor - Where the selection started.
+ * @param $head - Where it ended.
+ * @returns A clamped selection, or null to leave it to the editor.
+ */
+function selectionWithinOneSide(
+  state: EditorState,
+  $anchor: ResolvedPos,
+  $head: ResolvedPos,
+): Selection | null {
+  if (inTitle($anchor) === inTitle($head)) return null;
+  const $clamped = farEndOfAnchorSide(state, $anchor);
+  if (!$clamped) return null;
+  return TextSelection.between($anchor, $clamped);
+}
+
+/**
+ * The selection rules this document adds.
  *
  * `priority` is above `@tiptap/core`'s `Keymap` extension so this is asked
  * first; `DocumentTitle` claims its own keys at the same height for the same
@@ -211,8 +304,8 @@ function selectThisSide(
  * key belongs with the rest of read-only behaviour, which is a separate piece
  * of work.
  */
-export const DocumentSelectAll = Extension.create({
-  name: 'documentSelectAll',
+export const DocumentSelection = Extension.create({
+  name: 'documentSelection',
   priority: 1000,
 
   /**
@@ -223,5 +316,26 @@ export const DocumentSelectAll = Extension.create({
     return {
       'Mod-a': () => selectThisSide(this.editor.state, this.editor.view.dispatch),
     };
+  },
+
+  /**
+   * Claim every selection the DOM produces, and keep it on one side.
+   *
+   * `someProp` walks the registered props and takes the first non-null answer,
+   * so returning null from ours leaves the editor's own `TextSelection.between`
+   * to run — which is what should happen for every selection that never
+   * crosses the boundary.
+   * @returns The plugin carrying that prop.
+   */
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('documentSelection'),
+        props: {
+          createSelectionBetween: (view, $anchor, $head) =>
+            selectionWithinOneSide(view.state, $anchor, $head),
+        },
+      }),
+    ];
   },
 });

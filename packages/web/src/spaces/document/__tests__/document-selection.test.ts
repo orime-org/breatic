@@ -38,7 +38,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { DocumentSelectAll } from '@web/spaces/document/document-select-all';
+import { DocumentSelection } from '@web/spaces/document/document-selection';
 
 const editors: Editor[] = [];
 
@@ -434,6 +434,108 @@ describe('全选正文之后，格式操作对选中的每一段文字都生效'
   });
 });
 
+describe('鼠标拖选不许跨过标题和正文之间那条线', () => {
+  /**
+   * 问编辑器：DOM 上从 anchor 拖到 head，你要造一个什么样的选区？
+   *
+   * **走 `someProp`，不直接调我们的函数**。`createSelectionBetween` 是
+   * ProseMirror 的官方钩子（`prosemirror-view@1.42.2:2401` 的 `selectionBetween`
+   * 里 `view.someProp("createSelectionBetween", …) || TextSelection.between(…)`），
+   * `prosemirror-gapcursor` 和 `prosemirror-tables` 用的也是它。`someProp` 走的
+   * 是插件注册的那条真实路径，所以这里同时钉住了「逻辑对」和「它真的挂上去了」。
+   *
+   * **为什么不用真的拖一次**：jsdom 里合成的 mousedown / mousemove / mouseup
+   * 驱动不了 ProseMirror 的拖选（两个方向实测都返回空选区，连本该成功的方向
+   * 都驱不动），所以真拖只能在真浏览器里做，那是 smoke 的事。这里钉的是收到
+   * 这两个端点之后该给出什么答案。
+   * @param editor - 目标编辑器。
+   * @param anchor - 按下鼠标的位置。
+   * @param head - 松开鼠标的位置。
+   * @returns 编辑器给出的选区。
+   */
+  function askForSelection(
+    editor: Editor,
+    anchor: number,
+    head: number,
+  ): { from: number; to: number; anchor: number; head: number } | null {
+    const { doc } = editor.state;
+    const made = editor.view.someProp(
+      'createSelectionBetween',
+      (f) => f(editor.view, doc.resolve(anchor), doc.resolve(head)),
+    );
+    if (!made) return null;
+    return { from: made.from, to: made.to, anchor: made.anchor, head: made.head };
+  }
+
+  /**
+   * 同上，但要求真的给了一个选区 —— 用在跨线的用例里。
+   * @param editor - 目标编辑器。
+   * @param anchor - 按下鼠标的位置。
+   * @param head - 松开鼠标的位置。
+   * @returns 夹紧之后的选区。
+   */
+  function askAndExpectClamped(
+    editor: Editor,
+    anchor: number,
+    head: number,
+  ): { from: number; to: number; anchor: number; head: number } {
+    const made = askForSelection(editor, anchor, head);
+    expect(made, '跨线的拖选必须被夹住，不能交给编辑器自己处理').not.toBeNull();
+    return made as NonNullable<typeof made>;
+  }
+
+  it('从正文往上拖进标题，选区停在正文起点', () => {
+    // 真浏览器实测的形状（2026-08-15）：从第一段中间往上拖到标题上，得到的是
+    // 6..15 —— 6 在标题里（标题占 0..9），标题末尾两个字被选中，接着敲一个字
+    // 文档的名字就少一截。
+    const editor = open('<p>first</p><p>second</p>');
+    const body = titleSize(editor);
+    const s = askAndExpectClamped(editor, body + 3, 2);
+
+    expect(s.from, '不许伸进标题').toBeGreaterThanOrEqual(body);
+    expect(s.anchor, '按下鼠标的那一端不动').toBe(body + 3);
+  });
+
+  it('从标题往下拖进正文，选区停在标题末尾', () => {
+    // 另一半：反方向拖同样不许越界。规则是「互不越界」，不是「正文优先」。
+    const editor = open('<p>first</p><p>second</p>');
+    const body = titleSize(editor);
+    const s = askAndExpectClamped(editor, 2, body + 3);
+
+    expect(s.to, '不许伸进正文').toBeLessThanOrEqual(body);
+    expect(s.anchor, '按下鼠标的那一端不动').toBe(2);
+  });
+
+  it('两端都在正文里时，一个字都不动', () => {
+    // 夹紧只在跨线时发生。正文内部的拖选是编辑器自己的事，我们不插手 ——
+    // 这条是变异守卫：一个「永远返回正文选区」的实现会在这里红。
+    const editor = open('<p>first</p><p>second</p><p>third</p>');
+    const from = blockRange(editor, 1).from + 1;
+    const to = blockRange(editor, 3).to - 1;
+
+    // null 的意思是「我们没有意见」，编辑器自己的 `TextSelection.between` 接手。
+    // 那正是同侧拖选该走的路，所以这里断言的是「我们没插手」。
+    expect(askForSelection(editor, from, to)).toBeNull();
+  });
+
+  it('两端都在标题里时，一个字都不动', () => {
+    const editor = open('<p>first</p>');
+
+    expect(askForSelection(editor, 2, 4)).toBeNull();
+  });
+
+  it('正文一个块都没有时，跨线的拖选收进标题而不是抛异常', () => {
+    // 正文没有可落脚的位置，夹进正文是做不到的事。答案是夹进标题 ——
+    // 那是这份文档此刻唯一有内容的地方。
+    const editor = open('');
+    const body = titleSize(editor);
+
+    expect(() => askForSelection(editor, 2, body)).not.toThrow();
+    const s = askAndExpectClamped(editor, 2, body);
+    expect(s.to).toBeLessThanOrEqual(body);
+  });
+});
+
 describe('绑的是哪个键', () => {
   it('用平台无关的 Mod-a，不是写死某一个平台的键', () => {
     // 这是这份代码里唯一属于我们的那个决定：写 `Mod-a`，让库去解析成
@@ -441,7 +543,7 @@ describe('绑的是哪个键', () => {
     // @tiptap/core 绑在那儿的 selectTextblockStart（dist/index.js:5233）。
     const keys = Object.keys(
       (
-        DocumentSelectAll.config.addKeyboardShortcuts as unknown as () => Record<
+        DocumentSelection.config.addKeyboardShortcuts as unknown as () => Record<
           string,
           unknown
         >

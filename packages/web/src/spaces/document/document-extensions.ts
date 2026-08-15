@@ -45,7 +45,7 @@ import {
   UnsupportedMark,
 } from '@web/spaces/document/document-unsupported';
 import { DocumentPlaceholders } from '@web/spaces/document/document-placeholders';
-import { DocumentSelectAll } from '@web/spaces/document/document-select-all';
+import { DocumentSelection } from '@web/spaces/document/document-selection';
 import { DocumentTitle } from '@web/spaces/document/document-title';
 import { DocumentTitleIsPlainText } from '@web/spaces/document/document-title-plain-text';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
@@ -111,10 +111,11 @@ export function buildDocumentExtensions(
     // The body may hold no blocks at all, so the space under the title has to
     // be clickable or a fresh document cannot be written into.
     DocumentClickToWrite,
-    // `Mod-a` one tier at a time. Ours because the title is the first block of
-    // this same document, so the editor's own "select everything" includes the
-    // document's name — see `document-select-all`.
-    DocumentSelectAll,
+    // A selection never spans the title and the body, whether it was made
+    // with `Mod-a` or with the mouse. Ours because the title is the first
+    // block of this same document, so the editor's own "select everything"
+    // includes the document's name — see `document-selection`.
+    DocumentSelection,
     StarterKit.configure({
       // StarterKit's own Document is `block+`, which is both halves wrong.
       document: false,
