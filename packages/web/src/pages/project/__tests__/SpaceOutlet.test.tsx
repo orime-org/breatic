@@ -15,23 +15,46 @@ import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 // an outlet that forgets to pass the role shows every viewer a warning that
 // their editing was taken away. That is exactly what shipped in this branch
 // before Gate 2 round 4 caught it, and nothing failed at the time.
+// EVERY prop it was handed, not just the interesting one: the notice resolves
+// a document name out of `projectId`, `spaceId` and `type`, so a stub that drops
+// three of the four cannot see the outlet pointing it at the wrong document —
+// and pointing it at the wrong document is silent, because the wrong document
+// is simply never at its ceiling. Round 5 measured it: with only `readOnly` and
+// `type` recorded, swapping `projectId` and `spaceId` left all 310 tests in
+// this directory green.
 vi.mock('@web/pages/project/SpaceReadOnlyNotice', () => ({
   SpaceReadOnlyNotice: ({
-    readOnly,
+    projectId,
+    spaceId,
     type,
+    readOnly,
   }: {
-    readOnly?: boolean;
+    projectId: string;
+    spaceId: string;
     type: string;
+    readOnly?: boolean;
   }) => (
     <div
       data-testid='notice-stub'
-      data-readonly={String(readOnly)}
+      data-project-id={projectId}
+      data-space-id={spaceId}
       data-type={type}
+      data-readonly={String(readOnly)}
     />
   ),
 }));
 
 describe('SpaceOutlet', () => {
+  it('points the notice at THIS Space of THIS project', () => {
+    render(<SpaceOutlet projectId='p' spaceId='s' type='document' />);
+    const stub = screen.getByTestId('notice-stub');
+    expect(stub).toHaveAttribute('data-project-id', 'p');
+    expect(stub).toHaveAttribute('data-space-id', 's');
+    // The kind is half the document's identity: a canvas and a document Space
+    // that share an id are two documents with two separate ceilings.
+    expect(stub).toHaveAttribute('data-type', 'document');
+  });
+
   it('hands the viewer role to the read-only notice, not just to the body', () => {
     render(<SpaceOutlet projectId='p' spaceId='s' type='canvas' readOnly />);
     expect(screen.getByTestId('notice-stub')).toHaveAttribute(
