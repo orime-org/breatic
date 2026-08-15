@@ -42,6 +42,7 @@ import {
   resolveModelSwitch,
   resolveParamsEdit,
 } from '@web/spaces/canvas/generate/model-params';
+import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
 import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
 import {
   PromptEditor,
@@ -63,7 +64,6 @@ import { buildVideoTaskPayload } from '@web/spaces/canvas/generate/video-task-pa
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
-  resolveVideoModeSwitch,
   selectVideoModeModels,
   type VideoGenMode,
 } from '@web/spaces/canvas/generate/video-panel-view-model';
@@ -346,18 +346,13 @@ function VideoGeneratePanelBody({
       // switch back to it restores this model rather than the default, and
       // give the picked model its OWN params rather than the outgoing
       // model's (#1948).
-      const { params, paramsByModel } = resolveModelSwitch(
-        freshContent(),
-        picked,
-        models,
-      );
+      const { paramsByModel } = resolveModelSwitch(freshContent(), picked);
       setNodeModel(
         projectId,
         spaceId,
         nodeId,
         nodeVideoMode(graph.nodes, nodeId),
         modelId,
-        params,
         paramsByModel,
       );
     },
@@ -373,7 +368,7 @@ function VideoGeneratePanelBody({
       // Read the node fresh — a collaborator may have changed its per-mode
       // model memory or its params since this render — and write the switch in
       // one transaction.
-      const { model, params, paramsByModel } = resolveVideoModeSwitch(
+      const { model, paramsByModel } = resolveModeSwitch(
         freshContent(),
         target,
         models,
@@ -384,7 +379,7 @@ function VideoGeneratePanelBody({
       // do not self-heal. (The toggle is also disabled while no offered mode
       // has a model; this backstops the target-mode-empty case.)
       if (!model) return;
-      setNodeMode(projectId, spaceId, nodeId, target, model, params, paramsByModel);
+      setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
     },
     [models, projectId, spaceId, nodeId, freshContent],
   );
@@ -397,15 +392,14 @@ function VideoGeneratePanelBody({
       // user just used. The node's stored model can be absent (a node created
       // moments ago) or no longer offered under this mode, and keying the
       // record on that would write the edit where the panel never reads it.
-      const { params, paramsByModel } = resolveParamsEdit(
+      const paramsByModel = resolveParamsEdit(
         freshContent(),
         partial,
-        models,
         freshVm().model,
       );
-      setNodeParams(projectId, spaceId, nodeId, params, paramsByModel);
+      setNodeParams(projectId, spaceId, nodeId, paramsByModel);
     },
-    [projectId, spaceId, nodeId, freshVm, freshContent, models],
+    [projectId, spaceId, nodeId, freshVm, freshContent],
   );
 
   // Reference and first frame are TOGGLES: start the pick when this node is not

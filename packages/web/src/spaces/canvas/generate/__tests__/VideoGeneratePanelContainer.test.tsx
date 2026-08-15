@@ -535,10 +535,16 @@ describe('VideoGeneratePanelContainer', () => {
         .mockResolvedValue({ id: 't1' } as Awaited<
           ReturnType<typeof canvasApi.createTask>
         >);
-      seedVideoNode({ model: 'veo-3.1-lite', params: { duration: 4 } });
+      seedVideoNode({
+        model: 'veo-3.1-lite',
+        paramsByModel: { 'veo-3.1-lite': { duration: 4 } },
+      });
       typePrompt('a drone shot over a canyon at dawn');
       // The React view still carries the pre-edit pick.
-      mountContainer('video', { model: 'veo-3.1', params: { duration: 8 } });
+      mountContainer('video', {
+        model: 'veo-3.1',
+        paramsByModel: { 'veo-3.1': { duration: 8 } },
+      });
       act(() => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });

@@ -4,9 +4,9 @@
 import { describe, it, expect } from 'vitest';
 import type { FocusImage, ModelEntry } from '@breatic/shared';
 
+import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
 import {
   buildGeneratePanelViewModel,
-  resolveModeSwitch,
 } from '@web/spaces/canvas/generate/panel-view-model';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
@@ -163,7 +163,13 @@ describe('buildGeneratePanelViewModel', () => {
 
   it('resolves params against the current model (keeps valid, fills defaults, drops undeclared)', () => {
     const nodes = [
-      node('n1', imageView({ model: 'flux', params: { aspect_ratio: '16:9', bogus: 'x' } })),
+      node(
+        'n1',
+        imageView({
+          model: 'flux',
+          paramsByModel: { flux: { aspect_ratio: '16:9', bogus: 'x' } },
+        }),
+      ),
     ];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.params.aspect_ratio).toBe('16:9'); // kept — valid
@@ -575,14 +581,14 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
   ];
 
   it('resolves the target mode\'s FIRST model when there is no memory (user 2026-07-11)', () => {
-    const r = resolveModeSwitch({ modelByMode: {}, params: {} }, 'i2i', catalog);
+    const r = resolveModeSwitch({ modelByMode: {} }, 'i2i', catalog);
     // mj-i2i is first for i2i; nano-i2i's recommended badge does not promote it.
     expect(r.model).toBe('mj-i2i');
   });
 
   it('restores the target mode\'s remembered model over the first', () => {
     const r = resolveModeSwitch(
-      { modelByMode: { i2i: 'nano-i2i' }, params: {} },
+      { modelByMode: { i2i: 'nano-i2i' } },
       'i2i',
       catalog,
     );
@@ -611,9 +617,7 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
     });
     const r = resolveModeSwitch(
       {
-        model: 'mj-t2i',
         modelByMode: {},
-        params: { resolution: '2k' },
         paramsByModel: { 'mj-t2i': { resolution: '2k' } },
       },
       'i2i',
@@ -626,9 +630,7 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
   it('restores the target model’s own record when it has one', () => {
     const r = resolveModeSwitch(
       {
-        model: 'flux-t2i',
         modelByMode: { i2i: 'nano-i2i' },
-        params: { aspect_ratio: '1:1' },
         paramsByModel: {
           'flux-t2i': { aspect_ratio: '1:1' },
           'nano-i2i': { aspect_ratio: '16:9' },
@@ -656,9 +658,7 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
     const plain = makeModel('flux-t2i', { mode: 't2i' });
     const r = resolveModeSwitch(
       {
-        model: 'flux-t2i',
         modelByMode: { i2i: 'nano-i2i' },
-        params: {},
         paramsByModel: { 'nano-i2i': { camera: 'Sony A7' } },
       },
       'i2i',
@@ -667,9 +667,14 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
     expect(r.params.camera).toBe('Sony A7');
   });
 
-  it('returns every record to persist, migrating an old node on the way (#1948)', () => {
+  it('keeps the other models’ records while adding the incoming one (#1948)', () => {
+    // 不是迁移 —— 老节点一律不管（user 2026-08-15）。这条钉的是「换模式时别
+    // 把别的模型的记录丢了」，切回去才找得到。
     const r = resolveModeSwitch(
-      { model: 'flux-t2i', modelByMode: {}, params: { aspect_ratio: '16:9' } },
+      {
+        modelByMode: {},
+        paramsByModel: { 'flux-t2i': { aspect_ratio: '16:9' } },
+      },
       'i2i',
       catalog,
     );
@@ -679,7 +684,7 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
 
   it('yields an empty model when the target mode offers nothing', () => {
     const t2iOnly = [makeModel('flux-t2i', { mode: 't2i' })];
-    const r = resolveModeSwitch({ modelByMode: {}, params: {} }, 'i2i', t2iOnly);
+    const r = resolveModeSwitch({ modelByMode: {} }, 'i2i', t2iOnly);
     expect(r.model).toBe('');
     expect(r.params).toEqual({});
     expect(r.paramsByModel).toEqual({});

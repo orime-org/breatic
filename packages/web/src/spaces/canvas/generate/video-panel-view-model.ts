@@ -23,7 +23,7 @@ import {
 } from '@web/spaces/canvas/generate/derive-references';
 import {
   filterModelsByMode,
-  resolveModelForMode,
+  pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
@@ -232,49 +232,6 @@ export function nodeVideoMode(
 }
 
 /**
- * Resolves the model + params a mode switch should write.
- *
- * The outgoing mode's model is deliberately NOT carried over — it belongs to
- * that mode, and the panel would otherwise offer, and submit, a model that
- * cannot do what the mode promises — a text-to-video model ignores a first
- * frame and generates from the prompt alone. The backend does not catch that
- * for us: its source gate lets through any model with one source-less mode
- * (domain/model-catalog/source-requirement.ts), and the payload carries no
- * mode at all. What survives instead is the per-mode memory: the model last
- * chosen in the TARGET mode, if the catalog still offers it.
- *
- * An empty model means the target mode offers nothing (the catalog is still
- * loading, failed, or genuinely has no entry). The caller must not write that:
- * an empty model with empty params clobbers what the node had stored, and
- * params do not self-heal.
- * @param content - The node's live content view (mode memory + current params).
- * @param mode - The mode being switched TO.
- * @param models - Catalog video models (the `video` bucket, unfiltered).
- * @returns The model to select and the params reconciled against it.
- */
-export function resolveVideoModeSwitch(
-  content:
-    | Pick<ContentNodeView, 'model' | 'modelByMode' | 'params' | 'paramsByModel'>
-    | undefined,
-  mode: VideoGenMode,
-  models: ModelEntry[],
-): {
-  model: string;
-  params: Record<string, unknown>;
-  paramsByModel: Record<string, Record<string, unknown>>;
-} {
-  const modeModels = selectVideoModeModels(models, mode);
-  const model =
-    resolveModelForMode(mode, content?.modelByMode ?? {}, modeModels) ?? '';
-  const picked = modeModels.find((m) => m.name === model);
-  if (!picked) return { model, params: {}, paramsByModel: {} };
-  // The whole catalog, not this mode's slice: the model being LEFT is what a
-  // pre-#1948 node's params get migrated onto, and it belongs to another mode.
-  const { params, paramsByModel } = resolveModelSwitch(content, picked, models);
-  return { model, params, paramsByModel };
-}
-
-/**
  * The video models the panel offers under one generation mode.
  *
  * `catalog.video` also ships the mini-tool entries — video upscaling, frame
@@ -331,15 +288,18 @@ export function buildVideoPanelViewModel(input: {
   const models = selectVideoModeModels(input.models, mode);
 
   // The stored model wins only while this mode still offers it. A stale pick
-  // (another mode's, or one dropped from the catalog) falls back to the first
-  // offered model — submitting a model the mode does not offer would generate
-  // something else entirely, and the backend catches only part of that (its
-  // source gate passes any model with one source-less mode).
-  const stored = content?.model;
-  const model =
-    stored && models.some((m) => m.name === stored)
-      ? stored
-      : (models[0]?.name ?? '');
+  // (another mode's, or one dropped from the catalog) falls back to what the
+  // user chose under THIS mode, then to the first offered model — submitting a
+  // model the mode does not offer would generate something else entirely, and
+  // the backend catches only part of that (its source gate passes any model
+  // with one source-less mode). The image panel resolves it the same way; this
+  // side skipped the per-mode memory until #1948.
+  const model = pickModelForMode(
+    content?.model,
+    mode,
+    content?.modelByMode,
+    models,
+  );
   const current = models.find((m) => m.name === model);
 
   const references = deriveReferences(nodeId, nodes, input.edges, input.textById);
@@ -361,9 +321,7 @@ export function buildVideoPanelViewModel(input: {
     // the outgoing model's params against that fallback is the very leak this
     // slice closes. The records this returns are dropped — rendering reads,
     // it does not persist.
-    params: current
-      ? resolveModelSwitch(content, current, input.models).params
-      : {},
+    params: current ? resolveModelSwitch(content, current).params : {},
     // `?? 0` covers only the model-not-found case (empty catalog / stale
     // model); when current is found, cost_per_call is a trusted number.
     creditEstimate: current?.cost_per_call ?? 0,

@@ -256,7 +256,7 @@ export interface FocusImage {
  * One content-node model (model revision 2026-06-15): a content node
  * (text / image / audio / video / 3d / web) carries its payload
  * (content / coverUrl / etc.) AND its Generate inputs
- * (prompt / model / mode / references / params) — Generate is a toolbar
+ * (prompt / model / mode / references / param records) — Generate is a toolbar
  * action, not a separate node type. `annotation` is a sticky; `group`
  * contains other nodes. All node types share the state machine and core
  * fields.
@@ -350,7 +350,7 @@ export interface CanvasNodeFields {
 
     // ─── Generate inputs (content nodes) ────────────────────
     // Generate is a toolbar action on a content node (model revision
-    // 2026-06-15). mode / prompt / model / params are the Generate panel's
+    // 2026-06-15). mode / prompt / model / param records are the Generate panel's
     // inputs, stored on the content node and shared via Yjs so collaborators
     // see edits live. There is no `outputType` — the content node's own
     // modality is its output. The reference rail is NOT stored here — it is
@@ -376,8 +376,6 @@ export interface CanvasNodeFields {
     prompt?: unknown;
     /** Model id from config/models/*.yaml. */
     model?: string;
-    /** Model-specific params for the Generate request — the selected model's set. */
-    params?: Record<string, unknown>;
     /**
      * Per-mode memory of the last-chosen model name, keyed by the generation
      * sub-mode (image: `t2i` / `i2i`), so toggling between modes restores the
@@ -393,8 +391,11 @@ export interface CanvasNodeFields {
      * what keeps a mode switch from handing the outgoing model's settings to
      * the incoming one.
      *
-     * Absent on nodes created before #1948; those carry `params` alone, which
-     * is migrated to the model they were last on (see `paramsStoreOf`).
+     * The ONLY place a param value lives: what the panel has in effect is
+     * resolved from these on every render, so there is no second field to
+     * keep in step. A node written before #1948 carries no records and gets
+     * none — Yjs data from before launch gets no compatibility handling
+     * (user 2026-08-15).
      */
     paramsByModel?: Record<string, Record<string, unknown>>;
     /**

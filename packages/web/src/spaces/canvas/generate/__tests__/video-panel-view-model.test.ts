@@ -7,10 +7,10 @@ import type { ModelEntry } from '@breatic/shared';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 import type { VideoGenMode } from '@web/spaces/canvas/generate/video-panel-view-model';
+import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
-  resolveVideoModeSwitch,
   selectVideoModeModels,
 } from '@web/spaces/canvas/generate/video-panel-view-model';
 
@@ -252,7 +252,9 @@ describe('buildVideoPanelViewModel', () => {
           model: 'veo-3.1',
           // `2:1` is not offered by this model → falls back to its default;
           // `1080p` is offered → kept.
-          params: { aspect_ratio: '2:1', resolution: '1080p' },
+          paramsByModel: {
+            'veo-3.1': { aspect_ratio: '2:1', resolution: '1080p' },
+          },
         }),
       ),
     ];
@@ -286,7 +288,10 @@ describe('buildVideoPanelViewModel', () => {
     const nodes = [
       node(
         'n1',
-        videoView({ model: 'kling-o3-pro', params: { duration: 12 } }),
+        videoView({
+          model: 'kling-o3-pro',
+          paramsByModel: { 'kling-o3-pro': { duration: 12 } },
+        }),
       ),
     ];
     const vm = buildVm({
@@ -523,13 +528,13 @@ describe('resolveVideoModeSwitch', () => {
 
   it('restores the model remembered under the TARGET mode', () => {
     const content = { modelByMode: { i2v: 'wan' }, params: {} };
-    expect(resolveVideoModeSwitch(content, 'i2v', [t2v, both, i2v]).model).toBe(
+    expect(resolveModeSwitch(content, 'i2v', [t2v, both, i2v]).model).toBe(
       'wan',
     );
   });
 
   it('falls back to the first model the target mode offers', () => {
-    expect(resolveVideoModeSwitch(undefined, 'i2v', [t2v, both, i2v]).model).toBe(
+    expect(resolveModeSwitch(undefined, 'i2v', [t2v, both, i2v]).model).toBe(
       'kling',
     );
   });
@@ -540,7 +545,7 @@ describe('resolveVideoModeSwitch', () => {
     // from the prompt alone — and the backend would NOT stop it, because its
     // source gate passes any model with a source-less mode.
     const content = { modelByMode: { t2v: 'veo' }, params: {} };
-    expect(resolveVideoModeSwitch(content, 'i2v', [t2v, both, i2v]).model).toBe(
+    expect(resolveModeSwitch(content, 'i2v', [t2v, both, i2v]).model).toBe(
       'kling',
     );
   });
@@ -572,7 +577,7 @@ describe('resolveVideoModeSwitch', () => {
       params: { resolution: '480p' },
       paramsByModel: { wan: { resolution: '480p' } },
     };
-    const { model, params } = resolveVideoModeSwitch(content, 'i2v', [
+    const { model, params } = resolveModeSwitch(content, 'i2v', [
       animate,
       seedance,
     ]);
@@ -587,7 +592,7 @@ describe('resolveVideoModeSwitch', () => {
       params: { aspect_ratio: '16:9' },
       paramsByModel: { veo: { aspect_ratio: '16:9' }, wan: { aspect_ratio: '9:16' } },
     };
-    const { params } = resolveVideoModeSwitch(content, 'i2v', [t2v, both, i2v]);
+    const { params } = resolveModeSwitch(content, 'i2v', [t2v, both, i2v]);
     expect(params.aspect_ratio).toBe('9:16');
   });
 
@@ -604,7 +609,7 @@ describe('resolveVideoModeSwitch', () => {
       params: { aspect_ratio: '9:16' },
       paramsByModel: { kling: { aspect_ratio: '9:16' } },
     };
-    const { model, params } = resolveVideoModeSwitch(content, 'first_last', [
+    const { model, params } = resolveModeSwitch(content, 'first_last', [
       t2v,
       dual,
     ]);
@@ -612,16 +617,14 @@ describe('resolveVideoModeSwitch', () => {
     expect(params.aspect_ratio).toBe('9:16');
   });
 
-  it('returns every record to persist, migrating an old node on the way (#1948)', () => {
-    // No paramsByModel: this node predates the field. The model it is on keeps
-    // its settings, and they come back with the write so they are not lost the
-    // moment the user switches mode.
+  it('keeps the other models’ records while adding the incoming one (#1948)', () => {
+    // 不是迁移 —— 老节点一律不管（user 2026-08-15）。这条钉的是「换模式时别
+    // 把别的模型的记录丢了」，切回去才找得到。
     const content = {
-      model: 'veo',
       modelByMode: { i2v: 'wan' },
-      params: { aspect_ratio: '9:16' },
+      paramsByModel: { veo: { aspect_ratio: '9:16' } },
     };
-    const { paramsByModel } = resolveVideoModeSwitch(content, 'i2v', [
+    const { paramsByModel } = resolveModeSwitch(content, 'i2v', [
       t2v,
       both,
       i2v,
@@ -634,7 +637,7 @@ describe('resolveVideoModeSwitch', () => {
     // The container bails on this rather than writing it: an empty model plus
     // empty params would clobber what the node had stored, and params do not
     // self-heal.
-    expect(resolveVideoModeSwitch(undefined, 'i2v', [t2v])).toEqual({
+    expect(resolveModeSwitch(undefined, 'i2v', [t2v])).toEqual({
       model: '',
       params: {},
       paramsByModel: {},

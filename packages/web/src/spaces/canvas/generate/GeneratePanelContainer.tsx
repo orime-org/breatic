@@ -51,10 +51,10 @@ import {
   resolveModelSwitch,
   resolveParamsEdit,
 } from '@web/spaces/canvas/generate/model-params';
+import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
 import {
   buildGeneratePanelViewModel,
   selectModeModels,
-  resolveModeSwitch,
   type GeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
 import {
@@ -355,18 +355,13 @@ function GeneratePanelBody({
       // node fresh from Yjs — a collaborator may have moved either since this
       // render.
       const content = freshContent();
-      const { params, paramsByModel } = resolveModelSwitch(
-        content,
-        picked,
-        models,
-      );
+      const { paramsByModel } = resolveModelSwitch(content, picked);
       setNodeModel(
         projectId,
         spaceId,
         nodeId,
         resolveMode(content?.mode),
         modelId,
-        params,
         paramsByModel,
       );
     },
@@ -380,7 +375,7 @@ function GeneratePanelBody({
       // switch in one Yjs transaction. resolveModeSwitch resolves fresh for the
       // target mode (its remembered pick → recommended → first) — the current
       // model belongs to the old mode and is deliberately not carried over.
-      const { model, params, paramsByModel } = resolveModeSwitch(
+      const { model, paramsByModel } = resolveModeSwitch(
         freshContent(),
         newMode,
         models,
@@ -391,7 +386,7 @@ function GeneratePanelBody({
       // in Yjs — params does NOT self-heal. Bail (the toggle is also disabled
       // while the catalog is empty; this backstops the target-mode-empty case).
       if (!model) return;
-      setNodeMode(projectId, spaceId, nodeId, newMode, model, params, paramsByModel);
+      setNodeMode(projectId, spaceId, nodeId, newMode, model, paramsByModel);
     },
     [models, projectId, spaceId, nodeId, freshContent],
   );
@@ -404,15 +399,14 @@ function GeneratePanelBody({
       // user just used. The node's stored model can be absent (a node created
       // moments ago) or no longer offered under this mode, and keying the
       // record on that would write the edit where the panel never reads it.
-      const { params, paramsByModel } = resolveParamsEdit(
+      const paramsByModel = resolveParamsEdit(
         freshContent(),
         partial,
-        models,
         freshVm().model,
       );
-      setNodeParams(projectId, spaceId, nodeId, params, paramsByModel);
+      setNodeParams(projectId, spaceId, nodeId, paramsByModel);
     },
-    [projectId, spaceId, nodeId, freshVm, freshContent, models],
+    [projectId, spaceId, nodeId, freshVm, freshContent],
   );
 
   // The Reference / Style buttons are TOGGLES (G, user 2026-07-12): start the

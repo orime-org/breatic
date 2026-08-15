@@ -26,7 +26,7 @@
  * or unknown `type`.
  *
  * Content views also project the Generate panel's inputs (prompt / model /
- * params / mode / modelByMode). The Generate panel reads them via the view
+ * paramsByModel / mode / modelByMode). The Generate panel reads them via the view
  * (panel-view-model consumes `CanvasNodeView.data`, which IS this view), and
  * writes back to the wire through the canvas-space setters.
  */
@@ -75,12 +75,10 @@ interface ContentNodeViewBase extends NodeViewCommon {
   prompt?: unknown;
   /** Selected model id. */
   model?: string;
-  /** Model-specific request params. */
-  params?: Record<string, unknown>;
   /**
    * Generation sub-mode (wire `data.mode`) — the manual toggle state, one
    * value set per modality (image: `t2i` / `i2i`). Projected so the Generate
-   * panel reads it via the view like model / params.
+   * panel reads it via the view like model / paramsByModel.
    */
   mode?: string;
   /**
@@ -293,7 +291,6 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     locked,
     prompt: data.prompt,
     model: data.model,
-    params: data.params,
     mode: data.mode,
     modelByMode: data.modelByMode,
     paramsByModel: data.paramsByModel,

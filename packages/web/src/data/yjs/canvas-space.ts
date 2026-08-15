@@ -607,30 +607,26 @@ export function setNodeLocked(
 }
 
 /**
- * Set a content node's Generate model params (aspect ratio, resolution, …)
- * together with the per-model records they belong to (#1948).
+ * Set a content node's Generate model params — one record per model (#1948).
  *
- * Both are whole plain objects written into the nested `data` Y.Map as scalar,
- * last-write-wins fields (concurrent param edits replace the whole object; an
- * acceptable trade-off for these low-frequency picks), in ONE transaction so
- * collaborators never see the params in effect disagree with the record they
- * came from. Frontend-owned.
+ * The records are one whole plain object written into the nested `data` Y.Map
+ * as a scalar, last-write-wins field (concurrent param edits replace the whole
+ * object; an acceptable trade-off for these low-frequency picks).
+ * Frontend-owned.
  *
- * `paramsByModel` is written WHOLE, not merged: only the caller holds the
- * model catalog, so only it can tell a record that should persist from one
- * that should not (a pre-#1948 node's migrated set, a model that left the
- * catalog). Merging here would resurrect what the caller dropped.
+ * Written WHOLE, not merged: which model this edit belongs to is something
+ * only the caller knows — it just resolved which model the panel is showing —
+ * and a merge here could not tell "add this record" from "these are all the
+ * records there are".
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the node whose params to set.
- * @param params - The params now in effect for the selected model.
- * @param paramsByModel - Every per-model record to persist, this one included.
+ * @param paramsByModel - Every per-model record to persist.
  */
 export function setNodeParams(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  params: Record<string, unknown>,
   paramsByModel: Record<string, Record<string, unknown>>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
@@ -639,10 +635,7 @@ export function setNodeParams(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => {
-    data.set('params', params);
-    data.set('paramsByModel', paramsByModel);
-  }, CANVAS_UNDO);
+  doc.transact(() => data.set('paramsByModel', paramsByModel), CANVAS_UNDO);
 }
 
 /**
@@ -910,9 +903,9 @@ export function removeNodeFocusImage(
 
 /**
  * Switch a content node's Generate model, writing the new model id, the
- * reconciled params, AND recording it as the active mode's remembered model —
- * all in ONE transaction so collaborators never observe a torn state.
- * `modelByMode` is a whole-object last-write-wins field (like `params`): the
+ * per-model param records, AND recording it as the active mode's remembered
+ * model — all in ONE transaction so collaborators never observe a torn state.
+ * `modelByMode` is a whole-object last-write-wins field (like the records): the
  * user picking a model in mode `mode` stores `modelByMode[mode] = model`, so a
  * later toggle back to that mode restores it (see {@link setNodeMode}).
  * Frontend-owned.
@@ -921,7 +914,6 @@ export function removeNodeFocusImage(
  * @param nodeId - Id of the node whose model to switch.
  * @param mode - The active generation sub-mode this pick belongs to (e.g. 't2i').
  * @param model - The new model id.
- * @param params - The params reconciled for the new model (see resolveModelSwitch).
  * @param paramsByModel - Every per-model record to persist (#1948), written whole.
  */
 export function setNodeModel(
@@ -930,7 +922,6 @@ export function setNodeModel(
   nodeId: string,
   mode: string,
   model: string,
-  params: Record<string, unknown>,
   paramsByModel: Record<string, Record<string, unknown>>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
@@ -941,9 +932,7 @@ export function setNodeModel(
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => {
     data.set('model', model);
-    data.set('params', params);
-    // Whole, not merged — the caller holds the catalog and decides what
-    // persists (see setNodeParams for why).
+    // Whole, not merged (see setNodeParams for why).
     data.set('paramsByModel', paramsByModel);
     const prev = data.get('modelByMode');
     const base =
@@ -956,11 +945,10 @@ export function setNodeModel(
 
 /**
  * Switch a content node's generation sub-mode (the manual t2i / i2i toggle),
- * writing the new `mode` together with the model + params resolved for that
- * mode — all in ONE transaction so collaborators never see the new mode paired
- * with the old mode's model. The caller resolves `model` (the mode's remembered
- * pick via `modelByMode`, else the first available — see resolveModelForMode)
- * and reconciles `params` before calling. Does NOT touch `modelByMode`: a
+ * writing the new `mode` together with the model + param records resolved for
+ * that mode — all in ONE transaction so collaborators never see the new mode
+ * paired with the old mode's model. The caller resolves both before calling
+ * (see resolveModeSwitch). Does NOT touch `modelByMode`: a
  * toggle is not an explicit pick, so only {@link setNodeModel} records the
  * per-mode memory. Frontend-owned.
  * @param projectId - Project the canvas space belongs to.
@@ -968,7 +956,6 @@ export function setNodeModel(
  * @param nodeId - Id of the node whose mode to switch.
  * @param mode - The new generation sub-mode (e.g. 't2i' / 'i2i').
  * @param model - The model to select for the new mode.
- * @param params - The params reconciled for that model.
  * @param paramsByModel - Every per-model record to persist (#1948), written whole.
  */
 export function setNodeMode(
@@ -977,7 +964,6 @@ export function setNodeMode(
   nodeId: string,
   mode: string,
   model: string,
-  params: Record<string, unknown>,
   paramsByModel: Record<string, Record<string, unknown>>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
@@ -989,9 +975,7 @@ export function setNodeMode(
   doc.transact(() => {
     data.set('mode', mode);
     data.set('model', model);
-    data.set('params', params);
-    // Whole, not merged — the caller holds the catalog and decides what
-    // persists (see setNodeParams for why).
+    // Whole, not merged (see setNodeParams for why).
     data.set('paramsByModel', paramsByModel);
   }, CANVAS_UNDO);
 }
