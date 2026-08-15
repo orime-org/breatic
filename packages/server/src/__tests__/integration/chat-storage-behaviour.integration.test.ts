@@ -101,7 +101,7 @@ async function seedProject(): Promise<{ userId: string; projectId: string }> {
  * @returns The created conversation.
  */
 async function seedConversation(userId: string, projectId: string) {
-  const conv = await conversationRepo.createConversation(userId, "seeded");
+  const conv = await conversationRepo.createConversation(userId);
   await conversationRepo.setProjectId(conv.id, projectId);
   return { ...conv, projectId };
 }

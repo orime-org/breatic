@@ -26,7 +26,8 @@ export interface UserEntity {
 export interface ConversationEntity {
   id: string;
   userId: string;
-  title: string;
+  /** Null until the conversation has been named, by its first message or by its owner. */
+  title: string | null;
   projectId: string | null;
   /** Turn index up to which messages have been consolidated into memory. */
   lastConsolidatedTurn: number;

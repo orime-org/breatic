@@ -54,22 +54,21 @@ function toEntity(row: typeof conversations.$inferSelect): ConversationEntity {
 }
 
 /**
- * Create a new conversation.
+ * Create a new conversation, with no name yet.
+ *
+ * A name arrives later, from the first thing said in it or from its owner. It
+ * is not given one here, because a placeholder stored in the column would be
+ * indistinguishable from a title someone chose.
  * @param userId - Owner of the new conversation (conversations are user-scoped)
- * @param title - Display title; truncated to 200 chars before insert
  * @param tx - Optional transaction handle, so opening chat can create the
  *   conversation and stamp its project as one unit under the locks it holds
  * @returns The newly created conversation entity
  */
 export async function createConversation(
   userId: string,
-  title = "New conversation",
   tx?: DbTx,
 ): Promise<ConversationEntity> {
-  const rows = await (tx ?? db)
-    .insert(conversations)
-    .values({ userId, title: title.slice(0, 200) })
-    .returning();
+  const rows = await (tx ?? db).insert(conversations).values({ userId }).returning();
   return toEntity(rows[0]!);
 }
 

@@ -53,9 +53,6 @@ export async function assertAccess(
   await validateOwnership(conversationId, userId);
 }
 
-/** Title a conversation carries until something better is known. */
-const NEW_TITLE = "New conversation";
-
 /**
  * Open chat in a project: the list, plus whatever the user was last saying.
  *
@@ -123,7 +120,7 @@ export async function openChat(
       throw new NotFoundError(t("server.error.not_found"));
     }
 
-    const created = await conversationRepo.createConversation(userId, NEW_TITLE, tx);
+    const created = await conversationRepo.createConversation(userId, tx);
     await conversationRepo.setProjectId(created.id, projectId, tx);
     return { ...created, projectId };
   });
@@ -159,34 +156,35 @@ function titleFromMessage(said: string, limit: number): string | null {
 }
 
 /**
- * What this conversation is called, naming it after `said` if it has none yet.
+ * What this conversation is called, naming it after `said` if it has no name.
  *
  * Called once per turn, and it answers rather than returning nothing so the
  * turn can tell the client the name in the same breath as it confirms the
- * message landed. Without that the list and the header go on saying the
- * default until the reader leaves the project and comes back.
+ * message landed. Without that the list and the header go on showing the
+ * placeholder until the reader leaves the project and comes back.
  *
- * "Has none yet" is read as "still carries the title it was created with".
- * The alternative — "this is the first message" — is wrong for a conversation
- * the owner named before saying anything in it, which is a thing they can do
- * from the moment it appears in the list.
+ * Having no name is a column holding null, not a column holding a particular
+ * string. Two things follow. A conversation the owner named before saying
+ * anything in it keeps that name — which "is this the first message?" would
+ * get wrong. And the name they chose can be anything at all, including
+ * whatever the placeholder happens to say in their language.
  * @param conversationId - The conversation this turn belongs to
  * @param said - What the user just said in it
- * @returns The name it goes by from now on
+ * @returns The name it goes by from now on, or null if it still has none
  */
 export async function titleForTurn(
   conversationId: string,
   said: string,
-): Promise<string> {
+): Promise<string | null> {
   const conversation = await conversationRepo.getConversation(conversationId);
   // The caller has already established this conversation is writable, so a
   // miss here is not a case to handle -- but neither is it worth failing a
-  // turn over a title, so the default is answered and the turn goes on.
-  if (!conversation) return NEW_TITLE;
-  if (conversation.title !== NEW_TITLE) return conversation.title;
+  // turn over a title, so nothing is claimed and the turn goes on.
+  if (!conversation) return null;
+  if (conversation.title !== null) return conversation.title;
 
   const named = titleFromMessage(said, getAgentConfig().conversation_title_max_chars);
-  if (named === null) return conversation.title;
+  if (named === null) return null;
   await conversationRepo.updateTitle(conversationId, named);
   return named;
 }
@@ -236,7 +234,7 @@ export async function createConversation(
       throw new NotFoundError(t("server.error.not_found"));
     }
 
-    const created = await conversationRepo.createConversation(userId, NEW_TITLE, tx);
+    const created = await conversationRepo.createConversation(userId, tx);
     await conversationRepo.setProjectId(created.id, projectId, tx);
     return { ...created, projectId };
   });

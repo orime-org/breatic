@@ -52,7 +52,7 @@ describe("Conversation write routes", () => {
     it("creates one in the named project and answers with it", async () => {
       mocks.conversationService.createConversation.mockResolvedValue({
         id: "conv-new",
-        title: "New conversation",
+        title: null,
         projectId: PROJECT,
       });
 

@@ -166,10 +166,10 @@ async function say(
 /**
  * Read a conversation's stored title straight out of the table.
  * @param conversationId - Conversation to read.
- * @returns The title as stored.
+ * @returns The title as stored, or null while it has none.
  */
-async function storedTitle(conversationId: string): Promise<string> {
-  const rows = await sql<{ title: string }[]>`
+async function storedTitle(conversationId: string): Promise<string | null> {
+  const rows = await sql<{ title: string | null }[]>`
     SELECT title FROM conversations WHERE id = ${conversationId}
   `;
   return rows[0]!.title;
@@ -179,7 +179,8 @@ describe("A conversation takes its name from the first thing said in it", () => 
   it("names it after the first message", async () => {
     const { projectId, cookie } = await seedProject();
     const conversationId = await openAndGetId(projectId, cookie);
-    expect(await storedTitle(conversationId)).toBe("New conversation");
+    // Nothing has been said in it yet, so it has no name of its own.
+    expect(await storedTitle(conversationId)).toBeNull();
 
     await say("find me some cyberpunk reference images", projectId, conversationId, cookie);
 
@@ -233,7 +234,7 @@ describe("A conversation takes its name from the first thing said in it", () => 
 
     const title = await storedTitle(conversationId);
     expect(title).toHaveLength(limit);
-    expect(title.endsWith("…")).toBe(true);
+    expect(title!.endsWith("…")).toBe(true);
   });
 
   it("keeps a first message that already fits, ellipsis and all", async () => {
@@ -258,7 +259,7 @@ describe("A conversation takes its name from the first thing said in it", () => 
   });
 
   it("tells the client the name in the event that opens the turn", async () => {
-    // Without this the list and the header go on showing "New conversation"
+    // Without this the list and the header go on showing the placeholder
     // until the reader leaves the project and comes back.
     const { projectId, cookie } = await seedProject();
     const conversationId = await openAndGetId(projectId, cookie);
@@ -299,7 +300,7 @@ describe("POST /chat/conversations — starting one on purpose", () => {
     expect(res.status).toBe(200);
     const payload = (await res.json()) as { data: { id: string; title: string } };
     expect(payload.data.id).not.toBe(first);
-    expect(payload.data.title).toBe("New conversation");
+    expect(payload.data.title).toBeNull();
 
     const rows = await sql<{ n: string }[]>`
       SELECT count(*)::text AS n FROM conversations
@@ -349,7 +350,7 @@ describe("PATCH /chat/conversations/:id — who may name one", () => {
     );
 
     expect(res.status).toBe(404);
-    expect(await storedTitle(theirConversation)).toBe("New conversation");
+    expect(await storedTitle(theirConversation)).toBeNull();
   });
 
   it("answers 404 when the conversation is in a different project", async () => {
@@ -368,7 +369,7 @@ describe("PATCH /chat/conversations/:id — who may name one", () => {
     });
 
     expect(res.status).toBe(404);
-    expect(await storedTitle(conversationId)).toBe("New conversation");
+    expect(await storedTitle(conversationId)).toBeNull();
   });
 
   it("answers 404 for a conversation that has been deleted", async () => {
