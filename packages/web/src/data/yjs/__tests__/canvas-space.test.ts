@@ -465,6 +465,34 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(data.get('paramsByModel')).toEqual({ flux: {} });
   });
 
+  it('setNodeMode writes its three fields inside ONE transaction', () => {
+    // The TSDoc says a collaborator must never observe the new mode paired
+    // with the old model. Asserting the VALUES cannot see that — they end up
+    // equal whether it is one transaction or three — so this counts them.
+    // Gate 2 round 4 measured why it is needed: splitting the transact into
+    // three left all 248 tests in this directory green.
+    addNode(PID, SID, sampleFields('image', { mode: 't2i', model: 'flux' }));
+    const d = doc();
+    const seen: string[] = [];
+    d.on('afterTransaction', () => {
+      const data = (d.getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+        'data',
+      ) as Y.Map<unknown>;
+      seen.push(
+        [
+          data.get('mode') === 'i2i' ? 'mode' : '',
+          data.get('model') === 'mj-i2i' ? 'model' : '',
+          data.get('paramsByModel') ? 'records' : '',
+        ]
+          .filter(Boolean)
+          .join('+'),
+      );
+    });
+    setNodeMode(PID, SID, 'n1', 'i2i', 'mj-i2i', { 'mj-i2i': {} });
+    // One transaction, and by the time it closed all three were in place.
+    expect(seen).toEqual(['mode+model+records']);
+  });
+
   it('setNodeMode writes mode + model + records atomically (toggle), NOT touching modelByMode', () => {
     addNode(
       PID,

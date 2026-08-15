@@ -165,6 +165,48 @@ describe('selectVideoModeModels', () => {
   });
 });
 
+describe('buildVideoPanelViewModel — 渲染时按本模式记住的模型解析 (#1948 9.10)', () => {
+  // 两个面板在这件事上必须一致。视频侧此前少了中间那层（存的模型不在本模式
+  // 列表里时直接掉到第一个，不查 modelByMode），#1948 收成共用的
+  // pickModelForMode 补上。
+  //
+  // 这条钉的是视图模型真的调了它 —— 纯函数那侧钉的是「给对了参数会怎样」，
+  // 钉不住「视图模型给没给」：Gate 2 第 4 轮实测把这处退回内联三元，684 条
+  // 测试没有一条变红。
+  const veo = makeModel('veo', { mode: 't2v' });
+  const kling = makeModel('kling', { mode: 't2v' });
+
+  it('存的模型不在本模式列表里时，恢复用户在这个模式下选过的那个', () => {
+    // 这个状态由两个写入函数的不对称造出来：setNodeModel 只写 model，
+    // setNodeMode 写 mode + model，协作时一个人挑模型撞上另一个人切模式。
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node(
+          'n1',
+          videoView({ model: 'gone-from-this-mode', modelByMode: { t2v: 'kling' } }),
+        ),
+      ],
+      models: [veo, kling],
+      mode: 't2v',
+    });
+    // 不是 veo（列表第一个），是用户自己在 t2v 下选过的 kling。
+    expect(vm.model).toBe('kling');
+  });
+
+  it('存的和记住的都不在列表里时才落到第一个', () => {
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node('n1', videoView({ model: 'gone', modelByMode: { t2v: 'also-gone' } })),
+      ],
+      models: [veo, kling],
+      mode: 't2v',
+    });
+    expect(vm.model).toBe('veo');
+  });
+});
+
 describe('buildVideoPanelViewModel', () => {
   const models = [
     makeModel('veo-3.1', { mode: 't2v', cost_per_call: 88 }),
@@ -521,7 +563,7 @@ describe('nodeVideoMode', () => {
   });
 });
 
-describe('resolveVideoModeSwitch', () => {
+describe('resolveModeSwitch — 视频侧的六个模式 (#1948 起两个面板共用)', () => {
   const t2v = makeModel('veo', { mode: 't2v' });
   const both = makeModel('kling', { mode: ['t2v', 'i2v'] });
   const i2v = makeModel('wan', { mode: 'i2v' });
@@ -577,23 +619,25 @@ describe('resolveVideoModeSwitch', () => {
       params: { resolution: '480p' },
       paramsByModel: { wan: { resolution: '480p' } },
     };
-    const { model, params } = resolveModeSwitch(content, 'i2v', [
+    const { model, paramsByModel } = resolveModeSwitch(content, 'i2v', [
       animate,
       seedance,
     ]);
     expect(model).toBe('seedance');
-    expect(params.resolution).toBe('720p');
+    expect(paramsByModel[model]?.resolution).toBe('720p');
   });
 
   it('restores the target model’s own record when it has one', () => {
     const content = {
-      model: 'veo',
       modelByMode: { i2v: 'wan' },
-      params: { aspect_ratio: '16:9' },
       paramsByModel: { veo: { aspect_ratio: '16:9' }, wan: { aspect_ratio: '9:16' } },
     };
-    const { params } = resolveModeSwitch(content, 'i2v', [t2v, both, i2v]);
-    expect(params.aspect_ratio).toBe('9:16');
+    const { model, paramsByModel } = resolveModeSwitch(content, 'i2v', [
+      t2v,
+      both,
+      i2v,
+    ]);
+    expect(paramsByModel[model]?.aspect_ratio).toBe('9:16');
   });
 
   it('keeps one record for a model offered under two modes (#1948)', () => {
@@ -609,12 +653,12 @@ describe('resolveVideoModeSwitch', () => {
       params: { aspect_ratio: '9:16' },
       paramsByModel: { kling: { aspect_ratio: '9:16' } },
     };
-    const { model, params } = resolveModeSwitch(content, 'first_last', [
+    const { model, paramsByModel } = resolveModeSwitch(content, 'first_last', [
       t2v,
       dual,
     ]);
     expect(model).toBe('kling');
-    expect(params.aspect_ratio).toBe('9:16');
+    expect(paramsByModel[model]?.aspect_ratio).toBe('9:16');
   });
 
   it('keeps the other models’ records while adding the incoming one (#1948)', () => {
@@ -637,11 +681,7 @@ describe('resolveVideoModeSwitch', () => {
     // The container bails on this rather than writing it: an empty model plus
     // empty params would clobber what the node had stored, and params do not
     // self-heal.
-    expect(resolveModeSwitch(undefined, 'i2v', [t2v])).toEqual({
-      model: '',
-      params: {},
-      paramsByModel: {},
-    });
+    expect(resolveModeSwitch(undefined, 'i2v', [t2v])).toEqual({ model: '', paramsByModel: {} });
   });
 });
 

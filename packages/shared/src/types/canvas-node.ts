@@ -404,7 +404,7 @@ export interface CanvasNodeFields {
      * 2026-07-16: one style image max; stored as a copy, NO relationship to
      * the upstream node — deleting or regenerating the source never changes
      * this snapshot; assets are never deleted, so the URL stays valid).
-     * Frontend-owned like `model` / `params` — the worker never writes it; at
+     * Frontend-owned like `model` / `paramsByModel` — the worker never writes it; at
      * execute time the frontend sends it as `params.style_images` when the
      * active model supports style references. Distinct from i2i source images
      * (edges → the reference rail): style guides aesthetics and survives

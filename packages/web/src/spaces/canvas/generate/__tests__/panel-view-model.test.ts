@@ -624,7 +624,7 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
       [t2i, i2i],
     );
     expect(r.model).toBe('nano-edit');
-    expect(r.params.resolution).toBe('1k');
+    expect(r.paramsByModel[r.model]?.resolution).toBe('1k');
   });
 
   it('restores the target model’s own record when it has one', () => {
@@ -639,7 +639,7 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
       'i2i',
       catalog,
     );
-    expect(r.params.aspect_ratio).toBe('16:9');
+    expect(r.paramsByModel[r.model]?.aspect_ratio).toBe('16:9');
   });
 
   it('keeps the camera cluster on the model that declares it (#1948)', () => {
@@ -664,7 +664,7 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
       'i2i',
       [plain, withCamera],
     );
-    expect(r.params.camera).toBe('Sony A7');
+    expect(r.paramsByModel[r.model]?.camera).toBe('Sony A7');
   });
 
   it('keeps the other models’ records while adding the incoming one (#1948)', () => {
@@ -686,7 +686,6 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
     const t2iOnly = [makeModel('flux-t2i', { mode: 't2i' })];
     const r = resolveModeSwitch({ modelByMode: {} }, 'i2i', t2iOnly);
     expect(r.model).toBe('');
-    expect(r.params).toEqual({});
     expect(r.paramsByModel).toEqual({});
   });
 });

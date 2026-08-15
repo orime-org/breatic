@@ -123,10 +123,17 @@ describe('paramsStoreOf — 节点的按模型记录 (#1948)', () => {
   });
 
   it('上线前的老节点一个记录都没有，不做任何兼容处理', () => {
-    // user 2026-08-15 拍定：Yjs 里的老数据一律不迁移、不兼容。老节点上那份
-    // 旧参数在类型里已经不存在，这里连读都读不到 —— 每个模型从自己的默认值
-    // 开始，这正是「不做任何支持」该有的样子。
-    expect(paramsStoreOf({} as { paramsByModel?: never })).toEqual({});
+    // user 2026-08-15 拍定：Yjs 里的老数据一律不迁移、不兼容。
+    //
+    // fixture 必须带上老节点真实的形状（Yjs 文档里仍有 model 和 params，只是
+    // 类型里已经删了这两个字段），否则这条测试什么都保护不到 —— 它最初喂的是
+    // 一个空对象，跟上一条测的 undefined 完全等价，把整套迁移分支加回去它照样
+    // 绿（Gate 2 第 4 轮实测）。
+    const oldNode = {
+      model: 'banana',
+      params: { aspect_ratio: '16:9', camera: 'Sony A7' },
+    } as unknown as Parameters<typeof paramsStoreOf>[0];
+    expect(paramsStoreOf(oldNode)).toEqual({});
   });
 
   it('记录是空对象时如实返回空，不当成「还没有记录」区别对待', () => {
@@ -135,10 +142,10 @@ describe('paramsStoreOf — 节点的按模型记录 (#1948)', () => {
 });
 
 describe('resolveModelSwitch — the picked model brings its own record (#1948)', () => {
-  // Mirrors the real declarations this defect was found on: two models in the
-  // SAME mode whose defaults differ, one of which does not constrain the value
-  // at all. `veo` defaults to 8 and allows [4,6,8]; `kling` defaults to 5 and
-  // states no `values`, so nothing invalidates a value carried into it.
+  // Mirrors the shape this defect was found on: a model that does not
+  // constrain its value at all. `kling` defaults to 5 and states no `values`,
+  // so nothing invalidates a value carried into it — which is why a record
+  // from another model must never reach it in the first place.
   const DURATION_FREE: ParamDescriptor = {
     description: 'Duration',
     type: 'int',

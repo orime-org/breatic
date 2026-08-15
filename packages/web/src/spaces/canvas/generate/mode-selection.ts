@@ -27,9 +27,9 @@ import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
  * know which modality it is serving.
  *
  * A whole modality bucket is a valid input: naming a generation mode is itself
- * the test, so a mini-tool entry in the bucket simply fails to match. Callers
- * that pre-filter (the image panel does, for its own reasons) are welcome to,
- * but this function does not require it.
+ * the test, so a mini-tool entry in the bucket simply fails to match. Neither
+ * panel pre-filters any more — the image one did until #1948, and that pass
+ * was provably unable to remove anything this test keeps.
  * @param models - Catalog models to narrow — a whole modality bucket is fine.
  * @param mode - The active generation mode.
  * @returns The models matching the mode, in input order.
@@ -108,12 +108,10 @@ export interface ModeSwitchSource extends ParamsStoreSource {
   modelByMode?: Record<string, string>;
 }
 
-/** What a mode switch resolves to — the caller writes all three in one transaction. */
+/** What a mode switch resolves to — the caller writes both in one transaction. */
 export interface ModeSwitchResult {
   /** The model to select, or empty string when the target mode offers none. */
   model: string;
-  /** That model's declared param set — what the panel will render. */
-  params: Record<string, unknown>;
   /** Every per-model record to persist. */
   paramsByModel: Record<string, Record<string, unknown>>;
 }
@@ -146,7 +144,6 @@ export function resolveModeSwitch(
   const model =
     resolveModelForMode(mode, content?.modelByMode ?? {}, modeModels) ?? '';
   const picked = modeModels.find((m) => m.name === model);
-  if (!picked) return { model, params: {}, paramsByModel: {} };
-  const { params, paramsByModel } = resolveModelSwitch(content, picked);
-  return { model, params, paramsByModel };
+  if (!picked) return { model, paramsByModel: {} };
+  return { model, paramsByModel: resolveModelSwitch(content, picked).paramsByModel };
 }

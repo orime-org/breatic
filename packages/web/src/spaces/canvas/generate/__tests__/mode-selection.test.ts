@@ -209,7 +209,7 @@ describe('resolveModeSwitch — 切模式，两个面板共用 (#1948)', () => {
     };
     const r = resolveModeSwitch(content, 'i2i', [nano, editor]);
     expect(r.model).toBe('editor');
-    expect(r.params).toEqual({ aspect_ratio: '4:3' });
+    expect(r.paramsByModel[r.model]).toEqual({ aspect_ratio: '4:3' });
     // 离开的那个模型的记录原样留着，切回来还在。
     expect(r.paramsByModel.nano).toEqual({ aspect_ratio: '16:9' });
   });
@@ -229,6 +229,6 @@ describe('resolveModeSwitch — 切模式，两个面板共用 (#1948)', () => {
     });
     const r = resolveModeSwitch({ modelByMode: { t2v: 'veo' } }, 'i2v', [veo, kling]);
     expect(r.model).toBe('kling');
-    expect(r.params).toEqual({ duration: 5 });
+    expect(r.paramsByModel[r.model]).toEqual({ duration: 5 });
   });
 });

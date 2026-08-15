@@ -9,6 +9,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
 import type { ModelCatalog, ModelEntry } from '@breatic/shared';
@@ -99,12 +100,19 @@ function mountContainer(graph?: {
       {/* A REAL ReactFlow with the target node: GeneratePanelBody mounts
           inside a NodeToolbar, which renders its children only when the node
           exists in ReactFlow's store — a bare provider never mounts the
-          body (caught wiring the caret-awareness test). */}
+          body (caught wiring the caret-awareness test).
+
+          panOnDrag off: a real pointer sequence anywhere in the panel bubbles
+          to ReactFlow's d3-zoom, whose d3-drag reads `event.view.document` —
+          null in jsdom, so opening a Radix popover (which needs the full
+          sequence, a bare click does not open it) throws an unhandled error.
+          The canvas here exists only so NodeToolbar renders. */}
       <ReactFlow
         nodes={[
           { id: 'target', position: { x: 0, y: 0 }, data: {} },
         ]}
         edges={[]}
+        panOnDrag={false}
       >
         <CanvasContext.Provider value={canvas}>
           <GeneratePanelContainer
@@ -202,14 +210,9 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     mode: 'i2i' | 't2i',
   ): React.JSX.Element => (
     <QueryClientProvider client={client}>
-      {/* panOnDrag off: a pointer sequence anywhere in the panel bubbles to
-          ReactFlow's d3-zoom, whose d3-drag reads `event.view.document` —
-          null in jsdom, so a real click on any control throws an unhandled
-          error. The canvas here exists only so NodeToolbar renders. */}
       <ReactFlow
         nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
         edges={[]}
-        panOnDrag={false}
       >
         <GeneratePanelContainer
           projectId='p'
@@ -526,6 +529,46 @@ describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948
         data as { paramsByModel?: Record<string, Record<string, unknown>> }
       ).paramsByModel;
       expect(records).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
+    });
+    listSpy.mockRestore();
+  });
+
+  it('目标档解不出模型时整个写入放弃，已有的记录一条都不丢 (9.8)', async () => {
+    // 这一片让这道防护要保的东西变多了：以前失守清掉的是一份参数，现在会把
+    // 所有模型的记录一起清空。
+    //
+    // 防护写在容器的 `if (!model) return`，纯函数测试摸不到它 —— Gate 2 第 4
+    // 轮实测：删掉这一行，684 条测试没有一条变红，而视频侧同一行删掉当场红。
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
+      ...imageCatalog(),
+      image: [T2I_MODEL], // 只有 t2i 一档有模型，i2i 档解不出
+    });
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    // 先让参数记录落一份下来，才验得出「一条都不丢」。
+    await userEvent.click(await screen.findByTestId('generate-ratio-trigger'));
+    await userEvent.click(screen.getByTestId('generate-ratio-option-16:9'));
+    await waitFor(() => {
+      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
+        ?.data as { paramsByModel?: Record<string, unknown> };
+      expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
+    });
+    // Radix 的浮层要完整的 pointer 序列才开，fireEvent.click 打不开它。
+    await userEvent.click(screen.getByTestId('generate-mode-trigger'));
+    await userEvent.click(screen.getByTestId('generate-mode-i2i'));
+    await waitFor(() => {
+      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
+        ?.data as {
+        mode?: string;
+        model?: string;
+        paramsByModel?: Record<string, unknown>;
+      };
+      // 一个字段都没被动过。
+      expect(d.mode).toBeUndefined();
+      expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
     });
     listSpy.mockRestore();
   });
