@@ -42,6 +42,30 @@ import { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Selection } from '@tiptap/pm/state';
 
 /**
+ * The name this selection type is registered and serialised under.
+ *
+ * Namespaced deliberately. `Selection.jsonID`'s own documentation asks for it
+ * — "custom selection classes must register themselves with an ID string...
+ * Try to pick something that's unlikely to clash with classes from other
+ * modules" — and the registry is one shared table per process, keyed by this
+ * string: everything loaded into the page registers into the same one (today
+ * `text`, `node`, `all`, `gapcursor` from prosemirror-state and
+ * prosemirror-gapcursor, and `cell` from prosemirror-tables).
+ *
+ * A plain word like `body` would be a plausible pick for someone else, and a
+ * collision is not a loud failure: the second registration throws, and the
+ * handler below cannot tell that from this module being evaluated twice, so it
+ * would treat someone else's class as ours. A name nobody else would choose
+ * removes the question rather than answering it.
+ *
+ * **The y-tiptap patch hardcodes this same string** — it lives in
+ * `node_modules` and cannot import from here. Changing it means changing
+ * `patches/@tiptap__y-tiptap@3.0.8.patch` in the same commit, in both the
+ * `.js` and the `.cjs` copy.
+ */
+export const BODY_SELECTION_ID = 'breatic:documentBody';
+
+/**
  * Where the body starts in a document — the position just past the title.
  *
  * The title is always the first block; the content rule `title block*` admits
@@ -142,7 +166,7 @@ export class BodySelection extends Selection {
    * @returns The plain object a stored selection round-trips through.
    */
   toJSON(): { type: string } {
-    return { type: 'body' };
+    return { type: BODY_SELECTION_ID };
   }
 
   /**
@@ -181,11 +205,11 @@ export class BodySelection extends Selection {
 // evaluation produces the same behaviour, and `Selection.fromJSON` returning
 // the first one is indistinguishable from returning this one.
 try {
-  Selection.jsonID('body', BodySelection);
+  Selection.jsonID(BODY_SELECTION_ID, BodySelection);
 } catch (error) {
   const alreadyRegistered =
     error instanceof RangeError &&
     error.message.includes('Duplicate use of selection JSON ID');
   if (!alreadyRegistered) throw error;
-  (BodySelection.prototype as { jsonID?: string }).jsonID = 'body';
+  (BodySelection.prototype as { jsonID?: string }).jsonID = BODY_SELECTION_ID;
 }

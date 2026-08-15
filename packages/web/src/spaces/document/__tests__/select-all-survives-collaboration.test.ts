@@ -31,6 +31,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import { BODY_SELECTION_ID } from '@web/spaces/document/document-body-selection';
 
 const editors: Editor[] = [];
 const docs: Y.Doc[] = [];
@@ -88,7 +89,7 @@ describe('别人编辑之后，「全部正文」还得是全部正文', () => {
     pressCtrlA(a.editor);
     pressCtrlA(a.editor);
     expect(a.editor.state.selection.toJSON().type, '前提：按两次之后拿到的是 body 选区').toBe(
-      'body',
+      BODY_SELECTION_ID,
     );
     const before = { from: a.editor.state.selection.from, to: a.editor.state.selection.to };
     expect(before.to).toBe(a.editor.state.doc.content.size);
@@ -100,7 +101,7 @@ describe('别人编辑之后，「全部正文」还得是全部正文', () => {
     expect(
       a.editor.state.selection.toJSON().type,
       '别人编辑之后 A 的选区仍该是「全部正文」，不是一个向内收缩的文本选区',
-    ).toBe('body');
+    ).toBe(BODY_SELECTION_ID);
     expect(
       a.editor.state.selection.to,
       '末尾那条分割线不许掉出选区',
@@ -123,7 +124,7 @@ describe('别人编辑之后，「全部正文」还得是全部正文', () => {
     );
     pressCtrlA(a.editor);
     pressCtrlA(a.editor);
-    expect(a.editor.state.selection.toJSON().type).toBe('body');
+    expect(a.editor.state.selection.toJSON().type).toBe(BODY_SELECTION_ID);
 
     // B 删掉最后一个段落。
     const bDoc = b.editor.state.doc;
@@ -132,7 +133,7 @@ describe('别人编辑之后，「全部正文」还得是全部正文', () => {
     Y.applyUpdate(a.doc, Y.encodeStateAsUpdate(b.doc));
 
     expect(a.editor.state.selection.toJSON().type, '删掉一块之后仍该是「全部正文」').toBe(
-      'body',
+      BODY_SELECTION_ID,
     );
     expect(a.editor.state.selection.from).toBe(a.editor.state.doc.child(0).nodeSize);
     expect(a.editor.state.selection.to).toBe(a.editor.state.doc.content.size);
@@ -154,7 +155,7 @@ describe('别人编辑之后，「全部正文」还得是全部正文', () => {
     );
     pressCtrlA(a.editor);
     pressCtrlA(a.editor);
-    expect(a.editor.state.selection.toJSON().type).toBe('body');
+    expect(a.editor.state.selection.toJSON().type).toBe(BODY_SELECTION_ID);
 
     const bDoc = b.editor.state.doc;
     expect(() => {

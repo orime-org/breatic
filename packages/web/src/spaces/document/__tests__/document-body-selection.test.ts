@@ -21,7 +21,10 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { BodySelection } from '@web/spaces/document/document-body-selection';
+import {
+  BodySelection,
+  BODY_SELECTION_ID,
+} from '@web/spaces/document/document-body-selection';
 
 const editors: Editor[] = [];
 
@@ -68,7 +71,7 @@ describe('范围是从文档算出来的，不是存下来的', () => {
 
     const mapped = sel.map(long);
 
-    expect(mapped.toJSON().type).toBe('body');
+    expect(mapped.toJSON().type).toBe(BODY_SELECTION_ID);
     expect(mapped.from).toBe(bodyStart(long));
     expect(mapped.to).toBe(long.content.size);
   });
@@ -76,9 +79,9 @@ describe('范围是从文档算出来的，不是存下来的', () => {
   it('fromJSON 同样按给它的那份文档算，不看存下来的坐标', () => {
     const d = doc('<p>one</p><p>two</p>');
 
-    const restored = Selection.fromJSON(d, { type: 'body', anchor: 999, head: -5 });
+    const restored = Selection.fromJSON(d, { type: BODY_SELECTION_ID, anchor: 999, head: -5 });
 
-    expect(restored.toJSON().type).toBe('body');
+    expect(restored.toJSON().type).toBe(BODY_SELECTION_ID);
     expect(restored.from).toBe(bodyStart(d));
     expect(restored.to).toBe(d.content.size);
   });
@@ -98,7 +101,7 @@ describe('正文一个块都没有的时候', () => {
 
     const sel = BodySelection.of(d);
 
-    expect(sel.toJSON().type).not.toBe('body');
+    expect(sel.toJSON().type).not.toBe(BODY_SELECTION_ID);
     expect(sel.$from.parent.type.name, '只剩标题时它只能落在标题里').toBe(
       d.child(0).type.name,
     );
@@ -110,7 +113,7 @@ describe('正文一个块都没有的时候', () => {
 
     const mapped = sel.map(doc());
 
-    expect(mapped.toJSON().type).not.toBe('body');
+    expect(mapped.toJSON().type).not.toBe(BODY_SELECTION_ID);
   });
 });
 
@@ -140,14 +143,14 @@ describe('序列化', () => {
   it('toJSON 只写类型，不写坐标', () => {
     const d = doc('<p>one</p>');
 
-    expect(new BodySelection(d).toJSON()).toEqual({ type: 'body' });
+    expect(new BodySelection(d).toJSON()).toEqual({ type: BODY_SELECTION_ID });
   });
 
   it('这个类型名注册过了，Selection.fromJSON 认得它', () => {
     const d = doc('<p>one</p>');
 
     // 注册没生效的话这里会抛 RangeError（"No selection type body defined"）。
-    expect(() => Selection.fromJSON(d, { type: 'body' })).not.toThrow();
+    expect(() => Selection.fromJSON(d, { type: BODY_SELECTION_ID })).not.toThrow();
   });
 
   it('实例带着 jsonID，y-tiptap 靠这个属性认出该怎么重建', () => {
@@ -161,7 +164,7 @@ describe('序列化', () => {
     // 跑全量则这一条红。所以要验它，跑目录、别跑单文件。
     const sel = new BodySelection(doc('<p>one</p>'));
 
-    expect((sel as unknown as { jsonID?: string }).jsonID).toBe('body');
+    expect((sel as unknown as { jsonID?: string }).jsonID).toBe(BODY_SELECTION_ID);
   });
 });
 

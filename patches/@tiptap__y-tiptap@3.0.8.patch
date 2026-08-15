@@ -1,13 +1,18 @@
 diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
-index 653ffe79d5edb4a040555bb222f472af1e45edc8..acbadde198d1d4715872bfc39d669c23cfdc45a2 100644
+index 653ffe79d5edb4a040555bb222f472af1e45edc8..df1cfbbbc5b7b3ce034d1ba87529eef7703d7300 100644
 --- a/dist/y-tiptap.cjs
 +++ b/dist/y-tiptap.cjs
-@@ -379,6 +379,35 @@ const restoreRelativeSelection = (tr, relSel, binding, oldDoc) => {
+@@ -379,6 +379,40 @@ const restoreRelativeSelection = (tr, relSel, binding, oldDoc) => {
        if (selection !== null) {
          tr.setSelection(selection);
        }
-+    } else if (relSel.type === 'body') {
++    } else if (relSel.type === 'breatic:documentBody') {
 +      // PATCH: a selection type of ours, restored by name.
++      //
++      // The name is namespaced and must stay identical to BODY_SELECTION_ID in
++      // packages/web/src/spaces/document/document-body-selection.ts — this file
++      // lives in node_modules and cannot import it, so the two are kept in step
++      // by hand. That file's comment says the same thing from its side.
 +      //
 +      // Without this branch it falls to the `else` below and is rebuilt as a
 +      // `TextSelection.between`, which is exactly what BodySelection exists to
@@ -31,14 +36,14 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..acbadde198d1d4715872bfc39d669c23
 +      // That is the trade being made: some valid selection beats a broken one,
 +      // and leaving the selection unset maps it to the document start anyway.
 +      try {
-+        tr.setSelection(prosemirrorState.Selection.fromJSON(tr.doc, { type: 'body' }));
++        tr.setSelection(prosemirrorState.Selection.fromJSON(tr.doc, { type: 'breatic:documentBody' }));
 +      } catch (e) {
 +        tr.setSelection(prosemirrorState.TextSelection.near(tr.doc.resolve(0)));
 +      }
      } else {
        let anchor = relativePositionToAbsolutePosition(
          binding.doc,
-@@ -927,6 +956,99 @@ const createNodeFromYElement = (
+@@ -927,6 +961,99 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -138,7 +143,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..acbadde198d1d4715872bfc39d669c23
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -999,6 +1121,9 @@ const createNodeFromYElement = (
+@@ -999,6 +1126,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -148,7 +153,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..acbadde198d1d4715872bfc39d669c23
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1164,13 +1289,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1164,13 +1294,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -173,7 +178,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..acbadde198d1d4715872bfc39d669c23
        })
      )
  };
-@@ -1538,7 +1673,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1538,7 +1678,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -192,7 +197,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..acbadde198d1d4715872bfc39d669c23
    }
    return marks
  };
-@@ -1550,6 +1695,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1550,6 +1700,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {
@@ -205,15 +210,20 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..acbadde198d1d4715872bfc39d669c23
        const isOverlapping = map__namespace.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type));
        pattrs[isOverlapping ? `${mark.type.name}--${hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs;
 diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
-index 28c55820dff13cf3d5c303970f530c17eb38f757..a3c6fe3555dfd2d39d75bc049cdab1d6de195433 100644
+index 28c55820dff13cf3d5c303970f530c17eb38f757..0dee05f7118d6b3c1a7d0c36b2102777a93944a6 100644
 --- a/dist/y-tiptap.js
 +++ b/dist/y-tiptap.js
-@@ -345,6 +345,35 @@ const restoreRelativeSelection = (tr, relSel, binding, oldDoc) => {
+@@ -345,6 +345,40 @@ const restoreRelativeSelection = (tr, relSel, binding, oldDoc) => {
        if (selection !== null) {
          tr.setSelection(selection);
        }
-+    } else if (relSel.type === 'body') {
++    } else if (relSel.type === 'breatic:documentBody') {
 +      // PATCH: a selection type of ours, restored by name.
++      //
++      // The name is namespaced and must stay identical to BODY_SELECTION_ID in
++      // packages/web/src/spaces/document/document-body-selection.ts — this file
++      // lives in node_modules and cannot import it, so the two are kept in step
++      // by hand. That file's comment says the same thing from its side.
 +      //
 +      // Without this branch it falls to the `else` below and is rebuilt as a
 +      // `TextSelection.between`, which is exactly what BodySelection exists to
@@ -237,14 +247,14 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a3c6fe3555dfd2d39d75bc049cdab1d6
 +      // That is the trade being made: some valid selection beats a broken one,
 +      // and leaving the selection unset maps it to the document start anyway.
 +      try {
-+        tr.setSelection(Selection.fromJSON(tr.doc, { type: 'body' }));
++        tr.setSelection(Selection.fromJSON(tr.doc, { type: 'breatic:documentBody' }));
 +      } catch (e) {
 +        tr.setSelection(TextSelection.near(tr.doc.resolve(0)));
 +      }
      } else {
        let anchor = relativePositionToAbsolutePosition(
          binding.doc,
-@@ -893,6 +922,99 @@ const createNodeFromYElement = (
+@@ -893,6 +927,99 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -344,7 +354,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a3c6fe3555dfd2d39d75bc049cdab1d6
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -965,6 +1087,9 @@ const createNodeFromYElement = (
+@@ -965,6 +1092,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -354,7 +364,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a3c6fe3555dfd2d39d75bc049cdab1d6
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1130,13 +1255,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1130,13 +1260,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -379,7 +389,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a3c6fe3555dfd2d39d75bc049cdab1d6
        })
      )
  };
-@@ -1504,7 +1639,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1504,7 +1644,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -398,7 +408,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a3c6fe3555dfd2d39d75bc049cdab1d6
    }
    return marks
  };
-@@ -1516,6 +1661,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1516,6 +1666,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {

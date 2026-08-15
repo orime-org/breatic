@@ -57,18 +57,6 @@ function sameRange(a: Range, b: Range): boolean {
 }
 
 /**
- * The title's text range.
- *
- * Position 1 is where the first block's content starts, and the title is
- * always that first block — the content rule admits nothing else there.
- * @param state - Editor state to read.
- * @returns The range covering the title's text.
- */
-function titleRange(state: EditorState): Range {
-  return { from: 1, to: 1 + state.doc.child(0).content.size };
-}
-
-/**
  * The selection covering the whole body, or null when there is nothing there.
  *
  * **This returns a SELECTION, not a range, and that is the whole point.** An
@@ -122,6 +110,13 @@ function spansSeveralBlocks(state: EditorState): boolean {
 
 /**
  * The range of the block the caret is in.
+ *
+ * Answers for the title as well as for a body block: the title is a block like
+ * any other as far as this is concerned, and asking `$from` where its own
+ * block starts and ends needs no knowledge of which block that is. An earlier
+ * version had a separate `titleRange` that computed `1 .. 1 + child(0).content
+ * .size` — the same two numbers by a different route, carrying two assumptions
+ * of its own (that the title starts at 1, and that it is the first child).
  * @param state - Editor state to read.
  * @returns That block's content range.
  */
@@ -173,7 +168,7 @@ function sideOfCaret(state: EditorState): 'title' | 'body' | 'neither' {
  */
 function nextSelection(state: EditorState): Selection | null {
   const side = sideOfCaret(state);
-  if (side === 'title') return selectionOverRange(state, titleRange(state));
+  if (side === 'title') return selectionOverRange(state, currentBlockRange(state));
   if (side === 'neither') return bodySelection(state);
 
   const block = selectionOverRange(state, currentBlockRange(state));
