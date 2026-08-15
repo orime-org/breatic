@@ -2,9 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
+import type { ModelCatalog, ModelEntry } from '@breatic/shared';
 import type { ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
@@ -61,6 +68,8 @@ import {
   type CanvasContextValue,
 } from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
+import { addNode, readCanvasGraph } from '@web/data/yjs/canvas-space';
+import { _resetForTests } from '@web/data/yjs/manager';
 import { useCanvasStore } from '@web/stores';
 
 type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
@@ -193,9 +202,14 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     mode: 'i2i' | 't2i',
   ): React.JSX.Element => (
     <QueryClientProvider client={client}>
+      {/* panOnDrag off: a pointer sequence anywhere in the panel bubbles to
+          ReactFlow's d3-zoom, whose d3-drag reads `event.view.document` —
+          null in jsdom, so a real click on any control throws an unhandled
+          error. The canvas here exists only so NodeToolbar renders. */}
       <ReactFlow
         nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
         edges={[]}
+        panOnDrag={false}
       >
         <GeneratePanelContainer
           projectId='p'
@@ -414,6 +428,105 @@ describe('GeneratePanelContainer — body subscription set', () => {
     });
     const ids = vi.mocked(useTextBodies).mock.lastCall?.[2];
     expect(ids).toEqual(['wired-a', 'wired-b']);
+    listSpy.mockRestore();
+  });
+});
+
+/**
+ * A text-to-image model whose ratio list has two entries, so picking one is a
+ * real change rather than a no-op on the default.
+ */
+const T2I_MODEL: ModelEntry = {
+  name: 'nano-banana',
+  display_name: 'Nano Banana',
+  modality: 'image',
+  mode: 't2i',
+  description: '',
+  guide: '',
+  tier: 'recommended',
+  cost_per_call: 5,
+  generation_time: 10,
+  params: {
+    aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
+  },
+  providers: [],
+  sourcesByMode: { t2i: [] },
+};
+
+/**
+ * A catalog carrying the image model above.
+ * @returns The catalog payload `modelsApi.list()` resolves to.
+ */
+function imageCatalog(): ModelCatalog {
+  return {
+    image: [T2I_MODEL],
+    video: [],
+    audio: [],
+    tts: [],
+    three_d: [],
+    understand: [],
+    total: 1,
+  };
+}
+
+/**
+ * Seeds a real image node in the canvas-space doc. The container reads the
+ * node fresh from Yjs on every write, so a case that asserts what got written
+ * needs the node to actually be there — the React props alone are not it.
+ */
+function seedImageNode(): void {
+  addNode('p', 's', {
+    id: 'target',
+    type: 'image',
+    position: { x: 0, y: 0 },
+    data: {
+      name: 'I',
+      createdAt: 1000,
+      createdBy: 'u1',
+      locked: false,
+      state: 'idle',
+      attachments: [],
+    },
+  } as Parameters<typeof addNode>[2]);
+}
+
+describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948)', () => {
+  beforeEach(() => {
+    _resetForTests();
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  it('记在面板正在渲染的模型名下，不是节点存着的那个', async () => {
+    // 新建的节点根本没写过 model（node-factory 不写），而面板已经解析出第一个
+    // 可用模型并渲染了它的控件。此时按存的那个记账等于记进空名下，控件下一帧
+    // 弹回默认值。
+    //
+    // 这一条钉的是容器传了哪个值 —— 纯函数那侧钉的是「给对了模型名会怎样」，
+    // 两者不是一件事：Gate 2 第 3 轮实测把这次修复整个回退回原 bug，全套测试
+    // 没有一条变红。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog());
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    fireEvent.click(await screen.findByTestId('generate-ratio-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-ratio-option-16:9'));
+    await waitFor(() => {
+      const data = readCanvasGraph('p', 's').nodes.find(
+        (n) => n.id === 'target',
+      )?.data;
+      const records = (
+        data as { paramsByModel?: Record<string, Record<string, unknown>> }
+      ).paramsByModel;
+      expect(records).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
+    });
     listSpy.mockRestore();
   });
 });
