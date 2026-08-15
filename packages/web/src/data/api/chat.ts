@@ -5,7 +5,7 @@ import type { ConversationEntity, MessageData, SSEEventEnvelope } from '@breatic
 import { SSE_EVENT_NAMES } from '@breatic/shared';
 
 import { sseStream } from '@web/data/stream/sse';
-import { apiGet, apiPost } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
 export interface ConversationSummary {
   id: string;
@@ -14,10 +14,30 @@ export interface ConversationSummary {
   messageCount: number;
 }
 
-export interface ConversationDetail {
-  id: string;
-  name: string;
+/**
+ * A conversation as it arrives here, which is not quite as the server holds it.
+ *
+ * `ConversationEntity` types its three timestamps as `Date`, and that is true
+ * of the row. It is not true of anything that has been through JSON: what
+ * lands here is the string the date was serialised to. Declaring that is the
+ * job of this layer -- the alternative is every reader downstream believing it
+ * has a Date and finding out otherwise only when it calls a method on one.
+ */
+export type ConversationOnTheWire = Omit<
+  ConversationEntity,
+  'createdAt' | 'updatedAt' | 'deletedAt'
+> & {
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+};
+
+/** One conversation with the newest page of what was said in it. */
+export interface ConversationRead {
+  conversation: ConversationOnTheWire;
   messages: MessageData[];
+  /** The conversation reaches back further than these messages do. */
+  hasMore: boolean;
 }
 
 /** One page of a conversation, and whether anything is older. */
@@ -31,10 +51,10 @@ export interface MessagePage {
 /** Everything the panel needs to render, from one call. */
 export interface OpenChatResult {
   /** This user's conversations in this project, most recently used first. */
-  conversations: ConversationEntity[];
+  conversations: ConversationOnTheWire[];
   /** The one to show, and what has been said in it. */
   current: {
-    conversation: ConversationEntity;
+    conversation: ConversationOnTheWire;
     messages: MessageData[];
     /** The conversation reaches back further than these messages do. */
     hasMore: boolean;
@@ -115,8 +135,59 @@ export const chatApi = {
       { params: { projectId } },
     );
   },
-  getConversation(id: string) {
-    return apiGet<ConversationDetail>(`/chat/conversations/${id}`);
+  /**
+   * Read one conversation with the newest page of its messages.
+   *
+   * This is how switching conversations loads the one being switched into, so
+   * it answers the same shape `/chat/open` does about its current one --
+   * `hasMore` included, or the panel it lands in cannot know whether "load
+   * earlier" has anything to load.
+   * @param id - The conversation to read
+   * @returns The conversation, its newest page, and whether it reaches further
+   */
+  readConversation(id: string): Promise<ConversationRead> {
+    return apiGet<ConversationRead>(`/chat/conversations/${id}`);
+  },
+  /**
+   * Start another conversation in a project.
+   *
+   * Distinct from `openChat`, which hands back the one already there. This
+   * always makes a new one, because being given the existing conversation is
+   * exactly what pressing "new conversation" is refusing.
+   * @param projectId - Project the new conversation belongs to
+   * @returns The conversation that was just created
+   */
+  createConversation(projectId: string): Promise<ConversationOnTheWire> {
+    return apiPost<ConversationOnTheWire, { project_id: string }>(
+      '/chat/conversations',
+      { project_id: projectId },
+    );
+  },
+  /**
+   * Give a conversation a name.
+   * @param id - The conversation being named
+   * @param projectId - Project it lives in; the server checks this before
+   *   writing, because the id came from here
+   * @param title - The new name
+   * @returns The conversation as it now stands
+   */
+  renameConversation(
+    id: string,
+    projectId: string,
+    title: string,
+  ): Promise<ConversationOnTheWire> {
+    return apiPatch<ConversationOnTheWire, { project_id: string; title: string }>(
+      `/chat/conversations/${id}`,
+      { project_id: projectId, title },
+    );
+  },
+  /**
+   * Delete a conversation.
+   * @param id - The conversation to delete
+   * @returns When the server has deleted it
+   */
+  deleteConversation(id: string): Promise<void> {
+    return apiDelete(`/chat/conversations/${id}`);
   },
   /**
    * Stream a reply to one message.

@@ -77,7 +77,11 @@ function openChatAnswers({ hasMore = false }: { hasMore?: boolean } = {}): void 
  */
 function turnStarts(
   texts: string[],
-  { firstTurnIndex = 7, hasMore = false }: { firstTurnIndex?: number; hasMore?: boolean } = {},
+  {
+    firstTurnIndex = 7,
+    hasMore = false,
+    title = null,
+  }: { firstTurnIndex?: number; hasMore?: boolean; title?: string | null } = {},
 ): void {
   handlers.onEvent({
     event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
@@ -91,6 +95,7 @@ function turnStarts(
         turnIndex: firstTurnIndex + i,
       })),
       hasMore,
+      title,
     },
   } as unknown as SSEEventEnvelope);
 }
@@ -529,13 +534,13 @@ describe('the box the words were typed into', () => {
   it('is emptied by the conversation, not by whoever is rendering it', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    useChatStore.getState().setComposerDraft('  hello  ');
+    conversationRuntime.setDraft('c-1', '  hello  ');
 
     void conversationRuntime.send('p-1', '  hello  ');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
 
     // Still in the box: nothing has said the server has it.
-    expect(useChatStore.getState().composerDraft).toBe('  hello  ');
+    expect(conversationRuntime.draftOf('c-1')).toBe('  hello  ');
     // And what went out is the trimmed message, not the whitespace.
     expect(chatApi.streamMessage).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'hello' }),
@@ -548,13 +553,13 @@ describe('the box the words were typed into', () => {
     // been collapsed the moment after the press -- that is a thing readers do,
     // and this turn goes on without it -- so a rule that lives in the panel is
     // a rule that stops running exactly when someone walks away from it.
-    expect(useChatStore.getState().composerDraft).toBe('');
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
   });
 
   it('is emptied whatever it happens to hold, because only one thing can be in it', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    useChatStore.getState().setComposerDraft('hello');
+    conversationRuntime.setDraft('c-1', 'hello');
 
     void conversationRuntime.send('p-1', 'hello');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
@@ -567,7 +572,38 @@ describe('the box the words were typed into', () => {
     // exact, contains, starts-with -- before it was clear the question only
     // exists if the box accepts input while it is showing something it did
     // not get from them.
-    expect(useChatStore.getState().composerDraft).toBe('');
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
+  });
+
+  it('empties only the conversation the turn belongs to', async () => {
+    // A draft belongs to a conversation. Another one holding a half-typed
+    // sentence is not affected by this turn landing in this one.
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    conversationRuntime.setDraft('c-1', 'hello');
+    conversationRuntime.setDraft('c-2', 'typed somewhere else');
+
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    turnStarts(['hello']);
+
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
+    expect(conversationRuntime.draftOf('c-2')).toBe('typed somewhere else');
+  });
+
+  it('takes the name the server gives the conversation on that same event', async () => {
+    // The turn that says the message landed is also the turn that named the
+    // conversation, when it was the first one. Nothing else on this stream
+    // ever mentions the name.
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+
+    void conversationRuntime.send('p-1', 'find me a reference');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    turnStarts(['find me a reference'], { title: 'find me a reference' });
+
+    const listed = useConversationRuntime.getState().listByProject['p-1'];
+    expect(listed?.[0]?.title).toBe('find me a reference');
   });
 });
 

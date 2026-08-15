@@ -24,7 +24,12 @@ export { membersApi, type Member, type MemberRole, type ProjectMembership } from
 // contract (`SSEEventEnvelope` from `@breatic/shared`), so a second name for
 // it in this barrel would be exactly the duplicate that let the two sides
 // drift in the first place.
-export { chatApi, type ConversationSummary, type ConversationDetail } from '@web/data/api/chat';
+export {
+  chatApi,
+  type ConversationSummary,
+  type ConversationOnTheWire,
+  type ConversationRead,
+} from '@web/data/api/chat';
 export { canvasApi, type CanvasTask } from '@web/data/api/canvas';
 export { miniToolsApi } from '@web/data/api/mini-tools';
 export { textToolsApi, type TextStreamEvent } from '@web/data/api/text-tools';

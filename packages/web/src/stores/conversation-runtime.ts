@@ -28,8 +28,7 @@ import { SSE_EVENT_NAMES, SSE_HEARTBEAT_TIMEOUT_MS, newId } from '@breatic/share
 
 import { chatApi } from '@web/data/api/chat';
 import { ApiException } from '@web/data/api/types';
-import type { OpenChatResult } from '@web/data/api/chat';
-import { useChatStore } from '@web/stores/chat';
+import type { ConversationOnTheWire, OpenChatResult } from '@web/data/api/chat';
 import {
   StreamRefusedError,
   StreamUnreachableError,
@@ -137,6 +136,23 @@ interface ConversationRuntimeState {
   conversations: Record<string, ConversationRuntime>;
   /** Which conversation each project is showing. */
   currentByProject: Record<string, string>;
+  /**
+   * Every conversation this reader has in a project, most recent first.
+   *
+   * Held apart from `conversations` because the two answer different
+   * questions. That one holds what is being said, and only for the ones that
+   * have been opened; this one is what the reader chooses from, and carries
+   * nothing but what a row shows.
+   */
+  listByProject: Record<string, ConversationOnTheWire[]>;
+  /**
+   * What is half-typed in each conversation, keyed by conversation.
+   *
+   * One per conversation and not one per panel: switching conversations puts
+   * a different one in front of the reader, and a single draft would follow
+   * them across as if they had typed it there.
+   */
+  draftByConversation: Record<string, string>;
   /** How far each project's open call has got. */
   openStatus: Record<string, OpenStatus>;
   /**
@@ -420,6 +436,8 @@ function currentVisit(projectId: string): AbortController {
 const useStore = create<ConversationRuntimeState>()(() => ({
   conversations: {},
   currentByProject: {},
+  listByProject: {},
+  draftByConversation: {},
   openStatus: {},
   sendingByProject: {},
 }));
@@ -538,6 +556,12 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     const opened = await chatApi.openChat(projectId, visit.signal);
     if (visit.signal.aborted) return undefined;
     adoptConversation(projectId, opened.current);
+    // The list arrives with the same answer and used to be dropped here, which
+    // is why the history sheet had nothing to show even once it could be
+    // opened at all.
+    useStore.setState((st) => ({
+      listByProject: { ...st.listByProject, [projectId]: opened.conversations },
+    }));
     return undefined;
   } catch (err) {
     // Except when the visit that asked is over, which includes this refusal
@@ -717,7 +741,20 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
       // were tried for telling their letters from ours before it was clear
       // that the question only exists if the box accepts input while it is
       // showing something it did not get from them.
-      useChatStore.getState().setComposerDraft('');
+      //
+      // This conversation's box, and no other. Another conversation may be
+      // holding a sentence its reader has not sent, and this turn landing
+      // here says nothing about that one.
+      setDraft(conversationId, '');
+
+      // The name arrives on this event because this turn may be the one that
+      // gave the conversation its name -- the first message in a conversation
+      // names it. Written whatever it says, including null: a conversation
+      // that has still not been named is a fact the list needs as much as a
+      // name is.
+      if ('title' in event.data) {
+        takeTitle(running.projectId, conversationId, event.data.title as string | null);
+      }
 
       patchConversation(conversationId, (c) => {
         // The place the reply will be written into, made here because this is
@@ -1135,6 +1172,201 @@ async function loadEarlier(conversationId: string): Promise<void> {
 }
 
 /**
+ * Write a conversation's name into the list the reader chooses from.
+ * @param projectId - The project whose list to change.
+ * @param conversationId - The conversation being named.
+ * @param title - Its name now, or null if it still has none.
+ */
+function applyTitle(projectId: string, conversationId: string, title: string | null): void {
+  useStore.setState((s) => {
+    const listed = s.listByProject[projectId];
+    if (!listed) return s;
+    return {
+      listByProject: {
+        ...s.listByProject,
+        [projectId]: listed.map((c) => (c.id === conversationId ? { ...c, title } : c)),
+      },
+    };
+  });
+}
+
+/**
+ * Take the name a turn has just given its conversation.
+ *
+ * A conversation is named after the first thing said in it, and the server
+ * says so on the event that opens the turn. Nothing else on that stream ever
+ * mentions the name, so without this the list and the header go on showing
+ * the placeholder until the reader leaves the project and comes back.
+ * @param projectId - The project the conversation is in.
+ * @param conversationId - The conversation that has been named.
+ * @param title - What it is called now.
+ */
+function takeTitle(projectId: string, conversationId: string, title: string | null): void {
+  applyTitle(projectId, conversationId, title);
+}
+
+/**
+ * Show a different conversation in this project.
+ *
+ * The one being switched into is read in full rather than assembled from the
+ * list, because a list row carries no messages -- landing on it with what the
+ * list knows would show an empty conversation, which is the same thing a
+ * failure looks like.
+ * @param projectId - The project doing the switching.
+ * @param conversationId - The conversation to show.
+ */
+async function switchTo(projectId: string, conversationId: string): Promise<void> {
+  // Already the one on screen. Asking again would replace a conversation with
+  // an identical copy of itself and throw away the turn running in it.
+  if (useStore.getState().currentByProject[projectId] === conversationId) return;
+
+  const visit = currentVisit(projectId);
+  try {
+    const read = await chatApi.readConversation(conversationId);
+    if (visit.signal.aborted) return;
+    adoptConversation(projectId, read);
+  } catch (err) {
+    // Nothing moves. The reader stays where they were, which is a place that
+    // still works, rather than landing on a conversation with no messages in
+    // it because the request for them failed.
+    if (visit.signal.aborted) return;
+    tell({ projectId, conversationId, ...readMishap(err) });
+  }
+}
+
+/**
+ * Start another conversation in this project and go to it.
+ *
+ * Nothing on screen moves until the server has made it. The alternative --
+ * switching first and reconciling after -- would take the reader out of the
+ * conversation they were in, along with whatever they had half-typed there,
+ * on the strength of a request that may be about to fail.
+ * @param projectId - The project to start one in.
+ */
+async function startNew(projectId: string): Promise<void> {
+  const visit = currentVisit(projectId);
+  try {
+    const created = await chatApi.createConversation(projectId);
+    if (visit.signal.aborted) return;
+    useStore.setState((s) => ({
+      listByProject: {
+        ...s.listByProject,
+        // At the top, where the list's order puts the most recently used one.
+        [projectId]: [created, ...(s.listByProject[projectId] ?? [])],
+      },
+    }));
+    adoptConversation(projectId, { conversation: created, messages: [], hasMore: false });
+  } catch (err) {
+    if (visit.signal.aborted) return;
+    tell({ projectId, conversationId: null, ...readMishap(err) });
+  }
+}
+
+/**
+ * Give a conversation the name its owner typed.
+ *
+ * The list is written only once the server has stored it. Showing the new name
+ * first would leave a row saying something the server never accepted, and the
+ * reader has no way to tell the two apart.
+ * @param projectId - The project the conversation is in.
+ * @param conversationId - The conversation being named.
+ * @param title - The name the reader typed.
+ */
+async function rename(
+  projectId: string,
+  conversationId: string,
+  title: string,
+): Promise<void> {
+  const visit = currentVisit(projectId);
+  try {
+    const renamed = await chatApi.renameConversation(conversationId, projectId, title);
+    if (visit.signal.aborted) return;
+    applyTitle(projectId, conversationId, renamed.title);
+  } catch (err) {
+    if (visit.signal.aborted) return;
+    tell({ projectId, conversationId, ...readMishap(err) });
+  }
+}
+
+/**
+ * Delete a conversation, and go somewhere sensible if it was the one on screen.
+ *
+ * Where "somewhere sensible" is: the next one in the list, which is ordered
+ * most recently used first, so it is the one the reader was in before this.
+ * When it was the only one, chat is opened again -- and opening a project with
+ * no conversation makes one, which is the same answer the reader would get by
+ * leaving and coming back.
+ * @param projectId - The project the conversation is in.
+ * @param conversationId - The conversation to delete.
+ */
+async function remove(projectId: string, conversationId: string): Promise<void> {
+  const visit = currentVisit(projectId);
+  const wasOnScreen = useStore.getState().currentByProject[projectId] === conversationId;
+
+  try {
+    await chatApi.deleteConversation(conversationId);
+  } catch (err) {
+    // The row stays. A list that has lost a conversation the server still has
+    // is worse than one that failed to lose it, because only the second is
+    // something the reader can retry.
+    if (visit.signal.aborted) return;
+    tell({ projectId, conversationId, ...readMishap(err) });
+    return;
+  }
+  if (visit.signal.aborted) return;
+
+  // Whatever it was running stops with it. Leaving the turn to finish would
+  // go on calling the model, and being billed for it, on behalf of a
+  // conversation that no longer exists.
+  stopTurn(conversationId);
+
+  const remaining = (useStore.getState().listByProject[projectId] ?? []).filter(
+    (c) => c.id !== conversationId,
+  );
+  useStore.setState((s) => {
+    const { [conversationId]: _gone, ...conversations } = s.conversations;
+    const { [conversationId]: _draft, ...draftByConversation } = s.draftByConversation;
+    return {
+      conversations,
+      draftByConversation,
+      listByProject: { ...s.listByProject, [projectId]: remaining },
+    };
+  });
+
+  if (!wasOnScreen) return;
+  const next = remaining[0];
+  if (next) {
+    await switchTo(projectId, next.id);
+    return;
+  }
+  // None left. `openAndAdopt` rather than `ensureLoaded`, because by that
+  // one's reckoning this project is open already and it would return without
+  // asking for the conversation that no longer exists.
+  const failure = await openAndAdopt(projectId);
+  if (failure) tell({ projectId, conversationId: null, ...readMishap(failure.failed) });
+}
+
+/**
+ * Hold what is half-typed in a conversation.
+ * @param conversationId - The conversation it was typed in.
+ * @param text - What is in the box.
+ */
+function setDraft(conversationId: string, text: string): void {
+  useStore.setState((s) => ({
+    draftByConversation: { ...s.draftByConversation, [conversationId]: text },
+  }));
+}
+
+/**
+ * Read back what was half-typed in a conversation.
+ * @param conversationId - The conversation asked about.
+ * @returns What is in its box, empty when nothing was left there.
+ */
+function draftOf(conversationId: string): string {
+  return useStore.getState().draftByConversation[conversationId] ?? '';
+}
+
+/**
  * Forget everything about one project's chat.
  *
  * Called when the user leaves the project. A turn still running is stopped
@@ -1171,7 +1403,23 @@ function leaveProject(projectId: string): void {
     const { [projectId]: _current, ...currentByProject } = s.currentByProject;
     const { [projectId]: _status, ...openStatus } = s.openStatus;
     const { [projectId]: _sending, ...sendingByProject } = s.sendingByProject;
-    return { conversations: kept, currentByProject, openStatus, sendingByProject };
+    const { [projectId]: _listed, ...listByProject } = s.listByProject;
+    // The drafts of every conversation in this project go with it. A draft
+    // belongs to a conversation the reader was in, and coming back re-opens
+    // the project from the server -- so keeping them would hand a returning
+    // reader half a sentence they typed in a session they have left.
+    const keptDrafts: Record<string, string> = {};
+    for (const [id, draft] of Object.entries(s.draftByConversation)) {
+      if (s.conversations[id]?.projectId !== projectId) keptDrafts[id] = draft;
+    }
+    return {
+      conversations: kept,
+      currentByProject,
+      openStatus,
+      sendingByProject,
+      listByProject,
+      draftByConversation: keptDrafts,
+    };
   });
   opening.delete(projectId);
 }
@@ -1192,6 +1440,8 @@ export function _resetForTests(): void {
   useStore.setState({
     conversations: {},
     currentByProject: {},
+    listByProject: {},
+    draftByConversation: {},
     openStatus: {},
     sendingByProject: {},
   });
@@ -1205,4 +1455,11 @@ export const conversationRuntime = {
   stopTurn,
   loadEarlier,
   leaveProject,
+  switchTo,
+  startNew,
+  rename,
+  remove,
+  takeTitle,
+  setDraft,
+  draftOf,
 };
