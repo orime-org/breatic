@@ -10,20 +10,29 @@ interface SpaceOutletProps {
   projectId: string;
   spaceId: string;
   type: SpaceType;
-  /** Read-only mode for the current user (viewer role), forwarded to the body. */
+  /**
+   * Read-only mode for the current user (viewer role). Goes to BOTH the body,
+   * which gates editing on it, and the notice, which stays quiet on it.
+   */
   readOnly?: boolean;
 }
 
 /**
- * Generic body renderer — looks up the active space's `bodyComponent`
- * from the `SPACE_TYPES` registry and renders it. New space types only
- * have to register themselves; this outlet does not need to change.
+ * Renders one Space: its registered body, plus the read-only notice that
+ * belongs to every Space type alike.
+ *
+ * The body comes from the `SPACE_TYPES` registry, so **for the body**, a new
+ * Space type only has to register itself. The notice is a second registration:
+ * it resolves a document name through `DOC_NAME_BUILDERS`, and a type absent
+ * from that table renders no notice at all — silently, because a type with no
+ * document has no connection to report on and that is also how timeline
+ * legitimately behaves. A new type that does have a document needs both tables.
  * @param root0 - The component props.
  * @param root0.projectId - The id of the project the Space belongs to.
  * @param root0.spaceId - The id of the Space to render.
  * @param root0.type - The Space type used to resolve the body component.
- * @param root0.readOnly - Read-only mode for the current user, forwarded to the body.
- * @returns The registered Space body, or an error message for an unknown type.
+ * @param root0.readOnly - Read-only mode for the current user; goes to the body and the notice.
+ * @returns The Space body and its notice, or an error message for an unknown type.
  */
 export function SpaceOutlet({
   projectId,

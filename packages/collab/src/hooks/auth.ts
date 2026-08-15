@@ -373,10 +373,17 @@ export function createAuthHook({
           cap = await resolveConnectionLimit(parsed.projectId);
         } catch (err) {
           atCapacity = true;
-          // The row an operator has to go fix is a `users` row, and only
-          // the error itself knows which: `membership.repo.ts` puts the
-          // account id and the offending value in its message. Carry it
-          // through or the trail says merely "some studio has bad data".
+          // Only the error itself says WHICH row to go fix, and the three
+          // ways this throws point at three different tables:
+          //
+          //   `Unknown membership tier "X" on account <uid>, the admin of
+          //     studio <sid>`      → a `users` row; carries the value too
+          //   `No live admin for studio <sid>`  → a `studio_members` row
+          //   `No live project <pid>`           → a `projects` row
+          //
+          // So carry `err` through verbatim. The structured fields beside it
+          // narrow the search but never name the row on their own — without
+          // the message the trail says merely "some studio has bad data".
           logger.error(
             {
               err,

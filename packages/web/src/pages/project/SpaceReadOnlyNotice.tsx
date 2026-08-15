@@ -48,19 +48,26 @@ function DocReadOnlyNotice({
   // The server sends ONE flag for three different causes (collab
   // `hooks/auth.ts`: `readOnly = kind === "meta" || role === "viewer" ||
   // atCapacity`) and the wire carries no reason. So "did the server say no" is
-  // not the question — "was this person's editing taken away" is, and the two
-  // other causes are ruled out from what this side already knows:
+  // not the question — "was this person's editing taken away" is. Two of those
+  // three causes are ruled out from what this side already knows:
   //
   //   the role  — a viewer is read-only in every Space, always. Nothing was
   //               taken away, so there is nothing to announce. It comes from
   //               the caller, because a connection does not carry a role.
   //   meta      — no client may ever write it. Ruled out by construction:
   //               `DOC_NAME_BUILDERS` only ever names a Space's own document.
-  //   a refusal — the Space was deleted, the membership was revoked, the
-  //               session expired. Writes are denied for that too, and it is
-  //               told apart by `authFailed`. Telling that person to wait for
-  //               a seat is an instruction they cannot carry out; each Space
-  //               says that one its own way.
+  //
+  // A REFUSAL is a fourth state, not one of that flag's causes: the Space was
+  // deleted, the membership was revoked, the session expired. It denies writes
+  // too and is told apart by `authFailed`, and it is excluded here for a
+  // different reason — telling that person to wait for a seat is an
+  // instruction they cannot carry out. **Nobody else announces it on a
+  // canvas.** `DocumentSpace` does say it (`spaces.document.refusedNotice`,
+  // plus its unavailable card), but `CanvasSpace` reads only `provider` off
+  // `useSocket` and has no refusal branch at all, so a refused canvas document
+  // is currently silent everywhere. That gap is not this component's to close —
+  // this notice is about seats, and a refusal is not a seat problem — but do
+  // not read the exclusion as "some other component has it covered".
   //
   // What is left is the connection being read-only while the role can write:
   // the document is at its tier's ceiling, or that ceiling could not be
@@ -100,17 +107,21 @@ function DocReadOnlyNotice({
  * Only a connection-level degrade — the document is at the ceiling its tier
  * allows, or that ceiling could not be resolved at all. A viewer is told
  * nothing (read-only is their role, not something taken away), the project
- * meta document never reaches here, and a refused document is left to the
- * Space itself. The three exclusions are worked out in
- * {@link DocReadOnlyNotice}, where the connection state is.
+ * meta document never reaches here, and a refused document is out of scope
+ * (which is not the same as saying somebody else reports it — see the note in
+ * {@link DocReadOnlyNotice}, where all three exclusions are worked out).
  *
  * ## Why it lives inside the Space rather than in the page chrome
  *
  * Read-only is a property of ONE document. The ceiling counts the writable
  * connections to a single Space, so the canvas can be full while the document
- * Space beside it has room — one browser tab holds a separate connection per
- * open Space. A notice in the page chrome would claim something about the
- * whole project that is not true of it (user 2026-08-14).
+ * Space beside it has room. Note what "connection" means on each side: the
+ * browser opens ONE WebSocket per tab and attaches each Space's document to it
+ * (`data/yjs/collab-socket.tsx`), while the server counts seats per document,
+ * keyed by socket — so one tab with three Spaces open holds one socket and
+ * three seats, one in each document's ledger. A notice in the page chrome
+ * would claim something about the whole project that is not true of it
+ * (user 2026-08-14).
  *
  * ## Why it is not a toast
  *

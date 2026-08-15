@@ -322,9 +322,11 @@ export async function lockLimitsForUser(
  * lookup is affordable here: this runs once per SPACE-DOCUMENT handshake, and
  * nowhere near per edit. The meta doc does not reach it at all — `auth.ts`
  * skips the whole ceiling decision for meta and for viewers. So the cost of
- * opening a project is one lookup per OPEN Space tab, not one for the project:
- * every open tab attaches its own document and each one handshakes (see the
- * web side's `SpaceDocSync`). Three open tabs, three lookups.
+ * opening a project is one lookup per open Space tab THAT HAS A DOCUMENT, not
+ * one for the project: each such tab attaches its own document and each one
+ * handshakes (see the web side's `SpaceDocSync`, whose `DOC_NAME_BUILDERS`
+ * decides which types have one — timeline has none today and costs nothing).
+ * Three open canvases, three lookups.
  * Unlike its siblings above it takes NO transaction handle, and that is not an
  * omission: the two queries it makes could not both honour one. Resolving the
  * owning studio goes through `projectsRepo.findOwnerStudioId`, which takes no
