@@ -87,6 +87,18 @@ export async function getConversation(id: string): Promise<ConversationEntity | 
 }
 
 /**
+ * One page of a user's conversations, and whether the list goes on past it.
+ *
+ * The flag travels with the rows rather than being worked out from their
+ * count, because the count cannot tell a page that filled the window from one
+ * that happened to be the last.
+ */
+export interface ConversationPage {
+  conversations: ConversationEntity[];
+  hasMore: boolean;
+}
+
+/**
  * List active (non-deleted) conversations for a user, optionally
  * scoped to a single project.
  * @param userId - Conversations are user-owned; this is the auth boundary.
@@ -101,21 +113,28 @@ export async function getConversation(id: string): Promise<ConversationEntity | 
  */
 export async function listConversations(
   userId: string,
-  opts: { projectId?: string; limit?: number; offset?: number } = {},
-): Promise<ConversationEntity[]> {
-  const { projectId, limit = 50, offset = 0 } = opts;
+  opts: { projectId?: string; limit: number; offset?: number },
+): Promise<ConversationPage> {
+  const { projectId, limit, offset = 0 } = opts;
   const conditions = [eq(conversations.userId, userId), isNull(conversations.deletedAt)];
   if (projectId !== undefined) {
     conditions.push(eq(conversations.projectId, projectId));
   }
+  // One past the page, which is the only way to answer "is there more" without
+  // a second query. A full page is not evidence of more and a short one is not
+  // evidence of the end -- both are what a page exactly the size of the
+  // remainder looks like.
   const rows = await db
     .select()
     .from(conversations)
     .where(and(...conditions))
     .orderBy(desc(conversations.updatedAt))
-    .limit(limit)
+    .limit(limit + 1)
     .offset(offset);
-  return rows.map(toEntity);
+  return {
+    conversations: rows.slice(0, limit).map(toEntity),
+    hasMore: rows.length > limit,
+  };
 }
 
 /**

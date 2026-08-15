@@ -255,7 +255,7 @@ chat.post("/skill", validate("json", skillCommandSchema), async (c) => {
  * Optional `project_id` query scopes the result to one project so the
  * frontend doesn't have to client-side filter a paginated response.
  * @param c - Hono context with pagination + optional `project_id`
- * @returns Array of conversation entities
+ * @returns One page of conversations, and whether the list goes on past it
  */
 chat.get(
   "/conversations",
@@ -263,12 +263,12 @@ chat.get(
   async (c) => {
     const user = c.get("user");
     const { limit, offset, project_id: projectId } = c.req.valid("query");
-    const conversations = await conversationService.list(user.id, {
+    const page = await conversationService.list(user.id, {
       projectId,
       limit,
       offset,
     });
-    return c.json({ data: conversations });
+    return c.json({ data: page });
   },
 );
 

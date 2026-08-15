@@ -36,6 +36,7 @@ const agentConfigSchema = z.object({
    * readable; the full message is a scroll away in the conversation itself.
    */
   conversation_title_max_chars: z.number().int().positive().default(60),
+  conversation_page_size: z.number().int().positive().default(30),
   memory_keep_recent_turns: z.number().int().positive().default(3),
   full_detail_turns: z.number().int().positive().default(3),
   memory_project_max_size: z.number().int().positive().default(3072),

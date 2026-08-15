@@ -82,6 +82,8 @@ export async function openChat(
   projectId: string,
 ): Promise<{
   conversations: ConversationEntity[];
+  /** The list goes on past the page above, and the next one is a request away. */
+  hasMoreConversations: boolean;
   current: {
     conversation: ConversationEntity;
     messages: MessageData[];
@@ -126,8 +128,17 @@ export async function openChat(
   });
 
   const page = await messageRepo.getMessages(conversation.id);
+  // The first page of the list, by the same measure every later page uses.
+  // Asking without a window would hand back whatever the repository happened
+  // to default to, and the panel would have no way to tell a project with that
+  // many conversations from one with more.
+  const listed = await conversationRepo.listConversations(userId, {
+    projectId,
+    limit: getAgentConfig().conversation_page_size,
+  });
   return {
-    conversations: await conversationRepo.listConversations(userId, { projectId }),
+    conversations: listed.conversations,
+    hasMoreConversations: listed.hasMore,
     current: {
       conversation,
       messages: page.messages,
@@ -326,19 +337,19 @@ export async function assertWritable(
 }
 
 /**
- * List conversations for a user, ordered by most recently updated.
+ * List one page of a user's conversations, most recently updated first.
  * @param userId - Owner user UUID
- * @param opts - Optional project scope and pagination window
+ * @param opts - Project scope and the window to return
  * @param opts.projectId - Optional project scope; when set, returns only
  *   conversations belonging to that project.
- * @param opts.limit - Maximum number of results (default 50)
- * @param opts.offset - Pagination offset (default 0)
- * @returns Array of conversation entities
+ * @param opts.limit - How many conversations this page holds
+ * @param opts.offset - How many to skip before the page starts
+ * @returns The page, and whether the list goes on past it
  */
 export async function list(
   userId: string,
-  opts: { projectId?: string; limit?: number; offset?: number } = {},
-): Promise<ConversationEntity[]> {
+  opts: { projectId?: string; limit: number; offset?: number },
+): Promise<conversationRepo.ConversationPage> {
   return conversationRepo.listConversations(userId, opts);
 }
 

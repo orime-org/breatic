@@ -27,6 +27,12 @@ memory_window: 20
 # cut with an ellipsis so a list of conversations stays readable.
 conversation_title_max_chars: 60
 
+# How many conversations one page of the history list holds. The list asks for
+# the next page when the reader reaches the bottom of this one, so this is a
+# round-trip size rather than a ceiling: there is no limit on how many
+# conversations a project may have.
+conversation_page_size: 30
+
 # Number of recent turns to keep unconsolidated during memory consolidation.
 memory_keep_recent_turns: 3
 
