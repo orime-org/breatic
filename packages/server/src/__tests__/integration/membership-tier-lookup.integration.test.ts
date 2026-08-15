@@ -154,6 +154,12 @@ async function insertProject(
  * is there. It goes back as NOT VALID: the row the caller just wrote is still
  * in the table and a validated re-add would refuse it. New writes are checked
  * either way, which is what the sibling suite's rejection cases depend on.
+ *
+ * The trailing NOT VALID is stripped before being re-appended, because from
+ * the second call on that is what the catalogue hands back — Postgres prints
+ * the attribute as part of the definition. Appending blindly builds
+ * `... NOT VALID NOT VALID`, which parses (repeated constraint attributes are
+ * legal) and so would go unnoticed while being nonsense.
  * @param fn - What to do while a bad value can be stored
  * @returns Whatever `fn` returned
  * @throws {Error} if the constraint is not on the table to begin with
@@ -166,12 +172,13 @@ async function withTierCheckLifted<T>(fn: () => Promise<T>): Promise<T> {
   if (row === undefined) {
     throw new Error("users_membership_tier_check is not on the table");
   }
+  const definition = row.def.replace(/\s+NOT VALID$/, "");
   await sql`ALTER TABLE users DROP CONSTRAINT users_membership_tier_check`;
   try {
     return await fn();
   } finally {
     await sql.unsafe(
-      `ALTER TABLE users ADD CONSTRAINT users_membership_tier_check ${row.def} NOT VALID`,
+      `ALTER TABLE users ADD CONSTRAINT users_membership_tier_check ${definition} NOT VALID`,
     );
   }
 }

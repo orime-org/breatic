@@ -159,7 +159,7 @@ loader:`packages/core/src/config/membership.ts`。**惰性加载**:首次被调�
 | `project_members` | 4 | 12 | 40 | 9999 | 一个 project 能有几个**显式邀请进来**的协作者。owner 本人不计(他已经占了 `studio_members` 的一个位),开放基线自动物化的 viewer(同 studio 的人打开这个 project 就自动落一行)也不计——把后者算进去,大 studio 里任何 project 一开就满 |
 | `storage_bytes` | 5368709120 | 214748364800 | 536870912000 | 109951162777600 | 该账号所有 studio 的存储字节数之和的上限 |
 
-**档位只有这四个**。产品上还有企业版(决议里的「商务谈」),它的数值一家一谈、将来从数据库读,所以既不在这个文件里、也不在档位枚举里——在这儿编一组数字,会让被设成企业版的账号拿到谁都没谈过的额度而且不报错。
+**这张表只有四档,因为配额写在这份文件里的就是这四档**(代码里叫 `CONFIGURED_MEMBERSHIP_TIERS`)。产品上还有企业版(决议里的「商务谈」),**它是一个账号能在的合法档位** —— 在 `MEMBERSHIP_TIERS` 里、数据库的 CHECK 约束也接受它 —— 只是数值一家一谈、将来从数据库读,所以**不在这个文件里**:在这儿编一组数字,会让被设成企业版的账号拿到谁都没谈过的额度而且不报错。向它要配额会指名账号抛错(`packages/core/src/auth/membership.repo.ts` 的 `limitsFor`),`default_tier` 也拒收它。
 
 **目前五项真的在拦人**:`team_studios` · `projects_per_studio` · `studio_members` · `project_members` · `concurrent_editors`。剩下的 `storage_bytes` 配置已就位、检查点随后续那一批接上。
 

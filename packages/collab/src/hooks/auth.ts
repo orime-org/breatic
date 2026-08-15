@@ -396,12 +396,16 @@ export function createAuthHook({
           //     config file, so there is no number to answer with until they
           //     are stored. Editing `config/membership.yaml` is the one thing
           //     NOT to do here.
-          //   a ZodError naming no row at all  — the config file.
+          //   anything naming no row at all  — the config file.
           //     `getLimitsForStudio` ends at `getMembershipLimits`, which
           //     lazily reads and validates `config/membership.yaml` on first
-          //     use, so a malformed file surfaces here. That one is not
-          //     per-studio: it degrades every writable connection in the
-          //     deployment until the file is fixed.
+          //     use. Three different failures surface here and only one of
+          //     them is a ZodError: the file can be unreadable (an fs error),
+          //     unparseable (a YAMLParseError), or valid YAML that the schema
+          //     rejects. Naming no row is what they have in common, and it is
+          //     the useful test — all three are NOT per-studio: they degrade
+          //     every writable connection in the deployment until the file is
+          //     fixed.
           //   anything else  — unclassified; read the message.
           logger.error(
             {
