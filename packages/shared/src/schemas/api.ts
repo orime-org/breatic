@@ -372,3 +372,15 @@ export const chatOpenSchema = z.object({
   project_id: z.string().uuid(),
 });
 export type ChatOpenInput = z.infer<typeof chatOpenSchema>;
+
+/**
+ * Query for the page of a conversation that comes before the one in hand.
+ *
+ * The cursor is a turn and not a message, because a page ends on a turn
+ * boundary: asking for everything before a message would let a turn's answer
+ * be read without its question.
+ */
+export const chatEarlierMessagesQuerySchema = z.object({
+  before_turn: z.coerce.number().int().positive(),
+});
+export type ChatEarlierMessagesQueryInput = z.infer<typeof chatEarlierMessagesQuerySchema>;

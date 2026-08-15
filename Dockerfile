@@ -15,6 +15,9 @@ WORKDIR /app
 # which is a build failure several minutes into CI for a line nobody knew was
 # a second copy of the workspace definition.
 COPY pnpm-lock.yaml .npmrc ./
+# `pnpm fetch` reads `pnpm.patchedDependencies` and hashes the file it names,
+# so the patch has to be here before it runs, not with the source below.
+COPY patches/ patches/
 RUN pnpm fetch
 
 # The whole workspace, so nothing here can fall out of step with it.

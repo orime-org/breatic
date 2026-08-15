@@ -104,7 +104,8 @@
         "label": "选择 Skill 限定 agent 行为",
         "title": "选择 Skill"
       },
-      "send": "发送"
+      "send": "发送",
+      "sending": "发送中"
     },
     "empty": {
       "greetingWithName": "嗨, {name}!",
@@ -133,16 +134,16 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "这条回复没能完成，可以再发一次。",
-      "notSent": "没能送出去，检查一下网络。",
-      "openFailed": "这个对话没能打开，刷新页面可以再试一次。"
+      "network": "网络错误",
+      "turnFailed": "这条回复没能完成，可以再发一次。"
     },
     "message": {
       "interrupted": "已停止"
     },
     "tool": {
       "unfinished": "未跑完就停止了"
-    }
+    },
+    "loadEarlier": "加载更早的消息"
   },
   "canvas": {
     "group": {
@@ -642,6 +643,14 @@
         "orderedList": "有序列表",
         "quote": "引用",
         "strike": "删除线"
+      },
+      "schemaOutdated": {
+        "headline": "文档编辑器已更新",
+        "body": "这个页面用的还是旧版本，继续编辑会破坏别人写的内容。",
+        "published": "新版本发布于{when}。",
+        "risksLead": "刷新前请留意：",
+        "riskUploads": "正在进行的上传会被中断，可以先切到对应的 Space 看一眼。",
+        "action": "刷新页面"
       }
     },
     "readOnlyReconnect": "重新连接"

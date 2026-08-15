@@ -291,3 +291,31 @@ describe('DocumentSpace', () => {
     );
   });
 });
+
+describe('正文还没到之前', () => {
+  afterEach(() => {
+    socketState.hasEverSynced = true;
+  });
+
+  it('编辑器一次都不被建出来', async () => {
+    // 编辑器不能先建、再等内容 —— 内容一到，y-tiptap 就把这份 Yjs 文档转成
+    // ProseMirror 文档，而那一步会把它表示不了的东西**从共享文档里删掉**。
+    // 删除发生在 Yjs 的类型 observer 里，早于 `doc.on('update')`，所以拦截
+    // 判定去数「有几个不认识的名字」时，名字已经没了 —— 它永远看不见自己
+    // 本该拦住的那次破坏。
+    //
+    // 所以顺序必须是：内容先到 → 判定 → 再决定建不建。
+    socketState.hasEverSynced = false;
+    const cache = await import('@web/spaces/document/document-editor-cache');
+    const spy = vi.spyOn(cache, 'getDocumentEditor');
+
+    render(<DocumentSpace projectId='p-sync' spaceId='s-sync' />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(document.querySelector('.ProseMirror')).toBeNull();
+    spy.mockRestore();
+  });
+});

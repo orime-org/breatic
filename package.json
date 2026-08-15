@@ -48,6 +48,9 @@
   "pnpm": {
     "overrides": {
       "ioredis": "5.11.1"
+    },
+    "patchedDependencies": {
+      "@tiptap/y-tiptap@3.0.8": "patches/@tiptap__y-tiptap@3.0.8.patch"
     }
   }
 }

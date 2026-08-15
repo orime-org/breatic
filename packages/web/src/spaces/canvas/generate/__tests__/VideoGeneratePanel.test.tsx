@@ -173,9 +173,10 @@ describe('VideoGeneratePanel', () => {
   it('offers to clear a slot that is filled but has no picture to show (#1918)', () => {
     // A driving video whose node has no poster yet. The slot IS filled — it
     // holds the video and the payload will carry it — but there is nothing an
-    // `<img>` can paint, so the control keeps its icon and label. What must
-    // not follow is losing the ✕: a pick the user cannot take back is a
-    // dead end, and the only way out would be picking a different video.
+    // `<img>` can paint, so the control covers itself with the video node's
+    // icon (#1946). What must not follow is losing the ✕: a pick the user
+    // cannot take back is a dead end, and the only way out would be picking a
+    // different video.
     renderPanel({
       slots: ['drivingVideo'],
       slotUrls: { drivingVideo: 'https://cdn/driving.mp4' },

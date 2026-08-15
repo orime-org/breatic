@@ -19,7 +19,7 @@
  * progress rather than hand out a number, and they do filter.
  */
 
-import { and, asc, desc, eq, inArray, isNull, lte, gt, max } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, lte, gt, max } from "drizzle-orm";
 import { db, conversations, conversationMessages, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
@@ -84,8 +84,10 @@ function toMessageData(row: StoredRow): MessageData {
  * aggregate over the messages, because a locking clause cannot be combined
  * with an aggregate at all.
  * @param id - Conversation UUID to append to
- * @param message - The message; `ts` and `turnIndex` are assigned here
- * @returns The turn index assigned to this message — callers billing by turn
+ * @param message - The message. A question opens a turn and is numbered here;
+ *   a reply says which turn it answers, because nothing readable off the table
+ *   can tell one turn's answer from a later turn's
+ * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  *   `main-agent.ts` writes the user's own message through here before a turn
@@ -107,16 +109,26 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
       throw new NotFoundError(t("server.conversation.not_found"));
     }
 
-    // Deliberately NOT filtered on `deleted_at`: the turn index is a
-    // monotonic counter that doubles as a billing key, so it must never step
-    // back onto a number a cascade-deleted message already used.
-    const turnRows = await tx
-      .select({ maxTurn: max(conversationMessages.turnIndex) })
-      .from(conversationMessages)
-      .where(eq(conversationMessages.conversationId, id));
+    let turnIndex: number;
+    if (message.role === "assistant") {
+      // A reply goes in the turn it answers, and only its caller knows which
+      // that is. Taking the newest turn instead gives the same number exactly
+      // while nothing else has happened since the question — and when
+      // something has, which is what two open tabs or a reply slower than the
+      // next question produce, the answer is filed under a question nobody
+      // asked there and the one it answered reads as never answered.
+      turnIndex = message.turnIndex;
+    } else {
+      // Deliberately NOT filtered on `deleted_at`: the turn index is a
+      // monotonic counter that doubles as a billing key, so it must never step
+      // back onto a number a cascade-deleted message already used.
+      const turnRows = await tx
+        .select({ maxTurn: max(conversationMessages.turnIndex) })
+        .from(conversationMessages)
+        .where(eq(conversationMessages.conversationId, id));
 
-    const currentTurn = turnRows[0]?.maxTurn ?? 0;
-    const turnIndex = message.role === "user" ? currentTurn + 1 : currentTurn;
+      turnIndex = (turnRows[0]?.maxTurn ?? 0) + 1;
+    }
 
     const seqRows = await tx
       .select({ maxSeq: max(conversationMessages.seq) })
@@ -148,13 +160,38 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
 }
 
 /**
- * Get the last N messages of a conversation.
- * @param id - Conversation UUID to read
- * @param limit - Maximum number of trailing messages (defaults to 50)
- * @returns The trailing messages in display order, empty when the
- *   conversation is missing or soft-deleted
+ * One page of a conversation, read from its newest end backwards.
+ *
+ * A page ends on a turn boundary, except when one turn is longer than a whole
+ * page -- see where the boundary is trimmed for why that one has to be handed
+ * over as it is. Cutting at a message count instead would put a turn's
+ * question in one page and its answer in neither: the cursor for the next
+ * page is a turn, so a turn half-read is a turn half-lost, and on screen that
+ * is an answer with no question above it that no amount of loading earlier
+ * brings back.
  */
-export async function getMessages(id: string, limit = MAX_HISTORY): Promise<MessageData[]> {
+export interface MessagePage {
+  /** The messages, oldest first. */
+  messages: MessageData[];
+  /** There are older messages than these. */
+  hasMore: boolean;
+}
+
+/**
+ * Read one page of a conversation.
+ * @param id - Conversation UUID to read
+ * @param opts - Where to read from
+ * @param opts.beforeTurn - Read the page ending just before this turn. Absent
+ *   reads the newest page, which is what opening the conversation shows
+ * @returns That page in display order, empty when the conversation is missing
+ *   or soft-deleted
+ */
+export async function getMessages(
+  id: string,
+  opts: { beforeTurn?: number } = {},
+): Promise<MessagePage> {
+  // One more than a page holds, which is how a page learns there is anything
+  // behind it without a second query.
   const rows = await db
     .select({
       id: conversationMessages.id,
@@ -170,26 +207,58 @@ export async function getMessages(id: string, limit = MAX_HISTORY): Promise<Mess
         eq(conversationMessages.conversationId, id),
         isNull(conversationMessages.deletedAt),
         isNull(conversations.deletedAt),
+        ...(opts.beforeTurn === undefined
+          ? []
+          : [lt(conversationMessages.turnIndex, opts.beforeTurn)]),
       ),
     )
     .orderBy(desc(conversationMessages.turnIndex), desc(conversationMessages.seq))
-    .limit(limit);
+    .limit(MAX_HISTORY + 1);
 
-  return rows.reverse().map(toMessageData);
+  const hasMore = rows.length > MAX_HISTORY;
+
+  // Rows come newest first, so the last one is the oldest — and when there is
+  // more behind it, it is the turn the limit cut through. Drop it whole and
+  // it becomes the next page's job, complete. Unless it is the only turn
+  // here, in which case dropping it would return nothing and the reader could
+  // never get past it.
+  const oldestTurn = rows.at(-1)?.turnIndex;
+  const kept =
+    hasMore && rows.some((r) => r.turnIndex !== oldestTurn)
+      ? rows.filter((r) => r.turnIndex !== oldestTurn)
+      : rows;
+
+  return { messages: kept.reverse().map(toMessageData), hasMore };
 }
 
 /**
  * Get messages formatted for LLM context.
  *
- * Skips already-consolidated turns and strips the fields the model has no use
- * for (creation time, turn index, the model's own reasoning).
+ * Skips already-consolidated turns and drops the flat `thinking` field. That
+ * field is a view read off the reasoning parts, and the parts themselves stay
+ * -- what does or does not reach the model is decided one field at a time in
+ * `toModelMessages`, not here.
+ *
+ * It used to drop the creation time and the turn index as well, on the
+ * grounds that the model is not shown them. But the model is not shown these
+ * objects at all — `toModelMessages` names the fields it sends, one at a
+ * time — so withholding them here reached nobody, and it cost a cast that
+ * told the compiler a message with no timestamp was a whole one.
+ *
+ * What it did reach is the compressor, the one caller that stands between
+ * here and the model, whose first act is to group messages by turn. Without
+ * the field every message landed in a single group, a single group is never
+ * more than the full-detail window, and the branch that drops old tool calls
+ * was unreachable for as long as this function stripped it.
  * @param id - Conversation UUID
  * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
- * @returns Unconsolidated messages with internal-only fields removed
+ * @param beforeTurn - Stop short of this turn, leaving the running turn out
+ * @returns Unconsolidated messages, without the model's reasoning
  */
 export async function getMessagesForLlm(
   id: string,
   lastConsolidatedTurn = 0,
+  beforeTurn?: number,
 ): Promise<MessageData[]> {
   const rows = await db
     .select({
@@ -205,6 +274,13 @@ export async function getMessagesForLlm(
       and(
         eq(conversationMessages.conversationId, id),
         gt(conversationMessages.turnIndex, lastConsolidatedTurn),
+        // The turn being run is not history: its own message is put in front
+        // of the model separately, and a copy here would be the model reading
+        // the same question twice -- and a candidate for compression, which
+        // could shorten the very thing being asked.
+        ...(beforeTurn === undefined
+          ? []
+          : [lt(conversationMessages.turnIndex, beforeTurn)]),
         isNull(conversationMessages.deletedAt),
         isNull(conversations.deletedAt),
       ),
@@ -212,8 +288,8 @@ export async function getMessagesForLlm(
     .orderBy(asc(conversationMessages.turnIndex), asc(conversationMessages.seq));
 
   return rows.map((row) => {
-    const { ts: _ts, turnIndex: _ti, thinking: _th, ...rest } = toMessageData(row);
-    return rest as MessageData;
+    const { thinking: _th, ...rest } = toMessageData(row);
+    return rest;
   });
 }
 

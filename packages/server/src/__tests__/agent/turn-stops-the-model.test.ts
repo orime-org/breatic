@@ -30,6 +30,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type * as DomainModule from "@breatic/domain";
 
 const dnsLookupMock = vi.fn();
+vi.mock("@server/agent/turn-context.js", () => ({
+  buildTurnContext: vi.fn(async () => ({
+    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    compressedHistory: [],
+  })),
+}));
 vi.mock("node:dns/promises", () => ({
   lookup: (...args: unknown[]) => dnsLookupMock(...args),
 }));
@@ -103,7 +109,16 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   };
 });
 
-vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage }));
+/**
+ * What the conversation holds, for the settle-up every turn opens with.
+ *
+ * Empty because these cases are about what happens after that: the point of
+ * the event is that the browser takes the server's version, and a version
+ * with nothing in it is the version that gets out of the way.
+ */
+const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
+
+vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage, getMessages }));
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
@@ -141,8 +156,6 @@ async function timeTurn(signal: AbortSignal): Promise<number> {
       userId: "u1",
       conversationId: "c1",
       projectId: "p1",
-      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
-      compressedHistory: [],
     },
     async () => {
       for await (const _event of new MainAgent().chat("hi", undefined, signal)) {

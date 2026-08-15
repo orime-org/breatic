@@ -104,7 +104,8 @@
         "label": "Pick a Skill to scope the agent's behavior",
         "title": "Pick Skill"
       },
-      "send": "Send"
+      "send": "Send",
+      "sending": "Sending"
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",
@@ -133,16 +134,16 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "This reply could not be finished. Try sending it again.",
-      "notSent": "That did not go out — check your connection.",
-      "openFailed": "This chat could not be opened. Reload the page to try again."
+      "network": "Network error",
+      "turnFailed": "This reply could not be finished. Try sending it again."
     },
     "message": {
       "interrupted": "Stopped"
     },
     "tool": {
       "unfinished": "Stopped before it finished"
-    }
+    },
+    "loadEarlier": "Load earlier messages"
   },
   "canvas": {
     "group": {
@@ -642,6 +643,14 @@
         "orderedList": "Ordered list",
         "quote": "Quote",
         "strike": "Strikethrough"
+      },
+      "schemaOutdated": {
+        "headline": "Document editor updated",
+        "body": "This page is running an older version, and editing here would damage what others have written.",
+        "published": "The new version went out {when}.",
+        "risksLead": "Before you refresh:",
+        "riskUploads": "uploads still in progress will be interrupted — you can switch to the Space they are in and check first.",
+        "action": "Refresh page"
       }
     },
     "readOnlyReconnect": "Reconnect"

@@ -41,7 +41,9 @@ interface GenerateToolbarProps {
 
 /**
  * The Generate panel's top tool row: Reference / Focus / Style — all three are
- * live canvas picks, each with a hover tooltip describing what it does (Mark
+ * live canvas picks. The two toggles carry a hover tooltip describing what they
+ * do; Style is a slot, and a slot's one hover surface is its preview, which
+ * carries the same sentence as the card's hint while empty (#1946). (Mark
  * was dropped 2026-07-17, user decision C: its intent is already covered by
  * Focus). Reference is available in both modes — text-to-image scopes the pick
  * to text sources (the canvas pick rejects image nodes), image-to-image uses
@@ -97,9 +99,13 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         Icon={Box}
         onPick={onStyle}
         active={styleActive}
-        // The style slot holds an image, so its pick IS its picture.
-        filled={styleThumbnail !== undefined}
-        thumbnail={styleThumbnail}
+        // The style slot holds an image, so its pick IS its picture — asset
+        // and thumbnail are the same URL, and it can never be full without one.
+        pick={
+          styleThumbnail === undefined
+            ? undefined
+            : { kind: 'image', url: styleThumbnail, thumbnail: styleThumbnail }
+        }
         onClear={onClearStyle}
         disabled={styleDisabled}
         clearLabel={t('canvas.generatePanel.removeStyle')}

@@ -6,6 +6,7 @@ import * as React from 'react';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
 import type { SpaceType } from '@web/spaces';
+import { DocumentInterceptGuard } from '@web/spaces/document/document-intercept-guard';
 
 interface SpaceDocSyncProps {
   projectId: string;
@@ -68,5 +69,15 @@ export function SpaceDocSync({
 }: SpaceDocSyncProps): React.JSX.Element | null {
   const buildName = DOC_NAME_BUILDERS[type];
   if (!buildName) return null;
-  return <SpaceDocAttach name={buildName(projectId, spaceId)} />;
+  return (
+    <>
+      <SpaceDocAttach name={buildName(projectId, spaceId)} />
+      {/* A document Space's editor outlives a tab switch, so what shuts it down
+        has to be mounted per OPEN tab rather than per ACTIVE one — see
+        `DocumentInterceptGuard`. Canvas and timeline have no such editor. */}
+      {type === 'document' ? (
+        <DocumentInterceptGuard projectId={projectId} spaceId={spaceId} />
+      ) : null}
+    </>
+  );
 }

@@ -11,6 +11,10 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/server/package.json packages/server/
 COPY packages/collab/package.json packages/collab/
 COPY packages/web/package.json packages/web/
+# Before install, not with the source: the root package.json declares
+# `pnpm.patchedDependencies`, and pnpm hashes the patch file itself while
+# resolving. Without it here, install stops at ENOENT.
+COPY patches/ patches/
 
 RUN pnpm install --frozen-lockfile --ignore-scripts=false
 

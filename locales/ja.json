@@ -104,7 +104,8 @@
         "label": "Skill を選んで agent の動作を絞り込む",
         "title": "Skill を選択"
       },
-      "send": "送信"
+      "send": "送信",
+      "sending": "送信中"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
@@ -133,16 +134,16 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。",
-      "notSent": "送信できませんでした。接続を確認してください。",
-      "openFailed": "このチャットを開けませんでした。ページを再読み込みしてもう一度お試しください。"
+      "network": "ネットワークエラー",
+      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。"
     },
     "message": {
       "interrupted": "停止しました"
     },
     "tool": {
       "unfinished": "完了前に停止しました"
-    }
+    },
+    "loadEarlier": "以前のメッセージを読み込む"
   },
   "canvas": {
     "group": {
@@ -642,6 +643,14 @@
         "orderedList": "番号付きリスト",
         "quote": "引用",
         "strike": "取り消し線"
+      },
+      "schemaOutdated": {
+        "headline": "ドキュメントエディターが更新されました",
+        "body": "このページは古いバージョンで動作しており、ここで編集すると他の人が書いた内容を壊してしまいます。",
+        "published": "新しいバージョンは{when}に公開されました。",
+        "risksLead": "再読み込みの前にご注意ください：",
+        "riskUploads": "進行中のアップロードは中断されます。該当する Space に切り替えて先に確認できます。",
+        "action": "ページを再読み込み"
       }
     },
     "readOnlyReconnect": "再接続"
