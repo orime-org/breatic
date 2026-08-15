@@ -160,10 +160,15 @@ export function asKnownTier(raw: string, subject: TierSubject): MembershipTier {
  */
 function limitsFor(tier: MembershipTier, subject: TierSubject): MembershipLimits {
   if (tier === "enterprise") {
+    // Deliberately does NOT name `config/membership.yaml`: whoever reads this
+    // has to change that account's tier or wait for negotiated ceilings to be
+    // stored, and pointing at the config file would send them to edit the one
+    // place these numbers must never be invented.
     throw new Error(
       `Cannot resolve ceilings for ${describeSubject(subject)}: it is on the ` +
-        `enterprise tier, whose ceilings are negotiated per customer and are ` +
-        `not in config/membership.yaml`,
+        `enterprise tier, whose ceilings are negotiated per customer rather ` +
+        `than configured. Move that account onto a tier this deployment ` +
+        `configures, or wait for its negotiated ceilings to be stored.`,
     );
   }
   return getMembershipLimits(tier);

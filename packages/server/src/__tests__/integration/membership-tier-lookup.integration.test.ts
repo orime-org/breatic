@@ -27,13 +27,13 @@
  *      That state is data corruption, and a silent fallback would let every
  *      quota on that studio be enforced against a number nobody chose.
  *
- * Two cases that used to live here — "the message names the account and the
- * value" and its studio counterpart — moved to
- * `packages/core/src/auth/__tests__/membership-tier-narrowing.test.ts` with
- * #105. Both reached the guard by writing a bad tier into the column first,
- * and the CHECK constraint that block added makes that write impossible. What
- * they pinned is unchanged and now driven directly; the contract that changed
- * is only how a bad value gets in front of the guard.
+ * The last case in each of the two `…LimitsFor…` blocks below is about the
+ * guard on the way OUT of the column, and #105 changed how they reach it. A
+ * bad tier can no longer be written through the database, so they lift the
+ * CHECK constraint for the length of one insert — which is not a trick to get
+ * around the guard, it is the situation the guard exists for: a database that
+ * was gone around (a direct connection, a restored backup, a deployment whose
+ * migration did not run).
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -144,6 +144,52 @@ async function insertProject(
     RETURNING id
   `;
   return p!.id;
+}
+
+/**
+ * Run something with the tier CHECK constraint lifted, then put it back.
+ *
+ * The constraint is read back from the catalogue rather than retyped, so this
+ * cannot drift from the migration and so the read itself proves the constraint
+ * is there. It goes back as NOT VALID: the row the caller just wrote is still
+ * in the table and a validated re-add would refuse it. New writes are checked
+ * either way, which is what the sibling suite's rejection cases depend on.
+ * @param fn - What to do while a bad value can be stored
+ * @returns Whatever `fn` returned
+ * @throws {Error} if the constraint is not on the table to begin with
+ */
+async function withTierCheckLifted<T>(fn: () => Promise<T>): Promise<T> {
+  const [row] = await sql<{ def: string }[]>`
+    SELECT pg_get_constraintdef(oid) AS def
+    FROM pg_constraint WHERE conname = 'users_membership_tier_check'
+  `;
+  if (row === undefined) {
+    throw new Error("users_membership_tier_check is not on the table");
+  }
+  await sql`ALTER TABLE users DROP CONSTRAINT users_membership_tier_check`;
+  try {
+    return await fn();
+  } finally {
+    await sql.unsafe(
+      `ALTER TABLE users ADD CONSTRAINT users_membership_tier_check ${row.def} NOT VALID`,
+    );
+  }
+}
+
+/**
+ * An account holding a tier this build does not know.
+ * @param tier - The value to store, which the constraint would refuse
+ * @returns The account id
+ */
+async function insertUserWithBadTier(tier: string): Promise<string> {
+  return withTierCheckLifted(async () => {
+    const [u] = await sql<{ id: string }[]>`
+      INSERT INTO users (email, email_verified, membership_tier)
+      VALUES (${`tier-bad-${seq++}@example.test`}, true, ${tier})
+      RETURNING id
+    `;
+    return u!.id;
+  });
 }
 
 describe("getUserMembershipTier", () => {
@@ -277,6 +323,17 @@ describe("getLimitsForUser", () => {
     );
   });
 
+  it("names the account and the value when the column holds a tier we do not have", async () => {
+    // What this pins is that the narrowing is still WIRED INTO this path.
+    // `asKnownTier` has a unit test for the sentence it composes; taking the
+    // call out of here would leave that test green while `getMembershipLimits`
+    // returned undefined and the next property access threw a TypeError naming
+    // neither the account nor the value — which is what used to happen.
+    const userId = await insertUserWithBadTier("Pro");
+    await expect(getLimitsForUser(userId)).rejects.toThrow(
+      new RegExp(`${userId}[\\s\\S]*Pro|Pro[\\s\\S]*${userId}`),
+    );
+  });
 });
 
 describe("getLimitsForStudio", () => {
@@ -305,6 +362,24 @@ describe("getLimitsForStudio", () => {
     );
   });
 
+  it("names the studio, the ACCOUNT, and the value when the tier is not one we have", async () => {
+    // The row an operator has to go fix is a `users` row, so the studio id on
+    // its own does not finish the job — it is the thing they have in hand, not
+    // the thing they must edit. This is the only case that holds the studio id
+    // in that message: the narrowing composes the sentence, but WHICH ids
+    // reach it is decided in `readStudioAdmin`, and collab's on-call notes
+    // quote this exact sentence.
+    const adminUserId = await insertUserWithBadTier("TEAM");
+    const studioId = await insertTeamStudio(adminUserId);
+    const err = await getLimitsForStudio(studioId).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    expect(err, "expected a throw").not.toBeNull();
+    expect(err!.message).toContain(studioId);
+    expect(err!.message).toContain(adminUserId);
+    expect(err!.message).toContain("TEAM");
+  });
 });
 
 /**

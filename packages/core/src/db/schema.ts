@@ -8,7 +8,7 @@
  * primary keys and timestamp with timezone columns.
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -23,8 +23,30 @@ import {
   uniqueIndex,
   index,
   primaryKey,
+  check,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+import { MEMBERSHIP_TIERS } from "@breatic/shared";
 import type { MessagePart } from "@breatic/shared";
+
+/**
+ * The `IN (...)` list a tier column's CHECK constraint carries.
+ *
+ * Built from `MEMBERSHIP_TIERS` rather than spelled out, so the tiers exist in
+ * one place. These declarations are documentary — the constraints themselves
+ * were added by hand in migration 0053, because this repo does not run
+ * `drizzle-kit generate` — so what actually keeps them in step with the
+ * database is the integration case that stores every tier in the list and
+ * would fail on one the migration does not allow.
+ * @param column - The column the constraint guards
+ * @returns The SQL fragment for that column's CHECK
+ */
+function tierIsKnown(column: AnyPgColumn): SQL {
+  return sql`${column} in (${sql.join(
+    MEMBERSHIP_TIERS.map((tier) => sql`${tier}`),
+    sql`, `,
+  )})`;
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -54,8 +76,16 @@ export const users = pgTable(
     hashedPassword: varchar("hashed_password", { length: 255 }),
     emailVerified: boolean("email_verified").default(false).notNull(),
     googleId: varchar("google_id", { length: 255 }),
-    // Membership tier (0052). One of base / pro / team / self_hosted; the
-    // ceilings each one carries live in `config/membership.yaml`, never here.
+    // Membership tier (0052). One of the five in `MEMBERSHIP_TIERS`, which
+    // the CHECK constraint below lists — added by hand in 0053, when the
+    // column gained a writer.
+    //
+    // Four of the five carry ceilings, and they live in
+    // `config/membership.yaml`, never here. `enterprise` is the fifth: legal
+    // to store, and impossible to price until its negotiated numbers are read
+    // from the database. Asking for its ceilings throws, naming the account.
+    // A tier added to the enum without a migration widening the constraint
+    // would be storable in TypeScript and rejected by the database.
     //
     // It sits on the account because the tier follows the person. Which tier
     // governs a studio's ceilings is a separate question with a settled
@@ -86,6 +116,7 @@ export const users = pgTable(
   (table) => [
     uniqueIndex("users_email_idx").on(table.email),
     uniqueIndex("users_google_id_idx").on(table.googleId),
+    check("users_membership_tier_check", tierIsKnown(table.membershipTier)),
   ],
 );
 
@@ -133,7 +164,14 @@ export const membershipTierChanges = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [index("membership_tier_changes_user_id_idx").on(table.userId)],
+  (table) => [
+    index("membership_tier_changes_user_id_idx").on(table.userId),
+    check(
+      "membership_tier_changes_from_tier_check",
+      tierIsKnown(table.fromTier),
+    ),
+    check("membership_tier_changes_to_tier_check", tierIsKnown(table.toTier)),
+  ],
 );
 
 // ── 2. Studios ───────────────────────────────────────────────────────

@@ -27,10 +27,13 @@
  *      outside the five, and the read side still refuses one that reached it
  *      anyway (that half is a unit test, in core).
  *
- * What it deliberately does NOT pin: anything that "should happen" after a
- * downgrade. The ratified rule is that every ceiling is judged at the moment
- * an action is taken and nothing already created is corrected, so the correct
- * behaviour after a downgrade is that nothing happens at all.
+ *   6. A downgrade takes nothing away. The ratified rule is that every ceiling
+ *      is judged at the moment an action is taken and nothing already created
+ *      is corrected, so the studios, projects and members that exist stay
+ *      exactly as they are and only the next attempt to add one is refused.
+ *      Written as a case rather than left implicit: "nothing happens" is the
+ *      requirement, and a later change that quietly added a cleanup step would
+ *      otherwise pass every test here.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -59,6 +62,7 @@ import {
   getLimitsForStudio,
   getMembershipLimits,
 } from "@breatic/core";
+import { MEMBERSHIP_TIERS } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 
 try {
@@ -283,6 +287,67 @@ describe("changeMembershipTier", () => {
   });
 });
 
+describe("a downgrade, which takes nothing away", () => {
+  it("leaves every studio, project and member that already exists in place", async () => {
+    // The ratified rule, and the one acceptance item whose requirement is that
+    // NOTHING happens. Left implicit it would be pinned by nothing at all: a
+    // later change that swept up over-quota rows on the way down would pass
+    // every other case in this file.
+    //
+    // The account starts on `team` and ends on `base`, holding more of all
+    // three than `base` allows: 12 projects against a ceiling of 10, and 3
+    // studio members against a ceiling of 1.
+    const adminUserId = await insertUser("team");
+    const [st] = await sql<{ id: string }[]>`
+      INSERT INTO studios (created_by_user_id, slug, type, name)
+      VALUES (${adminUserId}, ${`tier-mut-down-${seq++}`}, 'team', 'Team')
+      RETURNING id
+    `;
+    const studioId = st!.id;
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${studioId}, ${adminUserId}, 'admin')
+    `;
+    for (let i = 0; i < 2; i++) {
+      const memberId = await insertUser("base");
+      await sql`
+        INSERT INTO studio_members (studio_id, user_id, role)
+        VALUES (${studioId}, ${memberId}, 'maintainer')
+      `;
+    }
+    for (let i = 0; i < 12; i++) {
+      await sql`
+        INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+        VALUES (${studioId}, ${adminUserId}, 'P', ${`tier-mut-down-p-${seq++}`})
+      `;
+    }
+
+    await changeMembershipTier(adminUserId, "base", "subscription_ended");
+
+    const [after] = await sql<{ projects: string; members: string }[]>`
+      SELECT
+        (SELECT count(*)::text FROM projects
+          WHERE studio_id = ${studioId} AND deleted_at IS NULL) AS projects,
+        (SELECT count(*)::text FROM studio_members
+          WHERE studio_id = ${studioId} AND deleted_at IS NULL) AS members
+    `;
+    expect(after!.projects, "projects must survive the downgrade").toBe("12");
+    expect(after!.members, "members must survive the downgrade").toBe("3");
+    const [studioRow] = await sql<{ deleted_at: Date | null }[]>`
+      SELECT deleted_at FROM studios WHERE id = ${studioId}
+    `;
+    expect(studioRow!.deleted_at, "the studio itself must survive").toBeNull();
+
+    // What DID change is the ceiling the next action will be judged against —
+    // now below what this studio already holds, which is exactly the state the
+    // rule describes and the quota suites already pin the refusal for.
+    const limits = await getLimitsForStudio(studioId);
+    expect(limits).toEqual(getMembershipLimits("base"));
+    expect(Number(after!.projects)).toBeGreaterThan(limits.projects_per_studio);
+    expect(Number(after!.members)).toBeGreaterThan(limits.studio_members);
+  });
+});
+
 describe("the tier value, guarded on the way in", () => {
   it("refuses a value outside the five tiers on the account row", async () => {
     // The write side of the pair. An operator moving somebody by hand types
@@ -304,7 +369,11 @@ describe("the tier value, guarded on the way in", () => {
     // constraint at all the column is a bare varchar and this passes. It has
     // meaning only next to the two rejection cases around it — together they
     // say the constraint exists AND lists exactly these five.
-    for (const tier of ["base", "pro", "team", "self_hosted", "enterprise"]) {
+    // Iterated rather than listed, so the TypeScript enum and the database
+    // constraint cannot drift apart: a sixth tier added to `MEMBERSHIP_TIERS`
+    // without a migration widening the constraint fails right here.
+    expect(MEMBERSHIP_TIERS).toHaveLength(5);
+    for (const tier of MEMBERSHIP_TIERS) {
       const userId = await insertUser(tier);
       expect(await storedTier(userId)).toBe(tier);
     }
