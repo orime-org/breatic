@@ -13,7 +13,7 @@ import * as messageRepo from "@server/modules/conversation/conversation-message.
 import * as projectService from "@server/modules/project/project.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { t } from "@breatic/shared";
-import { db, NotFoundError, ForbiddenError } from "@breatic/core";
+import { db, NotFoundError, ForbiddenError, getAgentConfig } from "@breatic/core";
 import type { ConversationEntity, MessageData } from "@breatic/shared";
 
 /**
@@ -139,6 +139,56 @@ export async function openChat(
       hasMore: page.hasMore,
     },
   };
+}
+
+/**
+ * Cut a first message down to something a list row can show.
+ *
+ * Whitespace is collapsed before measuring: a message typed across several
+ * lines would otherwise become a title with a line break in the middle of it,
+ * and the row would show only what came before the break.
+ * @param said - What the user typed
+ * @param limit - How many characters the title may run to, ellipsis included
+ * @returns The title, or null when there is nothing in the message to use
+ */
+function titleFromMessage(said: string, limit: number): string | null {
+  const collapsed = said.replace(/\s+/g, " ").trim();
+  if (collapsed.length === 0) return null;
+  if (collapsed.length <= limit) return collapsed;
+  return `${collapsed.slice(0, limit - 1)}…`;
+}
+
+/**
+ * What this conversation is called, naming it after `said` if it has none yet.
+ *
+ * Called once per turn, and it answers rather than returning nothing so the
+ * turn can tell the client the name in the same breath as it confirms the
+ * message landed. Without that the list and the header go on saying the
+ * default until the reader leaves the project and comes back.
+ *
+ * "Has none yet" is read as "still carries the title it was created with".
+ * The alternative — "this is the first message" — is wrong for a conversation
+ * the owner named before saying anything in it, which is a thing they can do
+ * from the moment it appears in the list.
+ * @param conversationId - The conversation this turn belongs to
+ * @param said - What the user just said in it
+ * @returns The name it goes by from now on
+ */
+export async function titleForTurn(
+  conversationId: string,
+  said: string,
+): Promise<string> {
+  const conversation = await conversationRepo.getConversation(conversationId);
+  // The caller has already established this conversation is writable, so a
+  // miss here is not a case to handle -- but neither is it worth failing a
+  // turn over a title, so the default is answered and the turn goes on.
+  if (!conversation) return NEW_TITLE;
+  if (conversation.title !== NEW_TITLE) return conversation.title;
+
+  const named = titleFromMessage(said, getAgentConfig().conversation_title_max_chars);
+  if (named === null) return conversation.title;
+  await conversationRepo.updateTitle(conversationId, named);
+  return named;
 }
 
 /**
@@ -291,20 +341,30 @@ export async function list(
 }
 
 /**
- * Fetch a conversation with its message history.
+ * Fetch a conversation with the newest page of its message history.
+ *
+ * This is how switching conversations loads the one being switched into, so it
+ * answers the same three things `/chat/open` does about its current
+ * conversation — the page and whether anything comes before it. `hasMore` was
+ * being read out of the repository and then dropped here, which left the panel
+ * it landed in unable to know whether "load earlier" had anything to load.
  * @param conversationId - Conversation UUID
  * @param userId - Requesting user UUID
- * @returns The conversation entity and its messages
+ * @returns The conversation, its newest page, and whether it reaches further
  * @throws {NotFoundError} if conversation does not exist
  * @throws {ForbiddenError} if userId does not match the conversation owner
  */
 export async function getWithMessages(
   conversationId: string,
   userId: string,
-): Promise<{ conversation: ConversationEntity; messages: MessageData[] }> {
+): Promise<{
+  conversation: ConversationEntity;
+  messages: MessageData[];
+  hasMore: boolean;
+}> {
   const conversation = await validateOwnership(conversationId, userId);
   const page = await messageRepo.getMessages(conversationId);
-  return { conversation, messages: page.messages };
+  return { conversation, messages: page.messages, hasMore: page.hasMore };
 }
 
 /**

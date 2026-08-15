@@ -23,6 +23,10 @@ consolidation_model: anthropic/claude-sonnet-4-6
 # A "turn" = one user message + all agent steps (tool calls + final reply).
 memory_window: 20
 
+# How much of a conversation's first message is kept as its title. The rest is
+# cut with an ellipsis so a list of conversations stays readable.
+conversation_title_max_chars: 60
+
 # Number of recent turns to keep unconsolidated during memory consolidation.
 memory_keep_recent_turns: 3
 

@@ -28,6 +28,14 @@ const agentConfigSchema = z.object({
   default_model: z.string().default("anthropic/claude-sonnet-4-6"),
   consolidation_model: z.string().default("anthropic/claude-sonnet-4-6"),
   memory_window: z.number().int().positive().default(20),
+  /**
+   * How much of the first message a conversation keeps as its name.
+   *
+   * A conversation is named after the first thing said in it, and people open
+   * one by typing a whole paragraph as often as a line. Cut so the list stays
+   * readable; the full message is a scroll away in the conversation itself.
+   */
+  conversation_title_max_chars: z.number().int().positive().default(60),
   memory_keep_recent_turns: z.number().int().positive().default(3),
   full_detail_turns: z.number().int().positive().default(3),
   memory_project_max_size: z.number().int().positive().default(3072),
