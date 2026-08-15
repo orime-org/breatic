@@ -363,6 +363,33 @@ describe("POST /chat/conversations — starting one on purpose", () => {
   });
 });
 
+describe("what renaming does to when a conversation was last used", () => {
+  it("leaves the timestamp alone", async () => {
+    // `updated_at` is what orders the list and what each row shows as when the
+    // conversation was last used. Renaming one is not using it: if this column
+    // moves, a conversation nobody has spoken in for months jumps to the top
+    // of the list wearing a "just now" label.
+    const { projectId, cookie } = await seedProject();
+    const conversationId = await openAndGetId(projectId, cookie);
+    const before = await sql<{ updated_at: Date }[]>`
+      SELECT updated_at FROM conversations WHERE id = ${conversationId}
+    `;
+
+    const renamed = await app.request(`/api/v1/chat/conversations/${conversationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ project_id: projectId, title: "Storyboard notes" }),
+    });
+    expect(renamed.status).toBe(200);
+
+    const after = await sql<{ updated_at: Date; title: string }[]>`
+      SELECT updated_at, title FROM conversations WHERE id = ${conversationId}
+    `;
+    expect(after[0]!.title).toBe("Storyboard notes");
+    expect(after[0]!.updated_at.getTime()).toBe(before[0]!.updated_at.getTime());
+  });
+});
+
 describe("PATCH /chat/conversations/:id — who may name one", () => {
   it("answers 404 for a conversation belonging to someone else", async () => {
     // Not 403. A distinguishable answer would confirm the conversation exists.

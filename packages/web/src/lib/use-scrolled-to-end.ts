@@ -6,18 +6,19 @@ import * as React from 'react';
 interface ScrolledToEndOptions {
   /** There is more to fetch. Nothing is watched when this is false. */
   enabled: boolean;
-  /** Called when the end of the list comes into view. */
+  /** Called when the end of the list comes into view, or scrolled to again. */
   onReachEnd: () => void;
   /**
-   * Changing this starts the watch over.
+   * The last attempt did not arrive.
    *
-   * A watcher reports where things stand as soon as it starts, so restarting
-   * it is how an end that is already in view counts a second time. Without it
-   * an attempt that failed leaves the reader at the bottom of a list that has
-   * more to give, with nothing left that could ask for it: nothing about the
-   * page moved, so the end never crosses anything again.
+   * Changes what is watched, not just when. An end already in view stays in
+   * view when an attempt fails -- nothing moved -- so a watcher for it would
+   * report the same thing the instant it started, and asking again would be
+   * the failure's own doing rather than the reader's. While this is true the
+   * end is not watched at all; a scroll is, and that is a thing only the
+   * reader can do.
    */
-  resubscribeOn?: unknown;
+  failed?: boolean;
 }
 
 interface ScrolledToEndRefs {
@@ -48,18 +49,23 @@ interface ScrolledToEndRefs {
  * the observer is never built and the list never pages. Taking the nodes as
  * state means the subscription happens when they actually arrive.
  *
+ * After a failure it watches for a scroll instead. The end being in view is a
+ * state, and a state that a failure leaves untouched: watching it again would
+ * report it again immediately, and the next request would be the failure's own
+ * doing. A scroll is an event, and one only the reader produces.
+ *
  * Guarding against asking twice is the caller's: this fires as often as the
  * end stays in view, and only the caller knows whether a request is out.
  * @param options - What to watch, and what to call.
  * @param options.enabled - There is more to fetch.
- * @param options.onReachEnd - Called when the end comes into view.
- * @param options.resubscribeOn - Changing this starts the watch over.
+ * @param options.onReachEnd - Called when the end comes into view, or is scrolled to again.
+ * @param options.failed - The last attempt did not arrive.
  * @returns The two refs to place.
  */
 export function useScrolledToEnd({
   enabled,
   onReachEnd,
-  resubscribeOn,
+  failed = false,
 }: ScrolledToEndOptions): ScrolledToEndRefs {
   const [scroller, setScroller] = React.useState<HTMLElement | null>(null);
   const [sentinel, setSentinel] = React.useState<HTMLElement | null>(null);
@@ -67,6 +73,16 @@ export function useScrolledToEnd({
   React.useEffect(() => {
     const viewport = scroller?.querySelector('[data-radix-scroll-area-viewport]');
     if (!sentinel || !viewport || !enabled) return;
+
+    if (failed) {
+      /**
+       * The reader has moved, which is them asking again.
+       * @returns Nothing.
+       */
+      const moved = (): void => onReachEnd();
+      viewport.addEventListener('scroll', moved, { passive: true, once: true });
+      return () => viewport.removeEventListener('scroll', moved);
+    }
 
     const io = new IntersectionObserver(
       (entries) => {
@@ -76,7 +92,7 @@ export function useScrolledToEnd({
     );
     io.observe(sentinel);
     return () => io.disconnect();
-  }, [scroller, sentinel, enabled, onReachEnd, resubscribeOn]);
+  }, [scroller, sentinel, enabled, failed, onReachEnd]);
 
   return { scrollerRef: setScroller, sentinelRef: setSentinel };
 }

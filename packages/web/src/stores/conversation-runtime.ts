@@ -594,20 +594,28 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // header is drawn before the answer arrives. What they pressed is later
     // than this, so the conversation they made is the one to stay on; only
     // the list below is still worth taking.
-    // Overtaken, and that settles the list as much as the conversation. This
-    // answer was assembled before whatever the reader did next, so the list in
-    // it does not have their new conversation -- writing it would leave them
-    // inside a conversation the history sheet cannot show, with no way back to
-    // it once they navigate away.
-    if (!stillAwaited(projectId, nav)) return undefined;
-    adoptConversation(projectId, opened.current);
-    // The list arrives with the same answer and used to be dropped here, which
-    // is why the history sheet had nothing to show even once it could be
-    // opened at all.
-    useStore.setState((st) => ({
-      listByProject: { ...st.listByProject, [projectId]: opened.conversations },
-      listHasMore: { ...st.listHasMore, [projectId]: opened.hasMoreConversations },
-    }));
+    // Two separate questions, and being overtaken answers only one of them.
+    // Which conversation to show: not this one, the reader has since chosen
+    // another. What the list holds: this answer, still -- it was assembled
+    // before they chose, so it lacks what they made, but it has everything
+    // else. Dropping it whole would leave the sheet showing one row where the
+    // project has dozens, and take `hasMore` with it, so paging could not
+    // recover them either.
+    const landed = stillAwaited(projectId, nav);
+    if (landed) adoptConversation(projectId, opened.current);
+    useStore.setState((st) => {
+      const held = st.listByProject[projectId] ?? [];
+      // Rows written while this was out go first: the list is ordered by when
+      // each conversation was last used, and those are the most recent thing
+      // that happened here.
+      const listed = landed
+        ? opened.conversations
+        : [...held, ...opened.conversations.filter((c) => !held.some((h) => h.id === c.id))];
+      return {
+        listByProject: { ...st.listByProject, [projectId]: listed },
+        listHasMore: { ...st.listHasMore, [projectId]: opened.hasMoreConversations },
+      };
+    });
     return undefined;
   } catch (err) {
     // Except when the visit that asked is over, which includes this refusal
@@ -1619,9 +1627,15 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
       adoptConversation(projectId, read);
     } catch (err) {
       if (visit.signal.aborted) return;
-      useStore.setState((s) => ({
-        openStatus: { ...s.openStatus, [projectId]: 'failed' },
-      }));
+      // Only while this landing is still the one being waited for. The reader
+      // may have picked a row themselves in the meantime and be reading it;
+      // this failure is about a conversation they no longer care about, and
+      // blacking out the column over it would take away one that works.
+      if (stillAwaited(projectId, nav)) {
+        useStore.setState((s) => ({
+          openStatus: { ...s.openStatus, [projectId]: 'failed' },
+        }));
+      }
       tell({ projectId, conversationId: next.id, deliberate: true, ...readMishap(err) });
     }
     return;
@@ -1765,6 +1779,8 @@ export function _resetForTests(): void {
   opening.clear();
   loadingEarlier.clear();
   visits.clear();
+  fetchingMore.clear();
+  navigations.clear();
   useStore.setState({
     conversations: {},
     currentByProject: {},

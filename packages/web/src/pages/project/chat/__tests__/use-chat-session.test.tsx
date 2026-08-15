@@ -118,6 +118,16 @@ beforeEach(() => {
   });
 });
 
+
+/**
+ * 打开这件事有结果了 —— 拿到会话,或者确定拿不到。
+ * @param status - hook 报的打开进度。
+ * @returns 有结果了没有。
+ */
+function settled(status: string): boolean {
+  return status !== 'idle' && status !== 'loading';
+}
+
 describe('what the panel shows when it opens', () => {
   it('asks the server once and shows what it says', async () => {
     openChatAnswers([
@@ -139,7 +149,7 @@ describe('what the panel shows when it opens', () => {
     // Not an empty conversation — an unanswered one. Rendering the empty
     // state here would flash "start a conversation" over a conversation that
     // is about to arrive.
-    expect(result.current.isPending).toBe(true);
+    expect(settled(result.current.status)).toBe(false);
   });
 });
 
@@ -147,7 +157,7 @@ describe('sending a message', () => {
   it('is three states, and the middle one has no stop in it', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
 
     expect(result.current.turnPhase).toBe('idle');
 
@@ -197,7 +207,7 @@ describe('sending a message', () => {
   it('shows what the user said as soon as the server says it has it', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
 
     await act(async () => {
       void result.current.send('find me references');
@@ -220,7 +230,7 @@ describe('sending a message', () => {
   it('grows the reply as the pieces arrive, in one place', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     await act(async () => {
       void result.current.send('hi');
     });
@@ -245,7 +255,7 @@ describe('sending a message', () => {
   it('marks the reply in flight so the bubble can show it is being written', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     await act(async () => {
       void result.current.send('hi');
     });
@@ -267,7 +277,7 @@ describe('sending a message', () => {
   it('is streaming until the turn says it is done', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     await act(async () => {
       void result.current.send('hi');
     });
@@ -289,7 +299,7 @@ describe('sending a message', () => {
   it('stops streaming when the turn fails', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     await act(async () => {
       void result.current.send('hi');
     });
@@ -308,7 +318,7 @@ describe('sending a message', () => {
   it('stops streaming when the user stops the turn', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     await act(async () => {
       void result.current.send('hi');
     });
@@ -354,7 +364,7 @@ describe('when the conversation it was writing to is gone', () => {
       { id: 'm2', role: 'assistant', text: 'an older answer' },
     ]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
 
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
       h.onError?.(new StreamRefusedError(404, 'Resource not found', true));
@@ -392,7 +402,7 @@ describe('when the conversation it was writing to is gone', () => {
   it('gives up rather than looping when the new one is refused too', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
 
     vi.mocked(chatApi.streamMessage).mockImplementation(async (_input, h) => {
       h.onError?.(new StreamRefusedError(404, 'Resource not found', true));
@@ -415,7 +425,7 @@ describe('when the conversation it was writing to is gone', () => {
   it('shows the failure for a refusal it cannot recover from', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
 
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
       h.onError?.(new StreamRefusedError(403, 'Forbidden', true));
@@ -434,7 +444,7 @@ describe('when the conversation it was writing to is gone', () => {
   it('marks a failure the reader is living through, apart from one they are reading about', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     await act(async () => {
       void result.current.send('hi');
     });
@@ -464,7 +474,7 @@ describe('when the conversation it was writing to is gone', () => {
     // The conversation outlives the panel, which is the point: what survives
     // here is what the conversation holds, and nothing else.
     const first = render();
-    await waitFor(() => expect(first.result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(first.result.current.status)).toBe(true));
     await act(async () => {
       void first.result.current.send('hi');
     });
@@ -494,7 +504,7 @@ describe('when the conversation it was writing to is gone', () => {
   it('takes back what the user said when the server refused to hear it', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
 
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
       // Being refused mid-flight: the request reached the server and came
@@ -553,7 +563,7 @@ describe('when the network comes back mid-reply', () => {
   it('does not let a background refetch swallow the turn being written', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     await act(async () => {
       void result.current.send('hi');
     });
@@ -630,7 +640,7 @@ describe('when one turn ends after the next has started', () => {
   it('does not let the late ending clear the turn that is running now', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
 
     await act(async () => {
       void result.current.send('first');
@@ -712,14 +722,14 @@ describe('when the chat never opened', () => {
     // happened; an empty list needs no second explanation, and a state saying
     // "this could not be opened" would be one -- standing there for as long as
     // the reader looks at it, about something they can neither fix nor retry.
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     expect(result.current.messages).toEqual([]);
   });
 
   it('starts a conversation when the reader sends anyway', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('server said no'));
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
 
     // Pressing send is the whole of what they have to do. Opening happens on
     // the way, and this is why nothing on the screen needs turning off: there
@@ -740,7 +750,7 @@ describe('when the connection dies mid-reply', () => {
   it('marks the reply the way the server records it: stopped, not failed', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     await act(async () => {
       void result.current.send('hi');
     });
@@ -769,7 +779,7 @@ describe('when the request never reached the server', () => {
   it('does not call it a stopped reply, and hands the words back', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
 
     vi.mocked(chatApi.streamMessage).mockImplementationOnce(async (_input, h) => {
       h.onError?.(new StreamUnreachableError(new TypeError('Failed to fetch')));
@@ -790,7 +800,7 @@ describe('when a stale error arrives after the turn is over', () => {
   it('leaves the finished reply alone', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     await act(async () => {
       void result.current.send('hi');
     });
@@ -818,7 +828,7 @@ describe('when reopening the chat also fails', () => {
   it('says it was not sent rather than leaving a reply the server never kept', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
 
     // The conversation is gone, and the attempt to open a fresh one fails too
     // — the server is down, or the project went away with it.
@@ -843,7 +853,7 @@ describe('when the panel goes away mid-stream', () => {
   it('leaves the turn running, because collapsing the column is not leaving', async () => {
     openChatAnswers([]);
     const { result, unmount } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     await act(async () => {
       void result.current.send('hi');
     });
@@ -868,7 +878,7 @@ describe('when the panel goes away mid-stream', () => {
   it('shows the same reply, still being written, when the column is opened again', async () => {
     openChatAnswers([]);
     const first = render();
-    await waitFor(() => expect(first.result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(first.result.current.status)).toBe(true));
     await act(async () => {
       void first.result.current.send('hi');
     });
@@ -897,7 +907,7 @@ describe('the model thinking out loud', () => {
   it('collects the thinking onto the reply it belongs to', async () => {
     openChatAnswers([]);
     const { result } = render();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(settled(result.current.status)).toBe(true));
     await act(async () => {
       void result.current.send('hi');
     });

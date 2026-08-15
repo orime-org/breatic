@@ -61,6 +61,33 @@ function renderSheet(over: Partial<React.ComponentProps<typeof ConversationHisto
   return { onPick, onRename, onDelete, onStartNew };
 }
 
+
+/**
+ * 渲染抽屉,并留一个能改 props 重渲的口子。
+ * @param props - 这次要给的 props。
+ * @returns rerender,用来换一组 props 再渲一次。
+ */
+function renderSheetFor(props: Partial<React.ComponentProps<typeof ConversationHistorySheet>>) {
+  const base = {
+    open: true,
+    onOpenChange: vi.fn(),
+    conversations: ROWS,
+    activeId: 'c1',
+    onPick: vi.fn(),
+    onRename: vi.fn(),
+    onDelete: vi.fn(),
+    onStartNew: vi.fn(),
+    hasMore: false,
+    onReachEnd: vi.fn(),
+    nextPageFailed: false,
+  };
+  const result = render(<ConversationHistorySheet {...base} {...props} />);
+  return {
+    rerender: (over: Partial<React.ComponentProps<typeof ConversationHistorySheet>>): void =>
+      result.rerender(<ConversationHistorySheet {...base} {...over} />),
+  };
+}
+
 describe('what a row says', () => {
   it('shows the name a conversation has', () => {
     renderSheet();
@@ -238,5 +265,62 @@ describe('reaching the end of the list', () => {
     fire?.();
 
     expect(onReachEnd).not.toHaveBeenCalled();
+  });
+});
+
+describe('when the next page cannot be fetched', () => {
+  let fire: (() => void) | undefined;
+
+  beforeEach(() => {
+    fire = undefined;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
+          fire = () => cb([{ isIntersecting: true }]);
+        }
+        observe(): void {
+          // 真的观察者一开始观察就投递一次当前状态。末尾此刻还在视野里,
+          // 所以「重建观察者」本身就等于「再问一次」。
+          fire?.();
+        }
+        disconnect(): void {}
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('waits for the reader to reach the end again', () => {
+    // 失败之后页面一个像素都没动。要是失败本身就能让观察者重建,重建又立刻
+    // 上报「到底了」,请求就会一轮接一轮地打出去,而读者的手指一动没动。
+    const onReachEnd = vi.fn();
+    const { rerender } = renderSheetFor({ hasMore: true, onReachEnd, nextPageFailed: false });
+    const asked = onReachEnd.mock.calls.length;
+
+    rerender({ hasMore: true, onReachEnd, nextPageFailed: true });
+
+    expect(onReachEnd).toHaveBeenCalledTimes(asked);
+  });
+
+  it('asks again once the reader scrolls', () => {
+    // 这是「接着滑就再拉一次」的字面实现:失败之后盯的不再是「末尾在不在
+    // 视野里」(那是个失败改不动的状态),而是一次滚动 —— 只有读者做得出来。
+    const onReachEnd = vi.fn();
+    renderSheetFor({ hasMore: true, onReachEnd, nextPageFailed: true });
+    const asked = onReachEnd.mock.calls.length;
+
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]');
+    viewport!.dispatchEvent(new Event('scroll'));
+
+    expect(onReachEnd).toHaveBeenCalledTimes(asked + 1);
+  });
+
+  it('says so in the list, where the reader is looking', () => {
+    renderSheetFor({ hasMore: true, onReachEnd: vi.fn(), nextPageFailed: true });
+
+    expect(screen.getByTestId('conversation-list-more-failed')).toBeInTheDocument();
   });
 });

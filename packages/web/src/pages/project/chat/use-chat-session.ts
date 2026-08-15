@@ -25,8 +25,6 @@ import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
 export interface ChatSession {
   /** Every message to show, history and the reply in flight alike. */
   messages: ChatMessage[];
-  /** True until the server has answered — not the same as an empty chat. */
-  isPending: boolean;
   /**
    * How far opening this project's chat has got.
    *
@@ -344,7 +342,6 @@ export function useChatSession(projectId: string): ChatSession {
 
   return {
     messages,
-    isPending: openStatus === 'idle' || openStatus === 'loading',
     status: openStatus,
     turnPhase,
     hasMore,

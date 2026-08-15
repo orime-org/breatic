@@ -364,9 +364,14 @@ export async function updateTitle(id: string, title: string): Promise<void> {
   // shows as when the conversation was last used, and renaming one is not
   // using it: touching the column would send a conversation nobody has spoken
   // in for months to the top of the list, labelled "just now".
+  //
+  // Set to itself, and that is load-bearing. The column carries `$onUpdate`,
+  // which drizzle applies to every update that does not name the column --
+  // leaving it out of `set` is what makes it move, not what keeps it still.
+  // Naming it is the only way to say "leave this one alone" in one round trip.
   await db
     .update(conversations)
-    .set({ title: title.slice(0, 200) })
+    .set({ title: title.slice(0, 200), updatedAt: sql`${conversations.updatedAt}` })
     .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
 }
 

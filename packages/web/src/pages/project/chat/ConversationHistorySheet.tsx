@@ -330,10 +330,10 @@ function ConversationHistorySheetInner({
   const { scrollerRef, sentinelRef } = useScrolledToEnd({
     enabled: hasMore,
     onReachEnd,
-    // A failed attempt has to make the watcher start over. Nothing about the
-    // page moved when it failed, so the end of the list is still exactly where
-    // it was -- in view, already reported, and never crossing anything again.
-    resubscribeOn: nextPageFailed,
+    // After a failure the end of the list is no longer what is watched: it is
+    // still in view and nothing moved it, so watching it again would ask again
+    // by itself. A scroll is watched instead, which only the reader can do.
+    failed: nextPageFailed,
   });
 
   return (

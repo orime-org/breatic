@@ -374,3 +374,88 @@ describe('coming back to a project that had more than one page', () => {
     expect(useConversationRuntime.getState().listHasMore[P]).toBeUndefined();
   });
 });
+
+describe('a conversation started before the project has finished opening', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('keeps the conversations that were already there', async () => {
+    // 那份答复是新建之前查的,所以它不含新建的这条 —— 但它含着别的全部。
+    // 整份丢掉是把「列表少一行」换成了「列表只剩一行」,而且连「还有下一页」
+    // 也一起丢了,翻页这条补救路就此焊死。
+    let releaseOpen: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseOpen = () =>
+            resolve({
+              conversations: [
+                { id: 'c-1', title: 'one' },
+                { id: 'c-2', title: 'two' },
+              ],
+              hasMoreConversations: true,
+              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+            } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+        }),
+    );
+    const opening = conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 'c-new',
+      title: null,
+    } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
+    await conversationRuntime.startNew(P);
+
+    releaseOpen?.();
+    await opening;
+
+    const listed = useConversationRuntime.getState().listByProject[P] ?? [];
+    expect(listed.map((c) => c.id)).toEqual(['c-new', 'c-1', 'c-2']);
+    expect(useConversationRuntime.getState().listHasMore[P]).toBe(true);
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-new');
+  });
+});
+
+describe('the landing after a delete, when the reader has moved on', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not black out a conversation the reader picked themselves', async () => {
+    // 删除的落点失败了,说明「删完该显示哪条」这件事没办成。但读者这时已经
+    // 自己挑了一条、正看着它 —— 把整列打成不可读,是拿一件已经不作数的事
+    // 去盖掉一件正好好的事。
+    opens([
+      { id: 'c-1', title: 'one' },
+      { id: 'c-2', title: 'two' },
+      { id: 'c-3', title: 'three' },
+    ]);
+    await conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
+    let failNext: (() => void) | undefined;
+    vi.mocked(chatApi.readConversation).mockImplementationOnce(
+      () => new Promise((_r, reject) => (failNext = () => reject(new Error('offline')))),
+    );
+    const removing = conversationRuntime.remove(P, 'c-1');
+    await vi.waitFor(() =>
+      expect(useConversationRuntime.getState().openStatus[P]).toBe('loading'),
+    );
+
+    vi.mocked(chatApi.readConversation).mockResolvedValue({
+      conversation: { id: 'c-3', title: 'three' },
+      messages: [],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+    await conversationRuntime.switchTo(P, 'c-3');
+
+    failNext?.();
+    await removing;
+
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-3');
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('ready');
+  });
+});
