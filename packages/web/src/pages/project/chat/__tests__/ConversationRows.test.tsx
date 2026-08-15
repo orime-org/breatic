@@ -54,6 +54,7 @@ function renderSheet(over: Partial<React.ComponentProps<typeof ConversationHisto
       onStartNew={onStartNew}
       hasMore={false}
       onReachEnd={vi.fn()}
+      nextPageFailed={false}
       {...over}
     />,
   );

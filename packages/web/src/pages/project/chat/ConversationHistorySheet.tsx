@@ -61,6 +61,16 @@ interface ConversationHistorySheetProps {
   hasMore: boolean;
   /** Called when the reader reaches the end of what has been fetched. */
   onReachEnd: () => void;
+  /**
+   * The last attempt at the next page failed.
+   *
+   * Two things follow. The reader is told here rather than in the panel: this
+   * sheet is opaque and covers the column, so a line above the composer is a
+   * line nobody can read. And the watcher that notices the end of the list is
+   * rebuilt, which is what lets reaching the end count again -- a failure
+   * moves nothing, so the end never crosses back into view on its own.
+   */
+  nextPageFailed: boolean;
 }
 
 /**
@@ -296,6 +306,7 @@ function ConversationRowView({
  * @param root0.onStartNew - Called when the reader asks for another conversation.
  * @param root0.hasMore - The project has conversations older than the ones listed.
  * @param root0.onReachEnd - Called when the reader reaches the end of what has been fetched.
+ * @param root0.nextPageFailed - The last attempt at the next page failed.
  * @returns The left-side sheet listing the project's conversations.
  */
 function ConversationHistorySheetInner({
@@ -309,6 +320,7 @@ function ConversationHistorySheetInner({
   onStartNew,
   hasMore,
   onReachEnd,
+  nextPageFailed,
 }: ConversationHistorySheetProps): React.JSX.Element {
   const t = useTranslation();
   // Which conversation the reader has asked to delete, while they are being
@@ -318,6 +330,10 @@ function ConversationHistorySheetInner({
   const { scrollerRef, sentinelRef } = useScrolledToEnd({
     enabled: hasMore,
     onReachEnd,
+    // A failed attempt has to make the watcher start over. Nothing about the
+    // page moved when it failed, so the end of the list is still exactly where
+    // it was -- in view, already reported, and never crossing anything again.
+    resubscribeOn: nextPageFailed,
   });
 
   return (
@@ -387,6 +403,15 @@ function ConversationHistorySheetInner({
             {/* After the last row, so coming into view means the reader has
                 got to the end of what has been fetched. */}
             <div ref={sentinelRef} data-testid='conversation-list-end' />
+            {nextPageFailed ? (
+              <p
+                className='px-4 py-3 text-xs text-status-error-foreground'
+                role='status'
+                data-testid='conversation-list-more-failed'
+              >
+                {t('chat.history.moreFailed')}
+              </p>
+            ) : null}
           </ScrollArea>
         </div>
       </SheetContent>

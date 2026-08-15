@@ -8,6 +8,16 @@ interface ScrolledToEndOptions {
   enabled: boolean;
   /** Called when the end of the list comes into view. */
   onReachEnd: () => void;
+  /**
+   * Changing this starts the watch over.
+   *
+   * A watcher reports where things stand as soon as it starts, so restarting
+   * it is how an end that is already in view counts a second time. Without it
+   * an attempt that failed leaves the reader at the bottom of a list that has
+   * more to give, with nothing left that could ask for it: nothing about the
+   * page moved, so the end never crosses anything again.
+   */
+  resubscribeOn?: unknown;
 }
 
 interface ScrolledToEndRefs {
@@ -43,11 +53,13 @@ interface ScrolledToEndRefs {
  * @param options - What to watch, and what to call.
  * @param options.enabled - There is more to fetch.
  * @param options.onReachEnd - Called when the end comes into view.
+ * @param options.resubscribeOn - Changing this starts the watch over.
  * @returns The two refs to place.
  */
 export function useScrolledToEnd({
   enabled,
   onReachEnd,
+  resubscribeOn,
 }: ScrolledToEndOptions): ScrolledToEndRefs {
   const [scroller, setScroller] = React.useState<HTMLElement | null>(null);
   const [sentinel, setSentinel] = React.useState<HTMLElement | null>(null);
@@ -64,7 +76,7 @@ export function useScrolledToEnd({
     );
     io.observe(sentinel);
     return () => io.disconnect();
-  }, [scroller, sentinel, enabled, onReachEnd]);
+  }, [scroller, sentinel, enabled, onReachEnd, resubscribeOn]);
 
   return { scrollerRef: setScroller, sentinelRef: setSentinel };
 }

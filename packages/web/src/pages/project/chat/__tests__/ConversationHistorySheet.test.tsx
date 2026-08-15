@@ -34,6 +34,7 @@ const NOOPS = {
   onStartNew: () => undefined,
   hasMore: false,
   onReachEnd: () => undefined,
+  nextPageFailed: false,
 };
 
 describe('relativeTime', () => {

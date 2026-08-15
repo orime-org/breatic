@@ -262,11 +262,23 @@ chat.get(
   validate("query", chatConversationsQuerySchema),
   async (c) => {
     const user = c.get("user");
-    const { limit, offset, project_id: projectId } = c.req.valid("query");
+    const {
+      limit,
+      project_id: projectId,
+      before_updated_at: beforeUpdatedAt,
+      before_id: beforeId,
+    } = c.req.valid("query");
+    // Both halves or neither. Half a position is not a position -- the order
+    // is over two columns, and a query given only one of them would silently
+    // page through a different order than the one the rows came back in.
+    const after =
+      beforeUpdatedAt !== undefined && beforeId !== undefined
+        ? { updatedAt: new Date(beforeUpdatedAt), id: beforeId }
+        : undefined;
     const page = await conversationService.list(user.id, {
       projectId,
       limit: limit ?? getAgentConfig().conversation_page_size,
-      offset,
+      after,
     });
     return c.json({ data: page });
   },

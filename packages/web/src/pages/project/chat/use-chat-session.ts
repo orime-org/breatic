@@ -76,6 +76,15 @@ export interface ChatSession {
   hasMoreConversations: boolean;
   /** Fetch the page after the ones listed. */
   loadMoreConversations: () => void;
+  /**
+   * The last attempt at that page failed.
+   *
+   * The panel rebuilds its end-of-list watcher when this changes: a watcher
+   * reports where things stand as soon as it starts, so an end already in view
+   * counts again -- which is what makes reaching the end a second time ask a
+   * second time.
+   */
+  nextPageFailed: boolean;
   /** Which one is on screen, for the list to mark. */
   currentId: string | undefined;
   /** What this conversation has half-typed, and how to change it. */
@@ -272,6 +281,14 @@ export function useChatSession(projectId: string): ChatSession {
    */
   const [mishap, setMishap] = React.useState<ChatMishap | null>(null);
 
+  // Read off the mishap counter rather than subscribed to: the failure lives
+  // outside the store, and what changes when it happens is that a mishap is
+  // told. Recomputing then is exactly when the answer can have changed.
+  const nextPageFailed = React.useMemo(
+    () => conversationRuntime.nextPageFailed(projectId),
+    [projectId, mishap],
+  );
+
   React.useEffect(
     () =>
       watchChatMishaps((told) => {
@@ -342,6 +359,7 @@ export function useChatSession(projectId: string): ChatSession {
     conversations,
     hasMoreConversations,
     loadMoreConversations,
+    nextPageFailed,
     currentId: conversationId,
     draft,
     setDraft,

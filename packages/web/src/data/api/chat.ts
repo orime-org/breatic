@@ -7,13 +7,6 @@ import { SSE_EVENT_NAMES } from '@breatic/shared';
 import { sseStream } from '@web/data/stream/sse';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
-export interface ConversationSummary {
-  id: string;
-  name: string;
-  updatedAt: string;
-  messageCount: number;
-}
-
 /**
  * A conversation as it arrives here, which is not quite as the server holds it.
  *
@@ -147,13 +140,23 @@ export const chatApi = {
    * in `config/agent.yaml`, and the call that opens the panel reads the same
    * one. Naming a size here would be a second answer to that question.
    * @param projectId - The project to list.
-   * @param page - Where the window starts.
-   * @param page.offset - How many rows to skip before it starts.
+   * @param after - The last row already held, or nothing for the first page.
+   * @param after.updatedAt - When that row was last used.
+   * @param after.id - Which row it is, for the rows that share an instant.
+   * @param signal - Raised when the reader leaves the project.
    * @returns The page, and whether the list goes on past it.
    */
-  listConversations(projectId: string, page: { offset: number }) {
+  listConversations(
+    projectId: string,
+    after?: { updatedAt: string; id: string },
+    signal?: AbortSignal,
+  ) {
     return apiGet<ConversationListPage>('/chat/conversations', {
-      params: { project_id: projectId, offset: page.offset },
+      params: {
+        project_id: projectId,
+        ...(after ? { before_updated_at: after.updatedAt, before_id: after.id } : {}),
+      },
+      signal,
     });
   },
   /**

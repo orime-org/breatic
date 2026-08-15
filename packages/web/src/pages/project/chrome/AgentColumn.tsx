@@ -38,6 +38,16 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
   const currentTitle = conversations?.find((c) => c.id === currentId)?.title ?? null;
   const unreachable = status === 'failed';
 
+  // A sheet is portalled to the body and `inert` only reaches down the tree it
+  // is on, so the scrim below cannot cover one that is already open: it would
+  // float above the scrim, fully usable, over a column that says it cannot be
+  // operated. Closing it is what makes that true -- and there is nothing in it
+  // worth keeping open anyway, since every row in it acts on a list that could
+  // not be read.
+  React.useEffect(() => {
+    if (unreachable) setHistoryOpen(false);
+  }, [unreachable, setHistoryOpen]);
+
   /** Ask for this project's chat again, after it could not be read. */
   const reload = React.useCallback((): void => {
     void conversationRuntime.ensureLoaded(projectId);

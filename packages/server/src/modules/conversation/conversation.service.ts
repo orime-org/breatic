@@ -347,12 +347,12 @@ export async function assertWritable(
  * @param opts.projectId - Optional project scope; when set, returns only
  *   conversations belonging to that project.
  * @param opts.limit - How many conversations this page holds
- * @param opts.offset - How many to skip before the page starts
+ * @param opts.after - Where the previous page stopped; omitted for the first
  * @returns The page, and whether the list goes on past it
  */
 export async function list(
   userId: string,
-  opts: { projectId?: string; limit: number; offset?: number },
+  opts: { projectId?: string; limit: number; after?: conversationRepo.ConversationCursor },
 ): Promise<conversationRepo.ConversationPage> {
   return conversationRepo.listConversations(userId, opts);
 }

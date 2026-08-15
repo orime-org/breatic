@@ -6,9 +6,11 @@
  *
  * A list with no second page is a list with a ceiling, and a ceiling nobody
  * declared: the reader sees the newest N and is told nothing about the rest.
- * So every answer here says whether anything comes after it, and the offset
+ * So every answer here says whether anything comes after it, and the position
  * that fetches what does is part of the contract rather than a default buried
- * in the repository.
+ * in the repository. A position and not a count of rows to skip: this list is
+ * ordered by when each conversation was last used, so it moves while a reader
+ * pages through it.
  *
  * The project filter is checked here too. It travels as `project_id`, and a
  * caller that spells it any other way gets no filter at all -- which is not an
@@ -134,25 +136,34 @@ async function seedConversations(
   return ids;
 }
 
+interface ListedRow {
+  id: string;
+  title: string | null;
+  updatedAt: string;
+}
+
 interface ListResponse {
-  data: { conversations: Array<{ id: string; title: string | null }>; hasMore: boolean };
+  data: { conversations: ListedRow[]; hasMore: boolean };
 }
 
 /**
  * Ask for one page of a project's conversations.
  * @param projectId - Project to scope to.
  * @param cookie - Authenticating cookie.
- * @param page - The window to ask for.
+ * @param page - How many rows, and where to continue from.
  * @param page.limit - How many rows.
- * @param page.offset - How many to skip.
+ * @param page.after - The last row already held, or nothing for the first page.
  * @returns The parsed body.
  */
 async function listPage(
   projectId: string,
   cookie: string,
-  page: { limit: number; offset: number },
+  page: { limit: number; after?: ListedRow },
 ): Promise<ListResponse> {
-  const query = `project_id=${projectId}&limit=${page.limit}&offset=${page.offset}`;
+  const cursor = page.after
+    ? `&before_updated_at=${encodeURIComponent(page.after.updatedAt)}&before_id=${page.after.id}`
+    : "";
+  const query = `project_id=${projectId}&limit=${page.limit}${cursor}`;
   const res = await app.request(`/api/v1/chat/conversations?${query}`, {
     headers: { Cookie: cookie },
   });
@@ -165,20 +176,68 @@ describe("a page of a project's conversations", () => {
     const { userId, projectId, cookie } = await seedTwoProjects();
     await seedConversations(userId, projectId, ["oldest", "middle", "newest"]);
 
-    const first = await listPage(projectId, cookie, { limit: 2, offset: 0 });
+    const first = await listPage(projectId, cookie, { limit: 2 });
 
     expect(first.data.conversations.map((c) => c.title)).toEqual(["newest", "middle"]);
     expect(first.data.hasMore).toBe(true);
   });
 
-  it("continues where the last page stopped, and says nothing follows", async () => {
+  it("continues from the row the last page ended on, and says nothing follows", async () => {
     const { userId, projectId, cookie } = await seedTwoProjects();
     await seedConversations(userId, projectId, ["oldest", "middle", "newest"]);
 
-    const second = await listPage(projectId, cookie, { limit: 2, offset: 2 });
+    const first = await listPage(projectId, cookie, { limit: 2 });
+    const second = await listPage(projectId, cookie, {
+      limit: 2,
+      after: first.data.conversations[1]!,
+    });
 
     expect(second.data.conversations.map((c) => c.title)).toEqual(["oldest"]);
     expect(second.data.hasMore).toBe(false);
+  });
+
+  it("does not repeat or skip a row when one is inserted between pages", async () => {
+    // 按行数计位就栽在这里:翻到一半有人在列表头部插了一条,后面每一行的
+    // 序号都往后挪一位。位置不会挪。
+    const { userId, projectId, cookie } = await seedTwoProjects();
+    await seedConversations(userId, projectId, ["oldest", "middle", "newest"]);
+
+    const first = await listPage(projectId, cookie, { limit: 2 });
+    await sql`
+      INSERT INTO conversations (user_id, title, project_id, updated_at)
+      VALUES (${userId}, 'just started', ${projectId}, now())
+    `;
+    const second = await listPage(projectId, cookie, {
+      limit: 2,
+      after: first.data.conversations[1]!,
+    });
+
+    const seen = [...first.data.conversations, ...second.data.conversations];
+    expect(seen.map((c) => c.title)).toEqual(["newest", "middle", "oldest"]);
+    expect(new Set(seen.map((c) => c.id)).size).toBe(seen.length);
+  });
+
+  it("keeps its place through a batch of conversations sharing one timestamp", async () => {
+    // 同一刻写进去的一批,按时间分不出先后。游标只带时间的话,这一批要么
+    // 整批重复、要么整批被跳过。
+    const { userId, projectId, cookie } = await seedTwoProjects();
+    const at = new Date().toISOString();
+    for (const name of ["a", "b", "c", "d"]) {
+      await sql`
+        INSERT INTO conversations (user_id, title, project_id, updated_at)
+        VALUES (${userId}, ${name}, ${projectId}, ${at}::timestamptz)
+      `;
+    }
+
+    const first = await listPage(projectId, cookie, { limit: 2 });
+    const second = await listPage(projectId, cookie, {
+      limit: 2,
+      after: first.data.conversations[1]!,
+    });
+
+    const ids = [...first.data.conversations, ...second.data.conversations].map((c) => c.id);
+    expect(ids).toHaveLength(4);
+    expect(new Set(ids).size).toBe(4);
   });
 
   it("counts what follows rather than guessing from a short page", async () => {
@@ -188,7 +247,7 @@ describe("a page of a project's conversations", () => {
     const { userId, projectId, cookie } = await seedTwoProjects();
     await seedConversations(userId, projectId, ["one", "two"]);
 
-    const exact = await listPage(projectId, cookie, { limit: 2, offset: 0 });
+    const exact = await listPage(projectId, cookie, { limit: 2 });
 
     expect(exact.data.conversations).toHaveLength(2);
     expect(exact.data.hasMore).toBe(false);
@@ -199,7 +258,7 @@ describe("a page of a project's conversations", () => {
     await seedConversations(userId, projectId, ["here"]);
     await seedConversations(userId, otherProjectId, ["somewhere else"]);
 
-    const page = await listPage(projectId, cookie, { limit: 50, offset: 0 });
+    const page = await listPage(projectId, cookie, { limit: 50 });
 
     expect(page.data.conversations.map((c) => c.title)).toEqual(["here"]);
   });

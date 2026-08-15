@@ -84,6 +84,7 @@ export function ChatPanel({
     conversations,
     hasMoreConversations,
     loadMoreConversations,
+    nextPageFailed,
     currentId,
     draft,
     setDraft,
@@ -248,6 +249,7 @@ export function ChatPanel({
         onStartNew={startNewConversation}
         hasMore={hasMoreConversations}
         onReachEnd={loadMoreConversations}
+        nextPageFailed={nextPageFailed}
       />
     </div>
   );

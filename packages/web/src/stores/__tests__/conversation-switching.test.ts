@@ -255,3 +255,122 @@ describe('a draft typed before the project had a conversation', () => {
     expect(conversationRuntime.draftOf(P, 'c-1')).toBe('');
   });
 });
+
+describe('a conversation started while the project is still opening', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('stays in the list the reader can choose from', async () => {
+    // 开聊天那一页列表是「新建之前」查的，不含刚建的这条。它落地时如果原样
+    // 覆写本地列表，这条会话就从抽屉里消失了 —— 人在里面，列表里却没有它。
+    let releaseOpen: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseOpen = () =>
+            resolve({
+              conversations: [{ id: 'c-1', title: 'one' }],
+              hasMoreConversations: false,
+              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+            } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+        }),
+    );
+    const opening = conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 'c-new',
+      title: null,
+    } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
+    await conversationRuntime.startNew(P);
+
+    releaseOpen?.();
+    await opening;
+
+    const listed = useConversationRuntime.getState().listByProject[P] ?? [];
+    expect(listed.map((c) => c.id)).toContain('c-new');
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-new');
+  });
+});
+
+describe('a landing that gets overtaken', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not leave the panel saying it is loading for ever', async () => {
+    // 删除把面板置成 loading 再去读下一条。这一趟被后来的新建顶掉之后，
+    // 若新建自己也失败，就没有人再写这个状态了 —— 骨架永远转下去，
+    // 既不出内容也不出失败蒙版，屏幕上没有任何出口。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
+    let releaseRead: (() => void) | undefined;
+    vi.mocked(chatApi.readConversation).mockImplementation(
+      () => new Promise((resolve) => (releaseRead = () => resolve({} as never))),
+    );
+    const removing = conversationRuntime.remove(P, 'c-1');
+    await vi.waitFor(() =>
+      expect(useConversationRuntime.getState().openStatus[P]).toBe('loading'),
+    );
+
+    vi.mocked(chatApi.createConversation).mockRejectedValue(new Error('offline'));
+    await conversationRuntime.startNew(P);
+    releaseRead?.();
+    await removing;
+
+    expect(useConversationRuntime.getState().openStatus[P]).not.toBe('loading');
+  });
+});
+
+describe('a page that arrives after the list has shifted', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('never lists the same conversation twice', async () => {
+    // 另一个标签页新建了一条,服务端的排序整体后移一位,于是按本地行数算出来
+    // 的偏移量取回一条本地已经有的会话。两行同一个 id,React 的 key 就重了。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
+    useConversationRuntime.setState((s) => ({
+      listHasMore: { ...s.listHasMore, [P]: true },
+    }));
+    await conversationRuntime.ensureLoaded(P);
+    useConversationRuntime.setState((s) => ({
+      listHasMore: { ...s.listHasMore, [P]: true },
+    }));
+
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [{ id: 'c-2', title: 'two' }, { id: 'c-3', title: 'three' }],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+    await conversationRuntime.loadMoreConversations(P);
+
+    const ids = (useConversationRuntime.getState().listByProject[P] ?? []).map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(['c-1', 'c-2', 'c-3']);
+  });
+});
+
+describe('coming back to a project that had more than one page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not think there is a next page before the first one has arrived', async () => {
+    opens([{ id: 'c-1', title: 'one' }]);
+    await conversationRuntime.ensureLoaded(P);
+    useConversationRuntime.setState((s) => ({
+      listHasMore: { ...s.listHasMore, [P]: true },
+    }));
+
+    conversationRuntime.leaveProject(P);
+
+    expect(useConversationRuntime.getState().listHasMore[P]).toBeUndefined();
+  });
+});

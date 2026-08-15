@@ -61,12 +61,13 @@ describe("Conversation routes", () => {
       expect(mocks.conversationService.list).toHaveBeenCalledWith(expect.any(String), {
         projectId: undefined,
         limit: getAgentConfig().conversation_page_size,
-        offset: 0,
+        // 不给位置就是第一页。位置说的是「上一页停在哪一行」,不是「跳过几行」。
+        after: undefined,
       });
     });
 
     it("forwards project_id query to the service", async () => {
-      mocks.conversationService.list.mockResolvedValue([]);
+      mocks.conversationService.list.mockResolvedValue({ conversations: [], hasMore: false });
       const projectId = "11111111-1111-4111-8111-111111111111";
 
       const app = createApp();
@@ -79,7 +80,7 @@ describe("Conversation routes", () => {
       expect(mocks.conversationService.list).toHaveBeenCalledWith(expect.any(String), {
         projectId,
         limit: 1,
-        offset: 0,
+        after: undefined,
       });
     });
 

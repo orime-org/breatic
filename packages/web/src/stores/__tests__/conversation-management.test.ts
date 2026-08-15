@@ -10,6 +10,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { SSE_EVENT_NAMES } from '@breatic/shared';
+import type { SSEEventEnvelope } from '@breatic/shared';
 
 vi.mock('@web/data/api/chat', () => ({
   chatApi: {
@@ -54,6 +56,35 @@ function openAnswers(
       hasMore: false,
     },
   } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+}
+
+
+/**
+ * 说一句话,并让服务端在开启这一轮的事件里带回会话的名字。
+ *
+ * 走的是真实那条路:名字是服务端在 `chat_turn_started` 上说的,前端据此更新
+ * 列表。测试直接调那个内部函数就绕开了这条线,而线断了没有任何测试会红。
+ * @param conversationId - 说话的那条会话。
+ * @param said - 说了什么。
+ * @param title - 服务端回的名字。
+ */
+async function speakAndHearTitle(
+  conversationId: string,
+  said: string,
+  title: string,
+): Promise<void> {
+  let handlers: { onEvent: (e: SSEEventEnvelope) => void } | undefined;
+  vi.mocked(chatApi.streamMessage).mockImplementation((_input, h) => {
+    handlers = h as typeof handlers;
+    return new Promise<void>(() => {});
+  });
+  void conversationRuntime.send(PROJECT, said);
+  await vi.waitFor(() => expect(handlers).toBeDefined());
+  handlers!.onEvent({
+    event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
+    data: { messages: [], hasMore: false, title },
+  } as unknown as SSEEventEnvelope);
+  conversationRuntime.stopTurn(conversationId);
 }
 
 /** The conversation the panel is showing in this project. */
@@ -235,7 +266,7 @@ describe('naming a conversation', () => {
     openAnswers([{ id: 'c-1', title: null }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
 
-    conversationRuntime.noteActivity(PROJECT, 'c-1', 'find me a reference');
+    await speakAndHearTitle('c-1', 'find me a reference', 'find me a reference');
 
     const listed = useConversationRuntime.getState().listByProject[PROJECT];
     expect(listed?.[0]?.title).toBe('find me a reference');
@@ -366,23 +397,30 @@ describe('what the list says about when a conversation was last used', () => {
     _resetForTests();
   });
 
-  it('moves the one just spoken in to the top, and freshens its time', () => {
+  it('moves the one just spoken in to the top, and freshens its time', async () => {
     // The list is the server's answer from when the project opened, and the
     // server will not mention it again until the project is re-opened. So
     // speaking in a conversation has to be recorded here, or the row goes on
     // claiming it was last used days ago -- and `remove` reads this order to
     // decide where to land.
     const old = '2026-08-01T00:00:00Z';
-    useConversationRuntime.setState({
+    openAnswers(
+      [
+        { id: 'c-1', title: 'first' },
+        { id: 'c-2', title: 'second' },
+      ],
+      'c-2',
+    );
+    await conversationRuntime.ensureLoaded(PROJECT);
+    // 两行都标成很久以前,好看出说话之后哪一行的时间被刷新了。
+    useConversationRuntime.setState((st) => ({
       listByProject: {
-        [PROJECT]: [
-          { id: 'c-1', title: 'first', updatedAt: old },
-          { id: 'c-2', title: 'second', updatedAt: old },
-        ] as never,
+        ...st.listByProject,
+        [PROJECT]: (st.listByProject[PROJECT] ?? []).map((c) => ({ ...c, updatedAt: old })),
       },
-    });
+    }));
 
-    conversationRuntime.noteActivity(PROJECT, 'c-2', 'said something');
+    await speakAndHearTitle('c-2', 'said something', 'said something');
 
     const listed = useConversationRuntime.getState().listByProject[PROJECT]!;
     expect(listed.map((c) => c.id)).toEqual(['c-2', 'c-1']);
@@ -443,7 +481,7 @@ describe('a list longer than one page', () => {
     expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(false);
   });
 
-  it('asks for the rows after the ones it already has', async () => {
+  it('continues from the last row it already has', async () => {
     openAnswers([{ id: 'c-1', title: 'one' }], 'c-1', { hasMoreConversations: true });
     await conversationRuntime.ensureLoaded(PROJECT);
 
@@ -455,7 +493,8 @@ describe('a list longer than one page', () => {
 
     expect(chatApi.listConversations).toHaveBeenCalledWith(
       PROJECT,
-      expect.objectContaining({ offset: 1 }),
+      expect.objectContaining({ id: 'c-1' }),
+      expect.anything(),
     );
   });
 

@@ -162,3 +162,30 @@ describe('when they can', () => {
     expect(screen.queryByTestId('conversation-count-chip')).toBeNull();
   });
 });
+
+describe('a history sheet left open when the list goes unreadable', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('is closed rather than left floating above the scrim', async () => {
+    // 抽屉 portal 到 body,而蒙版的 inert 只沿它自己那棵树生效 —— 一个已经
+    // 打开的抽屉会浮在蒙版之上照常可用,而这一列正声称完全不可操作。
+    let failOpen: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () => new Promise((_r, reject) => (failOpen = () => reject(new Error('offline')))),
+    );
+    renderColumn();
+
+    await userEvent.click(await screen.findByTestId('open-conversation-history'));
+    expect(screen.getByTestId('conversation-history-sheet')).toBeInTheDocument();
+
+    failOpen?.();
+    await screen.findByTestId('chat-unreachable');
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('conversation-history-sheet')).toBeNull(),
+    );
+  });
+});

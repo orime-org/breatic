@@ -356,14 +356,22 @@ export type PaginationInput = z.infer<typeof paginationSchema>;
  * page and client-side `find` for a matching project, which dropped
  * silently when the target conversation sat past the page boundary.
  */
-export const chatConversationsQuerySchema = paginationSchema.extend({
+export const chatConversationsQuerySchema = z.object({
   project_id: z.string().uuid().optional(),
-  // Overrides the shared default on purpose. How many conversations a page
-  // holds is a runtime knob that lives in `config/agent.yaml`, and the two
-  // routes that list them have to agree on it; a default here would be a
-  // second answer to the same question, in a package that cannot read the
-  // config. Absent means "whatever the server is configured for".
+  // How many conversations a page holds is a runtime knob that lives in
+  // `config/agent.yaml`, and the two routes that list them have to agree on
+  // it; a default here would be a second answer to the same question, in a
+  // package that cannot read the config. Absent means "whatever the server is
+  // configured for".
   limit: z.coerce.number().int().min(1).max(100).optional(),
+  // Where the last page stopped, rather than how many rows to skip. The list
+  // is ordered by when each conversation was last used, so it moves under a
+  // reader who is paging through it: someone speaks and a row rises, someone
+  // starts one and everything shifts down. Counting rows to skip then lands
+  // in the wrong place -- the same conversation comes back twice, or one is
+  // stepped over and cannot be reached at all. A position does not move.
+  before_updated_at: z.string().datetime({ offset: true }).optional(),
+  before_id: z.string().uuid().optional(),
 });
 export type ChatConversationsQueryInput = z.infer<typeof chatConversationsQuerySchema>;
 

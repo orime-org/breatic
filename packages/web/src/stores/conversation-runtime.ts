@@ -583,8 +583,13 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // header is drawn before the answer arrives. What they pressed is later
     // than this, so the conversation they made is the one to stay on; only
     // the list below is still worth taking.
-    const landed = stillAwaited(projectId, nav);
-    if (landed) adoptConversation(projectId, opened.current);
+    // Overtaken, and that settles the list as much as the conversation. This
+    // answer was assembled before whatever the reader did next, so the list in
+    // it does not have their new conversation -- writing it would leave them
+    // inside a conversation the history sheet cannot show, with no way back to
+    // it once they navigate away.
+    if (!stillAwaited(projectId, nav)) return undefined;
+    adoptConversation(projectId, opened.current);
     // The list arrives with the same answer and used to be dropped here, which
     // is why the history sheet had nothing to show even once it could be
     // opened at all.
@@ -1273,6 +1278,28 @@ function stillAwaited(projectId: string, token: number): boolean {
 }
 
 /**
+ * End a navigation that failed with nobody behind it to finish the job.
+ *
+ * Saying `loading` is a promise that a conversation is coming, and whoever
+ * says it has to see it through to one of the two ends: a conversation on
+ * screen, or a scrim saying it could not be read. A navigation that gets
+ * overtaken is off the hook, because the one that overtook it ends it instead.
+ * The one that fails while still being waited for is the last one there is,
+ * and leaving it holds the panel on a skeleton that turns for ever -- no
+ * conversation, no scrim, and so no way to ask again.
+ * @param projectId - The project.
+ * @param token - What {@link intendToNavigate} handed back.
+ */
+function settleIfStranded(projectId: string, token: number): void {
+  if (!stillAwaited(projectId, token)) return;
+  useStore.setState((s) =>
+    s.openStatus[projectId] === 'loading'
+      ? { openStatus: { ...s.openStatus, [projectId]: 'failed' } }
+      : s,
+  );
+}
+
+/**
  * Write a conversation's name into the list the reader chooses from.
  * @param projectId - The project whose list to change.
  * @param conversationId - The conversation being named.
@@ -1357,6 +1384,9 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
     // it because the request for them failed.
     if (visit.signal.aborted) return;
     tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
+    // Nothing landed, so the panel is still waiting on this one. If a delete
+    // put it in the loading state on the way here, this is where that ends.
+    settleIfStranded(projectId, nav);
   }
 }
 
@@ -1392,6 +1422,10 @@ async function startNew(projectId: string): Promise<void> {
   } catch (err) {
     if (visit.signal.aborted) return;
     tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
+    // This press may have overtaken a landing that had already promised the
+    // panel a conversation -- the one a delete goes looking for, say. That
+    // one stepped aside for this; nobody else is coming.
+    settleIfStranded(projectId, nav);
   }
 }
 
@@ -1399,25 +1433,36 @@ async function startNew(projectId: string): Promise<void> {
  * Projects with a request out for their next page of conversations.
  *
  * Reaching the bottom of a list fires as often as the reader keeps scrolling,
- * and every one of those would ask for the same window again -- the answers
+ * and every one of those would ask for the same page again -- the answers
  * would arrive one after another and each would be appended, so the same rows
  * would appear two and three times over.
  */
 const fetchingMore = new Set<string>();
 
 /**
+ * Projects whose last attempt at a next page did not arrive.
+ *
+ * Held so that reaching the end again counts as asking again. The watcher that
+ * notices the end of the list only fires as it is crossed, and a failure moves
+ * nothing -- the end stays exactly where it was, in view, and never crosses
+ * anything again. Without this the reader would be stuck at the bottom of a
+ * list that has more to give, with nothing left that could ask for it.
+ */
+const lastPageFailed = new Set<string>();
+
+/**
  * Fetch the page of conversations after the ones already listed.
  *
- * Does nothing when the list is known to be complete, and nothing while a
- * request for the next page is already out. The window starts at however many
- * rows are held: every write to this list -- a new conversation at the top, a
- * deleted one gone, one moved up after being spoken in -- moves the server's
- * ordering the same way, so the count of rows held is the count to skip.
+ * Does nothing while a request is already out, and nothing when the list is
+ * known to be complete. It continues from the last row held rather than from a
+ * count of rows: this list is ordered by when each conversation was last used,
+ * so it moves while the reader pages through it, and a count would land
+ * somewhere other than where the last page ended.
  *
  * A failure leaves the rows already listed exactly as they are and says so
  * once. What could not be read is the part that has not arrived yet, not the
- * part that has; and `listHasMore` stays true, so reaching the bottom again
- * tries again.
+ * part that has; the list is still known to have more, and reaching the end
+ * again asks again.
  * @param projectId - The project whose list to extend.
  */
 async function loadMoreConversations(projectId: string): Promise<void> {
@@ -1425,27 +1470,58 @@ async function loadMoreConversations(projectId: string): Promise<void> {
   if (!state.listHasMore[projectId]) return;
   if (fetchingMore.has(projectId)) return;
 
-  const held = state.listByProject[projectId] ?? [];
+  const held = state.listByProject[projectId];
+  // Nothing held means the first page has not arrived, and the first page is
+  // `openChat`'s to fetch. Asking from here would race it and append a second
+  // copy of everything it is about to write.
+  if (held === undefined || held.length === 0) return;
+  const last = held[held.length - 1]!;
+
   const visit = currentVisit(projectId);
   fetchingMore.add(projectId);
+  lastPageFailed.delete(projectId);
   try {
-    const page = await chatApi.listConversations(projectId, { offset: held.length });
+    const page = await chatApi.listConversations(
+      projectId,
+      { updatedAt: last.updatedAt, id: last.id },
+      visit.signal,
+    );
     if (visit.signal.aborted) return;
-    useStore.setState((s) => ({
-      listByProject: {
-        ...s.listByProject,
-        [projectId]: [...(s.listByProject[projectId] ?? []), ...page.conversations],
-      },
-      listHasMore: { ...s.listHasMore, [projectId]: page.hasMore },
-    }));
+    useStore.setState((s) => {
+      const current = s.listByProject[projectId] ?? [];
+      // The page starts after the last row held, so in an order that has not
+      // moved these are all new. It can move, though -- another tab, or this
+      // one, may have written a row in the meantime -- and a list is one row
+      // per conversation whatever happened in between.
+      const known = new Set(current.map((c) => c.id));
+      const fresh = page.conversations.filter((c) => !known.has(c.id));
+      return {
+        listByProject: { ...s.listByProject, [projectId]: [...current, ...fresh] },
+        listHasMore: { ...s.listHasMore, [projectId]: page.hasMore },
+      };
+    });
   } catch (err) {
     if (visit.signal.aborted) return;
-    // The reader reached the bottom themselves, so this is an answer to
-    // something they did.
+    lastPageFailed.add(projectId);
+    // The reader reached the end themselves, so this is an answer to something
+    // they did.
     tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
   } finally {
     fetchingMore.delete(projectId);
   }
+}
+
+/**
+ * Whether the last attempt at a next page failed.
+ *
+ * Read by the panel so the watcher that notices the end of the list can be
+ * rebuilt: a fresh watcher reports where things stand as soon as it starts, so
+ * an end that is already in view counts again.
+ * @param projectId - The project.
+ * @returns True when the last attempt failed and nothing has been tried since.
+ */
+function nextPageFailed(projectId: string): boolean {
+  return lastPageFailed.has(projectId);
 }
 
 /**
@@ -1647,6 +1723,7 @@ function leaveProject(projectId: string): void {
     const { [projectId]: _status, ...openStatus } = s.openStatus;
     const { [projectId]: _sending, ...sendingByProject } = s.sendingByProject;
     const { [projectId]: _listed, ...listByProject } = s.listByProject;
+    const { [projectId]: _more, ...listHasMore } = s.listHasMore;
     // The drafts of every conversation in this project go with it. A draft
     // belongs to a conversation the reader was in, and coming back re-opens
     // the project from the server -- so keeping them would hand a returning
@@ -1667,10 +1744,19 @@ function leaveProject(projectId: string): void {
       openStatus,
       sendingByProject,
       listByProject,
+      listHasMore,
       draftByConversation: keptDrafts,
     };
   });
   opening.delete(projectId);
+  // The per-project bookkeeping outside the store goes too. A request for the
+  // next page that was in flight has been abandoned with the visit, so leaving
+  // this project registered as fetching would make the next visit's first
+  // scroll to the end do nothing at all, silently, until that dead request
+  // came back on its own.
+  fetchingMore.delete(projectId);
+  lastPageFailed.delete(projectId);
+  navigations.delete(projectId);
 }
 
 /**
@@ -1708,9 +1794,9 @@ export const conversationRuntime = {
   switchTo,
   startNew,
   loadMoreConversations,
+  nextPageFailed,
   rename,
   remove,
-  noteActivity,
   setDraft,
   draftOf,
 };

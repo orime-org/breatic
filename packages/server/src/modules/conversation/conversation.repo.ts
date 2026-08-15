@@ -11,7 +11,7 @@
  * of owned children lives in {@link cascadeDeleteConversations}.
  */
 
-import { and, eq, desc, isNull, inArray, sql } from "drizzle-orm";
+import { and, or, eq, lt, desc, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import {
   conversations,
@@ -99,6 +99,20 @@ export interface ConversationPage {
 }
 
 /**
+ * The position a page of conversations continues from.
+ *
+ * A position rather than a count of rows to skip: this list is ordered by when
+ * each conversation was last used, so it moves while a reader pages through
+ * it. Counting rows then lands somewhere else than where the last page ended
+ * -- a conversation comes back twice, or one is stepped over and cannot be
+ * reached at all. Both columns are needed because both are in the order.
+ */
+export interface ConversationCursor {
+  updatedAt: Date;
+  id: string;
+}
+
+/**
  * List active (non-deleted) conversations for a user, optionally
  * scoped to a single project.
  * @param userId - Conversations are user-owned; this is the auth boundary.
@@ -107,18 +121,32 @@ export interface ConversationPage {
  *   to that project. ChatPanel passes the active space's project id so
  *   it doesn't have to client-side-filter a paginated response (which
  *   silently dropped the target when it sat past page boundary).
- * @param opts.limit - Maximum rows to return (defaults to 50)
- * @param opts.offset - Number of rows to skip for pagination (defaults to 0)
- * @returns Active conversations ordered by most-recently-updated first
+ * @param opts.limit - How many conversations this page holds
+ * @param opts.after - Where the previous page stopped; omitted for the first
+ * @returns The page, and whether the list goes on past it
  */
 export async function listConversations(
   userId: string,
-  opts: { projectId?: string; limit: number; offset?: number },
+  opts: { projectId?: string; limit: number; after?: ConversationCursor },
 ): Promise<ConversationPage> {
-  const { projectId, limit, offset = 0 } = opts;
+  const { projectId, limit, after } = opts;
   const conditions = [eq(conversations.userId, userId), isNull(conversations.deletedAt)];
   if (projectId !== undefined) {
     conditions.push(eq(conversations.projectId, projectId));
+  }
+  if (after !== undefined) {
+    // Everything ordered after the row the last page ended on. Written as two
+    // comparisons because the order is over two columns: past that instant,
+    // or at that instant but past that row. The second half is what stops a
+    // batch of conversations sharing a timestamp -- which is what happens when
+    // a project is seeded, or when two answers land in the same millisecond --
+    // from either repeating for ever or being skipped as a block.
+    conditions.push(
+      or(
+        lt(conversations.updatedAt, after.updatedAt),
+        and(eq(conversations.updatedAt, after.updatedAt), lt(conversations.id, after.id)),
+      )!,
+    );
   }
   // One past the page, which is the only way to answer "is there more" without
   // a second query. A full page is not evidence of more and a short one is not
@@ -128,9 +156,12 @@ export async function listConversations(
     .select()
     .from(conversations)
     .where(and(...conditions))
-    .orderBy(desc(conversations.updatedAt))
-    .limit(limit + 1)
-    .offset(offset);
+    // Two keys, and the second is not decoration: it is what makes the order
+    // total. Ordering by the timestamp alone leaves rows that share one in
+    // whatever order the database feels like, and a cursor into an order that
+    // is not stable points at nothing in particular.
+    .orderBy(desc(conversations.updatedAt), desc(conversations.id))
+    .limit(limit + 1);
   return {
     conversations: rows.slice(0, limit).map(toEntity),
     hasMore: rows.length > limit,
@@ -329,9 +360,13 @@ export async function softDeleteConversation(id: string): Promise<void> {
  * @param title - New display title; truncated to 200 chars before update
  */
 export async function updateTitle(id: string, title: string): Promise<void> {
+  // The title only. `updated_at` is what orders the list and what each row
+  // shows as when the conversation was last used, and renaming one is not
+  // using it: touching the column would send a conversation nobody has spoken
+  // in for months to the top of the list, labelled "just now".
   await db
     .update(conversations)
-    .set({ title: title.slice(0, 200), updatedAt: new Date() })
+    .set({ title: title.slice(0, 200) })
     .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
 }
 

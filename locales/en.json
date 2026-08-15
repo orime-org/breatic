@@ -120,7 +120,8 @@
     "history": {
       "title": "Session list",
       "description": "Switch to or review previous conversations.",
-      "empty": "No previous conversations"
+      "empty": "No previous conversations",
+      "moreFailed": "Could not load older conversations. Scroll down to try again."
     },
     "relative": {
       "justNow": "just now",

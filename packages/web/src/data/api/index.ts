@@ -26,7 +26,6 @@ export { membersApi, type Member, type MemberRole, type ProjectMembership } from
 // drift in the first place.
 export {
   chatApi,
-  type ConversationSummary,
   type ConversationOnTheWire,
   type ConversationRead,
 } from '@web/data/api/chat';
