@@ -195,8 +195,9 @@ export function buildGeneratePanelViewModel(input: {
   const references = deriveReferences(nodeId, nodes, edges, input.textById);
   // t2i generates from scratch and ignores source images (design §2.5): the
   // rail still renders (greyed in the panel) but contributes NO reference URLs
-  // to the execute payload. i2i sends them. (Style images — a future slice —
-  // will be the one exception that survives t2i.)
+  // to the execute payload. i2i sends them. (Style images are the exception
+  // that survives t2i — resolved 30 lines down from the node's own
+  // styleImageUrl, and they ride the payload in every mode.)
   // i2i sends ONLY the @-picked source images (design B): a reference that is
   // connected but not @-mentioned contributes nothing; no @ at all → empty, and
   // the #1675 execute gate then blocks submitting an i2i task with no source.

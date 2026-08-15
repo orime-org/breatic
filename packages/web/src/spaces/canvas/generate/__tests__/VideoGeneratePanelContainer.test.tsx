@@ -1485,10 +1485,13 @@ describe('VideoGeneratePanelContainer', () => {
       act(() => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
-      // Radix 的浮层要完整的 pointer 事件序列才开，fireEvent.click 只发 click。
-      await screen.findByTestId('generate-video-execute');
-      await userEvent.click(screen.getByTestId('generate-video-mode-trigger'));
-      await userEvent.click(await screen.findByTestId('generate-video-mode-i2v'));
+      // 面板先渲染一帧、目录才解析完，在那之前这个 trigger 是 disabled 的
+      // （ModeToggle 的 `disabled={catalogEmpty}`）—— 不等它 enabled 就点，
+      // 浮层不开、下一句报 `Unable to find generate-video-mode-i2v`。
+      const trigger = await screen.findByTestId('generate-video-mode-trigger');
+      await waitFor(() => expect(trigger).not.toBeDisabled());
+      fireEvent.click(trigger);
+      fireEvent.click(await screen.findByTestId('generate-video-mode-i2v'));
       await waitFor(() => {
         const data = readCanvasGraph('p', 's').nodes.find(
           (n) => n.id === 'target',

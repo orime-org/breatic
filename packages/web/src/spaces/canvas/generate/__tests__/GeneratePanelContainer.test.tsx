@@ -102,12 +102,12 @@ function mountContainer(graph?: {
           body (caught wiring the caret-awareness test). The canvas here
           exists only so NodeToolbar renders.
 
-          Drive clicks with `fireEvent`, not `userEvent`: measured, the Radix
-          popovers in this panel open under either one, and a userEvent
-          pointer sequence additionally bubbles to ReactFlow's d3-zoom, whose
-          d3-drag reads `event.view.document` — null in jsdom, an unhandled
-          error. (The video panel's mode popover is the one that does need the
-          full sequence; see VideoGeneratePanelContainer.test.) */}
+          Drive clicks with `fireEvent`, not `userEvent`: a userEvent pointer
+          sequence bubbles to ReactFlow's d3-zoom, whose d3-drag reads
+          `event.view.document` — null in jsdom, an unhandled error. Radix
+          popovers open under a bare click; what does need waiting for is the
+          trigger becoming enabled once the catalog resolves (measured — that,
+          not the event kind, is what makes an early click miss). */}
       <ReactFlow
         nodes={[
           { id: 'target', position: { x: 0, y: 0 }, data: {} },

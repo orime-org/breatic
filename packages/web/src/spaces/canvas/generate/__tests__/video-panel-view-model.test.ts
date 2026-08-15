@@ -323,10 +323,11 @@ describe('buildVideoPanelViewModel', () => {
         duration: { description: '', min: 3, max: 15, default: 5 },
       },
     });
-    // The fixture carries `model` because a record is keyed BY a model name
-    // (#1948): the panel resolves which model it is showing and reads that
-    // model's record. A fixture with records but no model would exercise a
-    // path where the two disagree, which is not what this case is about.
+    // The fixture carries `model` because that is the shape a real node has:
+    // a record is keyed BY a model name (#1948), and the node stores which
+    // model it is on. It is not load-bearing here — this catalog offers one
+    // model, so dropping it still resolves to 'kling-o3-pro' and the case
+    // passes (measured). What the case is about is the range-shaped duration.
     const nodes = [
       node(
         'n1',

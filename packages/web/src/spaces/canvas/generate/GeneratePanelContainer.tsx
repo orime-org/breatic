@@ -313,8 +313,8 @@ function GeneratePanelBody({
   /**
    * The node's live content view, or undefined when the node is gone or is not
    * a content node. Read fresh at click time for the same reason freshVm is: a
-   * collaborator may have changed the model, the params or the per-model
-   * records since this render.
+   * collaborator may have changed the model or the per-model records since
+   * this render.
    * @returns The node's content view, or undefined.
    */
   const freshContent = React.useCallback(():
@@ -370,11 +370,12 @@ function GeneratePanelBody({
 
   const onToggleMode = React.useCallback(
     (newMode: ImageGenMode) => {
-      // Read the node fresh (a collaborator may have changed its modelByMode /
-      // params), resolve the model + params for the TARGET mode, and write the
-      // switch in one Yjs transaction. resolveModeSwitch resolves fresh for the
-      // target mode (its remembered pick → recommended → first) — the current
-      // model belongs to the old mode and is deliberately not carried over.
+      // Read the node fresh (a collaborator may have changed its modelByMode
+      // or its records), resolve the model + records for the TARGET mode, and
+      // write the switch in one Yjs transaction. resolveModeSwitch resolves
+      // fresh for the target mode (the pick remembered for it, else the first
+      // model it offers — the `recommended` tier is a badge, not a rule) — the
+      // current model belongs to the old mode and is not carried over.
       const { model, paramsByModel } = resolveModeSwitch(
         freshContent(),
         newMode,

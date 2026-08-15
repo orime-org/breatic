@@ -17,9 +17,15 @@
  * mode switch safe: the mode's model brings its own record, and the model the
  * user is leaving keeps its own.
  *
- * The records are the ONLY place a param value lives. The node has no separate
- * "params in effect" field: what the panel renders is resolved from the
- * records on every render, so there is no second copy to keep in step.
+ * The records are the only place the panel's param CONTROLS write to. The node
+ * has no separate "params in effect" field: what the panel renders is resolved
+ * from the records on every render, so there is no second copy to keep in step.
+ *
+ * Not every key a model declares under `params` is one of these. `prompt`,
+ * `images` (the reference rail) and `style_images` (`data.styleImageUrl`) are
+ * declared params whose values live elsewhere on the node or on the prompt;
+ * the execute payload spreads the records first and then overwrites those
+ * three, so whatever a record holds for them does not reach the request.
  */
 
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';

@@ -391,11 +391,15 @@ export interface CanvasNodeFields {
      * what keeps a mode switch from handing the outgoing model's settings to
      * the incoming one.
      *
-     * The ONLY place a param value lives: what the panel has in effect is
-     * resolved from these on every render, so there is no second field to
-     * keep in step. A node written before #1948 carries no records and gets
-     * none — Yjs data from before launch gets no compatibility handling
-     * (user 2026-08-15).
+     * The only place the panel's param CONTROLS write to: what the panel has
+     * in effect is resolved from these on every render, so there is no second
+     * field to keep in step. Three keys a model may also declare under
+     * `params` are not among them and live elsewhere on the node or on the
+     * prompt — `prompt`, `images` (the reference rail) and `style_images`
+     * (`data.styleImageUrl`); the execute payload spreads the records first
+     * and then overwrites those three. A node written before #1948 carries no
+     * records and gets none — Yjs data from before launch gets no
+     * compatibility handling (user 2026-08-15).
      */
     paramsByModel?: Record<string, Record<string, unknown>>;
     /**

@@ -262,8 +262,8 @@ function VideoGeneratePanelBody({
   /**
    * The node's live content view, or undefined when the node is gone or is not
    * a content node. Read fresh at click time for the same reason freshVm is: a
-   * collaborator may have changed the model, the params or the per-model
-   * records since this render.
+   * collaborator may have changed the model or the per-model records since
+   * this render.
    * @returns The node's content view, or undefined.
    */
   const freshContent = React.useCallback((): ContentNodeView | undefined => {
