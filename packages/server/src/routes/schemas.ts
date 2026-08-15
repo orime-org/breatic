@@ -23,6 +23,8 @@ export {
   chatConversationsQuerySchema,
   chatOpenSchema,
   chatEarlierMessagesQuerySchema,
+  chatCreateConversationSchema,
+  chatRenameConversationSchema,
 } from "@breatic/shared";
 
 // ── Server-only schemas (complex discriminated unions) ───────────────

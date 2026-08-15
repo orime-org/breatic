@@ -115,6 +115,8 @@ export const mocks = {
     list: vi.fn(),
     getWithMessages: vi.fn(),
     deleteConversation: vi.fn(),
+    createConversation: vi.fn(),
+    rename: vi.fn(),
   },
   conversationRepo: {
     getConversation: vi.fn().mockResolvedValue({ id: "conv-1", lastConsolidatedTurn: 0 }),

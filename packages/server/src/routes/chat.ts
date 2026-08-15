@@ -19,6 +19,8 @@ import {
   skillCommandSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,
+  chatCreateConversationSchema,
+  chatRenameConversationSchema,
   chatEarlierMessagesQuerySchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -267,6 +269,60 @@ chat.get(
       offset,
     });
     return c.json({ data: conversations });
+  },
+);
+
+/**
+ * `POST /chat/conversations` — start another conversation in a project.
+ *
+ * The deliberate counterpart to `POST /chat/open`: that one hands back the
+ * conversation already there and only creates when there is none, which is
+ * exactly what someone pressing "new conversation" is refusing. So this one
+ * never looks first.
+ * @param c - Hono context with a `project_id` body
+ * @returns The conversation that was just created
+ * @throws {AppError} `404` if the caller is not a member or the project is
+ *   gone, `403` if they are a member but may only read
+ */
+chat.post(
+  "/conversations",
+  validate("json", chatCreateConversationSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { project_id: projectId } = c.req.valid("json");
+    const conversation = await conversationService.createConversation(
+      user.id,
+      projectId,
+    );
+    return c.json({ data: conversation });
+  },
+);
+
+/**
+ * `PATCH /chat/conversations/:id` — name a conversation.
+ *
+ * The body carries the project as well as the title. The id in the path came
+ * from the client, so three things have to hold before anything is written,
+ * and one of them is which project this conversation lives in.
+ * @param c - Hono context with the conversation id in the path and a
+ *   `project_id` + `title` body
+ * @returns The conversation as it now stands
+ * @throws {AppError} `404` if it is missing, deleted, someone else's, or in a
+ *   different project — one answer for all four, on purpose
+ */
+chat.patch(
+  "/conversations/:id",
+  validate("json", chatRenameConversationSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { project_id: projectId, title } = c.req.valid("json");
+    const conversation = await conversationService.rename(
+      c.req.param("id"),
+      user.id,
+      projectId,
+      title,
+    );
+    return c.json({ data: conversation });
   },
 );
 

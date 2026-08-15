@@ -374,6 +374,37 @@ export const chatOpenSchema = z.object({
 export type ChatOpenInput = z.infer<typeof chatOpenSchema>;
 
 /**
+ * Body for starting a conversation on purpose.
+ *
+ * Names the project and nothing else — the same shape as opening chat, and for
+ * the same reason: everything about the new conversation is the server's to
+ * decide. What separates the two is only whether the caller is willing to be
+ * given the one already there.
+ */
+export const chatCreateConversationSchema = z.object({
+  project_id: z.string().uuid(),
+});
+export type ChatCreateConversationInput = z.infer<typeof chatCreateConversationSchema>;
+
+/**
+ * Body for naming a conversation.
+ *
+ * Carries the project as well as the title, because the id in the path came
+ * from the client and three things have to hold before anything is written:
+ * the conversation exists, it belongs to this user, and it lives in this
+ * project. Without the project here the second one cannot be asked at all.
+ *
+ * The title is trimmed before it is measured, so a name of nothing but spaces
+ * is refused rather than stored — a row showing an empty name reads as a
+ * rendering fault, which is worse than the default title it replaced.
+ */
+export const chatRenameConversationSchema = z.object({
+  project_id: z.string().uuid(),
+  title: z.string().trim().min(1).max(200),
+});
+export type ChatRenameConversationInput = z.infer<typeof chatRenameConversationSchema>;
+
+/**
  * Query for the page of a conversation that comes before the one in hand.
  *
  * The cursor is a turn and not a message, because a page ends on a turn

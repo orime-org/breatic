@@ -23,6 +23,8 @@ export {
   chatConversationsQuerySchema,
   chatOpenSchema,
   chatEarlierMessagesQuerySchema,
+  chatCreateConversationSchema,
+  chatRenameConversationSchema,
 } from "@shared/schemas/api.js";
 
 export type {
@@ -40,4 +42,6 @@ export type {
   CheckoutInput,
   PaginationInput,
   ChatConversationsQueryInput,
+  ChatCreateConversationInput,
+  ChatRenameConversationInput,
 } from "@shared/schemas/api.js";

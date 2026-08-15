@@ -142,6 +142,84 @@ export async function openChat(
 }
 
 /**
+ * Start a conversation because the user asked for one.
+ *
+ * The other way a conversation appears is {@link openChat}, which makes one
+ * only when the project has none. The difference is not the mechanics but who
+ * decided: there, the user asked to see their chat and the server had nothing
+ * to show; here, the user pressed a button that says start another one. So
+ * this never looks for an existing conversation — being handed the one already
+ * on screen is exactly what the press was refusing.
+ *
+ * That distinction is what keeps "a conversation is only ever created
+ * automatically in one place" true. The rule guards against an id that no
+ * longer resolves quietly turning into a new conversation while the reader
+ * believes they are still in the old one; a deliberate press is not that.
+ *
+ * Access is judged as a WRITE, same as opening: a member who may only read
+ * must not leave a conversation behind in someone else's project.
+ *
+ * Only one lock, where {@link openChat} takes two. The second lock there makes
+ * "is there one?" and "then make one" indivisible, so two tabs racing cannot
+ * each leave an empty conversation behind. There is no such pair here — this
+ * asks nothing before creating, so two presses producing two conversations is
+ * the correct answer to two presses, not a race to be closed.
+ * @param userId - The signed-in user
+ * @param projectId - Project the new conversation belongs to
+ * @returns The conversation that was just created
+ * @throws {NotFoundError} if the caller is not a member, or the project is gone
+ * @throws {ForbiddenError} if they are a member but may only read
+ */
+export async function createConversation(
+  userId: string,
+  projectId: string,
+): Promise<ConversationEntity> {
+  await projectService.assertAccess(projectId, userId, "editor");
+
+  return db.transaction(async (tx) => {
+    // Same reason as in `openChat`: without holding the project row, this
+    // insert's foreign key takes FOR KEY SHARE while a delete takes FOR NO KEY
+    // UPDATE, and those two do not conflict — so a live conversation can commit
+    // onto a project that has just been deleted, unreachable through chat
+    // forever.
+    if (!(await projectRepo.lockLiveProject(projectId, tx))) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+
+    const created = await conversationRepo.createConversation(userId, NEW_TITLE, tx);
+    await conversationRepo.setProjectId(created.id, projectId, tx);
+    return { ...created, projectId };
+  });
+}
+
+/**
+ * Give a conversation the name its owner chose.
+ *
+ * Guarded by {@link assertWritable} rather than by an ownership check, because
+ * the id arrives from the client: it has to be this user's, in this project,
+ * and still there. All three answer NotFound identically — an answer that
+ * distinguished them would tell a caller holding a stranger's id that the
+ * conversation exists.
+ * @param conversationId - Conversation id as supplied by the client
+ * @param userId - The signed-in user
+ * @param projectId - Project the request claims to be in
+ * @param title - The new name, already trimmed and length-checked at the edge
+ * @returns The conversation as it now stands
+ * @throws {NotFoundError} if it is missing, deleted, owned by someone else, or
+ *   belongs to a different project
+ */
+export async function rename(
+  conversationId: string,
+  userId: string,
+  projectId: string,
+  title: string,
+): Promise<ConversationEntity> {
+  const conversation = await assertWritable(conversationId, userId, projectId);
+  await conversationRepo.updateTitle(conversationId, title);
+  return { ...conversation, title };
+}
+
+/**
  * Read the page of a conversation that comes before the one in hand.
  * @param conversationId - Conversation UUID
  * @param userId - Requesting user UUID
