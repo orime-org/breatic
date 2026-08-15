@@ -28,7 +28,7 @@ function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
   render(
     <AgentColHeader
       conversationName='Onboarding'
-      messageCount={3}
+      conversationCount={3}
       onOpenHistory={onOpenHistory}
       onNewConversation={onNewConversation}
       onRenameConversation={onRenameConversation}
@@ -55,7 +55,7 @@ describe('AgentColHeader', () => {
   });
 
   it('renders the count chip immediately right of the history icon', () => {
-    setup({ messageCount: 12 });
+    setup({ conversationCount: 12 });
     expect(screen.getByTestId('conversation-count-chip')).toHaveTextContent(
       '12',
     );

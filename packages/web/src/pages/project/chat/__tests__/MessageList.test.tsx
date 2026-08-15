@@ -46,7 +46,7 @@ function bubble(id: string, content: string): ChatMessage {
 
 describe('MessageList', () => {
   it('renders the empty state when there are no messages', () => {
-    render(<MessageList messages={[]} />);
+    render(<MessageList ready messages={[]} />);
     expect(screen.getByTestId('chat-empty')).toBeInTheDocument();
   });
 
@@ -54,7 +54,7 @@ describe('MessageList', () => {
     const messages: ChatMessage[] = [
       { id: 'm1', role: 'user', content: 'Hello' },
     ];
-    render(<MessageList messages={messages} />);
+    render(<MessageList ready messages={messages} />);
     expect(screen.queryByTestId('chat-empty')).toBeNull();
     expect(screen.getAllByTestId('message-bubble')).toHaveLength(1);
   });
@@ -72,10 +72,10 @@ describe('MessageList', () => {
       { id: 'm1', role: 'user', content: 'Hello' },
       { id: 'm2', role: 'assistant', content },
     ];
-    const { rerender } = render(<MessageList messages={growing('Th')} />);
+    const { rerender } = render(<MessageList ready messages={growing('Th')} />);
     scrollIntoView.mockClear();
 
-    rerender(<MessageList messages={growing('That is a much longer answer')} />);
+    rerender(<MessageList ready messages={growing('That is a much longer answer')} />);
 
     // A streaming reply arrives as pieces appended to one message: the count
     // never changes. Watching only the count leaves any answer taller than
@@ -93,6 +93,7 @@ describe('MessageList', () => {
 
     render(
       <MessageList
+        ready
         messages={Array.from({ length: 20 }, (_, i) => ({
           id: `m${i}`,
           role: i % 2 === 0 ? ('user' as const) : ('assistant' as const),
@@ -117,7 +118,7 @@ describe('MessageList', () => {
     const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
     const restore = stateGeometry(geometry);
 
-    const { container, rerender } = render(<MessageList messages={[bubble('m1', 'Hello')]} />);
+    const { container, rerender } = render(<MessageList ready messages={[bubble('m1', 'Hello')]} />);
     fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
     scrollIntoView.mockClear();
 
@@ -125,7 +126,7 @@ describe('MessageList', () => {
     // is what makes the column taller — the reader has not moved.
     geometry.scrollHeight = 1088;
     rerender(
-      <MessageList messages={[bubble('m1', 'Hello'), bubble('m2', ''), bubble('m3', '')]} />,
+      <MessageList ready messages={[bubble('m1', 'Hello'), bubble('m2', ''), bubble('m3', '')]} />,
     );
 
     expect(scrollIntoView).toHaveBeenCalled();
@@ -140,12 +141,12 @@ describe('MessageList', () => {
     const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 0 };
     const restore = stateGeometry(geometry);
 
-    const { container, rerender } = render(<MessageList messages={[bubble('m2', 'Th')]} />);
+    const { container, rerender } = render(<MessageList ready messages={[bubble('m2', 'Th')]} />);
     fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
     scrollIntoView.mockClear();
 
     geometry.scrollHeight = 2100;
-    rerender(<MessageList messages={[bubble('m2', 'That is a much longer answer')]} />);
+    rerender(<MessageList ready messages={[bubble('m2', 'That is a much longer answer')]} />);
 
     // Dragging them back down once per token makes the column unreadable for
     // the whole turn, which is the window a long answer is worth reading in.
@@ -163,7 +164,7 @@ describe('MessageList', () => {
 
     const reply: ChatMessage = { id: 'm2', role: 'assistant', content: 'half an answer' };
     const { container, rerender } = render(
-      <MessageList messages={[bubble('m1', 'earlier'), reply]} sentCount={1} />,
+      <MessageList ready messages={[bubble('m1', 'earlier'), reply]} sentCount={1} />,
     );
     // The reader is at the bottom and stays there.
     fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
@@ -175,6 +176,7 @@ describe('MessageList', () => {
     geometry.scrollHeight = 2026;
     rerender(
       <MessageList
+        ready
         messages={[bubble('m1', 'earlier'), { ...reply, failed: true }]}
         sentCount={1}
       />,
@@ -197,6 +199,7 @@ describe('MessageList', () => {
     const said: ChatMessage = { id: 'local-user-abc', role: 'user', content: 'what about this' };
     const { container, rerender } = render(
       <MessageList
+        ready
         messages={[said, bubble('local-reply-x', 'a partial')]}
         sentCount={1}
       />,
@@ -213,6 +216,7 @@ describe('MessageList', () => {
     geometry.scrollHeight = 2010;
     rerender(
       <MessageList
+        ready
         messages={[
           { ...said, id: 'srv-77' },
           bubble('srv-78', 'a partial answer, in full'),
@@ -234,7 +238,7 @@ describe('MessageList', () => {
     const restore = stateGeometry(geometry);
 
     const { container, rerender } = render(
-      <MessageList messages={[bubble('m1', 'an earlier answer')]} sentCount={3} />,
+      <MessageList ready messages={[bubble('m1', 'an earlier answer')]} sentCount={3} />,
     );
     fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
     scrollIntoView.mockClear();
@@ -247,6 +251,7 @@ describe('MessageList', () => {
     geometry.scrollHeight = 2400;
     rerender(
       <MessageList
+        ready
         messages={[
           bubble('m1', 'an earlier answer'),
           { id: 'srv-90', role: 'user', content: 'sent from the other tab' },
@@ -269,7 +274,7 @@ describe('MessageList', () => {
     const restore = stateGeometry(geometry);
 
     const { container, rerender } = render(
-      <MessageList messages={[bubble('m1', 'an earlier answer')]} sentCount={0} />,
+      <MessageList ready messages={[bubble('m1', 'an earlier answer')]} sentCount={0} />,
     );
     // Reading something further up.
     fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
@@ -280,6 +285,7 @@ describe('MessageList', () => {
     geometry.scrollHeight = 2200;
     rerender(
       <MessageList
+        ready
         messages={[
           bubble('m1', 'an earlier answer'),
           { id: 'm2', role: 'user', content: 'what about this' },
@@ -305,7 +311,7 @@ describe('MessageList', () => {
     const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 0 };
     const restore = stateGeometry(geometry);
 
-    const { container, rerender } = render(<MessageList messages={[bubble('m2', 'Th')]} />);
+    const { container, rerender } = render(<MessageList ready messages={[bubble('m2', 'Th')]} />);
     const viewport = container.querySelector('[data-radix-scroll-area-viewport]')!;
     fireEvent.scroll(viewport);
     geometry.scrollTop = 1600;
@@ -313,7 +319,7 @@ describe('MessageList', () => {
     scrollIntoView.mockClear();
 
     geometry.scrollHeight = 2100;
-    rerender(<MessageList messages={[bubble('m2', 'That is a much longer answer')]} />);
+    rerender(<MessageList ready messages={[bubble('m2', 'That is a much longer answer')]} />);
 
     // Scrolling back down is how a reader says they want to follow again.
     expect(scrollIntoView).toHaveBeenCalled();

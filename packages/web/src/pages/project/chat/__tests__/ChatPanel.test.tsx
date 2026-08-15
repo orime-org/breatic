@@ -18,7 +18,10 @@ import { chatApi } from '@web/data/api/chat';
 import { StreamRefusedError, StreamUnreachableError } from '@web/data/stream/sse';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { useChatStore } from '@web/stores';
-import { _resetForTests } from '@web/stores/conversation-runtime';
+import { conversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
+
+/** The conversation every case in this file is opened into. */
+const CONV = 'c1';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 /**
@@ -32,7 +35,7 @@ function renderPanel(props: { projectId: string } = { projectId: 'p1' }): Return
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ChatPanel {...props} />
+      <ChatPanel historyOpen={false} onHistoryOpenChange={() => undefined} {...props} />
     </QueryClientProvider>,
   );
 }
@@ -152,7 +155,7 @@ describe('ChatPanel', () => {
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
     await user.type(screen.getByTestId('chat-composer-textarea'), 'Hi!');
-    expect(useChatStore.getState().composerDraft).toBe('Hi!');
+    expect(conversationRuntime.draftOf(CONV)).toBe('Hi!');
   });
 
   it('sends the trimmed draft, and empties the box when the server has it', async () => {
@@ -161,7 +164,7 @@ describe('ChatPanel', () => {
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
-    useChatStore.getState().setComposerDraft('  test  ');
+    conversationRuntime.setDraft(CONV, '  test  ');
     await user.click(screen.getByTestId('chat-composer-send'));
 
     await waitFor(() =>
@@ -174,7 +177,7 @@ describe('ChatPanel', () => {
     // Emptying it now is a promise the browser is in no position to make: the
     // words would be gone from the only place they exist, with nothing on
     // screen to show for them.
-    expect(useChatStore.getState().composerDraft).toBe('  test  ');
+    expect(conversationRuntime.draftOf(CONV)).toBe('  test  ');
     // And nothing to press: not send again, and not stop.
     expect(screen.getByTestId('chat-composer-sending')).toBeInTheDocument();
 
@@ -184,7 +187,7 @@ describe('ChatPanel', () => {
 
     // The server has the message and has handed the conversation back. Now the
     // box is empty, and the stop button is the one thing worth pressing.
-    await waitFor(() => expect(useChatStore.getState().composerDraft).toBe(''));
+    await waitFor(() => expect(conversationRuntime.draftOf(CONV)).toBe(''));
     expect(screen.getByTestId('chat-composer-abort')).toBeInTheDocument();
   });
 
@@ -194,7 +197,7 @@ describe('ChatPanel', () => {
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
-    useChatStore.getState().setComposerDraft('first question');
+    conversationRuntime.setDraft(CONV, 'first question');
     await user.click(screen.getByTestId('chat-composer-send'));
     await waitFor(() => expect(chatApi.streamMessage).toHaveBeenCalled());
 
@@ -203,7 +206,7 @@ describe('ChatPanel', () => {
     const box = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement;
     expect(box.readOnly).toBe(true);
     await user.type(box, ' and one more thing');
-    expect(useChatStore.getState().composerDraft).toBe('first question');
+    expect(conversationRuntime.draftOf(CONV)).toBe('first question');
 
     act(() => {
       turnStarts(['first question']);
@@ -211,7 +214,7 @@ describe('ChatPanel', () => {
 
     // And then it is emptied, with no rule applied to the text: only one
     // thing could have been in it.
-    await waitFor(() => expect(useChatStore.getState().composerDraft).toBe(''));
+    await waitFor(() => expect(conversationRuntime.draftOf(CONV)).toBe(''));
     expect(screen.getByTestId('chat-composer-textarea')).toHaveProperty('readOnly', false);
   });
 
@@ -221,7 +224,7 @@ describe('ChatPanel', () => {
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
-    useChatStore.getState().setComposerDraft('shorten this');
+    conversationRuntime.setDraft(CONV, 'shorten this');
     await user.click(screen.getByTestId('chat-composer-send'));
 
     // No answer came back, so there is nothing to quote and nothing to add.
@@ -237,7 +240,7 @@ describe('ChatPanel', () => {
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
-    useChatStore.getState().setComposerDraft('is anyone there');
+    conversationRuntime.setDraft(CONV, 'is anyone there');
     await user.click(screen.getByTestId('chat-composer-send'));
     const firstLine = await screen.findByTestId('chat-notice');
 
@@ -258,7 +261,7 @@ describe('ChatPanel', () => {
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
-    useChatStore.getState().setComposerDraft('let me in');
+    conversationRuntime.setDraft(CONV, 'let me in');
     await user.click(screen.getByTestId('chat-composer-send'));
 
     // The server went to the trouble of saying why, in the reader's language.
@@ -306,8 +309,11 @@ describe('ChatPanel', () => {
     expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled();
   });
 
-  it('leaves everything usable when the chat could not be opened', async () => {
-    const user = userEvent.setup();
+  it('disables nothing of its own when the chat could not be opened', async () => {
+    // The panel does not answer for this: what covers the column when its
+    // conversations cannot be read is the column's own scrim, one layer up,
+    // and it covers the header too. So nothing here is turned off -- there
+    // would be no way to reach it anyway.
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
     streamStaysOpen();
     renderPanel();
@@ -316,19 +322,7 @@ describe('ChatPanel', () => {
       expect(screen.getByTestId('chat-notice')).toHaveTextContent('Network error'),
     );
 
-    // Nothing is turned off and nothing is explained away. The reader types,
-    // presses send, and that is what opens a conversation and starts a turn.
     expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled();
-    chatOpensWith([]);
-    useChatStore.getState().setComposerDraft('are you there');
-    await user.click(screen.getByTestId('chat-composer-send'));
-
-    await waitFor(() =>
-      expect(chatApi.streamMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'are you there' }),
-        expect.anything(),
-      ),
-    );
   });
 
   it('keeps what the user typed when the chat could not be opened', async () => {
@@ -338,12 +332,12 @@ describe('ChatPanel', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
 
-    useChatStore.getState().setComposerDraft('please do not eat this');
+    conversationRuntime.setDraft(CONV, 'please do not eat this');
     await user.click(screen.getByTestId('chat-composer-send'));
 
     // Clearing the draft on a send that never happened is how the words were
     // lost: nothing was sent, and there was nothing left to send again.
-    expect(useChatStore.getState().composerDraft).toBe('please do not eat this');
+    expect(conversationRuntime.draftOf(CONV)).toBe('please do not eat this');
   });
 
   it('leaves the words where they are when the message never went out', async () => {
@@ -355,7 +349,7 @@ describe('ChatPanel', () => {
       expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled(),
     );
 
-    useChatStore.getState().setComposerDraft('is anyone there');
+    conversationRuntime.setDraft(CONV, 'is anyone there');
     await user.click(screen.getByTestId('chat-composer-send'));
 
     // Nothing was stored and nothing of the attempt is on screen, so the box
@@ -365,7 +359,7 @@ describe('ChatPanel', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('chat-composer-sending')).toBeNull(),
     );
-    expect(useChatStore.getState().composerDraft).toBe('is anyone there');
+    expect(conversationRuntime.draftOf(CONV)).toBe('is anyone there');
   });
 });
 
@@ -400,7 +394,7 @@ describe('a conversation longer than one page', () => {
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
-    useChatStore.getState().setComposerDraft('shorten this');
+    conversationRuntime.setDraft(CONV, 'shorten this');
     await user.click(screen.getByTestId('chat-composer-send'));
     await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
 

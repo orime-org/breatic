@@ -5,13 +5,20 @@ import * as React from 'react';
 import type { MessageData } from '@breatic/shared';
 
 import { useChatStore } from '@web/stores';
+
 import {
   conversationRuntime,
   turnPhaseOf,
   useConversationRuntime,
   watchChatMishaps,
 } from '@web/stores/conversation-runtime';
-import type { ChatMessageData, ChatMishap, TurnPhase } from '@web/stores/conversation-runtime';
+import type {
+  ChatMessageData,
+  ChatMishap,
+  OpenStatus,
+  TurnPhase,
+} from '@web/stores/conversation-runtime';
+import type { ConversationOnTheWire } from '@web/data/api/chat';
 import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
 
 export interface ChatSession {
@@ -19,6 +26,15 @@ export interface ChatSession {
   messages: ChatMessage[];
   /** True until the server has answered — not the same as an empty chat. */
   isPending: boolean;
+  /**
+   * How far opening this project's chat has got.
+   *
+   * Read rather than collapsed into a boolean, because two different things
+   * are decided by it and they are not the same question: whether there is a
+   * conversation to render at all, and whether this wait has gone on long
+   * enough to be worth showing.
+   */
+  status: OpenStatus;
   /**
    * How far along the turn is, if there is one.
    *
@@ -53,6 +69,21 @@ export interface ChatSession {
   send: (draft: string) => Promise<void>;
   /** Stop the turn in flight. */
   abort: () => void;
+  /** Every conversation this reader has here, most recently used first. */
+  conversations: ConversationOnTheWire[];
+  /** Which one is on screen, for the list to mark. */
+  currentId: string | undefined;
+  /** What this conversation has half-typed, and how to change it. */
+  draft: string;
+  setDraft: (text: string) => void;
+  /** Show a different conversation. */
+  switchTo: (conversationId: string) => void;
+  /** Start another one and go to it. */
+  startNew: () => void;
+  /** Name one. */
+  rename: (conversationId: string, title: string) => void;
+  /** Delete one, after the reader has confirmed. */
+  remove: (conversationId: string) => void;
 }
 
 /**
@@ -96,6 +127,14 @@ function toChatMessage(message: ChatMessageData, justFailed: boolean): ChatMessa
 const NO_MESSAGES: ChatMessageData[] = [];
 
 /**
+ * The list before one has arrived.
+ *
+ * Module-level, because an array built at each read is a changed value to
+ * every subscriber -- and this one is read on every store change.
+ */
+const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
+
+/**
  * How long one line about something going wrong stays on screen.
  *
  * It goes away on its own because it is an event, not a state: the reader was
@@ -132,6 +171,12 @@ export function useChatSession(projectId: string): ChatSession {
   );
   const failedReplyId = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.failedReplyId ?? null) : null,
+  );
+  const conversations = useConversationRuntime(
+    (s) => s.listByProject[projectId] ?? NO_CONVERSATIONS,
+  );
+  const draft = useConversationRuntime((s) =>
+    conversationId ? (s.draftByConversation[conversationId] ?? '') : '',
   );
 
   React.useEffect(() => {
@@ -175,6 +220,33 @@ export function useChatSession(projectId: string): ChatSession {
   const loadEarlier = React.useCallback((): void => {
     if (conversationId) void conversationRuntime.loadEarlier(conversationId);
   }, [conversationId]);
+
+  const setDraft = React.useCallback(
+    (text: string): void => {
+      if (conversationId) conversationRuntime.setDraft(conversationId, text);
+    },
+    [conversationId],
+  );
+
+  const switchTo = React.useCallback(
+    (id: string): void => void conversationRuntime.switchTo(projectId, id),
+    [projectId],
+  );
+
+  const startNew = React.useCallback(
+    (): void => void conversationRuntime.startNew(projectId),
+    [projectId],
+  );
+
+  const rename = React.useCallback(
+    (id: string, title: string): void => void conversationRuntime.rename(projectId, id, title),
+    [projectId],
+  );
+
+  const remove = React.useCallback(
+    (id: string): void => void conversationRuntime.remove(projectId, id),
+    [projectId],
+  );
 
   /**
    * What just went wrong here, until it stops being just now.
@@ -235,11 +307,20 @@ export function useChatSession(projectId: string): ChatSession {
   return {
     messages,
     isPending: openStatus === 'idle' || openStatus === 'loading',
+    status: openStatus,
     turnPhase,
     hasMore,
     mishap,
     loadEarlier,
     send,
     abort,
+    conversations,
+    currentId: conversationId,
+    draft,
+    setDraft,
+    switchTo,
+    startNew,
+    rename,
+    remove,
   };
 }

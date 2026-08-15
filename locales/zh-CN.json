@@ -110,8 +110,7 @@
     "empty": {
       "greetingWithName": "嗨, {name}!",
       "greetingDefault": "嗨!",
-      "hintNodes": "试试 @ 节点提问",
-      "hintDirect": "或直接在下方输入对话 ↓",
+      "hintDirect": "在下方输入对话 ↓",
       "quick": {
         "findReference": "帮我找赛博朋克风格的参考图",
         "writePrompt": "帮我写一个生成插画的提示词",
@@ -143,7 +142,24 @@
     "tool": {
       "unfinished": "未跑完就停止了"
     },
-    "loadEarlier": "加载更早的消息"
+    "loadEarlier": "加载更早的消息",
+    "conversation": {
+      "untitled": "未命名对话",
+      "rename": "重命名",
+      "delete": "删除",
+      "renamePlaceholder": "给这条对话起个名字",
+      "deleteTitle": "删除这条对话？",
+      "deleteBody": "对话里说过的内容会一起删掉，无法撤销。",
+      "deleteConfirm": "删除",
+      "deleteCancel": "取消",
+      "startNew": "新建对话",
+      "countAria": "{count, plural, other {# 条对话}}"
+    },
+    "load": {
+      "failedTitle": "网络错误",
+      "failedBody": "没能读到这个 Project 的对话。",
+      "retry": "重新加载"
+    }
   },
   "canvas": {
     "group": {

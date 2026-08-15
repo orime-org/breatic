@@ -110,8 +110,7 @@
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
       "greetingDefault": "やあ!",
-      "hintNodes": "@ でノードに質問してみよう",
-      "hintDirect": "または下に直接プロンプトを入力 ↓",
+      "hintDirect": "下の入力欄からどうぞ ↓",
       "quick": {
         "findReference": "サイバーパンク風の参考画像を探して",
         "writePrompt": "イラスト生成のプロンプトを書いて",
@@ -143,7 +142,24 @@
     "tool": {
       "unfinished": "完了前に停止しました"
     },
-    "loadEarlier": "以前のメッセージを読み込む"
+    "loadEarlier": "以前のメッセージを読み込む",
+    "conversation": {
+      "untitled": "無題の会話",
+      "rename": "名前を変更",
+      "delete": "削除",
+      "renamePlaceholder": "この会話に名前を付ける",
+      "deleteTitle": "この会話を削除しますか？",
+      "deleteBody": "会話の内容もすべて削除されます。元に戻せません。",
+      "deleteConfirm": "削除",
+      "deleteCancel": "キャンセル",
+      "startNew": "新規会話",
+      "countAria": "{count, plural, other {# 件の会話}}"
+    },
+    "load": {
+      "failedTitle": "ネットワークエラー",
+      "failedBody": "この Project の会話を読み込めませんでした。",
+      "retry": "再読み込み"
+    }
   },
   "canvas": {
     "group": {

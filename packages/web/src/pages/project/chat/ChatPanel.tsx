@@ -3,32 +3,39 @@
 
 import * as React from 'react';
 
-import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
-import { useChatStore } from '@web/stores';
+import {
+  conversationRuntime,
+  useConversationRuntime,
+} from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import { ChatNotice } from '@web/pages/project/chat/ChatNotice';
-import {
-  ConversationHistorySheet,
-  type ConversationSummary,
-} from '@web/pages/project/chat/ConversationHistorySheet';
+import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 
 /**
- * What the history sheet is given before there is anything to give it.
+ * How long a wait goes unmentioned.
  *
- * Module-level, because a default written at the parameter builds a new array
- * on every render -- and a new array is a changed prop, so the sheet would be
- * rendered again for every piece of a streaming reply.
+ * Under this, nothing is drawn at all: the request usually lands inside it,
+ * and a skeleton that appears and disappears inside a fifth of a second reads
+ * as a flicker rather than as progress. Past it, the wait is real enough to
+ * show.
  */
-const NO_CONVERSATIONS: ReadonlyArray<ConversationSummary> = [];
+const SKELETON_AFTER_MS = 300;
 
 interface ChatPanelProps {
   /** Project this chat belongs to — the chat is opened against it. */
   projectId: string;
-  conversations?: ReadonlyArray<ConversationSummary>;
+  /**
+   * Whether the conversation list is showing.
+   *
+   * Held by the column rather than here, because the button that opens it is
+   * in the header -- a sibling of this panel, not a child.
+   */
+  historyOpen: boolean;
+  onHistoryOpenChange: (open: boolean) => void;
   /**
    * Called when the user picks a quick-action chip in the empty state.
    * Wiring loads the label into the composer draft so the user can edit
@@ -52,36 +59,54 @@ interface ChatPanelProps {
  * history and the reply being streamed are never two different lists.
  * @param root0 - The component props.
  * @param root0.projectId - The project this chat belongs to.
- * @param root0.conversations - The conversation summaries shown in the history sheet.
+ * @param root0.historyOpen - Whether the conversation list is showing.
+ * @param root0.onHistoryOpenChange - Called with the next open state for that list.
  * @param root0.onQuickAction - Called with a quick-action label from the empty state.
  * @param root0.disabled - When true, renders the panel disabled (viewers cannot interact).
  * @returns The per-user private chat column with message list, composer, and history sheet.
  */
 export function ChatPanel({
   projectId,
-  conversations = NO_CONVERSATIONS,
+  historyOpen,
+  onHistoryOpenChange,
   onQuickAction,
   disabled = false,
 }: ChatPanelProps): React.JSX.Element {
   const {
     messages,
-    isPending,
+    status,
     turnPhase,
     hasMore,
     mishap,
     loadEarlier,
     send,
     abort,
+    conversations,
+    currentId,
+    draft,
+    setDraft,
+    switchTo,
+    startNew,
+    rename,
+    remove,
   } = useChatSession(projectId);
   const t = useTranslation();
-  const draft = useChatStore((s) => s.composerDraft);
-  const setDraft = useChatStore((s) => s.setComposerDraft);
-  const activeConversationId = useChatStore((s) => s.activeConversationId);
-  const setActiveConversationId = useChatStore(
-    (s) => s.setActiveConversationId,
-  );
 
-  const [historyOpen, setHistoryOpen] = useExclusiveOverlay('conversation-history');
+  // Two independent gates over one wait, because they answer different
+  // questions. Whether there is a conversation to draw at all is `ready`;
+  // whether this wait has run long enough to be worth showing is `skeleton`.
+  // Collapsing them into one would put the empty-conversation greeting on
+  // screen during the wait, which is a whole screenful of the wrong thing.
+  const ready = status === 'ready';
+  const [skeleton, setSkeleton] = React.useState(false);
+  React.useEffect(() => {
+    if (ready || status === 'failed') {
+      setSkeleton(false);
+      return undefined;
+    }
+    const showing = setTimeout(() => setSkeleton(true), SKELETON_AFTER_MS);
+    return () => clearTimeout(showing);
+  }, [ready, status]);
   // Sending is something the reader does, and this is where they do it. The
   // message list needs to know it happened — it is the one thing that should
   // bring the column back to the bottom after they have scrolled up to read.
@@ -103,11 +128,12 @@ export function ChatPanel({
     // callback be the same one across renders. Handed to a memoised composer
     // that is re-rendered for every keystroke otherwise -- and the claim that
     // its props are stable was, until this, not true of this one.
-    const typed = useChatStore.getState().composerDraft;
+    const conversationId = useConversationRuntime.getState().currentByProject[projectId];
+    const typed = conversationId ? conversationRuntime.draftOf(conversationId) : '';
     if (typed.trim().length === 0) return;
     setSentCount((n) => n + 1);
     void send(typed);
-  }, [send]);
+  }, [projectId, send]);
 
   /**
    * Pick a conversation out of the history sheet and close it.
@@ -116,11 +142,17 @@ export function ChatPanel({
    */
   const pickConversation = React.useCallback(
     (id: string): void => {
-      setActiveConversationId(id);
-      setHistoryOpen(false);
+      switchTo(id);
+      onHistoryOpenChange(false);
     },
-    [setActiveConversationId, setHistoryOpen],
+    [switchTo, onHistoryOpenChange],
   );
+
+  /** Start another conversation and leave the list. Stable, same reason. */
+  const startNewConversation = React.useCallback((): void => {
+    startNew();
+    onHistoryOpenChange(false);
+  }, [startNew, onHistoryOpenChange]);
 
   // Read out here rather than inside the memo below. `t` keeps the same
   // identity for the life of the page -- switching language re-renders
@@ -175,7 +207,8 @@ export function ChatPanel({
     >
       <MessageList
         messages={messages}
-        loading={isPending}
+        ready={ready}
+        skeleton={skeleton}
         sentCount={sentCount}
         hasEarlier={hasMore}
         onLoadEarlier={loadEarlier}
@@ -197,10 +230,13 @@ export function ChatPanel({
       />
       <ConversationHistorySheet
         open={historyOpen}
-        onOpenChange={setHistoryOpen}
+        onOpenChange={onHistoryOpenChange}
         conversations={conversations}
-        activeId={activeConversationId ?? undefined}
+        activeId={currentId}
         onPick={pickConversation}
+        onRename={rename}
+        onDelete={remove}
+        onStartNew={startNewConversation}
       />
     </div>
   );

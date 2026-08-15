@@ -110,8 +110,7 @@
     "empty": {
       "greetingWithName": "Hi, {name}!",
       "greetingDefault": "Hi!",
-      "hintNodes": "Try asking @ a node",
-      "hintDirect": "Or type your prompt below ↓",
+      "hintDirect": "Type your prompt below ↓",
       "quick": {
         "findReference": "Find cyberpunk-style reference images",
         "writePrompt": "Write a prompt for an illustration",
@@ -143,7 +142,24 @@
     "tool": {
       "unfinished": "Stopped before it finished"
     },
-    "loadEarlier": "Load earlier messages"
+    "loadEarlier": "Load earlier messages",
+    "conversation": {
+      "untitled": "Untitled conversation",
+      "rename": "Rename",
+      "delete": "Delete",
+      "renamePlaceholder": "Name this conversation",
+      "deleteTitle": "Delete this conversation?",
+      "deleteBody": "Everything said in it goes with it. This cannot be undone.",
+      "deleteConfirm": "Delete",
+      "deleteCancel": "Cancel",
+      "startNew": "New conversation",
+      "countAria": "{count, plural, one {# conversation} other {# conversations}}"
+    },
+    "load": {
+      "failedTitle": "Network error",
+      "failedBody": "Could not read this project's conversations.",
+      "retry": "Reload"
+    }
   },
   "canvas": {
     "group": {

@@ -1,0 +1,130 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+import * as React from 'react';
+
+import { Button } from '@web/components/ui/button';
+import { useTranslation } from '@web/i18n/use-translation';
+import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
+
+import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
+import { AgentColHeader } from '@web/pages/project/chrome/agent-header/AgentColHeader';
+
+interface AgentColumnProps {
+  /** Project whose chat this column shows. */
+  projectId: string;
+}
+
+/**
+ * The agent column: its header, its chat, and the scrim over both.
+ *
+ * All three read the same thing -- which conversations this project has, and
+ * which one is on screen -- so they are assembled here rather than in the page.
+ * The header is a sibling of the panel and not a child of it, which is why the
+ * list being open is held at this level: the button that opens it is up there
+ * and the sheet it opens is down here.
+ * @param root0 - The component props.
+ * @param root0.projectId - Project whose chat this column shows.
+ * @returns The column.
+ */
+export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element {
+  const t = useTranslation();
+  const [historyOpen, setHistoryOpen] = useExclusiveOverlay('conversation-history');
+
+  const status = useConversationRuntime((s) => s.openStatus[projectId] ?? 'idle');
+  const conversations = useConversationRuntime((s) => s.listByProject[projectId]);
+  const currentId = useConversationRuntime((s) => s.currentByProject[projectId]);
+  const currentTitle = conversations?.find((c) => c.id === currentId)?.title ?? null;
+
+  /** Ask for this project's chat again, after it could not be read. */
+  const reload = React.useCallback((): void => {
+    void conversationRuntime.ensureLoaded(projectId);
+  }, [projectId]);
+
+  const openHistory = React.useCallback((): void => setHistoryOpen(true), [setHistoryOpen]);
+
+  const startNew = React.useCallback((): void => {
+    void conversationRuntime.startNew(projectId);
+  }, [projectId]);
+
+  const renameCurrent = React.useCallback(
+    (next: string): void => {
+      if (currentId) void conversationRuntime.rename(projectId, currentId, next);
+    },
+    [projectId, currentId],
+  );
+
+  return (
+    <aside
+      data-testid='agent-column'
+      // `relative` so the scrim below covers this column and nothing else.
+      // Without it the nearest positioned ancestor is the one wrapping the
+      // TopBar and the whole canvas, and an `absolute inset-0` scrim would
+      // black out the entire workspace.
+      //
+      // `bg-background` rather than `bg-card`: the chat surface is the same
+      // one a document space uses, in both themes.
+      className='relative flex w-[320px] shrink-0 flex-col border-r border-border bg-background'
+    >
+      <AgentColHeader
+        conversationName={currentTitle ?? t('chat.conversation.untitled')}
+        conversationCount={conversations?.length ?? 0}
+        onOpenHistory={openHistory}
+        onNewConversation={startNew}
+        onRenameConversation={renameCurrent}
+      />
+      <ChatPanel
+        projectId={projectId}
+        historyOpen={historyOpen}
+        onHistoryOpenChange={setHistoryOpen}
+      />
+      {status === 'failed' ? <ChatUnreachable onReload={reload} /> : null}
+    </aside>
+  );
+}
+
+interface ChatUnreachableProps {
+  onReload: () => void;
+}
+
+/**
+ * The column when its conversations could not be read.
+ *
+ * Covers the header as well as the chat, on purpose: with no list, the entries
+ * up there -- pick a conversation, start one, rename this one -- have nothing
+ * to act on, and leaving them would be putting up buttons whose only outcome
+ * is to fail again. One layer over the lot, and one thing to do.
+ *
+ * Hand-written rather than a primitive: every overlay in `components/ui` is
+ * `fixed inset-0`, a viewport-level scrim, and what is wanted here covers one
+ * column. The look is this column's own -- a wash off `--background` rather
+ * than the dim used behind a dialog -- because the two say different things.
+ * A dialog's scrim says something is in front; this says this column is
+ * broken.
+ * @param root0 - The component props.
+ * @param root0.onReload - Called when the reader asks to try again.
+ * @returns The scrim.
+ */
+function ChatUnreachable({ onReload }: ChatUnreachableProps): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <div
+      data-testid='chat-unreachable'
+      role='alert'
+      className='absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6 text-center'
+      style={{
+        background: 'color-mix(in srgb, var(--color-background) 86%, transparent)',
+        backdropFilter: 'blur(2px)',
+      }}
+    >
+      <span className='text-sm font-semibold text-status-error-foreground'>
+        {t('chat.load.failedTitle')}
+      </span>
+      <span className='text-xs text-muted-foreground'>{t('chat.load.failedBody')}</span>
+      <Button variant='outline' size='sm' onClick={onReload} data-testid='chat-reload'>
+        {t('chat.load.retry')}
+      </Button>
+    </div>
+  );
+}

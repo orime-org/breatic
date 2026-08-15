@@ -110,8 +110,7 @@
     "empty": {
       "greetingWithName": "嗨,{name}!",
       "greetingDefault": "嗨!",
-      "hintNodes": "試試 @ 節點提問",
-      "hintDirect": "或直接在下方輸入對話 ↓",
+      "hintDirect": "在下方輸入對話 ↓",
       "quick": {
         "findReference": "幫我找賽博龐克風格的參考圖",
         "writePrompt": "幫我寫一個生成插畫的提示詞",
@@ -143,7 +142,24 @@
     "tool": {
       "unfinished": "未跑完就停止了"
     },
-    "loadEarlier": "載入更早的訊息"
+    "loadEarlier": "載入更早的訊息",
+    "conversation": {
+      "untitled": "未命名對話",
+      "rename": "重新命名",
+      "delete": "刪除",
+      "renamePlaceholder": "為這個對話命名",
+      "deleteTitle": "刪除這個對話？",
+      "deleteBody": "對話裡說過的內容會一起刪除，無法復原。",
+      "deleteConfirm": "刪除",
+      "deleteCancel": "取消",
+      "startNew": "新增對話",
+      "countAria": "{count, plural, other {# 個對話}}"
+    },
+    "load": {
+      "failedTitle": "網路錯誤",
+      "failedBody": "沒能讀取這個 Project 的對話。",
+      "retry": "重新載入"
+    }
   },
   "canvas": {
     "group": {

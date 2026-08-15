@@ -77,7 +77,7 @@ beforeEach(() => {
 
 describe('a reply arriving piece by piece', () => {
   it('does not re-render the composer or the history sheet', async () => {
-    render(<ChatPanel projectId='p1' />);
+    render(<ChatPanel historyOpen={false} onHistoryOpenChange={() => undefined} projectId='p1' />);
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
     await act(async () => {

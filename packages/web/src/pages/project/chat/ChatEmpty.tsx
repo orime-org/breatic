@@ -66,11 +66,7 @@ export function ChatEmpty({
       className='flex flex-col items-center px-4 py-8 text-center text-sm leading-relaxed text-muted-foreground'
     >
       <strong className='mb-2 block text-foreground'>{greeting}</strong>
-      <p className='leading-relaxed'>
-        {t('chat.empty.hintNodes')}
-        <br />
-        {t('chat.empty.hintDirect')}
-      </p>
+      <p className='leading-relaxed'>{t('chat.empty.hintDirect')}</p>
       <div className='mt-4 flex w-full flex-col gap-1.5'>
         {QUICK_ACTIONS.map((qa) => {
           const Icon = qa.icon;

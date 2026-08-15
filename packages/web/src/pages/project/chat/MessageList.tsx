@@ -13,13 +13,25 @@ import type { ChatMessage } from '@web/pages/project/chat/types';
 interface MessageListProps {
   messages: ReadonlyArray<ChatMessage>;
   /**
-   * The conversation has not arrived yet.
+   * The conversation has arrived and can be drawn.
    *
    * Different from having no messages: an empty chat invites the user to
    * start one, and showing that over a conversation still on its way makes
-   * their own history flash past as if it were not there.
+   * their own history flash past as if it were not there. So nothing is
+   * drawn at all until this is true -- including, and especially, the
+   * greeting that belongs to an empty conversation.
    */
-  loading?: boolean;
+  ready?: boolean;
+  /**
+   * The wait has gone on long enough to be worth showing.
+   *
+   * A separate question from {@link ready}, and it has to be: the answer
+   * usually arrives inside a fifth of a second, and a skeleton that comes and
+   * goes inside that reads as a flicker. So the first gate decides whether
+   * there is anything to draw, and this one decides whether to say we are
+   * waiting.
+   */
+  skeleton?: boolean;
   /**
    * How many times the reader has pressed send in this panel.
    *
@@ -47,13 +59,37 @@ interface MessageListProps {
 const AT_BOTTOM_SLACK_PX = 64;
 
 /**
+ * What a conversation looks like before it has arrived.
+ *
+ * Shaped like the messages it stands in for -- one wide block for a reply, one
+ * narrow one held to the right for a question -- so what replaces it does not
+ * jump. It is drawn only once the wait has run past the point where anything
+ * is worth saying about it; the gate for that is the caller's.
+ * @returns The placeholder rows.
+ */
+function MessageSkeleton(): React.JSX.Element {
+  return (
+    <div className='flex flex-col gap-2 p-3' data-testid='message-skeleton' aria-hidden>
+      <div className='flex justify-end'>
+        <div className='h-8 w-2/5 animate-pulse rounded-lg bg-muted' />
+      </div>
+      <div className='h-16 w-full animate-pulse rounded-lg bg-muted' />
+      <div className='flex justify-end'>
+        <div className='h-8 w-1/3 animate-pulse rounded-lg bg-muted' />
+      </div>
+    </div>
+  );
+}
+
+/**
  * Scrollable message column. Follows a reply as it is written, but only while
  * the reader is at the bottom: once they scroll up, the column stays where
  * they put it until they come back down. Renders `<ChatEmpty />` when there
  * are no messages yet (new conversation greeting + quick actions).
  * @param root0 - The component props.
  * @param root0.messages - The messages to render in order.
- * @param root0.loading - The conversation has not arrived yet.
+ * @param root0.ready - The conversation has arrived and can be drawn.
+ * @param root0.skeleton - The wait is long enough to be worth showing.
  * @param root0.sentCount - How many times the reader has pressed send.
  * @param root0.hasEarlier - The conversation reaches back further than this.
  * @param root0.onLoadEarlier - Called to load what comes before these.
@@ -62,7 +98,8 @@ const AT_BOTTOM_SLACK_PX = 64;
  */
 function MessageListInner({
   messages,
-  loading = false,
+  ready = false,
+  skeleton = false,
   sentCount,
   hasEarlier = false,
   onLoadEarlier,
@@ -138,7 +175,9 @@ function MessageListInner({
 
   return (
     <ScrollArea className='min-h-0 flex-1' data-testid='message-list'>
-      {loading ? null : count === 0 ? (
+      {!ready ? (
+        skeleton ? <MessageSkeleton /> : null
+      ) : count === 0 ? (
         <ChatEmpty onQuickAction={onQuickAction} />
       ) : (
         <div className='flex flex-col gap-2 p-3'>
