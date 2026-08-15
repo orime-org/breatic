@@ -281,9 +281,9 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const errorMessage = data.errorMessage;
   const locked = data.locked;
   // Common content-view fields: the editable name (node name header), the
-  // derived status, and the Generate panel inputs (prompt / model / params /
-  // mode / modelByMode) — the panel reads these via the view and writes back
-  // to the wire through the canvas-space setters.
+  // derived status, and the Generate panel inputs (prompt / model / mode /
+  // modelByMode / paramsByModel) — the panel reads these via the view and
+  // writes back to the wire through the canvas-space setters.
   const contentCommon = {
     name: data.name,
     status,

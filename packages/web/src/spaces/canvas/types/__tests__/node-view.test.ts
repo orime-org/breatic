@@ -126,8 +126,8 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
 
   it('projects Generate inputs (prompt/model/mode/modelByMode) onto a content view', () => {
     // Model revision 2026-06-15: Generate is a toolbar action; its inputs
-    // (prompt / model / params / mode / modelByMode) live on the content node
-    // and project onto the view. The Generate panel reads them via the view
+    // (prompt / model / mode / modelByMode / paramsByModel) live on the
+    // content node and project onto the view. The panel reads them via the view
     // (panel-view-model consumes `CanvasNodeView.data` = this view) and writes
     // back to the wire through the canvas-space setters. `mode` is the
     // generation sub-mode (image: t2i / i2i); `modelByMode` is the per-mode

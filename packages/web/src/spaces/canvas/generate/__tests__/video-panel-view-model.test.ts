@@ -323,10 +323,10 @@ describe('buildVideoPanelViewModel', () => {
         duration: { description: '', min: 3, max: 15, default: 5 },
       },
     });
-    // `model` is what a real node always carries alongside `params`: both are
-    // written together by setNodeModel, and node-factory creates neither. Since
-    // #1948 a param set belongs to a model, so a fixture without one describes
-    // a node that cannot exist — and would be read as "nothing to migrate".
+    // The fixture carries `model` because a record is keyed BY a model name
+    // (#1948): the panel resolves which model it is showing and reads that
+    // model's record. A fixture with records but no model would exercise a
+    // path where the two disagree, which is not what this case is about.
     const nodes = [
       node(
         'n1',
@@ -616,7 +616,6 @@ describe('resolveModeSwitch — 视频侧的六个模式 (#1948 起两个面板�
     const content = {
       model: 'wan',
       modelByMode: { i2v: 'seedance' },
-      params: { resolution: '480p' },
       paramsByModel: { wan: { resolution: '480p' } },
     };
     const { model, paramsByModel } = resolveModeSwitch(content, 'i2v', [
@@ -650,7 +649,6 @@ describe('resolveModeSwitch — 视频侧的六个模式 (#1948 起两个面板�
     const content = {
       model: 'kling',
       modelByMode: { i2v: 'kling', first_last: 'kling' },
-      params: { aspect_ratio: '9:16' },
       paramsByModel: { kling: { aspect_ratio: '9:16' } },
     };
     const { model, paramsByModel } = resolveModeSwitch(content, 'first_last', [

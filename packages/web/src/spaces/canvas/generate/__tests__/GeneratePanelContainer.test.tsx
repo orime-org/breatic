@@ -9,7 +9,6 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
 import type { ModelCatalog, ModelEntry } from '@breatic/shared';
@@ -100,19 +99,20 @@ function mountContainer(graph?: {
       {/* A REAL ReactFlow with the target node: GeneratePanelBody mounts
           inside a NodeToolbar, which renders its children only when the node
           exists in ReactFlow's store — a bare provider never mounts the
-          body (caught wiring the caret-awareness test).
+          body (caught wiring the caret-awareness test). The canvas here
+          exists only so NodeToolbar renders.
 
-          panOnDrag off: a real pointer sequence anywhere in the panel bubbles
-          to ReactFlow's d3-zoom, whose d3-drag reads `event.view.document` —
-          null in jsdom, so opening a Radix popover (which needs the full
-          sequence, a bare click does not open it) throws an unhandled error.
-          The canvas here exists only so NodeToolbar renders. */}
+          Drive clicks with `fireEvent`, not `userEvent`: measured, the Radix
+          popovers in this panel open under either one, and a userEvent
+          pointer sequence additionally bubbles to ReactFlow's d3-zoom, whose
+          d3-drag reads `event.view.document` — null in jsdom, an unhandled
+          error. (The video panel's mode popover is the one that does need the
+          full sequence; see VideoGeneratePanelContainer.test.) */}
       <ReactFlow
         nodes={[
           { id: 'target', position: { x: 0, y: 0 }, data: {} },
         ]}
         edges={[]}
-        panOnDrag={false}
       >
         <CanvasContext.Provider value={canvas}>
           <GeneratePanelContainer
@@ -456,19 +456,32 @@ const T2I_MODEL: ModelEntry = {
   sourcesByMode: { t2i: [] },
 };
 
+/** An image-to-image model, so a switch to i2i has something to resolve to. */
+const I2I_MODEL: ModelEntry = {
+  ...T2I_MODEL,
+  name: 'nano-edit',
+  display_name: 'Nano Edit',
+  mode: 'i2i',
+  params: {
+    aspect_ratio: { description: '', values: ['1:1', '4:3'], default: '4:3' },
+  },
+  sourcesByMode: { i2i: ['image'] },
+};
+
 /**
  * A catalog carrying the image model above.
+ * @param models - Which image models the catalog offers; defaults to t2i only.
  * @returns The catalog payload `modelsApi.list()` resolves to.
  */
-function imageCatalog(): ModelCatalog {
+function imageCatalog(models: ModelEntry[] = [T2I_MODEL]): ModelCatalog {
   return {
-    image: [T2I_MODEL],
+    image: models,
     video: [],
     audio: [],
     tts: [],
     three_d: [],
     understand: [],
-    total: 1,
+    total: models.length,
   };
 }
 
@@ -533,32 +546,72 @@ describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948
     listSpy.mockRestore();
   });
 
+  it('切档写下新档的模型和它自己那份记录，旧模型的记录留着', async () => {
+    // 这一条是下面 9.8 的对照组：9.8 断言「什么都没被写」，而「这个面板的切档
+    // 压根不写任何东西」也满足那个断言 —— 少了这一条，两者分不开。Gate 2 第 5
+    // 轮实测：把容器的 onToggleMode 整个换成空函数，这个文件 8 条全绿。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL, I2I_MODEL]));
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    fireEvent.click(await screen.findByTestId('generate-ratio-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-ratio-option-16:9'));
+    await waitFor(() => {
+      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
+        ?.data as { paramsByModel?: Record<string, unknown> };
+      expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
+    });
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-mode-i2i'));
+    await waitFor(() => {
+      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
+        ?.data as {
+        mode?: string;
+        model?: string;
+        paramsByModel?: Record<string, unknown>;
+      };
+      expect(d.mode).toBe('i2i');
+      expect(d.model).toBe('nano-edit');
+      // 新模型拿自己声明的默认值 4:3，不继承 t2i 那边选的 16:9；而 t2i 那份
+      // 记录原样留着，切回去还是 16:9。
+      expect(d.paramsByModel).toEqual({
+        'nano-banana': { aspect_ratio: '16:9' },
+        'nano-edit': { aspect_ratio: '4:3' },
+      });
+    });
+    listSpy.mockRestore();
+  });
+
   it('目标档解不出模型时整个写入放弃，已有的记录一条都不丢 (9.8)', async () => {
     // 这一片让这道防护要保的东西变多了：以前失守清掉的是一份参数，现在会把
     // 所有模型的记录一起清空。
     //
     // 防护写在容器的 `if (!model) return`，纯函数测试摸不到它 —— Gate 2 第 4
     // 轮实测：删掉这一行，684 条测试没有一条变红，而视频侧同一行删掉当场红。
-    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
-      ...imageCatalog(),
-      image: [T2I_MODEL], // 只有 t2i 一档有模型，i2i 档解不出
-    });
+    // 「什么都没写」这个断言要跟上面那条正向的一起读才成立。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      // 只有 t2i 一档有模型，i2i 档解不出
+      .mockResolvedValue(imageCatalog([T2I_MODEL]));
     seedImageNode();
     mountContainer();
     act(() => {
       useCanvasStore.getState().openGeneratePanel('target', 'image');
     });
     // 先让参数记录落一份下来，才验得出「一条都不丢」。
-    await userEvent.click(await screen.findByTestId('generate-ratio-trigger'));
-    await userEvent.click(screen.getByTestId('generate-ratio-option-16:9'));
+    fireEvent.click(await screen.findByTestId('generate-ratio-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-ratio-option-16:9'));
     await waitFor(() => {
       const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
         ?.data as { paramsByModel?: Record<string, unknown> };
       expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
     });
-    // Radix 的浮层要完整的 pointer 序列才开，fireEvent.click 打不开它。
-    await userEvent.click(screen.getByTestId('generate-mode-trigger'));
-    await userEvent.click(screen.getByTestId('generate-mode-i2i'));
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-mode-i2i'));
     await waitFor(() => {
       const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
         ?.data as {

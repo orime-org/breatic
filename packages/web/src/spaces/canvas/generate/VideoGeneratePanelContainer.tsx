@@ -374,10 +374,11 @@ function VideoGeneratePanelBody({
         models,
       );
       // Never persist an empty model: the catalog may still be loading / have
-      // failed, or the target mode may offer nothing. Writing model='' plus
-      // params={} would clobber the node's stored model AND params, and params
-      // do not self-heal. (The toggle is also disabled while no offered mode
-      // has a model; this backstops the target-mode-empty case.)
+      // failed, or the target mode may offer nothing. The resolver pairs an
+      // empty model with an empty record set, and writing that clobbers the
+      // node's stored model AND every model's records — not just the incoming
+      // one's. (The toggle is also disabled while no offered mode has a model;
+      // this backstops the target-mode-empty case.)
       if (!model) return;
       setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
     },

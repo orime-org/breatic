@@ -121,6 +121,21 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.model).toBe('sdxl'); // remembered t2i pick beats list order
   });
 
+  it('restores the remembered model when the stored one is wrong-mode (9.10)', () => {
+    // The node holds a model this mode does not offer — the state a
+    // collaborator produces by switching mode while another picks a model
+    // (`setNodeModel` writes the model but not the mode). The user should get
+    // back the model THEY chose in t2i, not whichever the list starts with.
+    // The case above leaves `model` unset and so only covers the absent
+    // branch; without this one, resolving a wrong-mode model to the first
+    // offered model goes unnoticed.
+    const nodes = [
+      node('n1', imageView({ model: 'mj-i2i', modelByMode: { t2i: 'sdxl' } })),
+    ];
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.model).toBe('sdxl');
+  });
+
   it('defaults the mode to t2i when the node stores none', () => {
     const nodes = [node('n1', imageView())];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });

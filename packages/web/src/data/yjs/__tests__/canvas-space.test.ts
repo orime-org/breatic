@@ -401,7 +401,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     });
   });
 
-  it('setNodeModel writes model + records + the per-mode memory in one transaction', () => {
+  it('setNodeModel writes the model, its records, and the per-mode memory', () => {
     addNode(
       PID,
       SID,
@@ -431,6 +431,40 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       old: { aspect_ratio: '1:1' },
       nano_banana_pro: { aspect_ratio: '16:9' },
     });
+  });
+
+  it('setNodeModel writes its three fields inside ONE transaction', () => {
+    // Same reason as the setNodeMode counterpart below: its TSDoc promises one
+    // transaction, and asserting the VALUES cannot tell one from three because
+    // they end up equal either way. Measured: splitting the transact into three
+    // left all 3817 tests in the package green, so nothing was pinning it.
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { mode: 't2i', model: 'flux' }),
+    );
+    const d = doc();
+    const seen: string[] = [];
+    d.on('afterTransaction', () => {
+      const data = (d.getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+        'data',
+      ) as Y.Map<unknown>;
+      seen.push(
+        [
+          data.get('model') === 'sdxl' ? 'model' : '',
+          data.get('paramsByModel') ? 'records' : '',
+          (data.get('modelByMode') as Record<string, string> | undefined)?.t2i
+            === 'sdxl'
+            ? 'memory'
+            : '',
+        ]
+          .filter(Boolean)
+          .join('+'),
+      );
+    });
+    setNodeModel(PID, SID, 'n1', 't2i', 'sdxl', { sdxl: {} });
+    // One transaction, and by the time it closed all three were in place.
+    expect(seen).toEqual(['model+records+memory']);
   });
 
   it('setNodeModel merges the pick into an existing modelByMode, keeping other modes', () => {
