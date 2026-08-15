@@ -162,11 +162,13 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
 /**
  * One page of a conversation, read from its newest end backwards.
  *
- * A page ends on a turn boundary, never inside one. Cutting at a message
- * count instead would put a turn's question in one page and its answer in
- * neither: the cursor for the next page is a turn, so a turn half-read is a
- * turn half-lost, and on screen that is an answer with no question above it
- * that no amount of loading earlier brings back.
+ * A page ends on a turn boundary, except when one turn is longer than a whole
+ * page -- see where the boundary is trimmed for why that one has to be handed
+ * over as it is. Cutting at a message count instead would put a turn's
+ * question in one page and its answer in neither: the cursor for the next
+ * page is a turn, so a turn half-read is a turn half-lost, and on screen that
+ * is an answer with no question above it that no amount of loading earlier
+ * brings back.
  */
 export interface MessagePage {
   /** The messages, oldest first. */
@@ -232,7 +234,10 @@ export async function getMessages(
 /**
  * Get messages formatted for LLM context.
  *
- * Skips already-consolidated turns and drops the model's own reasoning.
+ * Skips already-consolidated turns and drops the flat `thinking` field. That
+ * field is a view read off the reasoning parts, and the parts themselves stay
+ * -- what does or does not reach the model is decided one field at a time in
+ * `toModelMessages`, not here.
  *
  * It used to drop the creation time and the turn index as well, on the
  * grounds that the model is not shown them. But the model is not shown these

@@ -42,9 +42,10 @@ export interface ChatSession {
   /**
    * Send what is in the composer, opening a conversation if there is not one.
    *
-   * Takes the draft as it stands, whitespace and all: what goes out is the
-   * trimmed message, and what is taken back out of the box is these same
-   * words, so the two have to be told apart by whoever does both.
+   * Takes the draft as it stands, whitespace and all; what goes out is the
+   * trimmed message. The box is not this function's to write: the
+   * conversation empties it when the server says the turn is stored, and
+   * leaves it exactly as it is when nothing comes back.
    *
    * Never rejects. Whatever goes wrong is told to whoever is looking at the
    * moment it happens, and nothing on the screen moves for it.

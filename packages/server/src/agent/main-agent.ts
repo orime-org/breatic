@@ -145,9 +145,9 @@ export class MainAgent {
 
     // Only now the work that takes a while: three round trips for memory,
     // the conversation and its history, and then the compression. All of it
-    // used to run before the stream was even opened, so the reader watched an
-    // unchanged screen through the whole of it — their own message did not
-    // appear until it was done.
+    // used to run before the stream was even opened, so nothing of the turn
+    // could reach the reader until it was done — the first word of the reply
+    // included, which is the one thing they were waiting for.
     //
     // The running turn is left out of that history on purpose. Its message is
     // put in front of the model separately, a few lines below, so a copy in

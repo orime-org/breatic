@@ -460,7 +460,7 @@ describe("the memory chain still sees the same messages", () => {
     expect(window.map((m) => m.content)).toEqual(["q2", "a2", "q3", "a3", "q4", "a4"]);
   });
 
-  it("skips consolidated turns and drops the model's own reasoning", async () => {
+  it("skips consolidated turns and drops the flat mirror of the reasoning", async () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 

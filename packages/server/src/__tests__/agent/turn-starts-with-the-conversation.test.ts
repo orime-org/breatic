@@ -153,10 +153,11 @@ describe("a turn that begins by settling up", () => {
           SSE_EVENT_NAMES.CHAT_TURN_STARTED,
         );
 
-        // Three round trips -- the memories, the history, the compression --
-        // and every one of them is time the reader spends looking at a screen
-        // where nothing has happened. Their own message does not appear until
-        // this event is out, so all of it belongs after.
+        // Three round trips -- the memories, the conversation and its history
+        // -- and then the compression, and every one of them is time the
+        // reader spends looking at a screen where nothing has happened. Their
+        // own message does not appear until this event is out, so all of it
+        // belongs after.
         expect(buildTurnContext).not.toHaveBeenCalled();
 
         await turn.return(undefined);

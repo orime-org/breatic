@@ -226,7 +226,8 @@ const opening: InFlight<OpenFailure | undefined> = new Map();
 
 
 /**
- * Earlier pages already being fetched, keyed by the conversation asked about.
+ * Earlier pages already being fetched, keyed by the conversation and the
+ * cursor the page is asked from.
  *
  * A second press joins the request in flight rather than making another one.
  * Two requests would answer with the same page and both would be written to
@@ -282,10 +283,12 @@ const visits = new Map<string, AbortController>();
  * a reader of a stream knows something went wrong, and it needs no sentence
  * from us repeating it later.
  *
- * The two kinds are not a matter of wording. Getting an answer at all means
- * the network is fine, so `server` carries the sentence the server wrote --
- * out of credits, too many requests, not allowed -- and `network` means no
- * answer came back and there is nothing to quote.
+ * The three kinds are not a matter of wording. What tells them apart is
+ * whether a sentence of ours came back: `server` carries the one the server
+ * wrote for the reader -- out of credits, too many requests, not allowed --
+ * `turn` is an answer that came back with none of ours in it, so there is
+ * nothing to quote and this end has to supply the words, and `network` is no
+ * answer at all.
  */
 export type ChatMishap = {
   /**
@@ -813,7 +816,7 @@ type NeverRan = StreamRefusedError | StreamUnreachableError;
  * @param projectId - The project it belongs to.
  * @param conversationId - The conversation to write it to.
  * @param said - What was in the composer, as it stood there. Sent trimmed;
- *   kept whole so the same words can be taken back out of the box.
+ *   nothing here writes to the box, either way this ends.
  * @returns The refusal that ended it, when one did.
  */
 async function runTurn(

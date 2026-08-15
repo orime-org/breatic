@@ -250,7 +250,8 @@ export async function getConversation(
  *
  * Thin pass-through to the conversation repository so route handlers
  * reach the data layer through the service (prohibition #1). Skips
- * already-consolidated turns and strips internal-only fields.
+ * already-consolidated turns and drops the flat `thinking` field, which is
+ * only a view of the reasoning parts and would otherwise be read twice.
  * @param id - Conversation UUID
  * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
  * @param beforeTurn - Stop short of this turn. The turn being run is not its

@@ -132,12 +132,14 @@ export function ChatPanel({
   /**
    * The one line, and it is only ever saying one thing.
    *
-   * Which of the two depends on nothing but whether an answer came back at
-   * all. An answer means the network was fine and the server wrote the only
-   * sentence anyone wrote about this -- in the reader's own language, which
-   * is why it is passed through rather than replaced. No answer means there
-   * is nothing to quote and nothing to add: two words, and no advice about
-   * what to do next, because that is the reader's own business.
+   * Which of the three depends on one thing: whether a sentence of ours came
+   * back with the answer. One did, and it is passed through rather than
+   * replaced -- the server wrote it in the reader's own language, and it is
+   * the only sentence anyone wrote about this. An answer with none of ours in
+   * it says only that the turn is over, so this end supplies the one thing
+   * that is true about that. No answer at all leaves nothing to quote and
+   * nothing to add: two words, and no advice about what to do next, because
+   * that is the reader's own business.
    */
   const notice = React.useMemo(() => {
     if (mishap === null) return null;
