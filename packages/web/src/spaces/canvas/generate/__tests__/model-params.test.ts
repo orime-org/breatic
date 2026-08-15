@@ -283,6 +283,7 @@ describe('resolveParamsEdit — a param edit lands on the model it was made on (
       },
       { aspect_ratio: '16:9' },
       CATALOG,
+      'banana',
     );
     expect(r.params).toEqual({ aspect_ratio: '16:9', camera: 'Sony A7' });
     expect(r.paramsByModel.banana).toEqual({
@@ -306,28 +307,59 @@ describe('resolveParamsEdit — a param edit lands on the model it was made on (
       },
       { aspect_ratio: '4:3' },
       CATALOG,
+      'banana',
     );
     expect(r.paramsByModel.midjourney).toEqual({ aspect_ratio: '16:9' });
   });
 
   it('carries a migrated old node’s record into what gets persisted', () => {
+    // The edit is made on a DIFFERENT model than the one the old node stored,
+    // which is the only shape where the migrated record is observable: keying
+    // both on the same model would overwrite it and the assertion would hold
+    // with the migration removed.
     const r = resolveParamsEdit(
-      { model: 'banana', params: { aspect_ratio: '1:1' } },
+      { model: 'banana', params: { aspect_ratio: '1:1', camera: 'Sony A7' } },
       { aspect_ratio: '16:9' },
       CATALOG,
+      'midjourney',
     );
-    expect(r.paramsByModel).toEqual({ banana: { aspect_ratio: '16:9' } });
+    expect(r.paramsByModel).toEqual({
+      banana: { aspect_ratio: '1:1', camera: 'Sony A7' }, // migrated, untouched
+      midjourney: { aspect_ratio: '16:9' },
+    });
   });
 
   it('persists nothing under an empty model id', () => {
-    // The panel only renders param controls once a model resolves, so this is
-    // a guard rather than a reachable state — it must not write a "" record.
+    // The panels pass the RESOLVED model, which is '' only while the catalog
+    // is empty or the mode offers nothing — and then no param control renders
+    // at all. A guard, not a reachable state; it must not write a "" record.
     const r = resolveParamsEdit(
       { params: { aspect_ratio: '1:1' } },
       { aspect_ratio: '16:9' },
       CATALOG,
+      '',
     );
     expect(r.params).toEqual({ aspect_ratio: '16:9' });
     expect(r.paramsByModel).toEqual({});
+  });
+});
+
+describe('resolveParamsEdit — a fresh node has no stored model (#1948 Gate 2 round 2)', () => {
+  const nano = model({ aspect_ratio: RATIO }, 'nano');
+  const CATALOG = [nano];
+
+  it('persists the edit under the model the panel is SHOWING, not the stored one', () => {
+    // node-factory writes no `model`, and nothing persists one on panel open —
+    // the panel resolves the first offered model and renders its controls. An
+    // edit made there has to land on THAT model, or it is written nowhere and
+    // the control snaps back to the default on the next render.
+    const r = resolveParamsEdit(
+      { params: {} }, // fresh node: no model, no paramsByModel
+      { aspect_ratio: '16:9' },
+      CATALOG,
+      'nano', // what the panel resolved and is showing
+    );
+    expect(r.params).toEqual({ aspect_ratio: '16:9' });
+    expect(r.paramsByModel).toEqual({ nano: { aspect_ratio: '16:9' } });
   });
 });

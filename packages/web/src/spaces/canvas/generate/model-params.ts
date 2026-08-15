@@ -165,6 +165,14 @@ export function resolveModelSwitch(
  * An absent model id persists no record rather than one keyed by the empty
  * string. The panels only render param controls once a model resolves, so this
  * is a guard rather than a reachable state.
+ * `currentModel` is the model the panel is SHOWING, which is not the same as
+ * the one the node has stored: a node created moments ago has stored none at
+ * all (`node-factory` writes neither `model` nor `params`), and a node whose
+ * stored model is no longer offered under the active mode falls back to
+ * another one. Keying the record on the stored id in either case writes the
+ * edit somewhere the panel will never read it back from, and the control
+ * snaps to the default on the next render.
+ *
  * Takes the change as an OBJECT rather than a `Record`: each panel's control
  * hands over its own shaped value (`VideoParamsValue`, the image ratio /
  * camera pair), and those interfaces have no index signature — widening them
@@ -173,18 +181,24 @@ export function resolveModelSwitch(
  * @param content - The node's model / params / per-model records.
  * @param partial - The params the control changed, merged over the current set.
  * @param models - The catalog models this panel offers.
+ * @param currentModel - The model the panel resolved and is rendering controls for.
  * @returns The params in effect and every per-model record to persist.
  */
 export function resolveParamsEdit(
   content: ParamsStoreSource | undefined,
   partial: object,
   models: readonly ModelEntry[],
+  currentModel: string,
 ): ModelSwitchResult {
   const store = paramsStoreOf(content, models);
-  const current = content?.model;
-  const params = { ...(content?.params ?? {}), ...partial };
+  // Merged over the CURRENT MODEL'S record, not over `content.params`: those
+  // two agree while the panel sits on the stored model, but not on a fresh
+  // node, nor right after a migration whose set belongs to the model the user
+  // has since left. Starting from the wrong one leaks that model's keys into
+  // this one's record — the very mixing #1948 exists to stop.
+  const params = { ...(store[currentModel] ?? {}), ...partial };
   return {
     params,
-    paramsByModel: current ? { ...store, [current]: params } : store,
+    paramsByModel: currentModel ? { ...store, [currentModel]: params } : store,
   };
 }

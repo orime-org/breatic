@@ -393,14 +393,19 @@ function VideoGeneratePanelBody({
     (partial: VideoParamsValue) => {
       // The edit lands on the record of the model it was made on, so coming
       // back to that model finds it (#1948).
+      // freshVm().model is the RESOLVED model — the one whose controls the
+      // user just used. The node's stored model can be absent (a node created
+      // moments ago) or no longer offered under this mode, and keying the
+      // record on that would write the edit where the panel never reads it.
       const { params, paramsByModel } = resolveParamsEdit(
         freshContent(),
         partial,
         models,
+        freshVm().model,
       );
       setNodeParams(projectId, spaceId, nodeId, params, paramsByModel);
     },
-    [projectId, spaceId, nodeId, freshContent, models],
+    [projectId, spaceId, nodeId, freshVm, freshContent, models],
   );
 
   // Reference and first frame are TOGGLES: start the pick when this node is not
