@@ -161,16 +161,18 @@ describe('buildGeneratePanelViewModel', () => {
     expect(i2iVm.models.map((m) => m.name)).toEqual(['mj-i2i', 'nano-edit']);
   });
 
-  it('resolves params against the current model (keeps valid, fills defaults, preserves undeclared)', () => {
+  it('resolves params against the current model (keeps valid, fills defaults, drops undeclared)', () => {
     const nodes = [
       node('n1', imageView({ model: 'flux', params: { aspect_ratio: '16:9', bogus: 'x' } })),
     ];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.params.aspect_ratio).toBe('16:9'); // kept — valid
     expect(vm.params.resolution).toBe('1k'); // filled from model default
-    // Undeclared params persist (user 2026-07-18): they live in the node
-    // independent of model so a switch away and back does not lose them.
-    expect(vm.params.bogus).toBe('x');
+    // A key this model does not declare is dropped (#1948). What user
+    // 2026-07-18 asked for — a switch away and back not losing a value — is
+    // now guaranteed by the per-model record instead, so nothing has to ride
+    // along inside another model's set to survive.
+    expect(vm.params.bogus).toBeUndefined();
   });
 
   it('i2i sends ONLY @-mentioned reference URLs (subset of the rail)', () => {
@@ -587,16 +589,92 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
     expect(r.model).toBe('nano-i2i'); // remembered i2i pick beats list order
   });
 
-  it('reconciles params against the resolved model (keeps valid, preserves undeclared)', () => {
+  it('gives the target mode’s model its OWN params, not the outgoing mode’s (#1948)', () => {
+    // t2i was left on a 2k resolution; the i2i model has never been used, so
+    // it starts from its own default. 2k is a value this model never offered
+    // — carrying it in is what put users on a resolution nobody chose.
+    const t2i = makeModel('mj-t2i', {
+      mode: 't2i',
+      params: {
+        resolution: { description: '', values: ['1k', '2k'], default: '2k' },
+      },
+    });
+    const i2i = makeModel('nano-edit', {
+      mode: 'i2i',
+      params: {
+        resolution: {
+          description: '',
+          values: ['1k', '2k', '4k'],
+          default: '1k',
+        },
+      },
+    });
     const r = resolveModeSwitch(
-      { modelByMode: {}, params: { aspect_ratio: '16:9', bogus: 'x' } },
-      't2i',
+      {
+        model: 'mj-t2i',
+        modelByMode: {},
+        params: { resolution: '2k' },
+        paramsByModel: { 'mj-t2i': { resolution: '2k' } },
+      },
+      'i2i',
+      [t2i, i2i],
+    );
+    expect(r.model).toBe('nano-edit');
+    expect(r.params.resolution).toBe('1k');
+  });
+
+  it('restores the target model’s own record when it has one', () => {
+    const r = resolveModeSwitch(
+      {
+        model: 'flux-t2i',
+        modelByMode: { i2i: 'nano-i2i' },
+        params: { aspect_ratio: '1:1' },
+        paramsByModel: {
+          'flux-t2i': { aspect_ratio: '1:1' },
+          'nano-i2i': { aspect_ratio: '16:9' },
+        },
+      },
+      'i2i',
       catalog,
     );
-    expect(r.model).toBe('flux-t2i');
-    expect(r.params.aspect_ratio).toBe('16:9'); // kept — valid for the model
-    // Undeclared params persist across the mode/model switch (user 2026-07-18).
-    expect(r.params.bogus).toBe('x');
+    expect(r.params.aspect_ratio).toBe('16:9');
+  });
+
+  it('keeps the camera cluster on the model that declares it (#1948)', () => {
+    // The round trip user 2026-07-18 asked for, now guaranteed by the record
+    // rather than by carrying undeclared keys along: the camera model's own
+    // record still holds them when the user comes back to it.
+    const CAMERA = {
+      description: '',
+      values: ['Canon EOS R5', 'Sony A7'],
+      default: 'Canon EOS R5',
+    };
+    const withCamera = makeModel('nano-i2i', {
+      mode: 'i2i',
+      params: { aspect_ratio: { description: '', values: ['1:1'], default: '1:1' }, camera: CAMERA },
+    });
+    const plain = makeModel('flux-t2i', { mode: 't2i' });
+    const r = resolveModeSwitch(
+      {
+        model: 'flux-t2i',
+        modelByMode: { i2i: 'nano-i2i' },
+        params: {},
+        paramsByModel: { 'nano-i2i': { camera: 'Sony A7' } },
+      },
+      'i2i',
+      [plain, withCamera],
+    );
+    expect(r.params.camera).toBe('Sony A7');
+  });
+
+  it('returns every record to persist, migrating an old node on the way (#1948)', () => {
+    const r = resolveModeSwitch(
+      { model: 'flux-t2i', modelByMode: {}, params: { aspect_ratio: '16:9' } },
+      'i2i',
+      catalog,
+    );
+    expect(r.paramsByModel['flux-t2i']?.aspect_ratio).toBe('16:9');
+    expect(r.paramsByModel['mj-i2i']?.aspect_ratio).toBe('1:1'); // its own default
   });
 
   it('yields an empty model when the target mode offers nothing', () => {
@@ -604,6 +682,7 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
     const r = resolveModeSwitch({ modelByMode: {}, params: {} }, 'i2i', t2iOnly);
     expect(r.model).toBe('');
     expect(r.params).toEqual({});
+    expect(r.paramsByModel).toEqual({});
   });
 });
 

@@ -29,7 +29,7 @@ import {
   filterModelsByMode,
   resolveModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
 import { mentionedImageUrls } from '@web/spaces/canvas/generate/reference-urls';
 import type {
@@ -161,19 +161,26 @@ function pickModelForMode(
  * @returns The model id + reconciled params to persist for the target mode.
  */
 export function resolveModeSwitch(
-  content: Pick<ContentNodeView, 'modelByMode' | 'params'> | undefined,
+  content:
+    | Pick<ContentNodeView, 'model' | 'modelByMode' | 'params' | 'paramsByModel'>
+    | undefined,
   mode: ImageGenMode,
   models: ModelEntry[],
-): { model: string; params: Record<string, unknown> } {
+): {
+  model: string;
+  params: Record<string, unknown>;
+  paramsByModel: Record<string, Record<string, unknown>>;
+} {
   const generatable = models.filter((m) => isImageGenerationMode(m.mode));
   const modeModels = filterModelsByMode(generatable, mode);
   const model =
     resolveModelForMode(mode, content?.modelByMode ?? {}, modeModels) ?? '';
   const picked = modeModels.find((m) => m.name === model);
-  const params = picked
-    ? resolveParamsForModel(picked, content?.params ?? {})
-    : {};
-  return { model, params };
+  if (!picked) return { model, params: {}, paramsByModel: {} };
+  // The whole catalog, not this mode's slice: the model being LEFT is what a
+  // pre-#1948 node's params get migrated onto, and it belongs to the other mode.
+  const { params, paramsByModel } = resolveModelSwitch(content, picked, models);
+  return { model, params, paramsByModel };
 }
 
 /**
@@ -234,7 +241,14 @@ export function buildGeneratePanelViewModel(input: {
 
   const model = pickModelForMode(content?.model, mode, content?.modelByMode, models);
   const current = models.find((m) => m.name === model);
-  const params = current ? resolveParamsForModel(current, content?.params ?? {}) : {};
+  // Resolved from the model's OWN record, the same way a switch resolves it
+  // (#1948). It matters here too: `model` above falls back to another model
+  // when the stored pick is not offered under this mode, and reconciling the
+  // outgoing model's params against that fallback leaks the same way. The
+  // records this returns are dropped — rendering reads, it does not persist.
+  const params = current
+    ? resolveModelSwitch(content, current, input.models).params
+    : {};
 
   const references = deriveReferences(nodeId, nodes, edges, input.textById);
   // t2i generates from scratch and ignores source images (design §2.5): the
