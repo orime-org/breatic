@@ -643,6 +643,14 @@
         "orderedList": "有序列表",
         "quote": "引用",
         "strike": "刪除線"
+      },
+      "schemaOutdated": {
+        "headline": "文件編輯器已更新",
+        "body": "這個頁面用的還是舊版本，繼續編輯會破壞別人寫的內容。",
+        "published": "新版本發布於{when}。",
+        "risksLead": "重新整理前請留意：",
+        "riskUploads": "正在進行的上傳會被中斷，可以先切到對應的 Space 看一眼。",
+        "action": "重新整理頁面"
       }
     }
   },

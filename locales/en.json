@@ -643,6 +643,14 @@
         "orderedList": "Ordered list",
         "quote": "Quote",
         "strike": "Strikethrough"
+      },
+      "schemaOutdated": {
+        "headline": "Document editor updated",
+        "body": "This page is running an older version, and editing here would damage what others have written.",
+        "published": "The new version went out {when}.",
+        "risksLead": "Before you refresh:",
+        "riskUploads": "uploads still in progress will be interrupted — you can switch to the Space they are in and check first.",
+        "action": "Refresh page"
       }
     }
   },

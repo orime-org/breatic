@@ -415,7 +415,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
   it('leaves a driving video with no poster showing nothing rather than the mp4', () => {
     // A video node that has not got its poster yet. Falling back to the asset
     // URL would put the blank square back; leaving the thumbnail absent lets
-    // the slot keep its icon and label, which at least names what it holds.
+    // the toolbar cover the slot with the video node's icon instead (#1946).
     const nodes = [
       node('n1', videoView({ drivingVideo: { url: 'https://cdn/driving.mp4' } })),
     ];

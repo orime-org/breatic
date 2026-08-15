@@ -1,0 +1,340 @@
+diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
+index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce039e900e 100644
+--- a/dist/y-tiptap.cjs
++++ b/dist/y-tiptap.cjs
+@@ -927,6 +927,99 @@ const createNodeFromYElement = (
+   prevSnapshot,
+   computeYChange
+ ) => {
++  // PATCH: an element whose NAME this build does not know goes into a fallback
++  // node, instead of being deleted from the shared document.
++  //
++  // Decided here, before the try, rather than inside the catch below. The catch
++  // fires for every construction failure, and most of them have nothing to do
++  // with an unknown vocabulary: two clients on the SAME build, each deleting a
++  // different child of one blockquote, merge into an empty blockquote that
++  // `block+` rejects. Deleting that is y-tiptap healing itself, and answering
++  // it with a fallback would show two fully up-to-date people "unsupported
++  // content" and stop them editing. Asking only "is this name unknown" leaves
++  // every other failure to the repair below, untouched.
++  //
++  // Block or inline is decided by what the PARENT accepts, because the two
++  // positions fail differently: a block-level stand-in inside a paragraph is
++  // not valid content, so the paragraph itself would fail to build and the
++  // whole sentence would go.
++  //
++  // There is a THIRD answer, and leaving it out is what made this destructive:
++  // a parent can accept neither. `title` holds `text*`: text and no node of
++  // any kind, so forcing a stand-in into it
++  // makes the PARENT fail to build, and the parent's failure lands in the
++  // untouched catch below, which deletes the parent — the title and every
++  // character in it, gone from the shared document. Answering "no stand-in
++  // here" instead leaves this one element to that same catch: it alone is
++  // removed — one element lost instead of the parent and every character in
++  // it. Nobody is told: Yjs runs type observers before it emits `update`, so
++  // the intercept reads a document the name has already been removed from.
++  if (schema.nodes[el.nodeName] === undefined) {
++    const parent = el.parent;
++    const parentType =
++      parent instanceof Y.XmlElement ? schema.nodes[parent.nodeName] : undefined;
++    const inlineFallback = schema.nodes.unsupportedInline;
++    const blockFallback = schema.nodes.unsupportedBlock;
++    /**
++     * Whether the parent's content expression has ANY position that takes
++     * this type — not whether its FIRST position does.
++     *
++     * `NodeType.contentMatch` is the match at the START of the expression.
++     * Asking it directly answers "can this be the parent's first child",
++     * which is a different question and answers no far too often: a list
++     * item holds `paragraph block*`, so an unknown block sitting after that
++     * paragraph — where every new block type in a list ends up — got told
++     * "nothing fits here" and was deleted, while the block stand-in is
++     * perfectly legal in the position it actually occupies.
++     *
++     * The match is a state machine, so walk it and ask whether the type is
++     * reachable at all.
++     *
++     * KNOWN IMPRECISION, and the reason it is left here: reachable-anywhere
++     * is not the same as legal-at-THIS-position. A parent with a mandatory
++     * prefix — `listItem` is the only one in this schema — answers yes for a
++     * block, so an unknown element sitting in that first slot would get a
++     * stand-in the parent cannot hold, the parent would fail to build, and
++     * the untouched catch below would delete the parent rather than the one
++     * element. Producing that input needs a build where an unknown type can
++     * be a list item's first child, i.e. a changed `listItem` content rule,
++     * which no version does. The exact question — walk the preceding
++     * siblings, then ask — is tracked rather than written here, because it
++     * has to reason about siblings this build may not recognise either.
++     * @param {any} type
++     * @returns {boolean}
++     */
++    const parentAccepts = (type) => {
++      if (type === undefined || parentType === undefined) return false;
++      const seen = new Set();
++      const queue = [parentType.contentMatch];
++      while (queue.length > 0) {
++        const match = queue.shift();
++        if (match === undefined || match === null || seen.has(match)) continue;
++        seen.add(match);
++        for (let i = 0; i < match.edgeCount; i++) {
++          const edge = match.edge(i);
++          if (edge.type === type) return true;
++          queue.push(edge.next);
++        }
++      }
++      return false
++    };
++    let fallbackType;
++    if (parentType === undefined) {
++      // The parent is the fragment root, which holds blocks.
++      fallbackType = blockFallback;
++    } else if (parentAccepts(inlineFallback)) {
++      fallbackType = inlineFallback;
++    } else if (parentAccepts(blockFallback)) {
++      fallbackType = blockFallback;
++    }
++    if (fallbackType !== undefined) {
++      const fallbackNode = fallbackType.create({ originalName: el.nodeName });
++      meta.mapping.set(el, fallbackNode);
++      return fallbackNode
++    }
++  }
+   const children = [];
+   /**
+    * @param {Y.XmlElement | Y.XmlText} type
+@@ -999,6 +1092,9 @@ const createNodeFromYElement = (
+     meta.mapping.set(el, node);
+     return node
+   } catch (e) {
++    // Left exactly as y-tiptap wrote it: a name this build DOES know that still
++    // will not build is a concurrent-edit artefact, and removing it is the
++    // repair. The fallback above never reaches here.
+     // an error occured while creating the node. This is probably a result of a concurrent action.
+     /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
+       /** @type {Y.Item} */ (el._item).delete(transaction);
+@@ -1164,13 +1260,23 @@ const equalYTextPText = (ytext, ptexts) => {
+ 
+         const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
+ 
++        // PATCHED PROBE: a mark this client does not know is carried by the
++        // fallback mark; it holds the original value, so it counts as equal.
++        if (!pmark) {
++          const carried = pmarks.find(/** @param {any} mark */ mark =>
++            mark.type.name === 'unsupportedMark' && mark.attrs.originalName === yattrname);
++          if (carried) {
++            return true
++          }
++        }
++
+         // Ensure the pmark is present in the ptexts before checking equality. When replacing a mark with another mark
+         // the pmark will be missing from the ptexts and the equalAttrs will throw an error.
+         if (!pmark) {
+           return false
+         }
+ 
+-        return equalAttrs(attr, pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname)?.attrs)
++        return equalAttrs(attr, pmark.attrs)
+       })
+     )
+ };
+@@ -1538,7 +1644,17 @@ const attributesToMarks = (attrs, schema) => {
+   const marks = [];
+   for (const markName in attrs) {
+     // remove hashes if necessary
+-    marks.push(schema.mark(yattr2markname(markName), attrs[markName]));
++    const resolvedName = yattr2markname(markName);
++    // PATCHED PROBE: an unknown mark is carried by a fallback mark that keeps
++    // the original key and value, so a round trip through this client is lossless.
++    if (schema.marks[resolvedName] === undefined) {
++      const fallbackMarkType = schema.marks.unsupportedMark;
++      if (fallbackMarkType !== undefined) {
++        marks.push(fallbackMarkType.create({ originalName: markName, originalValue: attrs[markName] }));
++      }
++      continue
++    }
++    marks.push(schema.mark(resolvedName, attrs[markName]));
+   }
+   return marks
+ };
+@@ -1550,6 +1666,11 @@ const attributesToMarks = (attrs, schema) => {
+ const marksToAttributes = (marks, meta) => {
+   const pattrs = {};
+   marks.forEach((mark) => {
++    if (mark.type.name === 'unsupportedMark') {
++      // PATCHED PROBE: put the original key and value back untouched.
++      pattrs[mark.attrs.originalName] = mark.attrs.originalValue;
++      return
++    }
+     if (mark.type.name !== 'ychange') {
+       const isOverlapping = map__namespace.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type));
+       pattrs[isOverlapping ? `${mark.type.name}--${hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs;
+diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
+index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f68c66594b 100644
+--- a/dist/y-tiptap.js
++++ b/dist/y-tiptap.js
+@@ -893,6 +893,99 @@ const createNodeFromYElement = (
+   prevSnapshot,
+   computeYChange
+ ) => {
++  // PATCH: an element whose NAME this build does not know goes into a fallback
++  // node, instead of being deleted from the shared document.
++  //
++  // Decided here, before the try, rather than inside the catch below. The catch
++  // fires for every construction failure, and most of them have nothing to do
++  // with an unknown vocabulary: two clients on the SAME build, each deleting a
++  // different child of one blockquote, merge into an empty blockquote that
++  // `block+` rejects. Deleting that is y-tiptap healing itself, and answering
++  // it with a fallback would show two fully up-to-date people "unsupported
++  // content" and stop them editing. Asking only "is this name unknown" leaves
++  // every other failure to the repair below, untouched.
++  //
++  // Block or inline is decided by what the PARENT accepts, because the two
++  // positions fail differently: a block-level stand-in inside a paragraph is
++  // not valid content, so the paragraph itself would fail to build and the
++  // whole sentence would go.
++  //
++  // There is a THIRD answer, and leaving it out is what made this destructive:
++  // a parent can accept neither. `title` holds `text*`: text and no node of
++  // any kind, so forcing a stand-in into it
++  // makes the PARENT fail to build, and the parent's failure lands in the
++  // untouched catch below, which deletes the parent — the title and every
++  // character in it, gone from the shared document. Answering "no stand-in
++  // here" instead leaves this one element to that same catch: it alone is
++  // removed — one element lost instead of the parent and every character in
++  // it. Nobody is told: Yjs runs type observers before it emits `update`, so
++  // the intercept reads a document the name has already been removed from.
++  if (schema.nodes[el.nodeName] === undefined) {
++    const parent = el.parent;
++    const parentType =
++      parent instanceof Y.XmlElement ? schema.nodes[parent.nodeName] : undefined;
++    const inlineFallback = schema.nodes.unsupportedInline;
++    const blockFallback = schema.nodes.unsupportedBlock;
++    /**
++     * Whether the parent's content expression has ANY position that takes
++     * this type — not whether its FIRST position does.
++     *
++     * `NodeType.contentMatch` is the match at the START of the expression.
++     * Asking it directly answers "can this be the parent's first child",
++     * which is a different question and answers no far too often: a list
++     * item holds `paragraph block*`, so an unknown block sitting after that
++     * paragraph — where every new block type in a list ends up — got told
++     * "nothing fits here" and was deleted, while the block stand-in is
++     * perfectly legal in the position it actually occupies.
++     *
++     * The match is a state machine, so walk it and ask whether the type is
++     * reachable at all.
++     *
++     * KNOWN IMPRECISION, and the reason it is left here: reachable-anywhere
++     * is not the same as legal-at-THIS-position. A parent with a mandatory
++     * prefix — `listItem` is the only one in this schema — answers yes for a
++     * block, so an unknown element sitting in that first slot would get a
++     * stand-in the parent cannot hold, the parent would fail to build, and
++     * the untouched catch below would delete the parent rather than the one
++     * element. Producing that input needs a build where an unknown type can
++     * be a list item's first child, i.e. a changed `listItem` content rule,
++     * which no version does. The exact question — walk the preceding
++     * siblings, then ask — is tracked rather than written here, because it
++     * has to reason about siblings this build may not recognise either.
++     * @param {any} type
++     * @returns {boolean}
++     */
++    const parentAccepts = (type) => {
++      if (type === undefined || parentType === undefined) return false;
++      const seen = new Set();
++      const queue = [parentType.contentMatch];
++      while (queue.length > 0) {
++        const match = queue.shift();
++        if (match === undefined || match === null || seen.has(match)) continue;
++        seen.add(match);
++        for (let i = 0; i < match.edgeCount; i++) {
++          const edge = match.edge(i);
++          if (edge.type === type) return true;
++          queue.push(edge.next);
++        }
++      }
++      return false
++    };
++    let fallbackType;
++    if (parentType === undefined) {
++      // The parent is the fragment root, which holds blocks.
++      fallbackType = blockFallback;
++    } else if (parentAccepts(inlineFallback)) {
++      fallbackType = inlineFallback;
++    } else if (parentAccepts(blockFallback)) {
++      fallbackType = blockFallback;
++    }
++    if (fallbackType !== undefined) {
++      const fallbackNode = fallbackType.create({ originalName: el.nodeName });
++      meta.mapping.set(el, fallbackNode);
++      return fallbackNode
++    }
++  }
+   const children = [];
+   /**
+    * @param {Y.XmlElement | Y.XmlText} type
+@@ -965,6 +1058,9 @@ const createNodeFromYElement = (
+     meta.mapping.set(el, node);
+     return node
+   } catch (e) {
++    // Left exactly as y-tiptap wrote it: a name this build DOES know that still
++    // will not build is a concurrent-edit artefact, and removing it is the
++    // repair. The fallback above never reaches here.
+     // an error occured while creating the node. This is probably a result of a concurrent action.
+     /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
+       /** @type {Y.Item} */ (el._item).delete(transaction);
+@@ -1130,13 +1226,23 @@ const equalYTextPText = (ytext, ptexts) => {
+ 
+         const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
+ 
++        // PATCHED PROBE: a mark this client does not know is carried by the
++        // fallback mark; it holds the original value, so it counts as equal.
++        if (!pmark) {
++          const carried = pmarks.find(/** @param {any} mark */ mark =>
++            mark.type.name === 'unsupportedMark' && mark.attrs.originalName === yattrname);
++          if (carried) {
++            return true
++          }
++        }
++
+         // Ensure the pmark is present in the ptexts before checking equality. When replacing a mark with another mark
+         // the pmark will be missing from the ptexts and the equalAttrs will throw an error.
+         if (!pmark) {
+           return false
+         }
+ 
+-        return equalAttrs(attr, pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname)?.attrs)
++        return equalAttrs(attr, pmark.attrs)
+       })
+     )
+ };
+@@ -1504,7 +1610,17 @@ const attributesToMarks = (attrs, schema) => {
+   const marks = [];
+   for (const markName in attrs) {
+     // remove hashes if necessary
+-    marks.push(schema.mark(yattr2markname(markName), attrs[markName]));
++    const resolvedName = yattr2markname(markName);
++    // PATCHED PROBE: an unknown mark is carried by a fallback mark that keeps
++    // the original key and value, so a round trip through this client is lossless.
++    if (schema.marks[resolvedName] === undefined) {
++      const fallbackMarkType = schema.marks.unsupportedMark;
++      if (fallbackMarkType !== undefined) {
++        marks.push(fallbackMarkType.create({ originalName: markName, originalValue: attrs[markName] }));
++      }
++      continue
++    }
++    marks.push(schema.mark(resolvedName, attrs[markName]));
+   }
+   return marks
+ };
+@@ -1516,6 +1632,11 @@ const attributesToMarks = (attrs, schema) => {
+ const marksToAttributes = (marks, meta) => {
+   const pattrs = {};
+   marks.forEach((mark) => {
++    if (mark.type.name === 'unsupportedMark') {
++      // PATCHED PROBE: put the original key and value back untouched.
++      pattrs[mark.attrs.originalName] = mark.attrs.originalValue;
++      return
++    }
+     if (mark.type.name !== 'ychange') {
+       const isOverlapping = map.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type));
+       pattrs[isOverlapping ? `${mark.type.name}--${hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs;

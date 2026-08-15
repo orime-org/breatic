@@ -20,8 +20,6 @@
 import { AudioLines, Image, UserRound, Video } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-import type { NodeType } from '@breatic/shared';
-
 import type { PickPurpose } from '@web/stores/canvas';
 
 /** The source slots the video panel knows how to offer. */
@@ -61,8 +59,13 @@ export interface VideoSlotSpec {
   /**
    * The node type this slot takes. Read by both the candidate highlighting
    * and the click that fills the slot, so the two cannot disagree.
+   *
+   * Narrower than `NodeType` deliberately: what a slot holds is also what its
+   * button shows and what its hover preview renders (#1946), and those two can
+   * only handle an asset form. Declaring a slot for anything else would fail
+   * to type-check here rather than render an empty card at runtime.
    */
-  accepts: NodeType;
+  accepts: 'image' | 'video' | 'audio';
   /** Icon shown while the slot is empty. */
   Icon: LucideIcon;
   /** Test id of the slot control. */
@@ -73,7 +76,7 @@ export interface VideoSlotSpec {
   clearTestId: string;
   /** Translation key for the slot's label. */
   labelKey: string;
-  /** Translation key for its tooltip. */
+  /** Translation key for the one line saying what to go pick — the slot's hover card carries it as the hint while empty (#1946). */
   tipKey: string;
   /** Translation key for the clear badge's accessible name. */
   clearLabelKey: string;
@@ -144,8 +147,8 @@ export const VIDEO_SLOTS = {
     field: 'drivingAudio',
     // `storesCover` because audio is not an image, which is the whole test
     // this flag applies — see the comment on it. An audio node happens to
-    // carry no poster, so the stored value is `{url}` and the toolbar keeps
-    // showing this slot's icon.
+    // carry no poster, so the stored value is `{url}` and the toolbar covers
+    // the button with the AUDIO NODE's icon instead of a thumbnail (#1946).
     storesCover: true,
     param: 'audio',
     purpose: 'drivingAudio',
@@ -203,8 +206,8 @@ function usableUrl(value: unknown): string | undefined {
  * was accepted and billed.
  *
  * An empty string is a string and no URL. A poster that is missing or
- * malformed leaves the slot showing its icon rather than an empty frame,
- * which at least names what it holds.
+ * malformed leaves the slot covering itself with the asset node's icon rather
+ * than an empty frame, which at least names what it holds (#1946).
  * @param spec - The slot being read, which states its stored shape.
  * @param value - The raw node-data value for that slot's field.
  * @returns The asset URL and what to show for it, or null when there is no pick.
