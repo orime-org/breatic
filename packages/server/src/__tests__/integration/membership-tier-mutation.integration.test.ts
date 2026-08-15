@@ -56,6 +56,7 @@ import {
   changeMembershipTier,
   getUserMembershipTier,
   getLimitsForUser,
+  getLimitsForStudio,
   getMembershipLimits,
 } from "@breatic/core";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
@@ -340,6 +341,32 @@ describe("the enterprise tier, which has no ceilings to give", () => {
     expect(err, "expected a throw").not.toBeNull();
     expect(err!.message).toContain(userId);
     expect(err!.message).toContain("enterprise");
+    expect(err!.message).toMatch(/negotiated/i);
+  });
+
+  it("refuses the same way through a studio, naming the account and the studio", async () => {
+    // The other of the two routes to a ceiling, and the one collab takes for
+    // its per-document connection limit. The row to fix is still the admin's
+    // account — the studio id is where the lookup started, not what is wrong —
+    // so both ids have to be in the message.
+    const adminUserId = await insertUser("enterprise");
+    const [st] = await sql<{ id: string }[]>`
+      INSERT INTO studios (created_by_user_id, slug, type, name)
+      VALUES (${adminUserId}, ${`tier-mut-ent-${seq++}`}, 'team', 'Team')
+      RETURNING id
+    `;
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${st!.id}, ${adminUserId}, 'admin')
+    `;
+
+    const err = await getLimitsForStudio(st!.id).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    expect(err, "expected a throw").not.toBeNull();
+    expect(err!.message).toContain(adminUserId);
+    expect(err!.message).toContain(st!.id);
     expect(err!.message).toMatch(/negotiated/i);
   });
 });

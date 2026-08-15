@@ -89,6 +89,53 @@ export const users = pgTable(
   ],
 );
 
+// ── 1b. Membership Tier Changes ──────────────────────────────────────
+
+/**
+ * Every move of an account from one membership tier to another (0053).
+ *
+ * The column on `users` answers "what is this account on"; this table answers
+ * "how did it get there", which the column cannot. A tier is what somebody
+ * paid for, so months later "why am I on base" and "when did my team plan
+ * start" have to be answerable from stored fact rather than from a Stripe
+ * dashboard that may have been reconciled since.
+ *
+ * Same shape as `credit_transactions` and for the same reason: the current
+ * value is a scalar somewhere else, and every change to it is appended here.
+ *
+ * Append-only, so `created_at` alone rather than the `timestamps` pair — a row
+ * is written once and never edited. No `deleted_at` either: deleting one would
+ * leave a history that no longer adds up. Both carve-outs are declared in the
+ * `schema-timestamps` rule's allowlist with that reasoning.
+ *
+ * `reference_id` holds whatever the trigger was identified by upstream — a
+ * Stripe subscription or event id once subscriptions land. It is deliberately
+ * NOT what makes a redelivered webhook safe: comparing tiers converges on the
+ * last call and cannot tell a replay from a new event, so the subscription
+ * work keys idempotency on event identity the way `updatePaymentStatusCAS`
+ * and `deductOnce` already do.
+ */
+export const membershipTierChanges = pgTable(
+  "membership_tier_changes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    fromTier: varchar("from_tier", { length: 16 }).notNull(),
+    toTier: varchar("to_tier", { length: 16 }).notNull(),
+    // What caused the move: `subscription_activated`, `subscription_ended`,
+    // `registration`, or `manual`. The last two have no writer yet — see the
+    // block seven design for why registration does not append a row.
+    reason: varchar("reason", { length: 32 }).notNull(),
+    referenceId: varchar("reference_id", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("membership_tier_changes_user_id_idx").on(table.userId)],
+);
+
 // ── 2. Studios ───────────────────────────────────────────────────────
 //
 // V1 = personal Studio: every user has exactly one studio row, written
