@@ -32,7 +32,7 @@ function sameValue(a: unknown, b: unknown): boolean {
  * compared with {@link sameValue}). The Yjs mirror rebuilds each node's `data`
  * fresh every doc change, so a reference compare is always false; this compares
  * the flat fields (content / status / name / locked / …) and array fields
- * element-wise. A nested non-array object inside data (`params` /
+ * element-wise. A nested non-array object inside data (`paramsByModel` /
  * `modelByMode` — whole-object rewrites whose stored reference is stable via
  * `toJSON` until actually replaced) compares by reference: unchanged → same
  * ref → equal; rewritten → new ref → changed. (`handlingBy` never reaches

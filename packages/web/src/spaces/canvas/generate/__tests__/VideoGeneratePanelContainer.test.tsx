@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
 import type { ModelCatalog, ModelEntry } from '@breatic/shared';
@@ -204,9 +205,14 @@ function mountContainer(
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
+      {/* panOnDrag off: a pointer sequence anywhere in the panel bubbles to
+          ReactFlow's d3-zoom, whose d3-drag reads `event.view.document` —
+          null in jsdom, so a real click on any control throws an unhandled
+          error. The canvas here exists only so NodeToolbar renders. */}
       <ReactFlow
         nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
         edges={[]}
+        panOnDrag={false}
       >
         <CanvasContext.Provider value={canvas}>
           <VideoGeneratePanelContainer
@@ -535,10 +541,16 @@ describe('VideoGeneratePanelContainer', () => {
         .mockResolvedValue({ id: 't1' } as Awaited<
           ReturnType<typeof canvasApi.createTask>
         >);
-      seedVideoNode({ model: 'veo-3.1-lite', params: { duration: 4 } });
+      seedVideoNode({
+        model: 'veo-3.1-lite',
+        paramsByModel: { 'veo-3.1-lite': { duration: 4 } },
+      });
       typePrompt('a drone shot over a canyon at dawn');
       // The React view still carries the pre-edit pick.
-      mountContainer('video', { model: 'veo-3.1', params: { duration: 8 } });
+      mountContainer('video', {
+        model: 'veo-3.1',
+        paramsByModel: { 'veo-3.1': { duration: 8 } },
+      });
       act(() => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
@@ -774,7 +786,7 @@ describe('VideoGeneratePanelContainer', () => {
       // switch is disabled until it does (nothing to switch TO yet).
       await waitFor(() => expect(trigger).not.toBeDisabled());
       fireEvent.click(trigger);
-      fireEvent.click(await screen.findByTestId('generate-video-mode-i2v'));
+      await userEvent.click(await screen.findByTestId('generate-video-mode-i2v'));
       await waitFor(() => {
         const data = readCanvasGraph('p', 's').nodes.find(
           (n) => n.id === 'target',
@@ -1420,5 +1432,79 @@ describe('VideoGeneratePanelContainer', () => {
       await screen.findByTestId('generate-video-execute');
     }
 
+  });
+
+  describe('参数编辑记在哪个模型名下 (#1948)', () => {
+    it('记在面板正在渲染的模型名下，不是节点存着的那个', async () => {
+      // 新建的节点根本没写过 model（node-factory 不写），而面板已经解析出
+      // 第一个可用模型并渲染了它的控件。此时按存的那个记账等于记进空名下，
+      // 控件下一帧就弹回默认值。
+      //
+      // 这一条钉的是容器传了哪个值。纯函数那侧钉的是「给对了模型名会怎样」，
+      // 两者不是一件事：Gate 2 第 3 轮实测把这次修复整个回退回原 bug，
+      // 3807 条测试没有一条变红。
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      seedVideoNode(); // 没有 model，没有 paramsByModel
+      mountContainer('video');
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      fireEvent.click(
+        await screen.findByTestId('generate-video-params-trigger'),
+      );
+      // veo-3.1 的时长声明是 [4, 8]，默认 8 —— 选 4 是一次真的改动。
+      fireEvent.click(
+        await screen.findByTestId('generate-video-duration-option-4'),
+      );
+      await waitFor(() => {
+        const data = readCanvasGraph('p', 's').nodes.find(
+          (n) => n.id === 'target',
+        )?.data;
+        const records = (
+          data as { paramsByModel?: Record<string, Record<string, unknown>> }
+        ).paramsByModel;
+        // veo-3.1 是 t2v 档的第一个模型，也就是面板此刻渲染的那个。
+        expect(records).toEqual({ 'veo-3.1': { duration: 4 } });
+      });
+    });
+
+    it('目标档解不出模型时整个写入放弃，已有的记录一条都不丢 (9.8)', async () => {
+      // 这一片让这道防护要保的东西变多了：以前失守清掉的是一份参数，现在会
+      // 把所有模型的记录一起清空。
+      //
+      // 防护写在容器的 `if (!model) return`，纯函数测试摸不到它 —— 设计文档
+      // 前一版把 9.8 的验证方法写成纯函数测试，删掉防护也不会红。
+      vi.spyOn(modelsApi, 'list').mockResolvedValue({
+        ...catalog(),
+        video: [T2V], // 只有 t2v 一档有模型，i2v 档解不出
+        total: 1,
+      });
+      const records = { 'veo-3.1': { duration: 4 } };
+      seedVideoNode({ mode: 't2v', model: 'veo-3.1', paramsByModel: records });
+      mountContainer('video', { mode: 't2v', model: 'veo-3.1' });
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      // 面板先渲染一帧、目录才解析完，在那之前这个 trigger 是 disabled 的
+      // （ModeToggle 的 `disabled={catalogEmpty}`）—— 不等它 enabled 就点，
+      // 浮层不开、下一句报 `Unable to find generate-video-mode-i2v`。
+      const trigger = await screen.findByTestId('generate-video-mode-trigger');
+      await waitFor(() => expect(trigger).not.toBeDisabled());
+      fireEvent.click(trigger);
+      fireEvent.click(await screen.findByTestId('generate-video-mode-i2v'));
+      await waitFor(() => {
+        const data = readCanvasGraph('p', 's').nodes.find(
+          (n) => n.id === 'target',
+        )?.data as {
+          mode?: string;
+          model?: string;
+          paramsByModel?: Record<string, Record<string, unknown>>;
+        };
+        // 一个字段都没被动过：模式还是 t2v，模型还在，记录原样。
+        expect(data.mode).toBe('t2v');
+        expect(data.model).toBe('veo-3.1');
+        expect(data.paramsByModel).toEqual(records);
+      });
+    });
   });
 });
