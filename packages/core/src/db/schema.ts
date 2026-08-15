@@ -117,9 +117,11 @@ export const users = pgTable(
  * value is a scalar somewhere else, and every change to it is appended here.
  *
  * Append-only, so `created_at` alone rather than the `timestamps` pair — a row
- * is written once and never edited. No `deleted_at` either: deleting one would
- * leave a history that no longer adds up. Both carve-outs are declared in the
- * `schema-timestamps` rule's allowlist with that reasoning.
+ * is written once and never edited. Nothing has to be declared for that:
+ * `schema-timestamps` requires `created_at` and `deleted_at`, never
+ * `updated_at`. The missing `deleted_at` does need declaring, and its reason
+ * sits in that rule's allowlist: deleting a row would leave a history that no
+ * longer adds up to the value on the account.
  *
  * `reference_id` holds whatever the trigger was identified by upstream — a
  * Stripe subscription or event id once subscriptions land. It is deliberately

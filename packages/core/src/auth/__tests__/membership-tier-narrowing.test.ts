@@ -9,15 +9,17 @@
  * — a direct connection, a restored backup, a deployment whose migration did
  * not run — from being cast unchecked into a tier the build then prices.
  *
- * It is driven directly rather than through a stored row on purpose: with the
- * constraint in place there is no longer any way to put a bad value in the
- * table, which is precisely why the two cases that used to do that (in
- * `membership-tier-lookup.integration.test.ts`) now live here.
+ * It is driven directly rather than through a stored row because the two are
+ * different questions. The integration suite asks whether this narrowing is
+ * still WIRED INTO the read paths, and pays for the answer by lifting the
+ * CHECK constraint around one insert (`withTierCheckLifted` in
+ * `membership-tier-lookup.integration.test.ts`). This file asks what the
+ * message SAYS, which needs no database at all.
  *
- * What the message has to carry is the reason this is a unit test at all: the
- * value, and the row an operator must go and edit. For a studio the row they
- * must edit is a `users` row, not the studio — the studio id is the thing they
- * have in hand, not the thing that is wrong.
+ * What the message has to carry is the value, and the row an operator must go
+ * and edit. For a studio the row they must edit is a `users` row, not the
+ * studio — the studio id is the thing they have in hand, not the thing that is
+ * wrong.
  */
 
 import { describe, it, expect } from "vitest";

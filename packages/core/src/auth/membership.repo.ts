@@ -119,10 +119,8 @@ function describeSubject(subject: TierSubject): string {
  * unchecked and the ceiling lookup would fail with a message naming neither
  * the account nor the value, which is what used to happen.
  *
- * It takes ids rather than a ready-made phrase so the message is composed in
- * one place. That is not tidiness: once the constraint exists there is no way
- * to write a bad value through the database, so a phrase built at the call
- * site could no longer be reached by any test.
+ * It takes ids rather than a ready-made phrase so the sentence is composed in
+ * one place: both routes to a tier end here, and both need the account named.
  * @param raw - The value stored in `users.membership_tier`
  * @param subject - Whose tier this is
  * @returns The same value, narrowed
