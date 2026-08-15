@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * `Ctrl+A` 只有一档：标题和正文互不越界。
+ * `Ctrl+A` 只有一档：文档标题和正文互不越界。
  *
  * 规则是 user 2026-08-15 拍定的：**Ctrl+A 按它本来的意思就是全选，没有「先选这一块、
- * 再选全部」那种分级**。光标在正文里就全选正文，在标题里就全选标题，两边互不波及。
+ * 再选全部」那种分级**。光标在正文里就全选正文，在文档标题里就全选文档标题，两边互不波及。
  * user 原话：「Ctrl+A 按照原始的含义就是全选，并没有所谓的『选中第一级』和『选中
  * 第二级』的逻辑……我们并不是去再造一个飞书」。ProseMirror 官方的 basic 示例实测
  * 也是一档：按一次选 515 字，再按一次还是 515。
  *
- * **这个扩展存在的唯一理由是挡住标题**。tiptap 自带的 `Mod-a` 绑的是 `selectAll()`，
- * 实测产出从位置 0 开始的 `AllSelection`，而位置 0 在标题里 —— 标题是文档的名字，
- * AI 那条线会替换选中的内容，让它落在名字上是不可接受的。我们的标题是同一份
+ * **这个扩展存在的唯一理由是挡住文档标题**。tiptap 自带的 `Mod-a` 绑的是 `selectAll()`，
+ * 实测产出从位置 0 开始的 `AllSelection`，而位置 0 在文档标题里 —— 文档标题是文档的名字，
+ * AI 那条线会替换选中的内容，让它落在名字上是不可接受的。我们的文档标题是同一份
  * ProseMirror 文档的第一个块（内容规则 `title block*`），所以「全部」真的包含它；
- * 标题独立成字段的编辑器不会有这个问题。
+ * 文档标题独立成字段的编辑器不会有这个问题。
  *
  * 键名绑的是 `Mod-a`，一条平台无关的写法：`prosemirror-keymap` 在模块加载时读
  * `navigator.platform`，mac 上把它解析成 `Cmd-a`、其它平台解析成 `Ctrl-a`（源码
@@ -49,9 +49,9 @@ afterEach(() => {
 });
 
 /**
- * 一份带标题和给定正文的文档。
- * @param bodyHtml - 标题之后的正文 HTML，空串就是正文零块。
- * @param title - 标题文本。
+ * 一份带文档标题和给定正文的文档。
+ * @param bodyHtml - 文档标题之后的正文 HTML，空串就是正文零块。
+ * @param title - 文档标题文本。
  * @returns 绑好的编辑器。
  */
 function open(bodyHtml = '', title = 'TITLE'): Editor {
@@ -90,12 +90,12 @@ function pressCtrlA(editor: Editor): boolean {
   return event.defaultPrevented;
 }
 
-/** 标题节点占多少位置 —— 正文的一切都在它之后。 */
+/** 文档标题节点占多少位置 —— 正文的一切都在它之后。 */
 function titleSize(editor: Editor): number {
   return editor.state.doc.child(0).nodeSize;
 }
 
-/** 标题内容的文本范围。 */
+/** 文档标题内容的文本范围。 */
 function titleRange(editor: Editor): { from: number; to: number } {
   return { from: 1, to: 1 + editor.state.doc.child(0).content.size };
 }
@@ -107,7 +107,7 @@ function selection(editor: Editor): { from: number; to: number } {
 }
 
 /**
- * 把光标放进第 index 个顶层块里（0 是标题）。
+ * 把光标放进第 index 个顶层块里（0 是文档标题）。
  * @param editor - 目标编辑器。
  * @param index - 顶层块序号。
  * @param offset - 块内偏移。
@@ -130,7 +130,7 @@ function blockRange(editor: Editor, index: number): { from: number; to: number }
 }
 
 /**
- * 正文里每一段文字所占的位置区间（标题里的不算）。
+ * 正文里每一段文字所占的位置区间（文档标题里的不算）。
  *
  * 用来判「全选正文」有没有真的覆盖全部，**而不是拿两个位置数字去比**。位置算术
  * 依赖块的嵌套深度：正文是一串顶层段落时正文起点是 `titleSize + 1`，正文首块换成
@@ -162,17 +162,17 @@ function coversAllBodyText(editor: Editor): boolean {
 }
 
 /**
- * 选区有没有伸进标题 —— 「从正文出发选不到标题」那半的判据。
+ * 选区有没有伸进文档标题 —— 「从正文出发选不到文档标题」那半的判据。
  *
- * 只在**正文侧**的用例里有意义：光标本来就在标题里时，选中标题当然从位置 1
- * 开始，拿这个函数去要求它为 false 是问错了问题。标题侧要断言的是
- * 「`to` 没越过标题」，见 `staysInsideTitle`。
+ * 只在**正文侧**的用例里有意义：光标本来就在文档标题里时，选中文档标题当然从位置 1
+ * 开始，拿这个函数去要求它为 false 是问错了问题。文档标题侧要断言的是
+ * 「`to` 没越过文档标题」，见 `staysInsideTitle`。
  */
 function touchesTitle(editor: Editor): boolean {
   return editor.state.selection.from < titleSize(editor);
 }
 
-/** 选区有没有伸出标题 —— 「从标题出发选不到正文」那半的判据。 */
+/** 选区有没有伸出文档标题 —— 「从文档标题出发选不到正文」那半的判据。 */
 function staysInsideTitle(editor: Editor): boolean {
   return editor.state.selection.to <= titleSize(editor);
 }
@@ -279,8 +279,8 @@ describe('光标在正文里', () => {
   });
 });
 
-describe('光标在标题里', () => {
-  it('按一次只选中标题，碰不到正文', () => {
+describe('光标在文档标题里', () => {
+  it('按一次只选中文档标题，碰不到正文', () => {
     const editor = open('<p>body</p>');
     caretIn(editor, 0, 2);
 
@@ -290,7 +290,7 @@ describe('光标在标题里', () => {
     expect(staysInsideTitle(editor)).toBe(true);
   });
 
-  it('标题里已经选中一部分，按一次给整个标题，不跨进正文', () => {
+  it('文档标题里已经选中一部分，按一次给整个文档标题，不跨进正文', () => {
     const editor = open('<p>body</p>');
     editor.view.dispatch(
       editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 2, 4)),
@@ -317,7 +317,7 @@ describe('光标在标题里', () => {
 });
 
 describe('光标哪儿都不在', () => {
-  it('整块被选中时（Cmd+click 的产物），按一次给全部正文，不是给标题', () => {
+  it('整块被选中时（Cmd+click 的产物），按一次给全部正文，不是给文档标题', () => {
     // 这个手势是 ProseMirror 内建的：`prosemirror-view@1.42.2:3338` 有
     // `const selectNodeModifier = mac ? "metaKey" : "ctrlKey"`，:3397 据它建
     // `NodeSelection`；我们放行它（`document-click-to-write.ts:124-131` 对带
@@ -325,7 +325,7 @@ describe('光标哪儿都不在', () => {
     // 文档这一层，`$from.parent` 是 `doc` 而不是 `paragraph`，所以「光标在哪」
     // 这个问题的答案是「都不在」。
     //
-    // 答成「给标题」会让用户在正文点一下、按 Ctrl+A、再敲一个字，文档的名字被
+    // 答成「给文档标题」会让用户在正文点一下、按 Ctrl+A、再敲一个字，文档的名字被
     // 覆盖 —— 而这个扩展存在的全部理由就是挡这件事。
     const editor = open('<p>first</p><p>second</p>');
     editor.view.dispatch(
@@ -341,11 +341,11 @@ describe('光标哪儿都不在', () => {
     pressCtrlA(editor);
 
     expect(coversAllBodyText(editor)).toBe(true);
-    expect(touchesTitle(editor), '不许滑到标题上去').toBe(false);
+    expect(touchesTitle(editor), '不许滑到文档标题上去').toBe(false);
   });
 
   it('AllSelection 也算哪儿都不在，按一次收敛到正文', () => {
-    // tiptap 自带的 `selectAll` 产出的就是它，从位置 0 开始、标题在里面。
+    // tiptap 自带的 `selectAll` 产出的就是它，从位置 0 开始、文档标题在里面。
     const editor = open('<p>first</p><p>second</p>');
     editor.view.dispatch(
       editor.state.tr.setSelection(new AllSelection(editor.state.doc)),
@@ -359,9 +359,9 @@ describe('光标哪儿都不在', () => {
 });
 
 describe('正文一个块都没有', () => {
-  it('光标在标题里按下：不抛异常，选中标题，不伸进（不存在的）正文', () => {
+  it('光标在文档标题里按下：不抛异常，选中文档标题，不伸进（不存在的）正文', () => {
     const editor = open('');
-    expect(editor.state.doc.childCount, '这份文档本该只有标题').toBe(1);
+    expect(editor.state.doc.childCount, '这份文档本该只有文档标题').toBe(1);
     caretIn(editor, 0, 1);
 
     expect(() => pressCtrlA(editor)).not.toThrow();
@@ -373,9 +373,9 @@ describe('正文一个块都没有', () => {
   it('正文零块时从「哪儿都不在」出发，选区原样不动，键仍然被认领', () => {
     // 正文没有任何东西可选，正确的答案是**什么都不做**：不换选区，也不把键交回去。
     //
-    // 断言必须是「选区没变」，不能是「from 没跨进标题」那种宽松条件 —— 变异实测：
+    // 断言必须是「选区没变」，不能是「from 没跨进文档标题」那种宽松条件 —— 变异实测：
     // 去掉正文为空那道守卫，得到的是正文起点处的一个空选区，它的 from 恰好等于
-    // 标题的 nodeSize，宽松条件照样通过。
+    // 文档标题的 nodeSize，宽松条件照样通过。
     const editor = open('');
     editor.view.dispatch(
       editor.state.tr.setSelection(new AllSelection(editor.state.doc)),
@@ -386,7 +386,7 @@ describe('正文一个块都没有', () => {
 
     expect(selection(editor), '正文零块时不许换掉用户的选区').toEqual(before);
     expect(editor.state.selection, '类型也不许换').toBeInstanceOf(AllSelection);
-    // 交回去就落到 @tiptap/core 的 selectAll，那会产出一个含标题的 AllSelection。
+    // 交回去就落到 @tiptap/core 的 selectAll，那会产出一个含文档标题的 AllSelection。
     expect(claimed, '没东西可选也要吃掉这个键').toBe(true);
   });
 });
@@ -394,7 +394,7 @@ describe('正文一个块都没有', () => {
 describe('这个键永远由我们认领', () => {
   it('结果跟现状一样时也不把键交回去', () => {
     // 交回去就落到 @tiptap/core 自己那条 `Mod-a` → selectAll，实测它产出
-    // AllSelection 0..9、标题在里面，正是这次要挡的越界。
+    // AllSelection 0..9、文档标题在里面，正是这次要挡的越界。
     const editor = open('<p>body</p>');
     caretIn(editor, 0, 1);
     pressCtrlA(editor);
@@ -408,7 +408,7 @@ describe('这个键永远由我们认领', () => {
 });
 
 describe('全选正文之后，格式操作对选中的每一段文字都生效', () => {
-  it('加粗落在正文每一段文字上，标题一个字都不受影响', () => {
+  it('加粗落在正文每一段文字上，文档标题一个字都不受影响', () => {
     // **判据是读每个文本节点的 marks，不是读 `textContent`**。加粗不改
     // `textContent`，拿它当观察量会得出「没生效」的相反结论 —— 这次任务里
     // 真的这么错过一次（设计文档 §9 第二条教训）。
@@ -430,11 +430,11 @@ describe('全选正文之后，格式操作对选中的每一段文字都生效'
 
     expect(bolded.length, '前提：正文里有文字可以加粗').toBeGreaterThan(0);
     expect(bolded.every(Boolean), '正文每一段文字都要变粗').toBe(true);
-    expect(titleMarks, '标题不该沾上任何标记').toEqual([]);
+    expect(titleMarks, '文档标题不该沾上任何标记').toEqual([]);
   });
 });
 
-describe('鼠标拖选不许跨过标题和正文之间那条线', () => {
+describe('鼠标拖选不许跨过文档标题和正文之间那条线', () => {
   /**
    * 问编辑器：DOM 上从 anchor 拖到 head，你要造一个什么样的选区？
    *
@@ -484,19 +484,19 @@ describe('鼠标拖选不许跨过标题和正文之间那条线', () => {
     return made as NonNullable<typeof made>;
   }
 
-  it('从正文往上拖进标题，选区停在正文起点', () => {
-    // 真浏览器实测的形状（2026-08-15）：从第一段中间往上拖到标题上，得到的是
-    // 6..15 —— 6 在标题里（标题占 0..9），标题末尾两个字被选中，接着敲一个字
+  it('从正文往上拖进文档标题，选区停在正文起点', () => {
+    // 真浏览器实测的形状（2026-08-15）：从第一段中间往上拖到文档标题上，得到的是
+    // 6..15 —— 6 在文档标题里（文档标题占 0..9），文档标题末尾两个字被选中，接着敲一个字
     // 文档的名字就少一截。
     const editor = open('<p>first</p><p>second</p>');
     const body = titleSize(editor);
     const s = askAndExpectClamped(editor, body + 3, 2);
 
-    expect(s.from, '不许伸进标题').toBeGreaterThanOrEqual(body);
+    expect(s.from, '不许伸进文档标题').toBeGreaterThanOrEqual(body);
     expect(s.anchor, '按下鼠标的那一端不动').toBe(body + 3);
   });
 
-  it('从标题往下拖进正文，选区停在标题末尾', () => {
+  it('从文档标题往下拖进正文，选区停在文档标题末尾', () => {
     // 另一半：反方向拖同样不许越界。规则是「互不越界」，不是「正文优先」。
     const editor = open('<p>first</p><p>second</p>');
     const body = titleSize(editor);
@@ -518,14 +518,14 @@ describe('鼠标拖选不许跨过标题和正文之间那条线', () => {
     expect(askForSelection(editor, from, to)).toBeNull();
   });
 
-  it('两端都在标题里时，一个字都不动', () => {
+  it('两端都在文档标题里时，一个字都不动', () => {
     const editor = open('<p>first</p>');
 
     expect(askForSelection(editor, 2, 4)).toBeNull();
   });
 
-  it('正文一个块都没有时，跨线的拖选收进标题而不是抛异常', () => {
-    // 正文没有可落脚的位置，夹进正文是做不到的事。答案是夹进标题 ——
+  it('正文一个块都没有时，跨线的拖选收进文档标题而不是抛异常', () => {
+    // 正文没有可落脚的位置，夹进正文是做不到的事。答案是夹进文档标题 ——
     // 那是这份文档此刻唯一有内容的地方。
     const editor = open('');
     const body = titleSize(editor);
