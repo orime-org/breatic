@@ -3,6 +3,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { SpaceReadOnlyNotice } from '@web/pages/project/SpaceReadOnlyNotice';
 import { setLocale } from '@breatic/shared';
@@ -93,9 +94,10 @@ describe('SpaceReadOnlyNotice', () => {
   it('keeps saying so while the socket is away reconnecting', () => {
     // `useSocket` deliberately does NOT clear `writeAccess` when the socket
     // closes (see its `onClose`), so a degraded document sits at denied +
-    // disconnected for the whole reconnect window — seconds at least, and the
-    // client gives up and redials before the server times the old seat out.
-    // The state has not changed and neither should the notice.
+    // disconnected for the whole reconnect window. Nothing about this person's
+    // situation changed while the socket was away — they still cannot write,
+    // and they still hold no seat (a degraded connection never took one) — so
+    // neither should the notice.
     //
     // This case is why the guard is `status !== 'authFailed'` and not
     // `status === 'connected'`. Round 5 measured that swap: with no test
@@ -107,6 +109,22 @@ describe('SpaceReadOnlyNotice', () => {
     });
     render(<SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='canvas' />);
     expect(screen.getByTestId('space-read-only-notice')).toBeInTheDocument();
+  });
+
+  it('stays quiet before the answer even if the socket drops first', () => {
+    // The other half of the pre-handshake window, and it is not a frame long:
+    // `onClose` sets `disconnected` without touching `writeAccess`, so a
+    // connection that never got an answer sits at unknown + disconnected for
+    // the whole outage. Round 5 covered `connecting` and stopped there — which
+    // is the same shape of gap round 5 was itself fixing, one axis further in.
+    socketByDoc.set('project-p1/canvas-s1', {
+      writeAccess: 'unknown',
+      status: 'disconnected',
+    });
+    render(<SpaceReadOnlyNotice projectId='p1' spaceId='s1' type='canvas' />);
+    expect(
+      screen.queryByTestId('space-read-only-notice'),
+    ).not.toBeInTheDocument();
   });
 
   it('waits for the server to answer before claiming anything', () => {
@@ -158,8 +176,14 @@ describe('SpaceReadOnlyNotice', () => {
   it('renders nothing for a Space type that has no document of its own', () => {
     // Timeline has no Yjs document yet, so there is no connection to report on.
     //
-    // What this pins is the OUTCOME — nothing rendered, nothing thrown. It does
-    // NOT pin the two-component split that keeps the hooks unconditional:
+    // Of the two assertions, the THROW one carries the weight: deleting the
+    // `DOC_NAME_BUILDERS` guard makes this call `undefined(...)` and it goes
+    // red (measured in round 4). The "nothing rendered" one is close to free —
+    // the stub's default is `granted`, so nothing would render for an
+    // unconfigured document anyway — and it is here to say what the outcome
+    // should be rather than to catch a mutation.
+    //
+    // Neither pins the two-component split that keeps the hooks unconditional:
     // measured in round 5, inlining them past the early return leaves this
     // green, because React only objects once the hook count actually changes
     // between renders of the same element. `react-hooks/rules-of-hooks`
@@ -178,12 +202,32 @@ describe('SpaceReadOnlyNotice', () => {
   // Reconnecting is the ONLY way out: the connection's read-only flag is fixed
   // for its whole life (collab sets it once, at the handshake) and nothing
   // tells a connected client that a seat has come free.
-  it('offers a reconnect control, the only way out of a degrade', () => {
-    degrade('project-p1/document-s2');
-    render(<SpaceReadOnlyNotice projectId='p1' spaceId='s2' type='document' />);
-    expect(
-      screen.getByTestId('space-read-only-notice-reconnect'),
-    ).toBeInstanceOf(HTMLButtonElement);
+  it('reconnects when the control is pressed', async () => {
+    // Asserts the button DOES something, not that it exists. Round 6 measured
+    // the difference: replacing its handler with an empty function left the
+    // whole suite green, and a capsule whose only way out is inert is worse
+    // than no capsule — it tells the user to do something that does nothing.
+    const reload = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, reload },
+    });
+    try {
+      degrade('project-p1/document-s2');
+      render(
+        <SpaceReadOnlyNotice projectId='p1' spaceId='s2' type='document' />,
+      );
+      const button = screen.getByTestId('space-read-only-notice-reconnect');
+      expect(button).toBeInstanceOf(HTMLButtonElement);
+      await userEvent.click(button);
+      expect(reload).toHaveBeenCalledOnce();
+    } finally {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: original,
+      });
+    }
   });
 
   it('shows this catalog its own words, in every locale we ship', () => {

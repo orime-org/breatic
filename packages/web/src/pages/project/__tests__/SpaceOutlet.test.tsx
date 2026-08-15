@@ -55,6 +55,18 @@ describe('SpaceOutlet', () => {
     expect(stub).toHaveAttribute('data-type', 'document');
   });
 
+  it('points the body at THIS Space of THIS project', () => {
+    // The sibling of the notice assertion above. Round 6 measured that
+    // swapping these two on the body was invisible to all 63 tests in this
+    // directory — the existing body cases only ask WHICH component rendered.
+    // A body pointed at the wrong document silently shows another Space's
+    // content, which is worse than the notice being wrong.
+    render(<SpaceOutlet projectId='p' spaceId='s' type='canvas' />);
+    const body = screen.getByTestId('canvas-space');
+    expect(body).toHaveAttribute('data-project-id', 'p');
+    expect(body).toHaveAttribute('data-space-id', 's');
+  });
+
   it('hands the viewer role to the read-only notice, not just to the body', () => {
     render(<SpaceOutlet projectId='p' spaceId='s' type='canvas' readOnly />);
     expect(screen.getByTestId('notice-stub')).toHaveAttribute(

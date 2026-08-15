@@ -29,9 +29,16 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { redisExtensionSpy, serverSpy } = vi.hoisted(() => ({
+const { redisExtensionSpy, serverSpy, registryStub } = vi.hoisted(() => ({
   redisExtensionSpy: vi.fn(),
   serverSpy: vi.fn(),
+  registryStub: {
+    start: vi.fn(),
+    stop: vi.fn(),
+    register: vi.fn(),
+    unregister: vi.fn(),
+    count: vi.fn(async () => 0),
+  },
 }));
 
 vi.mock("@hocuspocus/extension-redis", () => ({
@@ -76,13 +83,7 @@ vi.mock("@collab/services/persistence.js", () => ({
 }));
 
 vi.mock("@collab/services/connection-registry.js", () => ({
-  createConnectionRegistry: vi.fn(() => ({
-    start: vi.fn(),
-    stop: vi.fn(),
-    register: vi.fn(),
-    unregister: vi.fn(),
-    count: vi.fn(async () => 0),
-  })),
+  createConnectionRegistry: vi.fn(() => registryStub),
 }));
 
 vi.mock("@collab/services/handling-sweeper.js", () => ({
@@ -222,5 +223,68 @@ describe("createCollabServer — the identity rule is registered", () => {
     });
 
     expect(states.get(4242)?.user).toEqual({ id: "u-alice" });
+  });
+});
+
+describe("createCollabServer — only writable connections take a seat", () => {
+  beforeEach(() => {
+    serverSpy.mockClear();
+    registryStub.register.mockClear();
+    registryStub.unregister.mockClear();
+  });
+
+  /**
+   * Run the registered `connected` hook the way Hocuspocus would.
+   * @param documentName - Which document the connection opened.
+   * @param readOnly - What the auth hook settled on `connectionConfig`.
+   * @returns Nothing; assert on the registry stub afterwards.
+   */
+  async function fireConnected(
+    documentName: string,
+    readOnly: boolean,
+  ): Promise<void> {
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+    });
+    const config = serverSpy.mock.calls[0]?.[0] as {
+      connected?: (payload: unknown) => Promise<void>;
+    };
+    expect(typeof config.connected).toBe("function");
+    await config.connected?.({
+      documentName,
+      socketId: "sock-1",
+      context: { user: { id: "u-1" } },
+      instance: { documents: new Map() },
+      connectionConfig: { readOnly },
+    });
+  }
+
+  // #88's central rule, at the one place it is actually applied. Everything
+  // else about it is covered against `shouldRegisterConnection` as a pure
+  // function, and that leaves this call site free: swapping it back to
+  // `shouldTrackConnection(documentName)` — the pre-#88 behaviour, where a
+  // read-only connection took a seat like any other — was measured to leave
+  // all 476 collab tests green. Acceptance item 18 rests entirely on this line.
+  it("registers a writable connection to a Space document", async () => {
+    await fireConnected("project-p/canvas-s", false);
+    expect(registryStub.register).toHaveBeenCalledWith(
+      "project-p/canvas-s",
+      "sock-1",
+    );
+  });
+
+  it("does NOT register a read-only connection to the same document", async () => {
+    await fireConnected("project-p/canvas-s", true);
+    expect(registryStub.register).not.toHaveBeenCalled();
+  });
+
+  // The meta doc is exempt from the ceiling entirely, writable or not — it is
+  // project infrastructure everybody must hold, never a measure of how many
+  // people can collaborate.
+  it("does NOT register the project meta document", async () => {
+    await fireConnected("project-p/meta", false);
+    expect(registryStub.register).not.toHaveBeenCalled();
   });
 });
