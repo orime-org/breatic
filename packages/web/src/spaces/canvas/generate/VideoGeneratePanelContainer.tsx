@@ -663,9 +663,10 @@ function VideoGeneratePanelBody({
   // and #1880 ratified that those are NOT repaired — creating one when the
   // panel opens is the exact race that decision removed (two people opening
   // at once each mint one under the same key, and last-write-wins drops a
-  // container with everything typed into it). So the panel opens without an
-  // editor and its arrow can never light; saying why is what keeps that from
-  // reading as the feature being broken.
+  // container with everything typed into it). Such a node renders nothing
+  // here, the same as the image panel (`GeneratePanelContainer.tsx:705`):
+  // pre-launch we ship no compatibility branch for old data (#1950).
+  //
   // The model decides, not the mode (#1935, #1950): a model that declares no
   // `prompt` has nothing to do with one, so the editor does not mount and a
   // line says what this mode runs on instead. Unmounting rather than hiding —
