@@ -81,9 +81,11 @@ function MessageSkeleton(): React.JSX.Element {
     <div className='flex flex-col p-3' data-testid='message-skeleton' aria-hidden>
       {[0, 1, 2].map((round) => (
         <div key={round} className='mb-3.5'>
-          {/* 一句问、两行答,照真实消息的排法。方块堆在那儿读不出是对话,
-              只读得出「有东西在闪」;而这里等的正是一段对话。宽度逐组
-              递增,读起来像内容而不像三个一样的格子。 */}
+          {/* One question, two lines of answer, laid out the way real messages
+              are. A stack of blocks reads as "something is blinking", not as a
+              conversation, and a conversation is what the reader is waiting
+              for. The widths grow group by group so it reads as content rather
+              than as three identical cells. */}
           <div
             data-skeleton-bar
             className='skeleton-shimmer ml-auto mb-2 rounded-xl'

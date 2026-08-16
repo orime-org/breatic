@@ -37,6 +37,7 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
   const currentId = useConversationRuntime((s) => s.currentByProject[projectId]);
   const currentTitle = conversations?.find((c) => c.id === currentId)?.title ?? null;
   const unreachable = status === 'failed';
+  const arrived = currentId !== undefined;
   // What the server said, when it said anything. The scrim covers the line
   // that would otherwise carry it, so it has to say it itself -- otherwise a
   // reader who was removed from the project reads "network error" while their
@@ -97,7 +98,13 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
       <div className='contents' inert={unreachable}>
         <AgentColHeader
           conversationName={currentTitle ?? ''}
-          conversationNamePlaceholder={t('chat.conversation.untitled')}
+          // The stand-in says "this one has no name", and that is something
+          // only a conversation in hand can be said about. Until one arrives
+          // the header says nothing -- the same silence the message column
+          // keeps, for the same reason: a conversation still on its way may
+          // well have a name, and guessing it has none is a guess the reader
+          // reads as fact.
+          conversationNamePlaceholder={arrived ? t('chat.conversation.untitled') : ''}
           onOpenHistory={openHistory}
           onNewConversation={startNew}
           onRenameConversation={renameCurrent}

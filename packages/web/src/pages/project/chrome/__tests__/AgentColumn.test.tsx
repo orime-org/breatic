@@ -212,3 +212,22 @@ describe('a history sheet left open when the list goes unreadable', () => {
     );
   });
 });
+
+describe('the header while the conversation is still on its way', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('says nothing about a name it does not have yet', async () => {
+    // 「未命名对话」是一句断言:这条会话没有名字。会话还没到手时说不出这句话
+    // —— 它可能有名字,只是还没到。消息区在这一刻什么都不画(D6),顶栏是同一
+    // 条不变量的另一半。
+    vi.mocked(chatApi.openChat).mockImplementation(() => new Promise(() => {}));
+    renderColumn();
+
+    await waitFor(() => expect(screen.getByTestId('agent-col-header')).toBeInTheDocument());
+
+    expect(screen.getByTestId('agent-col-header')).not.toHaveTextContent('Untitled conversation');
+  });
+});
