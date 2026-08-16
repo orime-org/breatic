@@ -22,7 +22,9 @@
     "typecheck": "turbo run typecheck",
     "docs": "turbo run docs",
     "clean": "turbo run clean",
-    "prepare": "git config core.hooksPath .husky || true"
+    "prepare": "git config core.hooksPath .husky || true",
+    "db:journal-add": "tsx scripts/db-journal-add.ts",
+    "db:journal-repair": "tsx scripts/db-journal-repair.ts"
   },
   "devDependencies": {
     "@breatic/eslint-rules": "workspace:*",

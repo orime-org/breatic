@@ -245,6 +245,8 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 # Docker 全量:复制 .env.docker → .env,改域名/密钥,docker compose up -d
 pnpm dev              # turbo 跑全部服务(自动先 build shared/core,再 watch server/worker/collab)
 pnpm db:migrate       # 拉新 migration 后跑
+pnpm db:journal-add <tag>  # 手写完 NNNN_name.sql 后加 journal 条目,`when` 由它取时钟
+pnpm db:journal-repair    # 拉到迁移时间戳修正后每个库跑一次(先看报告,再 --apply)
 pnpm test / typecheck / lint
 ```
 
