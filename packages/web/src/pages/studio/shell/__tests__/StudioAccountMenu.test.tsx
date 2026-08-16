@@ -20,6 +20,7 @@ const ALEX = {
   name: 'Alex',
   email: 'alex@x.example',
   personalStudio: { name: 'Alex', slug: 'alex', avatarUrl: null },
+  membershipTier: 'base' as const,
 };
 
 /**

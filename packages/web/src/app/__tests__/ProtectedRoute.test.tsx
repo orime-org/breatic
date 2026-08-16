@@ -90,7 +90,7 @@ describe('ProtectedRoute', () => {
 
   it('bootstrapped + user + personalStudio populated renders children', () => {
     useCurrentUserStore.setState({
-      user: { id: 'u1', name: 'Alice', email: 'a@b.com', personalStudio: studio },
+      user: { id: 'u1', name: 'Alice', email: 'a@b.com', personalStudio: studio, membershipTier: 'base' },
       role: null,
       loading: false,
       bootstrapped: true,
@@ -108,7 +108,7 @@ describe('ProtectedRoute', () => {
   // protected URL.
   it('bootstrapped + user + personalStudio=null bounces to /choose-slug (not the protected page)', () => {
     useCurrentUserStore.setState({
-      user: { id: 'u1', name: 'a', email: 'a@b.com', personalStudio: null },
+      user: { id: 'u1', name: 'a', email: 'a@b.com', personalStudio: null, membershipTier: 'base' },
       role: null,
       loading: false,
       bootstrapped: true,
@@ -125,7 +125,7 @@ describe('ProtectedRoute', () => {
   // precisely because they have no personal studio yet.
   it('requirePersonalStudio=false renders children even when personalStudio=null (onboarding exemption)', () => {
     useCurrentUserStore.setState({
-      user: { id: 'u1', name: 'a', email: 'a@b.com', personalStudio: null },
+      user: { id: 'u1', name: 'a', email: 'a@b.com', personalStudio: null, membershipTier: 'base' },
       role: null,
       loading: false,
       bootstrapped: true,

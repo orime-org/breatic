@@ -62,7 +62,7 @@ describe('RegisterPage (two-step entry)', () => {
 
   it('registers with email + password only (no name in the request body)', async () => {
     vi.mocked(authApi.register).mockResolvedValueOnce({
-      user: { id: 'u1', email: 'foo@bar.com', personalStudio: null, credits: 0 },
+      user: { id: 'u1', email: 'foo@bar.com', personalStudio: null, credits: 0, membershipTier: 'base' },
       recoveryCode: 'AAAA-BBBB-CCCC-DDDD',
     });
     const user = userEvent.setup();
@@ -86,7 +86,7 @@ describe('RegisterPage (two-step entry)', () => {
   // /studio — a half-finished sign-up must complete onboarding first.
   it('continue from the recovery screen navigates to /choose-slug (not /studio)', async () => {
     vi.mocked(authApi.register).mockResolvedValueOnce({
-      user: { id: 'u1', email: 'foo@bar.com', personalStudio: null, credits: 0 },
+      user: { id: 'u1', email: 'foo@bar.com', personalStudio: null, credits: 0, membershipTier: 'base' },
       recoveryCode: 'AAAA-BBBB-CCCC-DDDD',
     });
     const user = userEvent.setup();

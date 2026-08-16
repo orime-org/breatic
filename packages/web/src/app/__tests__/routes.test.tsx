@@ -103,6 +103,7 @@ describe('routes', () => {
         name: 'Tester',
         email: 't@t.com',
         personalStudio: { name: 'Tester', slug: 'tester', avatarUrl: null },
+        membershipTier: 'base',
       },
       role: null,
       loading: false,

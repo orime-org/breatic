@@ -275,6 +275,7 @@ describe('ProjectPage — only the machine that asked claims the new Space', () 
         name: 'Me',
         email: 'me@e.com',
         personalStudio: { name: 'Me', slug: 'me', avatarUrl: null },
+        membershipTier: 'base',
       },
     });
   });

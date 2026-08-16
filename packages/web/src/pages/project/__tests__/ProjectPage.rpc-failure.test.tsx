@@ -199,6 +199,7 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
         name: 'Me',
         email: 'me@e.com',
         personalStudio: { name: 'Me', slug: 'me', avatarUrl: null },
+        membershipTier: 'base',
       },
     });
   });
