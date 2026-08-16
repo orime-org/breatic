@@ -23,6 +23,7 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
     tier: 'recommended',
     cost_per_call: 88,
     generation_time: 120,
+    takes_prompt: true,
     params,
     providers: [],
     sourcesByMode: { t2v: [] },

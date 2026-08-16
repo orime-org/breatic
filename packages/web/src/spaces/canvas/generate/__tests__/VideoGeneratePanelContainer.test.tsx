@@ -73,12 +73,12 @@ const T2V: ModelEntry = {
   tier: 'recommended',
   cost_per_call: 88,
   generation_time: 120,
+  // The panel asks the model this (#1966). It used to infer the same answer
+  // from a `prompt` entry under `params`; that entry is gone from the catalog,
+  // because it was a per-modality writing habit — no image model ever wrote
+  // one — rather than a statement about the model.
+  takes_prompt: true,
   params: {
-    // Declared because every real video model declares it (kling, seedance,
-    // veo and wan all do) — and since #1935 the panel reads this key to decide
-    // whether to demand a prompt. A fixture without it would put these cases
-    // in a state the catalog never ships.
-    prompt: { description: '', default: null },
     aspect_ratio: { description: '', values: ['16:9'], default: '16:9' },
     duration: { description: '', values: [4, 8], default: 8 },
   },
@@ -148,6 +148,7 @@ const TALKING_HEAD: ModelEntry = {
   display_name: 'OmniHuman 1.5',
   mode: 'talking_head',
   sourcesByMode: { talking_head: ['image', 'audio'] },
+  takes_prompt: false,
   params: {},
 };
 
@@ -165,7 +166,7 @@ const TALKING_HEAD_WITH_PROMPT: ModelEntry = {
   ...TALKING_HEAD,
   name: 'omnihuman-scripted',
   display_name: 'OmniHuman Scripted',
-  params: { prompt: { description: '', default: null } },
+  takes_prompt: true,
 };
 
 /**

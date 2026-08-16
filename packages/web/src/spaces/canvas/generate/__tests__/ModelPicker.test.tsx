@@ -25,6 +25,7 @@ function model(name: string, displayName: string): ModelEntry {
     tier: 'recommended',
     cost_per_call: 7,
     generation_time: 30,
+    takes_prompt: true,
     params: {},
     providers: [],
     sourcesByMode: {},

@@ -28,6 +28,7 @@ const MODEL: ModelEntry = {
   tier: 'recommended',
   cost_per_call: 7,
   generation_time: 30,
+  takes_prompt: true,
   params: {
     aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
     resolution: { description: '', values: ['1K', '2K'], default: '1K' },

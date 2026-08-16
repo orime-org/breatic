@@ -341,6 +341,12 @@ export function buildVideoPanelViewModel(input: {
     references,
     referenceUrls,
     maxReferences: positiveCap(current?.params.images?.max_items),
-    promptRequired: current ? current.params.prompt != null : true,
+    // The model states it (#1966). This used to be inferred from a `prompt`
+    // entry under `params`, which happened to work for video because all four
+    // video yaml files wrote one — a per-catalog writing habit, not a rule, and
+    // the image catalog's habit was the opposite. The fallback still applies
+    // when no model resolves: an unrecognised model is not a licence to skip a
+    // requirement every other mode has.
+    promptRequired: current?.takes_prompt ?? true,
   };
 }

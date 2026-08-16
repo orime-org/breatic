@@ -330,14 +330,10 @@ function GeneratePanelBody({
     model: vm.model,
     nodeStatus: vm.nodeStatus,
     isSubmitting,
-    // This panel has always required a prompt and still does. Stated rather
-    // than derived because the video panel's derivation (`params.prompt !=
-    // null`) reads the model's catalog entry, and not one image model
-    // declares a prompt param — the prompt is its own argument, carried
-    // beside the params rather than in them, and whether a catalog states it
-    // anyway varies by bucket. Deriving here would turn the requirement off
-    // for every image model at once (#1935).
-    promptRequired: true,
+    // The model states it (#1966). This was a literal `true` until the field
+    // existed, because the only derivation available then read a `prompt`
+    // entry under `params` that no image model writes.
+    promptRequired: vm.promptRequired,
   });
 
   const onSelectModel = React.useCallback(
@@ -597,8 +593,11 @@ function GeneratePanelBody({
         model: fresh.model,
         nodeStatus: fresh.nodeStatus,
         isSubmitting: false,
-        // Same as the button's gate above, and stated for the same reason.
-        promptRequired: true,
+        // Same as the button's gate above, and now from the same live value:
+        // a literal here would be a second answer to a question the model
+        // already answers, and the two could disagree — this gate returns
+        // without a toast, so a disagreement is a click that does nothing.
+        promptRequired: fresh.promptRequired,
       })
     ) {
       return;

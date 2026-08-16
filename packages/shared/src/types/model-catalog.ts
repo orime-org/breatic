@@ -292,6 +292,14 @@ const modelEntrySchema = z.object({
   sourcesByMode: z
     .record(z.string(), z.array(z.enum(["image", "video", "audio"])))
     .catch({}),
+  // Whether the model consumes the user's text (#1966). The backend refuses to
+  // load a catalog where a model omits it, so this `.catch` only fires on a
+  // corrupted or version-skewed wire — and there it degrades OPEN, same as
+  // `sourcesByMode` above: `true` mounts the editor, which at worst reproduces
+  // the pre-#1966 behaviour of a prompt the model ignores. `false` would hide
+  // the editor AND block execute (`canExecuteGenerate` demands a prompt when
+  // this is true), leaving no way to generate at all.
+  takes_prompt: z.boolean().catch(true),
 });
 
 /** One modality bucket: a non-array coerces to [], garbage entries drop out. */

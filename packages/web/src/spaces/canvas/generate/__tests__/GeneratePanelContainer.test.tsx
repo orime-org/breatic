@@ -67,7 +67,7 @@ import {
   CanvasContext,
   type CanvasContextValue,
 } from '@web/spaces/canvas/canvas-context';
-import { modelsApi } from '@web/data/api';
+import { canvasApi, modelsApi } from '@web/data/api';
 import { addNode, readCanvasGraph } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { useCanvasStore } from '@web/stores';
@@ -310,6 +310,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       tier: 'optional',
       cost_per_call: 5,
       generation_time: 10,
+      takes_prompt: true,
       params: {
         aspect_ratio: { description: '', values: ['1:1'], default: '1:1' },
         ...(withStyle
@@ -449,6 +450,7 @@ const T2I_MODEL: ModelEntry = {
   tier: 'recommended',
   cost_per_call: 5,
   generation_time: 10,
+  takes_prompt: true,
   params: {
     aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
   },
@@ -624,5 +626,82 @@ describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948
       expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
     });
     listSpy.mockRestore();
+  });
+});
+
+describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1966)', () => {
+  beforeEach(() => {
+    _resetForTests();
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  // 这个面板有两道闸门：按钮亮不亮，以及点下去之后提交前用活值再判一次。
+  // 两处此前都写死 true。设计对抗指出设计文档只点名了第一处 —— 而第二处漏改
+  // 的后果最难发现：按钮是亮的，点下去 `return` 走人，一句话都不说（它下面
+  // 几道闸门都配了 toast，只有这道没有）。
+  //
+  // 这一条钉的就是第二处读的是活值。把它改回写死 true，这条会红。
+  it('模型不吃提示词时，空提示词也照样提交得出去', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(
+        imageCatalog([{ ...T2I_MODEL, takes_prompt: false }]),
+      );
+    const createSpy = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockResolvedValue({ id: 'task-1' } as Awaited<
+        ReturnType<typeof canvasApi.createTask>
+      >);
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    // 目录到齐之前面板已经渲染出来了（那正是 #1964），此时按钮因为解不出
+    // 模型而禁用 —— 不等它就点，点的是一个禁用按钮，什么都不会发生。
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(createSpy).toHaveBeenCalledTimes(1);
+    });
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  // 对照组：同样是空提示词，模型说吃，就该被拦下。少了这一条，上面那条在
+  // 「这个面板根本不拦任何东西」的实现下也会绿。
+  it('模型吃提示词时，空提示词提交不出去', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([{ ...T2I_MODEL, takes_prompt: true }]));
+    const createSpy = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockResolvedValue({ id: 'task-1' } as Awaited<
+        ReturnType<typeof canvasApi.createTask>
+      >);
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    // 这一档模型吃提示词而提示词是空的，所以按钮本来就该是禁用的 —— 先钉住
+    // 这一点，再点它一次确认提交路径也不放行（两道闸门各自成立）。
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-model-trigger')).toBeTruthy();
+    });
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(btn);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(createSpy).not.toHaveBeenCalled();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
   });
 });
