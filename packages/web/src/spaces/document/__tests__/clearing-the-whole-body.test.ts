@@ -206,6 +206,24 @@ describe('这条规则不许碰的操作', () => {
     expect(body(e)).toBe('<h2>H</h2><ul><li><p>one</p></li></ul>');
   });
 
+  /**
+   * 粘贴单个块是 `putsBackOnlyInline` 唯一守着的场景。
+   *
+   * 粘两个块时挡住规则的其实是「正文块数不超过一个」那条，所以那种用例证明不了
+   * 这道判据在干活；只有粘一个块能走到它跟前。
+   */
+  it.each([
+    ['一个正文标题', '<h2>H</h2>'],
+    ['一个引用块', '<blockquote><p>Q</p></blockquote>'],
+    ['一个列表', '<ul><li><p>L</p></li></ul>'],
+    ['一个代码块', '<pre><code>C</code></pre>'],
+  ])('全选之后粘贴%s：原样进来，不许被压成普通段落', (_name, html) => {
+    const e = open('<p>aa</p><p>bb</p>');
+    selectWholeBody(e);
+    e.commands.insertContent(html);
+    expect(body(e)).toBe(html);
+  });
+
   it('全选之后粘贴多行纯文本：分成多段，不挤成一段', () => {
     const e = open('<p>aa</p><p>bb</p>');
     selectWholeBody(e);
@@ -233,6 +251,23 @@ describe('这条规则不许碰的操作', () => {
     selectWholeBody(e);
     e.chain().toggleBlockquote().run();
     expect(body(e)).toBe('<p></p><p></p>');
+  });
+
+  /**
+   * 引用里装的不是普通段落时，`nothingOldLeft` 的第一条是唯一守着的那道。
+   *
+   * 取消引用产生的 `ReplaceAroundStep` 的 slice 是空的（留下的内容住在它的 gap
+   * 里），所以按 step 形状判的那道看不见它，只能在结果上判：留下来的文字跟这次
+   * 放回去的文字不一样，就说明原来的东西还在，不是清空。
+   */
+  it.each([
+    ['正文标题', '<blockquote><h2>H</h2></blockquote>', '<h2>H</h2>'],
+    ['代码块', '<blockquote><pre><code>C</code></pre></blockquote>', '<pre><code>C</code></pre>'],
+  ])('全选之后取消引用，引用里装的是%s：原样留下，不许被降级', (_name, html, expected) => {
+    const e = open(html);
+    selectWholeBody(e);
+    e.chain().toggleBlockquote().run();
+    expect(body(e)).toBe(expected);
   });
 
   it('全选之后清除格式：内容原样在', () => {
