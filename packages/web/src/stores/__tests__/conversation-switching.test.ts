@@ -942,3 +942,70 @@ describe('deleting a conversation the server no longer has', () => {
     expect(useConversationRuntime.getState().listByProject[P]?.map((c) => c.id)).toEqual(['c-1']);
   });
 });
+
+describe('pressing the row that is already on screen', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('cancels a switch that is still on its way', async () => {
+    // 读者点了 c-2、反悔、又点回带着当前标记的那一行 —— 那一下同样是他在说
+    // 「我要留在这条」。它必须让 c-2 那趟作废,否则一两秒后面板会自己跳到他
+    // 已经放弃的那条会话上,而那时抽屉早关了、他以为这件事结束了。
+    opens([
+      { id: 'c-1', title: 'one' },
+      { id: 'c-2', title: 'two' },
+    ]);
+    await conversationRuntime.ensureLoaded(P);
+
+    let landC2: (() => void) | undefined;
+    vi.mocked(chatApi.readConversation).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          landC2 = () =>
+            resolve({
+              conversation: { id: 'c-2', title: 'two' },
+              messages: [],
+              hasMore: false,
+            } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+        }),
+    );
+    const flying = conversationRuntime.switchTo(P, 'c-2');
+    await conversationRuntime.switchTo(P, 'c-1');
+
+    landC2?.();
+    await flying;
+
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-1');
+  });
+
+  it('puts the composer back rather than leaving it read-only', async () => {
+    // 同一条路上的第二半:那次早退也得把导航态收干净,否则输入框会一直冻着
+    // 等一个再也不会被采纳的答复。
+    opens([
+      { id: 'c-1', title: 'one' },
+      { id: 'c-2', title: 'two' },
+    ]);
+    await conversationRuntime.ensureLoaded(P);
+
+    let landC2: (() => void) | undefined;
+    vi.mocked(chatApi.readConversation).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          landC2 = () =>
+            resolve({
+              conversation: { id: 'c-2', title: 'two' },
+              messages: [],
+              hasMore: false,
+            } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+        }),
+    );
+    const flying = conversationRuntime.switchTo(P, 'c-2');
+    await conversationRuntime.switchTo(P, 'c-1');
+    landC2?.();
+    await flying;
+
+    expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
+  });
+});

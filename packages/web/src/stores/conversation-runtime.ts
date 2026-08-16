@@ -1562,8 +1562,15 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
   try {
 
     // Already the one on screen. Asking again would replace a conversation with
-    // an identical copy of itself for no reason.
-    if (useStore.getState().currentByProject[projectId] === conversationId) return;
+    // an identical copy of itself for no reason -- but this press did put the
+    // reader where they asked to be, so it counts as having landed. Counting it
+    // as a press that asked for nothing would hand the claim back to whatever
+    // is still travelling, and the switch they just changed their mind about
+    // would arrive a moment later and take the screen.
+    if (useStore.getState().currentByProject[projectId] === conversationId) {
+      landed = true;
+      return;
+    }
 
     const visit = currentVisit(projectId);
     try {
