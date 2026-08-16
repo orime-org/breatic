@@ -127,14 +127,26 @@ describe('说「这片不要了」的时候（A4）', () => {
     });
   });
 
-  it('带修饰键的删除也算——tiptap 把 11 个绑定路由到同一条链', () => {
-    for (const mods of [{ shiftKey: true }, { ctrlKey: true }]) {
+  /**
+   * tiptap 在 pc 平台绑了五个删除组合（`dist:5352`）：裸 Backspace、
+   * Mod-Backspace、Shift-Backspace、裸 Delete、Mod-Delete。jsdom 按 pc 判定，
+   * 这里钉带修饰键的那三个（裸的两个各有十种结构的组）。mac 的另外几个绑定
+   * 走同一条链，jsdom 驱动不到；没绑定的组合（Alt+Backspace 等）在真浏览器
+   * 走原生编辑加 DOM 差分，产生的同样是 transaction，被同一条规则接住。
+   */
+  it.each([
+    ['Ctrl+Backspace', 'Backspace', { ctrlKey: true }],
+    ['Shift+Backspace', 'Backspace', { shiftKey: true }],
+    ['Ctrl+Delete', 'Delete', { ctrlKey: true }],
+  ] as Array<[string, string, Partial<KeyboardEventInit>]>)(
+    '带修饰键的删除也算：%s',
+    (_name, key, mod) => {
       const e = open('<ul><li><p>aa</p></li><li><p>bb</p></li></ul>');
       selectWholeBody(e);
-      press(e, 'Backspace', mods);
+      press(e, key, mod);
       expect(body(e)).toBe('<p></p>');
-    }
-  });
+    },
+  );
 
   describe('剪切，十种正文结构都收敛成一个空段落', () => {
     it.each(SHAPES)('%s', (_name, html) => {

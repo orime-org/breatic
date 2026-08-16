@@ -18,7 +18,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
-import { TextSelection } from '@tiptap/pm/state';
+import { Selection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -113,6 +113,28 @@ describe('跨块选区上按回车（A10）', () => {
     );
   });
 
+  /**
+   * 设计 §3.7 第二张表的第五、六种：改实现之前就正常的两种跨块形状。
+   * 换掉分块命令之后「不抛」不再是唯一风险，产出形状也可能变，所以钉产出。
+   */
+  it('从段落拖到列表项：不抛，两个空段落', () => {
+    const e = open('<p>aa</p><ul><li><p>bb</p></li></ul>');
+    selectAllText(e, 0, 1);
+    expect(() => {
+      press(e, 'Enter');
+    }).not.toThrow();
+    expect(body(e)).toBe('<p></p><p></p>');
+  });
+
+  it('从引用块拖到段落：不抛，两个空段落', () => {
+    const e = open('<blockquote><p>aa</p></blockquote><p>bb</p>');
+    selectAllText(e, 0, 1);
+    expect(() => {
+      press(e, 'Enter');
+    }).not.toThrow();
+    expect(body(e)).toBe('<p></p><p></p>');
+  });
+
   it('在一行加粗文字末尾按回车，接着打的字还是粗的', () => {
     const e = open('<p><strong>aa</strong></p>');
     const at = e.state.doc.content.size - 1;
@@ -131,6 +153,9 @@ describe('跨块选区上按回车（A10）', () => {
       ['列表项中间', '<ul><li><p>abcd</p></li></ul>', (e) => e.state.doc.child(0).nodeSize + 5],
       ['引用块中间', '<blockquote><p>abcd</p></blockquote>', (e) => e.state.doc.child(0).nodeSize + 4],
       ['代码块中间', '<pre><code>abcd</code></pre>', (e) => e.state.doc.child(0).nodeSize + 3],
+      ['列表项末尾', '<ul><li><p>abcd</p></li></ul>', (e) => Selection.atEnd(e.state.doc).from],
+      ['引用块末尾', '<blockquote><p>abcd</p></blockquote>', (e) => Selection.atEnd(e.state.doc).from],
+      ['代码块末尾', '<pre><code>abcd</code></pre>', (e) => Selection.atEnd(e.state.doc).from],
       ['有序列表 start=5 中间', '<ol start="5"><li><p>abcd</p></li></ol>', (e) => e.state.doc.child(0).nodeSize + 5],
     ];
     const expected: Record<string, string> = {
@@ -142,6 +167,9 @@ describe('跨块选区上按回车（A10）', () => {
       列表项中间: '<ul><li><p>ab</p></li><li><p>cd</p></li></ul>',
       引用块中间: '<blockquote><p>ab</p><p>cd</p></blockquote>',
       代码块中间: '<pre><code>ab\ncd</code></pre>',
+      列表项末尾: '<ul><li><p>abcd</p></li><li><p></p></li></ul>',
+      引用块末尾: '<blockquote><p>abcd</p><p></p></blockquote>',
+      代码块末尾: '<pre><code>abcd\n</code></pre>',
       '有序列表 start=5 中间': '<ol start="5"><li><p>ab</p></li><li><p>cd</p></li></ol>',
     };
     it.each(cases)('%s', (name, html, at) => {
