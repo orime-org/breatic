@@ -630,3 +630,39 @@ describe('opening the list again', () => {
     );
   });
 });
+
+describe('a page request left over from a visit that ended', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not clear the marks belonging to the visit after it', async () => {
+    // 旧请求落地时 `finally` 照跑,而它清的是按 project 记的账 —— 那本账现在
+    // 属于新的一次访问。清掉之后:底部不再说「正在加载」,而请求确实还在飞;
+    // 去重闸门也没了,末尾再进视野就会把同一页再要一遍。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1', { hasMoreConversations: true });
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    let failFirst: (() => void) | undefined;
+    vi.mocked(chatApi.listConversations).mockImplementationOnce(
+      () => new Promise((_r, reject) => (failFirst = () => reject(new Error('offline')))),
+    );
+    const abandoned = conversationRuntime.loadMoreConversations(PROJECT);
+
+    conversationRuntime.leaveProject(PROJECT);
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1', { hasMoreConversations: true });
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    vi.mocked(chatApi.listConversations).mockImplementationOnce(
+      () => new Promise(() => {}),
+    );
+    void conversationRuntime.loadMoreConversations(PROJECT);
+    expect(useConversationRuntime.getState().listLoadingMore[PROJECT]).toBe(true);
+
+    failFirst?.();
+    await abandoned;
+
+    expect(useConversationRuntime.getState().listLoadingMore[PROJECT]).toBe(true);
+  });
+});

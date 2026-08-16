@@ -618,10 +618,13 @@ async function ensureLoaded(projectId: string): Promise<void> {
 async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined> {
   const nav = intendToNavigate(projectId);
   let landed = false;
+  // Taken here rather than inside, because the clean-up below has to ask
+  // whether this is still the visit that asked -- and asking again down there
+  // would answer about whichever visit is current by then.
+  const visit = currentVisit(projectId);
   fetchingList.add(projectId);
   useStore.setState((s) => ({ listLoading: { ...s.listLoading, [projectId]: true as const } }));
   try {
-    const visit = currentVisit(projectId);
     // Everything except a chat that is already on screen. What this must not do
     // is take a conversation away from someone reading it: the message column
     // draws nothing while this says loading, so a re-open behind a chat that
@@ -699,8 +702,12 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       return { failed: err };
     }
   } finally {
-    fetchingList.delete(projectId);
-    settleListLoading(projectId);
+    // Not if the visit that asked is over: this project's bookkeeping belongs
+    // to whoever is here now, and an abandoned request must not settle it.
+    if (!visit.signal.aborted) {
+      fetchingList.delete(projectId);
+      settleListLoading(projectId);
+    }
     // However this ended -- landed, failed, or overtaken -- it is over, and
     // being the last one out means nobody else will settle the panel.
     navigationEnded(projectId, nav, landed);
@@ -1770,10 +1777,17 @@ async function loadMoreConversations(projectId: string): Promise<void> {
     // they did.
     tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
   } finally {
-    fetchingMore.delete(projectId);
-    useStore.setState((st) => ({
-      listLoadingMore: (({ [projectId]: _done, ...rest }) => rest)(st.listLoadingMore),
-    }));
+    // Only if this is still the visit that asked. The bookkeeping is kept per
+    // project, and a request abandoned with a visit lands whenever it lands --
+    // by then the reader may have come back and asked again. Clearing then
+    // takes down the line saying a page is on its way while one still is, and
+    // opens the gate that stops the same page being asked for twice.
+    if (!visit.signal.aborted) {
+      fetchingMore.delete(projectId);
+      useStore.setState((st) => ({
+        listLoadingMore: (({ [projectId]: _done, ...rest }) => rest)(st.listLoadingMore),
+      }));
+    }
   }
 }
 
@@ -1813,8 +1827,12 @@ async function reloadConversationList(projectId: string): Promise<void> {
     // the list again asks again.
     tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
   } finally {
-    fetchingList.delete(projectId);
-    settleListLoading(projectId);
+    // Same reason as the next page: an abandoned request must not settle the
+    // bookkeeping of the visit that came after it.
+    if (!visit.signal.aborted) {
+      fetchingList.delete(projectId);
+      settleListLoading(projectId);
+    }
   }
 }
 
