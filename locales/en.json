@@ -1120,5 +1120,45 @@
     "goThere": "Go there",
     "backHome": "Back to your Studio",
     "actionFailed": "That did not go through. Please try again."
+  },
+  "membership": {
+    "panelTitle": "Membership",
+    "close": "Close",
+    "currentTier": "Current membership",
+    "tier": {
+      "base": "Base",
+      "pro": "PRO",
+      "team": "Team",
+      "self_hosted": "Self-hosted",
+      "enterprise": "Enterprise"
+    },
+    "priceFree": "Free",
+    "pricePerMonth": "{amount} / month",
+    "tierNote": "Your tier decides capacity and collaboration scale. Every creative feature and every model is the same on all tiers.",
+    "upgrade": "Upgrade",
+    "myQuota": "My allowances",
+    "quota": {
+      "teamStudios": "Team Studios",
+      "storage": "Storage",
+      "projectsPerStudio": "Projects per Studio",
+      "studioMembers": "Members per Studio",
+      "projectMembers": "Members per Project",
+      "concurrentEditors": "Simultaneous editors per document"
+    },
+    "quotaValue": "{used} / {limit}",
+    "countItems": "{count}",
+    "countPeople": "{count}",
+    "countConnections": "{count} connections",
+    "overLimitTag": "over",
+    "overLimit": {
+      "storage": "Storage is over the limit. What is already there works as before, but nothing new can be uploaded. Upgrade for more space.",
+      "teamStudios": "You are over the team Studio limit. The ones you have work as before, but no new ones can be created. Upgrade for more."
+    },
+    "enterpriseQuota": "Your allowances are set by a separate agreement and are not shown here.",
+    "compare": "Compare tiers",
+    "monthlyFee": "Monthly",
+    "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
+    "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
+    "loadFailed": "We could not read your membership. It may be a network problem — try again in a moment."
   }
 }

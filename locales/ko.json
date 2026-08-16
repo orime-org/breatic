@@ -1120,5 +1120,45 @@
     "goThere": "보러 가기",
     "backHome": "내 Studio로 돌아가기",
     "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요."
+  },
+  "membership": {
+    "panelTitle": "멤버십",
+    "close": "닫기",
+    "currentTier": "현재 멤버십",
+    "tier": {
+      "base": "Base",
+      "pro": "PRO",
+      "team": "Team",
+      "self_hosted": "자체 호스팅",
+      "enterprise": "엔터프라이즈"
+    },
+    "priceFree": "무료",
+    "pricePerMonth": "{amount} / 월",
+    "tierNote": "등급이 정하는 것은 용량과 협업 규모입니다. 모든 창작 기능과 모델은 어느 등급에서나 동일합니다.",
+    "upgrade": "업그레이드",
+    "myQuota": "내 사용량",
+    "quota": {
+      "teamStudios": "팀 Studio",
+      "storage": "저장 공간",
+      "projectsPerStudio": "Studio당 Project 한도",
+      "studioMembers": "Studio당 멤버 한도",
+      "projectMembers": "Project당 멤버 한도",
+      "concurrentEditors": "문서당 동시 편집 수"
+    },
+    "quotaValue": "{used} / {limit}",
+    "countItems": "{count}개",
+    "countPeople": "{count}명",
+    "countConnections": "{count}개 연결",
+    "overLimitTag": "초과",
+    "overLimit": {
+      "storage": "저장 공간이 한도를 넘었습니다. 기존 내용은 그대로 쓸 수 있지만 새로 업로드할 수는 없습니다. 공간이 더 필요하면 업그레이드하세요.",
+      "teamStudios": "팀 Studio 수가 한도를 넘었습니다. 이미 만든 것은 그대로 쓸 수 있지만 새로 만들 수는 없습니다. 더 필요하면 업그레이드하세요."
+    },
+    "enterpriseQuota": "사용 한도는 별도 계약으로 정해져 있어 여기에 표시되지 않습니다.",
+    "compare": "등급 비교",
+    "monthlyFee": "월 요금",
+    "contactEnterprise": "더 큰 규모나 별도의 상업 조건이 필요하신가요? 메일로 문의해 주세요:",
+    "contactSelfHosted": "상업용 라이선스나 별도의 지원 조건이 필요하신가요? 메일로 문의해 주세요:",
+    "loadFailed": "멤버십 정보를 읽지 못했습니다. 네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요."
   }
 }

@@ -1120,5 +1120,45 @@
     "goThere": "開く",
     "backHome": "自分の Studio に戻る",
     "actionFailed": "実行できませんでした。もう一度お試しください。"
+  },
+  "membership": {
+    "panelTitle": "メンバーシップ",
+    "close": "閉じる",
+    "currentTier": "現在のプラン",
+    "tier": {
+      "base": "Base",
+      "pro": "PRO",
+      "team": "Team",
+      "self_hosted": "セルフホスト",
+      "enterprise": "エンタープライズ"
+    },
+    "priceFree": "無料",
+    "pricePerMonth": "{amount} / 月",
+    "tierNote": "プランで決まるのは容量と共同編集の規模です。制作機能とモデルはどのプランでも同じです。",
+    "upgrade": "アップグレード",
+    "myQuota": "利用状況",
+    "quota": {
+      "teamStudios": "チーム Studio",
+      "storage": "ストレージ",
+      "projectsPerStudio": "Studio ごとの Project 上限",
+      "studioMembers": "Studio ごとのメンバー上限",
+      "projectMembers": "Project ごとのメンバー上限",
+      "concurrentEditors": "1 ドキュメントの同時編集数"
+    },
+    "quotaValue": "{used} / {limit}",
+    "countItems": "{count} 件",
+    "countPeople": "{count} 人",
+    "countConnections": "{count} 接続",
+    "overLimitTag": "超過",
+    "overLimit": {
+      "storage": "ストレージが上限を超えています。既存のデータはこれまでどおり使えますが、新しくアップロードはできません。容量が必要な場合はアップグレードしてください。",
+      "teamStudios": "チーム Studio の数が上限を超えています。既存のものはこれまでどおり使えますが、新しくは作成できません。必要な場合はアップグレードしてください。"
+    },
+    "enterpriseQuota": "利用上限は個別契約で定められているため、ここには表示されません。",
+    "compare": "プラン比較",
+    "monthlyFee": "月額",
+    "contactEnterprise": "より大きな規模や個別の商用条件が必要ですか。メールでご相談ください:",
+    "contactSelfHosted": "商用ライセンスや個別のサポート条件が必要ですか。メールでご相談ください:",
+    "loadFailed": "メンバーシップ情報を読み込めませんでした。通信の問題かもしれません。少し時間をおいてお試しください。"
   }
 }
