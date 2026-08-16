@@ -1478,11 +1478,15 @@ describe('VideoGeneratePanelContainer', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('5.6 目录还在路上时，那一格照常挂编辑器 —— 不知道不等于不要', async () => {
-      // 模型查不到时 `promptRequired` 兜底取 true（view-model）。这个兜底是
-      // 给执行闸门定的：认不出的模型不该放松别的档都有的要求。渲染跟着它走，
-      // 于是加载期六个档一律有提示词框，跟改动前一样。改成 false 会让另外五
-      // 个档在那一帧失去输入框（#1950 第一轮试过，第二轮撤回）。
+    it('5.6 目录还在路上时，面板整个不渲染 —— 没有那一格，也没有编辑器', async () => {
+      // 契约变了（#1964）：此前面板在目录到齐前就画出来，于是每个控件各自
+      // 闪一次，那一格也要回答一个还答不出的问题；当时这条测的是那一帧里
+      // 它答什么（回落成「要提示词」，免得另外五个档在那一帧失去输入框）。
+      // 现在那一帧不存在了 —— 目录到齐才展开，所以「面板在」蕴含「目录在」，
+      // 这一格连同整个面板都不渲染。
+      //
+      // view-model 里那个 `?? true` 的兜底照旧，它管的是另一件事：目录到齐
+      // 了但节点存的模型已下架。那条由 5.5 钉。
       let go: (v: unknown) => void = () => {};
       vi.spyOn(modelsApi, 'list').mockReturnValue(
         new Promise((r) => {
@@ -1495,9 +1499,10 @@ describe('VideoGeneratePanelContainer', () => {
       act(() => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
+      await new Promise((r) => setTimeout(r, 30));
       expect(
-        await screen.findByTestId('generate-prompt-editor'),
-      ).toBeInTheDocument();
+        screen.queryByTestId('generate-prompt-editor'),
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByTestId('generate-video-prompt-not-used'),
       ).not.toBeInTheDocument();

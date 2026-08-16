@@ -43,6 +43,7 @@ import {
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
+import { usePrefetchModelCatalog } from '@web/spaces/canvas/generate/use-prefetch-model-catalog';
 import {
   FocusCropOverlay,
   handOffFocusToPickBanner,
@@ -3777,6 +3778,10 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // the shared provider the space's tab already holds, so this opens no second
   // connection; what it buys is a single answer to "whose caret is this",
   // instead of one per editor that could drift apart.
+  // Warm the model catalog now (#1966). The Generate panel refuses to render
+  // until it has one, so without this the first Generate of a session pays for
+  // the round trip with a blank patch of screen.
+  usePrefetchModelCatalog();
   const canvasDocName = docName.canvasSpace(props.projectId, props.spaceId);
   const canvasDoc = React.useMemo(() => getDoc(canvasDocName), [canvasDocName]);
   const { provider: caretProvider } = useSocket({

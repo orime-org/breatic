@@ -61,15 +61,26 @@ interface CatalogGatedFrameProps {
  *
  * A panel without a catalog is a dead end (blank model pill, no params,
  * execute permanently disabled), so a failed fetch EXPLAINS itself with a
- * toast and the panel never opens — no silent fail. Mounted only while a panel
- * is open, so the always-rendered container never touches react-query: a closed
- * panel needs no QueryClient, and never asking for one keeps the catalog's
- * single fetch tied to a panel actually being on screen.
+ * toast and the panel never opens — no silent fail.
+ *
+ * This used to be the only place that asked for the catalog, deliberately: a
+ * closed panel needed no QueryClient and the single fetch stayed tied to a
+ * panel being on screen. #1964 gave that up on purpose. Holding the panel back
+ * until the catalog lands turns every first open into a wait, so `CanvasSpace`
+ * now prefetches on mount and this query usually reads a warm cache. The
+ * prefetch does not subscribe, so the cache still ages out normally.
  *
  * The gate fires on "errored AND nothing cached": a BACKGROUND refetch failure
  * keeps the previously-fetched catalog, and the panel keeps working off it —
  * closing a working panel over a refresh hiccup would be worse than the silent
  * failure this gate fixes.
+ *
+ * It also holds while there is no catalog YET (#1964). Rendering first and
+ * filling in afterwards meant every control changed once under the user: a
+ * blank model pill, empty param pills, a dead execute button, and on failure
+ * a panel that flashed into view before closing itself. Waiting costs nothing
+ * in the common case because `CanvasSpace` prefetches the catalog when the
+ * space mounts, so by the time anyone clicks Generate the answer is cached.
  * @param root0 - Component props.
  * @param root0.nodeId - The node the panel anchors to.
  * @param root0.children - The panel body.
@@ -86,6 +97,15 @@ export function CatalogGatedFrame({
     queryFn: () => modelsApi.list(),
   });
   const catalogError = isError && data === undefined;
+  // No data yet and no error yet: the request is in flight, or paused because
+  // the browser is offline (#1966 — react-query's default `networkMode` parks
+  // a query then, and a paused query never resolves and never rejects, so
+  // this state does not end on its own). Either way there is nothing to build
+  // a panel out of, and the panel is what the user is waiting for — showing
+  // its shell first is the flicker #1964 is about. The way out of an offline
+  // wait is closing the panel; WHY the app is offline is the global
+  // connection banner's job, not this panel's.
+  const catalogPending = !catalogError && data === undefined;
   React.useEffect(() => {
     if (catalogError) {
       // A fixed toast id de-duplicates the StrictMode double-effect and rapid
@@ -96,7 +116,7 @@ export function CatalogGatedFrame({
       closeActivePanel();
     }
   }, [catalogError, closeActivePanel, t]);
-  if (catalogError) return null;
+  if (catalogError || catalogPending) return null;
   return (
     <NodeToolbar nodeId={nodeId} isVisible position={Position.Bottom}>
       {children}

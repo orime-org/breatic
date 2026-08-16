@@ -427,11 +427,15 @@ describe('GeneratePanelContainer — body subscription set', () => {
     act(() => {
       useCanvasStore.getState().openGeneratePanel('target', 'image');
     });
+    // 等到订阅集真的成形，不是等「这个 hook 被调用过」—— 挂载那一刻它就被
+    // 调过一次（面板还没打开、集是空的）。目录到齐才展开面板之后（#1964），
+    // 那次空调用和这次有值的调用之间还多隔了一个往返。
     await waitFor(() => {
-      expect(vi.mocked(useTextBodies)).toHaveBeenCalled();
+      expect(vi.mocked(useTextBodies).mock.lastCall?.[2]).toEqual([
+        'wired-a',
+        'wired-b',
+      ]);
     });
-    const ids = vi.mocked(useTextBodies).mock.lastCall?.[2];
-    expect(ids).toEqual(['wired-a', 'wired-b']);
     listSpy.mockRestore();
   });
 });

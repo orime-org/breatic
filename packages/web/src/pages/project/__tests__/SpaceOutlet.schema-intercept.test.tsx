@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import {
   DOCUMENT_SCHEMA,
@@ -49,7 +50,11 @@ describe('服务器那份跟我不一样时', () => {
   it('document space 被拦下来，出的是那个面板', () => {
     publishDifferentSchema();
 
-    render(<SpaceOutlet projectId={PROJECT} spaceId='s1' type='document' />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SpaceOutlet projectId={PROJECT} spaceId='s1' type='document' />
+      </QueryClientProvider>,
+    );
 
     expect(screen.getByTestId('document-schema-outdated')).toBeInTheDocument();
   });
@@ -59,7 +64,11 @@ describe('服务器那份跟我不一样时', () => {
     // 而那样工具栏还在、按钮还按得动。这一条钉的是后者。
     publishDifferentSchema();
 
-    render(<SpaceOutlet projectId={PROJECT} spaceId='s1' type='document' />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SpaceOutlet projectId={PROJECT} spaceId='s1' type='document' />
+      </QueryClientProvider>,
+    );
 
     expect(screen.getByTestId('document-schema-outdated')).toBeInTheDocument();
     expect(screen.queryByTestId('document-toolbar')).not.toBeInTheDocument();
@@ -70,7 +79,11 @@ describe('服务器那份跟我不一样时', () => {
   it('同一个 project 里的第二个 document space 一样被拦', () => {
     publishDifferentSchema();
 
-    render(<SpaceOutlet projectId={PROJECT} spaceId='s2' type='document' />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SpaceOutlet projectId={PROJECT} spaceId='s2' type='document' />
+      </QueryClientProvider>,
+    );
 
     expect(screen.getByTestId('document-schema-outdated')).toBeInTheDocument();
   });
@@ -78,7 +91,11 @@ describe('服务器那份跟我不一样时', () => {
   it('画布照常——这份 schema 只管 document', () => {
     publishDifferentSchema();
 
-    render(<SpaceOutlet projectId={PROJECT} spaceId='s3' type='canvas' />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SpaceOutlet projectId={PROJECT} spaceId='s3' type='canvas' />
+      </QueryClientProvider>,
+    );
 
     expect(screen.getByTestId('canvas-space')).toBeInTheDocument();
     expect(
@@ -89,7 +106,11 @@ describe('服务器那份跟我不一样时', () => {
   it('时间轴也照常', () => {
     publishDifferentSchema();
 
-    render(<SpaceOutlet projectId={PROJECT} spaceId='s4' type='timeline' />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SpaceOutlet projectId={PROJECT} spaceId='s4' type='timeline' />
+      </QueryClientProvider>,
+    );
 
     expect(screen.getByTestId('timeline-space-empty')).toBeInTheDocument();
   });
@@ -106,7 +127,11 @@ describe('服务器那份跟我一样时', () => {
       map.set('publishedAt', '2026-08-13T06:20:00.000Z');
     });
 
-    render(<SpaceOutlet projectId={PROJECT} spaceId='s5' type='document' />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SpaceOutlet projectId={PROJECT} spaceId='s5' type='document' />
+      </QueryClientProvider>,
+    );
 
     expect(
       screen.queryByTestId('document-schema-outdated'),
