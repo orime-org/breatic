@@ -251,12 +251,12 @@ function ConversationRowView({
                 {row.title === null ? (
                   <span
                     data-testid='conversation-untitled'
-                    className='truncate text-base font-semibold text-muted-foreground'
+                    className='truncate text-sm font-normal text-muted-foreground'
                   >
                     {t('chat.conversation.untitled')}
                   </span>
                 ) : (
-                  <span className='truncate text-base font-semibold text-foreground'>
+                  <span className='truncate text-sm font-normal text-foreground'>
                     {row.title}
                   </span>
                 )}
