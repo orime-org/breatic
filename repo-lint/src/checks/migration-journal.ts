@@ -8,10 +8,13 @@ const JOURNAL = /\/meta\/_journal\.json$/;
 /**
  * How far ahead of this machine's clock an entry may sit.
  *
- * Whoever writes an entry may be a day ahead of the machine running the
- * check, and a full day of slack costs nothing: what this guards against is a
- * timestamp outrunning the NEXT author's honest date, and hours cannot do
- * that. The one that was actually written sat three days out.
+ * Whoever writes an entry may be a whole day ahead of the machine running the
+ * check, so anything tighter than a day reports honest entries as future ones.
+ * The slack is not free — entries in this journal have landed within an hour
+ * of each other, so a day of drift can genuinely outrun the next author — but
+ * a false report on every timezone-crossing entry costs more than the rare
+ * miss, and the entries that made this check necessary sat days out, not
+ * hours: 0052 was written 4.7 days ahead, 0050 3.8 days.
  */
 const CLOCK_SLACK_MS = 86_400_000;
 
@@ -86,8 +89,8 @@ function readEntries(text: string, file: string): Entry[] {
  * nobody has written yet. It lifts the mark past every honest date that
  * follows, so the next author dates their migration today, and today is
  * already behind the mark. That is what happened here: 0052 was written with
- * a timestamp three days out, and 0053 could only stay above it by going out
- * another day.
+ * a timestamp 4.7 days out, and 0053 could only stay above it by going out
+ * further still.
  *
  * Upstream now agrees this is the wrong judgement — drizzle v1 applies every
  * missing migration regardless of order — but that release is still a

@@ -88,10 +88,12 @@ describe("migration-journal", () => {
   });
 
   it("tolerates a timestamp a few hours ahead, for time zones", () => {
-    // Whoever writes the entry may be a day ahead of the machine running the
-    // check. A whole day of slack costs nothing: the failure this guards
-    // against needs the timestamp to outrun the NEXT author's real date, and
-    // being a few hours ahead cannot do that.
+    // Whoever writes the entry may be a whole day ahead of the machine
+    // running the check, so anything tighter reports honest entries. The
+    // slack is a deliberate trade, not a free one: entries in the real
+    // journal have landed within an hour of each other, so a day of drift
+    // can outrun the next author. A false report on every entry written
+    // across the date line costs more than that rare miss.
     expect(
       migrationJournal.run(journal([Date.now() + 6 * 3_600_000])),
     ).toEqual([]);

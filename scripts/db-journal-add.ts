@@ -8,9 +8,9 @@
  * at 0017 since 0018, so `db:generate` would regenerate history wrongly — and
  * the journal entry was written by hand with them. That left `when` with no
  * source: drizzle takes it from the clock when it generates a migration, and
- * a person typing it takes it from nowhere. Measured across 54 entries, 53
- * disagreed with when the migration was actually created, by as much as fifty
- * days in either direction.
+ * a person typing it takes it from nowhere. Measured across 54 entries, all
+ * 54 disagreed with when the migration was actually created — by as much as
+ * fifty days behind, and close to five days ahead.
  *
  * Ahead is the direction that breaks things. `drizzle-orm@0.45.2` decides
  * what to run from a high-water mark rather than from what it has applied
