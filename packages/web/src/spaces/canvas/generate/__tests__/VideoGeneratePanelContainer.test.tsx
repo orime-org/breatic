@@ -1453,7 +1453,7 @@ describe('VideoGeneratePanelContainer', () => {
       return openPanelInMode(mode, model, {}, board);
     }
 
-    it('5.9 口播档下点文本引用行，有拒绝语而不是静默无反应', async () => {
+    it('5.5 口播档下点文本引用行，有拒绝语而不是静默无反应', async () => {
       // 文本引用行不受档位吃不吃引用的约束（reference-usability.ts:111 明写
       // 「文本是提示词材料，每一档都发」），所以它在这一档照样是亮的、可点的。
       // 而这一档没有提示词编辑器，插进去无处可去 —— 容器那句
@@ -1558,7 +1558,7 @@ describe('VideoGeneratePanelContainer', () => {
       spy.mockRestore();
     });
 
-    it('5.5 口播档下点参考轨道的引用行，有拒绝语而不是静默无反应', async () => {
+    it('参考轨道对图片引用行的既有拒绝语没被这一片改掉', async () => {
       // 这一条钉的是既有行为、不是这一片新加的：口播档在档位表里
       // `takesReferences: false`（video-mode-options.ts），参考轨道自己就在
       // `refuseInsert`（ReferenceRail.tsx:118）拦下并弹了拒绝语，压根走不到
