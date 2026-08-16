@@ -153,7 +153,6 @@
       "deleteBody": "對話裡說過的內容會一起刪除，無法復原。",
       "deleteConfirm": "刪除",
       "deleteCancel": "取消",
-      "startNew": "新增對話",
       "rowActions": "重新命名或刪除這條對話"
     },
     "load": {

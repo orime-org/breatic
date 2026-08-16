@@ -153,7 +153,6 @@
       "deleteBody": "Everything said in it goes with it. This cannot be undone.",
       "deleteConfirm": "Delete",
       "deleteCancel": "Cancel",
-      "startNew": "New conversation",
       "rowActions": "Rename or delete this conversation"
     },
     "load": {
