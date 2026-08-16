@@ -19,6 +19,8 @@
  * as `membershipTier` in code for that reason.
  */
 
+import { z } from "zod";
+
 /**
  * The tiers an account can be on.
  *
@@ -70,8 +72,46 @@ export const CONFIGURED_MEMBERSHIP_TIERS = [
 export type ConfiguredMembershipTier =
   (typeof CONFIGURED_MEMBERSHIP_TIERS)[number];
 
-// The ceilings each tier carries are NOT here. They are the shape of
-// `config/membership.yaml`, they are read only by the services that enforce
-// them, and web has no use for them until there is a membership page to
-// render — which is a separate piece of work. By this package's own entry
-// test ("does web need it?") they belong beside the loader, in core.
+/**
+ * One ceiling.
+ *
+ * A plain non-negative integer, always compared as `count >= limit`. There is
+ * no "unlimited" value and no sentinel — a deployment that does not want to
+ * cap something writes a number nobody reaches (9999, or 100 TiB for bytes).
+ * That is what keeps zero meaning zero: `base.team_studios` is 0 because that
+ * tier genuinely cannot create a team studio, and the same comparison refuses
+ * it without a special case anywhere.
+ */
+const limitSchema = z.number().int().nonnegative();
+
+/**
+ * The six ceilings every tier carries.
+ *
+ * `concurrent_editors` counts simultaneous WRITABLE CONNECTIONS to one
+ * document, not people: one account with four browser tabs open holds four of
+ * them. The ratified decision words this as "people", which is imprecise —
+ * user 2026-08-12 confirmed connections is what gets enforced, and that the
+ * decision's wording is what needs correcting.
+ *
+ * Field names are the YAML's, so this shape and the file cannot drift.
+ *
+ * It lives here rather than beside the loader because the membership panel
+ * renders these numbers: web now needs the shape, which is this package's
+ * entry test. The loader stays in core — reading a file is not a shape.
+ */
+export const tierLimitsSchema = z.object({
+  team_studios: limitSchema,
+  projects_per_studio: limitSchema,
+  concurrent_editors: limitSchema,
+  studio_members: limitSchema,
+  project_members: limitSchema,
+  storage_bytes: limitSchema,
+});
+
+/**
+ * One tier's ceilings.
+ *
+ * Inferred from the schema rather than declared beside it, so there is no
+ * second list of field names to fall out of step with the first.
+ */
+export type MembershipLimits = z.infer<typeof tierLimitsSchema>;

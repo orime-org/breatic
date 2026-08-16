@@ -81,11 +81,13 @@ export { STUDIO_ROLE_RANK } from "@shared/types/studio.js";
 export type {
   MembershipTier,
   ConfiguredMembershipTier,
+  MembershipLimits,
 } from "@shared/types/membership.js";
 
 export {
   MEMBERSHIP_TIERS,
   CONFIGURED_MEMBERSHIP_TIERS,
+  tierLimitsSchema,
 } from "@shared/types/membership.js";
 
 export type {

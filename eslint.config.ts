@@ -213,18 +213,24 @@ export default tseslint.config(
     },
   },
   {
-    // model-catalog is a verbatim mirror of the backend's snake_case YAML wire
-    // fields (`cost_per_call` / `display_name` / `three_d` / `model_id` /
-    // `max_items` / `generation_time`). Unlike other shared contracts it is
+    // Two files here are verbatim mirrors of a backend YAML file's snake_case
+    // keys: model-catalog (`cost_per_call` / `display_name` / `three_d` /
+    // `model_id` / `max_items` / `generation_time`) and the membership
+    // ceilings (`team_studios` / `projects_per_studio` / `concurrent_editors`
+    // / `studio_members` / `project_members` / `storage_bytes`, the keys of
+    // `config/membership.yaml`). Unlike other shared contracts they are
     // drift-safe by construction — the front and back mirror the SAME keys, so
-    // there is no camelCase-vs-snake_case split to drift. It is therefore exempt
-    // from the camelCase guardrail above (same rationale as the `tool_calls`
-    // whitelist), scoped to just this file + its test so the rest of types/
-    // stays strictly camelCase. Both formats are allowed so typos in other
-    // shapes are still caught.
+    // there is no camelCase-vs-snake_case split to drift. Renaming them to
+    // camelCase would introduce exactly the translation step the guardrail
+    // exists to prevent. They are therefore exempt from the camelCase
+    // guardrail above (same rationale as the `tool_calls` whitelist), scoped
+    // to just these files + their tests so the rest of types/ stays strictly
+    // camelCase. Both formats are allowed so typos in other shapes are still
+    // caught.
     files: [
       "packages/shared/src/types/model-catalog.ts",
       "packages/shared/src/types/__tests__/model-catalog.schema.test.ts",
+      "packages/shared/src/types/membership.ts",
     ],
     rules: {
       "@typescript-eslint/naming-convention": [
