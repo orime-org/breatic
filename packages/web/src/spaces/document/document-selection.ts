@@ -65,11 +65,12 @@ interface Range {
 
 /**
  * Where the body starts — everything the title occupies comes before it.
- * @param state - Editor state to read.
+ * @param doc - The document to measure. Taken rather than the whole state so
+ * that callers holding only a resolved position can use it too.
  * @returns The position just past the title node.
  */
-function bodyStart(state: EditorState): number {
-  return state.doc.child(0).nodeSize;
+function bodyStart(doc: PMNode): number {
+  return doc.child(0).nodeSize;
 }
 
 /**
@@ -102,7 +103,7 @@ function bodyStart(state: EditorState): number {
  * @returns The body's selection, or null when there is nothing to select.
  */
 function bodySelection(state: EditorState): Selection | null {
-  const start = bodyStart(state);
+  const start = bodyStart(state.doc);
   const end = state.doc.content.size;
   if (start >= end) return null;
   return TextSelection.between(state.doc.resolve(start), state.doc.resolve(end));
@@ -131,7 +132,7 @@ function sideOfCaret(state: EditorState): 'title' | 'body' {
   // body paragraph — the two land in the same bucket and cannot be told apart.
   // The title occupies `0..titleSize`, so a selection ending at or before that
   // boundary is on the title's side and everything else is on the body's.
-  return state.selection.to <= state.doc.child(0).nodeSize ? 'title' : 'body';
+  return state.selection.to <= bodyStart(state.doc) ? 'title' : 'body';
 }
 
 /**
@@ -180,11 +181,10 @@ function nextSelection(state: EditorState): Selection | null {
  */
 function selectThisSide(
   state: EditorState,
-  dispatch?: (tr: Transaction) => void,
+  dispatch: (tr: Transaction) => void,
 ): boolean {
   const selection = nextSelection(state);
-  if (!selection || !dispatch) return true;
-  dispatch(state.tr.setSelection(selection));
+  if (selection) dispatch(state.tr.setSelection(selection));
   return true;
 }
 
@@ -201,7 +201,7 @@ function selectThisSide(
  * content rule opens with the title.
  */
 function inTitle($pos: ResolvedPos): boolean {
-  return $pos.pos < $pos.doc.child(0).nodeSize;
+  return $pos.pos < bodyStart($pos.doc);
 }
 
 /**
@@ -231,7 +231,7 @@ function farEndOfAnchorSide(
   $anchor: ResolvedPos,
 ): ResolvedPos | null {
   const { doc } = state;
-  const boundary = bodyStart(state);
+  const boundary = bodyStart(state.doc);
   if (inTitle($anchor)) {
     // Into the title: the last position its text reaches.
     return doc.resolve(boundary - 1);
@@ -280,12 +280,8 @@ function selectionWithinOneSide(
  * @returns The first and last text positions, or null.
  */
 function bodyTextRange(state: EditorState): Range | null {
-  const start = bodyStart(state);
-  if (start >= state.doc.content.size) return null;
-  const whole = TextSelection.between(
-    state.doc.resolve(start),
-    state.doc.resolve(state.doc.content.size),
-  );
+  const whole = bodySelection(state);
+  if (!whole) return null;
   return { from: whole.from, to: whole.to };
 }
 
@@ -306,7 +302,7 @@ function coversWholeBody(state: EditorState): boolean {
   if (!range) return false;
   const { from, to } = state.selection;
   if (from === to) return false;
-  if (from < bodyStart(state)) return false;
+  if (from < bodyStart(state.doc)) return false;
   return from <= range.from && to >= range.to;
 }
 
@@ -371,8 +367,7 @@ function tookTheSelectionAway(trs: readonly Transaction[], sel: Range): boolean 
         return false;
       }
       if (!putsBackOnlyInline(step.slice)) return false;
-      const range = step as unknown as Range;
-      if (range.from > sel.from || range.to < sel.to) return false;
+      if (step.from > sel.from || step.to < sel.to) return false;
       cleared = true;
     }
   }
@@ -393,7 +388,7 @@ function tookTheSelectionAway(trs: readonly Transaction[], sel: Range): boolean 
  * @returns True when only what this operation inserted is left.
  */
 function nothingOldLeft(trs: readonly Transaction[], state: EditorState): boolean {
-  const start = bodyStart(state);
+  const start = bodyStart(state.doc);
   const end = state.doc.content.size;
   const left = start < end ? state.doc.textBetween(start, end, '', '') : '';
   if (left !== insertedText(trs)) return false;
@@ -403,6 +398,14 @@ function nothingOldLeft(trs: readonly Transaction[], state: EditorState): boolea
 
 /**
  * Whether this batch is the user saying the whole body is done for.
+ *
+ * The `CLEARED_BY_US` line is a recursion stop, not one of the criteria.
+ * `applyTransaction` hands an appended transaction back to every plugin on the
+ * next pass (`prosemirror-state` `dist/index.cjs`, the `trs.slice(n)` loop), so
+ * what this returns arrives here again. Nothing can currently get past it:
+ * whatever the user did collapsed the selection, so `coversWholeBody` answers
+ * no on the second pass — measured, deleting the line leaves all tests green.
+ * It stays because the cost of being wrong about that is an editor that hangs.
  * @param trs - The batch.
  * @param before - The state before it.
  * @param after - The state after it.
@@ -413,7 +416,6 @@ function isClearingTheWholeBody(
   before: EditorState,
   after: EditorState,
 ): boolean {
-  if (!trs.some((tr) => tr.docChanged)) return false;
   if (trs.some((tr) => tr.getMeta(CLEARED_BY_US) === true)) return false;
   if (!coversWholeBody(before)) return false;
   if (!tookTheSelectionAway(trs, before.selection)) return false;
@@ -442,7 +444,7 @@ function bodyAsOneParagraph(state: EditorState): Transaction | null {
  * @returns The inline content as one fragment.
  */
 function inlineLeftInBody(state: EditorState): Fragment {
-  const start = bodyStart(state);
+  const start = bodyStart(state.doc);
   const end = state.doc.content.size;
   if (start >= end) return Fragment.empty;
   let out = Fragment.empty;
@@ -473,7 +475,7 @@ function replaceBodyWith(
   state: EditorState,
   blocks: PMNode[],
 ): Transaction {
-  tr.replaceWith(bodyStart(state), state.doc.content.size, blocks);
+  tr.replaceWith(bodyStart(state.doc), state.doc.content.size, blocks);
   tr.setSelection(TextSelection.create(tr.doc, tr.doc.content.size - 1));
   tr.setMeta(CLEARED_BY_US, true);
   return tr;
