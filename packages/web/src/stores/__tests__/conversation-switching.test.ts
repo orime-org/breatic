@@ -787,3 +787,49 @@ describe('pressing send while a switch is still on its way', () => {
     await switching;
   });
 });
+
+describe('while a switch is on its way', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('says so, so the panel can hold the composer still', async () => {
+    // 屏幕上还是原来那条会话,而它马上要被换掉。这段时间输入框必须是静止的:
+    // 看着能用、按下去没反应,跟看着不能用是两回事。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
+    await conversationRuntime.ensureLoaded(P);
+    expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
+
+    let land: (() => void) | undefined;
+    vi.mocked(chatApi.readConversation).mockImplementationOnce(
+      () => new Promise((res) => {
+        land = () => res({
+          conversation: { id: 'c-2', title: 'two' }, messages: [], hasMore: false,
+        } as never);
+      }),
+    );
+    const switching = conversationRuntime.switchTo(P, 'c-2');
+    await new Promise((r) => setTimeout(r, 5));
+
+    expect(useConversationRuntime.getState().navigatingByProject[P]).toBe(true);
+
+    land?.();
+    await switching;
+
+    expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
+  });
+
+  it('asks for the whole list again when it cannot be read', async () => {
+    // 读不到这一条,说明这一刻网络出了问题 —— 而手上这份列表是在网络还好的时候
+    // 拿的,它现在准不准,前端自己不知道。所以走跟打开失败同一个出口:蒙版加
+    // 「重新加载」,把整份列表重新拉一次。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.readConversation).mockRejectedValue(new Error('offline'));
+    await conversationRuntime.switchTo(P, 'c-2');
+
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('failed');
+  });
+});

@@ -42,6 +42,15 @@ export interface ChatSession {
    * do differs in all three -- send, wait, or stop.
    */
   turnPhase: TurnPhase;
+  /**
+   * The panel is on its way to another conversation.
+   *
+   * Separate from `turnPhase`, which is about the exchange inside the
+   * conversation on screen. This one is about which conversation that is:
+   * for as long as it is true, the one being shown is not the one the reader
+   * just asked for.
+   */
+  navigating: boolean;
   /** The conversation reaches back further than the messages on screen. */
   hasMore: boolean;
   /**
@@ -173,6 +182,7 @@ export function useChatSession(projectId: string): ChatSession {
     (s) => (conversationId ? s.conversations[conversationId]?.messages : undefined) ?? NO_MESSAGES,
   );
   const turnPhase = useConversationRuntime((s) => turnPhaseOf(s, projectId));
+  const navigating = useConversationRuntime((s) => s.navigatingByProject[projectId] === true);
   const hasMore = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.hasMore ?? false) : false,
   );
@@ -337,6 +347,7 @@ export function useChatSession(projectId: string): ChatSession {
     messages,
     status: openStatus,
     turnPhase,
+    navigating,
     hasMore,
     mishap,
     loadEarlier,

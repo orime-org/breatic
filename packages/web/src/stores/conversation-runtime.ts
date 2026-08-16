@@ -182,6 +182,17 @@ interface ConversationRuntimeState {
   /** How far each project's open call has got. */
   openStatus: Record<string, OpenStatus>;
   /**
+   * Which projects are on their way to another conversation.
+   *
+   * The one on screen is about to stop being the answer, so for as long as
+   * this is true the composer is held still: what gets typed now would be
+   * written into the conversation being left, and a box that looks usable but
+   * does nothing when pressed is not the same as one that plainly cannot be
+   * used. In the store rather than beside it because the panel renders it --
+   * the count of navigations out is bookkeeping and stays outside.
+   */
+  navigatingByProject: Record<string, true>;
+  /**
    * Which projects have a send under way that has no turn yet.
    *
    * A turn is the natural home for "something is being sent here", and it is
@@ -477,6 +488,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   openFailure: {},
   draftByConversation: {},
   openStatus: {},
+  navigatingByProject: {},
   sendingByProject: {},
 }));
 
@@ -1344,6 +1356,9 @@ function intendToNavigate(projectId: string): number {
   inFlight.set(projectId, flying);
   lastIssued.set(projectId, next);
   claimed.set(projectId, next);
+  useStore.setState((s) => ({
+    navigatingByProject: { ...s.navigatingByProject, [projectId]: true as const },
+  }));
   return next;
 }
 
@@ -1417,6 +1432,11 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
     else claimed.set(projectId, stillGoing);
   }
   if (flying !== undefined && flying.size > 0) return;
+  // The last one out puts the composer back: nothing is on its way to change
+  // which conversation is on screen any more.
+  useStore.setState((s) => ({
+    navigatingByProject: (({ [projectId]: _done, ...rest }) => rest)(s.navigatingByProject),
+  }));
   useStore.setState((s) =>
     s.openStatus[projectId] === 'loading'
       ? {
@@ -1513,10 +1533,13 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
       adoptConversation(projectId, read);
       landed = true;
     } catch (err) {
-      // Nothing moves. The reader stays where they were, which is a place that
-      // still works, rather than landing on a conversation with no messages in
-      // it because the request for them failed.
+      // The list in hand was fetched when the network was working, and this
+      // just showed that it is not any more -- so whether it still describes
+      // the project is something this panel cannot answer. It goes out the
+      // same door as an open that failed: the scrim, and a reload that fetches
+      // the whole list again.
       if (visit.signal.aborted) return;
+      if (stillAwaited(projectId, nav)) markUnreadable(projectId, err);
       tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
       // Nothing landed, so this press asked for nothing; an answer still on its
       // way is the reader's choice again. If a delete put the panel in the
@@ -1885,6 +1908,7 @@ function leaveProject(projectId: string): void {
     }
     const { [projectId]: _current, ...currentByProject } = s.currentByProject;
     const { [projectId]: _status, ...openStatus } = s.openStatus;
+    const { [projectId]: _navigating, ...navigatingByProject } = s.navigatingByProject;
     const { [projectId]: _sending, ...sendingByProject } = s.sendingByProject;
     const { [projectId]: _listed, ...listByProject } = s.listByProject;
     const { [projectId]: _more, ...listHasMore } = s.listHasMore;
@@ -1908,6 +1932,7 @@ function leaveProject(projectId: string): void {
       conversations: kept,
       currentByProject,
       openStatus,
+      navigatingByProject,
       sendingByProject,
       listByProject,
       listHasMore,
@@ -1960,6 +1985,7 @@ export function _resetForTests(): void {
     openFailure: {},
     draftByConversation: {},
     openStatus: {},
+    navigatingByProject: {},
     sendingByProject: {},
   });
 }

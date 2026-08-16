@@ -25,6 +25,16 @@ interface ChatComposerProps {
    * word of yet -- with nothing on screen for stopping it to take back.
    */
   turnPhase?: TurnPhase;
+  /**
+   * The panel is on its way to another conversation.
+   *
+   * What is on screen is about to be replaced, so anything typed now would be
+   * written into the conversation being left -- it and the reply would vanish
+   * when the new one lands, while that turn kept running. The box is held
+   * still for that stretch, plainly rather than silently: one that looks
+   * usable and does nothing when pressed reads as broken.
+   */
+  navigating?: boolean;
   chips?: ReadonlyArray<ReferenceChip>;
   activeSkillLabel?: string;
   selectMode?: boolean;
@@ -69,6 +79,7 @@ interface ChatComposerProps {
  * @param root0 - The component props.
  * @param root0.draft - The current draft text in the input.
  * @param root0.turnPhase - How far along the turn is: idle, sending, running.
+ * @param root0.navigating - The panel is on its way to another conversation.
  * @param root0.chips - The reference chips attached to the next message.
  * @param root0.activeSkillLabel - The label of the currently selected skill, if any.
  * @param root0.selectMode - Whether canvas select mode is active.
@@ -83,6 +94,7 @@ interface ChatComposerProps {
 function ChatComposerInner({
   draft,
   turnPhase = 'idle',
+  navigating = false,
   chips = [],
   activeSkillLabel,
   selectMode,
@@ -94,7 +106,7 @@ function ChatComposerInner({
   onRemoveChip,
 }: ChatComposerProps): React.JSX.Element {
   const t = useTranslation();
-  const ready = draft.trim().length > 0 && turnPhase === 'idle';
+  const ready = draft.trim().length > 0 && turnPhase === 'idle' && !navigating;
   const box = React.useRef<HTMLTextAreaElement>(null);
 
   /**
@@ -207,7 +219,7 @@ function ChatComposerInner({
         // the two apart afterwards, which is the whole of why emptying it
         // later ever needed a rule. Read-only rather than disabled: it keeps
         // the keyboard the press handed it, and a disabled control loses that.
-        readOnly={turnPhase === 'sending'}
+        readOnly={turnPhase === 'sending' || navigating}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           // Typing Chinese, Japanese or Korean means pressing Enter to accept

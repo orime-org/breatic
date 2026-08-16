@@ -76,6 +76,7 @@ export function ChatPanel({
     messages,
     status,
     turnPhase,
+    navigating,
     hasMore,
     mishap,
     loadEarlier,
@@ -227,6 +228,7 @@ export function ChatPanel({
       <ChatComposer
         draft={draft}
         turnPhase={turnPhase}
+        navigating={navigating}
         onChange={setDraft}
         onSubmit={submit}
         onAbort={abort}
