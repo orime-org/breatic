@@ -443,6 +443,22 @@ body {
   margin: 0 0 1.75rem;
 }
 
+/* ---- The document Space's node selection ----
+   Cmd-clicking a block (Ctrl on Windows) node-selects it, and ProseMirror
+   marks it with this class — but ships the style for it in a stylesheet
+   tiptap does not load, so the selection was real and invisible: measured
+   2026-08-16, computed outline-style was `none` on a selected block. The
+   colour is the same selected token every other selected thing uses (canvas
+   node borders, edges). Outline rather than background because a block keeps
+   its own background (a code block stays dark), and outline is a paint-only
+   property — it cannot move a Radix anchor or any layout. Scoped to the
+   document editor: the canvas prompt editor's chips have their own
+   selected-state styling. */
+.doc-body-editor .ProseMirror .ProseMirror-selectednode {
+  outline: 2px solid var(--color-status-selected);
+  outline-offset: 2px;
+}
+
 /* ---- The document Space's two placeholders ----
    Drawn here rather than by the placeholder extension: that one decorates
    textblocks that EXIST and, by default, only the one holding the caret — so a
