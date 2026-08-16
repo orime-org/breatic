@@ -464,3 +464,26 @@ describe("GET /chat/conversations/:id — reading one to switch into it", () => 
     expect(payload.data.messages.length).toBeGreaterThan(0);
   });
 });
+
+describe("a name whose characters do not fit in one code unit each", () => {
+  it("stores it whole rather than cutting one in half", async () => {
+    // 存的时候还有一道按列宽的裁剪,而它数的是 UTF-16 码元 —— 一个 emoji 占两个。
+    // 命名那一步按码点裁到上限之内,码元数却可能是它的两倍,于是这道裁剪落在一对
+    // 代理项中间,存进去的是一个替换字符,而且永久留在那条会话的名字上:updateTitle
+    // 只在名字为空时写一次,之后没有任何路径会修它。
+    const { projectId, cookie } = await seedProject();
+    const id = await openAndGetId(projectId, cookie);
+    const repo = await import("@server/modules/conversation/conversation.repo.js");
+    // 上限那么多码点,而码元数几乎是两倍 —— 正是 titleForTurn 在上限调到 100
+    // 以上时会交给它的东西。
+    const named = "a" + "\u{1F600}".repeat(198) + "…";
+    await repo.updateTitle(id, named);
+
+    const [row] = await sql<{ title: string | null }[]>`
+      SELECT title FROM conversations WHERE id = ${id}
+    `;
+    const stored = row?.title ?? "";
+    expect(stored).not.toContain("�");
+    expect([...stored].length).toBeLessThanOrEqual(200);
+  });
+});

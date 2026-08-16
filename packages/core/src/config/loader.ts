@@ -35,11 +35,11 @@ const agentConfigSchema = z.object({
    * one by typing a whole paragraph as often as a line. Cut so the list stays
    * readable; the full message is a scroll away in the conversation itself.
    */
-  // Capped at what the column stores. Past that the title is cut to fit on the
-  // way in, by UTF-16 code units -- which lands mid-character often enough
-  // that an emoji in the first sentence comes back with a replacement mark,
-  // stored for good. Turning the knob back does not repair the rows already
-  // written that way.
+  // Capped at what the column stores, and both sides count the same thing:
+  // characters. They did not always -- the cut on the way in counted UTF-16
+  // code units, so a name of emoji within the limit was cut anyway, between
+  // the halves of one of them, and the replacement mark that produced stayed
+  // in that name for good.
   conversation_title_max_chars: z
     .number()
     .int()

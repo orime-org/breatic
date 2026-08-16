@@ -347,9 +347,16 @@ export async function softDeleteConversation(id: string): Promise<void> {
  * Update conversation title. No-op when the conversation is soft-deleted
  * — filtering on `isNull(deletedAt)` means concurrent deletion wins.
  * @param id - Conversation UUID to rename
- * @param title - New display title; truncated to what the column stores before update
+ * @param title - New display title; cut to what the column stores before update
  */
 export async function updateTitle(id: string, title: string): Promise<void> {
+  // Counted in characters, because that is what the column counts. `slice`
+  // counts UTF-16 code units, and anything outside the basic plane takes two
+  // of them -- so a name well inside the limit could still be cut, and the cut
+  // landed between the halves of one character. What went into the column then
+  // was a replacement mark, for good: this writes a name only when there is
+  // none, so nothing afterwards would ever repair it.
+  const cut = [...title].slice(0, CONVERSATION_TITLE_MAX_CHARS).join("");
   // The title only. `updated_at` is what orders the list and what each row
   // shows as when the conversation was last used, and renaming one is not
   // using it: touching the column would send a conversation nobody has spoken
@@ -362,7 +369,7 @@ export async function updateTitle(id: string, title: string): Promise<void> {
   await db
     .update(conversations)
     .set({
-      title: title.slice(0, CONVERSATION_TITLE_MAX_CHARS),
+      title: cut,
       updatedAt: sql`${conversations.updatedAt}`,
     })
     .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
