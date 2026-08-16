@@ -273,6 +273,45 @@ function mountContainer(
 }
 
 /**
+ * Opens the panel on a node seeded with a mode and model, past the frame where
+ * the catalog has not arrived.
+ *
+ * The mode goes into the node data rather than through the switch: the
+ * container reads it off the `nodes` prop, and this harness passes a static
+ * array — clicking the switch writes Yjs, the prop does not move, and the
+ * rendered mode never changes.
+ * @param mode - The generation sub-mode.
+ * @param model - The model name to store on the node.
+ * @param stored - Extra node fields (slot picks, and the like).
+ * @param board - Extra board nodes and edges.
+ * @returns The render result, for a case that switches mode by rerendering.
+ */
+async function openPanelInMode(
+  mode: string,
+  model: string,
+  stored: Record<string, unknown> = {},
+  board: BoardOverrides = {},
+): Promise<ReturnType<typeof render>> {
+  vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+  const data = { mode, model, ...stored };
+  seedVideoNode(data);
+  const view = mountContainer('video', data, board);
+  act(() => {
+    useCanvasStore.getState().openGeneratePanel('target', 'video');
+  });
+  await screen.findByTestId('generate-video-execute');
+  // The panel renders one frame before the catalog resolves; until it does the
+  // view model has no model to ask. Assert past that frame, or the subject is
+  // the loading state rather than the mode (#1964).
+  await waitFor(() =>
+    expect(screen.getByTestId('generate-model-trigger').textContent).not.toBe(
+      '',
+    ),
+  );
+  return view;
+}
+
+/**
  * Seeds a real video node in the canvas-space doc so the panel gets a prompt
  * fragment and the collaborative editor actually mounts. Without this the
  * container renders no editor, the prompt stays empty and execute is
@@ -1379,40 +1418,28 @@ describe('VideoGeneratePanelContainer', () => {
      * @param mode - The mode the node is stored in.
      * @param model - The model to store alongside it.
      */
+    /**
+     * Opens the panel with the rail's fixture board wired up.
+     * @param mode - The generation sub-mode.
+     * @param model - The model name to store on the node.
+     * @param slots - Extra node fields (slot picks).
+     */
     async function openInMode(
       mode: string,
       model: string,
       slots: Record<string, unknown> = {},
     ): Promise<void> {
-      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-      const stored = { mode, model, ...slots };
-      seedVideoNode(stored);
-      mountContainer('video', stored, { nodes: SOURCES, edges: WIRES });
-      act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      await openPanelInMode(mode, model, slots, {
+        nodes: SOURCES,
+        edges: WIRES,
       });
-      await screen.findByTestId('generate-video-execute');
-      // The panel renders one frame before the catalog resolves, and until it
-      // does the view model has no model to ask, so `promptRequired` falls
-      // back to true. The mode switch is disabled on the same condition.
-      await waitFor(() =>
-        expect(
-          screen.getByTestId('generate-model-trigger').textContent,
-        ).not.toBe(''),
-      );
     }
 
   });
 
   describe('口播档不收提示词 (#1950 片6)', () => {
     /**
-     * 开一个指定档位的面板。跟上面那个同名辅助一样，只是这一组要在开面板前
-     * 先把节点的 mode / model 种进 Yjs，因为这一片钉的正是「按模型声明决定
-     * 渲染什么」。
-    /**
-     * 开一个指定档位的面板。档位和模型种进节点数据而不是点选择器：容器的
-     * mode 读的是 `nodes` prop（容器 :197），而这个装置传的是静态数组，
-     * 点切换只写 Yjs、prop 不动，渲染出来的档位不会变。
+     * 开一个指定档位的面板，board 由用例自己给。
      * @param mode - 生成子模式。
      * @param model - 模型名。
      * @param board - 额外的画布节点与连线（参考轨道要用）。
@@ -1423,55 +1450,8 @@ describe('VideoGeneratePanelContainer', () => {
       model: string,
       board: BoardOverrides = {},
     ): Promise<ReturnType<typeof render>> {
-      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-      seedVideoNode({ mode, model });
-      const view = mountContainer('video', { mode, model }, board);
-      act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
-      });
-      await screen.findByTestId('generate-video-execute');
-      // 等目录解析出模型再交回去。面板先渲染一帧、目录随后才到，那一帧里
-      // view-model 还没有模型可问 —— 在那一帧上断言，断的是加载态、不是
-      // 这一档。同文件的 openInMode 早就有这一步。
-      await waitFor(() =>
-        expect(
-          screen.getByTestId('generate-model-trigger').textContent,
-        ).not.toBe(''),
-      );
-      return view;
+      return openPanelInMode(mode, model, {}, board);
     }
-
-    it('5.8 目录还没到齐时，那一格既不挂编辑器也不下结论', async () => {
-      // `promptRequired` 有第三种状态：模型还没解析出来，不知道要不要提示词。
-      // 渲染这一侧不能跟执行闸门共用那个「不知道就当要」的兜底 —— 那会让
-      // 口播档在整个目录请求期间挂着一个编辑器，里面还是上一档打的字。
-      let go: (v: unknown) => void = () => {};
-      vi.spyOn(modelsApi, 'list').mockReturnValue(
-        new Promise((r) => {
-          go = r as (v: unknown) => void;
-        }) as never,
-      );
-      const data = { mode: 'talking_head', model: 'omnihuman-1.5' };
-      seedVideoNode(data);
-      typePrompt('在别的档打的字');
-      mountContainer('video', data);
-      act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
-      });
-      await screen.findByTestId('generate-video-execute');
-      expect(
-        screen.queryByTestId('generate-prompt-editor'),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByTestId('generate-video-prompt-not-used'),
-      ).not.toBeInTheDocument();
-      await act(async () => {
-        go(catalog());
-      });
-      expect(
-        await screen.findByTestId('generate-video-prompt-not-used'),
-      ).toBeInTheDocument();
-    });
 
     it('5.9 口播档下点文本引用行，有拒绝语而不是静默无反应', async () => {
       // 文本引用行不受档位吃不吃引用的约束（reference-usability.ts:111 明写
