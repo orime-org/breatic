@@ -28,6 +28,7 @@ function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
   render(
     <AgentColHeader
       conversationName='Onboarding'
+      conversationNamePlaceholder='Untitled conversation'
       onOpenHistory={onOpenHistory}
       onNewConversation={onNewConversation}
       onRenameConversation={onRenameConversation}
