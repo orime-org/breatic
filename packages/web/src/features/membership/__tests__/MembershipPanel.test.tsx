@@ -64,10 +64,32 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
     tier: 'pro',
     limits: limits(),
     usage: { teamStudios: 1, storageBytes: 38 * GIB },
+    // 三档每一项都取不同的值。共用默认值的话，某一行读错字段会读到一样的
+    // 数字，任何断言都分不出来。
     catalog: [
-      { tier: 'base', limits: limits({ team_studios: 0, storage_bytes: 5 * GIB }) },
+      {
+        tier: 'base',
+        limits: {
+          team_studios: 0,
+          projects_per_studio: 10,
+          concurrent_editors: 2,
+          studio_members: 1,
+          project_members: 4,
+          storage_bytes: 5 * GIB,
+        },
+      },
       { tier: 'pro', limits: limits() },
-      { tier: 'team', limits: limits({ team_studios: 3, storage_bytes: 500 * GIB }) },
+      {
+        tier: 'team',
+        limits: {
+          team_studios: 3,
+          projects_per_studio: 300,
+          concurrent_editors: 20,
+          studio_members: 100,
+          project_members: 40,
+          storage_bytes: 500 * GIB,
+        },
+      },
     ],
     ...over,
   };
@@ -293,14 +315,14 @@ describe('MembershipPanel', () => {
 
     const header = await screen.findByTestId('compare-column-pro');
     expect(header.className).toContain('border-x-active-border');
-    const cells = document.querySelectorAll('[data-testid="compare-cell-pro"]');
+    const cells = document.querySelectorAll('[data-testid^="compare-cell-pro-"]');
     // 月费 + 六项上限。
     expect(cells).toHaveLength(7);
     for (const cell of cells) {
       expect(cell.className).toContain('border-x-active-border');
     }
     // 别的列没有这条竖线。
-    for (const cell of document.querySelectorAll('[data-testid="compare-cell-base"]')) {
+    for (const cell of document.querySelectorAll('[data-testid^="compare-cell-base-"]')) {
       expect(cell.className).not.toContain('border-x');
     }
   });
@@ -333,5 +355,68 @@ describe('MembershipPanel', () => {
     );
     // 两个账号各问了一次；共用一个 key 的话第二次会被 staleTime 挡掉。
     expect(membershipMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('对比表每一格都是那一档那一项的真实数字', async () => {
+    // 这张表就是验收里「各档差别」的全部内容，而它的正确性此前只靠写的人
+    // 当时没手滑：把某一行读成另一个字段、或者整列错位，都没有任何断言接得住。
+    membershipMock.mockResolvedValue(answer());
+    await screen.findByTestId('compare-column-pro').catch(() => undefined);
+    setup();
+    await screen.findByTestId('compare-column-pro');
+
+    const expected: Record<string, [string, string, string]> = {
+      // 行 key: [base, pro, team]
+      monthlyFee: ['Free', '$12', '$39'],
+      teamStudios: ['0', '1', '3'],
+      projectsPerStudio: ['10', '100', '300'],
+      studioMembers: ['1', '10', '100'],
+      projectMembers: ['4', '12', '40'],
+      concurrentEditors: ['2', '6', '20'],
+      storage: ['5 GiB', '200 GiB', '500 GiB'],
+    };
+    for (const [row, [base, pro, team]] of Object.entries(expected)) {
+      expect(screen.getByTestId(`compare-cell-base-${row}`)).toHaveTextContent(
+        base,
+      );
+      expect(screen.getByTestId(`compare-cell-pro-${row}`)).toHaveTextContent(
+        pro,
+      );
+      expect(screen.getByTestId(`compare-cell-team-${row}`)).toHaveTextContent(
+        team,
+      );
+    }
+  });
+
+  it('自托管那四行各自读的是自己那一项', async () => {
+    // 同理：四项全填同一个数的话，标签和数值接错看不出来。
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'self_hosted',
+        limits: {
+          team_studios: 7,
+          projects_per_studio: 111,
+          concurrent_editors: 22,
+          studio_members: 33,
+          project_members: 44,
+          storage_bytes: 100 * 1024 ** 4,
+        },
+      }),
+    );
+    setup();
+
+    expect(
+      await screen.findByTestId('quota-projects-per-studio'),
+    ).toHaveTextContent('111');
+    expect(screen.getByTestId('quota-studio-members')).toHaveTextContent('33');
+    expect(screen.getByTestId('quota-project-members')).toHaveTextContent('44');
+    expect(screen.getByTestId('quota-concurrent-editors')).toHaveTextContent(
+      '22',
+    );
+    // 账号级那两项照旧带用量。
+    expect(screen.getByTestId('quota-team-studios')).toHaveTextContent('1 / 7');
+    expect(screen.getByTestId('quota-storage')).toHaveTextContent(
+      '38 GiB / 100 TiB',
+    );
   });
 });

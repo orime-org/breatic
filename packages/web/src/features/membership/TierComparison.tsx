@@ -24,6 +24,10 @@ interface TierComparisonProps {
  * The rows are the six ceilings plus the price, in the order the panel above
  * introduces them.
  *
+ * Each cell is identified by its tier AND its row, so a test can assert what
+ * one particular figure says. A column-wide id could only ever count cells,
+ * which is how a row reading the wrong ceiling stayed invisible.
+ *
  * Only the tiers on the price list appear. `self_hosted` is a deployment shape
  * and `enterprise` is negotiated per customer, so neither is something to
  * compare against or move to — the server leaves them out of `catalog`, and
@@ -121,7 +125,7 @@ export const TierComparison = React.memo(function TierComparison({
             return (
               <td
                 key={offer.tier}
-                data-testid={`compare-cell-${offer.tier}`}
+                data-testid={`compare-cell-${offer.tier}-monthlyFee`}
                 className={columnClass(offer.tier)}
               >
                 {price === 0
@@ -142,7 +146,7 @@ export const TierComparison = React.memo(function TierComparison({
             {offers.map((offer) => (
               <td
                 key={offer.tier}
-                data-testid={`compare-cell-${offer.tier}`}
+                data-testid={`compare-cell-${offer.tier}-${row.key}`}
                 className={columnClass(offer.tier)}
               >
                 {row.cell(offer)}
