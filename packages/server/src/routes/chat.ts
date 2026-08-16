@@ -22,6 +22,8 @@ import {
   chatCreateConversationSchema,
   chatRenameConversationSchema,
   chatEarlierMessagesQuerySchema,
+  conversationIdParamSchema,
+  attachmentParamSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -324,6 +326,7 @@ chat.post(
  */
 chat.patch(
   "/conversations/:id",
+  validate("param", conversationIdParamSchema),
   validate("json", chatRenameConversationSchema),
   async (c) => {
     const user = c.get("user");
@@ -366,7 +369,7 @@ chat.post("/open", validate("json", chatOpenSchema), async (c) => {
  * @returns Conversation entity and its message history
  * @throws {AppError} `404` if not found, `403` if not the owner
  */
-chat.get("/conversations/:id", async (c) => {
+chat.get("/conversations/:id", validate("param", conversationIdParamSchema), async (c) => {
   const user = c.get("user");
   const conversationId = c.req.param("id");
   const result = await conversationService.getWithMessages(conversationId, user.id);
@@ -385,6 +388,7 @@ chat.get("/conversations/:id", async (c) => {
  */
 chat.get(
   "/conversations/:id/messages",
+  validate("param", conversationIdParamSchema),
   validate("query", chatEarlierMessagesQuerySchema),
   async (c) => {
     const user = c.get("user");
@@ -404,7 +408,7 @@ chat.get(
  * @returns `200` with success message
  * @throws {AppError} `404` if not found, `403` if not the owner
  */
-chat.delete("/conversations/:id", async (c) => {
+chat.delete("/conversations/:id", validate("param", conversationIdParamSchema), async (c) => {
   const user = c.get("user");
   const conversationId = c.req.param("id");
   await conversationService.deleteConversation(conversationId, user.id);
@@ -422,13 +426,17 @@ chat.delete("/conversations/:id", async (c) => {
  * could enumerate another user's attachment URLs by guessing the
  * conversation UUID.
  */
-chat.get("/conversations/:id/attachments", async (c) => {
+chat.get(
+  "/conversations/:id/attachments",
+  validate("param", conversationIdParamSchema),
+  async (c) => {
   const user = c.get("user");
   const conversationId = c.req.param("id");
   await conversationService.assertAccess(conversationId, user.id);
   const list = await attachmentService.listByConversation(conversationId);
   return c.json({ data: list });
-});
+  },
+);
 
 /**
  * `DELETE /chat/conversations/:cid/attachments/:aid` — soft-delete.
@@ -436,11 +444,15 @@ chat.get("/conversations/:id/attachments", async (c) => {
  * Marks the attachment as deleted. The DB record and underlying file
  * are retained — soft delete only hides it from the active list.
  */
-chat.delete("/conversations/:cid/attachments/:aid", async (c) => {
+chat.delete(
+  "/conversations/:cid/attachments/:aid",
+  validate("param", attachmentParamSchema),
+  async (c) => {
   const user = c.get("user");
   const aid = c.req.param("aid");
   await attachmentService.softDelete(aid, user.id);
   return c.json({ data: { ok: true } });
-});
+  },
+);
 
 export { chat as chatRoute };

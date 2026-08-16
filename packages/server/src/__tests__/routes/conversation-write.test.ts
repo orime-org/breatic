@@ -111,13 +111,13 @@ describe("Conversation write routes", () => {
   describe("PATCH /chat/conversations/:id — give it a name", () => {
     it("renames it and answers with the conversation", async () => {
       mocks.conversationService.rename.mockResolvedValue({
-        id: "conv-1",
+        id: "22222222-2222-4222-8222-222222222222",
         title: "Storyboard notes",
         projectId: PROJECT,
       });
 
       const app = createApp();
-      const res = await app.request("/api/v1/chat/conversations/conv-1", {
+      const res = await app.request("/api/v1/chat/conversations/22222222-2222-4222-8222-222222222222", {
         method: "PATCH",
         headers: AUTH,
         body: JSON.stringify({ project_id: PROJECT, title: "Storyboard notes" }),
@@ -127,7 +127,7 @@ describe("Conversation write routes", () => {
       const body = (await res.json()) as { data: { title: string } };
       expect(body.data.title).toBe("Storyboard notes");
       expect(mocks.conversationService.rename).toHaveBeenCalledWith(
-        "conv-1",
+        "22222222-2222-4222-8222-222222222222",
         "user-1",
         PROJECT,
         "Storyboard notes",
@@ -138,7 +138,7 @@ describe("Conversation write routes", () => {
       // Without it the service cannot ask the second of the three questions it
       // has to ask before writing, so the route must not let the request past.
       const app = createApp();
-      const res = await app.request("/api/v1/chat/conversations/conv-1", {
+      const res = await app.request("/api/v1/chat/conversations/22222222-2222-4222-8222-222222222222", {
         method: "PATCH",
         headers: AUTH,
         body: JSON.stringify({ title: "Storyboard notes" }),
@@ -150,7 +150,7 @@ describe("Conversation write routes", () => {
 
     it("refuses an empty name", async () => {
       const app = createApp();
-      const res = await app.request("/api/v1/chat/conversations/conv-1", {
+      const res = await app.request("/api/v1/chat/conversations/22222222-2222-4222-8222-222222222222", {
         method: "PATCH",
         headers: AUTH,
         body: JSON.stringify({ project_id: PROJECT, title: "" }),
@@ -164,7 +164,7 @@ describe("Conversation write routes", () => {
       // A row in the list showing nothing at all is worse than the default
       // title, and the reader cannot tell it apart from a rendering fault.
       const app = createApp();
-      const res = await app.request("/api/v1/chat/conversations/conv-1", {
+      const res = await app.request("/api/v1/chat/conversations/22222222-2222-4222-8222-222222222222", {
         method: "PATCH",
         headers: AUTH,
         body: JSON.stringify({ project_id: PROJECT, title: "   " }),
@@ -176,7 +176,7 @@ describe("Conversation write routes", () => {
 
     it("rejects an unauthenticated rename with 401", async () => {
       const app = createApp();
-      const res = await app.request("/api/v1/chat/conversations/conv-1", {
+      const res = await app.request("/api/v1/chat/conversations/22222222-2222-4222-8222-222222222222", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: PROJECT, title: "Storyboard notes" }),
@@ -185,4 +185,69 @@ describe("Conversation write routes", () => {
       expect(res.status).toBe(401);
     });
   });
+});
+
+describe("A conversation id that is not an id", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const MALFORMED = "not-a-uuid";
+  const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
+
+  // 路径参数一路走到 SQL,PG 拒绝它的方式是抛错,而那个错没人认得 —— 于是
+  // 本该是「没有这条会话」的输入换来一条 500 和一行 error 日志,谁都能按量
+  // 往日志里灌。六条路由是同一个形状,一起挡。
+  const routes: Array<{ what: string; send: (app: ReturnType<typeof createApp>) => Response | Promise<Response> }> = [
+    {
+      what: "PATCH a name onto it",
+      send: (app) =>
+        app.request(`/api/v1/chat/conversations/${MALFORMED}`, {
+          method: "PATCH",
+          headers: AUTH,
+          body: JSON.stringify({ project_id: PROJECT_ID, title: "x" }),
+        }),
+    },
+    {
+      what: "GET it",
+      send: (app) => app.request(`/api/v1/chat/conversations/${MALFORMED}`, { headers: AUTH }),
+    },
+    {
+      what: "GET the messages before a turn in it",
+      send: (app) =>
+        app.request(`/api/v1/chat/conversations/${MALFORMED}/messages?before_turn=3&limit=10`, {
+          headers: AUTH,
+        }),
+    },
+    {
+      what: "DELETE it",
+      send: (app) =>
+        app.request(`/api/v1/chat/conversations/${MALFORMED}`, { method: "DELETE", headers: AUTH }),
+    },
+    {
+      what: "GET its attachments",
+      send: (app) =>
+        app.request(`/api/v1/chat/conversations/${MALFORMED}/attachments`, { headers: AUTH }),
+    },
+    {
+      what: "DELETE one of its attachments",
+      send: (app) =>
+        app.request(`/api/v1/chat/conversations/${MALFORMED}/attachments/${MALFORMED}`, {
+          method: "DELETE",
+          headers: AUTH,
+        }),
+    },
+  ];
+
+  for (const route of routes) {
+    it(`is refused before it reaches the service — ${route.what}`, async () => {
+      const app = createApp();
+      const res = await route.send(app);
+
+      expect(res.status).toBe(422);
+      expect(mocks.conversationService.rename).not.toHaveBeenCalled();
+      expect(mocks.conversationService.deleteConversation).not.toHaveBeenCalled();
+      expect(mocks.conversationService.getWithMessages).not.toHaveBeenCalled();
+    });
+  }
 });

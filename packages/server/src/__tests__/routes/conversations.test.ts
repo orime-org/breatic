@@ -42,7 +42,7 @@ describe("Conversation routes", () => {
     it("returns one page, and whether the list goes on past it", async () => {
       mocks.conversationService.list.mockResolvedValue({
         conversations: [
-          { id: "conv-1", title: "Chat 1" },
+          { id: "22222222-2222-4222-8222-222222222222", title: "Chat 1" },
           { id: "conv-2", title: "Chat 2" },
         ],
         hasMore: true,
@@ -99,17 +99,17 @@ describe("Conversation routes", () => {
   describe("GET /chat/conversations/:id — get with messages", () => {
     it("returns conversation with messages", async () => {
       mocks.conversationService.getWithMessages.mockResolvedValue({
-        id: "conv-1",
+        id: "22222222-2222-4222-8222-222222222222",
         title: "Chat 1",
         messages: [{ role: "user", content: "hi" }],
       });
 
       const app = createApp();
-      const res = await app.request("/api/v1/chat/conversations/conv-1", { headers: AUTH });
+      const res = await app.request("/api/v1/chat/conversations/22222222-2222-4222-8222-222222222222", { headers: AUTH });
 
       expect(res.status).toBe(200);
       const body = await res.json() as { data: { id: string; messages: unknown[] } };
-      expect(body.data.id).toBe("conv-1");
+      expect(body.data.id).toBe("22222222-2222-4222-8222-222222222222");
       expect(body.data.messages).toHaveLength(1);
     });
   });
@@ -119,13 +119,13 @@ describe("Conversation routes", () => {
       mocks.conversationService.deleteConversation.mockResolvedValue(undefined);
 
       const app = createApp();
-      const res = await app.request("/api/v1/chat/conversations/conv-1", {
+      const res = await app.request("/api/v1/chat/conversations/22222222-2222-4222-8222-222222222222", {
         method: "DELETE",
         headers: AUTH,
       });
 
       expect(res.status).toBe(200);
-      expect(mocks.conversationService.deleteConversation).toHaveBeenCalledWith("conv-1", "user-1");
+      expect(mocks.conversationService.deleteConversation).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", "user-1");
     });
   });
 
