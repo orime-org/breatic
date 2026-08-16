@@ -104,7 +104,7 @@ export const DocumentTitle = Node.create({
    *
    * All three are thin, and each is thin for its own reason. Everything else
    * about this boundary — the cut, the fold from either side, lifting a list's
-   * first item out, removing a divider — is the editor's own and needs nothing
+   * first item out — is the editor's own and needs nothing
    * from here. That is a measurement, not a reading: with all three removed,
    * 26 of the 35 cases in `document-title-keymap.test` still pass.
    *

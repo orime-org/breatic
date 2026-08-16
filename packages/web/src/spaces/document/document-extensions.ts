@@ -105,9 +105,10 @@ export function buildDocumentExtensions(
     // `@breatic/shared`'s `document-body` carries the full reasoning.
     Document.extend({ content: `${DOCUMENT_TITLE_NODE} block*` }),
     DocumentTitle,
-    // The title holds text and nothing else, so a rule that would turn typed
-    // text into a block must not fire there — the divider rule does not check
-    // for itself and destroys what was typed.
+    // The title holds text and nothing else, and takes plain characters with
+    // nothing transforming them. Every rule shipping today declines there on
+    // its own; this states the promise in one place instead of depending on
+    // each future rule to remember.
     DocumentTitleIsPlainText,
     // The body may hold no blocks at all, so the space under the title has to
     // be clickable or a fresh document cannot be written into.

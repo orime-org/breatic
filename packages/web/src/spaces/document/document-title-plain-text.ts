@@ -4,24 +4,28 @@
 /**
  * What gets typed into the title stays text.
  *
- * The editor turns certain typed sequences into blocks: three dashes into a
- * divider, `# ` into a heading, `> ` into a quote, `- ` into a list. None of
- * those blocks can live in the title, whose content is text and nothing else.
+ * The product promise is that the title takes plain characters and nothing
+ * transforms them (restated 2026-08-15). The editor, meanwhile, turns certain
+ * typed sequences into blocks: `# ` into a heading, `> ` into a quote, `- `
+ * into a list. None of those blocks can live in the title, whose content is
+ * text and nothing else.
  *
- * Most of those rules notice that for themselves and decline — they ask
- * whether the block can be wrapped or the type set, and produce no transaction
- * when the answer is no. The divider rule does not ask: it replaces the matched
- * text with a node the schema then refuses, and what remains of the
- * transaction is the deletion. Measured before this file existed: three dashes
- * at the start of the title left the title EMPTY, with the typed characters
- * gone and nothing in their place.
+ * Every rule the editor currently ships notices that for itself and declines —
+ * each asks whether the block can be wrapped or the type set, and produces no
+ * transaction when the answer is no. So this file changes nothing about what
+ * they do today.
  *
- * This is written as a property of the title rather than as a fix to that one
- * rule. Which rules happen to check and which do not is a detail of the
- * editing feature set — a separate slice, still being built — and depending on
- * every future rule to check is exactly the kind of per-case dependence that
- * produced this bug. Here the title's own rule is stated once: text typed into
- * it is inserted as text, and nothing gets a chance to transform it.
+ * It is written as a property of the title rather than as a set of exceptions
+ * inside those rules, because which rules happen to check is a detail of the
+ * editing feature set — a separate slice, still being built — and a promise
+ * that holds only as long as every future rule remembers to check is not a
+ * promise. Here the title's own rule is stated once, in one place: text typed
+ * into it is inserted as text, and nothing gets a chance to transform it.
+ *
+ * **This guard has no test that can fail today** (task #118). What it protects
+ * against is a rule nobody has written yet, so there is nothing to feed it that
+ * behaves badly — which is the point, and also why the promise above, rather
+ * than any measurement, is the reason this file exists.
  *
  * ## Two halves, because the rules have more than one way in
  *
