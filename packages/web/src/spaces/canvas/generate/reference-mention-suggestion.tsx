@@ -44,7 +44,12 @@ type RefreshHandleRef = { current: (() => void) | null };
  * consumes, because `insertRefusal` refuses non-image reference material
  * under every context.
  */
-const ANY_MODE: ReferenceModeContext = { takesReferences: true };
+const ANY_MODE: ReferenceModeContext = {
+  takesReferences: true,
+  // The picker lives inside the prompt editor, which only mounts when the
+  // model consumes a prompt (#1966), so this dimension cannot be false here.
+  takesPrompt: true,
+};
 
 /**
  * Builds the `@` suggestion options for the reference-mention node.

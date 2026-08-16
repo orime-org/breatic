@@ -73,6 +73,19 @@ interface ReferenceRailProps {
    */
   modeTakesReferences?: boolean;
   /**
+   * Does the ACTIVE MODEL consume the prompt (#1966)? False dims EVERY row —
+   * text included — and freezes both its controls.
+   *
+   * Text rows are exempt from `modeTakesReferences` because they are prompt
+   * material; that exemption only holds while there IS a prompt. A mode
+   * sending none has nothing for a text row to be material for, so it belongs
+   * with the media rows (user 2026-08-16).
+   *
+   * Defaulted `true` for the same reason as the prop above: a caller that
+   * knows nothing about prompts gets the pre-#1966 rail.
+   */
+  modeSendsPrompt?: boolean;
+  /**
    * Focus crops whose upload is still in flight (#1782) — rendered as
    * disabled placeholder rows after the real entries; each disappears when
    * its upload lands (a real focus row replaces it) or fails (toast).
@@ -90,6 +103,7 @@ interface ReferenceRailProps {
  * @param root0.onRemove - Remove a reference by id.
  * @param root0.onInsert - Insert a reference's @-mention into the prompt.
  * @param root0.modeTakesReferences - Whether the active mode consumes the reference pool.
+ * @param root0.modeSendsPrompt - Whether the active model consumes the prompt.
  * @param root0.pendingFocus - Focus crops whose upload is still in flight.
  * @returns The reference rail, or null when empty.
  */
@@ -98,22 +112,29 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   onRemove,
   onInsert,
   modeTakesReferences = true,
+  modeSendsPrompt = true,
   pendingFocus = [],
 }: ReferenceRailProps): React.JSX.Element | null {
   const t = useTranslation();
   const modeCtx: ReferenceModeContext = React.useMemo(
-    () => ({ takesReferences: modeTakesReferences }),
-    [modeTakesReferences],
+    () => ({
+      takesReferences: modeTakesReferences,
+      takesPrompt: modeSendsPrompt,
+    }),
+    [modeTakesReferences, modeSendsPrompt],
   );
-  // Two refusal reasons, four messages: the mode-off reason alone splits three
-  // ways. Insert names only the cause, because the mode selector is in this
-  // same panel and every reference material row is visibly dark. Remove has to
-  // name the ways
-  // out, because the user asked for the row to be GONE and is being told no.
-  // And a focus crop gets its own remove message, because one of those ways
-  // out — delete its edge — does not exist for it.
+  // Three refusal reasons, six messages. Insert names only the cause, because
+  // the mode selector is in this same panel and every dimmed row is visibly
+  // dark. Remove has to name the ways OUT, because the user asked for the row
+  // to be GONE and is being told no. And a focus crop gets its own remove
+  // message on both mode reasons, because one of those ways out — delete its
+  // edge — does not exist for it.
   const refuseInsert = React.useCallback(
     (refusal: ReferenceRefusal, kind: NodeKind): void => {
+      if (refusal === 'mode-sends-no-prompt') {
+        toast.warning(t('canvas.generatePanel.refuseInsertNoPrompt'));
+        return;
+      }
       if (refusal === 'mode-takes-no-references') {
         toast.warning(t('canvas.generatePanel.refuseInsertModeOff'));
         return;
@@ -123,7 +144,23 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     [t],
   );
   const refuseRemove = React.useCallback(
-    (isCrop: boolean): void => {
+    (refusal: ReferenceRefusal, isCrop: boolean): void => {
+      // Remove takes the REASON now, not just the crop flag (#1966). Reusing
+      // the insert copy here would answer a different question than the one
+      // asked — the user clicked ✕, and "no prompt to insert into" tells them
+      // nothing about getting rid of the row. Freezing a control while being
+      // unable to explain itself is exactly what `aria-disabled` rather than
+      // the HTML attribute exists to avoid.
+      if (refusal === 'mode-sends-no-prompt') {
+        toast.warning(
+          t(
+            isCrop
+              ? 'canvas.generatePanel.refuseRemoveNoPromptCrop'
+              : 'canvas.generatePanel.refuseRemoveNoPrompt',
+          ),
+        );
+        return;
+      }
       // A focus crop is a standalone copy, not an edge projection — its ✕
       // removes the crop, never an edge. The shared message offers two ways
       // out and one of them, "delete its edge on the canvas", does not exist
@@ -324,7 +361,9 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               )}
               aria-disabled={removeRefused !== null}
               onClick={() =>
-                removeRefused ? refuseRemove(ref.focus === true) : onRemove(ref)
+                removeRefused
+                  ? refuseRemove(removeRefused, ref.focus === true)
+                  : onRemove(ref)
               }
               className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
             >

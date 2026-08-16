@@ -172,6 +172,10 @@ export const PromptEditor = React.forwardRef<
             // a row the picker offers is a row the rail would insert.
             getModeContext: () => ({
               takesReferences: !imageRefsDisabledRef.current,
+              // Always true here: this editor only exists when the model
+              // consumes a prompt (#1966) — a mode that sends none mounts a
+              // line of copy in its place, so there is no `@` picker to open.
+              takesPrompt: true,
             }),
             refreshRef: suggestionRefreshRef,
           }),

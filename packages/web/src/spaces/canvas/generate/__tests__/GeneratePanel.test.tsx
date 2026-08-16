@@ -50,6 +50,7 @@ function setup(
       models={[MODEL]}
       model='nano_banana_pro'
       mode='t2i'
+      promptRequired
       catalogEmpty={false}
       params={{ aspect_ratio: '16:9', resolution: '2K' }}
       references={[]}

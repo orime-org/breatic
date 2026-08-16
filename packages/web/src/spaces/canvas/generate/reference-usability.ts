@@ -67,7 +67,8 @@ import type { NodeKind } from '@web/spaces/canvas/types/node-view';
  */
 export type ReferenceRefusal =
   | 'mode-takes-no-references'
-  | 'source-type-unused';
+  | 'source-type-unused'
+  | 'mode-sends-no-prompt';
 
 /** What the active mode does with the reference pool. */
 export interface ReferenceModeContext {
@@ -81,6 +82,20 @@ export interface ReferenceModeContext {
    * (see the module docstring), so nothing else has to be known to answer.
    */
   takesReferences: boolean;
+  /**
+   * Does the ACTIVE MODEL consume the prompt (`ModelEntry.takes_prompt`,
+   * #1966)? False freezes BOTH controls on EVERY row, text included.
+   *
+   * Text rows sit outside `takesReferences` because they are prompt material
+   * — and that reason only holds while there is a prompt. A mode that sends
+   * none has nothing for a text row to be material FOR, so it belongs with
+   * the image and audio rows (user 2026-08-16).
+   *
+   * A plain boolean the caller passes in, exactly like `takesReferences`: the
+   * value comes from the model catalog, but this module still reads nothing
+   * asynchronous itself — the thing the module docstring keeps out of here.
+   */
+  takesPrompt: boolean;
 }
 
 /**
@@ -115,6 +130,12 @@ export function insertRefusal(
   // it passes here unconditionally. Whether the active model has a prompt to
   // insert INTO is a separate question this module cannot answer (#1950 — see
   // the module docstring); the video container asks it.
+  // No prompt, no destination — asked FIRST, and of every row (#1966).
+  // Insert puts an `@` chip into the prompt; when the mode sends none there is
+  // no box to put it in, which is more fundamental than "this mode ignores
+  // references": telling someone to switch to a mode that uses references
+  // would point them at an action that still cannot be completed.
+  if (!ctx.takesPrompt) return 'mode-sends-no-prompt';
   if (!isReferenceMaterial(sourceNodeType)) return null;
   // Mode before modality when both would refuse. The mode reason names the
   // state the user can leave — this mode ignores references, another one does
@@ -151,6 +172,12 @@ export function removeRefusal(
   sourceNodeType: NodeKind,
   ctx: ReferenceModeContext,
 ): ReferenceRefusal | null {
+  // Same first question as insert, and for the same rows (#1966). The two
+  // controls on a row have to freeze together: a ✕ that still works under a
+  // mode with no prompt would delete a reference OUT OF the shared prompt —
+  // one prompt is shared across the modes (#1919), so the removal lands in
+  // the prompt of every mode that does send one.
+  if (!ctx.takesPrompt) return 'mode-sends-no-prompt';
   if (!isReferenceMaterial(sourceNodeType)) return null;
   return ctx.takesReferences ? null : 'mode-takes-no-references';
 }

@@ -60,6 +60,7 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         mode='t2v'
         onToggleMode={() => {}}
         catalogEmpty={false}
+        promptRequired
         references={[]}
         onAddReference={() => {}}
         referencePicking={false}

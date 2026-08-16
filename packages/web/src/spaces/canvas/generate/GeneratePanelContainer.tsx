@@ -732,6 +732,7 @@ function GeneratePanelBody({
       model={vm.model}
       mode={vm.mode}
       catalogEmpty={vm.catalogEmpty}
+      promptRequired={vm.promptRequired}
       params={stableParams}
       references={stableReferences}
       creditEstimate={vm.creditEstimate}

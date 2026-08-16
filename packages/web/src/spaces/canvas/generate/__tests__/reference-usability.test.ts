@@ -35,18 +35,18 @@ const ROW_KINDS: NodeKind[] = ['text', 'image', 'audio', 'video'];
  * model-indexed, which is why this fixture has one field and not two.
  */
 const VIDEO_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceModeContext }> = [
-  { mode: 't2v', ctx: { takesReferences: false } },
-  { mode: 'i2v', ctx: { takesReferences: false } },
-  { mode: 'first_last', ctx: { takesReferences: false } },
-  { mode: 'animate', ctx: { takesReferences: false } },
-  { mode: 'ref', ctx: { takesReferences: true } },
-  { mode: 'talking_head', ctx: { takesReferences: false } },
+  { mode: 't2v', ctx: { takesReferences: false, takesPrompt: true } },
+  { mode: 'i2v', ctx: { takesReferences: false, takesPrompt: true } },
+  { mode: 'first_last', ctx: { takesReferences: false, takesPrompt: true } },
+  { mode: 'animate', ctx: { takesReferences: false, takesPrompt: true } },
+  { mode: 'ref', ctx: { takesReferences: true, takesPrompt: true } },
+  { mode: 'talking_head', ctx: { takesReferences: false, takesPrompt: true } },
 ];
 
 /** The image panel's two reference-relevant modes. */
 const IMAGE_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceModeContext }> = [
-  { mode: 't2i', ctx: { takesReferences: false } },
-  { mode: 'i2i', ctx: { takesReferences: true } },
+  { mode: 't2i', ctx: { takesReferences: false, takesPrompt: true } },
+  { mode: 'i2i', ctx: { takesReferences: true, takesPrompt: true } },
 ];
 
 describe('insertRefusal — text rows are prompt material, not reference material', () => {
@@ -169,13 +169,16 @@ describe('removeRefusal — the ✕ follows the dim, which reads on reference ma
 
 describe('insertRefusal — the criterion depends on nothing asynchronous', () => {
   it('answers from the row and the mode alone, with no model context', () => {
-    // The context carries one field. There is no catalog to be unresolved, so
-    // there is no third state to name and no window during which the rail
-    // answers differently from how it will answer a second later. Three
-    // rounds of Gate 2 produced three different wrong answers to "what while
-    // the catalog is loading"; the question was the defect.
-    const ref: ReferenceModeContext = { takesReferences: true };
-    expect(Object.keys(ref)).toEqual(['takesReferences']);
+    // The context carries two plain booleans and nothing else. #1966 added the
+    // second one; what did NOT change is the property this assertion exists
+    // for — neither field is a catalog handle or a promise, so there is still
+    // no third state to name and no window during which the rail answers
+    // differently from how it will answer a second later. Three rounds of
+    // review once produced three different wrong answers to "what while the
+    // catalog is loading"; the question was the defect. The caller resolves
+    // both values and passes them in.
+    const ref: ReferenceModeContext = { takesReferences: true, takesPrompt: true };
+    expect(Object.keys(ref).sort()).toEqual(['takesPrompt', 'takesReferences']);
     expect(insertRefusal('image', ref)).toBeNull();
     expect(insertRefusal('text', ref)).toBeNull();
     expect(insertRefusal('audio', ref)).toBe('source-type-unused');
@@ -187,7 +190,7 @@ describe('insertRefusal — the criterion depends on nothing asynchronous', () =
     // URLs. Both of its producers — `imageUrlOf` for node rows, the image
     // panel's `focusImages` append for crops — require an image, so a
     // non-image row has nothing to give either one.
-    const ref: ReferenceModeContext = { takesReferences: true };
+    const ref: ReferenceModeContext = { takesReferences: true, takesPrompt: true };
     for (const kind of ['audio', 'video', '3d', 'web'] as NodeKind[]) {
       expect(insertRefusal(kind, ref), kind).toBe('source-type-unused');
     }
@@ -253,5 +256,48 @@ describe('insertRefusal — the rail and the @ picker give the same answer', () 
       'i2i/text=ok',
       'i2i/image=ok',
     ]);
+  });
+});
+
+// #1966：轨道多了一维「这个模型吃不吃提示词」。
+//
+// user 2026-08-16 的判定理由：文本行之所以不算参考素材、能一路放行，前提是
+// 「这一档有提示词」——它是提示词材料。模式连提示词都不发了，它连提示词材料
+// 都不算，那就该跟图片音频行同一套处理。
+//
+// 同时这一维把 #1962 那两处判断合成一处：此前「能不能插」由这个模块判一半
+// （这个模式吃不吃参考素材）、由视频面板容器判另一半（这个模型要不要提示词）。
+describe('这一档不发提示词时 (#1966)', () => {
+  const noPrompt = { takesReferences: false, takesPrompt: false } as const;
+  const noPromptButRefs = { takesReferences: true, takesPrompt: false } as const;
+  const normal = { takesReferences: true, takesPrompt: true } as const;
+
+  it('文本行的插入被拒，理由是没有提示词框', () => {
+    expect(insertRefusal('text', noPrompt)).toBe('mode-sends-no-prompt');
+  });
+
+  it('文本行的 ✕ 也被拒，同一个理由', () => {
+    expect(removeRefusal('text', noPrompt)).toBe('mode-sends-no-prompt');
+  });
+
+  it('参考素材行两个动作都被拒，且理由是「没有提示词框」不是「不吃参考」', () => {
+    // 判定顺序 P → M：插入的目的地是提示词框，目的地不存在比「来源不被这一档
+    // 使用」更根本。告诉用户「切到别的档就能用参考素材」而实际上连框都没有，
+    // 是把人引向一个仍然做不成的动作。
+    expect(insertRefusal('image', noPrompt)).toBe('mode-sends-no-prompt');
+    expect(removeRefusal('image', noPrompt)).toBe('mode-sends-no-prompt');
+  });
+
+  it('这一档吃参考素材但不发提示词时，仍然是提示词那条理由先说', () => {
+    // 今天不可达（面板里唯一 takesPrompt=false 的模式，takesReferences 也是
+    // false），但判定顺序必须是全序，所以这一格要有定义。
+    expect(insertRefusal('image', noPromptButRefs)).toBe('mode-sends-no-prompt');
+  });
+
+  it('发提示词的档一切照旧，这一维不影响它', () => {
+    expect(insertRefusal('text', normal)).toBeNull();
+    expect(removeRefusal('text', normal)).toBeNull();
+    expect(insertRefusal('image', normal)).toBeNull();
+    expect(removeRefusal('image', normal)).toBeNull();
   });
 });

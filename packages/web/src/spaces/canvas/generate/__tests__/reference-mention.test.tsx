@@ -82,6 +82,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
     });
     expect(suggestion.allowedPrefixes).toBeNull();
@@ -132,6 +133,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       // button, so a row offered here is a row the rail would insert.
       getModeContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
     });
     const items = (
@@ -158,6 +160,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: false,
+        takesPrompt: true,
       }),
     });
     const items = (
@@ -243,6 +246,7 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       // Driving onStart/onUpdate by hand has no real transaction to advance the
       // tracker plugin, so inject the local-keystroke signal these tests model
@@ -292,6 +296,7 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
     });
@@ -384,6 +389,7 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
         emptyLabel: 'No references',
         getModeContext: () => ({
           takesReferences: !hideImages,
+          takesPrompt: true,
         }),
       });
       return (
@@ -412,6 +418,7 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: !hideImages,
+        takesPrompt: true,
       }),
       isLocalUserInput: () => true, // the manually-dispatched caret tr is local
     });
@@ -508,6 +515,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       // `remote` models whether the edit was a remote peer's; the popup's
       // visibility hook is now the POSITIVE "was it a local user keystroke",
@@ -559,6 +567,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       // `remote` models whether the edit was a remote peer's; the popup's
       // visibility hook is now the POSITIVE "was it a local user keystroke",
@@ -595,6 +604,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       refreshRef,
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
@@ -640,6 +650,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       getModeContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       refreshRef,
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke

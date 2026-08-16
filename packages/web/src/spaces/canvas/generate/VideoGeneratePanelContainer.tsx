@@ -227,41 +227,15 @@ function VideoGeneratePanelBody({
     [nodeId, nodes, edges, models, mode, textById],
   );
 
-  // Refuses out loud when this model takes no prompt (#1950). The rail lets a
-  // TEXT row through unconditionally — `reference-usability.ts` refuses on
-  // REFERENCE MATERIAL only, and text sits outside that because its chip
-  // substitutes into the prompt string. This mode no longer sends one, and the
-  // rail cannot learn that without reading the model catalog, the one thing
-  // that module deliberately keeps out of its two questions (its docstring
-  // records what happened the last time an answer there depended on the
-  // catalog having loaded). So the refusal belongs here.
-  //
-  // The question asked is `promptRequired` — the same value the editor mounts
-  // on — not whether the ref happens to hold one right now. The message says
-  // something about the MODE ("this mode has no prompt to insert into"), and
-  // `promptRequired` is what answers that; the ref is a rendering state that
-  // merely tends to agree with it. Same reasoning as the criterion this slice
-  // is built on: ask the model, not something downstream of it.
-  //
-  // The two part company in exactly one case — the model takes a prompt but
-  // the node has no fragment to edit, so no editor mounts. There the ref would
-  // refuse and this does not, leaving the `?.` below to swallow the click.
-  // Such a node predates video generation and we ship no compatibility for
-  // pre-launch data (#1950); filed as #1962, next to the rail's own open
-  // question about such modes (#1965).
-  // No test pins this swap, for that same reason: every state a user can
-  // reach today gets the same answer from either criterion, so an assertion
-  // about the difference would be asserting nothing (measured — swapping it
-  // back leaves all 58 container tests green).
+  // The rail refuses this itself now (#1966): `takesPrompt` is one of the two
+  // booleans its context carries, so "can this row be inserted" is answered in
+  // one place instead of half here and half there. This callback is back to
+  // doing only what its name says.
   const handleInsertReference = React.useCallback(
     (item: ReferenceRailItem) => {
-      if (!vm.promptRequired) {
-        toast.warning(t('canvas.generatePanel.refuseInsertNoPrompt'));
-        return;
-      }
       promptEditorRef.current?.insertReference(item);
     },
-    [t, vm.promptRequired],
+    [],
   );
   const references = vm.references;
 
@@ -763,6 +737,7 @@ function VideoGeneratePanelBody({
       mode={mode}
       onToggleMode={onToggleMode}
       catalogEmpty={catalogEmpty}
+      promptRequired={vm.promptRequired}
       references={stableReferences}
       onAddReference={onAddReference}
       referencePicking={referencePicking}

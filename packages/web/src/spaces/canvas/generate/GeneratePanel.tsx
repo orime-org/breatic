@@ -34,6 +34,13 @@ interface GeneratePanelProps {
    * toggle back to the populated mode.
    */
   catalogEmpty: boolean;
+  /**
+   * Whether the active model consumes the prompt (#1966). Threaded down to
+   * the reference rail, which freezes both controls on every row when it is
+   * false — a row cannot be inserted into a prompt that is not sent, and its
+   * ✕ would delete the reference out of the prompt every OTHER mode shares.
+   */
+  promptRequired: boolean;
   /** Current ratio + resolution selection. */
   params: { aspect_ratio?: string; resolution?: string } & CameraValue;
   /** The node's derived reference rows. */
@@ -116,6 +123,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   model,
   mode,
   catalogEmpty,
+  promptRequired,
   params,
   references,
   creditEstimate,
@@ -211,6 +219,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         // other mode. Image-to-image is the mode that lights the rest back up;
         // this panel has exactly those two (`ImageGenMode`).
         modeTakesReferences={!imageSourcesOff}
+        modeSendsPrompt={promptRequired}
         pendingFocus={pendingFocus}
       />
 

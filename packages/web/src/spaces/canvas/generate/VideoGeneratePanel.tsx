@@ -42,6 +42,13 @@ interface VideoGeneratePanelProps {
   onToggleMode: (mode: string) => void;
   /** Disable the mode switch while the catalog is empty (no model to switch TO). */
   catalogEmpty: boolean;
+  /**
+   * Whether the active model consumes the prompt (#1966). Threaded down to
+   * the reference rail, which freezes both controls on every row when it is
+   * false — a row cannot be inserted into a prompt that is not sent, and its
+   * ✕ would delete the reference out of the prompt every OTHER mode shares.
+   */
+  promptRequired: boolean;
   /** Reference rows derived from this node's incoming edges. */
   references: ReferenceRailItem[];
   /** Enter / exit the canvas reference pick. */
@@ -104,6 +111,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   mode,
   onToggleMode,
   catalogEmpty,
+  promptRequired,
   references,
   onAddReference,
   referencePicking,
@@ -162,6 +170,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         // (decision 2026-08-11). A text row is prompt material and stays lit
         // and removable in all six.
         modeTakesReferences={modeTakesReferences(mode)}
+        modeSendsPrompt={promptRequired}
       />
 
       {promptSlot}
