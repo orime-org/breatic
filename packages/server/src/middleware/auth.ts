@@ -18,7 +18,7 @@ import type { MiddlewareHandler } from "hono";
 import { authService } from "@server/modules";
 import { logger } from "@breatic/core";
 import { creditRepo } from "@breatic/domain";
-import { t } from "@breatic/shared";
+import { t, type MembershipTier } from "@breatic/shared";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
 
 /** Hono context variables set by auth middleware. */
@@ -27,6 +27,15 @@ export interface AuthVariables {
     id: string;
     email: string;
     credits: number;
+    /**
+     * Which membership tier the account is on.
+     *
+     * Carried here because the entity this middleware resolves already has
+     * it — the account row was read to authenticate the request, so naming
+     * the tier costs nothing further. `/auth/me` hands it to the client,
+     * where the avatar menu shows it in every studio's top bar.
+     */
+    membershipTier: MembershipTier;
   };
 }
 
@@ -57,6 +66,7 @@ export const requireAuth: MiddlewareHandler<{
     id: user.id,
     email: user.email,
     credits,
+    membershipTier: user.membershipTier,
   });
   await next();
 };

@@ -9,6 +9,7 @@
  * inside the server package.
  */
 
+import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
 
 /** User entity (excludes hashed_password for safety). */
@@ -17,6 +18,17 @@ export interface UserEntity {
   email: string;
   emailVerified: boolean;
   googleId: string | null;
+  /**
+   * Which membership tier this account is on.
+   *
+   * It travels with the session payload because the avatar menu names the
+   * tier and that menu renders in every studio's top bar. Answering from the
+   * membership endpoint instead would sum every controlled studio's assets
+   * just to light up a label. The tier is a fixed property of the account,
+   * the same kind of thing as its email — the ceilings it grants are not,
+   * and those stay behind the endpoint that reads them.
+   */
+  membershipTier: MembershipTier;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
