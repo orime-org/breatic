@@ -352,3 +352,18 @@ describe('MessageList', () => {
     scrollIntoView.mockRestore();
   });
 });
+
+describe('the skeleton that stands in while messages are on their way', () => {
+  it('is shaped like the lines of a conversation, not like blocks', () => {
+    // demo 定的是「形状照着真实消息排」:每组一条右对齐的短行(用户说的),
+    // 底下两条左对齐的长行(回复的两行),一共三组、逐组变宽。方块堆在那里
+    // 读不出是对话,只读得出「有东西在闪」。
+    const { container } = render(<MessageList ready={false} skeleton messages={[]} />);
+    const bars = container.querySelectorAll('[data-testid="message-skeleton"] [data-skeleton-bar]');
+
+    expect(bars).toHaveLength(9);
+    const heights = Array.from(bars).map((b) => (b as HTMLElement).style.height);
+    // 每组第一条是用户那句,比底下两条正文行略高。
+    expect(heights.slice(0, 3)).toEqual(['11px', '9px', '9px']);
+  });
+});

@@ -78,14 +78,29 @@ const AT_BOTTOM_SLACK_PX = 64;
  */
 function MessageSkeleton(): React.JSX.Element {
   return (
-    <div className='flex flex-col gap-2 p-3' data-testid='message-skeleton' aria-hidden>
-      <div className='flex justify-end'>
-        <div className='h-8 w-2/5 animate-pulse rounded-lg bg-muted' />
-      </div>
-      <div className='h-16 w-full animate-pulse rounded-lg bg-muted' />
-      <div className='flex justify-end'>
-        <div className='h-8 w-1/3 animate-pulse rounded-lg bg-muted' />
-      </div>
+    <div className='flex flex-col p-3' data-testid='message-skeleton' aria-hidden>
+      {[0, 1, 2].map((round) => (
+        <div key={round} className='mb-3.5'>
+          {/* 一句问、两行答,照真实消息的排法。方块堆在那儿读不出是对话,
+              只读得出「有东西在闪」;而这里等的正是一段对话。宽度逐组
+              递增,读起来像内容而不像三个一样的格子。 */}
+          <div
+            data-skeleton-bar
+            className='skeleton-shimmer ml-auto mb-2 rounded-xl'
+            style={{ height: '11px', width: `${56 + round * 9}%` }}
+          />
+          <div
+            data-skeleton-bar
+            className='skeleton-shimmer mb-1 rounded-sm'
+            style={{ height: '9px', width: '93%' }}
+          />
+          <div
+            data-skeleton-bar
+            className='skeleton-shimmer rounded-sm'
+            style={{ height: '9px', width: `${64 + round * 8}%` }}
+          />
+        </div>
+      ))}
     </div>
   );
 }
