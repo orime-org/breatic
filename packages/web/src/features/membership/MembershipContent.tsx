@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import type { AccountMembership } from '@breatic/shared';
+import {
+  isComparableMembershipTier,
+  type AccountMembership,
+} from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -40,18 +43,31 @@ function SectionHeading({
 }
 
 /**
- * A line offering to talk about terms that are not on the price list.
- * @param props - Which wording to use.
+ * A line offering to talk about something the price list does not cover.
+ *
+ * Every tier gets one, because every tier can run out of what the panel can
+ * answer: the priced ones outgrow the table, self-hosted needs a licence, and
+ * enterprise can only ask about the agreement its allowances live in. Only the
+ * wording differs, and each placement carries its own test id so that no
+ * placement can quietly go missing behind another one's assertion.
+ * @param props - Which wording to use and which placement this is.
  * @param props.text - The sentence that precedes the address.
+ * @param props.testId - Identifies this placement for tests.
  * @returns The line, with the address as a mail link.
  */
-function ContactLine({ text }: { text: string }): React.JSX.Element {
+function ContactLine({
+  text,
+  testId,
+}: {
+  text: string;
+  testId: string;
+}): React.JSX.Element {
   return (
     <p className='text-sm text-foreground-secondary'>
       {text}{' '}
       <a
         href={`mailto:${SALES_EMAIL}`}
-        data-testid='membership-contact'
+        data-testid={testId}
         className='underline underline-offset-2'
       >
         {SALES_EMAIL}
@@ -73,8 +89,11 @@ function ContactLine({ text }: { text: string }): React.JSX.Element {
  *     and would otherwise never see its own ceilings at all.
  *   - The comparison table, for accounts that could move between the tiers on
  *     it. `self_hosted` is a deployment shape and `enterprise` is negotiated,
- *     so for those two there is nothing to compare against; they get the
- *     contact line instead.
+ *     so for those two there is nothing to compare against.
+ *
+ * A contact line appears on every tier, worded for what that tier has run out
+ * of: scale for the priced ones, a licence for self-hosted, the agreement
+ * itself for enterprise.
  * @param props - The membership to render.
  * @param props.membership - The whole answer behind the panel.
  * @returns The panel's body.
@@ -84,7 +103,7 @@ export function MembershipContent({
 }: MembershipContentProps): React.JSX.Element {
   const t = useTranslation();
   const { tier, limits, usage, catalog } = membership;
-  const onPriceList = tier === 'base' || tier === 'pro' || tier === 'team';
+  const onPriceList = isComparableMembershipTier(tier);
   const price = onPriceList ? TIER_MONTHLY_PRICE_USD[tier] : null;
 
   return (
@@ -132,12 +151,21 @@ export function MembershipContent({
       <section className='flex flex-col gap-4'>
         <SectionHeading>{t('membership.myQuota')}</SectionHeading>
         {limits === null ? (
-          <p
-            className='text-sm text-foreground-secondary'
-            data-testid='enterprise-quota-note'
-          >
-            {t('membership.enterpriseQuota')}
-          </p>
+          // Enterprise. Its ceilings are agreed per customer and live only in
+          // that agreement, so the panel cannot print them — which makes the
+          // address the one thing it can usefully offer.
+          <>
+            <p
+              className='text-sm text-foreground-secondary'
+              data-testid='enterprise-quota-note'
+            >
+              {t('membership.enterpriseQuota')}
+            </p>
+            <ContactLine
+              text={t('membership.contactEnterpriseAccount')}
+              testId='membership-contact-enterprise'
+            />
+          </>
         ) : (
           <>
             <QuotaRow
@@ -211,7 +239,10 @@ export function MembershipContent({
                     count: String(limits.concurrent_editors),
                   })}
                 />
-                <ContactLine text={t('membership.contactSelfHosted')} />
+                <ContactLine
+                  text={t('membership.contactSelfHosted')}
+                  testId='membership-contact-self-hosted'
+                />
               </div>
             ) : null}
           </>
@@ -224,7 +255,10 @@ export function MembershipContent({
           <ScrollArea scrollbars='horizontal'>
             <TierComparison offers={catalog} currentTier={tier} />
           </ScrollArea>
-          <ContactLine text={t('membership.contactEnterprise')} />
+          <ContactLine
+            text={t('membership.contactEnterprise')}
+            testId='membership-contact-priced'
+          />
         </section>
       ) : null}
     </div>

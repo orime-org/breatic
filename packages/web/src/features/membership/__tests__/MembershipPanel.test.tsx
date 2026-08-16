@@ -26,6 +26,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AccountMembership, MembershipLimits } from '@breatic/shared';
 
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 const membershipMock = vi.fn();
 vi.mock('@web/data/api/account', () => ({
@@ -73,13 +74,30 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
 }
 
 /**
+ * 让某个账号处于登录态。面板问的是「这个账号在哪一档」，所以它认账号。
+ * @param id - 账号 id。
+ */
+function signIn(id: string): void {
+  useCurrentUserStore.getState().setUser({
+    id,
+    name: id,
+    email: `${id}@x.test`,
+    personalStudio: null,
+    membershipTier: 'base',
+  });
+}
+
+/**
  * 渲染打开着的面板。
+ * @param client - 想跨多次渲染共用同一份缓存时传进来。
  * @returns testing-library 的渲染结果。
  */
-function setup(): ReturnType<typeof render> {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0 } },
-  });
+function setup(client?: QueryClient): ReturnType<typeof render> {
+  const qc =
+    client ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
   return render(
     <QueryClientProvider client={qc}>
       <MembershipPanel open onOpenChange={() => {}} />
@@ -89,6 +107,8 @@ function setup(): ReturnType<typeof render> {
 
 beforeEach(() => {
   membershipMock.mockReset();
+  useCurrentUserStore.getState().clear();
+  signIn('u-default');
 });
 
 describe('MembershipPanel', () => {
@@ -176,10 +196,9 @@ describe('MembershipPanel', () => {
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByTestId('membership-upgrade')).toBeNull();
     // 联系邮箱保留，措辞换成商用授权与支持条款。
-    expect(screen.getByTestId('membership-contact')).toHaveAttribute(
-      'href',
-      'mailto:breatic@orime.ai',
-    );
+    const contact = screen.getByTestId('membership-contact-self-hosted');
+    expect(contact).toHaveAttribute('href', 'mailto:breatic@orime.ai');
+    expect(contact.parentElement).toHaveTextContent('commercial licence');
   });
 
   it('企业版不显示上限数字，也不显示对比表', async () => {
@@ -195,6 +214,11 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('enterprise-quota-note')).toBeInTheDocument();
     expect(screen.queryByTestId('quota-storage')).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
+    // 这一档的额度只存在于协议里，用户读完「由单独协议约定」之后想问的
+    // 正是「那是多少」——没有邮箱他就没有任何去处。
+    const contact = screen.getByTestId('membership-contact-enterprise');
+    expect(contact).toHaveAttribute('href', 'mailto:breatic@orime.ai');
+    expect(contact.parentElement).toHaveTextContent('allowances');
   });
 
   it('超限时照实报数字，并说明已有内容仍可用', async () => {
@@ -230,5 +254,84 @@ describe('MembershipPanel', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('We could not read your membership');
+  });
+
+  it('价目表档位在对比表下面有联系邮箱', async () => {
+    // 用户看完三档发现都不够，视线往下正好碰到它。
+    membershipMock.mockResolvedValue(answer());
+    setup();
+
+    const contact = await screen.findByTestId('membership-contact-priced');
+    expect(contact).toHaveAttribute('href', 'mailto:breatic@orime.ai');
+    expect(contact.parentElement).toHaveTextContent('bigger scale');
+  });
+
+  it('每一档都够得着一个联系邮箱，一个都不落', async () => {
+    // 三处措辞不同，但没有哪一档是死路。
+    const cases = [
+      { tier: 'base' as const, limits: limits(), testId: 'membership-contact-priced' },
+      { tier: 'self_hosted' as const, limits: limits(), testId: 'membership-contact-self-hosted' },
+      { tier: 'enterprise' as const, limits: null, testId: 'membership-contact-enterprise' },
+    ];
+    for (const c of cases) {
+      membershipMock.mockResolvedValue(answer({ tier: c.tier, limits: c.limits }));
+      const view = setup();
+      expect(await screen.findByTestId(c.testId)).toHaveAttribute(
+        'href',
+        'mailto:breatic@orime.ai',
+      );
+      view.unmount();
+    }
+  });
+
+  it('对比表当前那一列自己带边，不只是表头有记号', async () => {
+    // 表体七格原本只靠 bg-card 表示高亮，浅色 3/255、深色 4/255 —— 这个
+    // 仓自己在别处把 5/255 判过「看不见」。边框用的是激活边框那个 token，
+    // 它是实色。
+    membershipMock.mockResolvedValue(answer());
+    setup();
+
+    const header = await screen.findByTestId('compare-column-pro');
+    expect(header.className).toContain('border-x-active-border');
+    const cells = document.querySelectorAll('[data-testid="compare-cell-pro"]');
+    // 月费 + 六项上限。
+    expect(cells).toHaveLength(7);
+    for (const cell of cells) {
+      expect(cell.className).toContain('border-x-active-border');
+    }
+    // 别的列没有这条竖线。
+    for (const cell of document.querySelectorAll('[data-testid="compare-cell-base"]')) {
+      expect(cell.className).not.toContain('border-x');
+    }
+  });
+
+  it('换账号之后不把上一个账号的答案端给下一个人', async () => {
+    // 同一个标签页登出再登录，React Query 的 client 是模块单例、活得过这次
+    // 跳转，而登出只清 zustand。缓存键里没有账号身份的话，第二个人打开面板
+    // 命中的就是第一个人的档位和存储用量。
+    // 缓存必须跨两次渲染共用，否则这条测试什么都证明不了。
+    const shared = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    });
+
+    signIn('u-alpha');
+    membershipMock.mockResolvedValue(answer());
+    const first = setup(shared);
+    expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
+      'PRO',
+    );
+    first.unmount();
+
+    signIn('u-beta');
+    membershipMock.mockResolvedValue(
+      answer({ tier: 'base', limits: limits({ team_studios: 0 }) }),
+    );
+    setup(shared);
+
+    expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
+      'Base',
+    );
+    // 两个账号各问了一次；共用一个 key 的话第二次会被 staleTime 挡掉。
+    expect(membershipMock).toHaveBeenCalledTimes(2);
   });
 });

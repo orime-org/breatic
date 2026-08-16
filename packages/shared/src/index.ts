@@ -102,6 +102,7 @@ export {
   CONFIGURED_MEMBERSHIP_TIERS,
   tierLimitsSchema,
   COMPARABLE_MEMBERSHIP_TIERS,
+  isComparableMembershipTier,
   HANDLING_TIMEOUT_MS,
   canGenerate,
   membersChangedChannel,

@@ -57,3 +57,23 @@ describe('usageRatio', () => {
     expect(usageRatio(1, 0)).toBe(1);
   });
 });
+
+describe('formatBytes 的单位边界', () => {
+  it('舍入到 1024 时进位到下一个单位，不写出 1024 KiB 这种单位', () => {
+    // 函数承诺的是「让数值大于一的最大那个单位」。1048575 字节按 KiB 算是
+    // 1023.999，四舍五入成 1024 —— 那个数在这个单位上不存在，它就是 1 MiB。
+    expect(formatBytes(1024 ** 2 - 1)).toBe('1 MiB');
+    expect(formatBytes(1024 ** 3 - 1)).toBe('1 GiB');
+    expect(formatBytes(1024 ** 4 - 1)).toBe('1 TiB');
+  });
+
+  it('进位之后仍然停在最大的那个单位上', () => {
+    // PiB 是这套单位的顶，再大也不该往上找。
+    expect(formatBytes(1024 ** 5 * 2048)).toBe('2048 PiB');
+  });
+
+  it('没到进位线的值照旧', () => {
+    expect(formatBytes(1023 * 1024)).toBe('1023 KiB');
+    expect(formatBytes(1024 ** 3)).toBe('1 GiB');
+  });
+});

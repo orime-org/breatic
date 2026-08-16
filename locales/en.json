@@ -1159,6 +1159,7 @@
     "monthlyFee": "Monthly",
     "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
     "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
+    "contactEnterpriseAccount": "Questions about your allowances, or need them changed? Email us:",
     "loadFailed": "We could not read your membership. It may be a network problem — try again in a moment."
   }
 }

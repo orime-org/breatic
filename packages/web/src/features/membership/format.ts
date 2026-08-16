@@ -31,7 +31,15 @@ export function formatBytes(bytes: number): string {
   }
   // `Number()` drops a trailing `.0`, so a whole number of GiB reads as the
   // integer somebody configured rather than as a measurement.
-  const shown = Number(value.toFixed(1));
+  let shown = Number(value.toFixed(1));
+  // Rounding can push the figure up to a number its unit does not have:
+  // 1048575 bytes is 1023.999 KiB, which rounds to "1024 KiB" — a reading this
+  // scale never produces. Carrying it into the next unit is what the promise
+  // above ("the largest unit that leaves it above one") actually says.
+  if (shown >= 1024 && index < UNITS.length - 1) {
+    shown = 1;
+    index += 1;
+  }
   return `${shown} ${UNITS[index]}`;
 }
 

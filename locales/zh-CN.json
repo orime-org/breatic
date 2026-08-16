@@ -1159,6 +1159,7 @@
     "monthlyFee": "月费",
     "contactEnterprise": "需要更大规模或单独的商用条款？发邮件跟我们谈：",
     "contactSelfHosted": "需要商用授权或单独的支持条款？发邮件跟我们谈：",
+    "contactEnterpriseAccount": "额度有疑问或需要调整？发邮件跟我们谈：",
     "loadFailed": "没能读到你的会员信息，可能是网络问题。稍后再试一次。"
   }
 }

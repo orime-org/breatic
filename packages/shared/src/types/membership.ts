@@ -130,6 +130,28 @@ export const COMPARABLE_MEMBERSHIP_TIERS = ["base", "pro", "team"] as const;
 export type ComparableMembershipTier =
   (typeof COMPARABLE_MEMBERSHIP_TIERS)[number];
 
+const COMPARABLE_TIER_SET: ReadonlySet<string> = new Set(
+  COMPARABLE_MEMBERSHIP_TIERS,
+);
+
+/**
+ * Whether a tier is one of the priced ones.
+ *
+ * Exists so that no caller has to write the membership out again to ask. A
+ * hand-written `tier === 'base' || tier === 'pro' || …` narrows just as well
+ * and reads just as clearly, which is exactly what makes it dangerous: adding
+ * a fourth priced tier would leave it silently answering `false` while every
+ * other consumer of {@link COMPARABLE_MEMBERSHIP_TIERS} adapts or fails to
+ * compile.
+ * @param tier - Any tier an account can be on.
+ * @returns Whether it appears on the price list, narrowing the argument.
+ */
+export function isComparableMembershipTier(
+  tier: MembershipTier,
+): tier is ComparableMembershipTier {
+  return COMPARABLE_TIER_SET.has(tier);
+}
+
 /** One row of the tier comparison table. */
 export interface TierOffer {
   /** Which tier this row describes. */

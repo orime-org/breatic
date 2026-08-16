@@ -16,6 +16,7 @@ import { Skeleton } from '@web/components/ui/skeleton';
 import { accountApi } from '@web/data/api/account';
 import { MembershipContent } from '@web/features/membership/MembershipContent';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 /** Whether the panel is open, and how it reports being closed. */
 interface MembershipPanelProps {
@@ -48,10 +49,16 @@ export function MembershipPanel({
   onOpenChange,
 }: MembershipPanelProps): React.JSX.Element {
   const t = useTranslation();
+  // Keyed on the account, the way the notification inbox is. Without it, one
+  // account's tier and storage figures sit in the cache under a name the next
+  // account signing in on this tab matches exactly — and the client is a
+  // module singleton that a client-side sign-out never clears, so the second
+  // person would read the first one's billing figures.
+  const userId = useCurrentUserStore((s) => s.user?.id ?? null);
   const query = useQuery({
-    queryKey: ['account', 'membership'],
+    queryKey: ['account', 'membership', userId],
     queryFn: () => accountApi.membership(),
-    enabled: open,
+    enabled: open && userId !== null,
   });
 
   return (

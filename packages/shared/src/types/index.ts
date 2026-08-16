@@ -93,6 +93,7 @@ export {
   CONFIGURED_MEMBERSHIP_TIERS,
   tierLimitsSchema,
   COMPARABLE_MEMBERSHIP_TIERS,
+  isComparableMembershipTier,
 } from "@shared/types/membership.js";
 
 export type {

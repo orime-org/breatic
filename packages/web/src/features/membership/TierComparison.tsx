@@ -39,41 +39,42 @@ export const TierComparison = React.memo(function TierComparison({
 }: TierComparisonProps): React.JSX.Element {
   const t = useTranslation();
 
-  const rows = React.useMemo(
-    () => [
-      {
-        key: 'teamStudios',
-        label: t('membership.quota.teamStudios'),
-        cell: (offer: TierOffer) => String(offer.limits.team_studios),
-      },
-      {
-        key: 'projectsPerStudio',
-        label: t('membership.quota.projectsPerStudio'),
-        cell: (offer: TierOffer) => String(offer.limits.projects_per_studio),
-      },
-      {
-        key: 'studioMembers',
-        label: t('membership.quota.studioMembers'),
-        cell: (offer: TierOffer) => String(offer.limits.studio_members),
-      },
-      {
-        key: 'projectMembers',
-        label: t('membership.quota.projectMembers'),
-        cell: (offer: TierOffer) => String(offer.limits.project_members),
-      },
-      {
-        key: 'concurrentEditors',
-        label: t('membership.quota.concurrentEditors'),
-        cell: (offer: TierOffer) => String(offer.limits.concurrent_editors),
-      },
-      {
-        key: 'storage',
-        label: t('membership.quota.storage'),
-        cell: (offer: TierOffer) => formatBytes(offer.limits.storage_bytes),
-      },
-    ],
-    [t],
-  );
+  // Not memoised on `[t]`: `useTranslation` hands back the module-level
+  // function, whose identity never changes, so such a memo would compute these
+  // six strings once and hold the first locale's words forever. Building six
+  // strings per render costs nothing worth protecting.
+  const rows = [
+    {
+      key: 'teamStudios',
+      label: t('membership.quota.teamStudios'),
+      cell: (offer: TierOffer) => String(offer.limits.team_studios),
+    },
+    {
+      key: 'projectsPerStudio',
+      label: t('membership.quota.projectsPerStudio'),
+      cell: (offer: TierOffer) => String(offer.limits.projects_per_studio),
+    },
+    {
+      key: 'studioMembers',
+      label: t('membership.quota.studioMembers'),
+      cell: (offer: TierOffer) => String(offer.limits.studio_members),
+    },
+    {
+      key: 'projectMembers',
+      label: t('membership.quota.projectMembers'),
+      cell: (offer: TierOffer) => String(offer.limits.project_members),
+    },
+    {
+      key: 'concurrentEditors',
+      label: t('membership.quota.concurrentEditors'),
+      cell: (offer: TierOffer) => String(offer.limits.concurrent_editors),
+    },
+    {
+      key: 'storage',
+      label: t('membership.quota.storage'),
+      cell: (offer: TierOffer) => formatBytes(offer.limits.storage_bytes),
+    },
+  ];
 
   /**
    * Mark the account's own column so the comparison has a starting point.
@@ -82,7 +83,7 @@ export const TierComparison = React.memo(function TierComparison({
    */
   const columnClass = (tier: string): string =>
     tier === currentTier
-      ? 'border-b border-border px-2.5 py-2 text-right tabular-nums bg-card text-foreground'
+      ? 'border-b border-border border-x border-x-active-border bg-card px-2.5 py-2 text-right tabular-nums'
       : 'border-b border-border px-2.5 py-2 text-right tabular-nums';
 
   return (
@@ -98,7 +99,7 @@ export const TierComparison = React.memo(function TierComparison({
               aria-current={offer.tier === currentTier ? 'true' : undefined}
               className={
                 offer.tier === currentTier
-                  ? 'border-b border-active-border bg-card px-2.5 py-2 text-right text-xs font-semibold text-foreground'
+                  ? 'border-b border-active-border border-x border-x-active-border bg-card px-2.5 py-2 text-right text-xs font-semibold text-foreground'
                   : 'border-b border-border px-2.5 py-2 text-right text-xs font-semibold text-muted-foreground'
               }
             >
@@ -118,7 +119,11 @@ export const TierComparison = React.memo(function TierComparison({
           {offers.map((offer) => {
             const price = TIER_MONTHLY_PRICE_USD[offer.tier];
             return (
-              <td key={offer.tier} className={columnClass(offer.tier)}>
+              <td
+                key={offer.tier}
+                data-testid={`compare-cell-${offer.tier}`}
+                className={columnClass(offer.tier)}
+              >
                 {price === 0
                   ? t('membership.priceFree')
                   : `$${String(price)}`}
@@ -135,7 +140,11 @@ export const TierComparison = React.memo(function TierComparison({
               {row.label}
             </th>
             {offers.map((offer) => (
-              <td key={offer.tier} className={columnClass(offer.tier)}>
+              <td
+                key={offer.tier}
+                data-testid={`compare-cell-${offer.tier}`}
+                className={columnClass(offer.tier)}
+              >
                 {row.cell(offer)}
               </td>
             ))}
