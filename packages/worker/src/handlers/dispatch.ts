@@ -36,6 +36,7 @@ import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
 import { extractPromptText } from "@breatic/domain";
+import { takePromptOutOfParams } from "@worker/handlers/prompt-params.js";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",
@@ -1618,12 +1619,15 @@ async function runMiniTool(
   const modelName = (cleanParams.model as string) || entry.model;
   delete cleanParams.model;
 
-  const provider = await importProvider(taskType);
-  const [, validated] = provider.validateParams(modelName, cleanParams);
+  // Lift the prompt BEFORE validation, the same way the direct path does
+  // (#1966). Validation drops keys the model does not declare, so reading the
+  // prompt off the validated result made the whole thing hinge on every model
+  // declaring a `prompt` param — a declaration that says nothing about the
+  // model and that no image model ever wrote.
+  const [prompt, promptless] = takePromptOutOfParams(cleanParams);
 
-  const prompt = (validated.prompt ?? validated.text ?? "") as string;
-  delete validated.prompt;
-  delete validated.text;
+  const provider = await importProvider(taskType);
+  const [, validated] = provider.validateParams(modelName, promptless);
 
   const result = await provider.generateAsync(prompt, modelName, validated, resume);
   const cost = (result.cost as number) ?? 0;
@@ -1684,11 +1688,10 @@ async function runAigcDirect(
 ): Promise<[Record<string, unknown>, number]> {
   if (!model) throw new Error(`model is required for AIGC direct path (${taskType})`);
 
-  // Extract prompt/text and strip HTML before sending to provider
-  const prompt = extractPromptText(params.prompt ?? params.text);
-  const cleanParams = { ...params };
-  delete cleanParams.prompt;
-  delete cleanParams.text;
+  // Same lift as the mini-tool path, from the same function (#1966) — two
+  // inline copies is how the orders drifted apart in the first place.
+  const [prompt, promptless] = takePromptOutOfParams(params);
+  const cleanParams = promptless;
   delete cleanParams.node_ids;
   delete cleanParams.project_id;
 
