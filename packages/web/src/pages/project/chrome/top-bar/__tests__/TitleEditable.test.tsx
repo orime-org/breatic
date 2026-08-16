@@ -53,3 +53,18 @@ describe('TitleEditable', () => {
     });
   });
 });
+
+describe('a thing that has no name yet', () => {
+  it('shows the stand-in without treating it as the name', async () => {
+    // 没名字的会话在顶栏显示一句「新对话」,那是个替身、不是它的名字。
+    // 双击进去时框里该是空的 —— 预填替身就等于替它取了个名。
+    const user = userEvent.setup();
+    render(<TitleEditable value='' placeholder='Untitled' onChange={vi.fn()} />);
+
+    expect(screen.getByTestId('title-display')).toHaveTextContent('Untitled');
+    await user.dblClick(screen.getByTestId('title-display'));
+
+    expect(await screen.findByTestId('title-input')).toHaveValue('');
+  });
+
+});

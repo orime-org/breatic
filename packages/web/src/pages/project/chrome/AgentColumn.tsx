@@ -96,7 +96,8 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
           above the scrim, fully usable. */}
       <div className='contents' inert={unreachable}>
         <AgentColHeader
-          conversationName={currentTitle ?? t('chat.conversation.untitled')}
+          conversationName={currentTitle ?? ''}
+          conversationNamePlaceholder={t('chat.conversation.untitled')}
           onOpenHistory={openHistory}
           onNewConversation={startNew}
           onRenameConversation={renameCurrent}

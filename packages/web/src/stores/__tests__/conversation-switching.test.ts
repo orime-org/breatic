@@ -599,3 +599,103 @@ describe('a press that fails while an older answer is still on its way', () => {
     expect(useConversationRuntime.getState().openStatus[P]).toBeUndefined();
   });
 });
+
+describe('the landing after deleting the only conversation there was', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not black out the conversation the reader started meanwhile', async () => {
+    // 跟上面那条「删完还有下一条可读」是同一件事,走的是另一条分支:一条不剩时
+    // 要开一条新的,而这一趟失败了。读者这时已经自己按了新建、正看着那一条,
+    // 拿一件不作数的事去盖掉一件正好好的事,两条分支上都不对。
+    opens([{ id: 'c-1', title: 'one' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
+    let failOpen: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementationOnce(
+      () => new Promise((_r, reject) => (failOpen = () => reject(new Error('offline')))),
+    );
+    const removing = conversationRuntime.remove(P, 'c-1');
+    await vi.waitFor(() =>
+      expect(useConversationRuntime.getState().openStatus[P]).toBe('loading'),
+    );
+
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 'c-new',
+      title: null,
+    } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
+    await conversationRuntime.startNew(P);
+
+    failOpen?.();
+    await removing;
+
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-new');
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('ready');
+  });
+});
+
+describe('an open that fails while a later press is still out', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('leaves the panel waiting rather than saying it cannot be read', async () => {
+    // 打开这一趟没成,但读者按下的新建还在路上。面板此刻的实情是「还在等」,
+    // 不是「读不回来」—— 写成读不回来会闪一层蒙版,而它马上要被盖掉。
+    let failOpen: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () => new Promise((_r, reject) => (failOpen = () => reject(new Error('offline')))),
+    );
+    const opening = conversationRuntime.ensureLoaded(P);
+    await vi.waitFor(() =>
+      expect(useConversationRuntime.getState().openStatus[P]).toBe('loading'),
+    );
+
+    vi.mocked(chatApi.createConversation).mockImplementation(() => new Promise(() => {}));
+    void conversationRuntime.startNew(P);
+
+    failOpen?.();
+    await opening;
+
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('loading');
+  });
+});
+
+describe('a conversation started when the first page never arrived', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('leaves the list able to fetch what the failed open did not', async () => {
+    // 打开没成,列表一行都没到;接着新建成功,列表里于是只有这一行。这一行之前
+    // 还有什么无人知道,而「不知道」不等于「没有」—— 说成没有,读者滑到底也
+    // 再拉不回那些会话了。
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
+    await conversationRuntime.ensureLoaded(P);
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('failed');
+
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 'c-new',
+      title: null,
+      updatedAt: '2026-08-16T00:00:00.000Z',
+    } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
+    await conversationRuntime.startNew(P);
+
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [{ id: 'c-old', title: 'older' }],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+    await conversationRuntime.loadMoreConversations(P);
+
+    expect(chatApi.listConversations).toHaveBeenCalled();
+    expect(useConversationRuntime.getState().listByProject[P]?.map((c) => c.id)).toEqual([
+      'c-new',
+      'c-old',
+    ]);
+  });
+});

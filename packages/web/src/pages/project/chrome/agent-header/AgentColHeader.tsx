@@ -17,6 +17,7 @@ import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 
 interface AgentColHeaderProps {
   conversationName: string;
+  conversationNamePlaceholder: string;
   onOpenHistory: () => void;
   onNewConversation: () => void;
   onRenameConversation: (next: string) => void;
@@ -37,11 +38,17 @@ interface AgentColHeaderProps {
  * bar, with the length a conversation name may run to rather than the default
  * that box carries for project names.
  *
+ * The name and the words shown while there is none travel separately, because
+ * they are different things: a conversation with no name holds null, and the
+ * sentence on screen is standing in for it. Handing the stand-in over as the
+ * name would make "call it exactly that" read as a change to nothing.
+ *
  * Which conversation is on screen, and the list to choose from, live in the
  * conversation runtime; the column above assembles them and this header just
  * wires the triggers.
  * @param root0 - Component props.
- * @param root0.conversationName - Current conversation name shown in the editable title.
+ * @param root0.conversationName - The conversation's own name, empty while it has none.
+ * @param root0.conversationNamePlaceholder - What the title reads while the conversation has no name.
  * @param root0.onOpenHistory - Opens the conversation history sheet.
  * @param root0.onNewConversation - Starts a new conversation.
  * @param root0.onRenameConversation - Commits a new conversation name when the title is edited.
@@ -49,6 +56,7 @@ interface AgentColHeaderProps {
  */
 export function AgentColHeader({
   conversationName,
+  conversationNamePlaceholder,
   onOpenHistory,
   onNewConversation,
   onRenameConversation,
@@ -79,6 +87,7 @@ export function AgentColHeader({
       <div className='flex min-w-0 flex-1 items-center'>
         <TitleEditable
           value={conversationName}
+          placeholder={conversationNamePlaceholder}
           onChange={onRenameConversation}
           maxWidth={180}
           maxLength={CONVERSATION_TITLE_MAX_CHARS}

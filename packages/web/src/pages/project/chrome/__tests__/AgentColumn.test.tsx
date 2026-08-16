@@ -149,6 +149,29 @@ describe('when they can', () => {
     );
   });
 
+  it('takes a name that reads exactly like the stand-in', async () => {
+    // 会话还没名字时顶栏显示的那句话是个替身,不是它的名字。用户偏要给它取
+    // 这个名,那也是一次命名 —— 拿屏幕上的字去比对,这次命名就被丢掉了,而
+    // 屏幕上什么都不会变,用户看不出自己刚才做的事没算数。
+    opensWith([{ id: 'c-1', title: null }]);
+    vi.mocked(chatApi.renameConversation).mockResolvedValue(undefined as never);
+    const user = userEvent.setup();
+    renderColumn();
+    await waitFor(() => expect(screen.getByTestId('agent-col-header')).toBeInTheDocument());
+
+    await user.dblClick(within(screen.getByTestId('agent-col-header')).getByTestId('title-display'));
+    await user.type(await screen.findByTestId('title-input'), 'Untitled conversation');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(chatApi.renameConversation).toHaveBeenCalledWith(
+        'c-1',
+        PROJECT,
+        'Untitled conversation',
+      ),
+    );
+  });
+
   it('counts the conversations, not the messages', async () => {
     // 分页之后手上这份数组的长度不是总数,而这个数本来就不必显示。
     opensWith([

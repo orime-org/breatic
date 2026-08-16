@@ -24,6 +24,17 @@ interface TitleEditableProps {
    */
   maxLength?: number;
   /**
+   * What to show while the thing has no name of its own.
+   *
+   * A stand-in, not a name: it is drawn in place of an empty value and it goes
+   * in the box's `placeholder`, so opening the box shows an empty field rather
+   * than pre-filling the words on screen. Passing it as `value` instead makes
+   * the stand-in indistinguishable from a name -- typing exactly those words
+   * then reads as "nothing changed" and the rename is dropped, with nothing on
+   * screen moving to say so.
+   */
+  placeholder?: string;
+  /**
    * Whether the title is editable (default true). When false the title is
    * a plain read-only span — no double-click-to-edit, no keyboard edit
    * affordance, not exposed as a focusable textbox. Used to gate the
@@ -81,6 +92,7 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
  * @param root0.onChange - Called with the trimmed, length-capped new title once the user commits a rename.
  * @param root0.maxWidth - Visible width cap in pixels; defaults to the Agent column width.
  * @param root0.maxLength - How many characters the name may run to; defaults to what a project name may hold.
+ * @param root0.placeholder - What to show while the thing has no name of its own.
  * @param root0.editable - Whether the title can be edited; defaults to true. When false the span is read-only.
  * @returns the static truncated title span, or the editing input while in edit mode.
  */
@@ -89,6 +101,7 @@ export function TitleEditable({
   onChange,
   maxWidth = DEFAULT_TITLE_MAX_WIDTH,
   maxLength = DEFAULT_MAX_TITLE_LEN,
+  placeholder,
   editable = true,
 }: TitleEditableProps): React.JSX.Element {
   const [editing, setEditing] = React.useState(false);
@@ -127,6 +140,11 @@ export function TitleEditable({
     setEditing(false);
   };
 
+  // What the static span reads. `draft` is the name, and while there is none
+  // the stand-in takes its place on screen -- without ever becoming the value
+  // the box opens with or the one a commit is compared against.
+  const shown = draft.length > 0 ? draft : (placeholder ?? '');
+
   const sharedStyle: React.CSSProperties = {
     padding: '2px var(--space-2)',
     borderRadius: 'var(--radius-chrome)',
@@ -138,6 +156,7 @@ export function TitleEditable({
       <input
         ref={inputRef}
         value={draft}
+        placeholder={placeholder}
         maxLength={maxLength}
         spellCheck={false}
         onChange={(e) => setDraft(e.target.value)}
@@ -178,9 +197,9 @@ export function TitleEditable({
         className='inline-block min-w-0 truncate align-middle text-sm font-medium'
         style={sharedStyle}
         data-testid='title-display'
-        title={value}
+        title={shown}
       >
-        {value}
+        {shown}
       </span>
     );
   }
@@ -207,9 +226,9 @@ export function TitleEditable({
       className='inline-block min-w-0 cursor-text truncate align-middle text-sm font-medium outline-none hover:bg-accent'
       style={sharedStyle}
       data-testid='title-display'
-      title={draft}
+      title={shown}
     >
-      {draft}
+      {shown}
     </span>
   );
 }

@@ -579,7 +579,7 @@ async function ensureLoaded(projectId: string): Promise<void> {
  */
 async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined> {
   const nav = intendToNavigate(projectId);
-  const landed = false;
+  let landed = false;
   try {
     const visit = currentVisit(projectId);
     // Everything except a chat that is already on screen. What this must not do
@@ -615,7 +615,7 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       // A press that failed takes its navigation back, so being overtaken here
       // means something later actually stands -- and this answer, assembled
       // before it, must not replace what the reader chose.
-      const landed = stillAwaited(projectId, nav);
+      landed = stillAwaited(projectId, nav);
       if (landed) adoptConversation(projectId, opened.current);
       useStore.setState((st) => {
         const held = st.listByProject[projectId] ?? [];
@@ -637,10 +637,16 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       // a conversation the reader is looking at now with the news that a
       // request they walked away from did not work.
       if (visit.signal.aborted) return undefined;
-      // Not over a chat that has opened before. There is a conversation on
-      // screen and it is still readable; saying it could not be opened would
-      // take it away over a request the reader did not make.
-      if (useStore.getState().openStatus[projectId] !== 'ready') {
+      // Only while this is still the navigation being waited for. Something
+      // the reader pressed later takes the question away from this one: what
+      // is on its way then is theirs, and the panel is waiting for that, not
+      // failing at this. Saying otherwise raises a scrim over a wait that is
+      // about to end -- and if that later press lands, over a conversation
+      // that works.
+      // Nor over a chat that has opened before: there is a conversation on
+      // screen and it is still readable, so saying it could not be opened
+      // would take it away over a request the reader did not make.
+      if (stillAwaited(projectId, nav) && useStore.getState().openStatus[projectId] !== 'ready') {
         markUnreadable(projectId, err);
       }
       return { failed: err };
@@ -1531,6 +1537,16 @@ async function startNew(projectId: string): Promise<void> {
           // At the top, where the list's order puts the most recently used one.
           [projectId]: [created, ...(s.listByProject[projectId] ?? [])],
         },
+        // Never having been answered means the first page never arrived, and
+        // this row is then the whole of what the list holds. What came before
+        // it is unknown, which is not the same as nothing: saying nothing
+        // would close paging for good, and reaching the end of a list of one
+        // is how the reader would otherwise get those conversations back --
+        // the page after this row is exactly the page that failed to arrive.
+        listHasMore:
+          s.listHasMore[projectId] === undefined
+            ? { ...s.listHasMore, [projectId]: true }
+            : s.listHasMore,
       }));
       if (!stillAwaited(projectId, nav)) return;
       adoptConversation(projectId, { conversation: created, messages: [], hasMore: false });
@@ -1754,8 +1770,14 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
     // one's reckoning this project is open already and it would return without
     // asking for the conversation that no longer exists.
     const failure = await openAndAdopt(projectId);
-    if (failure) {
-      markUnreadable(projectId, failure.failed);
+    // The scrim, if one is owed, is that call's to raise: it holds the number
+    // for the navigation it made, so it is the one that can tell whether the
+    // reader is still waiting for it. Raising a second one from here asked
+    // nothing at all -- and the branch just above, which lands on the next
+    // conversation instead, has always asked first.
+    // What is left here is the word about it, and that is owed only while this
+    // deletion's landing is still the one being waited for.
+    if (failure && stillAwaited(projectId, nav)) {
       tell({ projectId, conversationId: null, deliberate: true, ...readMishap(failure.failed) });
     }
   } finally {
