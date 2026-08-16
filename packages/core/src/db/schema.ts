@@ -54,8 +54,21 @@ export const users = pgTable(
     hashedPassword: varchar("hashed_password", { length: 255 }),
     emailVerified: boolean("email_verified").default(false).notNull(),
     googleId: varchar("google_id", { length: 255 }),
-    // Membership tier (0052). One of base / pro / team / self_hosted; the
-    // ceilings each one carries live in `config/membership.yaml`, never here.
+    // Membership tier (0052). One of the five in `MEMBERSHIP_TIERS`, and a
+    // CHECK constraint in the database lists exactly those five — added by
+    // hand in migration 0053, when the column gained a writer. It is not
+    // declared here: this repo hand-writes its migrations, so a drizzle
+    // `check()` beside the column would be a second copy that no tool
+    // compares against the first. What keeps the two in step is the
+    // integration case that stores every tier in `MEMBERSHIP_TIERS` and fails
+    // on one the migration does not allow.
+    //
+    // Four of the five carry ceilings, and they live in
+    // `config/membership.yaml`, never here. `enterprise` is the fifth: legal
+    // to store, and impossible to price until its negotiated numbers are read
+    // from the database. Asking for its ceilings throws, naming the account.
+    // A tier added to the enum without a migration widening the constraint
+    // would be storable in TypeScript and rejected by the database.
     //
     // It sits on the account because the tier follows the person. Which tier
     // governs a studio's ceilings is a separate question with a settled
@@ -87,6 +100,58 @@ export const users = pgTable(
     uniqueIndex("users_email_idx").on(table.email),
     uniqueIndex("users_google_id_idx").on(table.googleId),
   ],
+);
+
+// ── 1b. Membership Tier Changes ──────────────────────────────────────
+
+/**
+ * Every move of an account from one membership tier to another (0053).
+ *
+ * The column on `users` answers "what is this account on"; this table answers
+ * "how did it get there", which the column cannot. A tier is what somebody
+ * paid for, so months later "why am I on base" and "when did my team plan
+ * start" have to be answerable from stored fact rather than from a Stripe
+ * dashboard that may have been reconciled since.
+ *
+ * Same shape as `credit_transactions` and for the same reason: the current
+ * value is a scalar somewhere else, and every change to it is appended here.
+ *
+ * Append-only, so `created_at` alone rather than the `timestamps` pair — a row
+ * is written once and never edited. Nothing has to be declared for that:
+ * `schema-timestamps` requires `created_at` and `deleted_at`, never
+ * `updated_at`. The missing `deleted_at` does need declaring, and its reason
+ * sits in that rule's allowlist: deleting a row would leave a history that no
+ * longer adds up to the value on the account.
+ *
+ * `reference_id` holds whatever the trigger was identified by upstream — a
+ * Stripe subscription or event id once subscriptions land. It is deliberately
+ * NOT what makes a redelivered webhook safe: comparing tiers converges on the
+ * last call and cannot tell a replay from a new event, so the subscription
+ * work keys idempotency on event identity the way `updatePaymentStatusCAS`
+ * and `deductOnce` already do.
+ */
+export const membershipTierChanges = pgTable(
+  "membership_tier_changes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // Both carry a tier name, and both have the same CHECK constraint the
+    // account column does — in migration 0053, not declared here; see the
+    // note on `users.membershipTier`.
+    fromTier: varchar("from_tier", { length: 16 }).notNull(),
+    toTier: varchar("to_tier", { length: 16 }).notNull(),
+    // What caused the move: `subscription_activated`, `subscription_ended`,
+    // `registration`, or `manual`. The last two have no writer yet — see the
+    // block seven design for why registration does not append a row.
+    reason: varchar("reason", { length: 32 }).notNull(),
+    referenceId: varchar("reference_id", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("membership_tier_changes_user_id_idx").on(table.userId)],
 );
 
 // ── 2. Studios ───────────────────────────────────────────────────────

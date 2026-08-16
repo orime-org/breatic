@@ -48,7 +48,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import type { MembershipTier } from "@breatic/shared";
+import type { ConfiguredMembershipTier } from "@breatic/shared";
 import { initCore, loadLocales, getMembershipLimits } from "@breatic/core";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
@@ -80,12 +80,12 @@ afterAll(async () => {
 let seq = 0;
 
 /** That tier's studio-member ceiling, straight from the shipped config. */
-function studioCeiling(tier: MembershipTier): number {
+function studioCeiling(tier: ConfiguredMembershipTier): number {
   return getMembershipLimits(tier).studio_members;
 }
 
 /** That tier's project-collaborator ceiling, straight from the shipped config. */
-function projectCeiling(tier: MembershipTier): number {
+function projectCeiling(tier: ConfiguredMembershipTier): number {
   return getMembershipLimits(tier).project_members;
 }
 
@@ -95,7 +95,7 @@ function projectCeiling(tier: MembershipTier): number {
  * @returns The new user's id and email.
  */
 async function insertUser(
-  tier: MembershipTier,
+  tier: ConfiguredMembershipTier,
 ): Promise<{ id: string; email: string }> {
   const email = `mq-${seq++}@example.test`;
   const rows = await sql<{ id: string }[]>`

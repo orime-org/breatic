@@ -149,7 +149,10 @@ export {
   getLimitsForStudio,
   getProjectConcurrentEditorLimit,
   lockLimitsForUser,
+  changeMembershipTier,
+  TIER_CHANGE_REASONS,
 } from "@core/auth/membership.repo.js";
+export type { TierChangeReason } from "@core/auth/membership.repo.js";
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";

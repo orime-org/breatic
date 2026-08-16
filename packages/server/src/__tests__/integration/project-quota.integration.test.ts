@@ -40,7 +40,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import type { MembershipTier } from "@breatic/shared";
+import type { ConfiguredMembershipTier } from "@breatic/shared";
 import { initCore, loadLocales, getMembershipLimits } from "@breatic/core";
 import { projectService } from "@server/modules";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
@@ -71,7 +71,7 @@ afterAll(async () => {
 let seq = 0;
 
 /** That tier's project-per-studio ceiling, straight from the shipped config. */
-function ceilingFor(tier: MembershipTier): number {
+function ceilingFor(tier: ConfiguredMembershipTier): number {
   return getMembershipLimits(tier).projects_per_studio;
 }
 
@@ -80,7 +80,7 @@ function ceilingFor(tier: MembershipTier): number {
  * @param tier - Membership tier stamped on the account.
  * @returns The new user's id.
  */
-async function insertUser(tier: MembershipTier): Promise<string> {
+async function insertUser(tier: ConfiguredMembershipTier): Promise<string> {
   const rows = await sql<{ id: string }[]>`
     INSERT INTO users (email, email_verified, membership_tier)
     VALUES (${`pq-${seq++}@example.test`}, true, ${tier}) RETURNING id

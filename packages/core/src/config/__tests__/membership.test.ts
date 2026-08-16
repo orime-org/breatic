@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { MEMBERSHIP_TIERS } from "@breatic/shared";
+import { CONFIGURED_MEMBERSHIP_TIERS } from "@breatic/shared";
 import {
   membershipConfigSchema,
   getMembershipConfig,
@@ -135,12 +135,23 @@ describe("membershipConfigSchema — what counts as a limit", () => {
 });
 
 describe("membershipConfigSchema — default_tier", () => {
-  it("accepts each of the four tiers", () => {
-    for (const name of MEMBERSHIP_TIERS) {
+  it("accepts each of the four tiers whose ceilings are in the file", () => {
+    for (const name of CONFIGURED_MEMBERSHIP_TIERS) {
       expect(() =>
         membershipConfigSchema.parse(config({ default_tier: name })),
       ).not.toThrow();
     }
+  });
+
+  it("rejects enterprise, which an account can be on but cannot start on", () => {
+    // Enterprise is a legal tier for an account; its ceilings are negotiated
+    // per customer and are not in this file. A deployment naming it here would
+    // land every new account on a tier with no ceilings to read, so every
+    // quota check would throw. Refusing it while loading says so once, at the
+    // point somebody can still fix the file.
+    expect(() =>
+      membershipConfigSchema.parse(config({ default_tier: "enterprise" })),
+    ).toThrow();
   });
 
   it("rejects a tier name that does not exist", () => {
@@ -165,9 +176,9 @@ describe("the real config/membership.yaml", () => {
     expect(() => getMembershipConfig()).not.toThrow();
   });
 
-  it("carries all four tiers with every field", () => {
+  it("carries all four configured tiers with every field", () => {
     const cfg = getMembershipConfig();
-    for (const name of MEMBERSHIP_TIERS) {
+    for (const name of CONFIGURED_MEMBERSHIP_TIERS) {
       const limits = cfg.tiers[name];
       expect(limits, `tier ${name} is missing`).toBeDefined();
       for (const field of FIELDS) {

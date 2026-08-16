@@ -64,11 +64,14 @@ tiers:
   # high enough that nobody reaches them. Lower any of them to a real number
   # and it takes effect immediately, no code change involved.
   #
-  # The negotiated enterprise tier is NOT here and is not in the tier enum
-  # either. Its ceilings are agreed per customer, so there is no one set of
-  # them to write down; that work reads them from the database. Inventing a
-  # set here would hand an account put on that tier a ceiling nobody agreed
-  # to, and it would not complain.
+  # The negotiated enterprise tier is NOT here, and that is the only place it
+  # is absent from: it IS in `MEMBERSHIP_TIERS`, the database CHECK constraint
+  # accepts it, and an account may be on it. Its ceilings are agreed per
+  # customer, so there is no one set of them to write down; that work reads
+  # them from the database. Inventing a set here would hand an account put on
+  # that tier a ceiling nobody agreed to, and it would not complain — so
+  # asking for enterprise ceilings fails loudly instead, naming the account,
+  # and `default_tier` refuses the value outright.
   self_hosted:
     team_studios: 9999
     projects_per_studio: 9999
