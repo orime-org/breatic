@@ -123,8 +123,9 @@ export interface VideoPanelViewModel {
    *
    * What this measures is the model's catalog entry, not the endpoint behind
    * it — the prompt travels as its own argument the whole way down and never
-   * passes the param check, so a model with no prompt field still receives
-   * any non-empty text that was typed.
+   * passes the param check, so nothing downstream would strip it from a model
+   * that declares none. The panel is what stops it: since #1950 such a model
+   * is sent an empty string.
    *
    * Among the models THIS PANEL can offer — the ones whose mode is one of its
    * six — every one declares a prompt except the talking-head model, which is
@@ -136,13 +137,13 @@ export interface VideoPanelViewModel {
    *
    * True when the model is unknown: an unrecognised model is not a licence to
    * skip the requirement every other mode has. That fallback also covers the
-   * catalog being in flight, and there the panel does briefly show a prompt
-   * box a talking-head model has no use for — one frame of the same loading
-   * state that leaves the model pill blank and the mode switch disabled
-   * beside it. Tracked as its own problem (#1964) because the fix belongs to
+   * catalog being in flight, and there the panel does show a prompt box a
+   * talking-head model has no use for, for the length of that request — the
+   * same loading state that leaves the model pill blank and the mode switch
+   * disabled beside it. Tracked as its own problem (#1964) because the fix belongs to
    * the frame that already gates on the catalog, not to this field: making
    * this one value say "not known yet" and having rendering act on it took
-   * the prompt box away from the other five modes for that same frame.
+   * the prompt box away from the other five modes for that same stretch.
    */
   promptRequired: boolean;
 }

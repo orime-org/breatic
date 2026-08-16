@@ -162,8 +162,9 @@ function VideoGeneratePanelBody({
   const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
     atMentionedRef.current = sourceIds;
   }, []);
-  // Click a reference-rail chip → insert its `@` mention at the prompt cursor
-  // (user 2026-07-10 item 8); the editor places it at the caret or the end.
+  // Holds the prompt editor when one is mounted. Inserting a reference-rail
+  // chip goes through `handleInsertReference` below, which refuses first when
+  // this model takes no prompt.
   const promptEditorRef = React.useRef<PromptEditorHandle>(null);
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -246,7 +247,8 @@ function VideoGeneratePanelBody({
   // the node has no fragment to edit, so no editor mounts. There the ref would
   // refuse and this does not, leaving the `?.` below to swallow the click.
   // Such a node predates video generation and we ship no compatibility for
-  // pre-launch data (#1950); filed with the related rail question as #1965.
+  // pre-launch data (#1950); filed as #1962, next to the rail's own open
+  // question about such modes (#1965).
   // No test pins this swap, for that same reason: every state a user can
   // reach today gets the same answer from either criterion, so an assertion
   // about the difference would be asserting nothing (measured — swapping it
@@ -696,8 +698,9 @@ function VideoGeneratePanelBody({
   // and #1880 ratified that those are NOT repaired — creating one when the
   // panel opens is the exact race that decision removed (two people opening
   // at once each mint one under the same key, and last-write-wins drops a
-  // container with everything typed into it). Such a node renders nothing
-  // here, the same as the image panel (`GeneratePanelContainer.tsx:705`):
+  // container with everything typed into it). Whenever the model takes a
+  // prompt, such a node renders nothing here — the no-prompt branch below is
+  // checked first — the same as the image panel (`GeneratePanelContainer.tsx:705`):
   // pre-launch we ship no compatibility branch for old data (#1950).
   //
   // The model decides, not the mode (#1935, #1950): a model that declares no
