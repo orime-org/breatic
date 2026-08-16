@@ -223,6 +223,7 @@ export function ChatPanel({
         hasEarlier={hasMore}
         onLoadEarlier={loadEarlier}
         onQuickAction={quickAction}
+        navigating={navigating}
       />
       {/* One line, on the top edge of the composer, for everything this panel
           has to say -- and it says each thing once. Nothing here is a state

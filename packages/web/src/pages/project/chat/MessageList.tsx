@@ -55,6 +55,8 @@ interface MessageListProps {
   /** Load what comes before the messages on screen. */
   onLoadEarlier?: () => void;
   onQuickAction?: (label: string) => void;
+  /** The panel is on its way to another conversation. */
+  navigating?: boolean;
 }
 
 /**
@@ -121,6 +123,7 @@ function MessageSkeleton(): React.JSX.Element {
  * @param root0.hasEarlier - The conversation reaches back further than this.
  * @param root0.onLoadEarlier - Called to load what comes before these.
  * @param root0.onQuickAction - Called with a quick-action label from the empty state.
+ * @param root0.navigating - The panel is on its way to another conversation.
  * @returns The scrollable message column, or the empty-conversation state.
  */
 function MessageListInner({
@@ -132,6 +135,7 @@ function MessageListInner({
   hasEarlier = false,
   onLoadEarlier,
   onQuickAction,
+  navigating = false,
 }: MessageListProps): React.JSX.Element {
   const t = useTranslation();
   const bottomRef = React.useRef<HTMLDivElement>(null);
@@ -212,7 +216,7 @@ function MessageListInner({
       {!ready ? (
         skeleton ? <MessageSkeleton /> : null
       ) : count === 0 ? (
-        <ChatEmpty onQuickAction={onQuickAction} />
+        <ChatEmpty onQuickAction={onQuickAction} frozen={navigating} />
       ) : (
         <div className='flex flex-col gap-2 p-3'>
           {/* At the top, because that is where the conversation continues
