@@ -23,6 +23,7 @@ models:
     display_name: "Midjourney V7"
     icon: "midjourney"
     mode: "t2i"
+    takes_prompt: true
     tier: recommended
     description: "Top aesthetics, artistic imagery"
     guide: "Highest aesthetic quality among all models. Exceptional at artistic, cinematic, and editorial imagery. Strong compositional awareness, 40% fewer anatomical errors. Weak at text rendering. Supports one style reference image (style_images). Choose for marketing visuals, concept art, and images where aesthetic beauty is paramount."

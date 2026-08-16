@@ -4,6 +4,7 @@ models:
   - name: "video-upscale-pro"
     display_name: "Video Upscale Pro"
     mode: "upscale"
+    takes_prompt: false
     tier: internal
     description: "Premium AI upscale with detail recovery"
     guide: "Professional-grade upscaling with superior detail reconstruction — restores fine textures (hair, fabric, foliage) and sharp edges without over-sharpening. Slower but higher quality than standard."
@@ -27,6 +28,7 @@ models:
   - name: "rife-interpolation"
     display_name: "RIFE Frame Interpolation"
     mode: "interpolate"
+    takes_prompt: false
     tier: internal
     description: "AI frame rate doubling for smooth motion"
     guide: "RIFE (Real-Time Intermediate Flow Estimation) inserts AI-generated frames between existing ones — doubles the frame rate for smoother motion. Ideal for slow-motion effects, fixing choppy footage, or upgrading visual fluidity."

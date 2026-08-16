@@ -18,6 +18,7 @@ models:
     display_name: "Nano Banana Pro"
     icon: "nano-banana"
     mode: "t2i"
+    takes_prompt: true
     tier: recommended
     description: "Flagship quality, 4K, lens control"
     guide: "Best quality and prompt adherence. Excels at photorealism, text rendering (multilingual), and complex multi-element prompts. Uses reasoning to decompose complex scenes. Supports one style reference image for consistent style generation. Slowest and most expensive, but highest fidelity. Choose for professional/print production or text-heavy images."
@@ -78,6 +79,7 @@ models:
     display_name: "Nano Banana 2"
     icon: "nano-banana"
     mode: "t2i"
+    takes_prompt: true
     tier: optional
     description: "Fast high-quality, recommended default"
     guide: "Best all-round default. Pro-level quality at Flash speed (~3-5s). Web search grounding for real-world subjects (landmarks, people, events). Good text rendering, 14 aspect ratios, up to 4K. Recommended for most use cases."
@@ -134,6 +136,7 @@ models:
     display_name: "Nano Banana Pro Edit"
     icon: "nano-banana"
     mode: ["i2i", "edit"]
+    takes_prompt: true
     tier: recommended
     description: "Flagship editor, 14-image ref"
     guide: "Most capable editor. Best at inpainting, text overlay editing, and complex multi-constraint edits. Supports up to 13 reference images plus one style reference image (14 inputs total, the model's cap). Uses reasoning for precise editing. Choose for professional editing requiring highest quality."
@@ -180,6 +183,7 @@ models:
     display_name: "Nano Banana 2 Edit"
     icon: "nano-banana"
     mode: ["i2i", "edit"]
+    takes_prompt: true
     tier: optional
     description: "Fast editor, web search enhanced"
     guide: "Fast, high-quality editing. Good for most editing tasks: object add/remove, style transfer, background changes. Supports web search and up to 14 reference images. Recommended default for image editing."
