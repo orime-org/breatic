@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MAX_TIMER_MS } from "@breatic/shared";
+import { CONVERSATION_TITLE_MAX_CHARS, MAX_TIMER_MS } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const agentConfigSchema = z.object({
@@ -35,7 +35,17 @@ const agentConfigSchema = z.object({
    * one by typing a whole paragraph as often as a line. Cut so the list stays
    * readable; the full message is a scroll away in the conversation itself.
    */
-  conversation_title_max_chars: z.number().int().positive().default(60),
+  // Capped at what the column stores. Past that the title is cut to fit on the
+  // way in, by UTF-16 code units -- which lands mid-character often enough
+  // that an emoji in the first sentence comes back with a replacement mark,
+  // stored for good. Turning the knob back does not repair the rows already
+  // written that way.
+  conversation_title_max_chars: z
+    .number()
+    .int()
+    .positive()
+    .max(CONVERSATION_TITLE_MAX_CHARS)
+    .default(60),
   conversation_page_size: z.number().int().positive().default(30),
   memory_keep_recent_turns: z.number().int().positive().default(3),
   full_detail_turns: z.number().int().positive().default(3),
@@ -71,6 +81,14 @@ const agentConfigSchema = z.object({
 
 /** Validated agent configuration type. */
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
+
+/**
+ * The agent config shape, for tests that assert on its bounds.
+ *
+ * Exported rather than rebuilt in the test: a copy would pass while the real
+ * one drifts, which is the whole failure this bound exists to prevent.
+ */
+export const agentConfigSchemaForTests = agentConfigSchema;
 
 let _cachedConfig: Readonly<AgentConfig> | null = null;
 

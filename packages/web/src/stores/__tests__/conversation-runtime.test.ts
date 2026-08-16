@@ -21,7 +21,6 @@ vi.mock('@web/data/api/chat', () => ({
 import { chatApi } from '@web/data/api/chat';
 import { StreamDroppedError, StreamRefusedError, StreamUnreachableError } from '@web/data/stream/sse';
 import { ApiException } from '@web/data/api/types';
-import { useChatStore } from '@web/stores/chat';
 import {
   conversationRuntime,
   turnPhaseOf,
@@ -111,7 +110,6 @@ function conversation() {
 beforeEach(() => {
   vi.clearAllMocks();
   _resetForTests();
-  useChatStore.getState().reset();
   vi.mocked(chatApi.streamMessage).mockImplementation((_input, h) => {
     handlers = h;
     // Never settles, the way the real call does not until the socket closes.

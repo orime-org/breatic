@@ -28,7 +28,6 @@ import {
   StreamDroppedError,
 } from '@web/data/stream/sse';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
-import { useChatStore } from '@web/stores';
 import { useConversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 
 /** The stream handlers the hook installed on its last send. */
@@ -109,7 +108,6 @@ function storedMessages(): Array<{ streaming?: boolean; failed?: boolean }> {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useChatStore.getState().reset();
   // A module singleton outlives every test in the file, which is the same
   // reason it outlives the panel.
   _resetForTests();

@@ -17,7 +17,6 @@ import type { SSEEventEnvelope } from '@breatic/shared';
 import { chatApi } from '@web/data/api/chat';
 import { StreamRefusedError, StreamUnreachableError } from '@web/data/stream/sse';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
-import { useChatStore } from '@web/stores';
 import { conversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 
 /** The conversation every case in this file is opened into. */
@@ -123,7 +122,6 @@ describe('ChatPanel', () => {
     // Reset, not clear: an unconsumed `mockImplementationOnce` left by an
     // earlier case survives `clearAllMocks` and fires in the next one.
     vi.resetAllMocks();
-    useChatStore.getState().reset();
     // The conversation runtime is a module singleton, so it carries whatever
     // the last case left in it into the next one.
     _resetForTests();
@@ -366,7 +364,6 @@ describe('ChatPanel', () => {
 describe('a conversation longer than one page', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    useChatStore.getState().reset();
     _resetForTests();
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c1' }],

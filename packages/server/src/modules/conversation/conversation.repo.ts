@@ -15,13 +15,13 @@ import { and, or, eq, lt, desc, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import {
   conversations,
-  conversationMessages,
   conversationAttachments,
   conversationMemories,
   memoryHistoryEntries,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { cascadeDeleteMessages } from "@server/modules/conversation/conversation-message.repo.js";
+import { CONVERSATION_TITLE_MAX_CHARS } from "@breatic/shared";
 import type { ConversationEntity } from "@breatic/shared";
 
 /**
@@ -199,14 +199,15 @@ export async function lockChatCreation(
 /**
  * The conversation this user spoke in most recently in this project.
  *
- * Ordered by the newest message in each conversation, falling back to the
- * conversation's own creation time for one that has never been spoken in.
- * `conversations.updated_at` is deliberately not used: renaming a conversation
- * touches it, and renaming is not speaking.
+ * The same order the list is in, and the same column: `updated_at` is set when
+ * something is said and left alone by a rename, so it already means "last
+ * spoken in, or created if never spoken in". Reading it two ways would let the
+ * panel open on one conversation while the list puts another at the top -- the
+ * same words on screen pointing at two different things.
  *
  * The id is the final ordering key so the answer never wobbles between two
- * conversations whose newest messages share a timestamp — without it, the same
- * user refreshing twice could land somewhere different each time.
+ * conversations sharing a timestamp — without it, the same user refreshing
+ * twice could land somewhere different each time.
  * @param userId - Owner whose conversations to consider
  * @param projectId - Project to look in
  * @param tx - Optional transaction handle, so the caller can read inside the
@@ -219,15 +220,8 @@ export async function findMostRecentlyUsed(
   tx?: DbTx,
 ): Promise<ConversationEntity | null> {
   const rows = await (tx ?? db)
-    .select({ conversation: conversations })
+    .select()
     .from(conversations)
-    .leftJoin(
-      conversationMessages,
-      and(
-        eq(conversationMessages.conversationId, conversations.id),
-        isNull(conversationMessages.deletedAt),
-      ),
-    )
     .where(
       and(
         eq(conversations.userId, userId),
@@ -235,14 +229,10 @@ export async function findMostRecentlyUsed(
         isNull(conversations.deletedAt),
       ),
     )
-    .groupBy(conversations.id)
-    .orderBy(
-      sql`COALESCE(max(${conversationMessages.createdAt}), ${conversations.createdAt}) DESC`,
-      desc(conversations.id),
-    )
+    .orderBy(desc(conversations.updatedAt), desc(conversations.id))
     .limit(1);
 
-  return rows[0] ? toEntity(rows[0].conversation) : null;
+  return rows[0] ? toEntity(rows[0]) : null;
 }
 
 /**
@@ -357,7 +347,7 @@ export async function softDeleteConversation(id: string): Promise<void> {
  * Update conversation title. No-op when the conversation is soft-deleted
  * — filtering on `isNull(deletedAt)` means concurrent deletion wins.
  * @param id - Conversation UUID to rename
- * @param title - New display title; truncated to 200 chars before update
+ * @param title - New display title; truncated to what the column stores before update
  */
 export async function updateTitle(id: string, title: string): Promise<void> {
   // The title only. `updated_at` is what orders the list and what each row
@@ -371,7 +361,10 @@ export async function updateTitle(id: string, title: string): Promise<void> {
   // Naming it is the only way to say "leave this one alone" in one round trip.
   await db
     .update(conversations)
-    .set({ title: title.slice(0, 200), updatedAt: sql`${conversations.updatedAt}` })
+    .set({
+      title: title.slice(0, CONVERSATION_TITLE_MAX_CHARS),
+      updatedAt: sql`${conversations.updatedAt}`,
+    })
     .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
 }
 
@@ -400,6 +393,11 @@ export async function setProjectId(
 export async function updateConsolidatedTurn(id: string, turn: number): Promise<void> {
   await db
     .update(conversations)
-    .set({ lastConsolidatedTurn: turn, updatedAt: new Date() })
+    // `updated_at` is left where it is, and that is load-bearing. It orders the
+    // list and decides which conversation an open lands on, and what it means
+    // there is "last used" -- consolidating memory is bookkeeping this reader
+    // never asked for and cannot see. Touching it would lift a conversation
+    // they have not opened in weeks to the top of their list.
+    .set({ lastConsolidatedTurn: turn, updatedAt: sql`${conversations.updatedAt}` })
     .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
 }

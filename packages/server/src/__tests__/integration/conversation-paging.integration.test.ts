@@ -288,3 +288,54 @@ describe("the first page, the one that arrives with the panel", () => {
     expect(body.data.conversations.length).toBeLessThan(41);
   });
 });
+
+describe("the conversation an open lands on", () => {
+  it("is the one at the top of the list", async () => {
+    // 「最近用过的那条」和「列表最上面那条」必须是同一条。两处各排各的,读者
+    // 打开 project 落在 A、列表却把 B 排在最前,而删掉当前那条时挑的又是列表
+    // 那一份 —— 同一个词在同一个界面上指两个东西。
+    const { userId, projectId, cookie } = await seedTwoProjects();
+    const ids = await seedConversations(userId, projectId, ["oldest", "middle", "newest"]);
+
+    // 在最老的那条里说一句话:它成了「最近用过的」,列表也该把它排到最前。
+    // 走真实路由而不是裸 SQL —— 要测的正是「说话」这个动作带来的排序变化。
+    const said = await app.request("/api/v1/chat/message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        message: "just spoke here",
+        project_id: projectId,
+        conversation_id: ids[0]!,
+      }),
+    });
+    await said.text();
+
+    const page = await listPage(projectId, cookie, { limit: 10 });
+    const res = await app.request("/api/v1/chat/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ project_id: projectId }),
+    });
+    const opened = (await res.json()) as { data: { current: { conversation: { id: string } } } };
+
+    expect(opened.data.current.conversation.id).toBe(page.data.conversations[0]!.id);
+  });
+
+  it("does not move when a conversation is renamed", async () => {
+    // 改名不是说话。它不该把一条会话顶到列表最前,也不该改变下次打开落在哪。
+    const { userId, projectId, cookie } = await seedTwoProjects();
+    const ids = await seedConversations(userId, projectId, ["oldest", "newest"]);
+
+    const before = await listPage(projectId, cookie, { limit: 10 });
+    await app.request(`/api/v1/chat/conversations/${ids[0]!}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ project_id: projectId, title: "renamed just now" }),
+    });
+    const after = await listPage(projectId, cookie, { limit: 10 });
+
+    expect(after.data.conversations.map((c) => c.id)).toEqual(
+      before.data.conversations.map((c) => c.id),
+    );
+  });
+});

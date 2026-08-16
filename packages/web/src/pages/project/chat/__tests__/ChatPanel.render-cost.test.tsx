@@ -55,7 +55,6 @@ import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
-import { useChatStore } from '@web/stores';
 import { _resetForTests } from '@web/stores/conversation-runtime';
 
 /** The stream handlers the store installed on its last send. */
@@ -63,7 +62,6 @@ let handlers: { onEvent: (e: SSEEventEnvelope) => void };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useChatStore.getState().reset();
   _resetForTests();
   counts.composer = 0;
   counts.history = 0;

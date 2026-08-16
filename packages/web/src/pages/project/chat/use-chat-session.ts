@@ -4,7 +4,6 @@
 import * as React from 'react';
 import type { MessageData } from '@breatic/shared';
 
-import { useChatStore } from '@web/stores';
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 
 import {
@@ -168,7 +167,6 @@ const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
  * @returns The messages, whether they have arrived, and what can be done
  */
 export function useChatSession(projectId: string): ChatSession {
-  const setActiveConversationId = useChatStore((s) => s.setActiveConversationId);
 
   const conversationId = useConversationRuntime((s) => s.currentByProject[projectId]);
   const openStatus = useConversationRuntime((s) => s.openStatus[projectId] ?? 'idle');
@@ -206,9 +204,6 @@ export function useChatSession(projectId: string): ChatSession {
     void conversationRuntime.ensureLoaded(projectId);
   }, [projectId]);
 
-  React.useEffect(() => {
-    if (conversationId) setActiveConversationId(conversationId);
-  }, [conversationId, setActiveConversationId]);
 
   /**
    * How many turns had already failed in this conversation when it came up.
