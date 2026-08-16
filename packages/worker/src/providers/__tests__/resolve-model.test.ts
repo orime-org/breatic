@@ -92,20 +92,21 @@ describe("validateParams (#1672 behavior pins)", () => {
     expect(cleaned.aspect_ratio).toBe("1:1");
   });
 
-  it("pins the talking-head model's declaration: two sources, no prompt (#1935)", () => {
-    // The panel makes two decisions about this model by reading what it does
-    // NOT declare: it demands no prompt (`params.prompt != null` in the video
-    // panel's view model) and it renders no params pill (none of the four the
-    // pill edits). Both read the catalog, so a `prompt` added here -- the
-    // obvious edit when someone gives this mode a dialogue script (#1936), or
-    // a copy-paste from another model -- would silently switch the demand back
-    // on. This is where that shows up: `validateParams` keeps a declared key
-    // and drops an undeclared one, so the last assertion is the pin.
+  it("pins the talking-head model's declaration: two sources, no params pill (#1935)", () => {
+    // What the panel still reads off this declaration is the params pill: none
+    // of the four keys it edits is here, so it renders none. The prompt half of
+    // the old reason is gone -- #1966 moved "does this model take a prompt" to
+    // an explicit `takes_prompt` field and deleted every `params.prompt`, so a
+    // `prompt` re-added here would no longer switch any panel demand back on.
+    // It would still be wrong, and this still catches it: the model's declared
+    // set is its contract with `validateParams`, which keeps a declared key and
+    // drops an undeclared one.
     //
     // The input shape is synthetic on purpose. Production never sends a prompt
-    // through this pass -- `runAigcDirect` lifts it out of the params first and
-    // carries it to the provider as its own argument -- so this is not a claim
-    // about where a typed prompt goes. It is a claim about the catalog.
+    // through this pass -- both execution paths lift it out of the params before
+    // validating (`takePromptAndValidate`) and carry it to the provider as its
+    // own argument -- so this is not a claim about where a typed prompt goes.
+    // It is a claim about the catalog.
     const [name, cleaned] = validateParams("video", "omnihuman-1.5", {
       image: "https://cdn/portrait.png",
       audio: "https://cdn/speech.mp3",

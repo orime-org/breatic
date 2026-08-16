@@ -17,7 +17,7 @@
  * the existing `catalogEmpty` handling's business.
  */
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -108,6 +108,28 @@ describe('CatalogGatedFrame — 目录到齐才展开 (#1964)', () => {
       expect(screen.getByTestId('panel-body')).toBeTruthy();
     });
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  // 离线时 react-query 把请求 park 起来：`fetchStatus` 是 paused，既不 resolve
+  // 也不 reject，queryFn 一次都不会调。只判「还在路上」会把它当成等待，而这个
+  // 等待不会自己结束 —— 用户点了生成，屏幕上什么都不发生也没有任何解释，正是
+  // 项目里禁的那种静默无反应。实现对抗（2026-08-16）咬出这条。
+  it('离线时不展开、说一句为什么、关掉面板意图', async () => {
+    const warnSpy = vi.spyOn(toast, 'warning');
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(emptyCatalog());
+    onlineManager.setOnline(false);
+    try {
+      mountGate();
+      await waitFor(() => {
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(screen.queryByTestId('panel-body')).toBeNull();
+      expect(useCanvasStore.getState().panelHostId).toBeNull();
+      // 对照：这不是「请求失败了」，而是根本没发出去。
+      expect(listSpy).not.toHaveBeenCalled();
+    } finally {
+      onlineManager.setOnline(true);
+    }
   });
 
   it('取不到目录时不展开、弹 toast、关掉面板意图', async () => {

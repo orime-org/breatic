@@ -15,11 +15,11 @@ import { NodeToolbar, Position } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 
-import { modelsApi } from '@web/data/api/models';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 
 /** The panel kinds this frame serves — the node-anchored generate panels. */
 type GeneratePanelKind = 'generate' | 'generateVideo';
@@ -81,6 +81,11 @@ interface CatalogGatedFrameProps {
  * a panel that flashed into view before closing itself. Waiting costs nothing
  * in the common case because `CanvasSpace` prefetches the catalog when the
  * space mounts, so by the time anyone clicks Generate the answer is cached.
+ *
+ * Three outcomes, then, and offline is its own (#1966): a paused query is not
+ * a slow one, it is one that will not move until the browser reconnects, so
+ * holding for it would be a wait that cannot end. It gets the same treatment
+ * as a failure — say why, close the panel — with its own sentence.
  * @param root0 - Component props.
  * @param root0.nodeId - The node the panel anchors to.
  * @param root0.children - The panel body.
@@ -92,31 +97,39 @@ export function CatalogGatedFrame({
 }: CatalogGatedFrameProps): React.JSX.Element | null {
   const t = useTranslation();
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
-  const { isError, data } = useQuery({
-    queryKey: ['models'],
-    queryFn: () => modelsApi.list(),
-  });
+  const { isError, data, fetchStatus } = useQuery(modelCatalogQuery());
   const catalogError = isError && data === undefined;
-  // No data yet and no error yet: the request is in flight, or paused because
-  // the browser is offline (#1966 — react-query's default `networkMode` parks
-  // a query then, and a paused query never resolves and never rejects, so
-  // this state does not end on its own). Either way there is nothing to build
-  // a panel out of, and the panel is what the user is waiting for — showing
-  // its shell first is the flicker #1964 is about. The way out of an offline
-  // wait is closing the panel; WHY the app is offline is the global
-  // connection banner's job, not this panel's.
-  const catalogPending = !catalogError && data === undefined;
+  // Offline is its own outcome, not a slow one (#1966). react-query's default
+  // `networkMode` PARKS a query while the browser is offline: `fetchStatus`
+  // goes `paused`, the query function is never called, and the query neither
+  // resolves nor rejects. Folding that into "still in flight" is what made
+  // clicking Generate offline do nothing at all and say nothing either — a
+  // wait that cannot end, on an entry point the user just commanded. So it
+  // ends the same way a failure does, with its own sentence.
+  const catalogOffline = !catalogError && data === undefined && fetchStatus === 'paused';
+  // No data, no error, and the request really is on the wire. Nothing to build
+  // a panel out of, and showing its shell first is the flicker #1964 is about.
+  const catalogPending = !catalogError && !catalogOffline && data === undefined;
   React.useEffect(() => {
+    // A fixed toast id de-duplicates the StrictMode double-effect and rapid
+    // re-open attempts while the condition holds (sonner replaces in place).
     if (catalogError) {
-      // A fixed toast id de-duplicates the StrictMode double-effect and rapid
-      // re-open attempts while the API stays down (sonner replaces in place).
       toast.error(t('canvas.generatePanel.catalogUnavailable'), {
         id: 'generate-catalog-unavailable',
       });
       closeActivePanel();
+      return;
     }
-  }, [catalogError, closeActivePanel, t]);
-  if (catalogError || catalogPending) return null;
+    if (catalogOffline) {
+      // `warning`, not `error`: nothing failed, the request was held back.
+      // Same shape as every other refusal the canvas hands back on a command.
+      toast.warning(t('canvas.generatePanel.catalogOffline'), {
+        id: 'generate-catalog-offline',
+      });
+      closeActivePanel();
+    }
+  }, [catalogError, catalogOffline, closeActivePanel, t]);
+  if (catalogError || catalogOffline || catalogPending) return null;
   return (
     <NodeToolbar nodeId={nodeId} isVisible position={Position.Bottom}>
       {children}

@@ -19,7 +19,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import * as React from 'react';
 
-import { modelsApi } from '@web/data/api';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 
 /**
  * Prefetch the model catalog once for this mount.
@@ -41,9 +41,6 @@ import { modelsApi } from '@web/data/api';
 export function usePrefetchModelCatalog(): void {
   const queryClient = useQueryClient();
   React.useEffect(() => {
-    void queryClient.prefetchQuery({
-      queryKey: ['models'],
-      queryFn: () => modelsApi.list(),
-    });
+    void queryClient.prefetchQuery(modelCatalogQuery());
   }, [queryClient]);
 }

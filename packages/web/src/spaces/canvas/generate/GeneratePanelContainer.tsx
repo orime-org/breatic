@@ -8,7 +8,6 @@ import type * as Y from 'yjs';
 
 import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
-import { modelsApi } from '@web/data/api/models';
 import { ApiException } from '@web/data/api/types';
 import {
   clearNodeStyleImage,
@@ -69,6 +68,7 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 
 /**
  * For the two derivations below that deliberately want no body text. Shared so
@@ -142,10 +142,7 @@ function GeneratePanelBody({
   // answers in the codebase to "whose caret is this".
   const { caretProvider } = useCanvasContext();
 
-  const { data: catalog } = useQuery({
-    queryKey: ['models'],
-    queryFn: () => modelsApi.list(),
-  });
+  const { data: catalog } = useQuery(modelCatalogQuery());
   // `?? []` covers only the loading window (catalog is undefined until the query
   // resolves). Once resolved, modelsApi.list() has run the response through
   // sanitizeModelCatalog, so catalog.image is a guaranteed ModelEntry[] — no
@@ -699,9 +696,24 @@ function GeneratePanelBody({
   // Text-to-image generates from scratch and ignores source images, so an
   // image `@` chip contributes nothing and the editor greys it (§2.4 C).
   const imageRefsOff = vm.mode === 't2i';
+  // A model that consumes no prompt gets a sentence instead of a box, the same
+  // way the video panel does (#1966). Without this the panel contradicts
+  // itself: the rail freezes on `promptRequired` and says "this mode has no
+  // prompt to insert into", while the middle of the same panel offers
+  // somewhere to type. The copy is this panel's own — the video one names a
+  // concrete alternative ("go change the audio") that only holds for its
+  // audio-driven model, and there is no such alternative to name here.
+  const promptNotUsedNotice = t('canvas.generatePanel.promptNotUsed');
   const promptSlot = React.useMemo(
     () =>
-      fragment ? (
+      !vm.promptRequired ? (
+        <p
+          data-testid='generate-prompt-not-used'
+          className='px-1 py-2 text-xs text-muted-foreground'
+        >
+          {promptNotUsedNotice}
+        </p>
+      ) : fragment ? (
         <PromptEditor
           ref={promptEditorRef}
           fragment={fragment}
@@ -715,6 +727,8 @@ function GeneratePanelBody({
         />
       ) : null,
     [
+      vm.promptRequired,
+      promptNotUsedNotice,
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,

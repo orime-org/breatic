@@ -1446,13 +1446,14 @@ describe('VideoGeneratePanelContainer', () => {
       return openPanelInMode(mode, model, {}, board);
     }
 
-    it('5.5 口播档下点文本引用行，有拒绝语而不是静默无反应', async () => {
-      // 文本引用行不受档位吃不吃引用的约束：`insertRefusal` 只对参考素材
-      // 判定，文本行在它第一句就被无条件放行（reference-usability.ts 的
-      // `if (!isReferenceMaterial(sourceNodeType)) return null`），所以它在
-      // 这一档照样是亮的、可点的。
-      // 而这一档没有提示词编辑器，插进去无处可去 —— 容器那句
-      // `promptEditorRef.current?.insertReference(item)` 会被 `?.` 静默吞掉。
+    it('5.5 口播档下点文本引用行，说的是「没有提示词框」那一句', async () => {
+      // 这一档不发提示词，所以插入被 `insertRefusal` 的第一问拦下
+      // （reference-usability.ts 的 `if (!ctx.takesPrompt)`），理由是
+      // 「没有提示词框」——不是「这一档不吃参考」。断言认这一句而不是
+      // 「弹了个 toast」：后者三种拒绝语都能满足，分不出走的是哪条路。
+      //
+      // 这条同时钉住 `VideoGeneratePanel` 把 `promptRequired` 传成
+      // `modeSendsPrompt` 那行接线：删掉它，这里就变成放行、一句话都没有。
       await openMode('talking_head', 'omnihuman-1.5', {
         nodes: [
           {
@@ -1466,6 +1467,10 @@ describe('VideoGeneratePanelContainer', () => {
       });
       fireEvent.click(await screen.findByTestId('generate-ref-insert-e1'));
       await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+      // 断言解析后的文案本身：三条拒绝语各说各的，认字才分得出走的是哪条。
+      expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toBe(
+        'This mode has no prompt to insert into',
+      );
     });
 
     it('5.1 口播档不挂载提示词编辑器，那一格是这一档的说明', async () => {

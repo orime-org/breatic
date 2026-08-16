@@ -36,7 +36,7 @@ import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
 import { extractPromptText } from "@breatic/domain";
-import { takePromptOutOfParams } from "@worker/handlers/prompt-params.js";
+import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",
@@ -1619,15 +1619,14 @@ async function runMiniTool(
   const modelName = (cleanParams.model as string) || entry.model;
   delete cleanParams.model;
 
-  // Lift the prompt BEFORE validation, the same way the direct path does
-  // (#1966). Validation drops keys the model does not declare, so reading the
-  // prompt off the validated result made the whole thing hinge on every model
-  // declaring a `prompt` param — a declaration that says nothing about the
-  // model and that no image model ever wrote.
-  const [prompt, promptless] = takePromptOutOfParams(cleanParams);
-
+  // One call, so there is no order to get wrong here — see
+  // `takePromptAndValidate` for why that is the fix and not just tidier.
   const provider = await importProvider(taskType);
-  const [, validated] = provider.validateParams(modelName, promptless);
+  const [prompt, , validated] = takePromptAndValidate(
+    cleanParams,
+    modelName,
+    provider.validateParams,
+  );
 
   const result = await provider.generateAsync(prompt, modelName, validated, resume);
   const cost = (result.cost as number) ?? 0;
@@ -1688,15 +1687,18 @@ async function runAigcDirect(
 ): Promise<[Record<string, unknown>, number]> {
   if (!model) throw new Error(`model is required for AIGC direct path (${taskType})`);
 
-  // Same lift as the mini-tool path, from the same function (#1966) — two
-  // inline copies is how the orders drifted apart in the first place.
-  const [prompt, promptless] = takePromptOutOfParams(params);
-  const cleanParams = promptless;
+  // Infra-only fields first, then the one shared step the mini-tool path also
+  // takes (#1966) — two inline copies is how the orders drifted apart.
+  const cleanParams = { ...params };
   delete cleanParams.node_ids;
   delete cleanParams.project_id;
 
   const provider = await importProvider(taskType);
-  const [, validated] = provider.validateParams(model, cleanParams);
+  const [prompt, , validated] = takePromptAndValidate(
+    cleanParams,
+    model,
+    provider.validateParams,
+  );
 
   const result = await provider.generateAsync(prompt, model, validated, resume);
   const cost = (result.cost as number) ?? 0;

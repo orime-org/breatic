@@ -258,6 +258,7 @@
       "referencePoolFull": "Reference pool is full ({cap} max) — remove some references or focus crops first.",
       "modelUnavailable": "That model is no longer available — pick another.",
       "catalogUnavailable": "Model list unavailable — please try again later",
+      "catalogOffline": "You are offline — the model list cannot be loaded. Reconnect and try again.",
       "selectFocusFromCanvas": "Drag a marquee on an image to crop a focus reference",
       "focusCancel": "Cancel",
       "focusConfirm": "Confirm",
@@ -298,6 +299,7 @@
       "errorNoDrivingVideo": "Pick a driving video",
       "errorNoDrivingAudio": "Pick a driving audio track",
       "videoPromptNotUsed": "This mode follows the audio. Change the audio to change what is said.",
+      "promptNotUsed": "This model does not take a prompt.",
       "refuseInsertNoPrompt": "This mode has no prompt to insert into"
     },
     "edge": {

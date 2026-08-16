@@ -27,26 +27,31 @@
  * not re-evaluating one expression the payload also evaluates; it asks for
  * the one property both producers require.
  *
- * Splitting them gives each control the smallest question it can ask. Remove
- * asks the mode question alone; insert asks it too — mode first, so its
- * message names the state the user can leave — and then the modality one:
+ * A third question joined them in #1966: does the active model consume the
+ * prompt at all (`ModelEntry.takes_prompt`)? That every mode sends a prompt
+ * stopped being true in #1950 — a model that declares none mounts no editor —
+ * and the answer used to live in the video container, which refused the insert
+ * itself. It moved in here so that "can this row act" has ONE home (#1962).
  *
- * | Asked by | Asks | Decides |
+ * Splitting them gives each control the smallest question it can ask:
+ *
+ * | Asked by | Asks, in order | Decides |
  * |---|---|---|
- * | {@link removeRefusal} | Does this mode use references at all | row dim + ✕ |
- * | {@link insertRefusal} | That, and then: is this row an image | insert + `@` picker |
+ * | {@link insertRefusal} | Is there a prompt to insert into; does this mode use references; is this row an image | insert + `@` picker |
+ * | {@link removeRefusal} | For a text row: is there a prompt. For a media row: does this mode use references | row dim + ✕ |
  *
- * Both read on REFERENCE MATERIAL. A text row is prompt material — its `@`
- * chip substitutes into the prompt STRING — so it sits outside both: always
- * lit, always insertable, always removable (user 2026-08-13: the dim rule's
- * subject is the reference material, not every row in the rail).
+ * The two differ on purpose, and the reason is what each MESSAGE has to say.
+ * Insert names only the cause, so the most fundamental cause goes first for
+ * every row kind: with no editor on screen there is nowhere to insert, whatever
+ * the row is. Remove names the way OUT, and the two questions lead to different
+ * exits — a media row becomes removable in a mode that takes references, a text
+ * row in a mode that sends a prompt — so remove asks each row the question that
+ * actually gates it. Asking a media row about the prompt would send its user to
+ * a mode where the ✕ refuses all the same.
  *
- * That every mode sends a prompt stopped being true in #1950: a model that
- * declares no `prompt` gets an empty one, and its panel mounts no editor to
- * insert into. Neither question here can see that — it comes from the model
- * catalog, which is exactly what the paragraph below keeps out of them — so
- * the video container refuses that insert itself, reading the same
- * `promptRequired` its editor mounts on.
+ * The dim still reads on REFERENCE MATERIAL alone: a text row is prompt
+ * material, and the dim rule's subject is the reference material, not every row
+ * in the rail (user 2026-08-13).
  *
  * Neither dimension reads anything asynchronous, and that is deliberate. An
  * earlier version took the consumable types from `ModelEntry.sourcesByMode`,
@@ -77,19 +82,13 @@ export interface ReferenceModeContext {
    * on the video panel, `!imageSourcesOff` on the image one)? This is the
    * row-level dimension: false dims every REFERENCE MATERIAL row and freezes
    * its ✕. Text rows are outside it — see the module docstring.
-   *
-   * The only field, on purpose: what a lit rail can consume is not a variable
-   * (see the module docstring), so nothing else has to be known to answer.
    */
   takesReferences: boolean;
   /**
    * Does the ACTIVE MODEL consume the prompt (`ModelEntry.takes_prompt`,
-   * #1966)? False freezes BOTH controls on EVERY row, text included.
-   *
-   * Text rows sit outside `takesReferences` because they are prompt material
-   * — and that reason only holds while there is a prompt. A mode that sends
-   * none has nothing for a text row to be material FOR, so it belongs with
-   * the image and audio rows (user 2026-08-16).
+   * #1966)? False freezes INSERT on every row — there is no editor to insert
+   * into — and freezes the ✕ on TEXT rows, which are prompt material and have
+   * nothing to be material FOR under such a mode (user 2026-08-16).
    *
    * A plain boolean the caller passes in, exactly like `takesReferences`: the
    * value comes from the model catalog, but this module still reads nothing
@@ -119,18 +118,16 @@ export function isReferenceMaterial(kind: NodeKind): boolean {
  * the same call the `@` picker filters with, so the two entry points cannot
  * drift into disagreeing about one row.
  * @param sourceNodeType - The upstream node's modality.
- * @param ctx - What the active mode does with references.
+ * @param ctx - What the active mode does with references, and whether its model sends a prompt.
  * @returns The refusal reason, or null when the row can be inserted.
  */
 export function insertRefusal(
   sourceNodeType: NodeKind,
   ctx: ReferenceModeContext,
 ): ReferenceRefusal | null {
-  // Text is prompt material, and this question is about reference material, so
-  // it passes here unconditionally. Whether the active model has a prompt to
-  // insert INTO is a separate question this module cannot answer (#1950 — see
-  // the module docstring); the video container asks it.
-  // No prompt, no destination — asked FIRST, and of every row (#1966).
+  // No prompt, no destination — asked FIRST, and of every row (#1966). The
+  // video container used to ask this one, reading the same `promptRequired`
+  // its editor mounts on; that second home is what #1962 removed.
   // Insert puts an `@` chip into the prompt; when the mode sends none there is
   // no box to put it in, which is more fundamental than "this mode ignores
   // references": telling someone to switch to a mode that uses references
@@ -153,31 +150,38 @@ export function insertRefusal(
  *
  * Freezing the ✕ in a mode that ignores references protects a row from being
  * thrown away before the user switches back to the mode that uses it
- * (decision 2026-08-11). That reasoning has a premise — "this mode cannot use
- * the row" — and it holds for reference MATERIAL only. A text row is prompt
- * material, which this question is not about, so it stays removable
- * (user 2026-08-13). The reason given then — every mode substitutes it into
- * the prompt string, so no mode cannot use it — no longer holds for a model
- * that declares no prompt (#1950); whether such a mode should hold a text row
- * in trust too is open (#1965) and the behaviour here is unchanged. Hence the
- * row kind, and only that distinction: the three
- * media kinds always answer identically, which is what stops audio and video
- * rows from staying removable inside a dimmed mode while image rows freeze
- * (#1940).
+ * (decision 2026-08-11). That premise — "this mode cannot use the row" — holds
+ * for reference MATERIAL. A text row is prompt material, so it answers to the
+ * OTHER question: a mode whose model sends no prompt cannot use a text row
+ * either, and freezing it there is the same protection for the same reason
+ * (#1965, user 2026-08-13 + 2026-08-16).
+ *
+ * So each row kind gets exactly the question that applies to it, and this is
+ * where remove parts company with {@link insertRefusal}. Insert names only the
+ * cause, so asking "is there a prompt to insert into" first is right for every
+ * row. Remove has to name the way OUT, and the two questions lead to different
+ * exits: a media row becomes removable in a mode that TAKES REFERENCES, and
+ * telling its user to "switch to a mode that sends a prompt" sends them to
+ * t2v / i2v / first_last / animate, where the ✕ refuses all the same. Asking
+ * the reference question for media rows is what keeps that advice true.
+ *
+ * The three media kinds still answer identically, which is what stops audio and
+ * video rows from staying removable inside a dimmed mode while image rows
+ * freeze (#1940).
  * @param sourceNodeType - The upstream node's modality.
- * @param ctx - What the active mode does with references.
+ * @param ctx - What the active mode does with references, and whether its model sends a prompt.
  * @returns The refusal reason, or null when the row can be removed.
  */
 export function removeRefusal(
   sourceNodeType: NodeKind,
   ctx: ReferenceModeContext,
 ): ReferenceRefusal | null {
-  // Same first question as insert, and for the same rows (#1966). The two
-  // controls on a row have to freeze together: a ✕ that still works under a
-  // mode with no prompt would delete a reference OUT OF the shared prompt —
-  // one prompt is shared across the modes (#1919), so the removal lands in
-  // the prompt of every mode that does send one.
-  if (!ctx.takesPrompt) return 'mode-sends-no-prompt';
-  if (!isReferenceMaterial(sourceNodeType)) return null;
+  // A text row lives in the prompt: one prompt is shared across the modes
+  // (#1919), so removing it under a mode with no prompt would take it out of
+  // every mode that does send one. Switching to such a mode is a way out that
+  // actually works for it, because the reference question never applied here.
+  if (!isReferenceMaterial(sourceNodeType)) {
+    return ctx.takesPrompt ? null : 'mode-sends-no-prompt';
+  }
   return ctx.takesReferences ? null : 'mode-takes-no-references';
 }

@@ -13,10 +13,16 @@ import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 // 目录（`SOURCE_CATALOG = "locales/en.json"`），另外四份有没有它不看。
 // 五份之间的平价保障是另一件事，还没做（#1873），所以这里自己钉一条。
 const NOTICE_KEYS = [
-  // 那一格的说明。
+  // 那一格的说明：视频面板一句（口播档专用），图片面板一句（通用）。
   'canvas.generatePanel.videoPromptNotUsed',
-  // 点参考轨道的文本行时的拒绝语（同一片加的第二句）。
+  'canvas.generatePanel.promptNotUsed',
+  // 点参考轨道时的拒绝语。插入一句只说原因；移除两句要说出路，焦点裁剪
+  // 没有「删掉那条连线」这条出路，所以它自己一句。
   'canvas.generatePanel.refuseInsertNoPrompt',
+  'canvas.generatePanel.refuseRemoveNoPrompt',
+  'canvas.generatePanel.refuseRemoveNoPromptCrop',
+  // 离线时点生成弹的那句（#1966）。
+  'canvas.generatePanel.catalogOffline',
 ] as const;
 
 describe.each(NOTICE_KEYS)('%s 五个语种都有', (key) => {

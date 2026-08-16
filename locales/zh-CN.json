@@ -249,6 +249,7 @@
       "referencePoolFull": "参考池已满(上限 {cap})——请先移除一些参考或聚焦图。",
       "modelUnavailable": "该模型已不可用——请另选一个。",
       "catalogUnavailable": "模型列表加载失败,请稍后再试",
+      "catalogOffline": "你现在离线，取不到模型列表。连上网络再试。",
       "selectFocusFromCanvas": "请在图片上框选聚焦区域",
       "focusCancel": "取消",
       "focusConfirm": "确认",
@@ -289,6 +290,7 @@
       "errorNoDrivingVideo": "先挑一段驱动视频",
       "errorNoDrivingAudio": "先挑一段驱动音频",
       "videoPromptNotUsed": "这一档跟着音频走。要改内容，去换音频。",
+      "promptNotUsed": "这个模型不接受提示词。",
       "refuseInsertNoPrompt": "这一档没有提示词框，插不进去"
     },
     "nodeMenu": {

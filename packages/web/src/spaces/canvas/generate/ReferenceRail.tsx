@@ -123,11 +123,13 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     }),
     [modeTakesReferences, modeSendsPrompt],
   );
-  // Three refusal reasons, six messages. Insert names only the cause, because
-  // the mode selector is in this same panel and every dimmed row is visibly
-  // dark. Remove has to name the ways OUT, because the user asked for the row
-  // to be GONE and is being told no. And a focus crop gets its own remove
-  // message on both mode reasons, because one of those ways out — delete its
+  // Three refusal reasons, seven messages: three for insert, four for remove.
+  // Insert names only the cause, because the mode selector is in this same
+  // panel and every dimmed row is visibly dark. Remove has to name the ways
+  // OUT, because the user asked for the row to be GONE and is being told no —
+  // and each of its two reachable reasons leads somewhere different, which is
+  // also why `removeRefusal` asks each row kind its own question. A focus crop
+  // then doubles the remove side, because one of those ways out — delete its
   // edge — does not exist for it.
   const refuseInsert = React.useCallback(
     (refusal: ReferenceRefusal, kind: NodeKind): void => {

@@ -295,10 +295,17 @@ const modelEntrySchema = z.object({
   // Whether the model consumes the user's text (#1966). The backend refuses to
   // load a catalog where a model omits it, so this `.catch` only fires on a
   // corrupted or version-skewed wire — and there it degrades OPEN, same as
-  // `sourcesByMode` above: `true` mounts the editor, which at worst reproduces
-  // the pre-#1966 behaviour of a prompt the model ignores. `false` would hide
-  // the editor AND block execute (`canExecuteGenerate` demands a prompt when
-  // this is true), leaving no way to generate at all.
+  // `sourcesByMode` above.
+  //
+  // `true` mounts the editor and makes `canExecuteGenerate` demand a non-empty
+  // prompt, which at worst reproduces the pre-#1966 behaviour of a prompt the
+  // model ignores — the user types something that goes nowhere.
+  //
+  // `false` is the expensive direction, and not for the reason it looks: the
+  // execute gate reads `!promptRequired || promptText.trim()`, so a false here
+  // does not block anything — it REMOVES the demand. The panel would hide the
+  // editor and then happily submit a paid generation with an empty prompt from
+  // a model that actually wanted one.
   takes_prompt: z.boolean().catch(true),
 });
 

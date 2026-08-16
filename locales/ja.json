@@ -249,6 +249,7 @@
       "referencePoolFull": "参照プールが上限({cap})に達しました——先に参照またはフォーカス画像を削除してください。",
       "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。",
       "catalogUnavailable": "モデル一覧を読み込めませんでした。後でもう一度お試しください",
+      "catalogOffline": "オフラインのためモデル一覧を取得できません。接続し直してからお試しください。",
       "selectFocusFromCanvas": "画像上をドラッグして範囲を選択してください",
       "focusCancel": "キャンセル",
       "focusConfirm": "確認",
@@ -289,6 +290,7 @@
       "errorNoDrivingVideo": "動きの元になる動画を選んでください",
       "errorNoDrivingAudio": "口の動きの元になる音声を選んでください",
       "videoPromptNotUsed": "このモードは音声に従います。内容を変えるには音声を差し替えてください。",
+      "promptNotUsed": "このモデルはプロンプトを受け取りません。",
       "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません"
     },
     "nodeMenu": {

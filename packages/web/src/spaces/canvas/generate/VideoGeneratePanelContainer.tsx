@@ -6,7 +6,6 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 
 import { canvasApi } from '@web/data/api/canvas';
-import { modelsApi } from '@web/data/api/models';
 import { ApiException } from '@web/data/api/types';
 import {
   getPromptFragment,
@@ -69,6 +68,7 @@ import {
 } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 
 /**
  * For the reference derivation that deliberately wants no body text. Shared so
@@ -132,10 +132,7 @@ function VideoGeneratePanelBody({
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const { caretProvider } = useCanvasContext();
 
-  const { data: catalog } = useQuery({
-    queryKey: ['models'],
-    queryFn: () => modelsApi.list(),
-  });
+  const { data: catalog } = useQuery(modelCatalogQuery());
   // `?? []` covers only the loading window; once resolved, modelsApi.list() has
   // run the response through sanitizeModelCatalog, so catalog.video is a
   // guaranteed ModelEntry[].

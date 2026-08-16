@@ -39,3 +39,39 @@ export function takePromptOutOfParams(
   delete rest.text;
   return [prompt, rest];
 }
+
+/** Drops keys the model does not declare, and fills declared defaults. */
+type ValidateParams = (
+  model: string,
+  params: Record<string, unknown>,
+) => [string, Record<string, unknown>];
+
+/**
+ * Lift the prompt out, THEN validate what is left — as one step.
+ *
+ * The order is the whole point, and one shared function is the only thing that
+ * keeps it. Validation drops keys the model does not declare, so validating
+ * first and reading the prompt off the result makes every prompt depend on
+ * every model declaring a `prompt` param — a declaration that says nothing
+ * about the model, and that no image model ever wrote. That is exactly how the
+ * two execution paths came to run in opposite orders (#1967): each spelled the
+ * two steps out inline, and only one of them got the order right.
+ *
+ * Sharing `takePromptOutOfParams` alone would not have prevented it — both
+ * paths could still call it on either side of validation. Sharing the ORDER is
+ * what makes the defect unwritable: a caller gets one call, and there is
+ * nothing left to sequence.
+ * @param params - Task params with the infra-only fields already stripped.
+ * @param model - The model to validate against.
+ * @param validateParams - The provider's validator.
+ * @returns A `[prompt, resolvedModel, validated]` triple: the cleaned prompt, the model name the provider resolved to, and the params it accepted.
+ */
+export function takePromptAndValidate(
+  params: Record<string, unknown>,
+  model: string,
+  validateParams: ValidateParams,
+): [string, string, Record<string, unknown>] {
+  const [prompt, promptless] = takePromptOutOfParams(params);
+  const [resolvedModel, validated] = validateParams(model, promptless);
+  return [prompt, resolvedModel, validated];
+}

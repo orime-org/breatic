@@ -643,6 +643,90 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     });
   });
 
+  // 模型不吃提示词时，这个面板跟视频面板一样：那一格不是输入框，是一句说明。
+  // 实现对抗（2026-08-16）咬出这半边当时没做 —— 参考轨道已经按同一个字段冻住
+  // 了，正中间却还摆着一个能打字的框，同一块面板自相矛盾。
+  it('模型不吃提示词时，那一格是说明不是输入框', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([{ ...T2I_MODEL, takes_prompt: false }]));
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    expect(await screen.findByTestId('generate-prompt-not-used')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-prompt-editor')).not.toBeInTheDocument();
+    listSpy.mockRestore();
+  });
+
+  // 对照组：模型说吃，输入框就该在。少了它，上面那条在「这个面板永远不挂
+  // 编辑器」的实现下也会绿。
+  it('模型吃提示词时，输入框在、说明不在', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([{ ...T2I_MODEL, takes_prompt: true }]));
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    expect(await screen.findByTestId('generate-prompt-editor')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-prompt-not-used')).not.toBeInTheDocument();
+    listSpy.mockRestore();
+  });
+
+  // 参考轨道那一维的接线：`GeneratePanel` 把 `promptRequired` 传成
+  // `modeSendsPrompt`。实测过这条接线此前零覆盖 —— 单独删掉那一行，全仓
+  // 3948 条测试没有一条变红，而 #1965 的行为在图片面板这边就静默消失了。
+  it('模型不吃提示词时，参考轨道那一行也冻住', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([{ ...T2I_MODEL, takes_prompt: false }]));
+    seedImageNode();
+    mountContainer({
+      nodes: [
+        { id: 'target', data: { kind: 'image', status: 'idle' } },
+        { id: 'src', data: { kind: 'text', status: 'idle' } },
+      ],
+      edges: [{ id: 'e1', source: 'src', target: 'target' }],
+    });
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const insert = await screen.findByTestId('generate-ref-insert-e1');
+    expect(insert.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      screen.getByTestId('generate-ref-remove-e1').getAttribute('aria-disabled'),
+    ).toBe('true');
+    listSpy.mockRestore();
+  });
+
+  // 对照组：模型说吃提示词，同一行就该是活的。少了它，上面那条在「这一行
+  // 永远冻着」的实现下也会绿。
+  it('模型吃提示词时，同一行是活的', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([{ ...T2I_MODEL, takes_prompt: true }]));
+    seedImageNode();
+    mountContainer({
+      nodes: [
+        { id: 'target', data: { kind: 'image', status: 'idle' } },
+        { id: 'src', data: { kind: 'text', status: 'idle' } },
+      ],
+      edges: [{ id: 'e1', source: 'src', target: 'target' }],
+    });
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const insert = await screen.findByTestId('generate-ref-insert-e1');
+    expect(insert.getAttribute('aria-disabled')).toBe('false');
+    expect(
+      screen.getByTestId('generate-ref-remove-e1').getAttribute('aria-disabled'),
+    ).toBe('false');
+    listSpy.mockRestore();
+  });
+
   // 这个面板有两道闸门：按钮亮不亮，以及点下去之后提交前用活值再判一次。
   // 两处此前都写死 true。设计对抗指出设计文档只点名了第一处 —— 而第二处漏改
   // 的后果最难发现：按钮是亮的，点下去 `return` 走人，一句话都不说（它下面
@@ -665,8 +749,8 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     act(() => {
       useCanvasStore.getState().openGeneratePanel('target', 'image');
     });
-    // 目录到齐之前面板已经渲染出来了（那正是 #1964），此时按钮因为解不出
-    // 模型而禁用 —— 不等它就点，点的是一个禁用按钮，什么都不会发生。
+    // 面板要等目录到齐才出现（#1964），所以 findByTestId 已经隔了一个往返；
+    // 但按钮从渲染到解出模型还差几帧，不等它就点的是一个禁用按钮。
     const btn = await screen.findByTestId('generate-execute');
     await waitFor(() => {
       expect((btn as HTMLButtonElement).disabled).toBe(false);

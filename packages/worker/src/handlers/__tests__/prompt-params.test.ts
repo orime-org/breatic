@@ -19,7 +19,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { takePromptOutOfParams } from "@worker/handlers/prompt-params.js";
+import { takePromptAndValidate, takePromptOutOfParams } from "@worker/handlers/prompt-params.js";
 
 describe("takePromptOutOfParams (#1966)", () => {
   it("returns the prompt and a bag no longer carrying it", () => {
@@ -72,5 +72,51 @@ describe("takePromptOutOfParams (#1966)", () => {
     const original = { prompt: "p", seed: 1 };
     takePromptOutOfParams(original);
     expect(original).toEqual({ prompt: "p", seed: 1 });
+  });
+
+});
+
+// 顺序本身就是那个 bug（#1967）：校验会把模型没声明的键静默丢掉，所以
+// 「先校验、再从校验结果里读提示词」等于要求每个模型都声明一个 `prompt`
+// 参数 —— 而那个声明本次正好被删光了。两条执行路各自把两步写在自己身上，
+// 于是其中一条写反了。合成一次调用之后，调用方没有顺序可写。
+describe("takePromptAndValidate", () => {
+  /** A validator shaped like the real one: it drops what the model does not declare. */
+  const dropUndeclared =
+    (declared: string[]) =>
+    (model: string, params: Record<string, unknown>): [string, Record<string, unknown>] => {
+      const kept: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(params)) {
+        if (declared.includes(k)) kept[k] = v;
+      }
+      return [model, kept];
+    };
+
+  it("gets the prompt through a model that declares no prompt param", () => {
+    const [prompt, model, validated] = takePromptAndValidate(
+      { prompt: "a drone shot over a canyon", image: "http://x/y.png", bogus: 1 },
+      "kling-o3-pro",
+      dropUndeclared(["image"]),
+    );
+    expect(prompt).toBe("a drone shot over a canyon");
+    expect(model).toBe("kling-o3-pro");
+    expect(validated).toEqual({ image: "http://x/y.png" });
+  });
+
+  it("never hands the prompt to the validator, so it cannot be dropped there", () => {
+    const seen: Record<string, unknown>[] = [];
+    takePromptAndValidate({ prompt: "p", text: "t", seed: 3 }, "m", (model, params) => {
+      seen.push(params);
+      return [model, params];
+    });
+    expect(seen).toHaveLength(1);
+    expect("prompt" in seen[0]!).toBe(false);
+    expect("text" in seen[0]!).toBe(false);
+    expect(seen[0]).toEqual({ seed: 3 });
+  });
+
+  it("passes through the model name the validator resolved to", () => {
+    const [, model] = takePromptAndValidate({}, "asked-for", () => ["resolved-to", {}]);
+    expect(model).toBe("resolved-to");
   });
 });
