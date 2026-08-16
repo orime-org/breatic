@@ -88,20 +88,24 @@ function MessageSkeleton(): React.JSX.Element {
               conversation, and a conversation is what the reader is waiting
               for. The widths grow group by group so it reads as content rather
               than as three identical cells. */}
+          {/* Heights off the type scale's neighbours rather than chosen by
+              eye, and the question's radius is the one its bubble uses. Widths
+              stay proportional: they are what makes each group read as a round
+              of conversation rather than as three identical cells. */}
           <div
             data-skeleton-bar
-            className='skeleton-shimmer ml-auto mb-2 rounded-xl'
-            style={{ height: '11px', width: `${56 + round * 9}%` }}
+            className='skeleton-shimmer ml-auto mb-2 h-2.5 rounded-lg'
+            style={{ width: `${56 + round * 9}%` }}
           />
           <div
             data-skeleton-bar
-            className='skeleton-shimmer mb-1 rounded-sm'
-            style={{ height: '9px', width: '93%' }}
+            className='skeleton-shimmer mb-1 h-2 rounded-sm'
+            style={{ width: '93%' }}
           />
           <div
             data-skeleton-bar
-            className='skeleton-shimmer rounded-sm'
-            style={{ height: '9px', width: `${64 + round * 8}%` }}
+            className='skeleton-shimmer h-2 rounded-sm'
+            style={{ width: `${64 + round * 8}%` }}
           />
         </div>
       ))}
