@@ -184,9 +184,11 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             // of their own, so nothing multiplies down to 0.25.
             //
             // It reads on REFERENCE MATERIAL only. A text row is prompt
-            // material — every mode substitutes its content into the prompt
-            // string — so dimming it would say it was unusable while this very
-            // mode was consuming it (user 2026-08-13).
+            // material, which this rule is not about, so dimming it would say
+            // it was unusable on a dimension that does not apply to it
+            // (user 2026-08-13). Whether the active model has a prompt at all
+            // is a separate question this component cannot answer (#1950 — a
+            // model may declare none); the container asks it on insert.
             //
             // The hover preview is deliberately NOT dimmed: it is portaled, so
             // this opacity does not reach it, and that is the wanted outcome —

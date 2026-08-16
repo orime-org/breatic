@@ -37,10 +37,16 @@
  * | {@link insertRefusal} | That, and then: is this row an image | insert + `@` picker |
  *
  * Both read on REFERENCE MATERIAL. A text row is prompt material — its `@`
- * chip substitutes into the prompt STRING, which every mode sends — so it sits
- * outside both: always lit, always insertable, always removable (user
- * 2026-08-13: the dim rule's subject is the reference material, not every row
- * in the rail).
+ * chip substitutes into the prompt STRING — so it sits outside both: always
+ * lit, always insertable, always removable (user 2026-08-13: the dim rule's
+ * subject is the reference material, not every row in the rail).
+ *
+ * That every mode sends a prompt stopped being true in #1950: a model that
+ * declares no `prompt` gets an empty one, and its panel mounts no editor to
+ * insert into. Neither question here can see that — it comes from the model
+ * catalog, which is exactly what the paragraph below keeps out of them — so
+ * the video container refuses that insert itself, reading the same
+ * `promptRequired` its editor mounts on.
  *
  * Neither dimension reads anything asynchronous, and that is deliberate. An
  * earlier version took the consumable types from `ModelEntry.sourcesByMode`,
@@ -105,9 +111,10 @@ export function insertRefusal(
   sourceNodeType: NodeKind,
   ctx: ReferenceModeContext,
 ): ReferenceRefusal | null {
-  // Text is prompt material: its substitution feeds the prompt string in every
-  // mode (`video-task-payload.ts` sends `prompt: promptText` with no mode
-  // branch), so no mode and no model can refuse it.
+  // Text is prompt material, and this question is about reference material, so
+  // it passes here unconditionally. Whether the active model has a prompt to
+  // insert INTO is a separate question this module cannot answer (#1950 — see
+  // the module docstring); the video container asks it.
   if (!isReferenceMaterial(sourceNodeType)) return null;
   // Mode before modality when both would refuse. The mode reason names the
   // state the user can leave — this mode ignores references, another one does
@@ -127,9 +134,12 @@ export function insertRefusal(
  * thrown away before the user switches back to the mode that uses it
  * (decision 2026-08-11). That reasoning has a premise — "this mode cannot use
  * the row" — and it holds for reference MATERIAL only. A text row is prompt
- * material: every mode substitutes its content into the prompt string, so
- * there is never a mode that cannot use it, and nothing to hold in trust
- * (user 2026-08-13). Hence the row kind, and only that distinction: the three
+ * material, which this question is not about, so it stays removable
+ * (user 2026-08-13). The reason given then — every mode substitutes it into
+ * the prompt string, so no mode cannot use it — no longer holds for a model
+ * that declares no prompt (#1950); whether such a mode should hold a text row
+ * in trust too is open (#1965) and the behaviour here is unchanged. Hence the
+ * row kind, and only that distinction: the three
  * media kinds always answer identically, which is what stops audio and video
  * rows from staying removable inside a dimmed mode while image rows freeze
  * (#1940).

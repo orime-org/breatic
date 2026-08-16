@@ -353,8 +353,10 @@ export const PromptEditor = React.forwardRef<
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
   // switch visually pre-announces they will not take effect (execute forces
   // referenceUrls=[] in t2i). TEXT chips stay full-strength — their
-  // substitution still feeds the prompt string and the submitted payload in
-  // every mode (round-2 adversarial: dimming them lied about their effect).
+  // substitution feeds the prompt string, and this signal is about image
+  // references (round-2 adversarial: dimming them lied about their effect).
+  // A mode whose model declares no prompt sends an empty one (#1950), but it
+  // mounts no editor either, so no chip is on screen to dim.
   const dimReferences = imageRefsDisabled
     ? ' [&_.reference-mention[data-kind=image]]:opacity-40 [&_.reference-mention[data-kind=image]]:grayscale'
     : '';

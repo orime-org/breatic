@@ -162,12 +162,10 @@ function VideoGeneratePanelBody({
   const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
     atMentionedRef.current = sourceIds;
   }, []);
-  // Click a reference-rail chip → insert its `@` mention at the prompt cursor
-  // (user 2026-07-10 item 8); the editor places it at the caret or the end.
+  // Holds the prompt editor when one is mounted. Inserting a reference-rail
+  // chip goes through `handleInsertReference` below, which refuses first when
+  // this model takes no prompt.
   const promptEditorRef = React.useRef<PromptEditorHandle>(null);
-  const handleInsertReference = React.useCallback((item: ReferenceRailItem) => {
-    promptEditorRef.current?.insertReference(item);
-  }, []);
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
@@ -227,6 +225,43 @@ function VideoGeneratePanelBody({
     () =>
       buildVideoPanelViewModel({ nodeId, nodes, edges, models, mode, textById }),
     [nodeId, nodes, edges, models, mode, textById],
+  );
+
+  // Refuses out loud when this model takes no prompt (#1950). The rail lets a
+  // TEXT row through unconditionally — `reference-usability.ts` refuses on
+  // REFERENCE MATERIAL only, and text sits outside that because its chip
+  // substitutes into the prompt string. This mode no longer sends one, and the
+  // rail cannot learn that without reading the model catalog, the one thing
+  // that module deliberately keeps out of its two questions (its docstring
+  // records what happened the last time an answer there depended on the
+  // catalog having loaded). So the refusal belongs here.
+  //
+  // The question asked is `promptRequired` — the same value the editor mounts
+  // on — not whether the ref happens to hold one right now. The message says
+  // something about the MODE ("this mode has no prompt to insert into"), and
+  // `promptRequired` is what answers that; the ref is a rendering state that
+  // merely tends to agree with it. Same reasoning as the criterion this slice
+  // is built on: ask the model, not something downstream of it.
+  //
+  // The two part company in exactly one case — the model takes a prompt but
+  // the node has no fragment to edit, so no editor mounts. There the ref would
+  // refuse and this does not, leaving the `?.` below to swallow the click.
+  // Such a node predates video generation and we ship no compatibility for
+  // pre-launch data (#1950); filed as #1962, next to the rail's own open
+  // question about such modes (#1965).
+  // No test pins this swap, for that same reason: every state a user can
+  // reach today gets the same answer from either criterion, so an assertion
+  // about the difference would be asserting nothing (measured — swapping it
+  // back leaves all 58 container tests green).
+  const handleInsertReference = React.useCallback(
+    (item: ReferenceRailItem) => {
+      if (!vm.promptRequired) {
+        toast.warning(t('canvas.generatePanel.refuseInsertNoPrompt'));
+        return;
+      }
+      promptEditorRef.current?.insertReference(item);
+    },
+    [t, vm.promptRequired],
   );
   const references = vm.references;
 
@@ -530,13 +565,21 @@ function VideoGeneratePanelBody({
       warnNodeGate(t(gateBlock.toastKey));
       return;
     }
+    const fresh = freshVm(new Set(atMentionedRef.current));
     // Serialize the backend prompt AT CLICK TIME: a text chip substitutes its
     // source node's CURRENT words, and that node may have been edited since
     // the last prompt keystroke — the ref would carry the stale substitution.
     // Falls back to the ref when the editor is gone (unmounting).
-    const freshPrompt =
-      promptEditorRef.current?.serializePrompt() ?? promptTextRef.current;
-    const fresh = freshVm(new Set(atMentionedRef.current));
+    //
+    // A model that declares no `prompt` sends none, and that takes this
+    // explicit branch (#1950): not mounting the editor only stops someone
+    // typing HERE. The mirror still holds whatever was typed under the
+    // previous mode — `handlePromptChange` is the only writer and nothing
+    // clears it, and the editor does not call back on unmount — so without
+    // this line a talking-head task would carry the last mode's words.
+    const freshPrompt = fresh.promptRequired
+      ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
+      : '';
     if (
       !canExecuteGenerate({
         promptText: freshPrompt,
@@ -655,13 +698,28 @@ function VideoGeneratePanelBody({
   // and #1880 ratified that those are NOT repaired — creating one when the
   // panel opens is the exact race that decision removed (two people opening
   // at once each mint one under the same key, and last-write-wins drops a
-  // container with everything typed into it). So the panel opens without an
-  // editor and its arrow can never light; saying why is what keeps that from
-  // reading as the feature being broken.
-  const noPromptNotice = t('canvas.generatePanel.videoNoPrompt');
+  // container with everything typed into it). Whenever the model takes a
+  // prompt, such a node renders nothing here — the no-prompt branch below is
+  // checked first — the same as the image panel (`GeneratePanelContainer.tsx:705`):
+  // pre-launch we ship no compatibility branch for old data (#1950).
+  //
+  // The model decides, not the mode (#1935, #1950): a model that declares no
+  // `prompt` has nothing to do with one, so the editor does not mount and a
+  // line says what this mode runs on instead. Unmounting rather than hiding —
+  // there is nothing to type into it here, and a mounted collaborative editor
+  // costs a TipTap instance plus its bindings. The cost is the prompt's undo
+  // history, which lives on the editor instance and dies with it (#1961).
+  const promptNotUsedNotice = t('canvas.generatePanel.videoPromptNotUsed');
   const promptSlot = React.useMemo(
     () =>
-      fragment ? (
+      !vm.promptRequired ? (
+        <p
+          data-testid='generate-video-prompt-not-used'
+          className='px-1 py-2 text-xs text-muted-foreground'
+        >
+          {promptNotUsedNotice}
+        </p>
+      ) : fragment ? (
         <PromptEditor
           ref={promptEditorRef}
           fragment={fragment}
@@ -677,19 +735,13 @@ function VideoGeneratePanelBody({
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
         />
-      ) : (
-        <p
-          data-testid='generate-video-no-prompt'
-          className='px-1 py-2 text-xs text-muted-foreground'
-        >
-          {noPromptNotice}
-        </p>
-      ),
+      ) : null,
     [
+      vm.promptRequired,
+      promptNotUsedNotice,
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
-      noPromptNotice,
       stableReferences,
       handlePromptChange,
       handleAtMentionsChange,

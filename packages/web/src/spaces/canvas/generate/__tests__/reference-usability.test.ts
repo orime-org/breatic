@@ -145,8 +145,10 @@ describe('removeRefusal — the ✕ follows the dim, which reads on reference ma
     // The dim rule reads on REFERENCE MATERIAL, and text is prompt material
     // (user 2026-08-13, second clarification). The reason for freezing a ✕ is
     // "this mode cannot use the row, so do not let you throw it away before
-    // switching back" — and a text row is consumed by every mode, so the
-    // premise never holds and there is nothing to hold in trust.
+    // switching back" — and that premise is about reference material, which a
+    // text row is not, so there is nothing to hold in trust. (A model that
+    // declares no prompt does not consume it either; whether that should
+    // freeze the ✕ is open, #1965 — behaviour unchanged here.)
     for (const { mode, ctx } of [...VIDEO_MODES, ...IMAGE_MODES]) {
       expect(removeRefusal('text', ctx), `remove text in ${mode}`).toBeNull();
     }
