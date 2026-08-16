@@ -336,3 +336,23 @@ describe('这条规则不许碰的操作', () => {
     });
   });
 });
+
+describe('Ctrl+A 判「在哪一侧」看的是位置，不是父节点类型（A9）', () => {
+  it('Cmd+click 选中文档标题之后按 Ctrl+A，选中的是文档标题', () => {
+    const e = open('<p>aa</p><p>bb</p>');
+    e.view.dispatch(e.state.tr.setSelection(NodeSelection.create(e.state.doc, 0)));
+    press(e, 'a', { ctrlKey: true });
+    const titleSize = e.state.doc.child(0).nodeSize;
+    expect(e.state.selection.from).toBeGreaterThanOrEqual(1);
+    expect(e.state.selection.to).toBeLessThanOrEqual(titleSize - 1);
+  });
+
+  it('Cmd+click 选中正文某个段落之后按 Ctrl+A，选中的是整个正文', () => {
+    const e = open('<p>aa</p><p>bb</p>');
+    const at = e.state.doc.child(0).nodeSize;
+    e.view.dispatch(e.state.tr.setSelection(NodeSelection.create(e.state.doc, at)));
+    press(e, 'a', { ctrlKey: true });
+    expect(e.state.selection.from).toBeGreaterThanOrEqual(at);
+    expect(e.state.selection.to).toBe(e.state.doc.content.size - 1);
+  });
+});

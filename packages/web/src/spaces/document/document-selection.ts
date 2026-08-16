@@ -50,8 +50,6 @@ import { Fragment } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import { ReplaceAroundStep, ReplaceStep } from '@tiptap/pm/transform';
-import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
-
 /**
  * Marks the transactions this file produces, so they cannot trigger the rule
  * that produced them, and so the enter binding's two paragraphs are not then
@@ -111,22 +109,6 @@ function bodySelection(state: EditorState): Selection | null {
 }
 
 /**
- * The range of the block the caret is in.
- *
- * Only the title reaches this now, and asking `$from` where its own block
- * starts and ends needs no knowledge of which block that is. An earlier version
- * had a separate `titleRange` that computed `1 .. 1 + child(0).content.size` —
- * the same two numbers by a different route, carrying two assumptions of its
- * own (that the title starts at 1, and that it is the first child).
- * @param state - Editor state to read.
- * @returns That block's content range.
- */
-function currentBlockRange(state: EditorState): Range {
-  const { $from } = state.selection;
-  return { from: $from.start(), to: $from.end() };
-}
-
-/**
  * Which side of the document the caret is on.
  *
  * One question answers every selection shape: is `$from` inside a block that
@@ -142,16 +124,14 @@ function currentBlockRange(state: EditorState): Range {
  * @param state - Editor state to read.
  * @returns Which side the press acts on.
  */
-function sideOfCaret(state: EditorState): 'title' | 'body' | 'neither' {
-  const { $from } = state.selection;
-  if ($from.parent.type.name === DOCUMENT_TITLE_NODE) return 'title';
-  // The question is whether the position is INSIDE a block that holds text,
-  // not how deep it sits. `depth === 0` only catches the top level, so a node
-  // selection on a block inside a list item came back as "in the body" and got
-  // answered with the block around it — measured, that produced an empty
-  // selection in a paragraph the user was never in.
-  if (!$from.parent.isTextblock) return 'neither';
-  return 'body';
+function sideOfCaret(state: EditorState): 'title' | 'body' {
+  // Read positions, not the parent's type. A whole block selected with the
+  // platform's select-node modifier sits OUTSIDE that block, at document level,
+  // so `$from.parent` is the document for BOTH a selected title and a selected
+  // body paragraph — the two land in the same bucket and cannot be told apart.
+  // The title occupies `0..titleSize`, so a selection ending at or before that
+  // boundary is on the title's side and everything else is on the body's.
+  return state.selection.to <= state.doc.child(0).nodeSize ? 'title' : 'body';
 }
 
 /**
@@ -170,12 +150,12 @@ function sideOfCaret(state: EditorState): 'title' | 'body' | 'neither' {
  * @returns The selection to apply, or null when there is nothing to select.
  */
 function nextSelection(state: EditorState): Selection | null {
-  if (sideOfCaret(state) !== 'title') return bodySelection(state);
-  const title = currentBlockRange(state);
-  return TextSelection.between(
-    state.doc.resolve(title.from),
-    state.doc.resolve(title.to),
-  );
+  if (sideOfCaret(state) === 'body') return bodySelection(state);
+  // Read the title's own content range rather than `$from.start()`: a title
+  // selected from outside puts `$from` at document level, where those helpers
+  // answer with the whole document.
+  const title = state.doc.child(0);
+  return TextSelection.between(state.doc.resolve(1), state.doc.resolve(title.nodeSize - 1));
 }
 
 /**

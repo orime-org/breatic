@@ -384,10 +384,20 @@ describe('正文一个块都没有', () => {
 
     const claimed = pressCtrlA(editor);
 
-    expect(selection(editor), '正文零块时不许换掉用户的选区').toEqual(before);
-    expect(editor.state.selection, '类型也不许换').toBeInstanceOf(AllSelection);
-    // 交回去就落到 @tiptap/core 的 selectAll，那会产出一个含文档标题的 AllSelection。
-    expect(claimed, '没东西可选也要吃掉这个键').toBe(true);
+    // 2026-08-16 改：判「在哪一侧」从看 `$from.parent` 的类型改成看位置区间之后，
+    // 这一格的答案变了。正文零块时文档标题的末尾就是整份文档的末尾，所以一个
+    // 覆盖全文的选区落在文档标题那一侧，按这个键选中的是文档标题的文字——正文
+    // 本来就没有东西可选，而文档标题有。设计文档 §5.3 那张表定的就是这个。
+    //
+    // 断言仍然钉住原来那条不变量：**不许产出一个正文起点处的空选区**。变异实测
+    // 过：去掉正文为空那道守卫会得到 `from === to === 文档标题的 nodeSize`，
+    // 而下面这两条要求选区非空、且落在文档标题的文字范围里，那种结果过不去。
+    const titleSize = editor.state.doc.child(0).nodeSize;
+    expect(editor.state.selection.from, '选区要落在文档标题的文字里').toBe(1);
+    expect(editor.state.selection.to, '选区要盖住文档标题的全部文字').toBe(titleSize - 1);
+    expect(before, '这一格的旧行为是原样不动，留着好对照').toBeTruthy();
+    // 交回去就落到 @tiptap/core 的 selectAll，那会产出一个含文档标题外部位置的 AllSelection。
+    expect(claimed, '这个键永远由我们认领').toBe(true);
   });
 });
 
