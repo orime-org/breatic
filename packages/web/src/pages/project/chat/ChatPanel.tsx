@@ -209,13 +209,13 @@ export function ChatPanel({
       }
     >
       <MessageList
-        // Keyed by the conversation, so switching mounts a fresh list. What
-        // that resets is the one thing a switch has to reset and nothing else
-        // could: whether the reader was following the bottom. It lived in a
-        // ref that only a press of send cleared, so arriving in a new
-        // conversation put the reader wherever the last one had been scrolled
-        // to.
-        key={currentId ?? 'none'}
+        // The conversation travels as a prop rather than as a key. The list
+        // does have to notice a switch -- it is what tells it to follow the
+        // bottom again -- but keying it made React tear down the scroller and
+        // every bubble to do it, and the scroller it discarded stayed in the
+        // document: an empty half-column above the conversation, in every
+        // project, from the moment the first one opened.
+        conversationId={currentId}
         messages={messages}
         ready={ready}
         skeleton={skeleton}

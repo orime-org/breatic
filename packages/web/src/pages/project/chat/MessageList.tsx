@@ -41,6 +41,15 @@ interface MessageListProps {
    * reply in the form it was stored — a change with no reader behind it.
    */
   sentCount?: number;
+  /**
+   * Which conversation these messages belong to.
+   *
+   * Read only to notice that it changed: arriving in another conversation puts
+   * a different exchange in front of the reader, and it starts at its last
+   * word -- wherever they had scrolled to in the one before says nothing about
+   * this one.
+   */
+  conversationId?: string;
   /** The conversation reaches back further than what is on screen. */
   hasEarlier?: boolean;
   /** Load what comes before the messages on screen. */
@@ -90,6 +99,7 @@ function MessageSkeleton(): React.JSX.Element {
  * @param root0.messages - The messages to render in order.
  * @param root0.ready - The conversation has arrived and can be drawn.
  * @param root0.skeleton - The wait is long enough to be worth showing.
+ * @param root0.conversationId - Which conversation these messages belong to.
  * @param root0.sentCount - How many times the reader has pressed send.
  * @param root0.hasEarlier - The conversation reaches back further than this.
  * @param root0.onLoadEarlier - Called to load what comes before these.
@@ -101,6 +111,7 @@ function MessageListInner({
   ready = false,
   skeleton = false,
   sentCount,
+  conversationId,
   hasEarlier = false,
   onLoadEarlier,
   onQuickAction,
@@ -147,7 +158,13 @@ function MessageListInner({
     // something sees nothing move at all: not their own message, not a word
     // of the reply.
     stickToBottom.current = true;
-  }, [sentCount]);
+    // And on arriving in another conversation, for the same reason as sending:
+    // what is in front of the reader now is not what they scrolled away from.
+    // Done here rather than by keying this component on the conversation --
+    // that tore down the scroller, every bubble in it and the observers around
+    // them, to set one boolean back to true, and the scroller it left behind
+    // stayed on screen as an empty half-column.
+  }, [sentCount, conversationId]);
 
   React.useEffect(() => {
     const viewport = bottomRef.current?.closest('[data-radix-scroll-area-viewport]');

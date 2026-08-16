@@ -134,6 +134,31 @@ describe('MessageList', () => {
     scrollIntoView.mockRestore();
   });
 
+  it('follows the bottom again in the conversation switched to', () => {
+    // 上一条里读者往回翻过,那是关于**那一条**会话的。换到另一条,面板给出的是
+    // 一段全新的对话,而它该从最后一句开始 —— 不是停在上一条被读到的地方。
+    const scrollIntoView = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 0 };
+    const restore = stateGeometry(geometry);
+
+    const { container, rerender } = render(
+      <MessageList ready conversationId='c-1' messages={[bubble('m1', 'first chat')]} />,
+    );
+    // 读者往回翻,跟随关掉。
+    fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
+    scrollIntoView.mockClear();
+
+    rerender(
+      <MessageList ready conversationId='c-2' messages={[bubble('m9', 'another chat')]} />,
+    );
+
+    expect(scrollIntoView).toHaveBeenCalled();
+    restore();
+    scrollIntoView.mockRestore();
+  });
+
   it('stops following once the user has scrolled up to read', () => {
     const scrollIntoView = vi
       .spyOn(HTMLElement.prototype, 'scrollIntoView')
