@@ -172,6 +172,17 @@ interface ConversationRuntimeState {
    */
   listLoadingMore: Record<string, true>;
   /**
+   * Which projects have the first page of the list on its way.
+   *
+   * "Nothing here" and "not known yet" are two different sentences, and the
+   * list holds nothing in both cases. Saying the wrong one has the reader
+   * close the list believing they misremembered, and find it populated a
+   * second later. Both routes that fetch a first page raise it -- opening the
+   * panel, and opening the list -- because it is one fact about the project,
+   * not one fact per route.
+   */
+  listLoading: Record<string, true>;
+  /**
    * Why this project's chat could not be read, when the server said why.
    *
    * The scrim covers the line that would otherwise carry it, so it has to say
@@ -499,6 +510,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   listHasMore: {},
   listMoreFailed: {},
   listLoadingMore: {},
+  listLoading: {},
   openFailure: {},
   draftByConversation: {},
   openStatus: {},
@@ -606,6 +618,8 @@ async function ensureLoaded(projectId: string): Promise<void> {
 async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined> {
   const nav = intendToNavigate(projectId);
   let landed = false;
+  fetchingList.add(projectId);
+  useStore.setState((s) => ({ listLoading: { ...s.listLoading, [projectId]: true as const } }));
   try {
     const visit = currentVisit(projectId);
     // Everything except a chat that is already on screen. What this must not do
@@ -685,6 +699,8 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       return { failed: err };
     }
   } finally {
+    fetchingList.delete(projectId);
+    settleListLoading(projectId);
     // However this ended -- landed, failed, or overtaken -- it is over, and
     // being the last one out means nobody else will settle the panel.
     navigationEnded(projectId, nav, landed);
@@ -1683,6 +1699,16 @@ async function startNew(projectId: string): Promise<void> {
 const fetchingMore = new Set<string>();
 
 /**
+ * Projects with a request out for the *first* page of conversations.
+ *
+ * Two routes fetch it -- opening the panel and opening the list -- and both
+ * write the whole list rather than appending to it. Membership here is the one
+ * fact behind {@link ConversationRuntimeState.listLoading}, so that the flag
+ * cannot say a page is on its way when none is, or the reverse.
+ */
+const fetchingList = new Set<string>();
+
+/**
  * Fetch the page of conversations after the ones already listed.
  *
  * Does nothing while a request is already out, and nothing when the list is
@@ -1749,6 +1775,61 @@ async function loadMoreConversations(projectId: string): Promise<void> {
       listLoadingMore: (({ [projectId]: _done, ...rest }) => rest)(st.listLoadingMore),
     }));
   }
+}
+
+/**
+ * Fetch the first page of the list again, replacing what is held.
+ *
+ * Opening the list is a moment to fetch: where the reader had paged to, and
+ * what they saw, belong to the last time they opened it -- and in between,
+ * another tab of theirs may have started conversations, deleted them, or
+ * renamed them. Replacing rather than merging is the point: rows that are
+ * gone have to go, and merging keeps them.
+ *
+ * It clears the mark left by a page that failed, which is the other half. The
+ * mark takes the end-of-list watcher off duty until the reader scrolls, and a
+ * list too short to scroll gives them no way to do that -- so without this a
+ * single failed page would end paging for the rest of the visit.
+ * @param projectId - The project whose list to fetch again.
+ */
+async function reloadConversationList(projectId: string): Promise<void> {
+  if (fetchingList.has(projectId)) return;
+
+  const visit = currentVisit(projectId);
+  fetchingList.add(projectId);
+  useStore.setState((st) => ({ listLoading: { ...st.listLoading, [projectId]: true as const } }));
+  try {
+    const page = await chatApi.listConversations(projectId, undefined, visit.signal);
+    if (visit.signal.aborted) return;
+    useStore.setState((st) => ({
+      listByProject: { ...st.listByProject, [projectId]: page.conversations },
+      listHasMore: { ...st.listHasMore, [projectId]: page.hasMore },
+      listMoreFailed: { ...st.listMoreFailed, [projectId]: false },
+    }));
+  } catch (err) {
+    if (visit.signal.aborted) return;
+    // The list in hand is the one from last time, and it is still on screen.
+    // Nothing is taken away over this; the reader is told, and reaching for
+    // the list again asks again.
+    tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
+  } finally {
+    fetchingList.delete(projectId);
+    settleListLoading(projectId);
+  }
+}
+
+/**
+ * Stop saying the first page is on its way, if nothing is fetching one.
+ *
+ * Two routes fetch a first page and either can be the last one out, so
+ * neither can clear the flag on its own account.
+ * @param projectId - The project to settle.
+ */
+function settleListLoading(projectId: string): void {
+  if (fetchingList.has(projectId)) return;
+  useStore.setState((st) => ({
+    listLoading: (({ [projectId]: _done, ...rest }) => rest)(st.listLoading),
+  }));
 }
 
 
@@ -1984,6 +2065,7 @@ function leaveProject(projectId: string): void {
     const { [projectId]: _more, ...listHasMore } = s.listHasMore;
     const { [projectId]: _moreFailed, ...listMoreFailed } = s.listMoreFailed;
     const { [projectId]: _loadingMore, ...listLoadingMore } = s.listLoadingMore;
+    const { [projectId]: _listLoading, ...listLoading } = s.listLoading;
     const { [projectId]: _why, ...openFailure } = s.openFailure;
     // The drafts of every conversation in this project go with it. A draft
     // belongs to a conversation the reader was in, and coming back re-opens
@@ -2009,6 +2091,7 @@ function leaveProject(projectId: string): void {
       listHasMore,
       listMoreFailed,
       listLoadingMore,
+      listLoading,
       openFailure,
       draftByConversation: keptDrafts,
     };
@@ -2045,6 +2128,7 @@ export function _resetForTests(): void {
   loadingEarlier.clear();
   visits.clear();
   fetchingMore.clear();
+  fetchingList.clear();
   inFlight.clear();
   lastIssued.clear();
   claimed.clear();
@@ -2055,6 +2139,7 @@ export function _resetForTests(): void {
     listHasMore: {},
     listMoreFailed: {},
     listLoadingMore: {},
+    listLoading: {},
     openFailure: {},
     draftByConversation: {},
     openStatus: {},
@@ -2074,6 +2159,7 @@ export const conversationRuntime = {
   switchTo,
   startNew,
   loadMoreConversations,
+  reloadConversationList,
   rename,
   remove,
   setDraft,

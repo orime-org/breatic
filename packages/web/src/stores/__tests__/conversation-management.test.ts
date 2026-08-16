@@ -548,3 +548,85 @@ describe('a list longer than one page', () => {
     expect(listed.map((c) => c.id)).toEqual(['c-1', 'c-2']);
   });
 });
+
+describe('opening the list again', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('fetches the first page afresh rather than showing what it had', async () => {
+    // 打开列表是一次取数的时刻。上一次翻到哪儿、上一次看到什么,都不该决定
+    // 这一次看到什么 —— 那期间另一个标签页可能建过、删过、改过名。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1', { hasMoreConversations: true });
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [
+        { id: 'c-9', title: 'made in another tab' },
+        { id: 'c-1', title: 'one' },
+      ],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+    await conversationRuntime.reloadConversationList(PROJECT);
+
+    expect(chatApi.listConversations).toHaveBeenCalledWith(PROJECT, undefined, expect.anything());
+    const listed = useConversationRuntime.getState().listByProject[PROJECT] ?? [];
+    expect(listed.map((c) => c.id)).toEqual(['c-9', 'c-1']);
+    expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(false);
+  });
+
+  it('gives a list that failed its last page a second chance', async () => {
+    // 上一次翻页失败的那个标记,是「哨兵别再自己问了」的开关。它跨不过一次
+    // 重新打开 —— 否则一个短到滚不动的列表在这次访问里就再也拉不到更早的了。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1', { hasMoreConversations: true });
+    await conversationRuntime.ensureLoaded(PROJECT);
+    vi.mocked(chatApi.listConversations).mockRejectedValue(new Error('offline'));
+    await conversationRuntime.loadMoreConversations(PROJECT);
+    expect(useConversationRuntime.getState().listMoreFailed[PROJECT]).toBe(true);
+
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [{ id: 'c-1', title: 'one' }],
+      hasMore: true,
+    } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+    await conversationRuntime.reloadConversationList(PROJECT);
+
+    expect(useConversationRuntime.getState().listMoreFailed[PROJECT]).toBe(false);
+  });
+
+  it('says the first page is on its way while it is', async () => {
+    // 「一条都没有」和「还不知道有没有」是两句不同的话,而列表在这两种情况下
+    // 手上都是空的。说错的那一句会让读者关掉列表、以为自己记错了。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    let land: (() => void) | undefined;
+    vi.mocked(chatApi.listConversations).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          land = () =>
+            resolve({ conversations: [], hasMore: false } as unknown as Awaited<
+              ReturnType<typeof chatApi.listConversations>
+            >);
+        }),
+    );
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+    expect(useConversationRuntime.getState().listLoading[PROJECT]).toBe(true);
+
+    land?.();
+    await reloading;
+
+    expect(useConversationRuntime.getState().listLoading[PROJECT]).toBeUndefined();
+  });
+
+  it('says so while the panel is fetching that same first page', async () => {
+    // openChat 拿回来的就是第一页,所以它在飞的时候,列表也正在路上 —— 同一个
+    // 事实,一处记。
+    vi.mocked(chatApi.openChat).mockImplementation(() => new Promise(() => {}));
+    void conversationRuntime.ensureLoaded(PROJECT);
+
+    await vi.waitFor(() =>
+      expect(useConversationRuntime.getState().listLoading[PROJECT]).toBe(true),
+    );
+  });
+});
