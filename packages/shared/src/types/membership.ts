@@ -115,3 +115,58 @@ export const tierLimitsSchema = z.object({
  * second list of field names to fall out of step with the first.
  */
 export type MembershipLimits = z.infer<typeof tierLimitsSchema>;
+
+/**
+ * The tiers a person can compare themselves against and move between.
+ *
+ * Not {@link CONFIGURED_MEMBERSHIP_TIERS}, which also carries `self_hosted` —
+ * that one is a deployment shape rather than something anybody buys.
+ * `enterprise` is absent for a different reason: its ceilings are negotiated
+ * per customer and are not in the config file at all.
+ */
+export const COMPARABLE_MEMBERSHIP_TIERS = ["base", "pro", "team"] as const;
+
+/** A tier that appears on the price list. */
+export type ComparableMembershipTier =
+  (typeof COMPARABLE_MEMBERSHIP_TIERS)[number];
+
+/** One row of the tier comparison table. */
+export interface TierOffer {
+  /** Which tier this row describes. */
+  readonly tier: ComparableMembershipTier;
+  /** That tier's six ceilings, read from `config/membership.yaml`. */
+  readonly limits: MembershipLimits;
+}
+
+/** What one account has spent of the two allowances counted account-wide. */
+export interface AccountUsage {
+  /** How many team studios this account currently administers. */
+  readonly teamStudios: number;
+  /** Live bytes across the studios this account controls. */
+  readonly storageBytes: number;
+}
+
+/**
+ * Everything the membership panel shows, in one answer.
+ *
+ * The contract of `GET /api/v1/account/membership`, which is why it is here
+ * rather than beside the service that assembles it: both ends read this shape,
+ * and a second declaration on the web side is how the two would drift.
+ */
+export interface AccountMembership {
+  /** The tier stored on this account. */
+  readonly tier: MembershipTier;
+  /**
+   * That tier's six ceilings, or `null` for `enterprise`.
+   *
+   * `null` says "this tier's ceilings do not come from configuration", which
+   * is a real state rather than a failure: they are agreed per customer, and
+   * asking for them throws on purpose so that nobody can quietly invent a set.
+   * A read that genuinely fails still fails.
+   */
+  readonly limits: MembershipLimits | null;
+  /** How much of the account-level allowances is spent. */
+  readonly usage: AccountUsage;
+  /** The tiers offered for comparison, in ascending order. */
+  readonly catalog: readonly TierOffer[];
+}

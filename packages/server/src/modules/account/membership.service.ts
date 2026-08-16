@@ -21,57 +21,14 @@ import {
   getUserMembershipTier,
   getLimitsForUser,
   getMembershipLimits,
-  type MembershipLimits,
 } from "@breatic/core";
-import type { MembershipTier } from "@breatic/shared";
+import {
+  COMPARABLE_MEMBERSHIP_TIERS,
+  type AccountMembership,
+} from "@breatic/shared";
 
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-
-/**
- * The tiers a person can compare themselves against and move between.
- *
- * Not `CONFIGURED_MEMBERSHIP_TIERS`, which also carries `self_hosted` — that
- * one is a deployment shape rather than something anybody buys. `enterprise`
- * is absent for a different reason: its ceilings are negotiated per customer
- * and are not in the config file at all.
- */
-const COMPARABLE_TIERS = ["base", "pro", "team"] as const;
-
-/** One row of the comparison table. */
-export interface TierOffer {
-  /** Which tier this row describes. */
-  readonly tier: (typeof COMPARABLE_TIERS)[number];
-  /** That tier's six ceilings, read from `config/membership.yaml`. */
-  readonly limits: MembershipLimits;
-}
-
-/** What one account has spent of the two allowances counted account-wide. */
-export interface AccountUsage {
-  /** How many team studios this account currently administers. */
-  readonly teamStudios: number;
-  /** Live bytes across the studios this account controls. */
-  readonly storageBytes: number;
-}
-
-/** The whole answer behind the membership panel. */
-export interface AccountMembership {
-  /** The tier stored on this account. */
-  readonly tier: MembershipTier;
-  /**
-   * That tier's six ceilings, or `null` for `enterprise`.
-   *
-   * `null` says "this tier's ceilings do not come from configuration", which
-   * is a real state rather than a failure: they are agreed per customer, and
-   * #105 made reading them throw so that nobody could quietly invent a set.
-   * A read that genuinely fails still throws.
-   */
-  readonly limits: MembershipLimits | null;
-  /** How much of the account-level allowances is spent. */
-  readonly usage: AccountUsage;
-  /** The tiers offered for comparison, in ascending order. */
-  readonly catalog: readonly TierOffer[];
-}
 
 /**
  * Reads everything the membership panel needs for one account.
@@ -98,7 +55,7 @@ export async function readAccountMembership(
     tier,
     limits,
     usage: { teamStudios, storageBytes },
-    catalog: COMPARABLE_TIERS.map((offered) => ({
+    catalog: COMPARABLE_MEMBERSHIP_TIERS.map((offered) => ({
       tier: offered,
       limits: getMembershipLimits(offered),
     })),
