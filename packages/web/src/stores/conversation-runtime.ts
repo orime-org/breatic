@@ -164,6 +164,14 @@ interface ConversationRuntimeState {
    */
   listMoreFailed: Record<string, boolean>;
   /**
+   * Which projects have a request out for the next page of conversations.
+   *
+   * Rendered at the foot of the list, so it lives here rather than beside the
+   * store: reaching the end starts a whole round trip, and a list that gives
+   * nothing back for it reads as one that did not notice.
+   */
+  listLoadingMore: Record<string, true>;
+  /**
    * Why this project's chat could not be read, when the server said why.
    *
    * The scrim covers the line that would otherwise carry it, so it has to say
@@ -485,6 +493,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   listByProject: {},
   listHasMore: {},
   listMoreFailed: {},
+  listLoadingMore: {},
   openFailure: {},
   draftByConversation: {},
   openStatus: {},
@@ -640,6 +649,13 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
         return {
           listByProject: { ...st.listByProject, [projectId]: listed },
           listHasMore: { ...st.listHasMore, [projectId]: opened.hasMoreConversations },
+          // The mark said the last attempt at the next page did not arrive.
+          // This answer is the whole list again, so that sentence is about a
+          // list nobody is holding any more -- and left standing it would both
+          // show the reader an error belonging to something else and keep the
+          // paging gate shut, since the gate is read before the mark is
+          // cleared.
+          listMoreFailed: { ...st.listMoreFailed, [projectId]: false },
         };
       });
       return undefined;
@@ -1653,6 +1669,7 @@ async function loadMoreConversations(projectId: string): Promise<void> {
   fetchingMore.add(projectId);
   useStore.setState((st) => ({
     listMoreFailed: { ...st.listMoreFailed, [projectId]: false },
+    listLoadingMore: { ...st.listLoadingMore, [projectId]: true as const },
   }));
   try {
     const page = await chatApi.listConversations(
@@ -1684,6 +1701,9 @@ async function loadMoreConversations(projectId: string): Promise<void> {
     tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
   } finally {
     fetchingMore.delete(projectId);
+    useStore.setState((st) => ({
+      listLoadingMore: (({ [projectId]: _done, ...rest }) => rest)(st.listLoadingMore),
+    }));
   }
 }
 
@@ -1913,6 +1933,7 @@ function leaveProject(projectId: string): void {
     const { [projectId]: _listed, ...listByProject } = s.listByProject;
     const { [projectId]: _more, ...listHasMore } = s.listHasMore;
     const { [projectId]: _moreFailed, ...listMoreFailed } = s.listMoreFailed;
+    const { [projectId]: _loadingMore, ...listLoadingMore } = s.listLoadingMore;
     const { [projectId]: _why, ...openFailure } = s.openFailure;
     // The drafts of every conversation in this project go with it. A draft
     // belongs to a conversation the reader was in, and coming back re-opens
@@ -1937,6 +1958,7 @@ function leaveProject(projectId: string): void {
       listByProject,
       listHasMore,
       listMoreFailed,
+      listLoadingMore,
       openFailure,
       draftByConversation: keptDrafts,
     };
@@ -1982,6 +2004,7 @@ export function _resetForTests(): void {
     listByProject: {},
     listHasMore: {},
     listMoreFailed: {},
+    listLoadingMore: {},
     openFailure: {},
     draftByConversation: {},
     openStatus: {},

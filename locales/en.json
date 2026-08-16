@@ -121,7 +121,8 @@
       "title": "Session list",
       "description": "Switch to or review previous conversations.",
       "empty": "No previous conversations",
-      "moreFailed": "Could not load older conversations. Try again"
+      "moreFailed": "Could not load older conversations",
+      "loadingMore": "Loading earlier conversations"
     },
     "relative": {
       "justNow": "just now",

@@ -833,3 +833,63 @@ describe('while a switch is on its way', () => {
     expect(useConversationRuntime.getState().openStatus[P]).toBe('failed');
   });
 });
+
+describe('fetching the next page of the list', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('says while it is out, so the list can show it', async () => {
+    // 读者滑到底,下一页在路上 —— 底部要看得出正在加载,而不是什么都没有。
+    vi.mocked(chatApi.openChat).mockResolvedValueOnce({
+      conversations: [{ id: 'c-1', title: 'one', updatedAt: '2026-08-16T00:00:00.000Z' }],
+      hasMoreConversations: true,
+      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+    } as never);
+    await conversationRuntime.ensureLoaded(P);
+    expect(useConversationRuntime.getState().listLoadingMore[P]).toBeUndefined();
+
+    let land: (() => void) | undefined;
+    vi.mocked(chatApi.listConversations).mockImplementationOnce(
+      () => new Promise((res) => {
+        land = () => res({ conversations: [], hasMore: false } as never);
+      }),
+    );
+    const paging = conversationRuntime.loadMoreConversations(P);
+    await new Promise((r) => setTimeout(r, 5));
+
+    expect(useConversationRuntime.getState().listLoadingMore[P]).toBe(true);
+
+    land?.();
+    await paging;
+
+    expect(useConversationRuntime.getState().listLoadingMore[P]).toBeUndefined();
+  });
+
+  it('drops the failure mark when the list is fetched afresh', async () => {
+    // 翻页失败留下的那个标记,是说「上一次翻页没到」。整份列表重新拿过之后,
+    // 那句话说的已经不是手上这份列表了 —— 留着它,读者会看到一条不属于当前
+    // 列表的错误,而分页也再启动不起来。
+    vi.mocked(chatApi.openChat).mockResolvedValueOnce({
+      conversations: [{ id: 'c-1', title: 'one', updatedAt: '2026-08-16T00:00:00.000Z' }],
+      hasMoreConversations: true,
+      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+    } as never);
+    await conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.listConversations).mockRejectedValueOnce(new Error('offline'));
+    await conversationRuntime.loadMoreConversations(P);
+    expect(useConversationRuntime.getState().listMoreFailed[P]).toBe(true);
+
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
+    vi.mocked(chatApi.openChat).mockResolvedValueOnce({
+      conversations: [{ id: 'c-new', title: null, updatedAt: '2026-08-16T00:00:01.000Z' }],
+      hasMoreConversations: false,
+      current: { conversation: { id: 'c-new', title: null }, messages: [], hasMore: false },
+    } as never);
+    await conversationRuntime.remove(P, 'c-1');
+
+    expect(useConversationRuntime.getState().listMoreFailed[P]).toBeFalsy();
+  });
+});

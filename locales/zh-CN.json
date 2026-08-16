@@ -121,7 +121,8 @@
       "title": "Session 列表",
       "description": "切换或回顾之前的对话。",
       "empty": "暂无历史会话",
-      "moreFailed": "没能加载更早的对话，再试一次"
+      "moreFailed": "没能加载更早的对话",
+      "loadingMore": "正在加载更早的对话"
     },
     "relative": {
       "justNow": "刚刚",

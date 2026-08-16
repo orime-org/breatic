@@ -86,6 +86,7 @@ export function ChatPanel({
     hasMoreConversations,
     loadMoreConversations,
     nextPageFailed,
+    loadingMore,
     currentId,
     draft,
     setDraft,
@@ -243,6 +244,7 @@ export function ChatPanel({
         onDelete={remove}
         hasMore={hasMoreConversations}
         onReachEnd={loadMoreConversations}
+        loadingMore={loadingMore}
         nextPageFailed={nextPageFailed}
       />
     </div>

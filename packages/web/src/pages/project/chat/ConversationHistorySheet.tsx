@@ -33,6 +33,7 @@ import { cn } from '@web/lib/utils';
 import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
+import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 
 /**
  * One conversation as a row shows it.
@@ -61,6 +62,8 @@ interface ConversationHistorySheetProps {
   hasMore: boolean;
   /** Called when the reader reaches the end of what has been fetched. */
   onReachEnd: () => void;
+  /** A request for the next page is out. */
+  loadingMore: boolean;
   /**
    * The last attempt at the next page failed.
    *
@@ -337,6 +340,7 @@ function ConversationRowView({
  * @param root0.onDelete - Called with an id once the reader has confirmed.
  * @param root0.hasMore - The project has conversations older than the ones listed.
  * @param root0.onReachEnd - Called when the reader reaches the end of what has been fetched.
+ * @param root0.loadingMore - A request for the next page is out.
  * @param root0.nextPageFailed - The last attempt at the next page failed.
  * @returns The left-side sheet listing the project's conversations.
  */
@@ -350,6 +354,7 @@ function ConversationHistorySheetInner({
   onDelete,
   hasMore,
   onReachEnd,
+  loadingMore,
   nextPageFailed,
 }: ConversationHistorySheetProps): React.JSX.Element {
   const t = useTranslation();
@@ -366,6 +371,22 @@ function ConversationHistorySheetInner({
   React.useEffect(() => {
     if (!open) setDeleting(null);
   }, [open]);
+  // The line about a page that did not arrive takes itself away. What it says
+  // is an event, not a state: the reader was told, and the list in front of
+  // them is unchanged and still usable. The mark in the store stays -- that is
+  // what keeps the end-of-list watcher off duty until the reader scrolls
+  // again, which is a different question from how long the words are up.
+  const [showFailure, setShowFailure] = React.useState(false);
+  React.useEffect(() => {
+    if (!nextPageFailed) {
+      setShowFailure(false);
+      return undefined;
+    }
+    setShowFailure(true);
+    const forgetting = setTimeout(() => setShowFailure(false), NOTICE_LINGERS_MS);
+    return () => clearTimeout(forgetting);
+  }, [nextPageFailed]);
+
   const { scrollerRef, sentinelRef } = useScrolledToEnd({
     enabled: hasMore,
     onReachEnd,
@@ -433,21 +454,26 @@ function ConversationHistorySheetInner({
             {/* After the last row, so coming into view means the reader has
                 got to the end of what has been fetched. */}
             <div ref={sentinelRef} data-testid='conversation-list-end' />
-            {nextPageFailed ? (
-              // A button and not just a line of text. Scrolling is the other
-              // way to ask again, and it is the natural one -- but a list
-              // shorter than the sheet cannot be scrolled at all, and one gets
-              // that short by deleting rows, which is something this very
-              // sheet does. Then there would be no way left to ask.
-              <Button
-                variant='outline'
-                size='sm'
-                className='m-3 self-start'
-                onClick={onReachEnd}
+            {/* The foot of the list says what is happening there, and there is
+                nothing here to press: reaching the end is what asks for a
+                page. While one is out this says so; when one does not arrive
+                it says that instead, for as long as any one-off line lasts in
+                this app. Then it goes, and the next scroll to the end asks
+                again. */}
+            {loadingMore ? (
+              <p
+                className='m-3 text-2xs text-muted-foreground'
+                data-testid='conversation-list-loading-more'
+              >
+                {t('chat.history.loadingMore')}
+              </p>
+            ) : showFailure ? (
+              <p
+                className='m-3 text-2xs text-status-error'
                 data-testid='conversation-list-more-failed'
               >
                 {t('chat.history.moreFailed')}
-              </Button>
+              </p>
             ) : null}
           </ScrollArea>
         </div>

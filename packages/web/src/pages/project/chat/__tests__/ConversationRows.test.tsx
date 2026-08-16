@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { act, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -53,6 +53,7 @@ function renderSheet(over: Partial<React.ComponentProps<typeof ConversationHisto
       hasMore={false}
       onReachEnd={vi.fn()}
       nextPageFailed={false}
+      loadingMore={false}
       {...over}
     />,
   );
@@ -77,6 +78,7 @@ function renderSheetFor(props: Partial<React.ComponentProps<typeof ConversationH
     hasMore: false,
     onReachEnd: vi.fn(),
     nextPageFailed: false,
+    loadingMore: false,
   };
   const result = render(<ConversationHistorySheet {...base} {...props} />);
   return {
@@ -315,7 +317,47 @@ describe('a page that arrives without filling the window', () => {
   });
 });
 
+describe('while the next page is on its way', () => {
+  it('shows that it is coming, at the foot of the list', () => {
+    renderSheetFor({ hasMore: true, loadingMore: true });
+
+    expect(screen.getByTestId('conversation-list-loading-more')).toBeInTheDocument();
+  });
+
+  it('shows nothing there when nothing is out', () => {
+    renderSheetFor({ hasMore: true, loadingMore: false });
+
+    expect(screen.queryByTestId('conversation-list-loading-more')).toBeNull();
+  });
+});
+
 describe('when the next page cannot be fetched', () => {
+  it('says so in the place the loading was, and offers nothing to press', () => {
+    // 出错就在它该出现的位置说一句,不是给一个按钮。读者接着往下滑就再拉一次。
+    renderSheetFor({ hasMore: true, nextPageFailed: true });
+
+    expect(screen.getByTestId('conversation-list-more-failed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重新|reload|retry/i })).toBeNull();
+  });
+
+  it('takes the line away on its own', async () => {
+    vi.useFakeTimers();
+    try {
+      renderSheetFor({ hasMore: true, nextPageFailed: true });
+      expect(screen.getByTestId('conversation-list-more-failed')).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(4000);
+      });
+
+      expect(screen.queryByTestId('conversation-list-more-failed')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('what asks for the page again after one failed', () => {
   let fire: (() => void) | undefined;
 
   beforeEach(() => {
@@ -371,17 +413,6 @@ describe('when the next page cannot be fetched', () => {
     expect(screen.getByTestId('conversation-list-more-failed')).toBeInTheDocument();
   });
 
-  it('can be asked again from that line, for a list too short to scroll', async () => {
-    // 滑一下是自然的那条路,但列表比抽屉还短时根本滚不动 —— 而列表正是靠
-    // 这个抽屉自己的删除变短的。那时候如果只认滚动,就一条路都不剩了。
-    const onReachEnd = vi.fn();
-    renderSheetFor({ hasMore: true, onReachEnd, nextPageFailed: true });
-    const asked = onReachEnd.mock.calls.length;
-
-    await userEvent.click(screen.getByTestId('conversation-list-more-failed'));
-
-    expect(onReachEnd).toHaveBeenCalledTimes(asked + 1);
-  });
 });
 
 describe('when the sheet is taken away mid-confirmation', () => {

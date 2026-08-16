@@ -5,6 +5,7 @@ import * as React from 'react';
 import type { MessageData } from '@breatic/shared';
 
 import { useChatStore } from '@web/stores';
+import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 
 import {
   conversationRuntime,
@@ -51,6 +52,8 @@ export interface ChatSession {
    * just asked for.
    */
   navigating: boolean;
+  /** A request for the next page of the conversation list is out. */
+  loadingMore: boolean;
   /** The conversation reaches back further than the messages on screen. */
   hasMore: boolean;
   /**
@@ -153,15 +156,6 @@ const NO_MESSAGES: ChatMessageData[] = [];
  */
 const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
 
-/**
- * How long one line about something going wrong stays on screen.
- *
- * It goes away on its own because it is an event, not a state: the reader was
- * told, and a reader who was looking elsewhere is not owed it later. Four
- * seconds is what every other one-off message in this app lasts -- the toast
- * library's own default, which the rest of the product uses unchanged.
- */
-const MISHAP_LINGERS_MS = 4000;
 
 /**
  * The chat panel's view of the conversation it is showing.
@@ -183,6 +177,7 @@ export function useChatSession(projectId: string): ChatSession {
   );
   const turnPhase = useConversationRuntime((s) => turnPhaseOf(s, projectId));
   const navigating = useConversationRuntime((s) => s.navigatingByProject[projectId] === true);
+  const loadingMore = useConversationRuntime((s) => s.listLoadingMore[projectId] === true);
   const hasMore = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.hasMore ?? false) : false,
   );
@@ -313,7 +308,7 @@ export function useChatSession(projectId: string): ChatSession {
 
   React.useEffect(() => {
     if (mishap === null) return undefined;
-    const forgetting = setTimeout(() => setMishap(null), MISHAP_LINGERS_MS);
+    const forgetting = setTimeout(() => setMishap(null), NOTICE_LINGERS_MS);
     return () => clearTimeout(forgetting);
   }, [mishap]);
 
@@ -348,6 +343,7 @@ export function useChatSession(projectId: string): ChatSession {
     status: openStatus,
     turnPhase,
     navigating,
+    loadingMore,
     hasMore,
     mishap,
     loadEarlier,
