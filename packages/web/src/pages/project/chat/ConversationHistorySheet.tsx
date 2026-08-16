@@ -372,6 +372,7 @@ function ConversationHistorySheetInner({
   const { scrollerRef, sentinelRef } = useScrolledToEnd({
     enabled: hasMore,
     onReachEnd,
+    itemCount: conversations.length,
     // After a failure the end of the list is no longer what is watched: it is
     // still in view and nothing moved it, so watching it again would ask again
     // by itself. A scroll is watched instead, which only the reader can do.

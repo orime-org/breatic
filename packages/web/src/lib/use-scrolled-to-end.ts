@@ -9,6 +9,17 @@ interface ScrolledToEndOptions {
   /** Called when the end of the list comes into view, or scrolled to again. */
   onReachEnd: () => void;
   /**
+   * How many rows are listed right now.
+   *
+   * Read only to notice that it changed. Coming into view happens once, and a
+   * page that does not fill the window leaves the end in view for good -- no
+   * second crossing, so nothing more is ever asked for and the reader has
+   * nothing left to scroll. A fresh watcher reports where things stand as it
+   * starts, so rebuilding it when rows arrive is what asks again while the end
+   * is still there. It stops on its own: the last page turns `enabled` off.
+   */
+  itemCount?: number;
+  /**
    * The last attempt did not arrive.
    *
    * Changes what is watched, not just when. An end already in view stays in
@@ -49,6 +60,10 @@ interface ScrolledToEndRefs {
  * the observer is never built and the list never pages. Taking the nodes as
  * state means the subscription happens when they actually arrive.
  *
+ * Rows arriving rebuild the watcher, which is what carries a list that does not
+ * fill its window past its second page: the end came into view once and stayed
+ * there, and a watcher only reports crossings.
+ *
  * After a failure it watches for a scroll instead. The end being in view is a
  * state, and a state that a failure leaves untouched: watching it again would
  * report it again immediately, and the next request would be the failure's own
@@ -59,12 +74,14 @@ interface ScrolledToEndRefs {
  * @param options - What to watch, and what to call.
  * @param options.enabled - There is more to fetch.
  * @param options.onReachEnd - Called when the end comes into view, or is scrolled to again.
+ * @param options.itemCount - How many rows are listed right now.
  * @param options.failed - The last attempt did not arrive.
  * @returns The two refs to place.
  */
 export function useScrolledToEnd({
   enabled,
   onReachEnd,
+  itemCount = 0,
   failed = false,
 }: ScrolledToEndOptions): ScrolledToEndRefs {
   const [scroller, setScroller] = React.useState<HTMLElement | null>(null);
@@ -92,7 +109,7 @@ export function useScrolledToEnd({
     );
     io.observe(sentinel);
     return () => io.disconnect();
-  }, [scroller, sentinel, enabled, failed, onReachEnd]);
+  }, [scroller, sentinel, enabled, failed, itemCount, onReachEnd]);
 
   return { scrollerRef: setScroller, sentinelRef: setSentinel };
 }

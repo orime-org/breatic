@@ -268,6 +268,53 @@ describe('reaching the end of the list', () => {
   });
 });
 
+describe('a page that arrives without filling the window', () => {
+  let fire: (() => void) | undefined;
+  let observeCalls = 0;
+
+  beforeEach(() => {
+    fire = undefined;
+    observeCalls = 0;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
+          fire = () => cb([{ isIntersecting: true }]);
+        }
+        observe(): void {
+          // 真的观察者一开始观察就投递一次当前状态。
+          observeCalls += 1;
+          fire?.();
+        }
+        disconnect(): void {}
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('asks again while the end is still in view', () => {
+    // 一页装不满窗口时,末尾从头到尾都在视野里 —— 而进入视野这件事只发生一次,
+    // 之后它就一直在那儿。只认那一次的话,列表停在第二页,而读者滚不动、也没有
+    // 别的办法把剩下的拿回来。
+    const onReachEnd = vi.fn();
+    const { rerender } = renderSheetFor({ hasMore: true, onReachEnd, conversations: ROWS });
+    expect(onReachEnd).toHaveBeenCalledTimes(1);
+
+    // 新的一页到手,行数变多,末尾仍在视野里。
+    rerender({
+      hasMore: true,
+      onReachEnd,
+      conversations: [...ROWS, { id: 'c9', title: 'just arrived', updatedAt: ROWS[0]!.updatedAt }],
+    });
+
+    expect(onReachEnd).toHaveBeenCalledTimes(2);
+    expect(observeCalls).toBeGreaterThan(1);
+  });
+});
+
 describe('when the next page cannot be fetched', () => {
   let fire: (() => void) | undefined;
 
