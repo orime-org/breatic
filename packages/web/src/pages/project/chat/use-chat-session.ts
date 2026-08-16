@@ -8,7 +8,6 @@ import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 
 import {
   conversationRuntime,
-  projectDraftKey,
   turnPhaseOf,
   useConversationRuntime,
   watchChatMishaps,
@@ -197,7 +196,7 @@ export function useChatSession(projectId: string): ChatSession {
   // Under the conversation when there is one, under the project until then --
   // typing while the open call is still out has to land somewhere.
   const draft = useConversationRuntime(
-    (s) => s.draftByConversation[conversationId ?? projectDraftKey(projectId)] ?? '',
+    (s) => (conversationId === undefined ? '' : (s.draftByConversation[conversationId] ?? '')),
   );
 
   React.useEffect(() => {

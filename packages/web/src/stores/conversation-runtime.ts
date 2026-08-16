@@ -752,19 +752,7 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
       : undefined;
     const page = opened.messages.map(toStored);
 
-    // Anything typed while this was loading was kept under the project,
-    // because there was no conversation to keep it under. There is now.
-    const waiting = s.draftByConversation[projectDraftKey(projectId)];
-    const drafts = { ...s.draftByConversation };
-    if (waiting !== undefined) {
-      delete drafts[projectDraftKey(projectId)];
-      // Only into an empty box: a conversation being re-read may already hold
-      // a sentence of its own, and that one was typed in it.
-      if (!drafts[conversationId]) drafts[conversationId] = waiting;
-    }
-
     return {
-      draftByConversation: drafts,
       openStatus: { ...s.openStatus, [projectId]: 'ready' },
       // Whatever went wrong last time is over. A reason kept past it would
       // be shown as the reason for whatever goes wrong next.
@@ -2003,30 +1991,19 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
 }
 
 /**
- * Where a draft is kept while the conversation it belongs to is still loading.
+ * Hold what is half-typed, under the conversation it was typed in.
  *
- * A draft belongs to a conversation, and for a moment on every visit there is
- * no conversation to belong to -- the open call is still out. Typing in that
- * moment used to be dropped on the floor: nowhere to put it meant the box
- * showed nothing back. So it goes under the project until there is somewhere
- * better, and moves the moment there is.
- * @param projectId - The project being read.
- * @returns The key drafts are kept under while no conversation is on screen.
- */
-export function projectDraftKey(projectId: string): string {
-  return `project:${projectId}`;
-}
-
-/**
- * Hold what is half-typed, under the conversation if there is one.
+ * There is always one to hang it on. For the round trip before a conversation
+ * arrives the box is read-only -- the same gate a switch puts it behind -- so
+ * nothing can be typed while there is nowhere to put it.
  * @param projectId - The project being read.
  * @param conversationId - The conversation it was typed in, if one is on screen.
  * @param text - What is in the box.
  */
 function setDraft(projectId: string, conversationId: string | undefined, text: string): void {
-  const key = conversationId ?? projectDraftKey(projectId);
+  if (conversationId === undefined) return;
   useStore.setState((s) => ({
-    draftByConversation: { ...s.draftByConversation, [key]: text },
+    draftByConversation: { ...s.draftByConversation, [conversationId]: text },
   }));
 }
 
@@ -2037,8 +2014,8 @@ function setDraft(projectId: string, conversationId: string | undefined, text: s
  * @returns What is in its box, empty when nothing was left there.
  */
 function draftOf(projectId: string, conversationId: string | undefined): string {
-  const key = conversationId ?? projectDraftKey(projectId);
-  return useStore.getState().draftByConversation[key] ?? '';
+  if (conversationId === undefined) return '';
+  return useStore.getState().draftByConversation[conversationId] ?? '';
 }
 
 /**
@@ -2090,13 +2067,7 @@ function leaveProject(projectId: string): void {
     // the project from the server -- so keeping them would hand a returning
     // reader half a sentence they typed in a session they have left.
     const keptDrafts: Record<string, string> = {};
-    const waitingKey = projectDraftKey(projectId);
     for (const [id, draft] of Object.entries(s.draftByConversation)) {
-      // The one typed before this project had a conversation is keyed by the
-      // project, not by a conversation, so asking which conversation it
-      // belongs to finds nothing and keeps it -- and the next visit hands it
-      // to whichever conversation happens to open.
-      if (id === waitingKey) continue;
       if (s.conversations[id]?.projectId !== projectId) keptDrafts[id] = draft;
     }
     return {

@@ -429,33 +429,37 @@ describe('what the list says about when a conversation was last used', () => {
   });
 });
 
-describe('typing before the conversation has arrived', () => {
+describe('what the box holds while no conversation is on screen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
   });
 
-  it('keeps what was typed, and hands it to the conversation that turns up', async () => {
-    // There is no conversation to keep it under for the length of one round
-    // trip, and that is exactly when a reader opens a project and starts
-    // typing. Dropping it made the box eat their sentence.
-    conversationRuntime.setDraft(PROJECT, undefined, 'typed while loading');
-    expect(conversationRuntime.draftOf(PROJECT, undefined)).toBe('typed while loading');
+  it('holds nothing, because the box is not open for typing then', async () => {
+    // 打开面板那一趟往返里输入框是只读的 —— 它跟切换会话走同一道闸门。所以
+    // 「还没有会话可归」这种草稿产生不出来,也就不该有一个键去存它:留着那套
+    // 转交的机制,就是留一段谁也走不到的代码。
+    conversationRuntime.setDraft(PROJECT, undefined, 'nowhere to put this');
 
     openAnswers([{ id: 'c-1', title: null }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
 
-    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('typed while loading');
+    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('');
   });
 
-  it('does not write over a sentence the conversation already had', async () => {
-    conversationRuntime.setDraft(PROJECT, 'c-1', 'typed in the conversation');
-    conversationRuntime.setDraft(PROJECT, undefined, 'typed while loading');
-
-    openAnswers([{ id: 'c-1', title: null }], 'c-1');
+  it('keeps each conversation its own', async () => {
+    openAnswers(
+      [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      'c-1',
+    );
     await conversationRuntime.ensureLoaded(PROJECT);
+    conversationRuntime.setDraft(PROJECT, 'c-1', 'half a sentence');
 
-    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('typed in the conversation');
+    expect(conversationRuntime.draftOf(PROJECT, 'c-2')).toBe('');
+    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('half a sentence');
   });
 });
 
