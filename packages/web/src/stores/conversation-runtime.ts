@@ -703,6 +703,12 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
  */
 function adoptConversation(projectId: string, opened: OpenChatResult['current']): void {
   const conversationId = opened.conversation.id;
+  // The answer carries the name as it is now, and the list carries it as it
+  // was when the list was fetched. Another tab renaming it in between is
+  // exactly the case where those differ -- and this one was read a moment ago,
+  // so it wins. Dropping it left the header and the row showing a name that no
+  // longer exists, with nothing the reader could do about it.
+  applyTitle(projectId, conversationId, opened.conversation.title ?? null);
   useStore.setState((s) => {
     const held = s.conversations[conversationId];
     // The one thing this answer does NOT describe: a turn still running here.
@@ -1106,6 +1112,24 @@ async function runTurn(
 
 /** The one refusal a second attempt can do anything about. */
 const NOT_FOUND = 404;
+
+/**
+ * Did the server say this conversation is already gone.
+ *
+ * Not the same as a request that failed. It is our own answer, and what it
+ * says is that the thing being asked about is not there -- which for a delete
+ * is the outcome the reader wanted. Another tab of theirs having deleted it is
+ * how it usually got that way.
+ *
+ * The status alone is not enough. A proxy answering 404 for a path it does not
+ * know sends the same number, and nothing of ours is in that answer -- so the
+ * refusal has to be one our server wrote before it is read this way.
+ * @param err - What the request threw.
+ * @returns True when our server said there is no such conversation.
+ */
+function alreadyGone(err: unknown): boolean {
+  return err instanceof ApiException && err.fromServer && err.status === NOT_FOUND;
+}
 
 /**
  * Is this ending one a second attempt could get past.
@@ -1751,12 +1775,18 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
   try {
     await chatApi.deleteConversation(conversationId);
   } catch (err) {
-    // The row stays. A list that has lost a conversation the server still has
-    // is worse than one that failed to lose it, because only the second is
-    // something the reader can retry.
     if (visit.signal.aborted) return;
-    tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
-    return;
+    // Our own "that conversation is gone" is not a failure to delete it: it is
+    // already deleted, which is what the reader asked for. Another tab of
+    // theirs is how it usually got that way. Treating it as a failure left a
+    // row that could never be removed -- every press answered the same way.
+    // Anything else, the row stays: a list that has lost a conversation the
+    // server still has is worse than one that failed to lose it, because only
+    // the second is something the reader can retry.
+    if (!alreadyGone(err)) {
+      tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
+      return;
+    }
   }
   if (visit.signal.aborted) return;
 

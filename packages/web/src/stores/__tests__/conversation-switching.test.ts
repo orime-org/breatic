@@ -28,6 +28,7 @@ vi.mock('@web/data/api/chat', () => ({
   },
 }));
 
+import { ApiException } from '@web/data/api/types';
 import { chatApi } from '@web/data/api/chat';
 import {
   conversationRuntime,
@@ -891,5 +892,53 @@ describe('fetching the next page of the list', () => {
     await conversationRuntime.remove(P, 'c-1');
 
     expect(useConversationRuntime.getState().listMoreFailed[P]).toBeFalsy();
+  });
+});
+
+describe('what a conversation answer says about its name', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('takes the name the answer carries, not the one the list was fetched with', async () => {
+    // 另一个标签页给它改了名。这边的列表还是打开时拿的那份,而刚读回来的这条
+    // 答复里带着现在的名字 —— 那是这一刻最新的一份,丢掉它,顶栏和列表会长期
+    // 显示一个已经不存在的名字,而读者没有任何办法纠正。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'stale name' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.readConversation).mockResolvedValue({
+      conversation: { id: 'c-2', title: 'renamed elsewhere' },
+      messages: [],
+      hasMore: false,
+    } as never);
+    await conversationRuntime.switchTo(P, 'c-2');
+
+    const row = useConversationRuntime.getState().listByProject[P]?.find((c) => c.id === 'c-2');
+    expect(row?.title).toBe('renamed elsewhere');
+  });
+});
+
+describe('deleting a conversation the server no longer has', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('takes the row out anyway', async () => {
+    // 另一个标签页已经删过它了,服务器答 404。这跟网络故障不是一回事:那一条
+    // 确实不在了,而读者要的正是它从列表里消失。当成故障留着那一行,他会一直
+    // 点、一直看到同一句提示,而这一行永远删不掉。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.deleteConversation).mockRejectedValue(
+      new ApiException({ status: 404, message: 'not found', fromServer: true }),
+    );
+
+    await conversationRuntime.remove(P, 'c-2');
+
+    expect(useConversationRuntime.getState().listByProject[P]?.map((c) => c.id)).toEqual(['c-1']);
   });
 });
