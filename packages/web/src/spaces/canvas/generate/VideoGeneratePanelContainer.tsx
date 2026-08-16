@@ -235,12 +235,22 @@ function VideoGeneratePanelBody({
   // records what happened the last time an answer there depended on the
   // catalog having loaded). So the refusal belongs here.
   //
-  // The question asked is `promptRequired` — the same value that decides
-  // whether the editor mounts — not whether the ref happens to hold one right
-  // now. Those two agree once the catalog is in, and while it is still in
-  // flight the ref is empty for every mode: asking it made the panel tell
-  // text-to-video users "this mode has no prompt to insert into" for the
-  // length of a network round trip.
+  // The question asked is `promptRequired` — the same value the editor mounts
+  // on — not whether the ref happens to hold one right now. The message says
+  // something about the MODE ("this mode has no prompt to insert into"), and
+  // `promptRequired` is what answers that; the ref is a rendering state that
+  // merely tends to agree with it. Same reasoning as the criterion this slice
+  // is built on: ask the model, not something downstream of it.
+  //
+  // The two part company in exactly one case — the model takes a prompt but
+  // the node has no fragment to edit, so no editor mounts. There the ref would
+  // refuse and this does not, leaving the `?.` below to swallow the click.
+  // Such a node predates video generation and we ship no compatibility for
+  // pre-launch data (#1950); filed with the related rail question as #1965.
+  // No test pins this swap, for that same reason: every state a user can
+  // reach today gets the same answer from either criterion, so an assertion
+  // about the difference would be asserting nothing (measured — swapping it
+  // back leaves all 58 container tests green).
   const handleInsertReference = React.useCallback(
     (item: ReferenceRailItem) => {
       if (!vm.promptRequired) {

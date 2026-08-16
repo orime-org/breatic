@@ -1411,14 +1411,6 @@ describe('VideoGeneratePanelContainer', () => {
       ).toBeVisible();
     });
     /**
-     * Opens the panel on a node already stored in one mode. The container reads
-     * `mode` off the nodes PROP, and this harness holds that array static, so a
-     * click on the mode picker writes Yjs without changing what is rendered —
-     * each mode gets its own mount.
-     * @param mode - The mode the node is stored in.
-     * @param model - The model to store alongside it.
-     */
-    /**
      * Opens the panel with the rail's fixture board wired up.
      * @param mode - The generation sub-mode.
      * @param model - The model name to store on the node.
@@ -1454,8 +1446,10 @@ describe('VideoGeneratePanelContainer', () => {
     }
 
     it('5.5 口播档下点文本引用行，有拒绝语而不是静默无反应', async () => {
-      // 文本引用行不受档位吃不吃引用的约束（reference-usability.ts:111 明写
-      // 「文本是提示词材料，每一档都发」），所以它在这一档照样是亮的、可点的。
+      // 文本引用行不受档位吃不吃引用的约束：`insertRefusal` 只对参考素材
+      // 判定，文本行在它第一句就被无条件放行（reference-usability.ts 的
+      // `if (!isReferenceMaterial(sourceNodeType)) return null`），所以它在
+      // 这一档照样是亮的、可点的。
       // 而这一档没有提示词编辑器，插进去无处可去 —— 容器那句
       // `promptEditorRef.current?.insertReference(item)` 会被 `?.` 静默吞掉。
       await openMode('talking_head', 'omnihuman-1.5', {
@@ -1481,6 +1475,37 @@ describe('VideoGeneratePanelContainer', () => {
       expect(
         screen.queryByTestId('generate-prompt-editor'),
       ).not.toBeInTheDocument();
+    });
+
+    it('5.6 目录还在路上时，那一格照常挂编辑器 —— 不知道不等于不要', async () => {
+      // 模型查不到时 `promptRequired` 兜底取 true（view-model）。这个兜底是
+      // 给执行闸门定的：认不出的模型不该放松别的档都有的要求。渲染跟着它走，
+      // 于是加载期六个档一律有提示词框，跟改动前一样。改成 false 会让另外五
+      // 个档在那一帧失去输入框（#1950 第一轮试过，第二轮撤回）。
+      let go: (v: unknown) => void = () => {};
+      vi.spyOn(modelsApi, 'list').mockReturnValue(
+        new Promise((r) => {
+          go = r as (v: unknown) => void;
+        }) as never,
+      );
+      const data = { mode: 'talking_head', model: 'omnihuman-1.5' };
+      seedVideoNode(data);
+      mountContainer('video', data);
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      expect(
+        await screen.findByTestId('generate-prompt-editor'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('generate-video-prompt-not-used'),
+      ).not.toBeInTheDocument();
+      await act(async () => {
+        go(catalog());
+      });
+      expect(
+        await screen.findByTestId('generate-video-prompt-not-used'),
+      ).toBeInTheDocument();
     });
 
     it('5.7 判据读模型的参数声明，不是模式名', async () => {
