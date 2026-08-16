@@ -356,3 +356,101 @@ describe('Ctrl+A 判「在哪一侧」看的是位置，不是父节点类型（
     expect(e.state.selection.to).toBe(e.state.doc.content.size - 1);
   });
 });
+
+describe('输入法组字：组字期间不插手，组字结束了才收尾（A4）', () => {
+  /** 让编辑器进入组字状态，跟浏览器按下第一个组字键时一样。 */
+  function startComposing(e: Editor): void {
+    (e.view as unknown as { input: { composing: boolean } }).input.composing = true;
+    e.view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+  }
+
+  /** 结束组字，跟浏览器上屏时一样。 */
+  function endComposing(e: Editor): void {
+    (e.view as unknown as { input: { composing: boolean } }).input.composing = false;
+    e.view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+  }
+
+  it('组字进行到一半时，正文保持编辑器自己的形状，不被收敛', () => {
+    const e = open('<blockquote><p>abc</p></blockquote>');
+    selectWholeBody(e);
+    startComposing(e);
+    e.view.dispatch(e.state.tr.insertText('h'));
+    expect(body(e)).toBe('<blockquote><p>h</p></blockquote>');
+  });
+
+  it('组字结束之后，正文收敛成一个段落装着打出来的字', async () => {
+    const e = open('<blockquote><p>abc</p></blockquote>');
+    selectWholeBody(e);
+    startComposing(e);
+    e.view.dispatch(e.state.tr.insertText('好'));
+    // 这一句是这条测试的一半：组字还没结束，引用块的外壳必须还在
+    expect(body(e)).toBe('<blockquote><p>好</p></blockquote>');
+    endComposing(e);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(body(e)).toBe('<p>好</p>');
+    expect(caretParent(e)).toBe('paragraph');
+  });
+
+  it('十种正文结构，组字结束之后都收敛成一个段落装着那个字', async () => {
+    for (const [, html] of SHAPES) {
+      const e = open(html);
+      selectWholeBody(e);
+      startComposing(e);
+      e.view.dispatch(e.state.tr.insertText('好'));
+      endComposing(e);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(body(e)).toBe('<p>好</p>');
+    }
+  });
+
+  /**
+   * 组字期间那一刻只能拿带块容器的结构来钉。
+   *
+   * 「两个段落」这类结构，编辑器自己就会把跨块的选区替换成一个段落——组字期间和
+   * 收尾之后长得一样，断言写在它身上分辨不出我们有没有插手。带外壳的三种它会把
+   * 外壳留着，外壳还在就证明我们没动手。
+   */
+  it.each([
+    ['一个引用块', '<blockquote><p>abc</p></blockquote>', '<blockquote><p>好</p></blockquote>'],
+    ['两项无序列表', '<ul><li><p>aa</p></li><li><p>bb</p></li></ul>', '<ul><li><p>好</p></li></ul>'],
+    ['一个代码块', '<pre><code>abc</code></pre>', '<pre><code>好</code></pre>'],
+  ])('组字期间 %s 的外壳还在', (_name, html, midway) => {
+    const e = open(html);
+    selectWholeBody(e);
+    startComposing(e);
+    e.view.dispatch(e.state.tr.insertText('好'));
+    expect(body(e)).toBe(midway);
+  });
+
+  it('选区没盖住整个正文时组字，结束之后一个字都不许动', async () => {
+    const e = open('<p>aa</p><p>bb</p>');
+    const start = e.state.doc.child(0).nodeSize;
+    e.view.dispatch(
+      e.state.tr.setSelection(
+        TextSelection.between(e.state.doc.resolve(start + 1), e.state.doc.resolve(start + 2)),
+      ),
+    );
+    startComposing(e);
+    e.view.dispatch(e.state.tr.insertText('好'));
+    endComposing(e);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(body(e)).toBe('<p>好a</p><p>bb</p>');
+  });
+
+  it('组字期间选区没盖住整个正文，就算结束时盖住了也不收尾', async () => {
+    const e = open('<p>aa</p>');
+    const start = e.state.doc.child(0).nodeSize;
+    e.view.dispatch(
+      e.state.tr.setSelection(TextSelection.create(e.state.doc, start + 1)),
+    );
+    startComposing(e);
+    e.view.dispatch(e.state.tr.insertText('好'));
+    endComposing(e);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(body(e)).toBe('<p>好aa</p>');
+  });
+});

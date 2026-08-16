@@ -421,6 +421,22 @@ function isClearingTheWholeBody(
 }
 
 /**
+ * The transaction that turns the body into one paragraph holding what is left.
+ *
+ * Both routes into this rule end here: the transaction-level one for everything
+ * that finishes in a single step, and the composition one for the input method,
+ * which finishes only when the user picks a candidate.
+ * @param state - The state to collapse.
+ * @returns The transaction, or null when the body already looks like that.
+ */
+function bodyAsOneParagraph(state: EditorState): Transaction | null {
+  const paragraph = state.schema.nodes.paragraph;
+  const wanted = paragraph.create(null, inlineLeftInBody(state));
+  if (state.doc.childCount === 2 && state.doc.child(1).eq(wanted)) return null;
+  return replaceBodyWith(state.tr, state, [wanted]);
+}
+
+/**
  * Every inline node left in the body, marks and all.
  * @param state - The state to read.
  * @returns The inline content as one fragment.
@@ -528,19 +544,46 @@ export const DocumentSelection = Extension.create({
    * @returns The plugin carrying that prop.
    */
   addProseMirrorPlugins() {
+    const { editor } = this;
+    // Whether the selection covered the whole body when composition started.
+    // Read at that moment because the input method is about to replace it.
+    let composingOverWholeBody = false;
     return [
       new Plugin({
         key: new PluginKey('documentSelection'),
         props: {
           createSelectionBetween: (view, $anchor, $head) =>
             selectionWithinOneSide(view.state, $anchor, $head),
+          handleDOMEvents: {
+            compositionstart: (view) => {
+              composingOverWholeBody = coversWholeBody(view.state);
+              return false;
+            },
+            compositionend: (view) => {
+              if (!composingOverWholeBody) return false;
+              composingOverWholeBody = false;
+              // Asynchronously, because dispatching from inside an event the
+              // editor is still handling starts an update in the middle of
+              // another one. `prosemirror-view` schedules its own composition
+              // cleanup the same way.
+              void Promise.resolve().then(() => {
+                if (view.isDestroyed) return;
+                const tr = bodyAsOneParagraph(view.state);
+                if (tr) view.dispatch(tr);
+              });
+              return false;
+            },
+          },
         },
         appendTransaction: (trs, before, after) => {
+          // While an input method is assembling a character the user has not
+          // finished saying anything, so nothing here counts as done yet.
+          // Touching the document now also destroys the composition: updating
+          // it while composing costs `prosemirror-view` the node it remembered
+          // (`dist/index.cjs:5158`), and rebuilding the view drops it for good.
+          if (editor.view.composing) return null;
           if (!isClearingTheWholeBody(trs, before, after)) return null;
-          const paragraph = after.schema.nodes.paragraph;
-          const wanted = paragraph.create(null, inlineLeftInBody(after));
-          if (after.doc.childCount === 2 && after.doc.child(1).eq(wanted)) return null;
-          return replaceBodyWith(after.tr, after, [wanted]);
+          return bodyAsOneParagraph(after);
         },
       }),
     ];
