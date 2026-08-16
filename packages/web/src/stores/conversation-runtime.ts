@@ -1568,6 +1568,63 @@ function noteActivity(projectId: string, conversationId: string, title: string |
 }
 
 /**
+ * Read one conversation and put it on screen, under a navigation already taken.
+ *
+ * The two callers -- a reader picking a row, and a delete landing on the next
+ * row -- owe the same things: check the visit is still on, check this is still
+ * the navigation being waited for, and say the same thing when it fails. The
+ * number is passed in rather than taken here, because both of them have work
+ * of their own under it: the delete has a row to remove first.
+ * They part on one thing, and it is a decision rather than an accident. A
+ * switch that fails leaves the conversation on screen readable, so nothing is
+ * covered. A delete that fails to land on the next row is different: the
+ * delete itself may or may not have gone through, so the list in hand cannot
+ * be trusted, and the way to say that is the scrim with its reload.
+ * @param projectId - The project this happens in.
+ * @param conversationId - The conversation to read.
+ * @param nav - The navigation number both the caller and this share.
+ * @param coverOnFailure - Raise the scrim if this does not land.
+ * @returns Whether it put that conversation on screen.
+ */
+async function readAndAdopt(
+  projectId: string,
+  conversationId: string,
+  nav: number,
+  coverOnFailure = false,
+): Promise<boolean> {
+  const visit = currentVisit(projectId);
+  try {
+    const read = await chatApi.readConversation(conversationId);
+    if (visit.signal.aborted) return false;
+    if (!stillAwaited(projectId, nav)) return false;
+    adoptConversation(projectId, read);
+    return true;
+  } catch (err) {
+    // The conversation on screen is still readable -- this says nothing about
+    // it. Covering the column would take away one that works, along with the
+    // stop button of whatever turn is running in it. The scrim belongs to an
+    // open that failed, where there is no conversation on screen to take away.
+    if (visit.signal.aborted) return false;
+    // Only while this landing is still the one being waited for: the reader
+    // may have picked a row themselves in the meantime and be reading it, and
+    // blacking out the column over a conversation they left would take away
+    // one that works.
+    if (coverOnFailure && stillAwaited(projectId, nav)) markUnreadable(projectId, err);
+    tell({
+      projectId,
+      conversationId,
+      deliberate: true,
+      // Our own 404 is not a failure: the server answered, and what it said is
+      // that this one is not there any more -- usually because another tab of
+      // theirs deleted it. The row stays; the next time the list is opened it
+      // is fetched afresh anyway.
+      ...(alreadyGone(err) ? ({ kind: 'gone' } as const) : readMishap(err)),
+    });
+    return false;
+  }
+}
+
+/**
  * Show a different conversation in this project.
  *
  * The one being switched into is read in full rather than assembled from the
@@ -1597,34 +1654,7 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
       return;
     }
 
-    const visit = currentVisit(projectId);
-    try {
-      const read = await chatApi.readConversation(conversationId);
-      if (visit.signal.aborted) return;
-      if (!stillAwaited(projectId, nav)) return;
-      adoptConversation(projectId, read);
-      landed = true;
-    } catch (err) {
-      // The conversation on screen is still readable -- this says nothing
-      // about it. Covering the column would take away one that works, along
-      // with the stop button of whatever turn is running in it. The scrim
-      // belongs to an open that failed, where there is no conversation on
-      // screen to take away.
-      if (visit.signal.aborted) return;
-      tell({
-        projectId,
-        conversationId,
-        deliberate: true,
-        // Our own 404 is not a failure: the server answered, and what it said
-        // is that this one is not there any more -- usually because another
-        // tab of theirs deleted it. The row stays; the next time the list is
-        // opened it is fetched afresh anyway.
-        ...(alreadyGone(err) ? ({ kind: 'gone' } as const) : readMishap(err)),
-      });
-      // Nothing landed, so this press asked for nothing; an answer still on its
-      // way is the reader's choice again. If a delete put the panel in the
-      // loading state on the way here, this is where that ends.
-    }
+    landed = await readAndAdopt(projectId, conversationId, nav);
   } finally {
     // However this ended -- landed, failed, or overtaken -- it is over, and
     // being the last one out means nobody else will settle the panel.
@@ -1957,25 +1987,10 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
 
     const next = remaining[0];
     if (next) {
-      // Not `switchTo`: that one returns early when the id it is given is
-      // already the current one, and the current one is the conversation just
-      // deleted only when this is the last press of two. Read it directly.
-      const visit = currentVisit(projectId);
-      try {
-        const read = await chatApi.readConversation(next.id);
-        if (visit.signal.aborted) return;
-        if (!stillAwaited(projectId, nav)) return;
-        adoptConversation(projectId, read);
-        landed = true;
-      } catch (err) {
-        if (visit.signal.aborted) return;
-        // Only while this landing is still the one being waited for. The reader
-        // may have picked a row themselves in the meantime and be reading it;
-        // this failure is about a conversation they no longer care about, and
-        // blacking out the column over it would take away one that works.
-        if (stillAwaited(projectId, nav)) markUnreadable(projectId, err);
-        tell({ projectId, conversationId: next.id, deliberate: true, ...readMishap(err) });
-      }
+      // Under the number taken above rather than one of its own: calling
+      // `switchTo` would take a second, and the two would then be ordered
+      // against each other rather than against what the reader presses next.
+      landed = await readAndAdopt(projectId, next.id, nav, true);
       return;
     }
     // None left. `openAndAdopt` rather than `ensureLoaded`, because by that
