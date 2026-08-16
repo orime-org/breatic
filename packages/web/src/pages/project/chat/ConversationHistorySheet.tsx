@@ -155,6 +155,10 @@ function ConversationRowView({
 }: RowProps): React.JSX.Element {
   const t = useTranslation();
   const [renaming, setRenaming] = React.useState(false);
+  // Whether Delete was the item chosen, held until the menu has finished
+  // closing. A ref rather than state because nothing renders differently for
+  // it; see the menu below for why the asking waits.
+  const deletePending = React.useRef(false);
   const rel = relativeTime(row.updatedAt);
 
   // Focus is put in the box the moment it appears, because the reader asked
@@ -272,7 +276,28 @@ function ConversationRowView({
                     <MoreVertical className='h-4 w-4' />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align='end'>
+                <DropdownMenuContent
+                  align='end'
+                  // Asking to delete opens a dialog, and opening one from
+                  // inside `onSelect` opens it into the press that is still
+                  // finishing: the pointerup that chose the item carries on to
+                  // the document, where a dialog mounted a moment ago reads it
+                  // as a press outside itself and closes -- and the same press
+                  // then reaches the sheet, which closes too. On screen it is a
+                  // flicker and the conversation is still there.
+                  // So the item only says what was asked for, and the asking
+                  // happens here, once the menu has closed and its press is
+                  // over. `preventDefault` keeps the focus from going back to
+                  // the trigger, which the dialog is about to take anyway.
+                  // The same shape as the canvas node menu, whose rename opens
+                  // an editor from this handler for the same reason.
+                  onCloseAutoFocus={(event) => {
+                    if (!deletePending.current) return;
+                    deletePending.current = false;
+                    event.preventDefault();
+                    onAskDelete(row.id);
+                  }}
+                >
                   <DropdownMenuItem
                     data-testid={`conversation-rename-${row.id}`}
                     onSelect={() => setRenaming(true)}
@@ -281,7 +306,9 @@ function ConversationRowView({
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     data-testid={`conversation-delete-${row.id}`}
-                    onSelect={() => onAskDelete(row.id)}
+                    onSelect={() => {
+                      deletePending.current = true;
+                    }}
                   >
                     {t('chat.conversation.delete')}
                   </DropdownMenuItem>

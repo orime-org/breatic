@@ -190,3 +190,32 @@ describe('ConversationHistorySheet', () => {
     expect(onPick).toHaveBeenCalledWith('c2');
   });
 });
+
+describe('asking to delete a conversation', () => {
+  it('leaves the question on screen for the reader to answer', async () => {
+    // 走用户真实的三步:打开列表、打开那行的菜单、点删除。确认框必须还在 ——
+    // 它要是跟着菜单一起消失,这条路上用户永远删不掉任何东西,而屏幕上只会
+    // 闪一下,看不出发生过什么。
+    const user = userEvent.setup();
+    const onDelete = vi.fn();
+    render(
+      <ConversationHistorySheet
+        open
+        onOpenChange={() => undefined}
+        conversations={CONVS}
+        activeId='c1'
+        onPick={() => undefined}
+        {...NOOPS}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByTestId('conversation-menu-c2'));
+    await user.click(await screen.findByTestId('conversation-delete-c2'));
+
+    expect(await screen.findByTestId('conversation-delete-dialog')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('conversation-delete-confirm'));
+    expect(onDelete).toHaveBeenCalledWith('c2');
+  });
+});
