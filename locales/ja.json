@@ -286,7 +286,8 @@
       "removeDrivingAudio": "口の動きの元の音声を削除",
       "errorNoDrivingVideo": "動きの元になる動画を選んでください",
       "errorNoDrivingAudio": "口の動きの元になる音声を選んでください",
-      "videoPromptNotUsed": "このモードは音声に従います。内容を変えるには音声を差し替えてください。"
+      "videoPromptNotUsed": "このモードは音声に従います。内容を変えるには音声を差し替えてください。",
+      "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません"
     },
     "nodeMenu": {
       "generate": "生成",

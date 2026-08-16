@@ -152,18 +152,35 @@ const TALKING_HEAD: ModelEntry = {
 };
 
 /**
+ * A second talking-head model that DOES declare a prompt.
+ *
+ * Nothing in the real catalog looks like this today — `talking_head` offers
+ * one model and it declares none. The fixture exists because the criterion
+ * under test is «ask the model, not the mode name» (§4.1): without a model
+ * that answers differently from its mode, a mode-keyed implementation and a
+ * model-keyed one are indistinguishable, and the test asserting the criterion
+ * would pass on both.
+ */
+const TALKING_HEAD_WITH_PROMPT: ModelEntry = {
+  ...TALKING_HEAD,
+  name: 'omnihuman-scripted',
+  display_name: 'OmniHuman Scripted',
+  params: { prompt: { description: '', default: null } },
+};
+
+/**
  * A catalog carrying both buckets.
  * @returns The catalog payload `modelsApi.list()` resolves to.
  */
 function catalog(): ModelCatalog {
   return {
     image: [T2I],
-    video: [T2V, T2V_LITE, I2V, REF, TALKING_HEAD],
+    video: [T2V, T2V_LITE, I2V, REF, TALKING_HEAD, TALKING_HEAD_WITH_PROMPT],
     audio: [],
     tts: [],
     three_d: [],
     understand: [],
-    total: 6,
+    total: 7,
   };
 }
 
@@ -1392,11 +1409,6 @@ describe('VideoGeneratePanelContainer', () => {
      * 开一个指定档位的面板。跟上面那个同名辅助一样，只是这一组要在开面板前
      * 先把节点的 mode / model 种进 Yjs，因为这一片钉的正是「按模型声明决定
      * 渲染什么」。
-     * @param mode - 生成子模式。
-     * @param model - 模型名。
-     * @param stored - 额外种进节点的字段。
-     * @param board - 额外的画布节点与连线（参考轨道要用）。
-     */
     /**
      * 开一个指定档位的面板。档位和模型种进节点数据而不是点选择器：容器的
      * mode 读的是 `nodes` prop（容器 :197），而这个装置传的是静态数组，
@@ -1418,8 +1430,68 @@ describe('VideoGeneratePanelContainer', () => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
       await screen.findByTestId('generate-video-execute');
+      // 等目录解析出模型再交回去。面板先渲染一帧、目录随后才到，那一帧里
+      // view-model 还没有模型可问 —— 在那一帧上断言，断的是加载态、不是
+      // 这一档。同文件的 openInMode 早就有这一步。
+      await waitFor(() =>
+        expect(
+          screen.getByTestId('generate-model-trigger').textContent,
+        ).not.toBe(''),
+      );
       return view;
     }
+
+    it('5.8 目录还没到齐时，那一格既不挂编辑器也不下结论', async () => {
+      // `promptRequired` 有第三种状态：模型还没解析出来，不知道要不要提示词。
+      // 渲染这一侧不能跟执行闸门共用那个「不知道就当要」的兜底 —— 那会让
+      // 口播档在整个目录请求期间挂着一个编辑器，里面还是上一档打的字。
+      let go: (v: unknown) => void = () => {};
+      vi.spyOn(modelsApi, 'list').mockReturnValue(
+        new Promise((r) => {
+          go = r as (v: unknown) => void;
+        }) as never,
+      );
+      const data = { mode: 'talking_head', model: 'omnihuman-1.5' };
+      seedVideoNode(data);
+      typePrompt('在别的档打的字');
+      mountContainer('video', data);
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      await screen.findByTestId('generate-video-execute');
+      expect(
+        screen.queryByTestId('generate-prompt-editor'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('generate-video-prompt-not-used'),
+      ).not.toBeInTheDocument();
+      await act(async () => {
+        go(catalog());
+      });
+      expect(
+        await screen.findByTestId('generate-video-prompt-not-used'),
+      ).toBeInTheDocument();
+    });
+
+    it('5.9 口播档下点文本引用行，有拒绝语而不是静默无反应', async () => {
+      // 文本引用行不受档位吃不吃引用的约束（reference-usability.ts:111 明写
+      // 「文本是提示词材料，每一档都发」），所以它在这一档照样是亮的、可点的。
+      // 而这一档没有提示词编辑器，插进去无处可去 —— 容器那句
+      // `promptEditorRef.current?.insertReference(item)` 会被 `?.` 静默吞掉。
+      await openMode('talking_head', 'omnihuman-1.5', {
+        nodes: [
+          {
+            id: 'src',
+            // 正文不进这个投影（node-view.ts:149），轨道那行的预览靠
+            // `textById` 单独取，这一条不需要它。
+            data: { kind: 'text', status: 'idle' },
+          },
+        ],
+        edges: [{ id: 'e1', source: 'src', target: 'target' }],
+      });
+      fireEvent.click(await screen.findByTestId('generate-ref-insert-e1'));
+      await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    });
 
     it('5.1 口播档不挂载提示词编辑器，那一格是这一档的说明', async () => {
       await openMode('talking_head', 'omnihuman-1.5');
@@ -1433,8 +1505,10 @@ describe('VideoGeneratePanelContainer', () => {
 
     it('5.7 判据读模型的参数声明，不是模式名', async () => {
       // 同一档挂一个声明了 prompt 的模型，编辑器照常渲染。钉的是 §4.1
-      // 那个复用决定：问模型，不问档位。
-      await openMode('talking_head', 'veo-3.1');
+      // 那个复用决定：问模型，不问档位。用的模型必须是这一档真提供的
+      // （`pickModelForMode` 会把不属于本档的存值丢掉回落到第一个），
+      // 所以这里用同档的 TALKING_HEAD_WITH_PROMPT，不是别档的 veo-3.1。
+      await openMode('talking_head', 'omnihuman-scripted');
       expect(
         screen.getByTestId('generate-prompt-editor'),
       ).toBeInTheDocument();

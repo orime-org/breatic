@@ -134,10 +134,17 @@ export interface VideoPanelViewModel {
    * prompt either. The IMAGE panel derives nothing — see the reason stated at
    * its own gate.
    *
-   * True when the model is unknown: an unrecognised model is not a licence to
-   * skip the requirement every other mode has.
+   * `undefined` while the model is unknown — the catalog is still in flight, or
+   * the stored pick has left it. That is a THIRD state, not a synonym for
+   * either answer, because the two consumers need opposite fallbacks: the
+   * execute gate must not let an unrecognised model skip a requirement every
+   * other mode has (so it reads `?? true`), while rendering must not put up a
+   * prompt box it may have to take away (so it renders neither branch). A
+   * single boolean served both until #1950 and rendering got the wrong half:
+   * the talking-head panel mounted an editor — holding whatever was typed
+   * under the previous mode — for the whole duration of the catalog request.
    */
-  promptRequired: boolean;
+  promptRequired: boolean | undefined;
 }
 
 /** Shared empty set for a prompt that mentions nothing (avoids a per-call allocation). */
@@ -333,6 +340,6 @@ export function buildVideoPanelViewModel(input: {
     references,
     referenceUrls,
     maxReferences: positiveCap(current?.params.images?.max_items),
-    promptRequired: current ? current.params.prompt != null : true,
+    promptRequired: current ? current.params.prompt != null : undefined,
   };
 }

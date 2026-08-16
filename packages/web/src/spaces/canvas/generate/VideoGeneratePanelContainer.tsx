@@ -165,9 +165,27 @@ function VideoGeneratePanelBody({
   // Click a reference-rail chip → insert its `@` mention at the prompt cursor
   // (user 2026-07-10 item 8); the editor places it at the caret or the end.
   const promptEditorRef = React.useRef<PromptEditorHandle>(null);
-  const handleInsertReference = React.useCallback((item: ReferenceRailItem) => {
-    promptEditorRef.current?.insertReference(item);
-  }, []);
+  // Refuses out loud when there is no editor to insert into (#1950). The rail
+  // lets a TEXT row through unconditionally — `reference-usability.ts` refuses
+  // on REFERENCE MATERIAL only, and its docstring states why text is outside
+  // that: a text chip substitutes into the prompt string, which every mode
+  // sends. This mode stopped sending it, and the rail cannot learn that
+  // without reading the model catalog — the one thing that module deliberately
+  // keeps out of its two questions. So the refusal belongs here instead: this
+  // is where the synchronous fact lives (is there an editor right now), and
+  // `?.` alone would make a lit control do nothing at all, which
+  // `web/CLAUDE.md` bans outright.
+  const handleInsertReference = React.useCallback(
+    (item: ReferenceRailItem) => {
+      const editor = promptEditorRef.current;
+      if (!editor) {
+        toast.warning(t('canvas.generatePanel.refuseInsertNoPrompt'));
+        return;
+      }
+      editor.insertReference(item);
+    },
+    [t],
+  );
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
@@ -542,16 +560,17 @@ function VideoGeneratePanelBody({
     // previous mode — `handlePromptChange` is the only writer and nothing
     // clears it, and the editor does not call back on unmount — so without
     // this line a talking-head task would carry the last mode's words.
-    const freshPrompt = fresh.promptRequired
-      ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
-      : '';
+    const freshPrompt =
+      fresh.promptRequired === false
+        ? ''
+        : (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current);
     if (
       !canExecuteGenerate({
         promptText: freshPrompt,
         model: fresh.model,
         nodeStatus: fresh.nodeStatus,
         isSubmitting: false,
-        promptRequired: fresh.promptRequired,
+        promptRequired: fresh.promptRequired ?? true,
       })
     ) {
       return;
@@ -676,7 +695,7 @@ function VideoGeneratePanelBody({
   const promptNotUsedNotice = t('canvas.generatePanel.videoPromptNotUsed');
   const promptSlot = React.useMemo(
     () =>
-      !vm.promptRequired ? (
+      vm.promptRequired === undefined ? null : vm.promptRequired === false ? (
         <p
           data-testid='generate-video-prompt-not-used'
           className='px-1 py-2 text-xs text-muted-foreground'
@@ -745,7 +764,7 @@ function VideoGeneratePanelBody({
         model: vm.model,
         nodeStatus: vm.nodeStatus,
         isSubmitting,
-        promptRequired: vm.promptRequired,
+        promptRequired: vm.promptRequired ?? true,
       })}
       promptSlot={promptSlot}
       onExit={closeActivePanel}

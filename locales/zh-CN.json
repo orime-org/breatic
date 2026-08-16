@@ -286,7 +286,8 @@
       "removeDrivingAudio": "移除驱动音频",
       "errorNoDrivingVideo": "先挑一段驱动视频",
       "errorNoDrivingAudio": "先挑一段驱动音频",
-      "videoPromptNotUsed": "这一档跟着音频走。要改内容，去换音频。"
+      "videoPromptNotUsed": "这一档跟着音频走。要改内容，去换音频。",
+      "refuseInsertNoPrompt": "这一档没有提示词框，插不进去"
     },
     "nodeMenu": {
       "generate": "生成",

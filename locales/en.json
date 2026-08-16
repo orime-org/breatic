@@ -295,7 +295,8 @@
       "removeDrivingAudio": "Remove driving audio",
       "errorNoDrivingVideo": "Pick a driving video",
       "errorNoDrivingAudio": "Pick a driving audio track",
-      "videoPromptNotUsed": "This mode follows the audio. Change the audio to change what is said."
+      "videoPromptNotUsed": "This mode follows the audio. Change the audio to change what is said.",
+      "refuseInsertNoPrompt": "This mode has no prompt to insert into"
     },
     "edge": {
       "delete": "Delete connection"
