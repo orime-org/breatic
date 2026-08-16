@@ -45,10 +45,19 @@
  */
 
 import { Extension } from '@tiptap/core';
-import type { ResolvedPos } from '@tiptap/pm/model';
+import type { Node as PMNode, ResolvedPos, Slice } from '@tiptap/pm/model';
+import { Fragment } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
+import { ReplaceAroundStep, ReplaceStep } from '@tiptap/pm/transform';
 import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
+
+/**
+ * Marks the transactions this file produces, so they cannot trigger the rule
+ * that produced them, and so the enter binding's two paragraphs are not then
+ * collapsed back into one.
+ */
+const CLEARED_BY_US = 'documentSelection:cleared';
 
 /** A pair of document positions, resolved and ready to select between. */
 interface Range {
@@ -285,6 +294,216 @@ function selectionWithinOneSide(
 }
 
 /**
+ * The span holding every piece of text in the body; null when the body has no
+ * blocks at all.
+ * @param state - The state to ask.
+ * @returns The first and last text positions, or null.
+ */
+function bodyTextRange(state: EditorState): Range | null {
+  const start = bodyStart(state);
+  if (start >= state.doc.content.size) return null;
+  const whole = TextSelection.between(
+    state.doc.resolve(start),
+    state.doc.resolve(state.doc.content.size),
+  );
+  return { from: whole.from, to: whole.to };
+}
+
+/**
+ * Whether the selection covers every piece of text in the body.
+ *
+ * Containment rather than equality: Cmd+click over the body's only block
+ * selects it from outside (measured `7..21`, where Ctrl+A gives `8..20` on the
+ * same document), and on screen the two look identical. The selection also has
+ * to be non-empty — in a body holding one empty block the first and last text
+ * positions and a collapsed caret are the same position, so without this a
+ * fresh empty heading would be demoted to a paragraph by its first keystroke.
+ * @param state - The state as it was before the operation.
+ * @returns True when the selection covers the body and stays out of the title.
+ */
+function coversWholeBody(state: EditorState): boolean {
+  const range = bodyTextRange(state);
+  if (!range) return false;
+  const { from, to } = state.selection;
+  if (from === to) return false;
+  if (from < bodyStart(state)) return false;
+  return from <= range.from && to >= range.to;
+}
+
+/**
+ * Whether what a step puts back holds nothing but inline content.
+ *
+ * Deleting a body of "list then paragraph" produces a ReplaceAroundStep
+ * carrying an `openStart: 3` bulletList shell, empty once those three layers
+ * come off, so that counts as a clearing. Pasting two paragraphs gives a slice
+ * whose content has two children, the loop cannot descend, and the block check
+ * rejects it.
+ * @param slice - What the step puts back.
+ * @returns True when only inline content remains after the open layers.
+ */
+function putsBackOnlyInline(slice: Slice): boolean {
+  let frag: Fragment = slice.content;
+  for (let depth = 0; depth < slice.openStart && frag.childCount === 1; depth += 1) {
+    const only: PMNode | null = frag.firstChild;
+    if (!only || only.isInline) break;
+    frag = only.content;
+  }
+  let inlineOnly = true;
+  frag.forEach((child) => {
+    if (!child.isInline) inlineOnly = false;
+  });
+  return inlineOnly;
+}
+
+/**
+ * All the text this batch of transactions puts back.
+ * @param trs - The batch.
+ * @returns The concatenated text.
+ */
+function insertedText(trs: readonly Transaction[]): string {
+  let out = '';
+  for (const tr of trs) {
+    for (const step of tr.steps) {
+      if (step instanceof ReplaceStep || step instanceof ReplaceAroundStep) {
+        out += step.slice.content.textBetween(0, step.slice.content.size, '', '');
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether the batch took the selected stretch away and put back only text.
+ *
+ * Bolding produces an AddMarkStep and fails at the first branch; a drop lands
+ * somewhere else so its step does not span the selection; a paste puts back
+ * headings and lists. Seeing at least one step matters because a batch with no
+ * steps at all — a second Ctrl+A, a click — satisfies any universal claim.
+ * @param trs - The batch.
+ * @param sel - The stretch selected before the operation.
+ * @returns True when the batch is a clearing of that stretch.
+ */
+function tookTheSelectionAway(trs: readonly Transaction[], sel: Range): boolean {
+  let cleared = false;
+  for (const tr of trs) {
+    for (const step of tr.steps) {
+      if (!(step instanceof ReplaceStep || step instanceof ReplaceAroundStep)) {
+        return false;
+      }
+      if (!putsBackOnlyInline(step.slice)) return false;
+      const range = step as unknown as Range;
+      if (range.from > sel.from || range.to < sel.to) return false;
+      cleared = true;
+    }
+  }
+  return cleared;
+}
+
+/**
+ * Whether nothing of what was there survives.
+ *
+ * Two checks, because each catches half of lifting a blockquote — a
+ * ReplaceAroundStep whose slice is empty, since what survives lives in its gap
+ * where the check above cannot see it. With text in the quote the first check
+ * catches it, since that text is still there afterwards; with only empty
+ * paragraphs the second does, since a clearing collapses the body to one block
+ * or none while a lift leaves two side by side.
+ * @param trs - The batch.
+ * @param state - The state after the operation.
+ * @returns True when only what this operation inserted is left.
+ */
+function nothingOldLeft(trs: readonly Transaction[], state: EditorState): boolean {
+  const start = bodyStart(state);
+  const end = state.doc.content.size;
+  const left = start < end ? state.doc.textBetween(start, end, '', '') : '';
+  if (left !== insertedText(trs)) return false;
+  // The doc is `title block*`, so the body holds childCount - 1 blocks.
+  return state.doc.childCount <= 2;
+}
+
+/**
+ * Whether this batch is the user saying the whole body is done for.
+ * @param trs - The batch.
+ * @param before - The state before it.
+ * @param after - The state after it.
+ * @returns True when the body should be collapsed.
+ */
+function isClearingTheWholeBody(
+  trs: readonly Transaction[],
+  before: EditorState,
+  after: EditorState,
+): boolean {
+  if (!trs.some((tr) => tr.docChanged)) return false;
+  if (trs.some((tr) => tr.getMeta(CLEARED_BY_US) === true)) return false;
+  if (!coversWholeBody(before)) return false;
+  if (!tookTheSelectionAway(trs, before.selection)) return false;
+  return nothingOldLeft(trs, after);
+}
+
+/**
+ * Every inline node left in the body, marks and all.
+ * @param state - The state to read.
+ * @returns The inline content as one fragment.
+ */
+function inlineLeftInBody(state: EditorState): Fragment {
+  const start = bodyStart(state);
+  const end = state.doc.content.size;
+  if (start >= end) return Fragment.empty;
+  let out = Fragment.empty;
+  state.doc.nodesBetween(start, end, (node) => {
+    if (node.isInline) {
+      out = out.append(Fragment.from(node));
+      return false;
+    }
+    return true;
+  });
+  return out;
+}
+
+/**
+ * Replace the body with the given blocks and leave the caret in the last one.
+ *
+ * The caret has to be set explicitly. Deleting a two-item list empties the body
+ * of blocks, and from there `Selection.near` can only reach the title — which
+ * is the very harm this rule exists to prevent, since the next keystroke would
+ * land in the document's name.
+ * @param tr - The transaction to write into.
+ * @param state - The state the positions are read from.
+ * @param blocks - What the body becomes.
+ * @returns The same transaction, marked as ours.
+ */
+function replaceBodyWith(
+  tr: Transaction,
+  state: EditorState,
+  blocks: PMNode[],
+): Transaction {
+  tr.replaceWith(bodyStart(state), state.doc.content.size, blocks);
+  tr.setSelection(TextSelection.create(tr.doc, tr.doc.content.size - 1));
+  tr.setMeta(CLEARED_BY_US, true);
+  return tr;
+}
+
+/**
+ * Enter over a selection covering the whole body: two empty paragraphs.
+ *
+ * Clearing plus one line break, which is what enter is. It cannot go through
+ * the rule above, because that rule only sees what is left afterwards and
+ * cannot tell enter from delete.
+ * @param state - The current state.
+ * @param dispatch - The editor's dispatch.
+ * @returns True when it handled the key.
+ */
+function clearBodyForEnter(
+  state: EditorState,
+  dispatch: (tr: Transaction) => void,
+): boolean {
+  if (!coversWholeBody(state)) return false;
+  const paragraph = state.schema.nodes.paragraph;
+  dispatch(replaceBodyWith(state.tr, state, [paragraph.create(), paragraph.create()]));
+  return true;
+}
+
+/**
  * The selection rules this document adds.
  *
  * `priority` is above `@tiptap/core`'s `Keymap` extension so this is asked
@@ -315,6 +534,7 @@ export const DocumentSelection = Extension.create({
   addKeyboardShortcuts() {
     return {
       'Mod-a': () => selectThisSide(this.editor.state, this.editor.view.dispatch),
+      Enter: () => clearBodyForEnter(this.editor.state, this.editor.view.dispatch),
     };
   },
 
@@ -334,6 +554,13 @@ export const DocumentSelection = Extension.create({
         props: {
           createSelectionBetween: (view, $anchor, $head) =>
             selectionWithinOneSide(view.state, $anchor, $head),
+        },
+        appendTransaction: (trs, before, after) => {
+          if (!isClearingTheWholeBody(trs, before, after)) return null;
+          const paragraph = after.schema.nodes.paragraph;
+          const wanted = paragraph.create(null, inlineLeftInBody(after));
+          if (after.doc.childCount === 2 && after.doc.child(1).eq(wanted)) return null;
+          return replaceBodyWith(after.tr, after, [wanted]);
         },
       }),
     ];

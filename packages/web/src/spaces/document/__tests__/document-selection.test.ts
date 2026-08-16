@@ -550,6 +550,9 @@ describe('绑的是哪个键', () => {
       ).call({ editor: null }),
     );
 
-    expect(keys).toEqual(['Mod-a']);
+    // Enter 是 2026-08-16 加的：全选正文之后按回车要收敛成两个空段落，
+    // 而那件事只有键位层做得了——appendTransaction 只看得到「操作之后剩什么」，
+    // 分不出用户按的是回车还是删除（设计文档 §5.6.4）。
+    expect(keys).toEqual(['Mod-a', 'Enter']);
   });
 });
