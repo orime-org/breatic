@@ -46,6 +46,7 @@ import {
 } from '@web/spaces/document/document-unsupported';
 import { DocumentPlaceholders } from '@web/spaces/document/document-placeholders';
 import { DocumentSelection } from '@web/spaces/document/document-selection';
+import { DocumentSplitBlock } from '@web/spaces/document/document-split-block';
 import { DocumentTitle } from '@web/spaces/document/document-title';
 import { DocumentTitleIsPlainText } from '@web/spaces/document/document-title-plain-text';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
@@ -116,6 +117,12 @@ export function buildDocumentExtensions(
     // block of this same document, so the editor's own "select everything"
     // includes the document's name — see `document-selection`.
     DocumentSelection,
+    // Enter across two list items throws in @tiptap/core's own splitBlock,
+    // which asks whether it may split before deleting and then splits what the
+    // deletion left. This replaces that command with the official one, whose
+    // order is the other way round. Carries no priority on purpose — commands
+    // merge with the lower priority winning, the opposite of key bindings.
+    DocumentSplitBlock,
     StarterKit.configure({
       // StarterKit's own Document is `block+`, which is both halves wrong.
       document: false,
