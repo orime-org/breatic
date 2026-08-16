@@ -93,6 +93,18 @@ export interface ChatSession {
    * second time.
    */
   nextPageFailed: boolean;
+  /** The first page of the list is on its way. */
+  listLoading: boolean;
+  /**
+   * What went wrong with something done to a row, for the list to say.
+   *
+   * Apart from {@link mishap} because the two are about different things and
+   * either can be worth saying: this one belongs where the reader pressed,
+   * which is inside a sheet that covers the panel's own line.
+   */
+  rowMishap: ChatMishap | null;
+  /** Fetch the list again from its first page. */
+  reloadList: () => void;
   /** Which one is on screen, for the list to mark. */
   currentId: string | undefined;
   /** What this conversation has half-typed, and how to change it. */
@@ -193,8 +205,9 @@ export function useChatSession(projectId: string): ChatSession {
   const nextPageFailed = useConversationRuntime(
     (s) => s.listMoreFailed[projectId] ?? false,
   );
-  // Under the conversation when there is one, under the project until then --
-  // typing while the open call is still out has to land somewhere.
+  const listLoading = useConversationRuntime((s) => s.listLoading[projectId] === true);
+  // A draft belongs to the conversation it was typed in, and there is always
+  // one: the box is read-only for the round trip before the first arrives.
   const draft = useConversationRuntime(
     (s) => (conversationId === undefined ? '' : (s.draftByConversation[conversationId] ?? '')),
   );
@@ -253,6 +266,12 @@ export function useChatSession(projectId: string): ChatSession {
     [projectId],
   );
 
+  /** Fetch the list again from its first page. */
+  const reloadList = React.useCallback(
+    (): void => void conversationRuntime.reloadConversationList(projectId),
+    [projectId],
+  );
+
   const rename = React.useCallback(
     (id: string, title: string): void => void conversationRuntime.rename(projectId, id, title),
     [projectId],
@@ -273,6 +292,16 @@ export function useChatSession(projectId: string): ChatSession {
    * a stream knows.
    */
   const [mishap, setMishap] = React.useState<ChatMishap | null>(null);
+  /**
+   * The one that belongs in the list rather than in the panel.
+   *
+   * Renaming and deleting are started from the list, and the list covers the
+   * whole column while it is open -- so the panel's line, on the top edge of
+   * the composer, is a line nobody can read. Kept apart rather than routed by
+   * whichever came last, because the two are about different things and can
+   * both be worth saying.
+   */
+  const [rowMishap, setRowMishap] = React.useState<ChatMishap | null>(null);
 
 
   React.useEffect(
@@ -288,6 +317,11 @@ export function useChatSession(projectId: string): ChatSession {
         // than the one on screen -- that is what the list is for. The
         // question this filter asks is "is this the reader's own doing", not
         // "which conversation was it about".
+        // About a row in the list, so it is the list that says it.
+        if (told.aboutRow === true) {
+          setRowMishap(told);
+          return;
+        }
         if (
           told.deliberate !== true &&
           told.conversationId !== null &&
@@ -305,6 +339,12 @@ export function useChatSession(projectId: string): ChatSession {
     const forgetting = setTimeout(() => setMishap(null), NOTICE_LINGERS_MS);
     return () => clearTimeout(forgetting);
   }, [mishap]);
+
+  React.useEffect(() => {
+    if (rowMishap === null) return undefined;
+    const forgetting = setTimeout(() => setRowMishap(null), NOTICE_LINGERS_MS);
+    return () => clearTimeout(forgetting);
+  }, [rowMishap]);
 
   // What the panel was handed for each stored message last time round.
   //
@@ -347,6 +387,9 @@ export function useChatSession(projectId: string): ChatSession {
     hasMoreConversations,
     loadMoreConversations,
     nextPageFailed,
+    listLoading,
+    rowMishap,
+    reloadList,
     currentId: conversationId,
     draft,
     setDraft,

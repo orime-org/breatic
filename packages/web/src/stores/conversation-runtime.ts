@@ -373,6 +373,15 @@ export type ChatMishap = {
    */
   deliberate?: boolean;
   /**
+   * It is about a row in the conversation list, not about the chat on screen.
+   *
+   * Renaming and deleting can only be started from the list, and the list
+   * covers the whole column while it is open -- so the panel's own line, on
+   * the top edge of the composer, is a line nobody can read. This is what
+   * sends the word to the list instead, where the reader is looking.
+   */
+  aboutRow?: boolean;
+  /**
    * Which telling this is.
    *
    * Two failures in a row say the same words, and a line that says the same
@@ -1861,7 +1870,7 @@ async function rename(
     applyTitle(projectId, conversationId, renamed.title);
   } catch (err) {
     if (visit.signal.aborted) return;
-    tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
+    tell({ projectId, conversationId, deliberate: true, aboutRow: true, ...readMishap(err) });
   }
 }
 
@@ -1891,7 +1900,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
     // server still has is worse than one that failed to lose it, because only
     // the second is something the reader can retry.
     if (!alreadyGone(err)) {
-      tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
+      tell({ projectId, conversationId, deliberate: true, aboutRow: true, ...readMishap(err) });
       return;
     }
   }

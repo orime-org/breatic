@@ -432,3 +432,42 @@ describe('when the sheet is taken away mid-confirmation', () => {
     );
   });
 });
+
+describe('what the list says while it is being fetched', () => {
+  it('does not claim the project has no conversations', () => {
+    // 「一条都没有」是一句关于事实的断言,而这一刻前端还不知道有没有。读者会
+    // 据此关掉列表、以为自己记错了,一两秒后它又自己冒出来 —— 这跟消息区那边
+    // 已经堵住的错是同一个,只是换了个面。
+    renderSheet({ conversations: [], listLoading: true });
+
+    expect(screen.queryByText('No previous conversations')).toBeNull();
+    expect(screen.getByTestId('conversation-list-loading')).toBeInTheDocument();
+  });
+
+  it('says so plainly once it knows there are none', () => {
+    renderSheet({ conversations: [], listLoading: false });
+
+    expect(screen.getByText('No previous conversations')).toBeInTheDocument();
+    expect(screen.queryByTestId('conversation-list-loading')).toBeNull();
+  });
+});
+
+describe('a rename or a delete that did not work', () => {
+  it('says so in the list, where the reader is looking', () => {
+    // 这两件事只能从列表里发起,而列表盖住整个 Agent 列 —— 面板底部那条线在
+    // 抽屉底下,说什么读者都看不见。
+    renderSheet({ rowMishap: { conversationId: 'c2', text: 'Could not rename it' } });
+
+    const said = screen.getByTestId('conversation-row-mishap');
+    expect(said).toHaveTextContent('Could not rename it');
+    expect(screen.getByTestId('conversation-c2')).toBeInTheDocument();
+  });
+
+  it('puts it against the row it is about', () => {
+    renderSheet({ rowMishap: { conversationId: 'c2', text: 'Could not rename it' } });
+
+    const said = screen.getByTestId('conversation-row-mishap');
+    const row = screen.getByTestId('conversation-c2').closest('li');
+    expect(row?.nextElementSibling).toBe(said);
+  });
+});

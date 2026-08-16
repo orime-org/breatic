@@ -122,7 +122,8 @@
       "description": "Switch to or review previous conversations.",
       "empty": "No previous conversations",
       "moreFailed": "Could not load older conversations",
-      "loadingMore": "Loading earlier conversations"
+      "loadingMore": "Loading earlier conversations",
+      "loading": "Loading conversations"
     },
     "relative": {
       "justNow": "just now",

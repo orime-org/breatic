@@ -87,6 +87,9 @@ export function ChatPanel({
     loadMoreConversations,
     nextPageFailed,
     loadingMore,
+    listLoading,
+    rowMishap,
+    reloadList,
     currentId,
     draft,
     setDraft,
@@ -186,6 +189,35 @@ export function ChatPanel({
     return networkErrorText;
   }, [mishap, goneText, networkErrorText, turnFailedText]);
 
+  /**
+   * What the list says about the row an action was taken on, in words.
+   *
+   * The same three kinds as the panel's own line, read the same way -- the
+   * difference is only where it is drawn.
+   */
+  const rowNotice = React.useMemo(() => {
+    if (rowMishap === null) return null;
+    if (rowMishap.kind === 'gone') return { conversationId: rowMishap.conversationId ?? '', text: goneText };
+    const text =
+      rowMishap.kind === 'server'
+        ? rowMishap.message
+        : rowMishap.kind === 'turn'
+          ? turnFailedText
+          : networkErrorText;
+    return { conversationId: rowMishap.conversationId ?? '', text };
+  }, [rowMishap, goneText, networkErrorText, turnFailedText]);
+
+  /**
+   * Fetch the list afresh every time it is opened.
+   *
+   * Where the reader had paged to, and what they saw, belong to the last time
+   * they opened it -- and another tab of theirs may have started, renamed or
+   * deleted conversations since.
+   */
+  React.useEffect(() => {
+    if (historyOpen) reloadList();
+  }, [historyOpen, reloadList]);
+
   /** Load a quick-action label into the composer. Stable for the same reason. */
   const quickAction = React.useCallback(
     (label: string): void => {
@@ -252,6 +284,8 @@ export function ChatPanel({
         onReachEnd={loadMoreConversations}
         loadingMore={loadingMore}
         nextPageFailed={nextPageFailed}
+        listLoading={listLoading}
+        rowMishap={rowNotice}
       />
     </div>
   );

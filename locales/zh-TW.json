@@ -122,7 +122,8 @@
       "description": "切換或回顧之前的對話。",
       "empty": "尚無歷史對話",
       "moreFailed": "沒能載入更早的對話",
-      "loadingMore": "正在載入更早的對話"
+      "loadingMore": "正在載入更早的對話",
+      "loading": "正在載入對話列表"
     },
     "relative": {
       "justNow": "剛剛",

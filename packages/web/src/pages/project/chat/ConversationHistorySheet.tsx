@@ -74,6 +74,23 @@ interface ConversationHistorySheetProps {
    * moves nothing, so the end never crosses back into view on its own.
    */
   nextPageFailed: boolean;
+  /**
+   * The first page is on its way.
+   *
+   * "Nothing here" and "not known yet" are different sentences, and the list
+   * holds nothing in both cases. Saying the wrong one has the reader close
+   * this and believe they misremembered.
+   */
+  listLoading?: boolean;
+  /**
+   * What to say about one row, and which one.
+   *
+   * Renaming and deleting can only be started from here, and this sheet covers
+   * the whole column -- so the panel's own line, on the top edge of the
+   * composer, is a line nobody can read while it is open. The word about them
+   * belongs next to the row it is about.
+   */
+  rowMishap?: { conversationId: string; text: string } | null;
 }
 
 /**
@@ -342,6 +359,8 @@ function ConversationRowView({
  * @param root0.onReachEnd - Called when the reader reaches the end of what has been fetched.
  * @param root0.loadingMore - A request for the next page is out.
  * @param root0.nextPageFailed - The last attempt at the next page failed.
+ * @param root0.listLoading - The first page of the list is on its way.
+ * @param root0.rowMishap - What to say about one row, and which one.
  * @returns The left-side sheet listing the project's conversations.
  */
 function ConversationHistorySheetInner({
@@ -356,6 +375,8 @@ function ConversationHistorySheetInner({
   onReachEnd,
   loadingMore,
   nextPageFailed,
+  listLoading = false,
+  rowMishap = null,
 }: ConversationHistorySheetProps): React.JSX.Element {
   const t = useTranslation();
   // Which conversation the reader has asked to delete, while they are being
@@ -435,19 +456,38 @@ function ConversationHistorySheetInner({
               role='list'
             >
               {conversations.length === 0 ? (
-                <li className='px-4 py-3 text-sm text-muted-foreground'>
-                  {t('chat.history.empty')}
-                </li>
+                listLoading ? (
+                  <li
+                    className='px-4 py-3 text-sm text-muted-foreground'
+                    data-testid='conversation-list-loading'
+                  >
+                    {t('chat.history.loading')}
+                  </li>
+                ) : (
+                  <li className='px-4 py-3 text-sm text-muted-foreground'>
+                    {t('chat.history.empty')}
+                  </li>
+                )
               ) : (
                 conversations.map((c) => (
-                  <ConversationRowView
-                    key={c.id}
-                    row={c}
-                    isActive={c.id === activeId}
-                    onPick={onPick}
-                    onRename={onRename}
-                    onAskDelete={setDeleting}
-                  />
+                  <React.Fragment key={c.id}>
+                    <ConversationRowView
+                      row={c}
+                      isActive={c.id === activeId}
+                      onPick={onPick}
+                      onRename={onRename}
+                      onAskDelete={setDeleting}
+                    />
+                    {rowMishap?.conversationId === c.id ? (
+                      <li
+                        className='mx-3 my-2 rounded-content-sm border border-status-error-border bg-status-error-bg px-2.5 py-1.5 text-2xs leading-relaxed text-status-error-foreground'
+                        role='alert'
+                        data-testid='conversation-row-mishap'
+                      >
+                        {rowMishap.text}
+                      </li>
+                    ) : null}
+                  </React.Fragment>
                 ))
               )}
             </ul>
