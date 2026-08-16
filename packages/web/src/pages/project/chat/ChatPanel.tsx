@@ -89,7 +89,6 @@ export function ChatPanel({
     draft,
     setDraft,
     switchTo,
-    startNew,
     rename,
     remove,
   } = useChatSession(projectId);
@@ -150,12 +149,6 @@ export function ChatPanel({
     },
     [switchTo, onHistoryOpenChange],
   );
-
-  /** Start another conversation and leave the list. Stable, same reason. */
-  const startNewConversation = React.useCallback((): void => {
-    startNew();
-    onHistoryOpenChange(false);
-  }, [startNew, onHistoryOpenChange]);
 
   // Read out here rather than inside the memo below. `t` keeps the same
   // identity for the life of the page -- switching language re-renders
@@ -246,7 +239,6 @@ export function ChatPanel({
         onPick={pickConversation}
         onRename={rename}
         onDelete={remove}
-        onStartNew={startNewConversation}
         hasMore={hasMoreConversations}
         onReachEnd={loadMoreConversations}
         nextPageFailed={nextPageFailed}

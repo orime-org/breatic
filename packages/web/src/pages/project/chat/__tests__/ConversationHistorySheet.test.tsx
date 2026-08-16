@@ -31,7 +31,6 @@ const CONVS: ConversationRow[] = [
 const NOOPS = {
   onRename: () => undefined,
   onDelete: () => undefined,
-  onStartNew: () => undefined,
   hasMore: false,
   onReachEnd: () => undefined,
   nextPageFailed: false,

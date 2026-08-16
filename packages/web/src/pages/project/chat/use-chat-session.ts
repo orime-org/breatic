@@ -90,8 +90,6 @@ export interface ChatSession {
   setDraft: (text: string) => void;
   /** Show a different conversation. */
   switchTo: (conversationId: string) => void;
-  /** Start another one and go to it. */
-  startNew: () => void;
   /** Name one. */
   rename: (conversationId: string, title: string) => void;
   /** Delete one, after the reader has confirmed. */
@@ -256,11 +254,6 @@ export function useChatSession(projectId: string): ChatSession {
     [projectId],
   );
 
-  const startNew = React.useCallback(
-    (): void => void conversationRuntime.startNew(projectId),
-    [projectId],
-  );
-
   const rename = React.useCallback(
     (id: string, title: string): void => void conversationRuntime.rename(projectId, id, title),
     [projectId],
@@ -357,7 +350,6 @@ export function useChatSession(projectId: string): ChatSession {
     draft,
     setDraft,
     switchTo,
-    startNew,
     rename,
     remove,
   };

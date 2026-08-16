@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { MoreVertical, Plus } from 'lucide-react';
+import { MoreVertical } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -57,7 +57,6 @@ interface ConversationHistorySheetProps {
   onPick: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onDelete: (id: string) => void;
-  onStartNew: () => void;
   /** The project has conversations older than the ones listed. */
   hasMore: boolean;
   /** Called when the reader reaches the end of what has been fetched. */
@@ -336,7 +335,6 @@ function ConversationRowView({
  * @param root0.onPick - Called with a conversation id when a row is selected.
  * @param root0.onRename - Called with an id and the name that was typed.
  * @param root0.onDelete - Called with an id once the reader has confirmed.
- * @param root0.onStartNew - Called when the reader asks for another conversation.
  * @param root0.hasMore - The project has conversations older than the ones listed.
  * @param root0.onReachEnd - Called when the reader reaches the end of what has been fetched.
  * @param root0.nextPageFailed - The last attempt at the next page failed.
@@ -350,7 +348,6 @@ function ConversationHistorySheetInner({
   onPick,
   onRename,
   onDelete,
-  onStartNew,
   hasMore,
   onReachEnd,
   nextPageFailed,
@@ -397,23 +394,13 @@ function ConversationHistorySheetInner({
         className='flex w-80 flex-col p-0'
         data-testid='conversation-history-sheet'
       >
-        <SheetHeader className='flex flex-row items-center justify-between px-4 py-3'>
+        <SheetHeader className='flex flex-row items-center px-4 py-3'>
           <SheetTitle className='text-sm font-medium uppercase tracking-wide text-muted-foreground'>
             {t('chat.history.title')}
           </SheetTitle>
           <SheetDescription className='sr-only'>
             {t('chat.history.description')}
           </SheetDescription>
-          <Button
-            type='button'
-            variant='chrome-ghost'
-            size='chrome'
-            aria-label={t('chat.conversation.startNew')}
-            onClick={onStartNew}
-            data-testid='conversation-start-new'
-          >
-            <Plus className='h-4 w-4' />
-          </Button>
         </SheetHeader>
         {/* ScrollArea (#1773): overlay scrollbar — appears only while
             scrolling, no layout space, hover changes color only. The wrapper

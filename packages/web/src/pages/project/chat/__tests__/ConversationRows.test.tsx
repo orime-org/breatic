@@ -41,7 +41,6 @@ function renderSheet(over: Partial<React.ComponentProps<typeof ConversationHisto
   const onPick = vi.fn();
   const onRename = vi.fn();
   const onDelete = vi.fn();
-  const onStartNew = vi.fn();
   render(
     <ConversationHistorySheet
       open
@@ -51,14 +50,13 @@ function renderSheet(over: Partial<React.ComponentProps<typeof ConversationHisto
       onPick={onPick}
       onRename={onRename}
       onDelete={onDelete}
-      onStartNew={onStartNew}
       hasMore={false}
       onReachEnd={vi.fn()}
       nextPageFailed={false}
       {...over}
     />,
   );
-  return { onPick, onRename, onDelete, onStartNew };
+  return { onPick, onRename, onDelete };
 }
 
 
@@ -76,7 +74,6 @@ function renderSheetFor(props: Partial<React.ComponentProps<typeof ConversationH
     onPick: vi.fn(),
     onRename: vi.fn(),
     onDelete: vi.fn(),
-    onStartNew: vi.fn(),
     hasMore: false,
     onReachEnd: vi.fn(),
     nextPageFailed: false,
@@ -186,11 +183,14 @@ describe('deleting a conversation from its row', () => {
   });
 });
 
-describe('starting one from the sheet', () => {
-  it('has an entry for it at the top', async () => {
-    const { onStartNew } = renderSheet();
-    await userEvent.click(screen.getByTestId('conversation-start-new'));
-    expect(onStartNew).toHaveBeenCalled();
+describe('the sheet header', () => {
+  it('leaves the top right corner to the close button', () => {
+    // `SheetContent` 自带一个绝对定位在右上角的关闭按钮。头部再摆一个同尺寸的
+    // 按钮就压在它下面 —— 屏幕上只看得见 ×,底下那个鼠标永远够不到,点下去关的
+    // 是抽屉。新建的入口在列顶栏,抽屉开着时照样点得到。
+    renderSheet();
+
+    expect(screen.queryByTestId('conversation-start-new')).toBeNull();
   });
 });
 
