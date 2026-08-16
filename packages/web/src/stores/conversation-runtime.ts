@@ -579,69 +579,76 @@ async function ensureLoaded(projectId: string): Promise<void> {
  */
 async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined> {
   const nav = intendToNavigate(projectId);
-  const visit = currentVisit(projectId);
-  // Everything except a chat that is already on screen. What this must not do
-  // is take a conversation away from someone reading it: the message column
-  // draws nothing while this says loading, so a re-open behind a chat that
-  // works would blank it -- and a re-open is something a press causes, so the
-  // reader would press send and watch their conversation disappear.
-  //
-  // A chat that could not be read has nothing to take away. Saying loading
-  // there is the whole of what a retry looks like: the scrim goes, the wait is
-  // shown, and a second failure brings the scrim back. Without it the retry
-  // button changed nothing on screen at all -- the only word about it went to
-  // the notice line, which that same scrim is covering.
-  useStore.setState((s) =>
-    s.openStatus[projectId] === 'ready'
-      ? s
-      : { openStatus: { ...s.openStatus, [projectId]: 'loading' } },
-  );
+  const landed = false;
   try {
-    const opened = await chatApi.openChat(projectId, visit.signal);
-    if (visit.signal.aborted) return undefined;
-    // The reader can press "new conversation" while this is still out -- the
-    // header is drawn before the answer arrives. What they pressed is later
-    // than this, so the conversation they made is the one to stay on; only
-    // the list below is still worth taking.
-    // Two separate questions, and being overtaken answers only one of them.
-    // Which conversation to show: not this one, the reader has since chosen
-    // another. What the list holds: this answer, still -- it was assembled
-    // before they chose, so it lacks what they made, but it has everything
-    // else. Dropping it whole would leave the sheet showing one row where the
-    // project has dozens, and take `hasMore` with it, so paging could not
-    // recover them either.
-    // A press that failed takes its navigation back, so being overtaken here
-    // means something later actually stands -- and this answer, assembled
-    // before it, must not replace what the reader chose.
-    const landed = stillAwaited(projectId, nav);
-    if (landed) adoptConversation(projectId, opened.current);
-    useStore.setState((st) => {
-      const held = st.listByProject[projectId] ?? [];
-      // Rows written while this was out go first: the list is ordered by when
-      // each conversation was last used, and those are the most recent thing
-      // that happened here.
-      const listed = landed
-        ? opened.conversations
-        : [...held, ...opened.conversations.filter((c) => !held.some((h) => h.id === c.id))];
-      return {
-        listByProject: { ...st.listByProject, [projectId]: listed },
-        listHasMore: { ...st.listHasMore, [projectId]: opened.hasMoreConversations },
-      };
-    });
-    return undefined;
-  } catch (err) {
-    // Except when the visit that asked is over, which includes this refusal
-    // being the abort itself. Reporting it then would have the caller replace
-    // a conversation the reader is looking at now with the news that a
-    // request they walked away from did not work.
-    if (visit.signal.aborted) return undefined;
-    // Not over a chat that has opened before. There is a conversation on
-    // screen and it is still readable; saying it could not be opened would
-    // take it away over a request the reader did not make.
-    if (useStore.getState().openStatus[projectId] !== 'ready') {
-      markUnreadable(projectId, err);
+    const visit = currentVisit(projectId);
+    // Everything except a chat that is already on screen. What this must not do
+    // is take a conversation away from someone reading it: the message column
+    // draws nothing while this says loading, so a re-open behind a chat that
+    // works would blank it -- and a re-open is something a press causes, so the
+    // reader would press send and watch their conversation disappear.
+    //
+    // A chat that could not be read has nothing to take away. Saying loading
+    // there is the whole of what a retry looks like: the scrim goes, the wait is
+    // shown, and a second failure brings the scrim back. Without it the retry
+    // button changed nothing on screen at all -- the only word about it went to
+    // the notice line, which that same scrim is covering.
+    useStore.setState((s) =>
+      s.openStatus[projectId] === 'ready'
+        ? s
+        : { openStatus: { ...s.openStatus, [projectId]: 'loading' } },
+    );
+    try {
+      const opened = await chatApi.openChat(projectId, visit.signal);
+      if (visit.signal.aborted) return undefined;
+      // The reader can press "new conversation" while this is still out -- the
+      // header is drawn before the answer arrives. What they pressed is later
+      // than this, so the conversation they made is the one to stay on; only
+      // the list below is still worth taking.
+      // Two separate questions, and being overtaken answers only one of them.
+      // Which conversation to show: not this one, the reader has since chosen
+      // another. What the list holds: this answer, still -- it was assembled
+      // before they chose, so it lacks what they made, but it has everything
+      // else. Dropping it whole would leave the sheet showing one row where the
+      // project has dozens, and take `hasMore` with it, so paging could not
+      // recover them either.
+      // A press that failed takes its navigation back, so being overtaken here
+      // means something later actually stands -- and this answer, assembled
+      // before it, must not replace what the reader chose.
+      const landed = stillAwaited(projectId, nav);
+      if (landed) adoptConversation(projectId, opened.current);
+      useStore.setState((st) => {
+        const held = st.listByProject[projectId] ?? [];
+        // Rows written while this was out go first: the list is ordered by when
+        // each conversation was last used, and those are the most recent thing
+        // that happened here.
+        const listed = landed
+          ? opened.conversations
+          : [...held, ...opened.conversations.filter((c) => !held.some((h) => h.id === c.id))];
+        return {
+          listByProject: { ...st.listByProject, [projectId]: listed },
+          listHasMore: { ...st.listHasMore, [projectId]: opened.hasMoreConversations },
+        };
+      });
+      return undefined;
+    } catch (err) {
+      // Except when the visit that asked is over, which includes this refusal
+      // being the abort itself. Reporting it then would have the caller replace
+      // a conversation the reader is looking at now with the news that a
+      // request they walked away from did not work.
+      if (visit.signal.aborted) return undefined;
+      // Not over a chat that has opened before. There is a conversation on
+      // screen and it is still readable; saying it could not be opened would
+      // take it away over a request the reader did not make.
+      if (useStore.getState().openStatus[projectId] !== 'ready') {
+        markUnreadable(projectId, err);
+      }
+      return { failed: err };
     }
-    return { failed: err };
+  } finally {
+    // However this ended -- landed, failed, or overtaken -- it is over, and
+    // being the last one out means nobody else will settle the panel.
+    navigationEnded(projectId, nav, landed);
   }
 }
 
@@ -1161,7 +1168,7 @@ async function sendOnce(projectId: string, said: string): Promise<void> {
    */
   const tellThisVisit = (mishap: Omit<ChatMishap, 'at' | 'projectId'>): void => {
     if (visit.signal.aborted) return;
-    tell({ projectId, ...mishap } as Omit<ChatMishap, 'at'>);
+    tell({ projectId, ...mishap });
   };
 
   if (useStore.getState().currentByProject[projectId] === undefined) {
@@ -1273,56 +1280,6 @@ async function loadEarlier(conversationId: string): Promise<void> {
 }
 
 /**
- * How many times each project's reader has asked to be somewhere.
- *
- * Outside the state because nothing renders it: it exists so an answer can ask
- * "is the reader still waiting for me" before it puts a conversation on
- * screen. Every route that writes `currentByProject` takes a number before it
- * asks for anything and checks it before it writes -- a switch, a new
- * conversation, and the first open all land here, and any of them can be
- * overtaken by a later press.
- *
- * A count rather than the conversation being waited for, because one of those
- * routes does not know what it is landing on until the server answers: a new
- * conversation has no id until it has been created.
- */
-const navigations = new Map<string, number>();
-
-/**
- * Record that the reader has asked to be somewhere in this project.
- * @param projectId - The project being navigated.
- * @returns The number to check back with before landing.
- */
-function intendToNavigate(projectId: string): number {
-  const next = (navigations.get(projectId) ?? 0) + 1;
-  navigations.set(projectId, next);
-  return next;
-}
-
-/**
- * Whether the reader is still waiting for the navigation with this number.
- * @param projectId - The project.
- * @param token - What {@link intendToNavigate} handed back.
- * @returns True while nothing later has been asked for.
- */
-function stillAwaited(projectId: string, token: number): boolean {
-  return navigations.get(projectId) === token;
-}
-
-/**
- * End a navigation that failed with nobody behind it to finish the job.
- *
- * Saying `loading` is a promise that a conversation is coming, and whoever
- * says it has to see it through to one of the two ends: a conversation on
- * screen, or a scrim saying it could not be read. A navigation that gets
- * overtaken is off the hook, because the one that overtook it ends it instead.
- * The one that fails while still being waited for is the last one there is,
- * and leaving it holds the panel on a skeleton that turns for ever -- no
- * conversation, no scrim, and so no way to ask again.
- * @param projectId - The project.
- * @param token - What {@link intendToNavigate} handed back.
- */
-/**
  * Say this project's chat could not be read, and why.
  *
  * The status and the reason are one fact, so they are written in one place.
@@ -1344,35 +1301,100 @@ function markUnreadable(projectId: string, err: unknown): void {
 }
 
 /**
- * Take back a navigation that did not happen.
+ * The navigations still out for each project, by the number they took.
  *
- * A press that failed asked for nothing in the end, so it must not go on
- * outranking what came before it -- an answer already on its way was the
- * reader's previous choice, and with this press gone it is their current one
- * again. Only the latest can be taken back; anything newer has already made
- * this one irrelevant.
- * @param projectId - The project.
- * @param token - What {@link intendToNavigate} handed back.
+ * Answers one question only: is anyone else still going to finish this. A
+ * navigation that ends removes itself, so an empty set means the last one out
+ * has to settle the panel -- nobody is left who could.
+ *
+ * It cannot answer the other question, whether the reader is still waiting for
+ * a particular one. Leaving the set is what every navigation does when it
+ * ends, the newest included; asking who is highest among those left would then
+ * promote an older one still travelling, and its stale answer would replace
+ * what the reader actually chose. That question goes to {@link lastIssued},
+ * which never forgets.
  */
-function abandonNavigation(projectId: string, token: number): void {
-  if (navigations.get(projectId) === token) navigations.set(projectId, token - 1);
+const inFlight = new Map<string, Set<number>>();
+
+/**
+ * Record that the reader has asked to be somewhere in this project.
+ * @param projectId - The project being navigated.
+ * @returns The number to check back with, and to end with.
+ */
+function intendToNavigate(projectId: string): number {
+  const flying = inFlight.get(projectId) ?? new Set<number>();
+  const next = (lastIssued.get(projectId) ?? 0) + 1;
+  flying.add(next);
+  inFlight.set(projectId, flying);
+  lastIssued.set(projectId, next);
+  claimed.set(projectId, next);
+  return next;
 }
 
 /**
- * End a navigation that failed with nobody behind it to finish the job.
+ * The number of the last navigation asked for, per project.
+ *
+ * Answers "is the reader still waiting for me": only the newest can be, and
+ * this is the only record that survives a navigation ending. It never goes
+ * backwards, so a number is never handed out twice and a stale answer can
+ * never pass for the current one.
+ */
+const lastIssued = new Map<string, number>();
+
+/**
+ * Whether the reader is still waiting for the navigation with this number.
  * @param projectId - The project.
  * @param token - What {@link intendToNavigate} handed back.
+ * @returns True while nothing later is still on its way.
  */
-function settleIfStranded(projectId: string, token: number): void {
-  if (!stillAwaited(projectId, token)) return;
+function stillAwaited(projectId: string, token: number): boolean {
+  return claimed.get(projectId) === token;
+}
+
+/**
+ * The navigation whose answer the reader is currently waiting for.
+ *
+ * Separate from {@link lastIssued} because a press that fails asked for
+ * nothing in the end: the claim goes back to the newest one still travelling,
+ * whose answer is what the reader wants again. Separate from {@link inFlight}
+ * because that one forgets a navigation the moment it ends, including the
+ * newest -- and then an older one still on its way would look like the latest
+ * word.
+ */
+const claimed = new Map<string, number>();
+
+/**
+ * A navigation is over, however it ended.
+ *
+ * Every route that takes a number must reach here, once, whether it landed,
+ * failed, or was overtaken. Being the last one out carries a duty: saying
+ * `loading` promised the reader a conversation, and if nothing else is still
+ * travelling then nobody else can keep that promise. Left alone the panel
+ * holds a skeleton that turns for ever -- no conversation, no scrim, and so
+ * no way to ask again.
+ * @param projectId - The project.
+ * @param token - What {@link intendToNavigate} handed back.
+ * @param landed - It put a conversation on screen.
+ */
+function navigationEnded(projectId: string, token: number, landed: boolean): void {
+  const flying = inFlight.get(projectId);
+  flying?.delete(token);
+  if (!landed && claimed.get(projectId) === token) {
+    // This press asked for nothing in the end, so it stops outranking the
+    // others. Whatever is still travelling is the reader's wish again -- the
+    // newest of those, since the older ones were already overtaken.
+    const stillGoing = flying === undefined || flying.size === 0 ? undefined : Math.max(...flying);
+    if (stillGoing === undefined) claimed.delete(projectId);
+    else claimed.set(projectId, stillGoing);
+  }
+  if (flying !== undefined && flying.size > 0) return;
   useStore.setState((s) =>
     s.openStatus[projectId] === 'loading'
       ? {
-        openStatus: { ...s.openStatus, [projectId]: 'failed' },
-        // Nothing came back to quote here -- what failed was a different
-        // request, and its own sentence went to the notice line. Any reason
-        // still held is from some earlier failure and must not be worn as
-        // this one's.
+        openStatus: { ...s.openStatus, [projectId]: 'failed' as OpenStatus },
+        // Nothing came back to quote: what failed was some request whose own
+        // sentence went to the notice line. A reason still held here is from
+        // an earlier failure and must not be worn as this one's.
         openFailure: (({ [projectId]: _gone, ...rest }) => rest)(s.openFailure),
       }
       : s,
@@ -1447,28 +1469,34 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
   // cancel whatever is on its way -- otherwise a switch they started and then
   // changed their mind about lands anyway, a moment later.
   const nav = intendToNavigate(projectId);
-
-  // Already the one on screen. Asking again would replace a conversation with
-  // an identical copy of itself for no reason.
-  if (useStore.getState().currentByProject[projectId] === conversationId) return;
-
-  const visit = currentVisit(projectId);
+  let landed = false;
   try {
-    const read = await chatApi.readConversation(conversationId);
-    if (visit.signal.aborted) return;
-    if (!stillAwaited(projectId, nav)) return;
-    adoptConversation(projectId, read);
-  } catch (err) {
-    // Nothing moves. The reader stays where they were, which is a place that
-    // still works, rather than landing on a conversation with no messages in
-    // it because the request for them failed.
-    if (visit.signal.aborted) return;
-    tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
-    // Nothing landed, so this press asked for nothing; an answer still on its
-    // way is the reader's choice again. If a delete put the panel in the
-    // loading state on the way here, this is where that ends.
-    abandonNavigation(projectId, nav);
-    settleIfStranded(projectId, nav);
+
+    // Already the one on screen. Asking again would replace a conversation with
+    // an identical copy of itself for no reason.
+    if (useStore.getState().currentByProject[projectId] === conversationId) return;
+
+    const visit = currentVisit(projectId);
+    try {
+      const read = await chatApi.readConversation(conversationId);
+      if (visit.signal.aborted) return;
+      if (!stillAwaited(projectId, nav)) return;
+      adoptConversation(projectId, read);
+      landed = true;
+    } catch (err) {
+      // Nothing moves. The reader stays where they were, which is a place that
+      // still works, rather than landing on a conversation with no messages in
+      // it because the request for them failed.
+      if (visit.signal.aborted) return;
+      tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
+      // Nothing landed, so this press asked for nothing; an answer still on its
+      // way is the reader's choice again. If a delete put the panel in the
+      // loading state on the way here, this is where that ends.
+    }
+  } finally {
+    // However this ended -- landed, failed, or overtaken -- it is over, and
+    // being the last one out means nobody else will settle the panel.
+    navigationEnded(projectId, nav, landed);
   }
 }
 
@@ -1483,36 +1511,42 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
  */
 async function startNew(projectId: string): Promise<void> {
   const nav = intendToNavigate(projectId);
-  const visit = currentVisit(projectId);
+  let landed = false;
   try {
-    const created = await chatApi.createConversation(projectId);
-    if (visit.signal.aborted) return;
-    // A switch started before this press may still be out. It was asked for
-    // first and will answer whenever it answers, but this is what the reader
-    // asked for last, so the row it creates is the one to land on -- and the
-    // check inside that switch will see this number and leave the screen
-    // alone.
-    // The row goes in either way. This conversation exists on the server now,
-    // and a list that leaves it out is wrong about what the project holds --
-    // being overtaken only decides which conversation to land on.
-    useStore.setState((s) => ({
-      listByProject: {
-        ...s.listByProject,
-        // At the top, where the list's order puts the most recently used one.
-        [projectId]: [created, ...(s.listByProject[projectId] ?? [])],
-      },
-    }));
-    if (!stillAwaited(projectId, nav)) return;
-    adoptConversation(projectId, { conversation: created, messages: [], hasMore: false });
-  } catch (err) {
-    if (visit.signal.aborted) return;
-    tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
-    // This press asked for nothing in the end. Whatever it overtook -- an
-    // opening still on its way, a delete looking for somewhere to land -- is
-    // the reader's choice again, so the claim goes back before anything else
-    // is decided.
-    abandonNavigation(projectId, nav);
-    settleIfStranded(projectId, nav);
+    const visit = currentVisit(projectId);
+    try {
+      const created = await chatApi.createConversation(projectId);
+      if (visit.signal.aborted) return;
+      // A switch started before this press may still be out. It was asked for
+      // first and will answer whenever it answers, but this is what the reader
+      // asked for last, so the row it creates is the one to land on -- and the
+      // check inside that switch will see this number and leave the screen
+      // alone.
+      // The row goes in either way. This conversation exists on the server now,
+      // and a list that leaves it out is wrong about what the project holds --
+      // being overtaken only decides which conversation to land on.
+      useStore.setState((s) => ({
+        listByProject: {
+          ...s.listByProject,
+          // At the top, where the list's order puts the most recently used one.
+          [projectId]: [created, ...(s.listByProject[projectId] ?? [])],
+        },
+      }));
+      if (!stillAwaited(projectId, nav)) return;
+      adoptConversation(projectId, { conversation: created, messages: [], hasMore: false });
+      landed = true;
+    } catch (err) {
+      if (visit.signal.aborted) return;
+      tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
+      // This press asked for nothing in the end. Whatever it overtook -- an
+      // opening still on its way, a delete looking for somewhere to land -- is
+      // the reader's choice again, so the claim goes back before anything else
+      // is decided.
+    }
+  } finally {
+    // However this ended -- landed, failed, or overtaken -- it is over, and
+    // being the last one out means nobody else will settle the panel.
+    navigationEnded(projectId, nav, landed);
   }
 }
 
@@ -1551,7 +1585,7 @@ async function loadMoreConversations(projectId: string): Promise<void> {
   // `openChat`'s to fetch. Asking from here would race it and append a second
   // copy of everything it is about to write.
   if (held === undefined || held.length === 0) return;
-  const last = held[held.length - 1]!;
+  const last = held[held.length - 1];
 
   const visit = currentVisit(projectId);
   fetchingMore.add(projectId);
@@ -1681,45 +1715,53 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
   // ordered against the reader's own: whatever they pressed after this must
   // win over the row this picks for them.
   const nav = intendToNavigate(projectId);
+  let landed = false;
+  try {
 
-  // The conversation the panel was showing has just gone, and the next one is
-  // a round trip away. Saying so is what keeps the empty-conversation greeting
-  // off the screen in between -- the panel draws nothing until this says
-  // ready, which is the same gate that covers opening. Without it the panel
-  // saw "ready, and no messages" and drew a whole screenful of greeting.
-  useStore.setState((s) => ({
-    openStatus: { ...s.openStatus, [projectId]: 'loading' },
-  }));
+    // The conversation the panel was showing has just gone, and the next one is
+    // a round trip away. Saying so is what keeps the empty-conversation greeting
+    // off the screen in between -- the panel draws nothing until this says
+    // ready, which is the same gate that covers opening. Without it the panel
+    // saw "ready, and no messages" and drew a whole screenful of greeting.
+    useStore.setState((s) => ({
+      openStatus: { ...s.openStatus, [projectId]: 'loading' },
+    }));
 
-  const next = remaining[0];
-  if (next) {
-    // Not `switchTo`: that one returns early when the id it is given is
-    // already the current one, and the current one is the conversation just
-    // deleted only when this is the last press of two. Read it directly.
-    const visit = currentVisit(projectId);
-    try {
-      const read = await chatApi.readConversation(next.id);
-      if (visit.signal.aborted) return;
-      if (!stillAwaited(projectId, nav)) return;
-      adoptConversation(projectId, read);
-    } catch (err) {
-      if (visit.signal.aborted) return;
-      // Only while this landing is still the one being waited for. The reader
-      // may have picked a row themselves in the meantime and be reading it;
-      // this failure is about a conversation they no longer care about, and
-      // blacking out the column over it would take away one that works.
-      if (stillAwaited(projectId, nav)) markUnreadable(projectId, err);
-      tell({ projectId, conversationId: next.id, deliberate: true, ...readMishap(err) });
+    const next = remaining[0];
+    if (next) {
+      // Not `switchTo`: that one returns early when the id it is given is
+      // already the current one, and the current one is the conversation just
+      // deleted only when this is the last press of two. Read it directly.
+      const visit = currentVisit(projectId);
+      try {
+        const read = await chatApi.readConversation(next.id);
+        if (visit.signal.aborted) return;
+        if (!stillAwaited(projectId, nav)) return;
+        adoptConversation(projectId, read);
+        landed = true;
+      } catch (err) {
+        if (visit.signal.aborted) return;
+        // Only while this landing is still the one being waited for. The reader
+        // may have picked a row themselves in the meantime and be reading it;
+        // this failure is about a conversation they no longer care about, and
+        // blacking out the column over it would take away one that works.
+        if (stillAwaited(projectId, nav)) markUnreadable(projectId, err);
+        tell({ projectId, conversationId: next.id, deliberate: true, ...readMishap(err) });
+      }
+      return;
     }
-    return;
-  }
-  // None left. `openAndAdopt` rather than `ensureLoaded`, because by that
-  // one's reckoning this project is open already and it would return without
-  // asking for the conversation that no longer exists.
-  const failure = await openAndAdopt(projectId);
-  if (failure) {
-    markUnreadable(projectId, failure.failed);
-    tell({ projectId, conversationId: null, deliberate: true, ...readMishap(failure.failed) });
+    // None left. `openAndAdopt` rather than `ensureLoaded`, because by that
+    // one's reckoning this project is open already and it would return without
+    // asking for the conversation that no longer exists.
+    const failure = await openAndAdopt(projectId);
+    if (failure) {
+      markUnreadable(projectId, failure.failed);
+      tell({ projectId, conversationId: null, deliberate: true, ...readMishap(failure.failed) });
+    }
+  } finally {
+    // However this ended -- landed, failed, or overtaken -- it is over, and
+    // being the last one out means nobody else will settle the panel.
+    navigationEnded(projectId, nav, landed);
   }
 }
 
@@ -1836,7 +1878,9 @@ function leaveProject(projectId: string): void {
   // scroll to the end do nothing at all, silently, until that dead request
   // came back on its own.
   fetchingMore.delete(projectId);
-  navigations.delete(projectId);
+  inFlight.delete(projectId);
+  lastIssued.delete(projectId);
+  claimed.delete(projectId);
 }
 
 /**
@@ -1853,7 +1897,9 @@ export function _resetForTests(): void {
   loadingEarlier.clear();
   visits.clear();
   fetchingMore.clear();
-  navigations.clear();
+  inFlight.clear();
+  lastIssued.clear();
+  claimed.clear();
   useStore.setState({
     conversations: {},
     currentByProject: {},

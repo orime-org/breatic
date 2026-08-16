@@ -545,3 +545,57 @@ describe('the window between deleting a conversation and landing on the next', (
     expect(state.conversations['c-1']).toBeUndefined();
   });
 });
+
+describe('a press that fails while an older answer is still on its way', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('lets that answer land, rather than leaving a skeleton turning', async () => {
+    // 「+」失败之后它就不再算数了,还在路上的那个打开请求重新成为读者等的
+    // 那一个。少了这一步,面板会永远停在骨架上:没有内容、没有蒙版,也就
+    // 没有任何再问一次的出口。
+    let releaseOpen: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseOpen = () =>
+            resolve({
+              conversations: [{ id: 'c-1', title: 'one' }],
+              hasMoreConversations: false,
+              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+            } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+        }),
+    );
+    const opening = conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.createConversation).mockRejectedValue(new Error('offline'));
+    await conversationRuntime.startNew(P);
+
+    releaseOpen?.();
+    await opening;
+
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('ready');
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-1');
+  });
+
+  it('settles the panel when nothing else is on its way', async () => {
+    // 反过来:没有别人在飞了,最后离场的那个就得把面板带到一个有出口的
+    // 状态 —— 蒙版加重新加载,而不是一个永远转下去的骨架。
+    vi.mocked(chatApi.openChat).mockImplementation(() => new Promise(() => {}));
+    void conversationRuntime.ensureLoaded(P);
+    await vi.waitFor(() =>
+      expect(useConversationRuntime.getState().openStatus[P]).toBe('loading'),
+    );
+
+    vi.mocked(chatApi.createConversation).mockRejectedValue(new Error('offline'));
+    await conversationRuntime.startNew(P);
+
+    // 打开那趟还挂着,所以还有人在飞,这时候不该收尾。
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('loading');
+
+    conversationRuntime.leaveProject(P);
+    expect(useConversationRuntime.getState().openStatus[P]).toBeUndefined();
+  });
+});
