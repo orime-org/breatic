@@ -699,3 +699,91 @@ describe('a conversation started when the first page never arrived', () => {
     ]);
   });
 });
+
+describe('a visit that was abandoned while its request was still out', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not let the abandoned request settle the visit that replaced it', async () => {
+    // 读者嫌慢,退出去又进来。头一趟的答复终于回来时,它手里那个号必须还是
+    // 它自己的 —— 号要是从头发过,这趟离场的请求收尾时结算的就是新那趟,
+    // 而新那趟的答复正在路上、服务器好好的,面板却已经黑了。
+    let failFirst: (() => void) | undefined;
+    let landSecond: (() => void) | undefined;
+    vi.mocked(chatApi.openChat)
+      .mockImplementationOnce(
+        () => new Promise((res) => {
+          failFirst = () => res({
+            conversations: [],
+            hasMoreConversations: false,
+            current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+          } as never);
+        }),
+      )
+      .mockImplementationOnce(
+        () => new Promise((res) => {
+          landSecond = () => res({
+            conversations: [{ id: 'c-2', title: 'two' }],
+            hasMoreConversations: false,
+            current: { conversation: { id: 'c-2', title: 'two' }, messages: [], hasMore: false },
+          } as never);
+        }),
+      );
+
+    const abandoned = conversationRuntime.ensureLoaded(P);
+    await vi.waitFor(() =>
+      expect(useConversationRuntime.getState().openStatus[P]).toBe('loading'),
+    );
+    conversationRuntime.leaveProject(P);
+
+    const current = conversationRuntime.ensureLoaded(P);
+    await vi.waitFor(() =>
+      expect(useConversationRuntime.getState().openStatus[P]).toBe('loading'),
+    );
+
+    failFirst?.();
+    await abandoned;
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('loading');
+
+    landSecond?.();
+    await current;
+
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('ready');
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-2');
+  });
+});
+
+describe('pressing send while a switch is still on its way', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not write into the conversation being left', async () => {
+    // 读者点了另一条,屏幕上还没换过去。这时候按发送,他以为是在跟刚点的那条
+    // 说话 —— 写进正在离开的那条,他的话连同回复会随切换落地一起消失,而那一
+    // 轮还在后台按他的账跑。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    let landSwitch: (() => void) | undefined;
+    vi.mocked(chatApi.readConversation).mockImplementationOnce(
+      () => new Promise((res) => {
+        landSwitch = () => res({
+          conversation: { id: 'c-2', title: 'two' }, messages: [], hasMore: false,
+        } as never);
+      }),
+    );
+    const switching = conversationRuntime.switchTo(P, 'c-2');
+    await new Promise((r) => setTimeout(r, 5));
+
+    await conversationRuntime.send(P, 'hello');
+
+    expect(chatApi.streamMessage).not.toHaveBeenCalled();
+
+    landSwitch?.();
+    await switching;
+  });
+});

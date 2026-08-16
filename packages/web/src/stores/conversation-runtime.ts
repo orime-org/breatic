@@ -1129,6 +1129,16 @@ async function send(projectId: string, said: string): Promise<void> {
   // twice, both charged for, and the first turn overwritten by the second so
   // nothing on screen can stop it.
   if (turnPhaseOf(useStore.getState(), projectId) !== 'idle') return;
+  // The conversation this would be written into is the one on screen, and a
+  // navigation in flight is on its way to replace it. Sending now writes into
+  // the one being left: the words and the reply that follows both vanish when
+  // the switch lands, while that turn goes on running and being charged for,
+  // with no stop button anywhere -- the panel by then is reading the turn of
+  // the conversation the reader arrived in.
+  // Only when there is one on screen. A send with no conversation yet is a
+  // different thing, and `sendOnce` opens one and waits for it.
+  const state = useStore.getState();
+  if (state.currentByProject[projectId] !== undefined && navigationInFlight(projectId)) return;
   await sendOnce(projectId, said);
 }
 
@@ -1346,6 +1356,19 @@ function intendToNavigate(projectId: string): number {
  * never pass for the current one.
  */
 const lastIssued = new Map<string, number>();
+
+/**
+ * Whether anything is on its way to change which conversation is on screen.
+ *
+ * Asked by whoever is about to act on the conversation that is on screen now:
+ * one in flight means that conversation is about to stop being the answer.
+ * @param projectId - The project being asked about.
+ * @returns Whether a navigation is out for it.
+ */
+function navigationInFlight(projectId: string): boolean {
+  const flying = inFlight.get(projectId);
+  return flying !== undefined && flying.size > 0;
+}
 
 /**
  * Whether the reader is still waiting for the navigation with this number.
@@ -1901,8 +1924,14 @@ function leaveProject(projectId: string): void {
   // came back on its own.
   fetchingMore.delete(projectId);
   inFlight.delete(projectId);
-  lastIssued.delete(projectId);
   claimed.delete(projectId);
+  // `lastIssued` stays. It is the one of the three that must not restart: a
+  // request abandoned with this visit is still out, still holding its number,
+  // and still going to run its `finally`. Handing that number out again gives
+  // the next visit a navigation the abandoned one will settle -- it reports
+  // nothing landed, the panel is left saying it could not be read, and the
+  // answer that was on its way arrives to a number nobody is waiting for.
+  // Numbers only ever go up, which is what makes "the same number" impossible.
 }
 
 /**
