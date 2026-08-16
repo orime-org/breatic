@@ -154,7 +154,8 @@
       "deleteBody": "对话里说过的内容会一起删掉，无法撤销。",
       "deleteConfirm": "删除",
       "deleteCancel": "取消",
-      "rowActions": "重命名或删除这条对话"
+      "rowActions": "重命名或删除这条对话",
+      "gone": "这条对话已经不存在了"
     },
     "load": {
       "failedTitle": "网络错误",

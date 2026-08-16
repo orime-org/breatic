@@ -154,7 +154,8 @@
       "deleteBody": "会話の内容もすべて削除されます。元に戻せません。",
       "deleteConfirm": "削除",
       "deleteCancel": "キャンセル",
-      "rowActions": "この会話の名前を変更、または削除"
+      "rowActions": "この会話の名前を変更、または削除",
+      "gone": "この会話はもう存在しません"
     },
     "load": {
       "failedTitle": "ネットワークエラー",

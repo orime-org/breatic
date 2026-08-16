@@ -158,28 +158,33 @@ export function ChatPanel({
   // would go on showing the sentence in the language it first ran in.
   const networkErrorText = t('chat.error.network');
   const turnFailedText = t('chat.error.turnFailed');
+  const goneText = t('chat.conversation.gone');
 
   /**
    * The one line, and it is only ever saying one thing.
    *
-   * Which of the three depends on one thing: whether a sentence of ours came
-   * back with the answer. One did, and it is passed through rather than
+   * Four things it can be, and which one turns on what came back with the
+   * answer. A sentence of ours did, and it is passed through rather than
    * replaced -- the server wrote it in the reader's own language, and it is
-   * the only sentence anyone wrote about this. An answer with none of ours in
-   * it says only that the turn is over, so this end supplies the one thing
-   * that is true about that. No answer at all leaves nothing to quote and
-   * nothing to add: two words, and no advice about what to do next, because
-   * that is the reader's own business.
+   * the only sentence anyone wrote about this. A 404 is the exception among
+   * those: the server's words are about a resource, while this end knows
+   * which one and that nothing went wrong, so it says that instead. An answer
+   * with none of ours in it says only that the turn is over, so this end
+   * supplies the one thing that is true about that. No answer at all leaves
+   * nothing to quote and nothing to add: two words, and no advice about what
+   * to do next, because that is the reader's own business.
    */
   const notice = React.useMemo(() => {
     if (mishap === null) return null;
+    // Not an error -- the conversation was there and is not any more.
+    if (mishap.kind === 'gone') return goneText;
     // The server wrote this one for the reader, in their own language.
     if (mishap.kind === 'server') return mishap.message;
     // It answered, but with nothing a reader could act on -- so this end says
     // the one thing that is true: the reply is not coming, send it again.
     if (mishap.kind === 'turn') return turnFailedText;
     return networkErrorText;
-  }, [mishap, networkErrorText, turnFailedText]);
+  }, [mishap, goneText, networkErrorText, turnFailedText]);
 
   /** Load a quick-action label into the composer. Stable for the same reason. */
   const quickAction = React.useCallback(

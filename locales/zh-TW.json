@@ -154,7 +154,8 @@
       "deleteBody": "對話裡說過的內容會一起刪除，無法復原。",
       "deleteConfirm": "刪除",
       "deleteCancel": "取消",
-      "rowActions": "重新命名或刪除這條對話"
+      "rowActions": "重新命名或刪除這條對話",
+      "gone": "這條對話已經不存在了"
     },
     "load": {
       "failedTitle": "網路錯誤",

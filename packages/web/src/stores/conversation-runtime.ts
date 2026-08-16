@@ -384,6 +384,11 @@ export type ChatMishap = {
   // sentence the server wrote for the reader, and this one has none -- what
   // comes down the wire here is an English string written for us.
   | { kind: 'turn' }
+  // The conversation asked for is not there any more, which our own server
+  // said in so many words. Not `server` either: the sentence it sends is
+  // about a resource, and this end knows the far more useful thing -- which
+  // resource, and that nothing went wrong.
+  | { kind: 'gone' }
 );
 
 const watchers = new Set<(mishap: ChatMishap) => void>();
@@ -1580,14 +1585,22 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
       adoptConversation(projectId, read);
       landed = true;
     } catch (err) {
-      // The list in hand was fetched when the network was working, and this
-      // just showed that it is not any more -- so whether it still describes
-      // the project is something this panel cannot answer. It goes out the
-      // same door as an open that failed: the scrim, and a reload that fetches
-      // the whole list again.
+      // The conversation on screen is still readable -- this says nothing
+      // about it. Covering the column would take away one that works, along
+      // with the stop button of whatever turn is running in it. The scrim
+      // belongs to an open that failed, where there is no conversation on
+      // screen to take away.
       if (visit.signal.aborted) return;
-      if (stillAwaited(projectId, nav)) markUnreadable(projectId, err);
-      tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
+      tell({
+        projectId,
+        conversationId,
+        deliberate: true,
+        // Our own 404 is not a failure: the server answered, and what it said
+        // is that this one is not there any more -- usually because another
+        // tab of theirs deleted it. The row stays; the next time the list is
+        // opened it is fetched afresh anyway.
+        ...(alreadyGone(err) ? ({ kind: 'gone' } as const) : readMishap(err)),
+      });
       // Nothing landed, so this press asked for nothing; an answer still on its
       // way is the reader's choice again. If a delete put the panel in the
       // loading state on the way here, this is where that ends.

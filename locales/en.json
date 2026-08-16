@@ -154,7 +154,8 @@
       "deleteBody": "Everything said in it goes with it. This cannot be undone.",
       "deleteConfirm": "Delete",
       "deleteCancel": "Cancel",
-      "rowActions": "Rename or delete this conversation"
+      "rowActions": "Rename or delete this conversation",
+      "gone": "This conversation no longer exists"
     },
     "load": {
       "failedTitle": "Network error",

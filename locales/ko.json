@@ -154,7 +154,8 @@
       "deleteBody": "대화에서 나눈 내용도 함께 삭제되며 되돌릴 수 없습니다.",
       "deleteConfirm": "삭제",
       "deleteCancel": "취소",
-      "rowActions": "이 대화 이름 바꾸기 또는 삭제"
+      "rowActions": "이 대화 이름 바꾸기 또는 삭제",
+      "gone": "이 대화는 더 이상 존재하지 않습니다"
     },
     "load": {
       "failedTitle": "네트워크 오류",

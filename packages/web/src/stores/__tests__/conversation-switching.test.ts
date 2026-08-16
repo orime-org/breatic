@@ -34,6 +34,7 @@ import {
   conversationRuntime,
   turnPhaseOf,
   useConversationRuntime,
+  watchChatMishaps,
   _resetForTests,
 } from '@web/stores/conversation-runtime';
 
@@ -821,17 +822,61 @@ describe('while a switch is on its way', () => {
     expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
   });
 
-  it('asks for the whole list again when it cannot be read', async () => {
-    // 读不到这一条,说明这一刻网络出了问题 —— 而手上这份列表是在网络还好的时候
-    // 拿的,它现在准不准,前端自己不知道。所以走跟打开失败同一个出口:蒙版加
-    // 「重新加载」,把整份列表重新拉一次。
+  it('leaves the reader in the conversation they were reading', async () => {
+    // 一条读不到,不等于读者手上这条也没了。盖住整列会拿走一条正常工作的
+    // 会话 —— 连同它正在跑的那一轮的停止按钮。蒙版留给打开面板失败,那时候
+    // 屏幕上本来就没有会话。
     opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
     await conversationRuntime.ensureLoaded(P);
 
     vi.mocked(chatApi.readConversation).mockRejectedValue(new Error('offline'));
     await conversationRuntime.switchTo(P, 'c-2');
 
-    expect(useConversationRuntime.getState().openStatus[P]).toBe('failed');
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('ready');
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-1');
+  });
+
+  it('says the conversation is gone when that is what the server said', async () => {
+    // 我们自己的服务器答 404,说的是「这条不在了」—— 多半是读者在另一个标签页
+    // 里删掉的。这不是出错,不该走出错那条路:说一句它没了就够了。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    const heard: string[] = [];
+    const stop = watchChatMishaps((m) => heard.push(m.kind));
+    vi.mocked(chatApi.readConversation).mockRejectedValue(
+      new ApiException({
+        status: 404,
+        message: 'Resource not found',
+        fromServer: true,
+      }),
+    );
+    await conversationRuntime.switchTo(P, 'c-2');
+    stop();
+
+    expect(heard).toEqual(['gone']);
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('ready');
+  });
+
+  it('keeps the row that is gone, because the reader is the one who decides', async () => {
+    // 那一行不动。读者刚点了它,行原地留着、旁边说一句它没了,比它在手底下
+    // 消失清楚 —— 而且下一次打开列表本来就会重新取。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.readConversation).mockRejectedValue(
+      new ApiException({
+        status: 404,
+        message: 'Resource not found',
+        fromServer: true,
+      }),
+    );
+    await conversationRuntime.switchTo(P, 'c-2');
+
+    expect(useConversationRuntime.getState().listByProject[P]?.map((c) => c.id)).toEqual([
+      'c-1',
+      'c-2',
+    ]);
   });
 });
 
