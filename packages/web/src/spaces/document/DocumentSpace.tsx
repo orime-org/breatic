@@ -94,7 +94,6 @@ export function DocumentSpace({
   );
   const { intercepted, publishedAt } = useDocumentSchemaIntercept({
     metaDoc,
-    bodyDoc: doc,
   });
 
   const handle = useDocumentEditor({

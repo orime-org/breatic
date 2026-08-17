@@ -4,14 +4,10 @@
 import * as React from 'react';
 import type * as Y from 'yjs';
 import {
-  DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
   DOCUMENT_SCHEMA_VERSION,
-  documentBodyFragment,
   documentSchemaDiffers,
 } from '@breatic/shared';
-
-import { findUnknownContent } from '@web/spaces/document/document-schema-guard';
 
 /** What the caller needs to decide whether to build an editor at all. */
 export interface DocumentSchemaInterceptState {
@@ -24,8 +20,6 @@ export interface DocumentSchemaInterceptState {
 interface UseDocumentSchemaInterceptInput {
   /** The project's meta document, where the server publishes its vocabulary. */
   metaDoc: Y.Doc;
-  /** This Space's content document. */
-  bodyDoc: Y.Doc;
 }
 
 /**
@@ -42,76 +36,64 @@ function readPublished(metaDoc: Y.Doc): Record<string, unknown> | undefined {
  * Whether this build should refuse to open a document Space, and why the user
  * is being told about it now.
  *
- * Two conditions, either one is enough:
+ * One condition: what the server publishes is not what this build holds. The
+ * version is a digest of the vocabulary lists, so it also catches the classes
+ * that leave no trace in the content — an attribute added to a node both
+ * sides already know is dropped silently by ProseMirror, and nothing but the
+ * version can catch it.
  *
- *   1. What the server publishes is not what this build holds. Catches the
- *      classes that leave no trace in the content — an attribute added to a
- *      node both sides already know is dropped silently by ProseMirror, so
- *      nothing about the document itself gives it away.
- *   2. This document holds something this build cannot resolve. Catches the
- *      deployment window where the browser bundle went out before collab
- *      restarted, so meta still says everything is fine while the content
- *      already disagrees.
+ * Content this build cannot resolve is deliberately NOT a condition (ruled
+ * 2026-08-17, structure decision record §7). A vocabulary entry the server
+ * retired lives on in every document seeded before the change, and a
+ * content-based intercept would lock a fully up-to-date client out of those
+ * documents forever. Unresolvable content renders through the Unsupported
+ * fallbacks instead, whose round trip preserves it byte for byte — so meeting
+ * it is not a reason to stop editing.
  *
  * ## Derived, not stored across mounts
  *
- * Both conditions are read straight off the two Yjs documents once on mount and
- * again whenever either document changes. The answer is held in component state
- * so renders in between reuse it, but nothing outlives the mount: switching
- * Space tabs unmounts this, and mounting it again derives the same answer from
- * the same two documents. A flag kept anywhere more durable would have to be
- * held in step with them, and being out of step is the only way it could be
- * wrong.
+ * The verdict is read straight off the meta document once on mount and again
+ * whenever it changes. The answer is held in component state so renders in
+ * between reuse it, but nothing outlives the mount: switching Space tabs
+ * unmounts this, and mounting it again derives the same answer from the same
+ * document. A flag kept anywhere more durable would have to be held in step
+ * with it, and being out of step is the only way it could be wrong.
  *
  * Missing or malformed published data reads as "no mismatch" (see
  * `documentSchemaDiffers`): not knowing what the server publishes is not the
  * same as knowing it differs.
- * @param root0 - The two documents to derive from.
+ * @param root0 - The document to derive from.
  * @param root0.metaDoc - The project's meta document.
- * @param root0.bodyDoc - This Space's content document.
  * @returns Whether to intercept, and the server's publish time.
  */
 export function useDocumentSchemaIntercept({
   metaDoc,
-  bodyDoc,
 }: UseDocumentSchemaInterceptInput): DocumentSchemaInterceptState {
   const derive = React.useCallback((): DocumentSchemaInterceptState => {
     const published = readPublished(metaDoc);
     const mismatch = documentSchemaDiffers(DOCUMENT_SCHEMA_VERSION, published);
-    // Through `documentBodyFragment`, never a literal key. The key itself is
-    // deliberately not exported from `@breatic/shared` so that only one place
-    // names it; a second name here would be free to drift from it, and drifting
-    // means reading an empty fragment — condition two would answer "nothing
-    // unresolvable here" for every document, forever, without erroring once.
-    const unknown = findUnknownContent(
-      documentBodyFragment(bodyDoc),
-      DOCUMENT_SCHEMA,
-    );
-    // The publish time goes through whichever condition fired. It is the server
-    // vocabulary's own release date, written by hand on `DOCUMENT_SCHEMA` and
-    // republished unchanged, so it says the same true thing either way: this is
-    // when what the server runs went out. Gating it on condition one would give
-    // the panel two different sets of words depending on which check tripped,
-    // and the panel has one form.
+    // The publish time is the server vocabulary's own release date, written
+    // by hand on `DOCUMENT_SCHEMA` and republished unchanged — when the
+    // versions disagree it is what the panel shows.
     const at = published?.publishedAt;
     return {
-      intercepted: mismatch || unknown.length > 0,
+      intercepted: mismatch,
       publishedAt: typeof at === 'string' ? at : null,
     };
-  }, [metaDoc, bodyDoc]);
+  }, [metaDoc]);
 
   const [state, setState] = React.useState<DocumentSchemaInterceptState>(derive);
 
   React.useEffect(() => {
     /**
-     * Recompute from both documents, and keep the previous object when the
+     * Recompute from the meta document, and keep the previous object when the
      * answer has not moved.
      *
-     * Yjs fires `update` on every keystroke, local and remote alike, and both
-     * documents are subscribed. Handing back a fresh object literal each time
-     * would fail `Object.is` on every one of them and re-render the subtree for
-     * an answer that changed on almost none — twice over, since the tab-scoped
-     * guard runs this hook as well.
+     * Yjs fires `update` on every change, local and remote alike. Handing
+     * back a fresh object literal each time would fail `Object.is` on every
+     * one of them and re-render the subtree for an answer that changed on
+     * almost none — twice over, since the tab-scoped guard runs this hook as
+     * well.
      * @returns Nothing.
      */
     const update = (): void =>
@@ -123,18 +105,15 @@ export function useDocumentSchemaIntercept({
           : next;
       });
 
-    // Both documents can change after mount and either changes the answer: the
-    // published vocabulary arrives on reconnect, and unresolvable content can
-    // arrive at any moment from a peer running a newer build.
+    // The published vocabulary can arrive after mount — on reconnect, or when
+    // the server restarts onto a new release.
     metaDoc.on('update', update);
-    bodyDoc.on('update', update);
     update();
 
     return () => {
       metaDoc.off('update', update);
-      bodyDoc.off('update', update);
     };
-  }, [metaDoc, bodyDoc, derive]);
+  }, [metaDoc, derive]);
 
   return state;
 }

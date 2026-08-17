@@ -7,8 +7,9 @@
  * 权威定稿 inner engineering/decisions/2026-08-17-document-structure-dd.md §7
  * （user 2026-08-17 拍定，#117 就此解决）。
  *
- * TDD 红灯批次一：现实现是 `mismatch || unknown.length > 0` 两条件，
- * 「陌生内容不拦截」那条在旧世界必须红；「版本不一致仍拦截」钉住保留的一半。
+ * 结构上判定已经读不到正文（钩子只收 metaDoc）——本文件把这个契约钉住：
+ * 正文里真的躺着陌生内容时，判定照样只看版本。TDD 红灯阶段在旧实现
+ * （mismatch || unknown.length > 0）上确认过第一条失败。
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -61,17 +62,17 @@ describe('D1 只读拦截只认版本比对', () => {
     seedUnknownBlock(bodyDoc);
 
     const { result } = renderHook(() =>
-      useDocumentSchemaIntercept({ metaDoc, bodyDoc }),
+      useDocumentSchemaIntercept({ metaDoc }),
     );
     expect(result.current.intercepted).toBe(false);
   });
 
   it('版本不一致：仍然拦截（保留的那一半判据）', () => {
-    const { metaDoc, bodyDoc } = pair();
+    const { metaDoc } = pair();
     publish(metaDoc, '9999.0.0');
 
     const { result } = renderHook(() =>
-      useDocumentSchemaIntercept({ metaDoc, bodyDoc }),
+      useDocumentSchemaIntercept({ metaDoc }),
     );
     expect(result.current.intercepted).toBe(true);
   });
