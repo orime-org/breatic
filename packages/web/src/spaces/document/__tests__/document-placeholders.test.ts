@@ -2,21 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The two placeholders, and why they are drawn here rather than by the
+ * The document's one placeholder, and why it is drawn here rather than by the
  * placeholder extension every other editor uses.
  *
- * That extension decorates textblocks that EXIST in the document, and by
- * default only the one holding the caret. Neither fits this document. A body
- * with no blocks has nothing to decorate, so the body's placeholder could
- * never be drawn at all; and a fresh document wants both placeholders visible
- * at once, which one decoration cannot do. Verified in the installed source:
- * `@tiptap/extensions` skips anything that is not a textblock, and its
- * defaults are `showOnlyCurrent: true` / `includeChildren: false`.
+ * That extension decorates textblocks that EXIST in the document, and a
+ * document with no blocks has nothing to decorate — so its placeholder could
+ * never be drawn at all. Verified in the installed source:
+ * `@tiptap/extensions` skips anything that is not a textblock.
  *
- * So the document marks its own state and the stylesheet draws the text. What
- * is asserted here is the marking — the class and the string that goes with
- * it. Whether the text is actually painted is a CSS question and is checked in
- * the browser.
+ * So the document marks its own empty state and the stylesheet draws the
+ * text. What is asserted here is the marking — the class and the string that
+ * goes with it. Whether the text is actually painted is a CSS question and is
+ * checked in the browser.
  *
  * The generate prompt still uses the extension, and the stylesheet rule it
  * relies on keys off what the extension marks (`p.is-editor-empty`). The last
@@ -28,13 +25,10 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
 import * as Y from 'yjs';
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent, t } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import {
-  DOCUMENT_BODY_EMPTY_CLASS,
-  DOCUMENT_TITLE_EMPTY_CLASS,
-} from '@web/spaces/document/document-placeholders';
+import { DOCUMENT_BODY_EMPTY_CLASS } from '@web/spaces/document/document-placeholders';
 
 const editors: Editor[] = [];
 
@@ -46,110 +40,59 @@ afterEach(() => {
 
 /**
  * A seeded document with a live editor over it.
- * @param title - The title's text; empty for a document nobody has named.
- * @param bodyHtml - HTML for the blocks after the title, if any.
+ * @param bodyHtml - HTML for the document's blocks, if any.
  * @returns The editor bound to it.
  */
-function open(title: string, bodyHtml = ''): Editor {
+function open(bodyHtml = ''): Editor {
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document', title));
+  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const editor = new Editor({
     extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
   });
   editors.push(editor);
   if (bodyHtml) {
-    editor.commands.setContent(
-      `<h1 class="doc-title">${title}</h1>${bodyHtml}`,
-    );
+    editor.commands.setContent(bodyHtml);
   }
   return editor;
 }
 
 /**
- * The rendered title element.
+ * What the editor element currently carries for the empty state.
  * @param editor - The editor to read.
- * @returns The element the title renders as.
+ * @returns The class flag and the string alongside it.
  */
-function titleEl(editor: Editor): Element {
-  const el = editor.view.dom.firstElementChild;
-  if (!el) throw new Error('the document rendered without a title');
-  return el;
+function marking(editor: Editor): { marked: boolean; text: string | null } {
+  const dom = editor.view.dom;
+  return {
+    marked: dom.classList.contains(DOCUMENT_BODY_EMPTY_CLASS),
+    text: dom.getAttribute('data-body-placeholder'),
+  };
 }
 
-describe('the title placeholder', () => {
-  it('is marked when the title has no text', () => {
-    const editor = open('');
-    expect(titleEl(editor).classList.contains(DOCUMENT_TITLE_EMPTY_CLASS)).toBe(true);
-    expect(titleEl(editor).getAttribute('data-placeholder')).toBeTruthy();
+describe('the empty-document placeholder', () => {
+  it('is marked, with the localised string, while the document has no blocks', () => {
+    const editor = open();
+    expect(editor.state.doc.childCount).toBe(0);
+    const { marked, text } = marking(editor);
+    expect(marked).toBe(true);
+    expect(text).toBe(t('spaces.document.placeholder'));
   });
 
-  it('is not marked once the title says something', () => {
-    const editor = open('Storyboard v3');
-    expect(titleEl(editor).classList.contains(DOCUMENT_TITLE_EMPTY_CLASS)).toBe(false);
+  it('is not marked once the document holds a block', () => {
+    const editor = open('<p>written</p>');
+    expect(marking(editor).marked).toBe(false);
   });
 
-  it('comes back the moment the title is cleared again', () => {
-    const editor = open('Storyboard v3');
-    editor.commands.setTextSelection({ from: 1, to: 1 + 13 });
-    editor.commands.deleteSelection();
-    expect(titleEl(editor).classList.contains(DOCUMENT_TITLE_EMPTY_CLASS)).toBe(true);
-  });
-});
-
-describe('the body placeholder', () => {
-  it('is marked when the body holds no blocks', () => {
-    const editor = open('Storyboard v3');
-    expect(editor.view.dom.classList.contains(DOCUMENT_BODY_EMPTY_CLASS)).toBe(true);
-    expect(editor.view.dom.getAttribute('data-body-placeholder')).toBeTruthy();
+  it('comes back when the last block is removed', () => {
+    const editor = open('<p>written</p>');
+    editor.commands.clearDocument();
+    expect(editor.state.doc.childCount).toBe(0);
+    expect(marking(editor).marked).toBe(true);
   });
 
-  it('goes away as soon as the body holds one', () => {
-    const editor = open('Storyboard v3', '<p>written</p>');
-    expect(editor.view.dom.classList.contains(DOCUMENT_BODY_EMPTY_CLASS)).toBe(false);
-  });
-
-  it('comes back when the last body block is removed', () => {
-    const editor = open('Storyboard v3', '<p>written</p>');
-    const titleSize = editor.state.doc.child(0).nodeSize;
-    editor.commands.deleteRange({ from: titleSize, to: editor.state.doc.content.size });
-    expect(editor.view.dom.classList.contains(DOCUMENT_BODY_EMPTY_CLASS)).toBe(true);
-  });
-});
-
-describe('both at once', () => {
-  it('a document nobody has named or written in shows both', () => {
-    const editor = open('');
-    expect(titleEl(editor).classList.contains(DOCUMENT_TITLE_EMPTY_CLASS)).toBe(true);
-    expect(editor.view.dom.classList.contains(DOCUMENT_BODY_EMPTY_CLASS)).toBe(true);
-  });
-
-  it('and they carry different text', () => {
-    const editor = open('');
-    expect(titleEl(editor).getAttribute('data-placeholder')).not.toBe(
-      editor.view.dom.getAttribute('data-body-placeholder'),
-    );
-  });
-});
-
-describe('the generate prompt is left alone', () => {
-  it('this document installs no placeholder extension of its own', () => {
-    // The prompt's placeholder is drawn by a stylesheet rule keyed on what the
-    // extension marks — `p.is-editor-empty` with a `data-placeholder`. Install
-    // that extension here too and this document starts marking paragraphs the
-    // same way, which is how one editor's placeholder ends up painted in
-    // another. Nothing of this document reaches the prompt as long as this
-    // holds.
-    const doc = new Y.Doc();
-    Y.applyUpdate(doc, encodeInitialSpaceContent('document', ''));
-    const names = buildDocumentExtensions({
-      fragment: documentBodyFragment(doc),
-    }).map((extension) => extension.name);
-
+  it('does not install the extension the generate prompt relies on', () => {
+    const editor = open();
+    const names = editor.extensionManager.extensions.map((e) => e.name);
     expect(names).not.toContain('placeholder');
-  });
-
-  it('and marks no paragraph as the empty one', () => {
-    const editor = open('');
-    expect(editor.view.dom.querySelector('.is-editor-empty')).toBeNull();
   });
 });

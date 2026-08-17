@@ -56,8 +56,8 @@ describe('兜底块 unsupportedBlock', () => {
   it('能待在正文里放块的位置', () => {
     const schema = realSchema();
     const node = schema.nodes.unsupportedBlock.create({ originalName: 'x' });
-    // doc 的 content 是 `title block*`，所以正文块位置收得下它。
-    expect(schema.nodes.doc.contentMatch.matchType(schema.nodes.title)).not.toBeNull();
+    // doc 的 content 是 `block*`，块位置收得下它。
+    expect(schema.nodes.doc.contentMatch.matchType(node.type)).not.toBeNull();
     expect(
       schema.nodes.blockquote.contentMatch.matchType(node.type),
     ).not.toBeNull();
