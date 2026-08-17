@@ -292,8 +292,10 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
   // prompt material and outside the rule.
   //
   // The rule's subject is the REFERENCE MATERIAL: a text row substitutes into
-  // the prompt STRING, which every mode sends, so it is outside the rule
-  // entirely — lit, insertable and removable in every mode. The full
+  // the prompt STRING, so it is outside this rule entirely — lit, insertable
+  // and removable whatever the mode does with references. (Whether the active
+  // model takes a prompt at all is a different question, asked by the
+  // container since #1950.) The full
   // 24-combination matrix and the refusal messages live in
   // `ReferenceRail-states.test.tsx`; this one keeps the t2i case anchored
   // where the rest of the rail's rendering is pinned.
@@ -336,7 +338,7 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
       'aria-disabled',
       'true',
     );
-    // Text row still inserts — its chip feeds the prompt in every mode.
+    // Text row still inserts — the dim rule is about reference material.
     expect(screen.getByTestId('generate-ref-insert-b->me')).not.toHaveAttribute(
       'aria-disabled',
       'true',

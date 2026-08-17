@@ -10,12 +10,12 @@
  *
  * The third way -- the user closing the page -- also skips everything after
  * the loop, because an async generator stops where the consumer stopped it.
- * That one is written for but not yet reachable: measured on this stack, the
- * SSE route never notices the reader is gone (hono's `StreamingApi.write`
- * swallows the write error, so the route's loop never breaks and never calls
- * `.return()`). Making disconnects arrive at all belongs to the PR that owns
- * cancellation. The point of putting cleanup here rather than after the loop
- * is that it is already correct for when they do.
+ * That one is reachable now. It could not be found by watching writes fail:
+ * hono's `StreamingApi.write` swallows the error, so a loop that only checks
+ * whether its own writes landed runs on with nobody listening. PR-3 batch 3
+ * (breatic #425) made the route subscribe to the departure itself -- the chat
+ * entries call `s.onAbort` and pass that signal down to the loop -- so the
+ * turn now learns about it and arrives here.
  *
  * What belongs here is what the turn's ending waits on. Work the user is not
  * waiting for -- memory consolidation, an LLM call of its own -- does not:

@@ -19,17 +19,25 @@
  *   score  = epoch ms of the member's last heartbeat
  *
  * Lifecycle: `register` on connect (ZADD), `unregister` on clean disconnect
- * (ZREM), a per-instance `heartbeat` timer refreshes every live member's
- * score. `count` prunes members whose score is older than the TTL, then
- * returns the survivors. A crashed instance stops heartbeating, so its
- * members fall out of the TTL window and are pruned automatically — no
- * cleanup job, no zombie count (the industrial TTL-heartbeat pattern).
+ * (ZREM), a per-instance `heartbeat` timer refreshes the score of every
+ * member THIS INSTANCE HAS REGISTERED. `count` prunes members whose score is
+ * older than the TTL, then returns the survivors. A crashed instance stops
+ * heartbeating, so its members fall out of the TTL window and are pruned
+ * automatically — no cleanup job needed for that case.
  *
- * PRECISION vs the physical floor: clean connect / disconnect are reflected
- * immediately (ZADD / ZREM). Only a CRASH lags — a crashed connection
- * lingers up to one TTL window, because no distributed system can know a
- * connection died without a timeout. This is the most-precise-achievable
- * cross-instance count.
+ * WHAT THE HEARTBEAT PROVES, AND WHY THAT IS NOT ENOUGH (#97): it proves this
+ * PROCESS is alive, and it refreshes every registered member on that basis.
+ * But a member leaves `local` only through `unregister`, which only
+ * `onDisconnect` calls, which the framework only reaches after its own 60 s
+ * timeout. So a connection that dies WITHOUT a close frame — a dropped
+ * network, a closed laptop — goes on being refreshed until the framework
+ * notices, and the TTL never gets to prune it. Measured 2026-08-14 against a
+ * real browser: the seat was still being refreshed 70 s after the network was
+ * cut, while the client had given up and reconnected at 37 s — so the
+ * reconnect ran into the reconnecting user's own stale seat. The refresh has
+ * to be driven by the client's own heartbeat rather than by a timer; that is
+ * #97, deliberately kept out of the change that made this ceiling
+ * tier-derived.
  *
  * FAIL-OPEN: every Redis call is best-effort. The cap is a soft protection
  * (over-cap connections degrade to read-only, they are not rejected), so a
@@ -89,7 +97,8 @@ export interface ConnectionRegistry {
    */
   count(documentName: string): Promise<number>;
   /**
-   * Refresh the score of every live member owned by this instance.
+   * Refresh the score of every member this instance has registered — whether
+   * or not that connection is still there. See the module doc (#97).
    * @returns once every refresh has been attempted (best-effort / fail-open).
    */
   heartbeat(): Promise<void>;
@@ -210,8 +219,12 @@ export function createConnectionRegistry(
   }
 
   /**
-   * Refresh every live member owned by this instance to `now`, so they
-   * survive pruning while the connection is alive.
+   * Move every member registered by this instance forward to `now`.
+   *
+   * "Registered by this instance" is not the same as "still connected": a
+   * member stays in `local` until `unregister`, so this refreshes seats whose
+   * socket is already gone. That is the gap #97 closes by driving the refresh
+   * from the client's heartbeat instead.
    * @returns once all refreshes have been attempted (fail-open per doc).
    */
   async function heartbeat(): Promise<void> {

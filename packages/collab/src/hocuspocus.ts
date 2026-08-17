@@ -24,6 +24,7 @@ import {
   createRedisClient,
   getRedis,
   getCollabRedis,
+  getProjectConcurrentEditorLimit,
   sendMail,
   MONOREPO_ROOT,
 } from "@breatic/core";
@@ -33,7 +34,10 @@ import {
   createConnectionRegistry,
   type ConnectionRegistry,
 } from "@collab/services/connection-registry.js";
-import { shouldTrackConnection } from "@collab/services/connection-tracking.js";
+import {
+  shouldRegisterConnection,
+  shouldTrackConnection,
+} from "@collab/services/connection-tracking.js";
 import {
   createHandlingSweeper,
   scheduleLoadSweep,
@@ -215,7 +219,17 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // ownership. See packages/collab/src/auth.ts.
     onAuthenticate: createAuthHook({
       redis: authRedis,
-      maxConnectionsPerDoc: cfg.max_connections_per_document,
+      // The ceiling belongs to the studio that owns this project, read from
+      // its current admin's membership tier (#88). It is looked up per
+      // handshake and deliberately not cached: a stale ceiling would outlive
+      // a tier change or a studio transfer with nothing to invalidate it.
+      //
+      // A handshake is per DOCUMENT, not per socket — one socket carries the
+      // meta doc plus every open Space, and `onAuthenticate` fires for each
+      // (@hocuspocus/server 4.6.0 keys its hook payloads by document). Meta
+      // and viewers skip the ceiling entirely (`auth.ts`), so the real cost
+      // is one lookup per Space document opened.
+      resolveConnectionLimit: getProjectConcurrentEditorLimit,
       // Cluster-wide count via the cross-instance registry (#1421), NOT
       // the local `getConnectionsCount()` (which only sees this process).
       // The count excludes this connection: registration happens later, in
@@ -323,8 +337,21 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // phantom member (registering in onAuthenticate instead would, because
     // onDisconnect never fires for a connection whose load failed). Meta
     // docs are exempt from the cap → not tracked.
-    connected: async ({ documentName, socketId, context, instance }) => {
-      if (shouldTrackConnection(documentName)) {
+    //
+    // ONLY WRITABLE CONNECTIONS TAKE A SEAT (#88). `connectionConfig` here
+    // is the very object the auth hook mutated: the framework builds one per
+    // document per connection (ClientConnection.ts:620), spreads that same
+    // `hookPayload` into the onAuthenticate call (:518) and into this
+    // `connected` one (:433). So `readOnly` has already settled by the time
+    // this runs, and reading it needs no second channel through `context`.
+    connected: async ({
+      documentName,
+      socketId,
+      context,
+      instance,
+      connectionConfig,
+    }) => {
+      if (shouldRegisterConnection(documentName, connectionConfig.readOnly)) {
         await connectionRegistry.register(documentName, socketId);
       }
       // The id comes from what onAuthenticate resolved out of the credential,
@@ -359,12 +386,19 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     onDisconnect: async ({ documentName, context, socketId }) => {
       const ctx = context as { user?: { id: string } };
       const userId = ctx.user?.id;
-      // Symmetric to the `connected` registration (#1421): remove this
-      // connection from the cross-instance registry on clean disconnect,
-      // so the count drops immediately (a crash instead lets it expire via
-      // the registry TTL). onDisconnect fires for exactly the connections
-      // the `connected` hook registered (both bound to the Connection
-      // object's lifecycle). Meta / non-project docs were never tracked.
+      // Remove this connection from the cross-instance registry on clean
+      // disconnect, so the count drops immediately (a crash instead lets it
+      // expire via the registry TTL). onDisconnect fires for every connection
+      // the `connected` hook saw, both being bound to the Connection object's
+      // lifecycle. Meta / non-project docs were never tracked.
+      //
+      // THIS IS DELIBERATELY WIDER THAN THE REGISTER SIDE (#88). Registration
+      // also asks whether the connection was writable; this one cannot —
+      // `onDisconnectPayload` carries no `connectionConfig` at all. It does
+      // not need to: removing a member that was never added is a no-op, so
+      // unregistering every tracked document is correct and idempotent. The
+      // asymmetry is safe in this direction only, and a test in
+      // `connection-tracking.test.ts` pins that registration stays a subset.
       if (shouldTrackConnection(documentName)) {
         await connectionRegistry.unregister(documentName, socketId);
       }
@@ -485,11 +519,15 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     unloadImmediately: cfg.unload_immediately,
     debounce: cfg.debounce,
     throttle: cfg.throttle_enabled,
-    maxConnectionsPerDoc: cfg.max_connections_per_document,
-    // Belongs in the banner for the same reason the line above does: it is a
-    // ceiling whose only symptom, once crossed, is connections dropping. An
-    // operator has to be able to read what this process is enforcing without
-    // guessing which copy of the config it loaded.
+    // The writable-connection ceiling is per-project now (#88), so there is
+    // no one number to print. Name its SOURCE instead: an operator reading
+    // this banner needs to know where to look, and a stale key name would
+    // send them to a file that no longer has it.
+    concurrentEditorsFrom: "config/membership.yaml: tiers.*.concurrent_editors",
+    // Belongs in the banner for the same reason: it is a ceiling whose only
+    // symptom, once crossed, is connections dropping. An operator has to be
+    // able to read what this process is enforcing without guessing which copy
+    // of the config it loaded.
     maxDocumentsPerSocket: cfg.max_documents_per_socket,
   }, "Hocuspocus server configured");
 

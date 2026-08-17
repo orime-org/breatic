@@ -36,8 +36,13 @@ const collabConfigSchema = z.object({
   // Document size limit
   max_document_bytes: z.number().int().min(0).default(10_485_760), // 10 MB
 
-  // Connection limits
-  max_connections_per_document: z.number().int().min(0).default(100),
+  // Connection limits.
+  //
+  // The per-document ceiling on WRITABLE connections is not here: it comes
+  // from the membership tier of the studio that owns the project
+  // (`concurrent_editors` in config/membership.yaml), so it differs per
+  // project and cannot be a process-wide constant (#88).
+  //
   // Documents one socket must carry, which several library ceilings are
   // derived from — see infra/socket-ceilings.ts and collab.yaml. Not
   // `min(0)`: the library compares the pending count with `>=`, so zero would

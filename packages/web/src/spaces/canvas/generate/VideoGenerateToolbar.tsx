@@ -25,9 +25,10 @@ interface VideoGenerateToolbarProps {
   /** What is picked, by slot; a slot missing from here renders empty. */
   slotUrls: VideoSlotUrls;
   /**
-   * What to SHOW for each pick — the picked image itself for an image slot,
+   * What to PAINT for each pick — the picked image itself for an image slot,
    * the copied poster for a slot holding something an `<img>` cannot paint.
-   * A slot missing from here keeps its icon and label.
+   * A slot missing from here is not empty: it covers itself with the asset
+   * node's icon instead (#1946). Fullness is `slotUrls`, never this.
    */
   slotThumbnails: VideoSlotUrls;
   /** The slot whose pick is running, if any — highlights that one control. */
@@ -86,6 +87,7 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
       />
       {slots.map((slot) => {
         const spec = VIDEO_SLOTS[slot];
+        const url = slotUrls[slot];
         return (
           <SlotTool
             key={slot}
@@ -95,8 +97,17 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
             Icon={spec.Icon}
             onPick={() => onPickSlot(slot)}
             active={activeSlot === slot}
-            filled={slotUrls[slot] !== undefined}
-            thumbnail={slotThumbnails[slot]}
+            // The asset URL is what makes a slot full — a thumbnail is only
+            // what it can PAINT, and audio never has one (#1946).
+            pick={
+              url === undefined
+                ? undefined
+                : {
+                  kind: spec.accepts,
+                  url,
+                  thumbnail: slotThumbnails[slot],
+                }
+            }
             onClear={() => onClearSlot(slot)}
             // Never gated once shown: a slot only renders for the modes that
             // collect it, so there is no state where it is visible but

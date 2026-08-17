@@ -38,7 +38,12 @@ import {
 } from '@web/spaces/canvas/generate/derive-references';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { filterModelsByMode } from '@web/spaces/canvas/generate/mode-selection';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import {
+  resolveModelSwitch,
+  resolveParamsEdit,
+} from '@web/spaces/canvas/generate/model-params';
+import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
+import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -59,7 +64,6 @@ import { buildVideoTaskPayload } from '@web/spaces/canvas/generate/video-task-pa
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
-  resolveVideoModeSwitch,
   selectVideoModeModels,
   type VideoGenMode,
 } from '@web/spaces/canvas/generate/video-panel-view-model';
@@ -158,12 +162,10 @@ function VideoGeneratePanelBody({
   const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
     atMentionedRef.current = sourceIds;
   }, []);
-  // Click a reference-rail chip → insert its `@` mention at the prompt cursor
-  // (user 2026-07-10 item 8); the editor places it at the caret or the end.
+  // Holds the prompt editor when one is mounted. Inserting a reference-rail
+  // chip goes through `handleInsertReference` below, which refuses first when
+  // this model takes no prompt.
   const promptEditorRef = React.useRef<PromptEditorHandle>(null);
-  const handleInsertReference = React.useCallback((item: ReferenceRailItem) => {
-    promptEditorRef.current?.insertReference(item);
-  }, []);
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
@@ -224,6 +226,43 @@ function VideoGeneratePanelBody({
       buildVideoPanelViewModel({ nodeId, nodes, edges, models, mode, textById }),
     [nodeId, nodes, edges, models, mode, textById],
   );
+
+  // Refuses out loud when this model takes no prompt (#1950). The rail lets a
+  // TEXT row through unconditionally — `reference-usability.ts` refuses on
+  // REFERENCE MATERIAL only, and text sits outside that because its chip
+  // substitutes into the prompt string. This mode no longer sends one, and the
+  // rail cannot learn that without reading the model catalog, the one thing
+  // that module deliberately keeps out of its two questions (its docstring
+  // records what happened the last time an answer there depended on the
+  // catalog having loaded). So the refusal belongs here.
+  //
+  // The question asked is `promptRequired` — the same value the editor mounts
+  // on — not whether the ref happens to hold one right now. The message says
+  // something about the MODE ("this mode has no prompt to insert into"), and
+  // `promptRequired` is what answers that; the ref is a rendering state that
+  // merely tends to agree with it. Same reasoning as the criterion this slice
+  // is built on: ask the model, not something downstream of it.
+  //
+  // The two part company in exactly one case — the model takes a prompt but
+  // the node has no fragment to edit, so no editor mounts. There the ref would
+  // refuse and this does not, leaving the `?.` below to swallow the click.
+  // Such a node predates video generation and we ship no compatibility for
+  // pre-launch data (#1950); filed as #1962, next to the rail's own open
+  // question about such modes (#1965).
+  // No test pins this swap, for that same reason: every state a user can
+  // reach today gets the same answer from either criterion, so an assertion
+  // about the difference would be asserting nothing (measured — swapping it
+  // back leaves all 58 container tests green).
+  const handleInsertReference = React.useCallback(
+    (item: ReferenceRailItem) => {
+      if (!vm.promptRequired) {
+        toast.warning(t('canvas.generatePanel.refuseInsertNoPrompt'));
+        return;
+      }
+      promptEditorRef.current?.insertReference(item);
+    },
+    [t, vm.promptRequired],
+  );
   const references = vm.references;
 
   // Every write-callback re-derives from live Yjs at click time instead of
@@ -254,6 +293,19 @@ function VideoGeneratePanelBody({
     },
     [projectId, spaceId, nodeId, models],
   );
+
+  /**
+   * The node's live content view, or undefined when the node is gone or is not
+   * a content node. Read fresh at click time for the same reason freshVm is: a
+   * collaborator may have changed the model or the per-model records since
+   * this render.
+   * @returns The node's content view, or undefined.
+   */
+  const freshContent = React.useCallback((): ContentNodeView | undefined => {
+    const graph = readCanvasGraph(projectId, spaceId);
+    const data = graph.nodes.find((n) => n.id === nodeId)?.data;
+    return data && 'status' in data ? data : undefined;
+  }, [projectId, spaceId, nodeId]);
 
   // Stable identities for the memoized children: the view model rebuilds on
   // every canvas mutation, so a freshly-filtered array or a rebuilt params
@@ -326,17 +378,20 @@ function VideoGeneratePanelBody({
       }
       const graph = readCanvasGraph(projectId, spaceId);
       // Record the pick under the mode that is ACTIVE right now, so a later
-      // switch back to it restores this model rather than the default.
+      // switch back to it restores this model rather than the default, and
+      // give the picked model its OWN params rather than the outgoing
+      // model's (#1948).
+      const { paramsByModel } = resolveModelSwitch(freshContent(), picked);
       setNodeModel(
         projectId,
         spaceId,
         nodeId,
         nodeVideoMode(graph.nodes, nodeId),
         modelId,
-        resolveParamsForModel(picked, freshVm().params),
+        paramsByModel,
       );
     },
-    [models, projectId, spaceId, nodeId, freshVm, t],
+    [models, projectId, spaceId, nodeId, freshContent, t],
   );
 
   const onToggleMode = React.useCallback(
@@ -348,29 +403,39 @@ function VideoGeneratePanelBody({
       // Read the node fresh — a collaborator may have changed its per-mode
       // model memory or its params since this render — and write the switch in
       // one transaction.
-      const graph = readCanvasGraph(projectId, spaceId);
-      const data = graph.nodes.find((n) => n.id === nodeId)?.data;
-      const content = data && 'status' in data ? data : undefined;
-      const { model, params } = resolveVideoModeSwitch(content, target, models);
+      const { model, paramsByModel } = resolveModeSwitch(
+        freshContent(),
+        target,
+        models,
+      );
       // Never persist an empty model: the catalog may still be loading / have
-      // failed, or the target mode may offer nothing. Writing model='' plus
-      // params={} would clobber the node's stored model AND params, and params
-      // do not self-heal. (The toggle is also disabled while no offered mode
-      // has a model; this backstops the target-mode-empty case.)
+      // failed, or the target mode may offer nothing. The resolver pairs an
+      // empty model with an empty record set, and writing that clobbers the
+      // node's stored model AND every model's records — not just the incoming
+      // one's. (The toggle is also disabled while no offered mode has a model;
+      // this backstops the target-mode-empty case.)
       if (!model) return;
-      setNodeMode(projectId, spaceId, nodeId, target, model, params);
+      setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
     },
-    [models, projectId, spaceId, nodeId],
+    [models, projectId, spaceId, nodeId, freshContent],
   );
 
   const onChangeParams = React.useCallback(
     (partial: VideoParamsValue) => {
-      setNodeParams(projectId, spaceId, nodeId, {
-        ...freshVm().params,
-        ...partial,
-      });
+      // The edit lands on the record of the model it was made on, so coming
+      // back to that model finds it (#1948).
+      // freshVm().model is the RESOLVED model — the one whose controls the
+      // user just used. The node's stored model can be absent (a node created
+      // moments ago) or no longer offered under this mode, and keying the
+      // record on that would write the edit where the panel never reads it.
+      const paramsByModel = resolveParamsEdit(
+        freshContent(),
+        partial,
+        freshVm().model,
+      );
+      setNodeParams(projectId, spaceId, nodeId, paramsByModel);
     },
-    [projectId, spaceId, nodeId, freshVm],
+    [projectId, spaceId, nodeId, freshVm, freshContent],
   );
 
   // Reference and first frame are TOGGLES: start the pick when this node is not
@@ -500,13 +565,21 @@ function VideoGeneratePanelBody({
       warnNodeGate(t(gateBlock.toastKey));
       return;
     }
+    const fresh = freshVm(new Set(atMentionedRef.current));
     // Serialize the backend prompt AT CLICK TIME: a text chip substitutes its
     // source node's CURRENT words, and that node may have been edited since
     // the last prompt keystroke — the ref would carry the stale substitution.
     // Falls back to the ref when the editor is gone (unmounting).
-    const freshPrompt =
-      promptEditorRef.current?.serializePrompt() ?? promptTextRef.current;
-    const fresh = freshVm(new Set(atMentionedRef.current));
+    //
+    // A model that declares no `prompt` sends none, and that takes this
+    // explicit branch (#1950): not mounting the editor only stops someone
+    // typing HERE. The mirror still holds whatever was typed under the
+    // previous mode — `handlePromptChange` is the only writer and nothing
+    // clears it, and the editor does not call back on unmount — so without
+    // this line a talking-head task would carry the last mode's words.
+    const freshPrompt = fresh.promptRequired
+      ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
+      : '';
     if (
       !canExecuteGenerate({
         promptText: freshPrompt,
@@ -625,13 +698,28 @@ function VideoGeneratePanelBody({
   // and #1880 ratified that those are NOT repaired — creating one when the
   // panel opens is the exact race that decision removed (two people opening
   // at once each mint one under the same key, and last-write-wins drops a
-  // container with everything typed into it). So the panel opens without an
-  // editor and its arrow can never light; saying why is what keeps that from
-  // reading as the feature being broken.
-  const noPromptNotice = t('canvas.generatePanel.videoNoPrompt');
+  // container with everything typed into it). Whenever the model takes a
+  // prompt, such a node renders nothing here — the no-prompt branch below is
+  // checked first — the same as the image panel (`GeneratePanelContainer.tsx:705`):
+  // pre-launch we ship no compatibility branch for old data (#1950).
+  //
+  // The model decides, not the mode (#1935, #1950): a model that declares no
+  // `prompt` has nothing to do with one, so the editor does not mount and a
+  // line says what this mode runs on instead. Unmounting rather than hiding —
+  // there is nothing to type into it here, and a mounted collaborative editor
+  // costs a TipTap instance plus its bindings. The cost is the prompt's undo
+  // history, which lives on the editor instance and dies with it (#1961).
+  const promptNotUsedNotice = t('canvas.generatePanel.videoPromptNotUsed');
   const promptSlot = React.useMemo(
     () =>
-      fragment ? (
+      !vm.promptRequired ? (
+        <p
+          data-testid='generate-video-prompt-not-used'
+          className='px-1 py-2 text-xs text-muted-foreground'
+        >
+          {promptNotUsedNotice}
+        </p>
+      ) : fragment ? (
         <PromptEditor
           ref={promptEditorRef}
           fragment={fragment}
@@ -647,19 +735,13 @@ function VideoGeneratePanelBody({
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
         />
-      ) : (
-        <p
-          data-testid='generate-video-no-prompt'
-          className='px-1 py-2 text-xs text-muted-foreground'
-        >
-          {noPromptNotice}
-        </p>
-      ),
+      ) : null,
     [
+      vm.promptRequired,
+      promptNotUsedNotice,
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
-      noPromptNotice,
       stableReferences,
       handlePromptChange,
       handleAtMentionsChange,

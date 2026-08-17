@@ -7,10 +7,10 @@ import type { ModelEntry } from '@breatic/shared';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 import type { VideoGenMode } from '@web/spaces/canvas/generate/video-panel-view-model';
+import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
-  resolveVideoModeSwitch,
   selectVideoModeModels,
 } from '@web/spaces/canvas/generate/video-panel-view-model';
 
@@ -165,6 +165,48 @@ describe('selectVideoModeModels', () => {
   });
 });
 
+describe('buildVideoPanelViewModel — 渲染时按本模式记住的模型解析 (#1948 9.10)', () => {
+  // 两个面板在这件事上必须一致。视频侧此前少了中间那层（存的模型不在本模式
+  // 列表里时直接掉到第一个，不查 modelByMode），#1948 收成共用的
+  // pickModelForMode 补上。
+  //
+  // 这条钉的是视图模型真的调了它 —— 纯函数那侧钉的是「给对了参数会怎样」，
+  // 钉不住「视图模型给没给」：Gate 2 第 4 轮实测把这处退回内联三元，684 条
+  // 测试没有一条变红。
+  const veo = makeModel('veo', { mode: 't2v' });
+  const kling = makeModel('kling', { mode: 't2v' });
+
+  it('存的模型不在本模式列表里时，恢复用户在这个模式下选过的那个', () => {
+    // 这个状态由两个写入函数的不对称造出来：setNodeModel 只写 model，
+    // setNodeMode 写 mode + model，协作时一个人挑模型撞上另一个人切模式。
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node(
+          'n1',
+          videoView({ model: 'gone-from-this-mode', modelByMode: { t2v: 'kling' } }),
+        ),
+      ],
+      models: [veo, kling],
+      mode: 't2v',
+    });
+    // 不是 veo（列表第一个），是用户自己在 t2v 下选过的 kling。
+    expect(vm.model).toBe('kling');
+  });
+
+  it('存的和记住的都不在列表里时才落到第一个', () => {
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node('n1', videoView({ model: 'gone', modelByMode: { t2v: 'also-gone' } })),
+      ],
+      models: [veo, kling],
+      mode: 't2v',
+    });
+    expect(vm.model).toBe('veo');
+  });
+});
+
 describe('buildVideoPanelViewModel', () => {
   const models = [
     makeModel('veo-3.1', { mode: 't2v', cost_per_call: 88 }),
@@ -252,7 +294,9 @@ describe('buildVideoPanelViewModel', () => {
           model: 'veo-3.1',
           // `2:1` is not offered by this model → falls back to its default;
           // `1080p` is offered → kept.
-          params: { aspect_ratio: '2:1', resolution: '1080p' },
+          paramsByModel: {
+            'veo-3.1': { aspect_ratio: '2:1', resolution: '1080p' },
+          },
         }),
       ),
     ];
@@ -279,7 +323,20 @@ describe('buildVideoPanelViewModel', () => {
         duration: { description: '', min: 3, max: 15, default: 5 },
       },
     });
-    const nodes = [node('n1', videoView({ params: { duration: 12 } }))];
+    // The fixture carries `model` because that is the shape a real node has:
+    // a record is keyed BY a model name (#1948), and the node stores which
+    // model it is on. It is not load-bearing here — this catalog offers one
+    // model, so dropping it still resolves to 'kling-o3-pro' and the case
+    // passes (measured). What the case is about is the range-shaped duration.
+    const nodes = [
+      node(
+        'n1',
+        videoView({
+          model: 'kling-o3-pro',
+          paramsByModel: { 'kling-o3-pro': { duration: 12 } },
+        }),
+      ),
+    ];
     const vm = buildVm({
       nodeId: 'n1',
       nodes,
@@ -415,7 +472,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
   it('leaves a driving video with no poster showing nothing rather than the mp4', () => {
     // A video node that has not got its poster yet. Falling back to the asset
     // URL would put the blank square back; leaving the thumbnail absent lets
-    // the slot keep its icon and label, which at least names what it holds.
+    // the toolbar cover the slot with the video node's icon instead (#1946).
     const nodes = [
       node('n1', videoView({ drivingVideo: { url: 'https://cdn/driving.mp4' } })),
     ];
@@ -507,20 +564,20 @@ describe('nodeVideoMode', () => {
   });
 });
 
-describe('resolveVideoModeSwitch', () => {
+describe('resolveModeSwitch — 视频侧的六个模式 (#1948 起两个面板共用)', () => {
   const t2v = makeModel('veo', { mode: 't2v' });
   const both = makeModel('kling', { mode: ['t2v', 'i2v'] });
   const i2v = makeModel('wan', { mode: 'i2v' });
 
   it('restores the model remembered under the TARGET mode', () => {
     const content = { modelByMode: { i2v: 'wan' }, params: {} };
-    expect(resolveVideoModeSwitch(content, 'i2v', [t2v, both, i2v]).model).toBe(
+    expect(resolveModeSwitch(content, 'i2v', [t2v, both, i2v]).model).toBe(
       'wan',
     );
   });
 
   it('falls back to the first model the target mode offers', () => {
-    expect(resolveVideoModeSwitch(undefined, 'i2v', [t2v, both, i2v]).model).toBe(
+    expect(resolveModeSwitch(undefined, 'i2v', [t2v, both, i2v]).model).toBe(
       'kling',
     );
   });
@@ -531,35 +588,99 @@ describe('resolveVideoModeSwitch', () => {
     // from the prompt alone — and the backend would NOT stop it, because its
     // source gate passes any model with a source-less mode.
     const content = { modelByMode: { t2v: 'veo' }, params: {} };
-    expect(resolveVideoModeSwitch(content, 'i2v', [t2v, both, i2v]).model).toBe(
+    expect(resolveModeSwitch(content, 'i2v', [t2v, both, i2v]).model).toBe(
       'kling',
     );
   });
 
-  it('reconciles params against the resolved model', () => {
-    // A value the target model still allows survives the switch; one it does
-    // not falls back to that model's default. A param the model never declares
-    // is preserved rather than dropped (user 2026-07-18): the param set lives
-    // on the node independently of which model is active, and the worker drops
-    // undeclared params at generation time, so nothing leaks upstream.
+  it('gives the target mode’s model its OWN params, not the outgoing mode’s (#1948)', () => {
+    // The defect this slice fixes, in its smallest form. `animate` left
+    // resolution=480p on the node; the model i2v resolves to has never been
+    // used, so it must start from its own default — 480p is a value nobody
+    // chose, it is just what the previous mode's model defaults to.
+    const animate = makeModel('wan', {
+      mode: 'animate',
+      params: {
+        resolution: { description: '', values: ['480p', '720p'], default: '480p' },
+      },
+    });
+    const seedance = makeModel('seedance', {
+      mode: 'i2v',
+      params: {
+        resolution: {
+          description: '',
+          values: ['480p', '720p', '1080p'],
+          default: '720p',
+        },
+      },
+    });
     const content = {
-      modelByMode: {},
-      params: { aspect_ratio: '9:16', resolution: '4k', keptForLater: 'x' },
+      model: 'wan',
+      modelByMode: { i2v: 'seedance' },
+      paramsByModel: { wan: { resolution: '480p' } },
     };
-    const { params } = resolveVideoModeSwitch(content, 'i2v', [both]);
-    expect(params.aspect_ratio).toBe('9:16');
-    expect(params.resolution).toBe('720p');
-    expect(params.keptForLater).toBe('x');
+    const { model, paramsByModel } = resolveModeSwitch(content, 'i2v', [
+      animate,
+      seedance,
+    ]);
+    expect(model).toBe('seedance');
+    expect(paramsByModel[model]?.resolution).toBe('720p');
+  });
+
+  it('restores the target model’s own record when it has one', () => {
+    const content = {
+      modelByMode: { i2v: 'wan' },
+      paramsByModel: { veo: { aspect_ratio: '16:9' }, wan: { aspect_ratio: '9:16' } },
+    };
+    const { model, paramsByModel } = resolveModeSwitch(content, 'i2v', [
+      t2v,
+      both,
+      i2v,
+    ]);
+    expect(paramsByModel[model]?.aspect_ratio).toBe('9:16');
+  });
+
+  it('keeps one record for a model offered under two modes (#1948)', () => {
+    // `kling-o3-pro-i2v` and `seedance-1.5-pro-i2v` each serve i2v AND
+    // first_last in the real catalog, and each declares ONE param set —
+    // splitting the record per mode would invent a distinction the model
+    // never made. The switch here targets the OTHER of its two modes, which
+    // is the only way this differs from the case above.
+    const dual = makeModel('kling', { mode: ['i2v', 'first_last'] });
+    const content = {
+      model: 'kling',
+      modelByMode: { i2v: 'kling', first_last: 'kling' },
+      paramsByModel: { kling: { aspect_ratio: '9:16' } },
+    };
+    const { model, paramsByModel } = resolveModeSwitch(content, 'first_last', [
+      t2v,
+      dual,
+    ]);
+    expect(model).toBe('kling');
+    expect(paramsByModel[model]?.aspect_ratio).toBe('9:16');
+  });
+
+  it('keeps the other models’ records while adding the incoming one (#1948)', () => {
+    // 不是迁移 —— 老节点一律不管（user 2026-08-15）。这条钉的是「换模式时别
+    // 把别的模型的记录丢了」，切回去才找得到。
+    const content = {
+      modelByMode: { i2v: 'wan' },
+      paramsByModel: { veo: { aspect_ratio: '9:16' } },
+    };
+    const { paramsByModel } = resolveModeSwitch(content, 'i2v', [
+      t2v,
+      both,
+      i2v,
+    ]);
+    expect(paramsByModel.veo?.aspect_ratio).toBe('9:16');
+    expect(paramsByModel.wan?.aspect_ratio).toBe('16:9'); // wan's own default
   });
 
   it('returns an empty model when the target mode offers none', () => {
     // The container bails on this rather than writing it: an empty model plus
     // empty params would clobber what the node had stored, and params do not
     // self-heal.
-    expect(resolveVideoModeSwitch(undefined, 'i2v', [t2v])).toEqual({
-      model: '',
-      params: {},
-    });
+    expect(resolveModeSwitch(undefined, 'i2v', [t2v])).toEqual({ model: '', paramsByModel: {} });
   });
 });
 

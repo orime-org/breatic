@@ -5,7 +5,13 @@
  * Membership quota configuration loader.
  *
  * Reads `config/membership.yaml`: which tier a new account lands in, and the
- * six ceilings each of the four tiers carries.
+ * six ceilings each of the four configured tiers carries.
+ *
+ * Four, not five. An account may also be on `enterprise`, whose ceilings are
+ * negotiated per customer and will come from the database — writing a set of
+ * them here would hand such an account a quota nobody agreed to. Everything in
+ * this file therefore speaks `ConfiguredMembershipTier`, which leaves that
+ * tier out, so no caller can reach a ceiling for it by accident.
  *
  * Lives in core rather than beside the other business limits in server,
  * because three services need it: server enforces four of the ceilings,
@@ -31,7 +37,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MEMBERSHIP_TIERS, type MembershipTier } from "@breatic/shared";
+import {
+  CONFIGURED_MEMBERSHIP_TIERS,
+  type ConfiguredMembershipTier,
+} from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /**
@@ -92,8 +101,13 @@ export const membershipConfigSchema = z.object({
    * (`base`) exists for the rows the migration found already there, and is
    * not a fallback for new accounts — leaving it to do that job is what makes
    * this field inert, which is exactly the state Gate 2 caught.
+   *
+   * `enterprise` is not among the accepted values. A deployment that named it
+   * here would put every new account on a tier with no ceilings to read, so
+   * every quota check would throw; refusing it while loading the file says so
+   * once, at the point somebody can still fix it.
    */
-  default_tier: z.enum(MEMBERSHIP_TIERS),
+  default_tier: z.enum(CONFIGURED_MEMBERSHIP_TIERS),
   tiers: z.object({
     base: tierLimitsSchema,
     pro: tierLimitsSchema,
@@ -134,7 +148,9 @@ export function getMembershipConfig(): Readonly<MembershipConfig> {
  * @throws {z.ZodError} if the config file is malformed (first call only)
  * @throws {Error} if `config/membership.yaml` cannot be read (first call only)
  */
-export function getMembershipLimits(tier: MembershipTier): MembershipLimits {
+export function getMembershipLimits(
+  tier: ConfiguredMembershipTier,
+): MembershipLimits {
   return getMembershipConfig().tiers[tier];
 }
 
@@ -144,6 +160,6 @@ export function getMembershipLimits(tier: MembershipTier): MembershipLimits {
  * @throws {z.ZodError} if the config file is malformed (first call only)
  * @throws {Error} if `config/membership.yaml` cannot be read (first call only)
  */
-export function getDefaultMembershipTier(): MembershipTier {
+export function getDefaultMembershipTier(): ConfiguredMembershipTier {
   return getMembershipConfig().default_tier;
 }

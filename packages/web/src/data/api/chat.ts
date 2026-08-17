@@ -20,6 +20,14 @@ export interface ConversationDetail {
   messages: MessageData[];
 }
 
+/** One page of a conversation, and whether anything is older. */
+export interface MessagePage {
+  /** The messages, oldest first. */
+  messages: MessageData[];
+  /** There are older messages than these. */
+  hasMore: boolean;
+}
+
 /** Everything the panel needs to render, from one call. */
 export interface OpenChatResult {
   /** This user's conversations in this project, most recently used first. */
@@ -28,6 +36,8 @@ export interface OpenChatResult {
   current: {
     conversation: ConversationEntity;
     messages: MessageData[];
+    /** The conversation reaches back further than these messages do. */
+    hasMore: boolean;
   };
 }
 
@@ -68,11 +78,35 @@ export const chatApi = {
    * messages of whichever one they used last. A project with no conversation
    * yet gets an empty one made for it.
    * @param projectId - Project to open chat in
+   * @param signal - Raised when nobody is waiting for this answer any more.
+   *   The answer replaces what is on screen, so one belonging to a visit the
+   *   reader has already left must not arrive at all.
    * @returns The conversation list and the current conversation with its messages
    */
-  openChat(projectId: string): Promise<OpenChatResult> {
-    return apiPost<OpenChatResult, { project_id: string }>('/chat/open', {
-      project_id: projectId,
+  openChat(projectId: string, signal?: AbortSignal): Promise<OpenChatResult> {
+    return apiPost<OpenChatResult, { project_id: string }>(
+      '/chat/open',
+      { project_id: projectId },
+      { signal },
+    );
+  },
+  /**
+   * Read the page of a conversation that comes before the one in hand.
+   * @param conversationId - The conversation to reach further back in
+   * @param beforeTurn - The oldest turn already on screen
+   * @param signal - Raised when nobody is waiting for this page any more. The
+   *   turn it was asked from is the previous visit's, so writing it into a
+   *   list read since would put it above messages it does not join onto.
+   * @returns That page, oldest first, and whether anything is older still
+   */
+  messagesBefore(
+    conversationId: string,
+    beforeTurn: number,
+    signal?: AbortSignal,
+  ): Promise<MessagePage> {
+    return apiGet<MessagePage>(`/chat/conversations/${conversationId}/messages`, {
+      params: { before_turn: beforeTurn },
+      signal,
     });
   },
   listConversations(projectId: string) {

@@ -104,7 +104,8 @@
         "label": "选择 Skill 限定 agent 行为",
         "title": "选择 Skill"
       },
-      "send": "发送"
+      "send": "发送",
+      "sending": "发送中"
     },
     "empty": {
       "greetingWithName": "嗨, {name}!",
@@ -133,16 +134,16 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "这条回复没能完成，可以再发一次。",
-      "notSent": "没能送出去，检查一下网络。",
-      "openFailed": "这个对话没能打开，刷新页面可以再试一次。"
+      "network": "网络错误",
+      "turnFailed": "这条回复没能完成，可以再发一次。"
     },
     "message": {
       "interrupted": "已停止"
     },
     "tool": {
       "unfinished": "未跑完就停止了"
-    }
+    },
+    "loadEarlier": "加载更早的消息"
   },
   "canvas": {
     "group": {
@@ -265,7 +266,6 @@
       "videoPromptPlaceholder": "描述你想生成的视频，@ 引用参考",
       "errorNoReferenceMention": "这一档需要参考图 —— 先把图连到这个节点，再在提示词里输入 @ 引用它。",
       "videoMentionEmpty": "还没有可引用的参考",
-      "videoNoPrompt": "这个节点建得比视频生成早，没有提示词。新建一个视频节点就能生成。",
       "firstFrame": "首帧",
       "firstFrameTip": "挑一张图作为视频的第一帧",
       "removeFirstFrame": "移除首帧",
@@ -285,7 +285,9 @@
       "removeDrivingVideo": "移除驱动视频",
       "removeDrivingAudio": "移除驱动音频",
       "errorNoDrivingVideo": "先挑一段驱动视频",
-      "errorNoDrivingAudio": "先挑一段驱动音频"
+      "errorNoDrivingAudio": "先挑一段驱动音频",
+      "videoPromptNotUsed": "这一档跟着音频走。要改内容，去换音频。",
+      "refuseInsertNoPrompt": "这一档没有提示词框，插不进去"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -622,6 +624,7 @@
         "description": "Timeline viewer 在 timeline-space 实施时接入; 此处展示轨道快照,支持复制片段。"
       }
     },
+    "readOnlyNotice": "这个 Space 现在只能查看 —— 你做的改动不会被保存。",
     "lockedAria": "已锁定",
     "document": {
       "loading": "正在加载编辑器…",
@@ -629,7 +632,6 @@
         "text": "这个文档打不开。它可能已被删除，或者你已经没有访问权限了。",
         "action": "重试"
       },
-      "readOnlyNotice": "这个文档现在只能查看 —— 你输入的内容不会被保存。",
       "refusedNotice": "与这个文档的连接被拒绝了。你看到的内容可能不是最新的，改动也不会被保存。",
       "placeholder": "开始写作…",
       "titlePlaceholder": "未命名文档",
@@ -651,7 +653,8 @@
         "riskUploads": "正在进行的上传会被中断，可以先切到对应的 Space 看一眼。",
         "action": "刷新页面"
       }
-    }
+    },
+    "readOnlyReconnect": "重新连接"
   },
   "menu": {
     "createAria": "创建菜单",

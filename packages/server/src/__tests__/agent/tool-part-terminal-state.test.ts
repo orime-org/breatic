@@ -20,6 +20,12 @@ const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1
 const consolidateIfNeeded = vi.fn(async () => undefined);
 const streamTextRetry = vi.fn();
 
+vi.mock("@server/agent/turn-context.js", () => ({
+  buildTurnContext: vi.fn(async () => ({
+    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    compressedHistory: [],
+  })),
+}));
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(),
@@ -49,7 +55,16 @@ vi.mock("@breatic/domain", async () => {
   };
 });
 
-vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage }));
+/**
+ * What the conversation holds, for the settle-up every turn opens with.
+ *
+ * Empty because these cases are about what happens after that: the point of
+ * the event is that the browser takes the server's version, and a version
+ * with nothing in it is the version that gets out of the way.
+ */
+const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
+
+vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage, getMessages }));
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
@@ -75,8 +90,6 @@ async function storedPartsFrom(parts: unknown[]): Promise<MessagePart[]> {
       userId: "u1",
       conversationId: "c1",
       projectId: "p1",
-      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
-      compressedHistory: [],
     },
     async () => {
       for await (const _ of new MainAgent().chat("do something")) {

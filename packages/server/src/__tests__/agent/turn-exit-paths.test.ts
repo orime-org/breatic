@@ -39,6 +39,12 @@ const buildAgentConfig = vi.hoisted(() => vi.fn());
 /** Set when the code under test reads `usage`, which is what consumes a stream. */
 const usageRead = vi.fn();
 
+vi.mock("@server/agent/turn-context.js", () => ({
+  buildTurnContext: vi.fn(async () => ({
+    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    compressedHistory: [],
+  })),
+}));
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(),
@@ -89,7 +95,16 @@ vi.mock("@server/modules", async (importOriginal) => {
   const { serverModulesMock } = await import("../helpers/mock-core.js");
   return serverModulesMock(importOriginal);
 });
-vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage }));
+/**
+ * What the conversation holds, for the settle-up every turn opens with.
+ *
+ * Empty because these cases are about what happens after that: the point of
+ * the event is that the browser takes the server's version, and a version
+ * with nothing in it is the version that gets out of the way.
+ */
+const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
+
+vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage, getMessages }));
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
@@ -115,8 +130,7 @@ async function runSkillTurn(skillName: string): Promise<string[]> {
     {
       userId: "u1",
       conversationId: "c1",
-      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
-      compressedHistory: [],
+      projectId: "p1",
     },
     async () => {
       for await (const e of new MainAgent().handleSkillCommand(skillName, "go")) {
@@ -143,8 +157,7 @@ async function runTurnFull(signal?: AbortSignal): Promise<Emitted[]> {
     {
       userId: "u1",
       conversationId: "c1",
-      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
-      compressedHistory: [],
+      projectId: "p1",
     },
     async () => {
       for await (const e of new MainAgent().chat("hi", undefined, signal)) {
@@ -243,7 +256,6 @@ describe("what a skill command hands the model", () => {
       skillName: "creative_research",
       interactive: true,
       basePrompt: "system",
-      memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
     });
   });
 });

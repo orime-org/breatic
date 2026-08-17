@@ -5,372 +5,379 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1775042880440,
+      "when": 1776064751000,
       "tag": "0000_dear_hardball",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1775717724368,
+      "when": 1776064751001,
       "tag": "0001_famous_thanos",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "7",
-      "when": 1775733652054,
+      "when": 1776064751002,
       "tag": "0002_swift_jimmy_woo",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "7",
-      "when": 1775799046999,
+      "when": 1776064751003,
       "tag": "0003_dear_sharon_carter",
       "breakpoints": true
     },
     {
       "idx": 4,
       "version": "7",
-      "when": 1775803636573,
+      "when": 1776064751004,
       "tag": "0004_huge_frank_castle",
       "breakpoints": true
     },
     {
       "idx": 5,
       "version": "7",
-      "when": 1775814761196,
+      "when": 1776064751005,
       "tag": "0005_large_tyrannus",
       "breakpoints": true
     },
     {
       "idx": 6,
       "version": "7",
-      "when": 1775877545592,
+      "when": 1776064751006,
       "tag": "0006_lowly_iceman",
       "breakpoints": true
     },
     {
       "idx": 7,
       "version": "7",
-      "when": 1776226700362,
+      "when": 1776226791000,
       "tag": "0007_tense_retro_girl",
       "breakpoints": true
     },
     {
       "idx": 8,
       "version": "7",
-      "when": 1776769358508,
+      "when": 1776773401000,
       "tag": "0008_mean_jubilee",
       "breakpoints": true
     },
     {
       "idx": 9,
       "version": "7",
-      "when": 1776776006011,
+      "when": 1776821734000,
       "tag": "0009_gray_tempest",
       "breakpoints": true
     },
     {
       "idx": 10,
       "version": "7",
-      "when": 1776827156184,
+      "when": 1776827373000,
       "tag": "0010_pale_proemial_gods",
       "breakpoints": true
     },
     {
       "idx": 11,
       "version": "7",
-      "when": 1777969534470,
+      "when": 1777974702000,
       "tag": "0011_mysterious_enchantress",
       "breakpoints": true
     },
     {
       "idx": 12,
       "version": "7",
-      "when": 1777980793797,
+      "when": 1777983586000,
       "tag": "0012_tough_black_bolt",
       "breakpoints": true
     },
     {
       "idx": 13,
       "version": "7",
-      "when": 1778286928997,
+      "when": 1778287124000,
       "tag": "0013_large_micromacro",
       "breakpoints": true
     },
     {
       "idx": 14,
       "version": "7",
-      "when": 1779499417532,
+      "when": 1779499597000,
       "tag": "0014_supreme_owl",
       "breakpoints": true
     },
     {
       "idx": 15,
       "version": "7",
-      "when": 1779774075523,
+      "when": 1779774184000,
       "tag": "0015_aberrant_speed",
       "breakpoints": true
     },
     {
       "idx": 16,
       "version": "7",
-      "when": 1779932696419,
+      "when": 1779932944000,
       "tag": "0016_delete-dev-mock-user",
       "breakpoints": true
     },
     {
       "idx": 17,
       "version": "7",
-      "when": 1779936251370,
+      "when": 1779936387000,
       "tag": "0017_access-requests-and-share-links",
       "breakpoints": true
     },
     {
       "idx": 18,
       "version": "7",
-      "when": 1779936300000,
+      "when": 1779971248000,
       "tag": "0018_access-permission-revamp",
       "breakpoints": true
     },
     {
       "idx": 19,
       "version": "7",
-      "when": 1779936400000,
+      "when": 1780147322000,
       "tag": "0019_drop-project-access-requests",
       "breakpoints": true
     },
     {
       "idx": 20,
       "version": "7",
-      "when": 1780273152000,
+      "when": 1780231918000,
       "tag": "0020_credit-balances",
       "breakpoints": true
     },
     {
       "idx": 21,
       "version": "7",
-      "when": 1780360000000,
+      "when": 1780303422000,
       "tag": "0021_skill-installs-created-at",
       "breakpoints": true
     },
     {
       "idx": 22,
       "version": "7",
-      "when": 1780480000000,
+      "when": 1780477905000,
       "tag": "0022_lifecycle_outbox_drop_yjs",
       "breakpoints": true
     },
     {
       "idx": 23,
       "version": "7",
-      "when": 1780560000000,
+      "when": 1780718811000,
       "tag": "0023_studio_members",
       "breakpoints": true
     },
     {
       "idx": 24,
       "version": "7",
-      "when": 1780600000000,
+      "when": 1780734949000,
       "tag": "0024_studio_username_slug",
       "breakpoints": true
     },
     {
       "idx": 25,
       "version": "7",
-      "when": 1780700000000,
+      "when": 1780806280000,
       "tag": "0025_projectrole_editor_viewer",
       "breakpoints": true
     },
     {
       "idx": 26,
       "version": "7",
-      "when": 1780700100000,
+      "when": 1780807223000,
       "tag": "0026_projects_slug_visibility",
       "breakpoints": true
     },
     {
       "idx": 27,
       "version": "7",
-      "when": 1780700200000,
+      "when": 1780832336000,
       "tag": "0027_projects_initial_space_type",
       "breakpoints": true
     },
     {
       "idx": 28,
       "version": "7",
-      "when": 1780700300000,
+      "when": 1780933558000,
       "tag": "0028_notifications_studio_types_expiry",
       "breakpoints": true
     },
     {
       "idx": 29,
       "version": "7",
-      "when": 1780700400000,
+      "when": 1781477406000,
       "tag": "0029_studio_invitations",
       "breakpoints": true
     },
     {
       "idx": 30,
       "version": "7",
-      "when": 1780700500000,
+      "when": 1781585540000,
       "tag": "0030_project_last_opened",
       "breakpoints": true
     },
     {
       "idx": 31,
       "version": "7",
-      "when": 1780700600000,
+      "when": 1781744833000,
       "tag": "0031_project_invitations",
       "breakpoints": true
     },
     {
       "idx": 32,
       "version": "7",
-      "when": 1780700700000,
+      "when": 1781752797000,
       "tag": "0032_drop_share_links",
       "breakpoints": true
     },
     {
       "idx": 33,
       "version": "7",
-      "when": 1780700800000,
+      "when": 1782122980000,
       "tag": "0033_drop_member_invited",
       "breakpoints": true
     },
     {
       "idx": 34,
       "version": "7",
-      "when": 1780900000000,
+      "when": 1783138771000,
       "tag": "0034_project_activities",
       "breakpoints": true
     },
     {
       "idx": 35,
       "version": "7",
-      "when": 1780900100000,
+      "when": 1783159836000,
       "tag": "0035_studio_assets",
       "breakpoints": true
     },
     {
       "idx": 36,
       "version": "7",
-      "when": 1780900200000,
+      "when": 1783327595000,
       "tag": "0036_node_history_generation_idempotency",
       "breakpoints": true
     },
     {
       "idx": 37,
       "version": "7",
-      "when": 1780900300000,
+      "when": 1783330160000,
       "tag": "0037_node_history_node_id_uuid",
       "breakpoints": true
     },
     {
       "idx": 38,
       "version": "7",
-      "when": 1780900400000,
+      "when": 1783391370000,
       "tag": "0038_tasks_provider_task_id",
       "breakpoints": true
     },
     {
       "idx": 39,
       "version": "7",
-      "when": 1780900500000,
+      "when": 1783426780000,
       "tag": "0039_notifications_project_transfer_types",
       "breakpoints": true
     },
     {
       "idx": 40,
       "version": "7",
-      "when": 1780900600000,
+      "when": 1784719054000,
       "tag": "0040_avatar_to_personal_studio",
       "breakpoints": true
     },
     {
       "idx": 41,
       "version": "7",
-      "when": 1780900700000,
+      "when": 1785113835000,
       "tag": "0041_upload_grants",
       "breakpoints": true
     },
     {
       "idx": 42,
       "version": "7",
-      "when": 1780900800000,
+      "when": 1785113835001,
       "tag": "0042_storage_reclaim_queue",
       "breakpoints": true
     },
     {
       "idx": 43,
       "version": "7",
-      "when": 1780987200000,
+      "when": 1785113835002,
       "tag": "0043_studio_assets_storage_key_idx",
       "breakpoints": true
     },
     {
       "idx": 44,
       "version": "7",
-      "when": 1780987200001,
+      "when": 1785207595000,
       "tag": "0044_studio_assets_produced_by",
       "breakpoints": true
     },
     {
       "idx": 45,
       "version": "7",
-      "when": 1781073600000,
+      "when": 1785313615000,
       "tag": "0045_studios_bio",
       "breakpoints": true
     },
     {
       "idx": 46,
       "version": "7",
-      "when": 1781160000000,
+      "when": 1785325248000,
       "tag": "0046_notifications_ids_not_names",
       "breakpoints": true
     },
     {
       "idx": 47,
       "version": "7",
-      "when": 1785456000000,
+      "when": 1785458101000,
       "tag": "0047_request_tables",
       "breakpoints": true
     },
     {
       "idx": 48,
       "version": "7",
-      "when": 1785628800000,
+      "when": 1785744773000,
       "tag": "0048_share_token",
       "breakpoints": true
     },
     {
       "idx": 49,
       "version": "7",
-      "when": 1786060800000,
+      "when": 1786067388000,
       "tag": "0049_projects_visibility_all_studio",
       "breakpoints": true
     },
     {
       "idx": 50,
       "version": "7",
-      "when": 1786492800000,
+      "when": 1786166006000,
       "tag": "0050_chat_message_store",
       "breakpoints": true
     },
     {
       "idx": 51,
       "version": "7",
-      "when": 1786579200000,
+      "when": 1786445576000,
       "tag": "0051_purge_pre_parts_messages",
       "breakpoints": true
     },
     {
       "idx": 52,
       "version": "7",
-      "when": 1786924800000,
+      "when": 1786519636000,
       "tag": "0052_membership_tier",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1786790599000,
+      "tag": "0053_membership_tier_changes",
       "breakpoints": true
     }
   ]

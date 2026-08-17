@@ -16,8 +16,14 @@ interface ChatNoticeProps {
  * to the whole window — the canvas on the right has its own concerns and a
  * message about a chat that could not be opened has nothing to do with them.
  * Every failure the panel can report comes through here: the send that never
- * left, the one the server refused, the chat that would not open. There is no
- * second channel and nothing here is temporary.
+ * left, the one the server refused, the turn it gave up on, the chat that
+ * would not open. There is no second channel.
+ *
+ * Nothing here is a state the chat is in, so nothing here stays: each of
+ * these is a thing that happened at a moment the reader was in, and the
+ * panel stops saying it shortly after. A reader who was looking elsewhere is
+ * not told when they come back — what they find is a conversation that
+ * stopped moving, which is how a reader of a stream knows.
  *
  * Announced, because for a screen reader it is the only channel: a bubble
  * that never appears and a stop button that turns back into send are both
@@ -38,7 +44,7 @@ export function ChatNotice({ message }: ChatNoticeProps): React.JSX.Element | nu
         aria-hidden='true'
         className='mt-0.5 w-[3px] shrink-0 self-stretch rounded-full bg-status-error'
       />
-      <span>{message}</span>
+      <span className='flex-1'>{message}</span>
     </div>
   );
 }

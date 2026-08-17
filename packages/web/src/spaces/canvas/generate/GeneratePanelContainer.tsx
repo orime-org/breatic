@@ -45,11 +45,16 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { resolveMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
+import {
+  resolveModelSwitch,
+  resolveParamsEdit,
+} from '@web/spaces/canvas/generate/model-params';
+import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
 import {
   buildGeneratePanelViewModel,
   selectModeModels,
-  resolveModeSwitch,
   type GeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
 import {
@@ -305,6 +310,21 @@ function GeneratePanelBody({
     [projectId, spaceId, nodeId, models],
   );
 
+  /**
+   * The node's live content view, or undefined when the node is gone or is not
+   * a content node. Read fresh at click time for the same reason freshVm is: a
+   * collaborator may have changed the model or the per-model records since
+   * this render.
+   * @returns The node's content view, or undefined.
+   */
+  const freshContent = React.useCallback(():
+    | ContentNodeView
+    | undefined => {
+    const graph = readCanvasGraph(projectId, spaceId);
+    const data = graph.nodes.find((n) => n.id === nodeId)?.data;
+    return data && 'status' in data ? data : undefined;
+  }, [projectId, spaceId, nodeId]);
+
   const canExecute = canExecuteGenerate({
     promptText,
     model: vm.model,
@@ -329,51 +349,66 @@ function GeneratePanelBody({
         toast.error(t('canvas.generatePanel.modelUnavailable'));
         return;
       }
-      // Record the pick under the ACTIVE mode (freshVm re-reads live Yjs) so a
-      // later toggle back to this mode restores it (modelByMode memory).
-      const fresh = freshVm();
+      // Record the pick under the ACTIVE mode so a later toggle back to this
+      // mode restores it (modelByMode memory), and give the picked model its
+      // OWN params rather than the outgoing model's (#1948). Both read the
+      // node fresh from Yjs — a collaborator may have moved either since this
+      // render.
+      const content = freshContent();
+      const { paramsByModel } = resolveModelSwitch(content, picked);
       setNodeModel(
         projectId,
         spaceId,
         nodeId,
-        fresh.mode,
+        resolveMode(content?.mode),
         modelId,
-        resolveParamsForModel(picked, fresh.params),
+        paramsByModel,
       );
     },
-    [models, projectId, spaceId, nodeId, freshVm, t],
+    [models, projectId, spaceId, nodeId, freshContent, t],
   );
 
   const onToggleMode = React.useCallback(
     (newMode: ImageGenMode) => {
-      // Read the node fresh (a collaborator may have changed its modelByMode /
-      // params), resolve the model + params for the TARGET mode, and write the
-      // switch in one Yjs transaction. resolveModeSwitch resolves fresh for the
-      // target mode (its remembered pick → recommended → first) — the current
-      // model belongs to the old mode and is deliberately not carried over.
-      const graph = readCanvasGraph(projectId, spaceId);
-      const nodeData = graph.nodes.find((n) => n.id === nodeId)?.data;
-      const content = nodeData && 'status' in nodeData ? nodeData : undefined;
-      const { model, params } = resolveModeSwitch(content, newMode, models);
+      // Read the node fresh (a collaborator may have changed its modelByMode
+      // or its records), resolve the model + records for the TARGET mode, and
+      // write the switch in one Yjs transaction. resolveModeSwitch resolves
+      // fresh for the target mode (the pick remembered for it, else the first
+      // model it offers — the `recommended` tier is a badge, not a rule) — the
+      // current model belongs to the old mode and is not carried over.
+      const { model, paramsByModel } = resolveModeSwitch(
+        freshContent(),
+        newMode,
+        models,
+      );
       // Never persist an empty model: the catalog may still be loading / have
-      // failed (models === []), or the target mode may offer nothing. Writing
-      // model='' + params={} would clobber the node's stored model AND params
-      // in Yjs — params does NOT self-heal. Bail (the toggle is also disabled
-      // while the catalog is empty; this backstops the target-mode-empty case).
+      // failed (models === []), or the target mode may offer nothing. The
+      // resolver pairs an empty model with an empty record set, and writing
+      // that clobbers the node's stored model AND every model's records — not
+      // just the incoming one's. Bail (the toggle is also disabled while the
+      // catalog is empty; this backstops the target-mode-empty case).
       if (!model) return;
-      setNodeMode(projectId, spaceId, nodeId, newMode, model, params);
+      setNodeMode(projectId, spaceId, nodeId, newMode, model, paramsByModel);
     },
-    [models, projectId, spaceId, nodeId],
+    [models, projectId, spaceId, nodeId, freshContent],
   );
 
   const onChangeParams = React.useCallback(
     (partial: { aspect_ratio?: string; resolution?: string } & CameraValue) => {
-      setNodeParams(projectId, spaceId, nodeId, {
-        ...freshVm().params,
-        ...partial,
-      });
+      // The edit lands on the record of the model it was made on, so coming
+      // back to that model finds it (#1948).
+      // freshVm().model is the RESOLVED model — the one whose controls the
+      // user just used. The node's stored model can be absent (a node created
+      // moments ago) or no longer offered under this mode, and keying the
+      // record on that would write the edit where the panel never reads it.
+      const paramsByModel = resolveParamsEdit(
+        freshContent(),
+        partial,
+        freshVm().model,
+      );
+      setNodeParams(projectId, spaceId, nodeId, paramsByModel);
     },
-    [projectId, spaceId, nodeId, freshVm],
+    [projectId, spaceId, nodeId, freshVm, freshContent],
   );
 
   // The Reference / Style buttons are TOGGLES (G, user 2026-07-12): start the

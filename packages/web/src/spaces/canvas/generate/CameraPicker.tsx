@@ -18,7 +18,7 @@ import {
 } from '@web/spaces/canvas/generate/param-values';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
-/** The camera-cluster params this control edits (all on `data.params`, #1788). */
+/** The camera-cluster params this control edits (all declared by the model, #1788). */
 export interface CameraValue {
   camera?: string;
   lens?: string;
@@ -216,9 +216,9 @@ function CameraWheel({
 interface CameraPickerProps {
   /** The current model, whose params define the camera-cluster catalogs. */
   model: ModelEntry;
-  /** The current camera-cluster selection (from `data.params`). */
+  /** The current camera-cluster selection (resolved from the model's record). */
   value: CameraValue;
-  /** Merge a changed camera param (or the enable gate) into `data.params`. */
+  /** Merge a changed camera param (or the enable gate) into the model's record. */
   onChange: (partial: CameraValue) => void;
 }
 
@@ -236,7 +236,7 @@ interface CameraPickerProps {
  * @param root0 - Component props.
  * @param root0.model - The current model.
  * @param root0.value - The current camera-cluster selection.
- * @param root0.onChange - Merge a changed param into `data.params`.
+ * @param root0.onChange - Merge a changed param into the model's record.
  * @returns The camera control.
  */
 export const CameraPicker = React.memo(function CameraPicker({

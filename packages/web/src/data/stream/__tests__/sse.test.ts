@@ -24,7 +24,7 @@ vi.mock('@microsoft/fetch-event-source', () => ({
   fetchEventSource: fetchEventSourceMock,
 }));
 
-import { sseStream } from '@web/data/stream/sse';
+import { sseStream, StreamDroppedError, StreamRefusedError } from '@web/data/stream/sse';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 
 /** The option object `sseStream` handed to the library on the last call. */
@@ -168,5 +168,83 @@ describe('when the server answers with an envelope instead of a stream', () => {
       headers: { 'content-type': 'application/json' },
     });
     await expect(opts.onopen?.(broken)).rejects.toThrow();
+  });
+
+  /**
+   * Whoever shows this refusal has to know whether the sentence in it was
+   * written for the reader. Ours was: it came out of our envelope, through
+   * `t()`, in their language. The generic one below is this file's own
+   * fallback -- it exists so the refusal has something to carry, not because
+   * anybody wrote it about this reader's request. Passed off as the server's
+   * answer it becomes a sentence our server never said.
+   * @param response - What the server answered with.
+   * @returns The refusal it produced.
+   */
+  async function refusalFrom(response: Response): Promise<StreamRefusedError> {
+    const opts = await optionsPassed();
+    try {
+      await opts.onopen?.(response);
+    } catch (err) {
+      return err as StreamRefusedError;
+    }
+    throw new Error('it opened, which is not what this case is about');
+  }
+
+  it('says the sentence is ours when it came out of our envelope', async () => {
+    const refusal = await refusalFrom(
+      envelopeResponse({ error: { code: 402, message: '积分不足' } }, 402),
+    );
+    expect(refusal.message).toBe('积分不足');
+    expect(refusal.fromServer).toBe(true);
+  });
+
+  it('says the sentence is not ours when a gateway answered', async () => {
+    const refusal = await refusalFrom(
+      new Response('502 Bad Gateway', {
+        status: 502,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    );
+    expect(refusal.fromServer).toBe(false);
+  });
+
+  it('says the sentence is not ours when the body is our shape but has no message', async () => {
+    // A proxy that answers JSON, or one of ours that failed before it had
+    // anything to say. The shape parses; there is still no sentence in it.
+    const refusal = await refusalFrom(envelopeResponse({ error: { code: 500 } }, 500));
+    expect(refusal.fromServer).toBe(false);
+  });
+});
+
+describe('when a stream that had opened dies', () => {
+  it('says so once, not once per layer that noticed', async () => {
+    const onError = vi.fn();
+    fetchEventSourceMock.mockImplementation(
+      async (_url: string, opts: {
+        onopen: (r: Response) => Promise<void>;
+        onerror: (e: unknown) => void;
+      }) => {
+        await opts.onopen(
+          new Response('', { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+        );
+        // What the library does when the socket dies: hand the failure to the
+        // handler, and let whatever that handler throws come back out.
+        opts.onerror(new Error('socket died'));
+      },
+    );
+
+    await sseStream({
+      url: '/chat/message',
+      parseEvent: (d) => d,
+      onEvent: () => undefined,
+      onError,
+    });
+
+    // One failure is one thing that happened. Told twice, a caller that acts
+    // on it -- marking the reply, ending the turn, announcing it -- does all
+    // of that twice, and the second time it is acting on a turn that has
+    // already ended.
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(StreamDroppedError);
   });
 });

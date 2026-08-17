@@ -7,7 +7,6 @@ import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { useChatStore } from '@web/stores';
 import { useTranslation } from '@web/i18n/use-translation';
 
-import { StreamRefusedError } from '@web/data/stream/sse';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import { ChatNotice } from '@web/pages/project/chat/ChatNotice';
 import {
@@ -16,6 +15,15 @@ import {
 } from '@web/pages/project/chat/ConversationHistorySheet';
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
+
+/**
+ * What the history sheet is given before there is anything to give it.
+ *
+ * Module-level, because a default written at the parameter builds a new array
+ * on every render -- and a new array is a changed prop, so the sheet would be
+ * rendered again for every piece of a streaming reply.
+ */
+const NO_CONVERSATIONS: ReadonlyArray<ConversationSummary> = [];
 
 interface ChatPanelProps {
   /** Project this chat belongs to — the chat is opened against it. */
@@ -51,16 +59,23 @@ interface ChatPanelProps {
  */
 export function ChatPanel({
   projectId,
-  conversations = [],
+  conversations = NO_CONVERSATIONS,
   onQuickAction,
   disabled = false,
 }: ChatPanelProps): React.JSX.Element {
-  const { messages, isPending, failedToOpen, canSend, send, abort } = useChatSession(projectId);
+  const {
+    messages,
+    isPending,
+    turnPhase,
+    hasMore,
+    mishap,
+    loadEarlier,
+    send,
+    abort,
+  } = useChatSession(projectId);
   const t = useTranslation();
   const draft = useChatStore((s) => s.composerDraft);
   const setDraft = useChatStore((s) => s.setComposerDraft);
-  const clearDraft = useChatStore((s) => s.clearComposerDraft);
-  const streaming = useChatStore((s) => s.streaming);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const setActiveConversationId = useChatStore(
     (s) => s.setActiveConversationId,
@@ -71,53 +86,79 @@ export function ChatPanel({
   // message list needs to know it happened — it is the one thing that should
   // bring the column back to the bottom after they have scrolled up to read.
   const [sentCount, setSentCount] = React.useState(0);
-  /**
-   * What the panel has to say about the last thing that went wrong.
-   *
-   * One line, on the composer, for every failure the panel can report. It is
-   * cleared by trying again — that is the only thing that makes the last
-   * failure old news, and it means the reader never has to dismiss anything.
-   */
-  const [notice, setNotice] = React.useState<string | null>(null);
 
   /**
-   * Send the trimmed composer draft and clear the input.
+   * Send what is in the box.
+   *
+   * The box is left exactly as it is. Emptying it belongs to the conversation,
+   * which is the only thing that learns the words got there -- and which goes
+   * on doing it after this panel is collapsed, unlike anything held here.
+   *
+   * Stable across renders, so that a reply arriving token by token does not
+   * hand the composer a new callback sixty times a second and take its own
+   * memoisation away.
    */
-  const submit = (): void => {
-    const trimmed = draft.trim();
-    if (trimmed.length === 0) return;
+  const submit = React.useCallback((): void => {
+    // Read at the press rather than closed over, which is what lets this
+    // callback be the same one across renders. Handed to a memoised composer
+    // that is re-rendered for every keystroke otherwise -- and the claim that
+    // its props are stable was, until this, not true of this one.
+    const typed = useChatStore.getState().composerDraft;
+    if (typed.trim().length === 0) return;
     setSentCount((n) => n + 1);
-    setNotice(null);
-    // Cleared here rather than when the reply ends. The composer is only live
-    // when there is a conversation to write to, so by the time this runs the
-    // message is already in the list — waiting for the whole turn would leave
-    // the user's words sitting in the box beside their own sent bubble, and
-    // wipe anything typed while the reply streamed in.
-    void send(trimmed).catch((err: unknown) => {
-      // Two failures, one line each, both on the composer. When the server
-      // answered it said why, in the reader's language — sse.ts goes to the
-      // trouble of reading that out of the error envelope, and dropping it
-      // here would waste the only sentence anyone wrote about this refusal.
-      // When it never answered there is nothing to quote, and the reader
-      // needs to know it was the connection and not their message.
-      setNotice(
-        err instanceof StreamRefusedError ? err.message : t('chat.error.notSent'),
-      );
-      // It was not sent, and the server kept no record of it — so nothing of
-      // the attempt is on screen to explain itself. Handing the words back is
-      // the explanation: the message is where the user left it, ready to send
-      // again, rather than gone with nothing to show for it.
-      //
-      // Only into a box that is still empty. The composer stays live for the
-      // whole turn and carrying on typing is the ordinary thing to do, so
-      // writing over whatever is in there would take away words that were
-      // never in trouble — with no message, no undo, and nowhere to look for
-      // them. Read from the store rather than the render that started the
-      // send, which closed over the draft as it was then.
-      if (useChatStore.getState().composerDraft === '') setDraft(trimmed);
-    });
-    clearDraft();
-  };
+    void send(typed);
+  }, [send]);
+
+  /**
+   * Pick a conversation out of the history sheet and close it.
+   *
+   * Stable for the same reason as {@link submit}.
+   */
+  const pickConversation = React.useCallback(
+    (id: string): void => {
+      setActiveConversationId(id);
+      setHistoryOpen(false);
+    },
+    [setActiveConversationId, setHistoryOpen],
+  );
+
+  // Read out here rather than inside the memo below. `t` keeps the same
+  // identity for the life of the page -- switching language re-renders
+  // without replacing it -- so a memo that depends on `t` and calls it inside
+  // would go on showing the sentence in the language it first ran in.
+  const networkErrorText = t('chat.error.network');
+  const turnFailedText = t('chat.error.turnFailed');
+
+  /**
+   * The one line, and it is only ever saying one thing.
+   *
+   * Which of the three depends on one thing: whether a sentence of ours came
+   * back with the answer. One did, and it is passed through rather than
+   * replaced -- the server wrote it in the reader's own language, and it is
+   * the only sentence anyone wrote about this. An answer with none of ours in
+   * it says only that the turn is over, so this end supplies the one thing
+   * that is true about that. No answer at all leaves nothing to quote and
+   * nothing to add: two words, and no advice about what to do next, because
+   * that is the reader's own business.
+   */
+  const notice = React.useMemo(() => {
+    if (mishap === null) return null;
+    // The server wrote this one for the reader, in their own language.
+    if (mishap.kind === 'server') return mishap.message;
+    // It answered, but with nothing a reader could act on -- so this end says
+    // the one thing that is true: the reply is not coming, send it again.
+    if (mishap.kind === 'turn') return turnFailedText;
+    return networkErrorText;
+  }, [mishap, networkErrorText, turnFailedText]);
+
+  /** Load a quick-action label into the composer. Stable for the same reason. */
+  const quickAction = React.useCallback(
+    (label: string): void => {
+      if (onQuickAction) onQuickAction(label);
+      else setDraft(label);
+    },
+    [onQuickAction, setDraft],
+  );
 
   return (
     <div
@@ -134,22 +175,22 @@ export function ChatPanel({
     >
       <MessageList
         messages={messages}
-        loading={isPending || failedToOpen}
+        loading={isPending}
         sentCount={sentCount}
-        onQuickAction={(label) => {
-          if (onQuickAction) onQuickAction(label);
-          else setDraft(label);
-        }}
+        hasEarlier={hasMore}
+        onLoadEarlier={loadEarlier}
+        onQuickAction={quickAction}
       />
-      {/* A chat that would not open is the same kind of news as a message
-          that would not send, and it belongs in the same place — a second
-          bar at the top of the panel would be one more spot to learn to
-          look at, and the two could disagree. */}
-      <ChatNotice message={failedToOpen ? t('chat.error.openFailed') : notice} />
+      {/* One line, on the top edge of the composer, for everything this panel
+          has to say -- and it says each thing once. Nothing here is a state
+          the chat is in, so nothing here stays. */}
+      {/* Keyed by which telling this is, so the same sentence twice is torn
+          down and put up again -- otherwise React leaves the line alone and
+          the second failure is invisible and unspoken. */}
+      <ChatNotice key={mishap?.at ?? 'none'} message={notice} />
       <ChatComposer
         draft={draft}
-        streaming={streaming}
-        disabled={!canSend}
+        turnPhase={turnPhase}
         onChange={setDraft}
         onSubmit={submit}
         onAbort={abort}
@@ -159,10 +200,7 @@ export function ChatPanel({
         onOpenChange={setHistoryOpen}
         conversations={conversations}
         activeId={activeConversationId ?? undefined}
-        onPick={(id) => {
-          setActiveConversationId(id);
-          setHistoryOpen(false);
-        }}
+        onPick={pickConversation}
       />
     </div>
   );

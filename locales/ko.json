@@ -104,7 +104,8 @@
         "label": "스킬을 선택하여 에이전트의 동작 범위를 지정하세요",
         "title": "스킬 선택"
       },
-      "send": "전송"
+      "send": "전송",
+      "sending": "보내는 중"
     },
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
@@ -133,16 +134,16 @@
       "isoDate": "{date}"
     },
     "error": {
-      "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요.",
-      "notSent": "보내지 못했습니다. 네트워크를 확인해 주세요.",
-      "openFailed": "이 대화를 열지 못했습니다. 페이지를 새로고침하고 다시 시도해 주세요."
+      "network": "네트워크 오류",
+      "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요."
     },
     "message": {
       "interrupted": "중지됨"
     },
     "tool": {
       "unfinished": "완료되기 전에 중지됨"
-    }
+    },
+    "loadEarlier": "이전 메시지 불러오기"
   },
   "canvas": {
     "group": {
@@ -265,7 +266,6 @@
       "videoPromptPlaceholder": "생성할 영상을 설명하세요. @ 로 참조 추가",
       "errorNoReferenceMention": "이 모드에는 참고 이미지가 필요합니다 —— 이 노드에 이미지를 연결한 뒤 프롬프트에 @ 를 입력해 지정하세요.",
       "videoMentionEmpty": "아직 언급할 참조가 없습니다",
-      "videoNoPrompt": "이 노드는 영상 생성 기능보다 먼저 만들어져 프롬프트가 없습니다. 새 영상 노드를 만들면 생성할 수 있습니다.",
       "firstFrame": "첫 프레임",
       "firstFrameTip": "영상의 첫 프레임으로 쓸 이미지를 고르세요",
       "removeFirstFrame": "첫 프레임 제거",
@@ -285,7 +285,9 @@
       "removeDrivingVideo": "동작 영상 제거",
       "removeDrivingAudio": "음성 제거",
       "errorNoDrivingVideo": "동작을 가져올 영상을 고르세요",
-      "errorNoDrivingAudio": "입 모양이 따라갈 음성을 고르세요"
+      "errorNoDrivingAudio": "입 모양이 따라갈 음성을 고르세요",
+      "videoPromptNotUsed": "이 모드는 오디오를 따릅니다. 내용을 바꾸려면 오디오를 교체하세요.",
+      "refuseInsertNoPrompt": "이 모드에는 프롬프트 입력란이 없어 넣을 수 없습니다"
     },
     "nodeMenu": {
       "generate": "생성",
@@ -622,6 +624,7 @@
         "description": "Timeline 뷰어는 timeline-space 출시 시 연결됩니다. 여기서는 트랙 스냅샷을 클립 복사와 함께 표시합니다."
       }
     },
+    "readOnlyNotice": "이 Space는 지금 보기만 가능합니다 —— 변경한 내용은 저장되지 않습니다.",
     "lockedAria": "잠김",
     "document": {
       "loading": "편집기를 불러오는 중…",
@@ -629,7 +632,6 @@
         "text": "이 문서를 열 수 없습니다. 삭제되었거나 더 이상 접근 권한이 없을 수 있습니다.",
         "action": "다시 시도"
       },
-      "readOnlyNotice": "이 문서는 지금 읽기 전용입니다 — 입력한 내용은 저장되지 않습니다.",
       "refusedNotice": "이 문서에 대한 연결이 거부되었습니다. 보고 있는 내용이 최신이 아닐 수 있으며 변경 사항도 저장되지 않습니다.",
       "placeholder": "작성을 시작하세요…",
       "titlePlaceholder": "제목 없는 문서",
@@ -651,7 +653,8 @@
         "riskUploads": "진행 중인 업로드가 중단됩니다. 해당 Space로 이동해 먼저 확인할 수 있습니다.",
         "action": "페이지 새로고침"
       }
-    }
+    },
+    "readOnlyReconnect": "다시 연결"
   },
   "menu": {
     "createAria": "만들기 메뉴",

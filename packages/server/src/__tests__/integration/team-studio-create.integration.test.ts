@@ -34,7 +34,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import type { MembershipTier } from "@breatic/shared";
+import type { ConfiguredMembershipTier } from "@breatic/shared";
 import { initCore, loadLocales, getMembershipLimits } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { studioService } from "@server/modules";
@@ -76,7 +76,7 @@ let userSeq = 0;
  * @returns The new user's id and email.
  */
 async function insertUser(
-  tier: MembershipTier = "team",
+  tier: ConfiguredMembershipTier = "team",
 ): Promise<{ id: string; email: string }> {
   const email = `tsc-${userSeq++}@example.com`;
   const rows = await sql<{ id: string }[]>`
@@ -87,7 +87,7 @@ async function insertUser(
 }
 
 /** That tier's team-studio ceiling, straight from the shipped config. */
-function ceilingFor(tier: MembershipTier): number {
+function ceilingFor(tier: ConfiguredMembershipTier): number {
   return getMembershipLimits(tier).team_studios;
 }
 

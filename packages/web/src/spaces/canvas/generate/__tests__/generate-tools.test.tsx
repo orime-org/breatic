@@ -1,0 +1,418 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * What a slot tool shows for what it holds (#1946).
+ *
+ * A filled slot covers its button with the pick: the thumbnail when one
+ * exists, otherwise the asset node's own icon. Never a label in the filled
+ * state — the label belongs to the empty state, where it says what the slot
+ * wants. Before this, the button body read only `thumbnail`, so audio (which
+ * has no picture by nature) and a coverless video rendered EXACTLY the empty
+ * state while holding a pick: same icon, same label, same html, differing only
+ * by a 16x16 ✕ badge (真机 2026-08-14).
+ *
+ * `HoverPreview` is stubbed to expose its props: the claim under test is what
+ * the slot DECLARES it holds, and asserting on a rendered MediaPlayer would be
+ * asserting on HoverPreview's own behaviour, which has its own tests.
+ *
+ * The slot has ONE hover wrapper and it stays mounted in either fill state, so
+ * "no preview" is read off the props the slot hands down, never off the
+ * wrapper's presence.
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { AudioLines, UserRound } from 'lucide-react';
+
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { SlotTool, ToggleTool } from '@web/spaces/canvas/generate/generate-tools';
+import * as overlayFocus from '@web/lib/overlay-focus';
+import * as nodeIcon from '@web/spaces/canvas/lib/node-icon';
+
+vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({
+  HoverPreview: ({
+    kind,
+    src,
+    poster,
+    emptyHint,
+    followCanvas,
+    children,
+  }: {
+    kind: string;
+    src?: string;
+    poster?: string;
+    emptyHint?: string;
+    followCanvas?: boolean;
+    children: React.ReactNode;
+  }): React.JSX.Element => (
+    <div
+      data-testid='slot-preview'
+      data-kind={kind}
+      data-src={src ?? ''}
+      data-poster={poster ?? ''}
+      data-empty-hint={emptyHint ?? ''}
+      data-follow-canvas={followCanvas === true ? 'yes' : 'no'}
+    >
+      {children}
+    </div>
+  ),
+}));
+
+/**
+ * Watches the icon resolver the reference rail uses, keeping its real return
+ * value — the point is WHICH function the slot reaches, not what it renders.
+ */
+const getNodeIconSpy = vi.spyOn(nodeIcon, 'getNodeIcon');
+/** Watches whether the focus-open suppressor is installed. A slot is a pick
+ * trigger, so it must install one in BOTH fill states — see the two tests that
+ * read this spy for what would otherwise pop over the canvas. */
+const suppressSpy = vi.spyOn(overlayFocus, 'suppressTooltipFocusOpen');
+
+beforeEach(() => {
+  getNodeIconSpy.mockClear();
+  suppressSpy.mockClear();
+});
+
+/**
+ * Renders one slot tool with no-op defaults, overridable per test.
+ *
+ * No TooltipProvider: a slot carries no tooltip. ToggleTool still does, so the
+ * one test that renders it brings its own.
+ * @param overrides - Props overriding the defaults.
+ * @returns The render result.
+ */
+function slot(
+  overrides: Partial<React.ComponentProps<typeof SlotTool>> = {},
+): ReturnType<typeof render> {
+  return render(
+    <SlotTool
+      testId='slot'
+      thumbnailTestId='slot-thumb'
+      clearTestId='slot-clear'
+      Icon={AudioLines}
+      onPick={() => {}}
+      onClear={() => {}}
+      active={false}
+      disabled={false}
+      clearLabel='Remove driving audio'
+      label='Driving audio'
+      tip='Pick an audio clip'
+      {...overrides}
+    />,
+  );
+}
+
+/** The pick an audio slot holds: an asset URL and no picture of its own. */
+const AUDIO_PICK = { kind: 'audio', url: 'https://cdn/voice.m4a' } as const;
+/** A coverless video: an asset an `<img>` cannot paint, and no poster either. */
+const COVERLESS_VIDEO = { kind: 'video', url: 'https://cdn/clip.mp4' } as const;
+/** An image pick, whose asset IS its picture. */
+const IMAGE_PICK = {
+  kind: 'image',
+  url: 'https://cdn/face.png',
+  thumbnail: 'https://cdn/face.png',
+} as const;
+
+/**
+ * The lucide class the component stamps on its rendered icon
+ * (`lucide-music`, `lucide-video`, …) — the observable identity of an icon.
+ * @param root - Where to look.
+ * @returns The lucide-* class names found, in DOM order.
+ */
+function iconClasses(root: HTMLElement): string[] {
+  return [...root.querySelectorAll('svg')].flatMap((svg) =>
+    [...svg.classList].filter((c) => c.startsWith('lucide-')),
+  );
+}
+
+describe('SlotTool — a filled slot covers its button with what it holds', () => {
+  it('covers an audio pick with the audio node icon, and drops the label', () => {
+    const { container } = slot({ pick: AUDIO_PICK });
+    // The asset node's own icon, not the slot's own AudioLines: the rail
+    // renders the same glyph for the same node, and #1946 exists to make the
+    // two agree.
+    expect(iconClasses(container)).toContain('lucide-music');
+    // `toBeVisible` is useless here: it reads computed style, and jsdom loads
+    // no Tailwind, so `invisible` produces no `visibility: hidden` and every
+    // implementation would pass. The class itself is the observable claim.
+    expect(screen.getByText('Driving audio').className).toContain('invisible');
+  });
+
+  it('covers a coverless video pick with the video node icon', () => {
+    const { container } = slot({ pick: COVERLESS_VIDEO, Icon: UserRound });
+    expect(iconClasses(container)).toContain('lucide-video');
+  });
+
+  it('still paints the thumbnail when the pick has one', () => {
+    slot({ pick: IMAGE_PICK });
+    const img = screen.getByTestId('slot-thumb');
+    expect(img).toHaveAttribute('src', 'https://cdn/face.png');
+  });
+
+  it('shows the slot OWN icon plus a visible label while empty', () => {
+    const { container } = slot();
+    expect(iconClasses(container)).toContain('lucide-audio-lines');
+    expect(screen.getByText('Driving audio')).toBeVisible();
+  });
+
+  it('keeps the placeholder icon and label IN THE DOM when filled', () => {
+    // The footprint is held by the icon + label laying out invisibly beneath
+    // the cover. Deleting them is the regression this pins: the button's class
+    // string carries no width or height at all, so asserting on "size classes"
+    // would pass either way (Gate 1).
+    slot({ pick: AUDIO_PICK });
+    const label = screen.getByText('Driving audio');
+    expect(label).toBeInTheDocument();
+    expect(label.className).toContain('invisible');
+    // The slot's own icon holds its half of the footprint the same way.
+    const own = document.querySelector('svg.lucide-audio-lines');
+    expect(own).not.toBeNull();
+    expect(own?.getAttribute('class')).toContain('invisible');
+  });
+
+  it('takes the filled icon from the same source the reference rail uses', () => {
+    // Comparing the rendered glyph proves nothing: the rival table
+    // (MODALITY_ICONS, the subject of #1954) maps audio to Music too, so a slot
+    // wired to it renders an identical note. Gate 2 swapped the source and this
+    // file stayed green. So watch the FUNCTION: the rail resolves its icon
+    // through getNodeIcon, and the slot must reach the same one.
+    slot({ pick: AUDIO_PICK });
+    expect(getNodeIconSpy).toHaveBeenCalledWith('audio');
+  });
+
+  it('asks getNodeIcon for the video form when it holds a video', () => {
+    slot({ pick: COVERLESS_VIDEO });
+    expect(getNodeIconSpy).toHaveBeenCalledWith('video');
+  });
+
+  it('never asks for an icon while empty — there is nothing held', () => {
+    slot();
+    expect(getNodeIconSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('SlotTool — the filled slot joins the shared hover preview (#1622)', () => {
+  it('previews an audio pick as playable audio, following the canvas', () => {
+    slot({ pick: AUDIO_PICK });
+    const preview = screen.getByTestId('slot-preview');
+    expect(preview).toHaveAttribute('data-kind', 'audio');
+    expect(preview).toHaveAttribute('data-src', 'https://cdn/voice.m4a');
+    expect(preview).toHaveAttribute('data-follow-canvas', 'yes');
+  });
+
+  it('previews a video pick with its cover as the poster', () => {
+    slot({
+      pick: {
+        kind: 'video',
+        url: 'https://cdn/clip.mp4',
+        thumbnail: 'https://cdn/cover.jpg',
+      },
+    });
+    const preview = screen.getByTestId('slot-preview');
+    expect(preview).toHaveAttribute('data-kind', 'video');
+    expect(preview).toHaveAttribute('data-src', 'https://cdn/clip.mp4');
+    expect(preview).toHaveAttribute('data-poster', 'https://cdn/cover.jpg');
+  });
+
+  it('hands the preview no asset while the slot is empty', () => {
+    // Emptiness reaches the preview as an absent src, which is what makes it
+    // show the hint below instead of a media player.
+    slot();
+    expect(screen.getByTestId('slot-preview')).toHaveAttribute('data-src', '');
+  });
+
+  it('sends the tip through the preview while empty — nothing else says what to pick', () => {
+    // An empty slot's icon and label name the ROLE ('Driving audio'); the tip
+    // is the only thing that says what to go do about it. It travels as the
+    // card's hint so this element keeps hosting exactly one hover surface.
+    slot();
+    expect(screen.getByTestId('slot-preview')).toHaveAttribute(
+      'data-empty-hint',
+      'Pick an audio clip',
+    );
+  });
+
+  it('drops the tip once the slot is filled — the asset speaks for itself', () => {
+    slot({ pick: AUDIO_PICK });
+    expect(screen.getByTestId('slot-preview')).toHaveAttribute(
+      'data-empty-hint',
+      '',
+    );
+  });
+
+  it('gives the slot ONE hover surface, never a tooltip beside the preview', () => {
+    // Two floating cards on one trigger open together and then have to take
+    // turns; every mechanism for that turn-taking failed (#1946). The rail
+    // carries no tooltip for the same reason.
+    //
+    // Radix stamps `data-state` on a TooltipTrigger — and, in the shipped
+    // tree, on a HoverCardTrigger too. Here HoverPreview is stubbed to a plain
+    // div, so a TooltipTrigger is the only thing that could put that attribute
+    // on the button: its absence means no tooltip wraps it. Neither fill state
+    // may have one, since the whole failure was them taking turns.
+    const empty = slot();
+    expect(screen.getByTestId('slot')).not.toHaveAttribute('data-state');
+    empty.unmount();
+
+    slot({ pick: AUDIO_PICK });
+    expect(screen.getByTestId('slot')).not.toHaveAttribute('data-state');
+  });
+});
+
+describe('SlotTool — a running pick reads on the button while filled', () => {
+  it('rings the button when the pick is running on a filled slot', () => {
+    // The white-fill active style hides behind the cover, so a filled slot
+    // that is re-picking says so with a ring instead (A10).
+    slot({ pick: AUDIO_PICK, active: true });
+    expect(classes(screen.getByTestId('slot'))).toContain('ring-foreground');
+  });
+
+  it('does not ring a filled slot that is idle', () => {
+    slot({ pick: AUDIO_PICK });
+    expect(classes(screen.getByTestId('slot'))).not.toContain('ring-foreground');
+  });
+});
+
+/**
+ * The Tailwind class list of an element, as discrete tokens.
+ *
+ * A regex over the whole string cannot tell `border` from `border-border`:
+ * `\b` treats the hyphen as a word boundary, so the colour-only utility
+ * satisfies it while rendering no border at all (preflight sets border-width
+ * to 0). Gate 2 dropped the width class and this file stayed green.
+ * @param el - The element to read.
+ * @returns Its class names.
+ */
+function classes(el: HTMLElement): string[] {
+  return [...el.classList];
+}
+
+describe('SlotTool — the wrapper stays put across a fill flip', () => {
+  it('keeps the SAME button element when a pick arrives', () => {
+    // Alternating wrapper components at this position makes React unmount and
+    // remount the button, which drops keyboard focus to <body>. Reachable with
+    // one hand: Tab to the slot, then Cmd+Z — the undo gate
+    // (CanvasSpace isEditableTarget) excludes INPUT / TEXTAREA / contenteditable
+    // only, so a focused BUTTON does not stop it, and undoing the fill empties
+    // the slot underneath the focus.
+    const { rerender } = slot();
+    const before = screen.getByTestId('slot');
+    before.focus();
+    expect(document.activeElement).toBe(before);
+    rerender(
+      <SlotTool
+        testId='slot'
+        thumbnailTestId='slot-thumb'
+        clearTestId='slot-clear'
+        Icon={AudioLines}
+        onPick={() => {}}
+        onClear={() => {}}
+        active={false}
+        disabled={false}
+        clearLabel='Remove driving audio'
+        label='Driving audio'
+        tip='Pick an audio clip'
+        pick={AUDIO_PICK}
+      />,
+    );
+    expect(screen.getByTestId('slot')).toBe(before);
+    expect(document.activeElement).toBe(before);
+  });
+
+  it('keeps the SAME button element when the pick is cleared', () => {
+    const { rerender } = slot({ pick: AUDIO_PICK });
+    const before = screen.getByTestId('slot');
+    before.focus();
+    rerender(
+      <SlotTool
+        testId='slot'
+        thumbnailTestId='slot-thumb'
+        clearTestId='slot-clear'
+        Icon={AudioLines}
+        onPick={() => {}}
+        onClear={() => {}}
+        active={false}
+        disabled={false}
+        clearLabel='Remove driving audio'
+        label='Driving audio'
+        tip='Pick an audio clip'
+      />,
+    );
+    expect(screen.getByTestId('slot')).toBe(before);
+    expect(document.activeElement).toBe(before);
+  });
+});
+
+describe('SlotTool — the preview is reachable, or not declared at all', () => {
+  it('refuses to open its card from focus while filled', () => {
+    // A slot is a pick TRIGGER: `CanvasSpace.onExitPick` looks it up by testId
+    // through PICK_PURPOSE_UI and calls `.focus()` on it when a pick ends —
+    // reached by Escape and by the pick banner's Exit button. Radix HoverCard
+    // opens on focus (react-hover-card dist :93) and closes only on
+    // pointer-leave or blur, so without the suppressor the media preview would
+    // sit over the canvas after every exit with the pointer nowhere near it.
+    slot({ pick: AUDIO_PICK });
+    fireEvent.focusIn(screen.getByTestId('slot'));
+    expect(suppressSpy).toHaveBeenCalled();
+  });
+
+  it('refuses to open its card from focus while empty too', () => {
+    // Same exit path, same restored focus — the hint card must not pop either.
+    // Measured on `focusin`, the event React actually delegates: the suppressor
+    // works on the synthetic capture chain, so a native `focus` listener would
+    // never see it and the assertion would hold for any implementation.
+    slot();
+    fireEvent.focusIn(screen.getByTestId('slot'));
+    expect(suppressSpy).toHaveBeenCalled();
+  });
+
+  it('declares no preview on a slot that cannot open one', () => {
+    // An HTML-disabled button dispatches no pointerenter and takes no focus, so
+    // both of the HoverCard's open paths are dead. Declaring a preview there
+    // promises something the user can never get (the style slot after switching
+    // to a model without style support).
+    slot({ pick: IMAGE_PICK, disabled: true });
+    expect(screen.getByTestId('slot-preview')).toHaveAttribute('data-src', '');
+  });
+
+  it('still previews a filled slot that is enabled', () => {
+    slot({ pick: IMAGE_PICK, disabled: false });
+    expect(screen.getByTestId('slot-preview')).toHaveAttribute(
+      'data-src',
+      'https://cdn/face.png',
+    );
+  });
+});
+
+describe('SlotTool / ToggleTool — the toolbar buttons carry a 1px border', () => {
+  it('borders a slot tool with the WIDTH utility, not just the colour', () => {
+    slot();
+    const c = classes(screen.getByTestId('slot'));
+    expect(c).toContain('border');
+    expect(c).toContain('border-border');
+  });
+
+  it('borders a filled slot too', () => {
+    slot({ pick: AUDIO_PICK });
+    expect(classes(screen.getByTestId('slot'))).toContain('border');
+  });
+
+  it('borders a toggle tool', () => {
+    render(
+      <TooltipProvider delayDuration={100}>
+        <ToggleTool
+          testId='toggle'
+          label='Reference'
+          tip='Pick a reference'
+          Icon={AudioLines}
+          onClick={() => {}}
+          active={false}
+        />
+      </TooltipProvider>,
+    );
+    const c = classes(screen.getByTestId('toggle'));
+    expect(c).toContain('border');
+    expect(c).toContain('border-border');
+  });
+});
