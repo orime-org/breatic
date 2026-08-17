@@ -1006,7 +1006,7 @@ describe('VideoGeneratePanelContainer', () => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
       await screen.findByTestId('generate-video-execute');
-      // The first frame renders before the catalog resolves, and the slot only
+      // The panel does not mount until the catalog lands (#1966), and the slot only
       // appears once the model says this mode needs a source.
       await screen.findByTestId('generate-video-tool-first-frame');
     }

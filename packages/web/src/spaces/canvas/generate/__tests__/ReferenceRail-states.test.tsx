@@ -385,7 +385,7 @@ describe('ReferenceRail — a model that sends no prompt (#1966)', () => {
     expect(toast.warning).toHaveBeenCalledWith(KEY.removeNoPrompt);
   });
 
-  it('媒体行的两个动作说同一句「不吃参考」，不说提示词那句', () => {
+  it('媒体行的两个动作给同一个理由「不吃参考」，不给提示词那个', () => {
     // 媒体行在这一档里两条约束都不满足，而只有「切到使用参考的档」这条路
     // 真走得通 —— 切到一个发提示词但不吃参考的档，两个动作照样做不了。
     renderNoPrompt();

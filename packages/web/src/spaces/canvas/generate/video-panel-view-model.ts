@@ -346,9 +346,13 @@ export function buildVideoPanelViewModel(input: {
     referenceUrls,
     maxReferences: positiveCap(current?.params.images?.max_items),
     // The model states it (#1966). This used to be inferred from a `prompt`
-    // entry under `params`, which happened to work for video because all four
-    // video yaml files wrote one — a per-catalog writing habit, not a rule, and
-    // the image catalog's habit was the opposite. The fallback still applies
+    // entry under `params` — a per-catalog writing habit, not a rule. Four of
+    // the six video model files wrote one (kling / seedance / veo / wan); the
+    // two that did not, `omnihuman.yaml` and `post.yaml`, hold exactly the
+    // three models that declare `takes_prompt: false`, which is why the
+    // inference looked right on video. No image model ever wrote it, so the
+    // same inference would have switched the requirement off for that whole
+    // catalog. The fallback still applies
     // when no model resolves: an unrecognised model is not a licence to skip a
     // requirement every other mode has.
     promptRequired: current?.takes_prompt ?? true,

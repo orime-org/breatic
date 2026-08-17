@@ -12,9 +12,9 @@
  * Two of the three paths `dispatch.ts` numbers used to do that inline, in
  * OPPOSITE orders: the direct AIGC path lifted first and validated the rest,
  * the mini-tool path validated first and read the prompt off the validated
- * result. (The third, `runUnderstand`, lifts inline too, but it builds its
- * params from scratch and never validates them, so it has no order to get
- * wrong and stays outside this module.) Nothing surfaced the difference
+ * result. (`runUnderstand`, which `dispatch.ts` numbers path 2, lifts inline
+ * too, but it builds its params from scratch and never validates them, so it
+ * has no order to get wrong and stays outside this module.) Nothing surfaced the difference
  * until a model stopped declaring `prompt` under `params` — `validateParams`
  * drops undeclared keys silently — and on the mini-tool path the user's words
  * stopped arriving. One shared function is what removes the second copy that

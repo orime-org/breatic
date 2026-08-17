@@ -811,8 +811,8 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
 // 不挂编辑器只挡住了「在这里打字」。镜像里还留着上一个模型下打的那句话 ——
 // `handlePromptChange` 是唯一写入方、没有任何地方清它，编辑器卸载时也不回调
 // （只在换节点时才随整体重挂而重置）。所以没有那一行显式判断，一次口播类的
-// 生成会把上一个模型的话带出去。视频面板 2026-08-12 就为这个加了那一行
-// （`VideoGeneratePanelContainer.tsx:552`），图片面板这次补齐。
+// 生成会把上一个模型的话带出去。视频面板 2026-08-15 就为这个加了那一行
+// （提交 908b519a，现在在 `VideoGeneratePanelContainer.tsx:553`），图片面板这次补齐。
 describe('GeneratePanelContainer — 不吃提示词的模型不发提示词 (#1966)', () => {
   beforeEach(() => {
     _resetForTests();
