@@ -43,10 +43,16 @@ interface VideoGeneratePanelProps {
   /** Disable the mode switch while the catalog is empty (no model to switch TO). */
   catalogEmpty: boolean;
   /**
-   * Whether the active model consumes the prompt (#1966). Threaded down to
-   * the reference rail, which freezes both controls on every row when it is
-   * false — a row cannot be inserted into a prompt that is not sent, and its
-   * ✕ would delete the reference out of the prompt every OTHER mode shares.
+   * Whether the active model consumes the prompt (#1966). Two things read it:
+   * the prompt slot (a sentence stands in for the editor when it is false) and
+   * the reference rail.
+   *
+   * In the rail it freezes INSERT on every row — nothing can be inserted into
+   * a prompt that is not sent — and the ✕ on TEXT rows only. A text row lives
+   * in the prompt, so removing it under a mode that sends none would take it
+   * out of the prompt every other mode shares; a media row answers to
+   * `modeTakesReferences` instead, because that is the question whose answer
+   * points at a mode where the row actually works.
    */
   promptRequired: boolean;
   /** Reference rows derived from this node's incoming edges. */
@@ -167,8 +173,10 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         // #1927). So the reference material rows go dark in five of six, which
         // also freezes their ✕: references are shared across modes, and a ✕
         // pressed here would throw away a source the user is coming back for
-        // (decision 2026-08-11). A text row is prompt material and stays lit
-        // and removable in all six.
+        // (decision 2026-08-11). A text row is prompt material, so this
+        // question leaves it alone — the one below is the one that reaches it,
+        // and in talking head (the only mode whose model sends no prompt) it
+        // dims and freezes there too (#1966).
         modeTakesReferences={modeTakesReferences(mode)}
         modeSendsPrompt={promptRequired}
       />

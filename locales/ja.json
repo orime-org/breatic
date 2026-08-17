@@ -210,7 +210,6 @@
       "refuseRemoveModeOff": "参照はモード間で共有されます — 削除するには参照を使うモードに切り替えるか、キャンバスで接続線を削除してください",
       "refuseRemoveModeOffCrop": "参照はモード間で共有されます — この切り抜きを削除するには参照を使うモードに切り替えてください",
       "refuseRemoveNoPrompt": "このモードはプロンプトを送りません。削除するにはプロンプトを送るモードに切り替えるか、キャンバスでその接続線を削除してください",
-      "refuseRemoveNoPromptCrop": "このモードはプロンプトを送りません。このトリミングを削除するにはプロンプトを送るモードに切り替えてください",
       "refuseInsertTypeUnused": "{kind, select, audio {参照は画像のみで、音声は使えません} video {参照は画像のみで、動画は使えません} other {参照は画像のみで、この種類の素材は使えません}}",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",
@@ -289,8 +288,7 @@
       "removeDrivingAudio": "口の動きの元の音声を削除",
       "errorNoDrivingVideo": "動きの元になる動画を選んでください",
       "errorNoDrivingAudio": "口の動きの元になる音声を選んでください",
-      "videoPromptNotUsed": "このモードは音声に従います。内容を変えるには音声を差し替えてください。",
-      "promptNotUsed": "このモデルはプロンプトを受け取りません。",
+      "promptNotUsed": "このモードにプロンプトは必要ありません。",
       "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません"
     },
     "nodeMenu": {

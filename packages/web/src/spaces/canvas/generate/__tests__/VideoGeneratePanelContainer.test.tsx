@@ -1473,10 +1473,10 @@ describe('VideoGeneratePanelContainer', () => {
       );
     });
 
-    it('5.1 口播档不挂载提示词编辑器，那一格是这一档的说明', async () => {
+    it('5.1 口播档不挂载提示词编辑器，那一格是「不需要提示词」那句说明', async () => {
       await openMode('talking_head', 'omnihuman-1.5');
       expect(
-        await screen.findByTestId('generate-video-prompt-not-used'),
+        await screen.findByTestId('generate-prompt-not-used'),
       ).toBeInTheDocument();
       expect(
         screen.queryByTestId('generate-prompt-editor'),
@@ -1509,13 +1509,13 @@ describe('VideoGeneratePanelContainer', () => {
         screen.queryByTestId('generate-prompt-editor'),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByTestId('generate-video-prompt-not-used'),
+        screen.queryByTestId('generate-prompt-not-used'),
       ).not.toBeInTheDocument();
       await act(async () => {
         go(catalog());
       });
       expect(
-        await screen.findByTestId('generate-video-prompt-not-used'),
+        await screen.findByTestId('generate-prompt-not-used'),
       ).toBeInTheDocument();
     });
 
@@ -1547,7 +1547,7 @@ describe('VideoGeneratePanelContainer', () => {
       view.rerender(
         panelTree('video', { mode: 'talking_head', model: 'omnihuman-1.5' }),
       );
-      await screen.findByTestId('generate-video-prompt-not-used');
+      await screen.findByTestId('generate-prompt-not-used');
       view.rerender(panelTree('video', t2v));
       const after = await screen.findByTestId('generate-prompt-editor');
       expect(after.textContent).toContain('一段写给文生视频的描述');
@@ -1586,7 +1586,7 @@ describe('VideoGeneratePanelContainer', () => {
       });
       await screen.findByTestId('generate-prompt-editor');
       view.rerender(panelTree('video', talkingHead));
-      await screen.findByTestId('generate-video-prompt-not-used');
+      await screen.findByTestId('generate-prompt-not-used');
       fireEvent.click(screen.getByTestId('generate-video-execute'));
       await waitFor(() => expect(spy).toHaveBeenCalled());
       const body = spy.mock.calls[0]![0] as { params: Record<string, unknown> };

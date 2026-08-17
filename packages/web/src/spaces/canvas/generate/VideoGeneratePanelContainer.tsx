@@ -69,6 +69,7 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 
 /**
  * For the reference derivation that deliberately wants no body text. Shared so
@@ -680,16 +681,10 @@ function VideoGeneratePanelBody({
   // there is nothing to type into it here, and a mounted collaborative editor
   // costs a TipTap instance plus its bindings. The cost is the prompt's undo
   // history, which lives on the editor instance and dies with it (#1961).
-  const promptNotUsedNotice = t('canvas.generatePanel.videoPromptNotUsed');
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
-        <p
-          data-testid='generate-video-prompt-not-used'
-          className='px-1 py-2 text-xs text-muted-foreground'
-        >
-          {promptNotUsedNotice}
-        </p>
+        <PromptNotUsedNotice />
       ) : fragment ? (
         <PromptEditor
           ref={promptEditorRef}
@@ -709,7 +704,6 @@ function VideoGeneratePanelBody({
       ) : null,
     [
       vm.promptRequired,
-      promptNotUsedNotice,
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,

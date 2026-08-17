@@ -20,8 +20,14 @@
 import { modelsApi } from '@web/data/api';
 import type { ModelCatalog } from '@breatic/shared';
 
-/** The cache key every model-catalog reader and the prefetch share. */
-export const MODEL_CATALOG_KEY = ['models'] as const;
+/**
+ * The cache key every model-catalog reader and the prefetch share.
+ *
+ * Module-private: handing it out separately is how the prefetch and the gate
+ * could come to key the same cache differently, which is the exact failure
+ * this module exists to prevent. Callers take {@link modelCatalogQuery}.
+ */
+const MODEL_CATALOG_KEY = ['models'] as const;
 
 /** What `useQuery` and `prefetchQuery` both need to reach the catalog. */
 export interface ModelCatalogQuery {

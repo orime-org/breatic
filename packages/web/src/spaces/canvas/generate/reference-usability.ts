@@ -33,21 +33,24 @@
  * and the answer used to live in the video container, which refused the insert
  * itself. It moved in here so that "can this row act" has ONE home (#1962).
  *
- * Splitting them gives each control the smallest question it can ask:
+ * Both controls start from the ROW KIND, and from there each asks only what
+ * can actually refuse that kind:
  *
- * | Asked by | Asks, in order | Decides |
+ * | Row kind | {@link insertRefusal} asks, in order | {@link removeRefusal} asks |
  * |---|---|---|
- * | {@link insertRefusal} | Is there a prompt to insert into; does this mode use references; is this row an image | insert + `@` picker |
- * | {@link removeRefusal} | For a text row: is there a prompt. For a media row: does this mode use references | row dim + ✕ |
+ * | text | Is there a prompt | Is there a prompt |
+ * | image / audio / video / … | Does this mode use references; is there a prompt; is this row an image | Does this mode use references |
  *
- * The two differ on purpose, and the reason is what each MESSAGE has to say.
- * Insert names only the cause, so the most fundamental cause goes first for
- * every row kind: with no editor on screen there is nowhere to insert, whatever
- * the row is. Remove names the way OUT, and the two questions lead to different
- * exits — a media row becomes removable in a mode that takes references, a text
- * row in a mode that sends a prompt — so remove asks each row the question that
- * actually gates it. Asking a media row about the prompt would send its user to
- * a mode where the ✕ refuses all the same.
+ * Two properties fall out of that shape, and both are the point. The two
+ * controls on one row always give the SAME first answer, so a row never shows
+ * two different reasons for being frozen. And every reason names a state the
+ * user can leave and arrive somewhere the row works: a media row becomes usable
+ * in a mode that takes references, a text row in a mode that sends a prompt.
+ * Asking a media row about the prompt first would have sent its user to t2v /
+ * i2v / first_last / animate — all of which send a prompt and still refuse it.
+ *
+ * Insert then asks two more, because insertion needs more than removal does: a
+ * destination to insert INTO, and a row the pool can carry.
  *
  * The dim still reads on REFERENCE MATERIAL alone: a text row is prompt
  * material, and the dim rule's subject is the reference material, not every row
@@ -125,20 +128,26 @@ export function insertRefusal(
   sourceNodeType: NodeKind,
   ctx: ReferenceModeContext,
 ): ReferenceRefusal | null {
-  // No prompt, no destination — asked FIRST, and of every row (#1966). The
-  // video container used to ask this one, reading the same `promptRequired`
-  // its editor mounts on; that second home is what #1962 removed.
-  // Insert puts an `@` chip into the prompt; when the mode sends none there is
-  // no box to put it in, which is more fundamental than "this mode ignores
-  // references": telling someone to switch to a mode that uses references
-  // would point them at an action that still cannot be completed.
-  if (!ctx.takesPrompt) return 'mode-sends-no-prompt';
-  if (!isReferenceMaterial(sourceNodeType)) return null;
-  // Mode before modality when both would refuse. The mode reason names the
-  // state the user can leave — this mode ignores references, another one does
-  // not — while the modality reason names a rule that holds everywhere and
-  // leaves nothing to do. Told both, the user can act on only one of them.
+  // A text row lives in the prompt and nowhere else, so the prompt question is
+  // the only one that can refuse it. The video container used to ask this one,
+  // reading the same `promptRequired` its editor mounts on; that second home is
+  // what #1962 removed.
+  if (!isReferenceMaterial(sourceNodeType)) {
+    return ctx.takesPrompt ? null : 'mode-sends-no-prompt';
+  }
+  // For a media row the reference question comes first, and it comes first for
+  // the reason the whole module exists: of the two refusals, only this one
+  // names a state the user can leave and reach a mode where the row WORKS.
+  // Leading with "there is no prompt box" sends them to t2v / i2v /
+  // first_last / animate, which all send a prompt and still refuse this row.
+  // It also keeps the two controls on a row agreeing: {@link removeRefusal}
+  // asks the same first question, so one row never shows two different reasons.
   if (!ctx.takesReferences) return 'mode-takes-no-references';
+  // The mode does use references, so now the destination matters: with no
+  // prompt there is no box to put the `@` chip in. Unreachable in today's
+  // catalog — the one mode that takes references also sends a prompt — but the
+  // order has to be total.
+  if (!ctx.takesPrompt) return 'mode-sends-no-prompt';
   // The pool is the image pool — see the module docstring. Everything else is
   // a legitimate connection (an edge carries creative intent as well as data
   // use, user 2026-08-13) that this pool has no way to carry.

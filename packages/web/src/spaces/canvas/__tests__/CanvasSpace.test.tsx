@@ -811,9 +811,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       }),
     );
     renderSpace();
-    // Enter pick mode directly — the overlay keys off pickSession
-    // alone (opening the real panel would drag in the models useQuery, which
-    // needs a QueryClientProvider this mount doesn't have).
+    // Enter pick mode directly — the overlay keys off pickSession alone, so
+    // this asserts the overlay and nothing about how a panel opens. (The old
+    // reason given here, that a real panel would need a QueryClientProvider
+    // this mount lacks, stopped being true when `renderSpace` started
+    // providing one.)
     act(() => {
       useCanvasStore.getState().startReferencePick('target');
     });

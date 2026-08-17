@@ -19,11 +19,34 @@
 
 import { describe, it, expect } from "vitest";
 
-import { takePromptAndValidate, takePromptOutOfParams } from "@worker/handlers/prompt-params.js";
+import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 
-describe("takePromptOutOfParams (#1966)", () => {
+/**
+ * A validator that keeps whatever it is handed, so a case can watch the lift
+ * alone. The real one drops undeclared keys — that behaviour has its own cases
+ * in the second describe below.
+ * @param model - Passed straight back.
+ * @param params - Passed straight back.
+ * @returns The pair unchanged.
+ */
+const keepAll = (
+  model: string,
+  params: Record<string, unknown>,
+): [string, Record<string, unknown>] => [model, params];
+
+/**
+ * The lift, reached through the only entry point there is.
+ * @param params - The params bag to lift the prompt out of.
+ * @returns A `[prompt, rest]` pair.
+ */
+function lift(params: Record<string, unknown>): [string, Record<string, unknown>] {
+  const [prompt, , rest] = takePromptAndValidate(params, "m", keepAll);
+  return [prompt, rest];
+}
+
+describe("lifting the prompt out of the params bag (#1966)", () => {
   it("returns the prompt and a bag no longer carrying it", () => {
-    const [prompt, rest] = takePromptOutOfParams({
+    const [prompt, rest] = lift({
       prompt: "a cat",
       aspect_ratio: "16:9",
     });
@@ -33,7 +56,7 @@ describe("takePromptOutOfParams (#1966)", () => {
 
   // TTS 送的是「要念的稿子」，走的是同一个通道、键名叫 text。
   it("reads `text` when there is no `prompt`", () => {
-    const [prompt, rest] = takePromptOutOfParams({
+    const [prompt, rest] = lift({
       text: "read this aloud",
       voice_id: "v1",
     });
@@ -42,7 +65,7 @@ describe("takePromptOutOfParams (#1966)", () => {
   });
 
   it("prefers `prompt` when both are present, and removes both", () => {
-    const [prompt, rest] = takePromptOutOfParams({
+    const [prompt, rest] = lift({
       prompt: "p",
       text: "t",
       seed: 1,
@@ -52,7 +75,7 @@ describe("takePromptOutOfParams (#1966)", () => {
   });
 
   it("yields an empty prompt when the bag carries neither", () => {
-    const [prompt, rest] = takePromptOutOfParams({ image: "http://x/y.png" });
+    const [prompt, rest] = lift({ image: "http://x/y.png" });
     expect(prompt).toBe("");
     expect(rest).toEqual({ image: "http://x/y.png" });
   });
@@ -60,7 +83,7 @@ describe("takePromptOutOfParams (#1966)", () => {
   // CLAUDE.md：AIGC prompt 一律先经 extractPromptText 去 HTML、注释和不可见
   // 字符。mini-tool 那条路此前没经过，两条路拉齐之后它也经过了。
   it("strips markup the way every AIGC prompt is required to be stripped", () => {
-    const [prompt] = takePromptOutOfParams({
+    const [prompt] = lift({
       prompt: "<b>bold</b> plan<!-- hidden -->",
     });
     expect(prompt).not.toContain("<b>");
@@ -70,7 +93,7 @@ describe("takePromptOutOfParams (#1966)", () => {
 
   it("does not mutate the bag it was given", () => {
     const original = { prompt: "p", seed: 1 };
-    takePromptOutOfParams(original);
+    lift(original);
     expect(original).toEqual({ prompt: "p", seed: 1 });
   });
 

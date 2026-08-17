@@ -79,6 +79,8 @@ const KEY = {
   removeOff: 'canvas.generatePanel.refuseRemoveModeOff',
   removeOffCrop: 'canvas.generatePanel.refuseRemoveModeOffCrop',
   typeUnused: 'canvas.generatePanel.refuseInsertTypeUnused',
+  insertNoPrompt: 'canvas.generatePanel.refuseInsertNoPrompt',
+  removeNoPrompt: 'canvas.generatePanel.refuseRemoveNoPrompt',
 } as const;
 
 /**
@@ -343,4 +345,59 @@ describe('ReferenceRail — a focus crop has no edge to delete', () => {
   });
 });
 
+describe('ReferenceRail — a model that sends no prompt (#1966)', () => {
+  // 这一档的两个事实同时成立：模型不吃提示词，且这一档不吃参考素材
+  // （目录里唯一 takes_prompt=false 的视频模型就在口播档，而口播档不吃参考）。
+  /**
+   * Renders the rail under a mode whose model consumes no prompt.
+   * @returns Nothing; assertions read the rendered rail.
+   */
+  function renderNoPrompt(): void {
+    render(
+      <ReferenceRail
+        references={ROWS}
+        onInsert={vi.fn()}
+        onRemove={vi.fn()}
+        modeTakesReferences={false}
+        modeSendsPrompt={false}
+      />,
+    );
+  }
 
+  it('文本行两个动作都冻住，且各说各的', () => {
+    // 插入只说原因，✕ 要说出路 —— 两句必须是两句。把 ✕ 换成插入那句，
+    // 这条会红；实测过在补它之前，改成插入那句全仓 3979 条一条都不红。
+    renderNoPrompt();
+    expect(
+      screen.getByTestId('generate-ref-insert-e-text').getAttribute('aria-disabled'),
+    ).toBe('true');
+    fireEvent.click(screen.getByTestId('generate-ref-insert-e-text'));
+    expect(toast.warning).toHaveBeenCalledWith(KEY.insertNoPrompt);
+
+    vi.mocked(toast.warning).mockClear();
+    expect(
+      screen.getByTestId('generate-ref-remove-e-text').getAttribute('aria-disabled'),
+    ).toBe('true');
+    fireEvent.click(screen.getByTestId('generate-ref-remove-e-text'));
+    expect(toast.warning).toHaveBeenCalledWith(KEY.removeNoPrompt);
+  });
+
+  it('媒体行的两个动作说同一句「不吃参考」，不说提示词那句', () => {
+    // 媒体行在这一档里两条约束都不满足，而只有「切到使用参考的档」这条路
+    // 真走得通 —— 切到一个发提示词但不吃参考的档，两个动作照样做不了。
+    renderNoPrompt();
+    for (const id of ['e-image', 'e-audio', 'e-video']) {
+      vi.mocked(toast.warning).mockClear();
+      fireEvent.click(screen.getByTestId(`generate-ref-insert-${id}`));
+      expect(toast.warning, `insert ${id}`).toHaveBeenCalledWith(KEY.modeOff);
+      vi.mocked(toast.warning).mockClear();
+      fireEvent.click(screen.getByTestId(`generate-ref-remove-${id}`));
+      expect(toast.warning, `remove ${id}`).toHaveBeenCalledWith(KEY.removeOff);
+    }
+  });
+
+  it('文本行在这一档里也变暗 —— 它是提示词素材，而这一档没有提示词', () => {
+    renderNoPrompt();
+    expect(screen.getByTestId('generate-ref-e-text').className).toContain('opacity-50');
+  });
+});

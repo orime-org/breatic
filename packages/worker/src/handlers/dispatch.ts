@@ -1583,10 +1583,17 @@ interface RunMiniToolOpts {
 /**
  * Execution path 1: run a mini-tool, dispatching to a local ffmpeg/Sharp
  * handler or to an AIGC provider depending on the registry entry kind.
+ *
+ * Exported for its tests. The provider branch carries an invariant nothing else
+ * can check — that the user's prompt is lifted out of `params` BEFORE they are
+ * validated (#1967) — and reaching it through `runTask` would mean standing up
+ * the database, Redis and the credit ledger to assert one argument. Adversarial
+ * round 2 proved the gap was real: reversing the two steps here left all 246
+ * worker tests green.
  * @param opts - Mini-tool invocation context (tool name, task type, params, ids)
  * @returns A `[result, credits]` tuple: the provider/handler result dict and the credits to charge
  */
-async function runMiniTool(
+export async function runMiniTool(
   opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
   const { toolName, taskType, params, jobId, userId, projectId, resume } = opts;
@@ -1676,10 +1683,13 @@ async function runUnderstand(
  * @param model - Model name to invoke; required for this path
  * @param params - Task params, including the raw prompt/text to sanitise
  * @param resume - Async-transport resume context for at-most-once submit (#1628)
+ * Exported alongside {@link runMiniTool}, and for the same reason: this is the
+ * other half of the pair whose orders drifted apart, so the test that pins one
+ * has to be able to pin the other.
  * @returns A `[result, credits]` tuple: the provider result dict and the credits to charge
  * @throws {Error} when `model` is not provided
  */
-async function runAigcDirect(
+export async function runAigcDirect(
   taskType: string,
   model: string | undefined,
   params: Record<string, unknown>,

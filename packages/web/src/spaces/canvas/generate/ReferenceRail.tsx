@@ -73,13 +73,16 @@ interface ReferenceRailProps {
    */
   modeTakesReferences?: boolean;
   /**
-   * Does the ACTIVE MODEL consume the prompt (#1966)? False dims EVERY row —
-   * text included — and freezes both its controls.
+   * Does the ACTIVE MODEL consume the prompt (#1966)? False freezes INSERT on
+   * every row — there is nowhere to insert into — and the ✕ on TEXT rows only,
+   * which also dims them (the dim reads the ✕ verdict).
    *
    * Text rows are exempt from `modeTakesReferences` because they are prompt
    * material; that exemption only holds while there IS a prompt. A mode
-   * sending none has nothing for a text row to be material for, so it belongs
-   * with the media rows (user 2026-08-16).
+   * sending none has nothing for a text row to be material for, so it freezes
+   * there too (user 2026-08-16). A media row keeps answering to
+   * `modeTakesReferences`: of the two questions, only that one leads to a mode
+   * where the row works, and the two controls have to name the same way out.
    *
    * Defaulted `true` for the same reason as the prop above: a caller that
    * knows nothing about prompts gets the pre-#1966 rail.
@@ -123,14 +126,11 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     }),
     [modeTakesReferences, modeSendsPrompt],
   );
-  // Three refusal reasons, seven messages: three for insert, four for remove.
+  // Three refusal reasons, six messages: three for insert, three for remove.
   // Insert names only the cause, because the mode selector is in this same
   // panel and every dimmed row is visibly dark. Remove has to name the ways
-  // OUT, because the user asked for the row to be GONE and is being told no —
-  // and each of its two reachable reasons leads somewhere different, which is
-  // also why `removeRefusal` asks each row kind its own question. A focus crop
-  // then doubles the remove side, because one of those ways out — delete its
-  // edge — does not exist for it.
+  // OUT, because the user asked for the row to be GONE and is being told no.
+  // The crop variant doubles only the mode-off reason, for the reason below.
   const refuseInsert = React.useCallback(
     (refusal: ReferenceRefusal, kind: NodeKind): void => {
       if (refusal === 'mode-sends-no-prompt') {
@@ -153,14 +153,15 @@ export const ReferenceRail = React.memo(function ReferenceRail({
       // nothing about getting rid of the row. Freezing a control while being
       // unable to explain itself is exactly what `aria-disabled` rather than
       // the HTML attribute exists to avoid.
+      //
+      // No crop variant on this branch, and it is not an omission: this reason
+      // reaches the ✕ only for a TEXT row (`removeRefusal` asks the reference
+      // question for every other kind), while a focus crop is always an image
+      // row (`focusToRailItem` writes `sourceNodeType: 'image'`). The two
+      // cannot coexist, so a crop-specific message here would be a string no
+      // one could ever read.
       if (refusal === 'mode-sends-no-prompt') {
-        toast.warning(
-          t(
-            isCrop
-              ? 'canvas.generatePanel.refuseRemoveNoPromptCrop'
-              : 'canvas.generatePanel.refuseRemoveNoPrompt',
-          ),
-        );
+        toast.warning(t('canvas.generatePanel.refuseRemoveNoPrompt'));
         return;
       }
       // A focus crop is a standalone copy, not an edge projection — its ✕
@@ -186,13 +187,13 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     >
       {references.map((ref) => {
         const NodeIcon = getNodeIcon(ref.sourceNodeType);
-        // Both start from the row kind — a text row sits outside both. Remove
-        // then asks only whether the mode uses references at all; insert asks
-        // that too (mode first, so its message names the state the user can
-        // leave) and then whether the row is an image. `removeRefused` answers
-        // for the row dim as well as the ✕: they are the same question, and
-        // spelling it twice is how a row once ended up lit with its ✕ frozen
-        // (#1940).
+        // Both start from the row kind, and each asks only what can refuse
+        // that kind: a text row answers to the prompt question, a media row to
+        // the reference one. Insert then asks two more of a media row — is
+        // there a prompt to insert INTO, and can the pool carry this modality.
+        // `removeRefused` answers for the row dim as well as the ✕: they are
+        // the same question, and spelling it twice is how a row once ended up
+        // lit with its ✕ frozen (#1940).
         const insertRefused = insertRefusal(ref.sourceNodeType, modeCtx);
         const removeRefused = removeRefusal(ref.sourceNodeType, modeCtx);
         // Empty-source hint (H, user 2026-07-12): a source that has produced
@@ -222,12 +223,14 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             // buttons and no other row at all. The controls carry no opacity
             // of their own, so nothing multiplies down to 0.25.
             //
-            // It reads on REFERENCE MATERIAL only. A text row is prompt
-            // material, which this rule is not about, so dimming it would say
-            // it was unusable on a dimension that does not apply to it
-            // (user 2026-08-13). Whether the active model has a prompt at all
-            // is a separate question this component cannot answer (#1950 — a
-            // model may declare none); the container asks it on insert.
+            // It reads the ✕ verdict, which for a media row is the
+            // reference question and for a text row is the prompt question.
+            // So a text row stays lit under a mode that merely ignores
+            // references — that rule is not about it (user 2026-08-13) — and
+            // dims under one whose model sends no prompt, where it really has
+            // nothing to be material for (#1966). This component answers that
+            // second question from `modeSendsPrompt`; the video container used
+            // to answer it on insert, and that second home is gone (#1962).
             //
             // The hover preview is deliberately NOT dimmed: it is portaled, so
             // this opacity does not reach it, and that is the wanted outcome —

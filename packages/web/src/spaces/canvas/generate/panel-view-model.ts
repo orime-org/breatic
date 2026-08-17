@@ -120,8 +120,10 @@ export interface GeneratePanelViewModel {
    */
   promptRequired: boolean;
   /**
-   * Whether the GLOBAL generatable-image catalog is empty (still loading, failed
-   * to load, or no generation model configured). Distinct from `models.length`,
+   * Whether the GLOBAL generatable-image catalog is empty. Since #1964 that has
+   * exactly one cause left — no generation model configured — because the panel
+   * does not render at all until the catalog lands, so "still loading" and
+   * "failed to load" never reach a rendered panel. Distinct from `models.length`,
    * which is the ACTIVE-mode-filtered subset: the mode toggle gates its disabled
    * state on THIS (not the mode subset) so a node stuck in a mode with zero
    * models can still toggle back to the populated mode (adversarial round 2).

@@ -280,26 +280,25 @@ describe('这一档不发提示词时 (#1966)', () => {
     expect(removeRefusal('text', noPrompt)).toBe('mode-sends-no-prompt');
   });
 
-  it('参考素材行的插入被拒，理由是没有提示词框', () => {
-    // 插入的目的地是提示词框，目的地不存在比「来源不被这一档使用」更根本，
-    // 而插入的文案只说原因、不许诺出路，所以它对所有行类型都先答这一问。
-    expect(insertRefusal('image', noPrompt)).toBe('mode-sends-no-prompt');
+  it('参考素材行的两个动作说同一句：「这一档不吃参考」', () => {
+    // 两个按钮问的是同一个问题的两面，答案必须一致，否则同一行会给出两个
+    // 互相矛盾的理由。而在两条约束同时成立时，只有「不吃参考」这一句指得出
+    // 真走得通的路：切到使用参考的档（ref）一次就成，切到一个发提示词但不吃
+    // 参考的档（t2v / i2v / first_last / animate）仍然两个动作都做不了。
+    for (const kind of ['image', 'audio', 'video'] as const) {
+      expect(insertRefusal(kind, noPrompt), `insert ${kind}`).toBe(
+        'mode-takes-no-references',
+      );
+      expect(removeRefusal(kind, noPrompt), `remove ${kind}`).toBe(
+        'mode-takes-no-references',
+      );
+    }
   });
 
-  it('参考素材行的 ✕ 被拒，理由是「不吃参考」——因为只有这句给得出能走通的出路', () => {
-    // 移除的文案必须说出路（用户要的是这一行消失，而被告知不行）。此处两条
-    // 约束同时成立，只有「切到使用参考的档」真能让这一行变得可删：切到一个
-    // 发提示词但不吃参考的档（t2v / i2v / first_last / animate 都是），媒体行
-    // 照样删不掉。所以媒体行的 ✕ 先答参考那一问。
-    expect(removeRefusal('image', noPrompt)).toBe('mode-takes-no-references');
-    expect(removeRefusal('audio', noPrompt)).toBe('mode-takes-no-references');
-    expect(removeRefusal('video', noPrompt)).toBe('mode-takes-no-references');
-  });
-
-  it('这一档吃参考素材但不发提示词时，插入仍先说提示词，✕ 放行', () => {
+  it('这一档吃参考素材但不发提示词时，插入说没框、✕ 放行', () => {
     // 今天不可达（面板里唯一 takesPrompt=false 的模式，takesReferences 也是
-    // false），但判定必须是全序，所以这一格要有定义。这一档真的在用这一行，
-    // 所以删得掉；而插进提示词仍然无处可去。
+    // false），但判定必须是全序，所以这一格要有定义。参考那一问已经过了，
+    // 所以插入才轮到提示词那一问；而这一档真的在用这一行，所以删得掉。
     expect(insertRefusal('image', noPromptButRefs)).toBe('mode-sends-no-prompt');
     expect(removeRefusal('image', noPromptButRefs)).toBeNull();
   });

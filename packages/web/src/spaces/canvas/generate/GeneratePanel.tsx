@@ -28,17 +28,25 @@ interface GeneratePanelProps {
   /** Active generation sub-mode (drives the t2i / i2i toggle). */
   mode: ImageGenMode;
   /**
-   * Whether the GLOBAL generatable catalog is empty (loading / failed / none
-   * configured). Gates the mode toggle's disabled state — NOT `models.length`
+   * Whether the GLOBAL generatable catalog is empty — meaning no generation
+   * model is configured, the only cause left since #1964 held this panel back
+   * until the catalog lands. Gates the mode toggle's disabled state — NOT
+   * `models.length`
    * (the active-mode subset), so a node in a mode with zero models can still
    * toggle back to the populated mode.
    */
   catalogEmpty: boolean;
   /**
-   * Whether the active model consumes the prompt (#1966). Threaded down to
-   * the reference rail, which freezes both controls on every row when it is
-   * false — a row cannot be inserted into a prompt that is not sent, and its
-   * ✕ would delete the reference out of the prompt every OTHER mode shares.
+   * Whether the active model consumes the prompt (#1966). Two things read it:
+   * the prompt slot (a sentence stands in for the editor when it is false) and
+   * the reference rail.
+   *
+   * In the rail it freezes INSERT on every row — nothing can be inserted into
+   * a prompt that is not sent — and the ✕ on TEXT rows only. A text row lives
+   * in the prompt, so removing it under a mode that sends none would take it
+   * out of the prompt every other mode shares; a media row answers to
+   * `modeTakesReferences` instead, because that is the question whose answer
+   * points at a mode where the row actually works.
    */
   promptRequired: boolean;
   /** Current ratio + resolution selection. */
@@ -215,8 +223,10 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         // Text-to-image reads no source images at all, so its reference
         // material rows go dark — and with them their ✕, because references
         // are shared across modes (decision 2026-08-11). A text row stays lit
-        // either way: it feeds the prompt string, which t2i sends like any
-        // other mode. Image-to-image is the mode that lights the rest back up;
+        // under this question either way: it feeds the prompt string, which
+        // both modes send. What could dim it is the prop below, and no image
+        // model reachable from this panel declares `takes_prompt: false`
+        // today. Image-to-image is the mode that lights the rest back up;
         // this panel has exactly those two (`ImageGenMode`).
         modeTakesReferences={!imageSourcesOff}
         modeSendsPrompt={promptRequired}

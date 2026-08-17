@@ -28,9 +28,13 @@ import { extractPromptText } from "@breatic/domain";
  * `extractPromptText` per the mandate that every AIGC prompt is stripped of
  * HTML, comments and invisible characters before it reaches a provider.
  * @param params - The task params as submitted.
+ *
+ * Module-private: every caller goes through {@link takePromptAndValidate},
+ * because the ORDER of these two steps is the invariant (#1967) and a lifted
+ * prompt with unvalidated params is a half-done state no path wants.
  * @returns A `[prompt, rest]` tuple: the cleaned prompt (empty when the bag carries neither key) and a copy of the bag with both keys removed.
  */
-export function takePromptOutOfParams(
+function takePromptOutOfParams(
   params: Record<string, unknown>,
 ): [string, Record<string, unknown>] {
   const prompt = extractPromptText(params.prompt ?? params.text);

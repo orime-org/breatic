@@ -15,6 +15,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as React from 'react';
 import { render, screen } from '@testing-library/react';
 import {
   DOCUMENT_SCHEMA,
@@ -46,15 +47,30 @@ function publishDifferentSchema(): void {
   });
 }
 
+/**
+ * Mounts the outlet with a query client around it, the way the real app does
+ * (`App.tsx` wraps everything in one).
+ *
+ * Takes the element rather than its props, so every call site keeps writing
+ * the props it means and this only owns the wrapper. A fresh client per mount
+ * keeps one test's cached catalog out of the next one's gate — a constraint
+ * that lives in one place here instead of being restated at every call.
+ * @param element - The outlet to mount, with whatever props the case needs.
+ * @returns The render result.
+ */
+function renderOutlet(element: React.JSX.Element): ReturnType<typeof render> {
+  return render(
+    <QueryClientProvider client={new QueryClient()}>
+      {element}
+    </QueryClientProvider>,
+  );
+}
+
 describe('服务器那份跟我不一样时', () => {
   it('document space 被拦下来，出的是那个面板', () => {
     publishDifferentSchema();
 
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <SpaceOutlet projectId={PROJECT} spaceId='s1' type='document' />
-      </QueryClientProvider>,
-    );
+    renderOutlet(<SpaceOutlet projectId={PROJECT} spaceId='s1' type='document' />);
 
     expect(screen.getByTestId('document-schema-outdated')).toBeInTheDocument();
   });
@@ -64,11 +80,7 @@ describe('服务器那份跟我不一样时', () => {
     // 而那样工具栏还在、按钮还按得动。这一条钉的是后者。
     publishDifferentSchema();
 
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <SpaceOutlet projectId={PROJECT} spaceId='s1' type='document' />
-      </QueryClientProvider>,
-    );
+    renderOutlet(<SpaceOutlet projectId={PROJECT} spaceId='s1' type='document' />);
 
     expect(screen.getByTestId('document-schema-outdated')).toBeInTheDocument();
     expect(screen.queryByTestId('document-toolbar')).not.toBeInTheDocument();
@@ -79,11 +91,7 @@ describe('服务器那份跟我不一样时', () => {
   it('同一个 project 里的第二个 document space 一样被拦', () => {
     publishDifferentSchema();
 
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <SpaceOutlet projectId={PROJECT} spaceId='s2' type='document' />
-      </QueryClientProvider>,
-    );
+    renderOutlet(<SpaceOutlet projectId={PROJECT} spaceId='s2' type='document' />);
 
     expect(screen.getByTestId('document-schema-outdated')).toBeInTheDocument();
   });
@@ -91,11 +99,7 @@ describe('服务器那份跟我不一样时', () => {
   it('画布照常——这份 schema 只管 document', () => {
     publishDifferentSchema();
 
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <SpaceOutlet projectId={PROJECT} spaceId='s3' type='canvas' />
-      </QueryClientProvider>,
-    );
+    renderOutlet(<SpaceOutlet projectId={PROJECT} spaceId='s3' type='canvas' />);
 
     expect(screen.getByTestId('canvas-space')).toBeInTheDocument();
     expect(
@@ -106,11 +110,7 @@ describe('服务器那份跟我不一样时', () => {
   it('时间轴也照常', () => {
     publishDifferentSchema();
 
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <SpaceOutlet projectId={PROJECT} spaceId='s4' type='timeline' />
-      </QueryClientProvider>,
-    );
+    renderOutlet(<SpaceOutlet projectId={PROJECT} spaceId='s4' type='timeline' />);
 
     expect(screen.getByTestId('timeline-space-empty')).toBeInTheDocument();
   });
@@ -127,11 +127,7 @@ describe('服务器那份跟我一样时', () => {
       map.set('publishedAt', '2026-08-13T06:20:00.000Z');
     });
 
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <SpaceOutlet projectId={PROJECT} spaceId='s5' type='document' />
-      </QueryClientProvider>,
-    );
+    renderOutlet(<SpaceOutlet projectId={PROJECT} spaceId='s5' type='document' />);
 
     expect(
       screen.queryByTestId('document-schema-outdated'),

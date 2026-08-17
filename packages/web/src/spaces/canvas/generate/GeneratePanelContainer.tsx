@@ -69,6 +69,7 @@ import {
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 
 /**
  * For the two derivations below that deliberately want no body text. Shared so
@@ -696,23 +697,10 @@ function GeneratePanelBody({
   // Text-to-image generates from scratch and ignores source images, so an
   // image `@` chip contributes nothing and the editor greys it (§2.4 C).
   const imageRefsOff = vm.mode === 't2i';
-  // A model that consumes no prompt gets a sentence instead of a box, the same
-  // way the video panel does (#1966). Without this the panel contradicts
-  // itself: the rail freezes on `promptRequired` and says "this mode has no
-  // prompt to insert into", while the middle of the same panel offers
-  // somewhere to type. The copy is this panel's own — the video one names a
-  // concrete alternative ("go change the audio") that only holds for its
-  // audio-driven model, and there is no such alternative to name here.
-  const promptNotUsedNotice = t('canvas.generatePanel.promptNotUsed');
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
-        <p
-          data-testid='generate-prompt-not-used'
-          className='px-1 py-2 text-xs text-muted-foreground'
-        >
-          {promptNotUsedNotice}
-        </p>
+        <PromptNotUsedNotice />
       ) : fragment ? (
         <PromptEditor
           ref={promptEditorRef}
@@ -728,7 +716,6 @@ function GeneratePanelBody({
       ) : null,
     [
       vm.promptRequired,
-      promptNotUsedNotice,
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,

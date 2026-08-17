@@ -83,7 +83,7 @@ describe('ImageModeToggle — the t2i / i2i mode popover', () => {
   });
 
   it('disables the trigger (cannot open) when the catalog is empty', () => {
-    // Set while the model catalog is empty (loading / failed) so a switch can't
+    // Set when no generation model is configured, so a switch can't
     // resolve an empty model and clobber the node's stored model/params.
     const onChange = vi.fn();
     render(<ImageModeToggle value='t2i' onChange={onChange} disabled />);

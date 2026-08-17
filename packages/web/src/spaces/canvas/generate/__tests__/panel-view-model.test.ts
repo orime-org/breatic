@@ -487,7 +487,7 @@ describe('buildGeneratePanelViewModel', () => {
   it('flags catalogEmpty on GLOBAL generatable-model emptiness, not the active mode (§ round-2)', () => {
     const nodes = [node('n1', imageView())]; // t2i
     const toolsOnly = [makeModel('bg', { mode: 'remove_bg', tier: 'internal' })];
-    // loading / failed (no models) -> empty
+    // no models in the catalog -> empty
     expect(
       buildVm({ nodeId: 'n1', nodes, edges: [], models: [] }).catalogEmpty,
     ).toBe(true);

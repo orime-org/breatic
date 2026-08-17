@@ -179,7 +179,7 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
   it('disables the mode toggle while the GLOBAL catalog is empty (loading/failed) — guards the data-clobber', () => {
     // Adversarial round 1 (2026-07-09): toggling before the catalog resolves
     // would clobber the node's stored model/params. The toggle is inert while
-    // the whole generatable catalog is empty (loading / failed / none configured).
+    // the whole generatable catalog is empty (no generation model configured).
     setup({ catalogEmpty: true, models: [] });
     expect(screen.getByTestId('generate-mode-trigger')).toBeDisabled();
   });
