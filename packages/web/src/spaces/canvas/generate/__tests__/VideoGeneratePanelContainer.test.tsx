@@ -52,7 +52,7 @@ import {
   readCanvasGraph,
   removeNode,
 } from '@web/data/yjs/canvas-space';
-import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
+import { _resetForTests } from '@web/data/yjs/manager';
 import { canvasApi } from '@web/data/api/canvas';
 
 import {
@@ -152,18 +152,35 @@ const TALKING_HEAD: ModelEntry = {
 };
 
 /**
+ * A second talking-head model that DOES declare a prompt.
+ *
+ * Nothing in the real catalog looks like this today — `talking_head` offers
+ * one model and it declares none. The fixture exists because the criterion
+ * under test is «ask the model, not the mode name» (§4.1): without a model
+ * that answers differently from its mode, a mode-keyed implementation and a
+ * model-keyed one are indistinguishable, and the test asserting the criterion
+ * would pass on both.
+ */
+const TALKING_HEAD_WITH_PROMPT: ModelEntry = {
+  ...TALKING_HEAD,
+  name: 'omnihuman-scripted',
+  display_name: 'OmniHuman Scripted',
+  params: { prompt: { description: '', default: null } },
+};
+
+/**
  * A catalog carrying both buckets.
  * @returns The catalog payload `modelsApi.list()` resolves to.
  */
 function catalog(): ModelCatalog {
   return {
     image: [T2I],
-    video: [T2V, T2V_LITE, I2V, REF, TALKING_HEAD],
+    video: [T2V, T2V_LITE, I2V, REF, TALKING_HEAD, TALKING_HEAD_WITH_PROMPT],
     audio: [],
     tts: [],
     three_d: [],
     understand: [],
-    total: 6,
+    total: 7,
   };
 }
 
@@ -186,20 +203,20 @@ interface BoardOverrides {
  * @param reactNodeData - Extra data on the target's REACT view (which a case
  *   can deliberately let disagree with Yjs).
  * @param board - Extra reference-source nodes and the edges wiring them in.
- * @returns The render result.
+ * @returns The element tree.
  */
-function mountContainer(
+function panelTree(
   kind: 'video' | 'image' = 'video',
   reactNodeData?: Record<string, unknown>,
   board: BoardOverrides = {},
-): ReturnType<typeof render> {
+): React.ReactElement {
   const canvas: CanvasContextValue = {
     projectId: 'p',
     spaceId: 's',
     readOnly: false,
     caretProvider: null,
   };
-  return render(
+  return (
     <QueryClientProvider
       client={
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -234,8 +251,64 @@ function mountContainer(
           />
         </CanvasContext.Provider>
       </ReactFlow>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+}
+
+/**
+ * Renders the panel tree. Split from {@link panelTree} so a case that needs the
+ * node's data to change WITHOUT remounting (a mode switch is a data change, not
+ * a remount) can rerender the same tree with different data.
+ * @param kind - The target node's modality.
+ * @param reactNodeData - Extra fields on the target node's view data.
+ * @param board - Extra board nodes and edges.
+ * @returns The render result, whose `rerender` takes another `panelTree`.
+ */
+function mountContainer(
+  kind: 'video' | 'image' = 'video',
+  reactNodeData?: Record<string, unknown>,
+  board: BoardOverrides = {},
+): ReturnType<typeof render> {
+  return render(panelTree(kind, reactNodeData, board));
+}
+
+/**
+ * Opens the panel on a node seeded with a mode and model, past the frame where
+ * the catalog has not arrived.
+ *
+ * The mode goes into the node data rather than through the switch: the
+ * container reads it off the `nodes` prop, and this harness passes a static
+ * array — clicking the switch writes Yjs, the prop does not move, and the
+ * rendered mode never changes.
+ * @param mode - The generation sub-mode.
+ * @param model - The model name to store on the node.
+ * @param stored - Extra node fields (slot picks, and the like).
+ * @param board - Extra board nodes and edges.
+ * @returns The render result, for a case that switches mode by rerendering.
+ */
+async function openPanelInMode(
+  mode: string,
+  model: string,
+  stored: Record<string, unknown> = {},
+  board: BoardOverrides = {},
+): Promise<ReturnType<typeof render>> {
+  vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+  const data = { mode, model, ...stored };
+  seedVideoNode(data);
+  const view = mountContainer('video', data, board);
+  act(() => {
+    useCanvasStore.getState().openGeneratePanel('target', 'video');
+  });
+  await screen.findByTestId('generate-video-execute');
+  // The panel renders one frame before the catalog resolves; until it does the
+  // view model has no model to ask. Assert past that frame, or the subject is
+  // the loading state rather than the mode (#1964).
+  await waitFor(() =>
+    expect(screen.getByTestId('generate-model-trigger').textContent).not.toBe(
+      '',
+    ),
+  );
+  return view;
 }
 
 /**
@@ -409,78 +482,6 @@ describe('VideoGeneratePanelContainer', () => {
     });
     expect(useCanvasStore.getState().panelHostId).toBeNull();
     expect(screen.queryByTestId('generate-video-execute')).toBeNull();
-  });
-
-  it('explains itself on a node that predates prompt containers', async () => {
-    // Video nodes made before this feature shipped carry no prompt container,
-    // and #1880 ratified that they are not repaired — creating one on open is
-    // the very race that decision removed. So the panel opens without an
-    // editor and a dead arrow; without a line saying why, that reads as the
-    // feature being broken.
-    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-    addNode('p', 's', {
-      id: 'target',
-      type: 'video',
-      position: { x: 0, y: 0 },
-      data: {
-        name: 'V',
-        createdAt: 1000,
-        createdBy: 'u1',
-        locked: false,
-        state: 'idle',
-        attachments: [],
-      },
-    } as Parameters<typeof addNode>[2]);
-    // Strip the container the way a pre-#1880 node has it: absent entirely.
-    const doc = getDoc(docName.canvasSpace('p', 's'));
-    const node = doc.getMap<Y.Map<unknown>>('nodesMap').get('target');
-    (node?.get('data') as Y.Map<unknown>).delete('prompt');
-
-    mountContainer('video');
-    act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
-    });
-    const notice = await screen.findByTestId('generate-video-no-prompt');
-    expect(notice).toBeVisible();
-    expect(screen.queryByTestId('generate-prompt-editor')).toBeNull();
-    expect(screen.getByTestId('generate-video-execute')).toBeDisabled();
-  });
-
-  it('never flashes the too-old notice on a node that has a prompt container', async () => {
-    // The notice states a fact about the node. Resolving the fragment in a
-    // passive effect meant the first committed frame said it about EVERY node,
-    // including one created a second ago, and the editor only replaced it on a
-    // later task — a visible flash of a false sentence plus a height jump.
-    // A MutationObserver is the only way to see that: by the time any
-    // assertion runs, the editor has already won.
-    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-    seedVideoNode();
-    typePrompt('a drone shot over a canyon at dawn');
-    const seen: string[] = [];
-    const observer = new MutationObserver((records) => {
-      for (const record of records) {
-        for (const added of Array.from(record.addedNodes)) {
-          if (!(added instanceof HTMLElement)) continue;
-          if (
-            added.dataset.testid === 'generate-video-no-prompt' ||
-            added.querySelector('[data-testid="generate-video-no-prompt"]')
-          ) {
-            seen.push('notice');
-          }
-        }
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    mountContainer('video');
-    act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'video');
-    });
-    await screen.findByTestId('generate-prompt-editor');
-    observer.takeRecords();
-    observer.disconnect();
-    // eslint-disable-next-line no-console
-    console.log('OBSERVED:', JSON.stringify(seen));
-    expect(seen).toEqual([]);
   });
 
   describe('submit', () => {
@@ -1410,28 +1411,193 @@ describe('VideoGeneratePanelContainer', () => {
       ).toBeVisible();
     });
     /**
-     * Opens the panel on a node already stored in one mode. The container reads
-     * `mode` off the nodes PROP, and this harness holds that array static, so a
-     * click on the mode picker writes Yjs without changing what is rendered —
-     * each mode gets its own mount.
-     * @param mode - The mode the node is stored in.
-     * @param model - The model to store alongside it.
+     * Opens the panel with the rail's fixture board wired up.
+     * @param mode - The generation sub-mode.
+     * @param model - The model name to store on the node.
+     * @param slots - Extra node fields (slot picks).
      */
     async function openInMode(
       mode: string,
       model: string,
       slots: Record<string, unknown> = {},
     ): Promise<void> {
-      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-      const stored = { mode, model, ...slots };
-      seedVideoNode(stored);
-      mountContainer('video', stored, { nodes: SOURCES, edges: WIRES });
+      await openPanelInMode(mode, model, slots, {
+        nodes: SOURCES,
+        edges: WIRES,
+      });
+    }
+
+  });
+
+  describe('口播档不收提示词 (#1950 片6)', () => {
+    /**
+     * 开一个指定档位的面板，board 由用例自己给。
+     * @param mode - 生成子模式。
+     * @param model - 模型名。
+     * @param board - 额外的画布节点与连线（参考轨道要用）。
+     * @returns 渲染结果，切档的用例拿它 rerender。
+     */
+    async function openMode(
+      mode: string,
+      model: string,
+      board: BoardOverrides = {},
+    ): Promise<ReturnType<typeof render>> {
+      return openPanelInMode(mode, model, {}, board);
+    }
+
+    it('5.5 口播档下点文本引用行，有拒绝语而不是静默无反应', async () => {
+      // 文本引用行不受档位吃不吃引用的约束：`insertRefusal` 只对参考素材
+      // 判定，文本行在它第一句就被无条件放行（reference-usability.ts 的
+      // `if (!isReferenceMaterial(sourceNodeType)) return null`），所以它在
+      // 这一档照样是亮的、可点的。
+      // 而这一档没有提示词编辑器，插进去无处可去 —— 容器那句
+      // `promptEditorRef.current?.insertReference(item)` 会被 `?.` 静默吞掉。
+      await openMode('talking_head', 'omnihuman-1.5', {
+        nodes: [
+          {
+            id: 'src',
+            // 正文不进这个投影（node-view.ts:149），轨道那行的预览靠
+            // `textById` 单独取，这一条不需要它。
+            data: { kind: 'text', status: 'idle' },
+          },
+        ],
+        edges: [{ id: 'e1', source: 'src', target: 'target' }],
+      });
+      fireEvent.click(await screen.findByTestId('generate-ref-insert-e1'));
+      await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    });
+
+    it('5.1 口播档不挂载提示词编辑器，那一格是这一档的说明', async () => {
+      await openMode('talking_head', 'omnihuman-1.5');
+      expect(
+        await screen.findByTestId('generate-video-prompt-not-used'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('generate-prompt-editor'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('5.6 目录还在路上时，那一格照常挂编辑器 —— 不知道不等于不要', async () => {
+      // 模型查不到时 `promptRequired` 兜底取 true（view-model）。这个兜底是
+      // 给执行闸门定的：认不出的模型不该放松别的档都有的要求。渲染跟着它走，
+      // 于是加载期六个档一律有提示词框，跟改动前一样。改成 false 会让另外五
+      // 个档在那一帧失去输入框（#1950 第一轮试过，第二轮撤回）。
+      let go: (v: unknown) => void = () => {};
+      vi.spyOn(modelsApi, 'list').mockReturnValue(
+        new Promise((r) => {
+          go = r as (v: unknown) => void;
+        }) as never,
+      );
+      const data = { mode: 'talking_head', model: 'omnihuman-1.5' };
+      seedVideoNode(data);
+      mountContainer('video', data);
       act(() => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
-      await screen.findByTestId('generate-video-execute');
-    }
+      expect(
+        await screen.findByTestId('generate-prompt-editor'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('generate-video-prompt-not-used'),
+      ).not.toBeInTheDocument();
+      await act(async () => {
+        go(catalog());
+      });
+      expect(
+        await screen.findByTestId('generate-video-prompt-not-used'),
+      ).toBeInTheDocument();
+    });
 
+    it('5.7 判据读模型的参数声明，不是模式名', async () => {
+      // 同一档挂一个声明了 prompt 的模型，编辑器照常渲染。钉的是 §4.1
+      // 那个复用决定：问模型，不问档位。用的模型必须是这一档真提供的
+      // （`pickModelForMode` 会把不属于本档的存值丢掉回落到第一个），
+      // 所以这里用同档的 TALKING_HEAD_WITH_PROMPT，不是别档的 veo-3.1。
+      await openMode('talking_head', 'omnihuman-scripted');
+      expect(
+        screen.getByTestId('generate-prompt-editor'),
+      ).toBeInTheDocument();
+    });
+
+    it('5.3 从口播档切回别的档，编辑器回来，之前打的字还在', async () => {
+      // 这一档只是不显示、不发送，不删。字存在协作片段里，编辑器重新挂上
+      // 就该原样读回来 —— 六档共用一份提示词（#1919 在追），切回去发现自己
+      // 写的没了是数据损失。
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const t2v = { mode: 't2v', model: 'veo-3.1' };
+      seedVideoNode(t2v);
+      typePrompt('一段写给文生视频的描述');
+      const view = mountContainer('video', t2v);
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      const before = await screen.findByTestId('generate-prompt-editor');
+      expect(before.textContent).toContain('一段写给文生视频的描述');
+      view.rerender(
+        panelTree('video', { mode: 'talking_head', model: 'omnihuman-1.5' }),
+      );
+      await screen.findByTestId('generate-video-prompt-not-used');
+      view.rerender(panelTree('video', t2v));
+      const after = await screen.findByTestId('generate-prompt-editor');
+      expect(after.textContent).toContain('一段写给文生视频的描述');
+    });
+
+    it('5.4 在别的档打过字之后切到口播档执行，载荷里的 prompt 是空串', async () => {
+      // 提交路径的兜底是 `editor?.serializePrompt() ?? promptTextRef.current`
+      // （容器 :537-538）。那个镜像只在 `handlePromptChange` 里写、从没人清，
+      // 编辑器卸载时也不回调。所以「不挂载编辑器」本身达不成「不发送」，
+      // 要一行显式判断。
+      //
+      // 档位在两处各读一次：渲染读 `nodes` prop，提交读 Yjs 的实时值。所以
+      // Yjs 那份一开始就种成口播档带素材（提交要过素材门），prop 先给
+      // 文生视频档让编辑器挂上、打完字再 rerender 换档 —— 这正是产品里的
+      // 顺序，而且组件不重新挂载，镜像才留得住。
+      const spy = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue(undefined as never);
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      const talkingHead = {
+        mode: 'talking_head',
+        model: 'omnihuman-1.5',
+        characterImageUrl: 'https://cdn/portrait.png',
+        drivingAudio: { url: 'https://cdn/voice.m4a' },
+      };
+      seedVideoNode(talkingHead);
+      // 写进协作片段，编辑器挂上时的回调会把它抄进那个镜像 —— 合成 input
+      // 事件驱动不了 TipTap 的 onUpdate，镜像就不会脏，这条也就白测了。
+      typePrompt('一段写给文生视频的描述');
+      const view = mountContainer('video', {
+        mode: 't2v',
+        model: 'veo-3.1',
+      });
+      act(() => {
+        useCanvasStore.getState().openGeneratePanel('target', 'video');
+      });
+      await screen.findByTestId('generate-prompt-editor');
+      view.rerender(panelTree('video', talkingHead));
+      await screen.findByTestId('generate-video-prompt-not-used');
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+      await waitFor(() => expect(spy).toHaveBeenCalled());
+      const body = spy.mock.calls[0]![0] as { params: Record<string, unknown> };
+      expect(body.params.prompt).toBe('');
+      spy.mockRestore();
+    });
+
+    it('参考轨道对图片引用行的既有拒绝语没被这一片改掉', async () => {
+      // 这一条钉的是既有行为、不是这一片新加的：口播档在档位表里
+      // `takesReferences: false`（video-mode-options.ts），参考轨道自己就在
+      // `refuseInsert`（ReferenceRail.tsx:118）拦下并弹了拒绝语，压根走不到
+      // 容器那句会静默吞掉的 `promptEditorRef.current?.insertReference`。
+      // 留着它是因为编辑器在这一档不挂载了，那句吞掉的代码从此没有别的
+      // 东西挡在前面。
+      await openMode('talking_head', 'omnihuman-1.5', {
+        nodes: [{ id: 'src', data: { kind: 'image', status: 'idle', content: 'https://cdn/a.png' } }],
+        edges: [{ id: 'e1', source: 'src', target: 'target' }],
+      });
+      const row = await screen.findByTestId('generate-ref-insert-e1');
+      fireEvent.click(row);
+      await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    });
   });
 
   describe('参数编辑记在哪个模型名下 (#1948)', () => {

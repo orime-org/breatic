@@ -266,7 +266,6 @@
       "videoPromptPlaceholder": "生成したい動画を説明してください。@ で参照を追加",
       "errorNoReferenceMention": "このモードには参考画像が必要です —— このノードに画像をつないでから、プロンプトで @ を入力して指定してください。",
       "videoMentionEmpty": "参照できるものがまだありません",
-      "videoNoPrompt": "このノードは動画生成より前に作られたため、プロンプトがありません。新しい動画ノードを作成すると生成できます。",
       "firstFrame": "最初のフレーム",
       "firstFrameTip": "動画の最初のフレームにする画像を選ぶ",
       "removeFirstFrame": "最初のフレームを削除",
@@ -286,7 +285,9 @@
       "removeDrivingVideo": "動きの元の動画を削除",
       "removeDrivingAudio": "口の動きの元の音声を削除",
       "errorNoDrivingVideo": "動きの元になる動画を選んでください",
-      "errorNoDrivingAudio": "口の動きの元になる音声を選んでください"
+      "errorNoDrivingAudio": "口の動きの元になる音声を選んでください",
+      "videoPromptNotUsed": "このモードは音声に従います。内容を変えるには音声を差し替えてください。",
+      "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません"
     },
     "nodeMenu": {
       "generate": "生成",

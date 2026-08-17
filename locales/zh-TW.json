@@ -266,7 +266,6 @@
       "videoPromptPlaceholder": "描述你想生成的影片，@ 引用參考",
       "errorNoReferenceMention": "這一檔需要參考圖 —— 先把圖連到這個節點，再在提示詞裡輸入 @ 引用它。",
       "videoMentionEmpty": "還沒有可引用的參考",
-      "videoNoPrompt": "這個節點建得比影片生成早，沒有提示詞。新建一個影片節點就能生成。",
       "firstFrame": "首幀",
       "firstFrameTip": "挑一張圖作為影片的第一幀",
       "removeFirstFrame": "移除首幀",
@@ -286,7 +285,9 @@
       "removeDrivingVideo": "移除驅動影片",
       "removeDrivingAudio": "移除驅動音訊",
       "errorNoDrivingVideo": "先挑一段驅動影片",
-      "errorNoDrivingAudio": "先挑一段驅動音訊"
+      "errorNoDrivingAudio": "先挑一段驅動音訊",
+      "videoPromptNotUsed": "這一檔跟著音訊走。要改內容，去換音訊。",
+      "refuseInsertNoPrompt": "這一檔沒有提示詞框，插不進去"
     },
     "nodeMenu": {
       "generate": "生成",
