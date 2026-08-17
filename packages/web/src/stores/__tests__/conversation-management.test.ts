@@ -987,6 +987,104 @@ describe('what a first page has to be told about', () => {
     expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(true);
   });
 
+  it('keeps a row made while the open call was out', async () => {
+    // 打开 project 的那趟答复也是「一份组装于过去的答复」。它整片写列表,而
+    // 这期间读者按了新建 —— 那一行在服务器组装答复时还不存在。
+    let landOpen: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () =>
+        new Promise((res) => {
+          landOpen = (): void =>
+            res({
+              conversations: [{ id: 'c-1', title: 'one' }],
+              hasMoreConversations: false,
+              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+            } as never);
+        }),
+    );
+    const opening = conversationRuntime.ensureLoaded(PROJECT);
+    await new Promise((r) => setTimeout(r, 5));
+
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 'c-new',
+      title: null,
+    } as never);
+    await conversationRuntime.startNew(PROJECT);
+
+    landOpen?.();
+    await opening;
+
+    expect(listedIds()).toContain('c-new');
+  });
+
+  it('lets the later of two first pages win, whichever lands first', async () => {
+    // 两趟都整片写列表。谁赢不能看谁先落地 —— 那样先出发的那份(更旧的)会盖掉
+    // 更新的那份。实况:抽屉打开触发重取,期间删掉最后一条会话,删除的落点又
+    // 开了一次 project(新建了一条),那趟重取的答复比它旧。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    const landReload = heldList({
+      conversations: [{ id: 'c-1', title: 'one' }],
+      hasMore: false,
+    });
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
+    openAnswers([{ id: 'c-2', title: null }], 'c-2');
+    await conversationRuntime.remove(PROJECT, 'c-1');
+    expect(listedIds()).toEqual(['c-2']);
+
+    landReload();
+    await reloading;
+
+    expect(listedIds()).toEqual(['c-2']);
+  });
+
+  it('does not let an answer it was already holding undo a rename', async () => {
+    // 切过去那趟读取出发在改名之前,所以它带回的是旧名字 —— 那是「服务器当时
+    // 怎么说」,不是「读者做了什么」。混进同一本账,改名就被自己要保护的那套
+    // 机制顶了回去,而且不自愈:再点这一行会被「已经在屏幕上」挡掉。
+    openAnswers(
+      [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: '旧名字' },
+      ],
+      'c-1',
+    );
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    let landRead: (() => void) | undefined;
+    vi.mocked(chatApi.readConversation).mockImplementation(
+      () =>
+        new Promise((res) => {
+          landRead = (): void =>
+            res({
+              conversation: { id: 'c-2', title: '旧名字' },
+              messages: [],
+              hasMore: false,
+            } as never);
+        }),
+    );
+    const switching = conversationRuntime.switchTo(PROJECT, 'c-2');
+    await new Promise((r) => setTimeout(r, 5));
+
+    vi.mocked(chatApi.renameConversation).mockResolvedValue({
+      id: 'c-2',
+      title: '新名字',
+    } as never);
+    await conversationRuntime.rename(PROJECT, 'c-2', '新名字');
+
+    landRead?.();
+    await switching;
+
+    expect(useConversationRuntime.getState().conversations['c-2']?.title).toBe('新名字');
+    expect(
+      (useConversationRuntime.getState().listByProject[PROJECT] ?? []).find((c) => c.id === 'c-2')
+        ?.title,
+    ).toBe('新名字');
+  });
+
   it('takes a name the answer knows and this end does not', async () => {
     // 另一个标签页改了名。重取正是为了看见这种改动 —— 名字住在会话上(不变量
     // 7),所以只写行的那份副本会让顶栏停在旧名字上,同一条会话当场两个名字,

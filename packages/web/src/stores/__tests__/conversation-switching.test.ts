@@ -1109,3 +1109,50 @@ describe('the composer after the reader changes their mind', () => {
     expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
   });
 });
+
+describe('what a navigation that failed hands back', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not hand the claim back to something older than what has landed', async () => {
+    // 一趟慢的打开还在飞;读者按新建、建成了、屏幕换过去了;再按一次新建、这次
+    // 失败了。失败的那次交还认领权,而还在飞的只剩最早那趟 —— 交给它就等于让
+    // 一份组装于读者建这条会话之前的答复,把读者刚建的会话顶掉。
+    let landOpen: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () =>
+        new Promise((res) => {
+          landOpen = (): void =>
+            res({
+              conversations: [{ id: 'c-old', title: 'old' }],
+              hasMoreConversations: false,
+              current: { conversation: { id: 'c-old', title: 'old' }, messages: [], hasMore: false },
+            } as never);
+        }),
+    );
+    const opening = conversationRuntime.ensureLoaded(P);
+    await new Promise((r) => setTimeout(r, 5));
+
+    vi.mocked(chatApi.createConversation).mockResolvedValueOnce({
+      id: 'c-new',
+      title: null,
+    } as never);
+    await conversationRuntime.startNew(P);
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-new');
+
+    vi.mocked(chatApi.createConversation).mockRejectedValueOnce(new Error('offline'));
+    await conversationRuntime.startNew(P);
+
+    landOpen?.();
+    await opening;
+
+    expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-new');
+    expect(
+      (useConversationRuntime.getState().listByProject[P] ?? []).map((c) => c.id),
+    ).toContain('c-new');
+    // And the box is the reader's again: nothing they are waiting for is out.
+    expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
+  });
+});

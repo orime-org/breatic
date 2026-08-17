@@ -646,7 +646,8 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
   // would answer about whichever visit is current by then.
   const visit = currentVisit(projectId);
   firstPageStarted(projectId);
-  beganListRead(projectId);
+  const at = asking();
+  const asked = askingForWholeList(projectId);
   useStore.setState((s) => ({ listLoading: { ...s.listLoading, [projectId]: true as const } }));
   try {
     // Everything except a chat that is already on screen. What this must not do
@@ -683,17 +684,22 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       // means something later actually stands -- and this answer, assembled
       // before it, must not replace what the reader chose.
       landed = stillAwaited(projectId, nav);
-      if (landed) adoptConversation(projectId, opened.current);
-      const wrote = wroteSince(projectId);
-      listReplaced(projectId);
+      if (landed) adoptConversation(projectId, opened.current, at);
+      if (!stillTheNewestList(projectId, asked)) return undefined;
+      listWritten(projectId, asked);
       useStore.setState((st) => {
         const held = st.listByProject[projectId] ?? [];
-        const standing = reconcile(opened.conversations, wrote);
+        const standing = reconcile(projectId, opened.conversations, at);
         // Rows written while this was out go first: the list is ordered by when
         // each conversation was last used, and those are the most recent thing
         // that happened here.
+        const answered = new Set(standing.map((c) => c.id));
+        const made = madeSince(projectId, at)
+          .filter((id) => !answered.has(id))
+          .map((id) => held.find((c) => c.id === id))
+          .filter((c): c is NonNullable<typeof c> => c !== undefined);
         const listed = landed
-          ? standing
+          ? [...made, ...standing]
           : [...held, ...standing.filter((c) => !held.some((h) => h.id === c.id))];
         return {
           conversations: withNames(st.conversations, listed),
@@ -733,7 +739,6 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // Not if the visit that asked is over: this project's bookkeeping belongs
     // to whoever is here now, and an abandoned request must not settle it.
     firstPageEnded(projectId);
-    endedListRead(projectId);
     if (!visit.signal.aborted) settleListLoading(projectId);
     // However this ended -- landed, failed, or overtaken -- it is over, and
     // being the last one out means nobody else will settle the panel.
@@ -755,15 +760,24 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
  * @param projectId - The project showing it.
  * @param opened - The conversation, its newest page, and whether the
  *   conversation reaches back further than that page does.
+ * @param at - What {@link asking} handed back when the request left, so a
+ *   rename made since is not written over.
  */
-function adoptConversation(projectId: string, opened: OpenChatResult['current']): void {
+function adoptConversation(
+  projectId: string,
+  opened: OpenChatResult['current'],
+  at: number,
+): void {
   const conversationId = opened.conversation.id;
-  // The answer carries the name as it is now, and the list carries it as it
-  // was when the list was fetched. Another tab renaming it in between is
-  // exactly the case where those differ -- and this one was read a moment ago,
-  // so it wins. Dropping it left the header and the row showing a name that no
-  // longer exists, with nothing the reader could do about it.
-  applyTitle(projectId, conversationId, opened.conversation.title ?? null);
+  // The answer carries the name as the server had it when this request left,
+  // which is newer than whatever the list was carrying -- another tab renaming
+  // it is exactly the case where those differ, and dropping the answer's name
+  // left the header and the row showing one that no longer exists. Newer than
+  // the list, but not newer than a rename made here since this left: that one
+  // the server has already accepted, and writing over it would put the name
+  // the reader just replaced back on their screen.
+  const title = nameNow(projectId, conversationId, opened.conversation.title ?? null, at);
+  applyTitle(projectId, conversationId, title);
   useStore.setState((s) => {
     const held = s.conversations[conversationId];
     // The one thing this answer does NOT describe: a turn still running here.
@@ -804,7 +818,10 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
           // than the one it is compared against, and go unannounced.
           failures: held?.failures ?? 0,
           failedReplyId: held?.failedReplyId ?? null,
-          title: opened.conversation.title ?? null,
+          // The same name `applyTitle` just wrote, which is the answer's
+          // except where a rename made since this request left has replaced
+          // it. Reading the answer again here put the old one back.
+          title,
         },
       },
     };
@@ -1495,6 +1512,18 @@ function stillAwaited(projectId: string, token: number): boolean {
 const claimed = new Map<string, number>();
 
 /**
+ * The highest number that has actually put a conversation on screen.
+ *
+ * A navigation that failed hands its claim back to whatever is still
+ * travelling, and without this that could be a number older than what is on
+ * screen -- its answer was assembled before the conversation the reader is
+ * looking at existed, so letting it land takes that conversation away from
+ * them and drops the row for it. Nothing older than this is anybody's wish
+ * any more.
+ */
+const lastLanded = new Map<string, number>();
+
+/**
  * A navigation is over, however it ended.
  *
  * Every route that takes a number must reach here, once, whether it landed,
@@ -1510,11 +1539,17 @@ const claimed = new Map<string, number>();
 function navigationEnded(projectId: string, token: number, landed: boolean): void {
   const flying = inFlight.get(projectId);
   flying?.delete(token);
+  if (landed) lastLanded.set(projectId, Math.max(lastLanded.get(projectId) ?? -1, token));
   if (!landed && claimed.get(projectId) === token) {
     // This press asked for nothing in the end, so it stops outranking the
     // others. Whatever is still travelling is the reader's wish again -- the
-    // newest of those, since the older ones were already overtaken.
-    const stillGoing = flying === undefined || flying.size === 0 ? undefined : Math.max(...flying);
+    // newest of those, since the older ones were already overtaken -- but only
+    // if it is newer than what is on screen. An older one cannot be a wish:
+    // its answer was assembled before the conversation the reader is looking
+    // at, and handing the claim to it lets that answer replace them.
+    const newest = flying === undefined || flying.size === 0 ? undefined : Math.max(...flying);
+    const stillGoing =
+      newest !== undefined && newest > (lastLanded.get(projectId) ?? -1) ? newest : undefined;
     if (stillGoing === undefined) claimed.delete(projectId);
     else claimed.set(projectId, stillGoing);
   }
@@ -1555,7 +1590,6 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
  * @param title - Its name now, or null if it still has none.
  */
 function applyTitle(projectId: string, conversationId: string, title: string | null): void {
-  noteNamedDuringFetch(projectId, conversationId, title);
   useStore.setState((s) => {
     // The conversation first, because that is where the name lives. Its row in
     // the list is a second copy for the list to draw, and there may not be one
@@ -1591,7 +1625,7 @@ function applyTitle(projectId: string, conversationId: string, title: string | n
  * @param title - What it is called now, or null if it still has no name.
  */
 function noteActivity(projectId: string, conversationId: string, title: string | null): void {
-  noteNamedDuringFetch(projectId, conversationId, title);
+  noteNamed(projectId, conversationId, title);
   useStore.setState((s) => {
     // The name reaches the conversation whatever the list holds. Speaking in
     // one that is not on the page in hand still names it, and the header reads
@@ -1643,11 +1677,12 @@ async function readAndAdopt(
   coverOnFailure = false,
 ): Promise<boolean> {
   const visit = currentVisit(projectId);
+  const at = asking();
   try {
     const read = await chatApi.readConversation(conversationId);
     if (visit.signal.aborted) return false;
     if (!stillAwaited(projectId, nav)) return false;
-    adoptConversation(projectId, read);
+    adoptConversation(projectId, read, at);
     return true;
   } catch (err) {
     // The conversation on screen is still readable -- this says nothing about
@@ -1737,7 +1772,7 @@ async function startNew(projectId: string): Promise<void> {
       // The row goes in either way. This conversation exists on the server now,
       // and a list that leaves it out is wrong about what the project holds --
       // being overtaken only decides which conversation to land on.
-      noteMadeDuringFetch(projectId, created.id);
+      noteMade(projectId, created.id);
       useStore.setState((s) => ({
         listByProject: {
           ...s.listByProject,
@@ -1756,7 +1791,7 @@ async function startNew(projectId: string): Promise<void> {
             : s.listHasMore,
       }));
       if (!stillAwaited(projectId, nav)) return;
-      adoptConversation(projectId, { conversation: created, messages: [], hasMore: false });
+      adoptConversation(projectId, { conversation: created, messages: [], hasMore: false }, asking());
       landed = true;
     } catch (err) {
       if (visit.signal.aborted) return;
@@ -1808,19 +1843,30 @@ const fetchingList = new Map<string, number>();
  * One record per project, shared by every request out for that list at once,
  * because they all have the same question to ask of it.
  */
-interface ListWrites {
-  /** Conversations deleted since the request left. */
-  deleted: Set<string>;
-  /** Conversations started since, in the order they were started. */
-  made: string[];
-  /** Names written since, by conversation. */
-  named: Map<string, string | null>;
+interface LocalWrites {
+  /** When each conversation was deleted here. */
+  deleted: Map<string, number>;
+  /** When each conversation was started here, in the order they were. */
+  made: Map<string, number>;
+  /** What each was named here, and when. */
+  named: Map<string, { title: string | null; at: number }>;
 }
 
-const wroteWhileFetching = new Map<string, ListWrites>();
+/**
+ * One clock for everything the reader does to a project's conversations.
+ *
+ * Every answer describes the server as it was when its request left, so what
+ * it can and cannot be trusted about is decided by one comparison: did this
+ * happen before the request left, or after it? A record kept only "while a
+ * request is out" cannot answer that -- it exists only for the requests it was
+ * opened for, and the ones it was not opened for (reading a single
+ * conversation, opening the project) write the same fields from the same kind
+ * of stale answer.
+ */
+let clock = 0;
 
-/** How many requests for a project's list are out, record-keeping aside. */
-const listReadsOut = new Map<string, number>();
+/** What the reader has done to each project's conversations, and when. */
+const wroteLocally = new Map<string, LocalWrites>();
 
 /**
  * Which list a project is holding, counted up each time it is replaced whole.
@@ -1833,6 +1879,51 @@ const listReadsOut = new Map<string, number>();
  * so.
  */
 const listGeneration = new Map<string, number>();
+
+/**
+ * Numbers handed to the requests that replace a project's list whole.
+ *
+ * Two of them can be out at once -- opening the project and re-fetching the
+ * first page -- and both write the whole list. Which one wins cannot be
+ * decided by which lands first: the earlier one describes an older server, so
+ * landing last it would undo the newer one. It is decided by which was asked
+ * for last.
+ */
+const listReadOrder = new Map<string, number>();
+
+/** The highest such number whose answer has been written down. */
+const lastListWritten = new Map<string, number>();
+
+/**
+ * Take a number for a request that will replace the list whole.
+ * @param projectId - The project whose list it is.
+ * @returns The number, to be handed back when the answer arrives.
+ */
+function askingForWholeList(projectId: string): number {
+  const next = (listReadOrder.get(projectId) ?? 0) + 1;
+  listReadOrder.set(projectId, next);
+  return next;
+}
+
+/**
+ * Whether an answer about the whole list is still the newest word.
+ * @param projectId - The project whose list it is.
+ * @param asked - What {@link askingForWholeList} handed back.
+ * @returns True when nothing later has already been written down.
+ */
+function stillTheNewestList(projectId: string, asked: number): boolean {
+  return asked > (lastListWritten.get(projectId) ?? 0);
+}
+
+/**
+ * Note that a project's list was replaced whole.
+ * @param projectId - The project whose list it is.
+ * @param asked - What {@link askingForWholeList} handed back.
+ */
+function listWritten(projectId: string, asked: number): void {
+  lastListWritten.set(projectId, asked);
+  listReplaced(projectId);
+}
 
 /**
  * Note that a project's list was replaced whole.
@@ -1852,55 +1943,66 @@ function listNow(projectId: string): number {
 }
 
 /**
- * Start keeping a record of what the reader does while a list request is out.
- * @param projectId - The project being read.
+ * Read the clock, for a request about to go out.
+ * @returns What everything written after this will compare against.
  */
-function beganListRead(projectId: string): void {
-  const out = (listReadsOut.get(projectId) ?? 0) + 1;
-  listReadsOut.set(projectId, out);
-  if (out === 1) {
-    wroteWhileFetching.set(projectId, { deleted: new Set(), made: [], named: new Map() });
-  }
+function asking(): number {
+  return clock;
 }
 
 /**
- * Stop keeping it, once the last request out has landed.
- * @param projectId - The project being read.
- */
-function endedListRead(projectId: string): void {
-  const left = (listReadsOut.get(projectId) ?? 1) - 1;
-  if (left > 0) {
-    listReadsOut.set(projectId, left);
-    return;
-  }
-  listReadsOut.delete(projectId);
-  wroteWhileFetching.delete(projectId);
-}
-
-/**
- * What the reader did while this request was out.
- * @param projectId - The project being read.
- * @returns The record, empty when nothing was kept.
- */
-function wroteSince(projectId: string): ListWrites {
-  return (
-    wroteWhileFetching.get(projectId) ?? { deleted: new Set(), made: [], named: new Map() }
-  );
-}
-
-/**
- * Take an answer about a list and put back what happened while it was out.
+ * Take an answer about a list and put back what happened after it left.
+ * @param projectId - The project the list is for.
  * @param answered - The rows the server named.
- * @param wrote - What the reader did meanwhile.
+ * @param at - What {@link asking} handed back when the request left.
  * @returns The rows still standing, under the names they have now.
  */
 function reconcile<T extends { id: string; title: string | null }>(
+  projectId: string,
   answered: readonly T[],
-  wrote: ListWrites,
+  at: number,
 ): T[] {
+  const wrote = wroteLocally.get(projectId);
+  if (!wrote) return [...answered];
   return answered
-    .filter((c) => !wrote.deleted.has(c.id))
-    .map((c) => (wrote.named.has(c.id) ? { ...c, title: wrote.named.get(c.id) ?? null } : c));
+    .filter((c) => (wrote.deleted.get(c.id) ?? -1) <= at)
+    .map((c) => {
+      const named = wrote.named.get(c.id);
+      return named !== undefined && named.at > at ? { ...c, title: named.title } : c;
+    });
+}
+
+/**
+ * The conversations started here after a request left, oldest first.
+ * @param projectId - The project they are in.
+ * @param at - What {@link asking} handed back when the request left.
+ * @returns Their ids, in the order they were started.
+ */
+function madeSince(projectId: string, at: number): string[] {
+  const wrote = wroteLocally.get(projectId);
+  if (!wrote) return [];
+  return [...wrote.made.entries()]
+    .filter(([, when]) => when > at)
+    .sort((a, b) => a[1] - b[1])
+    .map(([id]) => id);
+}
+
+/**
+ * What a conversation is called, when an answer and this end disagree.
+ * @param projectId - The project it is in.
+ * @param conversationId - The conversation.
+ * @param answered - The name the answer carried.
+ * @param at - What {@link asking} handed back when the request left.
+ * @returns The name to keep.
+ */
+function nameNow(
+  projectId: string,
+  conversationId: string,
+  answered: string | null,
+  at: number,
+): string | null {
+  const named = wroteLocally.get(projectId)?.named.get(conversationId);
+  return named !== undefined && named.at > at ? named.title : answered;
 }
 
 /**
@@ -1933,41 +2035,46 @@ function withNames(
 }
 
 /**
- * Note that a conversation was deleted, in case a first page is out.
+ * The record for a project, made if this is the first thing written to it.
+ * @param projectId - The project being written to.
+ * @returns Its record.
+ */
+function writesFor(projectId: string): LocalWrites {
+  const held = wroteLocally.get(projectId);
+  if (held) return held;
+  const fresh: LocalWrites = { deleted: new Map(), made: new Map(), named: new Map() };
+  wroteLocally.set(projectId, fresh);
+  return fresh;
+}
+
+/**
+ * Note that the reader deleted a conversation.
  * @param projectId - The project it was in.
  * @param conversationId - The conversation deleted.
  */
-function noteDeletedDuringFetch(projectId: string, conversationId: string): void {
-  const wrote = wroteWhileFetching.get(projectId);
-  if (!wrote) return;
-  wrote.deleted.add(conversationId);
-  const madeAt = wrote.made.indexOf(conversationId);
-  if (madeAt >= 0) wrote.made.splice(madeAt, 1);
+function noteDeleted(projectId: string, conversationId: string): void {
+  const wrote = writesFor(projectId);
+  wrote.deleted.set(conversationId, ++clock);
+  wrote.made.delete(conversationId);
 }
 
 /**
- * Note that a conversation was started, in case a first page is out.
+ * Note that the reader started a conversation.
  * @param projectId - The project it is in.
  * @param conversationId - The conversation started.
  */
-function noteMadeDuringFetch(projectId: string, conversationId: string): void {
-  const wrote = wroteWhileFetching.get(projectId);
-  if (!wrote) return;
-  wrote.made.push(conversationId);
+function noteMade(projectId: string, conversationId: string): void {
+  writesFor(projectId).made.set(conversationId, ++clock);
 }
 
 /**
- * Note that a conversation was named, in case a first page is out.
+ * Note that the reader named a conversation.
  * @param projectId - The project it is in.
  * @param conversationId - The conversation named.
  * @param title - What it is called now, or null if it still has none.
  */
-function noteNamedDuringFetch(
-  projectId: string,
-  conversationId: string,
-  title: string | null,
-): void {
-  wroteWhileFetching.get(projectId)?.named.set(conversationId, title);
+function noteNamed(projectId: string, conversationId: string, title: string | null): void {
+  writesFor(projectId).named.set(conversationId, { title, at: ++clock });
 }
 
 /**
@@ -2023,8 +2130,8 @@ async function loadMoreConversations(projectId: string): Promise<void> {
 
   const visit = currentVisit(projectId);
   const asked = listNow(projectId);
+  const at = asking();
   fetchingMore.add(projectId);
-  beganListRead(projectId);
   useStore.setState((st) => ({
     listMoreFailed: { ...st.listMoreFailed, [projectId]: false },
     listLoadingMore: { ...st.listLoadingMore, [projectId]: true as const },
@@ -2041,7 +2148,6 @@ async function loadMoreConversations(projectId: string): Promise<void> {
     // its place says for itself whether there is more, and reaching the end of
     // it asks again.
     if (listNow(projectId) !== asked) return;
-    const wrote = wroteSince(projectId);
     useStore.setState((s) => {
       const current = s.listByProject[projectId] ?? [];
       // The page starts after the last row held, so in an order that has not
@@ -2049,7 +2155,7 @@ async function loadMoreConversations(projectId: string): Promise<void> {
       // one, may have written a row in the meantime -- and a list is one row
       // per conversation whatever happened in between.
       const known = new Set(current.map((c) => c.id));
-      const fresh = reconcile(page.conversations, wrote).filter((c) => !known.has(c.id));
+      const fresh = reconcile(projectId, page.conversations, at).filter((c) => !known.has(c.id));
       return {
         conversations: withNames(s.conversations, fresh),
         listByProject: { ...s.listByProject, [projectId]: [...current, ...fresh] },
@@ -2070,7 +2176,6 @@ async function loadMoreConversations(projectId: string): Promise<void> {
     // by then the reader may have come back and asked again. Clearing then
     // takes down the line saying a page is on its way while one still is, and
     // opens the gate that stops the same page being asked for twice.
-    endedListRead(projectId);
     if (!visit.signal.aborted) {
       fetchingMore.delete(projectId);
       useStore.setState((st) => ({
@@ -2100,21 +2205,24 @@ async function reloadConversationList(projectId: string): Promise<void> {
 
   const visit = currentVisit(projectId);
   firstPageStarted(projectId);
-  beganListRead(projectId);
+  const at = asking();
+  const asked = askingForWholeList(projectId);
   useStore.setState((st) => ({ listLoading: { ...st.listLoading, [projectId]: true as const } }));
   try {
     const page = await chatApi.listConversations(projectId, undefined, visit.signal);
     if (visit.signal.aborted) return;
-    const wrote = wroteSince(projectId);
-    listReplaced(projectId);
+    // A newer answer about the whole list has been written down already, and
+    // this one describes an older server: laying it over that would undo it.
+    if (!stillTheNewestList(projectId, asked)) return;
+    listWritten(projectId, asked);
     useStore.setState((st) => {
       const held = st.listByProject[projectId] ?? [];
-      const standing = reconcile(page.conversations, wrote);
+      const standing = reconcile(projectId, page.conversations, at);
       const answeredIds = new Set(standing.map((c) => c.id));
-      // Made while this was out and not in the answer either -- the server had
+      // Made after this left and not in the answer either -- the server had
       // not heard about those when it replied. In the order they were made,
       // and first, because that is the most recent thing that happened here.
-      const made = wrote.made
+      const made = madeSince(projectId, at)
         .filter((id) => !answeredIds.has(id))
         .map((id) => held.find((c) => c.id === id))
         .filter((c): c is NonNullable<typeof c> => c !== undefined);
@@ -2141,7 +2249,6 @@ async function reloadConversationList(projectId: string): Promise<void> {
     // The count pairs on every exit; only the flag the panel renders belongs
     // to whoever is here now.
     firstPageEnded(projectId);
-    endedListRead(projectId);
     if (!visit.signal.aborted) settleListLoading(projectId);
   }
 }
@@ -2180,6 +2287,10 @@ async function rename(
   try {
     const renamed = await chatApi.renameConversation(conversationId, projectId, title);
     if (visit.signal.aborted) return;
+    // The reader did this, so an answer already on its way does not undo it.
+    // Kept here rather than inside `applyTitle`, which is also how an answer
+    // writes a name -- and an answer is not something the reader did.
+    noteNamed(projectId, conversationId, renamed.title);
     applyTitle(projectId, conversationId, renamed.title);
   } catch (err) {
     if (visit.signal.aborted) return;
@@ -2223,7 +2334,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
   // go on calling the model, and being billed for it, on behalf of a
   // conversation that no longer exists.
   stopTurn(conversationId);
-  noteDeletedDuringFetch(projectId, conversationId);
+  noteDeleted(projectId, conversationId);
 
   const remaining = (useStore.getState().listByProject[projectId] ?? []).filter(
     (c) => c.id !== conversationId,
@@ -2400,6 +2511,11 @@ function leaveProject(projectId: string): void {
   fetchingMore.delete(projectId);
   inFlight.delete(projectId);
   claimed.delete(projectId);
+  // Nothing is on screen for this project any more, so no number is "what is
+  // on screen" either. Kept, it would rank against the next visit's numbers,
+  // which come from the same run of `lastIssued` and are all higher anyway --
+  // but a stale one is a fact about a project nobody is in.
+  lastLanded.delete(projectId);
   // `lastIssued` stays. It is the one of the three that must not restart: a
   // request abandoned with this visit is still out, still holding its number,
   // and still going to run its `finally`. Handing that number out again gives
@@ -2424,12 +2540,14 @@ export function _resetForTests(): void {
   visits.clear();
   fetchingMore.clear();
   fetchingList.clear();
-  listReadsOut.clear();
   listGeneration.clear();
-  wroteWhileFetching.clear();
+  listReadOrder.clear();
+  lastListWritten.clear();
+  wroteLocally.clear();
   inFlight.clear();
   lastIssued.clear();
   claimed.clear();
+  lastLanded.clear();
   useStore.setState({
     conversations: {},
     currentByProject: {},
