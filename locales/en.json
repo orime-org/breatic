@@ -218,6 +218,7 @@
       "refuseInsertModeOff": "This mode doesn't use reference material",
       "refuseRemoveModeOff": "References are shared across modes — switch to a mode that uses them to remove this one, or delete its edge on the canvas",
       "refuseRemoveModeOffCrop": "References are shared across modes — switch to a mode that uses them to remove this crop",
+      "refuseRemoveNoPrompt": "This mode does not need a prompt",
       "refuseInsertTypeUnused": "{kind, select, audio {References take images only, not audio} video {References take images only, not video} other {References take images only, not this kind of material}}",
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",
@@ -256,6 +257,7 @@
       "referencePoolFull": "Reference pool is full ({cap} max) — remove some references or focus crops first.",
       "modelUnavailable": "That model is no longer available — pick another.",
       "catalogUnavailable": "Model list unavailable — please try again later",
+      "catalogOffline": "You are offline — the model list cannot be loaded. Reconnect and try again.",
       "selectFocusFromCanvas": "Drag a marquee on an image to crop a focus reference",
       "focusCancel": "Cancel",
       "focusConfirm": "Confirm",
@@ -295,7 +297,7 @@
       "removeDrivingAudio": "Remove driving audio",
       "errorNoDrivingVideo": "Pick a driving video",
       "errorNoDrivingAudio": "Pick a driving audio track",
-      "videoPromptNotUsed": "This mode follows the audio. Change the audio to change what is said.",
+      "promptNotUsed": "This mode does not need a prompt.",
       "refuseInsertNoPrompt": "This mode has no prompt to insert into"
     },
     "edge": {

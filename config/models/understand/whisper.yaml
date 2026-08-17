@@ -10,6 +10,7 @@ models:
   - name: "whisper-turbo"
     display_name: "Whisper Large V3 Turbo"
     mode: "transcribe"
+    takes_prompt: true
     tier: recommended
     description: "Fastest ASR, 30% cheaper"
     guide: "Fastest and cheapest speech-to-text. OpenAI Whisper Large V3 Turbo optimized for speed. 50+ languages with auto-detection. $0.0007/second. Choose for bulk transcription or when speed matters."

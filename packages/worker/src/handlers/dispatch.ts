@@ -36,6 +36,7 @@ import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
 import { extractPromptText } from "@breatic/domain";
+import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",
@@ -1582,10 +1583,17 @@ interface RunMiniToolOpts {
 /**
  * Execution path 1: run a mini-tool, dispatching to a local ffmpeg/Sharp
  * handler or to an AIGC provider depending on the registry entry kind.
+ *
+ * Exported for its tests. The provider branch carries an invariant nothing else
+ * can check — that the user's prompt is lifted out of `params` BEFORE they are
+ * validated (#1967) — and reaching it through `runTask` would mean standing up
+ * the database, Redis and the credit ledger to assert one argument. Adversarial
+ * round 2 proved the gap was real: reversing the two steps here left all 246
+ * worker tests green.
  * @param opts - Mini-tool invocation context (tool name, task type, params, ids)
  * @returns A `[result, credits]` tuple: the provider/handler result dict and the credits to charge
  */
-async function runMiniTool(
+export async function runMiniTool(
   opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
   const { toolName, taskType, params, jobId, userId, projectId, resume } = opts;
@@ -1618,12 +1626,14 @@ async function runMiniTool(
   const modelName = (cleanParams.model as string) || entry.model;
   delete cleanParams.model;
 
+  // One call, so there is no order to get wrong here — see
+  // `takePromptAndValidate` for why that is the fix and not just tidier.
   const provider = await importProvider(taskType);
-  const [, validated] = provider.validateParams(modelName, cleanParams);
-
-  const prompt = (validated.prompt ?? validated.text ?? "") as string;
-  delete validated.prompt;
-  delete validated.text;
+  const [prompt, , validated] = takePromptAndValidate(
+    cleanParams,
+    modelName,
+    provider.validateParams,
+  );
 
   const result = await provider.generateAsync(prompt, modelName, validated, resume);
   const cost = (result.cost as number) ?? 0;
@@ -1673,10 +1683,13 @@ async function runUnderstand(
  * @param model - Model name to invoke; required for this path
  * @param params - Task params, including the raw prompt/text to sanitise
  * @param resume - Async-transport resume context for at-most-once submit (#1628)
+ * Exported alongside {@link runMiniTool}, and for the same reason: this is the
+ * other half of the pair whose orders drifted apart, so the test that pins one
+ * has to be able to pin the other.
  * @returns A `[result, credits]` tuple: the provider result dict and the credits to charge
  * @throws {Error} when `model` is not provided
  */
-async function runAigcDirect(
+export async function runAigcDirect(
   taskType: string,
   model: string | undefined,
   params: Record<string, unknown>,
@@ -1684,16 +1697,18 @@ async function runAigcDirect(
 ): Promise<[Record<string, unknown>, number]> {
   if (!model) throw new Error(`model is required for AIGC direct path (${taskType})`);
 
-  // Extract prompt/text and strip HTML before sending to provider
-  const prompt = extractPromptText(params.prompt ?? params.text);
+  // Infra-only fields first, then the one shared step the mini-tool path also
+  // takes (#1966) — two inline copies is how the orders drifted apart.
   const cleanParams = { ...params };
-  delete cleanParams.prompt;
-  delete cleanParams.text;
   delete cleanParams.node_ids;
   delete cleanParams.project_id;
 
   const provider = await importProvider(taskType);
-  const [, validated] = provider.validateParams(model, cleanParams);
+  const [prompt, , validated] = takePromptAndValidate(
+    cleanParams,
+    model,
+    provider.validateParams,
+  );
 
   const result = await provider.generateAsync(prompt, model, validated, resume);
   const cost = (result.cost as number) ?? 0;

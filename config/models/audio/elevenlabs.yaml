@@ -11,15 +11,13 @@ models:
   - name: "elevenlabs-sfx-v2"
     display_name: "ElevenLabs SFX V2"
     mode: "sfx"
+    takes_prompt: true
     tier: recommended
     description: "Text-to-sound-effects, 0.5-22s"
     guide: "Generate sound effects from text descriptions. Supports looping mode for seamless ambient audio. Duration 0.5-22 seconds. Best for Foley, UI sounds, ambient backgrounds, and short audio clips."
     cost_per_call: 5
     generation_time: 30
     params:
-      prompt:
-        description: "Sound effect description"
-        default: null
       duration_seconds:
         description: "Audio length in seconds (0.5-22)"
         default: null

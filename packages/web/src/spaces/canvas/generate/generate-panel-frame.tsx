@@ -15,11 +15,11 @@ import { NodeToolbar, Position } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 
-import { modelsApi } from '@web/data/api/models';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 
 /** The panel kinds this frame serves — the node-anchored generate panels. */
 type GeneratePanelKind = 'generate' | 'generateVideo';
@@ -57,23 +57,44 @@ interface CatalogGatedFrameProps {
 }
 
 /**
- * Model-catalog failure gate plus the node-anchored float.
+ * Model-catalog readiness gate plus the node-anchored float.
+ *
+ * Three ways there is no catalog to build a panel from — failed, offline, and
+ * not here yet — and all three withhold the panel. The first two also say so;
+ * the third is the ordinary wait, which the prefetch usually makes invisible.
  *
  * A panel without a catalog is a dead end (blank model pill, no params,
  * execute permanently disabled), so a failed fetch EXPLAINS itself with a
- * toast and the panel never opens — no silent fail. Mounted only while a panel
- * is open, so the always-rendered container never touches react-query: a closed
- * panel needs no QueryClient, and never asking for one keeps the catalog's
- * single fetch tied to a panel actually being on screen.
+ * toast and the panel never opens — no silent fail.
+ *
+ * This used to be the only place that asked for the catalog, deliberately: a
+ * closed panel needed no QueryClient and the single fetch stayed tied to a
+ * panel being on screen. #1964 gave that up on purpose. Holding the panel back
+ * until the catalog lands turns every first open into a wait, so `CanvasSpace`
+ * now prefetches on mount and this query usually reads a warm cache. The
+ * prefetch does not subscribe, so the cache still ages out normally.
  *
  * The gate fires on "errored AND nothing cached": a BACKGROUND refetch failure
  * keeps the previously-fetched catalog, and the panel keeps working off it —
  * closing a working panel over a refresh hiccup would be worse than the silent
  * failure this gate fixes.
+ *
+ * It also holds while there is no catalog YET (#1964). Rendering first and
+ * filling in afterwards meant every control changed once under the user: a
+ * blank model pill, empty param pills, a dead execute button, and on failure
+ * a panel that flashed into view before closing itself. Waiting costs nothing
+ * in the common case because `CanvasSpace` prefetches the catalog when the
+ * space mounts, so by the time anyone clicks Generate the answer is cached.
+ *
+ * Three outcomes, then, and offline is its own (#1966): a paused query is not
+ * a slow one, it is one that will not move until the browser reconnects, so
+ * holding for it would be a wait that cannot end. It gets the same treatment
+ * as a failure — say why, close the panel — with its own sentence.
  * @param root0 - Component props.
  * @param root0.nodeId - The node the panel anchors to.
  * @param root0.children - The panel body.
- * @returns The floating panel, or null while the catalog is failed.
+ * @returns The floating panel, or null while there is no catalog to build it
+ *   from — failed, offline, or still on the wire.
  */
 export function CatalogGatedFrame({
   nodeId,
@@ -81,22 +102,39 @@ export function CatalogGatedFrame({
 }: CatalogGatedFrameProps): React.JSX.Element | null {
   const t = useTranslation();
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
-  const { isError, data } = useQuery({
-    queryKey: ['models'],
-    queryFn: () => modelsApi.list(),
-  });
+  const { isError, data, fetchStatus } = useQuery(modelCatalogQuery());
   const catalogError = isError && data === undefined;
+  // Offline is its own outcome, not a slow one (#1966). react-query's default
+  // `networkMode` PARKS a query while the browser is offline: `fetchStatus`
+  // goes `paused`, the query function is never called, and the query neither
+  // resolves nor rejects. Folding that into "still in flight" is what made
+  // clicking Generate offline do nothing at all and say nothing either — a
+  // wait that cannot end, on an entry point the user just commanded. So it
+  // ends the same way a failure does, with its own sentence.
+  const catalogOffline = !catalogError && data === undefined && fetchStatus === 'paused';
+  // No data, no error, and the request really is on the wire. Nothing to build
+  // a panel out of, and showing its shell first is the flicker #1964 is about.
+  const catalogPending = !catalogError && !catalogOffline && data === undefined;
   React.useEffect(() => {
+    // A fixed toast id de-duplicates the StrictMode double-effect and rapid
+    // re-open attempts while the condition holds (sonner replaces in place).
     if (catalogError) {
-      // A fixed toast id de-duplicates the StrictMode double-effect and rapid
-      // re-open attempts while the API stays down (sonner replaces in place).
       toast.error(t('canvas.generatePanel.catalogUnavailable'), {
         id: 'generate-catalog-unavailable',
       });
       closeActivePanel();
+      return;
     }
-  }, [catalogError, closeActivePanel, t]);
-  if (catalogError) return null;
+    if (catalogOffline) {
+      // `warning`, not `error`: nothing failed, the request was held back.
+      // Same shape as every other refusal the canvas hands back on a command.
+      toast.warning(t('canvas.generatePanel.catalogOffline'), {
+        id: 'generate-catalog-offline',
+      });
+      closeActivePanel();
+    }
+  }, [catalogError, catalogOffline, closeActivePanel, t]);
+  if (catalogError || catalogOffline || catalogPending) return null;
   return (
     <NodeToolbar nodeId={nodeId} isVisible position={Position.Bottom}>
       {children}

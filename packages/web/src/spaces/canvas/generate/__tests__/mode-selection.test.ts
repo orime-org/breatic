@@ -37,6 +37,7 @@ function model(
     tier: 'optional',
     cost_per_call: 5,
     generation_time: 10,
+    takes_prompt: true,
     params,
     providers: [],
     sourcesByMode: {},

@@ -73,12 +73,12 @@ const T2V: ModelEntry = {
   tier: 'recommended',
   cost_per_call: 88,
   generation_time: 120,
+  // The panel asks the model this (#1966). It used to infer the same answer
+  // from a `prompt` entry under `params`; that entry is gone from the catalog,
+  // because it was a per-modality writing habit — no image model ever wrote
+  // one — rather than a statement about the model.
+  takes_prompt: true,
   params: {
-    // Declared because every real video model declares it (kling, seedance,
-    // veo and wan all do) — and since #1935 the panel reads this key to decide
-    // whether to demand a prompt. A fixture without it would put these cases
-    // in a state the catalog never ships.
-    prompt: { description: '', default: null },
     aspect_ratio: { description: '', values: ['16:9'], default: '16:9' },
     duration: { description: '', values: [4, 8], default: 8 },
   },
@@ -148,6 +148,7 @@ const TALKING_HEAD: ModelEntry = {
   display_name: 'OmniHuman 1.5',
   mode: 'talking_head',
   sourcesByMode: { talking_head: ['image', 'audio'] },
+  takes_prompt: false,
   params: {},
 };
 
@@ -165,7 +166,7 @@ const TALKING_HEAD_WITH_PROMPT: ModelEntry = {
   ...TALKING_HEAD,
   name: 'omnihuman-scripted',
   display_name: 'OmniHuman Scripted',
-  params: { prompt: { description: '', default: null } },
+  takes_prompt: true,
 };
 
 /**
@@ -273,8 +274,8 @@ function mountContainer(
 }
 
 /**
- * Opens the panel on a node seeded with a mode and model, past the frame where
- * the catalog has not arrived.
+ * Opens the panel on a node seeded with a mode and model, once the catalog has
+ * landed.
  *
  * The mode goes into the node data rather than through the switch: the
  * container reads it off the `nodes` prop, and this harness passes a static
@@ -300,9 +301,11 @@ async function openPanelInMode(
     useCanvasStore.getState().openGeneratePanel('target', 'video');
   });
   await screen.findByTestId('generate-video-execute');
-  // The panel renders one frame before the catalog resolves; until it does the
-  // view model has no model to ask. Assert past that frame, or the subject is
-  // the loading state rather than the mode (#1964).
+  // Since #1966 the frame withholds the whole panel until a catalog is in hand,
+  // so the pill carries its text from the panel's first render. Kept as a
+  // guard: if that gate ever regresses, this line fails with "the pill is
+  // blank" instead of the mode assertion below failing for a reason that reads
+  // like a mode bug.
   await waitFor(() =>
     expect(screen.getByTestId('generate-model-trigger').textContent).not.toBe(
       '',
@@ -783,8 +786,9 @@ describe('VideoGeneratePanelContainer', () => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
       const trigger = await screen.findByTestId('generate-video-mode-trigger');
-      // The panel renders one frame before the catalog resolves, and the
-      // switch is disabled until it does (nothing to switch TO yet).
+      // `disabled={catalogEmpty}` is already false when the trigger first
+      // appears — since #1966 the panel does not mount without a catalog.
+      // Kept as a guard on that gate, cheap because it passes immediately.
       await waitFor(() => expect(trigger).not.toBeDisabled());
       fireEvent.click(trigger);
       await userEvent.click(await screen.findByTestId('generate-video-mode-i2v'));
@@ -1002,7 +1006,7 @@ describe('VideoGeneratePanelContainer', () => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
       await screen.findByTestId('generate-video-execute');
-      // The first frame renders before the catalog resolves, and the slot only
+      // The panel does not mount until the catalog lands (#1966), and the slot only
       // appears once the model says this mode needs a source.
       await screen.findByTestId('generate-video-tool-first-frame');
     }
@@ -1445,13 +1449,14 @@ describe('VideoGeneratePanelContainer', () => {
       return openPanelInMode(mode, model, {}, board);
     }
 
-    it('5.5 口播档下点文本引用行，有拒绝语而不是静默无反应', async () => {
-      // 文本引用行不受档位吃不吃引用的约束：`insertRefusal` 只对参考素材
-      // 判定，文本行在它第一句就被无条件放行（reference-usability.ts 的
-      // `if (!isReferenceMaterial(sourceNodeType)) return null`），所以它在
-      // 这一档照样是亮的、可点的。
-      // 而这一档没有提示词编辑器，插进去无处可去 —— 容器那句
-      // `promptEditorRef.current?.insertReference(item)` 会被 `?.` 静默吞掉。
+    it('5.5 口播档下点文本引用行，说的是「没有提示词框」那一句', async () => {
+      // 这一档不发提示词，所以插入被 `insertRefusal` 的第一问拦下
+      // （reference-usability.ts 的 `if (!ctx.takesPrompt)`），理由是
+      // 「没有提示词框」——不是「这一档不吃参考」。断言认这一句而不是
+      // 「弹了个 toast」：后者三种拒绝语都能满足，分不出走的是哪条路。
+      //
+      // 这条同时钉住 `VideoGeneratePanel` 把 `promptRequired` 传成
+      // `modelTakesPrompt` 那行接线：删掉它，这里就变成放行、一句话都没有。
       await openMode('talking_head', 'omnihuman-1.5', {
         nodes: [
           {
@@ -1465,23 +1470,31 @@ describe('VideoGeneratePanelContainer', () => {
       });
       fireEvent.click(await screen.findByTestId('generate-ref-insert-e1'));
       await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+      // 断言解析后的文案本身：三条拒绝语各说各的，认字才分得出走的是哪条。
+      expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toBe(
+        'This mode has no prompt to insert into',
+      );
     });
 
-    it('5.1 口播档不挂载提示词编辑器，那一格是这一档的说明', async () => {
+    it('5.1 口播档不挂载提示词编辑器，那一格是「不需要提示词」那句说明', async () => {
       await openMode('talking_head', 'omnihuman-1.5');
       expect(
-        await screen.findByTestId('generate-video-prompt-not-used'),
+        await screen.findByTestId('generate-prompt-not-used'),
       ).toBeInTheDocument();
       expect(
         screen.queryByTestId('generate-prompt-editor'),
       ).not.toBeInTheDocument();
     });
 
-    it('5.6 目录还在路上时，那一格照常挂编辑器 —— 不知道不等于不要', async () => {
-      // 模型查不到时 `promptRequired` 兜底取 true（view-model）。这个兜底是
-      // 给执行闸门定的：认不出的模型不该放松别的档都有的要求。渲染跟着它走，
-      // 于是加载期六个档一律有提示词框，跟改动前一样。改成 false 会让另外五
-      // 个档在那一帧失去输入框（#1950 第一轮试过，第二轮撤回）。
+    it('5.6 目录还在路上时，面板整个不渲染 —— 没有那一格，也没有编辑器', async () => {
+      // 契约变了（#1964）：此前面板在目录到齐前就画出来，于是每个控件各自
+      // 闪一次，那一格也要回答一个还答不出的问题；当时这条测的是那一帧里
+      // 它答什么（回落成「要提示词」，免得另外五个档在那一帧失去输入框）。
+      // 现在那一帧不存在了 —— 目录到齐才展开，所以「面板在」蕴含「目录在」，
+      // 这一格连同整个面板都不渲染。
+      //
+      // view-model 里那个 `?? true` 的兜底照旧，它管的是另一件事：目录到齐
+      // 了但节点存的模型已下架。那条由 5.5 钉。
       let go: (v: unknown) => void = () => {};
       vi.spyOn(modelsApi, 'list').mockReturnValue(
         new Promise((r) => {
@@ -1494,17 +1507,18 @@ describe('VideoGeneratePanelContainer', () => {
       act(() => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
+      await new Promise((r) => setTimeout(r, 30));
       expect(
-        await screen.findByTestId('generate-prompt-editor'),
-      ).toBeInTheDocument();
+        screen.queryByTestId('generate-prompt-editor'),
+      ).not.toBeInTheDocument();
       expect(
-        screen.queryByTestId('generate-video-prompt-not-used'),
+        screen.queryByTestId('generate-prompt-not-used'),
       ).not.toBeInTheDocument();
       await act(async () => {
         go(catalog());
       });
       expect(
-        await screen.findByTestId('generate-video-prompt-not-used'),
+        await screen.findByTestId('generate-prompt-not-used'),
       ).toBeInTheDocument();
     });
 
@@ -1536,7 +1550,7 @@ describe('VideoGeneratePanelContainer', () => {
       view.rerender(
         panelTree('video', { mode: 'talking_head', model: 'omnihuman-1.5' }),
       );
-      await screen.findByTestId('generate-video-prompt-not-used');
+      await screen.findByTestId('generate-prompt-not-used');
       view.rerender(panelTree('video', t2v));
       const after = await screen.findByTestId('generate-prompt-editor');
       expect(after.textContent).toContain('一段写给文生视频的描述');
@@ -1575,7 +1589,7 @@ describe('VideoGeneratePanelContainer', () => {
       });
       await screen.findByTestId('generate-prompt-editor');
       view.rerender(panelTree('video', talkingHead));
-      await screen.findByTestId('generate-video-prompt-not-used');
+      await screen.findByTestId('generate-prompt-not-used');
       fireEvent.click(screen.getByTestId('generate-video-execute'));
       await waitFor(() => expect(spy).toHaveBeenCalled());
       const body = spy.mock.calls[0]![0] as { params: Record<string, unknown> };
@@ -1651,9 +1665,9 @@ describe('VideoGeneratePanelContainer', () => {
       act(() => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
-      // 面板先渲染一帧、目录才解析完，在那之前这个 trigger 是 disabled 的
-      // （ModeToggle 的 `disabled={catalogEmpty}`）—— 不等它 enabled 就点，
-      // 浮层不开、下一句报 `Unable to find generate-video-mode-i2v`。
+      // 自 #1966 起面板要等目录到齐才挂载，所以 trigger 一出现就已经 enabled，
+      // 这句立即通过。留着当守卫：门一旦回退，失败报在这里，而不是下一句报
+      // `Unable to find generate-video-mode-i2v` 让人以为是浮层的问题。
       const trigger = await screen.findByTestId('generate-video-mode-trigger');
       await waitFor(() => expect(trigger).not.toBeDisabled());
       fireEvent.click(trigger);

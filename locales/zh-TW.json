@@ -209,6 +209,7 @@
       "refuseInsertModeOff": "這一檔不使用參考素材",
       "refuseRemoveModeOff": "參考在各檔之間共用 — 切到使用參考的檔才能刪掉它，或者在畫布上刪掉它那條連線",
       "refuseRemoveModeOffCrop": "參考在各檔之間共用 — 切到使用參考的檔才能刪掉這個裁剪",
+      "refuseRemoveNoPrompt": "這一檔不需要提示詞",
       "refuseInsertTypeUnused": "{kind, select, audio {參考只收圖片，不收音訊} video {參考只收圖片，不收視訊} other {參考只收圖片，不收這類素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的畫面內容，@ 引用參考",
@@ -247,6 +248,7 @@
       "referencePoolFull": "參考池已滿(上限 {cap})——請先移除一些參考或聚焦圖。",
       "modelUnavailable": "該模型已無法使用——請另選一個。",
       "catalogUnavailable": "模型清單載入失敗,請稍後再試",
+      "catalogOffline": "你現在離線，取不到模型清單。連上網路再試。",
       "selectFocusFromCanvas": "請在圖片上框選聚焦區域",
       "focusCancel": "取消",
       "focusConfirm": "確認",
@@ -286,7 +288,7 @@
       "removeDrivingAudio": "移除驅動音訊",
       "errorNoDrivingVideo": "先挑一段驅動影片",
       "errorNoDrivingAudio": "先挑一段驅動音訊",
-      "videoPromptNotUsed": "這一檔跟著音訊走。要改內容，去換音訊。",
+      "promptNotUsed": "這一檔不需要提示詞。",
       "refuseInsertNoPrompt": "這一檔沒有提示詞框，插不進去"
     },
     "nodeMenu": {

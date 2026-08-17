@@ -17,15 +17,13 @@ models:
   - name: "veo-3.1"
     display_name: "VEO 3.1"
     mode: "t2v"
+    takes_prompt: true
     tier: recommended
     description: "Google's latest, built-in audio"
     guide: "Google's latest text-to-video with built-in audio generation. Duration 4-8s, up to 1080p. Excellent for realistic scenes with synchronized sound."
     cost_per_call: 100
     generation_time: 180
     params:
-      prompt:
-        description: "Scene description"
-        default: null
       aspect_ratio:
         description: "Output aspect ratio"
         values: ["16:9", "9:16"]
@@ -59,15 +57,13 @@ models:
   - name: "veo-3.1-i2v"
     display_name: "VEO 3.1 I2V"
     mode: "i2v"
+    takes_prompt: true
     tier: recommended
     description: "VEO 3.1 image-to-video"
     guide: "Animate an image into a video using Google VEO 3.1. Supports audio generation and negative prompts. Duration 4-8s, up to 1080p."
     cost_per_call: 100
     generation_time: 180
     params:
-      prompt:
-        description: "Scene description"
-        default: null
       image:
         description: "First frame image URL"
         default: null
@@ -106,15 +102,13 @@ models:
   - name: "veo-3.1-extend"
     display_name: "VEO 3.1 Extend"
     mode: "extend"
+    takes_prompt: true
     tier: recommended
     description: "VEO 3.1 video extension"
     guide: "Extend an existing video using Google VEO 3.1. Continue the scene with consistent style. Up to 1080p."
     cost_per_call: 100
     generation_time: 180
     params:
-      prompt:
-        description: "Scene description"
-        default: null
       video:
         description: "Source video URL (required)"
         default: null
@@ -141,15 +135,13 @@ models:
   - name: "veo-3.1-fast"
     display_name: "VEO 3.1 Fast"
     mode: "t2v"
+    takes_prompt: true
     tier: recommended
     description: "VEO 3.1 fast variant"
     guide: "Google VEO 3.1 Fast text-to-video. Same quality at faster generation. Duration 4-8s, up to 1080p."
     cost_per_call: 80
     generation_time: 120
     params:
-      prompt:
-        description: "Scene description"
-        default: null
       aspect_ratio:
         description: "Output aspect ratio"
         values: ["16:9", "9:16"]
@@ -182,15 +174,13 @@ models:
   - name: "veo-3.1-lite"
     display_name: "VEO 3.1 Lite"
     mode: "t2v"
+    takes_prompt: true
     tier: optional
     description: "Cheapest Google video, budget tier"
     guide: "Google's most affordable video model. Lower quality than VEO 3.1 but significantly cheaper. Good for drafts, iterations, and cost-sensitive projects. Duration 4-8s."
     cost_per_call: 30
     generation_time: 90
     params:
-      prompt:
-        description: "Scene description"
-        default: null
       aspect_ratio:
         description: "Output aspect ratio"
         values: ["16:9", "9:16"]

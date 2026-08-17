@@ -17,15 +17,13 @@ models:
   - name: "kling-o3-pro"
     display_name: "Kling O3 Pro"
     mode: "t2v"
+    takes_prompt: true
     tier: recommended
     description: "Latest Kling flagship, best quality"
     guide: "Top-tier text-to-video. Supports multi-shot scenes, element consistency, and AI sound generation. Duration 3-15s. Choose for highest quality video generation."
     cost_per_call: 56
     generation_time: 120
     params:
-      prompt:
-        description: "Scene description"
-        default: null
       aspect_ratio:
         description: "Output aspect ratio"
         values: ["16:9", "9:16", "1:1"]
@@ -59,15 +57,13 @@ models:
     # Both frames ride the same request; the end frame is optional to the
     # vendor, required by the first-last mode (#1904).
     mode: ["i2v", "first_last"]
+    takes_prompt: true
     tier: recommended
     description: "Kling O3 image-to-video"
     guide: "Animate an image into a video using Kling O3 Pro. Supports end frame guidance and AI sound. Duration 3-15s."
     cost_per_call: 56
     generation_time: 120
     params:
-      prompt:
-        description: "Scene description"
-        default: null
       image:
         description: "First frame image URL"
         default: null
@@ -103,15 +99,13 @@ models:
   - name: "kling-o3-pro-ref"
     display_name: "Kling O3 Pro Ref"
     mode: "ref"
+    takes_prompt: true
     tier: recommended
     description: "Kling O3 reference-to-video"
     guide: "Generate a video from reference images using Kling O3 Pro. Maintains character/style consistency. Duration 3-15s. Provide 1-7 reference images."
     cost_per_call: 56
     generation_time: 120
     params:
-      prompt:
-        description: "Scene description"
-        default: null
       images:
         description: "Reference image URLs (1-7)"
         type: "list"
@@ -147,15 +141,13 @@ models:
   - name: "kling-o3-pro-edit"
     display_name: "Kling O3 Pro Edit"
     mode: "edit"
+    takes_prompt: true
     tier: recommended
     description: "Kling O3 video editing"
     guide: "Edit an existing video using Kling O3 Pro. Modify content, add elements, or change style. Input video max 10s."
     cost_per_call: 84
     generation_time: 180
     params:
-      prompt:
-        description: "Edit instruction"
-        default: null
       video:
         description: "Source video URL (required)"
         default: null
@@ -176,15 +168,13 @@ models:
   - name: "kling-v3-pro-motion"
     display_name: "Kling V3 Pro Motion"
     mode: "motion"
+    takes_prompt: true
     tier: recommended
     description: "Kling V3 motion control"
     guide: "Motion control using Kling V3 Pro. Drive character movement with a reference video or image. Duration 3-30s."
     cost_per_call: 84
     generation_time: 180
     params:
-      prompt:
-        description: "Scene description"
-        default: null
       image:
         description: "Character source image URL"
         default: null

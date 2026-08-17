@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as React from 'react';
 import { render, screen } from '@testing-library/react';
 
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
@@ -44,9 +46,28 @@ vi.mock('@web/pages/project/SpaceReadOnlyNotice', () => ({
   ),
 }));
 
+/**
+ * Mounts the outlet with a query client around it, the way the real app does
+ * (`App.tsx` wraps everything in one).
+ *
+ * Takes the element rather than its props, so every call site keeps writing
+ * the props it means and this only owns the wrapper. A fresh client per mount
+ * keeps one test's cached catalog out of the next one's gate — a constraint
+ * that lives in one place here instead of being restated at every call.
+ * @param element - The outlet to mount, with whatever props the case needs.
+ * @returns The render result.
+ */
+function renderOutlet(element: React.JSX.Element): ReturnType<typeof render> {
+  return render(
+    <QueryClientProvider client={new QueryClient()}>
+      {element}
+    </QueryClientProvider>,
+  );
+}
+
 describe('SpaceOutlet', () => {
   it('points the notice at THIS Space of THIS project', () => {
-    render(<SpaceOutlet projectId='p' spaceId='s' type='document' />);
+    renderOutlet(<SpaceOutlet projectId='p' spaceId='s' type='document' />);
     const stub = screen.getByTestId('notice-stub');
     expect(stub).toHaveAttribute('data-project-id', 'p');
     expect(stub).toHaveAttribute('data-space-id', 's');
@@ -61,14 +82,14 @@ describe('SpaceOutlet', () => {
     // directory — the existing body cases only ask WHICH component rendered.
     // A body pointed at the wrong document silently shows another Space's
     // content, which is worse than the notice being wrong.
-    render(<SpaceOutlet projectId='p' spaceId='s' type='canvas' />);
+    renderOutlet(<SpaceOutlet projectId='p' spaceId='s' type='canvas' />);
     const body = screen.getByTestId('canvas-space');
     expect(body).toHaveAttribute('data-project-id', 'p');
     expect(body).toHaveAttribute('data-space-id', 's');
   });
 
   it('hands the viewer role to the read-only notice, not just to the body', () => {
-    render(<SpaceOutlet projectId='p' spaceId='s' type='canvas' readOnly />);
+    renderOutlet(<SpaceOutlet projectId='p' spaceId='s' type='canvas' readOnly />);
     expect(screen.getByTestId('notice-stub')).toHaveAttribute(
       'data-readonly',
       'true',
@@ -76,7 +97,7 @@ describe('SpaceOutlet', () => {
   });
 
   it('tells the notice an editor is an editor', () => {
-    render(<SpaceOutlet projectId='p' spaceId='s' type='canvas' />);
+    renderOutlet(<SpaceOutlet projectId='p' spaceId='s' type='canvas' />);
     // `undefined`, not `false`: the outlet forwards its own optional prop
     // untouched and the notice defaults it. Asserting the string keeps this
     // honest about which side owns the default.
@@ -87,22 +108,22 @@ describe('SpaceOutlet', () => {
   });
 
   it('renders the canvas body for type=canvas', () => {
-    render(<SpaceOutlet projectId='p' spaceId='s' type='canvas' />);
+    renderOutlet(<SpaceOutlet projectId='p' spaceId='s' type='canvas' />);
     expect(screen.getByTestId('canvas-space')).toBeInTheDocument();
   });
 
   it('renders the document body for type=document', () => {
-    render(<SpaceOutlet projectId='p' spaceId='s' type='document' />);
+    renderOutlet(<SpaceOutlet projectId='p' spaceId='s' type='document' />);
     expect(screen.getByTestId('document-space')).toBeInTheDocument();
   });
 
   it('renders the timeline body for type=timeline (empty state)', () => {
-    render(<SpaceOutlet projectId='p' spaceId='s' type='timeline' />);
+    renderOutlet(<SpaceOutlet projectId='p' spaceId='s' type='timeline' />);
     expect(screen.getByTestId('timeline-space-empty')).toBeInTheDocument();
   });
 
   it('forwards readOnly to the space body (viewer gate reaches the canvas)', () => {
-    render(<SpaceOutlet projectId='p' spaceId='s' type='canvas' readOnly />);
+    renderOutlet(<SpaceOutlet projectId='p' spaceId='s' type='canvas' readOnly />);
     expect(screen.getByTestId('canvas-space')).toHaveAttribute(
       'data-readonly',
       'true',
@@ -110,7 +131,7 @@ describe('SpaceOutlet', () => {
   });
 
   it('omits the read-only marker for editors', () => {
-    render(<SpaceOutlet projectId='p' spaceId='s' type='canvas' />);
+    renderOutlet(<SpaceOutlet projectId='p' spaceId='s' type='canvas' />);
     expect(screen.getByTestId('canvas-space')).not.toHaveAttribute(
       'data-readonly',
     );

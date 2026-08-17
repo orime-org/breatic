@@ -10,6 +10,7 @@ models:
   - name: "vocal-remover"
     display_name: "AI Vocal Remover"
     mode: "separate"
+    takes_prompt: false
     tier: recommended
     description: "Separate vocals from instruments"
     guide: "AI-powered vocal/instrumental separation. Splits any audio track into isolated vocal and instrumental stems. $0.001/second. Choose for karaoke, remixing, or isolating vocals."

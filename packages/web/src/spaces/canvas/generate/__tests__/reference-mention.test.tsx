@@ -80,8 +80,9 @@ describe('ReferenceMention — @ suggestion wiring', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [],
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
     });
     expect(suggestion.allowedPrefixes).toBeNull();
@@ -130,8 +131,9 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       // what it reads. Stating the mode is what #1945 changed — the verdict
       // did not. The picker now asks the same predicate as the rail's insert
       // button, so a row offered here is a row the rail would insert.
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
     });
     const items = (
@@ -156,8 +158,9 @@ describe('ReferenceMention — @ suggestion wiring', () => {
           Parameters<typeof makeReferenceSuggestion>[0]['getPool']
         >,
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: false,
+        takesPrompt: true,
       }),
     });
     const items = (
@@ -241,8 +244,9 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [row],
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       // Driving onStart/onUpdate by hand has no real transaction to advance the
       // tracker plugin, so inject the local-keystroke signal these tests model
@@ -290,8 +294,9 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
     });
@@ -382,8 +387,9 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
       const s = makeReferenceSuggestion({
         getPool: () => pool,
         emptyLabel: 'No references',
-        getModeContext: () => ({
+        getUsabilityContext: () => ({
           takesReferences: !hideImages,
+          takesPrompt: true,
         }),
       });
       return (
@@ -410,8 +416,9 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow, imageRow, focusRow],
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: !hideImages,
+        takesPrompt: true,
       }),
       isLocalUserInput: () => true, // the manually-dispatched caret tr is local
     });
@@ -506,8 +513,9 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       // `remote` models whether the edit was a remote peer's; the popup's
       // visibility hook is now the POSITIVE "was it a local user keystroke",
@@ -557,8 +565,9 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       // `remote` models whether the edit was a remote peer's; the popup's
       // visibility hook is now the POSITIVE "was it a local user keystroke",
@@ -593,8 +602,9 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       refreshRef,
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
@@ -638,8 +648,9 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
+        takesPrompt: true,
       }),
       refreshRef,
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
