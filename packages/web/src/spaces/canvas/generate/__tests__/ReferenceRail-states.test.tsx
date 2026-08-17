@@ -346,8 +346,10 @@ describe('ReferenceRail — a focus crop has no edge to delete', () => {
 });
 
 describe('ReferenceRail — a model that sends no prompt (#1966)', () => {
-  // 这一档的两个事实同时成立：模型不吃提示词，且这一档不吃参考素材
-  // （目录里唯一 takes_prompt=false 的视频模型就在口播档，而口播档不吃参考）。
+  // 这一档的两个事实同时成立：模型不吃提示词，且这一档不吃参考素材。
+  // 视频目录里 takes_prompt=false 的模型有三个（omnihuman-1.5 / video-upscale-pro
+  // / rife-interpolation），但后两个的模式是 upscale / interpolate、不在生成
+  // 面板那六档里，所以面板里够得着的只有口播档那一个，而口播档不吃参考。
   /**
    * Renders the rail under a mode whose model consumes no prompt.
    * @returns Nothing; assertions read the rendered rail.
@@ -365,8 +367,9 @@ describe('ReferenceRail — a model that sends no prompt (#1966)', () => {
   }
 
   it('文本行两个动作都冻住，且各说各的', () => {
-    // 插入只说原因，✕ 要说出路 —— 两句必须是两句。把 ✕ 换成插入那句，
-    // 这条会红；实测过在补它之前，改成插入那句全仓 3979 条一条都不红。
+    // 两个按钮问的是同一件事的两面，说的必须是两句不同的话 —— 用户按插入
+    // 想的是「放进去」，按 ✕ 想的是「拿掉」。把 ✕ 换成插入那句，这条会红；
+    // 实测过在补它之前，改成插入那句全仓 3979 条一条都不红。
     renderNoPrompt();
     expect(
       screen.getByTestId('generate-ref-insert-e-text').getAttribute('aria-disabled'),

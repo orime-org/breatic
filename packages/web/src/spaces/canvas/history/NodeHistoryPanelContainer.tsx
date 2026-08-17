@@ -78,7 +78,10 @@ interface NodeHistoryPanelContainerProps {
  *
  * The React Query hook lives in `OpenNodeHistoryPanel`, which mounts ONLY
  * when a history panel is open — so the default canvas mount never runs
- * `useInfiniteQuery` and needs no `QueryClientProvider`.
+ * `useInfiniteQuery` on THIS path. It does need a `QueryClientProvider` all
+ * the same: since #1966 `CanvasSpace` itself prefetches the model catalog on
+ * mount, so the subtree is never provider-free. What this split still buys is
+ * that a closed history panel issues no request of its own.
  * @param root0 - Component props.
  * @param root0.nodes - Live node views.
  * @param root0.projectId - Project the nodes belong to.

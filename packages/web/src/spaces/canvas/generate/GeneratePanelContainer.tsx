@@ -144,8 +144,11 @@ function GeneratePanelBody({
   const { caretProvider } = useCanvasContext();
 
   const { data: catalog } = useQuery(modelCatalogQuery());
-  // `?? []` covers only the loading window (catalog is undefined until the query
-  // resolves). Once resolved, modelsApi.list() has run the response through
+  // `?? []` is pure defence now: since #1966 this body mounts only inside
+  // `CatalogGatedFrame`, which withholds it until the query has data, so
+  // `catalog` is defined every time this line runs. Kept because the type still
+  // admits undefined and a gate is a runtime promise, not a compile-time one.
+  // Once resolved, modelsApi.list() has run the response through
   // sanitizeModelCatalog, so catalog.image is a guaranteed ModelEntry[] — no
   // per-field guarding needed here.
   const models = React.useMemo(() => catalog?.image ?? [], [catalog]);
@@ -573,18 +576,27 @@ function GeneratePanelBody({
       warnNodeGate(t(gateBlock.toastKey));
       return;
     }
-    // Serialize the backend prompt AT CLICK TIME (spec §9.1): a text chip
-    // substitutes its source node's CURRENT words, and that node may have been
-    // edited since the last prompt keystroke — the ref would carry the stale
-    // substitution. Falls back to the ref when the editor is gone (unmounting).
-    const freshPrompt =
-      promptEditorRef.current?.serializePrompt() ?? promptTextRef.current;
     // Re-derive model / params / references from LIVE Yjs — never the render
     // closure — so a collaborator's just-deleted reference or changed model
     // can't ride into the payload. The `@`-picked source ids are read
     // synchronously from the ref (the prompt's state at click time) so i2i sends
     // exactly the images the prompt @-mentions right now (design B).
     const fresh = freshVm(new Set(atMentionedRef.current));
+    // Serialize the backend prompt AT CLICK TIME (spec §9.1): a text chip
+    // substitutes its source node's CURRENT words, and that node may have been
+    // edited since the last prompt keystroke — the ref would carry the stale
+    // substitution. Falls back to the ref when the editor is gone (unmounting).
+    //
+    // A model that declares no `prompt` sends none, and that takes this
+    // explicit branch (#1950, #1966): not mounting the editor only stops
+    // someone typing HERE. The mirror still holds whatever was typed under the
+    // previous model — `handlePromptChange` is the only writer and nothing
+    // clears it, and the editor does not call back on unmount — so without this
+    // line a task for a model that wants no prompt would carry the last one's
+    // words. Same line, same reason, as `VideoGeneratePanelContainer.tsx`.
+    const freshPrompt = fresh.promptRequired
+      ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
+      : '';
     if (
       !canExecuteGenerate({
         promptText: freshPrompt,

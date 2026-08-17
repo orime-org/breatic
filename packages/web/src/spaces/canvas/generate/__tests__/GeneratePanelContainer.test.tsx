@@ -68,7 +68,14 @@ import {
   type CanvasContextValue,
 } from '@web/spaces/canvas/canvas-context';
 import { canvasApi, modelsApi } from '@web/data/api';
-import { addNode, readCanvasGraph } from '@web/data/yjs/canvas-space';
+import * as Y from 'yjs';
+
+import {
+  addNode,
+  getPromptFragment,
+  readCanvasGraph,
+  setNodeModel,
+} from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { useCanvasStore } from '@web/stores';
 
@@ -427,9 +434,11 @@ describe('GeneratePanelContainer — body subscription set', () => {
     act(() => {
       useCanvasStore.getState().openGeneratePanel('target', 'image');
     });
-    // 等到订阅集真的成形，不是等「这个 hook 被调用过」—— 挂载那一刻它就被
-    // 调过一次（面板还没打开、集是空的）。目录到齐才展开面板之后（#1964），
-    // 那次空调用和这次有值的调用之间还多隔了一个往返。
+    // 等到订阅集真的成形，不是等「这个 hook 被调用过」。这个 hook 住在
+    // `GeneratePanelBody` 里，而那是 `CatalogGatedFrame` 的子节点、容器又在
+    // 面板没打开时整个 `return null` —— 所以面板没开时一次都不会调，目录没
+    // 到齐时也不会调（#1964）。它第一次被调用就已经在面板里了，但那一帧的
+    // 订阅集可能还没成形，所以这里等的是集本身。
     await waitFor(() => {
       expect(vi.mocked(useTextBodies).mock.lastCall?.[2]).toEqual([
         'wired-a',
@@ -789,6 +798,115 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     fireEvent.click(btn);
     await new Promise((r) => setTimeout(r, 50));
     expect(createSpy).not.toHaveBeenCalled();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+});
+
+// 「模型不吃提示词就别发提示词」这件事有两半：不挂编辑器，和不发送。上面那
+// 组钉住了前一半。这一组钉后一半 —— 它是本 PR 才需要的：改之前这个容器把
+// `promptRequired` 写死 true（`origin/main` 的 :340 / :601），`freshPrompt` 没有
+// 分支也永远正确；改成读 `takes_prompt` 之后，它第一次可能是 false。
+//
+// 不挂编辑器只挡住了「在这里打字」。镜像里还留着上一个模型下打的那句话 ——
+// `handlePromptChange` 是唯一写入方、没有任何地方清它，编辑器卸载时也不回调
+// （只在换节点时才随整体重挂而重置）。所以没有那一行显式判断，一次口播类的
+// 生成会把上一个模型的话带出去。视频面板 2026-08-12 就为这个加了那一行
+// （`VideoGeneratePanelContainer.tsx:552`），图片面板这次补齐。
+describe('GeneratePanelContainer — 不吃提示词的模型不发提示词 (#1966)', () => {
+  beforeEach(() => {
+    _resetForTests();
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  /** 往节点的提示词片段里放一句话，编辑器 onCreate 时会把它回调进镜像。 */
+  function seedPromptText(text: string): void {
+    const fragment = getPromptFragment('p', 's', 'target');
+    if (!fragment) throw new Error('node has no prompt fragment');
+    const paragraph = new Y.XmlElement('paragraph');
+    const words = new Y.XmlText();
+    words.insert(0, text);
+    paragraph.insert(0, [words]);
+    fragment.insert(0, [paragraph]);
+  }
+
+  it('切到不吃提示词的模型后提交，上一个模型下的字不跟着发出去', async () => {
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(
+      imageCatalog([
+        { ...T2I_MODEL, name: 'takes-one', takes_prompt: true },
+        { ...T2I_MODEL, name: 'takes-none', takes_prompt: false },
+      ]),
+    );
+    const createSpy = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockResolvedValue({ id: 'task-1' } as Awaited<
+        ReturnType<typeof canvasApi.createTask>
+      >);
+    seedImageNode();
+    seedPromptText('上一个模型下打的字');
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+
+    // 第一个模型吃提示词：编辑器挂上、把那句话灌进镜像，执行按钮因此可点。
+    await screen.findByTestId('generate-prompt-editor');
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    // 模型在面板开着的时候被换成不吃提示词的那个（协作者改的，或者自己在
+    // 选择器里选的 —— 两条路都写同一个 Yjs 字段）。这个测试的 `nodes` 是
+    // 静态 prop，所以渲染态不动、编辑器还挂着，而提交路径从活 Yjs 重新取值
+    // （`freshVm`）—— 正好把「渲染那一半」和「提交那一半」分开：这一刻
+    // `promptEditorRef.current` 不是 null，`serializePrompt()` 会交出那句话，
+    // 所以唯一能让载荷里是空串的，只有那一行显式判断。
+    act(() => {
+      setNodeModel('p', 's', 'target', 't2i', 'takes-none', {});
+    });
+
+    fireEvent.click(screen.getByTestId('generate-execute'));
+    await waitFor(() => {
+      expect(createSpy).toHaveBeenCalledTimes(1);
+    });
+    expect(createSpy.mock.calls[0]?.[0]?.params).toMatchObject({ prompt: '' });
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  // 对照组：模型说吃，那句话就该原样发出去。少了它，上面那条在「这个面板
+  // 永远发空串」的实现下也会绿。
+  it('模型吃提示词时，那句话原样发出去', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([{ ...T2I_MODEL, takes_prompt: true }]));
+    const createSpy = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockResolvedValue({ id: 'task-1' } as Awaited<
+        ReturnType<typeof canvasApi.createTask>
+      >);
+    seedImageNode();
+    seedPromptText('要发出去的那句话');
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(createSpy).toHaveBeenCalledTimes(1);
+    });
+    expect(createSpy.mock.calls[0]?.[0]?.params).toMatchObject({
+      prompt: '要发出去的那句话',
+    });
     listSpy.mockRestore();
     createSpy.mockRestore();
   });

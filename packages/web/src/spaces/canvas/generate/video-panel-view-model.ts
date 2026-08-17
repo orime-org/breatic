@@ -138,12 +138,16 @@ export interface VideoPanelViewModel {
    * that declares none. The panel is what stops it: since #1950 such a model
    * is sent an empty string.
    *
-   * True when the model is unknown: an unrecognised model is not a licence to
-   * skip the requirement every other model has. That fallback no longer has
-   * to cover the catalog being in flight — since #1966 the frame holds the
-   * whole panel back until a catalog is in hand, so by the time this is read
-   * there is one to look the model up in. What reaches the fallback now is a
-   * stored model id the catalog does not carry.
+   * True when no model resolves, which after #1966 is one state and not the
+   * three it used to cover. The catalog is never in flight here (the frame
+   * holds the whole panel back until it lands), and a stored id the catalog
+   * dropped never reaches this either — `pickModelForMode` re-picks from the
+   * mode's own list, so it only ever yields a name that IS in that list, or
+   * `''` when the list is empty. So the one surviving case is "this mode
+   * offers no model at all", and there `canExecuteGenerate` already refuses on
+   * `model.length > 0`. True is nevertheless the right value: a demand nobody
+   * can act on is visible, whereas dropping it would hide the editor and leave
+   * the panel claiming a model needs no prompt when there is no model.
    */
   promptRequired: boolean;
 }

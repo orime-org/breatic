@@ -81,8 +81,10 @@ interface ReferenceRailProps {
    * material; that exemption only holds while there IS a prompt. A mode
    * sending none has nothing for a text row to be material for, so it freezes
    * there too (user 2026-08-16). A media row keeps answering to
-   * `modeTakesReferences`: of the two questions, only that one leads to a mode
-   * where the row works, and the two controls have to name the same way out.
+   * `modeTakesReferences`: of the two questions, only that one names a state
+   * the user can leave and reach a mode where the row WORKS, and both controls
+   * on a row have to give the same first answer or the row would show two
+   * contradictory reasons at once.
    *
    * Defaulted `true` for the same reason as the prop above: a caller that
    * knows nothing about prompts gets the pre-#1966 rail.
@@ -131,9 +133,15 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   // reaches it) and one of those splits by row, because a focus crop has no
   // edge to delete.
   // Insert names only the cause, because the mode selector is in this same
-  // panel and every dimmed row is visibly dark. Remove has to name the ways
-  // OUT, because the user asked for the row to be GONE and is being told no.
-  // The crop variant doubles only the mode-off reason, for the reason below.
+  // panel and every dimmed row is visibly dark. The reference-family remove
+  // messages also name the way out, which is why the crop variant exists at
+  // all — a focus crop has no edge to delete, so the shared sentence would
+  // offer it an exit it does not have.
+  //
+  // The no-prompt remove message names no way out: UI copy states the
+  // situation and does not explain it (user 2026-08-17), and this one fires on
+  // a click, where a paragraph is the wrong shape. The two reference sentences
+  // predate that rule and are queued to follow it (todo #1970).
   const refuseInsert = React.useCallback(
     (refusal: ReferenceRefusal, kind: NodeKind): void => {
       if (refusal === 'model-takes-no-prompt') {

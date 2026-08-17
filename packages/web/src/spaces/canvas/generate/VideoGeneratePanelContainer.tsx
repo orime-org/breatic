@@ -134,9 +134,10 @@ function VideoGeneratePanelBody({
   const { caretProvider } = useCanvasContext();
 
   const { data: catalog } = useQuery(modelCatalogQuery());
-  // `?? []` covers only the loading window; once resolved, modelsApi.list() has
-  // run the response through sanitizeModelCatalog, so catalog.video is a
-  // guaranteed ModelEntry[].
+  // `?? []` is pure defence now: since #1966 this body mounts only inside
+  // `CatalogGatedFrame`, which withholds it until the query has data. Once
+  // resolved, modelsApi.list() has run the response through
+  // sanitizeModelCatalog, so catalog.video is a guaranteed ModelEntry[].
   const models = React.useMemo(() => catalog?.video ?? [], [catalog]);
 
   // Two mirrors of the prompt: state drives the button's enabled look (a frame
