@@ -642,7 +642,7 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
   // whether this is still the visit that asked -- and asking again down there
   // would answer about whichever visit is current by then.
   const visit = currentVisit(projectId);
-  fetchingList.add(projectId);
+  firstPageStarted(projectId);
   useStore.setState((s) => ({ listLoading: { ...s.listLoading, [projectId]: true as const } }));
   try {
     // Everything except a chat that is already on screen. What this must not do
@@ -725,7 +725,7 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // Not if the visit that asked is over: this project's bookkeeping belongs
     // to whoever is here now, and an abandoned request must not settle it.
     if (!visit.signal.aborted) {
-      fetchingList.delete(projectId);
+      firstPageEnded(projectId);
       settleListLoading(projectId);
     }
     // However this ended -- landed, failed, or overtaken -- it is over, and
@@ -1769,14 +1769,33 @@ async function startNew(projectId: string): Promise<void> {
 const fetchingMore = new Set<string>();
 
 /**
- * Projects with a request out for the *first* page of conversations.
+ * How many requests are out for the *first* page of conversations, by project.
  *
  * Two routes fetch it -- opening the panel and opening the list -- and both
- * write the whole list rather than appending to it. Membership here is the one
- * fact behind {@link ConversationRuntimeState.listLoading}, so that the flag
- * cannot say a page is on its way when none is, or the reverse.
+ * write the whole list rather than appending to it. A count and not a set,
+ * because with a set the first of two overlapping requests to finish would
+ * clear the one membership and leave the other saying nothing is on its way
+ * while it still is.
  */
-const fetchingList = new Set<string>();
+const fetchingList = new Map<string, number>();
+
+/**
+ * Note that a request for the first page has gone out.
+ * @param projectId - The project it is for.
+ */
+function firstPageStarted(projectId: string): void {
+  fetchingList.set(projectId, (fetchingList.get(projectId) ?? 0) + 1);
+}
+
+/**
+ * Note that one has come back, however it ended.
+ * @param projectId - The project it was for.
+ */
+function firstPageEnded(projectId: string): void {
+  const left = (fetchingList.get(projectId) ?? 1) - 1;
+  if (left > 0) fetchingList.set(projectId, left);
+  else fetchingList.delete(projectId);
+}
 
 /**
  * Fetch the page of conversations after the ones already listed.
@@ -1873,7 +1892,7 @@ async function reloadConversationList(projectId: string): Promise<void> {
   if (fetchingList.has(projectId)) return;
 
   const visit = currentVisit(projectId);
-  fetchingList.add(projectId);
+  firstPageStarted(projectId);
   useStore.setState((st) => ({ listLoading: { ...st.listLoading, [projectId]: true as const } }));
   try {
     const page = await chatApi.listConversations(projectId, undefined, visit.signal);
@@ -1899,7 +1918,7 @@ async function reloadConversationList(projectId: string): Promise<void> {
     // Same reason as the next page: an abandoned request must not settle the
     // bookkeeping of the visit that came after it.
     if (!visit.signal.aborted) {
-      fetchingList.delete(projectId);
+      firstPageEnded(projectId);
       settleListLoading(projectId);
     }
   }

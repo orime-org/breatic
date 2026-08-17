@@ -738,3 +738,29 @@ describe('the name of the conversation on screen', () => {
     expect(conversationRuntime.titleOf('c-1')).toBe('第一句话');
   });
 });
+
+describe('two requests for the first page at once', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('keeps saying it is on its way until both are done', async () => {
+    // 打开列表取第一页,中途读者把最后一条会话删了 —— 那条路会重开面板,也取
+    // 第一页。记账按 project 记一份,先回来的那条若把它整个清掉,底部就不再说
+    // 「正在加载」,而另一条确实还在飞。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    vi.mocked(chatApi.listConversations).mockImplementation(() => new Promise(() => {}));
+    void conversationRuntime.reloadConversationList(PROJECT);
+    expect(useConversationRuntime.getState().listLoading[PROJECT]).toBe(true);
+
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
+    openAnswers([{ id: 'c-2', title: 'a fresh one' }], 'c-2');
+    await conversationRuntime.remove(PROJECT, 'c-1');
+
+    // 那次重开已经回来了,但列表那趟还挂着 —— 第一页仍在路上。
+    expect(useConversationRuntime.getState().listLoading[PROJECT]).toBe(true);
+  });
+});
