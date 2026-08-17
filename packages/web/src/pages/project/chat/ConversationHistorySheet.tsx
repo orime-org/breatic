@@ -212,8 +212,27 @@ function ConversationRowView({
   // page first loads, which is where its bad name comes from, and the rule
   // against it cannot tell the two apart.
   const box = React.useRef<HTMLInputElement>(null);
+  // Where the keyboard goes when the box is gone. The box unmounts on both
+  // exits -- committed or abandoned -- and an element that unmounts holding
+  // the focus drops it on <body>: the reader's next Tab starts from the top
+  // of the page, while they were on this row a moment ago. Measured in the
+  // browser: Enter was followed by focusout to BODY and nothing caught it.
+  const opener = React.useRef<HTMLButtonElement>(null);
+  // Whether the box was up on the last render, so that leaving it can be told
+  // apart from never having been in it. Without this the row would take the
+  // keyboard on first paint, from wherever the reader actually is.
+  const wasRenaming = React.useRef(false);
   React.useEffect(() => {
-    if (renaming) box.current?.select();
+    if (renaming) {
+      wasRenaming.current = true;
+      box.current?.select();
+      return;
+    }
+    if (!wasRenaming.current) return;
+    wasRenaming.current = false;
+    // In an effect rather than in the handler: the button is put back by the
+    // render this state change causes, and it does not exist before that.
+    opener.current?.focus();
   }, [renaming]);
 
   /**
@@ -281,6 +300,7 @@ function ConversationRowView({
               // the text never runs under the menu floating there. Pressing
               // anywhere but that menu selects the conversation.
               className='flex w-full min-w-0 items-start gap-3 py-3 pl-4 pr-12 text-left'
+              ref={opener}
               data-testid={`conversation-open-${row.id}`}
             >
               <span
