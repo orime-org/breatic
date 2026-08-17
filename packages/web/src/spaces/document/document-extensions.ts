@@ -4,24 +4,28 @@
 /**
  * The document editor's extension list.
  *
- * **What a user can write into the body is StarterKit's, save for one named
- * departure.** Every list, quote, code block and mark it ships behaves exactly
+ * **What a user can write into the body is StarterKit's, save for two named
+ * departures.** Every list, quote, code block and mark it ships behaves exactly
  * as it would on its own, because the editing feature set is a separate body of
- * work with its own slice. Headings are the exception: the body offers three
- * levels rather than six, and `document-heading` carries that reasoning.
+ * work with its own slice. The two exceptions: the body offers three heading
+ * levels rather than six (`document-heading` carries that reasoning), and it
+ * offers no divider at all.
  *
- * So a change here qualifies on one of two grounds, and nothing else counts:
+ * So a change here qualifies on one of three grounds, and nothing else counts:
  *
  * - the document's outer shape broke something — a title that cannot be
  *   removed, followed by a body that may hold nothing;
  * - what the body renders leaves no room for what StarterKit offers, which is
- *   what caps the headings.
+ *   what caps the headings;
+ * - the feature itself was never decided on. A StarterKit default is a default,
+ *   not a decision, and one that costs something to keep has to earn its place
+ *   like anything else would. That is what removed the divider.
  *
- * Four of StarterKit's defaults are switched off, each for its own reason
+ * Five of StarterKit's defaults are switched off, each for its own reason
  * stated where it happens. `document-extensions.test` pins the NODES the
- * schema gains and the StarterKit switches, so neither of those can change
- * quietly. An extension that contributes no node is not pinned by it — the bar
- * stated above is the only thing holding that line.
+ * schema gains AND the ones it removes, along with the StarterKit switches, so
+ * none of those can change quietly. An extension that contributes no node is
+ * not pinned by it — the bar stated above is the only thing holding that line.
  */
 
 import type { Extensions } from '@tiptap/core';
@@ -41,6 +45,8 @@ import {
   UnsupportedMark,
 } from '@web/spaces/document/document-unsupported';
 import { DocumentPlaceholders } from '@web/spaces/document/document-placeholders';
+import { DocumentSelection } from '@web/spaces/document/document-selection';
+import { DocumentSplitBlock } from '@web/spaces/document/document-split-block';
 import { DocumentTitle } from '@web/spaces/document/document-title';
 import { DocumentTitleIsPlainText } from '@web/spaces/document/document-title-plain-text';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
@@ -99,13 +105,25 @@ export function buildDocumentExtensions(
     // `@breatic/shared`'s `document-body` carries the full reasoning.
     Document.extend({ content: `${DOCUMENT_TITLE_NODE} block*` }),
     DocumentTitle,
-    // The title holds text and nothing else, so a rule that would turn typed
-    // text into a block must not fire there — the divider rule does not check
-    // for itself and destroys what was typed.
+    // The title holds text and nothing else, and takes plain characters with
+    // nothing transforming them. Every rule shipping today declines there on
+    // its own; this states the promise in one place instead of depending on
+    // each future rule to remember.
     DocumentTitleIsPlainText,
     // The body may hold no blocks at all, so the space under the title has to
     // be clickable or a fresh document cannot be written into.
     DocumentClickToWrite,
+    // A selection never spans the title and the body, whether it was made
+    // with `Mod-a` or with the mouse. Ours because the title is the first
+    // block of this same document, so the editor's own "select everything"
+    // includes the document's name — see `document-selection`.
+    DocumentSelection,
+    // Enter across two list items throws in @tiptap/core's own splitBlock,
+    // which asks whether it may split before deleting and then splits what the
+    // deletion left. This replaces that command with the official one, whose
+    // order is the other way round. Carries no priority on purpose — commands
+    // merge with the lower priority winning, the opposite of key bindings.
+    DocumentSplitBlock,
     StarterKit.configure({
       // StarterKit's own Document is `block+`, which is both halves wrong.
       document: false,
@@ -142,6 +160,15 @@ export function buildDocumentExtensions(
       // and StarterKit builds its Heading internally, where there is nothing to
       // extend. So ours replaces it. `document-heading` carries the reasoning.
       heading: false,
+      // The divider is not a feature this document offers. It arrived as a
+      // StarterKit default rather than as a decision, and it is the only
+      // visible block in the body with no text in it — which is what made
+      // "everything visible can be selected" cost a selection type of our own,
+      // a patched y-tiptap, and a block-tinting layer, all to give a block
+      // nobody asked for the same selected look as the rest. Removing it
+      // removes the whole question. With it gone, every visible block holds
+      // text, so an ordinary `TextSelection` covers all of them.
+      horizontalRule: false,
     }),
     BodyHeading,
     // Somewhere to put content this build has no vocabulary for. Registered

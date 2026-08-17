@@ -21,14 +21,17 @@
  *
  * The title is what makes the fragment safe. ProseMirror's document model
  * cannot represent a document with nothing in it, while a Yjs fragment's idea
- * of empty is nothing at all; when the two disagree the editor writes its own
- * repair into Yjs, and that repair counts as a user edit — it lands on the
- * undo stack and clears the redo the user was entitled to. A first block that
- * NOBODY can issue a delete for closes that gap by construction rather than by
- * repair: no delete operation for it exists, so no merge of concurrent edits
- * can produce one. That is also why the blocks after it are optional — once
- * the title guarantees the fragment is inhabited, requiring a body block would
- * re-open exactly the gap the title just closed.
+ * of empty is nothing at all. Measured 2026-08-16: binding an editor to an
+ * empty fragment writes NOTHING back to Yjs — each client papers over the
+ * difference locally instead, and that is the real hazard: two clients opening
+ * the same fresh document each invent their own filler block, the two are
+ * different objects, and the merge keeps both — type one character on each
+ * side and the result is two paragraphs, one per author. A first block that
+ * NOBODY can issue a delete for closes that gap by construction: every client
+ * binds to a fragment that is already inhabited, so no one invents anything
+ * and there is nothing for a merge to duplicate. That is also why the blocks
+ * after it are optional — once the title guarantees the fragment is inhabited,
+ * requiring a body block would re-open exactly the gap the title just closed.
  *
  * The title's undeletability is enforced by the editor's schema, in
  * `web/spaces/document/document-title`. Measured there against every gesture

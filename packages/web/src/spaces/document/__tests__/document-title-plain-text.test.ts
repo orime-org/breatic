@@ -4,18 +4,34 @@
 /**
  * What gets typed into the title stays text.
  *
- * The editor turns certain typed sequences into blocks — three dashes into a
- * divider, `# ` into a heading, `> ` into a quote, `- ` into a list. The title
- * holds text and nothing else, so none of those blocks can go there, and the
- * rule's replacement is simply dropped by the schema. What is NOT dropped is
- * the deletion the rule performed first: the characters the user typed are
- * gone and nothing takes their place. Measured before this was written — three
- * dashes at the start of the title left the title empty.
+ * The editor turns certain typed sequences into blocks — `# ` into a heading,
+ * `> ` into a quote, `- ` into a list. The title holds text and nothing else,
+ * so none of those blocks can go there. **How they fail to go there is not the
+ * same for all of them, and that difference decides what these cases are
+ * worth.**
  *
- * Nothing about that is specific to dashes. Every one of these rules replaces
- * the matched text with a block, so every one of them destroys what was typed.
- * The cases below are one per rule the editor ships, which is what makes this a
- * statement about the title rather than about dashes.
+ * A rule built with `nodeInputRule` deletes the matched text and then inserts
+ * its node. The insert is refused by the schema; the deletion already happened.
+ * The typed characters are gone and nothing takes their place — measured when
+ * this file was first written: three dashes at the start of the title left the
+ * title EMPTY.
+ *
+ * A rule built with `textblockTypeInputRule` or `wrappingInputRule` changes or
+ * wraps the block instead. Neither is legal on the title, so the command
+ * declines and nothing happens at all — the typed characters stay put with no
+ * help from anyone.
+ *
+ * **The only rule of the first kind this editor shipped was the divider, and
+ * it has been removed (#111.)** Measured 2026-08-15 on this build, with the
+ * guard's typing door switched off: `#`, `>`, `-`, `1.`, ` ``` `, `***`, `___`
+ * and `---` all survived in the title, while `#`, `>` and `-` in a body
+ * paragraph produced a heading, a quote and a list as they always did.
+ *
+ * So the cases below now pin a PRODUCT BEHAVIOUR — these sequences stay text in
+ * the title — and no longer demonstrate the guard doing anything, because
+ * today nothing would destroy them either way. What still holds the guard to
+ * account is the white-box case at the bottom of this file. Whether the guard
+ * is still needed at all is task #118, deliberately not decided here.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -69,7 +85,6 @@ function type(editor: Editor, text: string): void {
 
 describe('typing a block-making sequence into the title', () => {
   const SEQUENCES: readonly { name: string; typed: string }[] = [
-    { name: 'a divider', typed: '---' },
     { name: 'a heading', typed: '# ' },
     { name: 'a quote', typed: '> ' },
     { name: 'a bullet list', typed: '- ' },
@@ -110,53 +125,27 @@ describe('typing a block-making sequence into the title', () => {
   });
 });
 
-describe('the rules have more than one way in, and none of them works', () => {
-  // Typing is one door. TipTap's input-rule plugin opens three more: Enter
-  // (which it runs the rules for, as the text "\n"), an input method
-  // committing, and a programmatic insert asking for rules to apply. Measured
-  // with only the typing door guarded: `***` then Enter left the title EMPTY.
-  const DESTRUCTIVE: readonly string[] = ['***', '___', '---'];
-
-  DESTRUCTIVE.forEach((typed) => {
-    it(`keeps ${typed} in the title when Enter follows it`, () => {
-      const editor = open();
-      editor.commands.setTextSelection(1);
-      type(editor, typed);
-      editor.view.someProp('handleKeyDown', (f) =>
-        f(editor.view, new KeyboardEvent('keydown', { key: 'Enter' })),
-      );
-
-      expect(editor.state.doc.child(0).textContent).toBe(typed);
-      // And the Enter did its own job rather than being eaten: the caret left
-      // the title for a new, empty body block.
-      expect(editor.state.doc.child(1).type.name).toBe('paragraph');
-      expect(editor.state.doc.child(1).textContent).toBe('');
-      expect(editor.state.selection.$from.parent.type.name).toBe('paragraph');
-    });
-
-    it(`keeps ${typed} in the title when an input method commits after it`, async () => {
-      const editor = open();
-      editor.commands.setTextSelection(1);
-      // An input method's text arrives already committed, then the event
-      // fires — it does not come through `handleTextInput` at all.
-      editor.commands.insertContent(`${typed} `);
-      editor.view.someProp('handleDOMEvents', (handlers) => {
-        handlers['compositionend']?.(
-          editor.view,
-          new CompositionEvent('compositionend'),
-        );
-        return false;
-      });
-      // The plugin schedules the run rather than performing it inline.
-      await new Promise((resolve) => setTimeout(resolve, 5));
-
-      expect(editor.state.doc.child(0).textContent).toBe(`${typed} `);
-    });
-  });
-});
+// THE SIX CASES THAT USED TO BE HERE ARE GONE, and deleting them is the honest
+// move rather than a loss of coverage.
+//
+// They covered the three doors into the rules other than typing — Enter (which
+// the input-rule plugin runs the rules for, as the text "\n"), an input method
+// committing, and a programmatic insert asking for rules to apply — using
+// `***`, `___` and `---`. All three of those were ONE pattern, the divider's
+// (`^(?:---|—-|___\s|\*\*\*\s)$`), and the divider is gone (#111). Nothing
+// fires for them now, so all six passed whether the guard existed or not.
+//
+// Substituting live sequences was tried and does not rescue them. Measured
+// 2026-08-15 with `filterTransaction` switched off: `#`, `>`, `-`, `1.` and
+// ` ``` ` each followed by Enter left the title holding exactly what was typed,
+// every time. Those rules change or wrap a block, which the title refuses, so
+// there is nothing for the other doors to destroy either.
+//
+// Six cases that cannot fail are worse than none: they read as protection.
+// Whether the guard they were written for is still needed is task #118.
 
 describe('the body still transforms what is typed into it', () => {
-  it('three dashes in a body paragraph still make a divider', () => {
+  it('a quote marker in a body paragraph still makes a quote', () => {
     // The guard is about the title, not about turning the editor's own rules
     // off. If this ever goes red the fix has reached too far.
     const editor = open();
@@ -164,9 +153,9 @@ describe('the body still transforms what is typed into it', () => {
       '<h1 class="doc-title"></h1><p>body</p><p></p>',
     );
     editor.commands.setTextSelection(editor.state.doc.content.size - 1);
-    type(editor, '---');
+    type(editor, '> ');
 
-    expect(editor.getHTML()).toContain('<hr');
+    expect(editor.getHTML()).toContain('<blockquote');
   });
 });
 

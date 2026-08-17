@@ -215,6 +215,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       name: 'Ada',
       email: 'ada@example.com',
       personalStudio: null,
+      membershipTier: 'base',
     });
   });
 

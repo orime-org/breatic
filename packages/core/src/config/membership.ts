@@ -39,53 +39,16 @@ import { parse } from "yaml";
 import { z } from "zod";
 import {
   CONFIGURED_MEMBERSHIP_TIERS,
+  tierLimitsSchema,
   type ConfiguredMembershipTier,
+  type MembershipLimits,
 } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
-/**
- * One ceiling.
- *
- * A plain non-negative integer, always compared as `count >= limit`. There is
- * no "unlimited" value and no sentinel — a deployment that does not want to
- * cap something writes a number nobody reaches (9999, or 100 TiB for bytes).
- * That is what keeps zero meaning zero: `base.team_studios` is 0 because that
- * tier genuinely cannot create a team studio, and the same comparison refuses
- * it without a special case anywhere.
- */
-const limitSchema = z.number().int().nonnegative();
-
-/**
- * The six ceilings every tier carries.
- *
- * `concurrent_editors` counts simultaneous WRITABLE CONNECTIONS to one
- * document, not people: one account with four browser tabs open holds four of
- * them. The ratified decision words this as "people", which is imprecise —
- * user 2026-08-12 confirmed connections is what gets enforced, and that the
- * decision's wording is what needs correcting.
- *
- * Field names are the YAML's, so this shape and the file cannot drift.
- */
-const tierLimitsSchema = z.object({
-  team_studios: limitSchema,
-  projects_per_studio: limitSchema,
-  concurrent_editors: limitSchema,
-  studio_members: limitSchema,
-  project_members: limitSchema,
-  storage_bytes: limitSchema,
-});
-
-/**
- * One tier's ceilings.
- *
- * Inferred from the schema rather than declared beside it, so there is no
- * second list of field names to fall out of step with the first.
- *
- * Not in `@breatic/shared`: web has no use for these until there is a
- * membership page to render, which is separate work. They are the shape of a
- * config file the backend services read, so they live beside the loader.
- */
-export type MembershipLimits = z.infer<typeof tierLimitsSchema>;
+// The shape of one tier's ceilings moved to `@breatic/shared` when the
+// membership panel gave web a reason to render it (#90). What stays here is
+// the loader: reading a file, and the tiers that file is required to carry.
+export type { MembershipLimits };
 
 /** Schema for `config/membership.yaml`. */
 export const membershipConfigSchema = z.object({

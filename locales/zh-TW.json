@@ -1123,5 +1123,46 @@
     "goThere": "去看看",
     "backHome": "回到你的 Studio",
     "actionFailed": "操作沒有成功，請再試一次。"
+  },
+  "membership": {
+    "panelTitle": "會員",
+    "close": "關閉",
+    "currentTier": "目前會員",
+    "tier": {
+      "base": "Base",
+      "pro": "PRO",
+      "team": "Team",
+      "self_hosted": "自架",
+      "enterprise": "企業版"
+    },
+    "priceFree": "免費",
+    "pricePerMonth": "{amount} / 月",
+    "tierNote": "這一檔決定你的容量與協作規模。所有創作功能和模型在每一檔都完全一樣。",
+    "upgrade": "升級",
+    "myQuota": "我的額度",
+    "quota": {
+      "teamStudios": "團隊 Studio",
+      "storage": "儲存空間",
+      "projectsPerStudio": "每個 Studio 可建 Project",
+      "studioMembers": "每個 Studio 成員上限",
+      "projectMembers": "每個 Project 成員上限",
+      "concurrentEditors": "每份文件同時可編輯"
+    },
+    "quotaValue": "{used} / {limit}",
+    "countItems": "{count} 個",
+    "countPeople": "{count} 人",
+    "countConnections": "{count} 條連線",
+    "overLimitTag": "已超出",
+    "overLimit": {
+      "storage": "儲存空間已超出上限。原有內容可正常使用，但不能再上傳新內容，需要更多空間請升級會員。",
+      "teamStudios": "團隊 Studio 數量已超出上限。已建立的可正常使用，但不能再建立新的，需要更多請升級會員。"
+    },
+    "enterpriseQuota": "你的額度由單獨協議約定，不在這裡顯示。",
+    "compare": "各檔比較",
+    "monthlyFee": "月費",
+    "contactEnterprise": "需要更大規模或單獨的商用條款？寄信跟我們談：",
+    "contactSelfHosted": "需要商用授權或單獨的支援條款？寄信跟我們談：",
+    "contactEnterpriseAccount": "額度有疑問或需要調整？寄信跟我們談：",
+    "loadFailed": "沒能讀到你的會員資訊，可能是網路問題。稍後再試一次。"
   }
 }
