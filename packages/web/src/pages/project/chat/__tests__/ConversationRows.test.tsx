@@ -470,6 +470,20 @@ describe('a rename or a delete that did not work', () => {
     const row = screen.getByTestId('conversation-c2').closest('li');
     expect(row?.nextElementSibling).toBe(said);
   });
+
+  it('says it at the top when that row is not on this page', () => {
+    // 列表只有一页,而顶栏也能改名 —— 读者切到一条较早的会话再改名,那一条
+    // 多半不在这一页里。没有行可贴不等于没话可说:一句读者正等着的回音,不能
+    // 因为贴不到地方就整个消失。
+    renderSheet({
+      rowMishap: { conversationId: 'c-not-on-this-page', text: 'Could not rename it' },
+    });
+
+    const said = screen.getByTestId('conversation-list-mishap');
+    expect(said).toHaveTextContent('Could not rename it');
+    const list = screen.getByTestId('conversation-history-list');
+    expect(list.firstElementChild).toBe(said);
+  });
 });
 
 describe('a failure about the whole list rather than one row', () => {

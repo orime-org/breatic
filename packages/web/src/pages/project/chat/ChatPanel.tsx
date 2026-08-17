@@ -206,7 +206,7 @@ export function ChatPanel({
   /**
    * What the list says about the row an action was taken on, in words.
    *
-   * The same three kinds as the panel's own line, read the same way -- the
+   * Read the same way as the panel's own line -- the
    * difference is only where it is drawn.
    */
   const rowNotice = React.useMemo(() => {

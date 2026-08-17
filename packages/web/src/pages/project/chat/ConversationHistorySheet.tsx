@@ -139,6 +139,29 @@ function relativeTime(iso: string, now = Date.now()): RelativeTime {
   };
 }
 
+/**
+ * A sentence in the list about something that did not work.
+ *
+ * One shape for both places it can stand -- against the row it is about, or at
+ * the top when it is about the list itself or about a conversation this page
+ * does not hold. Two copies of it drifted apart once already.
+ * @param root0 - The component props.
+ * @param root0.text - What to say.
+ * @param root0.testId - Which of the two placements this is, for tests.
+ * @returns The line.
+ */
+function MishapLine({ text, testId }: { text: string; testId: string }): React.JSX.Element {
+  return (
+    <li
+      className='mx-3 my-2 rounded-content-sm border border-status-error-border bg-status-error-bg px-2.5 py-1.5 text-2xs leading-relaxed text-status-error-foreground'
+      role='alert'
+      data-testid={testId}
+    >
+      {text}
+    </li>
+  );
+}
+
 interface RowProps {
   row: ConversationRow;
   isActive: boolean;
@@ -383,6 +406,16 @@ function ConversationHistorySheetInner({
   // asked whether they mean it. Null the rest of the time, which is what
   // keeps the dialog closed.
   const [deleting, setDeleting] = React.useState<string | null>(null);
+  // A word about one row goes against that row, and everything else goes to
+  // the top. The list is one page: a rename started from the header is about
+  // whichever conversation is on screen, and that one need not be on the page
+  // in hand. Asking "which row is it about" instead of "is it about a row"
+  // dropped those on the floor -- the reader pressed rename, is waiting to
+  // hear, and nothing at all appeared.
+  const mishapRow =
+    rowMishap !== null && conversations.some((c) => c.id === rowMishap.conversationId)
+      ? rowMishap.conversationId
+      : null;
 
   // The confirm dialog is a sibling of the sheet, not a child, and it is
   // portalled to the body -- so closing the sheet leaves it on screen, and a
@@ -455,14 +488,8 @@ function ConversationHistorySheetInner({
               data-testid='conversation-history-list'
               role='list'
             >
-              {rowMishap !== null && rowMishap.conversationId === null ? (
-                <li
-                  className='mx-3 my-2 rounded-content-sm border border-status-error-border bg-status-error-bg px-2.5 py-1.5 text-2xs leading-relaxed text-status-error-foreground'
-                  role='alert'
-                  data-testid='conversation-list-mishap'
-                >
-                  {rowMishap.text}
-                </li>
+              {rowMishap !== null && mishapRow === null ? (
+                <MishapLine text={rowMishap.text} testId='conversation-list-mishap' />
               ) : null}
               {conversations.length === 0 ? (
                 listLoading ? (
@@ -487,14 +514,8 @@ function ConversationHistorySheetInner({
                       onRename={onRename}
                       onAskDelete={setDeleting}
                     />
-                    {rowMishap?.conversationId === c.id ? (
-                      <li
-                        className='mx-3 my-2 rounded-content-sm border border-status-error-border bg-status-error-bg px-2.5 py-1.5 text-2xs leading-relaxed text-status-error-foreground'
-                        role='alert'
-                        data-testid='conversation-row-mishap'
-                      >
-                        {rowMishap.text}
-                      </li>
+                    {rowMishap !== null && mishapRow === c.id ? (
+                      <MishapLine text={rowMishap.text} testId='conversation-row-mishap' />
                     ) : null}
                   </React.Fragment>
                 ))

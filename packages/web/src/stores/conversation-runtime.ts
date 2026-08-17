@@ -685,6 +685,7 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       landed = stillAwaited(projectId, nav);
       if (landed) adoptConversation(projectId, opened.current);
       const wrote = wroteSince(projectId);
+      listReplaced(projectId);
       useStore.setState((st) => {
         const held = st.listByProject[projectId] ?? [];
         const standing = reconcile(opened.conversations, wrote);
@@ -695,6 +696,7 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
           ? standing
           : [...held, ...standing.filter((c) => !held.some((h) => h.id === c.id))];
         return {
+          conversations: withNames(st.conversations, listed),
           listByProject: { ...st.listByProject, [projectId]: listed },
           listHasMore: { ...st.listHasMore, [projectId]: opened.hasMoreConversations },
           // The mark said the last attempt at the next page did not arrive.
@@ -1232,7 +1234,7 @@ async function send(projectId: string, said: string): Promise<void> {
   // Only when there is one on screen. A send with no conversation yet is a
   // different thing, and `sendOnce` opens one and waits for it.
   const state = useStore.getState();
-  if (state.currentByProject[projectId] !== undefined && navigationInFlight(projectId)) return;
+  if (state.currentByProject[projectId] !== undefined && awaitedNavigationInFlight(projectId)) return;
   await sendOnce(projectId, said);
 }
 
@@ -1455,16 +1457,19 @@ function intendToNavigate(projectId: string): number {
 const lastIssued = new Map<string, number>();
 
 /**
- * Whether anything is on its way to change which conversation is on screen.
+ * Whether the navigation the reader is waiting for is still on its way.
  *
  * Asked by whoever is about to act on the conversation that is on screen now:
- * one in flight means that conversation is about to stop being the answer.
+ * while it is true, that conversation is about to stop being the answer. An
+ * overtaken navigation does not count -- it cannot replace anything any more,
+ * so waiting on it holds the reader back for an answer nobody will use.
  * @param projectId - The project being asked about.
- * @returns Whether a navigation is out for it.
+ * @returns Whether the awaited navigation is out for it.
  */
-function navigationInFlight(projectId: string): boolean {
+function awaitedNavigationInFlight(projectId: string): boolean {
   const flying = inFlight.get(projectId);
-  return flying !== undefined && flying.size > 0;
+  const awaited = claimed.get(projectId);
+  return awaited !== undefined && flying !== undefined && flying.has(awaited);
 }
 
 /**
@@ -1521,8 +1526,7 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
   // travelling -- not whether anything is. Pressing the row already on screen
   // ends the wait at once; leaving the box frozen until an abandoned answer
   // turns up makes the reader wait on something that will be thrown away.
-  const awaited = claimed.get(projectId);
-  if (awaited === undefined || flying === undefined || !flying.has(awaited)) {
+  if (!awaitedNavigationInFlight(projectId)) {
     useStore.setState((s) => ({
       navigatingByProject: (({ [projectId]: _done, ...rest }) => rest)(s.navigatingByProject),
     }));
@@ -1611,15 +1615,6 @@ function noteActivity(projectId: string, conversationId: string, title: string |
       },
     };
   });
-}
-
-/**
- * What a conversation is called, as the header should say it.
- * @param conversationId - The conversation asked about.
- * @returns Its name, or null when it has none or is not held.
- */
-function titleOf(conversationId: string): string | null {
-  return useStore.getState().conversations[conversationId]?.title ?? null;
 }
 
 /**
@@ -1828,6 +1823,35 @@ const wroteWhileFetching = new Map<string, ListWrites>();
 const listReadsOut = new Map<string, number>();
 
 /**
+ * Which list a project is holding, counted up each time it is replaced whole.
+ *
+ * The next page is asked for from the last row held, so its cursor describes
+ * the list in hand at that moment. Replace the list whole and that cursor is
+ * about a list nobody holds any more -- appending its answer leaves a gap
+ * where the rows between the two lists were, and the `hasMore` it carries can
+ * close paging on a list that is not finished, with nothing on screen to say
+ * so.
+ */
+const listGeneration = new Map<string, number>();
+
+/**
+ * Note that a project's list was replaced whole.
+ * @param projectId - The project whose list it is.
+ */
+function listReplaced(projectId: string): void {
+  listGeneration.set(projectId, (listGeneration.get(projectId) ?? 0) + 1);
+}
+
+/**
+ * Which list this project is holding.
+ * @param projectId - The project whose list it is.
+ * @returns A number that changes whenever the list is replaced whole.
+ */
+function listNow(projectId: string): number {
+  return listGeneration.get(projectId) ?? 0;
+}
+
+/**
  * Start keeping a record of what the reader does while a list request is out.
  * @param projectId - The project being read.
  */
@@ -1877,6 +1901,35 @@ function reconcile<T extends { id: string; title: string | null }>(
   return answered
     .filter((c) => !wrote.deleted.has(c.id))
     .map((c) => (wrote.named.has(c.id) ? { ...c, title: wrote.named.get(c.id) ?? null } : c));
+}
+
+/**
+ * Take the names an answer carries into the conversations this end holds.
+ *
+ * The name lives on the conversation and the row is a copy for the list to
+ * draw (invariant 7), so a list answer that only reached the row would leave
+ * the header saying one thing and the row another -- and nothing would put
+ * them back: picking the row already on screen does not read it again.
+ *
+ * An answer is the newest word except about what the reader did while it was
+ * out, which is why the names written meanwhile have already replaced its own
+ * by the time this sees them.
+ * @param held - The conversations this end holds.
+ * @param rows - The rows the answer carried, already reconciled.
+ * @returns The conversations, under the names now known.
+ */
+function withNames(
+  held: Record<string, ConversationRuntime>,
+  rows: readonly { id: string; title: string | null }[],
+): Record<string, ConversationRuntime> {
+  const renamed = rows.filter((r) => {
+    const c = held[r.id];
+    return c !== undefined && c.title !== r.title;
+  });
+  if (renamed.length === 0) return held;
+  const next = { ...held };
+  for (const r of renamed) next[r.id] = { ...next[r.id]!, title: r.title };
+  return next;
 }
 
 /**
@@ -1969,6 +2022,7 @@ async function loadMoreConversations(projectId: string): Promise<void> {
   const last = held[held.length - 1];
 
   const visit = currentVisit(projectId);
+  const asked = listNow(projectId);
   fetchingMore.add(projectId);
   beganListRead(projectId);
   useStore.setState((st) => ({
@@ -1982,6 +2036,11 @@ async function loadMoreConversations(projectId: string): Promise<void> {
       visit.signal,
     );
     if (visit.signal.aborted) return;
+    // The list this continues from has been replaced since, so this answer is
+    // about a list nobody holds. Dropping it costs nothing: the list that took
+    // its place says for itself whether there is more, and reaching the end of
+    // it asks again.
+    if (listNow(projectId) !== asked) return;
     const wrote = wroteSince(projectId);
     useStore.setState((s) => {
       const current = s.listByProject[projectId] ?? [];
@@ -1992,6 +2051,7 @@ async function loadMoreConversations(projectId: string): Promise<void> {
       const known = new Set(current.map((c) => c.id));
       const fresh = reconcile(page.conversations, wrote).filter((c) => !known.has(c.id));
       return {
+        conversations: withNames(s.conversations, fresh),
         listByProject: { ...s.listByProject, [projectId]: [...current, ...fresh] },
         listHasMore: { ...s.listHasMore, [projectId]: page.hasMore },
       };
@@ -2046,6 +2106,7 @@ async function reloadConversationList(projectId: string): Promise<void> {
     const page = await chatApi.listConversations(projectId, undefined, visit.signal);
     if (visit.signal.aborted) return;
     const wrote = wroteSince(projectId);
+    listReplaced(projectId);
     useStore.setState((st) => {
       const held = st.listByProject[projectId] ?? [];
       const standing = reconcile(page.conversations, wrote);
@@ -2058,6 +2119,7 @@ async function reloadConversationList(projectId: string): Promise<void> {
         .map((id) => held.find((c) => c.id === id))
         .filter((c): c is NonNullable<typeof c> => c !== undefined);
       return {
+        conversations: withNames(st.conversations, standing),
         listByProject: { ...st.listByProject, [projectId]: [...made, ...standing] },
         listHasMore: { ...st.listHasMore, [projectId]: page.hasMore },
         listMoreFailed: { ...st.listMoreFailed, [projectId]: false },
@@ -2363,6 +2425,7 @@ export function _resetForTests(): void {
   fetchingMore.clear();
   fetchingList.clear();
   listReadsOut.clear();
+  listGeneration.clear();
   wroteWhileFetching.clear();
   inFlight.clear();
   lastIssued.clear();
@@ -2395,7 +2458,6 @@ export const conversationRuntime = {
   startNew,
   loadMoreConversations,
   reloadConversationList,
-  titleOf,
   rename,
   remove,
   setDraft,

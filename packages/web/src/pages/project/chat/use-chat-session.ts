@@ -98,7 +98,7 @@ export interface ChatSession {
    * What went wrong with something done to a row, for the list to say.
    *
    * Apart from {@link mishap} because the two are about different things and
-   * either can be worth saying: this one belongs where the reader pressed,
+   * either can be worth saying: this one belongs where the reader is looking,
    * which is inside a sheet that covers the panel's own line.
    */
   rowMishap: ChatMishap | null;
@@ -254,7 +254,7 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
 
   const setDraft = React.useCallback(
     (text: string): void => conversationRuntime.setDraft(conversationId, text),
-    [projectId, conversationId],
+    [conversationId],
   );
 
   const switchTo = React.useCallback(
@@ -296,11 +296,12 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
   /**
    * The one that belongs in the list rather than in the panel.
    *
-   * Renaming and deleting are started from the list, and the list covers the
-   * whole column while it is open -- so the panel's line, on the top edge of
-   * the composer, is a line nobody can read. Kept apart rather than routed by
-   * whichever came last, because the two are about different things and can
-   * both be worth saying.
+   * The list covers the whole column while it is open, so the panel's line --
+   * on the top edge of the composer -- is a line nobody can read while it is
+   * up. What decides is therefore where the reader is looking, not which
+   * entrance they used: renaming can be started from the header too. Kept
+   * apart from {@link mishap} rather than routed by whichever came last,
+   * because the two are about different things and can both be worth saying.
    */
   const [rowMishap, setRowMishap] = React.useState<ChatMishap | null>(null);
 

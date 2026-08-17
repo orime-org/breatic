@@ -788,6 +788,36 @@ describe('pressing send while a switch is still on its way', () => {
     landSwitch?.();
     await switching;
   });
+
+  it('takes it once the reader has taken the switch back', async () => {
+    // 点当前这一行就是「算了,还待在这条」。输入框当场解冻(不变量 8),所以
+    // 这一刻按发送,话必须真的发出去 —— 看着能用、按下去没反应,是这两轮
+    // 一直在治的那件事。被追上的那次还在飞,但它换不动屏幕。
+    opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
+    await conversationRuntime.ensureLoaded(P);
+
+    let landSwitch: (() => void) | undefined;
+    vi.mocked(chatApi.readConversation).mockImplementationOnce(
+      () => new Promise((res) => {
+        landSwitch = () => res({
+          conversation: { id: 'c-2', title: 'two' }, messages: [], hasMore: false,
+        } as never);
+      }),
+    );
+    const switching = conversationRuntime.switchTo(P, 'c-2');
+    await new Promise((r) => setTimeout(r, 5));
+
+    await conversationRuntime.switchTo(P, 'c-1');
+    expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
+
+    void conversationRuntime.send(P, 'hello');
+    await new Promise((r) => setTimeout(r, 5));
+
+    expect(chatApi.streamMessage).toHaveBeenCalledTimes(1);
+
+    landSwitch?.();
+    await switching;
+  });
 });
 
 describe('while a switch is on its way', () => {

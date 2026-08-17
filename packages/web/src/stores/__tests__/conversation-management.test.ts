@@ -695,7 +695,7 @@ describe('the name of the conversation on screen', () => {
     } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
     await conversationRuntime.reloadConversationList(PROJECT);
 
-    expect(conversationRuntime.titleOf('c-old')).toBe('很久以前那条');
+    expect(useConversationRuntime.getState().conversations['c-old']?.title).toBe('很久以前那条');
   });
 
   it('is what a rename just set, whether or not it is listed', async () => {
@@ -714,7 +714,7 @@ describe('the name of the conversation on screen', () => {
     } as unknown as Awaited<ReturnType<typeof chatApi.renameConversation>>);
     await conversationRuntime.rename(PROJECT, 'c-old', '新名字');
 
-    expect(conversationRuntime.titleOf('c-old')).toBe('新名字');
+    expect(useConversationRuntime.getState().conversations['c-old']?.title).toBe('新名字');
   });
 
   it('is what the first message named it', async () => {
@@ -735,7 +735,7 @@ describe('the name of the conversation on screen', () => {
       data: { messages: [], hasMore: false, title: '第一句话' },
     } as unknown as SSEEventEnvelope);
 
-    expect(conversationRuntime.titleOf('c-1')).toBe('第一句话');
+    expect(useConversationRuntime.getState().conversations['c-1']?.title).toBe('第一句话');
   });
 });
 
@@ -882,7 +882,7 @@ describe('what a first page has to be told about', () => {
     land();
     await reloading;
 
-    expect(conversationRuntime.titleOf('c-1')).toBe('新名字');
+    expect(useConversationRuntime.getState().conversations['c-1']?.title).toBe('新名字');
     expect(useConversationRuntime.getState().listByProject[PROJECT]?.[0]?.title).toBe('新名字');
   });
 
@@ -980,6 +980,63 @@ describe('what a first page has to be told about', () => {
     await new Promise((r) => setTimeout(r, 0));
     landReload();
     await reloading;
+
+    expect(
+      (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id),
+    ).toEqual(['c-1', 'c-2']);
+    expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(true);
+  });
+
+  it('takes a name the answer knows and this end does not', async () => {
+    // 另一个标签页改了名。重取正是为了看见这种改动 —— 名字住在会话上(不变量
+    // 7),所以只写行的那份副本会让顶栏停在旧名字上,同一条会话当场两个名字,
+    // 而且不会自愈:点它自己那一行不会重读。
+    openAnswers([{ id: 'c-1', title: '旧名字' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [{ id: 'c-1', title: '新名字' }],
+      hasMore: false,
+    } as never);
+    await conversationRuntime.reloadConversationList(PROJECT);
+
+    expect(useConversationRuntime.getState().conversations['c-1']?.title).toBe('新名字');
+    expect(useConversationRuntime.getState().listByProject[PROJECT]?.[0]?.title).toBe('新名字');
+  });
+
+  it('drops a page that answers about a list nobody holds any more', async () => {
+    // 翻页是「接在手上这份列表后面」——游标取自它的末行。整片重取把那份列表
+    // 换掉之后,那个游标描述的就是另一份列表了:照样接上去,中间会缺一段,而它
+    // 带的 hasMore 还会把分页关掉,本次打开里再也拉不回来。
+    openAnswers(
+      [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      'c-1',
+      { hasMoreConversations: true },
+    );
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    const landPage = heldList({
+      conversations: [{ id: 'c-9', title: 'nine' }],
+      hasMore: false,
+    });
+    void conversationRuntime.loadMoreConversations(PROJECT);
+
+    const landReload = heldList({
+      conversations: [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      hasMore: true,
+    });
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    landReload();
+    await reloading;
+    landPage();
+    await new Promise((r) => setTimeout(r, 0));
 
     expect(
       (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id),
