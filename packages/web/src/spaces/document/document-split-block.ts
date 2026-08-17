@@ -79,6 +79,26 @@ export const DocumentSplitBlock = Extension.create({
       splitBlock:
         ({ keepMarks = true } = {}) =>
           ({ state, dispatch, editor, tr }) => {
+            // A selection whose deletion empties the document entirely — legal
+            // under `block*`, unreachable under the mainstream schemas the
+            // official command grew up with — sends `splitBlockAs` walking a
+            // depth chain that no longer exists (`$from.node(-1)` at depth 0,
+            // a TypeError). The ruled behaviour is simpler than a split
+            // anyway: the deletion happens, and splitting a document with no
+            // blocks is a no-op. Probed on a THROWAWAY transaction — the
+            // chainable `state.tr` is the shared one, `editor.state.tr` mints
+            // a fresh discardable copy.
+            if (!editor.state.selection.empty) {
+              const probe = editor.state.tr;
+              probe.deleteSelection();
+              if (probe.doc.childCount === 0) {
+                if (dispatch) {
+                  tr.deleteSelection();
+                  tr.scrollIntoView();
+                }
+                return true;
+              }
+            }
             const attributes = editor.extensionManager.attributes;
             const splittable = editor.extensionManager.splittableMarks;
             const surviving = marksThatSurvive(state, splittable);
