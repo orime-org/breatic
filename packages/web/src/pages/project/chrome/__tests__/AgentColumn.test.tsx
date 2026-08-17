@@ -211,6 +211,22 @@ describe('a history sheet left open when the list goes unreadable', () => {
       expect(screen.queryByTestId('conversation-history-sheet')).toBeNull(),
     );
   });
+
+  it('closes the list when the same button is pressed again', async () => {
+    // 这个按钮说的是「开关」,不是「打开」。抽屉是非模态的,所以按在它上面先被
+    // 判成「点了抽屉外面」把抽屉关掉,紧接着按钮自己的 click 又把它打开 —— 读者
+    // 按了一下什么也没发生,而且多打了一次整份列表的请求。
+    renderColumn();
+
+    await userEvent.click(await screen.findByTestId('open-conversation-history'));
+    expect(screen.getByTestId('conversation-history-sheet')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('open-conversation-history'));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('conversation-history-sheet')).toBeNull(),
+    );
+  });
 });
 
 describe('the header while the conversation is still on its way', () => {

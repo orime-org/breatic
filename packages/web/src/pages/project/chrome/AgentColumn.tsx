@@ -65,7 +65,12 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
     void conversationRuntime.ensureLoaded(projectId);
   }, [projectId]);
 
-  const openHistory = React.useCallback((): void => setHistoryOpen(true), [setHistoryOpen]);
+  // A toggle, not an opener: the button says "conversation history" and the
+  // reader reaches for it again to put the list away.
+  const toggleHistory = React.useCallback(
+    (): void => setHistoryOpen(!historyOpen),
+    [historyOpen, setHistoryOpen],
+  );
 
   const startNew = React.useCallback((): void => {
     void conversationRuntime.startNew(projectId);
@@ -111,7 +116,7 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
           // well have a name, and guessing it has none is a guess the reader
           // reads as fact.
           conversationNamePlaceholder={arrived ? t('chat.conversation.untitled') : ''}
-          onOpenHistory={openHistory}
+          onOpenHistory={toggleHistory}
           onNewConversation={startNew}
           onRenameConversation={renameCurrent}
         />

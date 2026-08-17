@@ -781,7 +781,10 @@ function adoptConversation(
   // the server has already accepted, and writing over it would put the name
   // the reader just replaced back on their screen.
   const title = nameNow(projectId, conversationId, opened.conversation.title ?? null, at);
-  applyTitle(projectId, conversationId, title);
+  // Read a moment ago, so it outranks any list answer that left before this
+  // one did. Recorded for the same reason a rename is: without it, a list
+  // answer still in flight would put the older name back.
+  applyTitle(projectId, conversationId, title, 'from-the-reader');
   useStore.setState((s) => {
     const held = s.conversations[conversationId];
     // The one thing this answer does NOT describe: a turn still running here.
@@ -1444,8 +1447,8 @@ function markUnreadable(projectId: string, err: unknown): void {
  * a particular one. Leaving the set is what every navigation does when it
  * ends, the newest included; asking who is highest among those left would then
  * promote an older one still travelling, and its stale answer would replace
- * what the reader actually chose. That question goes to {@link lastIssued},
- * which never forgets.
+ * what the reader actually chose. That question goes to {@link claimed}, which
+ * names the one navigation the reader is waiting for.
  */
 const inFlight = new Map<string, Set<number>>();
 
@@ -1592,8 +1595,19 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
  * @param projectId - The project whose list to change.
  * @param conversationId - The conversation being named.
  * @param title - Its name now, or null if it still has none.
+ * @param learned - Whether the reader did this, or an answer said it.
  */
-function applyTitle(projectId: string, conversationId: string, title: string | null): void {
+function applyTitle(
+  projectId: string,
+  conversationId: string,
+  title: string | null,
+  learned: 'from-the-reader' | 'from-an-answer',
+): void {
+  // Only what the reader did goes in the record. An answer that carries a name
+  // is not one of those -- and the server echoes the name it already holds on
+  // every turn, so treating that as an act would stamp a stale name with a
+  // fresh moment and undo a newer answer with it.
+  if (learned === 'from-the-reader') noteNamed(projectId, conversationId, title);
   useStore.setState((s) => {
     // The conversation first, because that is where the name lives. Its row in
     // the list is a second copy for the list to draw, and there may not be one
@@ -1630,7 +1644,11 @@ function applyTitle(projectId: string, conversationId: string, title: string | n
  * @param title - What it is called now, or null if it still has no name.
  */
 function noteActivity(projectId: string, conversationId: string, title: string | null): void {
-  noteNamed(projectId, conversationId, title);
+  // The server names a conversation from its first message and then echoes
+  // that name on every turn after it. Only the first of those is this end
+  // learning something; the echoes are an answer repeating itself.
+  const named = useStore.getState().conversations[conversationId]?.title ?? null;
+  if (named === null && title !== null) noteNamed(projectId, conversationId, title);
   useStore.setState((s) => {
     // The name reaches the conversation whatever the list holds. Speaking in
     // one that is not on the page in hand still names it, and the header reads
@@ -1800,7 +1818,16 @@ async function startNew(projectId: string): Promise<void> {
       landed = true;
     } catch (err) {
       if (visit.signal.aborted) return;
-      tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
+      // `aboutRow` because the list is where this can be pressed from with the
+      // sheet open -- the header's own button sits above it and stays
+      // reachable, and the panel's line would then be under the sheet.
+      tell({
+        projectId,
+        conversationId: null,
+        deliberate: true,
+        aboutRow: true,
+        ...readMishap(err),
+      });
       // This press asked for nothing in the end. Whatever it overtook -- an
       // opening still on its way, a delete looking for somewhere to land -- is
       // the reader's choice again, so the claim goes back before anything else
@@ -2138,8 +2165,6 @@ async function loadMoreConversations(projectId: string): Promise<void> {
   const visit = currentVisit(projectId);
   const asked = listNow(projectId);
   const at = asking();
-  // Set when the answer turns out to be about a list that has been replaced.
-  let stale = false;
   fetchingMore.add(projectId);
   useStore.setState((st) => ({
     listMoreFailed: { ...st.listMoreFailed, [projectId]: false },
@@ -2156,10 +2181,11 @@ async function loadMoreConversations(projectId: string): Promise<void> {
     // about a list nobody holds. It cannot be laid over the one that took its
     // place: the rows between the two lists would be missing, and the
     // `hasMore` it carries could close paging on a list that is not finished.
-    if (listNow(projectId) !== asked) {
-      stale = true;
-      return;
-    }
+    // Dropped, and nothing takes its place: the list that replaced this one
+    // says for itself whether there is more, and reaching *its* end is what
+    // asks next. Asking here would hand the reader a page they never scrolled
+    // to -- the end they reached belonged to a list that is gone.
+    if (listNow(projectId) !== asked) return;
     useStore.setState((s) => {
       const current = s.listByProject[projectId] ?? [];
       // The page starts after the last row held, so in an order that has not
@@ -2174,14 +2200,15 @@ async function loadMoreConversations(projectId: string): Promise<void> {
         listHasMore: { ...s.listHasMore, [projectId]: page.hasMore },
       };
     });
-  } catch (err) {
+  } catch {
     if (visit.signal.aborted) return;
+    // Said at the foot of the list and nowhere else. The panel's own line is
+    // under the sheet while the list is open, and the list is the only place
+    // this can be reached from -- a second copy there would surface later,
+    // when the sheet closes, about something the reader has moved on from.
     useStore.setState((st) => ({
       listMoreFailed: { ...st.listMoreFailed, [projectId]: true },
     }));
-    // The reader reached the end themselves, so this is an answer to something
-    // they did.
-    tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
   } finally {
     // Only if this is still the visit that asked. Both of these are per
     // project, and a request abandoned with a visit lands whenever it lands --
@@ -2193,11 +2220,7 @@ async function loadMoreConversations(projectId: string): Promise<void> {
       useStore.setState((st) => ({
         listLoadingMore: (({ [projectId]: _done, ...rest }) => rest)(st.listLoadingMore),
       }));
-      // Nothing else will ask. The reader is at the end of the list already,
-      // so the end does not move and the watcher has nothing to report; and
-      // the mark that arms a scroll listener belongs to a page that failed,
-      // which this is not. Asking again is what "reaching the end" meant.
-      if (stale) void loadMoreConversations(projectId);
+
     }
   }
 }
@@ -2304,11 +2327,7 @@ async function rename(
   try {
     const renamed = await chatApi.renameConversation(conversationId, projectId, title);
     if (visit.signal.aborted) return;
-    // The reader did this, so an answer already on its way does not undo it.
-    // Kept here rather than inside `applyTitle`, which is also how an answer
-    // writes a name -- and an answer is not something the reader did.
-    noteNamed(projectId, conversationId, renamed.title);
-    applyTitle(projectId, conversationId, renamed.title);
+    applyTitle(projectId, conversationId, renamed.title, 'from-the-reader');
   } catch (err) {
     if (visit.signal.aborted) return;
     tell({ projectId, conversationId, deliberate: true, aboutRow: true, ...readMishap(err) });
@@ -2533,6 +2552,11 @@ function leaveProject(projectId: string): void {
   // which come from the same run of `lastIssued` and are all higher anyway --
   // but a stale one is a fact about a project nobody is in.
   lastLanded.delete(projectId);
+  // What the reader did here, which nothing is going to ask about again. Not a
+  // correctness matter -- every later request takes a moment newer than any of
+  // these, so they could not filter anything -- but a record of a project
+  // nobody is in has no reason to be kept.
+  wroteLocally.delete(projectId);
   // `lastIssued` stays. It is the one of the four that must not restart: a
   // request abandoned with this visit is still out, still holding its number,
   // and still going to run its `finally`. Handing that number out again gives

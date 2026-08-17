@@ -219,18 +219,18 @@ function ConversationRowView({
   // of the page, while they were on this row a moment ago. Measured in the
   // browser: Enter was followed by focusout to BODY and nothing caught it.
   const opener = React.useRef<HTMLButtonElement>(null);
-  // Whether the box was up on the last render, so that leaving it can be told
-  // apart from never having been in it. Without this the row would take the
-  // keyboard on first paint, from wherever the reader actually is.
-  const wasRenaming = React.useRef(false);
+  // Set by the two exits this row decides for itself -- Enter and Escape. A
+  // blur is not one of them: the reader pressing Tab, or clicking elsewhere,
+  // has already said where the keyboard should go, and taking it back would
+  // make that press do nothing.
+  const handBack = React.useRef(false);
   React.useEffect(() => {
     if (renaming) {
-      wasRenaming.current = true;
       box.current?.select();
       return;
     }
-    if (!wasRenaming.current) return;
-    wasRenaming.current = false;
+    if (!handBack.current) return;
+    handBack.current = false;
     // In an effect rather than in the handler: the button is put back by the
     // render this state change causes, and it does not exist before that.
     opener.current?.focus();
@@ -239,8 +239,12 @@ function ConversationRowView({
   /**
    * Take what was typed, if it is a name at all.
    * @param typed - The contents of the box.
+   * @param decidedHere - This row ended the edit itself (Enter or Escape), so
+   *   the keyboard goes back to it. False when the box merely lost the focus:
+   *   the reader has already said where it should go.
    */
-  const commit = (typed: string): void => {
+  const commit = (typed: string, decidedHere = true): void => {
+    handBack.current = decidedHere;
     setRenaming(false);
     const named = typed.trim();
     // A row showing nothing reads as a rendering fault rather than as a name,
@@ -285,9 +289,12 @@ function ConversationRowView({
             data-renaming
             onKeyDown={(e) => {
               if (e.key === 'Enter') commit(e.currentTarget.value);
-              if (e.key === 'Escape') setRenaming(false);
+              if (e.key === 'Escape') {
+                handBack.current = true;
+                setRenaming(false);
+              }
             }}
-            onBlur={(e) => commit(e.currentTarget.value)}
+            onBlur={(e) => commit(e.currentTarget.value, false)}
           />
         ) : (
           <>
@@ -489,6 +496,19 @@ function ConversationHistorySheetInner({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        onPointerDownOutside={(event) => {
+          // The button that opens this list is not part of the sheet -- it sits
+          // in the column header, above where the sheet reaches. Left to
+          // Radix, pressing it while the list is open counts as pressing
+          // outside: the sheet closes, and then the button's own click opens it
+          // again. On screen that is a press that did nothing, and it fetches
+          // the whole list a second time. Measured in the browser: after the
+          // second press the sheet was still open.
+          const on = event.target;
+          if (on instanceof Element && on.closest('[data-testid="open-conversation-history"]')) {
+            event.preventDefault();
+          }
+        }}
         onEscapeKeyDown={(e) => {
           // An Escape typed into a rename box means "leave the name alone",
           // not "close the list". Radix listens for it on the document in the

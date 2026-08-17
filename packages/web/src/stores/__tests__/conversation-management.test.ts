@@ -1085,6 +1085,67 @@ describe('what a first page has to be told about', () => {
     ).toBe('新名字');
   });
 
+  it('does not treat an echoed name as something the reader just did', async () => {
+    // 服务端在会话已经有名字时,`titleForTurn` 原样回显库里那一份 —— 那是一份
+    // 答复,不是读者做的事。把它记进「读者做了什么」的账本,它就会用一个更晚的
+    // 时刻去顶掉一份更新的答复:另一端刚改的名字被这次回显推回旧名。
+    openAnswers([{ id: 'c-1', title: 'Old' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    const land = heldList({
+      conversations: [{ id: 'c-1', title: 'New' }],
+      hasMore: false,
+    });
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    // 这一轮开始了,服务端回显它当时读到的那份名字(旧的)。
+    await speakAndHearTitle('c-1', '继续', 'Old');
+
+    land();
+    await reloading;
+
+    expect(useConversationRuntime.getState().conversations['c-1']?.title).toBe('New');
+    expect(useConversationRuntime.getState().listByProject[PROJECT]?.[0]?.title).toBe('New');
+  });
+
+  it('keeps a name it learned by reading one conversation', async () => {
+    // 切过去那趟读回来的名字比列表答复新(另一端刚改的)。它没被记进时刻表,于是
+    // 一份更早出发的列表答复落地时把它改了回去。
+    openAnswers(
+      [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'Old' },
+      ],
+      'c-1',
+    );
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    const land = heldList({
+      conversations: [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'Old' },
+      ],
+      hasMore: false,
+    });
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    vi.mocked(chatApi.readConversation).mockResolvedValue({
+      conversation: { id: 'c-2', title: 'New' },
+      messages: [],
+      hasMore: false,
+    } as never);
+    await conversationRuntime.switchTo(PROJECT, 'c-2');
+
+    land();
+    await reloading;
+
+    expect(useConversationRuntime.getState().conversations['c-2']?.title).toBe('New');
+    expect(
+      (useConversationRuntime.getState().listByProject[PROJECT] ?? []).find((c) => c.id === 'c-2')
+        ?.title,
+    ).toBe('New');
+  });
+
   it('takes a name the answer knows and this end does not', async () => {
     // 另一个标签页改了名。重取正是为了看见这种改动 —— 名字住在会话上(不变量
     // 7),所以只写行的那份副本会让顶栏停在旧名字上,同一条会话当场两个名字,
@@ -1148,9 +1209,10 @@ describe('what a first page has to be told about', () => {
     expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(true);
   });
 
-  it('asks again after dropping a page about a list nobody holds', async () => {
-    // 丢弃发生的那一刻读者本来就在列表末尾,而末尾一动没动 —— 观察者不会再
-    // 报告一次。没人再问,底部的「正在加载」闪一下就没了,一行新的都不出现。
+  it('does not fetch a page the reader never scrolled to', async () => {
+    // 丢掉那份过期答复之后不再自己补一次:读者「滚到了末尾」这件事说的是**那份**
+    // 列表的末尾,而它已经被换掉了。替它补一页,等于把他从没要过的行塞进新列表。
+    // 下一次要更早的,由他滚到新列表的末尾来决定。
     openAnswers(
       [
         { id: 'c-1', title: 'one' },
@@ -1178,46 +1240,43 @@ describe('what a first page has to be told about', () => {
 
     landReload();
     await reloading;
-
-    vi.mocked(chatApi.listConversations).mockResolvedValue({
-      conversations: [{ id: 'c-3', title: 'three' }],
-      hasMore: false,
-    } as never);
+    const askedSoFar = vi.mocked(chatApi.listConversations).mock.calls.length;
     landPage();
     await new Promise((r) => setTimeout(r, 0));
 
     expect(
       (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id),
-    ).toEqual(['c-1', 'c-2', 'c-3']);
+    ).toEqual(['c-1', 'c-2']);
+    expect(vi.mocked(chatApi.listConversations).mock.calls.length).toBe(askedSoFar);
   });
 
-  it('stops saying the first page is on its way when the last one out was abandoned', async () => {
-    // 计数无条件配对(这是对的),所以把它减到零的那一趟可能属于一次已经被丢
-    // 下的访问。清那句「正在加载」的判据是计数归零,不是「谁减的」—— 挂在
-    // 访问上就会出现一个谁都不清的格子。
-    let landFirst: (() => void) | undefined;
-    vi.mocked(chatApi.openChat).mockImplementationOnce(
-      () =>
-        new Promise((res) => {
-          landFirst = (): void =>
-            res({
-              conversations: [{ id: 'c-1', title: 'one' }],
-              hasMoreConversations: false,
-              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
-            } as never);
-        }),
+  it('forgets what the reader did here once they have left', async () => {
+    // 那本账记的是「这一趟往返里这一端做了什么」。读者离开 project 之后它还留着,
+    // 下一次进来的答复会拿上一次的删除记录去过滤 —— 一条这次真实存在的会话被
+    // 上一次的删除挡在门外。
+    openAnswers(
+      [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      'c-1',
     );
-    void conversationRuntime.ensureLoaded(PROJECT);
-    await new Promise((r) => setTimeout(r, 0));
+    await conversationRuntime.ensureLoaded(PROJECT);
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
+    await conversationRuntime.remove(PROJECT, 'c-2');
+
     conversationRuntime.leaveProject(PROJECT);
 
-    openAnswers([{ id: 'c-2', title: 'two' }], 'c-2');
+    openAnswers(
+      [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      'c-1',
+    );
     await conversationRuntime.ensureLoaded(PROJECT);
 
-    landFirst?.();
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(useConversationRuntime.getState().listLoading[PROJECT]).toBeUndefined();
+    expect(listedIds()).toContain('c-2');
   });
 
   it('can be asked again after a visit was abandoned mid-open', async () => {
