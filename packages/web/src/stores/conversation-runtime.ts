@@ -1885,10 +1885,16 @@ async function reloadConversationList(projectId: string): Promise<void> {
     }));
   } catch (err) {
     if (visit.signal.aborted) return;
-    // The list in hand is the one from last time, and it is still on screen.
-    // Nothing is taken away over this; the reader is told, and reaching for
-    // the list again asks again.
-    tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
+    // Said in the list, because this only ever runs while the list is open --
+    // opening it is what asks. A line on the composer's top edge would be
+    // under the sheet, which is the very fault this branch set out to fix.
+    tell({
+      projectId,
+      conversationId: null,
+      deliberate: true,
+      aboutRow: true,
+      ...readMishap(err),
+    });
   } finally {
     // Same reason as the next page: an abandoned request must not settle the
     // bookkeeping of the visit that came after it.

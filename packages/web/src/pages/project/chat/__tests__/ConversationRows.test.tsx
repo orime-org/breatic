@@ -471,3 +471,16 @@ describe('a rename or a delete that did not work', () => {
     expect(row?.nextElementSibling).toBe(said);
   });
 });
+
+describe('a failure about the whole list rather than one row', () => {
+  it('is said at the top of it', () => {
+    // 重取整份列表失败,说的不是某一行的事 —— 它没有行可贴,而列表顶部正是
+    // 这句话该在的地方。
+    renderSheet({ rowMishap: { conversationId: null, text: 'Could not fetch the list' } });
+
+    const said = screen.getByTestId('conversation-list-mishap');
+    expect(said).toHaveTextContent('Could not fetch the list');
+    const list = screen.getByTestId('conversation-history-list');
+    expect(list.firstElementChild).toBe(said);
+  });
+});

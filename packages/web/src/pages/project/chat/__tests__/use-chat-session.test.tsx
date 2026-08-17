@@ -91,8 +91,10 @@ function turnStarts(texts: string[]): void {
  * Render the hook.
  * @returns The render result, for reading `current` off it
  */
-function render(): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
-  return renderHook(() => useChatSession('p-1'));
+function render(
+  listOpen = false,
+): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
+  return renderHook(() => useChatSession('p-1', listOpen));
 }
 
 /**

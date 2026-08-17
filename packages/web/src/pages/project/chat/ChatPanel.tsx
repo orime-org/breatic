@@ -7,6 +7,7 @@ import {
   conversationRuntime,
   useConversationRuntime,
 } from '@web/stores/conversation-runtime';
+import type { ChatMishap } from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
@@ -96,7 +97,7 @@ export function ChatPanel({
     switchTo,
     rename,
     remove,
-  } = useChatSession(projectId);
+  } = useChatSession(projectId, historyOpen);
   const t = useTranslation();
 
   // Two independent gates over one wait, because they answer different
@@ -164,6 +165,26 @@ export function ChatPanel({
   const goneText = t('chat.conversation.gone');
 
   /**
+   * Put a mishap into words, wherever it is going to be drawn.
+   *
+   * One function for both places, because which of the four sentences a
+   * mishap gets is a property of the mishap, not of where it is shown.
+   */
+  const sayMishap = React.useCallback(
+    (m: ChatMishap): string => {
+      // Not an error -- the conversation was there and is not any more.
+      if (m.kind === 'gone') return goneText;
+      // The server wrote this one for the reader, in their own language.
+      if (m.kind === 'server') return m.message;
+      // It answered, but with nothing a reader could act on -- so this end
+      // says the one thing that is true: the reply is not coming, send again.
+      if (m.kind === 'turn') return turnFailedText;
+      return networkErrorText;
+    },
+    [goneText, networkErrorText, turnFailedText],
+  );
+
+  /**
    * The one line, and it is only ever saying one thing.
    *
    * Four things it can be, and which one turns on what came back with the
@@ -177,17 +198,10 @@ export function ChatPanel({
    * nothing to quote and nothing to add: two words, and no advice about what
    * to do next, because that is the reader's own business.
    */
-  const notice = React.useMemo(() => {
-    if (mishap === null) return null;
-    // Not an error -- the conversation was there and is not any more.
-    if (mishap.kind === 'gone') return goneText;
-    // The server wrote this one for the reader, in their own language.
-    if (mishap.kind === 'server') return mishap.message;
-    // It answered, but with nothing a reader could act on -- so this end says
-    // the one thing that is true: the reply is not coming, send it again.
-    if (mishap.kind === 'turn') return turnFailedText;
-    return networkErrorText;
-  }, [mishap, goneText, networkErrorText, turnFailedText]);
+  const notice = React.useMemo(
+    () => (mishap === null ? null : sayMishap(mishap)),
+    [mishap, sayMishap],
+  );
 
   /**
    * What the list says about the row an action was taken on, in words.
@@ -197,15 +211,10 @@ export function ChatPanel({
    */
   const rowNotice = React.useMemo(() => {
     if (rowMishap === null) return null;
-    if (rowMishap.kind === 'gone') return { conversationId: rowMishap.conversationId ?? '', text: goneText };
-    const text =
-      rowMishap.kind === 'server'
-        ? rowMishap.message
-        : rowMishap.kind === 'turn'
-          ? turnFailedText
-          : networkErrorText;
-    return { conversationId: rowMishap.conversationId ?? '', text };
-  }, [rowMishap, goneText, networkErrorText, turnFailedText]);
+    // The id travels as it is: a row's id puts the words against that row,
+    // and null means they are about the list itself.
+    return { conversationId: rowMishap.conversationId, text: sayMishap(rowMishap) };
+  }, [rowMishap, sayMishap]);
 
   /**
    * Fetch the list afresh every time it is opened.

@@ -8,7 +8,16 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('@web/data/api/chat', () => ({
-  chatApi: { openChat: vi.fn(), streamMessage: vi.fn(), messagesBefore: vi.fn() },
+  chatApi: {
+    openChat: vi.fn(),
+    streamMessage: vi.fn(),
+    messagesBefore: vi.fn(),
+    renameConversation: vi.fn(),
+    deleteConversation: vi.fn(),
+    listConversations: vi.fn(),
+    readConversation: vi.fn(),
+    createConversation: vi.fn(),
+  },
 }));
 
 import { SSE_EVENT_NAMES } from '@breatic/shared';
@@ -28,13 +37,18 @@ import { expectNoA11yViolations } from '@web/test-utils/a11y';
  * @param props - Props for the panel under test
  * @returns The render result
  */
-function renderPanel(props: { projectId: string } = { projectId: 'p1' }): ReturnType<
-  typeof render
-> {
+function renderPanel(
+  props: { projectId: string; historyOpen?: boolean } = { projectId: 'p1' },
+): ReturnType<typeof render> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { historyOpen = false, ...rest } = props;
   return render(
     <QueryClientProvider client={client}>
-      <ChatPanel historyOpen={false} onHistoryOpenChange={() => undefined} {...props} />
+      <ChatPanel
+        historyOpen={historyOpen}
+        onHistoryOpenChange={() => undefined}
+        {...rest}
+      />
     </QueryClientProvider>,
   );
 }
@@ -92,7 +106,7 @@ function turnStarts(texts: string[]): void {
       })),
       hasMore: false,
     },
-  } as unknown as SSEEventEnvelope);
+  });
 }
 
 /**
@@ -433,5 +447,56 @@ describe('a conversation longer than one page', () => {
     // Nothing older left, so the offer goes away rather than sitting there
     // fetching nothing.
     await waitFor(() => expect(screen.queryByTestId('chat-load-earlier')).toBeNull());
+  });
+});
+
+
+describe('where a failure about a row in the list is drawn', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  /**
+   * Answer the open call so the panel reaches its ready state.
+   * @returns Nothing.
+   */
+  function opens(): void {
+    vi.mocked(chatApi.openChat).mockResolvedValue({
+      conversations: [{ id: 'c-1', title: 'one' }],
+      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      hasMoreConversations: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+  }
+
+  it('is drawn in the panel while the list is closed', async () => {
+    // 顶栏也能改名,而那时抽屉是关着的。一条只画在抽屉里的提示,读者一个字都
+    // 看不到 —— 去向由「读者现在看得见哪儿」定,不由「从哪儿按的」定。
+    opens();
+    renderPanel({ projectId: 'p1', historyOpen: false });
+    await waitFor(() => expect(screen.getByTestId('chat-panel')).toBeInTheDocument());
+
+    vi.mocked(chatApi.renameConversation).mockRejectedValue(new Error('offline'));
+    await act(async () => {
+      await conversationRuntime.rename('p1', 'c-1', 'a new name');
+    });
+
+    await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
+  });
+
+  it('is drawn in the list while the list is open', async () => {
+    opens();
+    renderPanel({ projectId: 'p1', historyOpen: true });
+    await waitFor(() => expect(screen.getByTestId('conversation-history-sheet')).toBeInTheDocument());
+
+    vi.mocked(chatApi.renameConversation).mockRejectedValue(new Error('offline'));
+    await act(async () => {
+      await conversationRuntime.rename('p1', 'c-1', 'a new name');
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation-row-mishap')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('chat-notice')).toBeNull();
   });
 });

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import type { MessageData } from '@breatic/shared';
 
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 
@@ -129,7 +128,7 @@ function toChatMessage(message: ChatMessageData, justFailed: boolean): ChatMessa
   const toolCalls: ToolCall[] = message.parts
     .filter((p) => p.type === 'tool')
     .map((p) => {
-      const part = p as Extract<MessageData['parts'][number], { type: 'tool' }>;
+      const part = p;
       return {
         id: part.toolCallId,
         name: part.toolName,
@@ -175,9 +174,11 @@ const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
  * `stores/conversation-runtime`, so that collapsing the agent column is
  * collapsing a column rather than ending the answer the user is waiting for.
  * @param projectId - Project whose chat this is
+ * @param listOpen - Whether the conversation list is on screen, which decides
+ *   where a word about one of its rows is drawn
  * @returns The messages, whether they have arrived, and what can be done
  */
-export function useChatSession(projectId: string): ChatSession {
+export function useChatSession(projectId: string, listOpen = false): ChatSession {
 
   const conversationId = useConversationRuntime((s) => s.currentByProject[projectId]);
   const openStatus = useConversationRuntime((s) => s.openStatus[projectId] ?? 'idle');
@@ -317,8 +318,11 @@ export function useChatSession(projectId: string): ChatSession {
         // than the one on screen -- that is what the list is for. The
         // question this filter asks is "is this the reader's own doing", not
         // "which conversation was it about".
-        // About a row in the list, so it is the list that says it.
-        if (told.aboutRow === true) {
+        // A word about a row goes to the list only while the list is on
+        // screen. Which entrance the reader used does not decide this -- the
+        // header renames the conversation too, and the sheet is shut then, so
+        // a line drawn inside it would be a line nobody reads.
+        if (told.aboutRow === true && listOpen) {
           setRowMishap(told);
           return;
         }
@@ -331,7 +335,7 @@ export function useChatSession(projectId: string): ChatSession {
         }
         setMishap(told);
       }),
-    [projectId, conversationId],
+    [projectId, conversationId, listOpen],
   );
 
   React.useEffect(() => {

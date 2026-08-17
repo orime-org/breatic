@@ -83,14 +83,14 @@ interface ConversationHistorySheetProps {
    */
   listLoading?: boolean;
   /**
-   * What to say about one row, and which one.
+   * What to say inside the list, and which row it is about.
    *
-   * Renaming and deleting can only be started from here, and this sheet covers
-   * the whole column -- so the panel's own line, on the top edge of the
-   * composer, is a line nobody can read while it is open. The word about them
-   * belongs next to the row it is about.
+   * This sheet covers the whole column, so the panel's own line -- on the top
+   * edge of the composer -- is a line nobody can read while it is open. A
+   * `conversationId` puts the words against that row; `null` means they are
+   * about the list itself, and they go at the top of it.
    */
-  rowMishap?: { conversationId: string; text: string } | null;
+  rowMishap?: { conversationId: string | null; text: string } | null;
 }
 
 /**
@@ -455,6 +455,15 @@ function ConversationHistorySheetInner({
               data-testid='conversation-history-list'
               role='list'
             >
+              {rowMishap !== null && rowMishap.conversationId === null ? (
+                <li
+                  className='mx-3 my-2 rounded-content-sm border border-status-error-border bg-status-error-bg px-2.5 py-1.5 text-2xs leading-relaxed text-status-error-foreground'
+                  role='alert'
+                  data-testid='conversation-list-mishap'
+                >
+                  {rowMishap.text}
+                </li>
+              ) : null}
               {conversations.length === 0 ? (
                 listLoading ? (
                   <li
