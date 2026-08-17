@@ -4,6 +4,15 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import * as React from 'react';
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
 import { toast } from '@web/lib/toast';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -131,6 +140,20 @@ export function DocumentSpace({
   const editor = hasEverSynced ? (handle?.editor ?? null) : null;
   const history = useDocumentHistory(handle?.undoManager ?? null);
 
+  // The guarded whole-document delete: the extension asks instead of deleting
+  // (see document-select-all.ts), and this mount answers with the dialog.
+  const [clearAsked, setClearAsked] = React.useState(false);
+  React.useEffect(() => {
+    if (!handle) return undefined;
+    return handle.onClearDocumentRequest(() => setClearAsked(true));
+  }, [handle]);
+  const onClearConfirm = React.useCallback(() => {
+    handle?.editor.chain().clearDocument().focus().run();
+  }, [handle]);
+  const onClearCancel = React.useCallback(() => {
+    handle?.editor.commands.focus();
+  }, [handle]);
+
   return (
     <div
       data-testid='document-space'
@@ -179,6 +202,30 @@ export function DocumentSpace({
           {t('spaces.document.loading')}
         </div>
       )}
+      <AlertDialog open={clearAsked} onOpenChange={setClearAsked}>
+        <AlertDialogContent
+          data-testid='document-clear-confirm'
+          aria-describedby={undefined}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('spaces.document.clearConfirm.title')}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={onClearCancel}>
+              {t('spaces.document.clearConfirm.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant='destructive'
+              onClick={onClearConfirm}
+              data-testid='document-clear-confirm-action'
+            >
+              {t('spaces.document.clearConfirm.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

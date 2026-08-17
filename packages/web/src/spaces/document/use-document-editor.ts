@@ -88,10 +88,8 @@ export function useDocumentEditor({
   // This hook used to seed an empty body with the one paragraph ProseMirror
   // insists on, behind two guards: only after the content had arrived, and
   // only from a client whose role allows writing. Both are gone with the seed
-  // itself — the fragment now holds a title from the moment the backend
-  // creates the Space, and nothing a user can do removes that block, so there
-  // is nothing here to repair. The body under it may hold no blocks at all;
-  // it is the title, not a paragraph, that keeps the fragment inhabited.
+  // itself — the document schema allows zero blocks (`content: 'block*'`), so
+  // an empty fragment is a legal resting state, not damage to repair.
   // `@breatic/shared`'s `document-body` carries the invariant and why it
   // belongs there.
 
