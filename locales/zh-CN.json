@@ -636,7 +636,6 @@
       },
       "refusedNotice": "与这个文档的连接被拒绝了。你看到的内容可能不是最新的，改动也不会被保存。",
       "placeholder": "开始写作…",
-      "titlePlaceholder": "未命名文档",
       "toolbar": {
         "undo": "撤销",
         "redo": "重做",

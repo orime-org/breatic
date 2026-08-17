@@ -110,7 +110,6 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     orderedList: ["start", "type"],
     paragraph: [],
     text: [],
-    title: [],
     // The three stand-in types. They must exist in every version: content one
     // build cannot represent is wrapped in these rather than deleted, and a
     // client that meets an already-wrapped element has to recognise the

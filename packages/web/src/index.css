@@ -424,25 +424,6 @@ body {
   pointer-events: none;
   color: var(--color-muted-foreground);
 }
-/* ---- The document Space's title block ----
-   Size is twice the body baseline rather than a literal 30px, so the title
-   stays in proportion to the text under it if that baseline ever moves. The
-   baseline is `calc(15px * var(--ts))`; `--ts` is a single scale hook declared
-   once in `theme/tokens.css` as `1`, and nothing in the app changes it today,
-   so this is about keeping one number derived from another rather than about
-   a setting a user can reach. 30px as it stands, which is the size chosen
-   against the mock. */
-.doc-body-editor .ProseMirror .doc-title {
-  font-size: calc(var(--font-size-base) * 2);
-  line-height: 1.25;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  /* 28px, chosen against the mock. rem rather than a spacing token because the
-     token scale stops at 16px, and the page root is the browser's 16px — the
-     base font size is set on `body`, which rem does not follow. */
-  margin: 0 0 1.75rem;
-}
-
 /* ---- The document Space's node selection ----
    Cmd-clicking a block (Ctrl on Windows) node-selects it, and ProseMirror
    marks it with this class — but ships the style for it in a stylesheet
@@ -459,20 +440,12 @@ body {
   outline-offset: 2px;
 }
 
-/* ---- The document Space's two placeholders ----
+/* ---- The document Space's empty-state placeholder ----
    Drawn here rather than by the placeholder extension: that one decorates
-   textblocks that EXIST and, by default, only the one holding the caret — so a
-   body with no blocks could never show one, and a fresh document could not
-   show both. `document-placeholders` marks the two states; this paints them.
+   textblocks that EXIST, and a document with no blocks has nothing to
+   decorate. `document-placeholders` marks the empty state; this paints it.
    The extension's own rule further up is untouched, because the generate
    prompt still relies on it. */
-.doc-body-editor .ProseMirror .doc-title.doc-title-empty::before {
-  content: attr(data-placeholder);
-  float: left;
-  height: 0;
-  pointer-events: none;
-  color: var(--color-muted-foreground);
-}
 .doc-body-editor .ProseMirror.doc-body-empty::after {
   content: attr(data-body-placeholder);
   display: block;
@@ -486,41 +459,6 @@ body {
    there is nowhere to hang a utility class: without the rules below, pressing
    the quote button changes the document and nothing on screen.
 
-   THE THREE HEADING RULES EXCLUDE `.doc-title`, because the document's title IS
-   an `h1` — `document-title.ts` renders `['h1', { class: 'doc-title' }]` into
-   this same `.ProseMirror`. So `h1` alone matches the title too, and
-   `:first-child` matches ONLY the title (it is always the first block). Leaving
-   the exclusion out happens to work today, since the title rule above declares
-   every property the h1 rule sets and outranks it — but add one property here
-   that the title does not declare and it lands on the title.
-
-   Nothing else in this block needs it, but for two different reasons. The
-   block selectors — `p`, the lists, `blockquote`, `pre` — cannot match the
-   title because it is an `h1` and none of them is. The INLINE ones —
-   `strong`, `:not(pre) > code` and `a` — are descendant selectors, so the
-   title's tag name is beside the point; what keeps them out is that the title
-   stores no marks (`marks: ''`), and each of those three elements only ever
-   appears as one.
-
-   Which is exactly why `marks: ''` does not settle the question for every
-   inline selector — marks are what the document may store, and a decoration
-   is a span the view wraps at render time, which no schema constraint
-   governs. The collaboration band below is
-   one: y-tiptap adds it with `Decoration.inline(from, to, …)` over the remote
-   selection's range whatever node that range falls in, so selecting the title
-   puts a `.collaboration-carets__selection` inside it and the band rule finds
-   it. That is harmless here — measured against the title's own 30px/1.25 this
-   rule leaves 0.313px of stripe, where the shared value it overrides would
-   overlap by about 4px — but an inline rule added here reaches the title, and
-   has to say whether it means to.
-
-   THE CONTAINER RULE IS A DIFFERENT MATTER AND NO EXCLUSION CAN HELP IT. The
-   `line-height` on `.doc-body-editor .ProseMirror` below reaches the title by
-   inheritance, which `:not()` does not stop — what keeps it off is that
-   `.doc-title` declares its own `line-height`. So an inheritable property added
-   there (`color`, `font-family`, `text-wrap`) lands on the title unless the
-   title rule declares that property too.
-
    There is one rule per level `BODY_HEADING_LEVELS` offers, and the two lists
    have to be changed together — CSS cannot read a TypeScript constant and this
    project has no JS Tailwind config to bridge them, so a level that gains an
@@ -529,20 +467,8 @@ body {
    `document-heading-levels` reads this file off disk and fails on a level with
    no size and weight of its own, so widening the array alone turns it red.
 
-   The exclusion is wrapped in `:where()` so that it costs nothing. Written
-   bare, `:not(.doc-title)` scores as a class and lifts the heading rules to
-   (0,3,1) — above the list-item reset below, which then loses on a heading
-   inside a list item while winning on its six siblings. That is the only rule
-   here it would take anything from; the quote's two `:nth-child(of …)` rules
-   are higher at (0,4,1), and the band override never meets these at all (it
-   lands on an inline span and sets a padding, sharing neither element nor
-   property). The weight was never the point: the exclusion is here to miss
-   the title, not to outrank anything, and `:where()` says exactly that.
-
-   Sizes derive from `--font-size-base` the way the title does, and the
-   coefficients are fractions rather than decimals because 15 × 1.333 is
-   19.995px, not 20. The hard ceiling is the title's 30px: the largest body
-   heading has to stay under it or the hierarchy inverts.
+   Sizes derive from `--font-size-base`, and the coefficients are fractions
+   rather than decimals because 15 × 1.333 is 19.995px, not 20.
 
    ONLY THE TOP MARGINS SEPARATE THE THREE LEVELS ON SCREEN. Adjacent siblings
    collapse to the larger of the two margins, and every block that can follow a
@@ -635,7 +561,7 @@ body {
   margin: 0.85em 0;
 }
 
-.doc-body-editor .ProseMirror h1:where(:not(.doc-title)) {
+.doc-body-editor .ProseMirror h1 {
   font-size: calc(var(--font-size-base) * 8 / 5); /* 24px */
   font-weight: 700;
   line-height: 1.3;
@@ -643,14 +569,14 @@ body {
   margin: 1.9em 0 0.55em;
 }
 
-.doc-body-editor .ProseMirror h2:where(:not(.doc-title)) {
+.doc-body-editor .ProseMirror h2 {
   font-size: calc(var(--font-size-base) * 4 / 3); /* 20px */
   font-weight: 600;
   line-height: 1.35;
   margin: 1.7em 0 0.5em;
 }
 
-.doc-body-editor .ProseMirror h3:where(:not(.doc-title)) {
+.doc-body-editor .ProseMirror h3 {
   font-size: calc(var(--font-size-base) * 17 / 15); /* 17px */
   font-weight: 600;
   line-height: 1.45;
