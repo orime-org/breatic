@@ -24,6 +24,12 @@ interface TierComparisonProps {
  * The rows are the six ceilings plus the price, in the order the panel above
  * introduces them.
  *
+ * The current column is filled with `bg-accent`, the one surface token that
+ * moves the other way in each theme — darker than the page in light, lighter
+ * in dark (tokens.css calls it "light darker / dark lighter"). `bg-card` goes
+ * lighter in both, which in the light theme means the marked column recedes
+ * exactly where it should stand out.
+ *
  * Each cell is identified by its tier AND its row, so a test can assert what
  * one particular figure says. A column-wide id could only ever count cells,
  * which is how a row reading the wrong ceiling stayed invisible.
@@ -87,14 +93,22 @@ export const TierComparison = React.memo(function TierComparison({
    */
   const columnClass = (tier: string): string =>
     tier === currentTier
-      ? 'border-b border-border border-x border-x-active-border bg-card px-2.5 py-2 text-right tabular-nums'
+      ? 'border-b border-border bg-accent px-2.5 py-2 text-right tabular-nums'
       : 'border-b border-border px-2.5 py-2 text-right tabular-nums';
 
   return (
     <table className='w-full border-collapse text-sm'>
       <thead>
         <tr>
-          <th className='border-b border-border px-2.5 py-2 text-left text-xs font-semibold text-muted-foreground' />
+          {/* The corner is the section heading. It sits on the same line as
+              the tier names because that line IS the table's header row —
+              a separate heading above it left this column unlabelled. */}
+          <th
+            scope='col'
+            className='border-b border-border px-2.5 py-2 text-left text-xs font-bold uppercase tracking-[0.04em] text-muted-foreground'
+          >
+            {t('membership.compare')}
+          </th>
           {offers.map((offer) => (
             <th
               key={offer.tier}
@@ -103,7 +117,7 @@ export const TierComparison = React.memo(function TierComparison({
               aria-current={offer.tier === currentTier ? 'true' : undefined}
               className={
                 offer.tier === currentTier
-                  ? 'border-b border-active-border border-x border-x-active-border bg-card px-2.5 py-2 text-right text-xs font-semibold text-foreground'
+                  ? 'border-b border-active-border bg-accent px-2.5 py-2 text-right text-xs font-semibold text-foreground'
                   : 'border-b border-border px-2.5 py-2 text-right text-xs font-semibold text-muted-foreground'
               }
             >

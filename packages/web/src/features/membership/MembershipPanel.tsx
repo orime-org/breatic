@@ -70,9 +70,13 @@ export function MembershipPanel({
         <DialogTitle className='sr-only'>
           {t('membership.panelTitle')}
         </DialogTitle>
+        {/* `z-10` is load-bearing: the scroll area below is a later sibling
+            that fills the panel, and between two positioned elements with no
+            level of their own the later one wins. Without it this button is
+            drawn but nothing reaches it — the click lands on the viewport. */}
         <DialogClose
           aria-label={t('membership.close')}
-          className='absolute right-4 top-4 inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className='absolute right-4 top-4 z-10 inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-[18px] w-[18px]' />
         </DialogClose>

@@ -306,24 +306,25 @@ describe('MembershipPanel', () => {
     }
   });
 
-  it('对比表当前那一列自己带边，不只是表头有记号', async () => {
-    // 表体七格原本只靠 bg-card 表示高亮，浅色 3/255、深色 4/255 —— 这个
-    // 仓自己在别处把 5/255 判过「看不见」。边框用的是激活边框那个 token，
-    // 它是实色。
+  it('对比表当前那一列整列有底色，别的列没有', async () => {
+    // 当前档位那一列靠底色标出来（user 2026-08-16 拍的：整列换底色，不画
+    // 竖线）。用的是 accent —— 亮色下比页面暗、暗色下比页面亮，两个主题
+    // 下都看得出来；card 两个主题都往亮走，亮色下等于把该突出的那一列往
+    // 背景里推。
     membershipMock.mockResolvedValue(answer());
     setup();
 
     const header = await screen.findByTestId('compare-column-pro');
-    expect(header.className).toContain('border-x-active-border');
+    expect(header.className).toContain('bg-accent');
     const cells = document.querySelectorAll('[data-testid^="compare-cell-pro-"]');
     // 月费 + 六项上限。
     expect(cells).toHaveLength(7);
     for (const cell of cells) {
-      expect(cell.className).toContain('border-x-active-border');
+      expect(cell.className).toContain('bg-accent');
     }
-    // 别的列没有这条竖线。
+    // 别的列没有。
     for (const cell of document.querySelectorAll('[data-testid^="compare-cell-base-"]')) {
-      expect(cell.className).not.toContain('border-x');
+      expect(cell.className).not.toContain('bg-accent');
     }
   });
 
@@ -418,5 +419,20 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('quota-storage')).toHaveTextContent(
       '38 GiB / 100 TiB',
     );
+  });
+
+  it('「各档对比」是表格第一列的表头，跟三个档位名同一行', async () => {
+    // 它原本是表格上方一个单独的标题，于是第一列没有任何标签。
+    membershipMock.mockResolvedValue(answer());
+    setup();
+
+    const table = await screen.findByRole('table');
+    const headerRow = table.querySelectorAll('thead tr th');
+    expect(headerRow).toHaveLength(4);
+    expect(headerRow[0]).toHaveTextContent('Compare tiers');
+    expect(headerRow[1]).toHaveTextContent('Base');
+    expect(headerRow[3]).toHaveTextContent('Team');
+    // 表格外面不再有第二个「各档对比」。
+    expect(screen.getAllByText('Compare tiers')).toHaveLength(1);
   });
 });

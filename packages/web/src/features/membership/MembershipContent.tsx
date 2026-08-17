@@ -251,7 +251,9 @@ export function MembershipContent({
 
       {onPriceList ? (
         <section className='flex flex-col gap-4'>
-          <SectionHeading>{t('membership.compare')}</SectionHeading>
+          {/* No heading element here: the table's own corner cell carries it,
+              so the label lines up with the tier names instead of floating
+              above a column that would otherwise have none. */}
           <ScrollArea scrollbars='horizontal'>
             <TierComparison offers={catalog} currentTier={tier} />
           </ScrollArea>

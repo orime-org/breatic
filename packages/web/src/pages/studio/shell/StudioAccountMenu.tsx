@@ -219,7 +219,14 @@ export function StudioAccountMenu(): React.JSX.Element {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align='end'
-          className='w-60'
+          // 8, not the primitive's 6: the language and theme popovers sitting
+          // beside this one hang 8 below the bar, and three controls on one
+          // row at two different distances reads as a mistake.
+          sideOffset={8}
+          // The rows carry their own highlight, so with nothing between them
+          // two adjacent highlights touch and read as one block. The language
+          // popover spaces its rows the same way.
+          className='flex w-60 flex-col gap-0.5'
           data-testid='account-menu'
         >
           <DropdownMenuLabel className='flex items-center gap-2'>
