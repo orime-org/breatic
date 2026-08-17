@@ -200,10 +200,10 @@ function ConversationRowView({
 }: RowProps): React.JSX.Element {
   const t = useTranslation();
   const [renaming, setRenaming] = React.useState(false);
-  // Whether Delete was the item chosen, held until the menu has finished
-  // closing. A ref rather than state because nothing renders differently for
-  // it; see the menu below for why the asking waits.
-  const deletePending = React.useRef(false);
+  // Which item was chosen, held until the menu has finished closing. A ref
+  // rather than state because nothing renders differently for it; see the menu
+  // below for why both of them wait.
+  const chose = React.useRef<'rename' | 'delete' | null>(null);
   const rel = relativeTime(row.updatedAt);
 
   // Focus is put in the box the moment it appears, because the reader asked
@@ -330,29 +330,40 @@ function ConversationRowView({
                   // as a press outside itself and closes -- and the same press
                   // then reaches the sheet, which closes too. On screen it is a
                   // flicker and the conversation is still there.
-                  // So the item only says what was asked for, and the asking
+                  // Rename has the same shape for a different reason: the box
+                  // it opens is focused the moment it appears, and a menu still
+                  // playing its exit animation still holds a focus trap -- the
+                  // caret is pulled back out, and the box, which commits on
+                  // blur, closes itself in the same breath. Its trigger is
+                  // unmounted by then too, so there is nowhere for the focus
+                  // Radix hands back to land.
+                  // So the item only says what was chosen, and the doing
                   // happens here, once the menu has closed and its press is
                   // over. `preventDefault` keeps the focus from going back to
-                  // the trigger, which the dialog is about to take anyway.
-                  // The same shape as the canvas node menu, whose rename opens
-                  // an editor from this handler for the same reason.
+                  // the trigger -- the dialog is about to take it, or the box
+                  // is. The same shape as the canvas node menu, whose rename
+                  // opens an editor from this handler for the same reason.
                   onCloseAutoFocus={(event) => {
-                    if (!deletePending.current) return;
-                    deletePending.current = false;
+                    const what = chose.current;
+                    if (what === null) return;
+                    chose.current = null;
                     event.preventDefault();
-                    onAskDelete(row.id);
+                    if (what === 'delete') onAskDelete(row.id);
+                    else setRenaming(true);
                   }}
                 >
                   <DropdownMenuItem
                     data-testid={`conversation-rename-${row.id}`}
-                    onSelect={() => setRenaming(true)}
+                    onSelect={() => {
+                      chose.current = 'rename';
+                    }}
                   >
                     {t('chat.conversation.rename')}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     data-testid={`conversation-delete-${row.id}`}
                     onSelect={() => {
-                      deletePending.current = true;
+                      chose.current = 'delete';
                     }}
                   >
                     {t('chat.conversation.delete')}
