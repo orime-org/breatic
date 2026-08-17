@@ -29,6 +29,7 @@ import { paymentRoute } from "@server/routes/payment.js";
 import { textToolsRoute } from "@server/routes/text-tools.js";
 import { modelsRoute } from "@server/routes/models.js";
 import { assetsRoute } from "@server/routes/assets.js";
+import { accountRoute } from "@server/routes/account.js";
 import { activitiesRoute } from "@server/routes/activities.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
@@ -93,6 +94,7 @@ export function createApp(): Hono {
   app.route("/api/v1/payment", paymentRoute);
   app.route("/api/v1/models", modelsRoute);
   app.route("/api/v1/assets", assetsRoute);
+  app.route("/api/v1/account", accountRoute);
   app.route("/api/v1/projects", activitiesRoute);
 
   // ── Static file serving (local storage) ──────

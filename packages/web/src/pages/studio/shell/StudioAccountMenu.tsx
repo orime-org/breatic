@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { authApi } from '@web/data/api/auth';
+import { MembershipPanel } from '@web/features/membership/MembershipPanel';
 import { useTranslation } from '@web/i18n/use-translation';
 import { studioTabPath } from '@web/pages/studio/container/studio-tabs';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -146,6 +147,7 @@ export function StudioAccountMenu(): React.JSX.Element {
   const user = useCurrentUserStore((s) => s.user);
   const clear = useCurrentUserStore((s) => s.clear);
   const personalStudio = user?.personalStudio ?? null;
+  const [membershipOpen, setMembershipOpen] = React.useState(false);
 
   /**
    * Sign out: invalidate the server session, then clear the local user so
@@ -179,84 +181,109 @@ export function StudioAccountMenu(): React.JSX.Element {
     navigate(studioTabPath(personalStudio.slug, 'settings'));
   };
 
+  /**
+   * Open the membership panel over whatever page is showing.
+   *
+   * It does not navigate: a person checking their tier is looking something
+   * up, not going somewhere, and what they were doing stays underneath.
+   */
+  const handleMembership = (): void => {
+    setMembershipOpen(true);
+  };
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type='button'
-          aria-label={t('studio.topBar.account')}
-          variant={null}
-          size={null}
-          // Hover dims rather than tinting the background: with an avatar set
-          // the background is covered by the image, so a background hover is
-          // invisible. Opacity also leaves the element's box untouched — this
-          // button is the menu's anchor, and anything that resizes it
-          // (a scale, a border) makes the menu jump on hover.
-          className='ml-1 flex shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type='button'
+            aria-label={t('studio.topBar.account')}
+            variant={null}
+            size={null}
+            // Hover dims rather than tinting the background: with an avatar set
+            // the background is covered by the image, so a background hover is
+            // invisible. Opacity also leaves the element's box untouched — this
+            // button is the menu's anchor, and anything that resizes it
+            // (a scale, a border) makes the menu jump on hover.
+            className='ml-1 flex shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          >
+            <StudioAvatar
+              name={user?.name ?? '?'}
+              // The signed-in user is shown through their personal studio —
+              // display identity lives there, not on the user row.
+              type='personal'
+              avatarUrl={user?.avatarUrl ?? null}
+              size='sm'
+            />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align='end'
+          // 8, not the primitive's 6: the language and theme popovers sitting
+          // beside this one hang 8 below the bar, and three controls on one
+          // row at two different distances reads as a mistake.
+          sideOffset={8}
+          // The rows carry their own highlight, so with nothing between them
+          // two adjacent highlights touch and read as one block. The language
+          // popover spaces its rows the same way.
+          className='flex w-60 flex-col gap-0.5'
+          data-testid='account-menu'
         >
-          <StudioAvatar
-            name={user?.name ?? '?'}
-            // The signed-in user is shown through their personal studio —
-            // display identity lives there, not on the user row.
-            type='personal'
-            avatarUrl={user?.avatarUrl ?? null}
-            size='sm'
-          />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align='end'
-        className='w-60'
-        data-testid='account-menu'
-      >
-        <DropdownMenuLabel className='flex items-center gap-2'>
-          <StudioAvatar
-            name={user?.name ?? '?'}
-            type='personal'
-            avatarUrl={user?.avatarUrl ?? null}
-            size='sm'
-            data-testid='account-menu-avatar'
-          />
-          <span className='flex min-w-0 flex-col gap-0.5'>
-            {/* `text-foreground` explicitly: DropdownMenuLabel sets
+          <DropdownMenuLabel className='flex items-center gap-2'>
+            <StudioAvatar
+              name={user?.name ?? '?'}
+              type='personal'
+              avatarUrl={user?.avatarUrl ?? null}
+              size='sm'
+              data-testid='account-menu-avatar'
+            />
+            <span className='flex min-w-0 flex-col gap-0.5'>
+              {/* `text-foreground` explicitly: DropdownMenuLabel sets
                 `text-muted-foreground` on the whole block, so a name that only
                 overrides size and weight inherits it — and then the handle's
                 own muted class says nothing, because both halves paint the
                 same grey. Whose account this is should be the loudest thing in
                 the header, not the quietest. */}
-            <span className='truncate text-sm font-medium text-foreground'>
-              {user?.name}
-            </span>
-            {personalStudio === null ? null : (
+              <span className='truncate text-sm font-medium text-foreground'>
+                {user?.name}
+              </span>
+              {personalStudio === null ? null : (
               // The handle is how other people find this account, so it is
               // worth being able to read off without going anywhere.
-              <span className='truncate text-xs font-normal text-muted-foreground'>
+                <span className='truncate text-xs font-normal text-muted-foreground'>
                 @{personalStudio.slug}
-              </span>
-            )}
-          </span>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <ComingEntry
-          label={t('studio.topBar.credits')}
-          note={t('studio.topBar.notOpenYet')}
-          icon={<Coins className='h-4 w-4' />}
-        />
-        <ComingEntry
-          label={t('studio.topBar.membership')}
-          note={t('studio.topBar.notOpenYet')}
-          icon={<Sparkles className='h-4 w-4' />}
-        />
-        <DropdownMenuItem onSelect={handleAccountSettings}>
-          <Settings className='h-4 w-4' />
-          {t('studio.topBar.accountSettings')}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={handleSignOut}>
-          <LogOut className='h-4 w-4' />
-          {t('studio.topBar.signOut')}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+                </span>
+              )}
+            </span>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <ComingEntry
+            label={t('studio.topBar.credits')}
+            note={t('studio.topBar.notOpenYet')}
+            icon={<Coins className='h-4 w-4' />}
+          />
+          <DropdownMenuItem onSelect={handleMembership}>
+            <Sparkles className='h-4 w-4' />
+            {t('studio.topBar.membership')}
+            {/* The tier itself, not just the word: this entry is where a person
+              checks which one they are on, and reading it off the menu saves
+              the trip. */}
+            <span className='ml-auto text-xs font-medium text-muted-foreground'>
+              {user === null ? null : t(`membership.tier.${user.membershipTier}`)}
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleAccountSettings}>
+            <Settings className='h-4 w-4' />
+            {t('studio.topBar.accountSettings')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={handleSignOut}>
+            <LogOut className='h-4 w-4' />
+            {t('studio.topBar.signOut')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
+    </>
   );
 }

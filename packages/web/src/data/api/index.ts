@@ -12,6 +12,7 @@
 export { request, apiGet, apiPost, apiPatch, apiDelete } from '@web/data/api/request';
 export { ApiException, type ApiError, type Pagination, type PageMeta } from '@web/data/api/types';
 
+export { accountApi } from '@web/data/api/account';
 export { authApi, type AuthUser } from '@web/data/api/auth';
 export { usersApi, type UserSummary } from '@web/data/api/users';
 export { projectsApi, type ProjectSummary, type ProjectDetail } from '@web/data/api/projects';

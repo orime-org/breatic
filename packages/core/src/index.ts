@@ -143,6 +143,7 @@ export type {
 } from "@core/activity/project-activities.repo.js";
 export * as projectAuthService from "@core/auth/projectAuth.service.js";
 export {
+  asKnownTier,
   getUserMembershipTier,
   getStudioMembershipTier,
   getLimitsForUser,

@@ -50,6 +50,7 @@ describe('AuthBootstrap', () => {
         slug: 'alice',
         avatarUrl: 'https://cdn/alice.png',
       },
+      membershipTier: 'base',
       credits: 100,
     });
     render(
@@ -84,6 +85,7 @@ describe('AuthBootstrap', () => {
       id: 'u3',
       email: 'c@d.com',
       personalStudio: { name: 'Chen', slug: 'chen', avatarUrl: null },
+      membershipTier: 'base',
       credits: 0,
     });
     render(
@@ -107,6 +109,7 @@ describe('AuthBootstrap', () => {
       id: 'u2',
       email: 'songxiuxing@gmail.com',
       personalStudio: null,
+      membershipTier: 'base',
       credits: 0,
     });
     render(

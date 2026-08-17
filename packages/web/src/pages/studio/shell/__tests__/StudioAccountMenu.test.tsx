@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { authApi } from '@web/data/api/auth';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
@@ -15,11 +16,17 @@ vi.mock('@web/data/api/auth', () => ({
   authApi: { logout: vi.fn() },
 }));
 
+const membershipMock = vi.fn();
+vi.mock('@web/data/api/account', () => ({
+  accountApi: { membership: () => membershipMock() },
+}));
+
 const ALEX = {
   id: 'u1',
   name: 'Alex',
   email: 'alex@x.example',
   personalStudio: { name: 'Alex', slug: 'alex', avatarUrl: null },
+  membershipTier: 'base' as const,
 };
 
 /**
@@ -37,10 +44,15 @@ function LocationProbe(): React.JSX.Element {
  * @returns The render result.
  */
 function setup(): ReturnType<typeof render> {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
   return render(
     <MemoryRouter initialEntries={['/studio']}>
-      <StudioAccountMenu />
-      <LocationProbe />
+      <QueryClientProvider client={qc}>
+        <StudioAccountMenu />
+        <LocationProbe />
+      </QueryClientProvider>
     </MemoryRouter>,
   );
 }
@@ -58,6 +70,7 @@ describe('StudioAccountMenu', () => {
   beforeEach(() => {
     useCurrentUserStore.getState().clear();
     vi.mocked(authApi.logout).mockReset().mockResolvedValue(undefined);
+    membershipMock.mockReset();
   });
 
   it('shows the current user initial on the avatar button', () => {
@@ -106,10 +119,7 @@ describe('StudioAccountMenu', () => {
     expect(name.className).toContain('text-foreground');
   });
 
-  it.each([
-    ['Credits', 'Credits'],
-    ['Membership', 'Membership'],
-  ])(
+  it.each([['Credits', 'Credits']])(
     'offers %s, marked unavailable in a way that still reaches the keyboard',
     async (_label, name) => {
       // These two entries exist to be FOUND — the feature behind each one is
@@ -132,7 +142,7 @@ describe('StudioAccountMenu', () => {
     },
   );
 
-  it.each([['Credits'], ['Membership']])(
+  it.each([['Credits']])(
     'shows %s where focus is, not only to the machine',
     async (name) => {
       // Reachable and invisible is the same outcome as unreachable for the
@@ -195,7 +205,7 @@ describe('StudioAccountMenu', () => {
     expect(document.activeElement).toBe(settings);
   });
 
-  it.each([['Credits'], ['Membership']])(
+  it.each([['Credits']])(
     'dims %s as ONE thing — the note included',
     async (name) => {
       // Every disabled thing in this product dims the whole element and lets
@@ -220,7 +230,7 @@ describe('StudioAccountMenu', () => {
     },
   );
 
-  it.each([['Credits'], ['Membership']])(
+  it.each([['Credits']])(
     'does nothing at all when %s is chosen',
     async (name) => {
       // Reachable is not the same as actionable: the entry must answer the
@@ -289,5 +299,45 @@ describe('StudioAccountMenu', () => {
     await waitFor(() =>
       expect(useCurrentUserStore.getState().user).toBeNull(),
     );
+  });
+
+  it('会员条目直接显示当前档位，而不只是「会员」两个字', async () => {
+    // user 2026-08-11：「会员项将直接显示等级，点进去是会员详情」。
+    const user = userEvent.setup();
+    useCurrentUserStore.getState().setUser({ ...ALEX, membershipTier: 'pro' });
+    setup();
+    await openMenu(user);
+
+    expect(
+      screen.getByRole('menuitem', { name: /Membership/ }),
+    ).toHaveTextContent('PRO');
+  });
+
+  it('点会员条目在当前页面上打开面板，不导航', async () => {
+    // 面板浮在当前 studio 页面上：用户来看会员情况时，他正在做的事不该被
+    // 打断，地址栏也始终是底下那个页面的地址。
+    const user = userEvent.setup();
+    membershipMock.mockReturnValue(new Promise(() => {}));
+    useCurrentUserStore.getState().setUser(ALEX);
+    setup();
+    await openMenu(user);
+
+    await user.click(screen.getByRole('menuitem', { name: /Membership/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('membership-skeleton')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('location')).toHaveTextContent('/studio');
+  });
+
+  it('没打开面板时不去请求会员信息', async () => {
+    // 这个菜单挂在每个 studio 页面的顶栏上，而那个接口要把该账号管理的
+    // 每个 studio 的资产加总一遍。
+    const user = userEvent.setup();
+    useCurrentUserStore.getState().setUser(ALEX);
+    setup();
+    await openMenu(user);
+
+    expect(membershipMock).not.toHaveBeenCalled();
   });
 });

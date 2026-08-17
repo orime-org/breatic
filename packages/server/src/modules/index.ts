@@ -14,6 +14,7 @@
  * by their owning module via deep imports, never re-exported here.
  */
 
+export * as membershipService from "@server/modules/account/membership.service.js";
 export * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 export * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 export * as authService from "@server/modules/auth/auth.service.js";

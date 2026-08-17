@@ -4,7 +4,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
-import type { PersonalStudioRef } from '@breatic/shared';
+import type { MembershipTier, PersonalStudioRef } from '@breatic/shared';
 
 import { deriveDisplayName, type AuthUser } from '@web/data/api/auth';
 
@@ -41,6 +41,16 @@ export interface CurrentUser {
    * gate — a non-null personal studio is required to enter the app.
    */
   personalStudio: PersonalStudioRef | null;
+  /**
+   * Which membership tier the account is on.
+   *
+   * The avatar menu names it, and the membership panel opens from there.
+   * It arrives with the session payload, so it is as fresh as the last
+   * `/auth/me` — a tier changed elsewhere reaches this tab on the next boot
+   * (#110 makes that immediate, and belongs with the upgrade flow that can
+   * change it).
+   */
+  membershipTier: MembershipTier;
 }
 
 /**
@@ -67,6 +77,7 @@ export function toCurrentUser(u: AuthUser): CurrentUser {
     // present-but-broken source.
     avatarUrl: u.personalStudio?.avatarUrl ?? undefined,
     personalStudio: u.personalStudio,
+    membershipTier: u.membershipTier,
   };
 }
 
