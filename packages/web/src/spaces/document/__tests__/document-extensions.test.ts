@@ -49,6 +49,23 @@ const ALLOWED_STARTERKIT_OVERRIDES: Readonly<Record<string, string>> = {
   // own `renderHTML` — an `extend` on an instance StarterKit builds internally
   // and never hands out.
   heading: 'the body caps headings at three levels and answers for the rest',
+  // The one entry here that removes a node rather than replacing one. See
+  // `REMOVED_NODES` for why the divider goes.
+  horizontalRule: 'the divider is not a feature this document offers',
+};
+
+/**
+ * Nodes plain StarterKit registers that this document does not, and why.
+ *
+ * The mirror of `ADDED_NODES`, and it exists so that removing a node is stated
+ * once, here, rather than by quietly switching it off on BOTH sides of the
+ * comparison below. Configuring the stock schema to match ours would make the
+ * assertion green and blind at the same time: it could never again notice a
+ * default node going missing, which is the one thing it is for.
+ */
+const REMOVED_NODES: Readonly<Record<string, string>> = {
+  horizontalRule:
+    'a divider is a feature nobody asked this document for; it came in as a StarterKit default, and it is the one visible block with no text in it — nothing else in the body can be selected without being seen to be',
 };
 
 /**
@@ -92,7 +109,7 @@ describe('the document schema', () => {
     ]);
 
     const expected = [
-      ...Object.keys(stock.nodes),
+      ...Object.keys(stock.nodes).filter((name) => !(name in REMOVED_NODES)),
       ...Object.keys(ADDED_NODES),
     ].sort();
     expect(Object.keys(ours.nodes).sort()).toEqual(expected);
@@ -117,8 +134,11 @@ describe('the document schema', () => {
       Object.fromEntries(
         Object.entries(schema.nodes)
           // The added nodes have no StarterKit counterpart to compare against;
-          // what they declare is pinned where they are defined.
-          .filter(([name]) => !(name in ADDED_NODES))
+          // what they declare is pinned where they are defined. The removed
+          // ones have no counterpart on our side, and their absence is already
+          // asserted by name in the test above — this one is about the nodes
+          // both schemas have.
+          .filter(([name]) => !(name in ADDED_NODES) && !(name in REMOVED_NODES))
           .map(([name, node]) => [name, Object.keys(node.spec.attrs ?? {}).sort()]),
       );
 

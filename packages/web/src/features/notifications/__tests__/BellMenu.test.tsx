@@ -25,6 +25,7 @@ const SELF = {
   name: 'Self',
   email: 'self@x.example',
   personalStudio: null,
+  membershipTier: 'base' as const,
 };
 
 const PID = '11111111-1111-4111-8111-111111111111';

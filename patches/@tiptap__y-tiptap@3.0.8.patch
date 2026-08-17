@@ -1,5 +1,5 @@
 diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
-index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce039e900e 100644
+index 653ffe79d5edb4a040555bb222f472af1e45edc8..5fdc9bf75638ca93c63b24921b9a8e1cd6d430dc 100644
 --- a/dist/y-tiptap.cjs
 +++ b/dist/y-tiptap.cjs
 @@ -927,6 +927,99 @@ const createNodeFromYElement = (
@@ -169,7 +169,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..dafd4bcdf880670d1ff8463148faa0ce
        const isOverlapping = map__namespace.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type));
        pattrs[isOverlapping ? `${mark.type.name}--${hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs;
 diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
-index 28c55820dff13cf3d5c303970f530c17eb38f757..baa28b1ca95a87936a096d671028a5f68c66594b 100644
+index 28c55820dff13cf3d5c303970f530c17eb38f757..1388d00eae120d671d3a6a0ddab38f708a5b44c2 100644
 --- a/dist/y-tiptap.js
 +++ b/dist/y-tiptap.js
 @@ -893,6 +893,99 @@ const createNodeFromYElement = (

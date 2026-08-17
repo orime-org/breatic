@@ -16,6 +16,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   ["payments", "append-only financial record; deleting one breaks the audit trail"],
   ["creditTransactions", "append-only credit ledger; immutable accounting"],
   [
+    "membershipTierChanges",
+    "append-only ledger of tier moves, the same carve-out as creditTransactions above: the column on users holds the current tier and every change to it is appended here, so deleting a row leaves a history that no longer adds up to the value on the account",
+  ],
+  [
     "creditBalances",
     "1:1 with users (PK = user_id); its soft-delete is derived from users.deleted_at through the join in credit.repo.ts, and an own column would be a second source of truth",
   ],

@@ -78,9 +78,23 @@ export type {
 
 export { STUDIO_ROLE_RANK } from "@shared/types/studio.js";
 
-export type { MembershipTier } from "@shared/types/membership.js";
+export type {
+  MembershipTier,
+  ConfiguredMembershipTier,
+  MembershipLimits,
+  ComparableMembershipTier,
+  TierOffer,
+  AccountUsage,
+  AccountMembership,
+} from "@shared/types/membership.js";
 
-export { MEMBERSHIP_TIERS } from "@shared/types/membership.js";
+export {
+  MEMBERSHIP_TIERS,
+  CONFIGURED_MEMBERSHIP_TIERS,
+  tierLimitsSchema,
+  COMPARABLE_MEMBERSHIP_TIERS,
+  isComparableMembershipTier,
+} from "@shared/types/membership.js";
 
 export type {
   InvitableProjectRole,

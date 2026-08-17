@@ -295,7 +295,6 @@
       "videoPromptPlaceholder": "Describe the video you want to generate, @ to add a reference",
       "errorNoReferenceMention": "This mode needs a reference image — connect one to this node and type @ in the prompt to use it",
       "videoMentionEmpty": "No references to mention yet",
-      "videoNoPrompt": "This node was made before videos could be generated, so it has no prompt. Create a new video node to generate one.",
       "firstFrame": "First frame",
       "firstFrameTip": "Pick an image to start the video from",
       "removeFirstFrame": "Remove first frame",
@@ -315,7 +314,9 @@
       "removeDrivingVideo": "Remove driving video",
       "removeDrivingAudio": "Remove driving audio",
       "errorNoDrivingVideo": "Pick a driving video",
-      "errorNoDrivingAudio": "Pick a driving audio track"
+      "errorNoDrivingAudio": "Pick a driving audio track",
+      "videoPromptNotUsed": "This mode follows the audio. Change the audio to change what is said.",
+      "refuseInsertNoPrompt": "This mode has no prompt to insert into"
     },
     "edge": {
       "delete": "Delete connection"
@@ -643,6 +644,7 @@
         "description": "Timeline viewer plugs in when timeline-space ships; here we show a track snapshot, with clip copy."
       }
     },
+    "readOnlyNotice": "You can only view this Space right now — anything you change will not be saved.",
     "lockedAria": "Locked",
     "document": {
       "loading": "Loading editor…",
@@ -650,7 +652,6 @@
         "text": "This document could not be opened. It may have been deleted, or you may no longer have access to it.",
         "action": "Try again"
       },
-      "readOnlyNotice": "This document is read-only right now — anything you type will not be saved.",
       "refusedNotice": "The connection to this document was refused. What you see may be out of date, and changes will not be saved.",
       "placeholder": "Start writing…",
       "titlePlaceholder": "Untitled document",
@@ -672,7 +673,8 @@
         "riskUploads": "uploads still in progress will be interrupted — you can switch to the Space they are in and check first.",
         "action": "Refresh page"
       }
-    }
+    },
+    "readOnlyReconnect": "Reconnect"
   },
   "menu": {
     "createAria": "Create menu",
@@ -1138,5 +1140,46 @@
     "goThere": "Go there",
     "backHome": "Back to your Studio",
     "actionFailed": "That did not go through. Please try again."
+  },
+  "membership": {
+    "panelTitle": "Membership",
+    "close": "Close",
+    "currentTier": "Current membership",
+    "tier": {
+      "base": "Base",
+      "pro": "PRO",
+      "team": "Team",
+      "self_hosted": "Self-hosted",
+      "enterprise": "Enterprise"
+    },
+    "priceFree": "Free",
+    "pricePerMonth": "{amount} / month",
+    "tierNote": "Your tier decides capacity and collaboration scale. Every creative feature and every model is the same on all tiers.",
+    "upgrade": "Upgrade",
+    "myQuota": "My allowances",
+    "quota": {
+      "teamStudios": "Team Studios",
+      "storage": "Storage",
+      "projectsPerStudio": "Projects per Studio",
+      "studioMembers": "Members per Studio",
+      "projectMembers": "Members per Project",
+      "concurrentEditors": "Simultaneous connections per document"
+    },
+    "quotaValue": "{used} / {limit}",
+    "countItems": "{count}",
+    "countPeople": "{count}",
+    "countConnections": "{count} connections",
+    "overLimitTag": "over",
+    "overLimit": {
+      "storage": "Storage is over the limit. What is already there works as before, but nothing new can be uploaded. Upgrade for more space.",
+      "teamStudios": "You are over the team Studio limit. The ones you have work as before, but no new ones can be created. Upgrade for more."
+    },
+    "enterpriseQuota": "Your allowances are set by a separate agreement and are not shown here.",
+    "compare": "Compare tiers",
+    "monthlyFee": "Monthly",
+    "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
+    "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
+    "contactEnterpriseAccount": "Questions about your allowances, or need them changed? Email us:",
+    "loadFailed": "We could not read your membership. It may be a network problem — try again in a moment."
   }
 }

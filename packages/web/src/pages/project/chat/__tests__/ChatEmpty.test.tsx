@@ -24,6 +24,7 @@ describe('ChatEmpty', () => {
       name: 'Songxiulei',
       email: 'sx@example.com',
       personalStudio: { name: 'Songxiulei', slug: 'songxiulei', avatarUrl: null },
+      membershipTier: 'base',
     });
     render(<ChatEmpty />);
     expect(screen.getByTestId('chat-empty')).toHaveTextContent(

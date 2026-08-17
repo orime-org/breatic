@@ -182,6 +182,7 @@ describe('ProjectPage roster wiring', () => {
         name: 'Me',
         email: 'me@e.com',
         personalStudio: { name: 'Me', slug: 'me', avatarUrl: null },
+        membershipTier: 'base',
       },
       role: null,
       loading: false,

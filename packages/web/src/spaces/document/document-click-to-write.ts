@@ -6,8 +6,8 @@
  *
  * A document Space is born holding a title and no body blocks, so without this
  * there is nowhere for the caret to go and the document cannot be written into
- * at all. The same click matters later for a different reason: a code block or
- * a divider at the end of the body leaves a user no way to get past it, and
+ * at all. The same click matters later for a different reason: a code block at
+ * the end of the body leaves a user no way to get past it, and
  * this repo deliberately does not run the extension that would append a
  * trailing paragraph on its own — see the note beside `trailingNode: false` in
  * `document-extensions`. Its append is a write to a document everyone shares,

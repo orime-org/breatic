@@ -286,7 +286,6 @@
       "videoPromptPlaceholder": "生成したい動画を説明してください。@ で参照を追加",
       "errorNoReferenceMention": "このモードには参考画像が必要です —— このノードに画像をつないでから、プロンプトで @ を入力して指定してください。",
       "videoMentionEmpty": "参照できるものがまだありません",
-      "videoNoPrompt": "このノードは動画生成より前に作られたため、プロンプトがありません。新しい動画ノードを作成すると生成できます。",
       "firstFrame": "最初のフレーム",
       "firstFrameTip": "動画の最初のフレームにする画像を選ぶ",
       "removeFirstFrame": "最初のフレームを削除",
@@ -306,7 +305,9 @@
       "removeDrivingVideo": "動きの元の動画を削除",
       "removeDrivingAudio": "口の動きの元の音声を削除",
       "errorNoDrivingVideo": "動きの元になる動画を選んでください",
-      "errorNoDrivingAudio": "口の動きの元になる音声を選んでください"
+      "errorNoDrivingAudio": "口の動きの元になる音声を選んでください",
+      "videoPromptNotUsed": "このモードは音声に従います。内容を変えるには音声を差し替えてください。",
+      "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -643,6 +644,7 @@
         "description": "Timeline viewer は timeline-space 実装時に接続。ここではトラックのスナップショットを表示します(クリップコピー可)。"
       }
     },
+    "readOnlyNotice": "この Space は現在閲覧のみです —— 変更を加えても保存されません。",
     "lockedAria": "ロック中",
     "document": {
       "loading": "エディターを読み込み中…",
@@ -650,7 +652,6 @@
         "text": "このドキュメントを開けませんでした。削除されたか、アクセス権がなくなった可能性があります。",
         "action": "再試行"
       },
-      "readOnlyNotice": "このドキュメントは現在読み取り専用です — 入力した内容は保存されません。",
       "refusedNotice": "このドキュメントへの接続が拒否されました。表示中の内容は最新ではない可能性があり、変更も保存されません。",
       "placeholder": "書き始めましょう…",
       "titlePlaceholder": "無題のドキュメント",
@@ -672,7 +673,8 @@
         "riskUploads": "進行中のアップロードは中断されます。該当する Space に切り替えて先に確認できます。",
         "action": "ページを再読み込み"
       }
-    }
+    },
+    "readOnlyReconnect": "再接続"
   },
   "menu": {
     "createAria": "作成メニュー",
@@ -1138,5 +1140,46 @@
     "goThere": "開く",
     "backHome": "自分の Studio に戻る",
     "actionFailed": "実行できませんでした。もう一度お試しください。"
+  },
+  "membership": {
+    "panelTitle": "メンバーシップ",
+    "close": "閉じる",
+    "currentTier": "現在のプラン",
+    "tier": {
+      "base": "Base",
+      "pro": "PRO",
+      "team": "Team",
+      "self_hosted": "セルフホスト",
+      "enterprise": "エンタープライズ"
+    },
+    "priceFree": "無料",
+    "pricePerMonth": "{amount} / 月",
+    "tierNote": "プランで決まるのは容量と共同編集の規模です。制作機能とモデルはどのプランでも同じです。",
+    "upgrade": "アップグレード",
+    "myQuota": "利用状況",
+    "quota": {
+      "teamStudios": "チーム Studio",
+      "storage": "ストレージ",
+      "projectsPerStudio": "Studio ごとの Project 上限",
+      "studioMembers": "Studio ごとのメンバー上限",
+      "projectMembers": "Project ごとのメンバー上限",
+      "concurrentEditors": "1 ドキュメントの同時編集数"
+    },
+    "quotaValue": "{used} / {limit}",
+    "countItems": "{count} 件",
+    "countPeople": "{count} 人",
+    "countConnections": "{count} 接続",
+    "overLimitTag": "超過",
+    "overLimit": {
+      "storage": "ストレージが上限を超えています。既存のデータはこれまでどおり使えますが、新しくアップロードはできません。容量が必要な場合はアップグレードしてください。",
+      "teamStudios": "チーム Studio の数が上限を超えています。既存のものはこれまでどおり使えますが、新しくは作成できません。必要な場合はアップグレードしてください。"
+    },
+    "enterpriseQuota": "利用上限は個別契約で定められているため、ここには表示されません。",
+    "compare": "プラン比較",
+    "monthlyFee": "月額",
+    "contactEnterprise": "より大きな規模や個別の商用条件が必要ですか。メールでご相談ください:",
+    "contactSelfHosted": "商用ライセンスや個別のサポート条件が必要ですか。メールでご相談ください:",
+    "contactEnterpriseAccount": "利用上限についてのご質問や変更のご相談は、メールでお問い合わせください:",
+    "loadFailed": "メンバーシップ情報を読み込めませんでした。通信の問題かもしれません。少し時間をおいてお試しください。"
   }
 }

@@ -8,7 +8,7 @@
  */
 
 import { eq, and, isNull, inArray } from "drizzle-orm";
-import { db, getDefaultMembershipTier } from "@breatic/core";
+import { db, getDefaultMembershipTier, asKnownTier } from "@breatic/core";
 import { users } from "@breatic/core";
 import type { UserEntity } from "@breatic/shared";
 
@@ -23,6 +23,12 @@ function toEntity(row: typeof users.$inferSelect): UserEntity {
     email: row.email,
     emailVerified: row.emailVerified,
     googleId: row.googleId,
+    // Narrowed rather than cast: the column is a varchar, and the value can
+    // reach it around the CHECK constraint (a direct connection, a restored
+    // backup). `asKnownTier` is the one place that refuses such a value and
+    // says which account holds what, so every read of this column goes
+    // through it.
+    membershipTier: asKnownTier(row.membershipTier, { accountId: row.id }),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,

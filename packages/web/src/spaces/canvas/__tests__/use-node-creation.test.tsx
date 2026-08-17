@@ -21,6 +21,7 @@ describe('useNodeCreation', () => {
       name: 'Ada',
       email: 'ada@example.com',
       personalStudio: null,
+      membershipTier: 'base',
     });
   });
 

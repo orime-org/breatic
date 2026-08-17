@@ -75,7 +75,7 @@ describe('SlugSetupPage', () => {
     // A signed-in but not-yet-onboarded user (the state that reaches
     // this page): personalStudio is null until setup-studio runs.
     useCurrentUserStore.setState({
-      user: { id: 'u1', name: 'foo', email: 'foo@bar.com', personalStudio: null },
+      user: { id: 'u1', name: 'foo', email: 'foo@bar.com', personalStudio: null, membershipTier: 'base' },
       role: null,
       loading: false,
       bootstrapped: true,

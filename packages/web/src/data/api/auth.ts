@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { PersonalStudioRef } from '@breatic/shared';
+import type { MembershipTier, PersonalStudioRef } from '@breatic/shared';
 
 import { apiGet, apiPost } from '@web/data/api/request';
 
@@ -26,6 +26,16 @@ export interface AuthUser {
   email: string;
   personalStudio: PersonalStudioRef | null;
   credits: number;
+  /**
+   * Which membership tier the account is on.
+   *
+   * It rides along with the session rather than being fetched: the avatar
+   * menu names the tier and renders in every studio's top bar, and the tier
+   * is a fixed property of the account. What that tier grants — the ceilings
+   * and the usage against them — is a separate read, behind the membership
+   * panel that shows it.
+   */
+  membershipTier: MembershipTier;
 }
 
 /**

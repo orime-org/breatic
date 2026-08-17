@@ -254,6 +254,7 @@ describe('ProjectPage — a close tears down only once the tab has left the list
         name: 'Me',
         email: 'me@e.com',
         personalStudio: { name: 'Me', slug: 'me', avatarUrl: null },
+        membershipTier: 'base',
       },
     });
   });

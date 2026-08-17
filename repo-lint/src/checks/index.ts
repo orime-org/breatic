@@ -8,6 +8,7 @@ import { i18nKeysNamespaced } from "#repo-lint/checks/i18n-keys-namespaced";
 import { i18nNoDeadKeys } from "#repo-lint/checks/i18n-no-dead-keys";
 import { i18nNoMissingKeys } from "#repo-lint/checks/i18n-no-missing-keys";
 import { lintCoverage } from "#repo-lint/checks/lint-coverage";
+import { migrationJournal } from "#repo-lint/checks/migration-journal";
 import { migrationStyle } from "#repo-lint/checks/migration-style";
 import { noAuthBypassResidue } from "#repo-lint/checks/no-auth-bypass-residue";
 import { noBrandUsage } from "#repo-lint/checks/no-brand-usage";
@@ -41,6 +42,7 @@ export const CHECKS: readonly Check[] = [
   i18nNoDeadKeys,
   i18nNoMissingKeys,
   lintCoverage,
+  migrationJournal,
   migrationStyle,
   noAuthBypassResidue,
   noBrandUsage,

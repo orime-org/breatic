@@ -12,6 +12,23 @@
  *     the project, viewers included: each caller manages only their OWN
  *     tab bar, and the userId comes from the connection, never the request.
  *
+ * ROLE ONLY — the concurrent-editor ceiling deliberately does not reach here
+ * (user 2026-08-14, #88). Read-only means this connection may not change the
+ * data OF ITS OWN DOCUMENT, and a seat is a per-document resource: a person
+ * who found the canvas full still holds their editor role in this project, and
+ * creating a Space consumes no seat at all — the new Space starts with nobody
+ * on it. Gating these on a seat would mean a full canvas stops someone from
+ * opening a BLANK Space beside it.
+ *
+ * A meta connection is ALWAYS read-only — `auth.ts` sets that flag for every
+ * client on the meta document, ahead of any role or ceiling question. What is
+ * exempt is this authorization: these RPCs deliberately do not consult that
+ * flag, for the same reason meta is exempt from the ceiling — no client writes
+ * meta directly. Every change here is made by collab itself over
+ * `openDirectConnection` as the system user, so the flag on the caller's meta
+ * connection describes what the client may do with the document, not what this
+ * caller may ask for.
+ *
  * Every operation follows §6 of the 2026-08-02 step-order design:
  *
  *   1. Validate the caller's role, then run every remaining check —

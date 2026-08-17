@@ -151,7 +151,16 @@ describe("createAuthHook", () => {
   // it was mutated. The production hook type keeps connectionConfig required,
   // so the protocol-level read-only contract stays enforced.
   const buildHook = (overrides?: {
-    maxConnectionsPerDoc?: number;
+    /**
+     * The per-document ceiling. A number is the common case and is wrapped
+     * into a resolver; pass a function to exercise what happens when
+     * resolving the tier fails, or to assert which project was asked about.
+     *
+     * It is a resolver rather than a constant because the ceiling now comes
+     * from the tier of the studio that owns the project (#88), so it is
+     * per-project and only knowable at handshake time.
+     */
+    connectionLimit?: number | ((projectId: string) => Promise<number>);
     countConnections?: (documentName: string) => Promise<number>;
     /**
      * Documents this process already holds, keyed by document name — the
@@ -166,9 +175,11 @@ describe("createAuthHook", () => {
      */
     loadable?: Map<string, Y.Doc>;
   }) => {
+    const limit = overrides?.connectionLimit ?? 100;
     const hook = createAuthHook({
       redis: mockRedis,
-      maxConnectionsPerDoc: overrides?.maxConnectionsPerDoc ?? 100,
+      resolveConnectionLimit:
+        typeof limit === "function" ? limit : async () => limit,
       countConnections: overrides?.countConnections ?? (async () => 0),
     });
     type HookArgs = Parameters<typeof hook>[0];
@@ -421,7 +432,7 @@ describe("createAuthHook", () => {
     // count) and the cap is 2 → `2 >= 2` → degrade to read-only instead
     // of rejecting. The editor would otherwise be writable.
     const hook = buildHook({
-      maxConnectionsPerDoc: 2,
+      connectionLimit: 2,
       countConnections: async () => 2,
     });
     const connectionConfig = { readOnly: false };
@@ -442,7 +453,7 @@ describe("createAuthHook", () => {
     // The doc holds 1 connection (this one excluded); cap 2 → `1 >= 2` is
     // false → writable.
     const hook = buildHook({
-      maxConnectionsPerDoc: 2,
+      connectionLimit: 2,
       countConnections: async () => 1,
     });
     const connectionConfig = { readOnly: false };
@@ -464,7 +475,7 @@ describe("createAuthHook", () => {
     // connect to it (#1421 decision). The cluster-wide count must not even
     // be consulted for meta.
     const countSpy = vi.fn(async () => 999);
-    const hook = buildHook({ maxConnectionsPerDoc: 2, countConnections: countSpy });
+    const hook = buildHook({ connectionLimit: 2, countConnections: countSpy });
     const connectionConfig = { readOnly: false };
 
     await hook({
@@ -487,7 +498,7 @@ describe("createAuthHook", () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("viewer");
     const countSpy = vi.fn(async () => 0);
-    const hook = buildHook({ maxConnectionsPerDoc: 2, countConnections: countSpy });
+    const hook = buildHook({ connectionLimit: 2, countConnections: countSpy });
     const connectionConfig = { readOnly: false };
 
     await hook({
@@ -506,7 +517,7 @@ describe("createAuthHook", () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
     const hook = buildHook({
-      maxConnectionsPerDoc: 2,
+      connectionLimit: 2,
       countConnections: async () => 2,
     });
 
@@ -527,6 +538,247 @@ describe("createAuthHook", () => {
       }),
       "connection_cap_degraded",
     );
+  });
+
+  // ── The ceiling now comes from the tier (#88) ──────────────────────
+
+  it("degrades the OWNER too when the doc is full — there is no reserved seat", async () => {
+    // The load-bearing case for "no reserved seat" (user 2026-08-14,
+    // reversing the 2026-08-12 ratification). One predicate, everybody on
+    // it: an owner arriving at a full document is read-only exactly like
+    // anyone else.
+    //
+    // Four products were checked and none reserves a seat for the owner —
+    // Confluence, Figma and Miro have nothing of the kind, and Google Docs
+    // prioritises the owner once the file is full, which is a different
+    // mechanism (it never leaves a seat empty while the owner is away).
+    // Reserving one costs every document a usable seat for as long as the
+    // owner is not in it.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("owner");
+    const hook = buildHook({
+      connectionLimit: 2,
+      countConnections: async () => 2,
+    });
+    const connectionConfig = { readOnly: false };
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig,
+    });
+
+    expect(connectionConfig.readOnly).toBe(true);
+  });
+
+  it("keeps the owner writable below the cap, like everyone else", async () => {
+    // The other half of the same rule: no reserved seat does not mean the
+    // owner is treated worse either. One predicate, read the same way.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("owner");
+    const hook = buildHook({
+      connectionLimit: 2,
+      countConnections: async () => 1,
+    });
+    const connectionConfig = { readOnly: false };
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig,
+    });
+
+    expect(connectionConfig.readOnly).toBe(false);
+  });
+
+  it("treats a ceiling of zero as a real zero: not one writable connection", async () => {
+    // `concurrent_editors: 0` used to mean "unlimited" here — auth.ts
+    // guarded the whole block behind `maxConnectionsPerDoc > 0`. That
+    // contradicts the repo-wide rule that a quota of zero is a real zero
+    // (root CLAUDE.md: "there is no 'unlimited' sentinel ... so zero is a
+    // real zero"), which every other ceiling already follows —
+    // `base.team_studios: 0` in the same file means exactly zero.
+    //
+    // Failing the other way is the dangerous direction: someone lowering a
+    // tier to 0 to stop concurrent editing would have got unlimited
+    // concurrent editing, silently.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const hook = buildHook({
+      connectionLimit: 0,
+      countConnections: async () => 0,
+    });
+    const connectionConfig = { readOnly: false };
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig,
+    });
+
+    expect(connectionConfig.readOnly).toBe(true);
+  });
+
+  it("asks for the ceiling of the project this document belongs to", async () => {
+    // The ceiling is per-project now, so the wrong project id would hand a
+    // document somebody else's tier — and nothing downstream would notice,
+    // because the number that comes back looks perfectly valid.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const resolveSpy = vi.fn(async () => 5);
+    const hook = buildHook({
+      connectionLimit: resolveSpy,
+      countConnections: async () => 0,
+    });
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig: { readOnly: false },
+    });
+
+    expect(resolveSpy).toHaveBeenCalledWith(PID);
+  });
+
+  it("degrades to read-only when the tier cannot be resolved, rather than refusing the connection", async () => {
+    // user 2026-08-14. The lookup throws on three data conditions, all of
+    // them ours and none of them the user's doing: a tier value outside the
+    // enum (an operator's typo while upgrading somebody by hand), a missing
+    // account, a studio with no live admin.
+    //
+    // What that lookup answers is "how many writable connections", and
+    // being able to READ does not depend on it — refusing the connection
+    // would take away a capability that has nothing to do with the part
+    // that broke. Reading also cannot damage anything, so there is nothing
+    // for fail-fast to protect here.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const hook = buildHook({
+      connectionLimit: async () => {
+        throw new Error("Unknown membership tier 'Pro' on account acc-1");
+      },
+      countConnections: async () => 0,
+    });
+    const connectionConfig = { readOnly: false };
+
+    // Must not throw: the catch-all in auth.ts re-raises anything it does
+    // not recognise, and Hocuspocus closes the socket on a throw.
+    await expect(
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/canvas-${SID}`,
+        requestHeaders: withCookie("tok"),
+        connectionConfig,
+      }),
+    ).resolves.toBeDefined();
+
+    expect(connectionConfig.readOnly).toBe(true);
+  });
+
+  it("logs what an operator needs when the tier cannot be resolved", async () => {
+    // The row an operator has to go fix is not in this log's reach, so the
+    // log has to carry the error's own message — that is where the account
+    // id and the offending value live (membership.repo.ts puts both in).
+    // Without it the trail says only "somebody somewhere has a bad tier".
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const hook = buildHook({
+      connectionLimit: async () => {
+        throw new Error("Unknown membership tier 'Pro' on account acc-1");
+      },
+      countConnections: async () => 0,
+    });
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig: { readOnly: false },
+    });
+
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: PID,
+        userId: "user-1",
+        reason: "connection_limit_unresolved",
+        err: expect.objectContaining({
+          message: "Unknown membership tier 'Pro' on account acc-1",
+        }),
+      }),
+      "connection_limit_unresolved",
+    );
+  });
+
+  it("does not consult the count when the tier cannot be resolved", async () => {
+    // Read-only is already decided at that point, so the Redis round-trip
+    // buys nothing — same reasoning as the viewer case above.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const countSpy = vi.fn(async () => 0);
+    const hook = buildHook({
+      connectionLimit: async () => {
+        throw new Error("No live admin for studio st-1");
+      },
+      countConnections: countSpy,
+    });
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig: { readOnly: false },
+    });
+
+    expect(countSpy).not.toHaveBeenCalled();
+  });
+
+  it("never resolves a ceiling for the meta doc", async () => {
+    // The meta doc is exempt from the cap, so it must not pay for a tier
+    // lookup on every handshake — and, more to the point, a studio with
+    // broken tier data must not lose its meta doc, which is what everyone
+    // needs to see the project at all.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const resolveSpy = vi.fn(async () => 2);
+    const hook = buildHook({
+      connectionLimit: resolveSpy,
+      countConnections: async () => 999,
+    });
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/meta`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig: { readOnly: false },
+    });
+
+    expect(resolveSpy).not.toHaveBeenCalled();
+  });
+
+  it("never resolves a ceiling for a viewer", async () => {
+    // Same reasoning as skipping the count for a viewer: they are read-only
+    // whatever the ceiling says, so asking costs a database round-trip on
+    // every viewer handshake and buys nothing.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("viewer");
+    const resolveSpy = vi.fn(async () => 2);
+    const hook = buildHook({
+      connectionLimit: resolveSpy,
+      countConnections: async () => 0,
+    });
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig: { readOnly: false },
+    });
+
+    expect(resolveSpy).not.toHaveBeenCalled();
   });
 
   // NOTE: registration into the cross-instance registry no longer happens

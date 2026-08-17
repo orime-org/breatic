@@ -23,9 +23,9 @@ import {
 } from '@web/spaces/canvas/generate/derive-references';
 import {
   filterModelsByMode,
-  resolveModelForMode,
+  pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
 import { mentionedImageUrls } from '@web/spaces/canvas/generate/reference-urls';
 import {
@@ -123,8 +123,9 @@ export interface VideoPanelViewModel {
    *
    * What this measures is the model's catalog entry, not the endpoint behind
    * it — the prompt travels as its own argument the whole way down and never
-   * passes the param check, so a model with no prompt field still receives
-   * any non-empty text that was typed.
+   * passes the param check, so nothing downstream would strip it from a model
+   * that declares none. The panel is what stops it: since #1950 such a model
+   * is sent an empty string.
    *
    * Among the models THIS PANEL can offer — the ones whose mode is one of its
    * six — every one declares a prompt except the talking-head model, which is
@@ -135,7 +136,14 @@ export interface VideoPanelViewModel {
    * its own gate.
    *
    * True when the model is unknown: an unrecognised model is not a licence to
-   * skip the requirement every other mode has.
+   * skip the requirement every other mode has. That fallback also covers the
+   * catalog being in flight, and there the panel does show a prompt box a
+   * talking-head model has no use for, for the length of that request — the
+   * same loading state that leaves the model pill blank and the mode switch
+   * disabled beside it. Tracked as its own problem (#1964) because the fix belongs to
+   * the frame that already gates on the catalog, not to this field: making
+   * this one value say "not known yet" and having rendering act on it took
+   * the prompt box away from the other five modes for that same stretch.
    */
   promptRequired: boolean;
 }
@@ -232,42 +240,6 @@ export function nodeVideoMode(
 }
 
 /**
- * Resolves the model + params a mode switch should write.
- *
- * The outgoing mode's model is deliberately NOT carried over — it belongs to
- * that mode, and the panel would otherwise offer, and submit, a model that
- * cannot do what the mode promises — a text-to-video model ignores a first
- * frame and generates from the prompt alone. The backend does not catch that
- * for us: its source gate lets through any model with one source-less mode
- * (domain/model-catalog/source-requirement.ts), and the payload carries no
- * mode at all. What survives instead is the per-mode memory: the model last
- * chosen in the TARGET mode, if the catalog still offers it.
- *
- * An empty model means the target mode offers nothing (the catalog is still
- * loading, failed, or genuinely has no entry). The caller must not write that:
- * an empty model with empty params clobbers what the node had stored, and
- * params do not self-heal.
- * @param content - The node's live content view (mode memory + current params).
- * @param mode - The mode being switched TO.
- * @param models - Catalog video models (the `video` bucket, unfiltered).
- * @returns The model to select and the params reconciled against it.
- */
-export function resolveVideoModeSwitch(
-  content: Pick<ContentNodeView, 'modelByMode' | 'params'> | undefined,
-  mode: VideoGenMode,
-  models: ModelEntry[],
-): { model: string; params: Record<string, unknown> } {
-  const modeModels = selectVideoModeModels(models, mode);
-  const model =
-    resolveModelForMode(mode, content?.modelByMode ?? {}, modeModels) ?? '';
-  const picked = modeModels.find((m) => m.name === model);
-  return {
-    model,
-    params: picked ? resolveParamsForModel(picked, content?.params ?? {}) : {},
-  };
-}
-
-/**
  * The video models the panel offers under one generation mode.
  *
  * `catalog.video` also ships the mini-tool entries — video upscaling, frame
@@ -324,15 +296,18 @@ export function buildVideoPanelViewModel(input: {
   const models = selectVideoModeModels(input.models, mode);
 
   // The stored model wins only while this mode still offers it. A stale pick
-  // (another mode's, or one dropped from the catalog) falls back to the first
-  // offered model — submitting a model the mode does not offer would generate
-  // something else entirely, and the backend catches only part of that (its
-  // source gate passes any model with one source-less mode).
-  const stored = content?.model;
-  const model =
-    stored && models.some((m) => m.name === stored)
-      ? stored
-      : (models[0]?.name ?? '');
+  // (another mode's, or one dropped from the catalog) falls back to what the
+  // user chose under THIS mode, then to the first offered model — submitting a
+  // model the mode does not offer would generate something else entirely, and
+  // the backend catches only part of that (its source gate passes any model
+  // with one source-less mode). The image panel resolves it the same way; this
+  // side skipped the per-mode memory until #1948.
+  const model = pickModelForMode(
+    content?.model,
+    mode,
+    content?.modelByMode,
+    models,
+  );
   const current = models.find((m) => m.name === model);
 
   const references = deriveReferences(nodeId, nodes, input.edges, input.textById);
@@ -348,7 +323,13 @@ export function buildVideoPanelViewModel(input: {
 
   return {
     model,
-    params: current ? resolveParamsForModel(current, content?.params ?? {}) : {},
+    // Resolved from the model's OWN record, the same way a switch resolves it
+    // (#1948). It matters here too: `model` above falls back to the first
+    // offered one when the stored pick has left the catalog, and reconciling
+    // the outgoing model's params against that fallback is the very leak this
+    // slice closes. The records this returns are dropped — rendering reads,
+    // it does not persist.
+    params: current ? resolveModelSwitch(content, current).params : {},
     // `?? 0` covers only the model-not-found case (empty catalog / stale
     // model); when current is found, cost_per_call is a trusted number.
     creditEstimate: current?.cost_per_call ?? 0,

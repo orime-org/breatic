@@ -13,43 +13,12 @@
  * to the root package).
  */
 
-import { resolve, dirname } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-// ── Load .env manually (no dotenv dependency) ───────────────────
-
-function findRoot(): string {
-  let dir = import.meta.dirname;
-  for (let i = 0; i < 10; i++) {
-    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return process.cwd();
-}
+import { findRoot, loadEnv } from "./load-env.js";
 
 const ROOT = findRoot();
-const envPath = resolve(ROOT, ".env");
-
-if (existsSync(envPath)) {
-  const content = readFileSync(envPath, "utf-8");
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIndex = trimmed.indexOf("=");
-    if (eqIndex === -1) continue;
-    const key = trimmed.slice(0, eqIndex).trim();
-    let value = trimmed.slice(eqIndex + 1).trim();
-    // Strip inline comments outside quoted values
-    if (!value.startsWith('"') && !value.startsWith("'")) {
-      const commentIndex = value.indexOf(" #");
-      if (commentIndex !== -1) value = value.slice(0, commentIndex).trim();
-    }
-    value = value.replace(/^["']|["']$/g, "");
-    if (!process.env[key]) process.env[key] = value;
-  }
-}
+loadEnv(ROOT);
 
 // ── Run migration ───────────────────────────────────────────────
 

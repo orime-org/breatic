@@ -329,30 +329,16 @@ describe('when the body’s first block is not a plain textblock', () => {
     expect(editor.state.doc.childCount).toBe(1);
   });
 
-  it('a divider, having no interior at all, is removed', () => {
-    // Measured in the body on this build: caret at the end of a paragraph
-    // followed by a divider, Delete pressed, and the divider goes. There is
-    // nothing to fold in and nothing to lift out, so removing it is the only
-    // reading of the key that leaves it doing anything at all.
-    const { editor } = open('AB', '<hr><p>after</p>');
-    editor.commands.setTextSelection(1 + 2);
-    press(editor, 'Delete');
-
-    expect(editor.state.doc.child(0).textContent).toBe('AB');
-    expect(editor.state.doc.childCount).toBe(2);
-    expect(editor.state.doc.child(1).type.name).toBe('paragraph');
-    expect(editor.state.doc.child(1).textContent).toBe('after');
-  });
-
-  it('a divider that is the only body block goes too, leaving the title alone', () => {
-    const { body, editor } = open('AB', '<hr>');
-    editor.commands.setTextSelection(1 + 2);
-    press(editor, 'Delete');
-
-    expect(editor.state.doc.childCount).toBe(1);
-    expect(editor.state.doc.child(0).type.name).toBe('title');
-    expect(body.length).toBe(1);
-  });
+  // THERE IS NO CASE HERE FOR A BLOCK WITH NO INTERIOR, and that is not a gap.
+  // Three of them covered the divider, and the divider is gone (#111): a
+  // StarterKit default nobody decided on, and the only visible block in the
+  // body with nothing inside it. What remains that an atom block could be is
+  // `unsupportedBlock`, which no user reaches — a document holding one is
+  // intercepted and the editor is never built.
+  //
+  // Nothing in `document-title` answered for that shape anyway. It declines on
+  // `!first.isTextblock` and leaves the key to ProseMirror's own chain, so
+  // those three pinned the editor's behaviour rather than ours.
 });
 
 describe('a soft line break in the block being merged', () => {
@@ -415,16 +401,6 @@ describe('when the title is empty', () => {
       expect(editor.state.doc.child(0).textContent).toBe(after);
       expect(editor.state.doc.childCount).toBe(1);
     });
-  });
-
-  it('Delete removes a leading divider, leaving what follows it', () => {
-    const { editor } = open('', '<hr><p>after</p>');
-    editor.commands.setTextSelection(1);
-    press(editor, 'Delete');
-
-    expect(editor.state.doc.child(1).type.name).toBe('paragraph');
-    expect(editor.state.doc.child(1).textContent).toBe('after');
-    expect(editor.state.doc.childCount).toBe(2);
   });
 
   it('Delete lifts a list\'s first item out, leaving the rest standing', () => {

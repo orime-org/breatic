@@ -9,6 +9,11 @@
  * A repo rather than a service: the lookups are queries and nothing else, and
  * table access belongs in one.
  *
+ * The one writer, {@link changeMembershipTier}, is here for the same reason
+ * the reads are — one table, one home. It is also why a change to the column
+ * needs nothing else to happen afterwards: every ceiling is read at the moment
+ * an action is taken, so moving the value IS moving what the account may do.
+ *
  * **Call points do not run the tier lookup and index the config themselves.**
  * They call one of the three exported `…LimitsFor…` functions below, which
  * differ only in what they start from and whether they lock:
@@ -20,18 +25,19 @@
  *     lock: a ceiling counted per studio is serialised on the STUDIO's row,
  *     which is not this module's to take (see `studioRepo.lockStudio`).
  *
- * Two more ceilings are still to come — concurrent writable connections and
- * storage; the two kinds of member cap landed with #87. Each has its own check
- * point, so "look up the tier, then index the config" would otherwise end up
- * written out six to eight times across the codebase.
+ * One ceiling is still to come — storage. The two kinds of member cap landed
+ * with #87 and the concurrent writable connection ceiling with #88 (see
+ * `getProjectConcurrentEditorLimit` below). Each has its own check point, so
+ * "look up the tier, then index the config" would otherwise end up written out
+ * six to eight times across the codebase.
  *
  * There are two routes from an id to a tier here, not one: an account's tier
- * is its own column, a studio's is its admin's. Both end at
- * `getMembershipLimits`. When the enterprise tier arrives — ceilings
- * negotiated per customer, read from the database rather than the config file
- * — BOTH routes need the extra step, because both ultimately answer for an
- * account. `readStudioAdmin` returns that account's id for exactly this
- * reason. Saying "there is one seam" would be tidier and it would be false.
+ * is its own column, a studio's is its admin's. Both end at `limitsFor`, and
+ * both carry the ACCOUNT id there — `readStudioAdmin` returns it for exactly
+ * this reason. That is what lets `limitsFor` name the account when it cannot
+ * price a tier, and it is where the enterprise ceilings will be read from the
+ * database once they are negotiable. Saying "there is one seam" would be
+ * tidier and it would be false.
  *
  * Two lookups because the ratified rule has two halves. How many team studios
  * an account may administer is decided by that account's own tier. Everything
@@ -63,40 +69,107 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { MEMBERSHIP_TIERS, type MembershipTier } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
-import { studioMembers, studios, users } from "@core/db/schema.js";
+import {
+  membershipTierChanges,
+  studioMembers,
+  studios,
+  users,
+} from "@core/db/schema.js";
+import * as projectsRepo from "@core/project/projects.repo.js";
 import { getMembershipLimits, type MembershipLimits } from "@core/config/membership.js";
 
 const KNOWN_TIERS: ReadonlySet<string> = new Set(MEMBERSHIP_TIERS);
 
 /**
+ * Whose stored tier is being read.
+ *
+ * The account id is always here, never optional, because the row an operator
+ * has to go and edit is a `users` row in both cases. The studio id is what the
+ * lookup STARTED from when it started from one — useful context, not the thing
+ * that is wrong.
+ */
+export interface TierSubject {
+  /** The account whose column holds the value. */
+  accountId: string;
+  /** The studio the lookup began at, when it began at one. */
+  studioId?: string;
+}
+
+/**
+ * Name the row a message is about.
+ * @param subject - Whose tier is being read
+ * @returns A phrase naming the account, and the studio if there was one
+ */
+function describeSubject(subject: TierSubject): string {
+  return subject.studioId === undefined
+    ? `account ${subject.accountId}`
+    : `account ${subject.accountId}, the admin of studio ${subject.studioId}`;
+}
+
+/**
  * Narrow a stored tier string to one this build knows, or throw saying which
  * row holds what.
  *
- * The column is a bare `varchar(16)` with no CHECK constraint, and until the
- * enterprise work lands a hand-written UPDATE is the only way an operator
- * moves somebody off `base`. A typo there used to flow straight through: the
- * value was cast unchecked, `getMembershipLimits` returned undefined for it,
- * and the next property access threw a TypeError whose message named neither
- * the account nor the value. The person creating a studio saw a 500 either
- * way — the data is ours, not theirs — but nobody could tell from the log
- * which row to fix.
+ * The second of two guards on this column. The first is the CHECK constraint
+ * added in 0053, and it is the one that stops a typo from ever landing: an
+ * operator moving somebody by hand types the tier name, and `Pro` is not
+ * `pro`. This one catches a value that got there anyway — a direct connection,
+ * a restored backup, a deployment whose migration did not run. It stays
+ * BECAUSE the database can be gone around: without it the value would be cast
+ * unchecked and the ceiling lookup would fail with a message naming neither
+ * the account nor the value, which is what used to happen.
  *
- * A CHECK constraint would also stop the write, and was not chosen: it would
- * pin the tier names into a migration, so adding the enterprise tier later
- * would mean altering the constraint rather than extending one list.
+ * It takes ids rather than a ready-made phrase so the sentence is composed in
+ * one place: both routes to a tier end here, and both need the account named.
  * @param raw - The value stored in `users.membership_tier`
- * @param subject - What to name in the message, e.g. `account <uuid>`
+ * @param subject - Whose tier this is
  * @returns The same value, narrowed
  * @throws {Error} if it is not one of `MEMBERSHIP_TIERS`
  */
-function asKnownTier(raw: string, subject: string): MembershipTier {
+export function asKnownTier(raw: string, subject: TierSubject): MembershipTier {
   if (!KNOWN_TIERS.has(raw)) {
     throw new Error(
-      `Unknown membership tier ${JSON.stringify(raw)} on ${subject}; ` +
+      `Unknown membership tier ${JSON.stringify(raw)} on ` +
+        `${describeSubject(subject)}; ` +
         `this build knows ${MEMBERSHIP_TIERS.join(", ")}`,
     );
   }
   return raw as MembershipTier;
+}
+
+/**
+ * Turn a tier into its six ceilings, refusing the one that has none.
+ *
+ * Every route from an id to a set of numbers goes through here, and that is
+ * enforced by a type rather than by discipline: `getMembershipLimits` accepts
+ * only a `ConfiguredMembershipTier`, so a caller holding a plain
+ * `MembershipTier` cannot reach it without saying out loud what it does about
+ * enterprise.
+ *
+ * Enterprise ceilings are agreed per customer and will be read from the
+ * database. Until then the honest answer is not a number: a set invented in
+ * `config/membership.yaml` would be enforced against an account nobody agreed
+ * it with, and nothing would surface it. This is where that lookup will grow
+ * its extra step.
+ * @param tier - The tier that governs whatever is being checked
+ * @param subject - Whose tier it is, for a message that can be acted on
+ * @returns That tier's six ceilings
+ * @throws {Error} if the tier is `enterprise`, whose ceilings have no source
+ */
+function limitsFor(tier: MembershipTier, subject: TierSubject): MembershipLimits {
+  if (tier === "enterprise") {
+    // Deliberately does NOT name `config/membership.yaml`: whoever reads this
+    // has to change that account's tier or wait for negotiated ceilings to be
+    // stored, and pointing at the config file would send them to edit the one
+    // place these numbers must never be invented.
+    throw new Error(
+      `Cannot resolve ceilings for ${describeSubject(subject)}: it is on the ` +
+        `enterprise tier, whose ceilings are negotiated per customer rather ` +
+        `than configured. Move that account onto a tier this deployment ` +
+        `configures, or wait for its negotiated ceilings to be stored.`,
+    );
+  }
+  return getMembershipLimits(tier);
 }
 
 /**
@@ -152,7 +225,7 @@ async function readUserTier(
     // the context logged, which is what that is.
     throw new Error(`No live account ${userId}`);
   }
-  return asKnownTier(tier, `account ${userId}`);
+  return asKnownTier(tier, { accountId: userId });
 }
 
 /**
@@ -222,10 +295,10 @@ async function readStudioAdmin(
   }
   return {
     adminUserId: row.adminUserId,
-    tier: asKnownTier(
-      row.tier,
-      `account ${row.adminUserId}, the admin of studio ${studioId}`,
-    ),
+    tier: asKnownTier(row.tier, {
+      accountId: row.adminUserId,
+      studioId,
+    }),
   };
 }
 
@@ -245,7 +318,9 @@ export async function getLimitsForUser(
   userId: string,
   tx?: DbTx,
 ): Promise<MembershipLimits> {
-  return getMembershipLimits(await readUserTier(userId, tx, false));
+  return limitsFor(await readUserTier(userId, tx, false), {
+    accountId: userId,
+  });
 }
 
 /**
@@ -260,7 +335,8 @@ export async function getLimitsForStudio(
   studioId: string,
   tx?: DbTx,
 ): Promise<MembershipLimits> {
-  return getMembershipLimits((await readStudioAdmin(studioId, tx)).tier);
+  const admin = await readStudioAdmin(studioId, tx);
+  return limitsFor(admin.tier, { accountId: admin.adminUserId, studioId });
 }
 
 /**
@@ -301,5 +377,157 @@ export async function lockLimitsForUser(
   userId: string,
   tx: DbTx,
 ): Promise<MembershipLimits> {
-  return getMembershipLimits(await readUserTier(userId, tx, true));
+  return limitsFor(await readUserTier(userId, tx, true), { accountId: userId });
+}
+
+/**
+ * How many writable connections one document of this project may hold at once.
+ *
+ * The collab handshake's entry point (#88). It is the only call point that has
+ * to resolve the owning studio ITSELF, because a document name is all collab
+ * has: project → studio → that studio's admin → tier. The two invite paths
+ * (`projectInvite.service.ts`) also begin from a project id, but each has
+ * already loaded the project row for other reasons and reads `studioId` off
+ * it, so they call `getLimitsForStudio` directly.
+ *
+ * It reaches the tier through {@link getLimitsForStudio} rather than joining
+ * its own way there. That is not tidiness — those two functions are where the
+ * negotiated enterprise tier will be read from the database, and a call point
+ * that walked its own path would keep answering from the config file after
+ * that lands, with a number that looks perfectly valid. The extra primary-key
+ * lookup is affordable here: this runs once per SPACE-DOCUMENT handshake, and
+ * nowhere near per edit. The meta doc does not reach it at all — `auth.ts`
+ * skips the whole ceiling decision for meta and for viewers. So the cost of
+ * opening a project is one lookup per open Space tab THAT HAS A DOCUMENT, not
+ * one for the project: each such tab attaches its own document and each one
+ * handshakes (see the web side's `SpaceDocSync`, whose `DOC_NAME_BUILDERS`
+ * decides which types have one — timeline has none today and costs nothing).
+ * Three open canvases, three lookups.
+ * Unlike its siblings above it takes NO transaction handle, and that is not an
+ * omission: the two queries it makes could not both honour one. Resolving the
+ * owning studio goes through `projectsRepo.findOwnerStudioId`, which takes no
+ * handle, so a handle passed here would cover the tier lookup and silently
+ * leave the studio lookup outside the caller's snapshot — a contract that is
+ * true of half the function. Its one caller, collab's `onAuthenticate`, is not
+ * in a transaction and does not need one: it decides a ceiling for a
+ * connection, it does not write. Should a caller ever need both queries in one
+ * snapshot, `findOwnerStudioId` has to learn about handles first.
+ * @param projectId - The project whose documents the ceiling applies to
+ * @returns How many connections to one of its documents may write at once
+ * @throws {Error} if no live project has that id, or the studio that owns it
+ *   has no live admin, or that admin's stored tier is not one this build knows
+ */
+export async function getProjectConcurrentEditorLimit(
+  projectId: string,
+): Promise<number> {
+  // `findOwnerStudioId` owns this query — its own docstring says a query
+  // written twice is a query that comes apart, which is what the
+  // one-table-one-repo rule exists to prevent. Writing the same select here
+  // is exactly the drift it warns about, so this goes through it.
+  const studioId = await projectsRepo.findOwnerStudioId(projectId);
+  if (studioId === undefined) {
+    // Plain Error, like its siblings above: reaching here means a live
+    // connection is being made to a document of a project that is gone, which
+    // is our data being inconsistent rather than anything the user did. The
+    // id is in the message because collab logs this verbatim and it is the
+    // only thing that says WHICH project.
+    throw new Error(`No live project ${projectId}`);
+  }
+  return (await getLimitsForStudio(studioId)).concurrent_editors;
+}
+
+/**
+ * What can cause an account to move between tiers.
+ *
+ * Stored as written, so the vocabulary is fixed once here rather than each
+ * caller inventing a word. Two of the four have no writer yet:
+ * `registration` is not appended — every row carries `from_tier`, so the
+ * earliest row already says where the account started, and the registration
+ * path runs in no transaction — and `manual` waits for an operator entry point
+ * that goes through this function rather than around it with hand-written SQL.
+ */
+export const TIER_CHANGE_REASONS = [
+  "registration",
+  "manual",
+  "subscription_activated",
+  "subscription_ended",
+] as const;
+
+/** One of the things that can move an account between tiers. */
+export type TierChangeReason = (typeof TIER_CHANGE_REASONS)[number];
+
+/**
+ * Move an account to a tier, and write down that it moved.
+ *
+ * The only writer of `users.membership_tier` outside registration. Everything
+ * that enforces a ceiling reads that column at the moment of the action, so
+ * this one write is the whole of "the account may now do more" — there is no
+ * cache to invalidate and no second step.
+ *
+ * There is deliberately no step after it either. The ratified rule is that
+ * ceilings are judged when an action is taken and nothing already created is
+ * corrected, so a downgrade removes nothing: the studios, projects and members
+ * that exist stay, and only the next attempt to add one is refused.
+ *
+ * **Concurrency.** The read takes `FOR UPDATE` on the account row, so two
+ * changes arriving together queue rather than both reading the same starting
+ * tier and one silently discarding the other. Without it the loser's move
+ * disappears, which for a paid tier means somebody's upgrade is gone.
+ *
+ * **This is not idempotency**, and callers must not use it as such. Setting a
+ * tier that is already set writes nothing, which absorbs a repeat of the same
+ * call; it compares tiers, not event identity, so it cannot tell a redelivered
+ * webhook from a new event and converges on whichever call arrives last.
+ * Subscription handling keys idempotency on the event itself, the way
+ * `updatePaymentStatusCAS` and `deductOnce` already do.
+ * @param userId - The account to move
+ * @param toTier - The tier it should end up on
+ * @param reason - What caused the move
+ * @param referenceId - How the trigger is identified upstream, if it is
+ * @param tx - The caller's transaction, when the move is part of a larger one.
+ *   Without it this opens its own, so the update and the ledger row are always
+ *   in the same transaction — a change with no record of it, or a record of a
+ *   change that did not happen, are both worse than failing
+ * @returns Whether anything changed, and the tier it started from
+ * @throws {Error} if no live account has that id — corruption or a caller bug,
+ *   never user input, so it is not an AppError
+ */
+export async function changeMembershipTier(
+  userId: string,
+  toTier: MembershipTier,
+  reason: TierChangeReason,
+  referenceId?: string,
+  tx?: DbTx,
+): Promise<{ changed: boolean; fromTier: MembershipTier }> {
+  /**
+   * The move itself, given something to run it on.
+   *
+   * Written once and called with either the caller's handle or a fresh one, so
+   * the update and the ledger row cannot end up in different transactions by
+   * taking different code paths.
+   * @param handle - The transaction to do the work in
+   * @returns Whether anything changed, and the tier it started from
+   * @throws {Error} if no live account has that id
+   */
+  const run = async (
+    handle: DbTx,
+  ): Promise<{ changed: boolean; fromTier: MembershipTier }> => {
+    const fromTier = await readUserTier(userId, handle, true);
+    if (fromTier === toTier) return { changed: false, fromTier };
+
+    await handle
+      .update(users)
+      .set({ membershipTier: toTier })
+      .where(eq(users.id, userId));
+    await handle.insert(membershipTierChanges).values({
+      userId,
+      fromTier,
+      toTier,
+      reason,
+      referenceId: referenceId ?? null,
+    });
+    return { changed: true, fromTier };
+  };
+
+  return tx ? run(tx) : db.transaction(run);
 }

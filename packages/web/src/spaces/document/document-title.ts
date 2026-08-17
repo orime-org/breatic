@@ -104,9 +104,10 @@ export const DocumentTitle = Node.create({
    *
    * All three are thin, and each is thin for its own reason. Everything else
    * about this boundary — the cut, the fold from either side, lifting a list's
-   * first item out, removing a divider — is the editor's own and needs nothing
+   * first item out — is the editor's own and needs nothing
    * from here. That is a measurement, not a reading: with all three removed,
-   * 26 of the 35 cases in `document-title-keymap.test` still pass.
+   * 25 of the 32 cases in `document-title-keymap.test` still pass
+   * (remeasured 2026-08-17, after this branch dropped the divider cases).
    *
    * What each one is for, and what goes red without it:
    *
@@ -293,8 +294,8 @@ const mergeBodyStartIntoTitle: Command = (state, dispatch) => {
  * Delete at the end of the title — the same fold, reached from the other side.
  *
  * Declines for the same reasons and leaves the key to the editor, which pulls
- * the body's first block up, lifts a container's first textblock out, or
- * removes a divider, exactly as it does at every other boundary in the body.
+ * the body's first block up or lifts a container's first textblock out,
+ * exactly as it does at every other boundary in the body.
  * @param state - Current editor state.
  * @param dispatch - Applies the transaction.
  * @returns True when this handled the key.

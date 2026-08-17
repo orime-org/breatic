@@ -443,6 +443,22 @@ body {
   margin: 0 0 1.75rem;
 }
 
+/* ---- The document Space's node selection ----
+   Cmd-clicking a block (Ctrl on Windows) node-selects it, and ProseMirror
+   marks it with this class — but ships the style for it in a stylesheet
+   tiptap does not load, so the selection was real and invisible: measured
+   2026-08-16, computed outline-style was `none` on a selected block. The
+   colour is the same selected token every other selected thing uses (canvas
+   node borders, edges). Outline rather than background because a block keeps
+   its own background (a code block stays dark), and outline is a paint-only
+   property — it cannot move a Radix anchor or any layout. Scoped to the
+   document editor: the canvas prompt editor's chips have their own
+   selected-state styling. */
+.doc-body-editor .ProseMirror .ProseMirror-selectednode {
+  outline: 2px solid var(--color-status-selected);
+  outline-offset: 2px;
+}
+
 /* ---- The document Space's two placeholders ----
    Drawn here rather than by the placeholder extension: that one decorates
    textblocks that EXIST and, by default, only the one holding the caret — so a
@@ -479,8 +495,8 @@ body {
    that the title does not declare and it lands on the title.
 
    Nothing else in this block needs it, but for two different reasons. The
-   block selectors — `p`, the lists, `blockquote`, `pre`, `hr` — cannot match
-   the title because it is an `h1` and none of them is. The INLINE ones —
+   block selectors — `p`, the lists, `blockquote`, `pre` — cannot match the
+   title because it is an `h1` and none of them is. The INLINE ones —
    `strong`, `:not(pre) > code` and `a` — are descendant selectors, so the
    title's tag name is beside the point; what keeps them out is that the title
    stores no marks (`marks: ''`), and each of those three elements only ever
@@ -531,8 +547,7 @@ body {
    ONLY THE TOP MARGINS SEPARATE THE THREE LEVELS ON SCREEN. Adjacent siblings
    collapse to the larger of the two margins, and every block that can follow a
    heading declares at least 12.75px above it (0.85em on a paragraph or list,
-   1.1em on a quote or code block, 2em on a divider, and more on another
-   heading). So the bottom margins below are ceilings, not distances: h2's 10px
+   1.1em on a quote or code block, and more on another heading). So the bottom margins below are ceilings, not distances: h2's 10px
    and h3's 7.65px are never what reaches the screen, and h1's 13.2px wins only
    over a paragraph or a list, by 0.445px. Measured in the browser: h1→p
    13.195, h2→p 12.75, h3→p 12.75, h3→list 12.75, h1→code block 14.844. Whether
@@ -681,26 +696,29 @@ body {
 
 /* A list item's children carry block margins that do not belong inside it.
    `listItem`'s content is `paragraph block*`, and `block` here is seven node
-   types: paragraph, heading, blockquote, codeBlock, bulletList, orderedList,
-   horizontalRule. Left alone each spaces itself as though it stood in the body
-   — up to 2em — inside an item whose siblings sit 0.3em apart.
+   types: paragraph, heading, blockquote, codeBlock, bulletList, orderedList
+   and unsupportedBlock. Left alone each spaces itself as though it stood in
+   the body — up to 1.9em — inside an item whose siblings sit 0.3em apart.
+   (Counted from the schema. This said seven before too, listing the divider
+   and omitting unsupportedBlock, which made eight the true figure.)
 
    THE SELECTOR IS `*` ON PURPOSE. Naming the types instead is how this was
    written twice and wrong twice: first only `p`, then `p, ul, ol`, each time
    covering the children that came to mind. `*` is right for a reason, not out
    of laziness — the item owns the spacing of everything it holds, whatever
    that turns out to be, so a node type added to the schema later needs no edit
-   here. Reachability was not the deciding factor either, but for the record
-   the divider takes three keystrokes (`--- ` inside an item) and paste brings
-   the rest.
+   here. Reachability was not the deciding factor either, and it is worth
+   noting how little it settles: the divider used to be the example of a child
+   reachable in three keystrokes, and the divider is gone (#111). Paste brings
+   the rest, and the rule outlives any particular list of them.
 
    NAMING THE LIST IS WHAT PUTS IT ABOVE THE ELEMENT RULES, not where it sits
    in the file. `*` contributes no specificity, so
    `.doc-body-editor .ProseMirror li > *` scores the same as
-   `.doc-body-editor .ProseMirror hr` and the later of the two takes the margin
-   — which is how a first attempt at this rule appeared to work on the children
-   declared above it and silently lost to the quote, the code block and the
-   divider declared below. `:is(ul, ol) >` adds the element that tie was
+   `.doc-body-editor .ProseMirror blockquote` and the later of the two takes
+   the margin — which is how a first attempt at this rule appeared to work on
+   the children declared above it and silently lost to the quote and the code
+   block declared below. `:is(ul, ol) >` adds the element that tie was
    missing. A list item has no other parent, so the extra step is true as well
    as useful.
 
@@ -719,9 +737,9 @@ body {
    BLOCK'S own size, as everywhere else in this file — a paragraph's 0.85em and
    a heading's 1.9em are read the same way. It is a `margin-top`, so the block
    BELOW the gap is the one whose size sets it, and the gap tracks that rather
-   than landing on one figure: measured 4.5px above a paragraph, a quote, a
-   nested list or a divider, 6px above a heading (20px text) and 4.05px above
-   a code block (13.5px text). Reachable by pasting an
+   than landing on one figure: measured 4.5px above a paragraph, a quote or a
+   nested list, 6px above a heading (20px text) and 4.05px above a code block
+   (13.5px text). Reachable by pasting an
    item that holds two paragraphs, or a paragraph and a quote. */
 .doc-body-editor .ProseMirror :is(ul, ol) > li > * + * {
   margin-top: 0.3em;
@@ -769,12 +787,18 @@ body {
 /* THE FIRST CHILD ELEMENT IS NOT ALWAYS THE FIRST BLOCK, which is why neither
    of these says `:first-child`. ProseMirror draws a caret by inserting an
    element, and one on a block boundary lands as a direct child of the quote:
-   a gap cursor beside a divider opening the quote puts
-   `div.ProseMirror-gapcursor.ProseMirror-widget` ahead of the divider. Zero
-   the first CHILD's margin and you zero the widget's, which it has none of,
-   while the divider keeps its own — measured in the browser with the caret
-   actually resting there, the quote springs open by 30px and closes again when
-   the caret leaves.
+   a remote collaborator resting at the quote's opening boundary puts a
+   `div.ProseMirror-widget` ahead of the first block. Zero the first CHILD's
+   margin and you zero the widget's, which it has none of, while the block
+   keeps its own — measured in the browser with a caret actually resting there,
+   the quote springs open by 30px and closes again when the caret leaves.
+
+   THE ORIGINAL MEASUREMENT USED A GAP CURSOR beside a divider, and both are
+   gone (#111): with the divider removed, no position in any body a user can
+   REACH satisfies `GapCursor.valid` — the schema still registers one atom
+   block (unsupportedBlock), but a document holding one is intercepted before
+   the editor is ever built. A remote caret is the same widget by
+   the same mechanism, and it is the one this rule now exists for.
 
    `:nth-child(1 of S)` says the thing directly: among the children that match
    S, take the first. Counting only what is not a widget makes the match the
@@ -793,8 +817,9 @@ body {
    `.ProseMirror-widget` is prosemirror-view's class for the widgets it builds
    the DOM for; one declared `spec.raw` brings its own element and gets no
    class, and would be counted as a block here. Nothing in this editor renders
-   a raw widget. Naming the seven block types instead of excluding widgets
-   would go stale with the schema. */
+   a raw widget. Naming the block types instead of excluding widgets would go
+   stale with the schema — which it since has: the divider was one of them and
+   is gone (#111). */
 .doc-body-editor .ProseMirror blockquote > :nth-child(1 of :not(.ProseMirror-widget)) {
   margin-top: 0;
 }
@@ -826,11 +851,6 @@ body {
   border-radius: var(--radius-content-sm);
 }
 
-.doc-body-editor .ProseMirror hr {
-  margin: 2em 0;
-  border: 0;
-  border-top: 1px solid var(--color-border);
-}
 
 /* A LINK HAS TO BE TELLABLE FROM THE WORDS AROUND IT, and here an underline
    alone cannot do that: the body offers an underline mark of its own, so

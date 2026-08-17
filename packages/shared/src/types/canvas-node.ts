@@ -256,7 +256,7 @@ export interface FocusImage {
  * One content-node model (model revision 2026-06-15): a content node
  * (text / image / audio / video / 3d / web) carries its payload
  * (content / coverUrl / etc.) AND its Generate inputs
- * (prompt / model / mode / references / params) — Generate is a toolbar
+ * (prompt / model / mode / references / param records) — Generate is a toolbar
  * action, not a separate node type. `annotation` is a sticky; `group`
  * contains other nodes. All node types share the state machine and core
  * fields.
@@ -350,7 +350,7 @@ export interface CanvasNodeFields {
 
     // ─── Generate inputs (content nodes) ────────────────────
     // Generate is a toolbar action on a content node (model revision
-    // 2026-06-15). mode / prompt / model / params are the Generate panel's
+    // 2026-06-15). mode / prompt / model / param records are the Generate panel's
     // inputs, stored on the content node and shared via Yjs so collaborators
     // see edits live. There is no `outputType` — the content node's own
     // modality is its output. The reference rail is NOT stored here — it is
@@ -376,8 +376,6 @@ export interface CanvasNodeFields {
     prompt?: unknown;
     /** Model id from config/models/*.yaml. */
     model?: string;
-    /** Model-specific params for the Generate request. */
-    params?: Record<string, unknown>;
     /**
      * Per-mode memory of the last-chosen model name, keyed by the generation
      * sub-mode (image: `t2i` / `i2i`), so toggling between modes restores the
@@ -386,12 +384,31 @@ export interface CanvasNodeFields {
      */
     modelByMode?: Record<string, string>;
     /**
+     * Per-model params, keyed by model id (#1948). Each record holds exactly
+     * that model's declared param set, so selecting a model restores what it
+     * was left at and a model used for the first time starts from its own
+     * defaults. Values never travel between two models' records — which is
+     * what keeps a mode switch from handing the outgoing model's settings to
+     * the incoming one.
+     *
+     * The only place the panel's param CONTROLS write to: what the panel has
+     * in effect is resolved from these on every render, so there is no second
+     * field to keep in step. Three keys a model may also declare under
+     * `params` are not among them and live elsewhere on the node or on the
+     * prompt — `prompt`, `images` (the reference rail) and `style_images`
+     * (`data.styleImageUrl`); the execute payload spreads the records first
+     * and then overwrites those three. A node written before #1948 carries no
+     * records and gets none — Yjs data from before launch gets no
+     * compatibility handling (user 2026-08-15).
+     */
+    paramsByModel?: Record<string, Record<string, unknown>>;
+    /**
      * Style-reference image URL (image-node style slice, #1664) — a COPY of
      * the picked image's asset URL, snapshotted at pick time (user decision
      * 2026-07-16: one style image max; stored as a copy, NO relationship to
      * the upstream node — deleting or regenerating the source never changes
      * this snapshot; assets are never deleted, so the URL stays valid).
-     * Frontend-owned like `model` / `params` — the worker never writes it; at
+     * Frontend-owned like `model` / `paramsByModel` — the worker never writes it; at
      * execute time the frontend sends it as `params.style_images` when the
      * active model supports style references. Distinct from i2i source images
      * (edges → the reference rail): style guides aesthetics and survives
