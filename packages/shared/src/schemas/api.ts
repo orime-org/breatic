@@ -403,8 +403,10 @@ export type ChatCreateConversationInput = z.infer<typeof chatCreateConversationS
 /**
  * How long a conversation's name may be.
  *
- * One number, because three places enforce it: the two boxes a reader can
- * type a name into and the schema this sits beside. Two numbers means the
+ * One number, because six places enforce it: the two boxes a reader can type
+ * a name into, the schema this sits beside, the two writes that cut a name to
+ * the column's width before storing it, and the bound on the configurable
+ * limit, which cannot be set past what the column takes. Two numbers means the
  * shorter one silently rewrites names the longer one accepted -- and the
  * reader never asked for that, they only opened a box and closed it again.
  * The column is `varchar(200)`; keep them in step.
@@ -417,7 +419,8 @@ export const CONVERSATION_TITLE_MAX_CHARS = 200;
  * Carries the project as well as the title, because the id in the path came
  * from the client and three things have to hold before anything is written:
  * the conversation exists, it belongs to this user, and it lives in this
- * project. Without the project here the second one cannot be asked at all.
+ * project. The last of those is the one this field answers; the other two are
+ * asked of the signed-in user and the id alone.
  *
  * The title is trimmed before it is measured, so a name of nothing but spaces
  * is refused rather than stored — a row showing an empty name reads as a

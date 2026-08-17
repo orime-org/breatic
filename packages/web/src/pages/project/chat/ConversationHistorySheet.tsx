@@ -147,7 +147,8 @@ function relativeTime(iso: string, now = Date.now()): RelativeTime {
  *
  * One shape for both places it can stand -- against the row it is about, or at
  * the top when it is about the list itself or about a conversation this page
- * does not hold. Two copies of it drifted apart once already.
+ * does not hold. Written twice at first, identically, which is two places to
+ * keep in step for no reason.
  * @param root0 - The component props.
  * @param root0.text - What to say.
  * @param root0.testId - Which of the two placements this is, for tests.
@@ -569,8 +570,8 @@ function ConversationHistorySheetInner({
             {/* The foot of the list says what is happening there, and there is
                 nothing here to press: reaching the end is what asks for a
                 page. While one is out this says so; when one does not arrive
-                it says that instead, for as long as any one-off line lasts in
-                this app. Then it goes, and the next scroll to the end asks
+                it says that instead, for as long as `NOTICE_LINGERS_MS`
+                gives it. Then it goes, and the next scroll to the end asks
                 again. */}
             {loadingMore ? (
               <p

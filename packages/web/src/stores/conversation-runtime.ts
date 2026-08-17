@@ -168,10 +168,12 @@ interface ConversationRuntimeState {
    * The last attempt at the next page of conversations did not arrive.
    *
    * In the store because the panel renders it -- both as a line in the list
-   * and as the thing that puts the end-of-list watcher back on duty. Nothing
-   * about a failed page moves, so the end of the list never crosses back into
-   * view on its own; a fresh watcher reports where things stand as it starts,
-   * and that is what makes reaching the end count a second time.
+   * and as the thing that decides how the next attempt is asked for. Nothing
+   * about a failed page moves, so the end of the list stays exactly where it
+   * was and watching it again would report it again at once, which is the
+   * failure retrying itself. While this is true the end is not watched at
+   * all; a single scroll is, because a scroll is something only the reader
+   * does.
    */
   listMoreFailed: Record<string, boolean>;
   /**
@@ -641,9 +643,8 @@ async function ensureLoaded(projectId: string): Promise<void> {
 async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined> {
   const nav = intendToNavigate(projectId);
   let landed = false;
-  // Taken here rather than inside, because the clean-up below has to ask
-  // whether this is still the visit that asked -- and asking again down there
-  // would answer about whichever visit is current by then.
+  // Taken here rather than inside, because asking again further down would
+  // answer about whichever visit is current by then, not the one that asked.
   const visit = currentVisit(projectId);
   firstPageStarted(projectId);
   const at = asking();
@@ -1618,8 +1619,9 @@ function applyTitle(projectId: string, conversationId: string, title: string | n
  *
  * Three things at once, because they are one event. The name, which the server
  * decides on the first message and mentions nowhere else on the stream. The
- * time, which the row shows and which the server will not tell us about again
- * until the project is re-opened. And the order, because the list is sorted
+ * time, which the row shows and which the server will not say again until
+ * the list is fetched afresh -- which is the next time the project is opened,
+ * or the drawer is. And the order, because the list is sorted
  * most recently used first and that is the order `remove` reads to pick where
  * to land -- a list that never re-sorts makes both of those wrong the moment
  * the reader speaks in anything but the top one.
@@ -1815,9 +1817,11 @@ async function startNew(projectId: string): Promise<void> {
  * Projects with a request out for their next page of conversations.
  *
  * Reaching the bottom of a list fires as often as the reader keeps scrolling,
- * and every one of those would ask for the same page again -- the answers
- * would arrive one after another and each would be appended, so the same rows
- * would appear two and three times over.
+ * and every one of those would ask for the same page again: one request per
+ * scroll event, all for the same cursor. The rows themselves are safe -- the
+ * answers are filtered against the ids already held -- but the requests are
+ * not, and neither is the line at the foot of the list, which each of them
+ * would raise and lower in turn.
  */
 const fetchingMore = new Set<string>();
 
@@ -2529,7 +2533,7 @@ function leaveProject(projectId: string): void {
   // which come from the same run of `lastIssued` and are all higher anyway --
   // but a stale one is a fact about a project nobody is in.
   lastLanded.delete(projectId);
-  // `lastIssued` stays. It is the one of the three that must not restart: a
+  // `lastIssued` stays. It is the one of the four that must not restart: a
   // request abandoned with this visit is still out, still holding its number,
   // and still going to run its `finally`. Handing that number out again gives
   // the next visit a navigation the abandoned one will settle -- it reports

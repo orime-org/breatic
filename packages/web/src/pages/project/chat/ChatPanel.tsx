@@ -20,7 +20,7 @@ import { useChatSession } from '@web/pages/project/chat/use-chat-session';
  * How long a wait goes unmentioned.
  *
  * Under this, nothing is drawn at all: the request usually lands inside it,
- * and a skeleton that appears and disappears inside a fifth of a second reads
+ * and a skeleton that appears and disappears inside a third of a second reads
  * as a flicker rather than as progress. Past it, the wait is real enough to
  * show.
  */

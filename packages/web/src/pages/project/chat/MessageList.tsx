@@ -26,8 +26,8 @@ interface MessageListProps {
    * The wait has gone on long enough to be worth showing.
    *
    * A separate question from {@link ready}, and it has to be: the answer
-   * usually arrives inside a fifth of a second, and a skeleton that comes and
-   * goes inside that reads as a flicker. So the first gate decides whether
+   * usually arrives inside the 300ms the panel waits before asking for one, and
+   * a skeleton that comes and goes inside that reads as a flicker. So the first gate decides whether
    * there is anything to draw, and this one decides whether to say we are
    * waiting.
    */

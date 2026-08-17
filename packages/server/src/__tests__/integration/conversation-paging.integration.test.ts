@@ -267,7 +267,7 @@ describe("a page of a project's conversations", () => {
 describe("the first page, the one that arrives with the panel", () => {
   it("comes back with the answer about what follows it", async () => {
     const { userId, projectId, cookie } = await seedTwoProjects();
-    // One more than a page holds, so there is something to say.
+    // Comfortably more than the 30 a page holds, so there is a second page.
     await seedConversations(
       userId,
       projectId,
