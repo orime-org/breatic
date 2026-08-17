@@ -249,12 +249,12 @@ describe('a draft typed before the project had a conversation', () => {
     // 这半句话是在上一次访问里打的。它没有归属会话，所以按「属于哪条会话」
     // 筛选的清理看不见它，回来时会被搬进这次打开的那条会话。
     opens([{ id: 'c-1', title: 'one' }]);
-    conversationRuntime.setDraft(P, undefined, 'half a sentence');
+    conversationRuntime.setDraft(undefined, 'half a sentence');
     conversationRuntime.leaveProject(P);
 
     await conversationRuntime.ensureLoaded(P);
 
-    expect(conversationRuntime.draftOf(P, 'c-1')).toBe('');
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
   });
 });
 

@@ -80,7 +80,7 @@ describe('a reply arriving piece by piece', () => {
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
     await act(async () => {
-      conversationRuntime.setDraft('p1', 'c1', 'hello');
+      conversationRuntime.setDraft('c1', 'hello');
     });
     await act(async () => {
       // Sent through the store rather than the composer, because the composer

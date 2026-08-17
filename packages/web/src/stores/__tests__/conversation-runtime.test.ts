@@ -529,13 +529,13 @@ describe('the box the words were typed into', () => {
   it('is emptied by the conversation, not by whoever is rendering it', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    conversationRuntime.setDraft('p-1', 'c-1', '  hello  ');
+    conversationRuntime.setDraft('c-1', '  hello  ');
 
     void conversationRuntime.send('p-1', '  hello  ');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
 
     // Still in the box: nothing has said the server has it.
-    expect(conversationRuntime.draftOf('p-1', 'c-1')).toBe('  hello  ');
+    expect(conversationRuntime.draftOf('c-1')).toBe('  hello  ');
     // And what went out is the trimmed message, not the whitespace.
     expect(chatApi.streamMessage).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'hello' }),
@@ -548,13 +548,13 @@ describe('the box the words were typed into', () => {
     // been collapsed the moment after the press -- that is a thing readers do,
     // and this turn goes on without it -- so a rule that lives in the panel is
     // a rule that stops running exactly when someone walks away from it.
-    expect(conversationRuntime.draftOf('p-1', 'c-1')).toBe('');
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
   });
 
   it('is emptied whatever it happens to hold, because only one thing can be in it', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    conversationRuntime.setDraft('p-1', 'c-1', 'hello');
+    conversationRuntime.setDraft('c-1', 'hello');
 
     void conversationRuntime.send('p-1', 'hello');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
@@ -567,7 +567,7 @@ describe('the box the words were typed into', () => {
     // exact, contains, starts-with -- before it was clear the question only
     // exists if the box accepts input while it is showing something it did
     // not get from them.
-    expect(conversationRuntime.draftOf('p-1', 'c-1')).toBe('');
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
   });
 
   it('empties only the conversation the turn belongs to', async () => {
@@ -575,15 +575,15 @@ describe('the box the words were typed into', () => {
     // sentence is not affected by this turn landing in this one.
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    conversationRuntime.setDraft('p-1', 'c-1', 'hello');
-    conversationRuntime.setDraft('p-1', 'c-2', 'typed somewhere else');
+    conversationRuntime.setDraft('c-1', 'hello');
+    conversationRuntime.setDraft('c-2', 'typed somewhere else');
 
     void conversationRuntime.send('p-1', 'hello');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
     turnStarts(['hello']);
 
-    expect(conversationRuntime.draftOf('p-1', 'c-1')).toBe('');
-    expect(conversationRuntime.draftOf('p-1', 'c-2')).toBe('typed somewhere else');
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
+    expect(conversationRuntime.draftOf('c-2')).toBe('typed somewhere else');
   });
 
   it('takes the name the server gives the conversation on that same event', async () => {
@@ -1424,7 +1424,7 @@ describe('the wait between the press and the server answering', () => {
     vi.useFakeTimers();
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    conversationRuntime.setDraft('p-1', 'c-1', 'the one I sent');
+    conversationRuntime.setDraft('c-1', 'the one I sent');
 
     const told: ChatMishap[] = [];
     const stop = watchChatMishaps((m) => told.push(m));
@@ -1439,7 +1439,7 @@ describe('the wait between the press and the server answering', () => {
     // taken off it. The words never went anywhere this end can vouch for, so
     // they are still in the box and the button is a send button again --
     // pressing it is the whole of what there is to do.
-    expect(conversationRuntime.draftOf('p-1', 'c-1')).toBe('the one I sent');
+    expect(conversationRuntime.draftOf('c-1')).toBe('the one I sent');
     expect(turnPhaseOf(useConversationRuntime.getState(), 'p-1')).toBe('idle');
     expect(told).toHaveLength(1);
     // Sending it again can store the same question twice -- the first may have

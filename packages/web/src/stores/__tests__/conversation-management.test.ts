@@ -204,14 +204,14 @@ describe('starting another conversation', () => {
     // they had typed still in front of them.
     openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
-    conversationRuntime.setDraft(PROJECT, 'c-1', 'half a sentence');
+    conversationRuntime.setDraft('c-1', 'half a sentence');
     vi.mocked(chatApi.createConversation).mockRejectedValue(new Error('offline'));
 
     await conversationRuntime.startNew(PROJECT);
 
     expect(currentId()).toBe('c-1');
     expect(listedIds()).toEqual(['c-1']);
-    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('half a sentence');
+    expect(conversationRuntime.draftOf('c-1')).toBe('half a sentence');
   });
 
   it('puts the new one at the top, where the most recent one belongs', async () => {
@@ -353,10 +353,10 @@ describe('what each conversation has half-typed', () => {
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
 
-    conversationRuntime.setDraft(PROJECT, 'c-1', 'half a thought');
+    conversationRuntime.setDraft('c-1', 'half a thought');
     await conversationRuntime.switchTo(PROJECT, 'c-2');
 
-    expect(conversationRuntime.draftOf(PROJECT, 'c-2')).toBe('');
+    expect(conversationRuntime.draftOf('c-2')).toBe('');
   });
 
   it('gives back what was left in a conversation on returning to it', async () => {
@@ -368,7 +368,7 @@ describe('what each conversation has half-typed', () => {
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
 
-    conversationRuntime.setDraft(PROJECT, 'c-1', 'half a thought');
+    conversationRuntime.setDraft('c-1', 'half a thought');
     await conversationRuntime.switchTo(PROJECT, 'c-2');
     vi.mocked(chatApi.readConversation).mockResolvedValue({
       conversation: { id: 'c-1', title: 'first' },
@@ -377,17 +377,17 @@ describe('what each conversation has half-typed', () => {
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
     await conversationRuntime.switchTo(PROJECT, 'c-1');
 
-    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('half a thought');
+    expect(conversationRuntime.draftOf('c-1')).toBe('half a thought');
   });
 
   it('forgets every draft in a project once the reader leaves it', async () => {
     openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
-    conversationRuntime.setDraft(PROJECT, 'c-1', 'half a thought');
+    conversationRuntime.setDraft('c-1', 'half a thought');
 
     conversationRuntime.leaveProject(PROJECT);
 
-    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('');
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
   });
 });
 
@@ -439,12 +439,12 @@ describe('what the box holds while no conversation is on screen', () => {
     // 打开面板那一趟往返里输入框是只读的 —— 它跟切换会话走同一道闸门。所以
     // 「还没有会话可归」这种草稿产生不出来,也就不该有一个键去存它:留着那套
     // 转交的机制,就是留一段谁也走不到的代码。
-    conversationRuntime.setDraft(PROJECT, undefined, 'nowhere to put this');
+    conversationRuntime.setDraft(undefined, 'nowhere to put this');
 
     openAnswers([{ id: 'c-1', title: null }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
 
-    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('');
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
   });
 
   it('keeps each conversation its own', async () => {
@@ -456,10 +456,10 @@ describe('what the box holds while no conversation is on screen', () => {
       'c-1',
     );
     await conversationRuntime.ensureLoaded(PROJECT);
-    conversationRuntime.setDraft(PROJECT, 'c-1', 'half a sentence');
+    conversationRuntime.setDraft('c-1', 'half a sentence');
 
-    expect(conversationRuntime.draftOf(PROJECT, 'c-2')).toBe('');
-    expect(conversationRuntime.draftOf(PROJECT, 'c-1')).toBe('half a sentence');
+    expect(conversationRuntime.draftOf('c-2')).toBe('');
+    expect(conversationRuntime.draftOf('c-1')).toBe('half a sentence');
   });
 });
 

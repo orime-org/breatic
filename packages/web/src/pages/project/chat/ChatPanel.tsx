@@ -137,7 +137,7 @@ export function ChatPanel({
     // that is re-rendered for every keystroke otherwise -- and the claim that
     // its props are stable was, until this, not true of this one.
     const conversationId = useConversationRuntime.getState().currentByProject[projectId];
-    const typed = conversationRuntime.draftOf(projectId, conversationId);
+    const typed = conversationRuntime.draftOf(conversationId);
     if (typed.trim().length === 0) return;
     setSentCount((n) => n + 1);
     void send(typed);

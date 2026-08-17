@@ -366,12 +366,14 @@ const visits = new Map<string, AbortController>();
  * a reader of a stream knows something went wrong, and it needs no sentence
  * from us repeating it later.
  *
- * The three kinds are not a matter of wording. What tells them apart is
- * whether a sentence of ours came back: `server` carries the one the server
- * wrote for the reader -- out of credits, too many requests, not allowed --
- * `turn` is an answer that came back with none of ours in it, so there is
- * nothing to quote and this end has to supply the words, and `network` is no
- * answer at all.
+ * The four kinds are not a matter of wording. What tells them apart is what
+ * came back: `server` carries the sentence the server wrote for the reader --
+ * out of credits, too many requests, not allowed -- `turn` is an answer that
+ * came back with none of ours in it, so there is nothing to quote and this
+ * end has to supply the words, `network` is no answer at all, and `gone` is
+ * our own 404, where the server did answer and what it said is that the
+ * conversation is not there any more. That last one is not a failure, which
+ * is why it is its own kind rather than a `server` sentence about a resource.
  */
 export type ChatMishap = {
   /**
@@ -384,12 +386,13 @@ export type ChatMishap = {
    */
   deliberate?: boolean;
   /**
-   * It is about a row in the conversation list, not about the chat on screen.
+   * It is about the list, or about one row in it.
    *
-   * Renaming and deleting can only be started from the list, and the list
-   * covers the whole column while it is open -- so the panel's own line, on
-   * the top edge of the composer, is a line nobody can read. This is what
-   * sends the word to the list instead, where the reader is looking.
+   * The list covers the whole column while it is open, so the panel's own
+   * line -- on the top edge of the composer -- is a line nobody can read
+   * then. This marks the words as ones the list can carry; whether they
+   * actually go there is decided by whether the list is on screen, since the
+   * header renames the conversation too and the list is shut for that.
    */
   aboutRow?: boolean;
   /**
@@ -930,7 +933,7 @@ function applyEvent(conversationId: string, replyId: string, event: SSEEventEnve
       // This conversation's box, and no other. Another conversation may be
       // holding a sentence its reader has not sent, and this turn landing
       // here says nothing about that one.
-      setDraft(running.projectId, conversationId, '');
+      setDraft(conversationId, '');
 
       // The name arrives on this event because this turn may be the one that
       // gave the conversation its name -- the first message in a conversation
@@ -2115,11 +2118,10 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
  * There is always one to hang it on. For the round trip before a conversation
  * arrives the box is read-only -- the same gate a switch puts it behind -- so
  * nothing can be typed while there is nowhere to put it.
- * @param projectId - The project being read.
  * @param conversationId - The conversation it was typed in, if one is on screen.
  * @param text - What is in the box.
  */
-function setDraft(projectId: string, conversationId: string | undefined, text: string): void {
+function setDraft(conversationId: string | undefined, text: string): void {
   if (conversationId === undefined) return;
   useStore.setState((s) => ({
     draftByConversation: { ...s.draftByConversation, [conversationId]: text },
@@ -2128,11 +2130,10 @@ function setDraft(projectId: string, conversationId: string | undefined, text: s
 
 /**
  * Read back what was half-typed.
- * @param projectId - The project being read.
  * @param conversationId - The conversation asked about, if one is on screen.
  * @returns What is in its box, empty when nothing was left there.
  */
-function draftOf(projectId: string, conversationId: string | undefined): string {
+function draftOf(conversationId: string | undefined): string {
   if (conversationId === undefined) return '';
   return useStore.getState().draftByConversation[conversationId] ?? '';
 }

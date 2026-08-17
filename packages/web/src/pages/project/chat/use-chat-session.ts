@@ -253,7 +253,7 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
   }, [conversationId]);
 
   const setDraft = React.useCallback(
-    (text: string): void => conversationRuntime.setDraft(projectId, conversationId, text),
+    (text: string): void => conversationRuntime.setDraft(conversationId, text),
     [projectId, conversationId],
   );
 
