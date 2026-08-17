@@ -1054,3 +1054,28 @@ describe('pressing the row that is already on screen', () => {
     expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
   });
 });
+
+describe('the composer after the reader changes their mind', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('is usable again at once, not when the abandoned answer turns up', async () => {
+    // 点回当前那一行,意思是「我要留在这条」—— 这件事当场就完成了。让输入框
+    // 继续冻着,等的是一个再也不会被采纳的答复,而它可能要好几秒。
+    opens([
+      { id: 'c-1', title: 'one' },
+      { id: 'c-2', title: 'two' },
+    ]);
+    await conversationRuntime.ensureLoaded(P);
+
+    vi.mocked(chatApi.readConversation).mockImplementation(() => new Promise(() => {}));
+    void conversationRuntime.switchTo(P, 'c-2');
+    expect(useConversationRuntime.getState().navigatingByProject[P]).toBe(true);
+
+    await conversationRuntime.switchTo(P, 'c-1');
+
+    expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
+  });
+});

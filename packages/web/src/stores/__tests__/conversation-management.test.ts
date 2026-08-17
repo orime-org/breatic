@@ -764,3 +764,79 @@ describe('two requests for the first page at once', () => {
     expect(useConversationRuntime.getState().listLoading[PROJECT]).toBe(true);
   });
 });
+
+describe('what a first page answers about, and what happened since', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('does not bring back a row deleted while it was out', async () => {
+    // 这份答复描述的是请求发出那一刻的服务器,而删除发生在那之后。整片替换
+    // 把它按原样铺上去,那一行就复活了 —— 而读者刚看着它消失。
+    openAnswers(
+      [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      'c-1',
+    );
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    let land: (() => void) | undefined;
+    vi.mocked(chatApi.listConversations).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          land = () =>
+            resolve({
+              conversations: [
+                { id: 'c-1', title: 'one' },
+                { id: 'c-2', title: 'two' },
+              ],
+              hasMore: false,
+            } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+        }),
+    );
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
+    await conversationRuntime.remove(PROJECT, 'c-2');
+
+    land?.();
+    await reloading;
+
+    expect(
+      (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id),
+    ).toEqual(['c-1']);
+  });
+
+  it('does not drop a row created while it was out', async () => {
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    let land: (() => void) | undefined;
+    vi.mocked(chatApi.listConversations).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          land = () =>
+            resolve({
+              conversations: [{ id: 'c-1', title: 'one' }],
+              hasMore: false,
+            } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+        }),
+    );
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 'c-new',
+      title: null,
+    } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
+    await conversationRuntime.startNew(PROJECT);
+
+    land?.();
+    await reloading;
+
+    const ids = (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id);
+    expect(ids).toContain('c-new');
+  });
+});

@@ -1508,12 +1508,24 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
     if (stillGoing === undefined) claimed.delete(projectId);
     else claimed.set(projectId, stillGoing);
   }
+  // Two different questions, and they were being answered by one test.
+  //
+  // The composer is held still while the conversation on screen is about to be
+  // replaced. A navigation that has been overtaken cannot replace it any more,
+  // so what matters is whether the one the reader is waiting for is still
+  // travelling -- not whether anything is. Pressing the row already on screen
+  // ends the wait at once; leaving the box frozen until an abandoned answer
+  // turns up makes the reader wait on something that will be thrown away.
+  const awaited = claimed.get(projectId);
+  if (awaited === undefined || flying === undefined || !flying.has(awaited)) {
+    useStore.setState((s) => ({
+      navigatingByProject: (({ [projectId]: _done, ...rest }) => rest)(s.navigatingByProject),
+    }));
+  }
+  // Settling the panel is the other question: an overtaken navigation still
+  // has to come back before nobody is left who could take `loading` off the
+  // screen, so this one does wait for all of them.
   if (flying !== undefined && flying.size > 0) return;
-  // The last one out puts the composer back: nothing is on its way to change
-  // which conversation is on screen any more.
-  useStore.setState((s) => ({
-    navigatingByProject: (({ [projectId]: _done, ...rest }) => rest)(s.navigatingByProject),
-  }));
   useStore.setState((s) =>
     s.openStatus[projectId] === 'loading'
       ? {
@@ -1893,15 +1905,37 @@ async function reloadConversationList(projectId: string): Promise<void> {
 
   const visit = currentVisit(projectId);
   firstPageStarted(projectId);
+  // What the list held when this was asked. The answer describes the server
+  // as it was at that moment, and the reader goes on working meanwhile --
+  // starting conversations, deleting them -- so laying the answer down flat
+  // would bring back a row they just deleted and drop one they just made.
+  const asked = useStore.getState().listByProject[projectId] ?? [];
   useStore.setState((st) => ({ listLoading: { ...st.listLoading, [projectId]: true as const } }));
   try {
     const page = await chatApi.listConversations(projectId, undefined, visit.signal);
     if (visit.signal.aborted) return;
-    useStore.setState((st) => ({
-      listByProject: { ...st.listByProject, [projectId]: page.conversations },
-      listHasMore: { ...st.listHasMore, [projectId]: page.hasMore },
-      listMoreFailed: { ...st.listMoreFailed, [projectId]: false },
-    }));
+    useStore.setState((st) => {
+      const now = st.listByProject[projectId] ?? [];
+      const wasThere = new Set(asked.map((c) => c.id));
+      const isThere = new Set(now.map((c) => c.id));
+      // Gone since: it was in hand when this went out and is not now, so the
+      // reader deleted it. The server had not heard yet when it answered.
+      const deletedSince = asked.filter((c) => !isThere.has(c.id)).map((c) => c.id);
+      // Made since: in hand now and not when this went out. Their order among
+      // themselves is the order the reader made them, and they are the most
+      // recent thing that happened here, so they go first.
+      const madeSince = now.filter((c) => !wasThere.has(c.id));
+      const answered = page.conversations.filter((c) => !deletedSince.includes(c.id));
+      const answeredIds = new Set(answered.map((c) => c.id));
+      return {
+        listByProject: {
+          ...st.listByProject,
+          [projectId]: [...madeSince.filter((c) => !answeredIds.has(c.id)), ...answered],
+        },
+        listHasMore: { ...st.listHasMore, [projectId]: page.hasMore },
+        listMoreFailed: { ...st.listMoreFailed, [projectId]: false },
+      };
+    });
   } catch (err) {
     if (visit.signal.aborted) return;
     // Said in the list, because this only ever runs while the list is open --
