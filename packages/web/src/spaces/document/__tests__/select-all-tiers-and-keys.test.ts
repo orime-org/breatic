@@ -211,13 +211,34 @@ describe('B2 全文档选区打字：替换为单段', () => {
 });
 
 describe('B5 零块选区归一守卫', () => {
-  it('指向 doc 层的退化 TextSelection 被归一为 AllSelection', () => {
+  it('零块文档：指向 doc 层的退化 TextSelection 被归一为 AllSelection', () => {
     const e = openOn(new Y.Doc());
     expect(e.state.doc.childCount).toBe(0);
     e.view.dispatch(
       e.state.tr.setSelection(Selection0(e)),
     );
     expect(e.state.selection).toBeInstanceOf(AllSelection);
+  });
+
+  it('空文档的静息 AllSelection 在内容到达后收拢成文首光标', () => {
+    // AllSelection 经映射永远还是全文档——不收拢的话，空文档里静息的它
+    // 会在协作者的第一段内容到达时静默变成「全选了那段内容」。
+    const e = openOn(new Y.Doc());
+    expect(e.state.selection).toBeInstanceOf(AllSelection);
+    e.commands.setContent('<p>arrived</p>');
+    expect(e.state.selection).not.toBeInstanceOf(AllSelection);
+    expect(e.state.selection.empty).toBe(true);
+    expect(e.state.selection.$from.parent.isTextblock).toBe(true);
+  });
+
+  it('有内容的文档：退化 TextSelection 归一到最近光标位，不升格成全选', () => {
+    // 升格会把「什么都没选」翻成「全选」——下一记 Backspace 就误触
+    // 整篇删除的确认框（setContent 后的残留选区实测踩过这一步）。
+    const e = openWithBlocks();
+    e.view.dispatch(e.state.tr.setSelection(Selection0(e)));
+    expect(e.state.selection).toBeInstanceOf(TextSelection);
+    expect(e.state.selection.empty).toBe(true);
+    expect(e.state.selection.$from.parent.isTextblock).toBe(true);
   });
 });
 

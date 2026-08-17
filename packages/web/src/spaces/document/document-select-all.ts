@@ -58,6 +58,7 @@ import {
   AllSelection,
   Plugin,
   PluginKey,
+  Selection,
   TextSelection,
 } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
@@ -212,17 +213,41 @@ export const DocumentSelectAll = Extension.create<DocumentSelectAllOptions>({
         key: new PluginKey('documentSelectionNormaliser'),
         /**
          * Replace a `TextSelection` that resolved outside any textblock with
-         * the `AllSelection` an empty document can actually hold.
+         * one the document can actually hold.
+         *
+         * An empty document gets the `AllSelection` — its only legal form. A
+         * document WITH content gets the nearest valid caret instead: turning
+         * a degenerate caret into a whole-document selection would flip
+         * "nothing selected" into "everything selected", arming the guarded
+         * delete for a keystroke nobody aimed at the whole document.
          * @param _transactions - The transactions just applied.
-         * @param _oldState - The state before them.
+         * @param oldState - The state before them.
          * @param newState - The state after them.
          * @returns The normalising transaction, or null.
          */
-        appendTransaction(_transactions, _oldState, newState) {
+        appendTransaction(_transactions, oldState, newState) {
           const { selection } = newState;
+          // The resting AllSelection of an EMPTY document survives mapping —
+          // an AllSelection covers the whole document by definition — so the
+          // moment content arrives (a remote peer's paragraph, a programmatic
+          // fill) it would silently widen into "everything selected", arming
+          // the guarded delete for a selection nobody made. Collapse it to a
+          // caret at the start instead. A user-made whole-document selection
+          // is untouched: it exists only while the document HAS content, so
+          // its transactions never start from a zero-block state.
+          if (
+            selection instanceof AllSelection &&
+            oldState.doc.childCount === 0 &&
+            newState.doc.childCount > 0
+          ) {
+            return newState.tr.setSelection(Selection.atStart(newState.doc));
+          }
           if (!(selection instanceof TextSelection)) return null;
           if (selection.$from.parent.isTextblock) return null;
-          return newState.tr.setSelection(new AllSelection(newState.doc));
+          if (newState.doc.childCount === 0) {
+            return newState.tr.setSelection(new AllSelection(newState.doc));
+          }
+          return newState.tr.setSelection(Selection.near(selection.$from));
         },
       }),
     ];
