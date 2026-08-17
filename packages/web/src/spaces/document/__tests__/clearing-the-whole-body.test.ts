@@ -191,6 +191,15 @@ describe('说「这片不要了」的时候（A4）', () => {
     });
   });
 
+  it('Cmd+click 选中正文里唯一那个块，按回车也算——两条消费路径各自调 coversWholeBody，这条钉回车那条', () => {
+    const e = open('<ul><li><p>aa</p></li><li><p>bb</p></li></ul>');
+    const at = e.state.doc.child(0).nodeSize;
+    e.view.dispatch(e.state.tr.setSelection(NodeSelection.create(e.state.doc, at)));
+    press(e, 'Enter');
+    expect(body(e)).toBe('<p></p><p></p>');
+    expect(caretParent(e)).toBe('paragraph');
+  });
+
   it('Cmd+click 选中正文里唯一那个块，按删除也算——屏幕上跟 Ctrl+A 一样', () => {
     const e = open('<ul><li><p>aa</p></li><li><p>bb</p></li></ul>');
     const at = e.state.doc.child(0).nodeSize;
@@ -379,7 +388,11 @@ describe('这条规则不许碰的操作', () => {
       press(e, 'Enter');
       expect(e.state.doc.child(0).textContent).toBe('');
       expect(e.state.doc.childCount - 1).toBe(blocksBefore + 1);
+      // 判据③要钉满：光标在正文顶部那个新的空段落里——不是「随便哪个段落」。
+      // 一个把光标留在 <p>hello</p> 里的回归，前两条断言照样绿。
       expect(caretParent(e)).toBe('paragraph');
+      expect(e.state.selection.$from.parent.textContent).toBe('');
+      expect(e.state.selection.from).toBe(e.state.doc.child(0).nodeSize + 1);
     });
   });
 });
@@ -469,6 +482,70 @@ describe('输入法组字：组字期间不插手，组字结束了才收尾（A
     startComposing(e);
     e.view.dispatch(e.state.tr.insertText('好'));
     expect(body(e)).toBe(midway);
+  });
+
+  /**
+   * 组字窗口里远程协作者动了正文：收尾作废，别人的块一个都不许压平。
+   *
+   * 「用户说这片不要了」说的是他组字时看到的那片；窗口里 Bob 加进来的块不在
+   * 那片里。两个窗口都要钉：组字期间到达的（appendTransaction 看得见，掐标志）
+   * 和 compositionend 之后、微任务收尾之前到达的（doc 引用比对）。
+   */
+  it('组字期间远程协作者加了一个块：收尾放弃，那个块原样活着', async () => {
+    const docA = new Y.Doc();
+    Y.applyUpdate(docA, encodeInitialSpaceContent('document', TITLE));
+    const a = new Editor({
+      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(docA) }),
+    });
+    editors.push(a);
+    a.commands.setContent(`<h1 class="doc-title">${TITLE}</h1><p>aa</p><p>bb</p>`);
+    const docB = new Y.Doc();
+    Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
+    const b = new Editor({
+      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(docB) }),
+    });
+    editors.push(b);
+
+    selectWholeBody(a);
+    startComposing(a);
+    a.view.dispatch(a.state.tr.insertText('好'));
+
+    b.commands.focus('end');
+    b.commands.insertContent('<h2>from-bob</h2>');
+    Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB, Y.encodeStateVector(docA)));
+
+    endComposing(a);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(body(a)).toContain('<h2>from-bob</h2>');
+  });
+
+  it('组字刚结束、收尾还没跑，远程块插进来：收尾放弃，那个块原样活着', async () => {
+    const docA = new Y.Doc();
+    Y.applyUpdate(docA, encodeInitialSpaceContent('document', TITLE));
+    const a = new Editor({
+      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(docA) }),
+    });
+    editors.push(a);
+    a.commands.setContent(`<h1 class="doc-title">${TITLE}</h1><p>aa</p><p>bb</p>`);
+    const docB = new Y.Doc();
+    Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
+    const b = new Editor({
+      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(docB) }),
+    });
+    editors.push(b);
+
+    selectWholeBody(a);
+    startComposing(a);
+    a.view.dispatch(a.state.tr.insertText('好'));
+    endComposing(a);
+    // 收尾排在微任务里还没跑，这时远程更新到了
+    b.commands.focus('end');
+    b.commands.insertContent('<h2>late-bob</h2>');
+    Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB, Y.encodeStateVector(docA)));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(body(a)).toContain('<h2>late-bob</h2>');
   });
 
   it('选区没盖住整个正文时组字，结束之后一个字都不许动', async () => {

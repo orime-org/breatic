@@ -75,7 +75,7 @@ export const DocumentSplitBlock = Extension.create({
     return {
       splitBlock:
         () =>
-          ({ state, dispatch, editor }) => {
+          ({ state, dispatch, editor, tr }) => {
             const attributes = editor.extensionManager.attributes;
             const splittable = editor.extensionManager.splittableMarks;
             const surviving = marksThatSurvive(state, splittable);
@@ -88,8 +88,13 @@ export const DocumentSplitBlock = Extension.create({
                 attrs: getSplittedAttributes(attributes, node.type.name, node.attrs),
               };
             })(state, dispatch as ((tr: Transaction) => void) | undefined);
+            // On the props' `tr`, not `state.tr`: in plain ProseMirror the
+            // latter builds a NEW transaction on every access and this line
+            // would mutate a discarded one. tiptap's chainable state happens
+            // to return the shared transaction from both, but only `tr` says
+            // so in its own name.
             if (ran && dispatch && surviving) {
-              state.tr.ensureMarks(surviving as Mark[]);
+              tr.ensureMarks(surviving as Mark[]);
             }
             return ran;
           },

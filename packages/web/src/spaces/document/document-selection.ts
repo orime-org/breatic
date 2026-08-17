@@ -50,6 +50,8 @@ import { Fragment } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import { ReplaceAroundStep, ReplaceStep } from '@tiptap/pm/transform';
+
+import { Y_SYNC_PLUGIN_KEY_NAME } from '@web/features/collab-editor/collab-plugin-keys';
 /**
  * Marks the transactions this file produces, so they cannot trigger the rule
  * that produced them, and so the enter binding's two paragraphs are not then
@@ -112,16 +114,16 @@ function bodySelection(state: EditorState): Selection | null {
 /**
  * Which side of the document the caret is on.
  *
- * One question answers every selection shape: is `$from` inside a block that
- * holds text? A whole-body selection and an `AllSelection` both start at a
- * position between top-level blocks, whose parent is the document node, and a
- * document is not a textblock — so both come back "neither" and get answered
- * with the whole body, which is also the right answer for them.
- *
- * Asked of `$from`, not of the selection's shape. A selection that is not
- * collapsed still has a `$from`, and it is what the rule means by "where the
- * caret is": a double-clicked word in the title is a press made in the title,
- * and answering otherwise is how a press there ends up selecting the body.
+ * One question answers every selection shape: does the selection end at or
+ * before the title's boundary? The title occupies `0..titleSize`, so a
+ * selection contained in that span is a press made on the title's side —
+ * a caret in the title, a double-clicked word in it, the whole title selected
+ * from outside — and everything else acts on the body. There are exactly two
+ * answers; an earlier version had a third bucket for positions whose parent
+ * is the document node, and commit 42961135 removed it, because a whole block
+ * selected with the platform's select-node modifier sits at document level
+ * for BOTH a selected title and a selected body paragraph — a parent-type
+ * test cannot tell those apart, a position can.
  * @param state - Editor state to read.
  * @returns Which side the press acts on.
  */
@@ -138,15 +140,15 @@ function sideOfCaret(state: EditorState): 'title' | 'body' {
 /**
  * The selection the press should produce.
  *
- * "Neither" maps to the body, and that is not the same case as an empty body.
- * A whole block being selected is the common way to get there: `Mod`-clicking a
- * paragraph makes a `NodeSelection` (`prosemirror-view` builds one when the
- * platform's select-node modifier is held, and `document-click-to-write` passes
- * modified clicks straight through), and a selection over a whole block sits
- * OUTSIDE that block, at document level, so `$from.parent` is the document.
- * Answering that with the title would mean: click a paragraph, press this key,
- * type one character, and the document's name is gone — the one outcome this
- * whole extension exists to prevent.
+ * The body side answers with the whole body, the title side with the title's
+ * own text. A `Mod`-clicked body paragraph is the shape that makes the
+ * position test above matter: its `NodeSelection` sits OUTSIDE the block, at
+ * document level (`prosemirror-view` builds one when the platform's
+ * select-node modifier is held, and `document-click-to-write` passes modified
+ * clicks straight through), but its end is still past the title's boundary, so
+ * it lands on the body's side. Answering it with the title would mean: click a
+ * paragraph, press this key, type one character, and the document's name is
+ * gone — the one outcome this whole extension exists to prevent.
  * @param state - Editor state to read.
  * @returns The selection to apply, or null when there is nothing to select.
  */
@@ -168,13 +170,14 @@ function nextSelection(state: EditorState): Selection | null {
  * replace. "Nothing changes" means giving back the same range, not leaving the
  * key to someone else.
  *
- * There is one case where it reports handled without selecting anything: a
- * document whose body has no blocks at all, with the caret in neither side.
- * Nothing to select is not the same as nothing to do — the key still belongs
- * to us, and leaving the selection untouched is the answer. (Whoever took the
- * key there would end up selecting the title, which is all the document holds,
- * so this particular case is about who owns the key rather than about keeping
- * the title out of a selection.)
+ * A body with no blocks is not a special case: the caret can only sit in the
+ * title there, the position test answers "title", and the press selects the
+ * title's text — measured, the selection lands on `1..titleSize-1` and the
+ * next keystroke replaces the document's name, exactly as it would with the
+ * title selected by hand. The null guard below is type-narrowing, not a
+ * reachable branch: `nextSelection` only answers null when the body side has
+ * no blocks, and a selection ending past the title's boundary implies the
+ * body has at least one.
  * @param state - Editor state to read.
  * @param dispatch - Applies the transaction.
  * @returns True, always.
@@ -246,7 +249,7 @@ function farEndOfAnchorSide(
 /**
  * Answer ProseMirror's question about a selection it is about to build.
  *
- * This is the official hook for it — `prosemirror-view@1.42.2:2401` reads
+ * This is the official hook for it — `prosemirror-view@1.42.2` `dist/index.cjs:2326` reads
  * `createSelectionBetween` and falls back to `TextSelection.between` when no
  * plugin answers, and it is what `prosemirror-gapcursor` and
  * `prosemirror-tables` use for their own selection shapes. It is asked for
@@ -568,8 +571,13 @@ export const DocumentSelection = Extension.create({
               // editor is still handling starts an update in the middle of
               // another one. `prosemirror-view` schedules its own composition
               // cleanup the same way.
+              const docAtEnd = view.state.doc;
               void Promise.resolve().then(() => {
                 if (view.isDestroyed) return;
+                // Anything landing between the event and this microtask —
+                // a remote edit, another composition — makes the collapse
+                // describe a body the user never said anything about.
+                if (view.state.doc !== docAtEnd) return;
                 const tr = bodyAsOneParagraph(view.state);
                 if (tr) view.dispatch(tr);
               });
@@ -582,8 +590,22 @@ export const DocumentSelection = Extension.create({
           // finished saying anything, so nothing here counts as done yet.
           // Touching the document now also destroys the composition: updating
           // it while composing costs `prosemirror-view` the node it remembered
-          // (`dist/index.cjs:5158`), and rebuilding the view drops it for good.
-          if (editor.view.composing) return null;
+          // (`dist/index.cjs:5159`), and rebuilding the view drops it for good.
+          if (editor.view.composing) {
+            // A remote collaborator writing into the body DURING the
+            // composition puts blocks there the user never selected — "this
+            // stretch is done for" stops being true, so the composition's
+            // cleanup is called off. y-prosemirror stamps every remote
+            // transaction with its sync-plugin meta; local composition
+            // transactions carry none.
+            if (
+              composingOverWholeBody &&
+              trs.some((tr) => tr.getMeta(Y_SYNC_PLUGIN_KEY_NAME) !== undefined)
+            ) {
+              composingOverWholeBody = false;
+            }
+            return null;
+          }
           if (!isClearingTheWholeBody(trs, before, after)) return null;
           return bodyAsOneParagraph(after);
         },
