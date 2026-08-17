@@ -84,9 +84,12 @@ export function MembershipPanel({
           {query.isPending ? (
             <MembershipSkeleton />
           ) : query.isError ? (
-            // One line, the way the sibling studio pages report a failed read.
-            // There is no retry button anywhere in this product's read
-            // failures, and reopening the panel is the retry.
+            // One line, the way the sibling studio pages report a failed read
+            // (StudioContainerPage / StudioRecentPage). No retry button:
+            // closing and reopening the panel refetches, and this read has
+            // nothing the reader would lose by doing that. Panels that DO
+            // offer one (node history, the decision landing page) are ones
+            // where the reader is mid-task and reopening costs them that.
             <p role='alert' className='text-sm text-muted-foreground'>
               {t('membership.loadFailed')}
             </p>

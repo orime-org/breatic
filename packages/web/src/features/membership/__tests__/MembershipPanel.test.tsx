@@ -4,17 +4,21 @@
 /**
  * 会员面板（任务 #90）。
  *
- * 面板背后只有一个请求，所以它能渲染的每一种样子都由那一个答案决定。这里
- * 钉住的是七种状态各自显示什么：
+ * 面板背后只有一个请求，所以它能渲染的每一种样子都由那一个答案决定。这个
+ * 文件钉的是那些样子里、能在 jsdom 里判定的部分：
  *
- *   1. 正常档位：档位名、价格、账号级两项额度、各档对比表，当前那一列高亮。
+ *   1. 正常档位：档位名、价格、账号级两项额度、各档对比表逐格的数字。
  *   2. 只列账号级那两项额度，其余四项在对比表里看，不在额度区重复。
  *   3. 自托管：六项数值全列（因为它没有对比表可看），不显示价格、对比表、
  *      升级按钮，但保留联系邮箱。
  *   4. 企业版：不显示上限数字、不显示对比表，说明额度由单独协议约定。
- *   5. 某项超限：数字照实显示并标已超出，进度条满格，跟一句说明。
+ *   5. 某项超限：数字照实显示并标已超出，跟一句说明。
  *   6. 加载中：骨架，不是整页 spinner。
  *   7. 加载失败：一行错误文案。
+ *   8. 换账号之后不复用上一个账号的答案。
+ *
+ * 进度条画多满、当前列的底色深浅这类只有像素能判定的，靠真浏览器 smoke，
+ * 不在这里断言 —— jsdom 没有布局。
  *
  * 升级按钮这一版点了没去处（块八未做），所以它压暗、带「尚未开放」，并且
  * 用 aria-disabled 而不是 disabled —— 后者会把它踢出键盘顺序。
@@ -64,8 +68,8 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
     tier: 'pro',
     limits: limits(),
     usage: { teamStudios: 1, storageBytes: 38 * GIB },
-    // 三档每一项都取不同的值。共用默认值的话，某一行读错字段会读到一样的
-    // 数字，任何断言都分不出来。
+    // 三档每一项都取不同的值：这样每个格子的期望值在整张表里唯一，某一行
+    // 读错字段、或者整列取错档，逐格断言才分得出来。
     catalog: [
       {
         tier: 'base',
@@ -217,6 +221,9 @@ describe('MembershipPanel', () => {
     );
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByTestId('membership-upgrade')).toBeNull();
+    // 自部署不向我们付费，所以价格一个字都不出现。
+    expect(screen.queryByText(/\$\d/)).toBeNull();
+    expect(screen.queryByText('Free')).toBeNull();
     // 联系邮箱保留，措辞换成商用授权与支持条款。
     const contact = screen.getByTestId('membership-contact-self-hosted');
     expect(contact).toHaveAttribute('href', 'mailto:breatic@orime.ai');

@@ -21,13 +21,12 @@ interface TierComparisonProps {
  *
  * A real `<table>` rather than a grid of divs: the numbers are a table, and
  * one that says so can be read down a column by anything that reads tables.
- * The rows are the six ceilings plus the price, in the order the panel above
- * introduces them.
+ * The rows are the price plus the six ceilings.
  *
- * The current column is filled with `bg-accent`, the one surface token that
- * moves the other way in each theme — darker than the page in light, lighter
- * in dark (tokens.css calls it "light darker / dark lighter"). `bg-card` goes
- * lighter in both, which in the light theme means the marked column recedes
+ * The current column is filled with `bg-accent`, which moves away from the
+ * page in both themes — darker than it in light, lighter in dark (tokens.css
+ * calls it "light darker / dark lighter"). `bg-card`, which this used before,
+ * goes lighter in both, so in the light theme the marked column receded
  * exactly where it should stand out.
  *
  * Each cell is identified by its tier AND its row, so a test can assert what

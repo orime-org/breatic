@@ -1143,7 +1143,7 @@
       "projectsPerStudio": "Projects per Studio",
       "studioMembers": "Members per Studio",
       "projectMembers": "Members per Project",
-      "concurrentEditors": "Simultaneous editors per document"
+      "concurrentEditors": "Simultaneous connections per document"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count}",
