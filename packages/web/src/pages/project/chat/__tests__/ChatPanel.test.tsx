@@ -308,17 +308,35 @@ describe('ChatPanel', () => {
     expect(screen.queryByTestId('chat-notice-action')).not.toBeInTheDocument();
   });
 
-  it('lets the reader type and send while the chat is still opening', async () => {
-    // openChat never answers, which is the state every panel starts in.
-    vi.mocked(chatApi.openChat).mockImplementation(() => new Promise(() => {}));
+  it('holds the box still until the chat has opened', async () => {
+    // 打开期间不能打字(user 2026-08-16 拍定)——屏幕上还没有会话,这一刻打进去
+    // 的话没有地方可去。这条测试此前断言的是反过来那条(已被推翻的规则),而且
+    // 它问的是 `disabled` 而框用的是 `readOnly`,所以它两头都不会红。
+    let land: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () =>
+        new Promise((res) => {
+          land = (): void =>
+            res({
+              conversations: [{ id: CONV }],
+              hasMoreConversations: false,
+              current: { conversation: { id: CONV }, messages: [], hasMore: false },
+            } as never);
+        }),
+    );
     renderPanel();
 
-    // Turning the box off is how a keystroke used to be dropped in silence:
-    // the fix for that was to stop the reader typing, which is the wrong end
-    // of it. Sending is what opens a conversation when there is not one, so
-    // there is nothing here to protect them from.
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
-    expect(screen.getByTestId('chat-composer-textarea')).not.toBeDisabled();
+    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('readonly');
+
+    await act(async () => {
+      land?.();
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-composer-textarea')).not.toHaveAttribute('readonly'),
+    );
   });
 
   it('disables nothing of its own when the chat could not be opened', async () => {
