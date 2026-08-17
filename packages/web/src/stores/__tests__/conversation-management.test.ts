@@ -840,3 +840,182 @@ describe('what a first page answers about, and what happened since', () => {
     expect(ids).toContain('c-new');
   });
 });
+
+describe('what a first page has to be told about', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  /**
+   * Hold a list answer back until the test lets it land.
+   * @param answer - What the server will say.
+   * @returns The release function.
+   */
+  function heldList(answer: { conversations: unknown[]; hasMore: boolean }): () => void {
+    let release: () => void = () => undefined;
+    vi.mocked(chatApi.listConversations).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = (): void =>
+            resolve(answer as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+        }),
+    );
+    return () => release();
+  }
+
+  it('does not undo a rename the answer had not heard about', async () => {
+    // 答复是请求发出那一刻组装的,改名发生在那之后。名字是会话自己的属性,
+    // 而列表行只是给列表画的一份副本 —— 两份都不该退回旧名字。
+    openAnswers([{ id: 'c-1', title: '旧名字' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    const land = heldList({ conversations: [{ id: 'c-1', title: '旧名字' }], hasMore: false });
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    vi.mocked(chatApi.renameConversation).mockResolvedValue({
+      id: 'c-1',
+      title: '新名字',
+    } as unknown as Awaited<ReturnType<typeof chatApi.renameConversation>>);
+    await conversationRuntime.rename(PROJECT, 'c-1', '新名字');
+
+    land();
+    await reloading;
+
+    expect(conversationRuntime.titleOf('c-1')).toBe('新名字');
+    expect(useConversationRuntime.getState().listByProject[PROJECT]?.[0]?.title).toBe('新名字');
+  });
+
+  it('does not bring back one that was made and then deleted', async () => {
+    // 建了又删的那条,在「请求发出」和「答复落地」两个时点都不在列表里 ——
+    // 拿两个时点做差集的办法看不见它,而服务器在中间那一刻见过它。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    const land = heldList({
+      conversations: [
+        { id: 'c-2', title: null },
+        { id: 'c-1', title: 'one' },
+      ],
+      hasMore: false,
+    });
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 'c-2',
+      title: null,
+    } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
+    await conversationRuntime.startNew(PROJECT);
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
+    await conversationRuntime.remove(PROJECT, 'c-2');
+
+    land();
+    await reloading;
+
+    expect(
+      (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id),
+    ).not.toContain('c-2');
+  });
+
+  it('puts one made while it was out at the top', async () => {
+    // 列表按「最近使用」排,而刚建出来的那条就是最近使用的。答复里没有它
+    // (服务器答的时候还没有),所以位置只能由这边定:排最前。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    const land = heldList({
+      conversations: [{ id: 'c-1', title: 'one' }],
+      hasMore: false,
+    });
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 'c-2',
+      title: null,
+    } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
+    await conversationRuntime.startNew(PROJECT);
+
+    land();
+    await reloading;
+
+    expect(
+      (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id),
+    ).toEqual(['c-2', 'c-1']);
+  });
+
+  it('does not put a page that arrived meanwhile at the top', async () => {
+    // 整片重取的语义是「从第一页重新全部加载」,所以更早的那些页退掉、列表
+    // 回到第一页并重新说「还有更早的」,读者往下滚就能再要一次。要命的是
+    // 另一种结果:翻页拿回来的是更早的会话、不是刚建的,把它们当成新建的排
+    // 到最前,列表就不再是「最近使用在前」了。
+    openAnswers(
+      [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      'c-1',
+      { hasMoreConversations: true },
+    );
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    const landPage = heldList({
+      conversations: [
+        { id: 'c-3', title: 'three' },
+        { id: 'c-4', title: 'four' },
+      ],
+      hasMore: false,
+    });
+    void conversationRuntime.loadMoreConversations(PROJECT);
+
+    const landReload = heldList({
+      conversations: [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      hasMore: true,
+    });
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    landPage();
+    await new Promise((r) => setTimeout(r, 0));
+    landReload();
+    await reloading;
+
+    expect(
+      (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id),
+    ).toEqual(['c-1', 'c-2']);
+    expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(true);
+  });
+
+  it('can be asked again after a visit was abandoned mid-open', async () => {
+    // 那趟被丢下的打开请求落地时不该替新访问收尾,但记账的增减必须配对 ——
+    // 只增不减,去重的闸门就永远关着,列表再也不会重新取。
+    let settleOpen: () => void = () => undefined;
+    vi.mocked(chatApi.openChat).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settleOpen = (): void =>
+            resolve({
+              conversations: [{ id: 'c-1', title: 'one' }],
+              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+              hasMoreConversations: false,
+            } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+        }),
+    );
+    void conversationRuntime.ensureLoaded(PROJECT);
+    conversationRuntime.leaveProject(PROJECT);
+    settleOpen();
+    await new Promise((r) => setTimeout(r, 0));
+
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [{ id: 'c-1', title: 'one' }],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+    await conversationRuntime.reloadConversationList(PROJECT);
+
+    expect(vi.mocked(chatApi.listConversations)).toHaveBeenCalledTimes(1);
+  });
+});
