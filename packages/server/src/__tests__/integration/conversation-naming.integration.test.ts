@@ -487,3 +487,39 @@ describe("a name whose characters do not fit in one code unit each", () => {
     expect([...stored].length).toBeLessThanOrEqual(200);
   });
 });
+
+describe("naming a conversation from its first message", () => {
+  it("does not write over a name its owner has already given it", async () => {
+    // 新建会话 → 在顶栏起名 → 立刻说第一句话。两个请求各跑各的,谁先提交由
+    // 网络和库负载决定。首句命名是「读一次、写一次」,而读和写之间没有任何东西
+    // 挡着 —— 读到「还没有名字」之后,不管这中间发生了什么都照写。这里把改名
+    // 放在那两步中间(读返回的是改名之前的样子),正是那个顺序。
+    const { projectId, cookie } = await seedProject();
+    const id = await openAndGetId(projectId, cookie);
+    const service = await import("@server/modules/conversation/conversation.service.js");
+    const repo = await import("@server/modules/conversation/conversation.repo.js");
+
+    const renamed = await app.request(`/api/v1/chat/conversations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ project_id: projectId, title: "我自己取的名字" }),
+    });
+    expect(renamed.status).toBe(200);
+
+    // 这一轮的读发生在改名提交之前,所以它看到的是还没有名字。
+    const asItWas = await repo.getConversation(id);
+    const reading = vi
+      .spyOn(repo, "getConversation")
+      .mockResolvedValueOnce({ ...asItWas!, title: null });
+
+    const answered = await service.titleForTurn(id, "帮我写一个分镜脚本");
+    reading.mockRestore();
+
+    const [row] = await sql<{ title: string | null }[]>`
+      SELECT title FROM conversations WHERE id = ${id}
+    `;
+    expect(row?.title).toBe("我自己取的名字");
+    // 而且回给这一轮的也得是它 —— 前端拿这个值画顶栏和列表行。
+    expect(answered).toBe("我自己取的名字");
+  });
+});

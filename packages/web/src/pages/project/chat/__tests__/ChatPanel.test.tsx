@@ -518,3 +518,35 @@ describe('where a failure about a row in the list is drawn', () => {
     expect(screen.queryByTestId('chat-notice')).toBeNull();
   });
 });
+
+describe('opening the list', () => {
+  it('fetches its first page again', async () => {
+    // 拍定的行为是「每次打开都重新全部加载」。store 那侧和抽屉那侧各有测试,
+    // 中间这根线断了不会有任何东西红 —— 抽屉照样画,只是画的是上次留下的。
+    vi.mocked(chatApi.openChat).mockResolvedValue({
+      conversations: [{ id: 'c-1', title: 'one' }],
+      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      hasMoreConversations: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [{ id: 'c-1', title: 'one' }],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+
+    const { rerender } = render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ChatPanel projectId='p-open' historyOpen={false} onHistoryOpenChange={() => undefined} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    expect(chatApi.listConversations).not.toHaveBeenCalled();
+
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ChatPanel projectId='p-open' historyOpen onHistoryOpenChange={() => undefined} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(chatApi.listConversations).toHaveBeenCalledTimes(1));
+  });
+});

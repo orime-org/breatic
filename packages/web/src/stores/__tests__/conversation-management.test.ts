@@ -1133,6 +1133,12 @@ describe('what a first page has to be told about', () => {
 
     landReload();
     await reloading;
+    // 丢掉之后它会立刻再问一次(下一条测试钉的就是这个),这里让那一次答空,
+    // 好把注意力留在「那份过期答复的行没有被接上去」这一件事上。
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [],
+      hasMore: true,
+    } as never);
     landPage();
     await new Promise((r) => setTimeout(r, 0));
 
@@ -1140,6 +1146,78 @@ describe('what a first page has to be told about', () => {
       (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id),
     ).toEqual(['c-1', 'c-2']);
     expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(true);
+  });
+
+  it('asks again after dropping a page about a list nobody holds', async () => {
+    // 丢弃发生的那一刻读者本来就在列表末尾,而末尾一动没动 —— 观察者不会再
+    // 报告一次。没人再问,底部的「正在加载」闪一下就没了,一行新的都不出现。
+    openAnswers(
+      [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      'c-1',
+      { hasMoreConversations: true },
+    );
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    const landPage = heldList({
+      conversations: [{ id: 'c-9', title: 'nine' }],
+      hasMore: false,
+    });
+    void conversationRuntime.loadMoreConversations(PROJECT);
+
+    const landReload = heldList({
+      conversations: [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      hasMore: true,
+    });
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    landReload();
+    await reloading;
+
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [{ id: 'c-3', title: 'three' }],
+      hasMore: false,
+    } as never);
+    landPage();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(
+      (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id),
+    ).toEqual(['c-1', 'c-2', 'c-3']);
+  });
+
+  it('stops saying the first page is on its way when the last one out was abandoned', async () => {
+    // 计数无条件配对(这是对的),所以把它减到零的那一趟可能属于一次已经被丢
+    // 下的访问。清那句「正在加载」的判据是计数归零,不是「谁减的」—— 挂在
+    // 访问上就会出现一个谁都不清的格子。
+    let landFirst: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          landFirst = (): void =>
+            res({
+              conversations: [{ id: 'c-1', title: 'one' }],
+              hasMoreConversations: false,
+              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+            } as never);
+        }),
+    );
+    void conversationRuntime.ensureLoaded(PROJECT);
+    await new Promise((r) => setTimeout(r, 0));
+    conversationRuntime.leaveProject(PROJECT);
+
+    openAnswers([{ id: 'c-2', title: 'two' }], 'c-2');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    landFirst?.();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(useConversationRuntime.getState().listLoading[PROJECT]).toBeUndefined();
   });
 
   it('can be asked again after a visit was abandoned mid-open', async () => {

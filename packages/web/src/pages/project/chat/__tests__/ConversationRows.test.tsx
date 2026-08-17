@@ -456,7 +456,7 @@ describe('a rename or a delete that did not work', () => {
   it('says so in the list, where the reader is looking', () => {
     // 这两件事只能从列表里发起,而列表盖住整个 Agent 列 —— 面板底部那条线在
     // 抽屉底下,说什么读者都看不见。
-    renderSheet({ rowMishap: { conversationId: 'c2', text: 'Could not rename it' } });
+    renderSheet({ rowMishap: { conversationId: 'c2', text: 'Could not rename it', at: 1 } });
 
     const said = screen.getByTestId('conversation-row-mishap');
     expect(said).toHaveTextContent('Could not rename it');
@@ -464,7 +464,7 @@ describe('a rename or a delete that did not work', () => {
   });
 
   it('puts it against the row it is about', () => {
-    renderSheet({ rowMishap: { conversationId: 'c2', text: 'Could not rename it' } });
+    renderSheet({ rowMishap: { conversationId: 'c2', text: 'Could not rename it', at: 1 } });
 
     const said = screen.getByTestId('conversation-row-mishap');
     const row = screen.getByTestId('conversation-c2').closest('li');
@@ -476,7 +476,7 @@ describe('a rename or a delete that did not work', () => {
     // 多半不在这一页里。没有行可贴不等于没话可说:一句读者正等着的回音,不能
     // 因为贴不到地方就整个消失。
     renderSheet({
-      rowMishap: { conversationId: 'c-not-on-this-page', text: 'Could not rename it' },
+      rowMishap: { conversationId: 'c-not-on-this-page', text: 'Could not rename it', at: 1 },
     });
 
     const said = screen.getByTestId('conversation-list-mishap');
@@ -484,13 +484,48 @@ describe('a rename or a delete that did not work', () => {
     const list = screen.getByTestId('conversation-history-list');
     expect(list.firstElementChild).toBe(said);
   });
+
+  it('is said again when the same thing fails a second time', async () => {
+    // 第二次说同样的话,React 认得那是同一行、什么都不改 —— DOM 不动,读屏
+    // 不播。读者按了第二次、请求也真的发出去并失败了,而屏幕上的反馈是零,
+    // 跟「按下去什么都没发生」分不开。
+    const props = {
+      open: true,
+      onOpenChange: vi.fn(),
+      conversations: ROWS,
+      activeId: 'c1',
+      onPick: vi.fn(),
+      onRename: vi.fn(),
+      onDelete: vi.fn(),
+      hasMore: false,
+      onReachEnd: vi.fn(),
+      nextPageFailed: false,
+      loadingMore: false,
+    };
+    const { rerender } = render(
+      <ConversationHistorySheet
+        {...props}
+        rowMishap={{ conversationId: 'c2', text: 'Network error', at: 1 }}
+      />,
+    );
+    const first = screen.getByTestId('conversation-row-mishap');
+
+    rerender(
+      <ConversationHistorySheet
+        {...props}
+        rowMishap={{ conversationId: 'c2', text: 'Network error', at: 2 }}
+      />,
+    );
+
+    expect(screen.getByTestId('conversation-row-mishap')).not.toBe(first);
+  });
 });
 
 describe('a failure about the whole list rather than one row', () => {
   it('is said at the top of it', () => {
     // 重取整份列表失败,说的不是某一行的事 —— 它没有行可贴,而列表顶部正是
     // 这句话该在的地方。
-    renderSheet({ rowMishap: { conversationId: null, text: 'Could not fetch the list' } });
+    renderSheet({ rowMishap: { conversationId: null, text: 'Could not fetch the list', at: 1 } });
 
     const said = screen.getByTestId('conversation-list-mishap');
     expect(said).toHaveTextContent('Could not fetch the list');

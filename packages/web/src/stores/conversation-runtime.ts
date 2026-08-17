@@ -736,10 +736,13 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       return { failed: err };
     }
   } finally {
-    // Not if the visit that asked is over: this project's bookkeeping belongs
-    // to whoever is here now, and an abandoned request must not settle it.
+    // Both unconditional: the count pairs on every exit, and whether the flag
+    // still belongs on screen is a question about the count, not about who
+    // brought it to zero. Guarding this one left a square nobody clears --
+    // the trip that reaches zero can be one already abandoned, and the trip
+    // before it saw a count that was not zero yet.
     firstPageEnded(projectId);
-    if (!visit.signal.aborted) settleListLoading(projectId);
+    settleListLoading(projectId);
     // However this ended -- landed, failed, or overtaken -- it is over, and
     // being the last one out means nobody else will settle the panel.
     navigationEnded(projectId, nav, landed);
@@ -2131,6 +2134,8 @@ async function loadMoreConversations(projectId: string): Promise<void> {
   const visit = currentVisit(projectId);
   const asked = listNow(projectId);
   const at = asking();
+  // Set when the answer turns out to be about a list that has been replaced.
+  let stale = false;
   fetchingMore.add(projectId);
   useStore.setState((st) => ({
     listMoreFailed: { ...st.listMoreFailed, [projectId]: false },
@@ -2144,10 +2149,13 @@ async function loadMoreConversations(projectId: string): Promise<void> {
     );
     if (visit.signal.aborted) return;
     // The list this continues from has been replaced since, so this answer is
-    // about a list nobody holds. Dropping it costs nothing: the list that took
-    // its place says for itself whether there is more, and reaching the end of
-    // it asks again.
-    if (listNow(projectId) !== asked) return;
+    // about a list nobody holds. It cannot be laid over the one that took its
+    // place: the rows between the two lists would be missing, and the
+    // `hasMore` it carries could close paging on a list that is not finished.
+    if (listNow(projectId) !== asked) {
+      stale = true;
+      return;
+    }
     useStore.setState((s) => {
       const current = s.listByProject[projectId] ?? [];
       // The page starts after the last row held, so in an order that has not
@@ -2171,7 +2179,7 @@ async function loadMoreConversations(projectId: string): Promise<void> {
     // they did.
     tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
   } finally {
-    // Only if this is still the visit that asked. The bookkeeping is kept per
+    // Only if this is still the visit that asked. Both of these are per
     // project, and a request abandoned with a visit lands whenever it lands --
     // by then the reader may have come back and asked again. Clearing then
     // takes down the line saying a page is on its way while one still is, and
@@ -2181,6 +2189,11 @@ async function loadMoreConversations(projectId: string): Promise<void> {
       useStore.setState((st) => ({
         listLoadingMore: (({ [projectId]: _done, ...rest }) => rest)(st.listLoadingMore),
       }));
+      // Nothing else will ask. The reader is at the end of the list already,
+      // so the end does not move and the watcher has nothing to report; and
+      // the mark that arms a scroll listener belongs to a page that failed,
+      // which this is not. Asking again is what "reaching the end" meant.
+      if (stale) void loadMoreConversations(projectId);
     }
   }
 }
@@ -2246,10 +2259,10 @@ async function reloadConversationList(projectId: string): Promise<void> {
       ...readMishap(err),
     });
   } finally {
-    // The count pairs on every exit; only the flag the panel renders belongs
-    // to whoever is here now.
+    // Both unconditional, for the reason given where `openAndAdopt` does the
+    // same: the flag follows the count, not the visit.
     firstPageEnded(projectId);
-    if (!visit.signal.aborted) settleListLoading(projectId);
+    settleListLoading(projectId);
   }
 }
 

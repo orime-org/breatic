@@ -86,11 +86,14 @@ interface ConversationHistorySheetProps {
    * What to say inside the list, and which row it is about.
    *
    * This sheet covers the whole column, so the panel's own line -- on the top
-   * edge of the composer -- is a line nobody can read while it is open. A
-   * `conversationId` puts the words against that row; `null` means they are
-   * about the list itself, and they go at the top of it.
+   * edge of the composer -- is a line nobody can read while it is open. The
+   * words go against the row named by `conversationId` when this page holds
+   * it, and at the top of the list otherwise: `null` says they are about the
+   * list itself, and a row this page does not hold has nowhere else to put
+   * them. `at` is when it was said, which is what tells two failures apart
+   * when they say the same thing.
    */
-  rowMishap?: { conversationId: string | null; text: string } | null;
+  rowMishap?: { conversationId: string | null; text: string; at: number } | null;
 }
 
 /**
@@ -489,7 +492,11 @@ function ConversationHistorySheetInner({
               role='list'
             >
               {rowMishap !== null && mishapRow === null ? (
-                <MishapLine text={rowMishap.text} testId='conversation-list-mishap' />
+                <MishapLine
+                  key={rowMishap.at}
+                  text={rowMishap.text}
+                  testId='conversation-list-mishap'
+                />
               ) : null}
               {conversations.length === 0 ? (
                 listLoading ? (
@@ -515,7 +522,11 @@ function ConversationHistorySheetInner({
                       onAskDelete={setDeleting}
                     />
                     {rowMishap !== null && mishapRow === c.id ? (
-                      <MishapLine text={rowMishap.text} testId='conversation-row-mishap' />
+                      <MishapLine
+                        key={rowMishap.at}
+                        text={rowMishap.text}
+                        testId='conversation-row-mishap'
+                      />
                     ) : null}
                   </React.Fragment>
                 ))

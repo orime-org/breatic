@@ -43,13 +43,6 @@ interface ChatPanelProps {
    * before sending; default behaviour just sets the draft.
    */
   onQuickAction?: (label: string) => void;
-  /**
-   * When `true`, the entire chat panel is rendered in a disabled state
-   * (opacity + pointer-events:none). Per 2026-05-28 spec § 6.2 + 6.3,
-   * viewers see the chat but cannot interact — the upgrade entry lives
-   * on the top-bar RoleTag so no in-panel banner is needed.
-   */
-  disabled?: boolean;
 }
 
 /**
@@ -63,7 +56,6 @@ interface ChatPanelProps {
  * @param root0.historyOpen - Whether the conversation list is showing.
  * @param root0.onHistoryOpenChange - Called with the next open state for that list.
  * @param root0.onQuickAction - Called with a quick-action label from the empty state.
- * @param root0.disabled - When true, renders the panel disabled (viewers cannot interact).
  * @returns The per-user private chat column with message list, composer, and history sheet.
  */
 export function ChatPanel({
@@ -71,7 +63,6 @@ export function ChatPanel({
   historyOpen,
   onHistoryOpenChange,
   onQuickAction,
-  disabled = false,
 }: ChatPanelProps): React.JSX.Element {
   const {
     messages,
@@ -212,8 +203,14 @@ export function ChatPanel({
   const rowNotice = React.useMemo(() => {
     if (rowMishap === null) return null;
     // The id travels as it is: a row's id puts the words against that row,
-    // and null means they are about the list itself.
-    return { conversationId: rowMishap.conversationId, text: sayMishap(rowMishap) };
+    // and null means they are about the list itself. So does `at`, which is
+    // what tells two failures apart when they say the same thing -- without
+    // it the second one changes nothing on screen and nothing is announced.
+    return {
+      conversationId: rowMishap.conversationId,
+      text: sayMishap(rowMishap),
+      at: rowMishap.at,
+    };
   }, [rowMishap, sayMishap]);
 
   /**
@@ -240,14 +237,7 @@ export function ChatPanel({
     <div
       data-testid='chat-panel'
       data-project-id={projectId}
-      data-disabled={disabled ? 'true' : undefined}
-      aria-disabled={disabled || undefined}
       className='flex h-full w-full flex-col'
-      style={
-        disabled
-          ? { opacity: 0.5, pointerEvents: 'none' }
-          : undefined
-      }
     >
       <MessageList
         // The conversation travels as a prop rather than as a key. The list

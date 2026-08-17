@@ -204,8 +204,10 @@ export async function titleForTurn(
 
   const named = titleFromMessage(said, getAgentConfig().conversation_title_max_chars);
   if (named === null) return null;
-  await conversationRepo.updateTitle(conversationId, named);
-  return named;
+  // Which is the name it goes by -- this one, or the one somebody gave it
+  // between the read above and this write. The repository decides in one
+  // statement and says which; deciding here would leave the same gap again.
+  return conversationRepo.nameIfUnnamed(conversationId, named);
 }
 
 /**

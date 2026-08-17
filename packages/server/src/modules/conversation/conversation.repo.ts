@@ -344,6 +344,41 @@ export async function softDeleteConversation(id: string): Promise<void> {
 }
 
 /**
+ * Give a conversation a name, but only if it has none.
+ *
+ * One statement, because "does it have one?" and "give it one" asked
+ * separately are two moments with room between them: a reader who names a new
+ * conversation and then speaks in it sends two requests, and whichever order
+ * the database commits them in, the answer must be the same -- the name they
+ * chose. The condition is in the `WHERE`, so the write either happens against
+ * a conversation that still has no name or does not happen at all.
+ * @param id - Conversation UUID to name
+ * @param title - The name to give it; cut to what the column stores
+ * @returns The name it goes by now, or null when it is not there any more
+ */
+export async function nameIfUnnamed(id: string, title: string): Promise<string | null> {
+  const cut = [...title].slice(0, CONVERSATION_TITLE_MAX_CHARS).join("");
+  // `updated_at` set to itself for the same reason as in `updateTitle`:
+  // naming a conversation is not using it.
+  const [named] = await db
+    .update(conversations)
+    .set({ title: cut, updatedAt: sql`${conversations.updatedAt}` })
+    .where(
+      and(
+        eq(conversations.id, id),
+        isNull(conversations.deletedAt),
+        isNull(conversations.title),
+      ),
+    )
+    .returning({ title: conversations.title });
+  if (named) return named.title;
+  // Nothing was written, so either it has a name already or it is gone. One
+  // more read tells the caller which, and what that name is.
+  const held = await getConversation(id);
+  return held?.title ?? null;
+}
+
+/**
  * Update conversation title. No-op when the conversation is soft-deleted
  * — filtering on `isNull(deletedAt)` means concurrent deletion wins.
  * @param id - Conversation UUID to rename
@@ -354,8 +389,8 @@ export async function updateTitle(id: string, title: string): Promise<void> {
   // counts UTF-16 code units, and anything outside the basic plane takes two
   // of them -- so a name well inside the limit could still be cut, and the cut
   // landed between the halves of one character. What went into the column then
-  // was a replacement mark, for good: this writes a name only when there is
-  // none, so nothing afterwards would ever repair it.
+  // was a replacement mark, which the reader can only get rid of by renaming
+  // the conversation themselves.
   const cut = [...title].slice(0, CONVERSATION_TITLE_MAX_CHARS).join("");
   // The title only. `updated_at` is what orders the list and what each row
   // shows as when the conversation was last used, and renaming one is not
