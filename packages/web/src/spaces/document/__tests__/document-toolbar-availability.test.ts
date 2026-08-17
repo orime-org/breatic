@@ -35,7 +35,6 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
-import { GapCursor } from '@tiptap/pm/gapcursor';
 import { NodeSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
@@ -168,39 +167,37 @@ const CASES: readonly Case[] = [
     touchesTitle: true,
   },
   {
-    // Clicking a divider selects the node itself. It cannot be listed — a list
-    // item must start with a paragraph — but it can be quoted, which is why
-    // the two are asked separately.
-    name: 'a body divider selected as a node',
-    body: '<hr><p>body</p>',
+    // A whole block selected rather than a range inside one. `Mod`-clicking a
+    // paragraph is how a user gets here: `prosemirror-view` builds a
+    // `NodeSelection` when the platform's select-node modifier is held, and
+    // `document-click-to-write` passes modified clicks through. The selection
+    // then sits OUTSIDE the block, at document level, which is a shape none of
+    // the caret-in-a-textblock cases above covers.
+    //
+    // This replaces two cases built on the divider — one with it selected as a
+    // node, one with a gap cursor beside it. Both are unreachable now (#111):
+    // the divider is gone, and with it the last node in this schema that
+    // `GapCursor.valid` accepts a position next to (measured 2026-08-15 across
+    // paragraphs, headings, quotes, lists and code blocks: no valid position in
+    // any of them). The gap-cursor case had already stopped meaning anything —
+    // its `<hr>` body parsed to nothing, and `new GapCursor` does not check
+    // `valid`, so it was asserting on a selection no user could hold.
+    name: 'a whole body paragraph selected as a node',
+    body: '<p>body</p><p>more</p>',
     place: (e) => {
       const pos = e.state.doc.child(0).nodeSize;
       e.view.dispatch(
         e.state.tr.setSelection(NodeSelection.create(e.state.doc, pos)),
       );
     },
-    marks: false,
-    lists: false,
+    marks: true,
+    lists: true,
     quote: true,
     touchesTitle: false,
   },
   {
-    // The caret can also sit BESIDE a divider rather than on it, where there
-    // is no textblock to work with and every block command declines.
-    name: 'a gap cursor after a body divider',
-    body: '<hr>',
-    place: (e) => {
-      const $pos = e.state.doc.resolve(e.state.doc.content.size);
-      e.view.dispatch(e.state.tr.setSelection(new GapCursor($pos)));
-    },
-    marks: false,
-    lists: false,
-    quote: false,
-    touchesTitle: false,
-  },
-  {
     // A plain list item takes the list commands (they toggle it off) and not
-    // the quote — the other way round from the divider above.
+    // the quote.
     name: 'the caret in a plain list item',
     body: '<ul><li><p>a</p></li></ul>',
     place: (e) => e.commands.setTextSelection(e.state.doc.content.size - 3),
