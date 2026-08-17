@@ -794,8 +794,10 @@ body {
    the quote springs open by 30px and closes again when the caret leaves.
 
    THE ORIGINAL MEASUREMENT USED A GAP CURSOR beside a divider, and both are
-   gone (#111): with the divider removed, no position in any body this schema
-   can hold satisfies `GapCursor.valid`. A remote caret is the same widget by
+   gone (#111): with the divider removed, no position in any body a user can
+   REACH satisfies `GapCursor.valid` — the schema still registers one atom
+   block (unsupportedBlock), but a document holding one is intercepted before
+   the editor is ever built. A remote caret is the same widget by
    the same mechanism, and it is the one this rule now exists for.
 
    `:nth-child(1 of S)` says the thing directly: among the children that match

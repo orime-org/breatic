@@ -10,10 +10,15 @@
  * into a list. None of those blocks can live in the title, whose content is
  * text and nothing else.
  *
- * Every rule the editor currently ships notices that for itself and declines —
+ * The BLOCK rules currently shipping notice that for themselves and decline —
  * each asks whether the block can be wrapped or the type set, and produces no
- * transaction when the answer is no. So this file changes nothing about what
- * they do today.
+ * transaction when the answer is no. The MARK rules do not: `markInputRule`
+ * (`@tiptap/core` `dist/index.cjs:6405`) only checks excluded marks, never
+ * whether the parent block allows the mark, and `tr.addMark` on a block whose
+ * spec says `marks: ''` silently produces no step (`prosemirror-transform`
+ * `dist/index.cjs:753`) while the rule's delimiter deletions stay in the
+ * transaction. Without this guard, typing `**bold**` in the title eats the
+ * asterisks and applies nothing.
  *
  * It is written as a property of the title rather than as a set of exceptions
  * inside those rules, because which rules happen to check is a detail of the
@@ -22,10 +27,11 @@
  * promise. Here the title's own rule is stated once, in one place: text typed
  * into it is inserted as text, and nothing gets a chance to transform it.
  *
- * **This guard has no test that can fail today** (task #118). What it protects
- * against is a rule nobody has written yet, so there is nothing to feed it that
- * behaves badly — which is the point, and also why the promise above, rather
- * than any measurement, is the reason this file exists.
+ * **This guard has no test yet** (task #118) — and one is writable today:
+ * type `**bold**` into the title and assert the asterisks survive, which goes
+ * red the moment the guard is filtered out. Beyond the mark rules it also
+ * protects against every rule not written yet, which is why the promise above,
+ * rather than the current rule inventory, is the reason this file exists.
  *
  * ## Two halves, because the rules have more than one way in
  *

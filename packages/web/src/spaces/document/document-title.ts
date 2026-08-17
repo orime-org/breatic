@@ -106,7 +106,8 @@ export const DocumentTitle = Node.create({
    * about this boundary — the cut, the fold from either side, lifting a list's
    * first item out — is the editor's own and needs nothing
    * from here. That is a measurement, not a reading: with all three removed,
-   * 26 of the 35 cases in `document-title-keymap.test` still pass.
+   * 25 of the 32 cases in `document-title-keymap.test` still pass
+   * (remeasured 2026-08-17, after this branch dropped the divider cases).
    *
    * What each one is for, and what goes red without it:
    *

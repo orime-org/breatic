@@ -10,7 +10,8 @@
  * 两个空段落。别的操作一律不碰——加粗、粘贴、拖放、转块类型、取消块类型、
  * 纯选区变化、别人的远程编辑。
  *
- * **这份测试分两半，两半的红绿含义不同**：
+ * **A4 的用例分两半，两半的红绿含义不同**（文件里另住着 A9 和 A11 的
+ * 防回归组，它们不属于这两半）：
  *
  * - 「该接管」那几组在规则实现之前**必须红**，它们钉的是这次要新增的行为。
  * - 「不该接管」那几组在规则实现之前**就是绿的**，它们钉的是「这条规则不许碰
@@ -191,7 +192,7 @@ describe('说「这片不要了」的时候（A4）', () => {
     });
   });
 
-  it('Cmd+click 选中正文里唯一那个块，按回车也算——两条消费路径各自调 coversWholeBody，这条钉回车那条', () => {
+  it('Cmd+click 选中正文里唯一那个块，按回车也算——coversWholeBody 的三个消费方（appendTransaction、回车绑定、compositionstart）各自调它，这条钉回车那条', () => {
     const e = open('<ul><li><p>aa</p></li><li><p>bb</p></li></ul>');
     const at = e.state.doc.child(0).nodeSize;
     e.view.dispatch(e.state.tr.setSelection(NodeSelection.create(e.state.doc, at)));
@@ -228,10 +229,11 @@ describe('这条规则不许碰的操作', () => {
   });
 
   /**
-   * 粘贴单个块是 `putsBackOnlyInline` 唯一守着的场景。
+   * 粘贴单个块是 `putsBackOnlyInline` 唯一「非它不可」的场景。
    *
-   * 粘两个块时挡住规则的其实是「正文块数不超过一个」那条，所以那种用例证明不了
-   * 这道判据在干活；只有粘一个块能走到它跟前。
+   * 双块粘贴也是它先拒的（执行顺序上 tookTheSelectionAway 在 nothingOldLeft
+   * 之前），但把它删掉之后双块用例照样绿——「正文块数不超过一个」那条会接住，
+   * 所以双块用例钉不住它；单块粘贴没有第二道防线，删掉它这几条当场红。
    */
   it.each([
     ['一个正文标题', '<h2>H</h2>'],
@@ -488,8 +490,10 @@ describe('输入法组字：组字期间不插手，组字结束了才收尾（A
    * 组字窗口里远程协作者动了正文：收尾作废，别人的块一个都不许压平。
    *
    * 「用户说这片不要了」说的是他组字时看到的那片；窗口里 Bob 加进来的块不在
-   * 那片里。两个窗口都要钉：组字期间到达的（appendTransaction 看得见，掐标志）
-   * 和 compositionend 之后、微任务收尾之前到达的（doc 引用比对）。
+   * 那片里。两个窗口都要钉，走的是同一条路：appendTransaction 在
+   * 「组字期间或收尾还挂着期间」观察每一批 transaction，见到带 y-sync meta
+   * 且 changesBody 为真的就掐掉标志和 token——组字期间到达的和
+   * compositionend 之后、微任务收尾之前到达的，都被它接住。
    */
   it('组字期间远程协作者加了一个块：收尾放弃，那个块原样活着', async () => {
     const docA = new Y.Doc();

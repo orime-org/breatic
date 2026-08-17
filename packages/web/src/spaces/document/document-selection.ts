@@ -92,11 +92,11 @@ function bodyStart(doc: PMNode): number {
  * `TextSelection.between` is handed the body's two boundary positions and moves
  * each end to the nearest text position, which is what makes this an ordinary
  * text selection: both ends sit in inline content. That matters beyond
- * tidiness. `createParagraphNear`, `deleteSelection` and the rest of
- * `prosemirror-commands` decide whether they apply by asking
- * `$from.parent.inlineContent`, so a selection whose ends sit on block
- * boundaries makes Enter, a typed character and Delete behave differently from
- * every other editor. Measured with a selection type of our own whose ends were
+ * tidiness. `createParagraphNear` and several other `prosemirror-commands`
+ * decide whether they apply by asking `$from.parent.inlineContent`
+ * (`deleteSelection` does not — it only asks whether the selection is empty),
+ * so a selection whose ends sit on block boundaries makes Enter and a typed
+ * character behave differently from every other editor. Measured with a selection type of our own whose ends were
  * the body's boundaries: pressing Enter over the whole body deleted nothing and
  * appended an empty paragraph instead.
  *
@@ -602,7 +602,7 @@ export const DocumentSelection = Extension.create({
               // Two microtask hops, not one. `prosemirror-view` may still owe
               // the document the committed text at this point: with unflushed
               // mutation records it queues its own flush microtask
-              // (`dist/index.cjs:3421`), and ours is queued first — one hop
+              // (`dist/index.cjs:3422`), and ours is queued first — one hop
               // would collapse the body around the composition's intermediate
               // text and orphan the flush. The extra hop lets the flush land,
               // and reading `view.state` HERE rather than a snapshot is what
