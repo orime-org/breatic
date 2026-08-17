@@ -548,6 +548,135 @@ describe('输入法组字：组字期间不插手，组字结束了才收尾（A
     expect(body(a)).toContain('<h2>late-bob</h2>');
   });
 
+  /**
+   * 收尾的取消判据必须精确：让路给该让的，只拦该拦的。
+   *
+   * 该让的：`prosemirror-view` 自己在 `compositionend` 时会排一个微任务冲刷
+   * 还没进文档的上屏改动（`dist:3421`）。收尾要等它跑完、把它的结果一起收进去，
+   * 不能拿「文档变了」当放弃的理由——那样丢的是用户刚上屏的字。
+   *
+   * 该拦的：远程协作者**动了正文**。只动文档标题的远程编辑跟「这片正文不要了」
+   * 无关，不构成放弃收尾的理由。
+   */
+  it('组字结束后编辑器自己补冲刷上屏改动：收尾等它，最终收敛的是上屏的字', async () => {
+    const e = open('<blockquote><p>abc</p></blockquote>');
+    selectWholeBody(e);
+    startComposing(e);
+    e.view.dispatch(e.state.tr.insertText('hao'));
+    // 记录 dispatch 次序：收尾（带 CLEARED_BY_US）必须排在冲刷之后。
+    // jsdom 里模拟不出「收尾先跑会让真实冲刷的 mutation records 失效丢字」，
+    // 但次序本身可观测——prosemirror-view 的冲刷微任务比我们的收尾后入队
+    // （`dist:3421`），只有两跳才能让它先落地。
+    const order: string[] = [];
+    e.on('transaction', ({ transaction }) => {
+      if (transaction.getMeta('documentSelection:cleared') === true) order.push('cleanup');
+      else if (transaction.docChanged) order.push('edit');
+    });
+    endComposing(e);
+    // 冲刷跟真实一样走微任务，在我们第一跳之后入队
+    void Promise.resolve().then(() => {
+      let at = -1;
+      let size = 0;
+      const start = e.state.doc.child(0).nodeSize;
+      e.state.doc.descendants((node, pos) => {
+        if (node.isText && pos >= start) {
+          at = pos;
+          size = node.nodeSize;
+        }
+      });
+      e.view.dispatch(e.state.tr.insertText('好', at, at + size));
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(body(e)).toBe('<p>好</p>');
+    expect(order).toEqual(['edit', 'cleanup']);
+  });
+
+  it('组字期间远程协作者只改了文档标题：收尾照常，正文收敛、标题保留远程改动', async () => {
+    const docA = new Y.Doc();
+    Y.applyUpdate(docA, encodeInitialSpaceContent('document', TITLE));
+    const a = new Editor({
+      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(docA) }),
+    });
+    editors.push(a);
+    a.commands.setContent(`<h1 class="doc-title">${TITLE}</h1><blockquote><p>abc</p></blockquote>`);
+    const docB = new Y.Doc();
+    Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
+    const b = new Editor({
+      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(docB) }),
+    });
+    editors.push(b);
+
+    selectWholeBody(a);
+    startComposing(a);
+    a.view.dispatch(a.state.tr.insertText('好'));
+    // B 只改文档标题
+    b.view.dispatch(b.state.tr.insertText('Z', 1));
+    Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB, Y.encodeStateVector(docA)));
+    endComposing(a);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    // 不用 body()：它按原标题字符串剥前缀，标题被远程改过就剥不掉了
+    expect(a.state.doc.childCount).toBe(2);
+    expect(a.state.doc.child(1).type.name).toBe('paragraph');
+    expect(a.state.doc.child(1).textContent).toBe('好');
+    expect(a.state.doc.child(0).textContent).toContain('Z');
+  });
+
+  it('组字刚结束远程只改了标题：收尾照常，正文收敛', async () => {
+    const docA = new Y.Doc();
+    Y.applyUpdate(docA, encodeInitialSpaceContent('document', TITLE));
+    const a = new Editor({
+      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(docA) }),
+    });
+    editors.push(a);
+    a.commands.setContent(`<h1 class="doc-title">${TITLE}</h1><blockquote><p>abc</p></blockquote>`);
+    const docB = new Y.Doc();
+    Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
+    const b = new Editor({
+      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(docB) }),
+    });
+    editors.push(b);
+
+    selectWholeBody(a);
+    startComposing(a);
+    a.view.dispatch(a.state.tr.insertText('好'));
+    endComposing(a);
+    b.view.dispatch(b.state.tr.insertText('Z', 1));
+    Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB, Y.encodeStateVector(docA)));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(a.state.doc.childCount).toBe(2);
+    expect(a.state.doc.child(1).type.name).toBe('paragraph');
+    expect(a.state.doc.child(1).textContent).toBe('好');
+    expect(a.state.doc.child(0).textContent).toContain('Z');
+  });
+
+  it('两次组字紧挨着：旧收尾被新的顶掉，只收敛一次、按第二次的结果', async () => {
+    const e = open('<blockquote><p>abc</p></blockquote>');
+    let cleanups = 0;
+    e.on('transaction', ({ transaction }) => {
+      if (transaction.getMeta('documentSelection:cleared') === true) cleanups += 1;
+    });
+    selectWholeBody(e);
+    startComposing(e);
+    e.view.dispatch(e.state.tr.insertText('一'));
+    endComposing(e);
+    // 第一次的收尾还排在微任务里，第二次组字立刻开始
+    selectWholeBody(e);
+    startComposing(e);
+    e.view.dispatch(e.state.tr.insertText('二'));
+    endComposing(e);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(body(e)).toBe('<p>二</p>');
+    expect(cleanups).toBe(1);
+  });
+
   it('选区没盖住整个正文时组字，结束之后一个字都不许动', async () => {
     const e = open('<p>aa</p><p>bb</p>');
     const start = e.state.doc.child(0).nodeSize;

@@ -4,7 +4,7 @@
 /**
  * **A selection in this document never spans the title and the body.**
  *
- * That is one rule, and it is why the two things in this file live together.
+ * That is one rule, and it is why everything in this file lives together.
  * The title is the document's NAME: the AI slice replaces what is selected, so
  * a rewrite landing on the name is destructive in a way no undo makes
  * acceptable to ship. Whether the selection got there by a key or by a mouse
@@ -16,7 +16,14 @@
  * `title block*`), so "everything" genuinely includes it. Editors whose title
  * is a separate field get this for free.
  *
- * ## The two ways in
+ * ## The three jobs
+ *
+ * Two ways of SELECTING are answered here — the key and the mouse — and one
+ * rule about what happens NEXT: when a selection covering the whole body is
+ * told "this stretch is done for" (deleted, cut, typed or composed over), the
+ * body collapses to a clean slate instead of whatever shell the editor's own
+ * commands leave behind (A4, §5.6 of the design). That rule reads selections,
+ * which is why it is not a separate file.
  *
  * **`Mod-a`.** One press, one answer (decided 2026-08-15): in the body it takes
  * the whole body, in the title it takes the title, and with the caret in
@@ -59,8 +66,12 @@ import { Y_SYNC_PLUGIN_KEY_NAME } from '@web/features/collab-editor/collab-plugi
  */
 const CLEARED_BY_US = 'documentSelection:cleared';
 
-/** A pair of document positions, resolved and ready to select between. */
-interface Range {
+/**
+ * A pair of document positions, resolved and ready to select between.
+ * Named Span rather than Range so it cannot shadow the DOM's global `Range`
+ * in this browser-target package.
+ */
+interface Span {
   from: number;
   to: number;
 }
@@ -128,12 +139,7 @@ function bodySelection(state: EditorState): Selection | null {
  * @returns Which side the press acts on.
  */
 function sideOfCaret(state: EditorState): 'title' | 'body' {
-  // Read positions, not the parent's type. A whole block selected with the
-  // platform's select-node modifier sits OUTSIDE that block, at document level,
-  // so `$from.parent` is the document for BOTH a selected title and a selected
-  // body paragraph — the two land in the same bucket and cannot be told apart.
-  // The title occupies `0..titleSize`, so a selection ending at or before that
-  // boundary is on the title's side and everything else is on the body's.
+  // Why a position and not the parent's type: the TSDoc above.
   return state.selection.to <= bodyStart(state.doc) ? 'title' : 'body';
 }
 
@@ -282,7 +288,7 @@ function selectionWithinOneSide(
  * @param state - The state to ask.
  * @returns The first and last text positions, or null.
  */
-function bodyTextRange(state: EditorState): Range | null {
+function bodyTextRange(state: EditorState): Span | null {
   const whole = bodySelection(state);
   if (!whole) return null;
   return { from: whole.from, to: whole.to };
@@ -362,7 +368,7 @@ function insertedText(trs: readonly Transaction[]): string {
  * @param sel - The stretch selected before the operation.
  * @returns True when the batch is a clearing of that stretch.
  */
-function tookTheSelectionAway(trs: readonly Transaction[], sel: Range): boolean {
+function tookTheSelectionAway(trs: readonly Transaction[], sel: Span): boolean {
   let cleared = false;
   for (const tr of trs) {
     for (const step of tr.steps) {
@@ -423,6 +429,23 @@ function isClearingTheWholeBody(
   if (!coversWholeBody(before)) return false;
   if (!tookTheSelectionAway(trs, before.selection)) return false;
   return nothingOldLeft(trs, after);
+}
+
+/**
+ * Whether a transaction changed the body, as opposed to only the title.
+ *
+ * Compared as content, not as step ranges: y-prosemirror delivers every
+ * remote change as a whole-document replace step, so a step's own span says
+ * "everything" even when the collaborator only typed into the title.
+ * @param tr - The transaction to inspect.
+ * @returns True when the body's content differs across it.
+ */
+function changesBody(tr: Transaction): boolean {
+  const before = tr.before;
+  const after = tr.doc;
+  const beforeBody = before.slice(bodyStart(before), before.content.size);
+  const afterBody = after.slice(bodyStart(after), after.content.size);
+  return !beforeBody.content.eq(afterBody.content);
 }
 
 /**
@@ -540,19 +563,26 @@ export const DocumentSelection = Extension.create({
   },
 
   /**
-   * Claim every selection the DOM produces, and keep it on one side.
+   * The plugin carrying the file's three jobs: `createSelectionBetween`
+   * keeps DOM-made selections on one side, the composition pair schedules the
+   * A4 cleanup for input methods, and `appendTransaction` runs the A4 rule
+   * for everything that finishes in one step.
    *
    * `someProp` walks the registered props and takes the first non-null answer,
-   * so returning null from ours leaves the editor's own `TextSelection.between`
-   * to run — which is what should happen for every selection that never
-   * crosses the boundary.
-   * @returns The plugin carrying that prop.
+   * so returning null from `createSelectionBetween` leaves the editor's own
+   * `TextSelection.between` to run — which is what should happen for every
+   * selection that never crosses the boundary.
+   * @returns That plugin.
    */
   addProseMirrorPlugins() {
     const { editor } = this;
     // Whether the selection covered the whole body when composition started.
     // Read at that moment because the input method is about to replace it.
     let composingOverWholeBody = false;
+    // The scheduled cleanup, identified by object identity. Cancelling sets it
+    // to null; a new composition replaces it — either way the queued microtask
+    // finds a different value and stands down.
+    let scheduledCleanup: object | null = null;
     return [
       new Plugin({
         key: new PluginKey('documentSelection'),
@@ -567,45 +597,54 @@ export const DocumentSelection = Extension.create({
             compositionend: (view) => {
               if (!composingOverWholeBody) return false;
               composingOverWholeBody = false;
-              // Asynchronously, because dispatching from inside an event the
-              // editor is still handling starts an update in the middle of
-              // another one. `prosemirror-view` schedules its own composition
-              // cleanup the same way.
-              const docAtEnd = view.state.doc;
-              void Promise.resolve().then(() => {
-                if (view.isDestroyed) return;
-                // Anything landing between the event and this microtask —
-                // a remote edit, another composition — makes the collapse
-                // describe a body the user never said anything about.
-                if (view.state.doc !== docAtEnd) return;
-                const tr = bodyAsOneParagraph(view.state);
-                if (tr) view.dispatch(tr);
-              });
+              const cleanup = {};
+              scheduledCleanup = cleanup;
+              // Two microtask hops, not one. `prosemirror-view` may still owe
+              // the document the committed text at this point: with unflushed
+              // mutation records it queues its own flush microtask
+              // (`dist/index.cjs:3421`), and ours is queued first — one hop
+              // would collapse the body around the composition's intermediate
+              // text and orphan the flush. The extra hop lets the flush land,
+              // and reading `view.state` HERE rather than a snapshot is what
+              // folds its result into the collapse.
+              void Promise.resolve()
+                .then(() => undefined)
+                .then(() => {
+                  if (scheduledCleanup !== cleanup) return;
+                  scheduledCleanup = null;
+                  if (view.isDestroyed) return;
+                  const tr = bodyAsOneParagraph(view.state);
+                  if (tr) view.dispatch(tr);
+                });
               return false;
             },
           },
         },
         appendTransaction: (trs, before, after) => {
+          // A remote collaborator writing into the BODY — while the user is
+          // composing over it, or before the scheduled cleanup has run — puts
+          // content there the user never said anything about, so the cleanup
+          // is called off. Only the body: a remote edit to the title has no
+          // bearing on "this stretch of body is done for". y-prosemirror
+          // stamps every remote transaction with its sync-plugin meta; local
+          // composition transactions and prosemirror-view's own late
+          // composition flush carry none, and the flush must NOT cancel —
+          // it is delivering the text the user committed.
+          if (composingOverWholeBody || scheduledCleanup !== null) {
+            const remoteBodyEdit = trs.some(
+              (tr) => tr.getMeta(Y_SYNC_PLUGIN_KEY_NAME) !== undefined && changesBody(tr),
+            );
+            if (remoteBodyEdit) {
+              composingOverWholeBody = false;
+              scheduledCleanup = null;
+            }
+          }
           // While an input method is assembling a character the user has not
           // finished saying anything, so nothing here counts as done yet.
           // Touching the document now also destroys the composition: updating
           // it while composing costs `prosemirror-view` the node it remembered
           // (`dist/index.cjs:5159`), and rebuilding the view drops it for good.
-          if (editor.view.composing) {
-            // A remote collaborator writing into the body DURING the
-            // composition puts blocks there the user never selected — "this
-            // stretch is done for" stops being true, so the composition's
-            // cleanup is called off. y-prosemirror stamps every remote
-            // transaction with its sync-plugin meta; local composition
-            // transactions carry none.
-            if (
-              composingOverWholeBody &&
-              trs.some((tr) => tr.getMeta(Y_SYNC_PLUGIN_KEY_NAME) !== undefined)
-            ) {
-              composingOverWholeBody = false;
-            }
-            return null;
-          }
+          if (editor.view.composing) return null;
           if (!isClearingTheWholeBody(trs, before, after)) return null;
           return bodyAsOneParagraph(after);
         },

@@ -26,7 +26,10 @@
  *   anywhere but the end of a block: the official code treats any non-null
  *   answer as final, short-circuiting its own `atEnd` test, and a split in the
  *   middle of a heading would come out as heading followed by paragraph.
- * - **Marks.** tiptap calls `ensureMarks` with the marks that survive a split;
+ * - **Marks, behind the public `keepMarks` option.** tiptap calls
+ *   `ensureMarks` with the marks that survive a split unless the caller passed
+ *   `keepMarks: false` — the option is part of the command's public type, so
+ *   this override takes it too;
  *   the official command touches none. Without it, a split at the end of a bold
  *   line leaves the next keystroke unbolded — and the split's own output is
  *   identical either way, so nothing that compares documents can see it.
@@ -74,7 +77,7 @@ export const DocumentSplitBlock = Extension.create({
   addCommands() {
     return {
       splitBlock:
-        () =>
+        ({ keepMarks = true } = {}) =>
           ({ state, dispatch, editor, tr }) => {
             const attributes = editor.extensionManager.attributes;
             const splittable = editor.extensionManager.splittableMarks;
@@ -93,7 +96,7 @@ export const DocumentSplitBlock = Extension.create({
             // would mutate a discarded one. tiptap's chainable state happens
             // to return the shared transaction from both, but only `tr` says
             // so in its own name.
-            if (ran && dispatch && surviving) {
+            if (ran && dispatch && keepMarks && surviving) {
               tr.ensureMarks(surviving as Mark[]);
             }
             return ran;

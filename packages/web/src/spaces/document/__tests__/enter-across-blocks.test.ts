@@ -135,6 +135,14 @@ describe('跨块选区上按回车（A10）', () => {
     expect(body(e)).toBe('<p></p><p></p>');
   });
 
+  it('splitBlock({ keepMarks: false })：不保留格式——公开契约的选项不许被吞', () => {
+    const e = open('<p><strong>aa</strong></p>');
+    const at = e.state.doc.content.size - 1;
+    e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, at)));
+    e.commands.splitBlock({ keepMarks: false });
+    expect(e.state.storedMarks?.map((m) => m.type.name) ?? []).not.toContain('bold');
+  });
+
   it('在一行加粗文字末尾按回车，接着打的字还是粗的', () => {
     const e = open('<p><strong>aa</strong></p>');
     const at = e.state.doc.content.size - 1;
