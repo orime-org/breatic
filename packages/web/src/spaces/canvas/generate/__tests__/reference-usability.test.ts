@@ -2,14 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The reference rail's two-dimension state model (#1945).
+ * The reference rail's three-dimension state model (#1945, #1966).
  *
  * Dimension one — "does this mode use references at all" — dims the whole row
  * and governs the ✕. Dimension two — "is this row's modality one this run
- * consumes" — governs insertion and the `@` picker. They are CONJUNCT for
- * media rows and irrelevant for text rows, and the point of pinning all 24
+ * consumes" — governs insertion and the `@` picker. These two are CONJUNCT for
+ * media rows and do not reach text rows at all, and the point of pinning all 24
  * video combinations plus all 8 image ones is that a single boolean used to
  * carry both meanings and got both wrong.
+ *
+ * Dimension three — "does the ACTIVE MODEL take a prompt" (#1966) — is the one
+ * that DOES govern text rows, and it is the only one that does. The 24 + 8
+ * enumeration holds it true throughout, so those cases isolate the first two;
+ * the third has its own block at the bottom, which walks it against both other
+ * dimensions.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -18,7 +24,7 @@ import {
   insertRefusal,
   isReferenceMaterial,
   removeRefusal,
-  type ReferenceModeContext,
+  type ReferenceUsabilityContext,
 } from '@web/spaces/canvas/generate/reference-usability';
 import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 
@@ -31,10 +37,15 @@ const ROW_KINDS: NodeKind[] = ['text', 'image', 'audio', 'video'];
  * `takesReferences` mirrors `modeTakesReferences` — only `ref` collects the
  * `@` pool (#1927). It is NOT the same question as "does this mode need an
  * image at all": `i2v` needs one but takes it from a SLOT, so its rail is
- * dark while its backend source list is non-empty. The rail reads nothing
- * model-indexed, which is why this fixture has one field and not two.
+ * dark while its backend source list is non-empty. That value is the only one
+ * that varies across these rows.
+ *
+ * `takesPrompt` is pinned true on every one of them, deliberately: it belongs
+ * to the MODEL, not the mode, so a mode row cannot state it. Holding it true
+ * makes these cases about the reference dimension alone; the block at the
+ * bottom of the file is where it varies.
  */
-const VIDEO_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceModeContext }> = [
+const VIDEO_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceUsabilityContext }> = [
   { mode: 't2v', ctx: { takesReferences: false, takesPrompt: true } },
   { mode: 'i2v', ctx: { takesReferences: false, takesPrompt: true } },
   { mode: 'first_last', ctx: { takesReferences: false, takesPrompt: true } },
@@ -44,7 +55,7 @@ const VIDEO_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceModeContext }> = 
 ];
 
 /** The image panel's two reference-relevant modes. */
-const IMAGE_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceModeContext }> = [
+const IMAGE_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceUsabilityContext }> = [
   { mode: 't2i', ctx: { takesReferences: false, takesPrompt: true } },
   { mode: 'i2i', ctx: { takesReferences: true, takesPrompt: true } },
 ];
@@ -141,14 +152,17 @@ describe('removeRefusal — the ✕ follows the dim, which reads on reference ma
     }
   });
 
-  it('never refuses a TEXT row, in any mode of either panel', () => {
+  it('never refuses a TEXT row over references, in any mode of either panel', () => {
     // The dim rule reads on REFERENCE MATERIAL, and text is prompt material
     // (user 2026-08-13, second clarification). The reason for freezing a ✕ is
     // "this mode cannot use the row, so do not let you throw it away before
     // switching back" — and that premise is about reference material, which a
-    // text row is not, so there is nothing to hold in trust. (A model that
-    // declares no prompt does not consume it either; whether that should
-    // freeze the ✕ is open, #1965 — behaviour unchanged here.)
+    // text row is not, so there is nothing to hold in trust.
+    //
+    // Scoped to the reference question, and the fixtures are what scope it:
+    // every one of them takes a prompt. A model that takes none DOES freeze a
+    // text row's ✕ — that is #1965, settled in #1966 — and the block at the
+    // bottom of this file is where that case lives.
     for (const { mode, ctx } of [...VIDEO_MODES, ...IMAGE_MODES]) {
       expect(removeRefusal('text', ctx), `remove text in ${mode}`).toBeNull();
     }
@@ -168,16 +182,16 @@ describe('removeRefusal — the ✕ follows the dim, which reads on reference ma
 });
 
 describe('insertRefusal — the criterion depends on nothing asynchronous', () => {
-  it('answers from the row and the mode alone, with no model context', () => {
-    // The context carries two plain booleans and nothing else. #1966 added the
-    // second one; what did NOT change is the property this assertion exists
-    // for — neither field is a catalog handle or a promise, so there is still
-    // no third state to name and no window during which the rail answers
-    // differently from how it will answer a second later. Three rounds of
-    // review once produced three different wrong answers to "what while the
-    // catalog is loading"; the question was the defect. The caller resolves
-    // both values and passes them in.
-    const ref: ReferenceModeContext = { takesReferences: true, takesPrompt: true };
+  it('answers from two plain booleans — no catalog handle, no promise', () => {
+    // #1966 added the second field, and it is model-derived, so this is no
+    // longer "no model context". What did NOT change is the property this
+    // assertion exists for: neither field is a catalog handle or a promise, so
+    // there is still no third state to name and no window during which the
+    // rail answers differently from how it will answer a second later. Three
+    // rounds of review once produced three different wrong answers to "what
+    // while the catalog is loading"; the question was the defect. The caller
+    // resolves both values and passes them in.
+    const ref: ReferenceUsabilityContext = { takesReferences: true, takesPrompt: true };
     expect(Object.keys(ref).sort()).toEqual(['takesPrompt', 'takesReferences']);
     expect(insertRefusal('image', ref)).toBeNull();
     expect(insertRefusal('text', ref)).toBeNull();
@@ -190,7 +204,7 @@ describe('insertRefusal — the criterion depends on nothing asynchronous', () =
     // URLs. Both of its producers — `imageUrlOf` for node rows, the image
     // panel's `focusImages` append for crops — require an image, so a
     // non-image row has nothing to give either one.
-    const ref: ReferenceModeContext = { takesReferences: true, takesPrompt: true };
+    const ref: ReferenceUsabilityContext = { takesReferences: true, takesPrompt: true };
     for (const kind of ['audio', 'video', '3d', 'web'] as NodeKind[]) {
       expect(insertRefusal(kind, ref), kind).toBe('source-type-unused');
     }
@@ -273,11 +287,11 @@ describe('这一档不发提示词时 (#1966)', () => {
   const normal = { takesReferences: true, takesPrompt: true } as const;
 
   it('文本行的插入被拒，理由是没有提示词框', () => {
-    expect(insertRefusal('text', noPrompt)).toBe('mode-sends-no-prompt');
+    expect(insertRefusal('text', noPrompt)).toBe('model-takes-no-prompt');
   });
 
   it('文本行的 ✕ 也被拒，同一个理由', () => {
-    expect(removeRefusal('text', noPrompt)).toBe('mode-sends-no-prompt');
+    expect(removeRefusal('text', noPrompt)).toBe('model-takes-no-prompt');
   });
 
   it('参考素材行的两个动作说同一句：「这一档不吃参考」', () => {
@@ -299,14 +313,14 @@ describe('这一档不发提示词时 (#1966)', () => {
     // 今天不可达（面板里唯一 takesPrompt=false 的模式，takesReferences 也是
     // false），但判定必须是全序，所以这一格要有定义。参考那一问已经过了，
     // 所以插入才轮到提示词那一问；而这一档真的在用这一行，所以删得掉。
-    expect(insertRefusal('image', noPromptButRefs)).toBe('mode-sends-no-prompt');
+    expect(insertRefusal('image', noPromptButRefs)).toBe('model-takes-no-prompt');
     expect(removeRefusal('image', noPromptButRefs)).toBeNull();
   });
 
   it('文本行的 ✕ 不受「吃不吃参考」影响，只看发不发提示词', () => {
     // 文本行不是参考素材，参考那一问对它不成立；它是提示词素材，所以只有
     // 提示词那一问管得着它，而「切到发提示词的档」对它确实是能走通的出路。
-    expect(removeRefusal('text', noPromptButRefs)).toBe('mode-sends-no-prompt');
+    expect(removeRefusal('text', noPromptButRefs)).toBe('model-takes-no-prompt');
     expect(removeRefusal('text', { takesReferences: false, takesPrompt: true })).toBeNull();
   });
 

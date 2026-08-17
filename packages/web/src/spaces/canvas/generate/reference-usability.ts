@@ -69,17 +69,29 @@
 import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 
 /**
- * Why a rail control refuses to act. Each value maps to one message, because
- * each suggests a different remedy: switch to a mode that uses references, or
- * bring an image instead.
+ * Why a rail control refuses to act. Three reasons, each with its own remedy:
+ * switch to a mode that uses references, bring an image instead, or switch to
+ * a model that takes a prompt.
+ *
+ * A reason does NOT map to one message. Insert and remove answer different
+ * questions, and the two controls do not see the same reasons: insert has one
+ * message per reason (three), remove has two reasons to state and one of them
+ * splits by row (`mode-takes-no-references` reads differently for a focus crop,
+ * which has no edge to delete). `source-type-unused` never reaches remove at
+ * all — {@link removeRefusal} does not ask that question. Six messages.
  */
 export type ReferenceRefusal =
   | 'mode-takes-no-references'
   | 'source-type-unused'
-  | 'mode-sends-no-prompt';
+  | 'model-takes-no-prompt';
 
-/** What the active mode does with the reference pool. */
-export interface ReferenceModeContext {
+/**
+ * What the rail needs to know to answer for a row: one fact about the active
+ * MODE (does it use the reference pool) and one about the active MODEL (does
+ * it take a prompt). Named for what it is used for rather than for either
+ * source, because the two fields do not share one — see each field.
+ */
+export interface ReferenceUsabilityContext {
   /**
    * Does this mode consume the `@`-picked pool at all (`modeTakesReferences`
    * on the video panel, `!imageSourcesOff` on the image one)? This is the
@@ -121,19 +133,19 @@ export function isReferenceMaterial(kind: NodeKind): boolean {
  * the same call the `@` picker filters with, so the two entry points cannot
  * drift into disagreeing about one row.
  * @param sourceNodeType - The upstream node's modality.
- * @param ctx - What the active mode does with references, and whether its model sends a prompt.
+ * @param ctx - What the active mode does with references, and whether its model takes a prompt.
  * @returns The refusal reason, or null when the row can be inserted.
  */
 export function insertRefusal(
   sourceNodeType: NodeKind,
-  ctx: ReferenceModeContext,
+  ctx: ReferenceUsabilityContext,
 ): ReferenceRefusal | null {
   // A text row lives in the prompt and nowhere else, so the prompt question is
   // the only one that can refuse it. The video container used to ask this one,
   // reading the same `promptRequired` its editor mounts on; that second home is
   // what #1962 removed.
   if (!isReferenceMaterial(sourceNodeType)) {
-    return ctx.takesPrompt ? null : 'mode-sends-no-prompt';
+    return ctx.takesPrompt ? null : 'model-takes-no-prompt';
   }
   // For a media row the reference question comes first, and it comes first for
   // the reason the whole module exists: of the two refusals, only this one
@@ -147,7 +159,7 @@ export function insertRefusal(
   // prompt there is no box to put the `@` chip in. Unreachable in today's
   // catalog — the one mode that takes references also sends a prompt — but the
   // order has to be total.
-  if (!ctx.takesPrompt) return 'mode-sends-no-prompt';
+  if (!ctx.takesPrompt) return 'model-takes-no-prompt';
   // The pool is the image pool — see the module docstring. Everything else is
   // a legitimate connection (an edge carries creative intent as well as data
   // use, user 2026-08-13) that this pool has no way to carry.
@@ -165,32 +177,33 @@ export function insertRefusal(
  * either, and freezing it there is the same protection for the same reason
  * (#1965, user 2026-08-13 + 2026-08-16).
  *
- * So each row kind gets exactly the question that applies to it, and this is
- * where remove parts company with {@link insertRefusal}. Insert names only the
- * cause, so asking "is there a prompt to insert into" first is right for every
- * row. Remove has to name the way OUT, and the two questions lead to different
- * exits: a media row becomes removable in a mode that TAKES REFERENCES, and
- * telling its user to "switch to a mode that sends a prompt" sends them to
- * t2v / i2v / first_last / animate, where the ✕ refuses all the same. Asking
- * the reference question for media rows is what keeps that advice true.
+ * So each row kind gets exactly the question that applies to it, and the order
+ * is not arbitrary: the two questions lead to DIFFERENT exits, and only one of
+ * them is real for a media row. A media row becomes removable in a mode that
+ * TAKES REFERENCES; the prompt question would point its user at t2v / i2v /
+ * first_last / animate, where the ✕ refuses all the same. Picking the reason
+ * whose exit actually works is the invariant — whether a given message spells
+ * that exit out is a copy decision, and copy states the situation rather than
+ * explaining it (user 2026-08-17), which is why the no-prompt refusal is one
+ * short line and nothing else.
  *
  * The three media kinds still answer identically, which is what stops audio and
  * video rows from staying removable inside a dimmed mode while image rows
  * freeze (#1940).
  * @param sourceNodeType - The upstream node's modality.
- * @param ctx - What the active mode does with references, and whether its model sends a prompt.
+ * @param ctx - What the active mode does with references, and whether its model takes a prompt.
  * @returns The refusal reason, or null when the row can be removed.
  */
 export function removeRefusal(
   sourceNodeType: NodeKind,
-  ctx: ReferenceModeContext,
+  ctx: ReferenceUsabilityContext,
 ): ReferenceRefusal | null {
   // A text row lives in the prompt: one prompt is shared across the modes
   // (#1919), so removing it under a mode with no prompt would take it out of
   // every mode that does send one. Switching to such a mode is a way out that
   // actually works for it, because the reference question never applied here.
   if (!isReferenceMaterial(sourceNodeType)) {
-    return ctx.takesPrompt ? null : 'mode-sends-no-prompt';
+    return ctx.takesPrompt ? null : 'model-takes-no-prompt';
   }
   return ctx.takesReferences ? null : 'mode-takes-no-references';
 }

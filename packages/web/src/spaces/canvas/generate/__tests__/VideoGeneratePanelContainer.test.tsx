@@ -274,8 +274,8 @@ function mountContainer(
 }
 
 /**
- * Opens the panel on a node seeded with a mode and model, past the frame where
- * the catalog has not arrived.
+ * Opens the panel on a node seeded with a mode and model, once the catalog has
+ * landed.
  *
  * The mode goes into the node data rather than through the switch: the
  * container reads it off the `nodes` prop, and this harness passes a static
@@ -301,9 +301,11 @@ async function openPanelInMode(
     useCanvasStore.getState().openGeneratePanel('target', 'video');
   });
   await screen.findByTestId('generate-video-execute');
-  // The panel renders one frame before the catalog resolves; until it does the
-  // view model has no model to ask. Assert past that frame, or the subject is
-  // the loading state rather than the mode (#1964).
+  // Since #1966 the frame withholds the whole panel until a catalog is in hand,
+  // so the pill carries its text from the panel's first render. Kept as a
+  // guard: if that gate ever regresses, this line fails with "the pill is
+  // blank" instead of the mode assertion below failing for a reason that reads
+  // like a mode bug.
   await waitFor(() =>
     expect(screen.getByTestId('generate-model-trigger').textContent).not.toBe(
       '',
@@ -784,8 +786,9 @@ describe('VideoGeneratePanelContainer', () => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
       const trigger = await screen.findByTestId('generate-video-mode-trigger');
-      // The panel renders one frame before the catalog resolves, and the
-      // switch is disabled until it does (nothing to switch TO yet).
+      // `disabled={catalogEmpty}` is already false when the trigger first
+      // appears — since #1966 the panel does not mount without a catalog.
+      // Kept as a guard on that gate, cheap because it passes immediately.
       await waitFor(() => expect(trigger).not.toBeDisabled());
       fireEvent.click(trigger);
       await userEvent.click(await screen.findByTestId('generate-video-mode-i2v'));
@@ -1453,7 +1456,7 @@ describe('VideoGeneratePanelContainer', () => {
       // 「弹了个 toast」：后者三种拒绝语都能满足，分不出走的是哪条路。
       //
       // 这条同时钉住 `VideoGeneratePanel` 把 `promptRequired` 传成
-      // `modeSendsPrompt` 那行接线：删掉它，这里就变成放行、一句话都没有。
+      // `modelTakesPrompt` 那行接线：删掉它，这里就变成放行、一句话都没有。
       await openMode('talking_head', 'omnihuman-1.5', {
         nodes: [
           {
@@ -1662,9 +1665,9 @@ describe('VideoGeneratePanelContainer', () => {
       act(() => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
-      // 面板先渲染一帧、目录才解析完，在那之前这个 trigger 是 disabled 的
-      // （ModeToggle 的 `disabled={catalogEmpty}`）—— 不等它 enabled 就点，
-      // 浮层不开、下一句报 `Unable to find generate-video-mode-i2v`。
+      // 自 #1966 起面板要等目录到齐才挂载，所以 trigger 一出现就已经 enabled，
+      // 这句立即通过。留着当守卫：门一旦回退，失败报在这里，而不是下一句报
+      // `Unable to find generate-video-mode-i2v` 让人以为是浮层的问题。
       const trigger = await screen.findByTestId('generate-video-mode-trigger');
       await waitFor(() => expect(trigger).not.toBeDisabled());
       fireEvent.click(trigger);

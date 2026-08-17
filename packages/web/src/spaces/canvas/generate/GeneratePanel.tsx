@@ -229,7 +229,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         // today. Image-to-image is the mode that lights the rest back up;
         // this panel has exactly those two (`ImageGenMode`).
         modeTakesReferences={!imageSourcesOff}
-        modeSendsPrompt={promptRequired}
+        modelTakesPrompt={promptRequired}
         pendingFocus={pendingFocus}
       />
 

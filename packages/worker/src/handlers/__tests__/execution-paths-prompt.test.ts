@@ -2,10 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Both execution paths hand the user's prompt to the provider (#1966 / #1967).
+ * The two VALIDATING execution paths hand the user's prompt to the provider
+ * (#1966 / #1967).
+ *
+ * `dispatch.ts` numbers three: `runMiniTool`, `runUnderstand`, `runAigcDirect`.
+ * Only the first and third validate params against the model, so only they can
+ * get the lift-then-validate ORDER wrong, and only they go through
+ * `takePromptAndValidate`. `runUnderstand` also hands a prompt to a provider,
+ * but it builds its params from scratch and never calls `validateParams`, so
+ * there is no order in it to pin.
  *
  * `prompt-params.test.ts` pins what `takePromptAndValidate` does. This pins
- * that the two paths CALL it — a separate invariant, and one that was
+ * that those two paths CALL it — a separate invariant, and one that was
  * unguarded: adversarial round 2 reversed `runMiniTool` back to
  * validate-then-read and all 246 worker tests stayed green.
  *
@@ -90,7 +98,7 @@ vi.mock("@worker/providers/video/index.js", () => ({
 
 import { runAigcDirect, runMiniTool } from "@worker/handlers/dispatch.js";
 
-/** The resume context both paths thread through; nothing here reads it. */
+/** The resume context both validating paths thread through; nothing reads it. */
 const RESUME = {} as Parameters<typeof runAigcDirect>[3];
 
 beforeEach(() => {
@@ -99,7 +107,7 @@ beforeEach(() => {
   mockResolveMiniToolEntry.mockReset();
 });
 
-describe("both execution paths carry the prompt to the provider", () => {
+describe("both validating execution paths carry the prompt to the provider", () => {
   it("runMiniTool: the provider gets the prompt even though the model declares none", async () => {
     mockResolveMiniToolEntry.mockReturnValue({
       kind: "provider",
@@ -168,7 +176,7 @@ describe("both execution paths carry the prompt to the provider", () => {
     expect(mockGenerateAsync.mock.calls[0]![0]).toBe("bold plan");
   });
 
-  it("both paths read `text` too — the key TTS models carry the same argument under", async () => {
+  it("both validating paths read `text` too — the key TTS models carry the same argument under", async () => {
     mockResolveMiniToolEntry.mockReturnValue({
       kind: "provider",
       model: "kling-o3-pro",

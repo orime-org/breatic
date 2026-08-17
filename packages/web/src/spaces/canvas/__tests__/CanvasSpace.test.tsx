@@ -7,6 +7,8 @@ import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+import { modelsApi } from '@web/data/api';
 import { toast } from 'sonner';
 import { Awareness } from 'y-protocols/awareness';
 import type * as React from 'react';
@@ -878,9 +880,10 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       }),
     );
     renderSpace();
-    // Stand in for the panel's tool row: the real panel needs a QueryClient
-    // this mount does not have, and what is under test is the handoff, not
-    // the panel. The id is the one the video toolbar renders.
+    // Stand in for the panel's tool row: what is under test is the handoff,
+    // not the panel, and standing the button in keeps a whole panel's worth of
+    // catalog and Yjs wiring out of the assertion. The id is the one the video
+    // toolbar renders.
     const tool = document.createElement('button');
     tool.setAttribute('data-testid', 'generate-video-tool-first-frame');
     document.body.appendChild(tool);
@@ -3231,5 +3234,34 @@ describe('onLocateSource absolute-position contract (item 7 grouped source)', ()
     // The regression is centering on `node.position` (relative for a grouped
     // member). setCenter must not be fed a bare `.position.x`.
     expect(locate).not.toMatch(/setCenter\(\s*node\.position\.x/);
+  });
+});
+
+// The space warms the model catalog on mount (#1966). Pinned here rather than
+// left to the hook's own test, because the hook and the CALL are two different
+// invariants: `use-prefetch-model-catalog.test.tsx` proves the hook prefetches,
+// and this proves anything at all invokes it. Measured before it was written —
+// deleting `usePrefetchModelCatalog()` from `CanvasSpace` left all 364 web test
+// files and 3975 assertions green, so nothing in the suite held the wire.
+//
+// The assertion is that a request goes out with no panel opened, which is the
+// whole point of a prefetch: without it the first Generate of a session pays
+// for the round trip behind a panel that refuses to render until it lands.
+describe('model catalog prefetch (#1966)', () => {
+  it('asks for the catalog on mount, with no panel open', async () => {
+    const list = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue({ image: [], video: [], audio: [] } as never);
+    try {
+      mockUseCanvasSpace.mockReturnValue(mockSpace());
+      renderSpace();
+      await waitFor(() => expect(list).toHaveBeenCalled());
+      // No Generate panel was opened, and none is on screen — the request came
+      // from the space itself.
+      expect(screen.queryByTestId('generate-video-execute')).toBeNull();
+      expect(screen.queryByTestId('generate-execute')).toBeNull();
+    } finally {
+      list.mockRestore();
+    }
   });
 });

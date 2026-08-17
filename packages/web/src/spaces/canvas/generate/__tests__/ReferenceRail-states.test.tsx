@@ -9,7 +9,7 @@
  * what it says when it refuses.
  *
  * `useTranslation` is stubbed to echo its key so the assertions name the
- * message rather than its English wording: two refusal reasons split into four
+ * message rather than its English wording: three refusal reasons split into six
  * messages, and comparing rendered prose would let two of them drift into
  * saying the same thing without a test noticing.
  */
@@ -73,7 +73,7 @@ const ROWS: ReferenceRailItem[] = [
   },
 ];
 
-/** All four refusal messages the rail can send. */
+/** All six refusal messages the rail can send. */
 const KEY = {
   modeOff: 'canvas.generatePanel.refuseInsertModeOff',
   removeOff: 'canvas.generatePanel.refuseRemoveModeOff',
@@ -359,7 +359,7 @@ describe('ReferenceRail — a model that sends no prompt (#1966)', () => {
         onInsert={vi.fn()}
         onRemove={vi.fn()}
         modeTakesReferences={false}
-        modeSendsPrompt={false}
+        modelTakesPrompt={false}
       />,
     );
   }

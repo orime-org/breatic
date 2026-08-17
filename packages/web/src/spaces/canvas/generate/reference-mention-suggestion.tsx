@@ -25,7 +25,7 @@ import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-refer
 import { referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
 import {
   insertRefusal,
-  type ReferenceModeContext,
+  type ReferenceUsabilityContext,
 } from '@web/spaces/canvas/generate/reference-usability';
 import { wasLastChangeLocalUserInput } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import {
@@ -44,7 +44,7 @@ type RefreshHandleRef = { current: (() => void) | null };
  * consumes, because `insertRefusal` refuses non-image reference material
  * under every context.
  */
-const ANY_MODE: ReferenceModeContext = {
+const ANY_CONTEXT: ReferenceUsabilityContext = {
   takesReferences: true,
   // The picker lives inside the prompt editor, which only mounts when the
   // model consumes a prompt (#1966), so this dimension cannot be false here.
@@ -57,12 +57,12 @@ const ANY_MODE: ReferenceModeContext = {
  * @param input.getPool - Reads the CURRENT reference pool (incoming edges); a
  *   getter so the editor need not rebuild when the pool changes.
  * @param input.emptyLabel - Localized empty-state text for the popup.
- * @param input.getModeContext - Live getter for what the active mode does with
+ * @param input.getUsabilityContext - Live getter for what the active mode does with
  *   references; rows the mode cannot consume are left out of the picker
  *   entirely — absent from the list, not listed and greyed (user
  *   2026-08-13). A getter
  *   because the mode lives on the canvas node, not in the prompt doc.
- *   Optional; omitting it assumes a reference-taking mode ({@link ANY_MODE}).
+ *   Optional; omitting it assumes a reference-taking mode ({@link ANY_CONTEXT}).
  * @param input.refreshRef - Ref the open popup writes a `refresh()` into so the
  *   React layer can refresh a visible popup on a remote mode/pool change (residual 2).
  * @param input.isLocalUserInput - Whether the last transaction was a local user
@@ -72,7 +72,7 @@ const ANY_MODE: ReferenceModeContext = {
 export function makeReferenceSuggestion(input: {
   getPool: () => ReferenceRailItem[];
   emptyLabel: string;
-  getModeContext?: () => ReferenceModeContext;
+  getUsabilityContext?: () => ReferenceUsabilityContext;
   refreshRef?: RefreshHandleRef;
   isLocalUserInput?: (editor: Editor) => boolean;
 }): Omit<SuggestionOptions<ReferenceRailItem>, 'editor'> {
@@ -80,7 +80,7 @@ export function makeReferenceSuggestion(input: {
   /**
    * Filters the LIVE pool to the rows offerable for a query under the CURRENT
    * mode. Extracted so every popup show path computes from the same live inputs
-   * (`getPool` + `getModeContext`): the plugin's `items()` on each keystroke,
+   * (`getPool` + `getUsabilityContext`): the plugin's `items()` on each keystroke,
    * AND the focus re-show below. `@tiptap/suggestion` only re-runs `items()` on a
    * query / range change (its `handleChange`), so a mode toggle — which lives on
    * the canvas node, not the prompt doc — never triggered a recompute; a popup
@@ -91,7 +91,7 @@ export function makeReferenceSuggestion(input: {
    */
   const computeItems = (query: string): ReferenceRailItem[] => {
     const q = query.toLowerCase();
-    const modeCtx = input.getModeContext?.() ?? ANY_MODE;
+    const usabilityCtx = input.getUsabilityContext?.() ?? ANY_CONTEXT;
     return (
       input
         .getPool()
@@ -102,7 +102,7 @@ export function makeReferenceSuggestion(input: {
         // of that plus a t2i special case. Both were the image panel's
         // question, and on the video panel `audio → video` is a live
         // connection rather than the legacy edge that question assumes.
-        .filter((r) => insertRefusal(r.sourceNodeType, modeCtx) === null)
+        .filter((r) => insertRefusal(r.sourceNodeType, usabilityCtx) === null)
         .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
         .slice(0, 8)
     );

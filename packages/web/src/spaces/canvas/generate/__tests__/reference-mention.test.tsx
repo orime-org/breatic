@@ -80,7 +80,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [],
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
       }),
@@ -131,7 +131,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       // what it reads. Stating the mode is what #1945 changed — the verdict
       // did not. The picker now asks the same predicate as the rail's insert
       // button, so a row offered here is a row the rail would insert.
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
       }),
@@ -158,7 +158,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
           Parameters<typeof makeReferenceSuggestion>[0]['getPool']
         >,
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: false,
         takesPrompt: true,
       }),
@@ -244,7 +244,7 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [row],
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
       }),
@@ -294,7 +294,7 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
       }),
@@ -387,7 +387,7 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
       const s = makeReferenceSuggestion({
         getPool: () => pool,
         emptyLabel: 'No references',
-        getModeContext: () => ({
+        getUsabilityContext: () => ({
           takesReferences: !hideImages,
           takesPrompt: true,
         }),
@@ -416,7 +416,7 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow, imageRow, focusRow],
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: !hideImages,
         takesPrompt: true,
       }),
@@ -513,7 +513,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
       }),
@@ -565,7 +565,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
       }),
@@ -602,7 +602,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
       }),
@@ -648,7 +648,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
-      getModeContext: () => ({
+      getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
       }),

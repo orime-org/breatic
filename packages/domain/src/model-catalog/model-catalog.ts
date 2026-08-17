@@ -149,9 +149,12 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   }
 
   // #1966: refuse the whole modality rather than let one silent `undefined`
-  // become `false` downstream. Every service entry preheats the catalog, so
-  // this surfaces when the deployment starts instead of under whoever first
-  // opens a Generate panel.
+  // become `false` downstream. The two entries that can reach this catalog —
+  // server and worker — preheat it at startup, so a typo surfaces when the
+  // deployment starts instead of under whoever first opens a Generate panel.
+  // Collab is the third service entry and does neither: it is barred from
+  // importing `@breatic/domain` at all (`collab-no-domain-import`), and it
+  // serves no AIGC path that would read a model.
   assertTakesPromptDeclared(modality, models);
 
   let providers: Record<string, ProviderConnectionConfig> = {};

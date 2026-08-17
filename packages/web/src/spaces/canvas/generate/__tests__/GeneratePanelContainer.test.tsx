@@ -677,7 +677,7 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
   });
 
   // 参考轨道那一维的接线：`GeneratePanel` 把 `promptRequired` 传成
-  // `modeSendsPrompt`。实测过这条接线此前零覆盖 —— 单独删掉那一行，全仓
+  // `modelTakesPrompt`。实测过这条接线此前零覆盖 —— 单独删掉那一行，全仓
   // 3948 条测试没有一条变红，而 #1965 的行为在图片面板这边就静默消失了。
   it('模型不吃提示词时，参考轨道那一行也冻住', async () => {
     const listSpy = vi

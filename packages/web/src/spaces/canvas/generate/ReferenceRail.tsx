@@ -12,7 +12,7 @@ import {
   insertRefusal,
   isReferenceMaterial,
   removeRefusal,
-  type ReferenceModeContext,
+  type ReferenceUsabilityContext,
   type ReferenceRefusal,
 } from '@web/spaces/canvas/generate/reference-usability';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
@@ -87,7 +87,7 @@ interface ReferenceRailProps {
    * Defaulted `true` for the same reason as the prop above: a caller that
    * knows nothing about prompts gets the pre-#1966 rail.
    */
-  modeSendsPrompt?: boolean;
+  modelTakesPrompt?: boolean;
   /**
    * Focus crops whose upload is still in flight (#1782) — rendered as
    * disabled placeholder rows after the real entries; each disappears when
@@ -106,7 +106,7 @@ interface ReferenceRailProps {
  * @param root0.onRemove - Remove a reference by id.
  * @param root0.onInsert - Insert a reference's @-mention into the prompt.
  * @param root0.modeTakesReferences - Whether the active mode consumes the reference pool.
- * @param root0.modeSendsPrompt - Whether the active model consumes the prompt.
+ * @param root0.modelTakesPrompt - Whether the active model consumes the prompt.
  * @param root0.pendingFocus - Focus crops whose upload is still in flight.
  * @returns The reference rail, or null when empty.
  */
@@ -115,25 +115,28 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   onRemove,
   onInsert,
   modeTakesReferences = true,
-  modeSendsPrompt = true,
+  modelTakesPrompt = true,
   pendingFocus = [],
 }: ReferenceRailProps): React.JSX.Element | null {
   const t = useTranslation();
-  const modeCtx: ReferenceModeContext = React.useMemo(
+  const usabilityCtx: ReferenceUsabilityContext = React.useMemo(
     () => ({
       takesReferences: modeTakesReferences,
-      takesPrompt: modeSendsPrompt,
+      takesPrompt: modelTakesPrompt,
     }),
-    [modeTakesReferences, modeSendsPrompt],
+    [modeTakesReferences, modelTakesPrompt],
   );
-  // Three refusal reasons, six messages: three for insert, three for remove.
+  // Three refusal reasons, six messages, and the split is not 3 + 3 by reason:
+  // insert states all three; remove states only two (`source-type-unused` never
+  // reaches it) and one of those splits by row, because a focus crop has no
+  // edge to delete.
   // Insert names only the cause, because the mode selector is in this same
   // panel and every dimmed row is visibly dark. Remove has to name the ways
   // OUT, because the user asked for the row to be GONE and is being told no.
   // The crop variant doubles only the mode-off reason, for the reason below.
   const refuseInsert = React.useCallback(
     (refusal: ReferenceRefusal, kind: NodeKind): void => {
-      if (refusal === 'mode-sends-no-prompt') {
+      if (refusal === 'model-takes-no-prompt') {
         toast.warning(t('canvas.generatePanel.refuseInsertNoPrompt'));
         return;
       }
@@ -160,7 +163,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
       // row (`focusToRailItem` writes `sourceNodeType: 'image'`). The two
       // cannot coexist, so a crop-specific message here would be a string no
       // one could ever read.
-      if (refusal === 'mode-sends-no-prompt') {
+      if (refusal === 'model-takes-no-prompt') {
         toast.warning(t('canvas.generatePanel.refuseRemoveNoPrompt'));
         return;
       }
@@ -194,8 +197,8 @@ export const ReferenceRail = React.memo(function ReferenceRail({
         // `removeRefused` answers for the row dim as well as the ✕: they are
         // the same question, and spelling it twice is how a row once ended up
         // lit with its ✕ frozen (#1940).
-        const insertRefused = insertRefusal(ref.sourceNodeType, modeCtx);
-        const removeRefused = removeRefusal(ref.sourceNodeType, modeCtx);
+        const insertRefused = insertRefusal(ref.sourceNodeType, usabilityCtx);
+        const removeRefused = removeRefusal(ref.sourceNodeType, usabilityCtx);
         // Empty-source hint (H, user 2026-07-12): a source that has produced
         // nothing has no preview to show, so say so rather than opening a
         // blank card. Keyed on the ASSET rather than the thumbnail, because
@@ -229,7 +232,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             // references — that rule is not about it (user 2026-08-13) — and
             // dims under one whose model sends no prompt, where it really has
             // nothing to be material for (#1966). This component answers that
-            // second question from `modeSendsPrompt`; the video container used
+            // second question from `modelTakesPrompt`; the video container used
             // to answer it on insert, and that second home is gone (#1962).
             //
             // The hover preview is deliberately NOT dimmed: it is portaled, so

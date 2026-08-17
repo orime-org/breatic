@@ -57,7 +57,11 @@ interface CatalogGatedFrameProps {
 }
 
 /**
- * Model-catalog failure gate plus the node-anchored float.
+ * Model-catalog readiness gate plus the node-anchored float.
+ *
+ * Three ways there is no catalog to build a panel from — failed, offline, and
+ * not here yet — and all three withhold the panel. The first two also say so;
+ * the third is the ordinary wait, which the prefetch usually makes invisible.
  *
  * A panel without a catalog is a dead end (blank model pill, no params,
  * execute permanently disabled), so a failed fetch EXPLAINS itself with a
@@ -89,7 +93,8 @@ interface CatalogGatedFrameProps {
  * @param root0 - Component props.
  * @param root0.nodeId - The node the panel anchors to.
  * @param root0.children - The panel body.
- * @returns The floating panel, or null while the catalog is failed.
+ * @returns The floating panel, or null while there is no catalog to build it
+ *   from — failed, offline, or still on the wire.
  */
 export function CatalogGatedFrame({
   nodeId,

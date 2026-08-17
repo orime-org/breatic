@@ -675,9 +675,12 @@ function VideoGeneratePanelBody({
   // checked first — the same as the image panel (`GeneratePanelContainer.tsx:705`):
   // pre-launch we ship no compatibility branch for old data (#1950).
   //
-  // The model decides, not the mode (#1935, #1950): a model that declares no
-  // `prompt` has nothing to do with one, so the editor does not mount and a
-  // line says what this mode runs on instead. Unmounting rather than hiding —
+  // The model decides, not the mode (#1935, #1950, #1966): a model that
+  // declares `takes_prompt: false` has nothing to do with one, so the editor
+  // does not mount and a line says this mode does not need a prompt. That line
+  // names no modality on purpose (user 2026-08-17) — the trigger is a per-model
+  // boolean, so copy tied to audio would appear under a mode with nothing to do
+  // with audio the moment a second model declared it. Unmounting rather than hiding —
   // there is nothing to type into it here, and a mounted collaborative editor
   // costs a TipTap instance plus its bindings. The cost is the prompt's undo
   // history, which lives on the editor instance and dies with it (#1961).

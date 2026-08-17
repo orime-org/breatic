@@ -32,9 +32,10 @@ interface TakesPromptCandidate {
 /**
  * Assert that every model in one modality states `takes_prompt`.
  *
- * Called by the catalog loader, and preheated at every service entry so a
- * typo surfaces when the deployment starts rather than under the first user
- * who opens a Generate panel.
+ * Called by the catalog loader, which the server and worker entries preheat at
+ * startup so a typo surfaces when the deployment starts rather than under the
+ * first user who opens a Generate panel. Those are the only two entries that
+ * can: collab may not import `@breatic/domain` (`collab-no-domain-import`).
  * @param modality - The modality being loaded, named in the error.
  * @param models - The models parsed out of that modality's yaml files.
  * @throws {Error} when any model omits the field or gives it a non-boolean.

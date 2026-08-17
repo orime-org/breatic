@@ -3773,17 +3773,17 @@ function absoluteNodePosition(
  * @returns The provider-wrapped canvas surface.
  */
 export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
-  // Resolved once, here, and handed to every collaborative editor on the board
-  // — the text nodes and the generation prompt. `useSocket` reference-counts
-  // the shared provider the space's tab already holds, so this opens no second
-  // connection; what it buys is a single answer to "whose caret is this",
-  // instead of one per editor that could drift apart.
   // Warm the model catalog now (#1966). The Generate panel refuses to render
   // until it has one, so without this the first Generate of a session pays for
   // the round trip with a blank patch of screen.
   usePrefetchModelCatalog();
   const canvasDocName = docName.canvasSpace(props.projectId, props.spaceId);
   const canvasDoc = React.useMemo(() => getDoc(canvasDocName), [canvasDocName]);
+  // Resolved once, here, and handed to every collaborative editor on the board
+  // — the text nodes and the generation prompt. `useSocket` reference-counts
+  // the shared provider the space's tab already holds, so this opens no second
+  // connection; what it buys is a single answer to "whose caret is this",
+  // instead of one per editor that could drift apart.
   const { provider: caretProvider } = useSocket({
     name: canvasDocName,
     doc: canvasDoc,

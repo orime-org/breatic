@@ -16,14 +16,17 @@ export interface ExecuteGateInput {
   /** Whether a submission is already in flight (front-end idempotency). */
   isSubmitting: boolean;
   /**
-   * Whether the selected model takes a prompt at all (#1935).
+   * Whether the selected model takes a prompt at all (#1935, #1966).
    *
-   * Asked of the MODEL, not of the mode: which params a model accepts is
-   * declared per model in the catalog and reaches the browser whole, the same
-   * fact the panel already reads for the audio toggle and the reference cap.
-   * The talking-head model declares no `prompt` — it takes a portrait and an
-   * audio track and follows the audio — so demanding one there would be a
+   * Asked of the MODEL, not of the mode: `takes_prompt` is declared per model
+   * in the catalog and reaches the browser whole, the same fact the panel
+   * already reads for the audio toggle and the reference cap. The talking-head
+   * model declares `takes_prompt: false` — it takes a portrait and an audio
+   * track and follows the audio — so demanding one there would be a
    * requirement we invented for a model with nothing to do with the answer.
+   * Before #1966 this was inferred from whether the model declared a `prompt`
+   * under `params`; no model declares that param any more, so the inference
+   * would now switch the requirement off for the entire catalog.
    *
    * Whether one is SENT is a separate question this gate does not decide: the
    * prompt travels as its own argument rather than as a param, so any

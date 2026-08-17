@@ -178,7 +178,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         // and in talking head (the only mode whose model sends no prompt) it
         // dims and freezes there too (#1966).
         modeTakesReferences={modeTakesReferences(mode)}
-        modeSendsPrompt={promptRequired}
+        modelTakesPrompt={promptRequired}
       />
 
       {promptSlot}
