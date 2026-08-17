@@ -33,9 +33,15 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
   const [historyOpen, setHistoryOpen] = useExclusiveOverlay('conversation-history');
 
   const status = useConversationRuntime((s) => s.openStatus[projectId] ?? 'idle');
-  const conversations = useConversationRuntime((s) => s.listByProject[projectId]);
   const currentId = useConversationRuntime((s) => s.currentByProject[projectId]);
-  const currentTitle = conversations?.find((c) => c.id === currentId)?.title ?? null;
+  // From the conversation, not from its row in the list. The list holds one
+  // page, ordered by when each conversation was last used and fetched afresh
+  // every time it is opened -- a conversation nobody has spoken in for a while
+  // is simply not on it, and a name read from there would disappear with the
+  // page while the conversation it belongs to is still on screen.
+  const currentTitle = useConversationRuntime((s) =>
+    currentId === undefined ? null : (s.conversations[currentId]?.title ?? null),
+  );
   const unreachable = status === 'failed';
   const arrived = currentId !== undefined;
   // What the server said, when it said anything. The scrim covers the line

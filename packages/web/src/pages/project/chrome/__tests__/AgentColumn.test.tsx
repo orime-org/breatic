@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('@web/data/api/chat', () => ({
@@ -28,7 +28,7 @@ vi.mock('@web/data/api/chat', () => ({
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { chatApi } from '@web/data/api/chat';
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
-import { _resetForTests } from '@web/stores/conversation-runtime';
+import { _resetForTests, useConversationRuntime } from '@web/stores/conversation-runtime';
 
 const PROJECT = 'p-1';
 
@@ -229,5 +229,31 @@ describe('the header while the conversation is still on its way', () => {
     await waitFor(() => expect(screen.getByTestId('agent-col-header')).toBeInTheDocument());
 
     expect(screen.getByTestId('agent-col-header')).not.toHaveTextContent('Untitled conversation');
+  });
+});
+
+describe('the header when the list no longer holds the conversation on screen', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('still calls it by its name', async () => {
+    // 打开列表会重取第一页,而当前这条很久没用过、不在那一页里。名字是会话
+    // 自己的属性,不该跟着一页列表一起消失 —— 顶栏说它「未命名」是在陈述一件
+    // 假的事。
+    opensWith([{ id: 'c-1', title: 'Storyboard notes' }]);
+    renderColumn();
+    await waitFor(() =>
+      expect(screen.getByTestId('agent-col-header')).toHaveTextContent('Storyboard notes'),
+    );
+
+    act(() => {
+      useConversationRuntime.setState((s) => ({
+        listByProject: { ...s.listByProject, [PROJECT]: [] },
+      }));
+    });
+
+    expect(screen.getByTestId('agent-col-header')).toHaveTextContent('Storyboard notes');
   });
 });

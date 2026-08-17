@@ -107,6 +107,17 @@ export interface ConversationRuntime {
   failures: number;
   /** The reply of the most recent failure, for the panel to point at. */
   failedReplyId: string | null;
+  /**
+   * What this conversation is called, or null while it has no name.
+   *
+   * Here rather than only on its row in the list, because the list is one
+   * page of a paged collection ordered by when each conversation was last
+   * used -- open it again and the page is fetched afresh, and a conversation
+   * nobody has spoken in for a while is not on it. A name read out of that
+   * page vanishes with it, and the header then says the conversation has no
+   * name, which is a different sentence from the one it had.
+   */
+  title: string | null;
 }
 
 /**
@@ -786,6 +797,7 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
           // than the one it is compared against, and go unannounced.
           failures: held?.failures ?? 0,
           failedReplyId: held?.failedReplyId ?? null,
+          title: opened.conversation.title ?? null,
         },
       },
     };
@@ -1523,9 +1535,17 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
  */
 function applyTitle(projectId: string, conversationId: string, title: string | null): void {
   useStore.setState((s) => {
+    // The conversation first, because that is where the name lives. Its row in
+    // the list is a second copy for the list to draw, and there may not be one
+    // -- the list holds one page, and this conversation need not be on it.
+    const held = s.conversations[conversationId];
+    const conversations = held
+      ? { ...s.conversations, [conversationId]: { ...held, title } }
+      : s.conversations;
     const listed = s.listByProject[projectId];
-    if (!listed) return s;
+    if (!listed) return { conversations };
     return {
+      conversations,
       listByProject: {
         ...s.listByProject,
         [projectId]: listed.map((c) => (c.id === conversationId ? { ...c, title } : c)),
@@ -1550,12 +1570,19 @@ function applyTitle(projectId: string, conversationId: string, title: string | n
  */
 function noteActivity(projectId: string, conversationId: string, title: string | null): void {
   useStore.setState((s) => {
+    // The name reaches the conversation whatever the list holds. Speaking in
+    // one that is not on the page in hand still names it, and the header reads
+    // the name from here.
+    const held = s.conversations[conversationId];
+    const conversations = held
+      ? { ...s.conversations, [conversationId]: { ...held, title } }
+      : s.conversations;
     const listed = s.listByProject[projectId];
-    if (!listed) return s;
-    const spokenIn = listed.find((c) => c.id === conversationId);
-    if (!spokenIn) return s;
+    const spokenIn = listed?.find((c) => c.id === conversationId);
+    if (!listed || !spokenIn) return { conversations };
     const now = new Date().toISOString();
     return {
+      conversations,
       listByProject: {
         ...s.listByProject,
         [projectId]: [
@@ -1565,6 +1592,15 @@ function noteActivity(projectId: string, conversationId: string, title: string |
       },
     };
   });
+}
+
+/**
+ * What a conversation is called, as the header should say it.
+ * @param conversationId - The conversation asked about.
+ * @returns Its name, or null when it has none or is not held.
+ */
+function titleOf(conversationId: string): string | null {
+  return useStore.getState().conversations[conversationId]?.title ?? null;
 }
 
 /**
@@ -2173,6 +2209,7 @@ export const conversationRuntime = {
   startNew,
   loadMoreConversations,
   reloadConversationList,
+  titleOf,
   rename,
   remove,
   setDraft,

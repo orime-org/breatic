@@ -670,3 +670,71 @@ describe('a page request left over from a visit that ended', () => {
     expect(useConversationRuntime.getState().listLoadingMore[PROJECT]).toBe(true);
   });
 });
+
+describe('the name of the conversation on screen', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  it('survives the list being replaced by a page it is not on', async () => {
+    // 名字是会话自己的属性,而列表是分好页、按最近使用排的一个容器 —— 打开列表
+    // 重取第一页时,一条很久没用过的当前会话根本不在那一页里。名字若只存在列表
+    // 行上,它就跟着那一页一起没了,顶栏于是改口说这条会话没有名字。
+    openAnswers([{ id: 'c-old', title: '很久以前那条' }], 'c-old', {
+      hasMoreConversations: true,
+    });
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [
+        { id: 'c-new1', title: '新的一' },
+        { id: 'c-new2', title: '新的二' },
+      ],
+      hasMore: true,
+    } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+    await conversationRuntime.reloadConversationList(PROJECT);
+
+    expect(conversationRuntime.titleOf('c-old')).toBe('很久以前那条');
+  });
+
+  it('is what a rename just set, whether or not it is listed', async () => {
+    openAnswers([{ id: 'c-old', title: '旧名字' }], 'c-old', { hasMoreConversations: true });
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [{ id: 'c-other', title: '别的' }],
+      hasMore: true,
+    } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+    await conversationRuntime.reloadConversationList(PROJECT);
+
+    vi.mocked(chatApi.renameConversation).mockResolvedValue({
+      id: 'c-old',
+      title: '新名字',
+    } as unknown as Awaited<ReturnType<typeof chatApi.renameConversation>>);
+    await conversationRuntime.rename(PROJECT, 'c-old', '新名字');
+
+    expect(conversationRuntime.titleOf('c-old')).toBe('新名字');
+  });
+
+  it('is what the first message named it', async () => {
+    // 走真实那条路:发一句话,服务器在 `chat_turn_started` 里回它给这条会话
+    // 取的名字。
+    openAnswers([{ id: 'c-1', title: null }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    let heard: ((e: SSEEventEnvelope) => void) | undefined;
+    vi.mocked(chatApi.streamMessage).mockImplementation((_i, h) => {
+      heard = (h as { onEvent: (e: SSEEventEnvelope) => void }).onEvent;
+      return new Promise<void>(() => {});
+    });
+    void conversationRuntime.send(PROJECT, '第一句话');
+    await vi.waitFor(() => expect(heard).toBeDefined());
+    heard?.({
+      event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
+      data: { messages: [], hasMore: false, title: '第一句话' },
+    } as unknown as SSEEventEnvelope);
+
+    expect(conversationRuntime.titleOf('c-1')).toBe('第一句话');
+  });
+});
