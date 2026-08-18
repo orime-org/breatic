@@ -1124,8 +1124,13 @@ describe('这个部署服务不了的档 (#1951)', () => {
     const listSpy = vi
       .spyOn(modelsApi, 'list')
       .mockResolvedValue(imageCatalog([T2I_MODEL]));
+    // mode 必须同时进 Yjs 和 nodes 这个 prop：面板的当前档来自 vm（读 prop），
+    // Yjs 只在写回调里被读。只 seed 不传 prop 的话 stored 恒为 undefined，
+    // 这条用例就测不到「存了不可用档」这件事（实现对抗第 2 轮咬出）。
     seedImageNode({ mode: 'i2i' });
-    mountContainer();
+    mountContainer({
+      nodes: [{ id: 'target', data: { kind: 'image', status: 'idle', mode: 'i2i' } }],
+    });
     act(() => {
       useCanvasStore.getState().openGeneratePanel('target', 'image');
     });

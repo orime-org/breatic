@@ -142,6 +142,13 @@ describe('CatalogGatedFrame — 目录到齐才展开 (#1964)', () => {
     await waitFor(() => {
       expect(warnSpy).toHaveBeenCalled();
     });
+    // 认这条出口自己的那句话本身，不是「弹了个 warning」也不是 toast id ——
+    // id 写死在调用处，跟传哪个 key 无关，把两句话对调它照样对得上（实现对抗
+    // 第 2 轮实测：对调后 1207 条全绿，我第一版断言 id 也没抓住）。
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('No models available'),
+      expect.anything(),
+    );
     expect(screen.queryByTestId('panel-body')).toBeNull();
     expect(useCanvasStore.getState().panelHostId).toBeNull();
     // 不是失败，所以不能弹 error。
@@ -156,6 +163,10 @@ describe('CatalogGatedFrame — 目录到齐才展开 (#1964)', () => {
     await waitFor(() => {
       expect(warnSpy).toHaveBeenCalled();
     });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('No models available'),
+      expect.anything(),
+    );
     expect(screen.queryByTestId('panel-body')).toBeNull();
   });
 
@@ -182,6 +193,10 @@ describe('CatalogGatedFrame — 目录到齐才展开 (#1964)', () => {
       await waitFor(() => {
         expect(warnSpy).toHaveBeenCalledTimes(1);
       });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('offline'),
+        expect.anything(),
+      );
       expect(screen.queryByTestId('panel-body')).toBeNull();
       expect(useCanvasStore.getState().panelHostId).toBeNull();
       // 对照：这不是「请求失败了」，而是根本没发出去。
@@ -198,6 +213,10 @@ describe('CatalogGatedFrame — 目录到齐才展开 (#1964)', () => {
     await waitFor(() => {
       expect(errorSpy).toHaveBeenCalledTimes(1);
     });
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Model list unavailable'),
+      expect.anything(),
+    );
     expect(screen.queryByTestId('panel-body')).toBeNull();
     expect(useCanvasStore.getState().panelHostId).toBeNull();
   });
