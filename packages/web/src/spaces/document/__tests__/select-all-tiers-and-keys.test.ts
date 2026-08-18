@@ -3,7 +3,7 @@
 
 /**
  * #123 验收 B1 / B2 / B3 / B4 / B5：两档 Ctrl+A 与全文档选区的按键行为。
- * 权威定稿 inner engineering/decisions/2026-08-17-document-structure-dd.md §10
+ * 权威定稿：文档结构决议（2026-08-17，私有工程文档）§10
  * 两张转移表；全文档删除走确认接缝（onClearDocumentRequest 回调 +
  * clearDocument 命令），确认对话框本体在组件层另测。
  *

@@ -3,7 +3,7 @@
 
 /**
  * #123 验收 A1 / A3：无标题块的 `block*` 文档结构。
- * 权威定稿 inner engineering/decisions/2026-08-17-document-structure-dd.md §6.1。
+ * 权威定稿：文档结构决议（2026-08-17，私有工程文档）§6.1。
  *
  * TDD 红灯批次一：本文件在标题世界（`title block*`）下必须全红——
  * schema 里还有 title 节点、空 fragment 会被本地补上幻影标题、

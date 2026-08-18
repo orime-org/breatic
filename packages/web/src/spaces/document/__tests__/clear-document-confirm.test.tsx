@@ -3,8 +3,8 @@
 
 /**
  * #123 验收 B3 的组件半边：全文档选区上的删除先问、确认才清、取消不动。
- * 权威定稿 inner engineering/decisions/2026-08-17-document-structure-dd.md
- * §9 / §10（依据段含 NN/g 出处与范围收窄理由）。
+ * 权威定稿：文档结构决议（2026-08-17，私有工程文档）§9 / §10
+ * （依据段含 NN/g 出处与范围收窄理由）。
  *
  * 真实键盘路径驱动（keydown 打进 ProseMirror 的 DOM），对话框走
  * components/ui 的 AlertDialog。TDD 红灯阶段确认过：接线缺失时按删除键
