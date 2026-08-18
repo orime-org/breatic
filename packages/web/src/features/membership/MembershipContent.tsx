@@ -119,35 +119,15 @@ export function MembershipContent({
     <div className='flex flex-col gap-8'>
       <section className='flex flex-col gap-1.5'>
         <SectionHeading>{t('membership.currentTier')}</SectionHeading>
-        <div className='flex items-start justify-between gap-4'>
-          <div className='flex flex-col gap-1'>
-            <div className='text-2xl font-bold' data-testid='current-tier-name'>
-              {t(`membership.tier.${tier}`)}
-            </div>
-            {/* Under the tier name: when the next charge is, or that the
-                membership is ending, or that a payment is outstanding. Which
-                of those follows from the subscription's situation, and a
-                static price would be wrong in three of them. */}
-            <SubscriptionLines subscription={subscription} />
+        <div className='flex flex-col gap-1'>
+          <div className='text-2xl font-bold' data-testid='current-tier-name'>
+            {t(`membership.tier.${tier}`)}
           </div>
-          {subscription && subscription.state !== 'none' ? (
-            <Button
-              type='button'
-              variant='outline'
-              disabled={busy}
-              data-testid={
-                subscription.cancelAtPeriodEnd
-                  ? 'membership-resume'
-                  : 'membership-cancel'
-              }
-              onClick={subscription.cancelAtPeriodEnd ? resume : cancel}
-              className='shrink-0'
-            >
-              {subscription.cancelAtPeriodEnd
-                ? t('membership.resume')
-                : t('membership.cancel')}
-            </Button>
-          ) : null}
+          {/* Under the tier name: when the next charge is, or that the
+              membership is ending, or that a payment is outstanding. Which of
+              those follows from the subscription's situation, and a static
+              price would be wrong in three of them. */}
+          <SubscriptionLines subscription={subscription} />
         </div>
         <p className='text-sm text-foreground-secondary'>
           {t('membership.tierNote')}
@@ -270,10 +250,36 @@ export function MembershipContent({
               busy={busy}
             />
           </ScrollArea>
-          <ContactLine
-            text={t('membership.contactEnterprise')}
-            testId='membership-contact-priced'
-          />
+          {/* One line, contact on the left and the subscription control on
+              the right — the ratified layout (design §13, and the demo it
+              points at). The control sat beside the tier name before, which
+              put an action in the panel's quietest corner and crowded the
+              close button. */}
+          <div className='flex items-center justify-between gap-4'>
+            <ContactLine
+              text={t('membership.contactEnterprise')}
+              testId='membership-contact-priced'
+            />
+            {subscription && subscription.state !== 'none' ? (
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                disabled={busy}
+                data-testid={
+                  subscription.cancelAtPeriodEnd
+                    ? 'membership-resume'
+                    : 'membership-cancel'
+                }
+                onClick={subscription.cancelAtPeriodEnd ? resume : cancel}
+                className='shrink-0'
+              >
+                {subscription.cancelAtPeriodEnd
+                  ? t('membership.resume')
+                  : t('membership.cancel')}
+              </Button>
+            ) : null}
+          </div>
         </section>
       ) : null}
     </div>

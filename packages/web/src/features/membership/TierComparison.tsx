@@ -115,8 +115,13 @@ export const TierComparison = React.memo(function TierComparison({
       ? 'border-b border-border bg-accent px-2.5 py-2 text-right tabular-nums'
       : 'border-b border-border px-2.5 py-2 text-right tabular-nums';
 
+  // `border-separate` rather than `border-collapse`: under the collapsed
+  // border model browsers ignore a cell's border-radius outright, and the
+  // highlighted column's first and last cells are meant to be rounded.
+  // Spacing is zero, so each row still shows a single bottom border and the
+  // table looks exactly as it did.
   return (
-    <table className='w-full border-collapse text-sm'>
+    <table className='w-full border-separate border-spacing-0 text-sm'>
       <thead>
         <tr>
           {/* The corner is the section heading. It sits on the same line as
@@ -136,7 +141,7 @@ export const TierComparison = React.memo(function TierComparison({
               aria-current={offer.tier === currentTier ? 'true' : undefined}
               className={
                 offer.tier === currentTier
-                  ? 'border-b border-active-border bg-accent px-2.5 py-2 text-right text-xs font-semibold text-foreground'
+                  ? 'rounded-t-chrome border-b border-active-border bg-accent px-2.5 py-2 text-right text-xs font-semibold text-foreground'
                   : 'border-b border-border px-2.5 py-2 text-right text-xs font-semibold text-muted-foreground'
               }
             >
@@ -202,7 +207,7 @@ export const TierComparison = React.memo(function TierComparison({
                 data-testid={`compare-action-${offer.tier}`}
                 className={
                   offer.tier === currentTier
-                    ? 'bg-accent px-2.5 py-3 text-center'
+                    ? 'rounded-b-chrome bg-accent px-2.5 py-3 text-center'
                     : 'px-2.5 py-3 text-center'
                 }
               >
