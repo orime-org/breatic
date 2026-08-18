@@ -455,15 +455,19 @@ body {
 
 /* ---- The document Space's unsupported-content stand-ins ----
    Content another build wrote and this one has no vocabulary for renders as
-   a labelled stand-in (document-unsupported.ts carries the label; this
-   paints the box it sits in). These were unreachable while unknown content
-   also switched the document to read-only; that condition is gone — the
-   intercept answers to the published schema version alone — so the stand-ins
-   are ordinary, selectable, deletable content now. Unstyled, the empty
-   element rendered at zero height: present and impossible to see or click,
-   measured in the browser on a legacy document whose retired block came back
-   through the fallback. The dashed border is the placeholder convention;
-   muted tokens keep the box inert in both themes. */
+   a labelled stand-in. These were unreachable while unknown content also
+   switched the document to read-only; that condition is gone — the intercept
+   answers to the published schema version alone — so the stand-ins are
+   ordinary, selectable, deletable content now. Unstyled, the empty element
+   rendered at zero height: present and impossible to see or click, measured
+   in the browser on a legacy document whose retired block came back through
+   the fallback.
+
+   The label text arrives as a `data-label` decoration
+   (document-unsupported.ts says why a decoration and not renderHTML text —
+   in one word: locale) and is painted here, the same attr() pattern as the
+   empty-document placeholder above. The dashed border is the placeholder
+   convention; muted tokens keep the box inert in both themes. */
 .doc-body-editor .ProseMirror div[data-unsupported-block] {
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-content-sm);
@@ -472,12 +476,20 @@ body {
   user-select: none;
 }
 
+.doc-body-editor .ProseMirror div[data-unsupported-block]::before {
+  content: attr(data-label);
+}
+
 .doc-body-editor .ProseMirror span[data-unsupported-inline] {
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-content-sm);
   padding: 0 6px;
   color: var(--color-muted-foreground);
   user-select: none;
+}
+
+.doc-body-editor .ProseMirror span[data-unsupported-inline]::before {
+  content: attr(data-label);
 }
 
 /* ---- The document Space's body typography ----

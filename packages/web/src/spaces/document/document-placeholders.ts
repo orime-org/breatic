@@ -3,7 +3,14 @@
 
 /**
  * The document's one placeholder: "start writing", shown while the document
- * holds no blocks.
+ * LOOKS empty — no blocks at all, or nothing but empty paragraphs and
+ * headings, the two blocks that paint nothing when they hold no text. To the
+ * person looking at the screen those states are identical (click into a new
+ * document, type nothing, come back: one empty paragraph, blank screen), so
+ * the hint has to be identical too (user 2026-08-18). An empty code block
+ * shows its background, an empty quote its border, an empty list its bullet,
+ * a stand-in its labelled box — those are visible content and keep the
+ * placeholder away.
  *
  * ## Why not the placeholder extension every other editor uses
  *
@@ -31,10 +38,28 @@
 
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { t } from '@breatic/shared';
 
-/** Marks an editor whose document holds no blocks. */
+/** Marks an editor whose document shows nothing a reader could see. */
 export const DOCUMENT_BODY_EMPTY_CLASS = 'doc-body-empty';
+
+/** The top-level blocks that paint nothing at all while they hold no text. */
+const INVISIBLE_WHEN_EMPTY = new Set(['paragraph', 'heading']);
+
+/**
+ * Whether the document paints nothing a reader could see.
+ * @param doc - The document node to judge.
+ * @returns True for zero blocks, or nothing but empty paragraphs and headings.
+ */
+function looksEmpty(doc: PMNode): boolean {
+  for (let i = 0; i < doc.childCount; i += 1) {
+    const child = doc.child(i);
+    if (!INVISIBLE_WHEN_EMPTY.has(child.type.name)) return false;
+    if (child.content.size > 0) return false;
+  }
+  return true;
+}
 
 /**
  * Draws the placeholder described at the top of this file.
@@ -52,12 +77,12 @@ export const DocumentPlaceholders = Extension.create({
         key: new PluginKey('documentPlaceholders'),
         props: {
           attributes: (state): Record<string, string> =>
-            state.doc.childCount > 0
-              ? {}
-              : {
+            looksEmpty(state.doc)
+              ? {
                 class: DOCUMENT_BODY_EMPTY_CLASS,
                 'data-body-placeholder': t('spaces.document.placeholder'),
-              },
+              }
+              : {},
         },
       }),
     ];

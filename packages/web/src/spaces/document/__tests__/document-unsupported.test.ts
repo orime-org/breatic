@@ -11,13 +11,12 @@
  * 从真实 schema 里读，而不是读扩展定义 —— 这样同时验证它们真的被注册进去了。
  */
 
-import { describe, it, expect } from 'vitest';
-import { getSchema } from '@tiptap/core';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { Editor, getSchema } from '@tiptap/core';
 import type { Schema } from '@tiptap/pm/model';
-import { DOMSerializer } from '@tiptap/pm/model';
 import * as Y from 'yjs';
 
-import { t } from '@breatic/shared';
+import { getLocale, setLocale, t } from '@breatic/shared';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 
 /**
@@ -115,26 +114,84 @@ describe('兜底标记 unsupportedMark', () => {
   });
 });
 
-describe('兜底节点在屏幕上是可见的占位（H 组 smoke 逮出：只读判据删条件二后它们是常态路径，零样式 = 零高不可见）', () => {
+describe('兜底节点在屏幕上是可见的占位，标签跟随语言（H 组 smoke + 实现对抗第 1 轮 #3）', () => {
+  // 标签走 decoration + CSS attr()，不烤进 renderHTML：节点 DOM 只在节点
+  // 自己变化时重画，切语言不重画它——decoration 每次 dispatch 重算，
+  // LocaleRedraw 的空 dispatch 正好触发（跟空态占位同一套机制）。
+  const liveEditors: Editor[] = [];
+  let originalLocale: ReturnType<typeof getLocale>;
+
+  beforeEach(() => {
+    originalLocale = getLocale();
+  });
+  afterEach(() => {
+    setLocale(originalLocale);
+    liveEditors.splice(0).forEach((e) => e.destroy());
+  });
+
   /**
-   * 照编辑器画节点的方式画出来。
-   * @param nodeName - 画哪个兜底类型。
-   * @returns 渲染出的元素。
+   * 一个共享文档里躺着一个陌生元素的活编辑器。
+   * @param elementName - 那个陌生元素的名字。
+   * @param inline - 造行内形态（包在段落里）还是块级形态。
+   * @returns 编辑器。
    */
-  function renderNode(nodeName: string): HTMLElement {
-    const schema = realSchema();
-    const node = schema.nodes[nodeName].create({ originalName: 'title' });
-    return DOMSerializer.fromSchema(schema).serializeNode(node) as HTMLElement;
+  function openWithUnknown(elementName: string, inline = false): Editor {
+    const doc = new Y.Doc();
+    doc.transact(() => {
+      const body = doc.getXmlFragment('body');
+      if (inline) {
+        const para = new Y.XmlElement('paragraph');
+        para.insert(0, [new Y.XmlText('before '), new Y.XmlElement(elementName)]);
+        body.insert(0, [para]);
+      } else {
+        body.insert(0, [new Y.XmlElement(elementName)]);
+      }
+    });
+    const editor = new Editor({
+      extensions: buildDocumentExtensions({
+        fragment: doc.getXmlFragment('body'),
+        caretProvider: null,
+        undoManager: undefined,
+        resolveCollaboratorName: () => null,
+      }),
+    });
+    liveEditors.push(editor);
+    return editor;
   }
 
-  it('块级兜底带着本地化标签文字，不是一个空 div', () => {
-    const el = renderNode('unsupportedBlock');
-    expect(el.textContent).toBe(t('spaces.document.unsupported.label'));
-    expect(el.getAttribute('data-original-name')).toBe('title');
+  it('块级兜底的 DOM 带着本地化标签', () => {
+    setLocale('zh-CN');
+    const editor = openWithUnknown('title');
+    const el = editor.view.dom.querySelector('[data-unsupported-block]');
+    expect(el).not.toBeNull();
+    expect(el?.getAttribute('data-label')).toBe(t('spaces.document.unsupported.label'));
+    expect(el?.getAttribute('data-original-name')).toBe('title');
   });
 
   it('行内兜底带着同一个标签', () => {
-    const el = renderNode('unsupportedInline');
-    expect(el.textContent).toBe(t('spaces.document.unsupported.label'));
+    setLocale('zh-CN');
+    const editor = openWithUnknown('mentionish', true);
+    const el = editor.view.dom.querySelector('[data-unsupported-inline]');
+    expect(el).not.toBeNull();
+    expect(el?.getAttribute('data-label')).toBe(t('spaces.document.unsupported.label'));
+  });
+
+  it('切换语言后标签跟上，不冻结在绘制那一刻', async () => {
+    setLocale('zh-CN');
+    const editor = openWithUnknown('title');
+    // LocaleRedraw 在 'create' 事件里订阅，而 tiptap v3 把 'create' 推迟到
+    // setTimeout(0)——先等订阅落地，再切语言（真实使用里这个窗口只有一拍，
+    // 且错过的切换会被下一次切换补上）。
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const before = editor.view.dom
+      .querySelector('[data-unsupported-block]')
+      ?.getAttribute('data-label');
+    setLocale('ja');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const after = editor.view.dom
+      .querySelector('[data-unsupported-block]')
+      ?.getAttribute('data-label');
+    expect(before).not.toBe(after);
+    expect(after).toBe(t('spaces.document.unsupported.label'));
   });
 });

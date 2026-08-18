@@ -96,3 +96,45 @@ describe('the empty-document placeholder', () => {
     expect(names).not.toContain('placeholder');
   });
 });
+
+describe('一个只有空段落的文档，看起来跟零块一样空——占位也要在（user 2026-08-18 拍定）', () => {
+  // 点一下空文档建了段、没打字就切走：文档里躺着一个空段落，屏幕上什么
+  // 都没有。从用户眼里这跟零块一模一样，提示不一样就是困惑。判据从
+  // 「零块」扩成「没有任何可见内容」：所有顶层块都是空的段落或标题——
+  // 这两种空着的时候什么都不画；空代码块有底色、空引用有边线、空列表
+  // 有圆点，它们可见，不算。
+  it('一个空段落：占位显示', () => {
+    const editor = open('<p></p>');
+    expect(editor.state.doc.childCount).toBe(1);
+    const { marked, text } = marking(editor);
+    expect(marked).toBe(true);
+    expect(text).toBe(t('spaces.document.placeholder'));
+  });
+
+  it('几个空段落加一个空标题：占位显示', () => {
+    const editor = open('<p></p><h2></h2><p></p>');
+    expect(marking(editor).marked).toBe(true);
+  });
+
+  it('有一个字就不显示', () => {
+    const editor = open('<p></p><p>x</p>');
+    expect(marking(editor).marked).toBe(false);
+  });
+
+  it('空代码块是可见的，不算空态', () => {
+    const editor = open('<pre><code></code></pre>');
+    expect(marking(editor).marked).toBe(false);
+  });
+
+  it('兜底占位块是可见的，不算空态', () => {
+    const doc = new Y.Doc();
+    doc.transact(() => {
+      doc.getXmlFragment('body').insert(0, [new Y.XmlElement('strangeBlock')]);
+    });
+    const editor = new Editor({
+      extensions: buildDocumentExtensions({ fragment: doc.getXmlFragment('body') }),
+    });
+    editors.push(editor);
+    expect(marking(editor).marked).toBe(false);
+  });
+});
