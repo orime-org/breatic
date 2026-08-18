@@ -1091,8 +1091,8 @@ describe('GeneratePanelContainer — 删掉的守卫由谁接替 (#1949)', () =>
 
   it('协作者在点击前一刻删掉节点，任务不会发出去', async () => {
     // 节点可能在面板打开和这一次点击之间消失。读 React prop 仍然看得见它，
-    // 只有实时 Yjs 读看不见 —— 这正是那次实时读存在的理由。视频面板自 #1927
-    // 起就有这条，图片面板这边直到 #1949 删掉 `nodeExists` 都没有。
+    // 只有实时 Yjs 读看不见 —— 这正是那次实时读存在的理由。视频面板自 #1899
+    // 起就有这条（PR #419），图片面板这边直到 #1949 删掉 `nodeExists` 都没有。
     const listSpy = vi
       .spyOn(modelsApi, 'list')
       .mockResolvedValue(imageCatalog());

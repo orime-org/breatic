@@ -160,11 +160,12 @@ function GeneratePanelBody({
   // has batched-but-not-flushed can't submit a stale prompt or double-fire.
   //
   // The state feeds the button's own `evaluateExecute` call, so both sides ask
-  // the same question of their own inputs (#1949). It does not, today, change
-  // what the button renders: `prompt-missing` and `null` are the same to
-  // `isExecuteButtonDisabled`, and `GeneratePanel` is memoized on a value that
-  // is equal across both. It is an INPUT to a gate that must stay complete,
-  // not a line whose answer nothing reads.
+  // the same question of their own inputs (#1949). What the button DRAWS is the
+  // same either way — `prompt-missing` and `null` both leave it live and
+  // arrow-shaped — but the two are different values, so `GeneratePanel` (a
+  // default-shallow `React.memo`) does re-render on the transition. It is an
+  // INPUT to a gate that must stay complete, not a line whose answer nothing
+  // reads.
   const [promptText, setPromptText] = React.useState('');
   const promptTextRef = React.useRef('');
   const handlePromptChange = React.useCallback((text: string) => {
@@ -572,7 +573,7 @@ function GeneratePanelBody({
     // graph read, so a node a collaborator deleted has no status and
     // `evaluateExecute` answers `node-gone`. A line that can never change the
     // outcome reads to the next person as if it can (#1949, the video
-    // container has said so at its own gate since #1927).
+    // container has said so at its own gate since #1899).
     //
     // Node-state gate (bug 2): a locked node — or one a task started writing
     // since the panel opened — can't submit. Fresh Yjs reads (never a captured
@@ -623,7 +624,7 @@ function GeneratePanelBody({
     // `isSubmitting: false` because the synchronous latch above already
     // answered that question, and it answers it earlier than a state flag can
     // (a rapid second click would slip past a re-render). So `'submitting'`
-    // never reaches this switch — it exists for the button.
+    // never reaches the check below — it exists for the button.
     const refusal = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,

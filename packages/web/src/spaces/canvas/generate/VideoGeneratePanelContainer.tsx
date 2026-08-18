@@ -566,7 +566,7 @@ function VideoGeneratePanelBody({
     // `isSubmitting: false` because the synchronous latch above already
     // answered that question, and it answers it earlier than a state flag can
     // (a rapid second click would slip past a re-render). So `'submitting'`
-    // never reaches this switch — it exists for the button.
+    // never reaches the check below — it exists for the button.
     const refusal = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,

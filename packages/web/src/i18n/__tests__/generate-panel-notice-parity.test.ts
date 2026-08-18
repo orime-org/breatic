@@ -9,7 +9,8 @@ import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 // 那个语种的用户就只剩一片空白或一次静默 —— 而这正是这几句存在的理由。
 // 起于 #1950 片6 的两句（`refuseInsertNoPrompt` 和当时叫 `videoPromptNotUsed`
 // 的那句），#1966 新增两句（`catalogOffline`、✕ 的 `refuseRemoveNoPrompt`）并把
-// 那句改名成 `promptNotUsed`；`catalogUnavailable` 更早就有。共五条。
+// 那句改名成 `promptNotUsed`；`catalogUnavailable` 更早就有；
+// #1949 又添了执行按钮那句 `refuseExecuteNoPrompt`。共六条。
 //
 // 仓里的 i18n 守卫盯不住这件事：`i18n-no-missing-keys` 只拿英文那份当
 // 目录（`SOURCE_CATALOG = "locales/en.json"`），另外四份有没有它不看。

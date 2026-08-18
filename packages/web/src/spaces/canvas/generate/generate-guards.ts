@@ -126,12 +126,20 @@ export function isExecuteButtonDisabled(
  * due to change (#1951 turns `no-model` from silent into spoken), so the two
  * copies would have been asked to move together on their very first edit.
  *
- * Silent is not the same as unhandled. `no-model` and `node-gone` keep the
- * button disabled, so a click cannot reach them from the button at all; if one
- * is reached anyway (the submit path re-derives from live Yjs, where a
- * collaborator can delete the node between render and click), the panel is
- * already on its way out — the node it was anchored to is gone. Saying
- * something there would name a fact the user is about to watch happen.
+ * Silent is not the same as unhandled. Both silent refusals keep the button
+ * disabled, so neither is reachable from a click in the same render. The
+ * submit path re-derives from live Yjs, so each has one narrow window where it
+ * arrives anyway, and they differ in what the user sees:
+ *
+ * `node-gone` — a collaborator deleted the node between render and click. The
+ * panel is anchored to that node and goes with it on the next frame, so the
+ * panel vanishing already says it.
+ *
+ * `no-model` — the node's mode moved to one that offers no model. Nothing
+ * disappears here and the user does get a dead click; that is the state #1951
+ * exists to give a voice, and giving it one here instead would leave the
+ * button greyed out while something explains why, which is the shape #1949
+ * set out to remove.
  * @param refusal - The failing condition from {@link evaluateExecute}.
  * @returns The i18n key to warn with, or null to refuse in silence.
  */
