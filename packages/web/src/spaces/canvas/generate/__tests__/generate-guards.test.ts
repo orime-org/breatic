@@ -3,7 +3,10 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
+import {
+  evaluateExecute,
+  isExecuteButtonDisabled,
+} from '@web/spaces/canvas/generate/generate-guards';
 
 /** A gate input where every condition is satisfied. */
 const ok = {
@@ -14,64 +17,138 @@ const ok = {
   promptRequired: true,
 };
 
-describe('canExecuteGenerate — every execute precondition must hold', () => {
-  it('is true when the prompt, model, idle status and non-submitting all hold', () => {
-    expect(canExecuteGenerate(ok)).toBe(true);
+describe('evaluateExecute — which precondition is the one that fails', () => {
+  it('returns null when the prompt, model, idle status and non-submitting all hold', () => {
+    expect(evaluateExecute(ok)).toBeNull();
   });
 
   it('trims surrounding whitespace before judging the prompt', () => {
-    expect(canExecuteGenerate({ ...ok, promptText: '  hi  ' })).toBe(true);
+    expect(evaluateExecute({ ...ok, promptText: '  hi  ' })).toBeNull();
   });
 
-  it('is false for an empty or whitespace-only prompt', () => {
-    expect(canExecuteGenerate({ ...ok, promptText: '' })).toBe(false);
-    expect(canExecuteGenerate({ ...ok, promptText: '  \n\t ' })).toBe(false);
+  it('names the prompt for an empty or whitespace-only one', () => {
+    expect(evaluateExecute({ ...ok, promptText: '' })).toBe('prompt-missing');
+    expect(evaluateExecute({ ...ok, promptText: '  \n\t ' })).toBe(
+      'prompt-missing',
+    );
   });
 
-  it('lets an empty prompt through when the caller says none is required (#1935)', () => {
-    // The talking-head model declares no `prompt` param at all, so demanding
-    // one would be a requirement we invented: the caller asks the selected
-    // model, and passes the answer here. Whitespace-only counts as empty on
-    // both sides of the switch, so the two paths differ in exactly one thing.
+  it('lets an empty prompt through when the model consumes none (#1935)', () => {
+    // The talking-head model declares `takes_prompt: false`, so demanding one
+    // would be a requirement we invented: the caller asks the selected model
+    // and passes the answer here. Whitespace-only counts as empty on both
+    // sides of the switch, so the two paths differ in exactly one thing.
     expect(
-      canExecuteGenerate({ ...ok, promptText: '', promptRequired: false }),
-    ).toBe(true);
+      evaluateExecute({ ...ok, promptText: '', promptRequired: false }),
+    ).toBeNull();
     expect(
-      canExecuteGenerate({ ...ok, promptText: ' \n\t ', promptRequired: false }),
-    ).toBe(true);
+      evaluateExecute({ ...ok, promptText: ' \n\t ', promptRequired: false }),
+    ).toBeNull();
   });
 
   it('still weighs every other precondition when no prompt is required', () => {
     // Dropping the prompt requirement must not become a way past the model,
     // the node's existence, or the in-flight latch.
     const noPrompt = { ...ok, promptText: '', promptRequired: false };
-    expect(canExecuteGenerate({ ...noPrompt, model: '' })).toBe(false);
-    expect(canExecuteGenerate({ ...noPrompt, nodeStatus: undefined })).toBe(
-      false,
+    expect(evaluateExecute({ ...noPrompt, model: '' })).toBe('no-model');
+    expect(evaluateExecute({ ...noPrompt, nodeStatus: undefined })).toBe(
+      'node-gone',
     );
-    expect(canExecuteGenerate({ ...noPrompt, isSubmitting: true })).toBe(false);
+    expect(evaluateExecute({ ...noPrompt, isSubmitting: true })).toBe(
+      'submitting',
+    );
   });
 
-  it('is false when no model is selected (empty catalog fallback)', () => {
-    expect(canExecuteGenerate({ ...ok, model: '' })).toBe(false);
+  it('names the model when none is selected (a mode that offers nothing)', () => {
+    expect(evaluateExecute({ ...ok, model: '' })).toBe('no-model');
   });
 
   it('stays executable while handling — the click surfaces the gate toast (user 2026-07-18)', () => {
     // handling no longer greys the button; clicking it hits the node-state gate,
     // which shows the handling warn-toast (same pattern as a locked node) rather
     // than a silently-disabled button. The gate still blocks the actual submit.
-    expect(canExecuteGenerate({ ...ok, nodeStatus: 'handling' })).toBe(true);
+    expect(evaluateExecute({ ...ok, nodeStatus: 'handling' })).toBeNull();
   });
 
-  it('is false when the node no longer exists (status undefined = deleted)', () => {
-    expect(canExecuteGenerate({ ...ok, nodeStatus: undefined })).toBe(false);
+  it('names the node when it no longer exists (status undefined = deleted)', () => {
+    expect(evaluateExecute({ ...ok, nodeStatus: undefined })).toBe('node-gone');
   });
 
   it('stays executable after a prior failure so the user can retry', () => {
-    expect(canExecuteGenerate({ ...ok, nodeStatus: 'error' })).toBe(true);
+    expect(evaluateExecute({ ...ok, nodeStatus: 'error' })).toBeNull();
   });
 
-  it('is false while a submission is already in flight', () => {
-    expect(canExecuteGenerate({ ...ok, isSubmitting: true })).toBe(false);
+  it('names the in-flight submission', () => {
+    expect(evaluateExecute({ ...ok, isSubmitting: true })).toBe('submitting');
+  });
+});
+
+describe('evaluateExecute — order: environment facts first, what the user can fix last', () => {
+  // The order is the whole reason this returns a reason rather than a boolean,
+  // and it is what the design adversarial round changed (#1949). Putting
+  // `prompt-missing` first reads as "name what the user can act on", but it
+  // produces a button that invites a click, issues an instruction, and then
+  // greys out once the instruction is followed.
+
+  it('names the model, not the prompt, when a mode offers no model at all', () => {
+    // `promptRequired` is `true` when no model resolves (video-panel-view-model
+    // says so in as many words), and `pickModelForMode` yields '' for a mode
+    // with an empty list — so these two conditions are not a coincidence, they
+    // arrive together every time such a mode is opened. Answering
+    // `prompt-missing` here would un-grey the button, tell the user to write a
+    // prompt, and grey out again the moment they did.
+    expect(evaluateExecute({ ...ok, promptText: '', model: '' })).toBe(
+      'no-model',
+    );
+  });
+
+  it('names the in-flight submission, not the prompt, when the prompt is cleared mid-flight', () => {
+    // The prompt editor is not disabled while a submit is in flight, and the
+    // prompt is a collaborative fragment — either this user or a collaborator
+    // can empty it during that window. Answering `prompt-missing` would swap
+    // the spinner back to a clickable arrow while the POST is still out, and
+    // that click dies silently on the submitting latch.
+    expect(
+      evaluateExecute({ ...ok, promptText: '', isSubmitting: true }),
+    ).toBe('submitting');
+  });
+
+  it('names the missing node ahead of everything else', () => {
+    // Nothing else is worth saying about a node that is gone.
+    expect(
+      evaluateExecute({
+        ...ok,
+        promptText: '',
+        model: '',
+        nodeStatus: undefined,
+        isSubmitting: true,
+      }),
+    ).toBe('node-gone');
+  });
+
+  it('names the model ahead of the in-flight submission', () => {
+    expect(
+      evaluateExecute({ ...ok, model: '', isSubmitting: true }),
+    ).toBe('no-model');
+  });
+});
+
+describe('isExecuteButtonDisabled — only what the user cannot act on greys the button', () => {
+  // Both panels ask this one function rather than each spelling the set out:
+  // two copies of "which refusals grey the button" would drift, and that drift
+  // is the shape #1949 set out to remove.
+
+  it('leaves the button clickable when nothing refuses', () => {
+    expect(isExecuteButtonDisabled(null)).toBe(false);
+  });
+
+  it('leaves the button clickable for a missing prompt — the click explains it', () => {
+    expect(isExecuteButtonDisabled('prompt-missing')).toBe(false);
+  });
+
+  it('greys the button for the three the user cannot act on', () => {
+    expect(isExecuteButtonDisabled('node-gone')).toBe(true);
+    expect(isExecuteButtonDisabled('no-model')).toBe(true);
+    expect(isExecuteButtonDisabled('submitting')).toBe(true);
   });
 });

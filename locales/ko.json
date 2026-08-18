@@ -210,6 +210,7 @@
       "refuseRemoveModeOff": "참조는 모드 간에 공유됩니다 — 삭제하려면 참조를 사용하는 모드로 전환하거나 캔버스에서 연결선을 삭제하세요",
       "refuseRemoveModeOffCrop": "참조는 모드 간에 공유됩니다 — 이 자르기를 삭제하려면 참조를 사용하는 모드로 전환하세요",
       "refuseRemoveNoPrompt": "이 모드는 프롬프트가 필요하지 않습니다",
+      "refuseNoPrompt": "프롬프트를 먼저 입력하세요",
       "refuseInsertTypeUnused": "{kind, select, audio {참조는 이미지만 받습니다. 오디오는 사용할 수 없습니다} video {참조는 이미지만 받습니다. 비디오는 사용할 수 없습니다} other {참조는 이미지만 받습니다. 이런 종류의 소재는 사용할 수 없습니다}}",
       "exit": "종료",
       "promptPlaceholder": "생성할 이미지를 설명하세요. @ 로 참조 추가",

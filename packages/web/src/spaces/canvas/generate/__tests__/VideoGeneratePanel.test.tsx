@@ -71,7 +71,7 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         slotThumbnails={{}}
         onPickSlot={() => {}}
         onClearSlot={() => {}}
-        canExecute
+        executeRefusal={null}
         promptSlot={<div data-testid='prompt-slot' />}
         onExit={onExit}
         onSelectModel={() => {}}
@@ -106,7 +106,7 @@ describe('VideoGeneratePanel', () => {
   });
 
   it('refuses to submit when the container says it cannot', () => {
-    const { onExecute } = renderPanel({ canExecute: false });
+    const { onExecute } = renderPanel({ executeRefusal: 'no-model' as const });
     const execute = screen.getByTestId('generate-video-execute');
     expect(execute).toBeDisabled();
     fireEvent.click(execute);

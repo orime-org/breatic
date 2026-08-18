@@ -15,7 +15,7 @@ import type { ModelCatalog, ModelEntry } from '@breatic/shared';
 import type { ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }));
 
 // Pass through the tooltip primitives: real Radix Tooltip throws without the
@@ -500,6 +500,17 @@ function imageCatalog(models: ModelEntry[] = [T2I_MODEL]): ModelCatalog {
   };
 }
 
+/** 往节点的提示词片段里放一句话，编辑器 onCreate 时会把它回调进镜像。 */
+function seedPromptText(text: string): void {
+  const fragment = getPromptFragment('p', 's', 'target');
+  if (!fragment) throw new Error('node has no prompt fragment');
+  const paragraph = new Y.XmlElement('paragraph');
+  const words = new Y.XmlText();
+  words.insert(0, text);
+  paragraph.insert(0, [words]);
+  fragment.insert(0, [paragraph]);
+}
+
 /**
  * Seeds a real image node in the canvas-space doc. The container reads the
  * node fresh from Yjs on every write, so a case that asserts what got written
@@ -788,13 +799,14 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     act(() => {
       useCanvasStore.getState().openGeneratePanel('target', 'image');
     });
-    // 这一档模型吃提示词而提示词是空的，所以按钮本来就该是禁用的 —— 先钉住
-    // 这一点，再点它一次确认提交路径也不放行（两道闸门各自成立）。
+    // 这一档模型吃提示词而提示词是空的。#1949 之后按钮不再变灰 —— 它可点，
+    // 点下去说缺什么（那句话由 #1949 那组钉）；这里钉的是另一半：可点不等于
+    // 提交得出去，提交路径照样拦。
     const btn = await screen.findByTestId('generate-execute');
     await waitFor(() => {
       expect(screen.getByTestId('generate-model-trigger')).toBeTruthy();
     });
-    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    expect((btn as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(btn);
     await new Promise((r) => setTimeout(r, 50));
     expect(createSpy).not.toHaveBeenCalled();
@@ -822,17 +834,6 @@ describe('GeneratePanelContainer — 不吃提示词的模型不发提示词 (#1
       pickSession: null,
     });
   });
-
-  /** 往节点的提示词片段里放一句话，编辑器 onCreate 时会把它回调进镜像。 */
-  function seedPromptText(text: string): void {
-    const fragment = getPromptFragment('p', 's', 'target');
-    if (!fragment) throw new Error('node has no prompt fragment');
-    const paragraph = new Y.XmlElement('paragraph');
-    const words = new Y.XmlText();
-    words.insert(0, text);
-    paragraph.insert(0, [words]);
-    fragment.insert(0, [paragraph]);
-  }
 
   it('切到不吃提示词的模型后提交，上一个模型下的字不跟着发出去', async () => {
     const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(
@@ -907,6 +908,167 @@ describe('GeneratePanelContainer — 不吃提示词的模型不发提示词 (#1
     expect(createSpy.mock.calls[0]?.[0]?.params).toMatchObject({
       prompt: '要发出去的那句话',
     });
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+});
+
+// #1949：执行按钮不能执行时要可点 + 说原因。
+//
+// 改动前这个面板有四种「点不动」全都长一个样：灰按钮、点不了、什么都不说。
+// 现在只有用户当场解决不了的三种仍然禁用，「没写提示词」这一种按钮亮着、
+// 点下去告诉他缺什么。
+describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)', () => {
+  /** 那条拒绝在默认 locale（en）下的原文。 */
+  const NO_PROMPT = 'Write a prompt first';
+
+  beforeEach(() => {
+    _resetForTests();
+    vi.mocked(toast.warning).mockClear();
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  it('提示词为空时按钮仍然可点', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog());
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    // 目录到齐之后才判 —— 目录在飞的那一瞬间按钮本来就该是禁用的（无模型）。
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-prompt-editor')).toBeInTheDocument();
+    });
+    expect((btn as HTMLButtonElement).disabled).toBe(false);
+    listSpy.mockRestore();
+  });
+
+  it('提示词为空时点下去，告诉他缺提示词，且一个任务都不提交', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog());
+    const createSpy = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockResolvedValue({ id: 'task-1' } as Awaited<
+        ReturnType<typeof canvasApi.createTask>
+      >);
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(btn);
+    // 只对第一个参数：`@web/lib/toast` 那层会自动补一个按内容派生的去重 id。
+    await waitFor(() => {
+      expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toBe(NO_PROMPT);
+    });
+    // 按钮从禁用改成可点，不等于这一步就能提交了。
+    expect(createSpy).not.toHaveBeenCalled();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  it('这一档一个模型都没有时，按钮仍然禁用 —— 提示词为空不抢在它前面', async () => {
+    // 设计对抗（2026-08-18）咬出的那条：`promptRequired` 在没有模型时仍然为
+    // 真，所以这两个条件必然同时成立。要是先说提示词，按钮会亮起来、叫用户
+    // 写提示词、写完当场变灰。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([]));
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(true);
+    });
+    // 而且点不动它，所以不会说出那句帮不上忙的话。
+    fireEvent.click(btn);
+    expect(toast.warning).not.toHaveBeenCalled();
+    listSpy.mockRestore();
+  });
+
+  it('提交中按钮禁用，并且站着一个加载指示', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog());
+    // 永不落地的请求 = 一直停在「提交中」这一帧。
+    const createSpy = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockImplementation(
+        () =>
+          new Promise(() => {
+            /* never settles */
+          }) as ReturnType<typeof canvasApi.createTask>,
+      );
+    seedImageNode();
+    seedPromptText('一句话');
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(true);
+    });
+    expect(screen.getByTestId('generate-execute-pending')).toBeInTheDocument();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  it('提交中把提示词清空，按钮不会变回可点', async () => {
+    // 提示词编辑器在请求飞着的时候没有被禁用，而那份提示词是协作文档 ——
+    // 自己删或者别人删都会走到这里。要是这时候答「缺提示词」，转圈会变回箭头，
+    // 而那一下点击会被同步闩静默吃掉。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog());
+    const createSpy = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockImplementation(
+        () =>
+          new Promise(() => {
+            /* never settles */
+          }) as ReturnType<typeof canvasApi.createTask>,
+      );
+    seedImageNode();
+    seedPromptText('一句话');
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(true);
+    });
+    // 请求还在飞的时候清空提示词。
+    const fragment = getPromptFragment('p', 's', 'target');
+    act(() => {
+      fragment?.delete(0, fragment.length);
+    });
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('generate-execute-pending')).toBeInTheDocument();
     listSpy.mockRestore();
     createSpy.mockRestore();
   });

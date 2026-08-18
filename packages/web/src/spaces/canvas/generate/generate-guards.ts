@@ -42,27 +42,76 @@ export interface ExecuteGateInput {
 }
 
 /**
- * Whether Generate may be executed. Requires visible prompt text WHEN the model
- * takes one (see {@link ExecuteGateInput.promptRequired}) AND a selected
- * model (an empty catalog leaves no model, so submitting would send an invalid
- * task), the node must still exist (`nodeStatus` is undefined once a collaborator
- * deletes it — never submit against a deleted node), and no submission may be in
- * flight (front-end idempotency — the backend lock is the airtight guard, but the
- * button must not invite a double-submit). A prior failure (`error`) stays
- * executable so a user can retry.
+ * Why Generate cannot be executed right now — the one condition that fails.
+ *
+ * A boolean could say "no" but not "why", so every one of these collapsed into
+ * the same greyed-out button that explained nothing (#1949). Naming the reason
+ * lets the button and the submit path treat them differently: only
+ * `prompt-missing` is something the user can act on, and only it leaves the
+ * button clickable so the click can say what is missing.
+ */
+export type ExecuteRefusal =
+  | 'node-gone'
+  | 'no-model'
+  | 'submitting'
+  | 'prompt-missing';
+
+/**
+ * Which execute precondition fails, or null when Generate may proceed.
+ *
+ * The ORDER is the design, not an implementation detail: environment facts the
+ * user cannot act on come first, and what they can fix comes last. Answering
+ * `prompt-missing` first reads as helpful, but a mode that offers no model at
+ * all reports BOTH (`promptRequired` stays true when no model resolves, and
+ * `pickModelForMode` yields '' for an empty list) — so the button would
+ * un-grey, tell the user to write a prompt, and grey out again the moment they
+ * did. The same inversion bites mid-flight: the prompt editor is not disabled
+ * while a submit is out and the prompt is a collaborative fragment, so clearing
+ * it would swap the spinner back to a clickable arrow whose click dies silently
+ * on the submitting latch.
  *
  * `handling` and `locked` are NOT weighed here (user 2026-07-18): the button
  * stays clickable and the node-state gate in the execute handler surfaces a
  * `warnNodeGate` toast on click — the same feedback pattern as a locked node,
  * instead of a silently-greyed button. The gate still blocks the actual submit.
- * @param input - The current prompt, model, node status, submitting flag, and whether the model takes a prompt.
- * @returns True only when every execute precondition holds.
+ * A prior failure (`error`) stays executable so a user can retry.
+ * @param input - The current prompt, model, node status, submitting flag, and whether the model consumes a prompt.
+ * @returns The failing condition, or null when every precondition holds.
  */
-export function canExecuteGenerate(input: ExecuteGateInput): boolean {
-  return (
-    (!input.promptRequired || input.promptText.trim().length > 0) &&
-    input.model.length > 0 &&
-    input.nodeStatus != null &&
-    !input.isSubmitting
-  );
+export function evaluateExecute(
+  input: ExecuteGateInput,
+): ExecuteRefusal | null {
+  // Nothing else is worth saying about a node that is gone.
+  if (input.nodeStatus == null) return 'node-gone';
+  // An empty catalog leaves no model, so submitting would send an invalid task.
+  if (input.model.length === 0) return 'no-model';
+  // Front-end idempotency. The backend lock is the airtight guard, but the
+  // button must not invite a double-submit.
+  if (input.isSubmitting) return 'submitting';
+  if (input.promptRequired && input.promptText.trim().length === 0) {
+    return 'prompt-missing';
+  }
+  return null;
+}
+
+/**
+ * Whether a refusal should grey the execute button out.
+ *
+ * Both panels ask this rather than each spelling the set out: two copies of
+ * "which refusals grey the button" would drift, and that drift is the shape
+ * #1949 set out to remove.
+ *
+ * Only `prompt-missing` leaves the button live, because it is the only one the
+ * user can act on — the click then says what is missing, which a greyed-out
+ * button cannot (GOV.UK and Adam Silver both name the disabled-until-valid
+ * button an anti-pattern for exactly this: it never tells anyone why). The
+ * other three are facts about the environment, and a button that invites a
+ * click it will not honour is worse than one that plainly cannot be pressed.
+ * @param refusal - The failing condition from {@link evaluateExecute}, or null.
+ * @returns True when the button must be disabled.
+ */
+export function isExecuteButtonDisabled(
+  refusal: ExecuteRefusal | null,
+): boolean {
+  return refusal != null && refusal !== 'prompt-missing';
 }

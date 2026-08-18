@@ -210,6 +210,7 @@
       "refuseRemoveModeOff": "參考在各檔之間共用 — 切到使用參考的檔才能刪掉它，或者在畫布上刪掉它那條連線",
       "refuseRemoveModeOffCrop": "參考在各檔之間共用 — 切到使用參考的檔才能刪掉這個裁剪",
       "refuseRemoveNoPrompt": "這一檔不需要提示詞",
+      "refuseNoPrompt": "先寫提示詞",
       "refuseInsertTypeUnused": "{kind, select, audio {參考只收圖片，不收音訊} video {參考只收圖片，不收視訊} other {參考只收圖片，不收這類素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的畫面內容，@ 引用參考",
