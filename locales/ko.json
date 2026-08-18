@@ -1185,6 +1185,7 @@
       "upgradePending": "업그레이드 결제가 완료되지 않았습니다",
       "paymentOverdue": "이번 달 결제가 이루어지지 않았습니다"
     },
-    "payNow": "결제하기"
+    "payNow": "결제하기",
+    "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요."
   }
 }

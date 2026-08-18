@@ -19,7 +19,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const stripe = {
   customers: { create: vi.fn() },
   checkout: { sessions: { create: vi.fn() } },
-  subscriptions: { update: vi.fn(), retrieve: vi.fn() },
+  subscriptions: { update: vi.fn(), retrieve: vi.fn(), cancel: vi.fn() },
 };
 
 vi.mock("@server/infra/stripe.js", () => ({
@@ -152,6 +152,26 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     });
     expect(stripe.checkout.sessions.create).toHaveBeenCalled();
     expect(stripe.subscriptions.update).not.toHaveBeenCalled();
+  });
+
+  it("先作废那张没付成的订阅，再开新的结账", async () => {
+    // Stripe 不让更新首期未付成的订阅，所以这类账号只能重开结账 —— 但旧的
+    // 那张还挂在那儿，付款页也还能打开。不作废它，两张都付掉就是两份会员，
+    // 而挑哪一份生效由「取最新一行」这个任意判据决定。
+    situationIs("firstPaymentUnsettled", {
+      stripeSubscriptionId: "sub_unpaid",
+      tier: "pro",
+    });
+    stripe.subscriptions.cancel.mockResolvedValue({});
+
+    await service.startCheckout({
+      userId: USER,
+      tier: "pro",
+      returnUrl: RETURN_URL,
+    });
+
+    expect(stripe.subscriptions.cancel).toHaveBeenCalledWith("sub_unpaid");
+    expect(stripe.checkout.sessions.create).toHaveBeenCalled();
   });
 
   it("refuses to sell a second subscription to an account that has one", async () => {

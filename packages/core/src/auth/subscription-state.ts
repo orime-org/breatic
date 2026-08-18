@@ -99,16 +99,22 @@ export interface SituationReading<T extends SubscriptionRecord = SubscriptionRec
 /**
  * The statuses under which a subscription is still ours to act on.
  *
+ * Migration 0056's partial unique index uses the same three, and so does the
+ * reconciliation's write ordering — the database allows one live row per
+ * account, so a writer holding several has to demote the ended ones first.
+ *
  * `trialing` and `paused` are absent although Stripe considers them current:
  * we set no trial, so neither can arise from anything we do, and treating one
  * as live would leave a state we never produce standing between an account
  * and subscribing.
  */
-const LIVE_STATUSES: ReadonlySet<string> = new Set([
+export const LIVE_SUBSCRIPTION_STATUSES = [
   "incomplete",
   "active",
   "past_due",
-]);
+] as const;
+
+const LIVE_STATUSES: ReadonlySet<string> = new Set(LIVE_SUBSCRIPTION_STATUSES);
 
 /**
  * The statuses under which a subscription is over.

@@ -1185,6 +1185,7 @@
       "upgradePending": "Upgrade payment not completed",
       "paymentOverdue": "This month's payment did not go through"
     },
-    "payNow": "Pay now"
+    "payNow": "Pay now",
+    "actionFailed": "That did not go through. Try again."
   }
 }

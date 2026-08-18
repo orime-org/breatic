@@ -11,7 +11,14 @@
  */
 
 import * as React from 'react';
-import type { SubscribableMembershipTier, SubscriptionSummary } from '@breatic/shared';
+import { ApiException } from '@web/data/api/types';
+import { toast } from '@web/lib/toast';
+import { useTranslation } from '@web/i18n/use-translation';
+import {
+  holdsActionableSubscription,
+  type SubscribableMembershipTier,
+  type SubscriptionSummary,
+} from '@breatic/shared';
 
 import {
   cancelSubscription,
@@ -33,20 +40,6 @@ export interface SubscriptionActions {
 }
 
 /**
- * The situations in which the account already has a subscription to change.
- *
- * `firstPaymentUnsettled` is absent: that subscription cannot be updated at
- * Stripe, so choosing a tier there starts a fresh checkout — which is also
- * what abandons the unpaid one.
- */
-const HAS_SUBSCRIPTION: ReadonlySet<SubscriptionSummary['state']> = new Set([
-  'active',
-  'cancelling',
-  'upgradePending',
-  'retrying',
-]);
-
-/**
  * Wires the panel's buttons to the subscription endpoints.
  *
  * Every action ends by reloading the page rather than patching state in place.
@@ -60,21 +53,32 @@ const HAS_SUBSCRIPTION: ReadonlySet<SubscriptionSummary['state']> = new Set([
 export function useSubscriptionActions(
   subscription: SubscriptionSummary | null,
 ): SubscriptionActions {
+  const t = useTranslation();
   const [busy, setBusy] = React.useState(false);
 
-  const run = React.useCallback(async (work: () => Promise<void>) => {
-    setBusy(true);
-    try {
-      await work();
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const run = React.useCallback(
+    async (work: () => Promise<void>) => {
+      setBusy(true);
+      try {
+        await work();
+      } catch (err) {
+        // Every one of these can fail without anything being broken: two tabs
+        // open on this panel and one of them subscribes first makes the other
+        // one's click a 409. Without this the click did nothing at all — no
+        // message, no explanation, the button simply came back — and the
+        // reader had no way to tell a refusal from a dead app.
+        toast.error(errorMessage(err, t));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [t],
+  );
 
   const choose = React.useCallback(
     (tier: SubscribableMembershipTier) => {
       void run(async () => {
-        if (subscription && HAS_SUBSCRIPTION.has(subscription.state)) {
+        if (subscription && holdsActionableSubscription(subscription.state)) {
           const result = await changeSubscriptionPlan(tier);
           // The difference was not charged, so Stripe is holding the change
           // until it is. Sending them straight to the invoice is the whole of
@@ -111,4 +115,24 @@ export function useSubscriptionActions(
   }, [run]);
 
   return { choose, cancel, resume, busy };
+}
+
+/**
+ * What to show the reader when an action failed.
+ *
+ * The server's own sentence when there is one: it is already localized (every
+ * `AppError` message goes through `t()`) and it says which of the refusals
+ * this was — already subscribed, already on this tier, payment overdue. Only
+ * when there is no such sentence, which means the request never reached us, is
+ * a generic line the honest answer.
+ * @param err - Whatever the action threw.
+ * @param t - The translation function.
+ * @returns The line to show.
+ */
+function errorMessage(
+  err: unknown,
+  t: ReturnType<typeof useTranslation>,
+): string {
+  if (err instanceof ApiException && err.message) return err.message;
+  return t('membership.actionFailed');
 }

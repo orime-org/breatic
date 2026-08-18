@@ -26,6 +26,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
   AccountMembership,
@@ -247,6 +248,47 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('compare-cell-base-monthlyFee')).toHaveTextContent(
       'Free',
     );
+  });
+
+  it('动作失败时给出反馈，不是点了什么都不发生', async () => {
+    // 两个标签页各停在面板上、其中一个先订阅成功，另一个点升级就会撞 409。
+    // 不需要任何故障环境，是产品自己的正常状态造成的。
+    const { toast } = await import('@web/lib/toast');
+    const errorSpy = vi.spyOn(toast, 'error');
+    const subscriptionApi = await import('@web/data/api/subscription');
+    vi.spyOn(subscriptionApi, 'startSubscriptionCheckout').mockRejectedValue(
+      new Error('409'),
+    );
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'none', tier: 'base', currentPeriodEnd: null }),
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(await screen.findByTestId('membership-choose-pro'));
+
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled());
+    // 失败之后按钮要还能再点，否则用户连重试都做不到。
+    expect(screen.getByTestId('membership-choose-pro')).not.toBeDisabled();
+  });
+
+  it('首期付款还没成时不给取消入口', async () => {
+    // 服务端对这个状态一律答「你没有会员」，前端却把按钮画出来 —— 点了必失败。
+    // 两边判「算不算持有订阅」得读同一份清单。
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'firstPaymentUnsettled', tier: 'pro' }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.queryByTestId('membership-cancel')).toBeNull();
+    expect(screen.queryByTestId('membership-resume')).toBeNull();
   });
 
   it('从没订过的 Base 账号照样看得到升级入口', async () => {

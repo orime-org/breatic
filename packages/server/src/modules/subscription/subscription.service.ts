@@ -34,7 +34,11 @@ import type {
   SubscriptionSituation,
 } from "@breatic/core";
 import type { SubscribableMembershipTier } from "@breatic/shared";
-import { COMPARABLE_MEMBERSHIP_TIERS, t } from "@breatic/shared";
+import {
+  COMPARABLE_MEMBERSHIP_TIERS,
+  holdsActionableSubscription,
+  t,
+} from "@breatic/shared";
 import { getStripeClient } from "@server/infra/stripe.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
@@ -52,19 +56,6 @@ export interface PlanChange {
   /** Where to pay the difference, when it was not charged. */
   readonly payableInvoiceUrl: string | null;
 }
-
-/**
- * The situations in which an account already holds a membership it can act on.
- *
- * `firstPaymentUnsettled` is absent on purpose: that subscription cannot be
- * updated at all, so those accounts start a fresh checkout instead.
- */
-const HOLDS_A_SUBSCRIPTION: ReadonlySet<SubscriptionSituation> = new Set([
-  "active",
-  "cancelling",
-  "upgradePending",
-  "retrying",
-]);
 
 /**
  * Reads which situation an account's stored subscriptions put it in.
@@ -123,9 +114,18 @@ export async function startCheckout(input: {
   tier: SubscribableMembershipTier;
   returnUrl: string;
 }): Promise<CheckoutStart> {
-  const { situation } = await readSituation(input.userId);
-  if (HOLDS_A_SUBSCRIPTION.has(situation)) {
+  const { situation, record } = await readSituation(input.userId);
+  if (holdsActionableSubscription(situation)) {
     throw new ConflictError(t("server.membership.already_subscribed"));
+  }
+
+  if (situation === "firstPaymentUnsettled" && record) {
+    // Stripe refuses to update a subscription whose first invoice has not
+    // settled, so this account can only start over — but the unpaid one is
+    // still there and its payment page still works. Leaving it would let both
+    // be paid, and then which membership counts is decided by an arbitrary
+    // "most recent row wins" rather than by what anybody bought.
+    await getStripeClient().subscriptions.cancel(record.stripeSubscriptionId);
   }
 
   const customerId = await ensureCustomer(input.userId);
@@ -180,7 +180,7 @@ export async function changePlan(input: {
   tier: SubscribableMembershipTier;
 }): Promise<PlanChange> {
   const { situation, record } = await readSituation(input.userId);
-  if (!record || !HOLDS_A_SUBSCRIPTION.has(situation)) {
+  if (!record || !holdsActionableSubscription(situation)) {
     throw new ConflictError(t("server.membership.no_subscription"));
   }
   if (record.tier === input.tier) {
@@ -241,7 +241,7 @@ export async function changePlan(input: {
  */
 export async function cancel(userId: string): Promise<Stripe.Subscription> {
   const { situation, record } = await readSituation(userId);
-  if (!record || !HOLDS_A_SUBSCRIPTION.has(situation)) {
+  if (!record || !holdsActionableSubscription(situation)) {
     throw new ConflictError(t("server.membership.no_subscription"));
   }
   return getStripeClient().subscriptions.update(record.stripeSubscriptionId, {

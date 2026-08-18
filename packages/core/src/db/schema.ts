@@ -720,6 +720,10 @@ export const subscriptions = pgTable(
     uniqueIndex("subscriptions_stripe_subscription_id_idx").on(
       table.stripeSubscriptionId,
     ),
+    // One account, at most one live subscription (0056). Declared here for
+    // the record; the predicate lives in the migration, which is where this
+    // repo's index definitions are authoritative.
+    uniqueIndex("subscriptions_one_live_per_user_idx").on(table.userId),
   ],
 );
 

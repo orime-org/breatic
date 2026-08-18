@@ -1185,6 +1185,7 @@
       "upgradePending": "升级付款未完成",
       "paymentOverdue": "这个月的款项没有扣成功"
     },
-    "payNow": "去付款"
+    "payNow": "去付款",
+    "actionFailed": "没有成功，请再试一次。"
   }
 }

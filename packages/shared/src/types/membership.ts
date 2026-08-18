@@ -216,6 +216,40 @@ export const SUBSCRIPTION_SITUATIONS = [
 /** One of the situations an account's subscription can put it in. */
 export type SubscriptionSituation = (typeof SUBSCRIPTION_SITUATIONS)[number];
 
+/**
+ * The situations in which an account holds a subscription it can act on.
+ *
+ * One list, read by both ends. The server refuses a cancel outside it and the
+ * panel must not offer one, and when the two kept their own copies the panel
+ * drew a cancel button for `firstPaymentUnsettled` that the server answered
+ * "you have no membership" to.
+ *
+ * `firstPaymentUnsettled` is absent on purpose: Stripe cannot update a
+ * subscription whose first invoice has not settled, so there is nothing to
+ * cancel or change — those accounts start a fresh checkout instead.
+ */
+export const ACTIONABLE_SUBSCRIPTION_SITUATIONS = [
+  "active",
+  "cancelling",
+  "upgradePending",
+  "retrying",
+] as const;
+
+const ACTIONABLE_SITUATION_SET: ReadonlySet<string> = new Set(
+  ACTIONABLE_SUBSCRIPTION_SITUATIONS,
+);
+
+/**
+ * Whether the account holds a subscription it can cancel, resume or change.
+ * @param situation - The situation its subscription puts it in.
+ * @returns Whether there is a subscription to act on.
+ */
+export function holdsActionableSubscription(
+  situation: SubscriptionSituation,
+): boolean {
+  return ACTIONABLE_SITUATION_SET.has(situation);
+}
+
 /** What the panel shows about an account's subscription. */
 export interface SubscriptionSummary {
   /** Which situation it is in — {@link SubscriptionSituation}, not Stripe's word. */

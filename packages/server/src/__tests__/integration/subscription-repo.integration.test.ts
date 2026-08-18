@@ -32,6 +32,7 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import {
+  db,
   initCore,
   listSubscriptions,
   upsertSubscription,
@@ -218,6 +219,57 @@ describe("listSubscriptions (#106 §5.2)", () => {
     }
   });
 
+  it("同一个事务里连写两行，处境判定仍挑得出那条活的", async () => {
+    // `created_at` 默认取 `now()`，而 `now()` 在一个事务里是**事务开始时刻**，
+    // 同事务写的行时间戳一模一样，UUID 主键也不单调 —— 靠排序挑行本来就靠
+    // 不住。而 webhook 正是在一个事务里写订阅行、紧接着读回来判档位的。
+    // 治法不是找一个更好的排序键，是让「一个账号最多一条活订阅」真正成立：
+    // 只要它成立，挑哪一条就没有歧义可言。
+    const userId = await makeUser();
+    const older = `sub_tx_a_${Date.now()}`;
+    const newer = `sub_tx_b_${Date.now()}`;
+    try {
+      await db.transaction(async (tx) => {
+        await upsertSubscription(
+          {
+            userId,
+            stripeSubscriptionId: older,
+            tier: "pro",
+            status: "canceled",
+            currentPeriodEnd: null,
+            cancelAtPeriodEnd: false,
+            stripeItemId: null,
+            hasPendingUpdate: false,
+            pendingTier: null,
+            payableInvoiceUrl: null,
+          },
+          tx,
+        );
+        await upsertSubscription(
+          {
+            userId,
+            stripeSubscriptionId: newer,
+            tier: "team",
+            status: "active",
+            currentPeriodEnd: new Date("2026-09-18T00:00:00.000Z"),
+            cancelAtPeriodEnd: false,
+            stripeItemId: null,
+            hasPendingUpdate: false,
+            pendingTier: null,
+            payableInvoiceUrl: null,
+          },
+          tx,
+        );
+        const rows = await listSubscriptions(userId, tx);
+        const { situation, record } = subscriptionSituation(rows);
+        expect(situation).toBe("active");
+        expect(record?.stripeSubscriptionId).toBe(newer);
+      });
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
   it("answers with nothing for an account that has never subscribed", async () => {
     const userId = await makeUser();
     try {
@@ -251,6 +303,106 @@ describe("listSubscriptions (#106 §5.2)", () => {
         WHERE stripe_subscription_id = ${stripeId}
       `;
       expect(await listSubscriptions(userId)).toEqual([]);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+});
+
+describe("一个账号最多一条活订阅 (#106 §6.5.5)", () => {
+  it("拒绝给已经有活订阅的账号再插一条", async () => {
+    // 设计点名的那道兜底。没有它，并发两次结账或者一个乱序事件就能让库里
+    // 躺着两条活订阅，而读侧只会静默挑一条 —— 挑中哪条决定这个人拿到哪一
+    // 档，而两条都是他付过钱的。
+    const userId = await makeUser();
+    try {
+      await upsertSubscription({
+        userId,
+        stripeSubscriptionId: `sub_live_a_${Date.now()}`,
+        tier: "pro",
+        status: "active",
+        currentPeriodEnd: new Date("2026-09-18T00:00:00.000Z"),
+        cancelAtPeriodEnd: false,
+        stripeItemId: null,
+        hasPendingUpdate: false,
+        pendingTier: null,
+        payableInvoiceUrl: null,
+      });
+
+      await expect(
+        upsertSubscription({
+          userId,
+          stripeSubscriptionId: `sub_live_b_${Date.now()}`,
+          tier: "team",
+          status: "active",
+          currentPeriodEnd: new Date("2026-09-18T00:00:00.000Z"),
+          cancelAtPeriodEnd: false,
+          stripeItemId: null,
+          hasPendingUpdate: false,
+          pendingTier: null,
+          payableInvoiceUrl: null,
+        }),
+      ).rejects.toThrow(/live subscription/i);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("更新那条活订阅自己不算违反", async () => {
+    // 守卫拦的是「再来一条」，不是「改现有这条」—— webhook 每次都在改它。
+    const userId = await makeUser();
+    const stripeId = `sub_same_live_${Date.now()}`;
+    try {
+      const write = {
+        userId,
+        stripeSubscriptionId: stripeId,
+        tier: "pro" as const,
+        status: "active" as const,
+        currentPeriodEnd: new Date("2026-09-18T00:00:00.000Z"),
+        cancelAtPeriodEnd: false,
+        stripeItemId: null,
+        hasPendingUpdate: false,
+        pendingTier: null,
+        payableInvoiceUrl: null,
+      };
+      await upsertSubscription(write);
+      const again = await upsertSubscription({ ...write, status: "past_due" });
+      expect(again.status).toBe("past_due");
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("上一条已经终结之后，可以再订一条", async () => {
+    // 验收第 7 条：老用户回来续费。终结的那条留着当账本，不挡新的。
+    const userId = await makeUser();
+    try {
+      await upsertSubscription({
+        userId,
+        stripeSubscriptionId: `sub_done_${Date.now()}`,
+        tier: "pro",
+        status: "canceled",
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+        stripeItemId: null,
+        hasPendingUpdate: false,
+        pendingTier: null,
+        payableInvoiceUrl: null,
+      });
+      const fresh = await upsertSubscription({
+        userId,
+        stripeSubscriptionId: `sub_again_${Date.now()}`,
+        tier: "team",
+        status: "active",
+        currentPeriodEnd: new Date("2026-09-18T00:00:00.000Z"),
+        cancelAtPeriodEnd: false,
+        stripeItemId: null,
+        hasPendingUpdate: false,
+        pendingTier: null,
+        payableInvoiceUrl: null,
+      });
+      expect(fresh.tier).toBe("team");
+      expect(await listSubscriptions(userId)).toHaveLength(2);
     } finally {
       await dropUser(userId);
     }

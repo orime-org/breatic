@@ -98,6 +98,8 @@ export {
   COMPARABLE_MEMBERSHIP_TIERS,
   SUBSCRIBABLE_MEMBERSHIP_TIERS,
   SUBSCRIPTION_SITUATIONS,
+  ACTIONABLE_SUBSCRIPTION_SITUATIONS,
+  holdsActionableSubscription,
   isComparableMembershipTier,
 } from "@shared/types/membership.js";
 

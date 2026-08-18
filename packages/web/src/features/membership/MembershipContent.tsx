@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import {
+  holdsActionableSubscription,
   isComparableMembershipTier,
   type AccountMembership,
   type ComparableMembershipTier,
@@ -260,7 +261,8 @@ export function MembershipContent({
               text={t('membership.contactEnterprise')}
               testId='membership-contact-priced'
             />
-            {subscription && subscription.state !== 'none' ? (
+            {/* 判据跟服务端读同一份清单：面板画得出的动作，服务端一定接得住。 */}
+            {subscription && holdsActionableSubscription(subscription.state) ? (
               <Button
                 type='button'
                 variant='outline'
