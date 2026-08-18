@@ -17,6 +17,7 @@ models:
     display_name: "Background Remover"
     icon: "background-remover"
     mode: "remove_bg"
+    takes_prompt: false
     tier: internal
     description: "AI background removal with alpha matte"
     guide: "Remove the background from any image with AI-powered subject detection. Outputs a transparent PNG with 256-level alpha matting for clean edges on hair, fur, and complex boundaries. Fully automatic — no manual selection needed. Best for product photos, portraits, and asset extraction."

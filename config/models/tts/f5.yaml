@@ -9,6 +9,7 @@ models:
   - name: "f5-tts"
     display_name: "F5 TTS"
     mode: "voice_clone"
+    takes_prompt: true
     tier: recommended
     description: "Zero-shot cloning, single sample"
     guide: "Zero-shot voice cloning from a single audio sample — no fine-tuning needed. Supports multilingual voice transfer. Provide reference audio URL and optionally its transcript for better quality. Choose for instant voice cloning."
@@ -25,9 +26,6 @@ models:
     # Voice cloning — no preset voices, user provides reference audio.
     voices: []
     params:
-      text:
-        description: "Text to speak in cloned voice"
-        default: null
       ref_audio_url:
         description: "Reference audio URL for cloning"
         default: null

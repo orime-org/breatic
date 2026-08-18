@@ -25,6 +25,7 @@ function model(name: string, cost = 88): ModelEntry {
     tier: 'recommended',
     cost_per_call: cost,
     generation_time: 120,
+    takes_prompt: true,
     params: {
       aspect_ratio: { description: '', values: ['16:9', '9:16'], default: '16:9' },
       duration: { description: '', values: [4, 8], default: 8 },
@@ -59,6 +60,7 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         mode='t2v'
         onToggleMode={() => {}}
         catalogEmpty={false}
+        promptRequired
         references={[]}
         onAddReference={() => {}}
         referencePicking={false}
@@ -69,7 +71,7 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         slotThumbnails={{}}
         onPickSlot={() => {}}
         onClearSlot={() => {}}
-        canExecute
+        executeRefusal={null}
         promptSlot={<div data-testid='prompt-slot' />}
         onExit={onExit}
         onSelectModel={() => {}}
@@ -104,7 +106,7 @@ describe('VideoGeneratePanel', () => {
   });
 
   it('refuses to submit when the container says it cannot', () => {
-    const { onExecute } = renderPanel({ canExecute: false });
+    const { onExecute } = renderPanel({ executeRefusal: 'no-model' as const });
     const execute = screen.getByTestId('generate-video-execute');
     expect(execute).toBeDisabled();
     fireEvent.click(execute);

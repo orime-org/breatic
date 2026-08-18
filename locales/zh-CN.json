@@ -229,6 +229,8 @@
       "refuseInsertModeOff": "这一档不使用参考素材",
       "refuseRemoveModeOff": "参考在各档之间共用 — 切到使用参考的档才能删掉它，或者在画布上删掉它那条连线",
       "refuseRemoveModeOffCrop": "参考在各档之间共用 — 切到使用参考的档才能删掉这个裁剪",
+      "refuseRemoveNoPrompt": "这一档不需要提示词",
+      "refuseExecuteNoPrompt": "先写提示词",
       "refuseInsertTypeUnused": "{kind, select, audio {参考只收图片，不收音频} video {参考只收图片，不收视频} other {参考只收图片，不收这类素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用参考",
@@ -267,6 +269,7 @@
       "referencePoolFull": "参考池已满(上限 {cap})——请先移除一些参考或聚焦图。",
       "modelUnavailable": "该模型已不可用——请另选一个。",
       "catalogUnavailable": "模型列表加载失败,请稍后再试",
+      "catalogOffline": "你现在离线，取不到模型列表。连上网络再试。",
       "selectFocusFromCanvas": "请在图片上框选聚焦区域",
       "focusCancel": "取消",
       "focusConfirm": "确认",
@@ -306,7 +309,7 @@
       "removeDrivingAudio": "移除驱动音频",
       "errorNoDrivingVideo": "先挑一段驱动视频",
       "errorNoDrivingAudio": "先挑一段驱动音频",
-      "videoPromptNotUsed": "这一档跟着音频走。要改内容，去换音频。",
+      "promptNotUsed": "这一档不需要提示词。",
       "refuseInsertNoPrompt": "这一档没有提示词框，插不进去"
     },
     "nodeMenu": {

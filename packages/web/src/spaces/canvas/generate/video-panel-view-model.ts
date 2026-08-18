@@ -116,10 +116,21 @@ export interface VideoPanelViewModel {
    */
   maxReferences: number | undefined;
   /**
-   * Whether the active model takes a prompt at all (#1935). Read off the wire
-   * for the same reason as {@link VideoPanelViewModel.maxReferences}: what a
-   * model accepts is declared per model, so a demand belongs to the model
-   * rather than to the mode that happens to select it.
+   * Whether the active model takes a prompt at all — the model's own
+   * `takes_prompt` (#1935, #1966). Read off the wire for the same reason as
+   * {@link VideoPanelViewModel.maxReferences}: what a model accepts is
+   * declared per model, so a demand belongs to the model rather than to the
+   * mode that happens to select it.
+   *
+   * It used to be DERIVED, from whether the model declared a `prompt` under
+   * `params`, and that is what #1966 replaced. The declaration was a
+   * per-catalog writing habit rather than a statement about the model — not
+   * one image model ever wrote it — so the image panel could not use the same
+   * derivation and hardcoded `true` instead. Both panels now read this one
+   * field the same way (`panel-view-model.ts` does the identical lookup), and
+   * every `params.prompt` declaration is gone from the catalog. Omitting
+   * `takes_prompt` is a load-time error, never a silent `false`
+   * (`assertTakesPromptDeclared`).
    *
    * What this measures is the model's catalog entry, not the endpoint behind
    * it — the prompt travels as its own argument the whole way down and never
@@ -127,23 +138,18 @@ export interface VideoPanelViewModel {
    * that declares none. The panel is what stops it: since #1950 such a model
    * is sent an empty string.
    *
-   * Among the models THIS PANEL can offer — the ones whose mode is one of its
-   * six — every one declares a prompt except the talking-head model, which is
-   * why demanding one everywhere else stays correct. Deliberately scoped to
-   * the panel rather than to the catalog: `catalog.video` also carries the
-   * mini-tool entries (upscaling, frame interpolation), and those declare no
-   * prompt either. The IMAGE panel derives nothing — see the reason stated at
-   * its own gate.
-   *
-   * True when the model is unknown: an unrecognised model is not a licence to
-   * skip the requirement every other mode has. That fallback also covers the
-   * catalog being in flight, and there the panel does show a prompt box a
-   * talking-head model has no use for, for the length of that request — the
-   * same loading state that leaves the model pill blank and the mode switch
-   * disabled beside it. Tracked as its own problem (#1964) because the fix belongs to
-   * the frame that already gates on the catalog, not to this field: making
-   * this one value say "not known yet" and having rendering act on it took
-   * the prompt box away from the other five modes for that same stretch.
+   * True when no model resolves, which after #1966 is one state and not the
+   * three it used to cover. The catalog is never in flight here (the frame
+   * holds the whole panel back until it lands), and a stored id the catalog
+   * dropped never reaches this either — `pickModelForMode` re-picks from the
+   * mode's own list, so it only ever yields a name that IS in that list, or
+   * `''` when the list is empty. So the one surviving case is "this mode
+   * offers no model at all", and there `evaluateExecute` answers `no-model`
+   * first — the order matters, because answering `prompt-missing` instead would
+   * un-grey the button for a mode that has nothing to run (#1949). True is
+   * nevertheless the right value here: a demand nobody
+   * can act on is visible, whereas dropping it would hide the editor and leave
+   * the panel claiming a model needs no prompt when there is no model.
    */
   promptRequired: boolean;
 }
@@ -341,6 +347,16 @@ export function buildVideoPanelViewModel(input: {
     references,
     referenceUrls,
     maxReferences: positiveCap(current?.params.images?.max_items),
-    promptRequired: current ? current.params.prompt != null : true,
+    // The model states it (#1966). This used to be inferred from a `prompt`
+    // entry under `params` — a per-catalog writing habit, not a rule. Four of
+    // the six video model files wrote one (kling / seedance / veo / wan); the
+    // two that did not, `omnihuman.yaml` and `post.yaml`, hold exactly the
+    // three models that declare `takes_prompt: false`, which is why the
+    // inference looked right on video. No image model ever wrote it, so the
+    // same inference would have switched the requirement off for that whole
+    // catalog. The fallback still applies
+    // when no model resolves: an unrecognised model is not a licence to skip a
+    // requirement every other mode has.
+    promptRequired: current?.takes_prompt ?? true,
   };
 }

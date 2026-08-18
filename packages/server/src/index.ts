@@ -27,6 +27,7 @@ import { renderMetrics } from "@server/infra/metrics.js";
 import { logger, initLogger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
+import { modelCatalog } from "@breatic/domain";
 
 // Tag this process's logs as "server" (file dir logs/server/, `name:"server"`).
 // Runs after initCore (bootstrap-config) and before the first log below;
@@ -68,6 +69,19 @@ try {
   getStorageConfig();
 } catch (err) {
   logger.error({ err }, "storage_config_invalid");
+  process.exit(1);
+}
+
+// Same preflight for config/models/*.yaml (#1966). Every model must declare
+// `takes_prompt`, and the catalog is as lazy as the configs above — lazy here
+// means a missing declaration surfaces on the first `GET /api/v1/models`,
+// which under the readiness gate is every user's Generate panel refusing to
+// open while the process stays up and healthz stays green. Loading it here
+// puts that in front of whoever edited the file.
+try {
+  modelCatalog.getModelCatalog();
+} catch (err) {
+  logger.error({ err }, "model_catalog_invalid");
   process.exit(1);
 }
 

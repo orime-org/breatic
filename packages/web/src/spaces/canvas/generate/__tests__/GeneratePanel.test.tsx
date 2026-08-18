@@ -28,6 +28,7 @@ const MODEL: ModelEntry = {
   tier: 'recommended',
   cost_per_call: 7,
   generation_time: 30,
+  takes_prompt: true,
   params: {
     aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
     resolution: { description: '', values: ['1K', '2K'], default: '1K' },
@@ -49,11 +50,12 @@ function setup(
       models={[MODEL]}
       model='nano_banana_pro'
       mode='t2i'
+      promptRequired
       catalogEmpty={false}
       params={{ aspect_ratio: '16:9', resolution: '2K' }}
       references={[]}
       creditEstimate={7}
-      canExecute
+      executeRefusal={null}
       promptSlot={<div data-testid='prompt-slot'>prompt</div>}
       onExit={() => {}}
       onInsertReference={() => {}}
@@ -126,14 +128,14 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
-  it('disables the execute button when canExecute is false', () => {
-    setup({ canExecute: false });
+  it('disables the execute button for a refusal the user cannot act on', () => {
+    setup({ executeRefusal: 'no-model' as const });
     expect(screen.getByTestId('generate-execute')).toBeDisabled();
   });
 
   it('fires onExecute when execute is clicked and enabled', () => {
     const onExecute = vi.fn();
-    setup({ canExecute: true, onExecute });
+    setup({ executeRefusal: null, onExecute });
     fireEvent.click(screen.getByTestId('generate-execute'));
     expect(onExecute).toHaveBeenCalledTimes(1);
   });
@@ -177,7 +179,7 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
   it('disables the mode toggle while the GLOBAL catalog is empty (loading/failed) — guards the data-clobber', () => {
     // Adversarial round 1 (2026-07-09): toggling before the catalog resolves
     // would clobber the node's stored model/params. The toggle is inert while
-    // the whole generatable catalog is empty (loading / failed / none configured).
+    // the whole generatable catalog is empty (no generation model configured).
     setup({ catalogEmpty: true, models: [] });
     expect(screen.getByTestId('generate-mode-trigger')).toBeDisabled();
   });

@@ -70,6 +70,32 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.image[0]?.icon).toBe("nano-banana");
   });
 
+  // `takes_prompt` falls back to TRUE, and the direction is the whole point
+  // (#1966). This field decides whether the panel demands a prompt; falling
+  // back to `false` would not block anything — the execute gate reads
+  // `!promptRequired || promptText.trim()`, so `false` REMOVES the demand.
+  // The panel would then hide the editor and submit a paid generation with an
+  // empty prompt to a model that actually wanted one. Falling back to `true`
+  // costs at worst one demand too many, which the user can see and act on.
+  it("falls back takes_prompt to true when the field is missing", () => {
+    const raw = catalog([entry("flux", { takes_prompt: undefined })]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image).toHaveLength(1);
+    expect(out.image[0]?.takes_prompt).toBe(true);
+  });
+
+  it("falls back takes_prompt to true when the field is not a boolean", () => {
+    const raw = catalog([entry("flux", { takes_prompt: "false" })]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.takes_prompt).toBe(true);
+  });
+
+  it("keeps a declared takes_prompt: false — the fallback must not overwrite it", () => {
+    const raw = catalog([entry("flux", { takes_prompt: false })]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.takes_prompt).toBe(false);
+  });
+
   it("coerces a non-string icon to undefined but keeps the entry", () => {
     const raw = catalog([entry("flux", { icon: 123 })]);
     const out = sanitizeModelCatalog(raw);

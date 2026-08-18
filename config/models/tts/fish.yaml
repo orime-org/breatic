@@ -9,6 +9,7 @@ models:
   - name: "fish-s2-pro"
     display_name: "Fish S2 Pro"
     mode: "tts"
+    takes_prompt: true
     tier: recommended
     description: "TTS-Arena #1, 80+ languages, emotion"
     guide: "Fish Audio's flagship TTS ranked #1 on TTS-Arena. Dual-AR architecture (4B + 400M params), 80+ languages with auto-detection, free-form emotion control via natural language tags like [whisper], [excited], [professional broadcast tone], [pitch up]. Sub-word-level prosody control, 15,000+ expression tags. 70-80% cheaper than ElevenLabs. Choose for any TTS task where cost-effectiveness matters without sacrificing quality."
@@ -49,9 +50,6 @@ models:
     # Users browse and select voices at https://fish.audio
     voices: []
     params:
-      text:
-        description: "Text to convert to speech"
-        default: null
       reference_id:
         description: "Preset voice ID (UUID from fish.audio)"
         default: null

@@ -17,9 +17,9 @@
  * to keep the resolution chain simple and avoid bookmark-locale drift.
  *
  * Locale JSON is imported via the Vite `@locales` alias at build time
- * (vite.config.mts line 73 maps to repo-root `locales/`), so all four
- * locale files are bundled into the initial JS chunk. Switching locales
- * at runtime is therefore zero-RTT — no network fetch needed.
+ * (`vite.config.mts` maps it to repo-root `locales/`), so all five locale
+ * files are bundled into the initial JS chunk. Switching locales at runtime
+ * is therefore zero-RTT — no network fetch needed.
  */
 
 import {

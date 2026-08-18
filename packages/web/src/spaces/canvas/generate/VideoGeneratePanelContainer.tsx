@@ -6,7 +6,6 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 
 import { canvasApi } from '@web/data/api/canvas';
-import { modelsApi } from '@web/data/api/models';
 import { ApiException } from '@web/data/api/types';
 import {
   getPromptFragment,
@@ -26,7 +25,10 @@ import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores';
-import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
+import {
+  evaluateExecute,
+  refusalToastKey,
+} from '@web/spaces/canvas/generate/generate-guards';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
@@ -69,6 +71,8 @@ import {
 } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 
 /**
  * For the reference derivation that deliberately wants no body text. Shared so
@@ -132,13 +136,11 @@ function VideoGeneratePanelBody({
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const { caretProvider } = useCanvasContext();
 
-  const { data: catalog } = useQuery({
-    queryKey: ['models'],
-    queryFn: () => modelsApi.list(),
-  });
-  // `?? []` covers only the loading window; once resolved, modelsApi.list() has
-  // run the response through sanitizeModelCatalog, so catalog.video is a
-  // guaranteed ModelEntry[].
+  const { data: catalog } = useQuery(modelCatalogQuery());
+  // `?? []` is pure defence now: since #1966 this body mounts only inside
+  // `CatalogGatedFrame`, which withholds it until the query has data. Once
+  // resolved, modelsApi.list() has run the response through
+  // sanitizeModelCatalog, so catalog.video is a guaranteed ModelEntry[].
   const models = React.useMemo(() => catalog?.video ?? [], [catalog]);
 
   // Two mirrors of the prompt: state drives the button's enabled look (a frame
@@ -227,41 +229,15 @@ function VideoGeneratePanelBody({
     [nodeId, nodes, edges, models, mode, textById],
   );
 
-  // Refuses out loud when this model takes no prompt (#1950). The rail lets a
-  // TEXT row through unconditionally — `reference-usability.ts` refuses on
-  // REFERENCE MATERIAL only, and text sits outside that because its chip
-  // substitutes into the prompt string. This mode no longer sends one, and the
-  // rail cannot learn that without reading the model catalog, the one thing
-  // that module deliberately keeps out of its two questions (its docstring
-  // records what happened the last time an answer there depended on the
-  // catalog having loaded). So the refusal belongs here.
-  //
-  // The question asked is `promptRequired` — the same value the editor mounts
-  // on — not whether the ref happens to hold one right now. The message says
-  // something about the MODE ("this mode has no prompt to insert into"), and
-  // `promptRequired` is what answers that; the ref is a rendering state that
-  // merely tends to agree with it. Same reasoning as the criterion this slice
-  // is built on: ask the model, not something downstream of it.
-  //
-  // The two part company in exactly one case — the model takes a prompt but
-  // the node has no fragment to edit, so no editor mounts. There the ref would
-  // refuse and this does not, leaving the `?.` below to swallow the click.
-  // Such a node predates video generation and we ship no compatibility for
-  // pre-launch data (#1950); filed as #1962, next to the rail's own open
-  // question about such modes (#1965).
-  // No test pins this swap, for that same reason: every state a user can
-  // reach today gets the same answer from either criterion, so an assertion
-  // about the difference would be asserting nothing (measured — swapping it
-  // back leaves all 58 container tests green).
+  // The rail refuses this itself now (#1966): `takesPrompt` is one of the two
+  // booleans its context carries, so "can this row be inserted" is answered in
+  // one place instead of half here and half there. This callback is back to
+  // doing only what its name says.
   const handleInsertReference = React.useCallback(
     (item: ReferenceRailItem) => {
-      if (!vm.promptRequired) {
-        toast.warning(t('canvas.generatePanel.refuseInsertNoPrompt'));
-        return;
-      }
       promptEditorRef.current?.insertReference(item);
     },
-    [t, vm.promptRequired],
+    [],
   );
   const references = vm.references;
 
@@ -546,7 +522,7 @@ function VideoGeneratePanelBody({
     if (submittingRef.current) return;
     // A node a collaborator deleted since the panel opened is refused by the
     // execute gate below: it derives from a fresh graph read, so a vanished
-    // node has no status and `canExecuteGenerate` returns false. There is no
+    // node has no status and `evaluateExecute` answers `node-gone`. There is no
     // separate existence check here — one would sit in front of a guard that
     // already covers it, and a line that can never change the outcome reads
     // to the next person as if it can.
@@ -580,15 +556,29 @@ function VideoGeneratePanelBody({
     const freshPrompt = fresh.promptRequired
       ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
       : '';
-    if (
-      !canExecuteGenerate({
-        promptText: freshPrompt,
-        model: fresh.model,
-        nodeStatus: fresh.nodeStatus,
-        isSubmitting: false,
-        promptRequired: fresh.promptRequired,
-      })
-    ) {
+    // One evaluation, its own inputs: the button asked the same question of
+    // the RENDER-time view model, this asks it of live Yjs. Never reuse the
+    // button's answer — React batching and live collaboration make a render
+    // closure stale, and `prompt-missing` in particular is judged against a
+    // different value here (the editor re-serializes so a text chip carries
+    // its source node's CURRENT words).
+    //
+    // `isSubmitting: false` because the synchronous latch above already
+    // answered that question, and it answers it earlier than a state flag can
+    // (a rapid second click would slip past a re-render). So `'submitting'`
+    // never reaches the check below — it exists for the button.
+    const refusal = evaluateExecute({
+      promptText: freshPrompt,
+      model: fresh.model,
+      nodeStatus: fresh.nodeStatus,
+      isSubmitting: false,
+      promptRequired: fresh.promptRequired,
+    });
+    if (refusal != null) {
+      // WHICH refusal speaks is policy, and it lives in one place for the same
+      // reason the disabled set does — both panels ask, neither spells it out.
+      const key = refusalToastKey(refusal);
+      if (key) toast.warning(t(key));
       return;
     }
     // The one check the mode's field set cannot make for itself: the fields
@@ -602,7 +592,7 @@ function VideoGeneratePanelBody({
     // control. The server re-checks before billing (defence in depth).
     const emptySlot = fresh.slots.find((slot) => !fresh.slotUrls[slot]);
     if (emptySlot) {
-      toast.error(t(VIDEO_SLOTS[emptySlot].errorKey));
+      toast.warning(t(VIDEO_SLOTS[emptySlot].errorKey));
       return;
     }
     // The same question for the mode whose sources are references rather than
@@ -612,7 +602,7 @@ function VideoGeneratePanelBody({
     // image", which is the i2i vocabulary and would point someone here at a
     // control this panel does not have.
     if (modeTakesReferences(fresh.mode) && fresh.referenceUrls.length === 0) {
-      toast.error(t('canvas.generatePanel.errorNoReferenceMention'));
+      toast.warning(t('canvas.generatePanel.errorNoReferenceMention'));
       return;
     }
     // And the other end of the same gate: more than the model takes. Naming
@@ -624,7 +614,7 @@ function VideoGeneratePanelBody({
       fresh.maxReferences,
     );
     if (overCap) {
-      toast.error(t('canvas.generatePanel.errorTooManyReferences', overCap));
+      toast.warning(t('canvas.generatePanel.errorTooManyReferences', overCap));
       return;
     }
     submittingRef.current = true;
@@ -703,22 +693,19 @@ function VideoGeneratePanelBody({
   // checked first — the same as the image panel (`GeneratePanelContainer.tsx:705`):
   // pre-launch we ship no compatibility branch for old data (#1950).
   //
-  // The model decides, not the mode (#1935, #1950): a model that declares no
-  // `prompt` has nothing to do with one, so the editor does not mount and a
-  // line says what this mode runs on instead. Unmounting rather than hiding —
+  // The model decides, not the mode (#1935, #1950, #1966): a model that
+  // declares `takes_prompt: false` has nothing to do with one, so the editor
+  // does not mount and a line says this mode does not need a prompt. That line
+  // names no modality on purpose (user 2026-08-17) — the trigger is a per-model
+  // boolean, so copy tied to audio would appear under a mode with nothing to do
+  // with audio the moment a second model declared it. Unmounting rather than hiding —
   // there is nothing to type into it here, and a mounted collaborative editor
   // costs a TipTap instance plus its bindings. The cost is the prompt's undo
   // history, which lives on the editor instance and dies with it (#1961).
-  const promptNotUsedNotice = t('canvas.generatePanel.videoPromptNotUsed');
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
-        <p
-          data-testid='generate-video-prompt-not-used'
-          className='px-1 py-2 text-xs text-muted-foreground'
-        >
-          {promptNotUsedNotice}
-        </p>
+        <PromptNotUsedNotice />
       ) : fragment ? (
         <PromptEditor
           ref={promptEditorRef}
@@ -738,7 +725,6 @@ function VideoGeneratePanelBody({
       ) : null,
     [
       vm.promptRequired,
-      promptNotUsedNotice,
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
@@ -763,6 +749,7 @@ function VideoGeneratePanelBody({
       mode={mode}
       onToggleMode={onToggleMode}
       catalogEmpty={catalogEmpty}
+      promptRequired={vm.promptRequired}
       references={stableReferences}
       onAddReference={onAddReference}
       referencePicking={referencePicking}
@@ -776,7 +763,7 @@ function VideoGeneratePanelBody({
       activeSlot={activeSlot}
       onPickSlot={onPickSlot}
       onClearSlot={onClearSlot}
-      canExecute={canExecuteGenerate({
+      executeRefusal={evaluateExecute({
         promptText,
         model: vm.model,
         nodeStatus: vm.nodeStatus,

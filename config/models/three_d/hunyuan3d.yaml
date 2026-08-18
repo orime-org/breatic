@@ -11,15 +11,13 @@ models:
   - name: "hunyuan3d-v3"
     display_name: "Hunyuan3D V3"
     mode: "t23d"
+    takes_prompt: true
     tier: optional
     description: "Tencent, 3 quality tiers"
     guide: "Tencent's text-to-3D with three quality tiers: Geometry (mesh only, cheapest), Normal (with textures), and LowPoly (game-ready low-poly). Supports PBR and quad topology for LowPoly. Choose for flexible quality/cost tradeoff."
     cost_per_call: 25
     generation_time: 120
     params:
-      prompt:
-        description: "3D object description (max 1024 chars)"
-        default: null
       generate_type:
         description: "Quality tier"
         default: "Normal"
@@ -38,6 +36,7 @@ models:
   - name: "hunyuan3d-v3-i23d"
     display_name: "Hunyuan3D V3 Image-to-3D"
     mode: "i23d"
+    takes_prompt: false
     tier: recommended
     description: "Multi-view input, PBR support"
     guide: "Tencent's image-to-3D with optional multi-view input (front + back/left/right images for higher fidelity). Same quality tiers as text-to-3D. Multi-view costs more but produces more accurate geometry. Choose for high-fidelity reconstruction."
@@ -74,6 +73,7 @@ models:
   - name: "hunyuan3d-v3.1-rapid"
     display_name: "Hunyuan3D V3.1 Rapid"
     mode: "i23d"
+    takes_prompt: false
     tier: recommended
     description: "Ultra-fast, cheapest i23d"
     guide: "Ultra-fast image-to-3D at the lowest cost ($0.02). Single image input, no configuration needed. Best for quick prototyping or bulk 3D asset generation. Choose when speed and cost matter more than quality."

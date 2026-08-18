@@ -35,6 +35,7 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
     tier: 'optional',
     cost_per_call: 40,
     generation_time: 120,
+    takes_prompt: true,
     params: {
       aspect_ratio: { description: '', values: ['16:9', '9:16'], default: '16:9' },
       resolution: { description: '', values: ['720p', '1080p'], default: '720p' },

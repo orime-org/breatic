@@ -9,6 +9,7 @@ models:
   - name: "elevenlabs-v3"
     display_name: "ElevenLabs V3"
     mode: "tts"
+    takes_prompt: true
     tier: recommended
     description: "Most natural, emotional speech"
     guide: "Most expressive TTS model with natural emotion and intonation. 70+ languages, 5000 char limit. 50+ preset voices covering diverse accents, ages, and styles. Choose for the highest-quality single-speaker voiceover, narration, or dialogue where naturalness matters most."
@@ -101,9 +102,6 @@ models:
       - { id: Thomas,    gender: male,   description: "Calm, steady British",              sample_url: null }
       - { id: Will,      gender: male,   description: "Friendly, young American",          sample_url: null }
     params:
-      text:
-        description: "Text to convert to speech"
-        default: null
       voice_id:
         description: "Voice identifier"
         default: "Alice"

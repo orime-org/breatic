@@ -27,26 +27,34 @@
  * not re-evaluating one expression the payload also evaluates; it asks for
  * the one property both producers require.
  *
- * Splitting them gives each control the smallest question it can ask. Remove
- * asks the mode question alone; insert asks it too — mode first, so its
- * message names the state the user can leave — and then the modality one:
+ * A third question joined them in #1966: does the active model consume the
+ * prompt at all (`ModelEntry.takes_prompt`)? That every mode sends a prompt
+ * stopped being true in #1950 — a model that declares none mounts no editor —
+ * and the answer used to live in the video container, which refused the insert
+ * itself. It moved in here so that "can this row act" has ONE home (#1962).
  *
- * | Asked by | Asks | Decides |
+ * Both controls start from the ROW KIND, and from there each asks only what
+ * can actually refuse that kind:
+ *
+ * | Row kind | {@link insertRefusal} asks, in order | {@link removeRefusal} asks |
  * |---|---|---|
- * | {@link removeRefusal} | Does this mode use references at all | row dim + ✕ |
- * | {@link insertRefusal} | That, and then: is this row an image | insert + `@` picker |
+ * | text | Is there a prompt | Is there a prompt |
+ * | image / audio / video / … | Does this mode use references; is there a prompt; is this row an image | Does this mode use references |
  *
- * Both read on REFERENCE MATERIAL. A text row is prompt material — its `@`
- * chip substitutes into the prompt STRING — so it sits outside both: always
- * lit, always insertable, always removable (user 2026-08-13: the dim rule's
- * subject is the reference material, not every row in the rail).
+ * Two properties fall out of that shape, and both are the point. The two
+ * controls on one row always give the SAME first answer, so a row never shows
+ * two different reasons for being frozen. And every reason names a state the
+ * user can leave and arrive somewhere the row works: a media row becomes usable
+ * in a mode that takes references, a text row in a mode that sends a prompt.
+ * Asking a media row about the prompt first would have sent its user to t2v /
+ * i2v / first_last / animate — all of which send a prompt and still refuse it.
  *
- * That every mode sends a prompt stopped being true in #1950: a model that
- * declares no `prompt` gets an empty one, and its panel mounts no editor to
- * insert into. Neither question here can see that — it comes from the model
- * catalog, which is exactly what the paragraph below keeps out of them — so
- * the video container refuses that insert itself, reading the same
- * `promptRequired` its editor mounts on.
+ * Insert then asks two more, because insertion needs more than removal does: a
+ * destination to insert INTO, and a row the pool can carry.
+ *
+ * The dim still reads on REFERENCE MATERIAL alone: a text row is prompt
+ * material, and the dim rule's subject is the reference material, not every row
+ * in the rail (user 2026-08-13).
  *
  * Neither dimension reads anything asynchronous, and that is deliberate. An
  * earlier version took the consumable types from `ModelEntry.sourcesByMode`,
@@ -61,26 +69,47 @@
 import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 
 /**
- * Why a rail control refuses to act. Each value maps to one message, because
- * each suggests a different remedy: switch to a mode that uses references, or
- * bring an image instead.
+ * Why a rail control refuses to act. Three reasons, each with its own remedy:
+ * switch to a mode that uses references, bring an image instead, or switch to
+ * a model that takes a prompt.
+ *
+ * A reason does NOT map to one message. Insert and remove answer different
+ * questions, and the two controls do not see the same reasons: insert has one
+ * message per reason (three), remove has two reasons to state and one of them
+ * splits by row (`mode-takes-no-references` reads differently for a focus crop,
+ * which has no edge to delete). `source-type-unused` never reaches remove at
+ * all — {@link removeRefusal} does not ask that question. Six messages.
  */
 export type ReferenceRefusal =
   | 'mode-takes-no-references'
-  | 'source-type-unused';
+  | 'source-type-unused'
+  | 'model-takes-no-prompt';
 
-/** What the active mode does with the reference pool. */
-export interface ReferenceModeContext {
+/**
+ * What the rail needs to know to answer for a row: one fact about the active
+ * MODE (does it use the reference pool) and one about the active MODEL (does
+ * it take a prompt). Named for what it is used for rather than for either
+ * source, because the two fields do not share one — see each field.
+ */
+export interface ReferenceUsabilityContext {
   /**
    * Does this mode consume the `@`-picked pool at all (`modeTakesReferences`
    * on the video panel, `!imageSourcesOff` on the image one)? This is the
    * row-level dimension: false dims every REFERENCE MATERIAL row and freezes
    * its ✕. Text rows are outside it — see the module docstring.
-   *
-   * The only field, on purpose: what a lit rail can consume is not a variable
-   * (see the module docstring), so nothing else has to be known to answer.
    */
   takesReferences: boolean;
+  /**
+   * Does the ACTIVE MODEL consume the prompt (`ModelEntry.takes_prompt`,
+   * #1966)? False freezes INSERT on every row — there is no editor to insert
+   * into — and freezes the ✕ on TEXT rows, which are prompt material and have
+   * nothing to be material FOR under such a mode (user 2026-08-16).
+   *
+   * A plain boolean the caller passes in, exactly like `takesReferences`: the
+   * value comes from the model catalog, but this module still reads nothing
+   * asynchronous itself — the thing the module docstring keeps out of here.
+   */
+  takesPrompt: boolean;
 }
 
 /**
@@ -104,23 +133,33 @@ export function isReferenceMaterial(kind: NodeKind): boolean {
  * the same call the `@` picker filters with, so the two entry points cannot
  * drift into disagreeing about one row.
  * @param sourceNodeType - The upstream node's modality.
- * @param ctx - What the active mode does with references.
+ * @param ctx - What the active mode does with references, and whether its model takes a prompt.
  * @returns The refusal reason, or null when the row can be inserted.
  */
 export function insertRefusal(
   sourceNodeType: NodeKind,
-  ctx: ReferenceModeContext,
+  ctx: ReferenceUsabilityContext,
 ): ReferenceRefusal | null {
-  // Text is prompt material, and this question is about reference material, so
-  // it passes here unconditionally. Whether the active model has a prompt to
-  // insert INTO is a separate question this module cannot answer (#1950 — see
-  // the module docstring); the video container asks it.
-  if (!isReferenceMaterial(sourceNodeType)) return null;
-  // Mode before modality when both would refuse. The mode reason names the
-  // state the user can leave — this mode ignores references, another one does
-  // not — while the modality reason names a rule that holds everywhere and
-  // leaves nothing to do. Told both, the user can act on only one of them.
+  // A text row lives in the prompt and nowhere else, so the prompt question is
+  // the only one that can refuse it. The video container used to ask this one,
+  // reading the same `promptRequired` its editor mounts on; that second home is
+  // what #1962 removed.
+  if (!isReferenceMaterial(sourceNodeType)) {
+    return ctx.takesPrompt ? null : 'model-takes-no-prompt';
+  }
+  // For a media row the reference question comes first, and it comes first for
+  // the reason the whole module exists: of the two refusals, only this one
+  // names a state the user can leave and reach a mode where the row WORKS.
+  // Leading with "there is no prompt box" sends them to t2v / i2v /
+  // first_last / animate, which all send a prompt and still refuse this row.
+  // It also keeps the two controls on a row agreeing: {@link removeRefusal}
+  // asks the same first question, so one row never shows two different reasons.
   if (!ctx.takesReferences) return 'mode-takes-no-references';
+  // The mode does use references, so now the destination matters: with no
+  // prompt there is no box to put the `@` chip in. Unreachable in today's
+  // catalog — the one mode that takes references also sends a prompt — but the
+  // order has to be total.
+  if (!ctx.takesPrompt) return 'model-takes-no-prompt';
   // The pool is the image pool — see the module docstring. Everything else is
   // a legitimate connection (an edge carries creative intent as well as data
   // use, user 2026-08-13) that this pool has no way to carry.
@@ -132,25 +171,39 @@ export function insertRefusal(
  *
  * Freezing the ✕ in a mode that ignores references protects a row from being
  * thrown away before the user switches back to the mode that uses it
- * (decision 2026-08-11). That reasoning has a premise — "this mode cannot use
- * the row" — and it holds for reference MATERIAL only. A text row is prompt
- * material, which this question is not about, so it stays removable
- * (user 2026-08-13). The reason given then — every mode substitutes it into
- * the prompt string, so no mode cannot use it — no longer holds for a model
- * that declares no prompt (#1950); whether such a mode should hold a text row
- * in trust too is open (#1965) and the behaviour here is unchanged. Hence the
- * row kind, and only that distinction: the three
- * media kinds always answer identically, which is what stops audio and video
- * rows from staying removable inside a dimmed mode while image rows freeze
- * (#1940).
+ * (decision 2026-08-11). That premise — "this mode cannot use the row" — holds
+ * for reference MATERIAL. A text row is prompt material, so it answers to the
+ * OTHER question: a mode whose model sends no prompt cannot use a text row
+ * either, and freezing it there is the same protection for the same reason
+ * (#1965, user 2026-08-13 + 2026-08-16).
+ *
+ * So each row kind gets exactly the question that applies to it, and the order
+ * is not arbitrary: the two questions lead to DIFFERENT exits, and only one of
+ * them is real for a media row. A media row becomes removable in a mode that
+ * TAKES REFERENCES; the prompt question would point its user at t2v / i2v /
+ * first_last / animate, where the ✕ refuses all the same. Picking the reason
+ * whose exit actually works is the invariant — whether a given message spells
+ * that exit out is a copy decision, and copy states the situation rather than
+ * explaining it (user 2026-08-17), which is why the no-prompt refusal is one
+ * short line and nothing else.
+ *
+ * The three media kinds still answer identically, which is what stops audio and
+ * video rows from staying removable inside a dimmed mode while image rows
+ * freeze (#1940).
  * @param sourceNodeType - The upstream node's modality.
- * @param ctx - What the active mode does with references.
+ * @param ctx - What the active mode does with references, and whether its model takes a prompt.
  * @returns The refusal reason, or null when the row can be removed.
  */
 export function removeRefusal(
   sourceNodeType: NodeKind,
-  ctx: ReferenceModeContext,
+  ctx: ReferenceUsabilityContext,
 ): ReferenceRefusal | null {
-  if (!isReferenceMaterial(sourceNodeType)) return null;
+  // A text row lives in the prompt: one prompt is shared across the modes
+  // (#1919), so removing it under a mode with no prompt would take it out of
+  // every mode that does send one. Switching to such a mode is a way out that
+  // actually works for it, because the reference question never applied here.
+  if (!isReferenceMaterial(sourceNodeType)) {
+    return ctx.takesPrompt ? null : 'model-takes-no-prompt';
+  }
   return ctx.takesReferences ? null : 'mode-takes-no-references';
 }

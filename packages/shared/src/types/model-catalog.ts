@@ -81,6 +81,19 @@ export interface ModelEntry {
   params: Record<string, ParamDescriptor>;
   providers: ModelProvider[];
   /**
+   * Whether this model consumes the text the user writes (#1966). Declared
+   * per model in yaml, never derived: it used to be read off a `prompt` entry
+   * under `params`, which is a per-catalog writing habit rather than a rule —
+   * no image model ever wrote one, so that derivation answered "no prompt"
+   * for the whole image catalog. Both Generate panels mount (or refuse to
+   * mount) their prompt editor on this, and the reference rail freezes a
+   * row's insert and ✕ on it.
+   *
+   * Not optional: a model that omits it fails to load. Defaulting to `false`
+   * would let a forgotten line silently unmount the editor.
+   */
+  takes_prompt: boolean;
+  /**
    * Per-mode source requirements (#1675 cross-modality execute gate),
    * computed backend-side (the rule lives in domain). Maps each of the
    * model's modes to the source types that mode needs (`t2i` → `[]`,
@@ -279,6 +292,21 @@ const modelEntrySchema = z.object({
   sourcesByMode: z
     .record(z.string(), z.array(z.enum(["image", "video", "audio"])))
     .catch({}),
+  // Whether the model consumes the user's text (#1966). The backend refuses to
+  // load a catalog where a model omits it, so this `.catch` only fires on a
+  // corrupted or version-skewed wire — and there it degrades OPEN, same as
+  // `sourcesByMode` above.
+  //
+  // `true` mounts the editor and makes `canExecuteGenerate` demand a non-empty
+  // prompt, which at worst reproduces the pre-#1966 behaviour of a prompt the
+  // model ignores — the user types something that goes nowhere.
+  //
+  // `false` is the expensive direction, and not for the reason it looks: the
+  // execute gate reads `!promptRequired || promptText.trim()`, so a false here
+  // does not block anything — it REMOVES the demand. The panel would hide the
+  // editor and then happily submit a paid generation with an empty prompt from
+  // a model that actually wanted one.
+  takes_prompt: z.boolean().catch(true),
 });
 
 /** One modality bucket: a non-array coerces to [], garbage entries drop out. */

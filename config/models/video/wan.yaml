@@ -17,15 +17,13 @@ models:
   - name: "wan-2.2-animate"
     display_name: "Wan 2.2 Animate"
     mode: "animate"
+    takes_prompt: true
     tier: recommended
     description: "Wan 2.2 image animation"
     guide: "Animate a character image with a driving motion video using Wan 2.2. Both the image and the video are required. 480p or 720p."
     cost_per_call: 20
     generation_time: 120
     params:
-      prompt:
-        description: "Scene description"
-        default: null
       image:
         description: "Character image URL"
         default: null

@@ -15,6 +15,7 @@ models:
   - name: "omnihuman-1.5"
     display_name: "OmniHuman 1.5"
     mode: "talking_head"
+    takes_prompt: false
     tier: recommended
     description: "Portrait + audio talking head"
     guide: "ByteDance's talking head generator. Provide a portrait image and audio file to create a talking head video. Duration matches audio length. Resolution depends on input image."

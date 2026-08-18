@@ -11,15 +11,13 @@ models:
   - name: "meshy6-t23d"
     display_name: "Meshy 6 Text-to-3D"
     mode: "t23d"
+    takes_prompt: true
     tier: recommended
     description: "Best quality, PBR textures"
     guide: "Highest quality text-to-3D with accurate geometry and PBR texture support. Outputs GLB/FBX/OBJ/USDZ. Supports A/T-pose for character rigging, quad/triangle topology, and symmetry control. 5-10 min generation. Choose for production-ready 3D assets."
     cost_per_call: 80
     generation_time: 600
     params:
-      prompt:
-        description: "3D object description (max 600 chars)"
-        default: null
       art_style:
         description: "Visual style"
         default: "realistic"

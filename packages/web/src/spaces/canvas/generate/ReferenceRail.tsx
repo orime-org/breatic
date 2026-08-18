@@ -12,7 +12,7 @@ import {
   insertRefusal,
   isReferenceMaterial,
   removeRefusal,
-  type ReferenceModeContext,
+  type ReferenceUsabilityContext,
   type ReferenceRefusal,
 } from '@web/spaces/canvas/generate/reference-usability';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
@@ -73,6 +73,24 @@ interface ReferenceRailProps {
    */
   modeTakesReferences?: boolean;
   /**
+   * Does the ACTIVE MODEL consume the prompt (#1966)? False freezes INSERT on
+   * every row — there is nowhere to insert into — and the ✕ on TEXT rows only,
+   * which also dims them (the dim reads the ✕ verdict).
+   *
+   * Text rows are exempt from `modeTakesReferences` because they are prompt
+   * material; that exemption only holds while there IS a prompt. A mode
+   * sending none has nothing for a text row to be material for, so it freezes
+   * there too (user 2026-08-16). A media row keeps answering to
+   * `modeTakesReferences`: of the two questions, only that one names a state
+   * the user can leave and reach a mode where the row WORKS, and both controls
+   * on a row have to give the same first answer or the row would show two
+   * contradictory reasons at once.
+   *
+   * Defaulted `true` for the same reason as the prop above: a caller that
+   * knows nothing about prompts gets the pre-#1966 rail.
+   */
+  modelTakesPrompt?: boolean;
+  /**
    * Focus crops whose upload is still in flight (#1782) — rendered as
    * disabled placeholder rows after the real entries; each disappears when
    * its upload lands (a real focus row replaces it) or fails (toast).
@@ -90,6 +108,7 @@ interface ReferenceRailProps {
  * @param root0.onRemove - Remove a reference by id.
  * @param root0.onInsert - Insert a reference's @-mention into the prompt.
  * @param root0.modeTakesReferences - Whether the active mode consumes the reference pool.
+ * @param root0.modelTakesPrompt - Whether the active model consumes the prompt.
  * @param root0.pendingFocus - Focus crops whose upload is still in flight.
  * @returns The reference rail, or null when empty.
  */
@@ -98,22 +117,37 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   onRemove,
   onInsert,
   modeTakesReferences = true,
+  modelTakesPrompt = true,
   pendingFocus = [],
 }: ReferenceRailProps): React.JSX.Element | null {
   const t = useTranslation();
-  const modeCtx: ReferenceModeContext = React.useMemo(
-    () => ({ takesReferences: modeTakesReferences }),
-    [modeTakesReferences],
+  const usabilityCtx: ReferenceUsabilityContext = React.useMemo(
+    () => ({
+      takesReferences: modeTakesReferences,
+      takesPrompt: modelTakesPrompt,
+    }),
+    [modeTakesReferences, modelTakesPrompt],
   );
-  // Two refusal reasons, four messages: the mode-off reason alone splits three
-  // ways. Insert names only the cause, because the mode selector is in this
-  // same panel and every reference material row is visibly dark. Remove has to
-  // name the ways
-  // out, because the user asked for the row to be GONE and is being told no.
-  // And a focus crop gets its own remove message, because one of those ways
-  // out — delete its edge — does not exist for it.
+  // Three refusal reasons, six messages, and the split is not 3 + 3 by reason:
+  // insert states all three; remove states only two (`source-type-unused` never
+  // reaches it) and one of those splits by row, because a focus crop has no
+  // edge to delete.
+  // Insert names only the cause, because the mode selector is in this same
+  // panel and every dimmed row is visibly dark. The reference-family remove
+  // messages also name the way out, which is why the crop variant exists at
+  // all — a focus crop has no edge to delete, so the shared sentence would
+  // offer it an exit it does not have.
+  //
+  // The no-prompt remove message names no way out: UI copy states the
+  // situation and does not explain it (user 2026-08-17), and this one fires on
+  // a click, where a paragraph is the wrong shape. The two reference sentences
+  // predate that rule and are queued to follow it (todo #1970).
   const refuseInsert = React.useCallback(
     (refusal: ReferenceRefusal, kind: NodeKind): void => {
+      if (refusal === 'model-takes-no-prompt') {
+        toast.warning(t('canvas.generatePanel.refuseInsertNoPrompt'));
+        return;
+      }
       if (refusal === 'mode-takes-no-references') {
         toast.warning(t('canvas.generatePanel.refuseInsertModeOff'));
         return;
@@ -123,7 +157,24 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     [t],
   );
   const refuseRemove = React.useCallback(
-    (isCrop: boolean): void => {
+    (refusal: ReferenceRefusal, isCrop: boolean): void => {
+      // Remove takes the REASON now, not just the crop flag (#1966). Reusing
+      // the insert copy here would answer a different question than the one
+      // asked — the user clicked ✕, and "no prompt to insert into" tells them
+      // nothing about getting rid of the row. Freezing a control while being
+      // unable to explain itself is exactly what `aria-disabled` rather than
+      // the HTML attribute exists to avoid.
+      //
+      // No crop variant on this branch, and it is not an omission: this reason
+      // reaches the ✕ only for a TEXT row (`removeRefusal` asks the reference
+      // question for every other kind), while a focus crop is always an image
+      // row (`focusToRailItem` writes `sourceNodeType: 'image'`). The two
+      // cannot coexist, so a crop-specific message here would be a string no
+      // one could ever read.
+      if (refusal === 'model-takes-no-prompt') {
+        toast.warning(t('canvas.generatePanel.refuseRemoveNoPrompt'));
+        return;
+      }
       // A focus crop is a standalone copy, not an edge projection — its ✕
       // removes the crop, never an edge. The shared message offers two ways
       // out and one of them, "delete its edge on the canvas", does not exist
@@ -147,15 +198,15 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     >
       {references.map((ref) => {
         const NodeIcon = getNodeIcon(ref.sourceNodeType);
-        // Both start from the row kind — a text row sits outside both. Remove
-        // then asks only whether the mode uses references at all; insert asks
-        // that too (mode first, so its message names the state the user can
-        // leave) and then whether the row is an image. `removeRefused` answers
-        // for the row dim as well as the ✕: they are the same question, and
-        // spelling it twice is how a row once ended up lit with its ✕ frozen
-        // (#1940).
-        const insertRefused = insertRefusal(ref.sourceNodeType, modeCtx);
-        const removeRefused = removeRefusal(ref.sourceNodeType, modeCtx);
+        // Both start from the row kind, and each asks only what can refuse
+        // that kind: a text row answers to the prompt question, a media row to
+        // the reference one. Insert then asks two more of a media row — is
+        // there a prompt to insert INTO, and can the pool carry this modality.
+        // `removeRefused` answers for the row dim as well as the ✕: they are
+        // the same question, and spelling it twice is how a row once ended up
+        // lit with its ✕ frozen (#1940).
+        const insertRefused = insertRefusal(ref.sourceNodeType, usabilityCtx);
+        const removeRefused = removeRefusal(ref.sourceNodeType, usabilityCtx);
         // Empty-source hint (H, user 2026-07-12): a source that has produced
         // nothing has no preview to show, so say so rather than opening a
         // blank card. Keyed on the ASSET rather than the thumbnail, because
@@ -183,12 +234,14 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             // buttons and no other row at all. The controls carry no opacity
             // of their own, so nothing multiplies down to 0.25.
             //
-            // It reads on REFERENCE MATERIAL only. A text row is prompt
-            // material, which this rule is not about, so dimming it would say
-            // it was unusable on a dimension that does not apply to it
-            // (user 2026-08-13). Whether the active model has a prompt at all
-            // is a separate question this component cannot answer (#1950 — a
-            // model may declare none); the container asks it on insert.
+            // It reads the ✕ verdict, which for a media row is the
+            // reference question and for a text row is the prompt question.
+            // So a text row stays lit under a mode that merely ignores
+            // references — that rule is not about it (user 2026-08-13) — and
+            // dims under one whose model sends no prompt, where it really has
+            // nothing to be material for (#1966). This component answers that
+            // second question from `modelTakesPrompt`; the video container used
+            // to answer it on insert, and that second home is gone (#1962).
             //
             // The hover preview is deliberately NOT dimmed: it is portaled, so
             // this opacity does not reach it, and that is the wanted outcome —
@@ -324,7 +377,9 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               )}
               aria-disabled={removeRefused !== null}
               onClick={() =>
-                removeRefused ? refuseRemove(ref.focus === true) : onRemove(ref)
+                removeRefused
+                  ? refuseRemove(removeRefused, ref.focus === true)
+                  : onRemove(ref)
               }
               className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
             >

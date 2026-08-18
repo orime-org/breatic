@@ -11,15 +11,13 @@ models:
   - name: "gemini-flash-vi"
     display_name: "Gemini Flash Image"
     mode: "vi"
+    takes_prompt: true
     tier: optional
     description: "Cheapest image understanding"
     guide: "Fast and cheap image understanding. Describe content, extract text (OCR), analyze composition, reverse-engineer prompts. 1M token context supports many images at once. Choose for bulk image analysis or budget-sensitive tasks."
     cost_per_call: 1
     generation_time: 10
     params:
-      prompt:
-        description: "Analysis instruction"
-        default: "Describe this image in detail."
       images:
         description: "Image URLs to analyze"
         default: null
@@ -38,15 +36,13 @@ models:
   - name: "gemini-flash-vv"
     display_name: "Gemini Flash Video"
     mode: "vv"
+    takes_prompt: true
     tier: optional
     description: "Cheapest video understanding"
     guide: "Fast and cheap video understanding. Describe scenes, analyze motion, identify actions, reverse-engineer video prompts. Supports long videos via Gemini's 1M context. Choose for video content analysis."
     cost_per_call: 3
     generation_time: 30
     params:
-      prompt:
-        description: "Analysis instruction"
-        default: "Describe this video in detail."
       video_url:
         description: "Video URL to analyze"
         default: null
@@ -64,15 +60,13 @@ models:
   - name: "gemini-flash-va"
     display_name: "Gemini Flash Audio"
     mode: "va"
+    takes_prompt: true
     tier: optional
     description: "Cheapest audio understanding"
     guide: "Fast and cheap audio understanding. Describe music style, identify instruments, transcribe lyrics, analyze mood, reverse-engineer audio prompts. Choose for audio content analysis."
     cost_per_call: 2
     generation_time: 20
     params:
-      prompt:
-        description: "Analysis instruction"
-        default: "Describe this audio in detail."
       audio_url:
         description: "Audio URL to analyze"
         default: null
@@ -91,15 +85,13 @@ models:
   - name: "gemini-pro-vi"
     display_name: "Gemini Pro Image"
     mode: "vi"
+    takes_prompt: true
     tier: recommended
     description: "Best image understanding"
     guide: "Strongest image understanding with advanced reasoning. Best for complex visual analysis, detailed style extraction, precise prompt reverse-engineering, and multi-image comparison. Higher cost but significantly better quality."
     cost_per_call: 5
     generation_time: 15
     params:
-      prompt:
-        description: "Analysis instruction"
-        default: "Describe this image in detail."
       images:
         description: "Image URLs to analyze"
         default: null
@@ -118,15 +110,13 @@ models:
   - name: "gemini-pro-vv"
     display_name: "Gemini Pro Video"
     mode: "vv"
+    takes_prompt: true
     tier: recommended
     description: "Best video understanding"
     guide: "Strongest video understanding with advanced temporal reasoning. Best for detailed scene-by-scene analysis, camera movement identification, and complex narrative extraction."
     cost_per_call: 10
     generation_time: 45
     params:
-      prompt:
-        description: "Analysis instruction"
-        default: "Describe this video in detail."
       video_url:
         description: "Video URL to analyze"
         default: null
@@ -144,15 +134,13 @@ models:
   - name: "gemini-pro-va"
     display_name: "Gemini Pro Audio"
     mode: "va"
+    takes_prompt: true
     tier: recommended
     description: "Best audio understanding"
     guide: "Strongest audio understanding with advanced reasoning. Best for detailed music analysis, complex genre classification, and precise audio prompt reverse-engineering."
     cost_per_call: 5
     generation_time: 30
     params:
-      prompt:
-        description: "Analysis instruction"
-        default: "Describe this audio in detail."
       audio_url:
         description: "Audio URL to analyze"
         default: null

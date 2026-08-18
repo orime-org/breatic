@@ -22,7 +22,6 @@ import {
   setGroupBackground,
   getPromptFragment,
   isNodeLocked,
-  nodeExists,
   setNodeStyleImage,
   addNodeFocusImage,
   removeNodeFocusImage,
@@ -880,12 +879,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
 
   it('readNodeLeaseGen returns 0 for a missing node', () => {
     expect(readNodeLeaseGen(PID, SID, 'ghost')).toBe(0);
-  });
-
-  it('nodeExists reflects live presence (fresh Yjs read)', () => {
-    expect(nodeExists(PID, SID, 'n1')).toBe(false);
-    addNode(PID, SID, sampleFields('image'));
-    expect(nodeExists(PID, SID, 'n1')).toBe(true);
   });
 
   it('isNodeLocked reflects the live lock state (fresh Yjs read)', () => {

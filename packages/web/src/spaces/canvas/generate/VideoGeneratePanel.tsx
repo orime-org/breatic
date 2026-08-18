@@ -1,13 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ArrowUp, Star, X } from 'lucide-react';
+import { ArrowUp, Loader2, Star, X } from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import {
+  isExecuteButtonDisabled,
+  type ExecuteRefusal,
+} from '@web/spaces/canvas/generate/generate-guards';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
@@ -42,6 +46,19 @@ interface VideoGeneratePanelProps {
   onToggleMode: (mode: string) => void;
   /** Disable the mode switch while the catalog is empty (no model to switch TO). */
   catalogEmpty: boolean;
+  /**
+   * Whether the active model consumes the prompt (#1966). Two things read it:
+   * the prompt slot (a sentence stands in for the editor when it is false) and
+   * the reference rail.
+   *
+   * In the rail it freezes INSERT on every row — nothing can be inserted into
+   * a prompt that is not sent — and the ✕ on TEXT rows only. A text row lives
+   * in the prompt, so removing it under a mode that sends none would take it
+   * out of the prompt every other mode shares; a media row answers to
+   * `modeTakesReferences` instead, because that is the question whose answer
+   * points at a mode where the row actually works.
+   */
+  promptRequired: boolean;
   /** Reference rows derived from this node's incoming edges. */
   references: ReferenceRailItem[];
   /** Enter / exit the canvas reference pick. */
@@ -64,8 +81,16 @@ interface VideoGeneratePanelProps {
   onPickSlot: (slot: VideoSlot) => void;
   /** Clear a slot. */
   onClearSlot: (slot: VideoSlot) => void;
-  /** Whether execute is allowed (the container owns the reasons). */
-  canExecute: boolean;
+  /**
+   * Which execute precondition fails, or null when Generate may proceed.
+   *
+   * The panel is one of the two consumers of that answer, and it reads it for
+   * a narrower question than the submit path does: which refusals grey the
+   * button out, and which one puts a spinner in it. Both questions are
+   * answered here rather than by a pair of booleans from the container, so
+   * "clickable" and "in flight" can never disagree about the same state.
+   */
+  executeRefusal: ExecuteRefusal | null;
   /** The collaborative prompt editor, injected by the container (TipTap + Yjs). */
   promptSlot: React.ReactNode;
   /** Close the panel without generating. */
@@ -104,6 +129,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   mode,
   onToggleMode,
   catalogEmpty,
+  promptRequired,
   references,
   onAddReference,
   referencePicking,
@@ -115,7 +141,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   activeSlot,
   onPickSlot,
   onClearSlot,
-  canExecute,
+  executeRefusal,
   promptSlot,
   onExit,
   onSelectModel,
@@ -159,9 +185,12 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         // #1927). So the reference material rows go dark in five of six, which
         // also freezes their ✕: references are shared across modes, and a ✕
         // pressed here would throw away a source the user is coming back for
-        // (decision 2026-08-11). A text row is prompt material and stays lit
-        // and removable in all six.
+        // (decision 2026-08-11). A text row is prompt material, so this
+        // question leaves it alone — the one below is the one that reaches it,
+        // and in talking head (the only mode whose model sends no prompt) it
+        // dims and freezes there too (#1966).
         modeTakesReferences={modeTakesReferences(mode)}
+        modelTakesPrompt={promptRequired}
       />
 
       {promptSlot}
@@ -197,11 +226,19 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
             size={null}
             data-testid='generate-video-execute'
             aria-label={t('canvas.generatePanel.execute')}
-            disabled={!canExecute}
+            disabled={isExecuteButtonDisabled(executeRefusal)}
             onClick={onExecute}
             className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
           >
-            <ArrowUp className='h-4 w-4' aria-hidden='true' />
+            {executeRefusal === 'submitting' ? (
+              <Loader2
+                data-testid='generate-video-execute-pending'
+                className='h-4 w-4 animate-spin'
+                aria-hidden='true'
+              />
+            ) : (
+              <ArrowUp className='h-4 w-4' aria-hidden='true' />
+            )}
           </Button>
         </div>
       </div>
