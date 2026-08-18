@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * 选区盖不住整个正文时按回车，不许抛异常（验收项 A10）。
+ * 跨块选区上按回车，不许抛异常（#111 时代的验收项 A10，无标题世界照钉）。
  *
  * 根因和做法在设计文档 2026-08-15-document-selection-design 的 §3.8 和 §5.7。
  * 一句话：`@tiptap/core@3.29.2` 的 `splitBlock` 用**删之前**的文档回答「这里能不能
@@ -18,7 +18,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
-import { Selection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -32,27 +32,25 @@ afterEach(() => {
   });
 });
 
-const TITLE = 'T';
-
 /**
- * 一份带文档标题和给定正文的文档。
- * @param bodyHtml - 正文 HTML。
+ * 一份给定内容的文档。
+ * @param bodyHtml - 文档 HTML。
  * @returns 绑好的编辑器。
  */
 function open(bodyHtml: string): Editor {
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document', TITLE));
+  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const editor = new Editor({
     extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
   });
   editors.push(editor);
-  editor.commands.setContent(`<h1 class="doc-title">${TITLE}</h1>${bodyHtml}`);
+  editor.commands.setContent(bodyHtml);
   return editor;
 }
 
-/** 正文那一段的 HTML。 */
+/** 文档的 HTML。 */
 function body(e: Editor): string {
-  return e.getHTML().replace(`<h1 class="doc-title">${TITLE}</h1>`, '');
+  return e.getHTML();
 }
 
 /** 选中给定的两个位置之间。 */
@@ -70,12 +68,11 @@ function press(e: Editor, key: string): void {
   e.view.someProp('handleKeyDown', (f) => f(e.view, event));
 }
 
-/** 选中正文里所有文本节点之间那一段（含两端）。 */
+/** 选中文档里第 first 到第 last 个文本节点之间那一段（含两端）。 */
 function selectAllText(e: Editor, first: number, last: number): void {
   const positions: Array<{ pos: number; size: number }> = [];
-  const start = e.state.doc.child(0).nodeSize;
   e.state.doc.descendants((node, pos) => {
-    if (node.isText && pos >= start) positions.push({ pos, size: node.nodeSize });
+    if (node.isText) positions.push({ pos, size: node.nodeSize });
   });
   const a = positions[first];
   const b = positions[last];
@@ -103,8 +100,7 @@ describe('跨块选区上按回车（A10）', () => {
 
   it('两个列表项各选一半：不抛，行为跟今天一样', () => {
     const e = open('<ul><li><p>abcd</p></li><li><p>efgh</p></li></ul>');
-    const start = e.state.doc.child(0).nodeSize;
-    selectBetween(e, start + 5, start + 11);
+    selectBetween(e, 5, 11);
     expect(() => {
       press(e, 'Enter');
     }).not.toThrow();
@@ -117,22 +113,24 @@ describe('跨块选区上按回车（A10）', () => {
    * 设计 §3.7 第二张表的第五、六种：改实现之前就正常的两种跨块形状。
    * 换掉分块命令之后「不抛」不再是唯一风险，产出形状也可能变，所以钉产出。
    */
-  it('从段落拖到列表项：不抛，两个空段落', () => {
+  it('从段落拖到列表项、选区盖住全部文字：不抛，删除生效、分块在零块上是空操作', () => {
+    // `block*` 下这类删除把文档删空（旧世界有标题垫着、删完还剩一个空段）。
+    // 按 #121 定稿 §10：删除选区照做，零块上的分块是空操作。
     const e = open('<p>aa</p><ul><li><p>bb</p></li></ul>');
     selectAllText(e, 0, 1);
     expect(() => {
       press(e, 'Enter');
     }).not.toThrow();
-    expect(body(e)).toBe('<p></p><p></p>');
+    expect(e.state.doc.childCount).toBe(0);
   });
 
-  it('从引用块拖到段落：不抛，两个空段落', () => {
+  it('从引用块拖到段落、选区盖住全部文字：不抛，删除生效、分块在零块上是空操作', () => {
     const e = open('<blockquote><p>aa</p></blockquote><p>bb</p>');
     selectAllText(e, 0, 1);
     expect(() => {
       press(e, 'Enter');
     }).not.toThrow();
-    expect(body(e)).toBe('<p></p><p></p>');
+    expect(e.state.doc.childCount).toBe(0);
   });
 
   it('splitBlock({ keepMarks: false })：不保留格式——公开契约的选项不许被吞', () => {
@@ -153,18 +151,18 @@ describe('跨块选区上按回车（A10）', () => {
 
   describe('光标回车的行为一个都不许变', () => {
     const cases: Array<[string, string, (e: Editor) => number]> = [
-      ['段落中间', '<p>abcd</p>', (e) => e.state.doc.child(0).nodeSize + 3],
+      ['段落中间', '<p>abcd</p>', () => 3],
       ['段落末尾', '<p>abcd</p>', (e) => e.state.doc.content.size - 1],
-      ['段落开头', '<p>abcd</p>', (e) => e.state.doc.child(0).nodeSize + 1],
-      ['正文标题中间', '<h2>abcd</h2>', (e) => e.state.doc.child(0).nodeSize + 3],
+      ['段落开头', '<p>abcd</p>', () => 1],
+      ['正文标题中间', '<h2>abcd</h2>', () => 3],
       ['正文标题末尾', '<h2>abcd</h2>', (e) => e.state.doc.content.size - 1],
-      ['列表项中间', '<ul><li><p>abcd</p></li></ul>', (e) => e.state.doc.child(0).nodeSize + 5],
-      ['引用块中间', '<blockquote><p>abcd</p></blockquote>', (e) => e.state.doc.child(0).nodeSize + 4],
-      ['代码块中间', '<pre><code>abcd</code></pre>', (e) => e.state.doc.child(0).nodeSize + 3],
+      ['列表项中间', '<ul><li><p>abcd</p></li></ul>', () => 5],
+      ['引用块中间', '<blockquote><p>abcd</p></blockquote>', () => 4],
+      ['代码块中间', '<pre><code>abcd</code></pre>', () => 3],
       ['列表项末尾', '<ul><li><p>abcd</p></li></ul>', (e) => Selection.atEnd(e.state.doc).from],
       ['引用块末尾', '<blockquote><p>abcd</p></blockquote>', (e) => Selection.atEnd(e.state.doc).from],
       ['代码块末尾', '<pre><code>abcd</code></pre>', (e) => Selection.atEnd(e.state.doc).from],
-      ['有序列表 start=5 中间', '<ol start="5"><li><p>abcd</p></li></ol>', (e) => e.state.doc.child(0).nodeSize + 5],
+      ['有序列表 start=5 中间', '<ol start="5"><li><p>abcd</p></li></ol>', () => 5],
     ];
     const expected: Record<string, string> = {
       段落中间: '<p>ab</p><p>cd</p>',
@@ -186,5 +184,75 @@ describe('跨块选区上按回车（A10）', () => {
       press(e, 'Enter');
       expect(body(e)).toBe(expected[name]);
     });
+  });
+});
+
+describe('splitBlock 的删空探针照上游契约答（实现对抗第 1、3 轮）', () => {
+  // 探针存在的唯一理由：上游 splitBlockAs 先删选区、再按删后的文档走深度
+  // 链，删空之后 `$from.node(-1)` 在深度 0 上抛 TypeError。它只该覆盖真能
+  // 走到那一步的形态。AllSelection 和零块都走不到：上游自己的
+  // `if (!state.selection.$from.depth) return false` 在删除行之前就把它们
+  // 拦回 false 了（深度 0），照抄那个答案才是「照上游契约」。
+  it('链内先删空再 splitBlock：不抛，文档留在零块', () => {
+    // 链内 splitBlock 看到的是链内文档（前一步已删空），探针必须读它而不是
+    // 链外快照——读错就把删空当没发生，落进上游的深度 0 TypeError。
+    const e = open('<p>aa</p>');
+    expect(() => {
+      e.chain()
+        .command(({ tr }) => {
+          tr.delete(0, tr.doc.content.size);
+          return true;
+        })
+        .splitBlock()
+        .run();
+    }).not.toThrow();
+    expect(e.state.doc.childCount).toBe(0);
+  });
+
+  it('零块文档上直接 splitBlock：返回 false、不抛', () => {
+    const e = open('');
+    expect(e.state.doc.childCount).toBe(0);
+    let ran: boolean | undefined;
+    expect(() => {
+      ran = e.commands.splitBlock();
+    }).not.toThrow();
+    expect(ran).toBe(false);
+    expect(e.state.doc.childCount).toBe(0);
+  });
+
+  it('全文档选区上直接 splitBlock：照上游答 false，内容不动', () => {
+    const e = open('<p>aa</p><p>bb</p>');
+    e.view.dispatch(e.state.tr.setSelection(new AllSelection(e.state.doc)));
+    expect(e.commands.splitBlock()).toBe(false);
+    expect(e.state.doc.childCount).toBe(2);
+    expect(e.state.doc.textContent).toBe('aabb');
+  });
+
+  it('唯一块的 TextSelection 全覆盖：删空后不抛（探针真正要防的那条）', () => {
+    const e = open('<p>aa</p>');
+    const { doc } = e.state;
+    e.view.dispatch(
+      e.state.tr.setSelection(
+        TextSelection.between(doc.resolve(1), doc.resolve(doc.content.size - 1)),
+      ),
+    );
+    expect(() => {
+      press(e, 'Enter');
+    }).not.toThrow();
+  });
+});
+
+describe('splitBlock 的删空探针只探上游自己会删的选区形态（实现对抗第 2 轮 #4）', () => {
+  it('唯一块的 NodeSelection：照上游契约返回 false、不删', () => {
+    // splitBlockAs 的删除行明写只删 TextSelection/AllSelection；对块级
+    // NodeSelection 它走独立分支（parentOffset 为 0 时返回 false）。探针
+    // 比上游删得宽，就会把上游的 no-op 变成整块删除。
+    const e = open('<p>only</p>');
+    e.view.dispatch(
+      e.state.tr.setSelection(NodeSelection.create(e.state.doc, 0)),
+    );
+    expect(e.commands.splitBlock()).toBe(false);
+    expect(e.state.doc.childCount).toBe(1);
+    expect(e.state.doc.textContent).toBe('only');
   });
 });

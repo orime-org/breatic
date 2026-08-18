@@ -638,7 +638,14 @@
       },
       "refusedNotice": "The connection to this document was refused. What you see may be out of date, and changes will not be saved.",
       "placeholder": "Start writing…",
-      "titlePlaceholder": "Untitled document",
+      "clearConfirm": {
+        "title": "Delete all content?",
+        "confirm": "Delete",
+        "cancel": "Cancel"
+      },
+      "unsupported": {
+        "label": "Unsupported content"
+      },
       "toolbar": {
         "undo": "Undo",
         "redo": "Redo",

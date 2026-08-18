@@ -638,7 +638,14 @@
       },
       "refusedNotice": "與這個文件的連線被拒絕了。你看到的內容可能不是最新的，變更也不會被儲存。",
       "placeholder": "開始寫作…",
-      "titlePlaceholder": "未命名文件",
+      "clearConfirm": {
+        "title": "刪除全部內容？",
+        "confirm": "刪除",
+        "cancel": "取消"
+      },
+      "unsupported": {
+        "label": "不支援的內容"
+      },
       "toolbar": {
         "undo": "復原",
         "redo": "重做",

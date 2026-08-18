@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { Mark, Node } from '@tiptap/core';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { EditorState } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
+
+import { t } from '@breatic/shared';
 
 /**
  * Somewhere to put content this build has no vocabulary for, so that receiving
@@ -48,12 +53,48 @@ import { Mark, Node } from '@tiptap/core';
 /** Attribute holding the type name this build could not resolve. */
 const ORIGINAL_NAME = 'originalName';
 
+/** The two node names the label decoration dresses. */
+const LABELLED_NODES = new Set(['unsupportedBlock', 'unsupportedInline']);
+
+/**
+ * The label decorations for every stand-in node in the document.
+ * @param state - The editor state to read.
+ * @returns The decoration set, or null when the document holds no stand-ins.
+ */
+function labelDecorations(state: EditorState): DecorationSet | null {
+  const found: Decoration[] = [];
+  const label = t('spaces.document.unsupported.label');
+  state.doc.descendants((node, pos) => {
+    if (LABELLED_NODES.has(node.type.name)) {
+      found.push(
+        Decoration.node(pos, pos + node.nodeSize, { 'data-label': label }),
+      );
+    }
+    return true;
+  });
+  return found.length > 0 ? DecorationSet.create(state.doc, found) : null;
+}
+
 /**
  * A block this build cannot represent, kept whole in the shared document.
  *
  * `atom` because there is nothing inside it this build could edit; `selectable`
- * because that is what an atom block is, even though the intercept state means
- * nobody will be selecting it.
+ * because selecting it is how a user deletes it — a document holding one stays
+ * editable, since the read-only intercept answers to the published schema
+ * version alone.
+ *
+ * Both node types show a localized "unsupported content" label. Without it
+ * the stand-in is an empty element at zero height: present, selectable in
+ * principle, and impossible to see or click — measured in the browser on a
+ * legacy document whose retired block came back through the fallback.
+ *
+ * The label travels as a `data-label` DECORATION, painted by index.css
+ * through `content: attr(data-label)` — not as text baked into `renderHTML`.
+ * A node's DOM is redrawn only when the node itself changes, so baked-in text
+ * freezes in whichever language was active when the node was first drawn;
+ * decorations are recomputed on every dispatch, and `LocaleRedraw`'s empty
+ * dispatch on a language switch is what carries the new string in — the same
+ * mechanism the empty-document placeholder rides.
  */
 export const UnsupportedBlock = Node.create({
   name: 'unsupportedBlock',
@@ -78,6 +119,23 @@ export const UnsupportedBlock = Node.create({
         'data-unsupported-block': '',
         'data-original-name': HTMLAttributes[ORIGINAL_NAME],
       },
+    ];
+  },
+
+  /**
+   * The label decorations for BOTH stand-in node types — hung off this one
+   * extension because a single plugin walking the document once beats one per
+   * type walking it twice.
+   * @returns The one plugin.
+   */
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('unsupportedLabels'),
+        props: {
+          decorations: labelDecorations,
+        },
+      }),
     ];
   },
 });

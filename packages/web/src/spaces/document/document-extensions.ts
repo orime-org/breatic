@@ -9,17 +9,18 @@
  * as it would on its own, because the editing feature set is a separate body of
  * work with its own slice. The two exceptions: the body offers three heading
  * levels rather than six (`document-heading` carries that reasoning), and it
- * offers no divider at all.
+ * offers no divider yet (its return, with the selected-look for text-less
+ * blocks it requires, is scheduled work — task #124).
  *
  * So a change here qualifies on one of three grounds, and nothing else counts:
  *
- * - the document's outer shape broke something — a title that cannot be
- *   removed, followed by a body that may hold nothing;
+ * - the document's outer shape broke something — a document that may hold
+ *   nothing at all;
  * - what the body renders leaves no room for what StarterKit offers, which is
  *   what caps the headings;
  * - the feature itself was never decided on. A StarterKit default is a default,
  *   not a decision, and one that costs something to keep has to earn its place
- *   like anything else would. That is what removed the divider.
+ *   like anything else would.
  *
  * Five of StarterKit's defaults are switched off, each for its own reason
  * stated where it happens. `document-extensions.test` pins the NODES the
@@ -33,8 +34,6 @@ import { Document } from '@tiptap/extension-document';
 import StarterKit from '@tiptap/starter-kit';
 import type * as Y from 'yjs';
 
-import { DOCUMENT_TITLE_NODE } from '@breatic/shared';
-
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { DocumentClickToWrite } from '@web/spaces/document/document-click-to-write';
@@ -45,10 +44,8 @@ import {
   UnsupportedMark,
 } from '@web/spaces/document/document-unsupported';
 import { DocumentPlaceholders } from '@web/spaces/document/document-placeholders';
-import { DocumentSelection } from '@web/spaces/document/document-selection';
+import { DocumentSelectAll } from '@web/spaces/document/document-select-all';
 import { DocumentSplitBlock } from '@web/spaces/document/document-split-block';
-import { DocumentTitle } from '@web/spaces/document/document-title';
-import { DocumentTitleIsPlainText } from '@web/spaces/document/document-title-plain-text';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
 /** The body fragment, plus the optional collaborative layers. */
@@ -78,6 +75,13 @@ export interface DocumentExtensionOptions {
    * editor's, which is what the binding assumes.
    */
   undoManager?: Y.UndoManager;
+  /**
+   * Called instead of deleting when Backspace or Delete lands on a
+   * whole-document selection; the host confirms and runs `clearDocument`.
+   * See `document-select-all` for why absence swallows the key rather than
+   * widening into a silent wipe.
+   */
+  onClearDocumentRequest?: () => void;
 }
 
 /**
@@ -92,32 +96,31 @@ export interface DocumentExtensionOptions {
 export function buildDocumentExtensions(
   options: DocumentExtensionOptions,
 ): Extensions {
-  const { fragment, caretProvider, undoManager, resolveCollaboratorName } =
-    options;
+  const {
+    fragment,
+    caretProvider,
+    undoManager,
+    resolveCollaboratorName,
+    onClearDocumentRequest,
+  } = options;
 
   const extensions: Extensions = [
-    // `title block*` — one title, always first, then any number of body
-    // blocks INCLUDING none. Both halves are load-bearing and neither works
-    // alone: the title is what keeps the shared fragment inhabited, and once
-    // it does, requiring a body block would re-open the very gap the title
-    // closes (two people deleting different body blocks merge into a body
-    // with none, and the editor's repair for that counts as a user edit).
-    // `@breatic/shared`'s `document-body` carries the full reasoning.
-    Document.extend({ content: `${DOCUMENT_TITLE_NODE} block*` }),
-    DocumentTitle,
-    // The title holds text and nothing else, and takes plain characters with
-    // nothing transforming them. Every rule shipping today declines there on
-    // its own; this states the promise in one place instead of depending on
-    // each future rule to remember.
-    DocumentTitleIsPlainText,
-    // The body may hold no blocks at all, so the space under the title has to
-    // be clickable or a fresh document cannot be written into.
+    // `block*` — any number of blocks INCLUDING none. Emptiness being legal is
+    // what makes the shared fragment safe: no client ever invents a filler
+    // block to satisfy the schema, so there is nothing for a merge to
+    // duplicate. `@breatic/shared`'s `document-body` carries the reasoning;
+    // the empty document's interaction (placeholder, click, first keystroke)
+    // is `DocumentPlaceholders` and `DocumentClickToWrite` below.
+    Document.extend({ content: 'block*' }),
+    // The select-all tiers, the guarded whole-document delete, the
+    // whole-document Enter, and the degenerate-selection guard — the ruled
+    // transition tables live in the structure decision record.
+    DocumentSelectAll.configure({
+      onClearDocumentRequest: onClearDocumentRequest ?? null,
+    }),
+    // The document may hold no blocks at all, so the empty space has to be
+    // clickable or a fresh document cannot be written into by mouse.
     DocumentClickToWrite,
-    // A selection never spans the title and the body, whether it was made
-    // with `Mod-a` or with the mouse. Ours because the title is the first
-    // block of this same document, so the editor's own "select everything"
-    // includes the document's name — see `document-selection`.
-    DocumentSelection,
     // Enter across two list items throws in @tiptap/core's own splitBlock,
     // which asks whether it may split before deleting and then splits what the
     // deletion left. This replaces that command with the official one, whose
@@ -125,15 +128,16 @@ export function buildDocumentExtensions(
     // merge with the lower priority winning, the opposite of key bindings.
     DocumentSplitBlock,
     StarterKit.configure({
-      // StarterKit's own Document is `block+`, which is both halves wrong.
+      // StarterKit's own Document is `block+`, which would re-open the
+      // filler-block hazard emptiness closes.
       document: false,
       // Collaboration owns history through the shared Yjs undo manager, which
       // tracks only this client's transactions. Leaving StarterKit's own
       // history in place gives the editor a second, client-blind undo stack:
       // a peer's edit arrives as a local transaction there, so one Cmd+Z
       // deletes their paragraph. Verified by mutation — switching this back on
-      // wipes the body in the per-client undo tests: the peer's paragraph goes
-      // and the title is all that is left.
+      // wipes the body in the per-client undo tests: the peer's paragraph
+      // disappears.
       undoRedo: false,
       // TrailingNode appends a paragraph whenever the body's last block is not
       // one. Harmless in a private editor; in a shared document that append is
@@ -143,10 +147,6 @@ export function buildDocumentExtensions(
       // appendTransaction. The server drops a viewer's update without an error,
       // so that client sits permanently one paragraph ahead with nothing to
       // signal it.
-      //
-      // It also revives what the seeded body prevents: undo back past the
-      // appended paragraph, click once, and it is re-appended as a fresh local
-      // edit — clearing the redo stack and stranding the text just undone.
       //
       // What that costs is the convenience of always having a paragraph to
       // click after a trailing block. `DocumentClickToWrite` above gives it
@@ -160,21 +160,20 @@ export function buildDocumentExtensions(
       // and StarterKit builds its Heading internally, where there is nothing to
       // extend. So ours replaces it. `document-heading` carries the reasoning.
       heading: false,
-      // The divider is not a feature this document offers. It arrived as a
-      // StarterKit default rather than as a decision, and it is the only
-      // visible block in the body with no text in it — which is what made
-      // "everything visible can be selected" cost a selection type of our own,
-      // a patched y-tiptap, and a block-tinting layer, all to give a block
-      // nobody asked for the same selected look as the rest. Removing it
-      // removes the whole question. With it gone, every visible block holds
-      // text, so an ordinary `TextSelection` covers all of them.
+      // The divider is not offered yet. It was removed when "everything
+      // visible can be selected" priced a text-less block out; the structure
+      // ruling brings it back TOGETHER with the selected-look such a block
+      // needs inside a drag selection, and that pairing is task #124 — not a
+      // one-line re-enable here.
       horizontalRule: false,
     }),
     BodyHeading,
     // Somewhere to put content this build has no vocabulary for. Registered
     // now, while there is nothing to catch: a fallback only works if the
     // client that meets the unknown content already has it, and the tabs this
-    // whole problem is about are the ones already open.
+    // whole problem is about are the ones already open. The retired `title`
+    // block of the pre-ruling structure lands here too, in documents seeded
+    // before the change.
     UnsupportedBlock,
     UnsupportedInline,
     UnsupportedMark,
@@ -197,13 +196,11 @@ export function buildDocumentExtensions(
     }),
   );
 
-  // Both placeholders are drawn by `DocumentPlaceholders` rather than by the
+  // The placeholder is drawn by `DocumentPlaceholders` rather than by the
   // extension every other editor uses: that one decorates textblocks that
-  // exist and, by default, only the one holding the caret — so a body with no
-  // blocks could never show one, and a fresh document could not show both.
-  // Resolving the strings per decoration reads the live locale; `LocaleRedraw`
-  // asks for the redraw, since switching language dispatches nothing on its
-  // own.
+  // exist, so a document with no blocks could never show one. Resolving the
+  // string per decoration reads the live locale; `LocaleRedraw` asks for the
+  // redraw, since switching language dispatches nothing on its own.
   extensions.push(DocumentPlaceholders, LocaleRedraw);
 
   return extensions;

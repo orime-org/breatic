@@ -161,10 +161,12 @@ export interface DocumentUndoManager extends Y.UndoManager {
  * came back as an h1. {@link isDeletableByUndo} covers those too. Alice's own
  * text still comes out in every case.
  *
- * Nothing here guards against the body running out of blocks. It cannot run
- * out: the document's first block is a `title` the schema does not allow to be
- * deleted, and the blocks after it are optional. See
- * `@breatic/shared`'s `document-body` for that structure.
+ * Nothing here guards against the body running out of blocks. Running out is
+ * a legal resting state — `content: 'block*'` allows zero — and undo crosses
+ * it correctly in both directions: a confirmed whole-document delete undoes
+ * back to the content and redoes back to empty, and the first block written
+ * into an empty document undoes back to zero blocks. Measured, and pinned in
+ * `__tests__/collab-zero-block.test.ts`.
  *
  * `captureTransaction` honours the `addToHistory: false` marker, so
  * machine-driven edits stay off the stack.

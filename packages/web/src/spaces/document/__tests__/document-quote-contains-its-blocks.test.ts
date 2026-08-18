@@ -60,12 +60,12 @@ afterEach(() => {
 
 /**
  * A mounted editor holding the given body, so decorations reach the DOM.
- * @param bodyHtml - HTML for the blocks after the title.
+ * @param bodyHtml - HTML for the document's blocks.
  * @returns The editor.
  */
 function open(bodyHtml: string): Editor {
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document', 'T'));
+  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const host = document.createElement('div');
   document.body.appendChild(host);
   const editor = new Editor({
@@ -73,7 +73,7 @@ function open(bodyHtml: string): Editor {
     extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
   });
   mounted.push({ editor, host });
-  editor.commands.setContent(`<h1 class="doc-title">T</h1>${bodyHtml}`);
+  editor.commands.setContent(bodyHtml);
   return editor;
 }
 

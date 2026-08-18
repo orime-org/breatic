@@ -638,7 +638,14 @@
       },
       "refusedNotice": "このドキュメントへの接続が拒否されました。表示中の内容は最新ではない可能性があり、変更も保存されません。",
       "placeholder": "書き始めましょう…",
-      "titlePlaceholder": "無題のドキュメント",
+      "clearConfirm": {
+        "title": "すべての内容を削除しますか？",
+        "confirm": "削除",
+        "cancel": "キャンセル"
+      },
+      "unsupported": {
+        "label": "未対応のコンテンツ"
+      },
       "toolbar": {
         "undo": "元に戻す",
         "redo": "やり直す",

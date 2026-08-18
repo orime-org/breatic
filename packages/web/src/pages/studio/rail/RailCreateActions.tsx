@@ -57,6 +57,7 @@ export function RailCreateActions({
         variant={null}
         size={null}
         onClick={onCreateProject}
+        data-testid='rail-create-project'
         className={`${RAIL_ROW_TOP} ${RAIL_ROW_IDLE}`}
       >
         <RailIcon icon={Plus} />

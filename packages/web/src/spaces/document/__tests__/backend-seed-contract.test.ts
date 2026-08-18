@@ -39,7 +39,7 @@ describe('a document opened straight from the backend seed', () => {
     doc = new Y.Doc();
     // The bytes the backend persists when the Space is created — not a
     // reconstruction of them.
-    Y.applyUpdate(doc, encodeInitialSpaceContent('document', 'Storyboard v3'));
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     awareness = new Awareness(doc);
   });
   afterEach(() => {
@@ -64,42 +64,23 @@ describe('a document opened straight from the backend seed', () => {
     >;
   }
 
-  it('arrives with a body already in it, not one the editor filled in', () => {
-    // Read before any editor exists. Every assertion below this one mounts the
-    // editor first, and ProseMirror fills an empty document with a paragraph
-    // as it binds — so all of them stay green against a seed that wrote
-    // nothing at all. Measured: emptying the encoder leaves this the only case
-    // in the file that fails. Without it the file would describe the contract
-    // and check none of it.
-    const body = documentBodyFragment(doc);
-    expect(body.length).toBe(1);
-    expect((body.get(0) as Y.XmlElement).toString()).toBe(
-      '<title>Storyboard v3</title>',
-    );
+  it('arrives with nothing in it — the seed writes no content at all', () => {
+    // Read before any editor exists: what the backend persists is an empty
+    // fragment, and emptiness is the contract — a seed that started writing
+    // nodes again would be inventing a shape this schema may not know.
+    expect(documentBodyFragment(doc).length).toBe(0);
   });
 
-  it('opens in the shape the schema itself would fill in, title text aside', async () => {
+  it('opens as a zero-block document, with no local fill-in', async () => {
     const { editor } = await open();
-    // Comparing against what the schema fills an empty document with, rather
-    // than writing the shape out by hand. The literal shape carries attributes
-    // contributed by extensions, so a hand-written expectation would be wrong
-    // the moment an extension adds another one, and wrong in a way that says
-    // nothing about the seed.
-    //
-    // The one legitimate difference is the title's text: the schema fills in
-    // an empty title, the backend writes the Space's name into it. Everything
-    // else — node types, nesting, attributes — has to match, because any other
-    // difference means the backend invented a shape the editor would then
-    // quietly repair.
-    const asSchemaWouldFill = editor.schema.topNodeType
-      .createAndFill()
-      ?.toJSON();
-    const seeded = editor.state.doc.toJSON() as {
-      content?: { content?: unknown }[];
-    };
-    expect(seeded.content?.[0]?.content).toBeDefined();
-    delete seeded.content?.[0]?.content;
-    expect(seeded).toEqual(asSchemaWouldFill);
+    // `block*` makes emptiness legal, so binding the empty seed must produce
+    // an empty document — a paragraph appearing here would be the editor
+    // papering over the seed, the exact hazard the old seeded-title design
+    // existed to prevent and this schema dissolves.
+    expect(editor.state.doc.childCount).toBe(0);
+    expect(editor.state.doc.toJSON()).toEqual(
+      editor.schema.topNodeType.createAndFill()?.toJSON(),
+    );
   });
 
   it('gives the user nothing to undo — the seed is not their edit', async () => {
@@ -126,11 +107,11 @@ describe('a document opened straight from the backend seed', () => {
     });
     expect(editor.can().redo()).toBe(true);
 
-    // The moment the bug used to strike: with an empty fragment, this
-    // dispatch is where ProseMirror writes its paragraph back, yjs reads that
-    // as a fresh local edit, and the redo stack is cleared — the text just
-    // undone gone for good. With the body seeded there is nothing to
-    // reconcile, so redo survives.
+    // The moment the bug used to strike under the old `block+`-style schema:
+    // an empty document was illegal, so this dispatch was where ProseMirror
+    // wrote its filler paragraph back, yjs read that as a fresh local edit,
+    // and the redo stack was cleared. With emptiness legal there is nothing
+    // to reconcile, so redo survives.
     act(() => {
       editor.view.dispatch(editor.state.tr);
     });

@@ -127,14 +127,9 @@ describe("lazySeedMeta", () => {
 
     const doc = new Y.Doc();
     Y.applyUpdate(doc, call?.[1] as Uint8Array);
-    const body = documentBodyFragment(doc);
-    expect(body.length).toBe(1);
-    // The title is the Space's name — the one that goes on its tab. On this
-    // path that name comes from the Space type rather than from anything the
-    // creator typed, but it is still the name, so it is still the title.
-    const title = body.get(0) as Y.XmlElement;
-    expect(title.nodeName).toBe("title");
-    expect(title.toString()).toBe("<title>Document</title>");
+    // Empty on purpose: a document starts with no blocks at all (#121 定稿
+    // §6.2)。它唯一的名字在 meta 的 Space 条目上，内容文档不带名字。
+    expect(documentBodyFragment(doc).length).toBe(0);
   });
 
   it("leaves a canvas's content doc empty — its editor builds its own structure", async () => {
