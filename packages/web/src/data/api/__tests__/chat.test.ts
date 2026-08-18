@@ -15,9 +15,13 @@ import { SSE_EVENT_NAMES } from '@breatic/shared';
 
 const sseStream = vi.fn(async (_opts: Record<string, unknown>) => undefined);
 const apiPost = vi.fn(async () => ({ conversations: [], current: null }));
+const apiGet = vi.fn(async (_url: string, _config?: { params?: object; signal?: AbortSignal }) => ({
+  conversations: [],
+  hasMore: false,
+}));
 
 vi.mock('@web/data/stream/sse', () => ({ sseStream }));
-vi.mock('@web/data/api/request', () => ({ apiGet: vi.fn(), apiPost }));
+vi.mock('@web/data/api/request', () => ({ apiGet, apiPost }));
 
 const { chatApi } = await import('@web/data/api/chat');
 
@@ -139,5 +143,56 @@ describe('reading the stream', () => {
     // client or a bug; either way the panel has no rendering for it, and
     // passing it on would have every consumer guess.
     expect(await parse({ event: 'something_new', data: {} })).toBeNull();
+  });
+});
+
+describe('asking for a page of the conversation list', () => {
+  beforeEach(() => {
+    apiGet.mockClear();
+  });
+
+  it('names the project the way the server reads it', async () => {
+    // The one that got away when the names above were fixed. Spelt
+    // `projectId`, zod drops it, the server lists every conversation this
+    // user has in any project, and nothing anywhere reports a thing.
+    await chatApi.listConversations('p-1');
+
+    expect(apiGet).toHaveBeenCalledWith('/chat/conversations', {
+      params: { project_id: 'p-1' },
+      signal: undefined,
+    });
+  });
+
+  it('names both halves of the cursor the way the server reads them', async () => {
+    await chatApi.listConversations('p-1', { updatedAt: '2026-08-18T00:00:00Z', id: 'c-9' });
+
+    expect(apiGet).toHaveBeenCalledWith('/chat/conversations', {
+      params: {
+        project_id: 'p-1',
+        before_updated_at: '2026-08-18T00:00:00Z',
+        before_id: 'c-9',
+      },
+      signal: undefined,
+    });
+  });
+
+  it('asks for the first page without a cursor at all, rather than with an empty one', async () => {
+    // Sending the keys with nothing in them is a different question: the
+    // server reads a cursor as "the rows before this one", and one that says
+    // nothing about where it starts has no rows before it.
+    await chatApi.listConversations('p-1');
+
+    const params = apiGet.mock.calls.at(-1)?.[1]?.params ?? {};
+    expect(Object.keys(params)).toEqual(['project_id']);
+  });
+
+  it('hands the signal down, so leaving the project stops the request', async () => {
+    const abort = new AbortController();
+    await chatApi.listConversations('p-1', undefined, abort.signal);
+
+    expect(apiGet).toHaveBeenCalledWith('/chat/conversations', {
+      params: { project_id: 'p-1' },
+      signal: abort.signal,
+    });
   });
 });

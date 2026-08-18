@@ -82,6 +82,28 @@ describe('when the conversations cannot be read', () => {
     expect(within(column).getByTestId('agent-col-header')).toBeInTheDocument();
   });
 
+  it('does not greet the reader as if this were a new conversation underneath', async () => {
+    // 立项要修的就是这个:打不开的时候,面板长得跟「这是条新会话,说点什么吧」
+    // 一模一样。蒙版是 86% 半透的,底下那句问候语会隔着一层露出来,读作「这里
+    // 什么都没有」,而实情是「没读到」。
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
+    renderColumn();
+    await screen.findByTestId('chat-unreachable');
+
+    expect(screen.queryByTestId('chat-empty')).toBeNull();
+  });
+
+  it('is positioned against this column, not against the workspace', async () => {
+    // 蒙版是 `absolute inset-0`,盖住谁由最近的那个定位祖先决定。这一列不定位
+    // 的话,那个祖先就是包着 TopBar 和整个画布的容器 —— 一条会话打不开会把整个
+    // 工作区黑掉,比它要治的那件事严重得多。jsdom 不算布局,所以判的是类名。
+    vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
+    renderColumn();
+    await screen.findByTestId('chat-unreachable');
+
+    expect(screen.getByTestId('agent-column').className).toContain('relative');
+  });
+
   it('takes what it covers out of the tab order', async () => {
     // 一层只挡像素的蒙版，Tab 照样走得进它底下的按钮，而其中一个按钮打开的
     // 抽屉 portal 到 body、层级在蒙版之上 —— 于是「被挡住的东西」画在蒙版上面
@@ -184,7 +206,8 @@ describe('when they can', () => {
 
     const header = await screen.findByTestId('agent-col-header');
     // 判据是「顶栏只该显示会话名」。判某个 testid 在不在,换个名字就绕过去了;
-    // 判有没有一段纯数字,既漏 `(7)` 这种写法,又会把一条叫 2026 的会话误报。
+    // 判有没有一段纯数字,会把一条叫 2026 的会话误报,还漏掉 `(7)` 这种带括号
+    // 的写法。说清允许出现哪些字符串,两种漏法都没有了。
     expect(unexpectedTextIn(header, ['one'])).toEqual([]);
   });
 });
