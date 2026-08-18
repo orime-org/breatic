@@ -121,6 +121,10 @@ export function useDocumentEditor({
 
   // Editability flips without a rebuild — a role change or entering a history
   // preview must not discard the editor, its undo stack or its selection.
+  // The flip writes nothing to the shared document: the y-sync flush it used
+  // to trigger carried the phantom child ProseMirror fills in under a doc
+  // content rule with a mandatory first child, and `block*` demands nothing
+  // (#108; pinned in no-client-side-repair.test.ts).
   React.useEffect(() => {
     const editor = handle?.editor;
     if (!editor || editor.isDestroyed) return;

@@ -18,12 +18,18 @@
  * erroring, so the viewer ends up permanently one paragraph ahead of everyone
  * else with nothing to signal it.
  *
- * And the repair revives the exact defect the title exists to prevent: the
- * appended paragraph is on the undo stack, so undoing back past it removes it,
- * the next ordinary click re-appends it as a fresh local edit, and the redo
- * stack is cleared — the text just undone is unrecoverable. The title only
- * keeps the FRAGMENT inhabited; this fires on a body that merely ENDS in
- * something other than a paragraph, which the title says nothing about.
+ * And the repair lands on the undo stack: undoing back past the appended
+ * paragraph removes it, the next ordinary click re-appends it as a fresh
+ * local edit, and the redo stack is cleared — the text just undone is
+ * unrecoverable.
+ *
+ * The last group pins the #108 chain shut. Its old-build shape was: a doc
+ * whose content rule demands a first child binds an empty fragment,
+ * ProseMirror fills the missing child locally, and the `setEditable` flip on
+ * the viewer and history-preview paths flushes that phantom into the shared
+ * document. Under `content: 'block*'` the root demands nothing, so the fill
+ * never happens — the group holds the empty document through a read-only
+ * build and both flips and asserts not one byte leaves this client.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -62,17 +68,11 @@ describe('opening a document does not write to it', () => {
   function loadBodyEndingIn(lastNodeName: string): void {
     const source = new Y.Doc();
     const body = documentBodyFragment(source);
-    // The title comes first because every document has one — a fragment
-    // without it is a shape production cannot produce, and starting from it
-    // would make this test measure the editor repairing that instead of the
-    // thing it is here for.
-    const title = new Y.XmlElement('title');
-    title.insert(0, [new Y.XmlText('Storyboard v3')]);
     const para = new Y.XmlElement('paragraph');
     para.insert(0, [new Y.XmlText('real body text')]);
     const last = new Y.XmlElement(lastNodeName);
     last.insert(0, [new Y.XmlText('A heading')]);
-    body.insert(0, [title, para, last]);
+    body.insert(0, [para, last]);
     // A remote origin: this is someone else's content arriving, not our edit.
     Y.applyUpdate(doc, Y.encodeStateAsUpdate(source), 'remote-provider');
     source.destroy();
@@ -98,8 +98,8 @@ describe('opening a document does not write to it', () => {
     loadBodyEndingIn('heading');
     const body = documentBodyFragment(doc);
     const before = body.toString();
-    // title + paragraph + heading
-    expect(body.length).toBe(3);
+    // paragraph + heading
+    expect(body.length).toBe(2);
 
     const rendered = mount(true);
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
@@ -107,7 +107,7 @@ describe('opening a document does not write to it', () => {
     // and the binding dispatches one of its own on bind.
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(body.length).toBe(3);
+    expect(body.length).toBe(2);
     expect(body.toString()).toBe(before);
   });
 
@@ -194,5 +194,82 @@ describe('editability is settled before the first paint', () => {
     // gets that same instance back.
     expect(resolve(true)).toBe(true);
     expect(resolve(false)).toBe(false);
+  });
+});
+
+describe('the setEditable paths write nothing (#108)', () => {
+  // The measured chain (#108): the y-sync plugin's view-update hook runs on
+  // every `setEditable`, and flushes any difference between the local
+  // ProseMirror document and the shared one into Yjs. The difference it
+  // flushed was the phantom child ProseMirror fills in when the doc's content
+  // rule demands one and the fragment is empty. `content: 'block*'` demands
+  // nothing, so an empty fragment binds to an empty document — these tests
+  // hold that resting state through a read-only build (the viewer path:
+  // built, then corrected to non-editable on the way out of the cache) and
+  // through both directions of the flip (the history-preview path), and
+  // assert this client originates no update at all.
+  let doc: Y.Doc;
+  let awareness: Awareness;
+  let local: Uint8Array[];
+
+  /**
+   * Records updates this client originates.
+   * @param update - The encoded update.
+   * @param origin - Who caused it.
+   */
+  const record = (update: Uint8Array, origin: unknown): void => {
+    if (origin !== 'remote-provider') local.push(update);
+  };
+
+  beforeEach(() => {
+    doc = new Y.Doc();
+    awareness = new Awareness(doc);
+    local = [];
+  });
+  afterEach(() => {
+    doc.off('update', record);
+    _resetDocumentEditorCacheForTests();
+    awareness.destroy();
+    doc.destroy();
+  });
+
+  it('an empty document survives a read-only build and both flips byte-empty', () => {
+    const body = documentBodyFragment(doc);
+    expect(body.length).toBe(0);
+    doc.on('update', record);
+
+    const handle = getDocumentEditor(doc, NAME, {
+      caretProvider: { awareness },
+      editable: false,
+    });
+    // The history-preview flip, both directions.
+    handle.editor.setEditable(true);
+    handle.editor.setEditable(false);
+
+    expect(local).toHaveLength(0);
+    expect(body.length).toBe(0);
+  });
+
+  it('a document with content survives the flips unchanged, and the probe sees a real edit', () => {
+    const source = new Y.Doc();
+    const para = new Y.XmlElement('paragraph');
+    para.insert(0, [new Y.XmlText('shared text')]);
+    documentBodyFragment(source).insert(0, [para]);
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(source), 'remote-provider');
+    source.destroy();
+    doc.on('update', record);
+
+    const handle = getDocumentEditor(doc, NAME, {
+      caretProvider: { awareness },
+      editable: true,
+    });
+    handle.editor.setEditable(false);
+    handle.editor.setEditable(true);
+    expect(local).toHaveLength(0);
+
+    // Probe validity: the recorder must be able to see a write, or the
+    // assertions above prove nothing. A real edit fires it.
+    handle.editor.commands.insertContentAt(1, 'X');
+    expect(local.length).toBeGreaterThan(0);
   });
 });
