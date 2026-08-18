@@ -1145,6 +1145,7 @@
       "enterprise": "企業版"
     },
     "priceFree": "免費",
+    "taxNote": "價格不含稅。",
     "tierNote": "這一檔決定你的容量與協作規模。所有創作功能和模型在每一檔都完全一樣。",
     "myQuota": "我的額度",
     "quota": {

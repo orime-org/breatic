@@ -1145,6 +1145,7 @@
       "enterprise": "Enterprise"
     },
     "priceFree": "Free",
+    "taxNote": "Prices exclude tax.",
     "tierNote": "Your tier decides capacity and collaboration scale. Every creative feature and every model is the same on all tiers.",
     "myQuota": "My allowances",
     "quota": {

@@ -215,12 +215,19 @@ export const TierComparison = React.memo(function TierComparison({
       {onChoose ? (
         <tfoot>
           <tr>
-            {/* Empty on purpose. A note about tax belonged here while we
-                expected to add tax at checkout; we do not — Stripe Tax needs
-                a tax registration first and is deferred (#107) — so the line
-                promised a calculation that never happens. It comes back when
-                the calculation does. */}
-            <td className='px-2.5 py-3' />
+            {/* The tax note sits in the label column: it belongs to the
+                price row above it, and a line under the whole table read as a
+                footnote about everything.
+
+                It says prices exclude tax and stops there. It used to add
+                "tax is added at checkout", which was not true — Stripe Tax
+                needs a tax registration first and is deferred (#107), so
+                nothing calculates tax anywhere. Saying so is acceptance item
+                8 and a ratified decision; saying what happens next was the
+                part that had to go. */}
+            <td className='px-2.5 py-3 text-left text-xs text-muted-foreground'>
+              {t('membership.taxNote')}
+            </td>
             {offers.map((offer, index) => (
               <td
                 key={offer.tier}
