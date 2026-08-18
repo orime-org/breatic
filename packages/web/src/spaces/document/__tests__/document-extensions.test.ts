@@ -65,7 +65,7 @@ const ALLOWED_STARTERKIT_OVERRIDES: Readonly<Record<string, string>> = {
  */
 const REMOVED_NODES: Readonly<Record<string, string>> = {
   horizontalRule:
-    'a divider is a feature nobody asked this document for; it came in as a StarterKit default, and it is the one visible block with no text in it — nothing else in the body can be selected without being seen to be',
+    'the divider is not offered yet: it was switched off when "everything visible can be selected" priced in a block with no text to select, and bringing it back together with the selected-look such a block needs is task #124',
 };
 
 /**

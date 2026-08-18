@@ -81,8 +81,8 @@ export const DocumentSplitBlock = Extension.create({
         ({ keepMarks = true } = {}) =>
           ({ state, dispatch, editor, tr }) => {
             // A document with no blocks has no depth to split at, and the
-            // official command says so itself: its first line is
-            // `if (!state.selection.$from.depth) return false`. Answering the
+            // official command says so itself: ahead of its deletion line it
+            // asks `if (!state.selection.$from.depth) return false`. Answering the
             // same keeps the chain from walking into the missing depth chain
             // AND keeps the contract identical to the command being replaced
             // — the zero-block Enter no-op the ruling describes is delivered
@@ -102,8 +102,9 @@ export const DocumentSplitBlock = Extension.create({
             // `TextSelection` alone, because it is the only shape that
             // reaches the crash: upstream deletes a `TextSelection` or an
             // `AllSelection`, but an `AllSelection`'s `$from` sits at depth 0
-            // and its own first line — `if (!state.selection.$from.depth)
-            // return false` — turns it away BEFORE the deletion. Probing it
+            // and that same depth check — which stands between its
+            // `NodeSelection` branch and its deletion line — turns it away
+            // BEFORE anything is deleted. Probing it
             // here would turn that refusal into a silent whole-document
             // deletion, and a block `NodeSelection` (never deleted upstream
             // either) into a whole-block one (adversarial rounds 2 and 3).

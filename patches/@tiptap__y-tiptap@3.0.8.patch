@@ -1,8 +1,8 @@
 diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
-index 653ffe79d5edb4a040555bb222f472af1e45edc8..20249cb5fa1e0461d6a37fa7a678163c555a1683 100644
+index 653ffe79d5edb4a040555bb222f472af1e45edc8..5a3b365c5d8838673569668d96e6b95d9fed5e4a 100644
 --- a/dist/y-tiptap.cjs
 +++ b/dist/y-tiptap.cjs
-@@ -927,6 +927,113 @@ const createNodeFromYElement = (
+@@ -927,6 +927,115 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -31,8 +31,10 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..20249cb5fa1e0461d6a37fa7a678163c
 +  // every character in it, gone from the shared document. Answering "no stand-in
 +  // here" instead leaves this one element to that same catch: it alone is
 +  // removed — one element lost instead of the parent and every character in
-+  // it. Nobody is told: Yjs runs type observers before it emits `update`, so
-+  // the intercept reads a document the name has already been removed from.
++  // it. Nobody is told: the read-only intercept answers to the published
++  // schema version alone and never inspects content (the content-based
++  // condition was removed with the structure ruling), so an element removed
++  // this way leaves no signal anywhere.
 +  if (schema.nodes[el.nodeName] === undefined) {
 +    const parent = el.parent;
 +    const parentType =
@@ -116,7 +118,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..20249cb5fa1e0461d6a37fa7a678163c
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -999,6 +1106,9 @@ const createNodeFromYElement = (
+@@ -999,6 +1108,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -126,7 +128,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..20249cb5fa1e0461d6a37fa7a678163c
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1164,13 +1274,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1164,13 +1276,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -151,7 +153,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..20249cb5fa1e0461d6a37fa7a678163c
        })
      )
  };
-@@ -1538,7 +1658,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1538,7 +1660,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -170,7 +172,7 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..20249cb5fa1e0461d6a37fa7a678163c
    }
    return marks
  };
-@@ -1550,6 +1680,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1550,6 +1682,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {
@@ -183,10 +185,10 @@ index 653ffe79d5edb4a040555bb222f472af1e45edc8..20249cb5fa1e0461d6a37fa7a678163c
        const isOverlapping = map__namespace.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type));
        pattrs[isOverlapping ? `${mark.type.name}--${hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs;
 diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
-index 28c55820dff13cf3d5c303970f530c17eb38f757..a5a597b2159631720120e7ca486025e3be38f944 100644
+index 28c55820dff13cf3d5c303970f530c17eb38f757..7de5bf8c3fbfcb32d7e71b51c565ab927aa7e3ff 100644
 --- a/dist/y-tiptap.js
 +++ b/dist/y-tiptap.js
-@@ -893,6 +893,113 @@ const createNodeFromYElement = (
+@@ -893,6 +893,115 @@ const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -215,8 +217,10 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a5a597b2159631720120e7ca486025e3
 +  // every character in it, gone from the shared document. Answering "no stand-in
 +  // here" instead leaves this one element to that same catch: it alone is
 +  // removed — one element lost instead of the parent and every character in
-+  // it. Nobody is told: Yjs runs type observers before it emits `update`, so
-+  // the intercept reads a document the name has already been removed from.
++  // it. Nobody is told: the read-only intercept answers to the published
++  // schema version alone and never inspects content (the content-based
++  // condition was removed with the structure ruling), so an element removed
++  // this way leaves no signal anywhere.
 +  if (schema.nodes[el.nodeName] === undefined) {
 +    const parent = el.parent;
 +    const parentType =
@@ -300,7 +304,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a5a597b2159631720120e7ca486025e3
    const children = [];
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -965,6 +1072,9 @@ const createNodeFromYElement = (
+@@ -965,6 +1074,9 @@ const createNodeFromYElement = (
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -310,7 +314,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a5a597b2159631720120e7ca486025e3
      // an error occured while creating the node. This is probably a result of a concurrent action.
      /** @type {Y.Doc} */ (el.doc).transact((transaction) => {
        /** @type {Y.Item} */ (el._item).delete(transaction);
-@@ -1130,13 +1240,23 @@ const equalYTextPText = (ytext, ptexts) => {
+@@ -1130,13 +1242,23 @@ const equalYTextPText = (ytext, ptexts) => {
  
          const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
  
@@ -335,7 +339,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a5a597b2159631720120e7ca486025e3
        })
      )
  };
-@@ -1504,7 +1624,17 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1504,7 +1626,17 @@ const attributesToMarks = (attrs, schema) => {
    const marks = [];
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -354,7 +358,7 @@ index 28c55820dff13cf3d5c303970f530c17eb38f757..a5a597b2159631720120e7ca486025e3
    }
    return marks
  };
-@@ -1516,6 +1646,11 @@ const attributesToMarks = (attrs, schema) => {
+@@ -1516,6 +1648,11 @@ const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {};
    marks.forEach((mark) => {
