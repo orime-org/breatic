@@ -15,8 +15,7 @@
  * loader can read a field; only the real catalog proves nobody forgot one.
  */
 
-import { describe, it, expect, beforeAll, vi, afterEach } from "vitest";
-import { initCore } from "@breatic/core";
+import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from "vitest";
 
 import {
   MODALITIES,
@@ -25,9 +24,17 @@ import {
   resetModelCatalog,
 } from "../model-catalog.js";
 import { assertTakesPromptDeclared } from "../takes-prompt.js";
+import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
+// 目录一律按 provider 可用性过滤（#1951），而 CI 跑单测时一个 key 都不设 ——
+// 不声明这个前提，目录在 CI 上是空的，下面每一条都会走「捞不到模型」的
+// 分支提前退出，断言一句都不执行而测试照绿。
 beforeAll(() => {
-  initCore(process.env);
+  useFullCatalog();
+});
+
+afterAll(() => {
+  restoreProcessEnv();
 });
 
 describe("takes_prompt is declared by every model (#1966)", () => {

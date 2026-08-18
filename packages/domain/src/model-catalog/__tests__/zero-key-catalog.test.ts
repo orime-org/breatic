@@ -9,52 +9,20 @@
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { initCore } from "@breatic/core";
 
+import { getModelCatalog, MODALITIES } from "../model-catalog.js";
 import {
-  getModelCatalog,
-  getFullModelConfig,
-  resetModelCatalog,
-  MODALITIES,
-} from "../model-catalog.js";
-
-/**
- * 目录里每个 provider 声明的那个环境变量名。零 key 要构造得准，就得把它们
- * 一个不落地清空 —— 漏一个，那个 provider 还是「配了」，走的就是另一支。
- * @returns 全部 provider 的 `api_key_env` 变量名。
- */
-function allProviderKeyNames(): string[] {
-  const names = new Set<string>();
-  for (const modality of MODALITIES) {
-    for (const config of Object.values(getFullModelConfig(modality).providers)) {
-      if (config.api_key_env) names.add(config.api_key_env);
-    }
-  }
-  return [...names];
-}
-
-/**
- * 把这些 provider key 设成空串，其余环境变量原样保留，注入 core 并清掉目录
- * 缓存。传空数组就是「一个 key 都没配」。
- * @param configured - 要保留成非空的 key 名（其余全部清空）。
- */
-function useEnvWithKeys(configured: readonly string[]): void {
-  const env: Record<string, string | undefined> = { ...process.env };
-  for (const name of allProviderKeyNames()) {
-    env[name] = configured.includes(name) ? "test-key" : "";
-  }
-  initCore(env);
-  resetModelCatalog();
-}
+  allProviderKeyNames,
+  restoreProcessEnv,
+  useEnvWithKeys,
+} from "./catalog-env.js";
 
 beforeEach(() => {
-  initCore(process.env);
-  resetModelCatalog();
+  restoreProcessEnv();
 });
 
 afterAll(() => {
-  initCore(process.env);
-  resetModelCatalog();
+  restoreProcessEnv();
 });
 
 describe("零 key 的部署 (#1951)", () => {
