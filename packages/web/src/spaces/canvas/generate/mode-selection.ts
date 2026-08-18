@@ -73,13 +73,13 @@ export function filterAvailableModes<T extends { value: string }>(
  * Which mode a node opens in: the one it stored if this deployment still
  * serves it, else the first one that is served (#1951).
  *
- * Availability is the test, not legality (user 2026-08-18: "解析的判据就是
- * 它得先可用……如果它不可用，没有任何可进行下一步逻辑的价值"). The resolvers
- * this replaces asked only whether the stored value names a mode the panel
- * knows, which let a node sit on a mode whose models the deployment has since
- * dropped — and then every control downstream had to have an answer for a
- * state that should not exist. Asking about availability first removes the
- * state instead of describing it.
+ * Availability is the test, not legality: an unavailable mode is worth nothing
+ * to any step that follows, so it never becomes the current one (user
+ * 2026-08-18). The resolvers this replaces asked only whether the stored value
+ * names a mode the panel knows, which let a node sit on a mode whose models
+ * the deployment has since dropped — and then every control downstream had to
+ * have an answer for a state that should not exist. Asking about availability
+ * first removes the state instead of describing it.
  *
  * Nothing is written back: this is derived per render, and a node's stored
  * mode only changes when the user actually switches. Put the models back and
