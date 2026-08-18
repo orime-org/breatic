@@ -82,9 +82,11 @@ interface CatalogGatedFrameProps {
 /**
  * Model-catalog readiness gate plus the node-anchored float.
  *
- * Three ways there is no catalog to build a panel from — failed, offline, and
- * not here yet — and all three withhold the panel. The first two also say so;
- * the third is the ordinary wait, which the prefetch usually makes invisible.
+ * Four ways there is no panel to build — the catalog failed, the browser is
+ * offline, the catalog is not here yet, or it arrived and serves none of this
+ * modality's modes — and all four withhold the panel. Three of them also say
+ * so; the not-here-yet one is the ordinary wait, which the prefetch usually
+ * makes invisible.
  *
  * A panel without a catalog is a dead end (blank model pill, no params,
  * execute permanently disabled), so a failed fetch EXPLAINS itself with a
@@ -109,7 +111,7 @@ interface CatalogGatedFrameProps {
  * in the common case because `CanvasSpace` prefetches the catalog when the
  * space mounts, so by the time anyone clicks Generate the answer is cached.
  *
- * Three outcomes, then, and offline is its own (#1966): a paused query is not
+ * Four outcomes, then, and offline is its own (#1966): a paused query is not
  * a slow one, it is one that will not move until the browser reconnects, so
  * holding for it would be a wait that cannot end. It gets the same treatment
  * as a failure — say why, close the panel — with its own sentence.
@@ -117,8 +119,9 @@ interface CatalogGatedFrameProps {
  * @param root0.nodeId - The node the panel anchors to.
  * @param root0.modality - Which modality this panel serves.
  * @param root0.children - The panel body.
- * @returns The floating panel, or null while there is no catalog to build it
- *   from — failed, offline, or still on the wire.
+ * @returns The floating panel, or null while there is no panel to build —
+ *   the catalog failed, is offline, is still on the wire, or serves none of
+ *   this modality's modes.
  */
 export function CatalogGatedFrame({
   nodeId,

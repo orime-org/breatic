@@ -244,8 +244,9 @@ function readSlotThumbnails(
  * @param nodes - Current canvas node views.
  * @param nodeId - The node whose panel is open.
  * @param availableModes - The video modes with at least one model, in display order.
- * @returns The mode this panel opens in — text-to-video for anything it does
- *   not offer, a node with no stored mode, or a node that is gone.
+ * @returns The mode this panel opens in — the first mode this deployment can
+ *   serve for anything it does not offer, a node with no stored mode, a mode
+ *   whose models this deployment lacks, or a node that is gone.
  */
 export function nodeVideoMode(
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>,

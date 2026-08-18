@@ -82,8 +82,8 @@ describe('filterModelsByMode', () => {
   it('excludes a pure-edit model from i2i — edit is not a generation mode', () => {
     // The generate panel routes on i2i; a model with only the `edit`
     // capability belongs to the future image-editing mini-tool, not here.
-    // (In practice such a model is already excluded upstream by slice-1's
-    // isImageGenerationMode; this locks the invariant at the mode filter too.)
+    // 这一条就是唯一的守卫了：#1951 之前上游还有一道 isImageGenerationMode，
+    // 它的最后一个调用方随那次改动一起没了，函数也删了。
     const pureEdit = model('edit-only', ['edit']);
     expect(filterModelsByMode([I2I, pureEdit], 'i2i').map((m) => m.name)).toEqual([
       'i2i-a',

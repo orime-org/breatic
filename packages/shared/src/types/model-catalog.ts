@@ -142,18 +142,6 @@ export interface ModelCatalog {
 export const IMAGE_GENERATION_MODES = ["t2i", "i2i"] as const;
 
 /**
- * Whether an image model's `mode` makes it offerable for generation (Generate
- * picker + agent image plan) versus a pure utility tool. A model qualifies when
- * any single mode is a generation mode, so a multi-mode model (e.g.
- * `["i2i", "edit"]`) qualifies as long as it can do t2i or i2i.
- * @param mode - The model's `mode` (a single string or an array of modes).
- * @returns True when any of the model's modes is a generation mode.
- */
-export function isImageGenerationMode(mode: string | string[]): boolean {
-  return anyModeIn(mode, IMAGE_GENERATION_MODES);
-}
-
-/**
  * Video model `mode` values that make a model offerable in the video Generate
  * panel (#1896). A model qualifies when ANY of its modes is one of these, so a
  * model tagged with several offerable modes qualifies through any of them.
@@ -193,22 +181,6 @@ export const VIDEO_GENERATION_MODES = [
   "ref",
   "talking_head",
 ] as const;
-
-/**
- * Whether any of a model's modes appears in an allowed list. A model declares
- * `mode` as either one string or an array of them, so testing membership means
- * normalising first — which is the only thing this helper exists to hold.
- * @param mode - The model's `mode` (a single string or an array of modes).
- * @param allowed - The modes that qualify for the caller's purpose.
- * @returns True when at least one of the model's modes is allowed.
- */
-function anyModeIn(
-  mode: string | string[],
-  allowed: readonly string[],
-): boolean {
-  const modes = Array.isArray(mode) ? mode : [mode];
-  return modes.some((m) => allowed.includes(m));
-}
 
 // The source-image predicates (SOURCE_IMAGE_MODES / requiresSourceImage /
 // supportsTextToImage) were replaced by the cross-modality execute gate
