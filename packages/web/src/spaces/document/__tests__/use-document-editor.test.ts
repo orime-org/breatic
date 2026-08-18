@@ -58,11 +58,10 @@ describe('useDocumentEditor', () => {
 
   beforeEach(() => {
     doc = new Y.Doc();
-    // The shape a document has when it reaches a client: the backend wrote a
-    // title into it when the Space was created, and no body block at all. This
-    // hook seeds nothing, and a test starting from an empty fragment would be
-    // exercising a state production never produces.
-    Y.applyUpdate(doc, encodeInitialSpaceContent('document', 'Storyboard v3'));
+    // The shape a document has when it reaches a client: the backend seeds an
+    // empty document when the Space is created — zero blocks is the legal
+    // resting state under `block*`, and this hook seeds nothing on top.
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     awareness = new Awareness(doc);
   });
   afterEach(() => {
