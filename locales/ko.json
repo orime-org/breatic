@@ -110,8 +110,7 @@
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
       "greetingDefault": "안녕하세요!",
-      "hintNodes": "@로 노드에 물어보세요",
-      "hintDirect": "또는 아래에 프롬프트를 입력하세요 ↓",
+      "hintDirect": "아래에 입력해 보세요 ↓",
       "quick": {
         "findReference": "사이버펑크 스타일 참고 이미지를 찾아줘",
         "writePrompt": "일러스트 생성 프롬프트를 써줘",
@@ -121,7 +120,10 @@
     "history": {
       "title": "세션 목록",
       "description": "이전 대화로 전환하거나 다시 확인할 수 있습니다.",
-      "empty": "이전 대화가 없습니다"
+      "empty": "이전 대화가 없습니다",
+      "moreFailed": "이전 대화를 불러오지 못했습니다",
+      "loadingMore": "이전 대화를 불러오는 중",
+      "loading": "대화 목록을 불러오는 중"
     },
     "relative": {
       "justNow": "방금 전",
@@ -143,7 +145,25 @@
     "tool": {
       "unfinished": "완료되기 전에 중지됨"
     },
-    "loadEarlier": "이전 메시지 불러오기"
+    "loadEarlier": "이전 메시지 불러오기",
+    "conversation": {
+      "untitled": "제목 없는 대화",
+      "rename": "이름 변경",
+      "delete": "삭제",
+      "renamePlaceholder": "이 대화의 이름 지정",
+      "deleteTitle": "이 대화를 삭제할까요?",
+      "deleteBody": "대화에서 나눈 내용도 함께 삭제되며 되돌릴 수 없습니다.",
+      "deleteConfirm": "삭제",
+      "deleteCancel": "취소",
+      "rowActions": "이 대화 이름 바꾸기 또는 삭제",
+      "gone": "이 대화는 더 이상 존재하지 않습니다"
+    },
+    "load": {
+      "failedTitle": "네트워크 오류",
+      "failedBody": "이 Project의 대화를 읽지 못했습니다.",
+      "retry": "다시 불러오기",
+      "refusedTitle": "이 대화를 열 수 없습니다"
+    }
   },
   "canvas": {
     "group": {
@@ -1043,7 +1063,6 @@
       "creditsBalance": "크레딧 잔액",
       "addCredits": "크레딧 추가",
       "home": "홈",
-      "conversationCount": "대화 {count}개",
       "scrollTabsLeft": "탭 왼쪽으로 스크롤",
       "scrollTabsRight": "탭 오른쪽으로 스크롤",
       "spacesToolbar": "Spaces",

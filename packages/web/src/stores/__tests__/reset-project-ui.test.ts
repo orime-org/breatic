@@ -4,7 +4,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useCanvasStore } from '@web/stores/canvas';
-import { useChatStore } from '@web/stores/chat';
 import { useConversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 import { useInpaintStore } from '@web/stores/inpaint';
 import { useMiniToolStore } from '@web/stores/mini-tool';
@@ -31,8 +30,6 @@ describe('resetProjectUiStores (#1771)', () => {
     useUIStore.getState().setSidebarOpen(false); // preference
     useUIStore.getState().setChatPanelCollapsed(true); // preference
 
-    useChatStore.getState().setComposerDraft('half-typed message');
-    useChatStore.getState().setActiveConversationId('conv-1');
 
     useInpaintStore.getState().setMaskDataUrl('data:image/png;base64,AAAA');
     useInpaintStore.getState().beginStroke({ radius: 8, alpha: 1 });
@@ -62,9 +59,6 @@ describe('resetProjectUiStores (#1771)', () => {
     expect(ui.activeOverlayId).toBeNull();
     expect(ui.drawerOpen).toBe(false);
 
-    const chat = useChatStore.getState();
-    expect(chat.composerDraft).toBe('');
-    expect(chat.activeConversationId).toBeNull();
 
     const inpaint = useInpaintStore.getState();
     expect(inpaint.strokes).toEqual([]);
@@ -110,6 +104,7 @@ describe('resetProjectUiStores (#1771)', () => {
           oldestLoadedTurn: 1,
           failures: 0,
           failedReplyId: null,
+          title: null,
         },
       },
       currentByProject: { 'project-1': 'c-1' },

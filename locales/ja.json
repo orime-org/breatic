@@ -110,8 +110,7 @@
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
       "greetingDefault": "やあ!",
-      "hintNodes": "@ でノードに質問してみよう",
-      "hintDirect": "または下に直接プロンプトを入力 ↓",
+      "hintDirect": "下の入力欄からどうぞ ↓",
       "quick": {
         "findReference": "サイバーパンク風の参考画像を探して",
         "writePrompt": "イラスト生成のプロンプトを書いて",
@@ -121,7 +120,10 @@
     "history": {
       "title": "セッション一覧",
       "description": "以前の会話に切り替えたり振り返ったりできます。",
-      "empty": "履歴の会話はまだありません"
+      "empty": "履歴の会話はまだありません",
+      "moreFailed": "以前の会話を読み込めませんでした",
+      "loadingMore": "以前の会話を読み込んでいます",
+      "loading": "会話リストを読み込んでいます"
     },
     "relative": {
       "justNow": "たった今",
@@ -143,7 +145,25 @@
     "tool": {
       "unfinished": "完了前に停止しました"
     },
-    "loadEarlier": "以前のメッセージを読み込む"
+    "loadEarlier": "以前のメッセージを読み込む",
+    "conversation": {
+      "untitled": "無題の会話",
+      "rename": "名前を変更",
+      "delete": "削除",
+      "renamePlaceholder": "この会話に名前を付ける",
+      "deleteTitle": "この会話を削除しますか？",
+      "deleteBody": "会話の内容もすべて削除されます。元に戻せません。",
+      "deleteConfirm": "削除",
+      "deleteCancel": "キャンセル",
+      "rowActions": "この会話の名前を変更、または削除",
+      "gone": "この会話はもう存在しません"
+    },
+    "load": {
+      "failedTitle": "ネットワークエラー",
+      "failedBody": "この Project の会話を読み込めませんでした。",
+      "retry": "再読み込み",
+      "refusedTitle": "このチャットを開けません"
+    }
   },
   "canvas": {
     "group": {
@@ -1043,7 +1063,6 @@
       "creditsBalance": "クレジット残高",
       "addCredits": "クレジットを追加",
       "home": "ホーム",
-      "conversationCount": "{count} 件の会話",
       "scrollTabsLeft": "タブを左へスクロール",
       "scrollTabsRight": "タブを右へスクロール",
       "spacesToolbar": "Spaces",

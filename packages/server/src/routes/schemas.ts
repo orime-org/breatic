@@ -23,6 +23,8 @@ export {
   chatConversationsQuerySchema,
   chatOpenSchema,
   chatEarlierMessagesQuerySchema,
+  chatCreateConversationSchema,
+  chatRenameConversationSchema,
 } from "@breatic/shared";
 
 // ── Server-only schemas (complex discriminated unions) ───────────────
@@ -257,4 +259,27 @@ export const skillMarketQuerySchema = z.object({
   tags: z.string().transform((s) => s.split(",").filter(Boolean)).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+/**
+ * The conversation id in a path.
+ *
+ * Without it the id goes straight to a query, where PG rejects a malformed
+ * uuid by throwing -- and nothing recognises that throw, so an input that
+ * should read as "no such conversation" comes back as a 500 with an error-level
+ * log behind it, which anyone can produce as fast as they can send requests.
+ */
+export const conversationIdParamSchema = z.object({ id: z.string().uuid() });
+
+/**
+ * Both ids in the attachment path.
+ *
+ * `aid` for the reason above -- it goes to a query. `cid` is not read by the
+ * handler at all, and is declared here so that the path means what it says:
+ * an attachment named under a conversation that is not one is not a request
+ * this route should be answering.
+ */
+export const attachmentParamSchema = z.object({
+  cid: z.string().uuid(),
+  aid: z.string().uuid(),
 });

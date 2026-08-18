@@ -13,6 +13,7 @@ import type * as React from 'react';
 import { AgentColHeader } from '@web/pages/project/chrome/agent-header/AgentColHeader';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import { unexpectedTextIn } from '@web/test-utils/visible-text';
 
 // Chrome buttons now use shadcn `Tooltip`, which throws without a
 // `TooltipProvider` somewhere up the tree. App.tsx supplies one at
@@ -22,20 +23,20 @@ const render = (ui: React.ReactElement, options?: RenderOptions) =>
   rtlRender(ui, { wrapper: TooltipProvider, ...options });
 
 function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
-  const onOpenHistory = vi.fn();
+  const onToggleHistory = vi.fn();
   const onNewConversation = vi.fn();
   const onRenameConversation = vi.fn();
   render(
     <AgentColHeader
       conversationName='Onboarding'
-      messageCount={3}
-      onOpenHistory={onOpenHistory}
+      conversationNamePlaceholder='Untitled conversation'
+      onToggleHistory={onToggleHistory}
       onNewConversation={onNewConversation}
       onRenameConversation={onRenameConversation}
       {...overrides}
     />,
   );
-  return { onOpenHistory, onNewConversation, onRenameConversation };
+  return { onToggleHistory, onNewConversation, onRenameConversation };
 }
 
 describe('AgentColHeader', () => {
@@ -54,18 +55,21 @@ describe('AgentColHeader', () => {
     expect(screen.getByText('Bug triage')).toBeInTheDocument();
   });
 
-  it('renders the count chip immediately right of the history icon', () => {
-    setup({ messageCount: 12 });
-    expect(screen.getByTestId('conversation-count-chip')).toHaveTextContent(
-      '12',
-    );
+  it('does not say how many conversations there are', () => {
+    // 会话总数对读者没有用处：他要知道的是自己现在在哪一条里。
+    // 列表一分页，手上这份数组的长度也不再是总数了。
+    // 判据跟 AgentColumn 那条同一个：说清顶栏允许显示哪些字符串，多出来的都报
+    // 出来。换个 testid、或者把计数写成 `(7)` 挂在名字旁边，都绕不过去。
+    setup({ conversationName: 'Onboarding' });
+    const header = screen.getByTestId('agent-col-header');
+    expect(unexpectedTextIn(header, ['Onboarding'])).toEqual([]);
   });
 
-  it('clicking history opens it', async () => {
+  it('clicking history asks for it to be shown or hidden', async () => {
     const user = userEvent.setup();
-    const { onOpenHistory } = setup();
+    const { onToggleHistory } = setup();
     await user.click(screen.getByLabelText('Conversation history'));
-    expect(onOpenHistory).toHaveBeenCalledTimes(1);
+    expect(onToggleHistory).toHaveBeenCalledTimes(1);
   });
 
   it('clicking + new conversation invokes the handler', async () => {

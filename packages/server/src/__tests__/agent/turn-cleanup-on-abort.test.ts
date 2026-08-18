@@ -123,6 +123,13 @@ beforeEach(() => {
   [addMessage, consolidateIfNeeded, deductOnce, usageRead].forEach((m) => m.mockClear());
 });
 
+// The turn asks the conversation what it is called, so it can say so in the
+// event that opens the turn. Answered with a name already set: these tests are
+// about what a turn streams, not about how a conversation comes by its name.
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  titleForTurn: vi.fn(async () => "already named"),
+}));
+
 describe("a turn cut short by the client", () => {
   it("still saves, consolidates and bills — without touching `usage`", async () => {
     // The billing figure has to come off the stream as it goes past, not

@@ -379,6 +379,13 @@
       "when": 1786790599000,
       "tag": "0053_membership_tier_changes",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1787011200000,
+      "tag": "0054_conversation_title_nullable",
+      "breakpoints": true
     }
   ]
 }

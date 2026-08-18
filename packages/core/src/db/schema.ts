@@ -386,7 +386,10 @@ export const conversations = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    title: varchar("title", { length: 200 }).default("New conversation").notNull(),
+    // Null while the conversation has no name of its own. What the reader
+    // sees in that case is decided where their language is known, which is
+    // not here.
+    title: varchar("title", { length: 200 }),
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),

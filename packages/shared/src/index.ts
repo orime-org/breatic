@@ -183,6 +183,9 @@ export {
   chatConversationsQuerySchema,
   chatOpenSchema,
   chatEarlierMessagesQuerySchema,
+  chatCreateConversationSchema,
+  chatRenameConversationSchema,
+  CONVERSATION_TITLE_MAX_CHARS,
 } from "@shared/schemas/index.js";
 
 export type {
@@ -200,6 +203,8 @@ export type {
   CheckoutInput,
   PaginationInput,
   ChatConversationsQueryInput,
+  ChatCreateConversationInput,
+  ChatRenameConversationInput,
 } from "@shared/schemas/index.js";
 
 export {

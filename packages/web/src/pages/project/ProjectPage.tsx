@@ -37,8 +37,7 @@ import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import type { SpaceType } from '@web/spaces';
 
-import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
-import { AgentColHeader } from '@web/pages/project/chrome/agent-header/AgentColHeader';
+import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { LoadingOverlay } from '@web/pages/project/chrome/LoadingOverlay';
 import { LoadingScreen } from '@web/pages/project/chrome/LoadingScreen';
 import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
@@ -56,7 +55,7 @@ import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
 
 /**
  * Project page shell - TopBar above two columns:
- *   - left:  Agent column (320 px, collapsible) - ChatPanel
+ *   - left:  Agent column (320 px, collapsible) - AgentColumn
  *   - right: SpaceTabBar + Space body + floating menus
  *
  * State model (2026-05-21 redesign):
@@ -803,27 +802,7 @@ function ProjectWorkspace({
             {/* Agent column is hidden for viewers (B model — not rendered,
               not just disabled) AND when the user has collapsed it. The
               backend gates agent chat on role; this hide is UX only. */}
-            {collapsed || isViewer ? null : (
-              <aside
-                data-testid='agent-column'
-                className='flex w-[320px] shrink-0 flex-col border-r border-border bg-card'
-              >
-                <AgentColHeader
-                  conversationName='New conversation'
-                  messageCount={0}
-                  onOpenHistory={() => {
-                    /* wired in ChatPanel B-mode round */
-                  }}
-                  onNewConversation={() => {
-                    /* wired in ChatPanel B-mode round */
-                  }}
-                  onRenameConversation={() => {
-                    /* wired when conversation API lands */
-                  }}
-                />
-                <ChatPanel projectId={projectId} disabled={isViewer} />
-              </aside>
-            )}
+            {collapsed || isViewer ? null : <AgentColumn projectId={projectId} />}
             <section className='flex min-w-0 flex-1 flex-col'>
               <SpaceTabBar
                 spaces={openTabs}

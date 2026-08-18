@@ -76,6 +76,7 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
  * decisions and its role hints and per-kind request lines lost their reader.
  */
 const REMOVED_DEAD_KEYS: readonly string[] = [
+  'chat.conversation.startNew',
   'notifications.roleHint.editor',
   'notifications.roleHint.viewer',
   'notifications.request.audio',

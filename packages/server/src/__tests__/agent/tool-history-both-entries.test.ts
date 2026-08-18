@@ -71,6 +71,13 @@ vi.mock("@breatic/domain", async () => {
 const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage, getMessages }));
+// The turn asks the conversation what it is called, so it can say so in the
+// event that opens the turn. Answered with a name already set: these tests are
+// about what a turn streams, not about how a conversation comes by its name.
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  titleForTurn: vi.fn(async () => "already named"),
+}));
+
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
 
 // What the system prompt says is settled elsewhere and has its own tests; here

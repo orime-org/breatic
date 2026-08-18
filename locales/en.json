@@ -110,8 +110,7 @@
     "empty": {
       "greetingWithName": "Hi, {name}!",
       "greetingDefault": "Hi!",
-      "hintNodes": "Try asking @ a node",
-      "hintDirect": "Or type your prompt below ↓",
+      "hintDirect": "Type your prompt below ↓",
       "quick": {
         "findReference": "Find cyberpunk-style reference images",
         "writePrompt": "Write a prompt for an illustration",
@@ -121,7 +120,10 @@
     "history": {
       "title": "Session list",
       "description": "Switch to or review previous conversations.",
-      "empty": "No previous conversations"
+      "empty": "No previous conversations",
+      "moreFailed": "Could not load older conversations",
+      "loadingMore": "Loading earlier conversations",
+      "loading": "Loading conversations"
     },
     "relative": {
       "justNow": "just now",
@@ -143,7 +145,25 @@
     "tool": {
       "unfinished": "Stopped before it finished"
     },
-    "loadEarlier": "Load earlier messages"
+    "loadEarlier": "Load earlier messages",
+    "conversation": {
+      "untitled": "Untitled conversation",
+      "rename": "Rename",
+      "delete": "Delete",
+      "renamePlaceholder": "Name this conversation",
+      "deleteTitle": "Delete this conversation?",
+      "deleteBody": "Everything said in it goes with it. This cannot be undone.",
+      "deleteConfirm": "Delete",
+      "deleteCancel": "Cancel",
+      "rowActions": "Rename or delete this conversation",
+      "gone": "This conversation no longer exists"
+    },
+    "load": {
+      "failedTitle": "Network error",
+      "failedBody": "Could not read this project's conversations.",
+      "retry": "Reload",
+      "refusedTitle": "Cannot open this chat"
+    }
   },
   "canvas": {
     "group": {
@@ -1043,7 +1063,6 @@
       "creditsBalance": "Credits balance",
       "addCredits": "Add credits",
       "home": "Home",
-      "conversationCount": "{count} conversations",
       "scrollTabsLeft": "Scroll tabs left",
       "scrollTabsRight": "Scroll tabs right",
       "spacesToolbar": "Spaces",

@@ -21,7 +21,6 @@ vi.mock('@web/data/api/chat', () => ({
 import { chatApi } from '@web/data/api/chat';
 import { StreamDroppedError, StreamRefusedError, StreamUnreachableError } from '@web/data/stream/sse';
 import { ApiException } from '@web/data/api/types';
-import { useChatStore } from '@web/stores/chat';
 import {
   conversationRuntime,
   turnPhaseOf,
@@ -77,7 +76,11 @@ function openChatAnswers({ hasMore = false }: { hasMore?: boolean } = {}): void 
  */
 function turnStarts(
   texts: string[],
-  { firstTurnIndex = 7, hasMore = false }: { firstTurnIndex?: number; hasMore?: boolean } = {},
+  {
+    firstTurnIndex = 7,
+    hasMore = false,
+    title = null,
+  }: { firstTurnIndex?: number; hasMore?: boolean; title?: string | null } = {},
 ): void {
   handlers.onEvent({
     event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
@@ -91,6 +94,7 @@ function turnStarts(
         turnIndex: firstTurnIndex + i,
       })),
       hasMore,
+      title,
     },
   } as unknown as SSEEventEnvelope);
 }
@@ -106,7 +110,6 @@ function conversation() {
 beforeEach(() => {
   vi.clearAllMocks();
   _resetForTests();
-  useChatStore.getState().reset();
   vi.mocked(chatApi.streamMessage).mockImplementation((_input, h) => {
     handlers = h;
     // Never settles, the way the real call does not until the socket closes.
@@ -226,22 +229,19 @@ describe('a conversation the server no longer has', () => {
 });
 
 describe('what the message column is told while a chat is re-opened', () => {
-  it('is not told the chat is loading all over again', async () => {
-    // Opening failed when the reader arrived, so pressing send is what opens
-    // one -- and that is a whole request during which the column must not
-    // change: what it holds is what it held.
+  it('says it is trying again when a chat that could not be read is re-opened', async () => {
+    // 打开失败之后,屏幕上没有会话 —— 蒙版盖着整列。所以再打开一次不会
+    // 拿走任何东西,而说一句「在读了」正是重试该有的样子:蒙版让位给等待,
+    // 再失败一次蒙版再回来。
     vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
     await conversationRuntime.ensureLoaded('p-1');
     expect(useConversationRuntime.getState().openStatus['p-1']).toBe('failed');
 
     vi.mocked(chatApi.openChat).mockReturnValueOnce(new Promise(() => {}));
-    void conversationRuntime.send('p-1', 'hello');
+    void conversationRuntime.ensureLoaded('p-1');
     await vi.waitFor(() => expect(chatApi.openChat).toHaveBeenCalledTimes(2));
 
-    // `loading` is what the panel renders nothing for. Going back to it here
-    // would take the column away -- on a re-open it is the conversation on
-    // screen that disappears, and a press is what caused it.
-    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('failed');
+    expect(useConversationRuntime.getState().openStatus['p-1']).toBe('loading');
   });
 
   it('keeps a chat that opened once from being called unopenable later', async () => {
@@ -529,13 +529,13 @@ describe('the box the words were typed into', () => {
   it('is emptied by the conversation, not by whoever is rendering it', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    useChatStore.getState().setComposerDraft('  hello  ');
+    conversationRuntime.setDraft('c-1', '  hello  ');
 
     void conversationRuntime.send('p-1', '  hello  ');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
 
     // Still in the box: nothing has said the server has it.
-    expect(useChatStore.getState().composerDraft).toBe('  hello  ');
+    expect(conversationRuntime.draftOf('c-1')).toBe('  hello  ');
     // And what went out is the trimmed message, not the whitespace.
     expect(chatApi.streamMessage).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'hello' }),
@@ -548,13 +548,13 @@ describe('the box the words were typed into', () => {
     // been collapsed the moment after the press -- that is a thing readers do,
     // and this turn goes on without it -- so a rule that lives in the panel is
     // a rule that stops running exactly when someone walks away from it.
-    expect(useChatStore.getState().composerDraft).toBe('');
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
   });
 
   it('is emptied whatever it happens to hold, because only one thing can be in it', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    useChatStore.getState().setComposerDraft('hello');
+    conversationRuntime.setDraft('c-1', 'hello');
 
     void conversationRuntime.send('p-1', 'hello');
     await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
@@ -567,7 +567,38 @@ describe('the box the words were typed into', () => {
     // exact, contains, starts-with -- before it was clear the question only
     // exists if the box accepts input while it is showing something it did
     // not get from them.
-    expect(useChatStore.getState().composerDraft).toBe('');
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
+  });
+
+  it('empties only the conversation the turn belongs to', async () => {
+    // A draft belongs to a conversation. Another one holding a half-typed
+    // sentence is not affected by this turn landing in this one.
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+    conversationRuntime.setDraft('c-1', 'hello');
+    conversationRuntime.setDraft('c-2', 'typed somewhere else');
+
+    void conversationRuntime.send('p-1', 'hello');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    turnStarts(['hello']);
+
+    expect(conversationRuntime.draftOf('c-1')).toBe('');
+    expect(conversationRuntime.draftOf('c-2')).toBe('typed somewhere else');
+  });
+
+  it('takes the name the server gives the conversation on that same event', async () => {
+    // The turn that says the message landed is also the turn that named the
+    // conversation, when it was the first one. Nothing else on this stream
+    // ever mentions the name.
+    openChatAnswers();
+    await conversationRuntime.ensureLoaded('p-1');
+
+    void conversationRuntime.send('p-1', 'find me a reference');
+    await vi.waitFor(() => expect(conversation()?.turn).not.toBeNull());
+    turnStarts(['find me a reference'], { title: 'find me a reference' });
+
+    const listed = useConversationRuntime.getState().listByProject['p-1'];
+    expect(listed?.[0]?.title).toBe('find me a reference');
   });
 });
 
@@ -1393,7 +1424,7 @@ describe('the wait between the press and the server answering', () => {
     vi.useFakeTimers();
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    useChatStore.getState().setComposerDraft('the one I sent');
+    conversationRuntime.setDraft('c-1', 'the one I sent');
 
     const told: ChatMishap[] = [];
     const stop = watchChatMishaps((m) => told.push(m));
@@ -1408,7 +1439,7 @@ describe('the wait between the press and the server answering', () => {
     // taken off it. The words never went anywhere this end can vouch for, so
     // they are still in the box and the button is a send button again --
     // pressing it is the whole of what there is to do.
-    expect(useChatStore.getState().composerDraft).toBe('the one I sent');
+    expect(conversationRuntime.draftOf('c-1')).toBe('the one I sent');
     expect(turnPhaseOf(useConversationRuntime.getState(), 'p-1')).toBe('idle');
     expect(told).toHaveLength(1);
     // Sending it again can store the same question twice -- the first may have

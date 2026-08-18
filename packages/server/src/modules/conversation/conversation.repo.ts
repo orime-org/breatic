@@ -11,17 +11,17 @@
  * of owned children lives in {@link cascadeDeleteConversations}.
  */
 
-import { and, eq, desc, isNull, inArray, sql } from "drizzle-orm";
+import { and, or, eq, lt, desc, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import {
   conversations,
-  conversationMessages,
   conversationAttachments,
   conversationMemories,
   memoryHistoryEntries,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { cascadeDeleteMessages } from "@server/modules/conversation/conversation-message.repo.js";
+import { CONVERSATION_TITLE_MAX_CHARS } from "@breatic/shared";
 import type { ConversationEntity } from "@breatic/shared";
 
 /**
@@ -54,22 +54,21 @@ function toEntity(row: typeof conversations.$inferSelect): ConversationEntity {
 }
 
 /**
- * Create a new conversation.
+ * Create a new conversation, with no name yet.
+ *
+ * A name arrives later, from the first thing said in it or from its owner. It
+ * is not given one here, because a placeholder stored in the column would be
+ * indistinguishable from a title someone chose.
  * @param userId - Owner of the new conversation (conversations are user-scoped)
- * @param title - Display title; truncated to 200 chars before insert
  * @param tx - Optional transaction handle, so opening chat can create the
  *   conversation and stamp its project as one unit under the locks it holds
  * @returns The newly created conversation entity
  */
 export async function createConversation(
   userId: string,
-  title = "New conversation",
   tx?: DbTx,
 ): Promise<ConversationEntity> {
-  const rows = await (tx ?? db)
-    .insert(conversations)
-    .values({ userId, title: title.slice(0, 200) })
-    .returning();
+  const rows = await (tx ?? db).insert(conversations).values({ userId }).returning();
   return toEntity(rows[0]!);
 }
 
@@ -88,6 +87,32 @@ export async function getConversation(id: string): Promise<ConversationEntity | 
 }
 
 /**
+ * One page of a user's conversations, and whether the list goes on past it.
+ *
+ * The flag travels with the rows rather than being worked out from their
+ * count, because the count cannot tell a page that filled the window from one
+ * that happened to be the last.
+ */
+export interface ConversationPage {
+  conversations: ConversationEntity[];
+  hasMore: boolean;
+}
+
+/**
+ * The position a page of conversations continues from.
+ *
+ * A position rather than a count of rows to skip: this list is ordered by when
+ * each conversation was last used, so it moves while a reader pages through
+ * it. Counting rows then lands somewhere else than where the last page ended
+ * -- a conversation comes back twice, or one is stepped over and cannot be
+ * reached at all. Both columns are needed because both are in the order.
+ */
+export interface ConversationCursor {
+  updatedAt: Date;
+  id: string;
+}
+
+/**
  * List active (non-deleted) conversations for a user, optionally
  * scoped to a single project.
  * @param userId - Conversations are user-owned; this is the auth boundary.
@@ -96,27 +121,51 @@ export async function getConversation(id: string): Promise<ConversationEntity | 
  *   to that project. ChatPanel passes the active space's project id so
  *   it doesn't have to client-side-filter a paginated response (which
  *   silently dropped the target when it sat past page boundary).
- * @param opts.limit - Maximum rows to return (defaults to 50)
- * @param opts.offset - Number of rows to skip for pagination (defaults to 0)
- * @returns Active conversations ordered by most-recently-updated first
+ * @param opts.limit - How many conversations this page holds
+ * @param opts.after - Where the previous page stopped; omitted for the first
+ * @returns The page, and whether the list goes on past it
  */
 export async function listConversations(
   userId: string,
-  opts: { projectId?: string; limit?: number; offset?: number } = {},
-): Promise<ConversationEntity[]> {
-  const { projectId, limit = 50, offset = 0 } = opts;
+  opts: { projectId?: string; limit: number; after?: ConversationCursor },
+): Promise<ConversationPage> {
+  const { projectId, limit, after } = opts;
   const conditions = [eq(conversations.userId, userId), isNull(conversations.deletedAt)];
   if (projectId !== undefined) {
     conditions.push(eq(conversations.projectId, projectId));
   }
+  if (after !== undefined) {
+    // Everything ordered after the row the last page ended on. Written as two
+    // comparisons because the order is over two columns: past that instant,
+    // or at that instant but past that row. The second half is what stops a
+    // batch of conversations sharing a timestamp -- which is what happens when
+    // a project is seeded, or when two answers land in the same millisecond --
+    // from either repeating for ever or being skipped as a block.
+    conditions.push(
+      or(
+        lt(conversations.updatedAt, after.updatedAt),
+        and(eq(conversations.updatedAt, after.updatedAt), lt(conversations.id, after.id)),
+      )!,
+    );
+  }
+  // One past the page, which is the only way to answer "is there more" without
+  // a second query. A full page is not evidence of more and a short one is not
+  // evidence of the end -- both are what a page exactly the size of the
+  // remainder looks like.
   const rows = await db
     .select()
     .from(conversations)
     .where(and(...conditions))
-    .orderBy(desc(conversations.updatedAt))
-    .limit(limit)
-    .offset(offset);
-  return rows.map(toEntity);
+    // Two keys, and the second is not decoration: it is what makes the order
+    // total. Ordering by the timestamp alone leaves rows that share one in
+    // whatever order the database feels like, and a cursor into an order that
+    // is not stable points at nothing in particular.
+    .orderBy(desc(conversations.updatedAt), desc(conversations.id))
+    .limit(limit + 1);
+  return {
+    conversations: rows.slice(0, limit).map(toEntity),
+    hasMore: rows.length > limit,
+  };
 }
 
 /**
@@ -150,14 +199,15 @@ export async function lockChatCreation(
 /**
  * The conversation this user spoke in most recently in this project.
  *
- * Ordered by the newest message in each conversation, falling back to the
- * conversation's own creation time for one that has never been spoken in.
- * `conversations.updated_at` is deliberately not used: renaming a conversation
- * touches it, and renaming is not speaking.
+ * The same order the list is in, and the same column: `updated_at` is set when
+ * something is said and left alone by a rename, so it already means "last
+ * spoken in, or created if never spoken in". Reading it two ways would let the
+ * panel open on one conversation while the list puts another at the top -- the
+ * same words on screen pointing at two different things.
  *
  * The id is the final ordering key so the answer never wobbles between two
- * conversations whose newest messages share a timestamp — without it, the same
- * user refreshing twice could land somewhere different each time.
+ * conversations sharing a timestamp — without it, the same user refreshing
+ * twice could land somewhere different each time.
  * @param userId - Owner whose conversations to consider
  * @param projectId - Project to look in
  * @param tx - Optional transaction handle, so the caller can read inside the
@@ -170,15 +220,8 @@ export async function findMostRecentlyUsed(
   tx?: DbTx,
 ): Promise<ConversationEntity | null> {
   const rows = await (tx ?? db)
-    .select({ conversation: conversations })
+    .select()
     .from(conversations)
-    .leftJoin(
-      conversationMessages,
-      and(
-        eq(conversationMessages.conversationId, conversations.id),
-        isNull(conversationMessages.deletedAt),
-      ),
-    )
     .where(
       and(
         eq(conversations.userId, userId),
@@ -186,14 +229,10 @@ export async function findMostRecentlyUsed(
         isNull(conversations.deletedAt),
       ),
     )
-    .groupBy(conversations.id)
-    .orderBy(
-      sql`COALESCE(max(${conversationMessages.createdAt}), ${conversations.createdAt}) DESC`,
-      desc(conversations.id),
-    )
+    .orderBy(desc(conversations.updatedAt), desc(conversations.id))
     .limit(1);
 
-  return rows[0] ? toEntity(rows[0].conversation) : null;
+  return rows[0] ? toEntity(rows[0]) : null;
 }
 
 /**
@@ -305,15 +344,69 @@ export async function softDeleteConversation(id: string): Promise<void> {
 }
 
 /**
+ * Give a conversation a name, but only if it has none.
+ *
+ * One statement, because "does it have one?" and "give it one" asked
+ * separately are two moments with room between them: a reader who names a new
+ * conversation and then speaks in it sends two requests, and whichever order
+ * the database commits them in, the answer must be the same -- the name they
+ * chose. The condition is in the `WHERE`, so the write either happens against
+ * a conversation that still has no name or does not happen at all.
+ * @param id - Conversation UUID to name
+ * @param title - The name to give it; cut to what the column stores
+ * @returns The name it goes by now, or null when it is not there any more
+ */
+export async function nameIfUnnamed(id: string, title: string): Promise<string | null> {
+  const cut = [...title].slice(0, CONVERSATION_TITLE_MAX_CHARS).join("");
+  // `updated_at` set to itself for the same reason as in `updateTitle`:
+  // naming a conversation is not using it.
+  const [named] = await db
+    .update(conversations)
+    .set({ title: cut, updatedAt: sql`${conversations.updatedAt}` })
+    .where(
+      and(
+        eq(conversations.id, id),
+        isNull(conversations.deletedAt),
+        isNull(conversations.title),
+      ),
+    )
+    .returning({ title: conversations.title });
+  if (named) return named.title;
+  // Nothing was written, so either it has a name already or it is gone. One
+  // more read tells the caller which, and what that name is.
+  const held = await getConversation(id);
+  return held?.title ?? null;
+}
+
+/**
  * Update conversation title. No-op when the conversation is soft-deleted
  * — filtering on `isNull(deletedAt)` means concurrent deletion wins.
  * @param id - Conversation UUID to rename
- * @param title - New display title; truncated to 200 chars before update
+ * @param title - New display title; cut to what the column stores before update
  */
 export async function updateTitle(id: string, title: string): Promise<void> {
+  // Counted in characters, because that is what the column counts. `slice`
+  // counts UTF-16 code units, and anything outside the basic plane takes two
+  // of them -- so a name well inside the limit could still be cut, and the cut
+  // landed between the halves of one character. What went into the column then
+  // was a replacement mark, which the reader can only get rid of by renaming
+  // the conversation themselves.
+  const cut = [...title].slice(0, CONVERSATION_TITLE_MAX_CHARS).join("");
+  // The title only. `updated_at` is what orders the list and what each row
+  // shows as when the conversation was last used, and renaming one is not
+  // using it: touching the column would send a conversation nobody has spoken
+  // in for months to the top of the list, labelled "just now".
+  //
+  // Set to itself, and that is load-bearing. The column carries `$onUpdate`,
+  // which drizzle applies to every update that does not name the column --
+  // leaving it out of `set` is what makes it move, not what keeps it still.
+  // Naming it is the only way to say "leave this one alone" in one round trip.
   await db
     .update(conversations)
-    .set({ title: title.slice(0, 200), updatedAt: new Date() })
+    .set({
+      title: cut,
+      updatedAt: sql`${conversations.updatedAt}`,
+    })
     .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
 }
 
@@ -342,6 +435,11 @@ export async function setProjectId(
 export async function updateConsolidatedTurn(id: string, turn: number): Promise<void> {
   await db
     .update(conversations)
-    .set({ lastConsolidatedTurn: turn, updatedAt: new Date() })
+    // `updated_at` is left where it is, and that is load-bearing. It orders the
+    // list and decides which conversation an open lands on, and what it means
+    // there is "last used" -- consolidating memory is bookkeeping this reader
+    // never asked for and cannot see. Touching it would lift a conversation
+    // they have not opened in weeks to the top of their list.
+    .set({ lastConsolidatedTurn: turn, updatedAt: sql`${conversations.updatedAt}` })
     .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
 }
