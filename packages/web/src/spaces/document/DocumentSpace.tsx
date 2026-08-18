@@ -157,7 +157,12 @@ export function DocumentSpace({
   const onClearCloseAutoFocus = React.useCallback(
     (event: Event) => {
       event.preventDefault();
-      handle?.editor.commands.focus();
+      // The dialog's unmount can outlive the editor: closing a tab while the
+      // dialog is up destroys the editor first, and a destroyed editor's
+      // `commands` getter throws rather than answering.
+      const editor = handle?.editor;
+      if (!editor || editor.isDestroyed) return;
+      editor.commands.focus();
     },
     [handle],
   );
