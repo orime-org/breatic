@@ -1744,7 +1744,7 @@ describe('VideoGeneratePanelContainer — 点不动的时候说清缺什么 (#19
     fireEvent.click(btn);
     await waitFor(() => expect(btn).toBeDisabled());
     expect(
-      screen.getByTestId('generate-execute-pending'),
+      screen.getByTestId('generate-video-execute-pending'),
     ).toBeInTheDocument();
     createTask.mockRestore();
   });

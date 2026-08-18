@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   evaluateExecute,
   isExecuteButtonDisabled,
+  refusalToastKey,
 } from '@web/spaces/canvas/generate/generate-guards';
 
 /** A gate input where every condition is satisfied. */
@@ -150,5 +151,42 @@ describe('isExecuteButtonDisabled — only what the user cannot act on greys the
     expect(isExecuteButtonDisabled('node-gone')).toBe(true);
     expect(isExecuteButtonDisabled('no-model')).toBe(true);
     expect(isExecuteButtonDisabled('submitting')).toBe(true);
+  });
+});
+
+describe('refusalToastKey — which refusal says something out loud', () => {
+  // The other half of the policy `isExecuteButtonDisabled` holds: both panels
+  // ask these two rather than each spelling the sets out. The two halves must
+  // agree — anything that speaks has to be reachable by a click, and only
+  // `prompt-missing` leaves the button live.
+
+  it('names the prompt key for the one refusal the user can act on', () => {
+    expect(refusalToastKey('prompt-missing')).toBe(
+      'canvas.generatePanel.refuseExecuteNoPrompt',
+    );
+  });
+
+  it('says nothing for the three that keep the button disabled', () => {
+    expect(refusalToastKey('node-gone')).toBeNull();
+    expect(refusalToastKey('no-model')).toBeNull();
+    expect(refusalToastKey('submitting')).toBeNull();
+  });
+
+  it('speaks exactly for the refusals that leave the button clickable', () => {
+    // The invariant tying the two halves together: a refusal that says
+    // something must be one a click can reach, and one that stays silent must
+    // be one the button already refuses. Drift either way and a user gets
+    // either a dead click or a message about a button they cannot press.
+    const all = [
+      'node-gone',
+      'no-model',
+      'submitting',
+      'prompt-missing',
+    ] as const;
+    for (const refusal of all) {
+      expect(refusalToastKey(refusal) != null).toBe(
+        !isExecuteButtonDisabled(refusal),
+      );
+    }
   });
 });

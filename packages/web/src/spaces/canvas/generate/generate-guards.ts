@@ -115,3 +115,28 @@ export function isExecuteButtonDisabled(
 ): boolean {
   return refusal != null && refusal !== 'prompt-missing';
 }
+
+/**
+ * The i18n key a refusal says out loud on click, or null when it says nothing.
+ *
+ * The other half of {@link isExecuteButtonDisabled}, and here for the same
+ * reason: "which refusals speak" was written out twice, once per panel, in
+ * blocks that were byte-for-byte identical. Two copies of a policy are two
+ * chances to change one and forget the other — and this particular policy is
+ * due to change (#1951 turns `no-model` from silent into spoken), so the two
+ * copies would have been asked to move together on their very first edit.
+ *
+ * Silent is not the same as unhandled. `no-model` and `node-gone` keep the
+ * button disabled, so a click cannot reach them from the button at all; if one
+ * is reached anyway (the submit path re-derives from live Yjs, where a
+ * collaborator can delete the node between render and click), the panel is
+ * already on its way out — the node it was anchored to is gone. Saying
+ * something there would name a fact the user is about to watch happen.
+ * @param refusal - The failing condition from {@link evaluateExecute}.
+ * @returns The i18n key to warn with, or null to refuse in silence.
+ */
+export function refusalToastKey(refusal: ExecuteRefusal): string | null {
+  return refusal === 'prompt-missing'
+    ? 'canvas.generatePanel.refuseExecuteNoPrompt'
+    : null;
+}

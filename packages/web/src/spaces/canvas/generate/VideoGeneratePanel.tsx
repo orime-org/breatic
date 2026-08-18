@@ -232,7 +232,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           >
             {executeRefusal === 'submitting' ? (
               <Loader2
-                data-testid='generate-execute-pending'
+                data-testid='generate-video-execute-pending'
                 className='h-4 w-4 animate-spin'
                 aria-hidden='true'
               />

@@ -21,6 +21,10 @@ const NOTICE_KEYS = [
   // 这一档的状态 —— 两个按钮问的是同一件事的两面，话不能是同一句。
   'canvas.generatePanel.refuseInsertNoPrompt',
   'canvas.generatePanel.refuseRemoveNoPrompt',
+  // #1949：执行按钮点下去说缺提示词的那句。跟上面两句同族（同命名空间、同
+  // `toast.warning` 出口、缺了就完全静默），所以它也归这里管 —— 仓里的
+  // `i18n-no-missing-keys` 只读 en.json，另外四份没有别的东西盯着。
+  'canvas.generatePanel.refuseExecuteNoPrompt',
   // 面板不展开时弹的两句：取不到目录、以及离线（#1966）。
   'canvas.generatePanel.catalogUnavailable',
   'canvas.generatePanel.catalogOffline',

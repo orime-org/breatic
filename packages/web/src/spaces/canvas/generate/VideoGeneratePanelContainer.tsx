@@ -25,7 +25,10 @@ import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores';
-import { evaluateExecute } from '@web/spaces/canvas/generate/generate-guards';
+import {
+  evaluateExecute,
+  refusalToastKey,
+} from '@web/spaces/canvas/generate/generate-guards';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
@@ -571,17 +574,13 @@ function VideoGeneratePanelBody({
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
     });
-    if (refusal === 'prompt-missing') {
-      // The one refusal the user can act on, so the click says what is
-      // missing instead of a greyed-out button saying nothing (#1949).
-      toast.warning(t('canvas.generatePanel.refuseNoPrompt'));
+    if (refusal != null) {
+      // WHICH refusal speaks is policy, and it lives in one place for the same
+      // reason the disabled set does — both panels ask, neither spells it out.
+      const key = refusalToastKey(refusal);
+      if (key) toast.warning(t(key));
       return;
     }
-    // The other two say nothing: a mode with no model keeps the button
-    // disabled (its own treatment is #1951), and a node a collaborator just
-    // deleted takes the panel with it on the very next frame — the panel
-    // vanishing IS the feedback.
-    if (refusal != null) return;
     // The one check the mode's field set cannot make for itself: the fields
     // are built from the mode, but whether the user filled them is a question
     // only asked here (user 2026-08-10 — "one check at execute time is

@@ -1157,25 +1157,6 @@ export function readNodeLeaseGen(
 }
 
 /**
- * Whether a node currently exists in the canvas, read FRESH from live Yjs (not
- * a React closure). The Generate execute path calls this at click time so a
- * node a collaborator deleted between the last render and the click can't slip
- * a task through against a non-existent node.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node to check.
- * @returns True when the node is present in the live document.
- */
-export function nodeExists(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-): boolean {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  return doc.getMap<Y.Map<unknown>>(NODES_KEY).has(nodeId);
-}
-
-/**
  * Whether a node is currently locked, read FRESH from live Yjs. The Generate
  * flow calls this at click / execute time so a node a collaborator locked after
  * the context menu opened (or after the panel opened) can't have a task

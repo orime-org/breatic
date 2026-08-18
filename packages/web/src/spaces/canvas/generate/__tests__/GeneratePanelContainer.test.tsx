@@ -74,6 +74,7 @@ import {
   addNode,
   getPromptFragment,
   readCanvasGraph,
+  removeNode,
   setNodeModel,
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
@@ -1069,6 +1070,85 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
     });
     expect((btn as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId('generate-execute-pending')).toBeInTheDocument();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+});
+
+// #1949 实现对抗补的三条。前两条钉的是这次删掉 / 改掉的东西：删 `nodeExists`
+// 那句时的理由是「另一道守卫已经覆盖它」，而那道守卫当时一行测试都没有 ——
+// 删掉它 736 条全绿。第三条钉的是两处从 error 搬到 warning 的严重度。
+describe('GeneratePanelContainer — 删掉的守卫由谁接替 (#1949)', () => {
+  beforeEach(() => {
+    _resetForTests();
+    vi.mocked(toast.warning).mockClear();
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  it('协作者在点击前一刻删掉节点，任务不会发出去', async () => {
+    // 节点可能在面板打开和这一次点击之间消失。读 React prop 仍然看得见它，
+    // 只有实时 Yjs 读看不见 —— 这正是那次实时读存在的理由。视频面板自 #1927
+    // 起就有这条，图片面板这边直到 #1949 删掉 `nodeExists` 都没有。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog());
+    const createSpy = vi.spyOn(canvasApi, 'createTask');
+    seedImageNode();
+    seedPromptText('一句能提交的话');
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    // 从文档里消失，但还在这一帧的 props 里。
+    act(() => {
+      removeNode('p', 's', 'target');
+    });
+    fireEvent.click(btn);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(createSpy).not.toHaveBeenCalled();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  it('缺源图这条拒绝走 warning，不是 error', async () => {
+    // i2i 要一张源图。#1949 把执行路径上的拒绝统一成 warning（守卫拦下 →
+    // warning 是仓里的 toast 约定），而这两处改完之后图片面板一条断言都没有：
+    // 把它改回 toast.error，736 条测试没有一条会红。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL, I2I_MODEL]));
+    const createSpy = vi.spyOn(canvasApi, 'createTask');
+    seedImageNode();
+    seedPromptText('把它改成夜景');
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    // 从模式选择器切到 i2i —— 跟这个文件里换档的既有用例同一条路径。
+    fireEvent.click(await screen.findByTestId('generate-mode-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-mode-i2i'));
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    // 一张源图都没 @ 引用，所以这一步该被源图那道门拦下。
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(vi.mocked(toast.warning)).toHaveBeenCalled();
+    });
+    expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toContain(
+      'source image',
+    );
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+    expect(createSpy).not.toHaveBeenCalled();
     listSpy.mockRestore();
     createSpy.mockRestore();
   });

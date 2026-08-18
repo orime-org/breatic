@@ -34,7 +34,10 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
-import { evaluateExecute } from '@web/spaces/canvas/generate/generate-guards';
+import {
+  evaluateExecute,
+  refusalToastKey,
+} from '@web/spaces/canvas/generate/generate-guards';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
@@ -152,10 +155,16 @@ function GeneratePanelBody({
   // per-field guarding needed here.
   const models = React.useMemo(() => catalog?.image ?? [], [catalog]);
 
-  // Two mirrors of each execute-critical value: state drives the button's
-  // enabled look (a frame of lag is fine there); a ref is read SYNCHRONOUSLY in
-  // onExecute so a rapid re-click or a collaborator's keystroke that React has
-  // batched-but-not-flushed can't submit a stale prompt or double-fire.
+  // Two mirrors of each execute-critical value. The ref is read SYNCHRONOUSLY
+  // in onExecute so a rapid re-click or a collaborator's keystroke that React
+  // has batched-but-not-flushed can't submit a stale prompt or double-fire.
+  //
+  // The state feeds the button's own `evaluateExecute` call, so both sides ask
+  // the same question of their own inputs (#1949). It does not, today, change
+  // what the button renders: `prompt-missing` and `null` are the same to
+  // `isExecuteButtonDisabled`, and `GeneratePanel` is memoized on a value that
+  // is equal across both. It is an INPUT to a gate that must stay complete,
+  // not a line whose answer nothing reads.
   const [promptText, setPromptText] = React.useState('');
   const promptTextRef = React.useRef('');
   const handlePromptChange = React.useCallback((text: string) => {
@@ -553,7 +562,9 @@ function GeneratePanelBody({
     //   - submittingRef: a synchronous re-entry latch (state lags a frame, so a
     //     rapid second click would slip past an isSubmitting-state guard).
     //   - isNodeLocked / isNodeHandling: fresh Yjs reads, so a node a collaborator
-    //     just deleted or flipped to handling can't get a task submitted.
+    //     locked or flipped to handling can't get a task submitted. Deletion is
+    //     NOT one of theirs — both answer false for a node that is gone; the
+    //     execute gate below is what refuses that, with `node-gone`.
     //   - promptTextRef: the prompt at click time (a collaborator's batched
     //     keystroke may not have flushed into promptText state yet).
     if (submittingRef.current) return;
@@ -567,7 +578,8 @@ function GeneratePanelBody({
     // since the panel opened — can't submit. Fresh Yjs reads (never a captured
     // menu / render value). Toast the reason so a locked node's clickable
     // Execute is an actionable message, not a dead control (the button is
-    // disabled only while handling). Editing the prompt stays allowed; the gate
+    // not greyed out for either — see `isExecuteButtonDisabled`). Editing the
+    // prompt stays allowed; the gate
     // blocks the submit alone.
     const gateBlock = evaluateNodeGate(
       {
@@ -619,17 +631,13 @@ function GeneratePanelBody({
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
     });
-    if (refusal === 'prompt-missing') {
-      // The one refusal the user can act on, so the click says what is
-      // missing instead of a greyed-out button saying nothing (#1949).
-      toast.warning(t('canvas.generatePanel.refuseNoPrompt'));
+    if (refusal != null) {
+      // WHICH refusal speaks is policy, and it lives in one place for the same
+      // reason the disabled set does — both panels ask, neither spells it out.
+      const key = refusalToastKey(refusal);
+      if (key) toast.warning(t(key));
       return;
     }
-    // The other two say nothing: a mode with no model keeps the button
-    // disabled (its own treatment is #1951), and a node a collaborator just
-    // deleted takes the panel with it on the very next frame — the panel
-    // vanishing IS the feedback.
-    if (refusal != null) return;
     // #1675 execute gate: an i2i / edit model needs a source image. With no
     // @-picked reference the payload would carry no images, so the model would
     // fail (Nano Banana Edit requires images ≥ 1) or silently degrade. Reject
