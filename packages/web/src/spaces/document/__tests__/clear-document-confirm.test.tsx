@@ -128,4 +128,24 @@ describe('the whole-document delete asks first', () => {
 
     await waitFor(() => expect(fragment.length).toBe(0));
   });
+
+  it('Escape 取消：对话框关掉，焦点回到编辑器', async () => {
+    // 这个对话框没有触发器元素（是按键打开的），Radix 找不到归还焦点的
+    // 地方会把它丢在 body 上——键盘用户从此按什么都没反应。真浏览器逮出，
+    // 出口统一在 onCloseAutoFocus 把焦点还给编辑器。
+    const { fragment, pm } = await mountWith('doc-esc', ['alpha', 'beta']);
+    selectAllThenDelete(pm);
+    await screen.findByText(t('spaces.document.clearConfirm.title'));
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: 'Escape',
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText(t('spaces.document.clearConfirm.title')),
+      ).not.toBeInTheDocument(),
+    );
+    expect(fragment.length).toBe(2);
+    await waitFor(() => expect(pm.contains(document.activeElement)).toBe(true));
+  });
 });

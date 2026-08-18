@@ -641,6 +641,9 @@
         "confirm": "削除",
         "cancel": "キャンセル"
       },
+      "unsupported": {
+        "label": "未対応のコンテンツ"
+      },
       "toolbar": {
         "undo": "元に戻す",
         "redo": "やり直す",

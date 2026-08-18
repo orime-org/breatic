@@ -641,6 +641,9 @@
         "confirm": "刪除",
         "cancel": "取消"
       },
+      "unsupported": {
+        "label": "不支援的內容"
+      },
       "toolbar": {
         "undo": "復原",
         "redo": "重做",

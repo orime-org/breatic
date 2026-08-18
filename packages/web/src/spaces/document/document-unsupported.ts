@@ -3,6 +3,8 @@
 
 import { Mark, Node } from '@tiptap/core';
 
+import { t } from '@breatic/shared';
+
 /**
  * Somewhere to put content this build has no vocabulary for, so that receiving
  * it is not the same as destroying it.
@@ -52,8 +54,16 @@ const ORIGINAL_NAME = 'originalName';
  * A block this build cannot represent, kept whole in the shared document.
  *
  * `atom` because there is nothing inside it this build could edit; `selectable`
- * because that is what an atom block is, even though the intercept state means
- * nobody will be selecting it.
+ * because selecting it is how a user deletes it — a document holding one stays
+ * editable, since the read-only intercept answers to the published schema
+ * version alone.
+ *
+ * Both node types render a localized "unsupported content" label as their text.
+ * Without it the stand-in is an empty element at zero height: present,
+ * selectable in principle, and impossible to see or click — measured in the
+ * browser on a legacy document whose retired block came back through the
+ * fallback. The label is read at draw time, so a locale switched mid-session
+ * catches up on the next redraw; index.css carries the box the label sits in.
  */
 export const UnsupportedBlock = Node.create({
   name: 'unsupportedBlock',
@@ -78,6 +88,7 @@ export const UnsupportedBlock = Node.create({
         'data-unsupported-block': '',
         'data-original-name': HTMLAttributes[ORIGINAL_NAME],
       },
+      t('spaces.document.unsupported.label'),
     ];
   },
 });
@@ -107,6 +118,7 @@ export const UnsupportedInline = Node.create({
         'data-unsupported-inline': '',
         'data-original-name': HTMLAttributes[ORIGINAL_NAME],
       },
+      t('spaces.document.unsupported.label'),
     ];
   },
 });

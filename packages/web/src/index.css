@@ -453,6 +453,33 @@ body {
   color: var(--color-muted-foreground);
 }
 
+/* ---- The document Space's unsupported-content stand-ins ----
+   Content another build wrote and this one has no vocabulary for renders as
+   a labelled stand-in (document-unsupported.ts carries the label; this
+   paints the box it sits in). These were unreachable while unknown content
+   also switched the document to read-only; that condition is gone — the
+   intercept answers to the published schema version alone — so the stand-ins
+   are ordinary, selectable, deletable content now. Unstyled, the empty
+   element rendered at zero height: present and impossible to see or click,
+   measured in the browser on a legacy document whose retired block came back
+   through the fallback. The dashed border is the placeholder convention;
+   muted tokens keep the box inert in both themes. */
+.doc-body-editor .ProseMirror div[data-unsupported-block] {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-content-sm);
+  padding: 8px 12px;
+  color: var(--color-muted-foreground);
+  user-select: none;
+}
+
+.doc-body-editor .ProseMirror span[data-unsupported-inline] {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-content-sm);
+  padding: 0 6px;
+  color: var(--color-muted-foreground);
+  user-select: none;
+}
+
 /* ---- The document Space's body typography ----
    Tailwind's preflight resets `h1..h6` to inherit their size and weight, and
    strips `list-style` off `ol, ul`. TipTap renders those as bare elements, so
@@ -539,7 +566,6 @@ body {
 
      paragraph, and inside a quote  15px / 1.65   0.156px of stripe
      code block                     13.5px / 1.6  0.85px of stripe
-     document title                 30px / 1.25   0.313px of stripe
      body h1                        24px / 1.3    0.441px of OVERLAP
 
    The last row is the one that matters most: at 24px the rendered content box
@@ -719,12 +745,12 @@ body {
    keeps its own — measured in the browser with a caret actually resting there,
    the quote springs open by 30px and closes again when the caret leaves.
 
-   THE ORIGINAL MEASUREMENT USED A GAP CURSOR beside a divider, and both are
-   gone (#111): with the divider removed, no position in any body a user can
-   REACH satisfies `GapCursor.valid` — the schema still registers one atom
-   block (unsupportedBlock), but a document holding one is intercepted before
-   the editor is ever built. A remote caret is the same widget by
-   the same mechanism, and it is the one this rule now exists for.
+   THE ORIGINAL MEASUREMENT USED A GAP CURSOR beside a divider, and the
+   divider is gone (#111). Gap-cursor positions still exist beside the
+   unsupported stand-in blocks: those render in an editable document now that
+   the intercept answers to the published schema version alone. Rare, but
+   reachable — and a remote caret is the same widget by the same mechanism,
+   the one this rule sees daily.
 
    `:nth-child(1 of S)` says the thing directly: among the children that match
    S, take the first. Counting only what is not a widget makes the match the
@@ -802,8 +828,8 @@ body {
 }
 
 /* ---- Room to click under the last block ----
-   A document Space is born with a title and no body blocks, so the editable
-   surface has to reach the bottom of the scroll viewport: below where it stops
+   A document Space is born with no blocks at all, so the editable surface
+   has to reach the bottom of the scroll viewport: below where it stops
    there is nothing for `document-click-to-write` to receive, and a click there
    does nothing at all.
 

@@ -641,6 +641,9 @@
         "confirm": "Delete",
         "cancel": "Cancel"
       },
+      "unsupported": {
+        "label": "Unsupported content"
+      },
       "toolbar": {
         "undo": "Undo",
         "redo": "Redo",

@@ -14,8 +14,10 @@
 import { describe, it, expect } from 'vitest';
 import { getSchema } from '@tiptap/core';
 import type { Schema } from '@tiptap/pm/model';
+import { DOMSerializer } from '@tiptap/pm/model';
 import * as Y from 'yjs';
 
+import { t } from '@breatic/shared';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 
 /**
@@ -110,5 +112,29 @@ describe('兜底标记 unsupportedMark', () => {
     const second = type.create({ originalName: 'highlight', originalValue: 2 });
     const both = second.addToSet([first]);
     expect(both).toHaveLength(2);
+  });
+});
+
+describe('兜底节点在屏幕上是可见的占位（H 组 smoke 逮出：只读判据删条件二后它们是常态路径，零样式 = 零高不可见）', () => {
+  /**
+   * 照编辑器画节点的方式画出来。
+   * @param nodeName - 画哪个兜底类型。
+   * @returns 渲染出的元素。
+   */
+  function renderNode(nodeName: string): HTMLElement {
+    const schema = realSchema();
+    const node = schema.nodes[nodeName].create({ originalName: 'title' });
+    return DOMSerializer.fromSchema(schema).serializeNode(node) as HTMLElement;
+  }
+
+  it('块级兜底带着本地化标签文字，不是一个空 div', () => {
+    const el = renderNode('unsupportedBlock');
+    expect(el.textContent).toBe(t('spaces.document.unsupported.label'));
+    expect(el.getAttribute('data-original-name')).toBe('title');
+  });
+
+  it('行内兜底带着同一个标签', () => {
+    const el = renderNode('unsupportedInline');
+    expect(el.textContent).toBe(t('spaces.document.unsupported.label'));
   });
 });

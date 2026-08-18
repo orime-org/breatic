@@ -148,11 +148,19 @@ export function DocumentSpace({
     return handle.onClearDocumentRequest(() => setClearAsked(true));
   }, [handle]);
   const onClearConfirm = React.useCallback(() => {
-    handle?.editor.chain().clearDocument().focus().run();
+    handle?.editor.commands.clearDocument();
   }, [handle]);
-  const onClearCancel = React.useCallback(() => {
-    handle?.editor.commands.focus();
-  }, [handle]);
+  // Focus is handed back HERE, on every way out of the dialog — confirm,
+  // cancel, Escape. There is no trigger element to return to (a keystroke
+  // opened it), so Radix's default would drop focus on <body>, stranding the
+  // keyboard (measured; same shape as the Space drawer's confirm).
+  const onClearCloseAutoFocus = React.useCallback(
+    (event: Event) => {
+      event.preventDefault();
+      handle?.editor.commands.focus();
+    },
+    [handle],
+  );
 
   return (
     <div
@@ -206,6 +214,7 @@ export function DocumentSpace({
         <AlertDialogContent
           data-testid='document-clear-confirm'
           aria-describedby={undefined}
+          onCloseAutoFocus={onClearCloseAutoFocus}
         >
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -213,7 +222,7 @@ export function DocumentSpace({
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={onClearCancel}>
+            <AlertDialogCancel>
               {t('spaces.document.clearConfirm.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction

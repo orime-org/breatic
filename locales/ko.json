@@ -641,6 +641,9 @@
         "confirm": "삭제",
         "cancel": "취소"
       },
+      "unsupported": {
+        "label": "지원되지 않는 콘텐츠"
+      },
       "toolbar": {
         "undo": "실행 취소",
         "redo": "다시 실행",
