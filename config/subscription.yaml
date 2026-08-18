@@ -23,3 +23,14 @@ plans:
     stripe_price_id:
       test: "price_1U5OrkGeRYMxofhepeUDWhqB"
       live: ""
+
+# How long a stored subscription may sit past its paid period before its tier
+# stops being honoured.
+#
+# A subscription that is really renewing has its period pushed forward by
+# Stripe, so a row still marked live long after its period ended means the
+# event that ended it never reached us. Fourteen days is Stripe's own Smart
+# Retries window: inside it, a subscription behind on payment is one Stripe is
+# still collecting for, and taking the tier away would punish somebody whose
+# card is about to go through.
+stale_after_days: 14

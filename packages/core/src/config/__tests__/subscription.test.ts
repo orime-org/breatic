@@ -9,27 +9,20 @@
  * 收款，或者反过来在开发环境刷真卡。
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
-import { MONOREPO_ROOT } from "@breatic/core";
 import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@breatic/shared";
+import { env, MONOREPO_ROOT } from "@core/config/env.js";
 import {
   subscriptionConfigSchema,
   resolvePlans,
   getSubscriptionPlans,
   getSubscriptionPlan,
+  getSubscriptionStaleAfterDays,
   findSubscribableTierByPriceId,
-} from "@server/config/subscription.js";
-
-// Only the injected environment is stubbed. MONOREPO_ROOT stays real, so the
-// tests below read the config file this repo actually ships — the shared
-// mock-core points it at /tmp, which would leave them reading nothing.
-vi.mock("@breatic/core", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@breatic/core")>()),
-  env: { ENV: "dev" },
-}));
+} from "@core/config/subscription.js";
 
 const validFile = {
   plans: {
@@ -105,13 +98,20 @@ describe("subscription config — reads config/subscription.yaml", () => {
     expect(getSubscriptionPlan("team").priceCents).toBe(3900);
   });
 
-  it("reads the price ids the file really carries", () => {
+  it("reads the price ids the file really carries, for this environment", () => {
     const raw = parse(
       readFileSync(resolve(MONOREPO_ROOT, "config/subscription.yaml"), "utf-8"),
     ) as typeof validFile;
+    const ids = raw.plans.pro.stripe_price_id;
     expect(getSubscriptionPlan("pro").stripePriceId).toBe(
-      raw.plans.pro.stripe_price_id.test,
+      env.ENV === "prod" ? ids.live : ids.test,
     );
+  });
+
+  it("carries the window a lapsed subscription is honoured for", () => {
+    // Stripe's own Smart Retries default is two weeks; shorter would take the
+    // tier away from somebody whose card is still being retried.
+    expect(getSubscriptionStaleAfterDays()).toBe(14);
   });
 
   it("maps a price id back to the tier it sells", () => {

@@ -65,6 +65,17 @@ export {
   getDefaultMembershipTier,
 } from "@core/config/membership.js";
 export type { MembershipConfig, MembershipLimits } from "@core/config/membership.js";
+export {
+  getSubscriptionPlans,
+  getSubscriptionPlan,
+  findSubscribableTierByPriceId,
+  getSubscriptionStaleAfterDays,
+  resetSubscriptionConfigCache,
+} from "@core/config/subscription.js";
+export type {
+  SubscriptionPlan,
+  SubscriptionPlans,
+} from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
 export { getAgentConfig } from "@core/config/loader.js";
 export { getSkillRouting, resetSkillRouting, SKILL_SURFACES } from "@core/config/skill-routing.js";
