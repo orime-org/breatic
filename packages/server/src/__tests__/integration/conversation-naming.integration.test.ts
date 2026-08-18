@@ -469,8 +469,8 @@ describe("a name whose characters do not fit in one code unit each", () => {
   it("stores it whole rather than cutting one in half", async () => {
     // 存的时候还有一道按列宽的裁剪,而它数的是 UTF-16 码元 —— 一个 emoji 占两个。
     // 命名那一步按码点裁到上限之内,码元数却可能是它的两倍,于是这道裁剪落在一对
-    // 代理项中间,存进去的是一个替换字符,而且永久留在那条会话的名字上:updateTitle
-    // 只在名字为空时写一次,之后没有任何路径会修它。
+    // 代理项中间,存进去的是一个替换字符,而首句命名(nameIfUnnamed)只在名字
+    // 为空时写一次 —— 读者要摆脱它,只能自己去改名。
     const { projectId, cookie } = await seedProject();
     const id = await openAndGetId(projectId, cookie);
     const repo = await import("@server/modules/conversation/conversation.repo.js");

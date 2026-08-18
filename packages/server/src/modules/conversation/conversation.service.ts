@@ -57,7 +57,9 @@ export async function assertAccess(
  * Open chat in a project: the list, plus whatever the user was last saying.
  *
  * This is the client's single entry point into a project's chat, and the only
- * place a conversation is created on the user's behalf. It creates one when the
+ * place a conversation is created *for* them rather than *by* them -- the
+ * deliberate counterpart is {@link createConversation}. It is also the only
+ * place one is created on the user's behalf. It creates one when the
  * project has none, so a client always leaves here holding an id — which is why
  * sending a message can require one rather than having a creation path of its
  * own.
@@ -72,7 +74,8 @@ export async function assertAccess(
  * previous design was withdrawn.
  * @param userId - The signed-in user
  * @param projectId - Project being opened
- * @returns This user's conversations in this project, and the most recently
+ * @returns The first page of this user's conversations in this project,
+ *   whether more follow, and the most recently
  *   used one together with its messages
  * @throws {NotFoundError} if the caller is not a member of the project
  * @throws {ForbiddenError} if they are a member but may only read

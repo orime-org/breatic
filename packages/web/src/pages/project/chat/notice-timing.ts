@@ -12,7 +12,8 @@
  * anything -- it sits in the list or above the composer it is about -- so it
  * can afford the library's original figure.
  *
- * Shared so the two places that show such a line agree: the line above the
- * composer, and the one at the foot of the conversation list.
+ * Shared so the three places that show such a line agree: the line above the
+ * composer, the one drawn against a row of the conversation list (or against
+ * the list itself), and the one at the foot of that list.
  */
 export const NOTICE_LINGERS_MS = 4000;

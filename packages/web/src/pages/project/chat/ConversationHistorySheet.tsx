@@ -104,9 +104,9 @@ interface ConversationHistorySheetProps {
    *
    * Two things follow. The reader is told here rather than in the panel: this
    * sheet is opaque and covers the column, so a line above the composer is a
-   * line nobody can read. And the watcher that notices the end of the list is
-   * rebuilt, which is what lets reaching the end count again -- a failure
-   * moves nothing, so the end never crosses back into view on its own.
+   * line nobody can read. And what is watched changes: the end of the list stops being
+   * watched and a single scroll is watched instead -- a failure moves nothing,
+   * so an end still in view would have the failure asking again on its own.
    */
   nextPageFailed: boolean;
   /**

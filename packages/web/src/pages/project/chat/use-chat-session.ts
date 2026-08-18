@@ -86,10 +86,10 @@ export interface ChatSession {
   /**
    * The last attempt at that page failed.
    *
-   * The panel rebuilds its end-of-list watcher when this changes: a watcher
-   * reports where things stand as soon as it starts, so an end already in view
-   * counts again -- which is what makes reaching the end a second time ask a
-   * second time.
+   * While this is true the end of the list is not watched at all; a
+   * single scroll is. A failure moves nothing, so an end still in view would
+   * have the failure asking again on its own behalf, over and over. What asks
+   * again is the reader moving.
    */
   nextPageFailed: boolean;
   /** The first page of the list is on its way. */

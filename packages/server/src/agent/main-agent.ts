@@ -143,7 +143,7 @@ export class MainAgent {
     // holds would take the reader's own words back off the screen.
     // A conversation takes its name from the first thing said in it, so this
     // is the moment it gets one. Sent with the event rather than left for the
-    // client to work out: the list and the header are showing the default
+    // client to work out: the list and the header are showing the placeholder
     // right now, and nothing else on this stream would ever correct them.
     const title = await conversationService.titleForTurn(conversationId, said);
 

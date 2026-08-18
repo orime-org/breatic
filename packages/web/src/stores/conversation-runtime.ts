@@ -13,9 +13,9 @@
  * So the turn lives here instead, keyed by the conversation it belongs to. A
  * panel that mounts reads what is going on; a panel that goes away is a panel
  * that went away. What still ends a turn early is what the user did -- pressing
- * stop, or leaving the project -- and one thing they did not: the watchdog
- * ending a stream that has stopped saying it is alive. None of the three is
- * React unmounting a component, which is the whole of the change.
+ * stop, leaving the project, or deleting the conversation it is running in --
+ * and one thing they did not: the watchdog ending a stream that has stopped
+ * saying it is alive. None of these is React unmounting a component, which is the whole of the change.
  *
  * Messages live here for the same reason -- a reply being written and the
  * history it is being appended to are one list, and a list only one of whose
@@ -199,8 +199,9 @@ interface ConversationRuntimeState {
    * Why this project's chat could not be read, when the server said why.
    *
    * The scrim covers the line that would otherwise carry it, so it has to say
-   * it itself. Absent means nothing came back to say -- the request did not
-   * reach anything -- and the scrim falls back to saying so.
+   * it itself. Absent means there is no server sentence to quote here: either
+   * nothing came back at all, or what came back was said somewhere else. The
+   * scrim falls back to its own wording.
    */
   openFailure: Record<string, string>;
   /**
@@ -476,9 +477,10 @@ function serverSentence(err: unknown): string | undefined {
 /**
  * Read a failed request as the reader would hear it.
  *
- * For the two requests that fetch rather than run a turn: opening the chat,
- * and reaching further back. Either the server wrote a sentence about it or
- * nothing did.
+ * For every request that fetches rather than runs a turn -- opening the
+ * chat, reaching further back, switching, starting, renaming, removing, and
+ * re-reading the list. Either the server wrote a sentence about it or nothing
+ * did.
  *
  * A third case exists and is not told apart here: something answered, but
  * with nothing of ours in it. Saying "network error" for that is not right --
@@ -627,14 +629,16 @@ async function ensureLoaded(projectId: string): Promise<void> {
  * Ask the server for this project's chat and put the answer on screen.
  *
  * Never rejects, and says nothing: what went wrong is handed back, because
- * one of the two callers is a send that is going to try again and a line
- * about a failure that healed itself is a line about nothing.
+ * one of the callers is a send that is going to try again and a line about a
+ * failure that healed itself is a line about nothing.
  *
- * Written once because both callers owe the reader the same things -- the
- * same status while it runs, the same check that the visit which asked is
- * still the one on screen. The second caller is the turn that finds its
- * conversation gone; having its own copy of this was how one of them came to
- * leave the status saying `loading` for ever.
+ * Written once because all three callers owe the reader the same things --
+ * the same status while it runs, the same check that the visit which asked is
+ * still the one on screen. They are: opening the chat, a turn that finds its
+ * conversation gone, and removing the last conversation there was. The first
+ * two arrive through {@link joinOrStart}; the third calls straight in, so the
+ * word about a failure is `remove`'s to say. Having its own copy of this was
+ * how one of them came to leave the status saying `loading` for ever.
  * @param projectId - The project whose chat to open.
  * @returns What went wrong, or nothing when there is a conversation on screen
  *   -- and nothing as well when the visit that asked is over, which is not a
@@ -889,8 +893,11 @@ function stopTurn(conversationId: string): void {
  * the next turn can already be under way. Acting on one then would mark, end
  * or take the screen over on behalf of something nobody is waiting for.
  *
- * What asks this: the watchdog, the stream's error handler, and the `error`
- * frame. The server's own ending -- `chat_done` -- does not, because what it
+ * What asks this: the watchdog, the stream's error handler, the `error`
+ * frame, and `chat_turn_started` -- that last one for a different reason, it
+ * being the only opening rather than an ending, and what it needs to know is
+ * whether the turn it opens is still the one on screen. The server's own
+ * ending -- `chat_done` -- does not, because what it
  * reaches are two writes that carry the same question inside them: marking a
  * message finds it by id, and `finishTurn` compares the running reply against
  * the one it was given.

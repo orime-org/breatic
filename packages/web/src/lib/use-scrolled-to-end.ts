@@ -72,8 +72,8 @@ interface ScrolledToEndRefs {
  * That leaves one case with no way to ask again: a list too short to scroll,
  * whose page failed. Reaching the end is the only way to ask, and a list that
  * cannot move cannot be reached again. It takes a window taller than a full
- * page of rows plus a failed page to get there. Leaving the project and coming
- * back fetches the list afresh.
+ * page of rows plus a failed page to get there. Opening the list again -- or the project --
+ * fetches it afresh.
  *
  * Guarding against asking twice is the caller's: this fires as often as the
  * end stays in view, and only the caller knows whether a request is out.

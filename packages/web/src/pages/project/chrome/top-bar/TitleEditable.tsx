@@ -47,9 +47,11 @@ interface TitleEditableProps {
 /**
  * How long a name may be when the caller does not say.
  *
- * Project names, which is what this box was written for. A caller whose thing
- * is stored with a different limit has to pass its own -- otherwise opening
- * this box and closing it again would quietly shorten a name that was
+ * What this box has always capped project names at, kept as the default so
+ * that behaviour does not change. It is not what the server allows -- a
+ * project name may be 255 -- so it is a display cap, not a limit. A caller
+ * whose thing is stored with a limit of its own has to pass it: otherwise
+ * opening this box and closing it again would quietly shorten a name that was
  * perfectly legal where it lives.
  */
 const DEFAULT_MAX_TITLE_LEN = 80;
