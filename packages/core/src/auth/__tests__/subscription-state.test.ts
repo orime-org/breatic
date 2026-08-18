@@ -227,3 +227,61 @@ describe("subscriptionSituation — 两条都活着的时候挑哪一条", () =>
     expect(rows[0]?.stripeSubscriptionId).toBe("sub_pro");
   });
 });
+
+describe("subscriptionSituation — 没付成的那条不能压过正在生效的", () => {
+  // 一条 incomplete 的订阅还没买到任何东西（tierForSituation 对它返回 base）。
+  // 只按档位排的话，一条没付成的 team 会压过正在生效的 pro，账号当场掉到
+  // base —— 用户付着 PRO 的钱、拿的是免费档的额度。
+
+  const activePro = row({
+    stripeSubscriptionId: "sub_active_pro",
+    status: "active",
+    tier: "pro",
+    currentPeriodEnd: new Date("2026-09-18T00:00:00Z"),
+  });
+
+  it("正在生效的 pro 压过没付成的 team", () => {
+    const unpaidTeam = row({
+      stripeSubscriptionId: "sub_unpaid_team",
+      status: "incomplete",
+      tier: "team",
+      currentPeriodEnd: null,
+    });
+
+    for (const rows of [[activePro, unpaidTeam], [unpaidTeam, activePro]]) {
+      const reading = subscriptionSituation(rows);
+      expect(reading.record?.stripeSubscriptionId).toBe("sub_active_pro");
+      expect(reading.situation).toBe("active");
+      expect(tierForSituation(reading.situation, reading.record)).toBe("pro");
+    }
+  });
+
+  it("扣款重试中的也压过没付成的：那一档还在给他用", () => {
+    const retryingPro = row({
+      stripeSubscriptionId: "sub_retrying",
+      status: "past_due",
+      tier: "pro",
+    });
+    const unpaidTeam = row({
+      stripeSubscriptionId: "sub_unpaid_team",
+      status: "incomplete",
+      tier: "team",
+      currentPeriodEnd: null,
+    });
+
+    const reading = subscriptionSituation([unpaidTeam, retryingPro]);
+    expect(reading.situation).toBe("retrying");
+    expect(tierForSituation(reading.situation, reading.record)).toBe("pro");
+  });
+
+  it("只有没付成的那条时，照常报首付未成", () => {
+    const unpaid = row({
+      stripeSubscriptionId: "sub_only_unpaid",
+      status: "incomplete",
+      currentPeriodEnd: null,
+    });
+    expect(subscriptionSituation([unpaid]).situation).toBe(
+      "firstPaymentUnsettled",
+    );
+  });
+});

@@ -212,6 +212,31 @@ describe("handleSubscriptionEvent — identifying the account (#106 §7.1)", () 
     }
   });
 
+  it("问 Stripe 时带着上限，而且不重试", async () => {
+    // 跟对账那次同一个道理，而且这条更硬：Stripe 判定这次投递失败之后会自己
+    // 重投，此时还挂在这儿的请求已经没人在等了。它自己的两次重试分别在超时后
+    // 约半秒和一秒触发，对一个真的变慢的 Stripe 毫无用处，白等 160 秒。
+    const { userId, customerId } = await makeCustomerAccount();
+    try {
+      const sub = stripeSub({ id: `sub_timeout_${seq}`, customer: customerId });
+      stripe.subscriptions.retrieve.mockResolvedValueOnce(sub);
+      await handleSubscriptionEvent(
+        event("customer.subscription.created", sub, `evt_timeout_${Date.now()}`),
+      );
+
+      const [, , options] = stripe.subscriptions.retrieve.mock.calls[0] as [
+        unknown,
+        unknown,
+        { timeout?: number; maxNetworkRetries?: number } | undefined,
+      ];
+      expect(options?.timeout).toBeGreaterThan(0);
+      expect(options?.timeout).toBeLessThanOrEqual(10_000);
+      expect(options?.maxNetworkRetries).toBe(0);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
   it("ignores an event whose customer belongs to nobody here", async () => {
     const sub = stripeSub({ id: `sub_alien_${seq}`, customer: "cus_alien" });
     const outcome = await handleSubscriptionEvent(

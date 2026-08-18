@@ -17,8 +17,11 @@
  *     change the subscription first and collect afterwards, so a failed card
  *     leaves somebody on a tier they have not paid for.
  *
- * A scheduled cancellation is cleared before any plan change. Leaving it set
- * means the upgrade is paid for and the plan still ends at the period boundary.
+ * A scheduled cancellation is cleared AFTER the plan change, never before.
+ * Neither order can be atomic, so the one to take is the one whose failure the
+ * reader can see and undo: the upgrade is in force and the end date is still
+ * showing beside a resume button. The other order fails silently in the
+ * direction of charging somebody who asked to stop.
  */
 
 import type Stripe from "stripe";
@@ -165,42 +168,93 @@ function isHigherThan(tier: string, than: string): boolean {
 }
 
 /**
+ * The subscription item whose price an upgrade replaces.
+ *
+ * Never `undefined`. Stripe reads an item with no id as a NEW item, so the
+ * account ends up holding both prices and being billed for both — $51 a month
+ * where $39 was intended, while we record only the tier we meant to sell. That
+ * is the exact outcome acceptance item 9 forbids, produced by an argument that
+ * looks like "leave it out if we do not have it".
+ *
+ * We always have it in practice: `readStripeSubscription` reads it off the
+ * subscription Stripe returns, and both writers store it. So a null here means
+ * a row written by something else, or a subscription Stripe returned without
+ * items — neither of which this function can repair, and both of which are
+ * cheaper to hear about than to bill somebody for.
+ * @param record - The account's live subscription.
+ * @returns The Stripe subscription item id.
+ * @throws {Error} if the stored row carries no item id.
+ */
+function itemToReplace(record: StoredSubscription): string {
+  if (!record.stripeItemId) {
+    throw new Error(
+      `Subscription ${record.stripeSubscriptionId} has no stored item id; ` +
+        `changing its price would add a second one instead of replacing it`,
+    );
+  }
+  return record.stripeItemId;
+}
+
+/**
  * Voids the unpaid subscription this account is about to replace.
  *
- * The one irreversible call on this path, and the one decided entirely from a
- * stored row — which this codebase says elsewhere can be out of date, because
- * only the webhook writes it and Stripe stops redelivering after three days.
- * Two ways that row is wrong, and they need opposite answers.
+ * The one irreversible call on this path, so it asks Stripe first rather than
+ * acting on the stored row. That row can be out of date — only the webhook
+ * writes it — and one of the ways it goes out of date is the one that matters
+ * most here: the reader paid. The panel hands an account in this state a
+ * payment link that opens in a NEW tab, so the tab they came from keeps
+ * showing the old state and never refetches on focus; paying there and coming
+ * back to press a tier button is a path we laid out ourselves. Cancelling on
+ * the strength of the stale row would then cancel a subscription that was just
+ * paid for, and Stripe's cancel refunds nothing.
  *
- * The subscription is already gone at Stripe: `resource_missing`. The row is
- * describing something that no longer exists, the reason for cancelling it is
- * already satisfied, and refusing the checkout would leave the account unable
- * to subscribe at all — every attempt failing on a subscription that is not
- * there. So it proceeds.
+ * Three answers, because the row can be wrong in three ways:
+ *
+ * The subscription is live and settled — they paid. Nothing is cancelled and
+ * nothing is sold: they already hold the membership they are trying to buy.
+ *
+ * The subscription is gone at Stripe (`resource_missing`). The row describes
+ * something that no longer exists, so the reason for cancelling it is already
+ * satisfied and the checkout proceeds. Refusing would leave the account unable
+ * to subscribe at all, every attempt failing on a subscription that is not
+ * there.
  *
  * Anything else — Stripe unreachable, a timeout, a permissions failure — has
- * not established that the unpaid subscription is gone. Proceeding would risk
- * exactly what this call exists to prevent: two payable subscriptions, both
- * paid, and no rule but "the newest row" to say which membership counts. So it
- * throws, and the reader is told the checkout could not start.
+ * established nothing, and proceeding would risk two payable subscriptions.
+ * So it throws and the reader is told the checkout could not start.
  * @param subscriptionId - The unpaid subscription at Stripe.
  * @param userId - The account, for the log line.
- * @throws {Error} if Stripe failed for any reason other than the subscription
- *   already being gone.
+ * @throws {ConflictError} if Stripe says that subscription is now live.
+ * @throws {Error} if Stripe failed for any reason other than it being gone.
  */
 async function voidUnpaidSubscription(
   subscriptionId: string,
   userId: string,
 ): Promise<void> {
+  let fresh: Stripe.Subscription | null = null;
   try {
-    await getStripeClient().subscriptions.cancel(subscriptionId);
+    fresh = await getStripeClient().subscriptions.retrieve(subscriptionId);
   } catch (err) {
     if (!subscriptionGoneAtStripe(err)) throw err;
     logger.warn(
       { userId, subscriptionId },
       "subscription_unpaid_already_gone_at_stripe",
     );
+    return;
   }
+
+  if (fresh.status !== "incomplete") {
+    // Settled while the reader was looking at a stale tab. `incomplete` is the
+    // only status this branch was ever meant to act on; anything else means
+    // the premise is gone, and if it is live they hold what they came to buy.
+    logger.info(
+      { userId, subscriptionId, status: fresh.status },
+      "subscription_unpaid_settled_before_checkout",
+    );
+    throw new ConflictError(t("server.membership.already_subscribed"));
+  }
+
+  await getStripeClient().subscriptions.cancel(subscriptionId);
 }
 
 /**
@@ -258,8 +312,7 @@ export async function changePlan(input: {
     {
       items: [
         {
-          // Without the item id this ADDS a price instead of replacing it.
-          id: record.stripeItemId ?? undefined,
+          id: itemToReplace(record),
           price: getSubscriptionPlan(input.tier).stripePriceId,
         },
       ],
@@ -281,7 +334,7 @@ export async function changePlan(input: {
   const read = readStripeSubscription(updated, input.userId);
   const pending = read?.hasPendingUpdate ?? false;
 
-  if (situation === "cancelling" && !pending) {
+  if (situation === "cancelling") {
     await withdrawCancellation(record.stripeSubscriptionId, input.userId);
   }
 
@@ -303,9 +356,13 @@ export async function changePlan(input: {
  * it themselves. Neither ordering can be atomic, so the one whose failure is
  * visible and reversible is the one to take.
  *
- * Skipped while the upgrade is only pending: clearing a cancellation the
- * reader actually asked for, on the strength of a change that has not
- * happened, would undo their decision for them.
+ * Done whether or not the upgrade settled immediately. Pressing an upgrade
+ * button is itself the statement "I am not leaving" — it is the only thing
+ * that button says, and the panel offers it in this state on purpose (design
+ * section 13, S3). Skipping it while the difference is still unpaid looked
+ * careful and was not: the reader then pays the invoice, the upgrade applies,
+ * and the scheduled ending is still there, so the plan they just paid more to
+ * keep ends at the period boundary anyway.
  * @param subscriptionId - The subscription at Stripe.
  * @param userId - The account, for the log line if this fails.
  */

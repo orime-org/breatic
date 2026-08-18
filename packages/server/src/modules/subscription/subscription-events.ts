@@ -17,15 +17,19 @@
  * redelivery from a new event; the insert into `stripe_webhook_events` can,
  * and it shares the transaction with everything the event does.
  *
- * **The account row is locked before Stripe is asked.** Two events for one
- * account would otherwise each fetch the current state and the one that
- * commits last might be holding the older answer.
+ * **Stripe is asked BEFORE the account row is locked.** The other order —
+ * lock, then fetch — holds one row and one database connection for however
+ * long Stripe takes, and the row it holds is the one every tier change needs.
+ * Which of two concurrent writers wins is settled instead by the moment each
+ * one asked (`observed_at`, migration 0057), so the later view wins whichever
+ * commits first.
  */
 
 import type Stripe from "stripe";
 import {
   db,
   findSubscribableTierByPriceId,
+  getStripeReadTimeoutMs,
   listSubscriptions,
   lockAccountRow,
   subscriptionSituation,
@@ -157,7 +161,6 @@ async function applyCurrentState(
   const settled = await settleTier({
     userId,
     toTier: tier,
-    reason: tier === "base" ? "subscription_ended" : "subscription_activated",
     referenceId: event.id,
     tx,
   });
@@ -254,6 +257,17 @@ export async function handleSubscriptionEvent(
   const fresh = await getStripeClient().subscriptions.retrieve(
     subscription.id,
     { expand: ["latest_invoice"] },
+    // Bounded and not retried, the same as the panel's reconciliation. The
+    // SDK's default is 80 seconds twice retried, and this handler has to
+    // answer before Stripe decides the delivery failed — after which it is
+    // holding a request nobody is waiting for while a redelivery is already
+    // queued. The SDK's own two retries fire about half a second and a second
+    // after the timeout, which does nothing for a Stripe that is genuinely
+    // slow; Stripe's three days of redelivery is the recovery that works.
+    {
+      timeout: getStripeReadTimeoutMs(),
+      maxNetworkRetries: 0,
+    },
   );
   const write = readStripeSubscription(fresh, userId, observedAt);
   if (!write) {

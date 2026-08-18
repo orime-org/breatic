@@ -20,8 +20,10 @@
  * 进度条画多满、当前列的底色深浅这类只有像素能判定的，靠真浏览器 smoke，
  * 不在这里断言 —— jsdom 没有布局。
  *
- * 升级按钮这一版点了没去处（块八未做），所以它压暗、带「尚未开放」，并且
- * 用 aria-disabled 而不是 disabled —— 后者会把它踢出键盘顺序。
+ * 块八（#106）之后，升级按钮真的通往 Stripe 收银台，取消和恢复也真的调
+ * 后端。所以这里还钉三件跟那条链路有关的事：每个按钮点下去打的是哪个接口、
+ * 失败时看得到反馈、以及面板画出来的动作服务端一定接受（两边读同一份判据，
+ * 而不是各判各的）。
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -273,6 +275,99 @@ describe('MembershipPanel', () => {
     await waitFor(() => expect(errorSpy).toHaveBeenCalled());
     // 失败之后按钮要还能再点，否则用户连重试都做不到。
     expect(screen.getByTestId('membership-choose-pro')).not.toBeDisabled();
+  });
+
+  it('点取消打的是取消接口，并且重新拉面板而不是整页重载', async () => {
+    // 这两个动作此前一次都没被点过：把刷新用的那个键换成一个没人用的字符串，
+    // 整套测试照绿。取消和恢复都不改档位，所以顶栏没有东西需要靠整页重载去
+    // 更新 —— 重载只会把用户正站着的面板关掉。
+    const subscriptionApi = await import('@web/data/api/subscription');
+    const cancelSpy = vi
+      .spyOn(subscriptionApi, 'cancelSubscription')
+      .mockResolvedValue(undefined as never);
+    const reloadSpy = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      reload: reloadSpy,
+      assign: vi.fn(),
+    } as never);
+
+    membershipMock.mockResolvedValue(answer({ subscription: subscription() }));
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(await screen.findByTestId('membership-cancel'));
+
+    await waitFor(() => expect(cancelSpy).toHaveBeenCalledTimes(1));
+    expect(reloadSpy).not.toHaveBeenCalled();
+    // 重新拉了一次：第一次是打开面板，第二次是取消之后。
+    await waitFor(() => expect(membershipMock.mock.calls.length).toBe(2));
+  });
+
+  it('点恢复打的是恢复接口', async () => {
+    const subscriptionApi = await import('@web/data/api/subscription');
+    const resumeSpy = vi
+      .spyOn(subscriptionApi, 'resumeSubscription')
+      .mockResolvedValue(undefined as never);
+
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({ state: 'cancelling', cancelAtPeriodEnd: true }),
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(await screen.findByTestId('membership-resume'));
+
+    await waitFor(() => expect(resumeSpy).toHaveBeenCalledTimes(1));
+  });
+
+  it('点升级会把人带去 Stripe 收银台', async () => {
+    // 验收第 1 条的成功路径。此前唯一点过这个按钮的用例把接口 mock 成失败，
+    // 所以「点下去真的会去收银台」从来没有人钉过。
+    const subscriptionApi = await import('@web/data/api/subscription');
+    vi.spyOn(subscriptionApi, 'startSubscriptionCheckout').mockResolvedValue({
+      url: 'https://checkout.stripe.example/c/pay/abc',
+    } as never);
+    const assignSpy = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign: assignSpy,
+      reload: vi.fn(),
+    } as never);
+
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'none', tier: 'base', currentPeriodEnd: null }),
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(await screen.findByTestId('membership-choose-pro'));
+
+    await waitFor(() =>
+      expect(assignSpy).toHaveBeenCalledWith(
+        'https://checkout.stripe.example/c/pay/abc',
+      ),
+    );
+  });
+
+  it('面板标明价格不含税', async () => {
+    // 验收第 8 条。它在本任务里已经被整句删掉过一次，而当时没有任何测试红。
+    // 用带订阅的答案，因为那才是会卖东西的部署真正返回的形状：账号没订阅时
+    // 服务端给的是一份空的订阅摘要，不是 null。
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({ state: 'none', currentPeriodEnd: null }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByText('Prices exclude tax.')).toBeInTheDocument();
   });
 
   it('首期付款还没成时不给取消入口', async () => {

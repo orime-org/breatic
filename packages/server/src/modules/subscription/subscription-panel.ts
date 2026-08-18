@@ -25,7 +25,7 @@
 import type Stripe from "stripe";
 import {
   db,
-  getSubscriptionReconcileTimeoutMs,
+  getStripeReadTimeoutMs,
   logger,
   listSubscriptions,
   lockAccountRow,
@@ -46,9 +46,15 @@ import {
 /**
  * How many of an account's subscriptions to ask Stripe about.
  *
- * An account holds at most one live subscription, and the ended ones are
- * already stored here. Three is enough to see the live one plus whatever
- * ended most recently, without paging.
+ * Stripe returns them newest first, and what this repair needs to see is the
+ * current state: whatever is live now, plus enough recent history to notice
+ * one that just ended. Three covers that without paging.
+ *
+ * It is not a claim that an account has at most one live subscription — it can
+ * have two (`subscription-state.ts` chooses between them), and this window
+ * would show both. An account with more subscriptions than this in its recent
+ * history keeps the older stored rows it already has; they are ended ones, and
+ * an ended subscription does not change again.
  */
 const RECONCILE_LIMIT = 3;
 
@@ -80,7 +86,7 @@ async function reconcile(
     // the wait to repair something that repairs itself the next time the
     // panel opens.
     {
-      timeout: getSubscriptionReconcileTimeoutMs(),
+      timeout: getStripeReadTimeoutMs(),
       maxNetworkRetries: 0,
     },
   );
@@ -96,8 +102,6 @@ async function reconcile(
     const settled = await settleTier({
       userId,
       toTier: tierForSituation(reading.situation, reading.record),
-      reason:
-        reading.situation === "none" ? "subscription_ended" : "subscription_activated",
       referenceId: `reconcile:${customerId}`,
       tx,
     });

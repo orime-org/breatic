@@ -184,23 +184,47 @@ export function subscriptionSituation<T extends SubscriptionRecord>(
 }
 
 /**
+ * Whether a live subscription has actually bought the account anything yet.
+ *
+ * `incomplete` means the first invoice has not settled: the subscription
+ * exists at Stripe, it is live in the sense that it can still be paid, and it
+ * has bought nothing — {@link tierForSituation} gives it `base`.
+ * @param record - A live subscription.
+ * @returns Whether it is currently earning the account its tier.
+ */
+function isEarning(record: SubscriptionRecord): boolean {
+  return record.status !== "incomplete";
+}
+
+/**
  * Which of two live subscriptions governs the account.
  *
- * Three keys, each one total where the one before it ties, so the answer never
+ * Four keys, each one total where the one before it ties, so the answer never
  * depends on the order rows arrived in.
  *
- * The tier comes first because the person is paying for both: giving them the
- * lower one would charge for a tier and withhold it. Then the later paid
- * period, because that is the one their money reaches further into. Then the
- * subscription id, which is Stripe's and unique — not a tie-break anybody
- * would defend on its merits, but two subscriptions of the same tier ending at
- * the same moment are interchangeable, and leaving it undecided is what put
- * this reading at the mercy of insertion order in the first place.
+ * Whether the subscription has been paid for at all comes FIRST, above the
+ * tier. Ordering by tier alone let an `incomplete` Team subscription — one
+ * nobody has paid a cent for — outrank a running PRO, and since an unsettled
+ * first invoice earns `base`, the account holding it dropped to the free tier
+ * while being billed for PRO. An unpaid subscription cannot outrank a paid one
+ * whatever tier it names.
+ *
+ * Then the tier, because where two are both paid the person is paying for
+ * both: giving them the lower one would charge for a tier and withhold it.
+ * Then the later paid period, because that is the one their money reaches
+ * further into. Then the subscription id, which is Stripe's and unique — not a
+ * tie-break anybody would defend on its merits, but two subscriptions of the
+ * same tier ending at the same moment are interchangeable, and leaving it
+ * undecided is what put this reading at the mercy of insertion order in the
+ * first place.
  * @param a - One live subscription.
  * @param b - The other.
  * @returns Negative when `a` governs, positive when `b` does.
  */
 function compareLive(a: SubscriptionRecord, b: SubscriptionRecord): number {
+  const byEarning = Number(isEarning(b)) - Number(isEarning(a));
+  if (byEarning !== 0) return byEarning;
+
   const byTier =
     COMPARABLE_MEMBERSHIP_TIERS.indexOf(b.tier as never) -
     COMPARABLE_MEMBERSHIP_TIERS.indexOf(a.tier as never);

@@ -243,6 +243,30 @@ describe("readSubscriptionSummary — reconciling (#106 §10.2)", () => {
     }
   });
 
+  it("问 Stripe 时带着上限，而且不重试", async () => {
+    // 不带的话走 SDK 默认：80 秒、重试两次，一次调用最长约四分钟，而这四
+    // 分钟里用户就盯着面板。对账本来就是增强 —— 失败了退回本地数据即可，
+    // 所以超时只是又一种失败；重试更没必要，下次开面板会再修一遍。
+    const userId = await makeUser("pro", `cus_panel_t_${Date.now()}`);
+    try {
+      stripe.subscriptions.list.mockResolvedValueOnce({
+        data: [stripeSub({ id: `sub_timeout_${seq}` })],
+      });
+
+      await readSubscriptionSummary(userId);
+
+      const [, options] = stripe.subscriptions.list.mock.calls[0] as [
+        unknown,
+        { timeout?: number; maxNetworkRetries?: number } | undefined,
+      ];
+      expect(options?.timeout).toBeGreaterThan(0);
+      expect(options?.timeout).toBeLessThanOrEqual(10_000);
+      expect(options?.maxNetworkRetries).toBe(0);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
   it("leaves everything alone when Stripe agrees with us", async () => {
     const userId = await makeUser("pro", `cus_panel_d_${Date.now()}`);
     try {

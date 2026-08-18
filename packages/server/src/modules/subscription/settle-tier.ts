@@ -60,10 +60,16 @@ export interface SettleTierResult {
  * The bell is written inside the caller's transaction on purpose: it is the
  * always-delivered channel, so if the tier change is abandoned the notice about
  * it has to be abandoned too.
- * @param input - Who, where to, why, and the transaction to do it in.
+ * The ledger reason is worked out here rather than passed in. It follows
+ * entirely from where the tier lands, so a caller supplying it is a second
+ * copy of one rule — and the two copies had already diverged: the webhook
+ * asked whether the tier was `base` while the reconciliation asked whether
+ * the situation was `none`, which disagree for an account whose only live
+ * subscription has an unsettled first invoice. Same event, two different
+ * words in the same ledger column.
+ * @param input - Who, where to, and the transaction to do it in.
  * @param input.userId - The account whose tier is settling.
  * @param input.toTier - The tier it should be on now.
- * @param input.reason - Why it is moving, for the ledger row.
  * @param input.referenceId - What identified the trigger upstream.
  * @param input.tx - The enclosing transaction, when there is one.
  * @returns What moved, and whether an email is owed.
@@ -72,7 +78,6 @@ export interface SettleTierResult {
 export async function settleTier(input: {
   userId: string;
   toTier: MembershipTier;
-  reason: TierChangeReason;
   referenceId?: string;
   tx?: DbTx;
 }): Promise<SettleTierResult> {
@@ -89,10 +94,13 @@ export async function settleTier(input: {
     return { changed: false, fromTier: stored, endedFrom: null };
   }
 
+  const reason: TierChangeReason =
+    input.toTier === "base" ? "subscription_ended" : "subscription_activated";
+
   const { changed, fromTier } = await changeMembershipTier(
     input.userId,
     input.toTier,
-    input.reason,
+    reason,
     input.referenceId,
     input.tx,
   );

@@ -35,16 +35,18 @@ plans:
 # card is about to go through.
 stale_after_days: 14
 
-# How long the membership panel waits for Stripe before showing stored data.
+# How long either path waits when it asks Stripe what a subscription looks
+# like now — the panel's reconciliation and the webhook's fetch.
 #
-# Reconciling is an enhancement — it repairs a lost event — so a slow Stripe
-# must not hold the panel. The SDK's own default is 80 seconds with two
-# retries, which is three quarters of a request handler occupied for four
-# minutes while somebody looks at a spinner; the panel already degrades
-# correctly when the call fails, and a timeout is just another failure.
+# One value, because both are asking the same question and neither wants to
+# wait. The SDK's own default is 80 seconds with two retries, so an unbounded
+# call sits for around four minutes: the panel holds a reader in front of a
+# spinner, and the webhook holds a request Stripe has already given up on and
+# queued a redelivery for.
 #
-# Five seconds is long enough for a healthy call (Stripe's list endpoint
-# answers in well under one) and short enough that a reader notices nothing.
-# Retries are off for this one call for the same reason: the repair can wait
-# for the next time the panel opens.
-reconcile_timeout_ms: 5000
+# Five seconds is long enough for a healthy call (Stripe answers in well under
+# one) and short enough that neither waiter notices. Retries are off in both
+# places for the same reason: each path already has a better recovery than
+# retrying inside one request — the panel repairs on the next open, and Stripe
+# redelivers a failed webhook for three days with exponential backoff.
+stripe_read_timeout_ms: 5000

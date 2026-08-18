@@ -16,6 +16,7 @@
 import { Hono } from "hono";
 import { env, logger, NotFoundError } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { validate } from "@server/middleware/validate.js";
 import {
@@ -28,6 +29,12 @@ import * as subscriptionService from "@server/modules/subscription/subscription.
 const subscription = new Hono<{ Variables: AuthVariables }>();
 
 subscription.use(requireAuth);
+
+// Every endpoint below reaches Stripe on every call, and Stripe's rate limit
+// belongs to us as a whole rather than to the account spending it. Applied
+// once here rather than per route: the four are the same kind of action, and a
+// per-route list is a place for the fifth one to be forgotten.
+subscription.use(rateLimitFor("subscription-write", "user"));
 
 /**
  * Refuses every endpoint here when this deployment sells nothing.

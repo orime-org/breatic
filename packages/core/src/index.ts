@@ -70,7 +70,7 @@ export {
   getSubscriptionPlan,
   findSubscribableTierByPriceId,
   getSubscriptionStaleAfterDays,
-  getSubscriptionReconcileTimeoutMs,
+  getStripeReadTimeoutMs,
   resetSubscriptionConfigCache,
 } from "@core/config/subscription.js";
 export type {

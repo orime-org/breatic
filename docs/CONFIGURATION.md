@@ -180,7 +180,7 @@ loader:`packages/core/src/config/membership.ts`。**惰性加载**:首次被调�
 | 文件 | loader | 内容 |
 |---|---|---|
 | `config/pricing.yaml` | `packages/server/src/config/pricing.ts` | 积分购买档位(Stripe test/live Price ID) |
-| `config/subscription.yaml` | `packages/core/src/config/subscription.ts` | 会员订阅计划:每个可订阅档位的月费 + Stripe test/live Price ID + `stale_after_days`(订阅过期多久后不再认它的档位)+ `reconcile_timeout_ms`(会员面板等 Stripe 多久后改用本地数据)。跟 `config/membership.yaml`(那档的六项上限)和 `config/pricing.yaml`(积分包,买断不是订阅)是三件事 |
+| `config/subscription.yaml` | `packages/core/src/config/subscription.ts` | 会员订阅计划:每个可订阅档位的月费 + Stripe test/live Price ID + `stale_after_days`(订阅过期多久后不再认它的档位)+ `stripe_read_timeout_ms`(问 Stripe 订阅现状时等多久 —— 面板对账和 webhook 两条路共用)。跟 `config/membership.yaml`(那档的六项上限)和 `config/pricing.yaml`(积分包,买断不是订阅)是三件事 |
 | `config/text-tools.yaml` | `packages/server/src/config/text-tools.ts` | 文本 mini-tool 模型 + 参数 |
 | `config/agent.yaml` | `packages/core/src/config/*` | MainAgent 行为 / 记忆 / 工具 / worker 限制 |
 | `config/skill-routing.yaml` | `packages/core/src/config/skill-routing.ts` | 哪个 skill 能在哪个面用、用户能不能直接调、模型能不能自己调起 |

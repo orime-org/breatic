@@ -102,11 +102,10 @@ function toStored(row: SubscriptionRow): StoredSubscription {
 /**
  * Reads every subscription an account holds or has held.
  *
- * Newest first, which is the order `subscriptionSituation` reads: were two
- * ever live at once — an invariant the write side holds, not this one — the
- * most recent is the one somebody just paid for. "Newest" is decided by the
- * creation time AND the row id, because the time alone ties for rows written
- * in one transaction (see the ordering below).
+ * Newest first, which is a convenience for anything displaying them rather
+ * than a rule anybody depends on: `subscriptionSituation` chooses among live
+ * rows by its own total order (paid before unpaid, then tier, then period,
+ * then id) precisely so that no reading rests on the order rows arrive in.
  * @param userId - The account to read.
  * @param tx - Transaction handle, when the caller is inside one.
  * @returns Its subscriptions, newest first; empty when it has never had one.

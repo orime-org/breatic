@@ -163,6 +163,10 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
       stripeSubscriptionId: "sub_unpaid",
       tier: "pro",
     });
+    stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: "sub_unpaid",
+      status: "incomplete",
+    });
     stripe.subscriptions.cancel.mockResolvedValue({});
 
     await service.startCheckout({
@@ -175,6 +179,53 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     expect(stripe.checkout.sessions.create).toHaveBeenCalled();
   });
 
+  it("那张订阅其实已经付掉了，就不作废它，也不再卖一次", async () => {
+    // 面板对首付未成的账号同时给两样东西：一条在新标签页打开的付款链接，
+    // 和照常可点的档位按钮。用户在新标签页把钱付了，回到原标签页（那一页
+    // 按策略不会自己重拉）再点一次，存下来的行还是 incomplete —— 照着它
+    // 取消，取消掉的是一张刚付过 12 美元的订阅，而 Stripe 的取消不退款。
+    situationIs("firstPaymentUnsettled", {
+      stripeSubscriptionId: "sub_paid_meanwhile",
+      tier: "pro",
+    });
+    stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: "sub_paid_meanwhile",
+      status: "active",
+    });
+
+    await expect(
+      service.startCheckout({
+        userId: USER,
+        tier: "pro",
+        returnUrl: RETURN_URL,
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    expect(stripe.subscriptions.cancel).not.toHaveBeenCalled();
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("Stripe 说它还是没付成，才作废", async () => {
+    situationIs("firstPaymentUnsettled", {
+      stripeSubscriptionId: "sub_still_unpaid",
+      tier: "pro",
+    });
+    stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: "sub_still_unpaid",
+      status: "incomplete",
+    });
+    stripe.subscriptions.cancel.mockResolvedValue({});
+
+    await service.startCheckout({
+      userId: USER,
+      tier: "pro",
+      returnUrl: RETURN_URL,
+    });
+
+    expect(stripe.subscriptions.cancel).toHaveBeenCalledWith("sub_still_unpaid");
+    expect(stripe.checkout.sessions.create).toHaveBeenCalled();
+  });
+
   it("那张订阅在 Stripe 那边已经没了，照常开新结账", async () => {
     // 本地那一行会过期（只有 webhook 写它，而 Stripe 三天后就不再重投）。
     // 它指的东西已经不存在 = 要作废的理由本来就满足了；这时候拒掉结账，
@@ -183,7 +234,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
       stripeSubscriptionId: "sub_gone",
       tier: "pro",
     });
-    stripe.subscriptions.cancel.mockRejectedValueOnce(
+    stripe.subscriptions.retrieve.mockRejectedValueOnce(
       Object.assign(new Error("No such subscription: sub_gone"), {
         code: "resource_missing",
       }),
@@ -206,7 +257,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
       stripeSubscriptionId: "sub_unpaid",
       tier: "pro",
     });
-    stripe.subscriptions.cancel.mockRejectedValueOnce(
+    stripe.subscriptions.retrieve.mockRejectedValueOnce(
       Object.assign(new Error("Connection error"), { code: "api_connection_error" }),
     );
 
@@ -311,9 +362,10 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     });
   });
 
-  it("升级还没付成的时候不动取消预约", async () => {
-    // 升级挂在那儿等付款，档位还没变。这时候清掉取消预约就是拿一个没
-    // 发生的升级去撤销一个用户真做过的决定。
+  it("升级还没付成，也照样清掉取消预约", async () => {
+    // 点升级这个动作本身就是「我不取消了」—— 面板在这一格给的是升级入口，
+    // 用户按下去表达的意思只有这一个。不清的话，他把差价付掉、升级生效之后
+    // 取消预约还挂着，期末照样掉档，而促成掉档的正是他为了留下来付的那笔钱。
     situationIs("cancelling", proRow({ cancelAtPeriodEnd: true }));
     stripe.subscriptions.update.mockResolvedValueOnce({
       id: "sub_1",
@@ -336,13 +388,28 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
 
     await service.changePlan({ userId: USER, tier: "team" });
 
-    expect(stripe.subscriptions.update).toHaveBeenCalledTimes(1);
+    expect(stripe.subscriptions.update).toHaveBeenCalledTimes(2);
+    expect(stripe.subscriptions.update).toHaveBeenLastCalledWith("sub_1", {
+      cancel_at_period_end: false,
+    });
   });
 
   it("账号没预约取消时只调一次", async () => {
     situationIs("active", proRow());
     await service.changePlan({ userId: USER, tier: "team" });
     expect(stripe.subscriptions.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("存下来的行没有 item id 时，宁可报错也不发那次调用", async () => {
+    // Stripe 把没有 id 的 item 当成「新增一个价格」：订阅上挂两档、每月按
+    // 12 + 39 收，而我们只记下其中一档。那正是验收第 9 条禁止的后果，所以
+    // 这一格不能用「没有就不传」糊过去。
+    situationIs("active", proRow({ stripeItemId: null }));
+
+    await expect(
+      service.changePlan({ userId: USER, tier: "team" }),
+    ).rejects.toThrow(/no stored item id/i);
+    expect(stripe.subscriptions.update).not.toHaveBeenCalled();
   });
 
   it("refuses a move to a lower tier", async () => {

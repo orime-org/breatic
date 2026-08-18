@@ -48,7 +48,6 @@ describe("settleTier — 订阅只管它自己给出的那些档位", () => {
       const result = await settleTier({
         userId: USER,
         toTier: "base",
-        reason: "subscription_ended",
         referenceId: "reconcile:cus_1",
       });
 
@@ -74,7 +73,6 @@ describe("settleTier — 订阅只管它自己给出的那些档位", () => {
       await settleTier({
         userId: USER,
         toTier: "team",
-        reason: "subscription_activated",
       });
 
       expect(changeMembershipTier).toHaveBeenCalled();
@@ -92,7 +90,6 @@ describe("settleTier (#106 §9)", () => {
     const result = await settleTier({
       userId: USER,
       toTier: "base",
-      reason: "subscription_ended",
       referenceId: "evt_1",
     });
 
@@ -115,7 +112,6 @@ describe("settleTier (#106 §9)", () => {
     const result = await settleTier({
       userId: USER,
       toTier: "base",
-      reason: "subscription_ended",
     });
 
     expect(notificationService.createMembershipEnded).not.toHaveBeenCalled();
@@ -131,7 +127,6 @@ describe("settleTier (#106 §9)", () => {
     const result = await settleTier({
       userId: USER,
       toTier: "pro",
-      reason: "subscription_activated",
     });
 
     expect(notificationService.createMembershipEnded).not.toHaveBeenCalled();
@@ -148,7 +143,6 @@ describe("settleTier (#106 §9)", () => {
     const result = await settleTier({
       userId: USER,
       toTier: "pro",
-      reason: "subscription_activated",
     });
 
     expect(notificationService.createMembershipEnded).not.toHaveBeenCalled();
@@ -165,7 +159,6 @@ describe("settleTier (#106 §9)", () => {
     await settleTier({
       userId: USER,
       toTier: "base",
-      reason: "subscription_ended",
       tx,
     });
 
