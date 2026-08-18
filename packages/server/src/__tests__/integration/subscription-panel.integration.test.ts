@@ -135,10 +135,17 @@ function stripeSub(over: Record<string, unknown> = {}): Stripe.Subscription {
 }
 
 describe("readSubscriptionSummary — an account that never paid (#106 §11)", () => {
-  it("answers with nothing and asks Stripe nothing", async () => {
+  it("says it has no subscription, rather than saying nothing", async () => {
+    // Null means "this deployment sells no subscriptions" and nothing else.
+    // An account that simply has not bought one is in the state the offers
+    // exist for, and answering null there is what took the buttons away from
+    // exactly the people who need them.
     const userId = await makeUser("base", null);
     try {
-      expect(await readSubscriptionSummary(userId)).toBeNull();
+      const summary = await readSubscriptionSummary(userId);
+      expect(summary?.state).toBe("none");
+      expect(summary?.tier).toBe("base");
+      // Nothing to reconcile against: no customer, so no Stripe call.
       expect(stripe.subscriptions.list).not.toHaveBeenCalled();
     } finally {
       await dropUser(userId);

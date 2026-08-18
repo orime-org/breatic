@@ -262,11 +262,13 @@ export interface AccountMembership {
   /** The tiers offered for comparison, in ascending order. */
   readonly catalog: readonly TierOffer[];
   /**
-   * The account's subscription, or null when it has none.
+   * What the account's subscription is doing.
    *
-   * Always null where payments are switched off, which is what makes the panel
-   * hide every subscription control on a self-hosted install without the front
-   * end needing to know why.
+   * Null means one thing and one thing only: this deployment sells no
+   * subscriptions. That is what makes the panel hide every subscription
+   * control on a self-hosted install without the front end needing to know
+   * why. An account that simply has not bought one gets a summary saying so
+   * (`state: "none"`) — it is the state the offers exist for.
    */
   readonly subscription: SubscriptionSummary | null;
 }

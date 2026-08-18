@@ -113,17 +113,22 @@ async function writeAll(
  * event gets repaired.
  * Whether this deployment sells subscriptions at all is not asked here: the
  * caller assembling the panel answers that, because it also decides whether to
- * quote prices. This function only ever speaks about subscriptions.
+ * quote prices. This function only ever speaks about subscriptions, and always
+ * describes one — "this account has none" is a subscription state, not silence.
  * @param userId - The account.
- * @returns Its subscription, or null when it has never had a Stripe customer.
+ * @returns What its subscription is doing.
  * @throws {Error} if Stripe or the database fails; the panel is better empty
  *   than wrong, and the route logs it.
  */
 export async function readSubscriptionSummary(
   userId: string,
-): Promise<SubscriptionSummary | null> {
+): Promise<SubscriptionSummary> {
   const customerId = await userRepo.getStripeCustomerId(userId);
-  if (!customerId) return null;
+  // Never paid us, so there is nothing at Stripe to reconcile against — but
+  // the account is still in the state the offers exist for, and answering
+  // "nothing" here is what would take the offers away from precisely the
+  // people they are for.
+  if (!customerId) return { ...EMPTY_SUMMARY };
 
   const endedFrom = await reconcile(userId, customerId);
   // After the transaction: an email about a change that then rolled back
@@ -145,11 +150,12 @@ export async function readSubscriptionSummary(
 }
 
 /**
- * What an account with a Stripe customer but no live subscription is told.
+ * What an account with no live subscription is told.
  *
- * Not null: null is reserved for "this deployment has no subscriptions at
- * all", which the panel answers by hiding every control. An account that has
- * paid before and is now on nothing still sees the offers.
+ * Not null. Null belongs to one meaning only — "this deployment sells no
+ * subscriptions" — and the panel answers it by hiding every control. An
+ * account that has never bought one, or whose subscription ended, is in the
+ * state the offers exist for and must still see them.
  */
 const EMPTY_SUMMARY: SubscriptionSummary = {
   state: "none",

@@ -226,6 +226,24 @@ describe('MembershipPanel', () => {
     );
   });
 
+  it('从没订过的 Base 账号照样看得到升级入口', async () => {
+    // 真机上抓到的：后端把「这个部署不卖订阅」和「这个账号还没订」都答成
+    // null，前端据此把整行藏了 —— 结果是最需要那几个按钮的人反而看不到。
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'none', tier: 'base', currentPeriodEnd: null }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('membership-choose-pro')).toBeInTheDocument();
+    expect(screen.getByTestId('membership-choose-team')).toBeInTheDocument();
+    // 没有活订阅就没有可取消的东西。
+    expect(screen.queryByTestId('membership-cancel')).toBeNull();
+  });
+
   it('这个部署不卖订阅时，整行操作都不出现', async () => {
     // 自托管没有价目表这回事，摆一排点不动的按钮比什么都不摆更糟。
     membershipMock.mockResolvedValue(answer({ subscription: null }));
