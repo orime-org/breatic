@@ -187,25 +187,15 @@ describe('跨块选区上按回车（A10）', () => {
   });
 });
 
-describe('splitBlock 在链式调用里探测的是链内文档（实现对抗第 1 轮 #5）', () => {
-  // 探针原先读 editor.state（链外快照），而链式上下文里前序步骤已经改了
-  // 文档——探针看错对象，该拦的删空放过去，落进上游 splitBlockAs 的
-  // 深度 0 TypeError。改从命令收到的 state 探测后，这两条链不抛。
-  it('链内先全选再 splitBlock：等价于删空，不抛', () => {
-    const e = open('<p>aa</p><p>bb</p>');
-    expect(() => {
-      e.chain()
-        .command(({ tr }) => {
-          tr.setSelection(new AllSelection(tr.doc));
-          return true;
-        })
-        .splitBlock()
-        .run();
-    }).not.toThrow();
-    expect(e.state.doc.childCount).toBe(0);
-  });
-
-  it('链内先删空再 splitBlock：零块上分块是空操作，不抛', () => {
+describe('splitBlock 的删空探针照上游契约答（实现对抗第 1、3 轮）', () => {
+  // 探针存在的唯一理由：上游 splitBlockAs 先删选区、再按删后的文档走深度
+  // 链，删空之后 `$from.node(-1)` 在深度 0 上抛 TypeError。它只该覆盖真能
+  // 走到那一步的形态。AllSelection 和零块都走不到：上游自己的
+  // `if (!state.selection.$from.depth) return false` 在删除行之前就把它们
+  // 拦回 false 了（深度 0），照抄那个答案才是「照上游契约」。
+  it('链内先删空再 splitBlock：不抛，文档留在零块', () => {
+    // 链内 splitBlock 看到的是链内文档（前一步已删空），探针必须读它而不是
+    // 链外快照——读错就把删空当没发生，落进上游的深度 0 TypeError。
     const e = open('<p>aa</p>');
     expect(() => {
       e.chain()
@@ -217,6 +207,38 @@ describe('splitBlock 在链式调用里探测的是链内文档（实现对抗�
         .run();
     }).not.toThrow();
     expect(e.state.doc.childCount).toBe(0);
+  });
+
+  it('零块文档上直接 splitBlock：返回 false、不抛', () => {
+    const e = open('');
+    expect(e.state.doc.childCount).toBe(0);
+    let ran: boolean | undefined;
+    expect(() => {
+      ran = e.commands.splitBlock();
+    }).not.toThrow();
+    expect(ran).toBe(false);
+    expect(e.state.doc.childCount).toBe(0);
+  });
+
+  it('全文档选区上直接 splitBlock：照上游答 false，内容不动', () => {
+    const e = open('<p>aa</p><p>bb</p>');
+    e.view.dispatch(e.state.tr.setSelection(new AllSelection(e.state.doc)));
+    expect(e.commands.splitBlock()).toBe(false);
+    expect(e.state.doc.childCount).toBe(2);
+    expect(e.state.doc.textContent).toBe('aabb');
+  });
+
+  it('唯一块的 TextSelection 全覆盖：删空后不抛（探针真正要防的那条）', () => {
+    const e = open('<p>aa</p>');
+    const { doc } = e.state;
+    e.view.dispatch(
+      e.state.tr.setSelection(
+        TextSelection.between(doc.resolve(1), doc.resolve(doc.content.size - 1)),
+      ),
+    );
+    expect(() => {
+      press(e, 'Enter');
+    }).not.toThrow();
   });
 });
 

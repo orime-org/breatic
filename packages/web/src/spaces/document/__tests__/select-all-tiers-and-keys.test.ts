@@ -510,6 +510,27 @@ describe('B3 非键盘删除通道也要问：beforeinput 的 delete 类输入�
     expect(asked).not.toHaveBeenCalled();
   });
 
+  it('deleteByDrag：放行不问（拖拽也归入不设防家族）', () => {
+    const asked = vi.fn();
+    const e = openWithBlocks(asked);
+    e.view.dispatch(e.state.tr.setSelection(new AllSelection(e.state.doc)));
+    const { handled, prevented } = fireBeforeInput(e, 'deleteByDrag');
+    expect(handled).toBe(false);
+    expect(prevented).toBe(false);
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it('零块文档上的 delete 类输入：吞掉、不问、不抛', () => {
+    const asked = vi.fn();
+    const e = openOn(new Y.Doc(), asked);
+    expect(e.state.doc.childCount).toBe(0);
+    const { handled, prevented } = fireBeforeInput(e, 'deleteContentBackward');
+    expect(handled).toBe(true);
+    expect(prevented).toBe(true);
+    expect(asked).not.toHaveBeenCalled();
+    expect(e.state.doc.childCount).toBe(0);
+  });
+
   it('非全文档选区上 delete 类输入：放行不问', () => {
     const asked = vi.fn();
     const e = openWithBlocks(asked);
@@ -560,5 +581,120 @@ describe('B2 补齐最后三格：块内与跨块选区的打字、块内选区�
     expect(e.state.doc.childCount).toBe(4);
     expect(e.state.doc.child(1).textContent).toBe('b');
     expect(e.state.doc.child(2).textContent).toBe('a');
+  });
+});
+
+describe('B4 全文档选区上的硬换行和弦：吞掉、什么都不做（user 2026-08-18 拍 A）', () => {
+  // Shift-Enter / Mod-Enter 走 @tiptap/extension-hard-break 的 setHardBreak，
+  // 在全文档选区上会把整篇替换成一个只含硬换行的段落——屏幕全白，等于
+  // 一条不问就清空的路径。硬换行的语义是「段落内换行」，而全文档选区不
+  // 落在任何段落里：没有可换行的位置，就什么都不做。
+  const CHORDS: Array<[string, Parameters<typeof press>[2]]> = [
+    ['Shift-Enter', { shiftKey: true }],
+    ['Mod-Enter', { ctrlKey: true }],
+  ];
+  CHORDS.forEach(([name, mods]) => {
+    it(`${name}：内容一字不动、选区不动、不弹确认`, () => {
+      const asked = vi.fn();
+      const e = openWithBlocks(asked);
+      e.view.dispatch(e.state.tr.setSelection(new AllSelection(e.state.doc)));
+      const before = e.getHTML();
+      press(e, 'Enter', mods);
+      expect(asked).not.toHaveBeenCalled();
+      expect(e.state.doc.childCount).toBe(3);
+      expect(e.getHTML()).toBe(before);
+      expect(e.state.selection).toBeInstanceOf(AllSelection);
+    });
+  });
+
+  it('块内光标上的 Shift-Enter 照常插入硬换行', () => {
+    const e = openWithBlocks();
+    caretIntoBlock(e, 1);
+    press(e, 'Enter', { shiftKey: true });
+    expect(e.state.doc.child(1).textContent).toBe('beta');
+    expect(e.getHTML()).toContain('<br>');
+  });
+
+  it('零块文档上的 Shift-Enter：空操作不抛', () => {
+    const e = openOn(new Y.Doc());
+    expect(() => {
+      press(e, 'Enter', { shiftKey: true });
+    }).not.toThrow();
+    expect(e.state.doc.childCount).toBe(0);
+  });
+});
+
+describe('B2 GapCursor 行补齐终态与打字格（实现对抗第 3 轮 #3）', () => {
+  /** 编辑器 + 光标停在开头占位块前的缝隙。 */
+  function openWithGapAt0(onClear?: () => void): Editor {
+    const doc = new Y.Doc();
+    doc.transact(() => {
+      documentBodyFragment(doc).insert(0, [new Y.XmlElement('legacyBlock')]);
+    });
+    const e = openOn(doc, onClear);
+    e.commands.insertContentAt(e.state.doc.content.size, '<p>after</p>');
+    e.view.dispatch(e.state.tr.setSelection(new GapCursor(e.state.doc.resolve(0))));
+    return e;
+  }
+
+  it('打字：在缝隙处建段落并落字', () => {
+    const e = openWithGapAt0();
+    const before = e.state.doc.childCount;
+    e.commands.insertContent('x');
+    expect(e.state.doc.childCount).toBe(before + 1);
+    expect(e.state.doc.child(0).type.name).toBe('paragraph');
+    expect(e.state.doc.child(0).textContent).toBe('x');
+  });
+
+  it('Delete：PM 默认是先选中相邻块，再按一次才删（实测，非一步删除）', () => {
+    // 定稿 §10 那一格写的是「PM 默认」，括号里的「删除相邻方向的块」是当时
+    // 对 PM 默认的预判。实测：第一次 Delete 走 selectNodeForward，把相邻块
+    // 变成 NodeSelection（文档不变）；第二次才删掉它。这里钉实测事实。
+    const e = openWithGapAt0();
+    const before = e.state.doc.childCount;
+    press(e, 'Delete');
+    expect(e.state.doc.childCount).toBe(before);
+    expect(e.state.selection).toBeInstanceOf(NodeSelection);
+    press(e, 'Delete');
+    expect(e.state.doc.childCount).toBe(before - 1);
+    expect(e.state.doc.child(0).type.name).toBe('paragraph');
+    expect(e.state.doc.child(0).textContent).toBe('after');
+  });
+
+  it('Backspace 在文档最前的缝隙：前面没有块，什么都不发生', () => {
+    const e = openWithGapAt0();
+    const before = e.state.doc.childCount;
+    press(e, 'Backspace');
+    expect(e.state.doc.childCount).toBe(before);
+    expect(e.state.selection).toBeInstanceOf(GapCursor);
+  });
+});
+
+describe('B2 块内与跨块选区的裸 Delete（实现对抗第 3 轮 #3）', () => {
+  it('块内选区裸 Delete：删掉选中的字，不弹确认', () => {
+    const asked = vi.fn();
+    const e = openWithBlocks(asked);
+    const { from, to } = blockTextRange(e, 1);
+    e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, from, to)));
+    press(e, 'Delete');
+    expect(asked).not.toHaveBeenCalled();
+    expect(e.state.doc.childCount).toBe(3);
+    expect(e.state.doc.child(1).textContent).toBe('');
+  });
+
+  it('跨块选区裸 Delete：删除并合并端点块，不弹确认', () => {
+    const asked = vi.fn();
+    const e = openWithBlocks(asked);
+    const first = blockTextRange(e, 0);
+    const second = blockTextRange(e, 1);
+    e.view.dispatch(
+      e.state.tr.setSelection(
+        TextSelection.create(e.state.doc, first.from + 2, second.to - 2),
+      ),
+    );
+    press(e, 'Delete');
+    expect(asked).not.toHaveBeenCalled();
+    expect(e.state.doc.childCount).toBe(2);
+    expect(e.state.doc.child(0).textContent).toBe('alta');
   });
 });

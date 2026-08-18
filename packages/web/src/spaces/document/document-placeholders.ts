@@ -25,9 +25,18 @@
  *
  * ## What this does instead
  *
- * Marks the empty state and lets the stylesheet draw the text: a class on the
- * editor when the document has no blocks, with the string to show alongside
- * it.
+ * Marks the empty state and lets the stylesheet draw the text, through two
+ * mechanisms that between them cover both shapes of emptiness:
+ *
+ * - **No blocks at all**: a class and the string on the EDITOR element, since
+ *   there is no node to decorate. index.css paints it and gives it a
+ *   paragraph's top margin, so it lands on the line a first paragraph would.
+ * - **Blocks that paint nothing**: a `data-block-placeholder` decoration on
+ *   the FIRST such block, painted as a zero-height float inside it — the
+ *   mechanism tiptap's own Placeholder uses. The hint sits on the line where
+ *   typing will land, which is the same line the zero-block hint occupies:
+ *   the two states are indistinguishable on screen, so their hints have to be
+ *   too (user 2026-08-18).
  *
  * The string is read per render rather than captured once, because the
  * editor is built once per document and would otherwise keep whichever

@@ -289,6 +289,16 @@ export const DocumentSelectAll = Extension.create<DocumentSelectAllOptions>({
         this.editor.view.dispatch(tr.scrollIntoView());
         return true;
       },
+      // The hard-break chords, swallowed on this tier and this tier only.
+      // `@tiptap/extension-hard-break` binds both to `setHardBreak`, which
+      // REPLACES the selection — over the whole document that is the entire
+      // text traded for one break, a blank screen reached without a
+      // confirmation. A hard break means "wrap inside this paragraph", and a
+      // whole-document selection sits inside no paragraph: there is no
+      // position to break, so nothing happens (user 2026-08-18). Every other
+      // selection keeps the stock behaviour by answering false.
+      'Shift-Enter': () => isWholeDocumentSelection(this.editor.state),
+      'Mod-Enter': () => isWholeDocumentSelection(this.editor.state),
     };
   },
 
@@ -313,12 +323,15 @@ export const DocumentSelectAll = Extension.create<DocumentSelectAllOptions>({
             beforeinput: (view, event): boolean => {
               const { inputType } = event as InputEvent;
               if (!inputType || !isBareDeletionInput(inputType)) return false;
-              if (!isWholeDocumentSelection(view.state)) return false;
-              event.preventDefault();
-              return guardWholeDocumentDelete(
+              // The guard decides — this channel does not re-derive the tier
+              // for itself. Cancel only what it claimed, so an input it lets
+              // through reaches the browser untouched.
+              const claimed = guardWholeDocumentDelete(
                 view.state,
-                this.options.onClearDocumentRequest ?? null,
+                this.options.onClearDocumentRequest,
               );
+              if (claimed) event.preventDefault();
+              return claimed;
             },
           },
         },

@@ -451,11 +451,12 @@ body {
   display: block;
   pointer-events: none;
   color: var(--color-muted-foreground);
-  /* The paragraph margin below (`.doc-body-editor .ProseMirror p`), so the
-     zero-block hint sits exactly where the first block's hint — and the
-     first typed line — lands. The two looks-empty states must be visually
-     identical (user 2026-08-18). */
-  margin-top: 0.85em;
+  /* The paragraph's own top margin, so the zero-block hint sits exactly
+     where the first block's hint — and the first typed line — lands. The two
+     looks-empty states must be visually identical (user 2026-08-18); one
+     custom property feeds both this and the paragraph rule below, so they
+     cannot drift apart. */
+  margin-top: var(--doc-paragraph-margin);
 }
 
 /* The looks-empty hint ON the first invisible block (a document holding
@@ -550,6 +551,14 @@ body {
 .doc-body-editor .ProseMirror {
   line-height: 1.65;
 
+  /* A paragraph's top and bottom margin, declared on the editor because two
+     rules need the same number: the paragraph rule further down, and the
+     zero-block placeholder, which has to leave the same gap above itself as
+     a first paragraph would so the two looks-empty states line up (user
+     2026-08-18). Declared HERE rather than on the paragraph — a zero-block
+     document has no paragraph for the placeholder to inherit from. */
+  --doc-paragraph-margin: 0.85em;
+
   /* The two below are layout rather than typography, and they used to sit in
      their own block 300 lines further down. One selector, one place: with two
      blocks, anyone adding a property to this element finds whichever they
@@ -614,7 +623,7 @@ body {
 }
 
 .doc-body-editor .ProseMirror p {
-  margin: 0.85em 0;
+  margin: var(--doc-paragraph-margin) 0;
 }
 
 .doc-body-editor .ProseMirror h1 {
