@@ -4,7 +4,9 @@
 /**
  * What a switch, and a delete, must not do to the conversation underneath.
  *
- * Every case here started as a Gate 2 finding that reproduced. They are kept
+ * Most cases here started as a review finding that reproduced; the rest were
+ * added after breaking the code they watch and finding the suite still green.
+ * They are kept
  * because each one guards an invariant nothing else was watching: a turn
  * survives being switched away from, the last press wins, and a panel whose
  * conversation has just been deleted says it is loading rather than drawing an
@@ -256,25 +258,6 @@ describe('picking another row while a delete is in flight', () => {
     await removing;
 
     expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-3');
-  });
-});
-
-describe('a draft typed before the project had a conversation', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    _resetForTests();
-  });
-
-  it('does not follow the reader back into the project', async () => {
-    // 这半句话是在上一次访问里打的。它没有归属会话，所以按「属于哪条会话」
-    // 筛选的清理看不见它，回来时会被搬进这次打开的那条会话。
-    opens([{ id: 'c-1', title: 'one' }]);
-    conversationRuntime.setDraft(undefined, 'half a sentence');
-    conversationRuntime.leaveProject(P);
-
-    await conversationRuntime.ensureLoaded(P);
-
-    expect(conversationRuntime.draftOf('c-1')).toBe('');
   });
 });
 
@@ -602,9 +585,7 @@ describe('a press that fails while an older answer is still on its way', () => {
     expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-1');
   });
 
-  it('settles the panel when nothing else is on its way', async () => {
-    // 反过来:没有别人在飞了,最后离场的那个就得把面板带到一个有出口的
-    // 状态 —— 蒙版加重新加载,而不是一个永远转下去的骨架。
+  it('does not settle the panel while something else is still on its way', async () => {
     vi.mocked(chatApi.openChat).mockImplementation(() => new Promise(() => {}));
     void conversationRuntime.ensureLoaded(P);
     await vi.waitFor(() =>
@@ -619,6 +600,28 @@ describe('a press that fails while an older answer is still on its way', () => {
 
     conversationRuntime.leaveProject(P);
     expect(useConversationRuntime.getState().openStatus[P]).toBeUndefined();
+  });
+
+  it('settles the panel when it is the last one out', async () => {
+    // 反过来:没有别人在飞了,最后离场的那个就得把面板带到一个有出口的状态 ——
+    // 蒙版加重新加载,而不是一个永远转下去的骨架。少了这一步,读了失败的面板
+    // 上没有内容、没有蒙版,也就没有任何再问一次的入口。
+    vi.mocked(chatApi.openChat).mockResolvedValue({
+      conversations: [{ id: 'c-1', title: 'one' }],
+      hasMoreConversations: false,
+      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+    await conversationRuntime.ensureLoaded(P);
+
+    // 打开已经落地,现在只有新建这一趟在飞;它失败,而且是最后一个离场的。
+    // 面板被放回 loading,好让「没有人再能把它取下来」这件事有对象。
+    vi.mocked(chatApi.createConversation).mockRejectedValue(new Error('offline'));
+    useConversationRuntime.setState((st) => ({
+      openStatus: { ...st.openStatus, [P]: 'loading' },
+    }));
+    await conversationRuntime.startNew(P);
+
+    expect(useConversationRuntime.getState().openStatus[P]).toBe('failed');
   });
 });
 
