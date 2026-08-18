@@ -564,6 +564,38 @@ describe('nodeVideoMode', () => {
     // Annotations and groups have no `mode` at all.
     expect(nodeVideoMode([node('n1', { kind: 'group' })], 'n1', VIDEO_MODE_OPTIONS)).toBe('t2v');
   });
+
+  // 判据是「它得先可用」，不是「它是不是一个合法的档」（#1951，user 2026-08-18）。
+  // 上面那几条传的都是完整的六档，走不到这条分支 —— 这几条专门传收窄后的列表。
+  describe('存的档必须是这个部署服务得了的那些之一 (#1951)', () => {
+    /** 部署方把 animate 那一档的模型删了，剩下的档照常。 */
+    const WITHOUT_ANIMATE = VIDEO_MODE_OPTIONS.filter((o) => o.value !== 'animate');
+    /** 一个只剩 i2v 的部署 —— 连默认的 t2v 都没有。 */
+    const ONLY_I2V = VIDEO_MODE_OPTIONS.filter((o) => o.value === 'i2v');
+
+    it('存的档可用，就用它', () => {
+      expect(
+        nodeVideoMode([node('n1', videoView({ mode: 'i2v' }))], 'n1', WITHOUT_ANIMATE),
+      ).toBe('i2v');
+    });
+
+    it('存的档合法但这个部署没有它的模型，落到可用档第一个', () => {
+      // 改动前这里会返回 'animate'：旧判据只问它在不在合法档清单里，
+      // 于是节点停在一个选择器根本不列的档上。
+      expect(
+        nodeVideoMode([node('n1', videoView({ mode: 'animate' }))], 'n1', WITHOUT_ANIMATE),
+      ).toBe('t2v');
+    });
+
+    it('没存过 mode 时取可用档第一个，不是写死的 t2v', () => {
+      // t2v 自己被摘掉的部署：默认档得跟着走，否则每个新节点都停在
+      // 一个不存在的档上。
+      expect(nodeVideoMode([node('n1', videoView())], 'n1', ONLY_I2V)).toBe('i2v');
+      expect(
+        nodeVideoMode([node('n1', videoView({ mode: 't2v' }))], 'n1', ONLY_I2V),
+      ).toBe('i2v');
+    });
+  });
 });
 
 describe('resolveModeSwitch — 视频侧的六个模式 (#1948 起两个面板共用)', () => {

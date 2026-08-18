@@ -1712,3 +1712,46 @@ describe('VideoGeneratePanelContainer — 点不动的时候说清缺什么 (#19
   });
 
 });
+
+describe('这个部署服务不了的档 (#1951)', () => {
+  /** 一份摘掉了 i2v 的目录 —— 部署方没配那一档的模型。 */
+  function catalogWithoutI2v(): ModelCatalog {
+    const full = catalog();
+    const video = full.video.filter(
+      (m) => !(Array.isArray(m.mode) ? m.mode : [m.mode]).includes('i2v'),
+    );
+    return { ...full, video, total: full.image.length + video.length };
+  }
+
+  it('那一档不出现在选择器里，其余照常', async () => {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalogWithoutI2v());
+    seedVideoNode({ mode: 't2v', model: 'veo' });
+    mountContainer('video', { mode: 't2v', model: 'veo' });
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'video');
+    });
+    fireEvent.click(await screen.findByTestId('generate-video-mode-trigger'));
+    expect(screen.getByTestId('generate-video-mode-t2v')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-video-mode-i2v')).toBeNull();
+  });
+
+  it('节点存的就是那一档时，面板落到可用档，而 Yjs 里存的值不动', async () => {
+    // 这是 user 2026-08-18 定的那条规则在容器上的样子：判据是「它得先可用」，
+    // 而且解析是渲染时派生的 —— 不许回写节点。部署方把模型加回来，这个节点
+    // 就该重新读成 i2v。
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalogWithoutI2v());
+    seedVideoNode({ mode: 'i2v', model: 'kling-i2v' });
+    mountContainer('video', { mode: 'i2v', model: 'kling-i2v' });
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'video');
+    });
+    const trigger = await screen.findByTestId('generate-video-mode-trigger');
+    await waitFor(() => expect(trigger.textContent).not.toBe(''));
+    // 面板落到可用档第一个（目录里 t2v 排在前面）。
+    expect(trigger.textContent).toContain('Text to Video');
+    // 而节点上存的还是 i2v。
+    const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
+      ?.data as { mode?: string };
+    expect(data.mode).toBe('i2v');
+  });
+});

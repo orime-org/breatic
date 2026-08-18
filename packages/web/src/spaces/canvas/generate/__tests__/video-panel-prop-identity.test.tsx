@@ -57,6 +57,8 @@ const seenSlotUrls: unknown[] = [];
  * having it — so this one is pinned on the same terms as the URLs.
  */
 const seenSlotThumbnails: unknown[] = [];
+/** 可用档列表每次渲染时的身份（#1951）。 */
+const seenModeOptions: unknown[] = [];
 
 // The real panel renders a tree this case has no use for; standing in for it
 // is what lets the case read the prop object itself, which is the thing under
@@ -66,9 +68,11 @@ vi.mock('@web/spaces/canvas/generate/VideoGeneratePanel', () => ({
   VideoGeneratePanel: (props: {
     slotUrls: unknown;
     slotThumbnails: unknown;
+    modeOptions: unknown;
   }): null => {
     seenSlotUrls.push(props.slotUrls);
     seenSlotThumbnails.push(props.slotThumbnails);
+    seenModeOptions.push(props.modeOptions);
     return null;
   },
 }));
@@ -182,6 +186,7 @@ describe('the container keeps its memoized children bail-able', () => {
   beforeEach(() => {
     seenSlotUrls.length = 0;
     seenSlotThumbnails.length = 0;
+    seenModeOptions.length = 0;
     _resetForTests();
     useCanvasStore.setState({
       panelHostId: null,
@@ -226,6 +231,7 @@ describe('the container keeps its memoized children bail-able', () => {
     // witness — and the case would pass while comparing one render against
     // itself, which `Object.is` says are the same however unstable the prop is.
     const rendersBefore = seenSlotUrls.length;
+    const modesBefore = seenModeOptions.at(-1);
 
     // What a board mutation looks like from here: a brand-new nodes array
     // carrying identical slot URLs.
@@ -255,6 +261,9 @@ describe('the container keeps its memoized children bail-able', () => {
     expect(seenSlotUrls.length).toBeGreaterThan(rendersBefore);
     expect(Object.is(before, after)).toBe(true);
     expect(Object.is(thumbsBefore, seenSlotThumbnails.at(-1))).toBe(true);
+    // 可用档列表同理（#1951）：它是 filter 的产物，不 memo 就每帧一个新数组，
+    // 而它流进 ModeToggle 和面板两级 React.memo —— 两级都会因此永不 bail。
+    expect(Object.is(modesBefore, seenModeOptions.at(-1))).toBe(true);
   });
 
   it('hands down a DIFFERENT slotUrls object once a slot really changes', async () => {
