@@ -27,6 +27,7 @@ import {
   ValidationError,
   getSubscriptionPlan,
   listSubscriptions,
+  logger,
   subscriptionSituation,
 } from "@breatic/core";
 import type {
@@ -207,17 +208,15 @@ export async function changePlan(input: {
           price: getSubscriptionPlan(input.tier).stripePriceId,
         },
       ],
-      // Clearing the scheduled cancellation travels WITH the plan change, in
-      // one call. Two calls would mean a failed second one leaves the
-      // cancellation already withdrawn: the account keeps renewing, the
-      // upgrade never happened, and nobody was told either. Sending both in
-      // one request makes that state unreachable — Stripe applies the whole
-      // update or none of it.
-      //
-      // Sent unconditionally: setting it false on a subscription that is not
-      // ending changes nothing, and a conditional here would be a second
-      // shape to keep in step with the situation reading.
-      cancel_at_period_end: false,
+      // `cancel_at_period_end` must NOT travel with this call. A pending
+      // update accepts only the attributes on Stripe's own list — expand,
+      // payment_behavior, proration_behavior, proration_date,
+      // billing_cycle_anchor, items, trial_end, trial_from_plan, metadata,
+      // discounts, coupon, promotion_code, add_invoice_items — and this is
+      // not one of them. Sending it does not add a harmless field: Stripe
+      // rejects the whole request with a 400, so every upgrade fails.
+      // (docs.stripe.com/billing/pending-updates-reference, "Supported
+      // attributes for pending updates".)
       proration_behavior: "always_invoice",
       payment_behavior: "pending_if_incomplete",
       expand: ["latest_invoice"],
@@ -225,10 +224,52 @@ export async function changePlan(input: {
   );
 
   const read = readStripeSubscription(updated, input.userId);
+  const pending = read?.hasPendingUpdate ?? false;
+
+  if (situation === "cancelling" && !pending) {
+    await withdrawCancellation(record.stripeSubscriptionId, input.userId);
+  }
+
   return {
-    status: read?.hasPendingUpdate ? "pendingPayment" : "applied",
+    status: pending ? "pendingPayment" : "applied",
     payableInvoiceUrl: read?.payableInvoiceUrl ?? null,
   };
+}
+
+/**
+ * Takes the scheduled cancellation off a subscription that was just upgraded.
+ *
+ * A second call, and deliberately AFTER the plan change rather than before.
+ * Before it, a failure here would leave the cancellation already withdrawn
+ * while the upgrade never happened: the account keeps renewing, nobody asked
+ * for that, and nothing says so. After it, a failure leaves the upgrade in
+ * force and the cancellation still scheduled — which the panel already draws
+ * as an end date beside a "resume" button, so the reader can see it and undo
+ * it themselves. Neither ordering can be atomic, so the one whose failure is
+ * visible and reversible is the one to take.
+ *
+ * Skipped while the upgrade is only pending: clearing a cancellation the
+ * reader actually asked for, on the strength of a change that has not
+ * happened, would undo their decision for them.
+ * @param subscriptionId - The subscription at Stripe.
+ * @param userId - The account, for the log line if this fails.
+ */
+async function withdrawCancellation(
+  subscriptionId: string,
+  userId: string,
+): Promise<void> {
+  try {
+    await getStripeClient().subscriptions.update(subscriptionId, {
+      cancel_at_period_end: false,
+    });
+  } catch (err) {
+    // Not rethrown: the upgrade the caller asked for did happen, and
+    // answering with an error would tell them it did not.
+    logger.error(
+      { err, userId, subscriptionId },
+      "subscription_cancellation_withdrawal_failed",
+    );
+  }
 }
 
 /**

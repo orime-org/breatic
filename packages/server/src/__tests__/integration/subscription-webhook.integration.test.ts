@@ -446,10 +446,13 @@ describe("handleSubscriptionEvent — 哪些事件归这条腿 (#106 §8)", () =
     // 事件表里，于是被判成「不归我」，落到积分包那条分支去查 payments 行 ——
     // 而订阅结账从不写那张表，于是 NotFoundError 变成 webhook 的 404，
     // Stripe 重投三天后停掉整个端点。它必须由这条腿认下并回 200。
+    // 状态是 `acknowledged` 不是 `noop`：这是每一次成功的会员结账都会产生
+    // 的那一条，是这条腿说得最多的一句正常话。`noop` 留给真出事的那两种
+    // （认不出账号、不认识的价格），路由据此决定记 warn 还是 info。
     const outcome = await handleSubscriptionEvent(
       checkoutEvent("subscription", `evt_cs_sub_${Date.now()}`),
     );
-    expect(outcome.status).toBe("noop");
+    expect(outcome.status).toBe("acknowledged");
     expect(stripe.subscriptions.retrieve).not.toHaveBeenCalled();
   });
 

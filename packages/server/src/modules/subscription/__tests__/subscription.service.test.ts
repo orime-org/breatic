@@ -234,22 +234,69 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     );
   });
 
-  it("清取消预约和换 price 是同一次调用，不能拆成两次", async () => {
-    // 拆成两次的话，第一次清掉了取消预约、第二次换 price 失败，用户预约的
-    // 取消就被这次失败的升级永久吃掉 —— 他以为月底会停，实际继续被扣钱，
-    // 而且没有任何东西告诉他。Stripe 的 update 本来就能一次传两个字段。
+  it("换档那次调用不许带 cancel_at_period_end", async () => {
+    // Stripe 不接受这个组合：pending_if_incomplete 只认一张白名单，
+    // cancel_at_period_end 不在上面，整个请求当场 400。带上它 = 所有升级
+    // 100% 失败，而不是「多传一个没用的字段」。
     situationIs("cancelling", proRow({ cancelAtPeriodEnd: true }));
 
     await service.changePlan({ userId: USER, tier: "team" });
 
+    const [, params] = stripe.subscriptions.update.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(params).not.toHaveProperty("cancel_at_period_end");
+    expect(params.payment_behavior).toBe("pending_if_incomplete");
+  });
+
+  it("升级生效之后才清掉取消预约", async () => {
+    // 顺序是「先换档、后清取消预约」，不是反过来。反过来的话第二次失败
+    // 会把用户预约的取消永久吃掉：他以为月底停，实际继续扣钱，而且没有
+    // 任何东西告诉他。这个顺序下第二次失败只留下「档位升了、月底仍会停」，
+    // 面板照常显示结束日期和「恢复」按钮，用户看得见也点得动。
+    situationIs("cancelling", proRow({ cancelAtPeriodEnd: true }));
+
+    await service.changePlan({ userId: USER, tier: "team" });
+
+    expect(stripe.subscriptions.update).toHaveBeenCalledTimes(2);
+    expect(stripe.subscriptions.update).toHaveBeenLastCalledWith("sub_1", {
+      cancel_at_period_end: false,
+    });
+  });
+
+  it("升级还没付成的时候不动取消预约", async () => {
+    // 升级挂在那儿等付款，档位还没变。这时候清掉取消预约就是拿一个没
+    // 发生的升级去撤销一个用户真做过的决定。
+    situationIs("cancelling", proRow({ cancelAtPeriodEnd: true }));
+    stripe.subscriptions.update.mockResolvedValueOnce({
+      id: "sub_1",
+      status: "active",
+      cancel_at_period_end: true,
+      pending_update: {
+        expires_at: 0,
+        subscription_items: [{ id: "si_1", price: { id: "price_team" } }],
+      },
+      latest_invoice: {
+        status: "open",
+        hosted_invoice_url: "https://invoice.example/pay",
+      },
+      items: {
+        data: [
+          { id: "si_1", current_period_end: 1_789_000_000, price: { id: "price_pro" } },
+        ],
+      },
+    });
+
+    await service.changePlan({ userId: USER, tier: "team" });
+
     expect(stripe.subscriptions.update).toHaveBeenCalledTimes(1);
-    expect(stripe.subscriptions.update).toHaveBeenCalledWith(
-      "sub_1",
-      expect.objectContaining({
-        cancel_at_period_end: false,
-        items: [{ id: "si_1", price: "price_team" }],
-      }),
-    );
+  });
+
+  it("账号没预约取消时只调一次", async () => {
+    situationIs("active", proRow());
+    await service.changePlan({ userId: USER, tier: "team" });
+    expect(stripe.subscriptions.update).toHaveBeenCalledTimes(1);
   });
 
   it("refuses a move to a lower tier", async () => {

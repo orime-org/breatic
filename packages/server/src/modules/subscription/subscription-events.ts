@@ -51,11 +51,19 @@ import {
  * collapsing them is what sent every subscription checkout to the credit-pack
  * handler: that one looks for a `payments` row, a subscription checkout never
  * writes one, and the webhook answered 404 to a payment that had succeeded.
- * `notMine` means "keep looking"; `noop` means "this was mine, there was
- * nothing to do, answer 200".
+ * `notMine` means "keep looking"; the other four all mean "this was mine,
+ * answer 200".
+ *
+ * `acknowledged` and `noop` are likewise not the same answer. Every
+ * successful membership checkout produces exactly one `acknowledged` — it is
+ * the most common thing this handler says, and nothing is wrong when it does.
+ * A `noop` is the opposite: somebody paid and we could not tell whose account
+ * it was, or for what. Sharing one status between them is what put the normal
+ * path in the warning log.
  */
 export type SubscriptionEventOutcome =
   | { status: "notMine" }
+  | { status: "acknowledged"; reason: string }
   | { status: "noop"; reason: string }
   | { status: "replay"; userId: string }
   | { status: "applied"; userId: string; tier: MembershipTier };
@@ -223,7 +231,7 @@ export async function handleSubscriptionEvent(
     // never sees it, and answered with nothing to do: what the subscription
     // then becomes arrives as `customer.subscription.created`.
     return {
-      status: "noop",
+      status: "acknowledged",
       reason: "a subscription checkout finished; its state arrives separately",
     };
   }

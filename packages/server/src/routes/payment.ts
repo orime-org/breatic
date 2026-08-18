@@ -83,11 +83,25 @@ payment.post("/webhook", async (c) => {
     // A `noop` is logged at warn, not info: the two ways to reach it are an
     // account we cannot identify and a price this deployment does not sell,
     // and both mean somebody may have paid for something we did not record.
-    const log = subscriptionOutcome.status === "noop" ? logger.warn : logger.info;
-    log(
-      { eventId: event.id, type: event.type, ...subscriptionOutcome },
-      "subscription_webhook_handled",
-    );
+    // Everything else here is a normal event, `acknowledged` most of all —
+    // one of those is what a successful membership checkout produces.
+    //
+    // Written as two calls rather than one through a variable holding the
+    // method: pino's level methods live on the prototype and use `this`, so
+    // `const log = logger.warn` hands back an unbound function that throws
+    // `TypeError` the moment it is called. Every subscription event would
+    // reach this line, throw after the database work had already been done,
+    // and answer 500.
+    const line = {
+      eventId: event.id,
+      type: event.type,
+      ...subscriptionOutcome,
+    };
+    if (subscriptionOutcome.status === "noop") {
+      logger.warn(line, "subscription_webhook_handled");
+    } else {
+      logger.info(line, "subscription_webhook_handled");
+    }
     return c.json({ received: true });
   }
 
