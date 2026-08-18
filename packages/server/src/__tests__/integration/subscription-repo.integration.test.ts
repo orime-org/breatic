@@ -318,18 +318,18 @@ describe("listSubscriptions (#106 §5.2)", () => {
   });
 });
 
-describe("一个账号最多一条活订阅 (#106 §6.5.5)", () => {
-  it("拒绝给已经有活订阅的账号再插一条", async () => {
-    // 设计点名的那道兜底。没有它，并发两次结账或者一个乱序事件就能让库里
-    // 躺着两条活订阅，而读侧只会静默挑一条 —— 挑中哪条决定这个人拿到哪一
-    // 档，而两条都是他付过钱的。
+describe("两条活订阅同时存在时 (#106 §6.5.5)", () => {
+  it("两条都存下来，读的时候挑档位高的那条", async () => {
+    // 这张表是 Stripe 的镜像，而 Stripe 允许一个客户同时有两条活订阅。以前
+    // 这里有条部分唯一索引拦第二条 —— 它拦不住那个情形发生，只能决定发生时
+    // 谁失败，而答案是每个写入方都失败：webhook 的事务连「事件已处理」一起
+    // 回滚、路由回 500、Stripe 重投到放弃；对账的事务也回滚，于是这个账号
+    // 一条订阅行都不剩、档位掉到 base、面板还请他再订一条，而两笔钱都在扣。
+    // 现在两条都存下，由读侧挑一条 —— 他付了两份，给他买到的更高那档。
     const userId = await makeUser();
     try {
-      await upsertSubscription({
+      const base = {
         userId,
-        stripeSubscriptionId: `sub_live_a_${Date.now()}`,
-        tier: "pro",
-        status: "active",
         currentPeriodEnd: new Date("2026-09-18T00:00:00.000Z"),
         cancelAtPeriodEnd: false,
         stripeItemId: null,
@@ -337,23 +337,27 @@ describe("一个账号最多一条活订阅 (#106 §6.5.5)", () => {
         pendingTier: null,
         payableInvoiceUrl: null,
         observedAt: new Date(),
+      };
+      const proId = `sub_live_a_${Date.now()}`;
+      const teamId = `sub_live_b_${Date.now()}`;
+      await upsertSubscription({
+        ...base,
+        stripeSubscriptionId: proId,
+        tier: "pro",
+        status: "active",
+      });
+      await upsertSubscription({
+        ...base,
+        stripeSubscriptionId: teamId,
+        tier: "team",
+        status: "active",
       });
 
-      await expect(
-        upsertSubscription({
-          userId,
-          stripeSubscriptionId: `sub_live_b_${Date.now()}`,
-          tier: "team",
-          status: "active",
-          currentPeriodEnd: new Date("2026-09-18T00:00:00.000Z"),
-          cancelAtPeriodEnd: false,
-          stripeItemId: null,
-          hasPendingUpdate: false,
-          pendingTier: null,
-          payableInvoiceUrl: null,
-          observedAt: new Date(),
-        }),
-      ).rejects.toThrow(/live subscription/i);
+      const stored = await listSubscriptions(userId);
+      expect(stored).toHaveLength(2);
+      const reading = subscriptionSituation(stored);
+      expect(reading.situation).toBe("active");
+      expect(reading.record?.stripeSubscriptionId).toBe(teamId);
     } finally {
       await dropUser(userId);
     }

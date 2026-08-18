@@ -199,84 +199,50 @@ async function readOne(
   return rows[0] ? toStored(rows[0]) : null;
 }
 
-/** The database's name for "this account already has a live subscription". */
-const ONE_LIVE_INDEX = "subscriptions_one_live_per_user_idx";
-
 /**
- * Whether an error is the one-live-subscription index refusing a write.
+ * Runs the insert-or-update for one subscription row.
  *
- * The constraint name is on the driver's own error, and drizzle wraps that in
- * a `DrizzleQueryError` whose message is the SQL text — so matching the
- * message finds the query, never the constraint. The name is reached through
- * the `cause` chain, the same walk `isUniqueViolation` does in server.
- * @param err - Whatever the write threw.
- * @returns Whether this index is the one that refused it.
- */
-function violatesOneLiveIndex(err: unknown): boolean {
-  let cur: unknown = err;
-  for (let depth = 0; cur != null && depth < 5; depth++) {
-    if (
-      typeof cur === "object" &&
-      "constraint_name" in cur &&
-      cur.constraint_name === ONE_LIVE_INDEX
-    ) {
-      return true;
-    }
-    cur = typeof cur === "object" && "cause" in cur ? cur.cause : null;
-  }
-  return false;
-}
-
-/**
- * Runs the insert-or-update, translating the one-live-subscription violation.
- *
- * That index is what actually holds the invariant — a check here could not,
- * because the two ways to break it (two checkouts completing at once, an event
- * arriving while the panel reconciles) run in separate transactions that
- * cannot see each other midway. What this adds is a sentence saying which
- * invariant was hit, in place of a bare constraint name.
+ * No handling for "this account already holds a live subscription": that
+ * constraint is gone (0058). It wrote a business rule onto a table that
+ * mirrors Stripe, and Stripe does not guarantee it — so the only thing the
+ * constraint could do was fail the write, and neither writer had anywhere to
+ * go from there. Which of two live rows governs the account is decided when
+ * they are read (`subscription-state.ts`), where two live rows are a state to
+ * describe rather than an error to raise.
  * @param values - The row to write.
  * @param tx - Transaction handle, when the caller is inside one.
- * @returns The written row, in an array of one.
- * @throws {Error} if the account already holds a different live subscription.
+ * @returns The written row in an array of one, or an empty array when a newer
+ *   view of this subscription is already stored.
  */
 async function insertOrUpdate(
   values: typeof subscriptions.$inferInsert & { observedAt: Date },
   tx: DbTx | undefined,
 ): Promise<SubscriptionRow[]> {
-  try {
-    return await (tx ?? db)
-      .insert(subscriptions)
-      .values(values)
-      .onConflictDoUpdate({
-        target: subscriptions.stripeSubscriptionId,
-        set: {
-          tier: values.tier,
-          status: values.status,
-          currentPeriodEnd: values.currentPeriodEnd,
-          cancelAtPeriodEnd: values.cancelAtPeriodEnd,
-          stripeItemId: values.stripeItemId,
-          hasPendingUpdate: values.hasPendingUpdate,
-          pendingTier: values.pendingTier,
-          payableInvoiceUrl: values.payableInvoiceUrl,
-          observedAt: values.observedAt,
-          // A subscription that was soft-deleted and then heard from again is
-          // live; nothing else would put the row back in the account's list.
-          deletedAt: null,
-          updatedAt: new Date(),
-        },
-        // A writer holding an older view of Stripe than the one already stored
-        // has nothing to add: it would replace a newer truth with an older
-        // one. Both writers fetch outside any lock, so which of them commits
-        // first says nothing about which of them saw Stripe last.
-        setWhere: lte(subscriptions.observedAt, values.observedAt),
-      })
-      .returning();
-  } catch (err) {
-    if (!violatesOneLiveIndex(err)) throw err;
-    throw new Error(
-      `Account ${values.userId} already holds a live subscription; ` +
-        `${values.stripeSubscriptionId} cannot be stored as a second one`,
-    );
-  }
+  return await (tx ?? db)
+    .insert(subscriptions)
+    .values(values)
+    .onConflictDoUpdate({
+      target: subscriptions.stripeSubscriptionId,
+      set: {
+        tier: values.tier,
+        status: values.status,
+        currentPeriodEnd: values.currentPeriodEnd,
+        cancelAtPeriodEnd: values.cancelAtPeriodEnd,
+        stripeItemId: values.stripeItemId,
+        hasPendingUpdate: values.hasPendingUpdate,
+        pendingTier: values.pendingTier,
+        payableInvoiceUrl: values.payableInvoiceUrl,
+        observedAt: values.observedAt,
+        // A subscription that was soft-deleted and then heard from again is
+        // live; nothing else would put the row back in the account's list.
+        deletedAt: null,
+        updatedAt: new Date(),
+      },
+      // A writer holding an older view of Stripe than the one already stored
+      // has nothing to add: it would replace a newer truth with an older
+      // one. Both writers fetch outside any lock, so which of them commits
+      // first says nothing about which of them saw Stripe last.
+      setWhere: lte(subscriptions.observedAt, values.observedAt),
+    })
+    .returning();
 }

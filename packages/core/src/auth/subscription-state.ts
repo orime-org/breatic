@@ -20,6 +20,7 @@
  * or to the database.
  */
 
+import { COMPARABLE_MEMBERSHIP_TIERS } from "@breatic/shared";
 import type { MembershipTier, SubscriptionSituation } from "@breatic/shared";
 
 /**
@@ -99,9 +100,8 @@ export interface SituationReading<T extends SubscriptionRecord = SubscriptionRec
 /**
  * The statuses under which a subscription is still ours to act on.
  *
- * Migration 0056's partial unique index uses the same three, and so does the
- * reconciliation's write ordering — the database allows one live row per
- * account, so a writer holding several has to demote the ended ones first.
+ * The same three the panel's reconciliation and the situation reading treat as
+ * still ours to act on.
  *
  * `trialing` and `paused` are absent although Stripe considers them current:
  * we set no trial, so neither can arise from anything we do, and treating one
@@ -151,18 +151,28 @@ function situationOfLiveRecord(
 /**
  * Reads which subscription situation an account is in.
  *
- * At most one row may be live at a time; that invariant is held at write time
- * (design §6.5.5) by checking for a live row before creating another, and by
- * upgrading through Stripe's update rather than by starting a second
- * subscription. Should two ever be live, the first in the given order wins,
- * and callers pass rows newest first.
+ * Normally one row is live and there is nothing to choose. Two can be, and
+ * this table cannot prevent it: it mirrors Stripe, one row per subscription
+ * Stripe reports, and Stripe will hold two live subscriptions for one customer
+ * — two checkout sessions completing at once is enough. (Stripe's own
+ * "limit customers to one subscription" setting is what stops the second from
+ * being sold; a constraint here could only decide what happens once it exists,
+ * and every answer available to a constraint is "the write fails".)
+ *
+ * So the choice is made here, by {@link compareLive}, in an order that does
+ * not depend on which row happened to be inserted first. Asking the caller to
+ * pass rows "newest first" was not an order at all: `created_at` defaults to
+ * `now()`, which in PostgreSQL is the TRANSACTION's start time, so rows
+ * written together tie, and a random-UUID primary key breaks no tie either.
  * @param records - Every subscription row stored for the account.
  * @returns The situation and the row it was read from.
  */
 export function subscriptionSituation<T extends SubscriptionRecord>(
   records: readonly T[],
 ): SituationReading<T> {
-  const live = records.find((record) => LIVE_STATUSES.has(record.status));
+  const live = records
+    .filter((record) => LIVE_STATUSES.has(record.status))
+    .sort(compareLive)[0];
   if (live) return { situation: situationOfLiveRecord(live), record: live };
 
   const unexpected = records.find(
@@ -171,6 +181,36 @@ export function subscriptionSituation<T extends SubscriptionRecord>(
   if (unexpected) return { situation: "unexpected", record: unexpected };
 
   return { situation: "none", record: null };
+}
+
+/**
+ * Which of two live subscriptions governs the account.
+ *
+ * Three keys, each one total where the one before it ties, so the answer never
+ * depends on the order rows arrived in.
+ *
+ * The tier comes first because the person is paying for both: giving them the
+ * lower one would charge for a tier and withhold it. Then the later paid
+ * period, because that is the one their money reaches further into. Then the
+ * subscription id, which is Stripe's and unique — not a tie-break anybody
+ * would defend on its merits, but two subscriptions of the same tier ending at
+ * the same moment are interchangeable, and leaving it undecided is what put
+ * this reading at the mercy of insertion order in the first place.
+ * @param a - One live subscription.
+ * @param b - The other.
+ * @returns Negative when `a` governs, positive when `b` does.
+ */
+function compareLive(a: SubscriptionRecord, b: SubscriptionRecord): number {
+  const byTier =
+    COMPARABLE_MEMBERSHIP_TIERS.indexOf(b.tier as never) -
+    COMPARABLE_MEMBERSHIP_TIERS.indexOf(a.tier as never);
+  if (byTier !== 0) return byTier;
+
+  const byPeriod =
+    (b.currentPeriodEnd?.getTime() ?? 0) - (a.currentPeriodEnd?.getTime() ?? 0);
+  if (byPeriod !== 0) return byPeriod;
+
+  return a.stripeSubscriptionId < b.stripeSubscriptionId ? -1 : 1;
 }
 
 /**

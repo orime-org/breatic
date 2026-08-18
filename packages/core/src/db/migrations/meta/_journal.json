@@ -407,6 +407,13 @@
       "when": 1787035473584,
       "tag": "0057_subscription_stripe_version",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1787051294063,
+      "tag": "0058_drop_one_live_subscription",
+      "breakpoints": true
     }
   ]
 }

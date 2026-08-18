@@ -26,6 +26,7 @@ import {
 
 const validFile = {
   stale_after_days: 14,
+  reconcile_timeout_ms: 5000,
   plans: {
     pro: {
       price_cents: 1200,
@@ -61,7 +62,11 @@ describe("subscription config — resolving plans", () => {
     // price id sent to Stripe.
     expect(() =>
       resolvePlans(
-        { stale_after_days: 14, plans: { pro: validFile.plans.pro } },
+        {
+          stale_after_days: 14,
+          reconcile_timeout_ms: 5000,
+          plans: { pro: validFile.plans.pro },
+        },
         false,
       ),
     ).toThrow(/team/);

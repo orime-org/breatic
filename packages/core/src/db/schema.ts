@@ -669,6 +669,16 @@ export const payments = pgTable(
  * one there would refuse the second subscription of anybody who cancelled and
  * came back, and the refusal would land on somebody who had already paid.
  *
+ * The same reasoning rules out a partial one over the live statuses, which
+ * 0056 added and 0058 removed. This table mirrors Stripe, so the only
+ * constraints it can carry are the ones Stripe guarantees — and Stripe will
+ * hold two live subscriptions for one customer. A constraint cannot prevent
+ * that; it can only decide what happens when it reaches us, and its only
+ * available answer is to fail the write. "One account, at most one live
+ * subscription" is a business rule, enforced where checkouts start and by
+ * Stripe's own setting for it, and the reading in `subscription-state.ts`
+ * decides which row governs when two arrive anyway.
+ *
  * `status` holds Stripe's own word, unchanged. Which tier that word earns has
  * already been reworked once during design; storing the conclusion instead
  * would have made every historical row wrong the moment it changed.
@@ -730,10 +740,6 @@ export const subscriptions = pgTable(
     uniqueIndex("subscriptions_stripe_subscription_id_idx").on(
       table.stripeSubscriptionId,
     ),
-    // One account, at most one live subscription (0056). Declared here for
-    // the record; the predicate lives in the migration, which is where this
-    // repo's index definitions are authoritative.
-    uniqueIndex("subscriptions_one_live_per_user_idx").on(table.userId),
   ],
 );
 

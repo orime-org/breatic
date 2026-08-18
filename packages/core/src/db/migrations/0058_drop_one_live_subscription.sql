@@ -1,0 +1,40 @@
+-- Removes the partial unique index added in 0056, which was the wrong tool.
+--
+-- 0056 wrote a business rule ("one account, at most one live subscription")
+-- as a constraint on `subscriptions`. But that table is a MIRROR of Stripe:
+-- one row per subscription Stripe reports, history included. A mirror can
+-- only carry constraints the source guarantees, and Stripe guarantees no such
+-- thing -- it will happily hold two live subscriptions for one customer.
+--
+-- So the constraint did not prevent the situation, it only decided what
+-- happens when the situation reaches us: every writer fails. And no writer had
+-- anywhere to go from there. The webhook's transaction rolls back, taking the
+-- "event handled" mark with it, so the route answers 500 and Stripe redelivers
+-- into the same failure until it gives up. The panel's reconciliation rolls
+-- back too, and its catch turns that into one log line -- so the account is
+-- left with NO subscription rows at all, tier `base`, the panel inviting a
+-- third subscription, and no way in the product to stop either of the two
+-- being billed. That is strictly worse than the inaccuracy it was added to
+-- prevent.
+--
+-- What 0056 was really trying to fix was a reading, not a write: the situation
+-- reading took whichever live row came first and the caller was asked to pass
+-- them "newest first", which `created_at` cannot establish (it defaults to
+-- `now()`, the TRANSACTION's start time, so rows written in one transaction
+-- tie) and a random-UUID primary key cannot either. That is fixed where it
+-- lives, in `subscription-state.ts`: the live row is now chosen by tier first,
+-- then by the later paid period, then by subscription id -- an order that is
+-- total, independent of insertion order, and defensible to the person paying
+-- (two subscriptions means two payments, and they get the higher of what they
+-- bought).
+--
+-- Stopping the second subscription from being created is Stripe's own job, and
+-- Stripe has a setting for it: "limit customers to one subscription" redirects
+-- a customer who already has a live subscription to the portal instead of
+-- selling another (docs.stripe.com/payments/checkout/limit-subscriptions).
+-- Turning it on is a deployment step, not a schema one.
+--
+-- Hand-written (same pattern as 0018 onward): .sql + _journal entry, no
+-- snapshot.
+
+DROP INDEX IF EXISTS "subscriptions_one_live_per_user_idx";

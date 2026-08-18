@@ -174,3 +174,56 @@ describe("tierForSituation (#106 §6.5.1)", () => {
     expect(tierForSituation("unexpected", row({ tier: "team" }))).toBe("base");
   });
 });
+
+describe("subscriptionSituation — 两条都活着的时候挑哪一条", () => {
+  // 这张表是 Stripe 的镜像，而 Stripe 允许一个客户同时有两条活订阅（两个
+  // 标签页各完成一次结账就够）。以前这里挑的是「传进来的第一条」，靠调用方
+  // 按新旧排序 —— 而 created_at 是事务开始时间、同一个事务里写的两行完全相
+  // 等，主键又是随机 UUID，所以那个顺序根本立不住。现在的判据跟插入顺序无关。
+
+  const pro = row({ stripeSubscriptionId: "sub_pro", tier: "pro" });
+  const team = row({ stripeSubscriptionId: "sub_team", tier: "team" });
+
+  it("给高的那一档：两份都在扣他的钱", () => {
+    expect(subscriptionSituation([pro, team]).record?.tier).toBe("team");
+    expect(subscriptionSituation([team, pro]).record?.tier).toBe("team");
+  });
+
+  it("同档时取付到更晚的那一条", () => {
+    const early = row({
+      stripeSubscriptionId: "sub_a",
+      currentPeriodEnd: new Date("2026-09-01T00:00:00Z"),
+    });
+    const late = row({
+      stripeSubscriptionId: "sub_b",
+      currentPeriodEnd: new Date("2026-10-01T00:00:00Z"),
+    });
+    expect(subscriptionSituation([early, late]).record?.stripeSubscriptionId).toBe("sub_b");
+    expect(subscriptionSituation([late, early]).record?.stripeSubscriptionId).toBe("sub_b");
+  });
+
+  it("档位和周期都一样时仍然只有一个答案", () => {
+    // 两条完全等价，谁生效都行 —— 要紧的是同一批行每次读出来的是同一条，
+    // 不会随着调用方给的顺序变。
+    const a = row({ stripeSubscriptionId: "sub_a" });
+    const b = row({ stripeSubscriptionId: "sub_b" });
+    const one = subscriptionSituation([a, b]).record?.stripeSubscriptionId;
+    const other = subscriptionSituation([b, a]).record?.stripeSubscriptionId;
+    expect(one).toBe(other);
+  });
+
+  it("已终结的那条不参与挑选", () => {
+    const dead = row({
+      stripeSubscriptionId: "sub_dead",
+      tier: "team",
+      status: "canceled",
+    });
+    expect(subscriptionSituation([dead, pro]).record?.stripeSubscriptionId).toBe("sub_pro");
+  });
+
+  it("不改动调用方传进来的那个数组", () => {
+    const rows = [pro, team];
+    subscriptionSituation(rows);
+    expect(rows[0]?.stripeSubscriptionId).toBe("sub_pro");
+  });
+});

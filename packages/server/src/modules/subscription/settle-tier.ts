@@ -29,7 +29,7 @@ import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
  * The tiers a subscription is allowed to move an account between.
  *
  * The two it sells, plus the one an account falls back to when it sells it
- * nothing. Every other tier in {@link MEMBERSHIP_TIERS} got there some other
+ * nothing. Every other tier an account can be on got there some other
  * way and goes away some other way.
  */
 const SUBSCRIPTION_GOVERNED_TIERS: ReadonlySet<string> = new Set<string>([

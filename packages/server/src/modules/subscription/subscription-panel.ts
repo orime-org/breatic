@@ -27,7 +27,6 @@ import {
   db,
   getSubscriptionReconcileTimeoutMs,
   logger,
-  LIVE_SUBSCRIPTION_STATUSES,
   listSubscriptions,
   lockAccountRow,
   subscriptionSituation,
@@ -130,27 +129,14 @@ async function writeAll(
     )
     .filter((write): write is NonNullable<typeof write> => write !== null);
 
-  // Ended subscriptions first. An account renewing after a cancellation has
-  // both an ended and a live one at Stripe, and the database allows only one
-  // live row — writing the new one while the old one is still stored as live
-  // would be refused. Demoting the old one first makes the order irrelevant to
-  // the caller.
-  for (const write of writes.filter((w) => !LIVE_STATUSES.has(w.status))) {
-    await upsertSubscription(write, tx);
-  }
-  for (const write of writes.filter((w) => LIVE_STATUSES.has(w.status))) {
+  // Order does not matter: each row is keyed by its own Stripe id, and which
+  // one governs the account is decided when they are read. This used to write
+  // ended ones first, to get past a unique index that refused a second live
+  // row — an index that could only ever refuse the write, and is gone (0058).
+  for (const write of writes) {
     await upsertSubscription(write, tx);
   }
 }
-
-/**
- * The statuses the database counts as live, and therefore allows only one of.
- *
- * The same three as `subscription-state.ts` and as migration 0056's predicate;
- * a copy here would be a third place to keep in step, so this reads the one
- * the reading already exports.
- */
-const LIVE_STATUSES: ReadonlySet<string> = new Set(LIVE_SUBSCRIPTION_STATUSES);
 
 /**
  * Reads what the panel shows about an account's subscription.
