@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { getLocale } from '@breatic/shared';
 import type { SubscriptionSummary } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
@@ -32,9 +33,14 @@ export const SubscriptionLines = React.memo(function SubscriptionLines({
   subscription,
 }: SubscriptionLinesProps): React.JSX.Element | null {
   const t = useTranslation();
+  // Read rather than subscribed to: `useTranslation` already re-renders this
+  // component on a language change, so this is the current one by the time it
+  // runs. Same reasoning as TierComparison, which formats the price beside
+  // this date and must end up in the same language.
+  const locale = getLocale();
   if (!subscription || subscription.state === 'none') return null;
 
-  const date = formatDate(subscription.currentPeriodEnd);
+  const date = formatDate(subscription.currentPeriodEnd, locale);
   const notice = noticeKeyFor(subscription.state);
 
   return (
@@ -122,13 +128,20 @@ function noticeKeyFor(state: SubscriptionSummary['state']): string | null {
 }
 
 /**
- * Formats an ISO date the way the reader's locale writes dates.
+ * Formats an ISO date in the language the reader picked in our switcher.
+ *
+ * `getLocale()` rather than the runtime default: passing `undefined` here
+ * takes the browser's or the operating system's language, which is not the
+ * one the switcher sets. Somebody on an English machine who chose Chinese saw
+ * a Chinese sentence with an English date inside it, next to a price the
+ * table had formatted in Chinese.
  * @param iso - The date, or null.
+ * @param locale - The application's current language.
  * @returns The formatted date, or null.
  */
-function formatDate(iso: string | null): string | null {
+function formatDate(iso: string | null, locale: string): string | null {
   if (!iso) return null;
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Date(iso).toLocaleDateString(locale, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',

@@ -348,6 +348,53 @@ describe('MembershipPanel', () => {
     expect(screen.queryByTestId('membership-cancel')).toBeNull();
   });
 
+  it('欠费重试期不画升级入口：服务端对它一律拒绝', async () => {
+    // 设计 §13 的 S5 那一格明写「升级入口不给」。画出来的话，点下去只会
+    // 拿到一句「款项已逾期」——一个必然失败的按钮。
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ state: 'retrying' }) }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.queryByTestId('membership-choose-team')).toBeNull();
+    // 取消入口照旧保留：他还是可以决定不续了。
+    expect(screen.getByTestId('membership-cancel')).toBeInTheDocument();
+  });
+
+  it('升级待付款时入口显示为处理中，点不动', async () => {
+    // S4：升级已经买下了、只差那笔钱，所以入口说的是「在办」，不是再卖
+    // 他一次。
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ state: 'upgradePending' }) }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    const button = screen.getByTestId('membership-choose-team');
+    expect(button).toBeDisabled();
+    expect(button).toHaveTextContent('In progress');
+  });
+
+  it('又欠费又预约了取消：给的是恢复，不是取消', async () => {
+    // 这一格两套判据会分叉。处境读出来叫 retrying（欠费优先于预约取消），
+    // 而这个账号确实预约了取消，能做的是撤销它。面板此前照着
+    // `cancelAtPeriodEnd` 画「恢复」，服务端却按处境判、永远拒绝。
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({
+          state: 'retrying',
+          cancelAtPeriodEnd: true,
+        }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('membership-resume')).toBeInTheDocument();
+    expect(screen.queryByTestId('membership-cancel')).toBeNull();
+  });
+
   it('扣款失败重试期间给说明和一个能自己付掉的入口', async () => {
     // 保住档位的另一半：那两周里他必须知道发生了什么，并且有一个自己把钱
     // 付掉的动作。这一格没有「下次扣费」，因为这个月的还没收上来。

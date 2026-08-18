@@ -7,6 +7,7 @@ import type {
   ComparableMembershipTier,
   MembershipTier,
   TierOffer,
+  UpgradeOffer,
 } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -28,6 +29,15 @@ interface TierComparisonProps {
   onChoose?: (tier: ComparableMembershipTier) => void;
   /** Whether a choice is already being carried out, so the row waits. */
   busy?: boolean;
+  /**
+   * Whether a higher tier can be chosen right now (design §13).
+   *
+   * `pending` while an upgrade is bought and waiting on its invoice: the
+   * entrance says so instead of inviting a second one. `withheld` while a
+   * card is failing, which is the one situation the server refuses an upgrade
+   * in — drawing the button there produced nothing but a 409.
+   */
+  upgrade?: UpgradeOffer;
 }
 
 /**
@@ -61,6 +71,7 @@ export const TierComparison = React.memo(function TierComparison({
   currentTier,
   onChoose,
   busy = false,
+  upgrade = 'offered',
 }: TierComparisonProps): React.JSX.Element {
   const t = useTranslation();
   // Read rather than subscribed to: `useTranslation` above already subscribes
@@ -169,11 +180,15 @@ export const TierComparison = React.memo(function TierComparison({
               data-testid={`compare-cell-${offer.tier}-monthlyFee`}
               className={columnClass(offer.tier)}
             >
-              {/* Null means there is no price to quote: the free tier has
-                  none, and neither does a deployment that sells nothing. */}
-              {offer.priceCents === null || offer.currency === null
-                ? t('membership.priceFree')
-                : formatPrice(offer.priceCents, offer.currency, locale)}
+              {/* Two different nulls. The free tier has no price because it
+                  costs nothing, and says so. A priced tier has none when this
+                  deployment sells nothing, and "Free" would be a claim that
+                  PRO costs nothing — it costs $12 wherever it is sold. */}
+              {offer.priceCents !== null && offer.currency !== null
+                ? formatPrice(offer.priceCents, offer.currency, locale)
+                : offer.tier === 'base'
+                  ? t('membership.priceFree')
+                  : '—'}
             </td>
           ))}
         </tr>
@@ -200,12 +215,12 @@ export const TierComparison = React.memo(function TierComparison({
       {onChoose ? (
         <tfoot>
           <tr>
-            {/* The tax note sits in the label column: it belongs to the price
-                row above it, and a line under the whole table read as a
-                footnote about everything. */}
-            <td className='px-2.5 py-3 text-left text-xs text-muted-foreground'>
-              {t('membership.taxNote')}
-            </td>
+            {/* Empty on purpose. A note about tax belonged here while we
+                expected to add tax at checkout; we do not — Stripe Tax needs
+                a tax registration first and is deferred (#107) — so the line
+                promised a calculation that never happens. It comes back when
+                the calculation does. */}
+            <td className='px-2.5 py-3' />
             {offers.map((offer, index) => (
               <td
                 key={offer.tier}
@@ -224,17 +239,19 @@ export const TierComparison = React.memo(function TierComparison({
                   <span className='text-xs font-semibold text-foreground'>
                     {t('membership.action.current')}
                   </span>
-                ) : index > currentRank ? (
+                ) : index > currentRank && upgrade !== 'withheld' ? (
                   <Button
                     type='button'
                     size='sm'
-                    disabled={busy}
+                    disabled={busy || upgrade === 'pending'}
                     data-testid={`membership-choose-${offer.tier}`}
                     onClick={() => onChoose(offer.tier)}
                   >
-                    {t('membership.action.choose', {
-                      tier: t(`membership.tier.${offer.tier}`),
-                    })}
+                    {upgrade === 'pending'
+                      ? t('membership.action.inProgress')
+                      : t('membership.action.choose', {
+                          tier: t(`membership.tier.${offer.tier}`),
+                        })}
                   </Button>
                 ) : null}
               </td>

@@ -1173,9 +1173,9 @@
     "loadFailed": "没能读到你的会员信息，可能是网络问题。稍后再试一次。",
     "action": {
       "choose": "选择 {tier}",
+      "inProgress": "处理中",
       "current": "当前"
     },
-    "taxNote": "价格不含税，税费在结账时计算。",
     "nextCharge": "下次扣费 {date}",
     "endsOn": "会员 {date} 结束",
     "cancel": "取消会员",

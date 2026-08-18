@@ -17,13 +17,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@breatic/core", () => ({
   changeMembershipTier: vi.fn(),
+  getUserMembershipTier: vi.fn(),
 }));
 
 vi.mock("@server/modules/notification/notification.service.js", () => ({
   createMembershipEnded: vi.fn(),
 }));
 
-import { changeMembershipTier } from "@breatic/core";
+import { changeMembershipTier, getUserMembershipTier } from "@breatic/core";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { settleTier } from "@server/modules/subscription/settle-tier.js";
 
@@ -31,6 +32,54 @@ const USER = "u-1";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getUserMembershipTier).mockResolvedValue("pro");
+});
+
+describe("settleTier — 订阅只管它自己给出的那些档位", () => {
+  it.each(["enterprise", "self_hosted"] as const)(
+    "不碰 %s：那不是订阅给的",
+    async (stored) => {
+      // 一个谈下来的企业账号、或者部署形态就是自部署的账号，只要它在 Stripe
+      // 那边有过一次 customer（点过一次订阅按钮就有），打开会员面板就会走到
+      // 对账。对账问 Stripe「有活订阅吗」，答案是没有，于是这里被要求写
+      // base —— 而那个档位根本不是订阅给的，订阅无权收回。
+      vi.mocked(getUserMembershipTier).mockResolvedValue(stored);
+
+      const result = await settleTier({
+        userId: USER,
+        toTier: "base",
+        reason: "subscription_ended",
+        referenceId: "reconcile:cus_1",
+      });
+
+      expect(changeMembershipTier).not.toHaveBeenCalled();
+      expect(notificationService.createMembershipEnded).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        changed: false,
+        fromTier: stored,
+        endedFrom: null,
+      });
+    },
+  );
+
+  it.each(["base", "pro", "team"] as const)(
+    "照常改写 %s：这些就是订阅给的",
+    async (stored) => {
+      vi.mocked(getUserMembershipTier).mockResolvedValue(stored);
+      vi.mocked(changeMembershipTier).mockResolvedValueOnce({
+        changed: true,
+        fromTier: stored,
+      });
+
+      await settleTier({
+        userId: USER,
+        toTier: "team",
+        reason: "subscription_activated",
+      });
+
+      expect(changeMembershipTier).toHaveBeenCalled();
+    },
+  );
 });
 
 describe("settleTier (#106 §9)", () => {

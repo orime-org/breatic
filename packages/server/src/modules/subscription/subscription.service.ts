@@ -38,6 +38,7 @@ import type { SubscribableMembershipTier } from "@breatic/shared";
 import {
   COMPARABLE_MEMBERSHIP_TIERS,
   holdsActionableSubscription,
+  subscriptionActions,
   t,
 } from "@breatic/shared";
 import { getStripeClient } from "@server/infra/stripe.js";
@@ -192,9 +193,10 @@ export async function changePlan(input: {
     // anything arriving here called the endpoint directly.
     throw new ValidationError(t("server.membership.downgrade_not_offered"));
   }
-  if (situation === "retrying") {
+  if (subscriptionActions(situation, record.cancelAtPeriodEnd).upgrade === "withheld") {
     // The paid tier is held while Stripe retries, but selling more during that
-    // window would bill a card that is already failing.
+    // window would bill a card that is already failing. The panel reads the
+    // same answer and draws no entrance, so nobody arrives here by clicking.
     throw new ConflictError(t("server.membership.payment_overdue"));
   }
 
@@ -284,7 +286,7 @@ async function withdrawCancellation(
  */
 export async function cancel(userId: string): Promise<Stripe.Subscription> {
   const { situation, record } = await readSituation(userId);
-  if (!record || !holdsActionableSubscription(situation)) {
+  if (!record || !subscriptionActions(situation, record.cancelAtPeriodEnd).cancel) {
     throw new ConflictError(t("server.membership.no_subscription"));
   }
   return getStripeClient().subscriptions.update(record.stripeSubscriptionId, {
@@ -304,7 +306,12 @@ export async function cancel(userId: string): Promise<Stripe.Subscription> {
  */
 export async function resume(userId: string): Promise<Stripe.Subscription> {
   const { situation, record } = await readSituation(userId);
-  if (!record || situation !== "cancelling") {
+  // Asks whether an ending is scheduled, not whether the situation is called
+  // `cancelling`. An account that is both behind on payment and scheduled to
+  // end reads as `retrying` — the situation can only name one thing — and
+  // withdrawing the cancellation is exactly what it should still be able to
+  // do. The panel draws the button from this same answer.
+  if (!record || !subscriptionActions(situation, record.cancelAtPeriodEnd).resume) {
     throw new ConflictError(t("server.membership.not_cancelling"));
   }
   return getStripeClient().subscriptions.update(record.stripeSubscriptionId, {

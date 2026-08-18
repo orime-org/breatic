@@ -1173,9 +1173,9 @@
     "loadFailed": "メンバーシップ情報を読み込めませんでした。通信の問題かもしれません。少し時間をおいてお試しください。",
     "action": {
       "choose": "{tier} を選ぶ",
+      "inProgress": "処理中",
       "current": "現在"
     },
-    "taxNote": "価格は税抜きです。税は決済時に加算されます。",
     "nextCharge": "次回請求 {date}",
     "endsOn": "メンバーシップ終了 {date}",
     "cancel": "メンバーシップを解約",

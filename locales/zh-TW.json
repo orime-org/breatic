@@ -1173,9 +1173,9 @@
     "loadFailed": "沒能讀到你的會員資訊，可能是網路問題。稍後再試一次。",
     "action": {
       "choose": "選擇 {tier}",
+      "inProgress": "處理中",
       "current": "目前"
     },
-    "taxNote": "價格未含稅，稅費在結帳時計算。",
     "nextCharge": "下次扣款 {date}",
     "endsOn": "會員 {date} 結束",
     "cancel": "取消會員",

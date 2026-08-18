@@ -250,6 +250,63 @@ export function holdsActionableSubscription(
   return ACTIONABLE_SITUATION_SET.has(situation);
 }
 
+/** What the panel may offer for the upgrade entrance (design §13). */
+export type UpgradeOffer = "offered" | "pending" | "withheld";
+
+/** Which of the three subscription actions an account can take right now. */
+export interface SubscriptionActionAvailability {
+  /**
+   * Whether a higher tier can be chosen — and if not, why not.
+   *
+   * `pending` is S4: an upgrade is already bought and waiting on its invoice,
+   * so the entrance shows as in progress rather than inviting a second one.
+   * `withheld` is S5: the server refuses to sell more while a card is already
+   * failing, so offering it would only produce a refusal.
+   */
+  readonly upgrade: UpgradeOffer;
+  /** Whether the membership can be set to end at the period boundary. */
+  readonly cancel: boolean;
+  /** Whether a scheduled ending can be taken back. */
+  readonly resume: boolean;
+}
+
+/**
+ * What an account may do about its subscription, decided once for both ends.
+ *
+ * The server refuses anything outside this and the panel draws nothing
+ * outside it. Keeping one copy each is what produced two defects at once: a
+ * "resume" button on an account behind on payment, which the server always
+ * refused because it asked whether the situation was `cancelling` while the
+ * panel asked whether a cancellation was scheduled — and those disagree for
+ * exactly the account that is both — and an upgrade button during the retry
+ * window, which design §13 says not to draw and the server answers 409 to.
+ *
+ * `resume` asks whether an ending is scheduled rather than whether the
+ * situation is `cancelling`, because that is what taking it back means. An
+ * account whose card is failing AND who asked to stop is both `retrying` and
+ * scheduled to end; the situation reading can only name one of those, and the
+ * one it names is not the one this question is about.
+ * @param state - The situation the account's subscription puts it in.
+ * @param cancelAtPeriodEnd - Whether it is set to end at the period boundary.
+ * @returns Which of the three actions are available.
+ */
+export function subscriptionActions(
+  state: SubscriptionSituation,
+  cancelAtPeriodEnd: boolean,
+): SubscriptionActionAvailability {
+  const actionable = holdsActionableSubscription(state);
+  return {
+    upgrade:
+      state === "retrying"
+        ? "withheld"
+        : state === "upgradePending"
+          ? "pending"
+          : "offered",
+    cancel: actionable && !cancelAtPeriodEnd,
+    resume: actionable && cancelAtPeriodEnd,
+  };
+}
+
 /** What the panel shows about an account's subscription. */
 export interface SubscriptionSummary {
   /** Which situation it is in — {@link SubscriptionSituation}, not Stripe's word. */

@@ -1173,9 +1173,9 @@
     "loadFailed": "We could not read your membership. It may be a network problem — try again in a moment.",
     "action": {
       "choose": "Choose {tier}",
+      "inProgress": "In progress",
       "current": "Current"
     },
-    "taxNote": "Prices exclude tax. Tax is added at checkout.",
     "nextCharge": "Next charge {date}",
     "endsOn": "Membership ends {date}",
     "cancel": "Cancel membership",

@@ -16,13 +16,26 @@
  * So it hangs on the RESULT: the tier moved, and where it landed is `base`.
  */
 
-import { changeMembershipTier } from "@breatic/core";
+import { changeMembershipTier, getUserMembershipTier } from "@breatic/core";
 import type { DbTx, TierChangeReason } from "@breatic/core";
+import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@breatic/shared";
 import type { MembershipTier } from "@breatic/shared";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { buildMembershipEndedMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
+
+/**
+ * The tiers a subscription is allowed to move an account between.
+ *
+ * The two it sells, plus the one an account falls back to when it sells it
+ * nothing. Every other tier in {@link MEMBERSHIP_TIERS} got there some other
+ * way and goes away some other way.
+ */
+const SUBSCRIPTION_GOVERNED_TIERS: ReadonlySet<string> = new Set<string>([
+  "base",
+  ...SUBSCRIBABLE_MEMBERSHIP_TIERS,
+]);
 
 /** What one settling of the tier did. */
 export interface SettleTierResult {
@@ -63,6 +76,19 @@ export async function settleTier(input: {
   referenceId?: string;
   tx?: DbTx;
 }): Promise<SettleTierResult> {
+  const stored = await getUserMembershipTier(input.userId, input.tx);
+  if (!SUBSCRIPTION_GOVERNED_TIERS.has(stored)) {
+    // Stripe has no say over this account's tier. `enterprise` is negotiated
+    // and `self_hosted` is a deployment shape; neither was ever sold as a
+    // subscription, so "there is no live subscription" says nothing about
+    // them. Without this the reconciliation writes `base` over both — and it
+    // runs for any account that ever had a Stripe customer, which one press
+    // of the subscribe button is enough to create. The read side already
+    // refuses to touch these (`honouredTier`); this is the same refusal on
+    // the write side, where it was missing.
+    return { changed: false, fromTier: stored, endedFrom: null };
+  }
+
   const { changed, fromTier } = await changeMembershipTier(
     input.userId,
     input.toTier,

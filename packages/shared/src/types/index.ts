@@ -85,6 +85,8 @@ export type {
   ComparableMembershipTier,
   SubscribableMembershipTier,
   SubscriptionSituation,
+  SubscriptionActionAvailability,
+  UpgradeOffer,
   SubscriptionSummary,
   TierOffer,
   AccountUsage,
@@ -100,6 +102,7 @@ export {
   SUBSCRIPTION_SITUATIONS,
   ACTIONABLE_SUBSCRIPTION_SITUATIONS,
   holdsActionableSubscription,
+  subscriptionActions,
   isComparableMembershipTier,
 } from "@shared/types/membership.js";
 

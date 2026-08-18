@@ -11,6 +11,7 @@
  */
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -42,10 +43,14 @@ export interface SubscriptionActions {
 /**
  * Wires the panel's buttons to the subscription endpoints.
  *
- * Every action ends by reloading the page rather than patching state in place.
- * A subscription change is settled by Stripe and told to us by a webhook, so
- * what the panel should show afterwards is a server fact — and the tier in the
- * session payload, which the top bar renders, has to be re-read anyway.
+ * None of them patch state in place: what the panel should show afterwards is
+ * a server fact, settled by Stripe and told to us by a webhook.
+ *
+ * How much gets re-read differs, because how much changed differs. Choosing a
+ * tier moves the tier itself, which the top bar renders out of the session
+ * payload, so that one reloads the page. Cancelling and resuming move no tier
+ * at all — they only set a flag on the subscription — so they re-read this
+ * panel's own query and leave the reader where they were.
  * @param subscription - The account's subscription, or null when this
  *   deployment sells none.
  * @returns The three actions and whether one is running.
@@ -54,7 +59,22 @@ export function useSubscriptionActions(
   subscription: SubscriptionSummary | null,
 ): SubscriptionActions {
   const t = useTranslation();
+  const queryClient = useQueryClient();
   const [busy, setBusy] = React.useState(false);
+
+  // Re-reads the panel's own data and leaves the page alone.
+  //
+  // Cancelling and resuming do not move the tier — `cancelling` still earns
+  // the tier it was paid for, and the server sends nothing but
+  // `cancel_at_period_end` — so there is nothing outside this panel to
+  // refresh. Reloading the whole page for them closed the panel the reader
+  // was standing in, threw away whatever page was underneath it, and left no
+  // sign that anything had happened.
+  const refreshPanel = React.useCallback(async () => {
+    await queryClient.invalidateQueries({
+      queryKey: ['account', 'membership'],
+    });
+  }, [queryClient]);
 
   const run = React.useCallback(
     async (work: () => Promise<void>) => {
@@ -103,16 +123,16 @@ export function useSubscriptionActions(
   const cancel = React.useCallback(() => {
     void run(async () => {
       await cancelSubscription();
-      window.location.reload();
+      await refreshPanel();
     });
-  }, [run]);
+  }, [run, refreshPanel]);
 
   const resume = React.useCallback(() => {
     void run(async () => {
       await resumeSubscription();
-      window.location.reload();
+      await refreshPanel();
     });
-  }, [run]);
+  }, [run, refreshPanel]);
 
   return { choose, cancel, resume, busy };
 }
@@ -133,6 +153,14 @@ function errorMessage(
   err: unknown,
   t: ReturnType<typeof useTranslation>,
 ): string {
-  if (err instanceof ApiException && err.message) return err.message;
+  // `fromServer`, not "is the message non-empty". When the request never
+  // reached us — network down, a gateway answering HTML, a timeout — axios
+  // still supplies a message, and it is English written for a developer
+  // ("Network Error", "Request failed with status code 502"). Handing that to
+  // a reader in any of our five languages is what this field exists to
+  // prevent.
+  if (err instanceof ApiException && err.fromServer && err.message) {
+    return err.message;
+  }
   return t('membership.actionFailed');
 }

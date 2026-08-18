@@ -401,4 +401,30 @@ describe("cancel and resume (#106 §7.5)", () => {
     situationIs("active", { stripeSubscriptionId: "sub_1", tier: "pro" });
     await expect(service.resume(USER)).rejects.toBeInstanceOf(ConflictError);
   });
+
+  it("又欠费又预约了取消的账号，恢复要能成", async () => {
+    // 面板对这一格画的就是「恢复」。判据若问「处境叫不叫 cancelling」，答案
+    // 是 retrying（欠费优先），于是服务端永远拒绝一个画得出来的按钮。要问的
+    // 是「预约了取消吗」。
+    situationIs("retrying", {
+      stripeSubscriptionId: "sub_1",
+      tier: "pro",
+      cancelAtPeriodEnd: true,
+    });
+
+    await service.resume(USER);
+
+    expect(stripe.subscriptions.update).toHaveBeenCalledWith("sub_1", {
+      cancel_at_period_end: false,
+    });
+  });
+
+  it("已经预约了取消就不再受理取消", async () => {
+    situationIs("cancelling", {
+      stripeSubscriptionId: "sub_1",
+      tier: "pro",
+      cancelAtPeriodEnd: true,
+    });
+    await expect(service.cancel(USER)).rejects.toBeInstanceOf(ConflictError);
+  });
 });

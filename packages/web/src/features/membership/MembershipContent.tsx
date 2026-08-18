@@ -3,8 +3,8 @@
 
 import * as React from 'react';
 import {
-  holdsActionableSubscription,
   isComparableMembershipTier,
+  subscriptionActions,
   type AccountMembership,
   type ComparableMembershipTier,
 } from '@breatic/shared';
@@ -106,6 +106,18 @@ export function MembershipContent({
   const { tier, limits, usage, catalog, subscription } = membership;
   const onPriceList = isComparableMembershipTier(tier);
   const { choose, cancel, resume, busy } = useSubscriptionActions(subscription);
+  // What this account may do, decided on the same rule the server enforces.
+  // Both ends asking their own version is what drew a resume button the
+  // server always refused, and an upgrade entrance during the retry window
+  // that design §13 says not to draw.
+  const actions = React.useMemo(
+    () =>
+      subscriptionActions(
+        subscription?.state ?? 'none',
+        subscription?.cancelAtPeriodEnd ?? false,
+      ),
+    [subscription?.state, subscription?.cancelAtPeriodEnd],
+  );
 
   // The table offers every comparable tier, `base` included; only the ones
   // that can be subscribed to reach the action.
@@ -249,6 +261,7 @@ export function MembershipContent({
               // the action row rather than showing buttons that cannot work.
               onChoose={subscription ? handleChoose : undefined}
               busy={busy}
+              upgrade={actions.upgrade}
             />
           </ScrollArea>
           {/* One line, contact on the left and the subscription control on
@@ -263,23 +276,19 @@ export function MembershipContent({
             />
             {/* The same list the server reads, so an action this panel draws
                 is one the server will accept. */}
-            {subscription && holdsActionableSubscription(subscription.state) ? (
+            {actions.cancel || actions.resume ? (
               <Button
                 type='button'
                 variant='outline'
                 size='sm'
                 disabled={busy}
                 data-testid={
-                  subscription.cancelAtPeriodEnd
-                    ? 'membership-resume'
-                    : 'membership-cancel'
+                  actions.resume ? 'membership-resume' : 'membership-cancel'
                 }
-                onClick={subscription.cancelAtPeriodEnd ? resume : cancel}
+                onClick={actions.resume ? resume : cancel}
                 className='shrink-0'
               >
-                {subscription.cancelAtPeriodEnd
-                  ? t('membership.resume')
-                  : t('membership.cancel')}
+                {actions.resume ? t('membership.resume') : t('membership.cancel')}
               </Button>
             ) : null}
           </div>
