@@ -62,6 +62,9 @@ async function reconcile(
   userId: string,
   customerId: string,
 ): Promise<MembershipTier | null> {
+  // Stamped before the call, not after: the moment that decides which of two
+  // writers is holding the newer view is when each of them ASKED.
+  const observedAt = new Date();
   const listed = await getStripeClient().subscriptions.list({
     customer: customerId,
     status: "all",
@@ -70,9 +73,12 @@ async function reconcile(
   });
 
   let endedFrom: MembershipTier | null = null;
+  // The lock is taken only now, after Stripe has answered, and covers nothing
+  // but local writes. The webhook does the same, and the two are kept in order
+  // by `observedAt` rather than by which of them holds the lock.
   await db.transaction(async (tx) => {
     await lockAccountRow(userId, tx);
-    await writeAll(listed.data, userId, tx);
+    await writeAll(listed.data, userId, tx, observedAt);
     const reading = subscriptionSituation(await listSubscriptions(userId, tx));
     const settled = await settleTier({
       userId,
@@ -96,14 +102,18 @@ async function reconcile(
  * @param subscriptions - What Stripe reported.
  * @param userId - The account.
  * @param tx - The shared transaction.
+ * @param observedAt - When Stripe was asked.
  */
 async function writeAll(
   subscriptions: readonly Stripe.Subscription[],
   userId: string,
   tx: DbTx,
+  observedAt: Date,
 ): Promise<void> {
   const writes = subscriptions
-    .map((subscription) => readStripeSubscription(subscription, userId))
+    .map((subscription) =>
+      readStripeSubscription(subscription, userId, observedAt),
+    )
     .filter((write): write is NonNullable<typeof write> => write !== null);
 
   // Ended subscriptions first. An account renewing after a cancellation has

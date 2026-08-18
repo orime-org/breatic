@@ -712,6 +712,16 @@ export const subscriptions = pgTable(
     hasPendingUpdate: boolean("has_pending_update").default(false).notNull(),
     pendingTier: varchar("pending_tier", { length: 16 }),
     payableInvoiceUrl: text("payable_invoice_url"),
+    // When the snapshot this row was written from was taken (0057).
+    //
+    // Two paths write here — the webhook and the panel's reconciliation — and
+    // both ask Stripe first and write second, so the one that asked first can
+    // still commit last while holding the older answer. Comparing this decides
+    // which view is newer, which is what lets both of them fetch outside any
+    // lock: whoever saw Stripe more recently wins, whatever the commit order.
+    observedAt: timestamp("observed_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

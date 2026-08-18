@@ -53,7 +53,9 @@ vi.mock("@server/infra/stripe.js", () => ({
 import type Stripe from "stripe";
 import postgres from "postgres";
 import { initCore, loadLocales, getUserMembershipTier } from "@breatic/core";
+import { upsertSubscription } from "@breatic/core";
 import { handleSubscriptionEvent } from "@server/modules/subscription/subscription-events.js";
+import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
 
 try {
   initCore(process.env);
@@ -377,6 +379,51 @@ describe("handleSubscriptionEvent — an upgrade that went unpaid (#106 §7.3)",
       await dropUser(userId);
     }
   });
+
+  it("就算别人先一步把待付标记清掉了，这条通知照样发得出来", async () => {
+    // 通知的依据不能是「我写库前读到的那一行」—— 面板对账或者兄弟事件先提交
+    // 一次，那一行就已经没有 pendingTier 了，通知从此凭空消失。事件负载里带
+    // 着那次升级要去哪一档，那才是它自己的事实。
+    const { userId, customerId } = await makeCustomerAccount();
+    try {
+      const lapsed = stripeSub({
+        id: `sub_lapse_${seq}`,
+        customer: customerId,
+        pending_update: {
+          expires_at: 0,
+          subscription_items: [{ id: "si_1", price: { id: TEAM_PRICE } }],
+        },
+      });
+      // 库里那一行是干净的：待付标记已经被别的写入方清掉了。
+      stripe.subscriptions.retrieve.mockResolvedValueOnce(
+        stripeSub({ id: lapsed.id, customer: customerId }),
+      );
+      await handleSubscriptionEvent(
+        event("customer.subscription.created", lapsed, `evt_lap_a_${Date.now()}`),
+      );
+
+      stripe.subscriptions.retrieve.mockResolvedValueOnce(
+        stripeSub({ id: lapsed.id, customer: customerId }),
+      );
+      await handleSubscriptionEvent(
+        event(
+          "customer.subscription.pending_update_expired",
+          lapsed,
+          `evt_lap_b_${Date.now()}`,
+        ),
+      );
+
+      const bells = await sql<{ type: string; payload: unknown }[]>`
+        SELECT type, payload FROM notifications WHERE user_id = ${userId}
+      `;
+      expect(bells.map((b) => b.type)).toEqual([
+        "membership.upgrade_incomplete",
+      ]);
+      expect(bells[0]?.payload).toEqual({ toTier: "team" });
+    } finally {
+      await dropUser(userId);
+    }
+  });
 });
 
 describe("handleSubscriptionEvent — 哪些事件归这条腿 (#106 §8)", () => {
@@ -467,6 +514,45 @@ describe("handleSubscriptionEvent — 哪些事件归这条腿 (#106 §8)", () =
       expect(await getUserMembershipTier(userId)).toBe("base");
     } finally {
       await sql`DELETE FROM stripe_webhook_events WHERE event_id = ${eventId}`;
+      await dropUser(userId);
+    }
+  });
+});
+
+describe("并发写入：后取到的快照说了算 (#106 §6.5.5)", () => {
+  it("一个拿着旧快照的写入方，覆盖不掉已经写进去的新状态", async () => {
+    // 两条路径都会写这张表：webhook 和面板对账。两边都是「先问 Stripe、再写
+    // 库」，所以先问的那个可能后写 —— 它手里那份是旧的。判据不能是谁后提交，
+    // 只能是谁的快照更新。
+    const { userId, customerId } = await makeCustomerAccount();
+    const stripeId = `sub_ver_${Date.now()}`;
+    try {
+      const newer = stripeSub({
+        id: stripeId,
+        customer: customerId,
+        status: "active",
+      });
+      stripe.subscriptions.retrieve.mockResolvedValueOnce(newer);
+      await handleSubscriptionEvent(
+        event("customer.subscription.updated", newer, `evt_ver_a_${Date.now()}`),
+      );
+      expect(await getUserMembershipTier(userId)).toBe("pro");
+
+      // 另一个写入方手里那份是更早取到的：它说这条订阅还没付成。
+      const stale = readStripeSubscription(
+        stripeSub({ id: stripeId, customer: customerId, status: "incomplete" }),
+        userId,
+      );
+      await upsertSubscription({
+        ...stale!,
+        observedAt: new Date(Date.now() - 60_000),
+      });
+
+      const [row] = await sql<{ status: string }[]>`
+        SELECT status FROM subscriptions WHERE stripe_subscription_id = ${stripeId}
+      `;
+      expect(row?.status).toBe("active");
+    } finally {
       await dropUser(userId);
     }
   });

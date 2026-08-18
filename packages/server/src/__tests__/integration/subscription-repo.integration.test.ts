@@ -100,6 +100,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
         hasPendingUpdate: false,
         pendingTier: null,
         payableInvoiceUrl: null,
+        observedAt: new Date(),
       });
 
       expect(stored.tier).toBe("pro");
@@ -130,6 +131,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
         hasPendingUpdate: false,
         pendingTier: null,
         payableInvoiceUrl: "https://invoice.example/1",
+        observedAt: new Date(),
       });
       const updated = await upsertSubscription({
         userId,
@@ -142,6 +144,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
         hasPendingUpdate: false,
         pendingTier: null,
         payableInvoiceUrl: null,
+        observedAt: new Date(),
       });
 
       expect(updated.status).toBe("active");
@@ -170,6 +173,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
         hasPendingUpdate: false,
         pendingTier: null,
         payableInvoiceUrl: null,
+        observedAt: new Date(),
       });
       await upsertSubscription({
         userId,
@@ -182,6 +186,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
         hasPendingUpdate: false,
         pendingTier: null,
         payableInvoiceUrl: null,
+        observedAt: new Date(),
       });
 
       const rows = await listSubscriptions(userId);
@@ -207,6 +212,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
         hasPendingUpdate: false,
         pendingTier: null,
         payableInvoiceUrl: null,
+        observedAt: new Date(),
       });
 
       const { situation, record } = subscriptionSituation(
@@ -242,6 +248,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
             hasPendingUpdate: false,
             pendingTier: null,
             payableInvoiceUrl: null,
+            observedAt: new Date(),
           },
           tx,
         );
@@ -257,6 +264,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
             hasPendingUpdate: false,
             pendingTier: null,
             payableInvoiceUrl: null,
+            observedAt: new Date(),
           },
           tx,
         );
@@ -297,6 +305,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
         hasPendingUpdate: false,
         pendingTier: null,
         payableInvoiceUrl: null,
+        observedAt: new Date(),
       });
       await sql`
         UPDATE subscriptions SET deleted_at = now()
@@ -327,6 +336,7 @@ describe("一个账号最多一条活订阅 (#106 §6.5.5)", () => {
         hasPendingUpdate: false,
         pendingTier: null,
         payableInvoiceUrl: null,
+        observedAt: new Date(),
       });
 
       await expect(
@@ -341,6 +351,7 @@ describe("一个账号最多一条活订阅 (#106 §6.5.5)", () => {
           hasPendingUpdate: false,
           pendingTier: null,
           payableInvoiceUrl: null,
+          observedAt: new Date(),
         }),
       ).rejects.toThrow(/live subscription/i);
     } finally {
@@ -364,6 +375,7 @@ describe("一个账号最多一条活订阅 (#106 §6.5.5)", () => {
         hasPendingUpdate: false,
         pendingTier: null,
         payableInvoiceUrl: null,
+        observedAt: new Date(),
       };
       await upsertSubscription(write);
       const again = await upsertSubscription({ ...write, status: "past_due" });
@@ -388,6 +400,7 @@ describe("一个账号最多一条活订阅 (#106 §6.5.5)", () => {
         hasPendingUpdate: false,
         pendingTier: null,
         payableInvoiceUrl: null,
+        observedAt: new Date(),
       });
       const fresh = await upsertSubscription({
         userId,
@@ -400,6 +413,7 @@ describe("一个账号最多一条活订阅 (#106 §6.5.5)", () => {
         hasPendingUpdate: false,
         pendingTier: null,
         payableInvoiceUrl: null,
+        observedAt: new Date(),
       });
       expect(fresh.tier).toBe("team");
       expect(await listSubscriptions(userId)).toHaveLength(2);

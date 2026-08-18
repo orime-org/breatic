@@ -57,6 +57,9 @@ function payableUrlOf(
  * @param subscription - The subscription object, ideally with
  *   `latest_invoice` expanded.
  * @param userId - The account it belongs to, already resolved by the caller.
+ * @param observedAt - When this snapshot was taken from Stripe. Passed in
+ *   rather than read from the clock here, because the moment that matters is
+ *   when the caller ASKED, not when it got round to writing.
  * @returns What to write, or null when the subscription sells a price this
  *   deployment does not know — storing it under a guessed tier would hand out
  *   ceilings nobody bought.
@@ -64,6 +67,7 @@ function payableUrlOf(
 export function readStripeSubscription(
   subscription: Stripe.Subscription,
   userId: string,
+  observedAt: Date = new Date(),
 ): SubscriptionWrite | null {
   const item = subscription.items?.data?.[0];
   const priceId = priceIdOf(item);
@@ -89,5 +93,6 @@ export function readStripeSubscription(
       ? findSubscribableTierByPriceId(pendingPriceId)
       : null,
     payableInvoiceUrl: payableUrlOf(subscription.latest_invoice),
+    observedAt,
   };
 }

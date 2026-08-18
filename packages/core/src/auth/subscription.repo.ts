@@ -16,7 +16,7 @@
  * converges on one row per Stripe subscription.
  */
 
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, lte } from "drizzle-orm";
 import type { MembershipTier } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
 import { subscriptions } from "@core/db/schema.js";
@@ -37,6 +37,8 @@ export interface StoredSubscription extends SubscriptionRecord {
   readonly pendingTier: MembershipTier | null;
   /** Where to go to pay an outstanding invoice, when there is one. */
   readonly payableInvoiceUrl: string | null;
+  /** When the Stripe snapshot behind this row was taken. */
+  readonly observedAt: Date;
 }
 
 /** What Stripe currently says about one subscription. */
@@ -61,6 +63,13 @@ export interface SubscriptionWrite {
   readonly pendingTier: MembershipTier | null;
   /** The hosted page for an outstanding invoice, when there is one. */
   readonly payableInvoiceUrl: string | null;
+  /**
+   * When this view of the subscription was taken from Stripe.
+   *
+   * Set by the caller at the moment it fetched, not at the moment it writes —
+   * the gap between the two is exactly what this exists to arbitrate.
+   */
+  readonly observedAt: Date;
 }
 
 /** The row shape drizzle returns, before it is narrowed. */
@@ -86,6 +95,7 @@ function toStored(row: SubscriptionRow): StoredSubscription {
     hasPendingUpdate: row.hasPendingUpdate,
     pendingTier: (row.pendingTier as MembershipTier | null) ?? null,
     payableInvoiceUrl: row.payableInvoiceUrl,
+    observedAt: row.observedAt,
   };
 }
 
@@ -151,19 +161,42 @@ export async function upsertSubscription(
     hasPendingUpdate: write.hasPendingUpdate,
     pendingTier: write.pendingTier,
     payableInvoiceUrl: write.payableInvoiceUrl,
+    observedAt: write.observedAt,
   };
 
   const rows = await insertOrUpdate(values, tx);
+  if (rows[0]) return toStored(rows[0]);
 
-  const row = rows[0];
-  if (!row) {
-    // Not reachable: the statement either inserts or updates. A plain Error
-    // rather than an AppError — no user input produced this.
+  // No row came back because the stored one was taken from a newer view of
+  // Stripe than this one, so the write was skipped. That is an ordinary
+  // outcome, not a failure — and the caller still wants to know what the
+  // subscription looks like, which is the row that won.
+  const current = await readOne(write.stripeSubscriptionId, tx);
+  if (!current) {
+    // Not reachable: something is there, or the insert would have happened.
     throw new Error(
-      `Writing subscription ${write.stripeSubscriptionId} returned no row`,
+      `Writing subscription ${write.stripeSubscriptionId} left no row`,
     );
   }
-  return toStored(row);
+  return current;
+}
+
+/**
+ * Reads one subscription by its Stripe id.
+ * @param stripeSubscriptionId - Stripe's id for it.
+ * @param tx - Transaction handle, when the caller is inside one.
+ * @returns The stored subscription, or null.
+ */
+async function readOne(
+  stripeSubscriptionId: string,
+  tx: DbTx | undefined,
+): Promise<StoredSubscription | null> {
+  const rows = await (tx ?? db)
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId))
+    .limit(1);
+  return rows[0] ? toStored(rows[0]) : null;
 }
 
 /** The database's name for "this account already has a live subscription". */
@@ -208,7 +241,7 @@ function violatesOneLiveIndex(err: unknown): boolean {
  * @throws {Error} if the account already holds a different live subscription.
  */
 async function insertOrUpdate(
-  values: typeof subscriptions.$inferInsert,
+  values: typeof subscriptions.$inferInsert & { observedAt: Date },
   tx: DbTx | undefined,
 ): Promise<SubscriptionRow[]> {
   try {
@@ -226,11 +259,17 @@ async function insertOrUpdate(
           hasPendingUpdate: values.hasPendingUpdate,
           pendingTier: values.pendingTier,
           payableInvoiceUrl: values.payableInvoiceUrl,
+          observedAt: values.observedAt,
           // A subscription that was soft-deleted and then heard from again is
           // live; nothing else would put the row back in the account's list.
           deletedAt: null,
           updatedAt: new Date(),
         },
+        // A writer holding an older view of Stripe than the one already stored
+        // has nothing to add: it would replace a newer truth with an older
+        // one. Both writers fetch outside any lock, so which of them commits
+        // first says nothing about which of them saw Stripe last.
+        setWhere: lte(subscriptions.observedAt, values.observedAt),
       })
       .returning();
   } catch (err) {

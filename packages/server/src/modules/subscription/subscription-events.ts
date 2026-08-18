@@ -25,13 +25,14 @@
 import type Stripe from "stripe";
 import {
   db,
+  findSubscribableTierByPriceId,
   listSubscriptions,
   lockAccountRow,
   subscriptionSituation,
   tierForSituation,
   upsertSubscription,
 } from "@breatic/core";
-import type { DbTx, StoredSubscription } from "@breatic/core";
+import type { DbTx, SubscriptionWrite } from "@breatic/core";
 import type { MembershipTier } from "@breatic/shared";
 import { getStripeClient } from "@server/infra/stripe.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
@@ -95,16 +96,6 @@ function claimsEvent(event: Stripe.Event): boolean {
 }
 
 /**
- * Thrown to abandon the transaction when the subscription sells a price this
- * deployment does not know.
- *
- * Rolling back matters: it leaves the event unmarked, so an operator who adds
- * the price to the config can redeliver it from the Stripe dashboard. Marking
- * it handled would drop that subscription for good.
- */
-class UnknownPriceError extends Error {}
-
-/**
  * Reads which account a subscription belongs to.
  *
  * Two lines, checked in this order. The metadata is ours, written onto the
@@ -140,28 +131,18 @@ function customerIdOf(subscription: Stripe.Subscription): string | null {
  * Writes what Stripe currently says, and settles the tier that follows.
  * @param event - The event that prompted this.
  * @param userId - The account it belongs to.
+ * @param write - What Stripe said, already fetched outside the transaction.
  * @param tx - The transaction it all shares.
  * @returns The tier now in force, and whether an email is owed.
- * @throws {UnknownPriceError} if the subscription sells a price we do not know.
  */
 async function applyCurrentState(
   event: Stripe.Event,
   userId: string,
+  write: SubscriptionWrite,
   tx: DbTx,
 ): Promise<{ tier: MembershipTier; endedFrom: MembershipTier | null }> {
-  const named = event.data.object as Stripe.Subscription;
-  const before = (await listSubscriptions(userId, tx)).find(
-    (row) => row.stripeSubscriptionId === named.id,
-  );
-
-  const fresh = await getStripeClient().subscriptions.retrieve(named.id, {
-    expand: ["latest_invoice"],
-  });
-  const write = readStripeSubscription(fresh, userId);
-  if (!write) throw new UnknownPriceError(named.id);
   await upsertSubscription(write, tx);
-
-  await notifyIfUpgradeLapsed(event, userId, before, tx);
+  await notifyIfUpgradeLapsed(event, userId, tx);
 
   const reading = subscriptionSituation(await listSubscriptions(userId, tx));
   const tier = tierForSituation(reading.situation, reading.record);
@@ -178,27 +159,47 @@ async function applyCurrentState(
 /**
  * Tells the account when a priced upgrade was discarded unpaid.
  *
- * Which tier it was for can only come from the row as it stood BEFORE this
- * write: by the time Stripe reports the expiry, the pending update is gone
- * from the subscription.
+ * Which tier it was for comes from the EVENT, not from the stored row. The
+ * event is Stripe's own record of the update that lapsed and carries the items
+ * it would have applied; the stored row is a shared piece of state that the
+ * reconciliation or a sibling event may already have cleared, and reading it
+ * would make the notice vanish exactly when something else got there first.
  * @param event - The event being handled.
  * @param userId - The account.
- * @param before - The stored row before this event was applied.
  * @param tx - The shared transaction.
  */
 async function notifyIfUpgradeLapsed(
   event: Stripe.Event,
   userId: string,
-  before: StoredSubscription | undefined,
   tx: DbTx,
 ): Promise<void> {
   if (event.type !== "customer.subscription.pending_update_expired") return;
-  if (!before?.pendingTier) return;
+
+  // Narrowed by the check above: on this event type the SDK already types the
+  // object as a subscription.
+  const priceId = priceIdOfPendingUpdate(event.data.object);
+  const toTier = priceId ? findSubscribableTierByPriceId(priceId) : null;
+  if (!toTier) return;
+
   await notificationService.createMembershipUpgradeIncomplete({
     userId,
-    payload: { toTier: before.pendingTier },
+    payload: { toTier },
     tx,
   });
+}
+
+/**
+ * Reads which price a lapsed pending update would have applied.
+ * @param subscription - The subscription as the event carried it.
+ * @returns That price id, or null when the event carries no pending update.
+ */
+function priceIdOfPendingUpdate(
+  subscription: Stripe.Subscription,
+): string | null {
+  const item = subscription.pending_update?.subscription_items?.[0];
+  const price = item?.price;
+  if (!price) return null;
+  return typeof price === "string" ? price : price.id;
 }
 
 /**
@@ -236,29 +237,37 @@ export async function handleSubscriptionEvent(
     };
   }
 
+  // Asked BEFORE the transaction opens. Holding the account's row across a
+  // network call would keep one database connection and one row — the row
+  // every tier change needs — for as long as Stripe takes to answer, which its
+  // SDK allows to be minutes. Which of two concurrent writers wins is settled
+  // by the snapshot each one is holding, not by who is holding the lock.
+  const observedAt = new Date();
+  const fresh = await getStripeClient().subscriptions.retrieve(
+    subscription.id,
+    { expand: ["latest_invoice"] },
+  );
+  const write = readStripeSubscription(fresh, userId, observedAt);
+  if (!write) {
+    return {
+      status: "noop",
+      reason: `subscription ${subscription.id} sells a price this deployment does not know`,
+    };
+  }
+
   let outcome: SubscriptionEventOutcome = {
     status: "replay",
     userId,
   };
   let endedFrom: MembershipTier | null = null;
 
-  try {
-    await db.transaction(async (tx) => {
-      if (!(await claimWebhookEvent(event.id, event.type, tx))) return;
-      // Before asking Stripe, not after: the answer must not be older than the
-      // moment this handler took its turn.
-      await lockAccountRow(userId, tx);
-      const applied = await applyCurrentState(event, userId, tx);
-      endedFrom = applied.endedFrom;
-      outcome = { status: "applied", userId, tier: applied.tier };
-    });
-  } catch (err) {
-    if (!(err instanceof UnknownPriceError)) throw err;
-    return {
-      status: "noop",
-      reason: `subscription ${err.message} sells a price this deployment does not know`,
-    };
-  }
+  await db.transaction(async (tx) => {
+    if (!(await claimWebhookEvent(event.id, event.type, tx))) return;
+    await lockAccountRow(userId, tx);
+    const applied = await applyCurrentState(event, userId, write, tx);
+    endedFrom = applied.endedFrom;
+    outcome = { status: "applied", userId, tier: applied.tier };
+  });
 
   // After the commit, never inside it: an email about a change that then rolls
   // back cannot be recalled, and a send failure must not fail the webhook.
