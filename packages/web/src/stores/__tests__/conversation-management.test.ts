@@ -1085,27 +1085,26 @@ describe('what a first page has to be told about', () => {
     ).toBe('新名字');
   });
 
-  it('does not treat an echoed name as something the reader just did', async () => {
-    // 服务端在会话已经有名字时,`titleForTurn` 原样回显库里那一份 —— 那是一份
-    // 答复,不是读者做的事。把它记进「读者做了什么」的账本,它就会用一个更晚的
-    // 时刻去顶掉一份更新的答复:另一端刚改的名字被这次回显推回旧名。
-    openAnswers([{ id: 'c-1', title: 'Old' }], 'c-1');
+  it('judges two names by when each was learned, not by which one reads as newer', async () => {
+    // 判胜负的只能是时刻:两个名字都是字符串,谁也看不出哪个「更新」。这里回显
+    // 带的那个名字跟列表答复带的正好反过来 —— 列表答复带 Later、回显带
+    // Earlier,而回显发生在列表请求出发之后,所以它知道得更新,该由它说了算。
+    openAnswers([{ id: 'c-1', title: 'Earlier' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
 
     const land = heldList({
-      conversations: [{ id: 'c-1', title: 'New' }],
+      conversations: [{ id: 'c-1', title: 'Later' }],
       hasMore: false,
     });
     const reloading = conversationRuntime.reloadConversationList(PROJECT);
 
-    // 这一轮开始了,服务端回显它当时读到的那份名字(旧的)。
-    await speakAndHearTitle('c-1', '继续', 'Old');
+    await speakAndHearTitle('c-1', '继续', 'Earlier');
 
     land();
     await reloading;
 
-    expect(useConversationRuntime.getState().conversations['c-1']?.title).toBe('New');
-    expect(useConversationRuntime.getState().listByProject[PROJECT]?.[0]?.title).toBe('New');
+    expect(useConversationRuntime.getState().conversations['c-1']?.title).toBe('Earlier');
+    expect(useConversationRuntime.getState().listByProject[PROJECT]?.[0]?.title).toBe('Earlier');
   });
 
   it('keeps a name it learned by reading one conversation', async () => {
@@ -1144,6 +1143,82 @@ describe('what a first page has to be told about', () => {
       (useConversationRuntime.getState().listByProject[PROJECT] ?? []).find((c) => c.id === 'c-2')
         ?.title,
     ).toBe('New');
+  });
+
+  it('lets the answer that left later have the name, whichever call it came back on', async () => {
+    // 两份答复各自描述它出发那一刻的服务器,谁出发得晚谁知道得新 —— 跟它是
+    // 「读一条会话」还是「取一份列表」无关。读答复按落地那一刻记账就把这条
+    // 反过来了:它落地在前,却拿到一个比所有在飞答复都大的时刻,于是一份出发
+    // 更晚、带着另一端刚改的名字的列表答复被它顶掉。
+    openAnswers(
+      [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'Old' },
+      ],
+      'c-1',
+    );
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    // 读这一条先出发,服务器此刻还叫 Old。
+    let landRead: (() => void) | undefined;
+    vi.mocked(chatApi.readConversation).mockImplementation(
+      () =>
+        new Promise((res) => {
+          landRead = (): void =>
+            res({
+              conversation: { id: 'c-2', title: 'Old' },
+              messages: [],
+              hasMore: false,
+            } as never);
+        }),
+    );
+    const switching = conversationRuntime.switchTo(PROJECT, 'c-2');
+    await vi.waitFor(() => expect(landRead).toBeDefined());
+
+    // 列表后出发,那时另一端已经改成 New。
+    const landList = heldList({
+      conversations: [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'New' },
+      ],
+      hasMore: false,
+    });
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    landRead?.();
+    await switching;
+    landList();
+    await reloading;
+
+    expect(useConversationRuntime.getState().conversations['c-2']?.title).toBe('New');
+    expect(
+      (useConversationRuntime.getState().listByProject[PROJECT] ?? []).find((c) => c.id === 'c-2')
+        ?.title,
+    ).toBe('New');
+  });
+
+  it('keeps a name it heard on the wire while a list was out', async () => {
+    // 服务端每轮回显它读到的那份名字。本端已经有名字时那通常是同一个,但另一端
+    // 刚改过名的话,这条回显就是本端第一次听说新名字 —— 而它发生在列表请求出发
+    // 之后,比那份答复知道得新。判「本端有没有名字」分不出这两种回显,于是新
+    // 名字上了屏却没入账,列表答复落地把它改了回去。
+    openAnswers([{ id: 'c-1', title: 'Old' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    const land = heldList({
+      conversations: [{ id: 'c-1', title: 'Old' }],
+      hasMore: false,
+    });
+    const reloading = conversationRuntime.reloadConversationList(PROJECT);
+
+    await speakAndHearTitle('c-1', '继续', 'New');
+    expect(useConversationRuntime.getState().conversations['c-1']?.title).toBe('New');
+
+    land();
+    await reloading;
+
+    expect(useConversationRuntime.getState().conversations['c-1']?.title).toBe('New');
+    expect(useConversationRuntime.getState().listByProject[PROJECT]?.[0]?.title).toBe('New');
   });
 
   it('takes a name the answer knows and this end does not', async () => {

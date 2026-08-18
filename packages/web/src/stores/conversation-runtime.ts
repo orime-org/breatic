@@ -781,10 +781,10 @@ function adoptConversation(
   // the server has already accepted, and writing over it would put the name
   // the reader just replaced back on their screen.
   const title = nameNow(projectId, conversationId, opened.conversation.title ?? null, at);
-  // Read a moment ago, so it outranks any list answer that left before this
-  // one did. Recorded for the same reason a rename is: without it, a list
-  // answer still in flight would put the older name back.
-  applyTitle(projectId, conversationId, title, 'from-the-reader');
+  // Under the moment this request left, which is what the name it carries is
+  // about. A list answer that left earlier is measured against it and gives
+  // way; one that left later knows more, and keeps its own.
+  applyTitle(projectId, conversationId, title, at);
   useStore.setState((s) => {
     const held = s.conversations[conversationId];
     // The one thing this answer does NOT describe: a turn still running here.
@@ -1595,19 +1595,19 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
  * @param projectId - The project whose list to change.
  * @param conversationId - The conversation being named.
  * @param title - Its name now, or null if it still has none.
- * @param learned - Whether the reader did this, or an answer said it.
+ * @param at - The moment the name being written describes.
  */
 function applyTitle(
   projectId: string,
   conversationId: string,
   title: string | null,
-  learned: 'from-the-reader' | 'from-an-answer',
+  at: number,
 ): void {
-  // Only what the reader did goes in the record. An answer that carries a name
-  // is not one of those -- and the server echoes the name it already holds on
-  // every turn, so treating that as an act would stamp a stale name with a
-  // fresh moment and undo a newer answer with it.
-  if (learned === 'from-the-reader') noteNamed(projectId, conversationId, title);
+  // On the record under the moment it is about, so an answer still out can be
+  // measured against it. Stamping it with the moment it was written instead
+  // put a name learned from an old answer above every answer in flight,
+  // including the ones that left later and knew more.
+  noteNamed(projectId, conversationId, title, at);
   useStore.setState((s) => {
     // The conversation first, because that is where the name lives. Its row in
     // the list is a second copy for the list to draw, and there may not be one
@@ -1644,11 +1644,13 @@ function applyTitle(
  * @param title - What it is called now, or null if it still has no name.
  */
 function noteActivity(projectId: string, conversationId: string, title: string | null): void {
-  // The server names a conversation from its first message and then echoes
-  // that name on every turn after it. Only the first of those is this end
-  // learning something; the echoes are an answer repeating itself.
-  const named = useStore.getState().conversations[conversationId]?.title ?? null;
-  if (named === null && title !== null) noteNamed(projectId, conversationId, title);
+  // Under this moment rather than any request's: the server read this name as
+  // it began the turn, so it is newer than everything already out. Usually it
+  // is the name this end is showing and nothing changes; when another tab has
+  // just renamed the conversation this is the one way this end hears of it,
+  // and the record is what stops a list answer that left before the rename
+  // from putting the old name back.
+  noteNamed(projectId, conversationId, title, happening());
   useStore.setState((s) => {
     // The name reaches the conversation whatever the list holds. Speaking in
     // one that is not on the page in hand still names it, and the header reads
@@ -1882,7 +1884,16 @@ interface LocalWrites {
   deleted: Map<string, number>;
   /** When each conversation was started here, in the order they were. */
   made: Map<string, number>;
-  /** What each was named here, and when. */
+  /**
+   * The name last known here, and the moment that knowledge describes.
+   *
+   * Not "what the reader named it": an answer carries a name too, and the
+   * question a list answer asks of this record is the same either way -- is
+   * what I am carrying older than what this end already knows? What decides
+   * that is the moment, so the moment has to be the one the knowledge is
+   * about. A rename happened here and now; a name an answer carried describes
+   * the server as it was when that request left.
+   */
   named: Map<string, { title: string | null; at: number }>;
 }
 
@@ -1896,6 +1907,10 @@ interface LocalWrites {
  * opened for, and the ones it was not opened for (reading a single
  * conversation, opening the project) write the same fields from the same kind
  * of stale answer.
+ *
+ * Every request out takes its own tick, so two that leave in the same turn of
+ * the loop are still ordered. Sharing one loses the only thing that says which
+ * of their answers knows more.
  */
 let clock = 0;
 
@@ -1977,11 +1992,28 @@ function listNow(projectId: string): number {
 }
 
 /**
- * Read the clock, for a request about to go out.
+ * Take a moment for a request about to go out.
+ *
+ * Its own moment, not the one the last request took: two requests that leave
+ * in the same turn of the loop still leave in an order, and that order is the
+ * only thing that says which of their answers describes the newer server.
+ * Sharing a moment makes them indistinguishable, and then whichever lands last
+ * wins -- which is backwards as often as it is right.
  * @returns What everything written after this will compare against.
  */
 function asking(): number {
-  return clock;
+  return ++clock;
+}
+
+/**
+ * Take a moment for something happening here, now.
+ *
+ * Later than every request already out, which is what makes it outrank their
+ * answers: they left before this, so none of them can have seen it.
+ * @returns The moment.
+ */
+function happening(): number {
+  return ++clock;
 }
 
 /**
@@ -2088,7 +2120,7 @@ function writesFor(projectId: string): LocalWrites {
  */
 function noteDeleted(projectId: string, conversationId: string): void {
   const wrote = writesFor(projectId);
-  wrote.deleted.set(conversationId, ++clock);
+  wrote.deleted.set(conversationId, happening());
   wrote.made.delete(conversationId);
 }
 
@@ -2098,17 +2130,33 @@ function noteDeleted(projectId: string, conversationId: string): void {
  * @param conversationId - The conversation started.
  */
 function noteMade(projectId: string, conversationId: string): void {
-  writesFor(projectId).made.set(conversationId, ++clock);
+  writesFor(projectId).made.set(conversationId, happening());
 }
 
 /**
- * Note that the reader named a conversation.
+ * Note the name a conversation is known by here, and when that was learned.
+ *
+ * Kept only if nothing newer is on record. Every source of a name reaches
+ * this -- a rename, an answer about one conversation, the name echoed as a
+ * turn begins -- and they arrive in whatever order their round trips finish,
+ * which says nothing about which of them knows more. The moment each carries
+ * does say that, so the older one is dropped here rather than allowed to
+ * overwrite and then be undone again further down.
  * @param projectId - The project it is in.
  * @param conversationId - The conversation named.
- * @param title - What it is called now, or null if it still has none.
+ * @param title - What it is called, or null if it has no name.
+ * @param at - The moment this knowledge describes.
  */
-function noteNamed(projectId: string, conversationId: string, title: string | null): void {
-  writesFor(projectId).named.set(conversationId, { title, at: ++clock });
+function noteNamed(
+  projectId: string,
+  conversationId: string,
+  title: string | null,
+  at: number,
+): void {
+  const named = writesFor(projectId).named;
+  const known = named.get(conversationId);
+  if (known !== undefined && known.at > at) return;
+  named.set(conversationId, { title, at });
 }
 
 /**
@@ -2327,7 +2375,9 @@ async function rename(
   try {
     const renamed = await chatApi.renameConversation(conversationId, projectId, title);
     if (visit.signal.aborted) return;
-    applyTitle(projectId, conversationId, renamed.title, 'from-the-reader');
+    // The reader did this, here, now -- later than every answer still out, all
+    // of which left before the server accepted it.
+    applyTitle(projectId, conversationId, renamed.title, happening());
   } catch (err) {
     if (visit.signal.aborted) return;
     tell({ projectId, conversationId, deliberate: true, aboutRow: true, ...readMishap(err) });
