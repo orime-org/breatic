@@ -1145,9 +1145,7 @@
       "enterprise": "엔터프라이즈"
     },
     "priceFree": "무료",
-    "pricePerMonth": "{amount} / 월",
     "tierNote": "등급이 정하는 것은 용량과 협업 규모입니다. 모든 창작 기능과 모델은 어느 등급에서나 동일합니다.",
-    "upgrade": "업그레이드",
     "myQuota": "내 사용량",
     "quota": {
       "teamStudios": "팀 Studio",

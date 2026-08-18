@@ -1145,9 +1145,7 @@
       "enterprise": "Enterprise"
     },
     "priceFree": "Free",
-    "pricePerMonth": "{amount} / month",
     "tierNote": "Your tier decides capacity and collaboration scale. Every creative feature and every model is the same on all tiers.",
-    "upgrade": "Upgrade",
     "myQuota": "My allowances",
     "quota": {
       "teamStudios": "Team Studios",

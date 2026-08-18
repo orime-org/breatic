@@ -1145,9 +1145,7 @@
       "enterprise": "エンタープライズ"
     },
     "priceFree": "無料",
-    "pricePerMonth": "{amount} / 月",
     "tierNote": "プランで決まるのは容量と共同編集の規模です。制作機能とモデルはどのプランでも同じです。",
-    "upgrade": "アップグレード",
     "myQuota": "利用状況",
     "quota": {
       "teamStudios": "チーム Studio",

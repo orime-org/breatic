@@ -1145,9 +1145,7 @@
       "enterprise": "企业版"
     },
     "priceFree": "免费",
-    "pricePerMonth": "{amount} / 月",
     "tierNote": "这一档决定你的容量和协作规模。所有创作功能和模型在每一档都完全一样。",
-    "upgrade": "升级",
     "myQuota": "我的额度",
     "quota": {
       "teamStudios": "团队 Studio",

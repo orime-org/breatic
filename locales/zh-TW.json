@@ -1145,9 +1145,7 @@
       "enterprise": "企業版"
     },
     "priceFree": "免費",
-    "pricePerMonth": "{amount} / 月",
     "tierNote": "這一檔決定你的容量與協作規模。所有創作功能和模型在每一檔都完全一樣。",
-    "upgrade": "升級",
     "myQuota": "我的額度",
     "quota": {
       "teamStudios": "團隊 Studio",
