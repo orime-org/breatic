@@ -430,11 +430,11 @@ chat.get(
   "/conversations/:id/attachments",
   validate("param", conversationIdParamSchema),
   async (c) => {
-  const user = c.get("user");
-  const conversationId = c.req.param("id");
-  await conversationService.assertAccess(conversationId, user.id);
-  const list = await attachmentService.listByConversation(conversationId);
-  return c.json({ data: list });
+    const user = c.get("user");
+    const conversationId = c.req.param("id");
+    await conversationService.assertAccess(conversationId, user.id);
+    const list = await attachmentService.listByConversation(conversationId);
+    return c.json({ data: list });
   },
 );
 
@@ -448,10 +448,10 @@ chat.delete(
   "/conversations/:cid/attachments/:aid",
   validate("param", attachmentParamSchema),
   async (c) => {
-  const user = c.get("user");
-  const aid = c.req.param("aid");
-  await attachmentService.softDelete(aid, user.id);
-  return c.json({ data: { ok: true } });
+    const user = c.get("user");
+    const aid = c.req.param("aid");
+    await attachmentService.softDelete(aid, user.id);
+    return c.json({ data: { ok: true } });
   },
 );
 
