@@ -786,9 +786,8 @@ describe('VideoGeneratePanelContainer', () => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
       const trigger = await screen.findByTestId('generate-video-mode-trigger');
-      // `disabled={catalogEmpty}` is already false when the trigger first
-      // appears — since #1966 the panel does not mount without a catalog.
-      // Kept as a guard on that gate, cheap because it passes immediately.
+      // 触发器一出现就是可点的：#1966 起没有目录面板就不挂载，#1951 起
+      // 一个可用档都没有也不挂载。留着当那道门的守卫，它立刻就过。
       await waitFor(() => expect(trigger).not.toBeDisabled());
       fireEvent.click(trigger);
       await userEvent.click(await screen.findByTestId('generate-video-mode-i2v'));

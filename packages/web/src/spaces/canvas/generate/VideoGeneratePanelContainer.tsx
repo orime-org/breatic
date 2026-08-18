@@ -384,12 +384,14 @@ function VideoGeneratePanelBody({
         target,
         models,
       );
-      // Never persist an empty model: the catalog may still be loading / have
-      // failed, or the target mode may offer nothing. The resolver pairs an
-      // empty model with an empty record set, and writing that clobbers the
-      // node's stored model AND every model's records — not just the incoming
-      // one's. (The toggle is also disabled while no offered mode has a model;
-      // this backstops the target-mode-empty case.)
+      // Never persist an empty model: the resolver pairs one with an empty
+      // record set, and writing that clobbers the node's stored model AND
+      // every model's records, not just the incoming one's.
+      //
+      // Unreachable since #1951 — the picker only offers modes this
+      // deployment serves, so the target always resolves a model, and a
+      // modality that serves none does not open a panel at all. Kept as
+      // defence against a layer above breaking.
       if (!model) return;
       setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
     },
