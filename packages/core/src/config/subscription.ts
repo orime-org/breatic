@@ -58,6 +58,18 @@ export const subscriptionConfigSchema = z.object({
    * whose card is about to go through.
    */
   stale_after_days: z.number().int().positive().default(14),
+  /**
+   * How long the membership panel waits for Stripe before giving up and
+   * showing stored data.
+   *
+   * The reconciliation this bounds is an enhancement: it repairs an event
+   * that never arrived, and the panel is correct without it. The SDK's own
+   * default is 80 seconds with two retries, so a Stripe that answers slowly
+   * rather than not at all would hold a request handler — and the reader —
+   * for around four minutes, which the existing failure path already knows
+   * how to avoid. A timeout is just another failure.
+   */
+  reconcile_timeout_ms: z.number().int().positive().default(5000),
 });
 
 /** The file's contents, before a price id is chosen for this environment. */
@@ -137,6 +149,15 @@ export function getSubscriptionPlans(): SubscriptionPlans {
   if (cachedPlans) return cachedPlans;
   cachedPlans = resolvePlans(readFile(), env.ENV === "prod");
   return cachedPlans;
+}
+
+/**
+ * Reads how long the panel waits for Stripe before showing stored data.
+ * @returns That wait in milliseconds.
+ * @throws {Error} When the file is missing or malformed.
+ */
+export function getSubscriptionReconcileTimeoutMs(): number {
+  return readFile().reconcile_timeout_ms;
 }
 
 /**

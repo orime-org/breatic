@@ -43,6 +43,17 @@ const stripe = {
   subscriptions: { list: vi.fn() },
 };
 
+// 邮件那一半的替身，好让测试断言它真被调了。对账这条路径的调用点此前零
+// 覆盖：删掉它全仓一条都不红。铃铛保底、邮件增强，同属一条验收。
+const sentMail = vi.fn();
+
+vi.mock("@server/utils/send-best-effort-mail.js", () => ({
+  sendBestEffortMail: (
+    build: () => Promise<unknown>,
+    ctx: Record<string, unknown>,
+  ) => sentMail(build, ctx),
+}));
+
 vi.mock("@server/infra/stripe.js", () => ({
   getStripeClient: () => stripe,
 }));
@@ -222,6 +233,11 @@ describe("readSubscriptionSummary — reconciling (#106 §10.2)", () => {
         SELECT type FROM notifications WHERE user_id = ${userId}
       `;
       expect(bells.map((b) => b.type)).toEqual(["membership.ended"]);
+      // 邮件在事务提交之后发 —— 一封讲了一件随后被回滚的事的邮件收不回来。
+      expect(sentMail).toHaveBeenCalledWith(
+        expect.any(Function),
+        expect.objectContaining({ userId, subject: "membership_ended" }),
+      );
     } finally {
       await dropUser(userId);
     }

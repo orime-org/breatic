@@ -42,6 +42,7 @@ vi.mock("@breatic/core", () => ({
   NotFoundError: class NotFoundError extends Error {},
   t: (key: string) => key,
   env: { PAYMENT_ENABLED: true },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
 vi.mock("@server/modules/auth/user.repo.js", () => ({
@@ -172,6 +173,51 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
 
     expect(stripe.subscriptions.cancel).toHaveBeenCalledWith("sub_unpaid");
     expect(stripe.checkout.sessions.create).toHaveBeenCalled();
+  });
+
+  it("那张订阅在 Stripe 那边已经没了，照常开新结账", async () => {
+    // 本地那一行会过期（只有 webhook 写它，而 Stripe 三天后就不再重投）。
+    // 它指的东西已经不存在 = 要作废的理由本来就满足了；这时候拒掉结账，
+    // 等于让这个账号从此再也订不了，每次都栽在一张不存在的订阅上。
+    situationIs("firstPaymentUnsettled", {
+      stripeSubscriptionId: "sub_gone",
+      tier: "pro",
+    });
+    stripe.subscriptions.cancel.mockRejectedValueOnce(
+      Object.assign(new Error("No such subscription: sub_gone"), {
+        code: "resource_missing",
+      }),
+    );
+
+    await service.startCheckout({
+      userId: USER,
+      tier: "pro",
+      returnUrl: RETURN_URL,
+    });
+
+    expect(stripe.checkout.sessions.create).toHaveBeenCalled();
+  });
+
+  it("作废失败原因不是「已经没了」就不开结账", async () => {
+    // Stripe 连不上、超时、权限不对 —— 这些都没有证明那张未付成的订阅已经
+    // 不在了。照样开新结账 = 两张都能付，而哪一份算数只剩「取最新一行」这个
+    // 跟用户买了什么无关的判据。
+    situationIs("firstPaymentUnsettled", {
+      stripeSubscriptionId: "sub_unpaid",
+      tier: "pro",
+    });
+    stripe.subscriptions.cancel.mockRejectedValueOnce(
+      Object.assign(new Error("Connection error"), { code: "api_connection_error" }),
+    );
+
+    await expect(
+      service.startCheckout({
+        userId: USER,
+        tier: "pro",
+        returnUrl: RETURN_URL,
+      }),
+    ).rejects.toThrow("Connection error");
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 
   it("refuses to sell a second subscription to an account that has one", async () => {

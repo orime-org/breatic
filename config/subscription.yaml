@@ -34,3 +34,17 @@ plans:
 # still collecting for, and taking the tier away would punish somebody whose
 # card is about to go through.
 stale_after_days: 14
+
+# How long the membership panel waits for Stripe before showing stored data.
+#
+# Reconciling is an enhancement — it repairs a lost event — so a slow Stripe
+# must not hold the panel. The SDK's own default is 80 seconds with two
+# retries, which is three quarters of a request handler occupied for four
+# minutes while somebody looks at a spinner; the panel already degrades
+# correctly when the call fails, and a timeout is just another failure.
+#
+# Five seconds is long enough for a healthy call (Stripe's list endpoint
+# answers in well under one) and short enough that a reader notices nothing.
+# Retries are off for this one call for the same reason: the repair can wait
+# for the next time the panel opens.
+reconcile_timeout_ms: 5000

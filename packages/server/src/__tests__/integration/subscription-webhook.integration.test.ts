@@ -50,6 +50,18 @@ vi.mock("@server/infra/stripe.js", () => ({
   getStripeClient: () => stripe,
 }));
 
+// 邮件那一半被替身顶掉，好让测试断言它真的被调了。它此前一条测试都没有：
+// 把两个调用点整个删掉，全仓一条都不红。铃铛是保底通道、邮件是增强，两个
+// 都属于「掉回免费档要通知用户」这条验收，所以两个都要有人钉着。
+const sentMail = vi.fn();
+
+vi.mock("@server/utils/send-best-effort-mail.js", () => ({
+  sendBestEffortMail: (
+    build: () => Promise<unknown>,
+    ctx: Record<string, unknown>,
+  ) => sentMail(build, ctx),
+}));
+
 import type Stripe from "stripe";
 import postgres from "postgres";
 import { initCore, loadLocales, getUserMembershipTier } from "@breatic/core";
@@ -307,6 +319,11 @@ describe("handleSubscriptionEvent — falling back to base (#106 §9)", () => {
       `;
       expect(bells.map((b) => b.type)).toEqual(["membership.ended"]);
       expect(bells[0]?.payload).toEqual({ fromTier: "pro" });
+      // 邮件在事务提交之后发，收件人是这个账号，标题标记说明它是哪一封。
+      expect(sentMail).toHaveBeenCalledWith(
+        expect.any(Function),
+        expect.objectContaining({ userId, subject: "membership_ended" }),
+      );
     } finally {
       await dropUser(userId);
     }

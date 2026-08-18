@@ -127,7 +127,7 @@ export async function startCheckout(input: {
     // still there and its payment page still works. Leaving it would let both
     // be paid, and then which membership counts is decided by an arbitrary
     // "most recent row wins" rather than by what anybody bought.
-    await getStripeClient().subscriptions.cancel(record.stripeSubscriptionId);
+    await voidUnpaidSubscription(record.stripeSubscriptionId, input.userId);
   }
 
   const customerId = await ensureCustomer(input.userId);
@@ -161,6 +161,59 @@ function isHigherThan(tier: string, than: string): boolean {
   return (
     COMPARABLE_MEMBERSHIP_TIERS.indexOf(tier as never) >
     COMPARABLE_MEMBERSHIP_TIERS.indexOf(than as never)
+  );
+}
+
+/**
+ * Voids the unpaid subscription this account is about to replace.
+ *
+ * The one irreversible call on this path, and the one decided entirely from a
+ * stored row — which this codebase says elsewhere can be out of date, because
+ * only the webhook writes it and Stripe stops redelivering after three days.
+ * Two ways that row is wrong, and they need opposite answers.
+ *
+ * The subscription is already gone at Stripe: `resource_missing`. The row is
+ * describing something that no longer exists, the reason for cancelling it is
+ * already satisfied, and refusing the checkout would leave the account unable
+ * to subscribe at all — every attempt failing on a subscription that is not
+ * there. So it proceeds.
+ *
+ * Anything else — Stripe unreachable, a timeout, a permissions failure — has
+ * not established that the unpaid subscription is gone. Proceeding would risk
+ * exactly what this call exists to prevent: two payable subscriptions, both
+ * paid, and no rule but "the newest row" to say which membership counts. So it
+ * throws, and the reader is told the checkout could not start.
+ * @param subscriptionId - The unpaid subscription at Stripe.
+ * @param userId - The account, for the log line.
+ * @throws {Error} if Stripe failed for any reason other than the subscription
+ *   already being gone.
+ */
+async function voidUnpaidSubscription(
+  subscriptionId: string,
+  userId: string,
+): Promise<void> {
+  try {
+    await getStripeClient().subscriptions.cancel(subscriptionId);
+  } catch (err) {
+    if (!subscriptionGoneAtStripe(err)) throw err;
+    logger.warn(
+      { userId, subscriptionId },
+      "subscription_unpaid_already_gone_at_stripe",
+    );
+  }
+}
+
+/**
+ * Whether a Stripe error says the subscription no longer exists there.
+ * @param err - Whatever the SDK threw.
+ * @returns Whether this is Stripe's "that object is gone" answer.
+ */
+function subscriptionGoneAtStripe(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "resource_missing"
   );
 }
 

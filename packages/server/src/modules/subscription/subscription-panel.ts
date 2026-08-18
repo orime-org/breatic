@@ -25,6 +25,7 @@
 import type Stripe from "stripe";
 import {
   db,
+  getSubscriptionReconcileTimeoutMs,
   logger,
   LIVE_SUBSCRIPTION_STATUSES,
   listSubscriptions,
@@ -65,12 +66,25 @@ async function reconcile(
   // Stamped before the call, not after: the moment that decides which of two
   // writers is holding the newer view is when each of them ASKED.
   const observedAt = new Date();
-  const listed = await getStripeClient().subscriptions.list({
-    customer: customerId,
-    status: "all",
-    limit: RECONCILE_LIMIT,
-    expand: ["data.latest_invoice"],
-  });
+  const listed = await getStripeClient().subscriptions.list(
+    {
+      customer: customerId,
+      status: "all",
+      limit: RECONCILE_LIMIT,
+      expand: ["data.latest_invoice"],
+    },
+    // Bounded, and not retried. The caller's catch already degrades to stored
+    // data when this fails, but it only catches a call that FAILS — a Stripe
+    // that answers slowly rather than not at all would sit on the SDK's own
+    // 80-second default, twice retried, and hold this request handler and the
+    // reader behind it for around four minutes. Retrying here would multiply
+    // the wait to repair something that repairs itself the next time the
+    // panel opens.
+    {
+      timeout: getSubscriptionReconcileTimeoutMs(),
+      maxNetworkRetries: 0,
+    },
+  );
 
   let endedFrom: MembershipTier | null = null;
   // The lock is taken only now, after Stripe has answered, and covers nothing
