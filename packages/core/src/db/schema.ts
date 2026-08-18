@@ -93,6 +93,19 @@ export const users = pgTable(
     // fresh code is generated + re-shown.
     recoveryCodeHash: text("recovery_code_hash"),
     recoveryCodeUsedAt: timestamp("recovery_code_used_at", { withTimezone: true }),
+    // The Stripe customer this account pays through (0054, #106).
+    //
+    // Written before the first Checkout Session is created, never after an
+    // event arrives — which is the whole point of it. Subscription events
+    // carry no identifier of ours (`client_reference_id` reaches the Session
+    // object only), so the customer on the event is what names the account.
+    // Letting Stripe create the customer at checkout would mean first seeing
+    // that id inside an event with nothing to match it against.
+    //
+    // Nullable: an account that has never tried to pay us has no customer,
+    // and creating one per registration would make a Stripe object per signup.
+    // One customer per account, reused across every subscription it ever has.
+    stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -643,6 +656,94 @@ export const payments = pgTable(
     uniqueIndex("payments_stripe_session_id_idx").on(table.stripeSessionId),
   ],
 );
+
+// ── 7b. Subscriptions ────────────────────────────────────────────────
+
+/**
+ * Every subscription an account has ever held (0054, #106 §5.2).
+ *
+ * Not one row per account. A subscription that ends stays here as a ledger
+ * entry and a new one is inserted alongside it, so "does this account
+ * subscribe" is a question about `status`, never about whether a row exists.
+ * The unique constraint is therefore on the Stripe id and NOT on `user_id`:
+ * one there would refuse the second subscription of anybody who cancelled and
+ * came back, and the refusal would land on somebody who had already paid.
+ *
+ * `status` holds Stripe's own word, unchanged. Which tier that word earns has
+ * already been reworked once during design; storing the conclusion instead
+ * would have made every historical row wrong the moment it changed.
+ *
+ * `has_pending_update` cannot be inferred from `payable_invoice_url`: an
+ * account behind on payment carries a payable invoice too, and an unpaid
+ * upgrade and an unpaid renewal are different situations offering different
+ * actions (`subscription-state.ts`).
+ *
+ * `payments` next door is the other leg of the product and unrelated: credit
+ * packs are bought once, in `mode: payment`, and grant a balance.
+ */
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    stripeSubscriptionId: varchar("stripe_subscription_id", {
+      length: 255,
+    }).notNull(),
+    // The tier this subscription was bought for. Same CHECK constraint as
+    // `users.membership_tier`, added by hand in 0054 for the same reason the
+    // one there is not declared in drizzle: migrations here are hand-written,
+    // so a `check()` beside the column would be a second copy nothing compares
+    // against the first.
+    tier: varchar("tier", { length: 16 }).notNull(),
+    status: varchar("status", { length: 30 }).notNull(),
+    // From `items.data[0].current_period_end`. Stripe moved it off the
+    // subscription object in the 2025-03-31 release; nullable because a
+    // subscription whose first invoice never settled has no period.
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end")
+      .default(false)
+      .notNull(),
+    // Changing which tier a subscription sells means replacing the price on
+    // its item, and that requires naming the item: omitting the id ADDS a
+    // price instead, leaving the account holding two memberships.
+    stripeItemId: varchar("stripe_item_id", { length: 255 }),
+    hasPendingUpdate: boolean("has_pending_update").default(false).notNull(),
+    pendingTier: varchar("pending_tier", { length: 16 }),
+    payableInvoiceUrl: text("payable_invoice_url"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("subscriptions_user_id_idx").on(table.userId),
+    uniqueIndex("subscriptions_stripe_subscription_id_idx").on(
+      table.stripeSubscriptionId,
+    ),
+  ],
+);
+
+// ── 7c. Stripe Webhook Events ────────────────────────────────────────
+
+/**
+ * Which Stripe events have been processed (0054, #106 §5.3).
+ *
+ * The primary key IS the idempotency: the insert goes in the same transaction
+ * as the tier change it guards, and a redelivery collides. `changeMembership
+ * Tier` compares tiers rather than event identity, so it converges on the last
+ * call and cannot tell a replay from a new event — which is exactly why this
+ * table exists rather than a check inside it.
+ *
+ * Append-only, so `created_at` alone and no `deleted_at`: deleting a row would
+ * make the event it names replayable, which is the one thing this table is for.
+ */
+export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
+  eventId: varchar("event_id", { length: 255 }).primaryKey(),
+  type: varchar("type", { length: 80 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
 
 // ── 8. Credit Transactions ───────────────────────────────────────────
 
