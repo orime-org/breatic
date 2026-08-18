@@ -949,8 +949,8 @@ describe('VideoGeneratePanelContainer', () => {
       fireEvent.click(screen.getByTestId('generate-video-execute'));
       // The wrapper adds a dedup id as a second argument, so assert the
       // message itself — which slot it names is the point of this case.
-      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
-      expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toBe(
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toBe(
         'Pick an end frame',
       );
       expect(createTask).not.toHaveBeenCalled();
@@ -963,8 +963,8 @@ describe('VideoGeneratePanelContainer', () => {
       fireEvent.click(screen.getByTestId('generate-video-execute'));
       // The wrapper adds a dedup id as a second argument, so assert the
       // message itself — which slot it names is the point of this case.
-      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
-      expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toBe(
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toBe(
         'Pick a first frame',
       );
       expect(createTask).not.toHaveBeenCalled();
@@ -1071,7 +1071,7 @@ describe('VideoGeneratePanelContainer', () => {
       const execute = screen.getByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
       fireEvent.click(execute);
-      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
       expect(create).not.toHaveBeenCalled();
       expect(useCanvasStore.getState().panelHostId).toBe('target');
     });
@@ -1225,12 +1225,12 @@ describe('VideoGeneratePanelContainer', () => {
       const execute = screen.getByTestId('generate-video-execute');
       expect(execute).not.toBeDisabled();
       fireEvent.click(execute);
-      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
       // The message must NOT instruct an action the user may already have
       // performed, and it must name the prerequisite the image panel's sibling
       // string carries ("connected") — without it, a user on a fresh node types
       // `@`, gets no popup at all, and has nowhere to go.
-      expect(vi.mocked(toast.error).mock.calls[0]![0]).toBe(
+      expect(vi.mocked(toast.warning).mock.calls[0]![0]).toBe(
         'This mode needs a reference image — connect one to this node and type @ in the prompt to use it',
       );
       expect(create).not.toHaveBeenCalled();
@@ -1242,8 +1242,8 @@ describe('VideoGeneratePanelContainer', () => {
       await openRefPanel(['ref-a', 'ref-b', 'ref-c']);
       const create = vi.spyOn(canvasApi, 'createTask');
       fireEvent.click(screen.getByTestId('generate-video-execute'));
-      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
-      expect(vi.mocked(toast.error).mock.calls[0]![0]).toContain('2');
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(toast.warning).mock.calls[0]![0]).toContain('2');
       expect(create).not.toHaveBeenCalled();
     });
 
@@ -1389,10 +1389,26 @@ describe('VideoGeneratePanelContainer', () => {
       // must not leak into the five modes that keep it. Seeded with no prompt
       // fragment, so the editor is empty from the start and this is exactly
       // the state the demand exists to refuse.
+      //
+      // Since #1949 the demand no longer shows itself as a greyed-out button:
+      // it stays clickable and the click says what is missing. The demand is
+      // unchanged — the task still does not go out.
+      const createTask = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue({ id: 'never' } as Awaited<
+          ReturnType<typeof canvasApi.createTask>
+        >);
       await openInMode('t2v', 'veo-3.1');
-      await waitFor(() =>
-        expect(screen.getByTestId('generate-video-execute')).toBeDisabled(),
-      );
+      const btn = await screen.findByTestId('generate-video-execute');
+      await waitFor(() => expect(btn).not.toBeDisabled());
+      fireEvent.click(btn);
+      await waitFor(() => {
+        expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toBe(
+          'Write a prompt first',
+        );
+      });
+      expect(createTask).not.toHaveBeenCalled();
+      createTask.mockRestore();
     });
 
     it('shows no params pill for a model with nothing to edit (#1935)', async () => {
@@ -1686,5 +1702,79 @@ describe('VideoGeneratePanelContainer', () => {
         expect(data.paramsByModel).toEqual(records);
       });
     });
+  });
+});
+
+// #1949：这个面板的另外两条，跟图片面板同一套判据。「提示词为空可点 + 点了说」
+// 由 reference-to-video 那组的 `still demands a prompt...` 钉住，这里补上判定
+// 顺序的两条 —— 它们是设计对抗（2026-08-18）改出来的，原顺序会把这两种状态
+// 也变成「按钮亮着、叫人写提示词、写完变灰」。
+describe('VideoGeneratePanelContainer — 点不动的时候说清缺什么 (#1949)', () => {
+  beforeEach(() => {
+    _resetForTests();
+    vi.mocked(toast.warning).mockClear();
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  it('提交中按钮禁用，并且站着一个加载指示', async () => {
+    const createTask = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockImplementation(
+        () =>
+          new Promise(() => {
+            /* never settles */
+          }) as ReturnType<typeof canvasApi.createTask>,
+      );
+    await openPanelInMode('t2v', 'veo-3.1');
+    const fragment = getPromptFragment('p', 's', 'target');
+    if (!fragment) throw new Error('node has no prompt fragment');
+    act(() => {
+      const paragraph = new Y.XmlElement('paragraph');
+      const words = new Y.XmlText();
+      words.insert(0, '一句话');
+      paragraph.insert(0, [words]);
+      fragment.insert(0, [paragraph]);
+    });
+    const btn = await screen.findByTestId('generate-video-execute');
+    await waitFor(() => expect(btn).not.toBeDisabled());
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toBeDisabled());
+    expect(
+      screen.getByTestId('generate-video-execute-pending'),
+    ).toBeInTheDocument();
+    createTask.mockRestore();
+  });
+
+  it('这一档一个模型都没有时按钮仍然禁用，也不说那句帮不上忙的话', async () => {
+    // 目录本身是有内容的（别的档有模型），只有 t2v 这一档空 —— 这跟「目录整个
+    // 取不到」是两回事，后者由 #1966 的门挡在面板之外。
+    //
+    // 设计对抗（2026-08-18）咬出的正是这个状态：`promptRequired` 在没有模型时
+    // 仍然为真（view-model 的 TSDoc 写着），而 `pickModelForMode` 给出空模型名，
+    // 所以两个条件必然同时成立。要是先说提示词，按钮会亮起来、叫用户写提示词、
+    // 写完当场变灰。
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({
+      image: [T2I],
+      video: [I2V, REF, TALKING_HEAD],
+      audio: [],
+      tts: [],
+      three_d: [],
+      understand: [],
+      total: 4,
+    });
+    seedVideoNode({ mode: 't2v', model: '' });
+    mountContainer('video', { mode: 't2v', model: '' });
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'video');
+    });
+    const btn = await screen.findByTestId('generate-video-execute');
+    await waitFor(() => expect(btn).toBeDisabled());
+    // 点不动它，所以那句「先写提示词」不会出现 —— 写了也没用，这一档没有模型。
+    fireEvent.click(btn);
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });

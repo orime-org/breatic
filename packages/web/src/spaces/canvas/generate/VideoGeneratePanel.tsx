@@ -1,13 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ArrowUp, Star, X } from 'lucide-react';
+import { ArrowUp, Loader2, Star, X } from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import {
+  isExecuteButtonDisabled,
+  type ExecuteRefusal,
+} from '@web/spaces/canvas/generate/generate-guards';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
@@ -77,8 +81,16 @@ interface VideoGeneratePanelProps {
   onPickSlot: (slot: VideoSlot) => void;
   /** Clear a slot. */
   onClearSlot: (slot: VideoSlot) => void;
-  /** Whether execute is allowed (the container owns the reasons). */
-  canExecute: boolean;
+  /**
+   * Which execute precondition fails, or null when Generate may proceed.
+   *
+   * The panel is one of the two consumers of that answer, and it reads it for
+   * a narrower question than the submit path does: which refusals grey the
+   * button out, and which one puts a spinner in it. Both questions are
+   * answered here rather than by a pair of booleans from the container, so
+   * "clickable" and "in flight" can never disagree about the same state.
+   */
+  executeRefusal: ExecuteRefusal | null;
   /** The collaborative prompt editor, injected by the container (TipTap + Yjs). */
   promptSlot: React.ReactNode;
   /** Close the panel without generating. */
@@ -129,7 +141,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   activeSlot,
   onPickSlot,
   onClearSlot,
-  canExecute,
+  executeRefusal,
   promptSlot,
   onExit,
   onSelectModel,
@@ -214,11 +226,19 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
             size={null}
             data-testid='generate-video-execute'
             aria-label={t('canvas.generatePanel.execute')}
-            disabled={!canExecute}
+            disabled={isExecuteButtonDisabled(executeRefusal)}
             onClick={onExecute}
             className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
           >
-            <ArrowUp className='h-4 w-4' aria-hidden='true' />
+            {executeRefusal === 'submitting' ? (
+              <Loader2
+                data-testid='generate-video-execute-pending'
+                className='h-4 w-4 animate-spin'
+                aria-hidden='true'
+              />
+            ) : (
+              <ArrowUp className='h-4 w-4' aria-hidden='true' />
+            )}
           </Button>
         </div>
       </div>

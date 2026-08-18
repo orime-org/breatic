@@ -55,7 +55,7 @@ function setup(
       params={{ aspect_ratio: '16:9', resolution: '2K' }}
       references={[]}
       creditEstimate={7}
-      canExecute
+      executeRefusal={null}
       promptSlot={<div data-testid='prompt-slot'>prompt</div>}
       onExit={() => {}}
       onInsertReference={() => {}}
@@ -128,14 +128,14 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
-  it('disables the execute button when canExecute is false', () => {
-    setup({ canExecute: false });
+  it('disables the execute button for a refusal the user cannot act on', () => {
+    setup({ executeRefusal: 'no-model' as const });
     expect(screen.getByTestId('generate-execute')).toBeDisabled();
   });
 
   it('fires onExecute when execute is clicked and enabled', () => {
     const onExecute = vi.fn();
-    setup({ canExecute: true, onExecute });
+    setup({ executeRefusal: null, onExecute });
     fireEvent.click(screen.getByTestId('generate-execute'));
     expect(onExecute).toHaveBeenCalledTimes(1);
   });

@@ -1,13 +1,25 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ArrowUp, Globe, Languages, Sparkles, Star, X } from 'lucide-react';
+import {
+  ArrowUp,
+  Globe,
+  Languages,
+  Loader2,
+  Sparkles,
+  Star,
+  X,
+} from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import {
+  isExecuteButtonDisabled,
+  type ExecuteRefusal,
+} from '@web/spaces/canvas/generate/generate-guards';
 import {
   CameraPicker,
   type CameraValue,
@@ -55,8 +67,16 @@ interface GeneratePanelProps {
   references: ReferenceRailItem[];
   /** Estimated credit cost of one generation (current model's cost_per_call). */
   creditEstimate: number;
-  /** Whether execute is allowed (prompt non-empty). */
-  canExecute: boolean;
+  /**
+   * Which execute precondition fails, or null when Generate may proceed.
+   *
+   * The panel is one of the two consumers of that answer, and it reads it for
+   * a narrower question than the submit path does: which refusals grey the
+   * button out, and which one puts a spinner in it. Both questions are
+   * answered here rather than by a pair of booleans from the container, so
+   * "clickable" and "in flight" can never disagree about the same state.
+   */
+  executeRefusal: ExecuteRefusal | null;
   /** The collaborative prompt editor, injected by the container (TipTap + Yjs). */
   promptSlot: React.ReactNode;
   /** Close the panel without generating (exit button). */
@@ -135,7 +155,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   params,
   references,
   creditEstimate,
-  canExecute,
+  executeRefusal,
   promptSlot,
   onExit,
   onSelectModel,
@@ -285,11 +305,19 @@ export const GeneratePanel = React.memo(function GeneratePanel({
             size={null}
             data-testid='generate-execute'
             aria-label={t('canvas.generatePanel.execute')}
-            disabled={!canExecute}
+            disabled={isExecuteButtonDisabled(executeRefusal)}
             onClick={onExecute}
             className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
           >
-            <ArrowUp className='h-4 w-4' aria-hidden='true' />
+            {executeRefusal === 'submitting' ? (
+              <Loader2
+                data-testid='generate-execute-pending'
+                className='h-4 w-4 animate-spin'
+                aria-hidden='true'
+              />
+            ) : (
+              <ArrowUp className='h-4 w-4' aria-hidden='true' />
+            )}
           </Button>
         </div>
       </div>

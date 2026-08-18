@@ -14,7 +14,6 @@ import {
   getPromptFragment,
   isNodeHandling,
   isNodeLocked,
-  nodeExists,
   readCanvasGraph,
   readNodeLeaseGen,
   removeEdge,
@@ -35,7 +34,10 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
-import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
+import {
+  evaluateExecute,
+  refusalToastKey,
+} from '@web/spaces/canvas/generate/generate-guards';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
@@ -153,10 +155,17 @@ function GeneratePanelBody({
   // per-field guarding needed here.
   const models = React.useMemo(() => catalog?.image ?? [], [catalog]);
 
-  // Two mirrors of each execute-critical value: state drives the button's
-  // enabled look (a frame of lag is fine there); a ref is read SYNCHRONOUSLY in
-  // onExecute so a rapid re-click or a collaborator's keystroke that React has
-  // batched-but-not-flushed can't submit a stale prompt or double-fire.
+  // Two mirrors of each execute-critical value. The ref is read SYNCHRONOUSLY
+  // in onExecute so a rapid re-click or a collaborator's keystroke that React
+  // has batched-but-not-flushed can't submit a stale prompt or double-fire.
+  //
+  // The state feeds the button's own `evaluateExecute` call, so both sides ask
+  // the same question of their own inputs (#1949). What the button DRAWS is the
+  // same either way — `prompt-missing` and `null` both leave it live and
+  // arrow-shaped — but the two are different values, so `GeneratePanel` (a
+  // default-shallow `React.memo`) does re-render on the transition. It is an
+  // INPUT to a gate that must stay complete, not a line whose answer nothing
+  // reads.
   const [promptText, setPromptText] = React.useState('');
   const promptTextRef = React.useRef('');
   const handlePromptChange = React.useCallback((text: string) => {
@@ -326,7 +335,7 @@ function GeneratePanelBody({
     return data && 'status' in data ? data : undefined;
   }, [projectId, spaceId, nodeId]);
 
-  const canExecute = canExecuteGenerate({
+  const executeRefusal = evaluateExecute({
     promptText,
     model: vm.model,
     nodeStatus: vm.nodeStatus,
@@ -553,17 +562,25 @@ function GeneratePanelBody({
     // render-time closure, which React batching + live collab make stale:
     //   - submittingRef: a synchronous re-entry latch (state lags a frame, so a
     //     rapid second click would slip past an isSubmitting-state guard).
-    //   - nodeExists / isNodeHandling: fresh Yjs reads, so a node a collaborator
-    //     just deleted or flipped to handling can't get a task submitted.
+    //   - isNodeLocked / isNodeHandling: fresh Yjs reads, so a node a collaborator
+    //     locked or flipped to handling can't get a task submitted. Deletion is
+    //     NOT one of theirs — both answer false for a node that is gone; the
+    //     execute gate below is what refuses that, with `node-gone`.
     //   - promptTextRef: the prompt at click time (a collaborator's batched
     //     keystroke may not have flushed into promptText state yet).
     if (submittingRef.current) return;
-    if (!nodeExists(projectId, spaceId, nodeId)) return;
+    // No separate existence check: the execute gate below derives from a fresh
+    // graph read, so a node a collaborator deleted has no status and
+    // `evaluateExecute` answers `node-gone`. A line that can never change the
+    // outcome reads to the next person as if it can (#1949, the video
+    // container has said so at its own gate since #1899).
+    //
     // Node-state gate (bug 2): a locked node — or one a task started writing
     // since the panel opened — can't submit. Fresh Yjs reads (never a captured
     // menu / render value). Toast the reason so a locked node's clickable
     // Execute is an actionable message, not a dead control (the button is
-    // disabled only while handling). Editing the prompt stays allowed; the gate
+    // not greyed out for either — see `isExecuteButtonDisabled`). Editing the
+    // prompt stays allowed; the gate
     // blocks the submit alone.
     const gateBlock = evaluateNodeGate(
       {
@@ -597,19 +614,29 @@ function GeneratePanelBody({
     const freshPrompt = fresh.promptRequired
       ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
       : '';
-    if (
-      !canExecuteGenerate({
-        promptText: freshPrompt,
-        model: fresh.model,
-        nodeStatus: fresh.nodeStatus,
-        isSubmitting: false,
-        // Same as the button's gate above, and now from the same live value:
-        // a literal here would be a second answer to a question the model
-        // already answers, and the two could disagree — this gate returns
-        // without a toast, so a disagreement is a click that does nothing.
-        promptRequired: fresh.promptRequired,
-      })
-    ) {
+    // One evaluation, its own inputs: the button asked the same question of
+    // the RENDER-time view model, this asks it of live Yjs. Never reuse the
+    // button's answer — React batching and live collaboration make a render
+    // closure stale, and `prompt-missing` in particular is judged against a
+    // different value here (the editor re-serializes so a text chip carries
+    // its source node's CURRENT words).
+    //
+    // `isSubmitting: false` because the synchronous latch above already
+    // answered that question, and it answers it earlier than a state flag can
+    // (a rapid second click would slip past a re-render). So `'submitting'`
+    // never reaches the check below — it exists for the button.
+    const refusal = evaluateExecute({
+      promptText: freshPrompt,
+      model: fresh.model,
+      nodeStatus: fresh.nodeStatus,
+      isSubmitting: false,
+      promptRequired: fresh.promptRequired,
+    });
+    if (refusal != null) {
+      // WHICH refusal speaks is policy, and it lives in one place for the same
+      // reason the disabled set does — both panels ask, neither spells it out.
+      const key = refusalToastKey(refusal);
+      if (key) toast.warning(t(key));
       return;
     }
     // #1675 execute gate: an i2i / edit model needs a source image. With no
@@ -619,7 +646,7 @@ function GeneratePanelBody({
     // disabled), so the user gets an actionable message, not a dead control. The
     // server re-checks this before billing (defence in depth).
     if (fresh.requiresSource && fresh.referenceUrls.length === 0) {
-      toast.error(t('canvas.generatePanel.errorNoSourceImage'));
+      toast.warning(t('canvas.generatePanel.errorNoSourceImage'));
       return;
     }
     // #1735 count gate: too many @-picked reference images for this model. Toast
@@ -631,7 +658,7 @@ function GeneratePanelBody({
       fresh.maxReferences,
     );
     if (overCap) {
-      toast.error(t('canvas.generatePanel.errorTooManyReferences', overCap));
+      toast.warning(t('canvas.generatePanel.errorTooManyReferences', overCap));
       return;
     }
     submittingRef.current = true;
@@ -749,7 +776,7 @@ function GeneratePanelBody({
       params={stableParams}
       references={stableReferences}
       creditEstimate={vm.creditEstimate}
-      canExecute={canExecute}
+      executeRefusal={executeRefusal}
       promptSlot={promptSlot}
       onExit={closeActivePanel}
       onSelectModel={onSelectModel}
