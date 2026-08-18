@@ -250,8 +250,8 @@ export const TierComparison = React.memo(function TierComparison({
                     {upgrade === 'pending'
                       ? t('membership.action.inProgress')
                       : t('membership.action.choose', {
-                          tier: t(`membership.tier.${offer.tier}`),
-                        })}
+                        tier: t(`membership.tier.${offer.tier}`),
+                      })}
                   </Button>
                 ) : null}
               </td>
