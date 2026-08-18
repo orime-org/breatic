@@ -25,6 +25,7 @@ import {
 } from "@core/config/subscription.js";
 
 const validFile = {
+  stale_after_days: 14,
   plans: {
     pro: {
       price_cents: 1200,
@@ -59,7 +60,10 @@ describe("subscription config — resolving plans", () => {
     // A missing plan must not be discovered at checkout time as an undefined
     // price id sent to Stripe.
     expect(() =>
-      resolvePlans({ plans: { pro: validFile.plans.pro } }, false),
+      resolvePlans(
+        { stale_after_days: 14, plans: { pro: validFile.plans.pro } },
+        false,
+      ),
     ).toThrow(/team/);
   });
 

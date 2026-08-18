@@ -77,6 +77,9 @@ import {
 } from "@core/db/schema.js";
 import * as projectsRepo from "@core/project/projects.repo.js";
 import { getMembershipLimits, type MembershipLimits } from "@core/config/membership.js";
+import { getSubscriptionStaleAfterDays } from "@core/config/subscription.js";
+import { listSubscriptions } from "@core/auth/subscription.repo.js";
+import { subscriptionSituation } from "@core/auth/subscription-state.js";
 
 const KNOWN_TIERS: ReadonlySet<string> = new Set(MEMBERSHIP_TIERS);
 
@@ -318,9 +321,63 @@ export async function getLimitsForUser(
   userId: string,
   tx?: DbTx,
 ): Promise<MembershipLimits> {
-  return limitsFor(await readUserTier(userId, tx, false), {
+  const tier = await readUserTier(userId, tx, false);
+  return limitsFor(await honouredTier(userId, tier, tx), {
     accountId: userId,
   });
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * The tier an account's ceilings may actually be read from.
+ *
+ * Almost always the stored one. The exception is an account whose stored
+ * subscription is still marked live but whose paid period ended a long time
+ * ago: a subscription that is really renewing has its period pushed forward
+ * by Stripe, so that combination can only mean the event that ended it never
+ * reached us. Stripe gives up redelivering after three days, and nothing else
+ * would ever notice — the person on this side of the failure is getting a
+ * paid tier for free, and has no reason to open the membership panel where
+ * the other reconciliation runs.
+ *
+ * Costs one query and no external call, which is what lets it sit on the
+ * ceiling reads rather than on a page nobody in this state visits. Accounts
+ * with nothing to lose skip even that.
+ *
+ * Nothing is written here. Correcting the stored tier belongs to the paths
+ * that can also tell the account it happened; this one only stops handing out
+ * what has not been paid for.
+ * @param userId - The account whose tier was read.
+ * @param stored - The tier its row carries.
+ * @param tx - Transaction handle, when the caller is inside one.
+ * @returns The tier to read ceilings from.
+ */
+async function honouredTier(
+  userId: string,
+  stored: MembershipTier,
+  tx: DbTx | undefined,
+): Promise<MembershipTier> {
+  // Nothing to take away, and this covers both the free tier and every
+  // self-hosted account — neither has a subscription to be stale.
+  if (stored === "base") return stored;
+
+  const { situation, record } = subscriptionSituation(
+    await listSubscriptions(userId, tx),
+  );
+  // Only a subscription claiming to be live says anything about now. An ended
+  // one is history, and `firstPaymentUnsettled` has no period to judge.
+  if (situation !== "active" && situation !== "cancelling" &&
+      situation !== "upgradePending" && situation !== "retrying") {
+    return stored;
+  }
+  const periodEnd = record?.currentPeriodEnd;
+  if (!periodEnd) return stored;
+
+  const lapsedMs = Date.now() - periodEnd.getTime();
+  return lapsedMs > getSubscriptionStaleAfterDays() * MS_PER_DAY
+    ? "base"
+    : stored;
 }
 
 /**
@@ -336,7 +393,10 @@ export async function getLimitsForStudio(
   tx?: DbTx,
 ): Promise<MembershipLimits> {
   const admin = await readStudioAdmin(studioId, tx);
-  return limitsFor(admin.tier, { accountId: admin.adminUserId, studioId });
+  return limitsFor(await honouredTier(admin.adminUserId, admin.tier, tx), {
+    accountId: admin.adminUserId,
+    studioId,
+  });
 }
 
 /**
@@ -377,7 +437,8 @@ export async function lockLimitsForUser(
   userId: string,
   tx: DbTx,
 ): Promise<MembershipLimits> {
-  return limitsFor(await readUserTier(userId, tx, true), { accountId: userId });
+  const tier = await readUserTier(userId, tx, true);
+  return limitsFor(await honouredTier(userId, tier, tx), { accountId: userId });
 }
 
 /**

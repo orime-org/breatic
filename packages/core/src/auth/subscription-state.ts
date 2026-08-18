@@ -69,8 +69,13 @@ export interface SubscriptionRecord {
   readonly cancelAtPeriodEnd: boolean;
   /** Whether an upgrade is waiting on its invoice being paid. */
   readonly hasPendingUpdate: boolean;
-  /** When the paid period ends. */
-  readonly currentPeriodEnd: Date;
+  /**
+   * When the paid period ends.
+   *
+   * Null until the first invoice settles: a subscription that has never been
+   * paid for has no period.
+   */
+  readonly currentPeriodEnd: Date | null;
 }
 
 /**
@@ -180,13 +185,13 @@ export function tierForSituation(
   record: SubscriptionRecord | null,
 ): MembershipTier {
   switch (situation) {
+    // `upgradePending` earns the tier already paid for, never the one being
+    // upgraded to: the new tier's ceilings arrive when its invoice does.
+    // `retrying` keeps it too — ratified 2026-08-18, because while Stripe
+    // retries a failed charge it is still collecting for us.
     case "active":
     case "cancelling":
-    // An unpaid upgrade earns the tier already paid for, never the one being
-    // upgraded to; the new tier's ceilings arrive when its invoice does.
     case "upgradePending":
-    // Ratified 2026-08-18: while Stripe retries a failed charge it is still
-    // collecting for us, so the paid tier holds until the retries run out.
     case "retrying":
       return record?.tier ?? "base";
     // A first invoice that has not settled has bought nothing yet, and the two

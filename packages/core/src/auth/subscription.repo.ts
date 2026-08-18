@@ -92,7 +92,7 @@ function toStored(row: SubscriptionRow): StoredSubscription {
 /**
  * Reads every subscription an account holds or has held.
  *
- * Newest first, which is the order {@link subscriptionSituation} reads: were
+ * Newest first, which is the order `subscriptionSituation` reads: were
  * two ever live at once — an invariant the write side holds, not this one —
  * the most recent is the one somebody just paid for.
  * @param userId - The account to read.
