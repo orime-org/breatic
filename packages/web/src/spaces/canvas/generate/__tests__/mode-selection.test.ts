@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
 import {
+  filterAvailableModes,
   filterModelsByMode,
   pickModelForMode,
   resolveModeSwitch,
@@ -231,5 +232,45 @@ describe('resolveModeSwitch — 切模式，两个面板共用 (#1948)', () => {
     const r = resolveModeSwitch({ modelByMode: { t2v: 'veo' } }, 'i2v', [veo, kling]);
     expect(r.model).toBe('kling');
     expect(r.paramsByModel[r.model]).toEqual({ duration: 5 });
+  });
+});
+
+describe('filterAvailableModes（#1951 档要先有模型才出现）', () => {
+  const t2v = model('veo', 't2v', 'video');
+  const i2v = model('kling-i2v', ['i2v', 'first_last'], 'video');
+  const OPTIONS = [
+    { value: 't2v', label: 'Text to Video', testId: 'x-t2v' },
+    { value: 'i2v', label: 'Image to Video', testId: 'x-i2v' },
+    { value: 'first_last', label: 'First-Last Frame', testId: 'x-fl' },
+    { value: 'animate', label: 'Image Animation', testId: 'x-animate' },
+  ] as const;
+
+  it('目录是空的时候一个档都不留', () => {
+    expect(filterAvailableModes(OPTIONS, [])).toEqual([]);
+  });
+
+  it('只去掉没有模型的那一档，其余原样留下', () => {
+    const kept = filterAvailableModes(OPTIONS, [t2v, i2v]);
+    expect(kept.map((o) => o.value)).toEqual(['t2v', 'i2v', 'first_last']);
+  });
+
+  it('一个模型声明了两个模式，两档都留下', () => {
+    // kling-i2v 是 ["i2v", "first_last"]，这两档靠同一个模型活着 ——
+    // 按模型数去重的写法会漏掉后一档。
+    const kept = filterAvailableModes(OPTIONS, [i2v]);
+    expect(kept.map((o) => o.value)).toEqual(['i2v', 'first_last']);
+  });
+
+  it('留下的是原来那个对象，额外字段一个不丢', () => {
+    // 视频档带着 slots / takesReferences，容器还要拿它们查槽位；
+    // 过滤要是重建对象，那些字段就没了。
+    const withExtras = [
+      { value: 't2v', label: 'Text to Video', testId: 'x-t2v', slots: [], takesReferences: false },
+      { value: 'ref', label: 'Reference', testId: 'x-ref', slots: ['a'], takesReferences: true },
+    ] as const;
+    const kept = filterAvailableModes(withExtras, [t2v]);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toBe(withExtras[0]);
+    expect(kept[0]?.takesReferences).toBe(false);
   });
 });
