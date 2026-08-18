@@ -551,8 +551,9 @@ function getModelsForModality(modality: string): ModelInfo[] {
 
 // ── Dynamic skill builders ──────────────────────────────────────────
 
-// Shared single source of truth (also drives the web Generate picker) for which
-// image modes are generatable (t2i / i2i) versus mini-tool operations.
+// Which image modes are generatable (t2i / i2i) versus mini-tool operations.
+// This skill is the only consumer of that list; the web Generate picker asks a
+// different question (which modes this deployment has a model for, #1951).
 const IMAGE_PLAN_MODES: ReadonlySet<string> = new Set(IMAGE_GENERATION_MODES);
 const VIDEO_PLAN_MODES: ReadonlySet<string> = new Set(["t2v", "i2v", "ref"]);
 

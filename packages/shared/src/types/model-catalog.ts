@@ -124,12 +124,17 @@ export interface ModelCatalog {
 
 // ── Image model classification ───────────────────────────────────────
 //
-// Single source of truth (web + backend) for which image `mode`s make a model
-// GENERATABLE — i.e. it produces or edits an image from a prompt (optionally
-// using an upstream reference as the source image), as opposed to a pure
-// utility tool (`remove_bg` / `upscale`) that belongs in the mini-tool system.
-// Both the Generate panel's model picker and the agent's image-plan skill
-// filter through this so they always offer the same set.
+// Which image `mode`s make a model GENERATABLE — i.e. it produces or edits an
+// image from a prompt (optionally using an upstream reference as the source
+// image), as opposed to a pure utility tool (`remove_bg` / `upscale`) that
+// belongs in the mini-tool system.
+//
+// One consumer: the agent's image-plan skill (`domain/agent/skills-loader.ts`).
+// The Generate panel does NOT read this — its picker narrows the catalog to the
+// mode the user is on (`filterModelsByMode`), and since #1951 it offers only the
+// modes this deployment has a model for. It used to be a shared predicate; the
+// web side of it lost its last caller when the picker started asking about
+// availability instead of about classification.
 
 /**
  * Image model `mode` values that make a model generatable: text-to-image and
