@@ -1,0 +1,25 @@
+# Membership subscription plans (task #106).
+#
+# One entry per subscribable tier. `base` has no entry: it is what an account
+# falls back to when it subscribes to nothing, so there is nothing to sell.
+#
+# Separate from config/membership.yaml on purpose. That file answers "what are
+# this tier's six ceilings" and its header states that every number in it is a
+# plain ceiling; a monthly price is not one. config/pricing.yaml is the other
+# leg of the product entirely — credit packs bought once, not a subscription.
+#
+# `test` price ids are used outside production, `live` in production, the same
+# split config/pricing.yaml already uses.
+plans:
+  pro:
+    price_cents: 1200
+    currency: usd
+    stripe_price_id:
+      test: "price_1U5OqmGeRYMxofhepn2ij8zp"
+      live: ""
+  team:
+    price_cents: 3900
+    currency: usd
+    stripe_price_id:
+      test: "price_1U5OrkGeRYMxofhepeUDWhqB"
+      live: ""

@@ -134,6 +134,29 @@ const COMPARABLE_TIER_SET: ReadonlySet<string> = new Set(
   COMPARABLE_MEMBERSHIP_TIERS,
 );
 
+/** A tier somebody pays a monthly subscription for. */
+export type SubscribableMembershipTier = Exclude<
+  ComparableMembershipTier,
+  "base"
+>;
+
+/**
+ * The tiers a subscription can be bought for (#106).
+ *
+ * The price list minus the free tier: `base` is what an account falls back to
+ * when it subscribes to nothing, so there is no plan to sell for it.
+ *
+ * Derived from {@link COMPARABLE_MEMBERSHIP_TIERS} rather than written out
+ * again, so a fourth priced tier lands here by itself — and, because
+ * `config/subscription.yaml` is required to carry a plan for every member of
+ * this list, the missing plan is named on the first read instead of reaching
+ * Stripe as an undefined price id.
+ */
+export const SUBSCRIBABLE_MEMBERSHIP_TIERS =
+  COMPARABLE_MEMBERSHIP_TIERS.filter(
+    (tier): tier is SubscribableMembershipTier => tier !== "base",
+  );
+
 /**
  * Whether a tier is one of the priced ones.
  *
