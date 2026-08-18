@@ -62,18 +62,22 @@ test('a zero-block document takes typing, survives a confirmed clear, and takes 
   // resting at zero blocks" signal.
   await expect(editor).toHaveClass(/doc-body-empty/);
 
-  // Focus in a retry loop rather than once: the new-Space dialog hands focus
-  // back to its trigger button when it closes (Radix's own restore, measured
-  // landing ~100ms after the editor appears), and a single early focus call
-  // gets taken back — the keystrokes then go to that button and the document
-  // never changes. Retrying holds the focus once the restore is done, which
-  // is a condition rather than a duration.
-  await expect
-    .poll(async () => {
-      await editor.evaluate((el) => (el as HTMLElement).focus());
-      return editor.evaluate((el) => document.activeElement === el);
-    })
-    .toBe(true);
+  // Wait for the new-Space dialog to finish handing focus back to its trigger
+  // button before taking it. That hand-back is Radix's own restore and it
+  // lands asynchronously, ~100ms after the editor appears; anything this spec
+  // does before it happens gets taken back, and the keystrokes then go to the
+  // button while the document never changes. Instrumented over twelve runs,
+  // that race produced three different-looking failures — no confirmation
+  // dialog, a silent tier-one deletion, a keypress with no effect at all —
+  // all from the one missed keystroke. A person never meets it: they reach
+  // the document by clicking into it, long after the restore is done.
+  //
+  // Waiting for the restore, rather than re-focusing until one attempt
+  // sticks, is what makes the race impossible instead of unlikely: a poll
+  // only proves focus was held at the instant it sampled.
+  await expect(page.getByTestId('new-space-button')).toBeFocused();
+  await editor.evaluate((el) => (el as HTMLElement).focus());
+  await expect(editor).toBeFocused();
   await page.keyboard.type('first words');
   await expect(editor).toHaveText('first words');
 
