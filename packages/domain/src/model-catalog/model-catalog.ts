@@ -260,9 +260,11 @@ let _cache: ModelCatalog | null = null;
  * nothing (#1951).
  *
  * There used to be one: with not a single key set anywhere, the filter was
- * skipped and every model came back, for development. What that bought was
- * skipping the step of putting a placeholder in one env var — availability
- * asks only whether the variable is non-empty, never whether the key works.
+ * skipped and every model came back, for development. What that bought was a
+ * full catalog with nothing configured — one placeholder does not buy it back,
+ * since a set variable only unlocks the models of that one provider and there
+ * are 17 distinct `api_key_env` names across the configs. Availability asks
+ * only whether the variable is non-empty, never whether the key works.
  * What it cost was a deployment showing capabilities it cannot deliver:
  * the panel opened, the pickers filled, the execute button armed, and the
  * task failed upstream (user 2026-08-18 ruled it a bug).

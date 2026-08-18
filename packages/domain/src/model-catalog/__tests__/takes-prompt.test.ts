@@ -27,8 +27,10 @@ import { assertTakesPromptDeclared } from "../takes-prompt.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 // 目录一律按 provider 可用性过滤（#1951），而 CI 跑单测时一个 key 都不设 ——
-// 不声明这个前提，目录在 CI 上是空的，下面每一条都会走「捞不到模型」的
-// 分支提前退出，断言一句都不执行而测试照绿。
+// 不声明这个前提，`getModelCatalog()` 在 CI 上返回空目录。这个文件里读它的
+// 那一条（「投影到每个目录条目上」）会拿空数组算出一个空的未声明集合、照样
+// 通过，什么都没验到。其余用例读的是 `getFullModelConfig`（直接读 yaml、不过
+// 可用性过滤），本来就不受影响。
 beforeAll(() => {
   useFullCatalog();
 });

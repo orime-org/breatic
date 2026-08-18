@@ -16,9 +16,11 @@
  *
  * Since #1951 it also implies «this modality has a mode we can serve». A
  * deployment with no key for a modality gets `[]` and an HTTP 200 — a
- * success, but not one the panel can be built out of, and the panel body
- * used to open anyway with every control inert and nothing said. That state
- * now ends here, with its own sentence, the same way failure and offline do.
+ * success, but not one the panel can be built out of, and the panel body used
+ * to open anyway on the three controls that decide what gets generated: the
+ * mode toggle disabled, the model pill with nothing to show, execute refused
+ * — none of them saying why. That state now ends here, with its own sentence,
+ * the same way failure and offline do.
  */
 
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';

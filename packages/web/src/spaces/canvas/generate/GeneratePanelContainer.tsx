@@ -268,10 +268,12 @@ function GeneratePanelBody({
     [models, vm.mode],
   );
   // The modes this deployment can serve (#1951). Memoized on [models] alone
-  // for the same reason as the line above: it flows into two React.memo
-  // components, and a freshly-filtered array would defeat both on every frame
-  // of a node drag. This is also why it is not a view-model field — that
-  // rebuilds on every canvas mutation.
+  // for the same reason as the line above: it flows down three React.memo
+  // components — GeneratePanel, ImageModeToggle, ModeToggle — and a
+  // freshly-filtered array would defeat all three on every frame of a node
+  // drag. This is also why it is not a view-model FIELD: the view model
+  // rebuilds on every canvas mutation. (It calls `filterAvailableModes` too,
+  // to resolve which mode is current, but that result never leaves it.)
   const availableModes = React.useMemo(
     () => filterAvailableModes(IMAGE_MODE_OPTIONS, models),
     [models],

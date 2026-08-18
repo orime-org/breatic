@@ -148,7 +148,10 @@ export function CatalogGatedFrame({
   // a failure and it says so with `warning` rather than `error` — but there
   // is still no panel to build. This is where a deployment that configured
   // no key for this modality ends up, and it used to open the panel anyway
-  // with every control inert and nothing said.
+  // on the three controls that decide what gets generated: the mode toggle
+  // disabled, the model pill with nothing to show, execute refused — none of
+  // them saying why. (The prompt editor and the reference rail stayed live;
+  // they never read the catalog.)
   const noServableMode =
     data !== undefined &&
     filterAvailableModes(MODE_OPTIONS_BY_MODALITY[modality], data[modality])

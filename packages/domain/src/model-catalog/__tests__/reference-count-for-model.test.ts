@@ -19,8 +19,8 @@ import {
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 // 目录一律按 provider 可用性过滤（#1951），而 CI 跑单测时一个 key 都不设 ——
-// 不声明这个前提，目录在 CI 上是空的，下面每一条都会走「捞不到模型」的
-// 分支提前退出，断言一句都不执行而测试照绿。
+// 不声明这个前提，目录在 CI 上是空的，5 条用例里有 3 条会走「捞不到模型」的
+// 分支提前退出，断言一句不执行而测试照绿。
 beforeAll(() => {
   useFullCatalog();
 });

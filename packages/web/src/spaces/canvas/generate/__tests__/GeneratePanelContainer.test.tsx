@@ -207,8 +207,12 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
 
   /**
    * Renders the container with the target node in the given mode (shared by the
-   * two zombie-guard cases below). An empty catalog keeps vm.mode resolving off
-   * the node's stored `mode` alone.
+   * two zombie-guard cases below).
+   *
+   * Both callers feed it a NON-empty catalog on purpose (#1951). An empty one
+   * closes the panel before it mounts, and it would not preserve the stored
+   * mode either: with no mode servable the resolver falls back rather than
+   * reading the node.
    * @param client - The query client.
    * @param mode - The node's generation sub-mode.
    * @returns The render tree.

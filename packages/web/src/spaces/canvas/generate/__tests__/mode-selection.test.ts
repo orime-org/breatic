@@ -82,8 +82,10 @@ describe('filterModelsByMode', () => {
   it('excludes a pure-edit model from i2i — edit is not a generation mode', () => {
     // The generate panel routes on i2i; a model with only the `edit`
     // capability belongs to the future image-editing mini-tool, not here.
-    // 这一条就是唯一的守卫了：#1951 之前上游还有一道 isImageGenerationMode，
-    // 它的最后一个调用方随那次改动一起没了，函数也删了。
+    // 这一条一直就是唯一的守卫，#1951 前后都一样。仓里曾有个
+    // isImageGenerationMode 看着像上游那一道，但它算的是「整份目录一个可生成
+    // 模型都没有」这个布尔，从没参与过交给选择器的模型列表；#1951 删掉那个布尔
+    // 之后它没了最后一个调用方，函数也一起删了。
     const pureEdit = model('edit-only', ['edit']);
     expect(filterModelsByMode([I2I, pureEdit], 'i2i').map((m) => m.name)).toEqual([
       'i2i-a',
