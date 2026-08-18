@@ -1776,16 +1776,11 @@ async function startNew(projectId: string): Promise<void> {
       landed = true;
     } catch (err) {
       if (visit.signal.aborted) return;
-      // `aboutRow` because the list is where this can be pressed from with the
-      // sheet open -- the header's own button sits above it and stays
-      // reachable, and the panel's line would then be under the sheet.
-      tell({
-        projectId,
-        conversationId: null,
-        deliberate: true,
-        aboutRow: true,
-        ...readMishap(err),
-      });
+      // Not `aboutRow`: the only way to press this is the header's button,
+      // and pressing it closes the sheet, so there is no list to draw against
+      // by the time this is said. Closing is right -- a reader starting a new
+      // conversation is done with the list of the old ones.
+      tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
       // This press asked for nothing in the end. Whatever it overtook -- an
       // opening still on its way, a delete looking for somewhere to land -- is
       // the reader's choice again, so the claim goes back before anything else

@@ -29,6 +29,7 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { chatApi } from '@web/data/api/chat';
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { _resetForTests, useConversationRuntime } from '@web/stores/conversation-runtime';
+import { unexpectedTextIn } from '@web/test-utils/visible-text';
 
 const PROJECT = 'p-1';
 
@@ -172,7 +173,7 @@ describe('when they can', () => {
     );
   });
 
-  it('counts the conversations, not the messages', async () => {
+  it('does not say how many conversations there are', async () => {
     // 分页之后手上这份数组的长度不是总数,而这个数本来就不必显示。
     opensWith([
       { id: 'c-1', title: 'one' },
@@ -182,12 +183,9 @@ describe('when they can', () => {
     renderColumn();
 
     const header = await screen.findByTestId('agent-col-header');
-    // 判据是「顶栏里有没有一个数」,不是「有没有某个 testid」—— 后者换个名字
-    // 重新加上一个计数,它一声都不吭。
-    const numbers = Array.from(header.querySelectorAll('*')).filter(
-      (el) => el.children.length === 0 && /^\d+$/.test(el.textContent?.trim() ?? ''),
-    );
-    expect(numbers).toEqual([]);
+    // 判据是「顶栏只该显示会话名」。判某个 testid 在不在,换个名字就绕过去了;
+    // 判有没有一段纯数字,既漏 `(7)` 这种写法,又会把一条叫 2026 的会话误报。
+    expect(unexpectedTextIn(header, ['one'])).toEqual([]);
   });
 });
 

@@ -53,12 +53,16 @@ export const OPEN_CONVERSATION_HISTORY_TESTID = 'open-conversation-history';
  * Radix counts pressing it as pressing outside: the sheet closes, and then the
  * button's own click opens it again. On screen that is a press that did
  * nothing, and it fetches the whole list a second time. Measured in the
- * browser -- jsdom never gets as far as calling this, so what the sheet does
- * with the answer is only ever seen there.
+ * browser, and only there. jsdom does dispatch the event and does reach this
+ * function, but what the sheet does with the answer cannot be observed: the
+ * toggle closes the sheet either way, because a browser commits a React
+ * update between the pointer press and the click and jsdom does not. Short
+ * this out and every test still passes -- measured, which is why there is no
+ * test here pretending otherwise.
  * @param target - What the press landed on, as the event reports it.
  * @returns Whether the press belongs to that button.
  */
-export function pressedTheButtonThatOpensThisList(target: EventTarget | null): boolean {
+function pressedTheButtonThatOpensThisList(target: EventTarget | null): boolean {
   // Up the tree, not the element itself: the press lands on whatever is drawn
   // inside the button, which is an icon.
   return target instanceof Element
