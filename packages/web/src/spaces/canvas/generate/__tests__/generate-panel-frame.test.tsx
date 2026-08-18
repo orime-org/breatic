@@ -12,9 +12,13 @@
  *
  * The gate now also holds while the request is in flight, so «panel on screen»
  * implies «catalog in hand» and nothing inside has to render a not-known-yet
- * state. What it does NOT imply is a non-empty catalog: a deployment with no
- * key for a modality gets `[]` and an HTTP 200, which is a success and stays
- * the existing `catalogEmpty` handling's business.
+ * state.
+ *
+ * Since #1951 it also implies «this modality has a mode we can serve». A
+ * deployment with no key for a modality gets `[]` and an HTTP 200 — a
+ * success, but not one the panel can be built out of, and the panel body
+ * used to open anyway with every control inert and nothing said. That state
+ * now ends here, with its own sentence, the same way failure and offline do.
  */
 
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
@@ -53,17 +57,46 @@ function emptyCatalog(): ModelCatalog {
 }
 
 /**
+ * 一份 image 桶里有 t2i 模型的目录 —— 「这个部署至少能做一件事」。
+ * @returns 一份 image 非空的目录。
+ */
+function catalogWithImageModel(): ModelCatalog {
+  return {
+    ...emptyCatalog(),
+    image: [
+      {
+        name: 'nano',
+        display_name: 'Nano',
+        modality: 'image',
+        mode: 't2i',
+        description: '',
+        guide: '',
+        tier: 'optional',
+        cost_per_call: 5,
+        generation_time: 10,
+        takes_prompt: true,
+        params: {},
+        providers: [],
+        sourcesByMode: {},
+      },
+    ],
+    total: 1,
+  };
+}
+
+/**
  * Mounts the gate around a marker child, each test with its own query client
  * so one test's cached catalog can never satisfy the next one's gate.
+ * @param modality - 这个面板服务的模态（决定查目录的哪个桶）。
  * @returns The render result.
  */
-function mountGate(): ReturnType<typeof render> {
+function mountGate(modality: 'image' | 'video' = 'image'): ReturnType<typeof render> {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <CatalogGatedFrame nodeId='n1'>
+      <CatalogGatedFrame nodeId='n1' modality={modality}>
         <div data-testid='panel-body'>body</div>
       </CatalogGatedFrame>
     </QueryClientProvider>,
@@ -91,23 +124,49 @@ describe('CatalogGatedFrame — 目录到齐才展开 (#1964)', () => {
   });
 
   it('目录到齐之后才把内容放出来', async () => {
-    vi.spyOn(modelsApi, 'list').mockResolvedValue(emptyCatalog());
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalogWithImageModel());
     mountGate();
     await waitFor(() => {
       expect(screen.getByTestId('panel-body')).toBeTruthy();
     });
   });
 
-  // 空目录是一次成功的请求（HTTP 200、data 不是 undefined），不是失败。
-  // 面板照常展开，模型选择器由既有的 catalogEmpty 处理禁用。
-  it('目录为空也照常展开，不当成失败', async () => {
+  // 空目录是一次成功的请求（HTTP 200、data 不是 undefined），不是失败 ——
+  // 所以它走 warning 不走 error，跟离线那句同族。但它同样不展开：这个部署
+  // 一个能做的档都没有，面板里的每个控件都将是死的（#1951）。
+  it('这个模态一个可用档都没有时不展开、说一句为什么、关掉面板意图', async () => {
     const errorSpy = vi.spyOn(toast, 'error');
+    const warnSpy = vi.spyOn(toast, 'warning');
     vi.spyOn(modelsApi, 'list').mockResolvedValue(emptyCatalog());
+    mountGate();
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId('panel-body')).toBeNull();
+    expect(useCanvasStore.getState().panelHostId).toBeNull();
+    // 不是失败，所以不能弹 error。
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('另一个模态有模型不算数，看的是自己这个桶', async () => {
+    // image 有模型、video 没有：视频面板该被拦住。
+    const warnSpy = vi.spyOn(toast, 'warning');
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalogWithImageModel());
+    mountGate('video');
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId('panel-body')).toBeNull();
+  });
+
+  it('这个模态有模型时照常展开、不说话', async () => {
+    const warnSpy = vi.spyOn(toast, 'warning');
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalogWithImageModel());
     mountGate();
     await waitFor(() => {
       expect(screen.getByTestId('panel-body')).toBeTruthy();
     });
-    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   // 离线时 react-query 把请求 park 起来：`fetchStatus` 是 paused，既不 resolve
