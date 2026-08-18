@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import type { MembershipTier, TierOffer } from '@breatic/shared';
+import type {
+  ComparableMembershipTier,
+  MembershipTier,
+  TierOffer,
+} from '@breatic/shared';
 
+import { Button } from '@web/components/ui/button';
 import { formatBytes } from '@web/features/membership/format';
-import { TIER_MONTHLY_PRICE_USD } from '@web/features/membership/pricing';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /** The comparison table's inputs. */
@@ -14,6 +18,15 @@ interface TierComparisonProps {
   offers: readonly TierOffer[];
   /** The account's own tier, so its column can be marked. */
   currentTier: MembershipTier;
+  /**
+   * Take the account to a tier above its own.
+   *
+   * Absent where this deployment sells nothing, which is what removes the
+   * whole action row rather than leaving buttons that cannot work.
+   */
+  onChoose?: (tier: ComparableMembershipTier) => void;
+  /** Whether a choice is already being carried out, so the row waits. */
+  busy?: boolean;
 }
 
 /**
@@ -45,8 +58,15 @@ interface TierComparisonProps {
 export const TierComparison = React.memo(function TierComparison({
   offers,
   currentTier,
+  onChoose,
+  busy = false,
 }: TierComparisonProps): React.JSX.Element {
   const t = useTranslation();
+  // Where the account's own tier sits, so the row below can tell "above me"
+  // from "below me". A tier that is not on this table at all — self-hosted,
+  // enterprise — gives -1, and then every column reads as above it, which is
+  // right: neither of those has a table rendered for it anyway.
+  const currentRank = offers.findIndex((offer) => offer.tier === currentTier);
 
   // Not memoised on `[t]`: `useTranslation` hands back the module-level
   // function, whose identity never changes, so such a memo would compute these
@@ -133,20 +153,19 @@ export const TierComparison = React.memo(function TierComparison({
           >
             {t('membership.monthlyFee')}
           </th>
-          {offers.map((offer) => {
-            const price = TIER_MONTHLY_PRICE_USD[offer.tier];
-            return (
-              <td
-                key={offer.tier}
-                data-testid={`compare-cell-${offer.tier}-monthlyFee`}
-                className={columnClass(offer.tier)}
-              >
-                {price === 0
-                  ? t('membership.priceFree')
-                  : `$${String(price)}`}
-              </td>
-            );
-          })}
+          {offers.map((offer) => (
+            <td
+              key={offer.tier}
+              data-testid={`compare-cell-${offer.tier}-monthlyFee`}
+              className={columnClass(offer.tier)}
+            >
+              {/* Null means there is no price to quote: the free tier has
+                  none, and neither does a deployment that sells nothing. */}
+              {offer.priceCents === null
+                ? t('membership.priceFree')
+                : `$${String(offer.priceCents / 100)}`}
+            </td>
+          ))}
         </tr>
         {rows.map((row) => (
           <tr key={row.key}>
@@ -168,6 +187,51 @@ export const TierComparison = React.memo(function TierComparison({
           </tr>
         ))}
       </tbody>
+      {onChoose ? (
+        <tfoot>
+          <tr>
+            {/* The tax note sits in the label column: it belongs to the price
+                row above it, and a line under the whole table read as a
+                footnote about everything. */}
+            <td className='px-2.5 py-3 text-left text-xs text-muted-foreground'>
+              {t('membership.taxNote')}
+            </td>
+            {offers.map((offer, index) => (
+              <td
+                key={offer.tier}
+                data-testid={`compare-action-${offer.tier}`}
+                className={
+                  offer.tier === currentTier
+                    ? 'bg-accent px-2.5 py-3 text-center'
+                    : 'px-2.5 py-3 text-center'
+                }
+              >
+                {/* Three cases, and the third is deliberately empty. A tier
+                    below the account's own offers nothing at all: downgrading
+                    is not on offer, so there is no control and therefore
+                    nothing to explain. */}
+                {offer.tier === currentTier ? (
+                  <span className='text-xs font-semibold text-foreground'>
+                    {t('membership.action.current')}
+                  </span>
+                ) : index > currentRank ? (
+                  <Button
+                    type='button'
+                    size='sm'
+                    disabled={busy}
+                    data-testid={`membership-choose-${offer.tier}`}
+                    onClick={() => onChoose(offer.tier)}
+                  >
+                    {t('membership.action.choose', {
+                      tier: t(`membership.tier.${offer.tier}`),
+                    })}
+                  </Button>
+                ) : null}
+              </td>
+            ))}
+          </tr>
+        </tfoot>
+      ) : null}
     </table>
   );
 });

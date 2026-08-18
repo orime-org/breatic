@@ -1172,6 +1172,21 @@
     "contactEnterprise": "더 큰 규모나 별도의 상업 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactSelfHosted": "상업용 라이선스나 별도의 지원 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactEnterpriseAccount": "사용 한도에 대해 궁금하거나 조정이 필요하신가요? 메일로 문의해 주세요:",
-    "loadFailed": "멤버십 정보를 읽지 못했습니다. 네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요."
+    "loadFailed": "멤버십 정보를 읽지 못했습니다. 네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요.",
+    "action": {
+      "choose": "{tier} 선택",
+      "current": "현재"
+    },
+    "taxNote": "가격은 세금이 포함되지 않습니다. 세금은 결제 시 추가됩니다.",
+    "nextCharge": "다음 결제 {date}",
+    "endsOn": "멤버십 종료 {date}",
+    "cancel": "멤버십 해지",
+    "resume": "멤버십 재개",
+    "notice": {
+      "firstPaymentPending": "결제가 완료되지 않았습니다",
+      "upgradePending": "업그레이드 결제가 완료되지 않았습니다",
+      "paymentOverdue": "이번 달 결제가 이루어지지 않았습니다"
+    },
+    "payNow": "결제하기"
   }
 }

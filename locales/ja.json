@@ -1172,6 +1172,21 @@
     "contactEnterprise": "より大きな規模や個別の商用条件が必要ですか。メールでご相談ください:",
     "contactSelfHosted": "商用ライセンスや個別のサポート条件が必要ですか。メールでご相談ください:",
     "contactEnterpriseAccount": "利用上限についてのご質問や変更のご相談は、メールでお問い合わせください:",
-    "loadFailed": "メンバーシップ情報を読み込めませんでした。通信の問題かもしれません。少し時間をおいてお試しください。"
+    "loadFailed": "メンバーシップ情報を読み込めませんでした。通信の問題かもしれません。少し時間をおいてお試しください。",
+    "action": {
+      "choose": "{tier} を選ぶ",
+      "current": "現在"
+    },
+    "taxNote": "価格は税抜きです。税は決済時に加算されます。",
+    "nextCharge": "次回請求 {date}",
+    "endsOn": "メンバーシップ終了 {date}",
+    "cancel": "メンバーシップを解約",
+    "resume": "メンバーシップを再開",
+    "notice": {
+      "firstPaymentPending": "支払いが完了していません",
+      "upgradePending": "アップグレードの支払いが完了していません",
+      "paymentOverdue": "今月の支払いができませんでした"
+    },
+    "payNow": "支払う"
   }
 }

@@ -27,7 +27,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { AccountMembership, MembershipLimits } from '@breatic/shared';
+import type {
+  AccountMembership,
+  MembershipLimits,
+  SubscriptionSummary,
+} from '@breatic/shared';
 
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -59,6 +63,24 @@ function limits(over: Partial<MembershipLimits> = {}): MembershipLimits {
 }
 
 /**
+ * 一份订阅，按需覆盖。
+ * @param over - 要覆盖的字段。
+ * @returns 完整的订阅。
+ */
+function subscription(
+  over: Partial<SubscriptionSummary> = {},
+): SubscriptionSummary {
+  return {
+    state: 'active',
+    tier: 'pro',
+    currentPeriodEnd: '2026-09-18T00:00:00.000Z',
+    cancelAtPeriodEnd: false,
+    payableInvoiceUrl: null,
+    ...over,
+  };
+}
+
+/**
  * 一份接口答案，按需覆盖。
  * @param over - 要覆盖的字段。
  * @returns 完整的答案。
@@ -81,8 +103,10 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           project_members: 4,
           storage_bytes: 5 * GIB,
         },
+        priceCents: null,
+        currency: null,
       },
-      { tier: 'pro', limits: limits() },
+      { tier: 'pro', limits: limits(), priceCents: 1200, currency: 'usd' },
       {
         tier: 'team',
         limits: {
@@ -93,8 +117,11 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           project_members: 40,
           storage_bytes: 500 * GIB,
         },
+        priceCents: 3900,
+        currency: 'usd',
       },
     ],
+    subscription: null,
     ...over,
   };
 }
@@ -138,14 +165,17 @@ beforeEach(() => {
 });
 
 describe('MembershipPanel', () => {
-  it('显示档位、价格和账号级的两项额度', async () => {
+  it('显示档位和账号级的两项额度', async () => {
+    // 档位名下面那行现在讲订阅（下次扣费 / 期末结束 / 有款项没付成），
+    // 不再是一个静态价格 —— 价格在对比表里，那行要说的是这个人的钱现在
+    // 是什么情况。没有订阅的账号那行整个不出现。
     membershipMock.mockResolvedValue(answer());
     setup();
 
     expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
       'PRO',
     );
-    expect(screen.getByText('$12 / month')).toBeInTheDocument();
+    expect(screen.queryByTestId('subscription-billing-line')).toBeNull();
     expect(screen.getByTestId('quota-team-studios')).toHaveTextContent('1 / 1');
     expect(screen.getByTestId('quota-storage')).toHaveTextContent(
       '38 GiB / 200 GiB',
@@ -180,16 +210,101 @@ describe('MembershipPanel', () => {
     );
   });
 
-  it('升级按钮压暗、带「尚未开放」，且仍在键盘顺序里', async () => {
-    // 块八没做，按钮点了没去处。HTML disabled 会把它踢出 tab 顺序，
-    // 那样靠焦点浏览的人根本遇不到它。
-    membershipMock.mockResolvedValue(answer());
+  it('只给高于当前档的那几格入口，低的什么都不标', async () => {
+    // 拍定 2026-08-18：降级这个动作在界面上不存在。低档那几格留空 ——
+    // 不是压暗的按钮，也不是「不能降」的提示，因为没有可点的东西就没有
+    // 需要解释的事。
+    membershipMock.mockResolvedValue(answer({ subscription: subscription() }));
     setup();
 
-    const upgrade = await screen.findByTestId('membership-upgrade');
-    expect(upgrade).toHaveAttribute('aria-disabled', 'true');
-    expect(upgrade).not.toHaveAttribute('disabled');
-    expect(upgrade).toHaveTextContent('Not open yet');
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('membership-choose-team')).toBeInTheDocument();
+    expect(screen.queryByTestId('membership-choose-base')).toBeNull();
+    expect(screen.getByTestId('compare-action-base')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('compare-action-pro')).toHaveTextContent(
+      'Current',
+    );
+  });
+
+  it('这个部署不卖订阅时，整行操作都不出现', async () => {
+    // 自托管没有价目表这回事，摆一排点不动的按钮比什么都不摆更糟。
+    membershipMock.mockResolvedValue(answer({ subscription: null }));
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.queryByTestId('compare-action-team')).toBeNull();
+    expect(screen.queryByTestId('membership-cancel')).toBeNull();
+  });
+
+  it('正常订阅显示下次扣费日期和取消入口', async () => {
+    membershipMock.mockResolvedValue(answer({ subscription: subscription() }));
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('subscription-billing-line')).toHaveTextContent(
+      'Next charge',
+    );
+    expect(screen.getByTestId('membership-cancel')).toBeInTheDocument();
+    expect(screen.queryByTestId('subscription-notice')).toBeNull();
+  });
+
+  it('已预约取消时说的是结束、给的是恢复', async () => {
+    // 那天不会再扣钱，写「下次扣费」就是在说一笔不会发生的付款。
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({ state: 'cancelling', cancelAtPeriodEnd: true }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('subscription-billing-line')).toHaveTextContent(
+      'Membership ends',
+    );
+    expect(screen.getByTestId('membership-resume')).toBeInTheDocument();
+    expect(screen.queryByTestId('membership-cancel')).toBeNull();
+  });
+
+  it('扣款失败重试期间给说明和一个能自己付掉的入口', async () => {
+    // 保住档位的另一半：那两周里他必须知道发生了什么，并且有一个自己把钱
+    // 付掉的动作。这一格没有「下次扣费」，因为这个月的还没收上来。
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({
+          state: 'retrying',
+          payableInvoiceUrl: 'https://invoice.example/pay',
+        }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.queryByTestId('subscription-billing-line')).toBeNull();
+    expect(screen.getByTestId('subscription-notice')).toHaveTextContent(
+      'did not go through',
+    );
+    expect(screen.getByTestId('subscription-pay-now')).toHaveAttribute(
+      'href',
+      'https://invoice.example/pay',
+    );
+  });
+
+  it('升级待付款时档位不动，另给一条把差价付掉的路', async () => {
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({
+          state: 'upgradePending',
+          payableInvoiceUrl: 'https://invoice.example/diff',
+        }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('current-tier-name')).toHaveTextContent('PRO');
+    expect(screen.getByTestId('subscription-notice')).toHaveTextContent(
+      'Upgrade payment not completed',
+    );
   });
 
   it('自托管把六项全列出来，并且不显示价格、对比表和升级按钮', async () => {

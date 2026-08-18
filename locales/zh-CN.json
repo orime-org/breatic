@@ -1172,6 +1172,21 @@
     "contactEnterprise": "需要更大规模或单独的商用条款？发邮件跟我们谈：",
     "contactSelfHosted": "需要商用授权或单独的支持条款？发邮件跟我们谈：",
     "contactEnterpriseAccount": "额度有疑问或需要调整？发邮件跟我们谈：",
-    "loadFailed": "没能读到你的会员信息，可能是网络问题。稍后再试一次。"
+    "loadFailed": "没能读到你的会员信息，可能是网络问题。稍后再试一次。",
+    "action": {
+      "choose": "选择 {tier}",
+      "current": "当前"
+    },
+    "taxNote": "价格不含税，税费在结账时计算。",
+    "nextCharge": "下次扣费 {date}",
+    "endsOn": "会员 {date} 结束",
+    "cancel": "取消会员",
+    "resume": "恢复会员",
+    "notice": {
+      "firstPaymentPending": "付款未完成",
+      "upgradePending": "升级付款未完成",
+      "paymentOverdue": "这个月的款项没有扣成功"
+    },
+    "payNow": "去付款"
   }
 }

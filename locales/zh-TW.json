@@ -1172,6 +1172,21 @@
     "contactEnterprise": "需要更大規模或單獨的商用條款？寄信跟我們談：",
     "contactSelfHosted": "需要商用授權或單獨的支援條款？寄信跟我們談：",
     "contactEnterpriseAccount": "額度有疑問或需要調整？寄信跟我們談：",
-    "loadFailed": "沒能讀到你的會員資訊，可能是網路問題。稍後再試一次。"
+    "loadFailed": "沒能讀到你的會員資訊，可能是網路問題。稍後再試一次。",
+    "action": {
+      "choose": "選擇 {tier}",
+      "current": "目前"
+    },
+    "taxNote": "價格未含稅，稅費在結帳時計算。",
+    "nextCharge": "下次扣款 {date}",
+    "endsOn": "會員 {date} 結束",
+    "cancel": "取消會員",
+    "resume": "恢復會員",
+    "notice": {
+      "firstPaymentPending": "付款未完成",
+      "upgradePending": "升級付款未完成",
+      "paymentOverdue": "這個月的款項沒有扣款成功"
+    },
+    "payNow": "去付款"
   }
 }

@@ -5,16 +5,16 @@ import * as React from 'react';
 import {
   isComparableMembershipTier,
   type AccountMembership,
+  type ComparableMembershipTier,
 } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { formatBytes } from '@web/features/membership/format';
 import { QuotaRow } from '@web/features/membership/QuotaRow';
-import {
-  SALES_EMAIL,
-  TIER_MONTHLY_PRICE_USD,
-} from '@web/features/membership/pricing';
+import { SALES_EMAIL } from '@web/features/membership/pricing';
+import { SubscriptionLines } from '@web/features/membership/SubscriptionLines';
+import { useSubscriptionActions } from '@web/features/membership/use-subscription-actions';
 import { TierComparison } from '@web/features/membership/TierComparison';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -102,44 +102,50 @@ export function MembershipContent({
   membership,
 }: MembershipContentProps): React.JSX.Element {
   const t = useTranslation();
-  const { tier, limits, usage, catalog } = membership;
+  const { tier, limits, usage, catalog, subscription } = membership;
   const onPriceList = isComparableMembershipTier(tier);
-  const price = onPriceList ? TIER_MONTHLY_PRICE_USD[tier] : null;
+  const { choose, cancel, resume, busy } = useSubscriptionActions(subscription);
+
+  // The table offers every comparable tier, `base` included; only the ones
+  // that can be subscribed to reach the action.
+  const handleChoose = React.useCallback(
+    (chosen: ComparableMembershipTier) => {
+      if (chosen !== 'base') choose(chosen);
+    },
+    [choose],
+  );
 
   return (
     <div className='flex flex-col gap-8'>
       <section className='flex flex-col gap-1.5'>
         <SectionHeading>{t('membership.currentTier')}</SectionHeading>
         <div className='flex items-start justify-between gap-4'>
-          <div>
+          <div className='flex flex-col gap-1'>
             <div className='text-2xl font-bold' data-testid='current-tier-name'>
               {t(`membership.tier.${tier}`)}
             </div>
-            {price === null ? null : (
-              <div className='text-sm text-muted-foreground'>
-                {price === 0
-                  ? t('membership.priceFree')
-                  : t('membership.pricePerMonth', { amount: `$${String(price)}` })}
-              </div>
-            )}
+            {/* Under the tier name: when the next charge is, or that the
+                membership is ending, or that a payment is outstanding. Which
+                of those follows from the subscription's situation, and a
+                static price would be wrong in three of them. */}
+            <SubscriptionLines subscription={subscription} />
           </div>
-          {onPriceList ? (
-            // Upgrading has nowhere to go until the checkout work lands, and
-            // the entry says so rather than pretending. `aria-disabled` and
-            // not `disabled`: the latter takes it out of the tab order, and
-            // the reader most likely to want the notice is the one moving by
-            // focus. Same treatment as the account menu's coming entries.
+          {subscription && subscription.state !== 'none' ? (
             <Button
               type='button'
-              aria-disabled='true'
-              data-testid='membership-upgrade'
-              onClick={(event) => event.preventDefault()}
-              className='shrink-0 cursor-not-allowed gap-2 opacity-50'
+              variant='outline'
+              disabled={busy}
+              data-testid={
+                subscription.cancelAtPeriodEnd
+                  ? 'membership-resume'
+                  : 'membership-cancel'
+              }
+              onClick={subscription.cancelAtPeriodEnd ? resume : cancel}
+              className='shrink-0'
             >
-              {t('membership.upgrade')}
-              <span className='rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
-                {t('studio.topBar.notOpenYet')}
-              </span>
+              {subscription.cancelAtPeriodEnd
+                ? t('membership.resume')
+                : t('membership.cancel')}
             </Button>
           ) : null}
         </div>
@@ -255,7 +261,14 @@ export function MembershipContent({
               so the label lines up with the tier names instead of floating
               above a column that would otherwise have none. */}
           <ScrollArea scrollbars='horizontal'>
-            <TierComparison offers={catalog} currentTier={tier} />
+            <TierComparison
+              offers={catalog}
+              currentTier={tier}
+              // No handler where this deployment sells nothing, which removes
+              // the action row rather than showing buttons that cannot work.
+              onChoose={subscription ? handleChoose : undefined}
+              busy={busy}
+            />
           </ScrollArea>
           <ContactLine
             text={t('membership.contactEnterprise')}

@@ -189,7 +189,7 @@ export interface TierOffer {
    * would be a claim about a shop that does not exist.
    */
   readonly priceCents: number | null;
-  /** ISO 4217 code for {@link priceCents}, null wherever that is null. */
+  /** ISO 4217 code for `priceCents`, null wherever that is null. */
   readonly currency: string | null;
 }
 
