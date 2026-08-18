@@ -261,7 +261,8 @@ export function MembershipContent({
               text={t('membership.contactEnterprise')}
               testId='membership-contact-priced'
             />
-            {/* 判据跟服务端读同一份清单：面板画得出的动作，服务端一定接得住。 */}
+            {/* The same list the server reads, so an action this panel draws
+                is one the server will accept. */}
             {subscription && holdsActionableSubscription(subscription.state) ? (
               <Button
                 type='button'

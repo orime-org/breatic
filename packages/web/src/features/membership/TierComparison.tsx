@@ -63,8 +63,9 @@ export const TierComparison = React.memo(function TierComparison({
   busy = false,
 }: TierComparisonProps): React.JSX.Element {
   const t = useTranslation();
-  // 语言跟着 `t` 一起变：`useTranslation` 已经订阅了语言切换事件并触发重渲，
-  // 所以这里读到的一定是当前那一档，不需要第二个订阅。
+  // Read rather than subscribed to: `useTranslation` above already subscribes
+  // to locale changes and re-renders this component, so by the time this runs
+  // the locale is the current one. A second subscription would be redundant.
   const locale = getLocale();
   // Where the account's own tier sits, so the row below can tell "above me"
   // from "below me". A tier that is not on this table at all — self-hosted,
