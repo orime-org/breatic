@@ -106,6 +106,18 @@ describe("subscriptionSituation (#106 §6.5.1)", () => {
     );
   });
 
+  it("reports a status this build does not know as unexpected, not as none", () => {
+    // The column is a varchar holding Stripe's own word, so a status added
+    // upstream reaches this reading before any of our code knows it. Reading
+    // it as `none` would be the harmful answer: the account is still being
+    // billed, and the panel would offer to start a second subscription.
+    expect(
+      subscriptionSituation([
+        row({ status: "some_status_stripe_added" }),
+      ]).situation,
+    ).toBe("unexpected");
+  });
+
   it("ignores ended rows when a live one is present", () => {
     // An account that cancelled and subscribed again keeps the old row as a
     // ledger entry; it must not be what decides the situation.

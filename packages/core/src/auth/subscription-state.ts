@@ -54,8 +54,15 @@ export type StripeSubscriptionStatus =
 export interface SubscriptionRecord {
   /** Stripe's id for the subscription, unique across all rows. */
   readonly stripeSubscriptionId: string;
-  /** Stripe's own status, stored verbatim. */
-  readonly status: StripeSubscriptionStatus;
+  /**
+   * Stripe's own status, stored verbatim.
+   *
+   * Typed as a plain string rather than {@link StripeSubscriptionStatus}
+   * because that is what the column holds: a status added upstream reaches
+   * this reading before any of our code knows the word. The narrow union
+   * belongs on the writing side, where the SDK supplies the value.
+   */
+  readonly status: string;
   /** The tier this subscription has been paid for. */
   readonly tier: MembershipTier;
   /** Whether the plan is set to end when the paid period runs out. */
@@ -94,20 +101,29 @@ export interface SituationReading {
 /**
  * The statuses under which a subscription is still ours to act on.
  *
- * `canceled`, `unpaid` and `incomplete_expired` have ended; `trialing` and
- * `paused` we never create, so treating them as live would let a state we do
- * not produce stand between an account and subscribing.
+ * `trialing` and `paused` are absent although Stripe considers them current:
+ * we set no trial, so neither can arise from anything we do, and treating one
+ * as live would leave a state we never produce standing between an account
+ * and subscribing.
  */
-const LIVE_STATUSES: ReadonlySet<StripeSubscriptionStatus> = new Set([
+const LIVE_STATUSES: ReadonlySet<string> = new Set([
   "incomplete",
   "active",
   "past_due",
 ]);
 
-/** The statuses we never create and therefore never expect to read. */
-const UNEXPECTED_STATUSES: ReadonlySet<StripeSubscriptionStatus> = new Set([
-  "trialing",
-  "paused",
+/**
+ * The statuses under which a subscription is over.
+ *
+ * Named explicitly rather than inferred as "not live", so that a status added
+ * upstream lands in neither set and reads as unexpected. Reading an unknown
+ * status as ended would be the harmful direction: the account is still being
+ * billed, and the panel would offer to start a second subscription.
+ */
+const ENDED_STATUSES: ReadonlySet<string> = new Set([
+  "canceled",
+  "unpaid",
+  "incomplete_expired",
 ]);
 
 /**
@@ -145,8 +161,8 @@ export function subscriptionSituation(
   const live = records.find((record) => LIVE_STATUSES.has(record.status));
   if (live) return { situation: situationOfLiveRecord(live), record: live };
 
-  const unexpected = records.find((record) =>
-    UNEXPECTED_STATUSES.has(record.status),
+  const unexpected = records.find(
+    (record) => !ENDED_STATUSES.has(record.status),
   );
   if (unexpected) return { situation: "unexpected", record: unexpected };
 
