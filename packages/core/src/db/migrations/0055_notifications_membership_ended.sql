@@ -1,4 +1,4 @@
--- The bell can now say a membership ended (#106 §9).
+-- The bell can now speak about a membership (#106 §9, §7.3).
 --
 -- Ratified 2026-08-18: an account that falls back to `base` is told, whichever
 -- of the four paths brought it down — the subscription was cancelled and its
@@ -13,10 +13,15 @@
 -- it is there for — that nobody discovers one day that they are no longer a
 -- member.
 --
--- Informational, so no TTL and nothing to answer: it links nowhere and is read
--- on click, like the five `*_approved` / `*_accepted` rows already are.
+-- The second type covers the other end of an upgrade: the difference was never
+-- paid, so after 23 hours Stripe discards the change. Nothing failed on our
+-- side and nothing is owed, but somebody who clicked upgrade and saw nothing
+-- happen deserves to be told why.
 --
--- Rebuild `notifications_type_check` with the existing 11 types + this one.
+-- Both are informational: no TTL and nothing to answer, read on click, like
+-- the five `*_approved` / `*_accepted` rows already are.
+--
+-- Rebuild `notifications_type_check` with the existing 11 types + these two.
 -- Hand-written (same pattern as 0039): .sql + _journal entry, no snapshot; the
 -- notifications CHECK is maintained manually.
 
@@ -34,6 +39,7 @@ ALTER TABLE "notifications" ADD CONSTRAINT "notifications_type_check" CHECK (
 		'project.invite_accepted',
 		'project.transfer_request',
 		'project.transfer_approved',
-		'membership.ended'
+		'membership.ended',
+		'membership.upgrade_incomplete'
 	)
 );

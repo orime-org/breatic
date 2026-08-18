@@ -161,6 +161,7 @@ export {
   getLimitsForStudio,
   getProjectConcurrentEditorLimit,
   lockLimitsForUser,
+  lockAccountRow,
   changeMembershipTier,
   TIER_CHANGE_REASONS,
 } from "@core/auth/membership.repo.js";

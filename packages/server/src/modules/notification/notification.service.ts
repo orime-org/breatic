@@ -357,6 +357,40 @@ export async function createMembershipEnded(input: {
   );
 }
 
+/** Payload for `membership.upgrade_incomplete` — the tier that was not reached. */
+export interface MembershipUpgradeIncompletePayload {
+  /** The tier the upgrade was for. */
+  toTier: string;
+}
+
+/**
+ * Tell an account its upgrade was discarded because the difference went
+ * unpaid (#106 §7.3).
+ *
+ * Stripe holds a priced change for 23 hours and then drops it. Nothing is
+ * owed and nothing broke — but somebody who clicked upgrade, saw a payment
+ * page, and then saw their tier unchanged has no other way to learn why.
+ * @param input - Recipient inbox, which tier was not reached, and optional tx.
+ * @param input.userId - The account whose upgrade lapsed.
+ * @param input.payload - The tier the upgrade was for.
+ * @param input.tx - The transaction the subscription write is being made in.
+ * @returns The inserted `membership.upgrade_incomplete` notification.
+ */
+export async function createMembershipUpgradeIncomplete(input: {
+  userId: string;
+  payload: MembershipUpgradeIncompletePayload;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "membership.upgrade_incomplete",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
 /**
  * Notify the OLD admin that the transfer they initiated was accepted
  * (slice 3).

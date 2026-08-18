@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "이 서버에서는 직접 업로드를 사용할 수 없습니다"
+    },
+    "membership": {
+      "already_subscribed": "이미 멤버십이 있습니다.",
+      "no_subscription": "멤버십이 없습니다.",
+      "not_cancelling": "이 멤버십은 종료 예정이 아닙니다.",
+      "downgrade_not_offered": "하위 등급으로 변경할 수 없습니다.",
+      "same_tier": "이미 이 멤버십입니다.",
+      "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
+      "unavailable": "멤버십을 사용할 수 없습니다."
     }
   },
   "chat": {
@@ -729,7 +738,8 @@
       "studioInviteAccepted": "{actor}님이 {studio} 초대를 수락했습니다",
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",
       "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다",
-      "membershipEnded": "{tier} 멤버십이 종료되었습니다"
+      "membershipEnded": "{tier} 멤버십이 종료되었습니다",
+      "membershipUpgradeIncomplete": "{tier} 업그레이드가 완료되지 않았습니다"
     },
     "actorFallback": "누군가",
     "subtitle": {

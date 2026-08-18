@@ -381,6 +381,24 @@ async function honouredTier(
 }
 
 /**
+ * Takes the account's row for the rest of the transaction, reading nothing.
+ *
+ * For a caller that must serialise on the account BEFORE it goes and fetches
+ * the facts it is about to write — the subscription webhook does, because two
+ * events for one account would otherwise each ask Stripe for the current state
+ * and the one that commits last could be holding the older answer.
+ *
+ * `changeMembershipTier` takes the same lock, so a caller that only writes at
+ * the end needs nothing from here.
+ * @param userId - The account to lock.
+ * @param tx - The enclosing transaction; the lock is meaningless without one.
+ * @throws {Error} if no live account has that id.
+ */
+export async function lockAccountRow(userId: string, tx: DbTx): Promise<void> {
+  await readUserTier(userId, tx, true);
+}
+
+/**
  * The ceilings that apply to a studio: its current admin's tier's.
  * @param studioId - The studio whose ceilings to resolve
  * @param tx - Optional transaction handle; see {@link getUserMembershipTier}

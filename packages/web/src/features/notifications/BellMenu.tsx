@@ -337,6 +337,8 @@ function iconForType(type: NotificationType): string {
       return '✓';
     case 'membership.ended':
       return initialsFromString('ME');
+    case 'membership.upgrade_incomplete':
+      return initialsFromString('UI');
     default:
       return '?';
   }

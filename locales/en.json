@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "Direct upload is not available on this server"
+    },
+    "membership": {
+      "already_subscribed": "You already have a membership.",
+      "no_subscription": "You do not have a membership.",
+      "not_cancelling": "This membership is not scheduled to end.",
+      "downgrade_not_offered": "Memberships cannot be moved to a lower tier.",
+      "same_tier": "You are already on this membership.",
+      "payment_overdue": "Payment for this membership is overdue.",
+      "unavailable": "Memberships are unavailable."
     }
   },
   "chat": {
@@ -729,7 +738,8 @@
       "studioInviteAccepted": "{actor} accepted your invite to {studio}",
       "projectInviteRequest": "{actor} invited you to join {project}",
       "projectInviteAccepted": "{actor} accepted your invite to {project}",
-      "membershipEnded": "Your {tier} membership has ended"
+      "membershipEnded": "Your {tier} membership has ended",
+      "membershipUpgradeIncomplete": "Your upgrade to {tier} was not completed"
     },
     "actorFallback": "Someone",
     "subtitle": {

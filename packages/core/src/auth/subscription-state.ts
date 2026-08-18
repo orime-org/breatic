@@ -95,12 +95,17 @@ export type SubscriptionSituation =
   | "retrying"
   | "unexpected";
 
-/** A situation together with the row it was read from. */
-export interface SituationReading {
+/**
+ * A situation together with the row it was read from.
+ *
+ * Generic in the row so a caller reading whole stored subscriptions gets one
+ * back, rather than the narrower shape this reading needs.
+ */
+export interface SituationReading<T extends SubscriptionRecord = SubscriptionRecord> {
   /** Which situation the account is in. */
   readonly situation: SubscriptionSituation;
   /** The row the situation was read from, or null when there is none. */
-  readonly record: SubscriptionRecord | null;
+  readonly record: T | null;
 }
 
 /**
@@ -160,9 +165,9 @@ function situationOfLiveRecord(
  * @param records - Every subscription row stored for the account.
  * @returns The situation and the row it was read from.
  */
-export function subscriptionSituation(
-  records: readonly SubscriptionRecord[],
-): SituationReading {
+export function subscriptionSituation<T extends SubscriptionRecord>(
+  records: readonly T[],
+): SituationReading<T> {
   const live = records.find((record) => LIVE_STATUSES.has(record.status));
   if (live) return { situation: situationOfLiveRecord(live), record: live };
 

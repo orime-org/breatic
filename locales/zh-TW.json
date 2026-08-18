@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "目前的伺服器不支援直接上傳"
+    },
+    "membership": {
+      "already_subscribed": "你已有會員。",
+      "no_subscription": "你沒有會員。",
+      "not_cancelling": "這個會員沒有預約結束。",
+      "downgrade_not_offered": "會員不能降到更低檔位。",
+      "same_tier": "你已經在這一檔會員。",
+      "payment_overdue": "這個會員有一期款項未付。",
+      "unavailable": "會員目前無法使用。"
     }
   },
   "chat": {
@@ -729,7 +738,8 @@
       "studioInviteAccepted": "{actor} 接受了你對 {studio} 的邀請",
       "projectInviteRequest": "{actor} 邀請你加入 {project}",
       "projectInviteAccepted": "{actor} 接受了你對 {project} 的邀請",
-      "membershipEnded": "{tier} 會員已結束"
+      "membershipEnded": "{tier} 會員已結束",
+      "membershipUpgradeIncomplete": "升級到 {tier} 未完成"
     },
     "actorFallback": "某人",
     "subtitle": {

@@ -1,0 +1,270 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * The four things a person can do to their membership (task #106, §7, §6.5.3).
+ *
+ * Which one applies is decided by the situation their stored subscription puts
+ * them in, not by what they clicked: the panel shows one button per tier, and
+ * whether that means "start a subscription" or "change the one you have"
+ * depends on state only this side can read.
+ *
+ * Two parameters carry most of the weight, and both are easy to leave out:
+ *
+ *   - `items[0].id` on an update. Without it Stripe ADDS the price rather than
+ *     replacing it, and the account holds two memberships.
+ *   - `payment_behavior: "pending_if_incomplete"`. Without it the default is to
+ *     change the subscription first and collect afterwards, so a failed card
+ *     leaves somebody on a tier they have not paid for.
+ *
+ * A scheduled cancellation is cleared before any plan change. Leaving it set
+ * means the upgrade is paid for and the plan still ends at the period boundary.
+ */
+
+import type Stripe from "stripe";
+import {
+  ConflictError,
+  ValidationError,
+  getSubscriptionPlan,
+  listSubscriptions,
+  subscriptionSituation,
+} from "@breatic/core";
+import type {
+  StoredSubscription,
+  SubscriptionSituation,
+} from "@breatic/core";
+import type { SubscribableMembershipTier } from "@breatic/shared";
+import { COMPARABLE_MEMBERSHIP_TIERS, t } from "@breatic/shared";
+import { getStripeClient } from "@server/infra/stripe.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
+import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
+
+/** Where a checkout ends up, and whether it needs paying. */
+export interface CheckoutStart {
+  /** Stripe's hosted checkout page. */
+  readonly url: string;
+}
+
+/** What changing plans did. */
+export interface PlanChange {
+  /** Whether the new tier is in force, or waiting on an invoice. */
+  readonly status: "applied" | "pendingPayment";
+  /** Where to pay the difference, when it was not charged. */
+  readonly payableInvoiceUrl: string | null;
+}
+
+/**
+ * The situations in which an account already holds a membership it can act on.
+ *
+ * `firstPaymentUnsettled` is absent on purpose: that subscription cannot be
+ * updated at all, so those accounts start a fresh checkout instead.
+ */
+const HOLDS_A_SUBSCRIPTION: ReadonlySet<SubscriptionSituation> = new Set([
+  "active",
+  "cancelling",
+  "upgradePending",
+  "retrying",
+]);
+
+/**
+ * Reads which situation an account's stored subscriptions put it in.
+ * @param userId - The account.
+ * @returns The situation and the live row, if any.
+ */
+async function readSituation(userId: string): Promise<{
+  situation: SubscriptionSituation;
+  record: StoredSubscription | null;
+}> {
+  const rows = await listSubscriptions(userId);
+  return subscriptionSituation(rows);
+}
+
+/**
+ * Makes sure the account has a Stripe customer, and returns it.
+ *
+ * Called before the first Checkout Session exists, because subscription events
+ * carry no identifier of ours: the customer on the event is what names the
+ * account. The idempotency key is the account id, so two clicks at once cannot
+ * produce two customers.
+ * @param userId - The account.
+ * @returns Its Stripe customer id.
+ * @throws {Error} if the account is gone.
+ */
+async function ensureCustomer(userId: string): Promise<string> {
+  const existing = await userRepo.getStripeCustomerId(userId);
+  if (existing) return existing;
+
+  const user = await userRepo.getUserById(userId);
+  if (!user) throw new Error(`No live account ${userId}`);
+
+  const customer = await getStripeClient().customers.create(
+    { email: user.email, metadata: { userId } },
+    { idempotencyKey: `customer:${userId}` },
+  );
+  await userRepo.setStripeCustomerId(userId, customer.id);
+  return customer.id;
+}
+
+/**
+ * Starts a checkout for an account that does not subscribe yet.
+ *
+ * Also the path back for somebody whose subscription ended: an ended
+ * subscription cannot be updated or revived, so a returning customer gets a
+ * new one alongside the old row.
+ * @param input - Who, which tier, and where to send them afterwards.
+ * @param input.userId - The account paying.
+ * @param input.tier - The tier being bought.
+ * @param input.returnUrl - The page to come back to, paid or not.
+ * @returns Stripe's hosted checkout page.
+ * @throws {ConflictError} if the account already holds a membership.
+ */
+export async function startCheckout(input: {
+  userId: string;
+  tier: SubscribableMembershipTier;
+  returnUrl: string;
+}): Promise<CheckoutStart> {
+  const { situation } = await readSituation(input.userId);
+  if (HOLDS_A_SUBSCRIPTION.has(situation)) {
+    throw new ConflictError(t("server.membership.already_subscribed"));
+  }
+
+  const customerId = await ensureCustomer(input.userId);
+  const session = await getStripeClient().checkout.sessions.create({
+    mode: "subscription",
+    customer: customerId,
+    line_items: [
+      { price: getSubscriptionPlan(input.tier).stripePriceId, quantity: 1 },
+    ],
+    // Reaches the subscription object, which is what events carry. Top-level
+    // metadata and `client_reference_id` stop at the Session.
+    subscription_data: { metadata: { userId: input.userId } },
+    client_reference_id: input.userId,
+    success_url: input.returnUrl,
+    cancel_url: input.returnUrl,
+  });
+
+  if (!session.url) {
+    throw new Error(`Stripe returned a checkout session with no URL`);
+  }
+  return { url: session.url };
+}
+
+/**
+ * Whether one tier sits above another on the price list.
+ * @param tier - The tier being moved to.
+ * @param than - The tier currently held.
+ * @returns Whether the move is upwards.
+ */
+function isHigherThan(tier: string, than: string): boolean {
+  return (
+    COMPARABLE_MEMBERSHIP_TIERS.indexOf(tier as never) >
+    COMPARABLE_MEMBERSHIP_TIERS.indexOf(than as never)
+  );
+}
+
+/**
+ * Moves an account that already subscribes onto a higher tier.
+ *
+ * Replaces the price on the existing item rather than starting a second
+ * subscription, and collects the difference before the change takes effect.
+ * @param input - Who and which tier.
+ * @param input.userId - The account.
+ * @param input.tier - The tier to move to.
+ * @returns Whether the new tier is in force, and where to pay if not.
+ * @throws {ConflictError} if nothing is live, the tier is already held, or
+ *   payment is overdue.
+ * @throws {ValidationError} if the target tier is lower than the one held.
+ */
+export async function changePlan(input: {
+  userId: string;
+  tier: SubscribableMembershipTier;
+}): Promise<PlanChange> {
+  const { situation, record } = await readSituation(input.userId);
+  if (!record || !HOLDS_A_SUBSCRIPTION.has(situation)) {
+    throw new ConflictError(t("server.membership.no_subscription"));
+  }
+  if (record.tier === input.tier) {
+    throw new ConflictError(t("server.membership.same_tier"));
+  }
+  if (!isHigherThan(input.tier, record.tier)) {
+    // No entrance offers this — the panel leaves the lower rows blank — so
+    // anything arriving here called the endpoint directly.
+    throw new ValidationError(t("server.membership.downgrade_not_offered"));
+  }
+  if (situation === "retrying") {
+    // The paid tier is held while Stripe retries, but selling more during that
+    // window would bill a card that is already failing.
+    throw new ConflictError(t("server.membership.payment_overdue"));
+  }
+
+  const stripe = getStripeClient();
+  if (record.cancelAtPeriodEnd) {
+    // Otherwise the upgrade is paid for and the plan still ends at the period
+    // boundary, because nothing removed the flag.
+    await stripe.subscriptions.update(record.stripeSubscriptionId, {
+      cancel_at_period_end: false,
+    });
+  }
+
+  const updated = await stripe.subscriptions.update(
+    record.stripeSubscriptionId,
+    {
+      items: [
+        {
+          // Without the item id this ADDS a price instead of replacing it.
+          id: record.stripeItemId ?? undefined,
+          price: getSubscriptionPlan(input.tier).stripePriceId,
+        },
+      ],
+      proration_behavior: "always_invoice",
+      payment_behavior: "pending_if_incomplete",
+      expand: ["latest_invoice"],
+    },
+  );
+
+  const read = readStripeSubscription(updated, input.userId);
+  return {
+    status: read?.hasPendingUpdate ? "pendingPayment" : "applied",
+    payableInvoiceUrl: read?.payableInvoiceUrl ?? null,
+  };
+}
+
+/**
+ * Schedules an account's membership to end when its paid period runs out.
+ *
+ * Not an immediate stop and not a refund: the ratified rule is that paid time
+ * is used up. Stripe ends the subscription itself at the boundary, and the
+ * event that follows is what moves the tier.
+ * @param userId - The account.
+ * @returns The subscription as Stripe now describes it.
+ * @throws {ConflictError} if the account holds nothing that can be cancelled.
+ */
+export async function cancel(userId: string): Promise<Stripe.Subscription> {
+  const { situation, record } = await readSituation(userId);
+  if (!record || !HOLDS_A_SUBSCRIPTION.has(situation)) {
+    throw new ConflictError(t("server.membership.no_subscription"));
+  }
+  return getStripeClient().subscriptions.update(record.stripeSubscriptionId, {
+    cancel_at_period_end: true,
+  });
+}
+
+/**
+ * Takes back a scheduled cancellation.
+ *
+ * The way out of the state a cancellation puts an account in: without it,
+ * somebody who changed their mind would have to wait for the plan to end and
+ * subscribe again.
+ * @param userId - The account.
+ * @returns The subscription as Stripe now describes it.
+ * @throws {ConflictError} if nothing is scheduled to end.
+ */
+export async function resume(userId: string): Promise<Stripe.Subscription> {
+  const { situation, record } = await readSituation(userId);
+  if (!record || situation !== "cancelling") {
+    throw new ConflictError(t("server.membership.not_cancelling"));
+  }
+  return getStripeClient().subscriptions.update(record.stripeSubscriptionId, {
+    cancel_at_period_end: false,
+  });
+}

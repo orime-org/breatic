@@ -1034,6 +1034,7 @@ export const notifications = pgTable(
      * - 'project.invite_request' - owner invites the user to a project (TTL; answered on the decision page)
      * - 'project.invite_accepted' - invitee accepted; the inviting owner is notified
      * - 'membership.ended' - the account fell back to the free tier (0055)
+     * - 'membership.upgrade_incomplete' - an upgrade's invoice went unpaid (0055)
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**

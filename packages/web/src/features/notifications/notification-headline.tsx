@@ -297,6 +297,11 @@ export function notificationHeadline(
       tier: TIER_LABEL[str(n.payload, 'fromTier')] ?? '',
     });
   }
+  if (n.type === 'membership.upgrade_incomplete') {
+    return t('notifications.headline.membershipUpgradeIncomplete', {
+      tier: TIER_LABEL[str(n.payload, 'toTier')] ?? '',
+    });
+  }
 
   const parts = headlinePartsFor(n, resolved);
   if (!parts) return n.type;

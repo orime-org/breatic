@@ -23,7 +23,6 @@
 import type Stripe from "stripe";
 import { findSubscribableTierByPriceId } from "@breatic/core";
 import type { SubscriptionWrite } from "@breatic/core";
-import type { StripeSubscriptionStatus } from "@breatic/core";
 
 /**
  * Reads the price id off a subscription item, however deeply it is expanded.
@@ -79,7 +78,9 @@ export function readStripeSubscription(
     userId,
     stripeSubscriptionId: subscription.id,
     tier,
-    status: subscription.status as StripeSubscriptionStatus,
+    // No narrowing needed: the SDK's own status union is the same eight
+    // words, which is what makes ours a copy rather than a guess.
+    status: subscription.status,
     currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : null,
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
     stripeItemId: item.id,
