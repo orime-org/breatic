@@ -472,3 +472,93 @@ describe('B2 零块行的 Backspace / Enter 格：空操作', () => {
     expect(e.state.doc.childCount).toBe(0);
   });
 });
+
+describe('B3 非键盘删除通道也要问：beforeinput 的 delete 类输入（实现对抗第 2 轮 #2）', () => {
+  // 浏览器菜单删除（macOS Edit→Delete、Firefox 右键 Delete）不经 keydown：
+  // 原生删掉 DOM 后由 ProseMirror 的 DOMObserver 读回成普通事务，键表守卫
+  // 看不见。桌面端 prosemirror-view 的 beforeinput 只处理 Android，这一层
+  // 由我们自己接。剪切（deleteByCut）与拖拽（deleteByDrag）按拍定不设防。
+  /** 直接打进扩展的 beforeinput 处理器，返回处理器答没答 true。 */
+  function fireBeforeInput(e: Editor, inputType: string): { handled: boolean; prevented: boolean } {
+    const event = new InputEvent('beforeinput', { inputType, cancelable: true });
+    const handled = !!e.view.someProp('handleDOMEvents', (handlers) =>
+      handlers.beforeinput?.(e.view, event),
+    );
+    return { handled, prevented: event.defaultPrevented };
+  }
+
+  it.each(['deleteContentBackward', 'deleteContentForward', 'deleteContent', 'deleteWordBackward'])(
+    '全文档选区上 %s：拦下、只问、不删',
+    (inputType) => {
+      const asked = vi.fn();
+      const e = openWithBlocks(asked);
+      e.view.dispatch(e.state.tr.setSelection(new AllSelection(e.state.doc)));
+      const { handled, prevented } = fireBeforeInput(e, inputType);
+      expect(handled).toBe(true);
+      expect(prevented).toBe(true);
+      expect(asked).toHaveBeenCalledTimes(1);
+      expect(e.state.doc.childCount).toBe(3);
+    },
+  );
+
+  it('deleteByCut：放行不问（剪切归入不设防家族，user 2026-08-18 拍 A）', () => {
+    const asked = vi.fn();
+    const e = openWithBlocks(asked);
+    e.view.dispatch(e.state.tr.setSelection(new AllSelection(e.state.doc)));
+    const { handled } = fireBeforeInput(e, 'deleteByCut');
+    expect(handled).toBe(false);
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it('非全文档选区上 delete 类输入：放行不问', () => {
+    const asked = vi.fn();
+    const e = openWithBlocks(asked);
+    caretIntoBlock(e, 1);
+    const { handled } = fireBeforeInput(e, 'deleteContentBackward');
+    expect(handled).toBe(false);
+    expect(asked).not.toHaveBeenCalled();
+  });
+});
+
+describe('B2 补齐最后三格：块内与跨块选区的打字、块内选区的回车（实现对抗第 2 轮 #6）', () => {
+  // 这三格由 ProseMirror 默认与 DocumentSplitBlock 提供，行为今天就是对的；
+  // 钉住是因为 DocumentSelectAll 以 1000 优先级绑着同一批键，将来在绑定上
+  // 加分支时错拦这些选区不会有别的测试变红。打字格沿用全文档行的手法
+  // （insertContent 钉替换语义），回车格走真实按键路径。
+  it('块内文本选区打字：选中的字被替换，别的块不动', () => {
+    const e = openWithBlocks();
+    const { from, to } = blockTextRange(e, 1);
+    e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, from, to)));
+    e.commands.insertContent('x');
+    expect(e.state.doc.childCount).toBe(3);
+    expect(e.state.doc.child(1).textContent).toBe('x');
+    expect(e.state.doc.child(0).textContent).toBe('alpha');
+  });
+
+  it('跨块选区打字：替换并合并端点块', () => {
+    const e = openWithBlocks();
+    const first = blockTextRange(e, 0);
+    const second = blockTextRange(e, 1);
+    e.view.dispatch(
+      e.state.tr.setSelection(
+        TextSelection.create(e.state.doc, first.from + 2, second.to - 2),
+      ),
+    );
+    e.commands.insertContent('x');
+    expect(e.state.doc.childCount).toBe(2);
+    expect(e.state.doc.child(0).textContent).toBe('alxta');
+    expect(e.state.doc.child(1).textContent).toBe('gamma');
+  });
+
+  it('块内文本选区按 Enter：删除选区后在那里分块', () => {
+    const e = openWithBlocks();
+    const { from, to } = blockTextRange(e, 1);
+    e.view.dispatch(
+      e.state.tr.setSelection(TextSelection.create(e.state.doc, from + 1, to - 1)),
+    );
+    press(e, 'Enter');
+    expect(e.state.doc.childCount).toBe(4);
+    expect(e.state.doc.child(1).textContent).toBe('b');
+    expect(e.state.doc.child(2).textContent).toBe('a');
+  });
+});

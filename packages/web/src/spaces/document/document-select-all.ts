@@ -111,6 +111,65 @@ function isWholeDocumentSelection(state: EditorState): boolean {
 }
 
 /**
+ * Ask instead of deleting, for the whole-document tier only — the one guard
+ * both input channels (key chords and `beforeinput`) funnel into.
+ * @param state - The editor state at the input.
+ * @param ask - The host's confirmation request, or null.
+ * @returns True when the input was claimed; false lets it fall through.
+ */
+function guardWholeDocumentDelete(
+  state: EditorState,
+  ask: (() => void) | null,
+): boolean {
+  if (!isWholeDocumentSelection(state)) return false;
+  if (state.doc.childCount === 0) return true;
+  ask?.();
+  return true;
+}
+
+/**
+ * The deletion chords `@tiptap/core`'s Keymap extension binds on every
+ * platform — copied from its `baseKeymap` definition, and pinned against the
+ * installed dist by `delete-chords-mirror-kernel.test.ts`: a tiptap upgrade
+ * that binds a new chord turns that guard red instead of silently reopening
+ * an unguarded whole-document wipe.
+ */
+export const DELETE_CHORDS_BASE = [
+  'Backspace',
+  'Mod-Backspace',
+  'Shift-Backspace',
+  'Delete',
+  'Mod-Delete',
+] as const;
+
+/** The chords the Keymap adds on Apple platforms, pinned the same way. */
+export const DELETE_CHORDS_MAC = [
+  'Ctrl-h',
+  'Alt-Backspace',
+  'Ctrl-d',
+  'Ctrl-Alt-Backspace',
+  'Alt-Delete',
+  'Alt-d',
+] as const;
+
+/**
+ * The `beforeinput` inputTypes that destroy the selection without stating
+ * their own intent. Cut (`deleteByCut`) and drag (`deleteByDrag`) are
+ * deliberately absent: cut leaves the content on the clipboard and drag
+ * re-inserts it at the drop — both are the self-stating family the ruling
+ * leaves unguarded, alongside typing over the selection.
+ * @param inputType - The event's inputType.
+ * @returns True for a bare destruction.
+ */
+function isBareDeletionInput(inputType: string): boolean {
+  return (
+    inputType.startsWith('delete') &&
+    inputType !== 'deleteByCut' &&
+    inputType !== 'deleteByDrag'
+  );
+}
+
+/**
  * Select the whole document.
  * @param state - The state to select in.
  * @param dispatch - The view's dispatch.
@@ -196,48 +255,29 @@ export const DocumentSelectAll = Extension.create<DocumentSelectAllOptions>({
 
   addKeyboardShortcuts() {
     /**
-     * Ask the host to confirm instead of deleting, for the whole-document
-     * tier only.
+     * The keyboard channel's binding into the shared guard.
      * @returns True when the key was claimed.
      */
-    const guardWholeDocumentDelete = (): boolean => {
-      const { state } = this.editor;
-      if (!isWholeDocumentSelection(state)) return false;
-      if (state.doc.childCount === 0) return true;
-      this.options.onClearDocumentRequest?.();
-      return true;
-    };
+    const guard = (): boolean =>
+      guardWholeDocumentDelete(
+        this.editor.state,
+        this.options.onClearDocumentRequest,
+      );
 
     // The same chord names, with the same platform split, that
-    // `@tiptap/core`'s Keymap extension binds to its deletion commands —
-    // copied from its `baseKeymap` / `macKeymap` definition, not guessed.
+    // `@tiptap/core`'s Keymap extension binds to its deletion commands.
     // This extension's higher priority makes these bindings run first; the
     // guard answers false off the whole-document tier and the chord falls
     // through to the keymap's own handler.
     const deleteChords = [
-      'Backspace',
-      'Mod-Backspace',
-      'Shift-Backspace',
-      'Delete',
-      'Mod-Delete',
-      ...(isMacOS() || isiOS()
-        ? [
-          'Ctrl-h',
-          'Alt-Backspace',
-          'Ctrl-d',
-          'Ctrl-Alt-Backspace',
-          'Alt-Delete',
-          'Alt-d',
-        ]
-        : []),
+      ...DELETE_CHORDS_BASE,
+      ...(isMacOS() || isiOS() ? DELETE_CHORDS_MAC : []),
     ];
 
     return {
       'Mod-a': () =>
         selectTier(this.editor.state, (tr) => this.editor.view.dispatch(tr)),
-      ...Object.fromEntries(
-        deleteChords.map((chord) => [chord, guardWholeDocumentDelete]),
-      ),
+      ...Object.fromEntries(deleteChords.map((chord) => [chord, guard])),
       Enter: () => {
         const { state } = this.editor;
         if (!isWholeDocumentSelection(state)) return false;
@@ -256,6 +296,32 @@ export const DocumentSelectAll = Extension.create<DocumentSelectAllOptions>({
     return [
       new Plugin({
         key: new PluginKey('documentSelectionNormaliser'),
+        props: {
+          handleDOMEvents: {
+            /**
+             * The keyboard is not deletion's only door. A browser menu
+             * delete (macOS Edit → Delete, Firefox's context-menu Delete)
+             * never fires keydown: the browser edits the DOM natively and
+             * ProseMirror's DOMObserver reads the change back as an
+             * ordinary transaction — desktop `prosemirror-view` handles
+             * `beforeinput` for Android only. This is the layer those
+             * doors share, and the same guard answers here.
+             * @param view - The editor view.
+             * @param event - The beforeinput event.
+             * @returns True when claimed; the deletion is cancelled.
+             */
+            beforeinput: (view, event): boolean => {
+              const { inputType } = event as InputEvent;
+              if (!inputType || !isBareDeletionInput(inputType)) return false;
+              if (!isWholeDocumentSelection(view.state)) return false;
+              event.preventDefault();
+              return guardWholeDocumentDelete(
+                view.state,
+                this.options.onClearDocumentRequest ?? null,
+              );
+            },
+          },
+        },
         /**
          * Replace a `TextSelection` that resolved outside any textblock with
          * one the document can actually hold.

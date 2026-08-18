@@ -61,7 +61,9 @@ test('a zero-block document takes typing, survives a confirmed clear, and takes 
 
   // C3 proper: focus WITHOUT clicking (a click opens a block by itself and
   // would test a different row of the table), then type into zero blocks.
-  await page.waitForTimeout(500);
+  // The empty-state marker is the deterministic "document is bound and
+  // resting at zero blocks" signal — no bare sleep.
+  await expect(editor).toHaveClass(/doc-body-empty/);
   await editor.evaluate((el) => (el as HTMLElement).focus());
   await page.keyboard.type('first words');
   await expect(editor).toHaveText('first words');

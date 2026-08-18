@@ -97,33 +97,48 @@ describe('the empty-document placeholder', () => {
   });
 });
 
-describe('一个只有空段落的文档，看起来跟零块一样空——占位也要在（user 2026-08-18 拍定）', () => {
+describe('一个只有空块的文档，看起来跟零块一样空——占位画在首个空块的行内（user 2026-08-18 拍定，按业界）', () => {
   // 点一下空文档建了段、没打字就切走：文档里躺着一个空段落，屏幕上什么
-  // 都没有。从用户眼里这跟零块一模一样，提示不一样就是困惑。判据从
-  // 「零块」扩成「没有任何可见内容」：所有顶层块都是空的段落或标题——
-  // 这两种空着的时候什么都不画；空代码块有底色、空引用有边线、空列表
-  // 有圆点，它们可见，不算。
-  it('一个空段落：占位显示', () => {
+  // 都没有。判据是「没有任何可见内容」：空的段落和标题什么都不画（含只有
+  // 硬换行的），空代码块有底色、空引用有边线、空列表有圆点，它们可见。
+  // 位置照业界（tiptap 官方 Placeholder）：画在首个空块的行内——零块态的
+  // 编辑器级提示经 CSS 对齐到同一行位置，两态在屏幕上同位。
+  /** 首个块上的行内占位字符串（node decoration 挂的属性）。 */
+  function blockHint(editor: Editor): string | null {
+    return (
+      editor.view.dom.firstElementChild?.getAttribute('data-block-placeholder') ??
+      null
+    );
+  }
+
+  it('一个空段落：行内占位在首块上，编辑器级标记不再出现', () => {
     const editor = open('<p></p>');
     expect(editor.state.doc.childCount).toBe(1);
-    const { marked, text } = marking(editor);
-    expect(marked).toBe(true);
-    expect(text).toBe(t('spaces.document.placeholder'));
+    expect(blockHint(editor)).toBe(t('spaces.document.placeholder'));
+    expect(marking(editor).marked).toBe(false);
   });
 
-  it('几个空段落加一个空标题：占位显示', () => {
+  it('几个空段落加一个空标题：只有首块带占位', () => {
     const editor = open('<p></p><h2></h2><p></p>');
-    expect(marking(editor).marked).toBe(true);
+    expect(blockHint(editor)).toBe(t('spaces.document.placeholder'));
+    const second = editor.view.dom.children[1];
+    expect(second?.getAttribute('data-block-placeholder')).toBeNull();
   });
 
-  it('有一个字就不显示', () => {
+  it('只有硬换行的段落也算看不见（user 2026-08-18 拍定：无可见内容）', () => {
+    const editor = open('<p><br></p>');
+    expect(blockHint(editor)).toBe(t('spaces.document.placeholder'));
+  });
+
+  it('有一个字就没有任何占位', () => {
     const editor = open('<p></p><p>x</p>');
+    expect(blockHint(editor)).toBeNull();
     expect(marking(editor).marked).toBe(false);
   });
 
   it('空代码块是可见的，不算空态', () => {
     const editor = open('<pre><code></code></pre>');
-    expect(marking(editor).marked).toBe(false);
+    expect(blockHint(editor)).toBeNull();
   });
 
   it('兜底占位块是可见的，不算空态', () => {
@@ -135,6 +150,7 @@ describe('一个只有空段落的文档，看起来跟零块一样空——占�
       extensions: buildDocumentExtensions({ fragment: doc.getXmlFragment('body') }),
     });
     editors.push(editor);
+    expect(blockHint(editor)).toBeNull();
     expect(marking(editor).marked).toBe(false);
   });
 });

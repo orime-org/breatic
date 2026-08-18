@@ -48,7 +48,7 @@ import { Extension, defaultBlockAt, getSplittedAttributes } from '@tiptap/core';
 import type { RawCommands } from '@tiptap/core';
 import { splitBlockAs } from '@tiptap/pm/commands';
 import type { Mark, Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
-import { EditorState } from '@tiptap/pm/state';
+import { AllSelection, EditorState, TextSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
 /**
@@ -96,7 +96,17 @@ export const DocumentSplitBlock = Extension.create({
             // `editor.state`, which in a chained call is the pre-chain
             // snapshot and probes a document earlier steps already changed
             // (adversarial round 1).
-            if (!state.selection.empty) {
+            //
+            // Only the selection shapes `splitBlockAs` itself deletes — its
+            // deletion line reads `TextSelection || AllSelection` verbatim.
+            // A block NodeSelection takes its own branch there and is never
+            // deleted; probing it would turn upstream's no-op into a
+            // whole-block deletion (adversarial round 2).
+            if (
+              !state.selection.empty &&
+              (state.selection instanceof TextSelection ||
+                state.selection instanceof AllSelection)
+            ) {
               const probe = EditorState.create({
                 doc: state.doc,
                 selection: state.selection,

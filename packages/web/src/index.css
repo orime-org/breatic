@@ -451,6 +451,24 @@ body {
   display: block;
   pointer-events: none;
   color: var(--color-muted-foreground);
+  /* The paragraph margin below (`.doc-body-editor .ProseMirror p`), so the
+     zero-block hint sits exactly where the first block's hint — and the
+     first typed line — lands. The two looks-empty states must be visually
+     identical (user 2026-08-18). */
+  margin-top: 0.85em;
+}
+
+/* The looks-empty hint ON the first invisible block (a document holding
+   nothing but empty paragraphs and headings — `document-placeholders` marks
+   the block). Painted the way tiptap's official Placeholder paints: a
+   zero-height float inside the node, so the hint sits on the line where
+   typing will land without taking part in layout. */
+.doc-body-editor .ProseMirror [data-block-placeholder]::before {
+  content: attr(data-block-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--color-muted-foreground);
 }
 
 /* ---- The document Space's unsupported-content stand-ins ----

@@ -38,27 +38,68 @@
 
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { EditorState } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { t } from '@breatic/shared';
 
-/** Marks an editor whose document shows nothing a reader could see. */
+/** Marks an editor whose document holds no blocks at all. */
 export const DOCUMENT_BODY_EMPTY_CLASS = 'doc-body-empty';
 
 /** The top-level blocks that paint nothing at all while they hold no text. */
 const INVISIBLE_WHEN_EMPTY = new Set(['paragraph', 'heading']);
 
 /**
+ * Whether one top-level block paints nothing a reader could see: an empty
+ * paragraph or heading, including one holding nothing but hard breaks —
+ * a Shift+Enter line paints exactly as much as an empty one (user
+ * 2026-08-18: the judgement is what the READER sees, not the node count).
+ * @param child - The top-level block to judge.
+ * @returns True when the block shows nothing.
+ */
+function paintsNothing(child: PMNode): boolean {
+  if (!INVISIBLE_WHEN_EMPTY.has(child.type.name)) return false;
+  let visible = false;
+  child.content.forEach((inline) => {
+    if (inline.type.name !== 'hardBreak') visible = true;
+  });
+  return !visible;
+}
+
+/**
  * Whether the document paints nothing a reader could see.
  * @param doc - The document node to judge.
- * @returns True for zero blocks, or nothing but empty paragraphs and headings.
+ * @returns True for zero blocks, or nothing but invisible-when-empty blocks.
  */
 function looksEmpty(doc: PMNode): boolean {
   for (let i = 0; i < doc.childCount; i += 1) {
-    const child = doc.child(i);
-    if (!INVISIBLE_WHEN_EMPTY.has(child.type.name)) return false;
-    if (child.content.size > 0) return false;
+    if (!paintsNothing(doc.child(i))) return false;
   }
   return true;
+}
+
+/**
+ * The in-line hint on the first block of a looks-empty document.
+ *
+ * Where the hint draws follows the industry mechanism (tiptap's official
+ * Placeholder decorates the empty node itself and paints through a zero-height
+ * float): the FIRST invisible block carries the string, so the hint sits on
+ * the line where typing will land. The zero-block state has no block to
+ * decorate — the editor-level attribute below covers it, and index.css aligns
+ * that hint to this same line position so the two states are visually
+ * identical (user 2026-08-18).
+ * @param state - The editor state to read.
+ * @returns The decoration set, or null when the document has visible content
+ *   or no blocks at all.
+ */
+function firstBlockHint(state: EditorState): DecorationSet | null {
+  const { doc } = state;
+  if (doc.childCount === 0 || !looksEmpty(doc)) return null;
+  return DecorationSet.create(doc, [
+    Decoration.node(0, doc.child(0).nodeSize, {
+      'data-block-placeholder': t('spaces.document.placeholder'),
+    }),
+  ]);
 }
 
 /**
@@ -77,12 +118,13 @@ export const DocumentPlaceholders = Extension.create({
         key: new PluginKey('documentPlaceholders'),
         props: {
           attributes: (state): Record<string, string> =>
-            looksEmpty(state.doc)
+            state.doc.childCount === 0
               ? {
                 class: DOCUMENT_BODY_EMPTY_CLASS,
                 'data-body-placeholder': t('spaces.document.placeholder'),
               }
               : {},
+          decorations: firstBlockHint,
         },
       }),
     ];

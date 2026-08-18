@@ -18,7 +18,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
-import { AllSelection, Selection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -217,5 +217,20 @@ describe('splitBlock 在链式调用里探测的是链内文档（实现对抗�
         .run();
     }).not.toThrow();
     expect(e.state.doc.childCount).toBe(0);
+  });
+});
+
+describe('splitBlock 的删空探针只探上游自己会删的选区形态（实现对抗第 2 轮 #4）', () => {
+  it('唯一块的 NodeSelection：照上游契约返回 false、不删', () => {
+    // splitBlockAs 的删除行明写只删 TextSelection/AllSelection；对块级
+    // NodeSelection 它走独立分支（parentOffset 为 0 时返回 false）。探针
+    // 比上游删得宽，就会把上游的 no-op 变成整块删除。
+    const e = open('<p>only</p>');
+    e.view.dispatch(
+      e.state.tr.setSelection(NodeSelection.create(e.state.doc, 0)),
+    );
+    expect(e.commands.splitBlock()).toBe(false);
+    expect(e.state.doc.childCount).toBe(1);
+    expect(e.state.doc.textContent).toBe('only');
   });
 });
