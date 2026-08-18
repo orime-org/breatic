@@ -20,7 +20,7 @@
  * or to the database.
  */
 
-import type { MembershipTier } from "@breatic/shared";
+import type { MembershipTier, SubscriptionSituation } from "@breatic/shared";
 
 /**
  * The eight statuses a Stripe subscription can hold.
@@ -78,22 +78,10 @@ export interface SubscriptionRecord {
   readonly currentPeriodEnd: Date | null;
 }
 
-/**
- * The situations an account can be in, one per row of design §6.5.1.
- *
- * `unexpected` covers `trialing` and `paused`, which nothing we do can
- * produce. It is kept apart from `none` so that it can be logged where it
- * surfaces, and it earns no tier and blocks no purchase, so an account cannot
- * be stranded by a state we never meant to create.
- */
-export type SubscriptionSituation =
-  | "none"
-  | "firstPaymentUnsettled"
-  | "active"
-  | "cancelling"
-  | "upgradePending"
-  | "retrying"
-  | "unexpected";
+// The situations themselves are declared in `@breatic/shared`: they are part
+// of the membership panel's contract, so both ends read one list. What lives
+// here is the reading that produces one, which is backend-only.
+export type { SubscriptionSituation };
 
 /**
  * A situation together with the row it was read from.

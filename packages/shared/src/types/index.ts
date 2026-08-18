@@ -84,6 +84,8 @@ export type {
   MembershipLimits,
   ComparableMembershipTier,
   SubscribableMembershipTier,
+  SubscriptionSituation,
+  SubscriptionSummary,
   TierOffer,
   AccountUsage,
   AccountMembership,
@@ -95,6 +97,7 @@ export {
   tierLimitsSchema,
   COMPARABLE_MEMBERSHIP_TIERS,
   SUBSCRIBABLE_MEMBERSHIP_TIERS,
+  SUBSCRIPTION_SITUATIONS,
   isComparableMembershipTier,
 } from "@shared/types/membership.js";
 

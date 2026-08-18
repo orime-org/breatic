@@ -18,17 +18,21 @@
  */
 
 import {
+  env,
   getUserMembershipTier,
   getLimitsForUser,
   getMembershipLimits,
+  getSubscriptionPlan,
 } from "@breatic/core";
 import {
   COMPARABLE_MEMBERSHIP_TIERS,
   type AccountMembership,
+  type ComparableMembershipTier,
 } from "@breatic/shared";
 
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { readSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 
 /**
  * Reads everything the membership panel needs for one account.
@@ -51,6 +55,14 @@ export async function readAccountMembership(
     assetUsageService.accountStorageUsage(userId),
   ]);
 
+  // Whether this deployment sells anything is decided once, here, and shapes
+  // two things at once: the prices on the comparison table and whether there
+  // is a subscription to describe. A self-hosted install has neither.
+  const selling = env.PAYMENT_ENABLED;
+  const subscription = selling
+    ? await readSubscriptionSummary(userId)
+    : null;
+
   return {
     tier,
     limits,
@@ -58,6 +70,27 @@ export async function readAccountMembership(
     catalog: COMPARABLE_MEMBERSHIP_TIERS.map((offered) => ({
       tier: offered,
       limits: getMembershipLimits(offered),
+      ...priceOf(offered, selling),
     })),
+    subscription,
   };
+}
+
+/**
+ * What one tier costs, when this deployment sells it.
+ * @param tier - The tier the row describes.
+ * @param selling - Whether this deployment sells subscriptions.
+ * @returns The price and its currency, both null when there is no price.
+ */
+function priceOf(
+  tier: ComparableMembershipTier,
+  selling: boolean,
+): { priceCents: number | null; currency: string | null } {
+  // `base` is free rather than cheap: it has no plan to quote, and quoting
+  // zero would be a price nobody set.
+  if (!selling || tier === "base") {
+    return { priceCents: null, currency: null };
+  }
+  const plan = getSubscriptionPlan(tier);
+  return { priceCents: plan.priceCents, currency: plan.currency };
 }

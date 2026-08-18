@@ -17,6 +17,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { paymentService } from "@server/modules";
 import { verifyWebhookSignature } from "@server/infra/stripe.js";
 import { logger } from "@breatic/core";
+import { handleSubscriptionEvent } from "@server/modules/subscription/subscription-events.js";
 
 const payment = new Hono<{ Variables: AuthVariables }>();
 
@@ -70,6 +71,17 @@ payment.post("/webhook", async (c) => {
   } catch (err) {
     logger.warn({ err }, "Stripe webhook signature verification failed");
     return c.json({ error: "Invalid signature" }, 400);
+  }
+
+  // Subscriptions first: the membership leg has its own event types, its own
+  // idempotency, and its own identification chain. Nothing below applies to it.
+  const subscriptionOutcome = await handleSubscriptionEvent(event);
+  if (subscriptionOutcome.status !== "ignored") {
+    logger.info(
+      { eventId: event.id, type: event.type, ...subscriptionOutcome },
+      "subscription_webhook_handled",
+    );
+    return c.json({ received: true });
   }
 
   const session = event.data.object as { id: string; payment_intent?: string };

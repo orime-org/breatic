@@ -181,6 +181,53 @@ export interface TierOffer {
   readonly tier: ComparableMembershipTier;
   /** That tier's six ceilings, read from `config/membership.yaml`. */
   readonly limits: MembershipLimits;
+  /**
+   * What it costs per month, in the smallest currency unit.
+   *
+   * Null for the free tier, and null on every row when this deployment sells
+   * nothing: a self-hosted install has no prices, and inventing "$0" there
+   * would be a claim about a shop that does not exist.
+   */
+  readonly priceCents: number | null;
+  /** ISO 4217 code for {@link priceCents}, null wherever that is null. */
+  readonly currency: string | null;
+}
+
+/**
+ * Which situation an account's subscription puts it in (#106 §6.5.1).
+ *
+ * Not Stripe's status: `active` covers three situations that offer different
+ * actions — running normally, ending at the period boundary, and waiting on an
+ * upgrade's invoice — and the panel shows something different for each.
+ *
+ * In shared because it is part of the panel's contract. The reading that
+ * produces it is backend-only and lives in core.
+ */
+export const SUBSCRIPTION_SITUATIONS = [
+  "none",
+  "firstPaymentUnsettled",
+  "active",
+  "cancelling",
+  "upgradePending",
+  "retrying",
+  "unexpected",
+] as const;
+
+/** One of the situations an account's subscription can put it in. */
+export type SubscriptionSituation = (typeof SUBSCRIPTION_SITUATIONS)[number];
+
+/** What the panel shows about an account's subscription. */
+export interface SubscriptionSummary {
+  /** Which situation it is in — {@link SubscriptionSituation}, not Stripe's word. */
+  readonly state: SubscriptionSituation;
+  /** The tier it has been paid for, which is not always the tier in force. */
+  readonly tier: MembershipTier;
+  /** When the paid period ends, ISO 8601, or null before the first payment. */
+  readonly currentPeriodEnd: string | null;
+  /** Whether it is set to end when that period runs out. */
+  readonly cancelAtPeriodEnd: boolean;
+  /** Where to pay an outstanding invoice, when there is one. */
+  readonly payableInvoiceUrl: string | null;
 }
 
 /** What one account has spent of the two allowances counted account-wide. */
@@ -214,4 +261,12 @@ export interface AccountMembership {
   readonly usage: AccountUsage;
   /** The tiers offered for comparison, in ascending order. */
   readonly catalog: readonly TierOffer[];
+  /**
+   * The account's subscription, or null when it has none.
+   *
+   * Always null where payments are switched off, which is what makes the panel
+   * hide every subscription control on a self-hosted install without the front
+   * end needing to know why.
+   */
+  readonly subscription: SubscriptionSummary | null;
 }
