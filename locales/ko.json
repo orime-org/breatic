@@ -728,7 +728,8 @@
       "studioInviteRequest": "{actor}님이 {studio}에 초대했습니다",
       "studioInviteAccepted": "{actor}님이 {studio} 초대를 수락했습니다",
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",
-      "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다"
+      "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다",
+      "membershipEnded": "{tier} 멤버십이 종료되었습니다"
     },
     "actorFallback": "누군가",
     "subtitle": {

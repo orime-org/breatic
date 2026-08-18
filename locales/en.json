@@ -728,7 +728,8 @@
       "studioInviteRequest": "{actor} invited you to join {studio}",
       "studioInviteAccepted": "{actor} accepted your invite to {studio}",
       "projectInviteRequest": "{actor} invited you to join {project}",
-      "projectInviteAccepted": "{actor} accepted your invite to {project}"
+      "projectInviteAccepted": "{actor} accepted your invite to {project}",
+      "membershipEnded": "Your {tier} membership has ended"
     },
     "actorFallback": "Someone",
     "subtitle": {

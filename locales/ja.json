@@ -728,7 +728,8 @@
       "studioInviteRequest": "{actor} さんが {studio} への参加に招待しました",
       "studioInviteAccepted": "{actor} さんが {studio} への招待を承認しました",
       "projectInviteRequest": "{actor} さんが {project} への参加に招待しました",
-      "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました"
+      "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました",
+      "membershipEnded": "{tier} メンバーシップが終了しました"
     },
     "actorFallback": "誰か",
     "subtitle": {

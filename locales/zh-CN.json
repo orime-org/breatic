@@ -728,7 +728,8 @@
       "studioInviteRequest": "{actor} 邀请你加入 {studio}",
       "studioInviteAccepted": "{actor} 接受了你对 {studio} 的邀请",
       "projectInviteRequest": "{actor} 邀请你加入 {project}",
-      "projectInviteAccepted": "{actor} 接受了你对 {project} 的邀请"
+      "projectInviteAccepted": "{actor} 接受了你对 {project} 的邀请",
+      "membershipEnded": "{tier} 会员已结束"
     },
     "actorFallback": "某人",
     "subtitle": {

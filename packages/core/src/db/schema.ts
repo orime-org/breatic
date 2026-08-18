@@ -1033,6 +1033,7 @@ export const notifications = pgTable(
      * - 'studio.invite_accepted' - invitee accepted; the inviting admin is notified
      * - 'project.invite_request' - owner invites the user to a project (TTL; answered on the decision page)
      * - 'project.invite_accepted' - invitee accepted; the inviting owner is notified
+     * - 'membership.ended' - the account fell back to the free tier (0055)
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**

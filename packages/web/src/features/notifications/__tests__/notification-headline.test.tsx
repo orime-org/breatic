@@ -169,6 +169,27 @@ describe('notificationHeadline', () => {
     expect(screen.getByRole('link', { name: /Bo/ })).toBeInTheDocument();
   });
 
+  it('renders a membership that ended as a plain sentence', () => {
+    // 这一条没有「谁做的」也没有「对哪个东西做的」——订阅到期了，不是有人对
+    // 你做了什么。所以它不走 actor/entity 那套框架，直接出一句话。
+    const tt = fakeT({
+      'notifications.headline.membershipEnded': '{tier} 会员已结束',
+    });
+    const n = makeNotification({
+      type: 'membership.ended',
+      payload: { fromTier: 'pro' },
+    });
+    render(
+      <MemoryRouter>
+        <span data-testid='m'>
+          {notificationHeadline(n, EMPTY_RESOLVED, tt)}
+        </span>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('m')).toHaveTextContent('PRO 会员已结束');
+    expect(screen.getByTestId('m').querySelectorAll('a')).toHaveLength(0);
+  });
+
   it('falls back to the raw type for an unhandled type', () => {
     const n = makeNotification({
       type: 'unknown.future_type' as Notification['type'],

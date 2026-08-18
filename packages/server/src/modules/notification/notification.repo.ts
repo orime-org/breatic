@@ -38,7 +38,8 @@ export type NotificationType =
   | "project.invite_request"
   | "project.invite_accepted"
   | "project.transfer_request"
-  | "project.transfer_approved";
+  | "project.transfer_approved"
+  | "membership.ended";
 
 export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
