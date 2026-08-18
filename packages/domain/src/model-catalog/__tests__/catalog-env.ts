@@ -17,6 +17,7 @@ import { initCore } from "@breatic/core";
 
 import {
   getFullModelConfig,
+  getModelCatalog,
   resetModelCatalog,
   MODALITIES,
 } from "../model-catalog.js";
@@ -60,9 +61,21 @@ export function useEnvWithKeys(configured: readonly string[]): void {
  *
  * 要从真实目录里捞模型来验的测试用它开场，这样跑在哪台机器上都一样，不受那台
  * 机器配了哪些 key 影响。
+ *
+ * **它自己验一次**：配上全部 key 之后目录仍然是空的，就当场抛错。不验的话这个
+ * 函数只是把前提说出口，而说出口挡不住它失效 —— 调用方那些「捞不到模型就提前
+ * 退出」的分支照样静默走掉，断言一句不执行而测试全绿，正是它要关掉的那个洞。
+ * @throws {Error} 配齐 key 后目录仍为空（yaml 读取或 key 名解析出了问题）。
  */
 export function useFullCatalog(): void {
-  useEnvWithKeys(allProviderKeyNames());
+  const keys = allProviderKeyNames();
+  useEnvWithKeys(keys);
+  if (getModelCatalog().total === 0) {
+    throw new Error(
+      `useFullCatalog: 配齐 ${keys.length} 个 provider key 之后目录仍然是空的，` +
+        `依赖它的断言会静默不执行。设过的变量：${keys.join(", ")}`,
+    );
+  }
 }
 
 /** 把 core 的配置和目录缓存还回进程自己的环境。 */
