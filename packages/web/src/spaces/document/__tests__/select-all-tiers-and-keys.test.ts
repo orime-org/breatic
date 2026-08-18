@@ -50,7 +50,12 @@ function openWithBlocks(onClearDocumentRequest?: () => void): Editor {
 function press(
   e: Editor,
   key: string,
-  modifiers: { ctrlKey?: boolean } = {},
+  modifiers: {
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    altKey?: boolean;
+    shiftKey?: boolean;
+  } = {},
 ): void {
   const event = new KeyboardEvent('keydown', {
     key,
@@ -267,3 +272,90 @@ describe('B1 NodeSelection 档（兜底块被整体选中时）', () => {
 function Selection0(e: Editor): TextSelection {
   return new TextSelection(e.state.doc.resolve(0));
 }
+
+describe('B2 修饰键删除和弦：全文档选区上一律先问（实现对抗第 1 轮 #1）', () => {
+  // tiptap 内核把这些和弦各自直通删除命令（@tiptap/core dist/index.cjs
+  // 的 baseKeymap / macKeymap），守卫只绑裸键名时它们全都绕过确认框。
+  // 和弦清单照抄内核定义处，跟内核同一平台拆分。
+  const PC_CHORDS: Array<[string, string, Parameters<typeof press>[2]]> = [
+    ['Mod-Backspace', 'Backspace', { ctrlKey: true }],
+    ['Shift-Backspace', 'Backspace', { shiftKey: true }],
+    ['Mod-Delete', 'Delete', { ctrlKey: true }],
+  ];
+  PC_CHORDS.forEach(([name, key, mods]) => {
+    it(`${name}：只问、不删`, () => {
+      const asked = vi.fn();
+      const e = openWithBlocks(asked);
+      e.view.dispatch(e.state.tr.setSelection(new AllSelection(e.state.doc)));
+      press(e, key, mods);
+      expect(asked).toHaveBeenCalledTimes(1);
+      expect(e.state.doc.childCount).toBe(3);
+    });
+  });
+
+  it('非全文档选区上和弦照常落回内核（块内选区照删、不问）', () => {
+    const asked = vi.fn();
+    const e = openWithBlocks(asked);
+    const { from, to } = blockTextRange(e, 1);
+    e.view.dispatch(
+      e.state.tr.setSelection(TextSelection.create(e.state.doc, from, to)),
+    );
+    press(e, 'Backspace', { ctrlKey: true });
+    expect(asked).not.toHaveBeenCalled();
+    // 内核 Mod-Backspace 的 deleteSelection 删掉了块内选区——守卫答 false
+    // 后和弦真的落回内核命令链。
+    expect(e.state.doc.textContent).toBe('alphagamma');
+  });
+});
+
+describe('B2 mac 档删除和弦（Ctrl-h 一类字母键和弦也要问）', () => {
+  // 键表在编辑器构造时按 navigator.platform 拆分，这里按 mac 造一批。
+  let restorePlatform: (() => void) | null = null;
+
+  beforeEach(() => {
+    const original = Object.getOwnPropertyDescriptor(window.navigator, 'platform');
+    Object.defineProperty(window.navigator, 'platform', {
+      value: 'MacIntel',
+      configurable: true,
+    });
+    restorePlatform = () => {
+      if (original) Object.defineProperty(window.navigator, 'platform', original);
+      else Reflect.deleteProperty(window.navigator, 'platform');
+    };
+  });
+  afterEach(() => {
+    restorePlatform?.();
+    restorePlatform = null;
+  });
+
+  // Cmd-Backspace 不在此列：它跟 pc 档的 Ctrl-Backspace 是同一个
+  // 'Mod-Backspace' 绑定名（prosemirror-keymap 的 Mod 归一按模块加载时的
+  // navigator.platform 定死，测试进程里改不了），pc 档那行已钉住它。
+  const MAC_CHORDS: Array<[string, string, Parameters<typeof press>[2]]> = [
+    ['Ctrl-h', 'h', { ctrlKey: true }],
+    ['Alt-Backspace', 'Backspace', { altKey: true }],
+    ['Ctrl-d', 'd', { ctrlKey: true }],
+    ['Ctrl-Alt-Backspace', 'Backspace', { ctrlKey: true, altKey: true }],
+    ['Alt-Delete', 'Delete', { altKey: true }],
+    ['Alt-d', 'd', { altKey: true }],
+  ];
+  MAC_CHORDS.forEach(([name, key, mods]) => {
+    it(`${name}：只问、不删`, () => {
+      const asked = vi.fn();
+      const e = openWithBlocks(asked);
+      e.view.dispatch(e.state.tr.setSelection(new AllSelection(e.state.doc)));
+      press(e, key, mods);
+      expect(asked).toHaveBeenCalledTimes(1);
+      expect(e.state.doc.childCount).toBe(3);
+    });
+  });
+});
+
+describe('clearDocument 只在可编辑的编辑器上执行（实现对抗第 1 轮 #2）', () => {
+  it('只读编辑器上返回 false、文档一字不动', () => {
+    const e = openWithBlocks();
+    e.setEditable(false);
+    expect(e.commands.clearDocument()).toBe(false);
+    expect(e.state.doc.childCount).toBe(3);
+  });
+});

@@ -20,7 +20,7 @@
  *
  * ## The whole-document selection guards its own destruction
  *
- * Backspace and Delete on an `AllSelection` do not delete. They ask, through
+ * The delete keys on an `AllSelection` do not delete. They ask, through
  * {@link DocumentSelectAllOptions.onClearDocumentRequest}, and the host shows
  * a confirmation dialog; `clearDocument` is what the dialog's confirm button
  * runs. The reason is measured, not stylistic: the undo stack lives in this
@@ -29,9 +29,19 @@
  * guideline ("actions with serious consequences — such as destroying users'
  * work") applies squarely. The interception is deliberately narrow: only the
  * whole-document tier asks; deleting a cross-block text selection is ordinary
- * editing and stays silent, and typing over the whole selection stays silent
- * too — typing is itself the statement of intent, and one undo brings the
- * text back.
+ * editing and stays silent, and typing over — or cutting — the whole
+ * selection stays silent too: both state their own intent, and both leave the
+ * text recoverable (one undo, or a paste back from the clipboard).
+ *
+ * "The delete keys" means the whole chord family, not the two bare keys.
+ * `@tiptap/core`'s Keymap extension routes Mod-Backspace, Shift-Backspace,
+ * Mod-Delete — and on Apple platforms Ctrl-h, Alt-Backspace, Ctrl-d,
+ * Ctrl-Alt-Backspace, Alt-Delete, Alt-d — each into its own deletion
+ * command, so a guard bound to the bare names alone leaves every chord a
+ * silent whole-document wipe (adversarial round 1; Ctrl-Backspace measured
+ * doing exactly that). The chord list below mirrors the keymap's own,
+ * platform split included; a non-whole-document selection answers false and
+ * the chord falls through to the keymap binding it always had.
  *
  * When no handler is wired (schema-only builders, tests that do not care),
  * the keystroke does nothing rather than falling through to deletion: a
@@ -53,7 +63,7 @@
  * `AllSelection`, which is the one selection an empty document can hold.
  */
 
-import { Extension } from '@tiptap/core';
+import { Extension, isMacOS, isiOS } from '@tiptap/core';
 import {
   AllSelection,
   Plugin,
@@ -162,7 +172,12 @@ export const DocumentSelectAll = Extension.create<DocumentSelectAllOptions>({
     return {
       clearDocument:
         () =>
-          ({ state, tr, dispatch }) => {
+          ({ state, tr, dispatch, editor }) => {
+            // A whole-document write from a client that may not write: the
+            // dialog can outlive a demotion to viewer, and the confirm would
+            // otherwise wipe locally while the server drops the update — a
+            // silent divergence (adversarial round 1).
+            if (!editor.isEditable) return false;
             if (state.doc.childCount === 0) return false;
             if (dispatch) {
               tr.delete(0, state.doc.content.size);
@@ -188,11 +203,36 @@ export const DocumentSelectAll = Extension.create<DocumentSelectAllOptions>({
       return true;
     };
 
+    // The same chord names, with the same platform split, that
+    // `@tiptap/core`'s Keymap extension binds to its deletion commands —
+    // copied from its `baseKeymap` / `macKeymap` definition, not guessed.
+    // This extension's higher priority makes these bindings run first; the
+    // guard answers false off the whole-document tier and the chord falls
+    // through to the keymap's own handler.
+    const deleteChords = [
+      'Backspace',
+      'Mod-Backspace',
+      'Shift-Backspace',
+      'Delete',
+      'Mod-Delete',
+      ...(isMacOS() || isiOS()
+        ? [
+          'Ctrl-h',
+          'Alt-Backspace',
+          'Ctrl-d',
+          'Ctrl-Alt-Backspace',
+          'Alt-Delete',
+          'Alt-d',
+        ]
+        : []),
+    ];
+
     return {
       'Mod-a': () =>
         selectTier(this.editor.state, (tr) => this.editor.view.dispatch(tr)),
-      Backspace: guardWholeDocumentDelete,
-      Delete: guardWholeDocumentDelete,
+      ...Object.fromEntries(
+        deleteChords.map((chord) => [chord, guardWholeDocumentDelete]),
+      ),
       Enter: () => {
         const { state } = this.editor;
         if (!isWholeDocumentSelection(state)) return false;
