@@ -135,10 +135,10 @@ describe('naming a conversation from its row', () => {
     expect(onRename).toHaveBeenCalledWith('c2', 'Storyboard notes');
   });
 
-  it('leaves the keyboard where the reader sent it', async () => {
-    // 读者按 Tab 或者点别处:焦点已经交给别的东西了,输入框失焦才触发提交。这时
-    // 候再把焦点抢回本行,那一次按键就等于没按。交还只属于「这一行自己结束了」
-    // 的那两种退出(回车、Escape)。
+  it('never takes the keyboard back to the row', async () => {
+    // 三种退出(回车、Escape、失焦)一视同仁:提交完不安排焦点落到哪儿,由浏览器
+    // 决定。唯一的底线是别把它抢回本行 —— 读者按 Tab 或者点别处时焦点已经交给
+    // 别的东西了,抢回来那一次按键就等于没按。焦点位置的统一处理是另一件事。
     renderSheet();
 
     await userEvent.click(screen.getByTestId('conversation-menu-c2'));

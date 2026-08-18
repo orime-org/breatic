@@ -684,9 +684,14 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       // before it, must not replace what the reader chose.
       landed = stillAwaited(projectId, nav);
       if (landed) adoptConversation(projectId, opened.current);
-      // The list in hand is about to become another list. A page already on
-      // its way was asked for from the end of this one, so its cursor is
-      // about a list nobody will be holding -- which is what the count is for.
+      // A page already on its way was asked for from the end of the list this
+      // answer is about to settle, and the count is how that page finds out.
+      // Both ways out of the setState below bump it, not only the replacing
+      // one: being overtaken keeps the held list and appends to it, so that
+      // cursor still points at a row somebody holds. Dropping the page anyway
+      // costs the reader one more scroll; keeping one that turns out to be
+      // about a list nobody holds costs a gap in the middle of the list, and
+      // a `hasMore` that closes paging for the rest of this visit.
       listReplaced(projectId);
       useStore.setState((st) => {
         const held = st.listByProject[projectId] ?? [];
@@ -763,6 +768,9 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
   // same conversation are settled by which lands last -- nothing here weighs
   // one against the other, and a name that reads as stale for a moment is put
   // right the next time the list is opened.
+  //
+  // Called here for the copy the list draws: the setState below rebuilds the
+  // conversation whole, name included, but never touches `listByProject`.
   applyTitle(projectId, conversationId, opened.conversation.title ?? null);
   useStore.setState((s) => {
     const held = s.conversations[conversationId];
@@ -1781,10 +1789,6 @@ async function startNew(projectId: string): Promise<void> {
       // by the time this is said. Closing is right -- a reader starting a new
       // conversation is done with the list of the old ones.
       tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
-      // This press asked for nothing in the end. Whatever it overtook -- an
-      // opening still on its way, a delete looking for somewhere to land -- is
-      // the reader's choice again, so the claim goes back before anything else
-      // is decided.
     }
   } finally {
     // However this ended -- landed, failed, or overtaken -- it is over, and
@@ -2298,10 +2302,6 @@ function leaveProject(projectId: string): void {
   // which come from the same run of `lastIssued` and are all higher anyway --
   // but a stale one is a fact about a project nobody is in.
   lastLanded.delete(projectId);
-  // What the reader did here, which nothing is going to ask about again. Not a
-  // correctness matter -- every later request takes a moment newer than any of
-  // these, so they could not filter anything -- but a record of a project
-  // nobody is in has no reason to be kept.
   // `lastIssued` stays. It is the one of the four that must not restart: a
   // request abandoned with this visit is still out, still holding its number,
   // and still going to run its `finally`. Handing that number out again gives

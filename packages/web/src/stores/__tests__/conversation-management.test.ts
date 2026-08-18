@@ -910,18 +910,42 @@ describe('what a first page has to be told about', () => {
 
     landReload();
     await reloading;
-    // 丢掉之后它会立刻再问一次(下一条测试钉的就是这个),这里让那一次答空,
-    // 好把注意力留在「那份过期答复的行没有被接上去」这一件事上。
-    vi.mocked(chatApi.listConversations).mockResolvedValue({
-      conversations: [],
-      hasMore: true,
-    } as never);
     landPage();
     await new Promise((r) => setTimeout(r, 0));
 
     expect(
       (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id),
     ).toEqual(['c-1', 'c-2']);
+    expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(true);
+  });
+
+  it('drops a page about the list that a re-open replaced', async () => {
+    // 重开那条落地点跟重取是同一件事:它也整片换掉列表,所以在飞的那一页的游标
+    // 同样指着一份没人再拿着的列表。撤回时这行调用被顺手带走过一次,而当时两条
+    // 翻页测试钉的都是重取那一处,重开这处一条都没有。
+    openAnswers([{ id: 'c-1', title: 'one' }], 'c-1', { hasMoreConversations: true });
+    await conversationRuntime.ensureLoaded(PROJECT);
+
+    const landPage = heldList({
+      conversations: [{ id: 'c-9', title: 'nine' }],
+      hasMore: false,
+    });
+    void conversationRuntime.loadMoreConversations(PROJECT);
+
+    // 删掉手上唯一那条 —— 没有下一条可落,于是走重开而不是切换。
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof chatApi.deleteConversation>>,
+    );
+    openAnswers([{ id: 'c-2', title: null }], 'c-2', { hasMoreConversations: true });
+    await conversationRuntime.remove(PROJECT, 'c-1');
+
+    landPage();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(
+      (useConversationRuntime.getState().listByProject[PROJECT] ?? []).map((c) => c.id),
+    ).toEqual(['c-2']);
+    // 那一页带的 hasMore 是 false。接受它就等于本次打开里再也拉不到更早的了。
     expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(true);
   });
 

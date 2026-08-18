@@ -362,8 +362,8 @@ describe('the skeleton that stands in while messages are on their way', () => {
     const bars = container.querySelectorAll('[data-testid="message-skeleton"] [data-skeleton-bar]');
 
     expect(bars).toHaveLength(9);
-    // 每组第一条是用户那句,靠右;底下两条是回答,靠左。高度的差别写在类上,
-    // jsdom 不解析它们 —— 那一半在真机上量。
+    // 每组第一条是用户那句,靠右;底下两条是回答,靠左。三条一样高(h-3,跟仓里
+    // 其他 Skeleton 一个刻度),问答之分靠左右和宽度,不靠高度。
     const first = bars[0] as HTMLElement;
     expect(first.className).toContain('ml-auto');
     expect((bars[1] as HTMLElement).className).not.toContain('ml-auto');
