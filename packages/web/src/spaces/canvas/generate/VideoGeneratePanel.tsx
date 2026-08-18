@@ -22,8 +22,8 @@ import type {
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
 import {
-  VIDEO_MODE_OPTIONS,
   modeTakesReferences,
+  type VideoModeOption,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import {
   VideoParamsPicker,
@@ -44,8 +44,12 @@ interface VideoGeneratePanelProps {
   mode: string;
   /** Switch generation mode. */
   onToggleMode: (mode: string) => void;
-  /** Disable the mode switch while the catalog is empty (no model to switch TO). */
-  catalogEmpty: boolean;
+  /**
+   * The modes this deployment can serve, in display order (#1951) — a mode
+   * with no model is not offered at all. The panel only renders when this is
+   * non-empty: `CatalogGatedFrame` holds it shut otherwise.
+   */
+  modeOptions: ReadonlyArray<VideoModeOption>;
   /**
    * Whether the active model consumes the prompt (#1966). Two things read it:
    * the prompt slot (a sentence stands in for the editor when it is false) and
@@ -128,7 +132,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   creditEstimate,
   mode,
   onToggleMode,
-  catalogEmpty,
+  modeOptions,
   promptRequired,
   references,
   onAddReference,
@@ -198,10 +202,9 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
       <div className='flex items-center gap-1.5'>
         <ModeToggle
           value={mode}
-          options={VIDEO_MODE_OPTIONS}
+          options={modeOptions}
           onChange={onToggleMode}
           triggerTestId='generate-video-mode-trigger'
-          disabled={catalogEmpty}
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
         {currentModel && videoParamsPickerHasOptions(currentModel) ? (

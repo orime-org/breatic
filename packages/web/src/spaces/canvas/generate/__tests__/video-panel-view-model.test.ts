@@ -8,6 +8,7 @@ import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 import type { VideoGenMode } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
+import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
@@ -541,27 +542,27 @@ describe('nodeVideoMode', () => {
     // this panel does not offer (an image mode, or a mini-tool video mode)
     // must not be honoured either: it would narrow the model list to nothing
     // and leave the panel with no model to submit.
-    expect(nodeVideoMode([node('n1', videoView())], 'n1')).toBe('t2v');
-    expect(nodeVideoMode([node('n1', videoView({ mode: 'i2v' }))], 'n1')).toBe(
+    expect(nodeVideoMode([node('n1', videoView())], 'n1', VIDEO_MODE_OPTIONS)).toBe('t2v');
+    expect(nodeVideoMode([node('n1', videoView({ mode: 'i2v' }))], 'n1', VIDEO_MODE_OPTIONS)).toBe(
       'i2v',
     );
-    expect(nodeVideoMode([node('n1', videoView({ mode: 't2i' }))], 'n1')).toBe(
+    expect(nodeVideoMode([node('n1', videoView({ mode: 't2i' }))], 'n1', VIDEO_MODE_OPTIONS)).toBe(
       't2v',
     );
     expect(
-      nodeVideoMode([node('n1', videoView({ mode: 'upscale' }))], 'n1'),
+      nodeVideoMode([node('n1', videoView({ mode: 'upscale' }))], 'n1', VIDEO_MODE_OPTIONS),
     ).toBe('t2v');
   });
 
   it('defaults for a node that is not on the board', () => {
     // A collaborator can delete the node under an open panel; the read has to
     // answer something the panel can render rather than throw.
-    expect(nodeVideoMode([], 'gone')).toBe('t2v');
+    expect(nodeVideoMode([], 'gone', VIDEO_MODE_OPTIONS)).toBe('t2v');
   });
 
   it('defaults for a node kind that carries no generate inputs', () => {
     // Annotations and groups have no `mode` at all.
-    expect(nodeVideoMode([node('n1', { kind: 'group' })], 'n1')).toBe('t2v');
+    expect(nodeVideoMode([node('n1', { kind: 'group' })], 'n1', VIDEO_MODE_OPTIONS)).toBe('t2v');
   });
 });
 

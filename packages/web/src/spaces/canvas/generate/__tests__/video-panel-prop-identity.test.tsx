@@ -98,12 +98,30 @@ const CANVAS: CanvasContextValue = {
 function catalog(): ModelCatalog {
   return {
     image: [],
-    video: [],
+    // 至少一个 t2v 模型：面板只在这个模态有档可服务时才打开（#1951），
+    // 而这个文件测的是 prop 的引用稳定性，得先让面板开出来。
+    video: [
+      {
+        name: 'veo',
+        display_name: 'Veo',
+        modality: 'video',
+        mode: 't2v',
+        description: '',
+        guide: '',
+        tier: 'optional',
+        cost_per_call: 5,
+        generation_time: 10,
+        takes_prompt: true,
+        params: {},
+        providers: [],
+        sourcesByMode: {},
+      },
+    ],
     audio: [],
     tts: [],
     three_d: [],
     understand: [],
-    total: 0,
+    total: 1,
   };
 }
 

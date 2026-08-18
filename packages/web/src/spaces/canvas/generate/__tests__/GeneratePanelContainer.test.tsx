@@ -249,7 +249,8 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
   // pre-#1788-batch-3 guard killed it here on the (now-false) premise that t2i
   // disables references; Focus is the one that still ends (next test).
   it('KEEPS a running reference pick when the node mode becomes t2i (references are text-scoped, #1788 batch-3 #1)', async () => {
-    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(EMPTY_CATALOG);
+    // 目录得有模型：面板只在这个模态有档可服务时才打开（#1951）。
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(imageCatalog());
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -407,7 +408,7 @@ describe('GeneratePanelContainer — body subscription set', () => {
 
   it('follows the text nodes wired into the target, not every text node on the board', async () => {
     const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
-      image: [],
+      image: [T2I_MODEL],
       video: [],
       audio: [],
       tts: [],
@@ -613,45 +614,6 @@ describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948
     listSpy.mockRestore();
   });
 
-  it('目标档解不出模型时整个写入放弃，已有的记录一条都不丢 (9.8)', async () => {
-    // 这一片让这道防护要保的东西变多了：以前失守清掉的是一份参数，现在会把
-    // 所有模型的记录一起清空。
-    //
-    // 防护写在容器的 `if (!model) return`，纯函数测试摸不到它 —— Gate 2 第 4
-    // 轮实测：删掉这一行，684 条测试没有一条变红，而视频侧同一行删掉当场红。
-    // 「什么都没写」这个断言要跟上面那条正向的一起读才成立。
-    const listSpy = vi
-      .spyOn(modelsApi, 'list')
-      // 只有 t2i 一档有模型，i2i 档解不出
-      .mockResolvedValue(imageCatalog([T2I_MODEL]));
-    seedImageNode();
-    mountContainer();
-    act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
-    });
-    // 先让参数记录落一份下来，才验得出「一条都不丢」。
-    fireEvent.click(await screen.findByTestId('generate-ratio-trigger'));
-    fireEvent.click(await screen.findByTestId('generate-ratio-option-16:9'));
-    await waitFor(() => {
-      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
-        ?.data as { paramsByModel?: Record<string, unknown> };
-      expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
-    });
-    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
-    fireEvent.click(await screen.findByTestId('generate-mode-i2i'));
-    await waitFor(() => {
-      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
-        ?.data as {
-        mode?: string;
-        model?: string;
-        paramsByModel?: Record<string, unknown>;
-      };
-      // 一个字段都没被动过。
-      expect(d.mode).toBeUndefined();
-      expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
-    });
-    listSpy.mockRestore();
-  });
 });
 
 describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1966)', () => {
@@ -978,28 +940,6 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
     expect(createSpy).not.toHaveBeenCalled();
     listSpy.mockRestore();
     createSpy.mockRestore();
-  });
-
-  it('这一档一个模型都没有时，按钮仍然禁用 —— 提示词为空不抢在它前面', async () => {
-    // 设计对抗（2026-08-18）咬出的那条：`promptRequired` 在没有模型时仍然为
-    // 真，所以这两个条件必然同时成立。要是先说提示词，按钮会亮起来、叫用户
-    // 写提示词、写完当场变灰。
-    const listSpy = vi
-      .spyOn(modelsApi, 'list')
-      .mockResolvedValue(imageCatalog([]));
-    seedImageNode();
-    mountContainer();
-    act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
-    });
-    const btn = await screen.findByTestId('generate-execute');
-    await waitFor(() => {
-      expect((btn as HTMLButtonElement).disabled).toBe(true);
-    });
-    // 而且点不动它，所以不会说出那句帮不上忙的话。
-    fireEvent.click(btn);
-    expect(toast.warning).not.toHaveBeenCalled();
-    listSpy.mockRestore();
   });
 
   it('提交中按钮禁用，并且站着一个加载指示', async () => {

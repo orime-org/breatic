@@ -26,6 +26,7 @@ import {
 } from '@web/spaces/canvas/generate/CameraPicker';
 import { GenerateToolbar } from '@web/spaces/canvas/generate/GenerateToolbar';
 import { ImageModeToggle } from '@web/spaces/canvas/generate/ImageModeToggle';
+import type { ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
@@ -40,14 +41,11 @@ interface GeneratePanelProps {
   /** Active generation sub-mode (drives the t2i / i2i toggle). */
   mode: ImageGenMode;
   /**
-   * Whether the GLOBAL generatable catalog is empty — meaning no generation
-   * model is configured, the only cause left since #1964 held this panel back
-   * until the catalog lands. Gates the mode toggle's disabled state — NOT
-   * `models.length`
-   * (the active-mode subset), so a node in a mode with zero models can still
-   * toggle back to the populated mode.
+   * The modes this deployment can serve, in display order (#1951) — a mode
+   * with no model is not offered at all. The panel only renders when this is
+   * non-empty: `CatalogGatedFrame` holds it shut otherwise.
    */
-  catalogEmpty: boolean;
+  modeOptions: ReadonlyArray<ModeOption>;
   /**
    * Whether the active model consumes the prompt (#1966). Two things read it:
    * the prompt slot (a sentence stands in for the editor when it is false) and
@@ -150,7 +148,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   models,
   model,
   mode,
-  catalogEmpty,
+  modeOptions,
   promptRequired,
   params,
   references,
@@ -259,7 +257,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         <ImageModeToggle
           value={mode}
           onChange={onToggleMode}
-          disabled={catalogEmpty}
+          options={modeOptions}
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
         {currentModel ? (

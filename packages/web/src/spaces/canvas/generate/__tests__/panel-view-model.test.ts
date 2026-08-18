@@ -387,7 +387,9 @@ describe('buildGeneratePanelViewModel', () => {
       nodeId: 'n1',
       nodes,
       edges,
-      models,
+      // 目录必须真有 i2i 模型，否则 i2i 这一档在这个部署里不成立、当前档
+      // 会被解析回 t2i（#1951）—— 而这条测的是 i2i 下的载荷。
+      models: i2iModels,
       atMentionedSourceIds: new Set(['src', 'focus:f1']),
     });
     expect(vm.referenceUrls).toEqual([
@@ -399,7 +401,7 @@ describe('buildGeneratePanelViewModel', () => {
       nodeId: 'n1',
       nodes,
       edges,
-      models,
+      models: i2iModels,
       atMentionedSourceIds: new Set(['src']),
     });
     expect(vmNone.referenceUrls).toEqual(['https://cdn/source.png']);
@@ -484,31 +486,26 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.creditEstimate).toBe(0);
   });
 
-  it('flags catalogEmpty on GLOBAL generatable-model emptiness, not the active mode (§ round-2)', () => {
-    const nodes = [node('n1', imageView())]; // t2i
-    const toolsOnly = [makeModel('bg', { mode: 'remove_bg', tier: 'internal' })];
-    // no models in the catalog -> empty
-    expect(
-      buildVm({ nodeId: 'n1', nodes, edges: [], models: [] }).catalogEmpty,
-    ).toBe(true);
-    // only pure tools, zero generatable -> empty
-    expect(
-      buildVm({ nodeId: 'n1', nodes, edges: [], models: toolsOnly }).catalogEmpty,
-    ).toBe(true);
-    // has generatable models -> NOT empty
-    expect(
-      buildVm({ nodeId: 'n1', nodes, edges: [], models }).catalogEmpty,
-    ).toBe(false);
-    // i2i mode with ZERO i2i models but t2i models present: catalogEmpty stays
-    // false so the toggle can escape back to t2i (round-2 fix).
+  it('当前档必须是这个部署服务得了的那些之一 (#1951)', () => {
+    // 节点存着 i2i，而这个目录只有 t2i 模型：以前 i2i 合法就放行，节点停在
+    // 一个选择器里根本没有的档上；现在解析回可用的那个。
     expect(
       buildVm({
         nodeId: 'n1',
         nodes: [node('n1', imageView({ mode: 'i2i' }))],
         edges: [],
-        models,
-      }).catalogEmpty,
-    ).toBe(false);
+        models, // 只有 t2i 模型
+      }).mode,
+    ).toBe('t2i');
+    // 存的档可用就照用，不受影响。
+    expect(
+      buildVm({
+        nodeId: 'n1',
+        nodes: [node('n1', imageView({ mode: 'i2i' }))],
+        edges: [],
+        models: [...models, ...i2iModels],
+      }).mode,
+    ).toBe('i2i');
   });
 
   it('excludes pure-tool models (remove_bg / upscale) from the picker', () => {
