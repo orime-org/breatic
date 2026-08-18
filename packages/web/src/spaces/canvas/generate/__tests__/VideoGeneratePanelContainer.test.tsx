@@ -786,9 +786,8 @@ describe('VideoGeneratePanelContainer', () => {
         useCanvasStore.getState().openGeneratePanel('target', 'video');
       });
       const trigger = await screen.findByTestId('generate-video-mode-trigger');
-      // `disabled={catalogEmpty}` is already false when the trigger first
-      // appears — since #1966 the panel does not mount without a catalog.
-      // Kept as a guard on that gate, cheap because it passes immediately.
+      // 触发器一出现就是可点的：#1966 起没有目录面板就不挂载，#1951 起
+      // 一个可用档都没有也不挂载。留着当那道门的守卫，它立刻就过。
       await waitFor(() => expect(trigger).not.toBeDisabled());
       fireEvent.click(trigger);
       await userEvent.click(await screen.findByTestId('generate-video-mode-i2v'));
@@ -1664,44 +1663,6 @@ describe('VideoGeneratePanelContainer', () => {
       });
     });
 
-    it('目标档解不出模型时整个写入放弃，已有的记录一条都不丢 (9.8)', async () => {
-      // 这一片让这道防护要保的东西变多了：以前失守清掉的是一份参数，现在会
-      // 把所有模型的记录一起清空。
-      //
-      // 防护写在容器的 `if (!model) return`，纯函数测试摸不到它 —— 设计文档
-      // 前一版把 9.8 的验证方法写成纯函数测试，删掉防护也不会红。
-      vi.spyOn(modelsApi, 'list').mockResolvedValue({
-        ...catalog(),
-        video: [T2V], // 只有 t2v 一档有模型，i2v 档解不出
-        total: 1,
-      });
-      const records = { 'veo-3.1': { duration: 4 } };
-      seedVideoNode({ mode: 't2v', model: 'veo-3.1', paramsByModel: records });
-      mountContainer('video', { mode: 't2v', model: 'veo-3.1' });
-      act(() => {
-        useCanvasStore.getState().openGeneratePanel('target', 'video');
-      });
-      // 自 #1966 起面板要等目录到齐才挂载，所以 trigger 一出现就已经 enabled，
-      // 这句立即通过。留着当守卫：门一旦回退，失败报在这里，而不是下一句报
-      // `Unable to find generate-video-mode-i2v` 让人以为是浮层的问题。
-      const trigger = await screen.findByTestId('generate-video-mode-trigger');
-      await waitFor(() => expect(trigger).not.toBeDisabled());
-      fireEvent.click(trigger);
-      fireEvent.click(await screen.findByTestId('generate-video-mode-i2v'));
-      await waitFor(() => {
-        const data = readCanvasGraph('p', 's').nodes.find(
-          (n) => n.id === 'target',
-        )?.data as {
-          mode?: string;
-          model?: string;
-          paramsByModel?: Record<string, Record<string, unknown>>;
-        };
-        // 一个字段都没被动过：模式还是 t2v，模型还在，记录原样。
-        expect(data.mode).toBe('t2v');
-        expect(data.model).toBe('veo-3.1');
-        expect(data.paramsByModel).toEqual(records);
-      });
-    });
   });
 });
 
@@ -1749,32 +1710,47 @@ describe('VideoGeneratePanelContainer — 点不动的时候说清缺什么 (#19
     createTask.mockRestore();
   });
 
-  it('这一档一个模型都没有时按钮仍然禁用，也不说那句帮不上忙的话', async () => {
-    // 目录本身是有内容的（别的档有模型），只有 t2v 这一档空 —— 这跟「目录整个
-    // 取不到」是两回事，后者由 #1966 的门挡在面板之外。
-    //
-    // 设计对抗（2026-08-18）咬出的正是这个状态：`promptRequired` 在没有模型时
-    // 仍然为真（view-model 的 TSDoc 写着），而 `pickModelForMode` 给出空模型名，
-    // 所以两个条件必然同时成立。要是先说提示词，按钮会亮起来、叫用户写提示词、
-    // 写完当场变灰。
-    vi.spyOn(modelsApi, 'list').mockResolvedValue({
-      image: [T2I],
-      video: [I2V, REF, TALKING_HEAD],
-      audio: [],
-      tts: [],
-      three_d: [],
-      understand: [],
-      total: 4,
-    });
-    seedVideoNode({ mode: 't2v', model: '' });
-    mountContainer('video', { mode: 't2v', model: '' });
+});
+
+describe('这个部署服务不了的档 (#1951)', () => {
+  /** 一份摘掉了 i2v 的目录 —— 部署方没配那一档的模型。 */
+  function catalogWithoutI2v(): ModelCatalog {
+    const full = catalog();
+    const video = full.video.filter(
+      (m) => !(Array.isArray(m.mode) ? m.mode : [m.mode]).includes('i2v'),
+    );
+    return { ...full, video, total: full.image.length + video.length };
+  }
+
+  it('那一档不出现在选择器里，其余照常', async () => {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalogWithoutI2v());
+    seedVideoNode({ mode: 't2v', model: 'veo' });
+    mountContainer('video', { mode: 't2v', model: 'veo' });
     act(() => {
       useCanvasStore.getState().openGeneratePanel('target', 'video');
     });
-    const btn = await screen.findByTestId('generate-video-execute');
-    await waitFor(() => expect(btn).toBeDisabled());
-    // 点不动它，所以那句「先写提示词」不会出现 —— 写了也没用，这一档没有模型。
-    fireEvent.click(btn);
-    expect(toast.warning).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByTestId('generate-video-mode-trigger'));
+    expect(screen.getByTestId('generate-video-mode-t2v')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-video-mode-i2v')).toBeNull();
+  });
+
+  it('节点存的就是那一档时，面板落到可用档，而 Yjs 里存的值不动', async () => {
+    // 这是 user 2026-08-18 定的那条规则在容器上的样子：判据是「它得先可用」，
+    // 而且解析是渲染时派生的 —— 不许回写节点。部署方把模型加回来，这个节点
+    // 就该重新读成 i2v。
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalogWithoutI2v());
+    seedVideoNode({ mode: 'i2v', model: 'kling-i2v' });
+    mountContainer('video', { mode: 'i2v', model: 'kling-i2v' });
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'video');
+    });
+    const trigger = await screen.findByTestId('generate-video-mode-trigger');
+    await waitFor(() => expect(trigger.textContent).not.toBe(''));
+    // 面板落到可用档第一个（目录里 t2v 排在前面）。
+    expect(trigger.textContent).toContain('Text to Video');
+    // 而节点上存的还是 i2v。
+    const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
+      ?.data as { mode?: string };
+    expect(data.mode).toBe('i2v');
   });
 });

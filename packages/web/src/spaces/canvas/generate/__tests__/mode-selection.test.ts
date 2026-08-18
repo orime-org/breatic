@@ -6,6 +6,8 @@ import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
 import {
+  filterAvailableModes,
+  resolveAvailableMode,
   filterModelsByMode,
   pickModelForMode,
   resolveModeSwitch,
@@ -80,8 +82,10 @@ describe('filterModelsByMode', () => {
   it('excludes a pure-edit model from i2i — edit is not a generation mode', () => {
     // The generate panel routes on i2i; a model with only the `edit`
     // capability belongs to the future image-editing mini-tool, not here.
-    // (In practice such a model is already excluded upstream by slice-1's
-    // isImageGenerationMode; this locks the invariant at the mode filter too.)
+    // 这一条一直就是唯一的守卫，#1951 前后都一样。仓里曾有个
+    // isImageGenerationMode 看着像上游那一道，但它算的是「整份目录一个可生成
+    // 模型都没有」这个布尔，从没参与过交给选择器的模型列表；#1951 删掉那个布尔
+    // 之后它没了最后一个调用方，函数也一起删了。
     const pureEdit = model('edit-only', ['edit']);
     expect(filterModelsByMode([I2I, pureEdit], 'i2i').map((m) => m.name)).toEqual([
       'i2i-a',
@@ -231,5 +235,79 @@ describe('resolveModeSwitch — 切模式，两个面板共用 (#1948)', () => {
     const r = resolveModeSwitch({ modelByMode: { t2v: 'veo' } }, 'i2v', [veo, kling]);
     expect(r.model).toBe('kling');
     expect(r.paramsByModel[r.model]).toEqual({ duration: 5 });
+  });
+});
+
+describe('filterAvailableModes（#1951 档要先有模型才出现）', () => {
+  const t2v = model('veo', 't2v', 'video');
+  const i2v = model('kling-i2v', ['i2v', 'first_last'], 'video');
+  const OPTIONS = [
+    { value: 't2v', label: 'Text to Video', testId: 'x-t2v' },
+    { value: 'i2v', label: 'Image to Video', testId: 'x-i2v' },
+    { value: 'first_last', label: 'First-Last Frame', testId: 'x-fl' },
+    { value: 'animate', label: 'Image Animation', testId: 'x-animate' },
+  ] as const;
+
+  it('目录是空的时候一个档都不留', () => {
+    expect(filterAvailableModes(OPTIONS, [])).toEqual([]);
+  });
+
+  it('只去掉没有模型的那一档，其余原样留下', () => {
+    const kept = filterAvailableModes(OPTIONS, [t2v, i2v]);
+    expect(kept.map((o) => o.value)).toEqual(['t2v', 'i2v', 'first_last']);
+  });
+
+  it('一个模型声明了两个模式，两档都留下', () => {
+    // kling-i2v 是 ["i2v", "first_last"]，这两档靠同一个模型活着 ——
+    // 按模型数去重的写法会漏掉后一档。
+    const kept = filterAvailableModes(OPTIONS, [i2v]);
+    expect(kept.map((o) => o.value)).toEqual(['i2v', 'first_last']);
+  });
+
+  it('留下的是原来那个对象，额外字段一个不丢', () => {
+    // 视频档带着 slots / takesReferences，容器还要拿它们查槽位；
+    // 过滤要是重建对象，那些字段就没了。
+    const withExtras = [
+      { value: 't2v', label: 'Text to Video', testId: 'x-t2v', slots: [], takesReferences: false },
+      { value: 'ref', label: 'Reference', testId: 'x-ref', slots: ['a'], takesReferences: true },
+    ] as const;
+    const kept = filterAvailableModes(withExtras, [t2v]);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toBe(withExtras[0]);
+    expect(kept[0]?.takesReferences).toBe(false);
+  });
+});
+
+describe('resolveAvailableMode（#1951 当前档也要先可用）', () => {
+  const OPTIONS = [
+    { value: 't2v' },
+    { value: 'i2v' },
+    { value: 'animate' },
+  ] as const;
+
+  it('存的档可用，就用它', () => {
+    expect(resolveAvailableMode('i2v', OPTIONS)).toBe('i2v');
+  });
+
+  it('存的档合法但已经不可用，当没存过', () => {
+    // animate 在这个部署里被摘掉了：可用档只剩前两个。
+    expect(resolveAvailableMode('animate', OPTIONS.slice(0, 2))).toBe('t2v');
+  });
+
+  it('没存过，取可用档第一个', () => {
+    expect(resolveAvailableMode(undefined, OPTIONS)).toBe('t2v');
+    expect(resolveAvailableMode('', OPTIONS)).toBe('t2v');
+  });
+
+  it('取的是可用档第一个，不是某个写死的档', () => {
+    // t2v 被摘掉时，新节点该落在 i2v 上 —— 写死 't2v' 的实现会在这条上红。
+    expect(resolveAvailableMode(undefined, OPTIONS.slice(1))).toBe('i2v');
+    expect(resolveAvailableMode('t2v', OPTIONS.slice(1))).toBe('i2v');
+  });
+
+  it('一个可用档都没有时答不出来', () => {
+    // 面板在这种部署里根本不打开，所以这一支到不了；纯函数仍然要诚实。
+    expect(resolveAvailableMode('t2v', [])).toBeUndefined();
+    expect(resolveAvailableMode(undefined, [])).toBeUndefined();
   });
 });

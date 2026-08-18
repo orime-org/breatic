@@ -36,13 +36,6 @@ interface ModeToggleProps {
   onChange: (mode: string) => void;
   /** Test id for the trigger pill. */
   triggerTestId: string;
-  /**
-   * Disable the whole control — set while the model catalog is empty (still
-   * loading or failed to load). A switch then could not resolve a model for the
-   * target mode and would clobber the node's stored model / params in Yjs, so
-   * switching is blocked until the catalog resolves.
-   */
-  disabled?: boolean;
 }
 
 /**
@@ -62,7 +55,6 @@ interface ModeToggleProps {
  * @param root0.options - The modes this panel offers.
  * @param root0.onChange - Called with the newly-picked mode.
  * @param root0.triggerTestId - Test id for the trigger pill.
- * @param root0.disabled - Disable switching while the catalog is empty.
  * @returns The mode picker.
  */
 export const ModeToggle = React.memo(function ModeToggle({
@@ -70,7 +62,6 @@ export const ModeToggle = React.memo(function ModeToggle({
   options,
   onChange,
   triggerTestId,
-  disabled = false,
 }: ModeToggleProps): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
   // Follow the ReactFlow viewport while open (#1796): Radix's Floating-UI
@@ -87,8 +78,7 @@ export const ModeToggle = React.memo(function ModeToggle({
           variant={null}
           size={null}
           data-testid={triggerTestId}
-          disabled={disabled}
-          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
+          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           {/* Falls back to the raw id when the active mode is not offered here
               — the same degradation the model picker makes, so a node carrying

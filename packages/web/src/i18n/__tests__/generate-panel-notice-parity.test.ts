@@ -10,7 +10,8 @@ import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 // 起于 #1950 片6 的两句（`refuseInsertNoPrompt` 和当时叫 `videoPromptNotUsed`
 // 的那句），#1966 新增两句（`catalogOffline`、✕ 的 `refuseRemoveNoPrompt`）并把
 // 那句改名成 `promptNotUsed`；`catalogUnavailable` 更早就有；
-// #1949 又添了执行按钮那句 `refuseExecuteNoPrompt`。共六条。
+// #1949 又添了执行按钮那句 `refuseExecuteNoPrompt`；#1951 添了目录里一个可用
+// 档都没有那句 `catalogNoModels`。共七条。
 //
 // 仓里的 i18n 守卫盯不住这件事：`i18n-no-missing-keys` 只拿英文那份当
 // 目录（`SOURCE_CATALOG = "locales/en.json"`），另外四份有没有它不看。
@@ -26,9 +27,11 @@ const NOTICE_KEYS = [
   // `toast.warning` 出口、缺了就完全静默），所以它也归这里管 —— 仓里的
   // `i18n-no-missing-keys` 只读 en.json，另外四份没有别的东西盯着。
   'canvas.generatePanel.refuseExecuteNoPrompt',
-  // 面板不展开时弹的两句：取不到目录、以及离线（#1966）。
+  // 面板不展开时弹的三句：取不到目录、离线（#1966）、以及这个模态一个能
+  // 服务的档都没有（#1951 —— 零 key 的部署走到的就是这一句）。
   'canvas.generatePanel.catalogUnavailable',
   'canvas.generatePanel.catalogOffline',
+  'canvas.generatePanel.catalogNoModels',
 ] as const;
 
 describe.each(NOTICE_KEYS)('%s 五个语种都有', (key) => {

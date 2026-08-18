@@ -254,9 +254,20 @@ let _cache: ModelCatalog | null = null;
 /**
  * Load the full model catalog from YAML configs.
  *
- * Results are cached after first load. Models are filtered to only include
- * those with at least one available provider (has API key configured),
- * unless no keys are configured at all (returns everything for development).
+ * Results are cached after first load. A model is in the catalog when at
+ * least one of its providers has an API key configured — no exception, so an
+ * empty catalog is the honest answer for a deployment that has configured
+ * nothing (#1951).
+ *
+ * There used to be one: with not a single key set anywhere, the filter was
+ * skipped and every model came back, for development. What that bought was a
+ * full catalog with nothing configured — one placeholder does not buy it back,
+ * since a set variable only unlocks the models of that one provider and there
+ * are 17 distinct `api_key_env` names across the configs. Availability asks
+ * only whether the variable is non-empty, never whether the key works.
+ * What it cost was a deployment showing capabilities it cannot deliver:
+ * the panel opened, the pickers filled, the execute button armed, and the
+ * task failed upstream (user 2026-08-18 ruled it a bug).
  * @returns Complete model catalog grouped by modality
  */
 export function getModelCatalog(): ModelCatalog {
@@ -283,19 +294,10 @@ export function getModelCatalog(): ModelCatalog {
     );
   }
 
-  // Check if any keys are configured at all
-  const anyKeyConfigured = [...keyMap.values()].some((envVar) => {
-    const value = (env as Record<string, unknown>)[envVar];
-    return typeof value === "string" && value.length > 0;
-  });
-
-  // If keys are configured, filter to only available models
-  if (anyKeyConfigured) {
-    for (const modality of MODALITIES) {
-      catalog[modality] = catalog[modality].filter(
-        (m) => m.providers.some((p) => p.available),
-      );
-    }
+  for (const modality of MODALITIES) {
+    catalog[modality] = catalog[modality].filter(
+      (m) => m.providers.some((p) => p.available),
+    );
   }
 
   const total = MODALITIES.reduce((sum, m) => sum + catalog[m].length, 0);

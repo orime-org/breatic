@@ -22,6 +22,7 @@ import {
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
 import {
+  resolveAvailableMode,
   filterModelsByMode,
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
@@ -158,21 +159,30 @@ export interface VideoPanelViewModel {
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
 
 /**
- * Sanitizes a node's stored `mode` into one this panel offers.
+ * Resolves a node's stored `mode` into one this deployment can serve.
  *
  * The node stores ONE `mode` field, shared with the image panel's own mode set
  * (a node can only ever be one modality, so they never collide in practice) —
- * but a value this panel does not offer must not be honoured: opening on `t2i`
- * or on a mini-tool video mode would narrow the model list to nothing and
- * leave the panel with no model to submit.
+ * but a value this panel does not offer must not be honoured. Since #1951 the
+ * test is availability rather than legality: a stored mode whose models this
+ * deployment does not have is resolved away too, so the panel never opens on a
+ * mode its own picker will not list.
  * @param stored - The node's stored `mode`, if any.
- * @returns The stored mode when this panel offers it, else text-to-video.
+ * @param availableModes - The video modes with at least one model, in display order.
+ * @returns The stored mode when this deployment serves it, else the first one it does.
  */
-function resolveVideoMode(stored: string | undefined): VideoGenMode {
-  return VIDEO_GENERATION_MODES.includes(stored as VideoGenMode)
-    ? (stored as VideoGenMode)
-    : 't2v';
+function resolveVideoMode(
+  stored: string | undefined,
+  availableModes: readonly { value: string }[],
+): VideoGenMode {
+  const resolved = resolveAvailableMode(stored, availableModes);
+  return VIDEO_GENERATION_MODES.includes(resolved as VideoGenMode)
+    ? (resolved as VideoGenMode)
+    : NO_AVAILABLE_MODE_FALLBACK;
 }
+
+/** Where a node lands when nothing it stored can be served (#1951). */
+const NO_AVAILABLE_MODE_FALLBACK: VideoGenMode = 't2v';
 
 /**
  * Narrows a node view to a content view (the only kind carrying generate
@@ -233,15 +243,19 @@ function readSlotThumbnails(
  * last render cannot be built over.
  * @param nodes - Current canvas node views.
  * @param nodeId - The node whose panel is open.
- * @returns The mode this panel opens in — text-to-video for anything it does
- *   not offer, a node with no stored mode, or a node that is gone.
+ * @param availableModes - The video modes with at least one model, in display order.
+ * @returns The mode this panel opens in — the first mode this deployment can
+ *   serve for anything it does not offer, a node with no stored mode, a mode
+ *   whose models this deployment lacks, or a node that is gone.
  */
 export function nodeVideoMode(
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>,
   nodeId: string,
+  availableModes: readonly { value: string }[],
 ): VideoGenMode {
   return resolveVideoMode(
     asContentView(nodes.find((n) => n.id === nodeId)?.data)?.mode,
+    availableModes,
   );
 }
 

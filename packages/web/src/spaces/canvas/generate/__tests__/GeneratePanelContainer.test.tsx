@@ -207,8 +207,12 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
 
   /**
    * Renders the container with the target node in the given mode (shared by the
-   * two zombie-guard cases below). An empty catalog keeps vm.mode resolving off
-   * the node's stored `mode` alone.
+   * two zombie-guard cases below).
+   *
+   * Both callers feed it a NON-empty catalog on purpose (#1951). An empty one
+   * closes the panel before it mounts, and it would not preserve the stored
+   * mode either: with no mode servable the resolver falls back rather than
+   * reading the node.
    * @param client - The query client.
    * @param mode - The node's generation sub-mode.
    * @returns The render tree.
@@ -232,15 +236,6 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     </QueryClientProvider>
   );
 
-  const EMPTY_CATALOG = {
-    image: [],
-    video: [],
-    audio: [],
-    tts: [],
-    three_d: [],
-    understand: [],
-    total: 0,
-  };
 
   // Reference pick SURVIVES a t2i switch (#1788 batch-3 #1): t2i no longer
   // DISABLES the reference button — references are text-scoped there (image
@@ -249,7 +244,10 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
   // pre-#1788-batch-3 guard killed it here on the (now-false) premise that t2i
   // disables references; Focus is the one that still ends (next test).
   it('KEEPS a running reference pick when the node mode becomes t2i (references are text-scoped, #1788 batch-3 #1)', async () => {
-    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(EMPTY_CATALOG);
+    // 目录得有模型：面板只在这个模态有档可服务时才打开（#1951）。空目录会让
+    // 面板压根不挂载，而 CatalogGatedFrame 关面板时顺手清掉 pickSession ——
+    // 断言照样绿，测的却不再是这条守卫。
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(imageCatalog());
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -277,7 +275,11 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
   // strand its banner + keyboard focus (the original zombie-guard case). Driven
   // by vm.mode so a collaborator's setNodeMode ends it too.
   it('ends a running FOCUS pick when the node mode becomes t2i (focus stays image-only)', async () => {
-    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(EMPTY_CATALOG);
+    // 目录得有模型（#1951）：空目录会让面板压根不挂载，而关面板本身就会清掉
+    // pickSession —— 断言照样绿，测的却不再是这条守卫。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL, I2I_MODEL]));
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -407,7 +409,7 @@ describe('GeneratePanelContainer — body subscription set', () => {
 
   it('follows the text nodes wired into the target, not every text node on the board', async () => {
     const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
-      image: [],
+      image: [T2I_MODEL],
       video: [],
       audio: [],
       tts: [],
@@ -517,7 +519,7 @@ function seedPromptText(text: string): void {
  * node fresh from Yjs on every write, so a case that asserts what got written
  * needs the node to actually be there — the React props alone are not it.
  */
-function seedImageNode(): void {
+function seedImageNode(over: Record<string, unknown> = {}): void {
   addNode('p', 's', {
     id: 'target',
     type: 'image',
@@ -529,6 +531,7 @@ function seedImageNode(): void {
       locked: false,
       state: 'idle',
       attachments: [],
+      ...over,
     },
   } as Parameters<typeof addNode>[2]);
 }
@@ -613,45 +616,6 @@ describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948
     listSpy.mockRestore();
   });
 
-  it('目标档解不出模型时整个写入放弃，已有的记录一条都不丢 (9.8)', async () => {
-    // 这一片让这道防护要保的东西变多了：以前失守清掉的是一份参数，现在会把
-    // 所有模型的记录一起清空。
-    //
-    // 防护写在容器的 `if (!model) return`，纯函数测试摸不到它 —— Gate 2 第 4
-    // 轮实测：删掉这一行，684 条测试没有一条变红，而视频侧同一行删掉当场红。
-    // 「什么都没写」这个断言要跟上面那条正向的一起读才成立。
-    const listSpy = vi
-      .spyOn(modelsApi, 'list')
-      // 只有 t2i 一档有模型，i2i 档解不出
-      .mockResolvedValue(imageCatalog([T2I_MODEL]));
-    seedImageNode();
-    mountContainer();
-    act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
-    });
-    // 先让参数记录落一份下来，才验得出「一条都不丢」。
-    fireEvent.click(await screen.findByTestId('generate-ratio-trigger'));
-    fireEvent.click(await screen.findByTestId('generate-ratio-option-16:9'));
-    await waitFor(() => {
-      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
-        ?.data as { paramsByModel?: Record<string, unknown> };
-      expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
-    });
-    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
-    fireEvent.click(await screen.findByTestId('generate-mode-i2i'));
-    await waitFor(() => {
-      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
-        ?.data as {
-        mode?: string;
-        model?: string;
-        paramsByModel?: Record<string, unknown>;
-      };
-      // 一个字段都没被动过。
-      expect(d.mode).toBeUndefined();
-      expect(d.paramsByModel).toEqual({ 'nano-banana': { aspect_ratio: '16:9' } });
-    });
-    listSpy.mockRestore();
-  });
 });
 
 describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1966)', () => {
@@ -980,28 +944,6 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
     createSpy.mockRestore();
   });
 
-  it('这一档一个模型都没有时，按钮仍然禁用 —— 提示词为空不抢在它前面', async () => {
-    // 设计对抗（2026-08-18）咬出的那条：`promptRequired` 在没有模型时仍然为
-    // 真，所以这两个条件必然同时成立。要是先说提示词，按钮会亮起来、叫用户
-    // 写提示词、写完当场变灰。
-    const listSpy = vi
-      .spyOn(modelsApi, 'list')
-      .mockResolvedValue(imageCatalog([]));
-    seedImageNode();
-    mountContainer();
-    act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
-    });
-    const btn = await screen.findByTestId('generate-execute');
-    await waitFor(() => {
-      expect((btn as HTMLButtonElement).disabled).toBe(true);
-    });
-    // 而且点不动它，所以不会说出那句帮不上忙的话。
-    fireEvent.click(btn);
-    expect(toast.warning).not.toHaveBeenCalled();
-    listSpy.mockRestore();
-  });
-
   it('提交中按钮禁用，并且站着一个加载指示', async () => {
     const listSpy = vi
       .spyOn(modelsApi, 'list')
@@ -1151,5 +1093,57 @@ describe('GeneratePanelContainer — 删掉的守卫由谁接替 (#1949)', () =>
     expect(createSpy).not.toHaveBeenCalled();
     listSpy.mockRestore();
     createSpy.mockRestore();
+  });
+});
+
+describe('这个部署服务不了的档 (#1951)', () => {
+  beforeEach(() => {
+    _resetForTests();
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  it('那一档不出现在选择器里，其余照常', async () => {
+    // 只有 t2i 的模型：i2i 这一档在这个部署里不存在。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL]));
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    fireEvent.click(await screen.findByTestId('generate-mode-trigger'));
+    expect(screen.getByTestId('generate-mode-t2i')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-mode-i2i')).toBeNull();
+    listSpy.mockRestore();
+  });
+
+  it('节点存的就是那一档时，面板落到可用档，而 Yjs 里存的值不动', async () => {
+    // 判据是「它得先可用」（user 2026-08-18），而解析是渲染时派生的：
+    // 部署方把 i2i 的模型加回来，这个节点就该重新读成 i2i。
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL]));
+    // mode 必须同时进 Yjs 和 nodes 这个 prop：面板的当前档来自 vm（读 prop），
+    // Yjs 只在写回调里被读。只 seed 不传 prop 的话 stored 恒为 undefined，
+    // 这条用例就测不到「存了不可用档」这件事（实现对抗第 2 轮咬出）。
+    seedImageNode({ mode: 'i2i' });
+    mountContainer({
+      nodes: [{ id: 'target', data: { kind: 'image', status: 'idle', mode: 'i2i' } }],
+    });
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const trigger = await screen.findByTestId('generate-mode-trigger');
+    await waitFor(() => expect(trigger.textContent).not.toBe(''));
+    expect(trigger.textContent).toContain('Text to Image');
+    const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
+      ?.data as { mode?: string };
+    expect(data.mode).toBe('i2i');
+    listSpy.mockRestore();
   });
 });

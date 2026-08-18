@@ -39,12 +39,14 @@ import {
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
-import { filterModelsByMode } from '@web/spaces/canvas/generate/mode-selection';
 import {
   resolveModelSwitch,
   resolveParamsEdit,
 } from '@web/spaces/canvas/generate/model-params';
-import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
+import {
+  filterAvailableModes,
+  resolveModeSwitch,
+} from '@web/spaces/canvas/generate/mode-selection';
 import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
 import {
   PromptEditor,
@@ -194,7 +196,15 @@ function VideoGeneratePanelBody({
   // The mode lives on the NODE, not in panel state: the switch is
   // collaborative, so a mode someone else picked has to show up here, and
   // reopening the panel has to land where it was left.
-  const mode = nodeVideoMode(nodes, nodeId);
+  // The modes this deployment can serve (#1951). Memoized on [models] alone:
+  // it flows into two React.memo components, and a freshly-filtered array
+  // would defeat both on every frame of a node drag — the same reason
+  // `stableModels` below exists. Also why it is not a view-model field.
+  const availableModes = React.useMemo(
+    () => filterAvailableModes(VIDEO_MODE_OPTIONS, models),
+    [models],
+  );
+  const mode = nodeVideoMode(nodes, nodeId, availableModes);
 
   // A referenced text node's body is a shared fragment the node view does not
   // carry (#1774), so the panel follows the ones it can reference. This is the
@@ -255,7 +265,7 @@ function VideoGeneratePanelBody({
         nodes: graph.nodes,
         edges: graph.edges,
         models,
-        mode: nodeVideoMode(graph.nodes, nodeId),
+        mode: nodeVideoMode(graph.nodes, nodeId, availableModes),
         atMentionedSourceIds,
         // Empty on purpose. What a text reference SAYS never travels through
         // here: the prompt string is serialized by the editor from its own
@@ -267,7 +277,7 @@ function VideoGeneratePanelBody({
         textById: EMPTY_TEXT,
       });
     },
-    [projectId, spaceId, nodeId, models],
+    [projectId, spaceId, nodeId, models, availableModes],
   );
 
   /**
@@ -332,16 +342,6 @@ function VideoGeneratePanelBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: slotThumbnailsKey IS the input, serialized
     [slotThumbnailsKey],
   );
-  // Whether ANY mode this panel offers has a model to switch to. Deliberately
-  // not the active mode's subset: a node sitting in a mode the catalog no
-  // longer serves must still be able to switch back to one that works.
-  const catalogEmpty = React.useMemo(
-    () =>
-      !VIDEO_MODE_OPTIONS.some(
-        (option) => filterModelsByMode(models, option.value).length > 0,
-      ),
-    [models],
-  );
 
   const onSelectModel = React.useCallback(
     (modelId: string) => {
@@ -362,12 +362,12 @@ function VideoGeneratePanelBody({
         projectId,
         spaceId,
         nodeId,
-        nodeVideoMode(graph.nodes, nodeId),
+        nodeVideoMode(graph.nodes, nodeId, availableModes),
         modelId,
         paramsByModel,
       );
     },
-    [models, projectId, spaceId, nodeId, freshContent, t],
+    [models, availableModes, projectId, spaceId, nodeId, freshContent, t],
   );
 
   const onToggleMode = React.useCallback(
@@ -384,12 +384,14 @@ function VideoGeneratePanelBody({
         target,
         models,
       );
-      // Never persist an empty model: the catalog may still be loading / have
-      // failed, or the target mode may offer nothing. The resolver pairs an
-      // empty model with an empty record set, and writing that clobbers the
-      // node's stored model AND every model's records — not just the incoming
-      // one's. (The toggle is also disabled while no offered mode has a model;
-      // this backstops the target-mode-empty case.)
+      // Never persist an empty model: the resolver pairs one with an empty
+      // record set, and writing that clobbers the node's stored model AND
+      // every model's records, not just the incoming one's.
+      //
+      // Unreachable since #1951 — the picker only offers modes this
+      // deployment serves, so the target always resolves a model, and a
+      // modality that serves none does not open a panel at all. Kept as
+      // defence against a layer above breaking.
       if (!model) return;
       setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
     },
@@ -748,7 +750,7 @@ function VideoGeneratePanelBody({
       creditEstimate={vm.creditEstimate}
       mode={mode}
       onToggleMode={onToggleMode}
-      catalogEmpty={catalogEmpty}
+      modeOptions={availableModes}
       promptRequired={vm.promptRequired}
       references={stableReferences}
       onAddReference={onAddReference}
@@ -792,7 +794,7 @@ export function VideoGeneratePanelContainer(
   const nodeId = useOpenPanelNode('generateVideo', props.nodes);
   if (nodeId == null) return null;
   return (
-    <CatalogGatedFrame nodeId={nodeId}>
+    <CatalogGatedFrame nodeId={nodeId} modality='video'>
       {/* key={nodeId} makes switching the panel to another node a full REMOUNT,
           so a prompt typed for node A can never be submitted to node B. */}
       <VideoGeneratePanelBody {...props} nodeId={nodeId} key={nodeId} />

@@ -46,13 +46,19 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
-import { resolveMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import {
+  IMAGE_MODE_OPTIONS,
+  resolveMode,
+} from '@web/spaces/canvas/generate/image-mode-selection';
 import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
 import {
   resolveModelSwitch,
   resolveParamsEdit,
 } from '@web/spaces/canvas/generate/model-params';
-import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
+import {
+  filterAvailableModes,
+  resolveModeSwitch,
+} from '@web/spaces/canvas/generate/mode-selection';
 import {
   buildGeneratePanelViewModel,
   selectModeModels,
@@ -261,6 +267,17 @@ function GeneratePanelBody({
     () => selectModeModels(models, vm.mode),
     [models, vm.mode],
   );
+  // The modes this deployment can serve (#1951). Memoized on [models] alone
+  // for the same reason as the line above: it flows down three React.memo
+  // components — GeneratePanel, ImageModeToggle, ModeToggle — and a
+  // freshly-filtered array would defeat all three on every frame of a node
+  // drag. This is also why it is not a view-model FIELD: the view model
+  // rebuilds on every canvas mutation. (It calls `filterAvailableModes` too,
+  // to resolve which mode is current, but that result never leaves it.)
+  const availableModes = React.useMemo(
+    () => filterAvailableModes(IMAGE_MODE_OPTIONS, models),
+    [models],
+  );
   // Same discipline for the sibling props (round-3 adversarial): params and
   // references are rebuilt with the vm every canvas mutation; without a
   // content-stable identity they defeat the React.memo on GeneratePanel /
@@ -366,12 +383,12 @@ function GeneratePanelBody({
         projectId,
         spaceId,
         nodeId,
-        resolveMode(content?.mode),
+        resolveMode(content?.mode, availableModes),
         modelId,
         paramsByModel,
       );
     },
-    [models, projectId, spaceId, nodeId, freshContent, t],
+    [models, availableModes, projectId, spaceId, nodeId, freshContent, t],
   );
 
   const onToggleMode = React.useCallback(
@@ -387,12 +404,14 @@ function GeneratePanelBody({
         newMode,
         models,
       );
-      // Never persist an empty model: the catalog may still be loading / have
-      // failed (models === []), or the target mode may offer nothing. The
-      // resolver pairs an empty model with an empty record set, and writing
-      // that clobbers the node's stored model AND every model's records — not
-      // just the incoming one's. Bail (the toggle is also disabled while the
-      // catalog is empty; this backstops the target-mode-empty case).
+      // Never persist an empty model: the resolver pairs one with an empty
+      // record set, and writing that clobbers the node's stored model AND
+      // every model's records, not just the incoming one's.
+      //
+      // Unreachable since #1951 — the picker only offers modes this
+      // deployment serves, so the target always resolves a model, and a
+      // modality that serves none does not open a panel at all. Kept as
+      // defence against a layer above breaking.
       if (!model) return;
       setNodeMode(projectId, spaceId, nodeId, newMode, model, paramsByModel);
     },
@@ -771,7 +790,7 @@ function GeneratePanelBody({
       models={stableModels}
       model={vm.model}
       mode={vm.mode}
-      catalogEmpty={vm.catalogEmpty}
+      modeOptions={availableModes}
       promptRequired={vm.promptRequired}
       params={stableParams}
       references={stableReferences}
@@ -813,7 +832,7 @@ export function GeneratePanelContainer(
   const nodeId = useOpenPanelNode('generate', props.nodes);
   if (nodeId == null) return null;
   return (
-    <CatalogGatedFrame nodeId={nodeId}>
+    <CatalogGatedFrame nodeId={nodeId} modality='image'>
       {/* key={nodeId} makes switching the panel to another node a full REMOUNT:
           promptText / promptTextRef / submittingRef all reset to the new node's
           fresh state, so a prompt typed for node A can never be submitted to

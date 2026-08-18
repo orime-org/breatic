@@ -8,6 +8,7 @@ import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 import type { VideoGenMode } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
+import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
@@ -541,27 +542,59 @@ describe('nodeVideoMode', () => {
     // this panel does not offer (an image mode, or a mini-tool video mode)
     // must not be honoured either: it would narrow the model list to nothing
     // and leave the panel with no model to submit.
-    expect(nodeVideoMode([node('n1', videoView())], 'n1')).toBe('t2v');
-    expect(nodeVideoMode([node('n1', videoView({ mode: 'i2v' }))], 'n1')).toBe(
+    expect(nodeVideoMode([node('n1', videoView())], 'n1', VIDEO_MODE_OPTIONS)).toBe('t2v');
+    expect(nodeVideoMode([node('n1', videoView({ mode: 'i2v' }))], 'n1', VIDEO_MODE_OPTIONS)).toBe(
       'i2v',
     );
-    expect(nodeVideoMode([node('n1', videoView({ mode: 't2i' }))], 'n1')).toBe(
+    expect(nodeVideoMode([node('n1', videoView({ mode: 't2i' }))], 'n1', VIDEO_MODE_OPTIONS)).toBe(
       't2v',
     );
     expect(
-      nodeVideoMode([node('n1', videoView({ mode: 'upscale' }))], 'n1'),
+      nodeVideoMode([node('n1', videoView({ mode: 'upscale' }))], 'n1', VIDEO_MODE_OPTIONS),
     ).toBe('t2v');
   });
 
   it('defaults for a node that is not on the board', () => {
     // A collaborator can delete the node under an open panel; the read has to
     // answer something the panel can render rather than throw.
-    expect(nodeVideoMode([], 'gone')).toBe('t2v');
+    expect(nodeVideoMode([], 'gone', VIDEO_MODE_OPTIONS)).toBe('t2v');
   });
 
   it('defaults for a node kind that carries no generate inputs', () => {
     // Annotations and groups have no `mode` at all.
-    expect(nodeVideoMode([node('n1', { kind: 'group' })], 'n1')).toBe('t2v');
+    expect(nodeVideoMode([node('n1', { kind: 'group' })], 'n1', VIDEO_MODE_OPTIONS)).toBe('t2v');
+  });
+
+  // 判据是「它得先可用」，不是「它是不是一个合法的档」（#1951，user 2026-08-18）。
+  // 上面那几条传的都是完整的六档，走不到这条分支 —— 这几条专门传收窄后的列表。
+  describe('存的档必须是这个部署服务得了的那些之一 (#1951)', () => {
+    /** 部署方把 animate 那一档的模型删了，剩下的档照常。 */
+    const WITHOUT_ANIMATE = VIDEO_MODE_OPTIONS.filter((o) => o.value !== 'animate');
+    /** 一个只剩 i2v 的部署 —— 连默认的 t2v 都没有。 */
+    const ONLY_I2V = VIDEO_MODE_OPTIONS.filter((o) => o.value === 'i2v');
+
+    it('存的档可用，就用它', () => {
+      expect(
+        nodeVideoMode([node('n1', videoView({ mode: 'i2v' }))], 'n1', WITHOUT_ANIMATE),
+      ).toBe('i2v');
+    });
+
+    it('存的档合法但这个部署没有它的模型，落到可用档第一个', () => {
+      // 改动前这里会返回 'animate'：旧判据只问它在不在合法档清单里，
+      // 于是节点停在一个选择器根本不列的档上。
+      expect(
+        nodeVideoMode([node('n1', videoView({ mode: 'animate' }))], 'n1', WITHOUT_ANIMATE),
+      ).toBe('t2v');
+    });
+
+    it('没存过 mode 时取可用档第一个，不是写死的 t2v', () => {
+      // t2v 自己被摘掉的部署：默认档得跟着走，否则每个新节点都停在
+      // 一个不存在的档上。
+      expect(nodeVideoMode([node('n1', videoView())], 'n1', ONLY_I2V)).toBe('i2v');
+      expect(
+        nodeVideoMode([node('n1', videoView({ mode: 't2v' }))], 'n1', ONLY_I2V),
+      ).toBe('i2v');
+    });
   });
 });
 

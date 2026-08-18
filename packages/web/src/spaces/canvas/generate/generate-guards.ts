@@ -122,9 +122,7 @@ export function isExecuteButtonDisabled(
  * The other half of {@link isExecuteButtonDisabled}, and here for the same
  * reason: "which refusals speak" was written out twice, once per panel, in
  * blocks that were byte-for-byte identical. Two copies of a policy are two
- * chances to change one and forget the other — and this particular policy is
- * due to change (#1951 turns `no-model` from silent into spoken), so the two
- * copies would have been asked to move together on their very first edit.
+ * chances to change one and forget the other.
  *
  * Silent is not the same as unhandled. Both silent refusals keep the button
  * disabled, so neither is reachable from a click in the same render. The
@@ -135,11 +133,13 @@ export function isExecuteButtonDisabled(
  * panel is anchored to that node and goes with it on the next frame, so the
  * panel vanishing already says it.
  *
- * `no-model` — the node's mode moved to one that offers no model. Nothing
- * disappears here and the user does get a dead click; that is the state #1951
- * exists to give a voice, and giving it one here instead would leave the
- * button greyed out while something explains why, which is the shape #1949
- * set out to remove.
+ * `no-model` — unreachable since #1951, which is why it stays silent. This
+ * function once carried a note that #1951 would give it a voice; the opposite
+ * happened. Availability became the test at every layer that decides which
+ * mode is current, so the mode a panel is on always has a model, and the
+ * panel does not open at all for a modality that serves none. Writing copy
+ * for it would have been describing a state instead of removing it (user
+ * 2026-08-18). The branch stays as defence against a layer above breaking.
  * @param refusal - The failing condition from {@link evaluateExecute}.
  * @returns The i18n key to warn with, or null to refuse in silence.
  */
