@@ -7,6 +7,7 @@ import type { ModelEntry } from '@breatic/shared';
 
 import {
   filterAvailableModes,
+  resolveAvailableMode,
   filterModelsByMode,
   pickModelForMode,
   resolveModeSwitch,
@@ -272,5 +273,39 @@ describe('filterAvailableModes（#1951 档要先有模型才出现）', () => {
     expect(kept).toHaveLength(1);
     expect(kept[0]).toBe(withExtras[0]);
     expect(kept[0]?.takesReferences).toBe(false);
+  });
+});
+
+describe('resolveAvailableMode（#1951 当前档也要先可用）', () => {
+  const OPTIONS = [
+    { value: 't2v' },
+    { value: 'i2v' },
+    { value: 'animate' },
+  ] as const;
+
+  it('存的档可用，就用它', () => {
+    expect(resolveAvailableMode('i2v', OPTIONS)).toBe('i2v');
+  });
+
+  it('存的档合法但已经不可用，当没存过', () => {
+    // animate 在这个部署里被摘掉了：可用档只剩前两个。
+    expect(resolveAvailableMode('animate', OPTIONS.slice(0, 2))).toBe('t2v');
+  });
+
+  it('没存过，取可用档第一个', () => {
+    expect(resolveAvailableMode(undefined, OPTIONS)).toBe('t2v');
+    expect(resolveAvailableMode('', OPTIONS)).toBe('t2v');
+  });
+
+  it('取的是可用档第一个，不是某个写死的档', () => {
+    // t2v 被摘掉时，新节点该落在 i2v 上 —— 写死 't2v' 的实现会在这条上红。
+    expect(resolveAvailableMode(undefined, OPTIONS.slice(1))).toBe('i2v');
+    expect(resolveAvailableMode('t2v', OPTIONS.slice(1))).toBe('i2v');
+  });
+
+  it('一个可用档都没有时答不出来', () => {
+    // 面板在这种部署里根本不打开，所以这一支到不了；纯函数仍然要诚实。
+    expect(resolveAvailableMode('t2v', [])).toBeUndefined();
+    expect(resolveAvailableMode(undefined, [])).toBeUndefined();
   });
 });
