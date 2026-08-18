@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { ChatEmpty } from '@web/pages/project/chat/ChatEmpty';
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
@@ -88,23 +89,18 @@ function MessageSkeleton(): React.JSX.Element {
               conversation, and a conversation is what the reader is waiting
               for. The widths grow group by group so it reads as content rather
               than as three identical cells. */}
-          {/* Heights off the type scale's neighbours rather than chosen by
-              eye, and the question's radius is the one its bubble uses. Widths
-              stay proportional: they are what makes each group read as a round
-              of conversation rather than as three identical cells. */}
-          <div
+          {/* `h-3` is what the rest of the app uses for a line of text
+              standing in for itself. The question keeps its bubble's radius;
+              the answer has no bubble, so it keeps the component's own. */}
+          <Skeleton
             data-skeleton-bar
-            className='skeleton-shimmer ml-auto mb-2 h-2.5 rounded-lg'
+            className='ml-auto mb-2 h-3 rounded-lg'
             style={{ width: `${56 + round * 9}%` }}
           />
-          <div
+          <Skeleton data-skeleton-bar className='mb-1 h-3' style={{ width: '93%' }} />
+          <Skeleton
             data-skeleton-bar
-            className='skeleton-shimmer mb-1 h-2 rounded-sm'
-            style={{ width: '93%' }}
-          />
-          <div
-            data-skeleton-bar
-            className='skeleton-shimmer h-2 rounded-sm'
+            className='h-3'
             style={{ width: `${64 + round * 8}%` }}
           />
         </div>
