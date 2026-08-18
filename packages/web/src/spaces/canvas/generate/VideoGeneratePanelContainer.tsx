@@ -792,7 +792,7 @@ export function VideoGeneratePanelContainer(
   const nodeId = useOpenPanelNode('generateVideo', props.nodes);
   if (nodeId == null) return null;
   return (
-    <CatalogGatedFrame nodeId={nodeId}>
+    <CatalogGatedFrame nodeId={nodeId} modality='video'>
       {/* key={nodeId} makes switching the panel to another node a full REMOUNT,
           so a prompt typed for node A can never be submitted to node B. */}
       <VideoGeneratePanelBody {...props} nodeId={nodeId} key={nodeId} />

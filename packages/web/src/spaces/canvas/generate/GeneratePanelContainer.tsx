@@ -813,7 +813,7 @@ export function GeneratePanelContainer(
   const nodeId = useOpenPanelNode('generate', props.nodes);
   if (nodeId == null) return null;
   return (
-    <CatalogGatedFrame nodeId={nodeId}>
+    <CatalogGatedFrame nodeId={nodeId} modality='image'>
       {/* key={nodeId} makes switching the panel to another node a full REMOUNT:
           promptText / promptTextRef / submittingRef all reset to the new node's
           fresh state, so a prompt typed for node A can never be submitted to

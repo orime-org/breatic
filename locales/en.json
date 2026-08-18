@@ -259,6 +259,7 @@
       "modelUnavailable": "That model is no longer available — pick another.",
       "catalogUnavailable": "Model list unavailable — please try again later",
       "catalogOffline": "You are offline — the model list cannot be loaded. Reconnect and try again.",
+      "catalogNoModels": "No models available. Configure a provider API key",
       "selectFocusFromCanvas": "Drag a marquee on an image to crop a focus reference",
       "focusCancel": "Cancel",
       "focusConfirm": "Confirm",
