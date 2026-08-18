@@ -16,6 +16,7 @@
 
 import { Hono } from "hono";
 import { requireAuth } from "@server/middleware/auth.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { membershipService } from "@server/modules";
 
@@ -32,7 +33,7 @@ account.use(requireAuth);
  *   ceilings (`null` for enterprise, which negotiates its own), the two
  *   account-level usage figures, and the tiers offered for comparison
  */
-account.get("/membership", async (c) => {
+account.get("/membership", rateLimitFor("membership-read", "user"), async (c) => {
   const user = c.get("user");
   const membership = await membershipService.readAccountMembership(user.id);
   return c.json({ data: membership });

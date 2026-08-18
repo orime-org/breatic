@@ -36,6 +36,7 @@ loader:`packages/server/src/config/rate-limits.ts`(`getRateLimit(action)`);中�
 | `avatar-upload` | 20 / 3600s | user | 上传 studio 头像(每次都永久新增一个存储对象)|
 | `presign` | 30 / 60s | user | 上传预签名 URL |
 | `asset-report` | 120 / 60s | user | 活动流上报(`/assets/uploaded`、`/assets/deleted`) |
+| `membership-read` | 60 / 60s | user | 读会员面板(`GET /account/membership`)。它每次都跟 Stripe 对一次账,所以不限流等于让一个账号无限调别人的 API |
 
 ## 3. `config/limits.yaml` — 业务容量 + 分页
 

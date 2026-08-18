@@ -197,16 +197,7 @@ export async function changePlan(input: {
     throw new ConflictError(t("server.membership.payment_overdue"));
   }
 
-  const stripe = getStripeClient();
-  if (record.cancelAtPeriodEnd) {
-    // Otherwise the upgrade is paid for and the plan still ends at the period
-    // boundary, because nothing removed the flag.
-    await stripe.subscriptions.update(record.stripeSubscriptionId, {
-      cancel_at_period_end: false,
-    });
-  }
-
-  const updated = await stripe.subscriptions.update(
+  const updated = await getStripeClient().subscriptions.update(
     record.stripeSubscriptionId,
     {
       items: [
@@ -216,6 +207,17 @@ export async function changePlan(input: {
           price: getSubscriptionPlan(input.tier).stripePriceId,
         },
       ],
+      // Clearing the scheduled cancellation travels WITH the plan change, in
+      // one call. Two calls would mean a failed second one leaves the
+      // cancellation already withdrawn: the account keeps renewing, the
+      // upgrade never happened, and nobody was told either. Sending both in
+      // one request makes that state unreachable — Stripe applies the whole
+      // update or none of it.
+      //
+      // Sent unconditionally: setting it false on a subscription that is not
+      // ending changes nothing, and a conditional here would be a second
+      // shape to keep in step with the situation reading.
+      cancel_at_period_end: false,
       proration_behavior: "always_invoice",
       payment_behavior: "pending_if_incomplete",
       expand: ["latest_invoice"],

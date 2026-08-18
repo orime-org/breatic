@@ -234,20 +234,21 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     );
   });
 
-  it("clears a scheduled cancellation before switching plans", async () => {
-    // Otherwise the upgrade is paid for and the plan still ends at the period
-    // boundary, because nothing removed the flag.
+  it("清取消预约和换 price 是同一次调用，不能拆成两次", async () => {
+    // 拆成两次的话，第一次清掉了取消预约、第二次换 price 失败，用户预约的
+    // 取消就被这次失败的升级永久吃掉 —— 他以为月底会停，实际继续被扣钱，
+    // 而且没有任何东西告诉他。Stripe 的 update 本来就能一次传两个字段。
     situationIs("cancelling", proRow({ cancelAtPeriodEnd: true }));
 
     await service.changePlan({ userId: USER, tier: "team" });
 
-    expect(stripe.subscriptions.update).toHaveBeenNthCalledWith(1, "sub_1", {
-      cancel_at_period_end: false,
-    });
-    expect(stripe.subscriptions.update).toHaveBeenNthCalledWith(
-      2,
+    expect(stripe.subscriptions.update).toHaveBeenCalledTimes(1);
+    expect(stripe.subscriptions.update).toHaveBeenCalledWith(
       "sub_1",
-      expect.objectContaining({ items: [{ id: "si_1", price: "price_team" }] }),
+      expect.objectContaining({
+        cancel_at_period_end: false,
+        items: [{ id: "si_1", price: "price_team" }],
+      }),
     );
   });
 
