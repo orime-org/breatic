@@ -8,12 +8,14 @@
  * clearDocument 命令），确认对话框本体在组件层另测。
  *
  * TDD 红灯批次二：旧世界（标题块 + 按侧钳制）下本文件必须全红。
- * GapCursor 档的格子在实现阶段随 gapcursor 选区构造一起钉（本批不含）。
+ * 两张表逐格在此钉齐：NodeSelection 与 GapCursor 行、零块行、修饰键
+ * 删除和弦全家族（实现对抗第 1 轮补钉）。
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { GapCursor } from '@tiptap/pm/gapcursor';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -357,5 +359,116 @@ describe('clearDocument 只在可编辑的编辑器上执行（实现对抗第 1
     e.setEditable(false);
     expect(e.commands.clearDocument()).toBe(false);
     expect(e.state.doc.childCount).toBe(3);
+  });
+});
+
+describe('B1/B2 NodeSelection 行的其余三格（占位块整体选中；A3 的「可删」也在这）', () => {
+  /** 一个开头躺着兜底占位块的编辑器（存量 title 经补丁的形态）。 */
+  function openWithStandIn(onClear?: () => void): Editor {
+    const doc = new Y.Doc();
+    doc.transact(() => {
+      documentBodyFragment(doc).insert(0, [new Y.XmlElement('legacyBlock')]);
+    });
+    const e = openOn(doc, onClear);
+    // 尾部显式插入——初始选区落在开头的原子块上，裸 insertContent 会把
+    // 占位块整个替换掉。
+    e.commands.insertContentAt(e.state.doc.content.size, '<p>after</p>');
+    return e;
+  }
+
+  /** 选中第一个块（那个占位块）为 NodeSelection。 */
+  function selectStandIn(e: Editor): void {
+    e.view.dispatch(
+      e.state.tr.setSelection(NodeSelection.create(e.state.doc, 0)),
+    );
+  }
+
+  it('Backspace：删掉该块自己，不弹确认、别的块都在', () => {
+    const asked = vi.fn();
+    const e = openWithStandIn(asked);
+    selectStandIn(e);
+    press(e, 'Backspace');
+    expect(asked).not.toHaveBeenCalled();
+    expect(e.state.doc.childCount).toBe(1);
+    expect(e.state.doc.textContent).toBe('after');
+  });
+
+  it('Delete：同样只删该块', () => {
+    const asked = vi.fn();
+    const e = openWithStandIn(asked);
+    selectStandIn(e);
+    press(e, 'Delete');
+    expect(asked).not.toHaveBeenCalled();
+    expect(e.state.doc.childCount).toBe(1);
+  });
+
+  it('打字：该块被替换成所打字符的段落', () => {
+    const e = openWithStandIn();
+    selectStandIn(e);
+    e.commands.insertContent('x');
+    expect(e.state.doc.childCount).toBe(2);
+    expect(e.state.doc.child(0).type.name).toBe('paragraph');
+    expect(e.state.doc.child(0).textContent).toBe('x');
+  });
+
+  it('Enter：createParagraphNear——块还在，旁边多一个空段、光标落入', () => {
+    const e = openWithStandIn();
+    selectStandIn(e);
+    press(e, 'Enter');
+    expect(e.state.doc.childCount).toBe(3);
+    expect(e.state.selection.empty).toBe(true);
+    expect(e.state.selection.$from.parent.type.name).toBe('paragraph');
+  });
+});
+
+describe('B1/B2 GapCursor 行（占位块旁的缝隙位）', () => {
+  /** 编辑器 + 光标停在开头占位块前的缝隙。 */
+  function openWithGap(onClear?: () => void): Editor {
+    const doc = new Y.Doc();
+    doc.transact(() => {
+      documentBodyFragment(doc).insert(0, [new Y.XmlElement('legacyBlock')]);
+    });
+    const e = openOn(doc, onClear);
+    e.commands.insertContentAt(e.state.doc.content.size, '<p>after</p>');
+    e.view.dispatch(e.state.tr.setSelection(new GapCursor(e.state.doc.resolve(0))));
+    return e;
+  }
+
+  it('缝隙位是可构造的合法选区', () => {
+    const e = openWithGap();
+    expect(e.state.selection).toBeInstanceOf(GapCursor);
+  });
+
+  it('Ctrl+A：直接全选整个文档', () => {
+    const e = openWithGap();
+    pressSelectAll(e);
+    expect(e.state.selection).toBeInstanceOf(AllSelection);
+  });
+
+  it('Backspace / Delete：不弹确认框（守卫只管全文档档）', () => {
+    const asked = vi.fn();
+    const e = openWithGap(asked);
+    press(e, 'Backspace');
+    const f = openWithGap(asked);
+    press(f, 'Delete');
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it('Enter：在缝隙处建段落', () => {
+    const e = openWithGap();
+    press(e, 'Enter');
+    expect(e.state.doc.child(0).type.name).toBe('paragraph');
+    expect(e.state.doc.childCount).toBe(3);
+  });
+});
+
+describe('B2 零块行的 Backspace / Enter 格：空操作', () => {
+  it.each(['Backspace', 'Delete', 'Enter'])('零块文档按 %s：吞键、不弹、不变', (key) => {
+    const asked = vi.fn();
+    const e = openOn(new Y.Doc(), asked);
+    expect(e.state.doc.childCount).toBe(0);
+    press(e, key);
+    expect(asked).not.toHaveBeenCalled();
+    expect(e.state.doc.childCount).toBe(0);
   });
 });
