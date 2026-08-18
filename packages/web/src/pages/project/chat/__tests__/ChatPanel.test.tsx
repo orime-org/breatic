@@ -517,6 +517,81 @@ describe('where a failure about a row in the list is drawn', () => {
     );
     expect(screen.queryByTestId('chat-notice')).toBeNull();
   });
+
+  it('draws nothing at all while the conversation is still on its way', async () => {
+    // 空会话的问候语是一句断言:这条会话没有消息。会话还没到手时那句话说不出
+    // 口 —— 它可能有一整屏历史,只是还在路上。把它画出来,读者自己的历史就在
+    // 眼前闪过去一下,像从来没有过。
+    let land: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementation(
+      () =>
+        new Promise((res) => {
+          land = (): void =>
+            res({
+              conversations: [{ id: 'c-1', title: 'one' }],
+              current: {
+                conversation: { id: 'c-1', title: 'one' },
+                messages: [],
+                hasMore: false,
+              },
+              hasMoreConversations: false,
+            } as never);
+        }),
+    );
+    renderPanel({ projectId: 'p1' });
+    await waitFor(() => expect(land).toBeDefined());
+
+    expect(screen.queryByTestId('chat-empty')).toBeNull();
+
+    await act(async () => {
+      land?.();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByTestId('chat-empty')).toBeInTheDocument());
+  });
+
+  it('says nothing about a wait that is over before it is worth mentioning', async () => {
+    // 骨架在 300 毫秒之后才出现,而绝大多数答复在那之前就回来了。立刻画一次
+    // 再立刻收走,读作闪了一下,不读作「正在加载」。
+    vi.useFakeTimers();
+    try {
+      vi.mocked(chatApi.openChat).mockImplementation(() => new Promise(() => {}));
+      renderPanel({ projectId: 'p1' });
+
+      await act(async () => {
+        vi.advanceTimersByTime(299);
+      });
+      expect(screen.queryByTestId('message-skeleton')).toBeNull();
+
+      await act(async () => {
+        vi.advanceTimersByTime(2);
+      });
+      expect(screen.getByTestId('message-skeleton')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says so when a new conversation could not be started', async () => {
+    // 「+」按下去之后页面一个字都不变,读者只能理解成这个按钮坏了。这一句是
+    // 它唯一的回音。它不贴着任何一行 —— 那条会话根本没建成 —— 所以抽屉开着时
+    // 画在列表顶部,关着时落在输入框上方。
+    opens();
+    renderPanel({ projectId: 'p1', historyOpen: true });
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation-history-sheet')).toBeInTheDocument(),
+    );
+
+    vi.mocked(chatApi.createConversation).mockRejectedValue(new Error('offline'));
+    await act(async () => {
+      await conversationRuntime.startNew('p1');
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation-list-mishap')).toBeInTheDocument(),
+    );
+  });
 });
 
 describe('opening the list', () => {

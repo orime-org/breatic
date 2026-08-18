@@ -181,8 +181,13 @@ describe('when they can', () => {
     ]);
     renderColumn();
 
-    await waitFor(() => expect(screen.getByTestId('agent-col-header')).toBeInTheDocument());
-    expect(screen.queryByTestId('conversation-count-chip')).toBeNull();
+    const header = await screen.findByTestId('agent-col-header');
+    // 判据是「顶栏里有没有一个数」,不是「有没有某个 testid」—— 后者换个名字
+    // 重新加上一个计数,它一声都不吭。
+    const numbers = Array.from(header.querySelectorAll('*')).filter(
+      (el) => el.children.length === 0 && /^\d+$/.test(el.textContent?.trim() ?? ''),
+    );
+    expect(numbers).toEqual([]);
   });
 });
 

@@ -36,6 +36,37 @@ import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 
 /**
+ * How the button that opens this list is found from a press landing on it.
+ *
+ * The button is in the column header, not in the sheet, so the sheet can only
+ * recognise it by something it puts in the document. One name for it, in one
+ * place, because the header writes it and this file reads it -- two copies of
+ * a string nothing checks is how the guard below quietly stops guarding.
+ */
+export const OPEN_CONVERSATION_HISTORY_TESTID = 'open-conversation-history';
+
+/**
+ * Whether a press that Radix called "outside" landed on the button that opens
+ * this list.
+ *
+ * That button sits in the column header, above where the sheet reaches, so
+ * Radix counts pressing it as pressing outside: the sheet closes, and then the
+ * button's own click opens it again. On screen that is a press that did
+ * nothing, and it fetches the whole list a second time. Measured in the
+ * browser -- jsdom never gets as far as calling this, so what the sheet does
+ * with the answer is only ever seen there.
+ * @param target - What the press landed on, as the event reports it.
+ * @returns Whether the press belongs to that button.
+ */
+export function pressedTheButtonThatOpensThisList(target: EventTarget | null): boolean {
+  // Up the tree, not the element itself: the press lands on whatever is drawn
+  // inside the button, which is an icon.
+  return target instanceof Element
+    ? target.closest(`[data-testid="${OPEN_CONVERSATION_HISTORY_TESTID}"]`) !== null
+    : false;
+}
+
+/**
  * One conversation as a row shows it.
  *
  * Only what is on screen. The server sends the whole record; a row needs the
@@ -497,17 +528,7 @@ function ConversationHistorySheetInner({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         onPointerDownOutside={(event) => {
-          // The button that opens this list is not part of the sheet -- it sits
-          // in the column header, above where the sheet reaches. Left to
-          // Radix, pressing it while the list is open counts as pressing
-          // outside: the sheet closes, and then the button's own click opens it
-          // again. On screen that is a press that did nothing, and it fetches
-          // the whole list a second time. Measured in the browser: after the
-          // second press the sheet was still open.
-          const on = event.target;
-          if (on instanceof Element && on.closest('[data-testid="open-conversation-history"]')) {
-            event.preventDefault();
-          }
+          if (pressedTheButtonThatOpensThisList(event.target)) event.preventDefault();
         }}
         onEscapeKeyDown={(e) => {
           // An Escape typed into a rename box means "leave the name alone",

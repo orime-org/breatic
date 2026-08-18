@@ -22,20 +22,20 @@ const render = (ui: React.ReactElement, options?: RenderOptions) =>
   rtlRender(ui, { wrapper: TooltipProvider, ...options });
 
 function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
-  const onOpenHistory = vi.fn();
+  const onToggleHistory = vi.fn();
   const onNewConversation = vi.fn();
   const onRenameConversation = vi.fn();
   render(
     <AgentColHeader
       conversationName='Onboarding'
       conversationNamePlaceholder='Untitled conversation'
-      onOpenHistory={onOpenHistory}
+      onToggleHistory={onToggleHistory}
       onNewConversation={onNewConversation}
       onRenameConversation={onRenameConversation}
       {...overrides}
     />,
   );
-  return { onOpenHistory, onNewConversation, onRenameConversation };
+  return { onToggleHistory, onNewConversation, onRenameConversation };
 }
 
 describe('AgentColHeader', () => {
@@ -57,15 +57,21 @@ describe('AgentColHeader', () => {
   it('does not say how many conversations there are', () => {
     // 会话总数对读者没有用处：他要知道的是自己现在在哪一条里。
     // 列表一分页，手上这份数组的长度也不再是总数了。
+    // 判据是「顶栏里有没有一个数」，不是「有没有某个 testid」—— 后者换个名字
+    // 重新加上一个计数，它一声都不吭。
     setup();
-    expect(screen.queryByTestId('conversation-count-chip')).toBeNull();
+    const header = screen.getByTestId('agent-col-header');
+    const numbers = Array.from(header.querySelectorAll('*')).filter(
+      (el) => el.children.length === 0 && /^\d+$/.test(el.textContent?.trim() ?? ''),
+    );
+    expect(numbers).toEqual([]);
   });
 
-  it('clicking history opens it', async () => {
+  it('clicking history asks for it to be shown or hidden', async () => {
     const user = userEvent.setup();
-    const { onOpenHistory } = setup();
+    const { onToggleHistory } = setup();
     await user.click(screen.getByLabelText('Conversation history'));
-    expect(onOpenHistory).toHaveBeenCalledTimes(1);
+    expect(onToggleHistory).toHaveBeenCalledTimes(1);
   });
 
   it('clicking + new conversation invokes the handler', async () => {

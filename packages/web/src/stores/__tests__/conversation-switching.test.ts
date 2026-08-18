@@ -102,6 +102,26 @@ describe('switching away from a running turn and back', () => {
     expect(after.hasTurn).toBe(true);
     expect(signal?.aborted).toBe(true);
   });
+
+  it('stops the turn of a conversation the reader deletes', async () => {
+    // 删掉之后那一轮还在跑,就是在替一条不存在的会话继续调模型 —— 一直调到
+    // 模型自己说完为止,按这个用户的账扣钱,而屏幕上再没有任何东西提到它。
+    opens([{ id: 'c-1', title: 'one' }]);
+    await conversationRuntime.ensureLoaded(P);
+    void conversationRuntime.send(P, 'go');
+    await vi.waitFor(() => expect(handlers).toBeDefined());
+    handlers.onEvent({
+      event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
+      data: { messages: [], hasMore: false },
+    } as unknown as SSEEventEnvelope);
+    const running = handlers.signal;
+    expect(running?.aborted).toBe(false);
+
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
+    await conversationRuntime.remove(P, 'c-1');
+
+    expect(running?.aborted).toBe(true);
+  });
 });
 
 describe('two switches whose answers come back out of order', () => {

@@ -1325,33 +1325,33 @@ describe('what a first page has to be told about', () => {
     expect(vi.mocked(chatApi.listConversations).mock.calls.length).toBe(askedSoFar);
   });
 
-  it('forgets what the reader did here once they have left', async () => {
-    // 那本账记的是「这一趟往返里这一端做了什么」。读者离开 project 之后它还留着,
-    // 下一次进来的答复会拿上一次的删除记录去过滤 —— 一条这次真实存在的会话被
-    // 上一次的删除挡在门外。
-    openAnswers(
-      [
-        { id: 'c-1', title: 'one' },
-        { id: 'c-2', title: 'two' },
-      ],
-      'c-1',
+  it('stops saying the first page is on its way when the last one out was abandoned', async () => {
+    // 计数无条件配对(这是对的),所以把它减到零的那一趟可能属于一次已经被丢
+    // 下的访问。清那句「正在加载」的判据是计数归零,不是「谁减的」—— 挂在
+    // 访问上就会出现一个谁都不清的格子。
+    let landFirst: (() => void) | undefined;
+    vi.mocked(chatApi.openChat).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          landFirst = (): void =>
+            res({
+              conversations: [{ id: 'c-1', title: 'one' }],
+              hasMoreConversations: false,
+              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+            } as never);
+        }),
     );
-    await conversationRuntime.ensureLoaded(PROJECT);
-    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
-    await conversationRuntime.remove(PROJECT, 'c-2');
-
+    void conversationRuntime.ensureLoaded(PROJECT);
+    await new Promise((r) => setTimeout(r, 0));
     conversationRuntime.leaveProject(PROJECT);
 
-    openAnswers(
-      [
-        { id: 'c-1', title: 'one' },
-        { id: 'c-2', title: 'two' },
-      ],
-      'c-1',
-    );
+    openAnswers([{ id: 'c-2', title: 'two' }], 'c-2');
     await conversationRuntime.ensureLoaded(PROJECT);
 
-    expect(listedIds()).toContain('c-2');
+    landFirst?.();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(useConversationRuntime.getState().listLoading[PROJECT]).toBeUndefined();
   });
 
   it('can be asked again after a visit was abandoned mid-open', async () => {

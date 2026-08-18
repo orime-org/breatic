@@ -13,12 +13,20 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
+import { OPEN_CONVERSATION_HISTORY_TESTID } from '@web/pages/project/chat/ConversationHistorySheet';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 
 interface AgentColHeaderProps {
   conversationName: string;
   conversationNamePlaceholder: string;
-  onOpenHistory: () => void;
+  /**
+   * Show the conversation history, or hide it if it is showing.
+   *
+   * The button is a switch, and the sheet has to let its press through to get
+   * there: pressing it while the sheet is open counts as pressing outside, so
+   * the sheet closes itself first unless it recognises the button.
+   */
+  onToggleHistory: () => void;
   onNewConversation: () => void;
   onRenameConversation: (next: string) => void;
 }
@@ -49,7 +57,7 @@ interface AgentColHeaderProps {
  * @param root0 - Component props.
  * @param root0.conversationName - The conversation's own name, empty while it has none.
  * @param root0.conversationNamePlaceholder - What the title reads while the conversation has no name.
- * @param root0.onOpenHistory - Opens the conversation history sheet.
+ * @param root0.onToggleHistory - Shows the conversation history, or hides it if it is showing.
  * @param root0.onNewConversation - Starts a new conversation.
  * @param root0.onRenameConversation - Commits a new conversation name when the title is edited.
  * @returns The agent column header row with history, editable title, and new-conversation actions.
@@ -57,7 +65,7 @@ interface AgentColHeaderProps {
 export function AgentColHeader({
   conversationName,
   conversationNamePlaceholder,
-  onOpenHistory,
+  onToggleHistory,
   onNewConversation,
   onRenameConversation,
 }: AgentColHeaderProps): React.JSX.Element {
@@ -74,8 +82,8 @@ export function AgentColHeader({
             variant='chrome-ghost'
             size='chrome'
             aria-label={t('chrome.tooltip.openHistory')}
-            onClick={onOpenHistory}
-            data-testid='open-conversation-history'
+            onClick={onToggleHistory}
+            data-testid={OPEN_CONVERSATION_HISTORY_TESTID}
           >
             <MessagesSquare className='h-[18px] w-[18px]' />
           </Button>

@@ -116,7 +116,7 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
           // well have a name, and guessing it has none is a guess the reader
           // reads as fact.
           conversationNamePlaceholder={arrived ? t('chat.conversation.untitled') : ''}
-          onOpenHistory={toggleHistory}
+          onToggleHistory={toggleHistory}
           onNewConversation={startNew}
           onRenameConversation={renameCurrent}
         />
