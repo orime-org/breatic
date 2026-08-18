@@ -18,7 +18,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
-import { Selection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, Selection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -184,5 +184,38 @@ describe('跨块选区上按回车（A10）', () => {
       press(e, 'Enter');
       expect(body(e)).toBe(expected[name]);
     });
+  });
+});
+
+describe('splitBlock 在链式调用里探测的是链内文档（实现对抗第 1 轮 #5）', () => {
+  // 探针原先读 editor.state（链外快照），而链式上下文里前序步骤已经改了
+  // 文档——探针看错对象，该拦的删空放过去，落进上游 splitBlockAs 的
+  // 深度 0 TypeError。改从命令收到的 state 探测后，这两条链不抛。
+  it('链内先全选再 splitBlock：等价于删空，不抛', () => {
+    const e = open('<p>aa</p><p>bb</p>');
+    expect(() => {
+      e.chain()
+        .command(({ tr }) => {
+          tr.setSelection(new AllSelection(tr.doc));
+          return true;
+        })
+        .splitBlock()
+        .run();
+    }).not.toThrow();
+    expect(e.state.doc.childCount).toBe(0);
+  });
+
+  it('链内先删空再 splitBlock：零块上分块是空操作，不抛', () => {
+    const e = open('<p>aa</p>');
+    expect(() => {
+      e.chain()
+        .command(({ tr }) => {
+          tr.delete(0, tr.doc.content.size);
+          return true;
+        })
+        .splitBlock()
+        .run();
+    }).not.toThrow();
+    expect(e.state.doc.childCount).toBe(0);
   });
 });

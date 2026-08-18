@@ -12,6 +12,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
+import { AllSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -113,6 +114,29 @@ describe('F3 撤销穿越零块态', () => {
     expect(c.editor.state.doc.childCount).toBe(0);
     c.redo();
     expect(c.editor.getHTML()).toBe('<p>hello</p>');
+  });
+});
+
+describe('F3b 撤销清空后，删除前的全文档选区一并恢复（实现对抗第 1 轮 #4）', () => {
+  it('undo 找回内容时选区回到 AllSelection，不被归一守卫收拢', () => {
+    // 归一守卫的空→非空收拢分支是为「远程内容到达空文档」写的；undo 的
+    // 恢复事务同样从零块起步、终态带回删除前的 AllSelection——把它一并
+    // 收拢等于把用户删除前的选区偷换成文首光标。按 y-undo 来源放行。
+    const doc = new Y.Doc();
+    const a = openOn(doc);
+    a.editor.commands.setContent('<p>alpha</p><p>beta</p>');
+    a.stopCapturing();
+    a.editor.view.dispatch(
+      a.editor.state.tr.setSelection(new AllSelection(a.editor.state.doc)),
+    );
+    a.editor.commands.clearDocument();
+    expect(a.editor.state.doc.childCount).toBe(0);
+
+    a.undo();
+    expect(a.editor.state.doc.childCount).toBe(2);
+    expect(a.editor.state.selection).toBeInstanceOf(AllSelection);
+    expect(a.editor.state.selection.from).toBe(0);
+    expect(a.editor.state.selection.to).toBe(a.editor.state.doc.content.size);
   });
 });
 

@@ -48,7 +48,8 @@ import { Extension, defaultBlockAt, getSplittedAttributes } from '@tiptap/core';
 import type { RawCommands } from '@tiptap/core';
 import { splitBlockAs } from '@tiptap/pm/commands';
 import type { Mark, Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
-import type { EditorState, Transaction } from '@tiptap/pm/state';
+import { EditorState } from '@tiptap/pm/state';
+import type { Transaction } from '@tiptap/pm/state';
 
 /**
  * The marks a split should hand to whatever gets typed next.
@@ -79,17 +80,27 @@ export const DocumentSplitBlock = Extension.create({
       splitBlock:
         ({ keepMarks = true } = {}) =>
           ({ state, dispatch, editor, tr }) => {
-            // A selection whose deletion empties the document entirely — legal
-            // under `block*`, unreachable under the mainstream schemas the
-            // official command grew up with — sends `splitBlockAs` walking a
-            // depth chain that no longer exists (`$from.node(-1)` at depth 0,
-            // a TypeError). The ruled behaviour is simpler than a split
-            // anyway: the deletion happens, and splitting a document with no
-            // blocks is a no-op. Probed on a THROWAWAY transaction — the
-            // chainable `state.tr` is the shared one, `editor.state.tr` mints
-            // a fresh discardable copy.
-            if (!editor.state.selection.empty) {
-              const probe = editor.state.tr;
+            // Splitting a document with no blocks is a no-op — the ruled
+            // zero-block Enter behaviour, honoured here so a chain that has
+            // already emptied the document cannot walk `splitBlockAs` into
+            // the missing depth chain.
+            if (state.doc.childCount === 0) return true;
+            // A selection whose deletion empties the document entirely —
+            // legal under `block*`, unreachable under the mainstream schemas
+            // the official command grew up with — sends `splitBlockAs`
+            // walking a depth chain that no longer exists (`$from.node(-1)`
+            // at depth 0, a TypeError). The ruled behaviour is simpler than a
+            // split anyway: the deletion happens, and splitting a document
+            // with no blocks is a no-op. Probed on a THROWAWAY state built
+            // from the COMMAND's document and selection — not from
+            // `editor.state`, which in a chained call is the pre-chain
+            // snapshot and probes a document earlier steps already changed
+            // (adversarial round 1).
+            if (!state.selection.empty) {
+              const probe = EditorState.create({
+                doc: state.doc,
+                selection: state.selection,
+              }).tr;
               probe.deleteSelection();
               if (probe.doc.childCount === 0) {
                 if (dispatch) {

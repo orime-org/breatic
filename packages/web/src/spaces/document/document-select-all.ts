@@ -14,9 +14,13 @@
  * A caret or a partial selection inside one textblock selects that block's
  * text first; a second press — or any selection that already reaches past one
  * block — selects the whole document as an `AllSelection`. `AllSelection`
- * rather than a text range on purpose: it is the only selection form whose
- * deletion leaves the document genuinely empty (a text range leaves a merged
- * shell block behind), and empty is a legal state of this schema.
+ * rather than a text range on purpose: it is the one selection form whose
+ * deletion is GUARANTEED to leave the document genuinely empty. A text range
+ * sometimes does too — spanning all the text of two differently-shaped
+ * blocks deletes to zero (`enter-across-blocks` pins it) — but over uniform
+ * blocks it leaves a merged shell behind, and a tier that must arm the
+ * whole-document guard cannot be built on a form whose outcome depends on
+ * what the blocks happen to be. Empty is a legal state of this schema.
  *
  * ## The whole-document selection guards its own destruction
  *
@@ -72,6 +76,7 @@ import {
   TextSelection,
 } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -260,22 +265,34 @@ export const DocumentSelectAll = Extension.create<DocumentSelectAllOptions>({
          * a degenerate caret into a whole-document selection would flip
          * "nothing selected" into "everything selected", arming the guarded
          * delete for a keystroke nobody aimed at the whole document.
-         * @param _transactions - The transactions just applied.
+         * @param transactions - The transactions just applied.
          * @param oldState - The state before them.
          * @param newState - The state after them.
          * @returns The normalising transaction, or null.
          */
-        appendTransaction(_transactions, oldState, newState) {
+        appendTransaction(transactions, oldState, newState) {
           const { selection } = newState;
           // The resting AllSelection of an EMPTY document survives mapping —
           // an AllSelection covers the whole document by definition — so the
           // moment content arrives (a remote peer's paragraph, a programmatic
           // fill) it would silently widen into "everything selected", arming
           // the guarded delete for a selection nobody made. Collapse it to a
-          // caret at the start instead. A user-made whole-document selection
-          // is untouched: it exists only while the document HAS content, so
-          // its transactions never start from a zero-block state.
+          // caret at the start instead.
+          //
+          // An undo restore is the one transition this must NOT touch: it
+          // starts from zero blocks too, but the AllSelection it ends with is
+          // the user's own — the selection they held before the confirmed
+          // clear, put back by the undo machinery. Collapsing that swaps the
+          // restored selection for a caret nobody placed (adversarial round
+          // 1), so y-undo transactions pass through.
+          const isUndoRedo = transactions.some((tr) => {
+            const meta = tr.getMeta(ySyncPluginKey) as
+              | { isUndoRedoOperation?: boolean }
+              | undefined;
+            return meta?.isUndoRedoOperation === true;
+          });
           if (
+            !isUndoRedo &&
             selection instanceof AllSelection &&
             oldState.doc.childCount === 0 &&
             newState.doc.childCount > 0
