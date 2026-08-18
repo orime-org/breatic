@@ -219,6 +219,7 @@
       "refuseRemoveModeOff": "References are shared across modes — switch to a mode that uses them to remove this one, or delete its edge on the canvas",
       "refuseRemoveModeOffCrop": "References are shared across modes — switch to a mode that uses them to remove this crop",
       "refuseRemoveNoPrompt": "This mode does not need a prompt",
+      "refuseExecuteNoPrompt": "Write a prompt first",
       "refuseInsertTypeUnused": "{kind, select, audio {References take images only, not audio} video {References take images only, not video} other {References take images only, not this kind of material}}",
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",

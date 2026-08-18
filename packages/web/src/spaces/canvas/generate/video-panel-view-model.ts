@@ -144,8 +144,10 @@ export interface VideoPanelViewModel {
    * dropped never reaches this either — `pickModelForMode` re-picks from the
    * mode's own list, so it only ever yields a name that IS in that list, or
    * `''` when the list is empty. So the one surviving case is "this mode
-   * offers no model at all", and there `canExecuteGenerate` already refuses on
-   * `model.length > 0`. True is nevertheless the right value: a demand nobody
+   * offers no model at all", and there `evaluateExecute` answers `no-model`
+   * first — the order matters, because answering `prompt-missing` instead would
+   * un-grey the button for a mode that has nothing to run (#1949). True is
+   * nevertheless the right value here: a demand nobody
    * can act on is visible, whereas dropping it would hide the editor and leave
    * the panel claiming a model needs no prompt when there is no model.
    */

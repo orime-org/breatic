@@ -25,7 +25,10 @@ import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores';
-import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
+import {
+  evaluateExecute,
+  refusalToastKey,
+} from '@web/spaces/canvas/generate/generate-guards';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
@@ -519,7 +522,7 @@ function VideoGeneratePanelBody({
     if (submittingRef.current) return;
     // A node a collaborator deleted since the panel opened is refused by the
     // execute gate below: it derives from a fresh graph read, so a vanished
-    // node has no status and `canExecuteGenerate` returns false. There is no
+    // node has no status and `evaluateExecute` answers `node-gone`. There is no
     // separate existence check here — one would sit in front of a guard that
     // already covers it, and a line that can never change the outcome reads
     // to the next person as if it can.
@@ -553,15 +556,29 @@ function VideoGeneratePanelBody({
     const freshPrompt = fresh.promptRequired
       ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
       : '';
-    if (
-      !canExecuteGenerate({
-        promptText: freshPrompt,
-        model: fresh.model,
-        nodeStatus: fresh.nodeStatus,
-        isSubmitting: false,
-        promptRequired: fresh.promptRequired,
-      })
-    ) {
+    // One evaluation, its own inputs: the button asked the same question of
+    // the RENDER-time view model, this asks it of live Yjs. Never reuse the
+    // button's answer — React batching and live collaboration make a render
+    // closure stale, and `prompt-missing` in particular is judged against a
+    // different value here (the editor re-serializes so a text chip carries
+    // its source node's CURRENT words).
+    //
+    // `isSubmitting: false` because the synchronous latch above already
+    // answered that question, and it answers it earlier than a state flag can
+    // (a rapid second click would slip past a re-render). So `'submitting'`
+    // never reaches the check below — it exists for the button.
+    const refusal = evaluateExecute({
+      promptText: freshPrompt,
+      model: fresh.model,
+      nodeStatus: fresh.nodeStatus,
+      isSubmitting: false,
+      promptRequired: fresh.promptRequired,
+    });
+    if (refusal != null) {
+      // WHICH refusal speaks is policy, and it lives in one place for the same
+      // reason the disabled set does — both panels ask, neither spells it out.
+      const key = refusalToastKey(refusal);
+      if (key) toast.warning(t(key));
       return;
     }
     // The one check the mode's field set cannot make for itself: the fields
@@ -575,7 +592,7 @@ function VideoGeneratePanelBody({
     // control. The server re-checks before billing (defence in depth).
     const emptySlot = fresh.slots.find((slot) => !fresh.slotUrls[slot]);
     if (emptySlot) {
-      toast.error(t(VIDEO_SLOTS[emptySlot].errorKey));
+      toast.warning(t(VIDEO_SLOTS[emptySlot].errorKey));
       return;
     }
     // The same question for the mode whose sources are references rather than
@@ -585,7 +602,7 @@ function VideoGeneratePanelBody({
     // image", which is the i2i vocabulary and would point someone here at a
     // control this panel does not have.
     if (modeTakesReferences(fresh.mode) && fresh.referenceUrls.length === 0) {
-      toast.error(t('canvas.generatePanel.errorNoReferenceMention'));
+      toast.warning(t('canvas.generatePanel.errorNoReferenceMention'));
       return;
     }
     // And the other end of the same gate: more than the model takes. Naming
@@ -597,7 +614,7 @@ function VideoGeneratePanelBody({
       fresh.maxReferences,
     );
     if (overCap) {
-      toast.error(t('canvas.generatePanel.errorTooManyReferences', overCap));
+      toast.warning(t('canvas.generatePanel.errorTooManyReferences', overCap));
       return;
     }
     submittingRef.current = true;
@@ -746,7 +763,7 @@ function VideoGeneratePanelBody({
       activeSlot={activeSlot}
       onPickSlot={onPickSlot}
       onClearSlot={onClearSlot}
-      canExecute={canExecuteGenerate({
+      executeRefusal={evaluateExecute({
         promptText,
         model: vm.model,
         nodeStatus: vm.nodeStatus,
