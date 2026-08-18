@@ -43,6 +43,19 @@ import { readSubscriptionSummary } from "@server/modules/subscription/subscripti
 export async function readAccountMembership(
   userId: string,
 ): Promise<AccountMembership> {
+  // Whether this deployment sells anything is decided once, here, and shapes
+  // two things at once: the prices on the comparison table and whether there
+  // is a subscription to describe. A self-hosted install has neither.
+  const selling = env.PAYMENT_ENABLED;
+
+  // Reconciling comes FIRST, because it can correct the tier. Reading the
+  // tier before it and reporting the correction afterwards would answer this
+  // request with the value the correction just replaced — the one request
+  // where being right matters most, since the reader opened the panel because
+  // their allowances looked wrong. It would also hand the front end two
+  // contradictory tiers in one response.
+  const subscription = selling ? await readSubscriptionSummary(userId) : null;
+
   const tier = await getUserMembershipTier(userId);
 
   // Asked before the ceilings, because asking for an enterprise account's
@@ -54,14 +67,6 @@ export async function readAccountMembership(
     studioRepo.countTeamStudiosAdministeredBy(userId),
     assetUsageService.accountStorageUsage(userId),
   ]);
-
-  // Whether this deployment sells anything is decided once, here, and shapes
-  // two things at once: the prices on the comparison table and whether there
-  // is a subscription to describe. A self-hosted install has neither.
-  const selling = env.PAYMENT_ENABLED;
-  const subscription = selling
-    ? await readSubscriptionSummary(userId)
-    : null;
 
   return {
     tier,

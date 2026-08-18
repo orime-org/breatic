@@ -203,7 +203,7 @@ describe("handleSubscriptionEvent — identifying the account (#106 §7.1)", () 
     const outcome = await handleSubscriptionEvent(
       event("customer.subscription.created", sub, `evt_alien_${Date.now()}`),
     );
-    expect(outcome.status).toBe("ignored");
+    expect(outcome.status).toBe("noop");
   });
 });
 
@@ -379,16 +379,60 @@ describe("handleSubscriptionEvent — an upgrade that went unpaid (#106 §7.3)",
   });
 });
 
-describe("handleSubscriptionEvent — what it will not touch", () => {
-  it("ignores an event that is not about a subscription", async () => {
+describe("handleSubscriptionEvent — 哪些事件归这条腿 (#106 §8)", () => {
+  /**
+   * 一个结账完成事件。
+   * @param mode - 那次结账是买订阅还是买积分包。
+   * @param id - 事件 id。
+   * @returns 一个 Stripe 事件。
+   */
+  function checkoutEvent(mode: string, id: string): Stripe.Event {
+    return {
+      id,
+      type: "checkout.session.completed",
+      data: { object: { id: `cs_${mode}_${seq}`, mode } },
+    } as unknown as Stripe.Event;
+  }
+
+  it("认领订阅模式的结账完成事件，即便它什么都不用做", async () => {
+    // 这条是真机上打出 404 的那一条：`checkout.session.completed` 不在订阅
+    // 事件表里，于是被判成「不归我」，落到积分包那条分支去查 payments 行 ——
+    // 而订阅结账从不写那张表，于是 NotFoundError 变成 webhook 的 404，
+    // Stripe 重投三天后停掉整个端点。它必须由这条腿认下并回 200。
     const outcome = await handleSubscriptionEvent(
-      event("invoice.paid", stripeSub(), `evt_other_${Date.now()}`),
+      checkoutEvent("subscription", `evt_cs_sub_${Date.now()}`),
     );
-    expect(outcome.status).toBe("ignored");
+    expect(outcome.status).toBe("noop");
     expect(stripe.subscriptions.retrieve).not.toHaveBeenCalled();
   });
 
-  it("leaves the event unprocessed when the price is not one we sell", async () => {
+  it("把积分包那次结账留给积分包的处理器", async () => {
+    const outcome = await handleSubscriptionEvent(
+      checkoutEvent("payment", `evt_cs_pay_${Date.now()}`),
+    );
+    expect(outcome.status).toBe("notMine");
+  });
+
+  it("不认领跟订阅无关的事件", async () => {
+    const outcome = await handleSubscriptionEvent(
+      event("invoice.paid", stripeSub(), `evt_other_${Date.now()}`),
+    );
+    expect(outcome.status).toBe("notMine");
+    expect(stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("认不出归属的订阅事件由这条腿认下，并给出说得清的理由", async () => {
+    // 认领了才有人记日志：判成「不归我」的话它会掉进积分包分支，那边对它
+    // 只有一个 default: break，连事件 id 都不会留下。
+    const sub = stripeSub({ id: `sub_alien2_${seq}`, customer: "cus_alien2" });
+    const outcome = await handleSubscriptionEvent(
+      event("customer.subscription.created", sub, `evt_alien2_${Date.now()}`),
+    );
+    expect(outcome.status).toBe("noop");
+    expect(outcome.status === "noop" && outcome.reason).toMatch(/customer/);
+  });
+
+  it("卖的是不认识的 price 时，认下事件但不处理，且不标成已处理", async () => {
     // An operator could add a price in Stripe that this deployment's config
     // does not know. Marking the event handled would drop it for good; leaving
     // it unmarked keeps a manual redelivery able to fix things.
@@ -414,7 +458,7 @@ describe("handleSubscriptionEvent — what it will not touch", () => {
         event("customer.subscription.created", sub, eventId),
       );
 
-      expect(outcome.status).toBe("ignored");
+      expect(outcome.status).toBe("noop");
       const marks = await sql<{ count: string }[]>`
         SELECT count(*)::text AS count FROM stripe_webhook_events
         WHERE event_id = ${eventId}

@@ -126,6 +126,7 @@ async function dropUser(userId: string): Promise<void> {
 
 const staleDays = getSubscriptionStaleAfterDays();
 
+
 describe("ceilings stop honouring a subscription nobody has heard from", () => {
   it("falls back to base when the paid period ended long ago", async () => {
     const userId = await makePaidUser("pro");
@@ -187,6 +188,21 @@ describe("ceilings stop honouring a subscription nobody has heard from", () => {
         lockLimitsForUser(userId, tx),
       );
       expect(limits).toEqual(getMembershipLimits("base"));
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("不因为一条过期的订阅行就把自部署账号降到 base", async () => {
+    // 短路的判据必须是「这个档位有没有可能是订阅换来的」，不是「它等不等于
+    // base」。self_hosted 是部署形态、从来不是买来的，所以任何订阅行都不该
+    // 影响它 —— 而短路只判 base 的话，它会一路走到过期检查里被降成 base。
+    const userId = await makePaidUser("self_hosted");
+    try {
+      await giveSubscription(userId, "active", daysAgo(staleDays + 3));
+      expect(await getLimitsForUser(userId)).toEqual(
+        getMembershipLimits("self_hosted"),
+      );
     } finally {
       await dropUser(userId);
     }

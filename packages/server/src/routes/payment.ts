@@ -74,10 +74,17 @@ payment.post("/webhook", async (c) => {
   }
 
   // Subscriptions first: the membership leg has its own event types, its own
-  // idempotency, and its own identification chain. Nothing below applies to it.
+  // idempotency, and its own identification chain. It answers `notMine` only
+  // for events that are genuinely the credit-pack leg's — including the
+  // `checkout.session.completed` of a credit-pack session, which is the one
+  // type both legs receive.
   const subscriptionOutcome = await handleSubscriptionEvent(event);
-  if (subscriptionOutcome.status !== "ignored") {
-    logger.info(
+  if (subscriptionOutcome.status !== "notMine") {
+    // A `noop` is logged at warn, not info: the two ways to reach it are an
+    // account we cannot identify and a price this deployment does not sell,
+    // and both mean somebody may have paid for something we did not record.
+    const log = subscriptionOutcome.status === "noop" ? logger.warn : logger.info;
+    log(
       { eventId: event.id, type: event.type, ...subscriptionOutcome },
       "subscription_webhook_handled",
     );

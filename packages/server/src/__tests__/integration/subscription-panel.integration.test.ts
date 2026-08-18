@@ -49,8 +49,9 @@ vi.mock("@server/infra/stripe.js", () => ({
 
 import type Stripe from "stripe";
 import postgres from "postgres";
-import { initCore, loadLocales, getUserMembershipTier } from "@breatic/core";
+import { env, initCore, loadLocales, getUserMembershipTier } from "@breatic/core";
 import { readSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
+import { readAccountMembership } from "@server/modules/account/membership.service.js";
 
 try {
   initCore(process.env);
@@ -63,6 +64,17 @@ let sql: ReturnType<typeof postgres>;
 let seq = 0;
 
 beforeAll(() => {
+  // 这个套件里有两条断言要走「这个部署卖订阅」那条分支，而集成测试的环境默认
+  // 是关的。在 beforeAll 里注入（不是模块顶层）—— 别的套件在自己模块加载时
+  // 调过 initCore，只有这里的调用发生在它们之后，flag 才落得住；开关一开
+  // schema 就要求两个 Stripe 密钥非空，这里给占位串，本套件的 Stripe 客户端
+  // 整个是替身、一次都不会真连。
+  initCore({
+    ...process.env,
+    PAYMENT_ENABLED: "true",
+    STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+    STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+  });
   sql = postgres(inject("DATABASE_URL"), {
     max: 4,
     prepare: false,
@@ -75,6 +87,8 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
+  // 还回去，免得这个 flag 漏给后面跑的套件。
+  initCore(process.env);
   await sql?.end({ timeout: 1 });
 });
 
@@ -282,6 +296,50 @@ describe("readSubscriptionSummary — what the panel is told (#106 §11)", () =>
       expect(summary?.state).toBe("retrying");
       expect(summary?.payableInvoiceUrl).toBe("https://invoice.example/pay");
       expect(await getUserMembershipTier(userId)).toBe("pro");
+    } finally {
+      await dropUser(userId);
+    }
+  });
+});
+
+describe("readAccountMembership —— 面板这一次的答案 (#106 §10.2、§11)", () => {
+  it("返回的是对账之后的档位和上限，不是纠正前的旧值", async () => {
+    // 前置断言：flag 没落住的话下面整条断言链都测不到要测的分支，会变成
+    // 一条假绿。这一行让那种情况当场失败，而不是悄悄通过。
+    expect(env.PAYMENT_ENABLED, "本套件需要支付开关是开的").toBe(true);
+    // 第 13 条要的是「就地纠正」。纠正只改了库、这一次的响应仍是旧值的话，
+    // 用户这一次看到的还是错的档位，而且据此点出去的按钮必然被服务端拒。
+    const userId = await makeUser("base", `cus_order_${Date.now()}`);
+    try {
+      stripe.subscriptions.list.mockResolvedValueOnce({
+        data: [stripeSub({ id: `sub_order_${seq}` })],
+      });
+
+      const membership = await readAccountMembership(userId);
+
+      expect(membership.tier).toBe("pro");
+      expect(membership.subscription?.tier).toBe("pro");
+      // 上限也得是纠正之后那一档的：PRO 的团队 studio 上限不是 base 的 0。
+      expect(membership.limits?.team_studios).toBeGreaterThan(0);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("Stripe 打不通时面板照常打开，只是订阅那部分退回本地已知的状态", async () => {
+    expect(env.PAYMENT_ENABLED, "本套件需要支付开关是开的").toBe(true);
+    // 档位、额度、对比表跟 Stripe 毫无关系。对账是增强，不该把整张面板拖下水。
+    const userId = await makeUser("pro", `cus_down_${Date.now()}`);
+    try {
+      stripe.subscriptions.list.mockRejectedValueOnce(
+        new Error("Stripe is unreachable"),
+      );
+
+      const membership = await readAccountMembership(userId);
+
+      expect(membership.tier).toBe("pro");
+      expect(membership.limits?.team_studios).toBeGreaterThan(0);
+      expect(membership.catalog).toHaveLength(3);
     } finally {
       await dropUser(userId);
     }

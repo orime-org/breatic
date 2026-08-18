@@ -43,18 +43,30 @@ import {
   sendMembershipEndedMail,
 } from "@server/modules/subscription/settle-tier.js";
 
-/** What handling one event came to. */
+/**
+ * What handling one event came to.
+ *
+ * `notMine` and `noop` are different answers to different questions, and
+ * collapsing them is what sent every subscription checkout to the credit-pack
+ * handler: that one looks for a `payments` row, a subscription checkout never
+ * writes one, and the webhook answered 404 to a payment that had succeeded.
+ * `notMine` means "keep looking"; `noop` means "this was mine, there was
+ * nothing to do, answer 200".
+ */
 export type SubscriptionEventOutcome =
-  | { status: "ignored"; reason: string }
+  | { status: "notMine" }
+  | { status: "noop"; reason: string }
   | { status: "replay"; userId: string }
   | { status: "applied"; userId: string; tier: MembershipTier };
 
 /**
  * The event types that say something about a subscription's state.
  *
- * `checkout.session.completed` is deliberately absent: it says the checkout
- * flow finished, which is not the same as the subscription being paid for —
- * at that moment it may still be `incomplete`.
+ * `checkout.session.completed` is absent here but still claimed below when its
+ * session is a subscription one: it says the checkout flow finished, which is
+ * not the same as the subscription being paid for — at that moment it may
+ * still be `incomplete` — so there is nothing to do with it, and the state
+ * arrives through `customer.subscription.*` instead.
  */
 const SUBSCRIPTION_EVENT_TYPES: ReadonlySet<string> = new Set([
   "customer.subscription.created",
@@ -63,6 +75,24 @@ const SUBSCRIPTION_EVENT_TYPES: ReadonlySet<string> = new Set([
   "customer.subscription.pending_update_applied",
   "customer.subscription.pending_update_expired",
 ]);
+
+/**
+ * Whether an event belongs to the membership leg at all.
+ *
+ * The webhook endpoint is shared with credit packs, and the two legs share one
+ * event type: `checkout.session.completed` arrives for both, and only the
+ * session's `mode` tells them apart. Deciding by type alone sent every
+ * subscription checkout into the credit-pack handler.
+ * @param event - The verified Stripe event.
+ * @returns Whether this leg is the one that should answer for it.
+ */
+function claimsEvent(event: Stripe.Event): boolean {
+  if (SUBSCRIPTION_EVENT_TYPES.has(event.type)) return true;
+  if (event.type !== "checkout.session.completed") return false;
+  // Narrowed by the check above: on this event type the SDK already types the
+  // object as a Checkout Session.
+  return event.data.object.mode === "subscription";
+}
 
 /**
  * Thrown to abandon the transaction when the subscription sells a price this
@@ -90,10 +120,20 @@ async function resolveUserId(
   const fromMetadata = subscription.metadata?.["userId"];
   if (fromMetadata) return fromMetadata;
 
-  const customer = subscription.customer;
-  const customerId = typeof customer === "string" ? customer : customer?.id;
+  const customerId = customerIdOf(subscription);
   if (!customerId) return null;
   return userRepo.findUserIdByStripeCustomerId(customerId);
+}
+
+/**
+ * Reads the Stripe customer a subscription names, expanded or not.
+ * @param subscription - The subscription.
+ * @returns Its customer id, or null when none is named.
+ */
+function customerIdOf(subscription: Stripe.Subscription): string | null {
+  const customer = subscription.customer;
+  if (!customer) return null;
+  return typeof customer === "string" ? customer : customer.id;
 }
 
 /**
@@ -175,14 +215,25 @@ async function notifyIfUpgradeLapsed(
 export async function handleSubscriptionEvent(
   event: Stripe.Event,
 ): Promise<SubscriptionEventOutcome> {
+  if (!claimsEvent(event)) return { status: "notMine" };
+
   if (!SUBSCRIPTION_EVENT_TYPES.has(event.type)) {
-    return { status: "ignored", reason: "not a subscription event" };
+    // A subscription checkout finishing. Claimed so the credit-pack handler
+    // never sees it, and answered with nothing to do: what the subscription
+    // then becomes arrives as `customer.subscription.created`.
+    return {
+      status: "noop",
+      reason: "a subscription checkout finished; its state arrives separately",
+    };
   }
 
   const subscription = event.data.object as Stripe.Subscription;
   const userId = await resolveUserId(subscription);
   if (!userId) {
-    return { status: "ignored", reason: "no account claims this customer" };
+    return {
+      status: "noop",
+      reason: `no account claims Stripe customer ${customerIdOf(subscription) ?? "(none named)"}`,
+    };
   }
 
   let outcome: SubscriptionEventOutcome = {
@@ -204,7 +255,7 @@ export async function handleSubscriptionEvent(
   } catch (err) {
     if (!(err instanceof UnknownPriceError)) throw err;
     return {
-      status: "ignored",
+      status: "noop",
       reason: `subscription ${err.message} sells a price this deployment does not know`,
     };
   }

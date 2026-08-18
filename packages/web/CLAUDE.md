@@ -42,6 +42,16 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 ## 组件复用:先查 `components/ui/` 再造(MANDATORY)
 写任何**浮层 / 表单 / 交互控件**(popover · dropdown · dialog · tooltip · select · menu · command · sheet 等)前,**必须先 grep `components/ui/` 看有没有现成 shadcn primitive,有就复用**。**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。判定题:**这 UI 是浮层 / 表单 / 交互控件吗?是 → 先 grep `components/ui/`,别手写**。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
 
+## 有 demo 的改动,收尾必须跟 demo 逐项量(MANDATORY)
+
+新增界面 / 改布局 / 改关键状态,规矩是先出 demo 给用户确认(根 [CLAUDE.md](../../CLAUDE.md) 前端工业级标准段)。**确认过的 demo 是验收基准,不是参考图** —— 所以功能做完、**尤其是 smoke 那一步**,必须多一个动作:把 demo 写死的视觉决定(圆角 · 对齐 · 间距 · 哪一格空着 · 哪些元素在同一行)列出来,在**真机上**用 `getComputedStyle` 和 `getBoundingClientRect` 逐条取值比。
+
+**判定题:这次改动有 demo 吗?有 → smoke 里必须有这一步,而且是量出来的数,不是「看着差不多」。**
+
+**为什么不能靠看**:#106 会员面板,四条 Stripe 路径在真机上全跑通、日志全对、截图也发出去了,用户一眼看出两处跟他确认过的 demo 不一样(高亮列该有 6px 圆角做成了直角;取消入口该在底部跟联系方式并成一行,被摆到了档位名右边)。两处都不是设计没写,是写了没照做 —— 而截图我自己看过觉得没问题,**因为脑子里没有那份 demo 的样子,只有刚写完的代码的样子**。
+
+**「代码里写了」也不算数**:同一次里,圆角的 class 加上去了却不渲染 —— 表格在 `border-collapse`(合并边框模型)下浏览器**直接忽略单元格的 `border-radius`**,必须 `border-separate` + `border-spacing-0` 才画得出来。这类「写了不生效」只有量真机才发现得了。
+
 ## 按钮只有一种拼法:一律走 `Button` primitive(MANDATORY,CI 强制)
 
 **`packages/web` 里禁止手写 `<button>`,一律用 `components/ui/button` 的 `Button`**(user 2026-08-08 拍定,原话「所有 button 不允许小写,必须都是大写」)。`createElement('button')` 是同一个元素换个写法,同样禁。

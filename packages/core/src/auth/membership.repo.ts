@@ -67,7 +67,11 @@
  */
 
 import { and, eq, isNull } from "drizzle-orm";
-import { MEMBERSHIP_TIERS, type MembershipTier } from "@breatic/shared";
+import {
+  MEMBERSHIP_TIERS,
+  SUBSCRIBABLE_MEMBERSHIP_TIERS,
+  type MembershipTier,
+} from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
 import {
   membershipTierChanges,
@@ -82,6 +86,11 @@ import { listSubscriptions } from "@core/auth/subscription.repo.js";
 import { subscriptionSituation } from "@core/auth/subscription-state.js";
 
 const KNOWN_TIERS: ReadonlySet<string> = new Set(MEMBERSHIP_TIERS);
+
+/** The tiers a subscription can put an account on, and therefore lapse from. */
+const SUBSCRIBABLE_TIER_SET: ReadonlySet<string> = new Set(
+  SUBSCRIBABLE_MEMBERSHIP_TIERS,
+);
 
 /**
  * Whose stored tier is being read.
@@ -358,9 +367,13 @@ async function honouredTier(
   stored: MembershipTier,
   tx: DbTx | undefined,
 ): Promise<MembershipTier> {
-  // Nothing to take away, and this covers both the free tier and every
-  // self-hosted account — neither has a subscription to be stale.
-  if (stored === "base") return stored;
+  // Only a tier somebody could have SUBSCRIBED to can be stale, and the list
+  // of those is the same one the plans are read from. Naming `base` here
+  // instead was wrong twice over: `self_hosted` and `enterprise` are not
+  // bought, so a leftover subscription row could downgrade a self-hosted
+  // account to `base`, and every ceiling read on such a deployment paid for a
+  // query that could never change the answer.
+  if (!SUBSCRIBABLE_TIER_SET.has(stored)) return stored;
 
   const { situation, record } = subscriptionSituation(
     await listSubscriptions(userId, tx),

@@ -25,6 +25,7 @@
 import type Stripe from "stripe";
 import {
   db,
+  logger,
   listSubscriptions,
   lockAccountRow,
   subscriptionSituation,
@@ -130,7 +131,17 @@ export async function readSubscriptionSummary(
   // people they are for.
   if (!customerId) return { ...EMPTY_SUMMARY };
 
-  const endedFrom = await reconcile(userId, customerId);
+  // Reconciling is an enhancement: it repairs a lost event. The tier, the
+  // allowances and the comparison table beside it are local facts that have
+  // nothing to do with Stripe, so a Stripe outage must not take the whole
+  // panel down with it. What the reader then sees is our stored view, which
+  // is the same thing they saw before this reconciliation existed.
+  let endedFrom: MembershipTier | null = null;
+  try {
+    endedFrom = await reconcile(userId, customerId);
+  } catch (err) {
+    logger.error({ err, userId }, "subscription_reconcile_failed");
+  }
   // After the transaction: an email about a change that then rolled back
   // cannot be recalled.
   if (endedFrom) await sendMembershipEndedMail(userId, endedFrom);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { getLocale } from '@breatic/shared';
 import type {
   ComparableMembershipTier,
   MembershipTier,
@@ -9,7 +10,7 @@ import type {
 } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { formatBytes } from '@web/features/membership/format';
+import { formatBytes, formatPrice } from '@web/features/membership/format';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /** The comparison table's inputs. */
@@ -62,6 +63,9 @@ export const TierComparison = React.memo(function TierComparison({
   busy = false,
 }: TierComparisonProps): React.JSX.Element {
   const t = useTranslation();
+  // 语言跟着 `t` 一起变：`useTranslation` 已经订阅了语言切换事件并触发重渲，
+  // 所以这里读到的一定是当前那一档，不需要第二个订阅。
+  const locale = getLocale();
   // Where the account's own tier sits, so the row below can tell "above me"
   // from "below me". A tier that is not on this table at all — self-hosted,
   // enterprise — gives -1, and then every column reads as above it, which is
@@ -166,9 +170,9 @@ export const TierComparison = React.memo(function TierComparison({
             >
               {/* Null means there is no price to quote: the free tier has
                   none, and neither does a deployment that sells nothing. */}
-              {offer.priceCents === null
+              {offer.priceCents === null || offer.currency === null
                 ? t('membership.priceFree')
-                : `$${String(offer.priceCents / 100)}`}
+                : formatPrice(offer.priceCents, offer.currency, locale)}
             </td>
           ))}
         </tr>

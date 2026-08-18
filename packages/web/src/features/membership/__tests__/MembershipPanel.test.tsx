@@ -226,6 +226,29 @@ describe('MembershipPanel', () => {
     );
   });
 
+  it('按后端给的货币格式化金额，不写死符号也不吞末位零', async () => {
+    // 契约里 currency 是后端算好一起给的，前端写死 `$` 等于把它扔了；而
+    // `1250 / 100` 直接字符串化会显示 12.5，钱不能这么写。
+    membershipMock.mockResolvedValue(
+      answer({
+        catalog: [
+          { tier: 'base', limits: limits(), priceCents: null, currency: null },
+          { tier: 'pro', limits: limits(), priceCents: 1250, currency: 'eur' },
+          { tier: 'team', limits: limits(), priceCents: 3900, currency: 'eur' },
+        ],
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    const pro = screen.getByTestId('compare-cell-pro-monthlyFee').textContent ?? '';
+    expect(pro).toMatch(/12[.,]50/);
+    expect(pro).not.toContain('$');
+    expect(screen.getByTestId('compare-cell-base-monthlyFee')).toHaveTextContent(
+      'Free',
+    );
+  });
+
   it('从没订过的 Base 账号照样看得到升级入口', async () => {
     // 真机上抓到的：后端把「这个部署不卖订阅」和「这个账号还没订」都答成
     // null，前端据此把整行藏了 —— 结果是最需要那几个按钮的人反而看不到。
