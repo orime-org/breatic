@@ -101,12 +101,19 @@ config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 
 | 端点 | 行为 |
 |---|---|
-| `POST /chat/open` | 入参只有 `project_id`。返回这个用户在这个 project 的会话列表 + **最近交互**那条的消息;这个 project 一条会话都没有时**当场建一个空的**再返回。**全系统唯一的自动创建点** |
+| `POST /chat/open` | 入参只有 `project_id`。返回这个用户在这个 project 的会话**第一页**(页大小取 `config/agent.yaml` 的 `conversation_page_size`)、后面还有没有,以及**最近交互**那条的消息;这个 project 一条会话都没有时**当场建一个空的**再返回。**它是唯一会自动建会话的入口**,`POST /chat/conversations` 是读者按「+」时的那条,只建不猜 |
 | `POST /chat/message` · `POST /chat/skill` | `conversation_id` **必填**,只写不建 |
+| `POST /chat/conversations` | 读者按「+」时的那条,只建不猜 |
+| `PATCH /chat/conversations/:id` | 改名。**不动 `updated_at`**(见下) |
+| `GET /chat/conversations` | 列表,游标分页(见下) |
 
-**「最近交互」= 该会话最后一条消息的时间**,空会话回落到会话创建时间,**排序带稳定的第二键**(会话 ID)。**故意不用 `conversations.updated_at`** —— 改个标题也会动它,那不是「最后说话」。
+**列表按 `(updated_at, id)` 倒序,游标也是这两列一起**(2026-08-18 改;此前按「最后一条消息的时间」排,并且刻意避开 `updated_at`,理由是改标题会动它)。改成 `updated_at` 之后那个理由由写入侧解决:`updateTitle` 把 `updated_at` 设成它自己(`SET updated_at = updated_at`),压掉列上的 `$onUpdate` —— **改名不算「使用」,所以改名不移动一条会话在列表里的位置**。
 
-**写入前三查,一律 404**(`conversationService.assertWritable`):这条会话属于这个用户 · 属于这个 project · 没被软删。第三样不是边角料 —— 一个标签页记着会话 7、用户在另一个标签页把它删了,前两样对它都成立。三种可区分的答案会让状态码自己交代是哪一条没过,所以答案必须一样。
+**为什么游标是两列而不是 offset**:这个顺序会随读者说话而动,offset 会漏行也会重复。第二键取会话 ID,让同一时刻的多条有稳定次序;判据写成 `(updated_at <) OR (updated_at = AND id <)`,两半必须一起给 —— 只给一半是在按另一个顺序翻页。
+
+**写入前三查,一律 404**(`conversationService.assertWritable`,`POST /chat/message` · `POST /chat/skill` · `PATCH /chat/conversations/:id` 走它):这条会话属于这个用户 · 属于这个 project · 没被软删。第三样不是边角料 —— 一个标签页记着会话 7、用户在另一个标签页把它删了,前两样对它都成立。三种可区分的答案会让状态码自己交代是哪一条没过,所以答案必须一样。
+
+**删除走的是另一套,还没收拢**:`DELETE /chat/conversations/:id` 用的是 `validateOwnership`,只查「存不存在」和「是不是这个用户的」,而且不是他的时答 403 —— 403 跟 404 的差别本身就说出了这条会话存在。归 todo,别照着它写新的读路由。
 
 **打开时两把锁,各管一段,顺序固定**(先咨询锁后项目行锁,全仓只有这一处取那把咨询锁,不会成环):
 
