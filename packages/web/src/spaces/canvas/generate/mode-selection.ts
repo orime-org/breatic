@@ -44,6 +44,32 @@ export function filterModelsByMode(
 }
 
 /**
+ * Keeps only the modes this deployment can actually serve — those with at
+ * least one model (#1951).
+ *
+ * A deployment configures its own models, so a mode with none is not a
+ * capability temporarily out of reach: it is one this deployment does not
+ * have, and offering it would show the user something they can never get
+ * (user 2026-08-18). That is why the answer is to remove the mode rather
+ * than to show it disabled with an explanation — the disabled-with-reason
+ * pattern speaks to "you could qualify for this", and nobody here can.
+ *
+ * The option type is only constrained to carry a `value`, which keeps every
+ * caller's own fields — a video option's `slots` and `takesReferences` ride
+ * through untouched, and the returned entries are the SAME objects, not
+ * copies, so identity-based memoisation upstream still holds.
+ * @param options - The modes a panel offers, in display order.
+ * @param models - The catalog models for this panel's modality.
+ * @returns The subset with at least one model, in input order.
+ */
+export function filterAvailableModes<T extends { value: string }>(
+  options: readonly T[],
+  models: ModelEntry[],
+): T[] {
+  return options.filter((o) => filterModelsByMode(models, o.value).length > 0);
+}
+
+/**
  * Picks which model a mode should open with, in priority order (user
  * 2026-07-11): the one the user last chose in that mode if it is still in the
  * catalog, else the first model the mode offers. The `recommended` tier is
