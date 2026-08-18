@@ -248,38 +248,22 @@ function ConversationRowView({
   // page first loads, which is where its bad name comes from, and the rule
   // against it cannot tell the two apart.
   const box = React.useRef<HTMLInputElement>(null);
-  // Where the keyboard goes when the box is gone. The box unmounts on both
-  // exits -- committed or abandoned -- and an element that unmounts holding
-  // the focus drops it on <body>: the reader's next Tab starts from the top
-  // of the page, while they were on this row a moment ago. Measured in the
-  // browser: Enter was followed by focusout to BODY and nothing caught it.
-  const opener = React.useRef<HTMLButtonElement>(null);
-  // Set by the two exits this row decides for itself -- Enter and Escape. A
-  // blur is not one of them: the reader pressing Tab, or clicking elsewhere,
-  // has already said where the keyboard should go, and taking it back would
-  // make that press do nothing.
-  const handBack = React.useRef(false);
   React.useEffect(() => {
-    if (renaming) {
-      box.current?.select();
-      return;
-    }
-    if (!handBack.current) return;
-    handBack.current = false;
-    // In an effect rather than in the handler: the button is put back by the
-    // render this state change causes, and it does not exist before that.
-    opener.current?.focus();
+    if (renaming) box.current?.select();
   }, [renaming]);
 
   /**
    * Take what was typed, if it is a name at all.
+   *
+   * Where the keyboard lands afterwards is left to the browser. The box
+   * unmounts, so the focus falls to the page -- and putting it back by hand
+   * means choosing an element to put it on, which is how a rename came to
+   * switch the conversation on screen: the row is also the button that opens
+   * it, and the same keypress that ended the edit reached it. Focus placement
+   * across the app is a separate matter, to be settled in one place.
    * @param typed - The contents of the box.
-   * @param decidedHere - This row ended the edit itself (Enter or Escape), so
-   *   the keyboard goes back to it. False when the box merely lost the focus:
-   *   the reader has already said where it should go.
    */
-  const commit = (typed: string, decidedHere = true): void => {
-    handBack.current = decidedHere;
+  const commit = (typed: string): void => {
     setRenaming(false);
     const named = typed.trim();
     // A row showing nothing reads as a rendering fault rather than as a name,
@@ -324,12 +308,9 @@ function ConversationRowView({
             data-renaming
             onKeyDown={(e) => {
               if (e.key === 'Enter') commit(e.currentTarget.value);
-              if (e.key === 'Escape') {
-                handBack.current = true;
-                setRenaming(false);
-              }
+              if (e.key === 'Escape') setRenaming(false);
             }}
-            onBlur={(e) => commit(e.currentTarget.value, false)}
+            onBlur={(e) => commit(e.currentTarget.value)}
           />
         ) : (
           <>
@@ -343,7 +324,6 @@ function ConversationRowView({
               // the text never runs under the menu floating there. Pressing
               // anywhere but that menu selects the conversation.
               className='flex w-full min-w-0 items-start gap-3 py-3 pl-4 pr-12 text-left'
-              ref={opener}
               data-testid={`conversation-open-${row.id}`}
             >
               <span

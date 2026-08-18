@@ -135,21 +135,6 @@ describe('naming a conversation from its row', () => {
     expect(onRename).toHaveBeenCalledWith('c2', 'Storyboard notes');
   });
 
-  it('hands the keyboard back to the row it renamed', async () => {
-    // 输入框提交后就不在了。不安排落点,焦点掉到 <body> —— 键盘读者的下一次
-    // Tab 从页面顶部重新开始,而他刚才在这一行上。真机探针拍到的就是这个:
-    // 回车之后 focusout 到 BODY,再没有任何东西接住它。
-    renderSheet();
-
-    await userEvent.click(screen.getByTestId('conversation-menu-c2'));
-    await userEvent.click(await screen.findByTestId('conversation-rename-c2'));
-    const box = await screen.findByTestId('conversation-rename-input');
-    await userEvent.clear(box);
-    await userEvent.type(box, 'Storyboard notes{Enter}');
-
-    expect(document.activeElement).toBe(screen.getByTestId('conversation-open-c2'));
-  });
-
   it('leaves the keyboard where the reader sent it', async () => {
     // 读者按 Tab 或者点别处:焦点已经交给别的东西了,输入框失焦才触发提交。这时
     // 候再把焦点抢回本行,那一次按键就等于没按。交还只属于「这一行自己结束了」
@@ -168,17 +153,6 @@ describe('naming a conversation from its row', () => {
 
     expect(screen.queryByTestId('conversation-rename-input')).toBeNull();
     expect(document.activeElement).not.toBe(screen.getByTestId('conversation-open-c2'));
-  });
-
-  it('hands it back after Escape too', async () => {
-    renderSheet();
-
-    await userEvent.click(screen.getByTestId('conversation-menu-c2'));
-    await userEvent.click(await screen.findByTestId('conversation-rename-c2'));
-    const box = await screen.findByTestId('conversation-rename-input');
-    await userEvent.type(box, 'never mind{Escape}');
-
-    expect(document.activeElement).toBe(screen.getByTestId('conversation-open-c2'));
   });
 
   it('keeps the name to itself when the reader presses Escape', async () => {
