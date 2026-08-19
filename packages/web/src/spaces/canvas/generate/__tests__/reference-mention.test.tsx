@@ -45,6 +45,7 @@ function makeEditor(): Editor {
         suggestion: makeReferenceSuggestion({
           getPool: () => [],
           emptyLabel: 'No references',
+          noMatchLabel: 'No matches',
         }),
       }),
     ],
@@ -80,6 +81,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [],
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
@@ -127,6 +129,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
           Parameters<typeof makeReferenceSuggestion>[0]['getPool']
         >,
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
       // The image panel in image-to-image: it reads the pool, and images are
       // what it reads. Stating the mode is what #1945 changed — the verdict
       // did not. The picker now asks the same predicate as the rail's insert
@@ -158,6 +161,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
           Parameters<typeof makeReferenceSuggestion>[0]['getPool']
         >,
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         takesReferences: false,
         takesPrompt: true,
@@ -207,7 +211,7 @@ describe('referenceMentionContent — video chip thumbnail attr (#1824 consumer 
 // reference in the pool) still popped a "No connected references" box, which
 // was noise. The popup must appear ONLY when the pool has ≥1 matching row —
 // zero matches shows nothing at all, so plain `@` typing is uninterrupted.
-describe('makeReferenceSuggestion — popup hidden when no items match', () => {
+describe('makeReferenceSuggestion — the popup shows what the LIVE pool matches', () => {
   const row: ReferenceRailItem = {
     refId: 'a->me',
     sourceNodeId: 'a',
@@ -244,6 +248,7 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [row],
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
@@ -285,40 +290,39 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
     }
   });
 
-  it('hides the popup on start with zero items and shows it once items arrive', () => {
-    // Visibility follows what the LIVE POOL matches, not what the plugin hands
-    // us: @tiptap/suggestion fires onStart (and the first onUpdate of every
-    // change) with an empty `props.items` and resolves the real rows on a later
-    // onUpdate, so every show path computes from `getPool` itself.
+  it('推给列表的内容跟着活池子走，不是插件递来的那份', () => {
+    // 可见性这一半随 I3 一起没了（#1952：零匹配也显示，并说一句话），但内容
+    // 这一半仍然成立：@tiptap/suggestion 的 onStart 和每次变更的第一次
+    // onUpdate 都递一个空的 `props.items`，真行要等后面一次 onUpdate 才到，
+    // 所以每条路都自己从 `getPool` 算。
     let pool: ReferenceRailItem[] = [];
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
       }),
-      isLocalUserInput: () => true, // manual driving models a local `@` keystroke
+      isLocalUserInput: () => true,
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
     const handlers = render();
     const editor = makeEditor();
-    const before = new Set(Array.from(document.body.children));
+    const updateSpy = vi.spyOn(ReactRenderer.prototype, 'updateProps');
+    const pushed = (): ReferenceRailItem[] | undefined =>
+      updateSpy.mock.calls.at(-1)?.[0]?.items as ReferenceRailItem[] | undefined;
     try {
       handlers.onStart?.(props([], editor));
-      const el = Array.from(document.body.children).find(
-        (c) => !before.has(c),
-      ) as HTMLElement;
-      expect(el).toBeDefined();
-      expect(el.style.display).toBe('none'); // zero matches → hidden
       pool = [row];
       handlers.onUpdate?.(props([], editor));
-      expect(el.style.display).toBe(''); // a match arrived → shown
+      expect(pushed()?.map((r) => r.sourceNodeId)).toEqual(['a']);
       pool = [];
       handlers.onUpdate?.(props([], editor));
-      expect(el.style.display).toBe('none'); // narrowed back to zero → hidden
+      expect(pushed()).toEqual([]);
     } finally {
+      updateSpy.mockRestore();
       handlers.onExit?.(props([], editor));
       editor.destroy();
     }
@@ -387,6 +391,7 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
       const s = makeReferenceSuggestion({
         getPool: () => pool,
         emptyLabel: 'No references',
+        noMatchLabel: 'No matches',
         getUsabilityContext: () => ({
           takesReferences: !hideImages,
           takesPrompt: true,
@@ -416,6 +421,7 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow, imageRow, focusRow],
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         takesReferences: !hideImages,
         takesPrompt: true,
@@ -513,6 +519,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
@@ -565,6 +572,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
@@ -602,6 +610,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => pool,
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
         takesReferences: true,
         takesPrompt: true,
@@ -642,45 +651,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     }
   });
 
-  it('residual 2 (refill): refresh RE-SHOWS a popup it hid on a remote empty when the pool refills — not a one-way latch', () => {
-    let pool: ReferenceRailItem[] = [textRow];
-    const refreshRef: { current: (() => void) | null } = { current: null };
-    const suggestion = makeReferenceSuggestion({
-      getPool: () => pool,
-      emptyLabel: 'No references',
-      getUsabilityContext: () => ({
-        takesReferences: true,
-        takesPrompt: true,
-      }),
-      refreshRef,
-      isLocalUserInput: () => true, // manual driving models a local `@` keystroke
-    });
-    const render = suggestion.render;
-    if (!render) throw new Error('render missing');
-    const handlers = render();
-    const editor = makeEditor();
-    const before = new Set(Array.from(document.body.children));
-    try {
-      handlers.onStart?.(props([textRow], editor));
-      const el = Array.from(document.body.children).find(
-        (c) => !before.has(c),
-      ) as HTMLElement;
-      expect(el.style.display).toBe(''); // visible, not dismissed
-      // A remote edit empties the pool → refresh hides it (I3).
-      pool = [];
-      refreshRef.current?.();
-      expect(el.style.display).toBe('none');
-      // The remote edit is undone / the ref re-added → refresh must RE-SHOW it,
-      // not stay latched hidden (guarded on `dismissed`, not on display).
-      pool = [textRow];
-      refreshRef.current?.();
-      expect(el.style.display).toBe('');
-    } finally {
-      handlers.onExit?.(props([], editor));
-      editor.destroy();
-    }
-  });
-
   // The visibility discriminator is now a POSITIVE per-transaction "was the last
   // doc change a local user keystroke", not the old reverse-inference "not
   // remote" — which the round-4 adversarial pass broke: a LOCAL machine-derived
@@ -709,58 +679,12 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
           suggestion: makeReferenceSuggestion({
             getPool: () => pool,
             emptyLabel: 'No references',
+            noMatchLabel: 'No matches',
           }),
         }),
       ],
     });
   }
-
-  it('typing `@` shows the picker in the SAME tick, driven by the real plugin (not hand-built props)', async () => {
-    // Every other visibility test in this file calls the render handlers by
-    // hand with props it built itself, so `props.items` and `computeItems()`
-    // are identical by construction and one whole class of bug is invisible.
-    // The real @tiptap/suggestion 3.29 resolves items through an ASYNC
-    // pipeline: onStart fires immediately carrying `initialItems ?? []` — and
-    // we configure no initialItems, so it is ALWAYS empty — then awaits
-    // `items()` and delivers the rows on a later onUpdate. A show path that
-    // trusted props.items would therefore hide the picker the user just
-    // opened. Driving the real plugin is the only way to exercise that.
-    /**
-     * Types `@` on a fresh collab editor wired to `pool` and reports the popup
-     * visibility observed in that SAME tick (no awaits, no timers).
-     * @param pool - The reference pool the suggestion reads through its getter.
-     * @returns The popup's display value, or 'no popup' when none was mounted.
-     */
-    const displayAfterTypingAt = async (
-      pool: ReferenceRailItem[],
-    ): Promise<string> => {
-      const editor = makeCollabEditor(new Y.Doc(), pool);
-      const before = new Set(Array.from(document.body.children));
-      try {
-        editor.commands.insertContent('@');
-        const el = Array.from(document.body.children).find(
-          (c) => !before.has(c),
-        ) as HTMLElement | undefined;
-        if (!el) return 'no popup';
-        const display = el.style.display;
-        // Let the plugin's own async resolution settle before teardown so its
-        // onUpdate does not race destroy().
-        await new Promise((r) => setTimeout(r, 10));
-        return display === '' ? 'shown' : display;
-      } finally {
-        editor.destroy();
-      }
-    };
-    // A matching row in the LIVE pool → shown in the very tick onStart ran.
-    // (Reading props.items instead would report 'none' here: the plugin has
-    // not resolved items() yet at that point.)
-    expect(await displayAfterTypingAt([textRow])).toBe('shown');
-    // Nothing in the pool → hidden, so plain `@` typing is never interrupted
-    // by an empty box (I3). Same code path, opposite outcome — together these
-    // pin visibility to the live pool rather than to whatever the plugin
-    // happened to pass in.
-    expect(await displayAfterTypingAt([])).toBe('none');
-  });
 
   it('flags a local keystroke true and a remote peer apply false', () => {
     const docA = new Y.Doc();
@@ -846,6 +770,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
     }); // no isLocalUserInput → the real tracker drives visibility
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -964,6 +889,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
     }); // real tracker drives visibility
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -1009,6 +935,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -1048,6 +975,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
       emptyLabel: 'No references',
+      noMatchLabel: 'No matches',
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');

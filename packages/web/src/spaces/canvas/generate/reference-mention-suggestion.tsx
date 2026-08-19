@@ -56,7 +56,11 @@ const ANY_CONTEXT: ReferenceUsabilityContext = {
  * @param input - Wiring inputs.
  * @param input.getPool - Reads the CURRENT reference pool (incoming edges); a
  *   getter so the editor need not rebuild when the pool changes.
- * @param input.emptyLabel - Localized empty-state text for the popup.
+ * @param input.emptyLabel - Localized text for "this mode has nothing to offer".
+ * @param input.noMatchLabel - Localized text for "there IS something, your query
+ *   filtered it out". Required, never optional falling back to `emptyLabel`: a
+ *   path that forgot to pass it would silently say the wrong one of the two and
+ *   nothing would go red (user 2026-08-19).
  * @param input.getUsabilityContext - Live getter for what the active mode does with
  *   references; rows the mode cannot consume are left out of the picker
  *   entirely — absent from the list, not listed and greyed (user
@@ -72,6 +76,7 @@ const ANY_CONTEXT: ReferenceUsabilityContext = {
 export function makeReferenceSuggestion(input: {
   getPool: () => ReferenceRailItem[];
   emptyLabel: string;
+  noMatchLabel: string;
   getUsabilityContext?: () => ReferenceUsabilityContext;
   refreshRef?: RefreshHandleRef;
   isLocalUserInput?: (editor: Editor) => boolean;
@@ -89,8 +94,15 @@ export function makeReferenceSuggestion(input: {
    * @param query - The text typed after `@`.
    * @returns The matching pool rows (capped at 8).
    */
-  const computeItems = (query: string): ReferenceRailItem[] => {
-    const q = query.toLowerCase();
+  /**
+   * The rows this mode can use at all, before the typed query narrows them.
+   *
+   * Split out because the two empty states are different sentences and only
+   * this layer can tell them apart: `ReferenceMentionList` receives the rows
+   * AFTER both filters and cannot see which one emptied the list.
+   * @returns The rows the active mode accepts.
+   */
+  const usableRows = (): ReferenceRailItem[] => {
     const usabilityCtx = input.getUsabilityContext?.() ?? ANY_CONTEXT;
     return (
       input
@@ -103,10 +115,32 @@ export function makeReferenceSuggestion(input: {
         // question, and on the video panel `audio → video` is a live
         // connection rather than the legacy edge that question assumes.
         .filter((r) => insertRefusal(r.sourceNodeType, usabilityCtx) === null)
-        .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
-        .slice(0, 8)
     );
   };
+
+  /**
+   * What to put in the popup for a query: the rows, and — when there are none
+   * — which of the two sentences is true.
+   * @param query - The text typed after `@`.
+   * @returns The rows to list and the empty-state text to show if they run out.
+   */
+  const resolveList = (
+    query: string,
+  ): { items: ReferenceRailItem[]; emptyLabel: string } => {
+    const q = query.toLowerCase();
+    const usable = usableRows();
+    const items = usable
+      .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
+      .slice(0, 8);
+    return {
+      items,
+      // Nothing this mode can use at all, or something it can use that the
+      // typed query filtered out — two different situations, and telling the
+      // second one it has nothing would be a lie (user 2026-08-19).
+      emptyLabel: usable.length === 0 ? input.emptyLabel : input.noMatchLabel,
+    };
+  };
+
   return {
     char: '@',
     // @tiptap/suggestion defaults allowedPrefixes to [" "], which only fires `@`
@@ -116,7 +150,7 @@ export function makeReferenceSuggestion(input: {
     // (Notion / Feishu behaviour).
     allowedPrefixes: null,
     // The plugin's own resolver. Its RESULT is not what the popup renders —
-    // every show path calls `computeItems` itself (see `showFor`), because the
+    // every show path calls `resolveList` itself, because the
     // rows the plugin hands back arrive a microtask late and an empty list
     // arrives first. Keeping it wired anyway is deliberate on two counts: the
     // plugin drives its `loading` state and its abort handling off this call,
@@ -124,7 +158,7 @@ export function makeReferenceSuggestion(input: {
     // rail's own insertRefusal) can be tested. Both paths run the same
     // function, so there is no second source of truth to drift — only the
     // same cheap filter run twice.
-    items: ({ query }): ReferenceRailItem[] => computeItems(query),
+    items: ({ query }): ReferenceRailItem[] => resolveList(query).items,
     command: ({ editor, range, props }): void => {
       // No trailing space (user 2026-07-10): the gap between adjacent chips
       // stays clickable + visible via the chip-boundary caret plugin
@@ -163,19 +197,26 @@ export function makeReferenceSuggestion(input: {
        */
       let latestProps: SuggestionProps<ReferenceRailItem> | null = null;
       /**
-       * Whether the user DISMISSED the popup (clicked a control outside it).
-       * Tracked SEPARATELY from `el.style.display` so a remote collaborator's
-       * edit — which fires onUpdate exactly like local typing (a peer inserting
-       * before the `@` shifts the range) — refreshes the list CONTENT without
-       * resurrecting a popup the user closed (collaboration residual 1). Set on
-       * outside-click; cleared when the user re-engages (refocus OR a local edit).
+       * Whether the popup should be on screen right now.
+       *
+       * ONE variable, and {@link applyVisibility} is the only thing that writes
+       * it into the DOM. It used to be two — a dismissal flag plus whatever
+       * `el.style.display` happened to say — because a popup could be hidden
+       * for a second reason: zero matches. That reason is gone (#1952, the
+       * popup is always shown and says a sentence instead), which left the two
+       * always carrying the same answer.
+       *
+       * False means the user closed it, or something other than the user put
+       * an `@` in range. A remote collaborator's edit fires onUpdate exactly
+       * like local typing (a peer inserting before the `@` shifts the range),
+       * so content refreshes must not touch this (collaboration residual 1).
        */
-      let dismissed = false;
+      let visible = false;
       /**
        * Updates the popup's list CONTENT only — never its visibility. The pick
        * command is read live from {@link latestProps} (bound to the current `@`
        * range). Split from visibility so a remote change can refresh content while
-       * leaving a dismissed / visible popup's shown-state untouched.
+       * leaving a closed / open popup's shown-state untouched.
        *
        * Takes a QUERY, not a row array, and resolves the rows itself. That is
        * deliberate: `@tiptap/suggestion` resolves items through an async
@@ -185,25 +226,20 @@ export function makeReferenceSuggestion(input: {
        * @param query - The text typed after `@`.
        */
       const updateContent = (query: string): void => {
+        const { items, emptyLabel } = resolveList(query);
         component?.updateProps({
-          items: computeItems(query),
+          items,
           command: (item: ReferenceRailItem) => latestProps?.command(item),
-          emptyLabel: input.emptyLabel,
+          emptyLabel,
         });
       };
 
       /**
-       * Toggles the popup's VISIBILITY only, based on whether anything matched
-       * (I3: zero matches → hidden, so plain `@` typing is never interrupted by an
-       * empty box). WHETHER to call it is decided at each call site — a local start
-       * / refocus / edit always may, and a remote content change may too but only
-       * for a NON-dismissed popup (never resurrecting a dismissed one). The
-       * dismissed / remote gating lives at the call sites, not here.
-       * Takes a QUERY for the same reason {@link updateContent} does.
-       * @param query - The text typed after `@`.
+       * Writes {@link visible} into the DOM. The only place that touches
+       * `el.style.display`, so intent and appearance cannot drift apart.
        */
-      const showFor = (query: string): void => {
-        if (el) el.style.display = computeItems(query).length > 0 ? '' : 'none';
+      const applyVisibility = (): void => {
+        if (el) el.style.display = visible ? '' : 'none';
       };
 
       /**
@@ -222,14 +258,14 @@ export function makeReferenceSuggestion(input: {
        * @param editor - The prompt editor (its settled state is read live).
        */
       const reshowIfActiveHidden = (editor: Editor): void => {
-        if (!el || el.style.display !== 'none') return;
+        if (!el || visible) return;
         const st = SuggestionPluginKey.getState(editor.state) as
           | { active?: boolean; query?: string }
           | undefined;
         if (st?.active !== true || !editor.state.selection.empty) return;
-        dismissed = false;
+        visible = true;
         updateContent(st.query ?? '');
-        showFor(st.query ?? '');
+        applyVisibility();
       };
 
       /**
@@ -286,13 +322,12 @@ export function makeReferenceSuggestion(input: {
           // resolves items through an async pipeline (so a remote resolver can be
           // awaited and aborted): every callback is handed `initialItems ?? []`
           // first — and we configure no `initialItems`, so that is always EMPTY —
-          // with the real rows arriving on a later onUpdate. `computeItems` is
-          // the single source for every path here; see {@link showFor}.
+          // with the real rows arriving on a later onUpdate. `resolveList` is
+          // the single source for every path here.
           component = new ReactRenderer(ReferenceMentionList, {
             props: {
-              items: computeItems(props.query),
+              ...resolveList(props.query),
               command: (item: ReferenceRailItem) => latestProps?.command(item),
-              emptyLabel: input.emptyLabel,
             },
             editor: props.editor,
           });
@@ -309,28 +344,23 @@ export function makeReferenceSuggestion(input: {
           // plugin never re-runs items() and a VISIBLE popup keeps its stale list.
           // Expose a refresh the React layer calls when the `mode` / `references`
           // props change; it recomputes CONTENT from the live pool + mode, but
-          // only while the popup is actually visible (a hidden / dismissed popup
-          // needs no refresh).
+          // only while the popup is actually on screen (a closed one needs no
+          // refresh).
           if (input.refreshRef) {
             input.refreshRef.current = (): void => {
-              // Refresh a NON-dismissed popup's content + visibility (I3) from the
-              // live pool. Guard on `dismissed`, NOT on current display: a prior
-              // refresh that HID it on an emptied pool must still be able to
-              // RE-SHOW it when the pool refills (a remote edge add/remove fires no
-              // prosemirror transaction, so onUpdate can't heal it) — guarding on
-              // display would latch it hidden forever. A user-dismissed popup
-              // stays hidden.
-              if (el && !dismissed && latestProps) {
-                updateContent(latestProps.query);
-                showFor(latestProps.query);
-              }
+              // CONTENT only. Refreshing an open popup keeps its rows current
+              // when a remote edge add/remove fires no prosemirror transaction
+              // (onUpdate can't heal that). It never opens or closes anything:
+              // a popup the user closed stays closed, and an emptied pool now
+              // shows a sentence rather than disappearing (#1952).
+              if (el && visible && latestProps) updateContent(latestProps.query);
             };
           }
           // Clicking outside the popup AND the editor (a canvas node / panel
           // control) does NOT move the ProseMirror selection, so the suggestion
           // would otherwise stay open floating over the UI. Just HIDE the popup
           // — do NOT exitSuggestion (B2, user 2026-07-12): exitSuggestion marks
-          // the active `@` range permanently dismissed, so after a blur-and-back
+          // the active `@` range permanently exited, so after a blur-and-back
           // the user's continued typing never re-opened the picker until the
           // editor remounted (close/reopen panel). Hiding keeps the plugin
           // active, so re-focusing and typing re-shows it via onUpdate; a
@@ -345,8 +375,8 @@ export function makeReferenceSuggestion(input: {
               !el.contains(target) &&
               !props.editor.view.dom.contains(target)
             ) {
-              dismissed = true; // user closed it — a remote edit must not re-open
-              el.style.display = 'none';
+              visible = false; // user closed it — a remote edit must not re-open
+              applyVisibility();
             }
           };
           document.addEventListener('pointerdown', onOutsidePointerDown, true);
@@ -382,7 +412,7 @@ export function makeReferenceSuggestion(input: {
           // flash structurally impossible (nothing shows unless the settled caret
           // already validates the click's own coordinates).
           onEditorClick = (event: MouseEvent): void => {
-            if (!el || el.style.display !== 'none') return;
+            if (!el || visible) return;
             const pos = props.editor.view.posAtCoords({
               left: event.clientX,
               top: event.clientY,
@@ -407,37 +437,27 @@ export function makeReferenceSuggestion(input: {
           // a remote insert before the `@`, and a whole-paragraph setContent all
           // produce update-only sequences; the only EXIT observed (typing a
           // space) is terminal, with no START behind it.
-          const keepOpen = isLocalUserInput(props.editor);
-          dismissed = !keepOpen;
-          if (keepOpen) {
-            showFor(props.query);
-          } else {
-            el.style.display = 'none';
-          }
+          visible = isLocalUserInput(props.editor);
+          applyVisibility();
           place(props.clientRect);
         },
         onUpdate: (props: SuggestionProps<ReferenceRailItem>): void => {
           latestProps = props;
-          // ALWAYS refresh the list content so a visible
-          // popup stays current. But change VISIBILITY only on a genuine LOCAL
-          // KEYSTROKE: a remote peer's edit — OR a machine-derived local dispatch
-          // (the edge-driven cascade-clear deleting a chip before the `@`) —
-          // shifts the range and fires onUpdate identically to local typing, and
-          // must NOT resurrect a dismissed popup or pop a hidden one (residual 1;
-          // the round-4 hole was that the old "not remote" test let the local
-          // cascade through). A local keystroke is also the user re-engaging, so
-          // it clears any dismissal.
+          // ALWAYS refresh the list content so an open popup stays current. But
+          // OPEN one only on a genuine LOCAL KEYSTROKE: a remote peer's edit —
+          // OR a machine-derived local dispatch (the edge-driven cascade-clear
+          // deleting a chip before the `@`) — shifts the range and fires
+          // onUpdate identically to local typing, and must NOT re-open a popup
+          // the user closed (residual 1; the round-4 hole was that the old
+          // "not remote" test let the local cascade through).
           updateContent(props.query);
           if (isLocalUserInput(props.editor)) {
-            // Local keystroke = the user re-engaging → clear any dismissal and
-            // apply the normal I3 visibility (empty → hidden, else shown).
-            dismissed = false;
-            showFor(props.query);
-          } else if (!dismissed) {
-            // Non-keystroke content change to a VISIBLE (non-dismissed) popup →
-            // keep I3 (a peer emptying the pool still hides it) but NEVER re-open
-            // a popup the user dismissed (residual 1).
-            showFor(props.query);
+            // Local keystroke = the user re-engaging, so it re-opens a popup
+            // they had closed. A non-local change refreshes content only —
+            // there is nothing left for it to decide about visibility now that
+            // an empty list is shown rather than hidden.
+            visible = true;
+            applyVisibility();
           }
           place(props.clientRect);
         },
@@ -465,7 +485,7 @@ export function makeReferenceSuggestion(input: {
             onEditorClick = null;
           }
           if (input.refreshRef) input.refreshRef.current = null;
-          dismissed = false;
+          visible = false;
           latestProps = null;
           el?.remove();
           el = null;

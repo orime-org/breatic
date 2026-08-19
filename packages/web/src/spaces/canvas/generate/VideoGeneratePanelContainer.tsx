@@ -685,7 +685,8 @@ function VideoGeneratePanelBody({
   // opens it; the picker drops image rows only. That silence is what has to
   // explain itself, not this sentence.
   const promptPlaceholder = t('canvas.generatePanel.videoPromptPlaceholder');
-  const mentionEmptyLabel = t('canvas.generatePanel.videoMentionEmpty');
+  const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
+  const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   // A node made before video generation existed carries no prompt container,
   // and #1880 ratified that those are NOT repaired — creating one when the
   // panel opens is the exact race that decision removed (two people opening
@@ -722,6 +723,7 @@ function VideoGeneratePanelBody({
           // while typing `@` still offered it at full strength.
           imageRefsDisabled={imageRefsDisabled}
           mentionEmptyLabel={mentionEmptyLabel}
+          mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
         />
       ) : null,
@@ -730,6 +732,7 @@ function VideoGeneratePanelBody({
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
+      mentionNoMatchLabel,
       stableReferences,
       handlePromptChange,
       handleAtMentionsChange,

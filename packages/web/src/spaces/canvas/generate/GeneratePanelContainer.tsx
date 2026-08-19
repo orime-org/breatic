@@ -743,7 +743,7 @@ function GeneratePanelBody({
   // already stable (useCallback / useMemo), so memoizing the element on those
   // deps lets the panel bail when nothing prompt-related changed.
   //
-  // The two localized strings MUST be depended on by VALUE, not via `t`: `t`
+  // The localized strings MUST be depended on by VALUE, not via `t`: `t`
   // (useTranslation) is a stable module-level function whose identity never
   // changes on an in-session locale switch (locale updates re-render via
   // useSyncExternalStore), so depending on `t` alone would freeze the
@@ -752,6 +752,7 @@ function GeneratePanelBody({
   // switch re-creates the element and PromptEditor rebuilds with the new copy.
   const promptPlaceholder = t('canvas.generatePanel.promptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
+  const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   // Text-to-image generates from scratch and ignores source images, so an
   // image `@` chip contributes nothing and the editor greys it (§2.4 C).
   const imageRefsOff = vm.mode === 't2i';
@@ -769,6 +770,7 @@ function GeneratePanelBody({
           references={stableReferences}
           imageRefsDisabled={imageRefsOff}
           mentionEmptyLabel={mentionEmptyLabel}
+          mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
         />
       ) : null,
@@ -777,6 +779,7 @@ function GeneratePanelBody({
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
+      mentionNoMatchLabel,
       handlePromptChange,
       handleAtMentionsChange,
       stableReferences,

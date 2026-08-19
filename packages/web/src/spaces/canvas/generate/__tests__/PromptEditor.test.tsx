@@ -57,6 +57,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
         references={[]}
         imageRefsDisabled
         mentionEmptyLabel='No references'
+        mentionNoMatchLabel='No matches'
       />,
     );
 
@@ -79,6 +80,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       references: [],
       imageRefsDisabled: true,
       mentionEmptyLabel: 'No references',
+      mentionNoMatchLabel: 'No matches',
     };
 
     const { rerender } = render(
@@ -112,6 +114,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
         references={[]}
         imageRefsDisabled
         mentionEmptyLabel='No references'
+        mentionNoMatchLabel='No matches'
       />,
     );
     // The dim classes live on the ScrollArea VIEWPORT (#1773) — the element
@@ -151,6 +154,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       onAtMentionsChange: vi.fn(),
       imageRefsDisabled: false,
       mentionEmptyLabel: 'No references',
+      mentionNoMatchLabel: 'No matches',
     };
     const { rerender } = render(
       <PromptEditor {...props} ref={ref} references={[textRef('')]} />,
@@ -194,6 +198,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       onAtMentionsChange: vi.fn(),
       imageRefsDisabled: false,
       mentionEmptyLabel: 'No references',
+      mentionNoMatchLabel: 'No matches',
     };
     const { rerender } = render(
       <PromptEditor {...props} ref={ref} references={[imgRef()]} />,
@@ -255,6 +260,7 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
           references={[]}
           imageRefsDisabled
           mentionEmptyLabel='none'
+          mentionNoMatchLabel='No matches'
           caretProvider={withProvider ? { awareness } : null}
         />
       </CollaboratorNamesProvider>,
@@ -569,6 +575,7 @@ describe('PromptEditor — effects after the editor is rebuilt', () => {
         references={[]}
         imageRefsDisabled
         mentionEmptyLabel='none'
+        mentionNoMatchLabel='No matches'
       />
     );
 
