@@ -876,3 +876,56 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     expect(vm.maxReferences).toBeUndefined();
   });
 });
+
+describe('视频面板交出这个节点的聚焦裁剪（#1978）', () => {
+  // 裁剪存在节点自己身上（`data.focusImages`），跟连线无关 —— 图片面板早就
+  // 这样交出去了（panel-view-model.ts:217）。视频面板此前一个 focus 符号都
+  // 没有，于是同一个节点上的裁剪在视频面板里根本不存在：轨道少一行、`@`
+  // 弹层也选不到。轨道那一行由容器拼（vm.references + 裁剪），所以 vm 这一
+  // 层要先把它交出来。
+  const crop = {
+    id: 'c1',
+    url: 'https://cdn/crop-1.png',
+    name: 'Hero',
+    width: 400,
+    height: 300,
+  };
+  const models = [makeModel('veo-3.1', { mode: 't2v' })];
+
+  it('把节点上的裁剪交出来', () => {
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [node('n1', videoView({ focusImages: [crop] }))],
+      models,
+      mode: 't2v',
+    });
+    expect(vm.focusImages).toEqual([crop]);
+  });
+
+  it('节点上没有裁剪时交出空数组，不是 undefined', () => {
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [node('n1', videoView())],
+      models,
+      mode: 't2v',
+    });
+    expect(vm.focusImages).toEqual([]);
+  });
+
+  it('丢掉形状不对的条目 —— 这份数据来自 Yjs，不可信', () => {
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node(
+          'n1',
+          videoView({
+            focusImages: [crop, { id: 'bad' }, null, 'nope'] as never,
+          }),
+        ),
+      ],
+      models,
+      mode: 't2v',
+    });
+    expect(vm.focusImages).toEqual([crop]);
+  });
+});

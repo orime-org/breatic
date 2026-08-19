@@ -14,8 +14,9 @@
  */
 
 import { VIDEO_GENERATION_MODES } from '@breatic/shared';
-import type { ModelEntry } from '@breatic/shared';
+import type { FocusImage, ModelEntry } from '@breatic/shared';
 
+import { validFocusImages } from '@web/data/focus-images';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,
@@ -103,6 +104,15 @@ export interface VideoPanelViewModel {
    * whether or not the prompt mentions it. What the rail SHOWS.
    */
   references: ReferenceRailItem[];
+  /**
+   * The node's focus crops (#1978) — standalone copies stored on the node
+   * itself (`data.focusImages`), with no upstream edge behind them. The
+   * container appends them to the rail and the `@` pool exactly as the image
+   * panel does; a crop reaches the payload only when `@`-mentioned, the same
+   * explicit-selection rule node references follow. Malformed entries
+   * (untrusted Yjs) are dropped by the shared sanitizer.
+   */
+  focusImages: FocusImage[];
   /**
    * The reference image URLs this submit sends (#1927) — the `@`-mentioned
    * ones only, in rail order, and only under a mode that takes references.
@@ -359,6 +369,10 @@ export function buildVideoPanelViewModel(input: {
     slotUrls: readSlotUrls(content),
     slotThumbnails: readSlotThumbnails(content),
     references,
+    // Yjs data, untrusted — sanitized through the one shared reader so this
+    // panel, the image panel and the pool-cap count all agree on what counts
+    // as an entry (#1978).
+    focusImages: validFocusImages(content?.focusImages),
     referenceUrls,
     maxReferences: positiveCap(current?.params.images?.max_items),
     // The model states it (#1966). This used to be inferred from a `prompt`
