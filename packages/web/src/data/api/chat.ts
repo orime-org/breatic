@@ -245,7 +245,6 @@ export const chatApi = {
         // Attaching canvas nodes to a message is PR-5; the server takes these
         // as given and validates them, so they go as empty rather than absent.
         attached_chips: [],
-        resource_list: [],
       },
       parseEvent,
       ...handlers,

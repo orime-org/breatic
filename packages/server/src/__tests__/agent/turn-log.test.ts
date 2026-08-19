@@ -21,22 +21,19 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
+import { FINISHED, saying } from "../helpers/model-double.js";
+import type { ModelStreamPart } from "../helpers/model-double.js";
 
-const streamTextRetry = vi.fn();
 const logInfo = vi.fn();
+
+/** What the model produces this case. */
+const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
-}));
-
-vi.mock("ai", () => ({
-  tool: (c: Record<string, unknown>) => c,
-  streamText: vi.fn(),
-  generateText: vi.fn(),
-  stepCountIs: vi.fn(() => 40),
 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -52,15 +49,17 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-vi.mock("@breatic/domain", async () => {
+vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
+  const actual = await importOriginal<Record<string, unknown>>();
+  const { modelProducing } = await import("../helpers/model-double.js");
   return {
     ...base,
+    streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "test", instructions: "system", tools: {} }),
     finalizeTurn: async () => [],
-    streamTextRetry,
-    getModel: () => ({ modelId: "test" }),
+    getModel: () => modelProducing(() => modelSays.parts as ModelStreamPart[]),
   };
 });
 
@@ -84,28 +83,18 @@ vi.mock("@server/agent/context.js", () => ({
 /**
  * Run a turn on a given script and report the line it logged at the end.
  * @param parts - What the model produces.
- * @param stop - Raised part way through, when given.
  * @returns The fields of the `agent_response` line.
  */
-async function turnLog(
-  parts: Array<Record<string, unknown>>,
-  stop?: AbortController,
-): Promise<Record<string, unknown> | undefined> {
-  streamTextRetry.mockReturnValue({
-    fullStream: (async function* () {
-      for (const part of parts) {
-        if (stop?.signal.aborted) return;
-        yield part;
-      }
-    })(),
-    toUIMessageStream: () => new ReadableStream(),
-  });
+async function turnLog(parts: ModelStreamPart[]): Promise<Record<string, unknown> | undefined> {
+  modelSays.parts = parts;
 
   const { MainAgent } = await import("@server/agent/main-agent.js");
   const { runWithContext } = await import("@breatic/core");
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-    for await (const _frame of new MainAgent().chat("说点什么", undefined, stop?.signal)) {
-      if (stop && !stop.signal.aborted) stop.abort();
+    const turn = await new MainAgent().chat("说点什么");
+    for await (const _chunk of turn) {
+      // Drained rather than read: what this asserts on is the line written
+      // when the turn is over, not what came out of it.
     }
   });
 
@@ -119,12 +108,7 @@ describe("what a finished turn writes to the log", () => {
   });
 
   it("says how much the turn said", async () => {
-    const line = await turnLog([
-      { type: "text-start", id: "t1" },
-      { type: "text-delta", id: "t1", text: "十二个字的回答" },
-      { type: "text-end", id: "t1" },
-      { type: "finish", finishReason: "stop" },
-    ]);
+    const line = await turnLog(saying("十二个字的回答"));
 
     // Zero here is what a turn that answered nothing looks like, so a field
     // that silently stopped being filled reads as a product that stopped
@@ -133,22 +117,24 @@ describe("what a finished turn writes to the log", () => {
   });
 
   it("names a normal ending", async () => {
-    const line = await turnLog([{ type: "finish", finishReason: "stop" }]);
+    const line = await turnLog(saying("好的"));
     expect(line?.exit).toBe("completed");
   });
 
   it("names a provider failure as one", async () => {
-    // Not "completed with no text": the difference is the whole reason
-    // anyone reads this line.
+    // A provider failure does not break the stream: the SDK puts an error
+    // chunk on it and closes it normally, so a turn that went by whether the
+    // stream ended cleanly would call this one completed -- which is the
+    // opposite of what anyone reads this line for.
     const line = await turnLog([
-      { type: "error", error: new Error("provider said no") },
-      { type: "finish", finishReason: "error" },
+      { type: "error", error: new Error("上游拒绝了") },
+      FINISHED,
     ]);
     expect(line?.exit).toBe("failed");
   });
 
   it("carries the user and the conversation, or the line names nothing", async () => {
-    const line = await turnLog([{ type: "finish", finishReason: "stop" }]);
+    const line = await turnLog(saying("好的"));
     expect(line?.userId).toBe("u1");
     expect(line?.conversationId).toBe("c1");
   });

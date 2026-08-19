@@ -31,8 +31,7 @@ import { conversationService } from "@server/modules";
 import { attachmentService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { MainAgent } from "@server/agent/main-agent.js";
-import { serializeSSE, SSEEventType } from "@server/agent/types.js";
-import type { SSEEvent } from "@server/agent/types.js";
+import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig } from "@breatic/core";
 import { assertSkillUsable } from "@breatic/domain";
 import { SSE_HEARTBEAT_INTERVAL_MS } from "@breatic/shared";
@@ -66,26 +65,40 @@ function formatChipsForLLM(
 }
 
 /**
+ * One chunk, as the protocol puts it on the wire.
+ *
+ * Every frame is a `data:` line holding the chunk as JSON, and the chunk
+ * names itself in a `type` field. There is no `event:` line: the SDK's own
+ * serialiser writes the payload and nothing else, and a client reading this
+ * stream is written against that.
+ * @param chunk - What to send.
+ * @returns The frame, terminator included.
+ */
+function frame(chunk: UIMessageChunk): string {
+  return `data: ${JSON.stringify(chunk)}\n\n`;
+}
+
+/**
  * Stream one turn to the client, whichever entrance asked for it.
  *
  * Both entrances owe the client the same things — the same context to run
  * against, the same headers, the same way out, the same proof the connection
  * is alive — and differ only in which of the agent's two methods produces the
- * events. Written once so a fix to any of those is a fix to both; the last
- * time they were written twice, one of them was missing the way out.
+ * turn. Written once so a fix to any of those is a fix to both; the last time
+ * they were written twice, one of them was missing the way out.
  * @param c - The request being answered.
  * @param turn - Who is speaking, and where. All of it already checked.
  * @param turn.userId - The authenticated user.
  * @param turn.conversationId - Their conversation, confirmed writable.
  * @param turn.projectId - The project it belongs to, confirmed theirs.
- * @param events - Starts the turn. Called inside the request context, and
+ * @param turnStream - Starts the turn. Called inside the request context, and
  *   handed the signal that is raised when the client goes away.
  * @returns The SSE response.
  */
 async function streamTurn(
   c: Context<{ Variables: AuthVariables }>,
   turn: { userId: string; conversationId: string; projectId: string },
-  events: (signal: AbortSignal) => AsyncGenerator<SSEEvent>,
+  turnStream: (signal: AbortSignal) => Promise<ReadableStream<UIMessageChunk>>,
 ): Promise<Response> {
   c.header("Content-Type", "text/event-stream");
   c.header("Cache-Control", "no-cache");
@@ -112,7 +125,12 @@ async function streamTurn(
     // a beat cannot land inside a chunk.
     /** Say it once. */
     const sayAlive = (): void => {
-      void s.write(serializeSSE({ event: SSEEventType.HEARTBEAT, data: {} }));
+      // Transient, so the client hears it and nothing keeps it: the SDK hands
+      // such a chunk to `onData` and stops there, short of the parts that get
+      // stored and rendered. A beat carries no meaning of its own -- its
+      // arrival is the whole message -- so anything that kept it would be
+      // keeping rubbish.
+      void s.write(frame({ type: "data-heartbeat", transient: true, data: {} }));
     };
     // Once as soon as there is a socket to say it on, before the schedule
     // starts. The reader's browser began counting at the press, and the
@@ -127,8 +145,9 @@ async function streamTurn(
       await runWithContext(
         { userId: turn.userId, conversationId: turn.conversationId, projectId: turn.projectId },
         async () => {
-          for await (const event of events(stopped.signal)) {
-            await s.write(serializeSSE(event));
+          const turn = await turnStream(stopped.signal);
+          for await (const chunk of turn) {
+            await s.write(frame(chunk));
           }
         },
       );
@@ -151,10 +170,7 @@ async function streamTurn(
       // What the client does with this is show one line and let the reader
       // press send again. The sentence is not read: the browser writes its own.
       await s.write(
-        serializeSSE({
-          event: SSEEventType.ERROR,
-          data: { message: "The turn could not be run." },
-        }),
+        frame({ type: "error", errorText: "The turn could not be run." }),
       );
     } finally {
       // However the turn ended. A timer left running holds the process open
@@ -206,7 +222,7 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
   return streamTurn(
     c,
     { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
-    (signal) => new MainAgent().chat(messageWithChips, body.resource_list, signal),
+    (signal) => new MainAgent().chat(messageWithChips, signal),
   );
 });
 
@@ -241,13 +257,7 @@ chat.post("/skill", validate("json", skillCommandSchema), async (c) => {
   return streamTurn(
     c,
     { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
-    (signal) =>
-      new MainAgent().handleSkillCommand(
-        body.skill_name,
-        body.input,
-        body.resource_list,
-        signal,
-      ),
+    (signal) => new MainAgent().handleSkillCommand(body.skill_name, body.input, signal),
   );
 });
 

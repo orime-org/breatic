@@ -24,24 +24,27 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
+import { saying } from "../helpers/model-double.js";
+import type { MockLanguageModelV4 } from "ai/test";
 
-const streamTextRetry = vi.fn();
-
-/** What the turn is told to run on, changed per case. */
-const runningOn = vi.hoisted(() => ({ modelId: "", thinking: true }));
+/**
+ * What the turn is told to run on, and the model it was actually handed.
+ *
+ * The model is kept because that is where the assertion is: these options
+ * only matter if they reach the provider, and a call that carried them as far
+ * as `streamText` and no further would look identical from outside.
+ */
+const runningOn = vi.hoisted(() => ({
+  modelId: "",
+  thinking: true,
+  model: undefined as MockLanguageModelV4 | undefined,
+}));
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
-}));
-
-vi.mock("ai", () => ({
-  tool: (c: Record<string, unknown>) => c,
-  streamText: vi.fn(),
-  generateText: vi.fn(),
-  stepCountIs: vi.fn(() => 40),
 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -57,19 +60,25 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-vi.mock("@breatic/domain", async () => {
+vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
+  const actual = await importOriginal<Record<string, unknown>>();
+  const { modelProducing } = await import("../helpers/model-double.js");
   return {
     ...base,
+    streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({
       modelId: runningOn.modelId,
       instructions: "system",
       tools: {},
     }),
     finalizeTurn: async () => [],
-    streamTextRetry,
-    getModel: () => ({ modelId: runningOn.modelId }),
+    getModel: () => {
+      const model = modelProducing(() => saying("好的"));
+      runningOn.model = model;
+      return model;
+    },
   };
 });
 
@@ -102,26 +111,19 @@ async function providerOptionsFor(
 ): Promise<Record<string, Record<string, unknown>> | undefined> {
   runningOn.modelId = modelId;
   runningOn.thinking = thinking;
-  streamTextRetry.mockReturnValue({
-    fullStream: (async function* () {
-      yield { type: "finish", finishReason: "stop" };
-    })(),
-    toUIMessageStream: () => new ReadableStream(),
-  });
 
   const { MainAgent } = await import("@server/agent/main-agent.js");
   const { runWithContext } = await import("@breatic/core");
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-    for await (const _frame of new MainAgent().chat("说点什么")) {
+    const turn = await new MainAgent().chat("说点什么");
+    for await (const _chunk of turn) {
       // Drained rather than read: what this asserts on is the call that was
       // made, not what came back from it.
     }
   });
 
-  const call = streamTextRetry.mock.calls[0]?.[0] as
-    | { providerOptions?: Record<string, Record<string, unknown>> }
-    | undefined;
-  return call?.providerOptions;
+  const called = runningOn.model?.doStreamCalls[0];
+  return called?.providerOptions;
 }
 
 describe("asking DeepSeek for its working", () => {

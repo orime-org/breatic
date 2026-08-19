@@ -5,33 +5,40 @@
  * 线上流说的是 AI SDK 的话，不是我们自己发明的那 8 个事件。
  *
  * 设计见 inner `engineering/specs/2026-08-19-usechat-migration-design.md` §5：
- * 后端出口从「逐个 part 手工翻译成自定义事件」换成 `createUIMessageStream`，
- * 于是工具调用的参数、结果、失败原因全都由协议自带，不用我们再定一份契约。
+ * 后端出口从「`for await` 循环加 `switch (part.type)`，逐个改写成自定义事件」
+ * 换成 `createUIMessageStream`，于是工具调用的参数、结果、失败原因全都由协议
+ * 自带，不用我们再定一份契约。
  *
  * 这个文件钉两条验收：
  * A1 —— 一轮纯文本对话，流上是 `text-start` / `text-delta` / `text-end`。
  * A5 —— 一轮有工具调用，流上是 `tool-input-available`（带参数与 toolCallId）
  *        与 `tool-output-available`（带结果），两者按同一个 id 对上。
+ *
+ * 替身放在**模型**那一层，不放在 `streamTextRetry` 上。这两条要钉的正是
+ * 「模型吐出来的东西经 SDK 变成什么上线」，把 `streamTextRetry` 换成替身就等于
+ * 把这段转换自己 mock 掉，剩下的只是「喂什么吐什么」。换掉模型之后 `streamText`
+ * 真跑：工具由它按模型的请求真调，`tool-output-available` 是真执行的结果。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { tool } from "ai";
+import { z } from "zod";
 import type * as CoreModule from "@breatic/core";
+import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const consolidateIfNeeded = vi.fn(async () => undefined);
-const streamTextRetry = vi.fn();
+
+/** 这一轮模型吐什么，逐个用例改写。 */
+const modelSays = vi.hoisted(() => ({ parts: [] as ModelStreamPart[] }));
+
+/** 被调用过的工具参数，用来确认工具是真跑了而不是被跳过。 */
+const webFetchCalledWith = vi.fn();
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
-}));
-
-vi.mock("ai", () => ({
-  tool: (c: Record<string, unknown>) => c,
-  streamText: vi.fn(),
-  generateText: vi.fn(),
-  stepCountIs: vi.fn(() => 40),
 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -41,15 +48,32 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return { ...base, runWithContext: actual.runWithContext, getContext: actual.getContext };
 });
 
-vi.mock("@breatic/domain", async () => {
+vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
+  const actual = await importOriginal<Record<string, unknown>>();
+  const { modelProducing } = await import("../helpers/model-double.js");
   return {
     ...base,
-    buildAgentConfig: () => ({ modelId: "test", instructions: "system", tools: {} }),
+    // 真的那个：它只是 `streamText` 加一个重试预算，而这两条要钉的就是
+    // `streamText` 之后发生的事。
+    streamTextRetry: actual.streamTextRetry,
+    buildAgentConfig: () => ({
+      modelId: "test",
+      instructions: "system",
+      tools: {
+        web_fetch: tool({
+          description: "取一个网页",
+          inputSchema: z.object({ url: z.string() }),
+          execute: async (input: { url: string }) => {
+            webFetchCalledWith(input);
+            return "拿到了";
+          },
+        }),
+      },
+    }),
     finalizeTurn: async () => [],
-    streamTextRetry,
-    getModel: () => ({ modelId: "test" }),
+    getModel: () => modelProducing(() => modelSays.parts),
   };
 });
 
@@ -70,40 +94,32 @@ vi.mock("@server/agent/context.js", () => ({
   buildSystemPrompt: () => "系统提示词",
 }));
 
-/**
- * 把一批 SDK 原生 part 做成 `streamTextRetry` 会返回的那个东西。
- * @param parts - 要吐出来的那些 part。
- * @returns 假的 streamText 结果。
- */
-function modelSaying(parts: Array<Record<string, unknown>>): Record<string, unknown> {
-  return {
-    fullStream: (async function* () {
-      for (const p of parts) yield p;
-    })(),
-    toUIMessageStream: () => new ReadableStream(),
-  };
-}
+/** 一轮结束的那个片段，每个用例都要有，否则 `streamText` 不认为这一步跑完了。 */
+const finished: ModelStreamPart = {
+  type: "finish",
+  finishReason: "stop",
+  usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+};
 
 /**
- * 跑一轮，把线上流上出现过的 part 类型收集起来。
- * @param parts - 模型这一轮吐什么。
- * @returns 线上流上每一帧的类型，按到达顺序。
+ * 跑一轮，把线上流上出现过的每一帧收集起来。
+ * @param parts - 模型这一轮吐什么，用 provider 那一层的片段说。
+ * @returns 线上流上的每一帧，按到达顺序。
  */
-async function typesOnTheWire(parts: Array<Record<string, unknown>>): Promise<string[]> {
-  streamTextRetry.mockReturnValue(modelSaying(parts));
+async function framesOnTheWire(
+  parts: ModelStreamPart[],
+): Promise<Array<Record<string, unknown>>> {
+  modelSays.parts = parts;
   const { MainAgent } = await import("@server/agent/main-agent.js");
   const { runWithContext } = await import("@breatic/core");
 
-  const seen: string[] = [];
-  await runWithContext(
-    { userId: "u1", conversationId: "c1", projectId: "p1" },
-    async () => {
-      for await (const frame of new MainAgent().chat("说点什么")) {
-        // 迁移后每一帧是一个 UIMessageChunk，它自己带 `type`。
-        seen.push((frame as unknown as { type?: string }).type ?? "<无 type 字段>");
-      }
-    },
-  );
+  const seen: Array<Record<string, unknown>> = [];
+  await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+    const turn = await new MainAgent().chat("说点什么");
+    for await (const chunk of turn) {
+      seen.push(chunk);
+    }
+  });
   return seen;
 }
 
@@ -113,36 +129,44 @@ describe("线上流说的是 SDK 的话", () => {
   });
 
   it("A1 一轮纯文本，流上是 text-start / text-delta / text-end", async () => {
-    const types = await typesOnTheWire([
+    const frames = await framesOnTheWire([
       { type: "text-start", id: "t1" },
-      { type: "text-delta", id: "t1", text: "好" },
+      { type: "text-delta", id: "t1", delta: "好" },
       { type: "text-end", id: "t1" },
-      { type: "finish", finishReason: "stop" },
+      finished,
     ]);
 
+    const types = frames.map((f) => f.type);
     expect(types).toContain("text-start");
     expect(types).toContain("text-delta");
     expect(types).toContain("text-end");
+    expect(frames.find((f) => f.type === "text-delta")?.delta).toBe("好");
   });
 
   it("A5 工具调用的参数与结果都到了前端，按同一个 id 对上", async () => {
-    const types = await typesOnTheWire([
+    const frames = await framesOnTheWire([
       {
         type: "tool-call",
         toolCallId: "call-1",
         toolName: "web_fetch",
-        input: { url: "https://example.com" },
+        input: JSON.stringify({ url: "https://example.com" }),
       },
-      {
-        type: "tool-result",
-        toolCallId: "call-1",
-        toolName: "web_fetch",
-        output: "拿到了",
-      },
-      { type: "finish", finishReason: "stop" },
+      finished,
     ]);
 
-    expect(types).toContain("tool-input-available");
-    expect(types).toContain("tool-output-available");
+    // 工具真跑过：结果是它返回的，不是这个文件编的。
+    expect(webFetchCalledWith).toHaveBeenCalledWith({ url: "https://example.com" });
+
+    const asked = frames.find((f) => f.type === "tool-input-available");
+    const answered = frames.find((f) => f.type === "tool-output-available");
+
+    // 参数和结果都在，这正是迁移前到不了前端的那两样：旧的循环里没有写
+    // 转发它们的代码，所以协议里有位置也没人填。
+    expect(asked?.input).toEqual({ url: "https://example.com" });
+    expect(answered?.output).toBe("拿到了");
+
+    // 同一个 id：前端认得出这一问一答是同一次调用，靠的就是它。
+    expect(asked?.toolCallId).toBe("call-1");
+    expect(answered?.toolCallId).toBe("call-1");
   });
 });
