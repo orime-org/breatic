@@ -10,13 +10,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SSE_EVENT_NAMES } from '@breatic/shared';
-import type { SSEEventEnvelope } from '@breatic/shared';
+import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', () => ({
+vi.mock('@web/data/api/chat', async (importOriginal) => ({
+  ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
     openChat: vi.fn(),
-    streamMessage: vi.fn(),
     messagesBefore: vi.fn(),
     readConversation: vi.fn(),
     listConversations: vi.fn(),
@@ -32,6 +31,12 @@ import {
   useConversationRuntime,
   _resetForTests,
 } from '@web/stores/conversation-runtime';
+import {
+  chatSessionFor,
+  evictAllChatSessions,
+  sendInSession,
+  stopChatSession,
+} from '@web/stores/chat-sessions';
 
 const PROJECT = 'p-1';
 
@@ -60,10 +65,11 @@ function openAnswers(
 
 
 /**
- * 说一句话,并让服务端在开启这一轮的事件里带回会话的名字。
+ * 说一句话,并让服务端在这一轮的流上带回会话的名字。
  *
- * 走的是真实那条路:名字是服务端在 `chat_turn_started` 上说的,前端据此更新
- * 列表。测试直接调那个内部函数就绕开了这条线,而线断了没有任何测试会红。
+ * 走的是真实那条路:名字是服务端在 `data-conversation-titled` 上说的,会话
+ * 实例听见了转给这个 store。测试直接调那个内部函数就绕开了这条线,而线断了
+ * 没有任何测试会红。
  * @param conversationId - 说话的那条会话。
  * @param said - 说了什么。
  * @param title - 服务端回的名字。
@@ -73,18 +79,43 @@ async function speakAndHearTitle(
   said: string,
   title: string,
 ): Promise<void> {
-  let handlers: { onEvent: (e: SSEEventEnvelope) => void } | undefined;
-  vi.mocked(chatApi.streamMessage).mockImplementation((_input, h) => {
-    handlers = h as typeof handlers;
-    return new Promise<void>(() => {});
+  let push: ((chunk: Record<string, unknown>) => void) | undefined;
+  const encoder = new TextEncoder();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      let controller: ReadableStreamDefaultController<Uint8Array>;
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          controller = c;
+        },
+      });
+      push = (chunk) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+      };
+      return new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    }),
+  );
+
+  chatSessionFor({
+    projectId: PROJECT,
+    conversationId,
+    history: [],
+    onTitled: (named) => conversationRuntime.noteActivity(PROJECT, conversationId, named),
   });
-  void conversationRuntime.send(PROJECT, said);
-  await vi.waitFor(() => expect(handlers).toBeDefined());
-  handlers!.onEvent({
-    event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
-    data: { messages: [], hasMore: false, title },
-  } as unknown as SSEEventEnvelope);
-  conversationRuntime.stopTurn(conversationId);
+  void sendInSession(conversationId, said);
+  await vi.waitFor(() => {
+    expect(push).toBeDefined();
+  });
+  push?.({ type: 'data-conversation-titled', data: { title } });
+  await vi.waitFor(() => {
+    expect(useConversationRuntime.getState().conversations[conversationId]?.title).toBe(title);
+  });
+  stopChatSession(conversationId);
+  vi.unstubAllGlobals();
 }
 
 /** The conversation the panel is showing in this project. */
@@ -101,6 +132,7 @@ describe('the list of conversations in a project', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('keeps the list that came back with the open call', async () => {
@@ -128,6 +160,7 @@ describe('switching to another conversation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('shows the one that was picked, with its own messages', async () => {
@@ -183,6 +216,7 @@ describe('starting another conversation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('switches to the new one only once the server has made it', async () => {
@@ -232,6 +266,7 @@ describe('naming a conversation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('shows the new name in the list', async () => {
@@ -277,6 +312,7 @@ describe('removing a conversation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('takes it out of the list', async () => {
@@ -342,6 +378,7 @@ describe('what each conversation has half-typed', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('holds one draft per conversation, not one for the panel', async () => {
@@ -395,6 +432,7 @@ describe('what the list says about when a conversation was last used', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('moves the one just spoken in to the top, and freshens its time', async () => {
@@ -433,6 +471,7 @@ describe('what the box holds while no conversation is on screen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('holds nothing, because the box is not open for typing then', async () => {
@@ -467,6 +506,7 @@ describe('a list longer than one page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('adds the next page to the end of the one on screen', async () => {
@@ -557,6 +597,7 @@ describe('opening the list again', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('fetches the first page afresh rather than showing what it had', async () => {
@@ -639,6 +680,7 @@ describe('a page request left over from a visit that ended', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('does not clear the marks belonging to the visit after it', async () => {
@@ -675,6 +717,7 @@ describe('the name of the conversation on screen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('survives the list being replaced by a page it is not on', async () => {
@@ -718,22 +761,11 @@ describe('the name of the conversation on screen', () => {
   });
 
   it('is what the first message named it', async () => {
-    // 走真实那条路:发一句话,服务器在 `chat_turn_started` 里回它给这条会话
-    // 取的名字。
+    // 走真实那条路:发一句话,服务器在流上回它给这条会话取的名字。
     openAnswers([{ id: 'c-1', title: null }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
 
-    let heard: ((e: SSEEventEnvelope) => void) | undefined;
-    vi.mocked(chatApi.streamMessage).mockImplementation((_i, h) => {
-      heard = (h as { onEvent: (e: SSEEventEnvelope) => void }).onEvent;
-      return new Promise<void>(() => {});
-    });
-    void conversationRuntime.send(PROJECT, '第一句话');
-    await vi.waitFor(() => expect(heard).toBeDefined());
-    heard?.({
-      event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
-      data: { messages: [], hasMore: false, title: '第一句话' },
-    } as unknown as SSEEventEnvelope);
+    await speakAndHearTitle('c-1', '第一句话', '第一句话');
 
     expect(useConversationRuntime.getState().conversations['c-1']?.title).toBe('第一句话');
   });
@@ -743,6 +775,7 @@ describe('two requests for the first page at once', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   it('keeps saying it is on its way until both are done', async () => {
@@ -769,6 +802,7 @@ describe('what a first page has to be told about', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
   });
 
   /**
