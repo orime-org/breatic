@@ -98,6 +98,13 @@ const GAP_FROM_SELECTION_PX = 8;
  * So a boundary is walked into the nearest text position before measuring.
  * Which line to anchor is decided elsewhere and unchanged; this only makes
  * sure the answer is a line at all.
+ *
+ * The walk moves only where there is text to move into. Behind an atom block —
+ * today only `unsupportedBlock`, which needs a peer running a build that knows
+ * a type this one does not — `Selection.near` answers a `NodeSelection` whose
+ * head is the position it was given, and the measurement falls back to the
+ * separator: the bar would sit against that block's bottom edge rather than its
+ * top. Task #124 brings back a text-less block on purpose and carries this.
  * @param view - The editor view to measure against.
  * @param pos - A document position.
  * @returns The line's extent, in viewport coordinates.
