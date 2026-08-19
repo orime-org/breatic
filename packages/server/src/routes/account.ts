@@ -31,7 +31,8 @@ account.use(requireAuth);
  * @param c - Hono context with the authenticated user
  * @returns `200` with `{ data: AccountMembership }` — tier, that tier's
  *   ceilings (`null` for enterprise, which negotiates its own), the two
- *   account-level usage figures, and the tiers offered for comparison
+ *   account-level usage figures, the tiers offered for comparison with their
+ *   prices, and what the account's subscription is doing
  */
 account.get("/membership", rateLimitFor("membership-read", "user"), async (c) => {
   const user = c.get("user");

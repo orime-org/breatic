@@ -6,15 +6,15 @@
  *
  * The panel has a single request behind it, so this assembles the whole
  * answer: which tier the account is on, what that tier grants, how much of
- * the two account-level allowances it has spent, and the tiers it can
- * compare itself against.
+ * the two account-level allowances it has spent, the tiers it can compare
+ * itself against with their prices, and what its subscription is doing.
  *
  * It lives in a service rather than in the route because assembling that
  * answer is domain work — deciding which tiers are comparable, deciding what
  * an enterprise account gets instead of ceilings — and routes here translate
- * protocol only (prohibition #1). The subscription work that comes later
- * needs the same "what is this account on, and what does it grant" read, and
- * a function is something it can call.
+ * protocol only (prohibition #1). The subscription reading (#106) needs the
+ * same "what is this account on, and what does it grant" answer, so it is
+ * assembled here too rather than in a second request.
  */
 
 import {
@@ -37,7 +37,8 @@ import { readSubscriptionSummary } from "@server/modules/subscription/subscripti
 /**
  * Reads everything the membership panel needs for one account.
  * @param userId - The account to describe.
- * @returns Its tier, that tier's ceilings, its usage, and the comparable tiers.
+ * @returns Its tier, that tier's ceilings, its usage, the comparable tiers
+ *   with their prices, and its subscription.
  * @throws {Error} if the account does not exist, or if a usage query fails.
  */
 export async function readAccountMembership(

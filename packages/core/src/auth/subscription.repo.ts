@@ -142,8 +142,7 @@ export async function listSubscriptions(
  * @param write - What Stripe says about the subscription now.
  * @param tx - Transaction handle, when the caller is inside one.
  * @returns The stored subscription after the write.
- * @throws {Error} if the account already holds a different live subscription,
- *   or if the write left no row, which the database cannot do here.
+ * @throws {Error} if the write left no row, which the database cannot do here.
  */
 export async function upsertSubscription(
   write: SubscriptionWrite,

@@ -153,8 +153,9 @@ async function writeAll(
  * describes one — "this account has none" is a subscription state, not silence.
  * @param userId - The account.
  * @returns What its subscription is doing.
- * @throws {Error} if Stripe or the database fails; the panel is better empty
- *   than wrong, and the route logs it.
+ * @throws {Error} if the database fails. A Stripe failure is caught and
+ *   logged instead: the panel falls back to the stored view, which is what it
+ *   showed before this reconciliation existed.
  */
 export async function readSubscriptionSummary(
   userId: string,

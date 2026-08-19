@@ -59,11 +59,12 @@ export const subscriptionConfigSchema = z.object({
    */
   stale_after_days: z.number().int().positive().default(14),
   /**
-   * How long either path waits when it asks Stripe for a subscription's
-   * current state — the panel's reconciliation and the webhook's fetch.
+   * How long to wait when asking Stripe what a subscription looks like now —
+   * the panel's reconciliation, the webhook's fetch, and the check before a
+   * fresh checkout that the stored unpaid one is still unpaid.
    *
-   * One value for both, because both ask the same question and neither wants
-   * to wait: the SDK's unbounded default is 80 seconds twice retried, which
+   * One value for all three, because all three ask the same question and none
+   * of them wants to wait: the SDK's unbounded default is 80 seconds twice retried, which
    * holds a reader in front of a spinner on one path and, on the other, holds
    * a request Stripe has already written off and queued a redelivery for.
    */

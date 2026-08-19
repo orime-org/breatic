@@ -35,11 +35,12 @@ plans:
 # card is about to go through.
 stale_after_days: 14
 
-# How long either path waits when it asks Stripe what a subscription looks
-# like now — the panel's reconciliation and the webhook's fetch.
+# How long to wait when asking Stripe what a subscription looks like now —
+# the panel's reconciliation, the webhook's fetch, and the check before a fresh
+# checkout that the stored unpaid subscription is still unpaid.
 #
-# One value, because both are asking the same question and neither wants to
-# wait. The SDK's own default is 80 seconds with two retries, so an unbounded
+# One value for all three, because all three ask the same question and none of
+# them wants to wait. The SDK's own default is 80 seconds with two retries, so an unbounded
 # call sits for around four minutes: the panel holds a reader in front of a
 # spinner, and the webhook holds a request Stripe has already given up on and
 # queued a redelivery for.

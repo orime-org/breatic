@@ -5,7 +5,7 @@
  * What an account's subscription rows mean (task #106, design §6.5.1).
  *
  * Two questions get answered here, and keeping them apart is the point. The
- * first is WHICH SITUATION the account is in, and it has eight answers rather
+ * first is WHICH SITUATION the account is in, and it has seven answers rather
  * than Stripe's `active`: an account that has scheduled a cancellation and one
  * that has an unpaid upgrade are both `active` at Stripe, yet what each may do
  * next is different, and the earlier design collapsed them into one state and

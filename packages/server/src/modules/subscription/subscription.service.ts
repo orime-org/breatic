@@ -130,8 +130,8 @@ export async function startCheckout(input: {
     // Stripe refuses to update a subscription whose first invoice has not
     // settled, so this account can only start over — but the unpaid one is
     // still there and its payment page still works. Leaving it would let both
-    // be paid, and then which membership counts is decided by an arbitrary
-    // "most recent row wins" rather than by what anybody bought.
+    // be paid: two charges for one membership, of which the reading can only
+    // honour one.
     await voidUnpaidSubscription(record.stripeSubscriptionId, input.userId);
   }
 
@@ -201,9 +201,9 @@ function itemToReplace(record: StoredSubscription): string {
  * Voids the unpaid subscription this account is about to replace.
  *
  * The one irreversible call on this path, so it asks Stripe first rather than
- * acting on the stored row. That row can be out of date — only the webhook
- * writes it — and one of the ways it goes out of date is the one that matters
- * most here: the reader paid. The panel hands an account in this state a
+ * acting on the stored row. That row is a snapshot from whichever wrote it
+ * last, the webhook or the panel's reconciliation, and one of the ways it goes
+ * out of date is the one that matters most here: the reader paid. The panel hands an account in this state a
  * payment link that opens in a NEW tab, so the tab they came from keeps
  * showing the old state and never refetches on focus; paying there and coming
  * back to press a tier button is a path we laid out ourselves. Cancelling on

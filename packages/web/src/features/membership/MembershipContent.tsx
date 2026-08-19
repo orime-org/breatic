@@ -86,7 +86,7 @@ function ContactLine({
  *   - The tier it is on. Priced tiers also get a price and an upgrade button.
  *   - Its allowances. Only the two counted account-wide are listed; the other
  *     four are per-studio, and their values are read off the comparison table
- *     below — which is why `self_hosted`, the one tier that gets no table,
+ *     below — which is why `self_hosted`, which has ceilings but no table,
  *     lists them here instead.
  *   - The comparison table, for accounts that could move between the tiers on
  *     it. `self_hosted` is a deployment shape and `enterprise` is negotiated,
