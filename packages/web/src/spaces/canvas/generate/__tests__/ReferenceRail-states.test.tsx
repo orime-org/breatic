@@ -9,8 +9,8 @@
  * what it says when it refuses.
  *
  * `useTranslation` is stubbed to echo its key so the assertions name the
- * message rather than its English wording: three refusal reasons split into six
- * messages, and comparing rendered prose would let two of them drift into
+ * message rather than its English wording: three refusal reasons with one
+ * message each, and comparing rendered prose would let two of them drift into
  * saying the same thing without a test noticing.
  */
 

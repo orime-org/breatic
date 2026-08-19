@@ -129,7 +129,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   //
   // Each message names only the cause, not the way out: the mode selector is
   // in this same panel and every dimmed row is visibly dark, and UI copy states
-  // the situation rather than explaining it (user 2026-08-17). Two of the three
+  // the situation rather than explaining it (user 2026-08-17). All three
   // predate that rule and are queued to follow it (todo #1970).
   const refuseInsert = React.useCallback(
     (refusal: ReferenceRefusal, kind: NodeKind): void => {

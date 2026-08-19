@@ -61,6 +61,10 @@ import {
 } from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
 import { useCanvasStore } from '@web/stores';
+import {
+  LOCALE_CATALOGS,
+  readPath,
+} from '@web/test-utils/locale-catalogs';
 
 /** A text-to-video model, the one kind this slice offers. */
 const T2V: ModelEntry = {
@@ -1757,6 +1761,18 @@ describe('这个部署服务不了的档 (#1951)', () => {
 });
 
 describe('VideoGeneratePanelContainer — 两句空态各自取自己那个 key (#1952)', () => {
+  /**
+   * 那句话在 en 里的原文。
+   * @param key - `canvas.generatePanel` 下的键名。
+   * @returns 该键在英文目录里的值。
+   */
+  function sentence(key: 'mentionEmpty' | 'mentionNoMatch'): string {
+    return readPath(
+      LOCALE_CATALOGS[0][1],
+      `canvas.generatePanel.${key}`,
+    ) as string;
+  }
+
   const PICTURE = {
     id: 'src',
     data: {
@@ -1802,13 +1818,12 @@ describe('VideoGeneratePanelContainer — 两句空态各自取自己那个 key 
     return { text: box?.textContent ?? null, unmount: view.unmount };
   }
 
-  // 跟图片面板那条同一个理由：断言两句不一样而不是断言具体文案。把两个 label
-  // 写成同一个 key 是这条接线唯一会出的错，两个 key 都存在、都是 string，
-  // typecheck 和别的测试都拦不住。
-  it('「一项都用不了」和「你打的字筛光了」是两句不同的话', async () => {
+  // 跟图片面板那条同一个理由，见那边的注释：断言「两句不一样」挡不住把两个
+  // key 对调，而对调是同样两行、同样 typecheck 绿的第二种错。
+  it('每一句各自取自己那个 key，不是「两句不一样」就算数', async () => {
     // t2v 不吃参考素材，那条图片边一项都用不了。
     const nothingUsable = await emptyStateText('t2v', 'veo-3.1', '');
-    expect(nothingUsable.text).not.toBeNull();
+    expect(nothingUsable.text).toBe(sentence('mentionEmpty'));
     nothingUsable.unmount();
 
     // ref 档吃图片参考，池子非空，只是打的字没匹配上。
@@ -1817,9 +1832,7 @@ describe('VideoGeneratePanelContainer — 两句空态各自取自己那个 key 
       'kling-o3-pro-ref',
       'zzz',
     );
-    expect(nothingMatched.text).not.toBeNull();
+    expect(nothingMatched.text).toBe(sentence('mentionNoMatch'));
     nothingMatched.unmount();
-
-    expect(nothingUsable.text).not.toBe(nothingMatched.text);
   });
 });

@@ -79,6 +79,10 @@ import {
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { useCanvasStore } from '@web/stores';
+import {
+  LOCALE_CATALOGS,
+  readPath,
+} from '@web/test-utils/locale-catalogs';
 
 type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
 
@@ -1152,6 +1156,18 @@ describe('这个部署服务不了的档 (#1951)', () => {
 
 describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#1952)', () => {
   /**
+   * 那句话在 en 里的原文。
+   * @param key - `canvas.generatePanel` 下的键名。
+   * @returns 该键在英文目录里的值。
+   */
+  function sentence(key: 'mentionEmpty' | 'mentionNoMatch'): string {
+    return readPath(
+      LOCALE_CATALOGS[0][1],
+      `canvas.generatePanel.${key}`,
+    ) as string;
+  }
+
+  /**
    * 打开面板、在提示词里打 `@` 加给定的字，交出弹层空态里显示的那句话。
    * @param graph - 画布上的节点和边。
    * @param query - `@` 后面打的字。
@@ -1185,10 +1201,13 @@ describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#195
     return { text: box?.textContent ?? null, unmount: view.unmount };
   }
 
-  // 断言的是「两句不一样」，不是具体文案：把两个 label 写成同一个 key 是这条
-  // 接线唯一会出的错，而它 typecheck 绿、别的测试也绿（两个 key 都存在、都是
-  // string）。比文案本身更耐改，locale 怎么润色都不会假红。
-  it('「一项都用不了」和「你打的字筛光了」是两句不同的话', async () => {
+  // 断言每句各自等于它那个 key 在 en 里的值。断言「两句不一样」不够：把两个
+  // key **对调**是同样两行、同样 typecheck 绿的第二种错，而对调之后两句依然
+  // 不同，全仓 1252 条断言一条都不红（实测）。用户端的后果正是这一片要消灭的
+  // 那句谎——t2i 下连着一张图、`@` 后一个字都没打，弹层说「没有匹配的内容」。
+  //
+  // 取值而不是写死英文措辞，所以 locale 润色不会假红。
+  it('每一句各自取自己那个 key，不是「两句不一样」就算数', async () => {
     const listSpy = vi
       .spyOn(modelsApi, 'list')
       .mockResolvedValue(imageCatalog([T2I_MODEL]));
@@ -1204,7 +1223,7 @@ describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#195
       },
       '',
     );
-    expect(nothingUsable.text).not.toBeNull();
+    expect(nothingUsable.text).toBe(sentence('mentionEmpty'));
     nothingUsable.unmount();
 
     // 文本行是提示词素材，t2i 下照样能用 → 池子非空，只是打的字没匹配上 →
@@ -1219,10 +1238,8 @@ describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#195
       },
       'zzz',
     );
-    expect(nothingMatched.text).not.toBeNull();
+    expect(nothingMatched.text).toBe(sentence('mentionNoMatch'));
     nothingMatched.unmount();
-
-    expect(nothingUsable.text).not.toBe(nothingMatched.text);
     listSpy.mockRestore();
   });
 });
