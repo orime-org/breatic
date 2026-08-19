@@ -104,6 +104,44 @@ function mount(editor: Editor, readOnly = false): void {
   );
 }
 
+/** 插件视图上我们真正配进去的那几样，取出来直接问。 */
+interface BubblePluginView {
+  scrollTarget?: unknown;
+  getReferencedVirtualElement?: () => { getBoundingClientRect: () => DOMRect } | null;
+}
+
+/**
+ * 从编辑器身上取浮出条那个插件视图。
+ *
+ * 插件把 `getReferencedVirtualElement` 原样存在自己身上（`dist/index.js:173`），
+ * 所以这是「它真正会调用的那个函数」，不是测试自己另外造的一份。
+ * @param editor - 编辑器。
+ * @returns 插件视图。
+ */
+function bubblePluginView(editor: Editor): BubblePluginView {
+  const views =
+    (editor.view as unknown as { pluginViews: unknown[] }).pluginViews ?? [];
+  const found = views.find(
+    (v) => v !== null && typeof v === 'object' && 'scrollTarget' in v,
+  );
+  expect(found).toBeDefined();
+  return found as BubblePluginView;
+}
+
+/**
+ * 把正文滚动容器的可见范围钉成一个已知的框。
+ *
+ * jsdom 里一切矩形都是零，锚点逻辑要判的「这一行看得见吗」在零框里问不出答案。
+ * @param box - 要钉的可见框。
+ */
+function pinViewport(box: DOMRect): void {
+  const viewport = document.querySelector(
+    '.doc-body-scroller [data-radix-scroll-area-viewport]',
+  );
+  expect(viewport).not.toBeNull();
+  (viewport as HTMLElement).getBoundingClientRect = () => box;
+}
+
 /** 正文带标记的样子，用来判命令有没有真的改到文档。 */
 function markupOf(): string {
   return documentBodyFragment(doc)
@@ -191,6 +229,109 @@ describe('选中浮出条', () => {
     expect(bubbleView).toBeDefined();
     expect(bubbleView?.scrollTarget).toBe(viewport);
     expect(bubbleView?.scrollTarget).not.toBe(window);
+  });
+
+  // A3：逐行锚点。设计 §5.1 要求的两条规则各钉一条，都在插件真正会调用的那个
+  // 函数上问（`bubblePluginView` 取的就是插件自己存的那份）。
+  //
+  // 造场景的办法是把「哪一行在哪儿」直接钉死：jsdom 没有布局，一切矩形是零，
+  // 而这段逻辑判的正是「这一行看得见吗」。所以钉一个可见框（纵向 100 到 500），
+  // 再让每个文档位置回答一个已知的行坐标。
+  describe('锚点', () => {
+    /**
+     * 让每个文档位置回答一个已知的行坐标。
+     * @param editor - 编辑器。
+     * @param lines - 位置到行顶坐标的映射，未列出的位置回答 top。
+     */
+    function pinLines(editor: Editor, lines: Record<number, number>): void {
+      editor.view.coordsAtPos = (pos: number) => {
+        const top = lines[pos] ?? 0;
+        return { top, bottom: top + 20, left: 40 + pos, right: 60 + pos };
+      };
+    }
+
+    it('全选时锚的是视口里看得见的那一行，不是整篇的包围盒顶端', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      act(() => {
+        editor.commands.selectAll();
+      });
+      const { from, to } = editor.state.selection;
+      // 选区起点在视口上方、终点在下方——两端都够不着，只剩「视口顶那一行」，
+      // 它由 posAtCoords 报出来（pos 7，行顶 250，稳稳在可见框里）。
+      pinLines(editor, { [from]: -300, [to]: 900, 7: 250 });
+      editor.view.posAtCoords = () => ({ pos: 7, inside: -1 });
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      expect(rect).toBeDefined();
+      expect(rect?.top).toBe(250);
+      // 竖直取自那一行，水平取自选区自己的左边——全选的 from 是 0，左边 40。
+      expect(rect?.left).toBe(40);
+    });
+
+    it('拖出来的选区锚在松手那一行——也就是选区的 head', async () => {
+      const editor = open('<p>hello world</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      // 从 1 往下拖到 6：head 是 6，两端都在视口里。两端各给一个不同的行坐标，
+      // 才分辨得出锚的是松手那端还是选区起点。
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 6 });
+      });
+      pinLines(editor, { 1: 300, 6: 200 });
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      expect(rect?.top).toBe(200);
+      // 锚的是 6 那一行，左边仍然是选区左边缘（from = 1 → 41），不是行尾。
+      expect(rect?.left).toBe(41);
+    });
+
+    it('锚的那一行只露出下半截时，浮出条贴在可见区域上沿', async () => {
+      const editor = open('<p>hello world</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 6 });
+      });
+      // 那一行跨在可见框上沿：顶 90 已经被滚上去，底 110 还露着。
+      pinLines(editor, { 1: 90, 6: 90 });
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      // 锚到 90 就是锚到看不见的地方，收进来才对。
+      expect(rect?.top).toBe(100);
+      expect(rect?.bottom).toBe(110);
+    });
+
+    it('选区为空时不给锚点', async () => {
+      const editor = open('<p>hello world</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      act(() => {
+        editor.commands.setTextSelection(3);
+      });
+
+      expect(
+        bubblePluginView(editor).getReferencedVirtualElement?.(),
+      ).toBeNull();
+    });
   });
 
   // A7：viewer 整条不出现（定稿 §3.3.1）。

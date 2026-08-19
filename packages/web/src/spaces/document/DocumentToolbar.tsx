@@ -82,9 +82,6 @@ const HISTORY_TOOLS: ActionDef[] = [
   },
 ];
 
-/** Re-exported so the carriers can keep importing it from here. */
-export type { ToolDef };
-
 /**
  * The formatting controls. What they DO is untouched by this slice — the
  * editing feature set is separate work — and three things about how they do it
@@ -226,25 +223,6 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
   );
 });
 
-/**
- * A single toolbar toggle.
- *
- * Subscribes to its own two flags rather than reading them during render. That
- * matters now the document is shared: a co-editor's change arrives as a
- * transaction with no React render behind it, so a value computed in the render
- * body would keep showing whatever was true when this component last happened
- * to re-render.
- *
- * The button is live when its command can run — asked of the editor, against
- * the very command the button dispatches, so the two can never disagree. This
- * is what keeps a button from staying lit over a selection it cannot touch,
- * and it holds for selections nobody thought to enumerate.
- * @param root0 - Tool button props.
- * @param root0.tool - The tool definition (label, icon, active predicate, availability, run command).
- * @param root0.editor - The editor the tool reads from and acts on.
- * @param root0.readOnly - True for a viewer; the toggle is inert whatever the command says.
- * @returns The toggle button element for one document tool.
- */
 /**
  * A single toolbar action, enabled or disabled by the caller.
  * @param root0 - Action button props.

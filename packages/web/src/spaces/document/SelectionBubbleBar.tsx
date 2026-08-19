@@ -20,8 +20,8 @@
  *   the entire document, so the bar would anchor above the first line even when
  *   that line is scrolled far out of view. `getReferencedVirtualElement` is the
  *   official way out (`dist/index.d.ts:66`) and it wins outright: `:254`
- *   returns it before every other branch. We hand back the line the user can
- *   actually see.
+ *   returns it before every other branch. We hand back one line the reader can
+ *   see — see {@link pickAnchorPos}.
  * - **The alignment.** The default `placement` is `'top'` (`dist/index.js:48`),
  *   and floating-ui only shifts along the alignment axis when the placement
  *   carries `-start` or `-end` (`@floating-ui/core` `:49-51`); bare `top`
@@ -40,6 +40,8 @@
 
 import * as React from 'react';
 import type { Editor } from '@tiptap/react';
+import { posToDOMRect } from '@tiptap/core';
+import type { EditorView } from '@tiptap/pm/view';
 import { BubbleMenu } from '@tiptap/react/menus';
 
 import {
@@ -53,6 +55,70 @@ const BUBBLE_TOOLS: ToolDef[] = [...MARK_TOOLS, ...BLOCK_TOOLS];
 
 /** How far above the selection the bar sits, per the ruling's visual spec. */
 const OFFSET_FROM_SELECTION_PX = 8;
+
+/**
+ * The document position the bar sits above.
+ *
+ * One rule covers both ways a selection gets made, because the head of a
+ * selection IS the end the user is moving: dragging with the mouse, the head
+ * is where the button came up; extending with the keyboard, it is the edge
+ * being pushed. Anchor there whenever the reader can see it, which is always
+ * true of a drag — the pointer was on screen when it was released.
+ *
+ * A `Mod-a` selection is the case that forces the fallback: its head is the
+ * end of the document, usually far below the fold. Then the anchor is the top
+ * of the selection if that is on screen, and otherwise the position where the
+ * selection crosses the top edge — never the selection's own start, which for
+ * `Mod-a` is a first line that may be scrolled arbitrarily far away.
+ *
+ * Positions rather than DOM rectangles, deliberately. `Range.getClientRects()`
+ * hands back the BORDER BOX of any element the range wholly contains, so a
+ * fully selected paragraph yields one tall rectangle instead of one per line —
+ * and `Mod-a` selects whole blocks by definition. Asking the editor where a
+ * position sits always yields a single line, whatever the range happens to
+ * span.
+ * @param view - The editor view to measure against.
+ * @param bounds - The visible box of the body's scroll container.
+ * @returns A position inside the current selection.
+ */
+function pickAnchorPos(view: EditorView, bounds: DOMRect): number {
+  const { from, to, head } = view.state.selection;
+  /**
+   * Whether the line holding a position overlaps the visible box at all.
+   * @param pos - A document position.
+   * @returns True when any part of its line is on screen.
+   */
+  const isVisible = (pos: number): boolean => {
+    const line = view.coordsAtPos(pos);
+    return line.bottom > bounds.top && line.top < bounds.bottom;
+  };
+
+  if (head >= from && head <= to && isVisible(head)) return head;
+  if (isVisible(from)) return from;
+
+  // The selection starts above the fold. Ask what sits on the first visible
+  // row instead — measured from the editor's own left edge, since the
+  // scroller's is out in the gutter where there is no text to hit.
+  const editorLeft = view.dom.getBoundingClientRect().left;
+  const atTop = view.posAtCoords({ left: editorLeft + 1, top: bounds.top + 1 });
+  if (atTop && atTop.pos > from && atTop.pos < to) return atTop.pos;
+  return from;
+}
+
+/**
+ * A zero-width rectangle standing in for one line of text.
+ *
+ * Zero width is not a shortcut: `top-start` reads the left edge and the top,
+ * and a right edge would only invite the shift middleware to slide the bar
+ * along a box the user never selected.
+ * @param left - Left edge, in viewport coordinates.
+ * @param top - Top edge, in viewport coordinates.
+ * @param bottom - Bottom edge, in viewport coordinates.
+ * @returns The rectangle.
+ */
+function lineRect(left: number, top: number, bottom: number): DOMRect {
+  return new DOMRect(left, top, 0, Math.max(0, bottom - top));
+}
 
 interface SelectionBubbleBarProps {
   /** The editor this bar acts on. */
@@ -87,43 +153,52 @@ export function SelectionBubbleBar({
       ?? document.body,
     [],
   );
-  const scrollTarget = React.useCallback(
-    () =>
-      document.querySelector<HTMLElement>(
-        '.doc-body-scroller [data-radix-scroll-area-viewport]',
-      ),
-    [],
-  );
-  // The anchor. Left alone, the plugin measures the selection's whole bounding
-  // box (`dist/index.js:261`), which over a `Mod-a` selection is the entire
-  // document — the bar would then sit above the first line, however far that
-  // line has been scrolled away. What we hand back instead is one line: the
-  // first client rect the selection produces that is actually inside the
-  // viewport, falling back to the first one when the selection is entirely
-  // above or below it. `:254` returns this before every other branch, so it
-  // simply wins.
-  const getReferencedVirtualElement = React.useCallback(() => {
-    const domSelection = window.getSelection();
-    if (!domSelection || domSelection.rangeCount === 0) return null;
-    const rects = Array.from(domSelection.getRangeAt(0).getClientRects()).filter(
-      (r) => r.width > 0 || r.height > 0,
-    );
-    if (rects.length === 0) return null;
-    const visible =
-      rects.find((r) => r.bottom > 0 && r.top < window.innerHeight) ?? rects[0];
-    if (!visible) return null;
-    return {
-      getBoundingClientRect: () => visible,
-      getClientRects: () => [visible] as unknown as DOMRectList,
-    };
-  }, []);
 
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
   // The viewport exists one commit after this component first renders, so it
   // cannot be read during that first render.
   React.useEffect(() => {
-    setViewport(scrollTarget());
-  }, [scrollTarget]);
+    setViewport(
+      document.querySelector<HTMLElement>(
+        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+      ),
+    );
+  }, []);
+
+  const getReferencedVirtualElement = React.useCallback(() => {
+    if (!viewport) return null;
+    const { view } = editor;
+    if (view.state.selection.empty) return null;
+    const bounds = viewport.getBoundingClientRect();
+    const { from, to } = view.state.selection;
+    const line = view.coordsAtPos(pickAnchorPos(view, bounds));
+    // The two axes come from different places, and they have to. Vertically the
+    // bar belongs to ONE line — the anchor. Horizontally the ruling asks for
+    // the selection's left edge, and the anchor's own x is no such thing: the
+    // anchor is usually the head, which for a `Mod-a` sits at the END of the
+    // last line. Measured, taking x from the anchor put the bar 314px right of
+    // where the ruling wants it.
+    const left = posToDOMRect(view, from, to).left;
+    // Clip the line into the viewport. Whole-block selections start at the top
+    // of a block that may itself be half scrolled away, and a bar hung off the
+    // part above the fold is a bar nobody can see.
+    const top = Math.max(line.top, bounds.top);
+    const rect = lineRect(left, top, Math.max(top, line.bottom));
+    return {
+      getBoundingClientRect: () => rect,
+      getClientRects: () => [rect] as unknown as DOMRectList,
+    };
+  }, [editor, viewport]);
+
+  const options = React.useMemo(
+    () => ({
+      placement: 'top-start' as const,
+      offset: OFFSET_FROM_SELECTION_PX,
+      flip: true,
+      ...(viewport ? { scrollTarget: viewport } : {}),
+    }),
+    [viewport],
+  );
 
   if (readOnly) return null;
   // Nothing is rendered until the viewport is in hand, and that is the whole
@@ -146,12 +221,7 @@ export function SelectionBubbleBar({
       editor={editor}
       appendTo={appendTo}
       getReferencedVirtualElement={getReferencedVirtualElement}
-      options={{
-        placement: 'top-start',
-        offset: OFFSET_FROM_SELECTION_PX,
-        flip: true,
-        ...(viewport ? { scrollTarget: viewport } : {}),
-      }}
+      options={options}
       data-testid='doc-selection-bubble-bar'
       className='flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
     >

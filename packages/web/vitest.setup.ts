@@ -160,6 +160,19 @@ if (typeof Element !== 'undefined') {
   }
 }
 
+// jsdom implements no hit testing, so `document.elementFromPoint` is absent
+// entirely (not "returns null" — the property does not exist). ProseMirror's
+// `posAtCoords` calls it unconditionally (`prosemirror-view/dist/index.js:467`)
+// and throws a TypeError without it, which surfaces as an unhandled error from
+// inside a debounced plugin timer rather than as a failing assertion. Answering
+// null is the honest reply for a DOM with no layout: `posAtCoords` then falls
+// back to the editor's own (zero) bounding box, finds the point outside it, and
+// returns null — which is what a caller asking "what is at this pixel" should
+// get in a document that has no pixels.
+if (typeof Document !== 'undefined') {
+  Document.prototype.elementFromPoint ??= () => null;
+}
+
 // jsdom implements no ClipboardEvent at all (checked against jsdom 29:
 // `new ClipboardEvent('paste')` throws "ClipboardEvent is not defined").
 // ProseMirror's own `view.pasteHTML(html)` constructs one when the caller does

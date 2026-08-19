@@ -13,10 +13,17 @@
  * ## Why the carrier prefixes the test id
  *
  * Both carriers render the same `ToolDef`s, so an id built from the command
- * alone would exist twice in the document at once — and the bubble bar's
- * subtree is always mounted (its plugin hides it with `visibility`, it does not
- * unmount it). Every query for a single button would then match two nodes.
- * Naming the carrier keeps each one addressable.
+ * alone names two buttons for as long as the bubble bar is on screen — which
+ * is exactly when anything wants to address one of them. A query by command
+ * would match both, and the existing toolbar tests that count buttons or take
+ * one by id would break the moment a test made a selection. Naming the carrier
+ * keeps each one addressable.
+ *
+ * The React subtree, incidentally, outlives the bar: the plugin takes the bar
+ * out of the document on hide (`dist/index.js:377-379` sets `visibility` and
+ * then calls `element.remove()`), but the element it was portalled into is the
+ * plugin's own and survives, so the buttons are rebuilt into the document
+ * on the next `show()` rather than remounted.
  */
 
 import * as React from 'react';
@@ -101,10 +108,11 @@ export const ToolButton = React.memo(function ToolButton({
       disabled={readOnly || !state.available}
       onClick={() => tool.run(editor)}
       data-testid={`doc-${carrier}-tool-${tool.id}`}
-      // The bubble bar sits over the text, so its buttons are a notch
-      // smaller than the top bar's — the demo spells that out as
-      // `.pop .tb-btn { height: 26px }` against the bar's own 28px.
-      className={cn(carrier === 'bubble' ? 'h-[26px] w-[26px]' : 'h-7 w-7')}
+      // The bubble bar sits over the text, so its buttons are a notch shorter
+      // than the top bar's — but only shorter. The demo's `.pop .tb-btn`
+      // (`:209`) overrides height alone, leaving `.tb-btn`'s own
+      // `min-width: 28px` (`:138-139`) in force, so the button stays 28 wide.
+      className={cn(carrier === 'bubble' ? 'h-[26px] w-7' : 'h-7 w-7')}
     >
       <Icon className='h-4 w-4' />
     </Button>
