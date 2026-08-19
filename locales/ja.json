@@ -221,7 +221,6 @@
       "selectDrivingVideoFromCanvas": "キャンバスで動きの元にする動画を選択",
       "selectDrivingAudioFromCanvas": "キャンバスで口の動きに合わせる音声を選択",
       "removeStyle": "スタイル参照を削除",
-      "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
       "locateSource": "ソースノードに移動",
       "presets": "プリセット",

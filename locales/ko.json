@@ -221,7 +221,6 @@
       "selectDrivingVideoFromCanvas": "캔버스에서 동작을 가져올 영상 선택",
       "selectDrivingAudioFromCanvas": "캔버스에서 입 모양이 따라갈 음성 선택",
       "removeStyle": "스타일 참조 제거",
-      "returnToNode": "노드로 돌아가기",
       "exitSelect": "종료",
       "locateSource": "소스 노드로 이동",
       "presets": "프리셋",

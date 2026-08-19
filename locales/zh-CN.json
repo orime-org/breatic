@@ -221,7 +221,6 @@
       "selectDrivingVideoFromCanvas": "在画布上选一段视频来驱动动作",
       "selectDrivingAudioFromCanvas": "在画布上选一段音频，口型跟着它动",
       "removeStyle": "移除风格参考",
-      "returnToNode": "返回节点",
       "exitSelect": "退出",
       "locateSource": "定位到源节点",
       "presets": "预设",

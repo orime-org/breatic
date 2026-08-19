@@ -230,7 +230,6 @@
       "selectDrivingVideoFromCanvas": "Pick a video on the canvas to drive the motion",
       "selectDrivingAudioFromCanvas": "Pick an audio track on the canvas for the lips to follow",
       "removeStyle": "Remove style reference",
-      "returnToNode": "Return to node",
       "exitSelect": "Exit",
       "locateSource": "Recenter the source node",
       "presets": "Presets",

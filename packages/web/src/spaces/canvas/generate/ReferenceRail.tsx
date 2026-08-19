@@ -231,9 +231,9 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               // `<img>` pointed at an `.mp4` is a broken image (#1821).
               kind={previewKindOf(ref.sourceNodeType)}
               src={
-                ref.sourceNodeType === 'text' ? undefined : ref.mediaUrl
+                ref.mediaUrl
               }
-              poster={ref.sourceNodeType === 'video' ? ref.thumbnail : undefined}
+              poster={ref.thumbnail}
               text={ref.textContent}
               alt={ref.sourceNodeName}
               emptyHint={emptyHint}
