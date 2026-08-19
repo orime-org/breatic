@@ -654,7 +654,7 @@ describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952�
     });
   }
 
-  it('池子空：屏幕上看得见「这一档没有可引用的内容」那句', async () => {
+  it('池子空：屏幕上看得见「没有可引用的内容」那句', async () => {
     await typeMention({ references: [], imageRefsDisabled: false });
     expect(screen.getByText(EMPTY)).toBeVisible();
     expect(screen.queryByText(NO_MATCH)).toBeNull();

@@ -182,14 +182,12 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             // The row itself never dims: the ✕ lives here too and it stays
             // usable in every state (user 2026-08-19). The dim belongs to the
             // CONTENT button below, which is the part this mode can or cannot
-            // use. Keeping it on the row was what forced "the whole rail lights
-            // or darkens together" — a per-row dim would have taken the ✕ with
-            // it and left the user unable to clear a row they cannot use.
+            // use. On the row it covered the ✕ as well, and the ✕ answered the
+            // same verdict through its own `aria-disabled` — one look and one
+            // decision for two controls that now say different things.
             //
-            // Exactly one layer of opacity, on the content button. Two (a row
-            // AND a control) would multiply to 0.25 and read as broken rather
-            // than unavailable, which is what #1945 was fixing when it moved
-            // the dim up here.
+            // Exactly one layer of opacity, and it sits on the content button:
+            // the wrapper carries none, so nothing multiplies down to 0.25.
             //
             // The hover preview is unaffected either way: it is portaled, so
             // no opacity on this subtree reaches it, and that is the wanted

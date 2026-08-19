@@ -56,10 +56,10 @@ interface VideoGeneratePanelProps {
    * the reference rail.
    *
    * In the rail it refuses INSERT on every row — nothing can be inserted into
-   * a prompt that is not sent — and so dims every row, text included. The ✕ is
-   * untouched: it removes in every state (#1952). A media row is dimmed by
-   * `modeTakesReferences` as well, because that is the question whose answer
-   * points at a mode where the row actually works.
+   * a prompt that is not sent — and so dims every row's CONTENT, text included.
+   * The ✕ is untouched: it removes in every state (#1952). A media row's
+   * content is dimmed by `modeTakesReferences` as well, because that is the
+   * question whose answer points at a mode where the row actually works.
    */
   promptRequired: boolean;
   /** Reference rows derived from this node's incoming edges. */

@@ -27,7 +27,7 @@ const NOTICE_KEYS = [
   'canvas.generatePanel.refuseInsertNoPrompt',
   'canvas.generatePanel.refuseInsertModeOff',
   'canvas.generatePanel.refuseInsertTypeUnused',
-  // #1949：执行按钮点下去说缺提示词的那句。跟上面两句同族（同命名空间、同
+  // #1949：执行按钮点下去说缺提示词的那句。跟上面三句同族（同命名空间、同
   // `toast.warning` 出口、缺了就完全静默），所以它也归这里管 —— 仓里的
   // `i18n-no-missing-keys` 只读 en.json，另外四份没有别的东西盯着。
   'canvas.generatePanel.refuseExecuteNoPrompt',

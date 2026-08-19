@@ -147,9 +147,9 @@ describe('ReferenceRail — a mode that ignores references dims its reference ma
   it('keeps the TEXT row untouched — this mode is already using it', () => {
     // This block is about the TEXT EXEMPTION: a mode that ignores references
     // says nothing about a row that feeds the prompt. Since #1952 every ✕
-    // removes regardless, so what this case still adds over
-    // `ReferenceRail-decoupled.test.tsx` is that the exemption holds for the
-    // text row specifically, not that removal is possible at all.
+    // removes regardless, and `ReferenceRail-decoupled.test.tsx` already pins
+    // that for every mode and every row. What is only here is the last line:
+    // removing a text row raises NO refusal toast.
     const { onRemove } = renderRail(false);
     expect(removeBtn('e-text')).not.toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(removeBtn('e-text'));

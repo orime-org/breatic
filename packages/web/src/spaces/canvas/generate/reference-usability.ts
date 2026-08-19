@@ -46,11 +46,14 @@
  * | text | Is there a prompt |
  * | image / audio / video / … | Does this mode use references; is there a prompt; is this row an image |
  *
- * Every reason names a state the user can leave and arrive somewhere the row
- * works: a media row becomes usable in a mode that takes references, a text row
- * in a mode that sends a prompt. Asking a media row about the prompt first
- * would have sent its user to t2v / i2v / first_last / animate — all of which
- * send a prompt and still refuse it.
+ * The two MODE-shaped reasons name a state the user can leave and arrive
+ * somewhere the row works: a media row becomes usable in a mode that takes
+ * references, a text row in a mode that sends a prompt. Asking a media row
+ * about the prompt first would have sent its user to t2v / i2v / first_last /
+ * animate — all of which send a prompt and still refuse it. The third,
+ * `source-type-unused`, names no such state: what the rail feeds is a list of
+ * image URLs, so an audio / video / 3d / web row is refused in every mode and
+ * the way out is a different row, not a different mode.
  *
  * A media row is asked two further things: is there a destination to insert
  * INTO, and can the pool carry this row.
@@ -117,9 +120,10 @@ export interface ReferenceUsabilityContext {
  * Whether a row is REFERENCE MATERIAL — what `takesReferences` reads on.
  *
  * A named predicate rather than a check spelled out at each site: the refusal
- * and the empty hint both ask this one question, and when they spelled it
+ * and the empty hint both ask this one question, and when they were spelled
  * differently ("is it one of the three media kinds" vs "is it not text") they
- * disagreed about `3d` and `web` — one lit the row while the other refused it.
+ * disagreed about `3d` and `web` — the refusal turned such a row down while
+ * the hint treated it as text and offered it the wrong sentence.
  * Text is the only modality that is not reference material, because it is
  * prompt material: its content substitutes into the prompt string.
  * @param kind - The upstream node's modality.
