@@ -1,0 +1,78 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * 一条会话的状态活得比看着它的那个面板长。
+ *
+ * 折叠 agent 列、切到别的会话再切回来、组件重新挂载——这些都不该把正在跑的
+ * 那一轮弄没。做法是 `Chat` 实例按会话 id 存在模块里，组件只订阅它，跟
+ * `data/yjs/canvas-space.ts` 的 `getCanvasUndoManager` 同一个形状：按数据
+ * 的 key 缓存，由明确的动作驱逐，不挂组件卸载。
+ *
+ * 这件事今天已经成立（`conversation-switching.test.ts:63` 钉着），迁移后
+ * 「不得回退」，所以这里钉的是新做法下它仍然成立。
+ *
+ * 设计见 inner `engineering/specs/2026-08-19-usechat-migration-design.md`
+ * §6.3。验收 A4。
+ */
+import { describe, it, expect, beforeEach } from 'vitest';
+import { chatSessionFor, evictChatSession, evictAllChatSessions } from '@web/stores/chat-sessions';
+import type { StoredUiMessage } from '@web/stores/chat-sessions';
+
+/** 一条读回来的历史，够用就行。 */
+const HISTORY: StoredUiMessage[] = [
+  {
+    id: 'row-1',
+    role: 'user',
+    parts: [{ type: 'text', text: '之前说过的话' }],
+    metadata: { turnIndex: 1, ts: '2026-08-19T00:00:00Z' },
+  },
+];
+
+describe('会话的 Chat 实例', () => {
+  beforeEach(() => {
+    evictAllChatSessions();
+  });
+
+  it('同一条会话拿到的是同一个', () => {
+    const first = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY });
+    const again = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY });
+
+    expect(again).toBe(first);
+  });
+
+  it('两条会话各是各的', () => {
+    const one = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [] });
+    const other = chatSessionFor({ projectId: 'p-1', conversationId: 'c-2', history: [] });
+
+    expect(other).not.toBe(one);
+  });
+
+  it('第二次给的历史不动已有的那条会话', () => {
+    // 这一条是 A4 的核心。一轮正在跑的时候，面板重新挂载会再读一次历史；
+    // 拿它去覆盖，屏幕上正在长出来的那半句就没了。
+    const chat = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [] });
+    chat.messages = [
+      {
+        id: 'in-flight',
+        role: 'assistant',
+        parts: [{ type: 'text', text: '正在写' }],
+        metadata: { turnIndex: 2, ts: '2026-08-19T00:00:02Z' },
+      },
+    ];
+
+    const again = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY });
+
+    expect(again.messages).toHaveLength(1);
+    expect(again.messages[0]?.id).toBe('in-flight');
+  });
+
+  it('驱逐之后再拿是新的一个', () => {
+    const before = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [] });
+    evictChatSession('c-1');
+    const after = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY });
+
+    expect(after).not.toBe(before);
+    expect(after.messages).toHaveLength(1);
+  });
+});
