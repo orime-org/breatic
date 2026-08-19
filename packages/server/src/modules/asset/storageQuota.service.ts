@@ -18,8 +18,7 @@
  * against their own personal studio, however full that is.
  *
  * IT DOES NOT LOOK AT HOW BIG THIS WRITE IS. More than zero bytes left means
- * go ahead; zero means full (user 2026-08-19: 「剩余的存储容量大于 0，那就
- * 允许当前操作（等于 0 肯定不行了）」).
+ * go ahead; zero left means full, and is already refused (user 2026-08-19).
  *
  * IT COMPLETES THE REFUSAL ITSELF rather than reporting a verdict. Callers get
  * an allowance back or an exception — there is no third answer for them to act

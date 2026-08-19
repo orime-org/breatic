@@ -83,6 +83,15 @@ async function insertUserWithStudio(
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${userId}, ${slug}, 'personal', ${name}) RETURNING id
   `;
+  // Every studio has exactly one admin in production — a personal studio's
+  // owner holds that row like any other studio's does. The fixture went
+  // without it until #89 put a ceiling lookup on this path, which resolves a
+  // studio through its CURRENT admin and rightly treats a studio with none as
+  // corrupt.
+  await sql`
+    INSERT INTO studio_members (studio_id, user_id, role)
+    VALUES (${studios[0]!.id}, ${userId}, 'admin')
+  `;
   return { userId, studioId: studios[0]!.id };
 }
 
@@ -92,6 +101,11 @@ async function insertProject(ownerUserId: string): Promise<string> {
   const studios = await sql<{ id: string }[]>`
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${ownerUserId}, ${slug}, 'team', ${`S ${slug}`}) RETURNING id
+  `;
+  // Same reason as above: one admin per studio is a production invariant.
+  await sql`
+    INSERT INTO studio_members (studio_id, user_id, role)
+    VALUES (${studios[0]!.id}, ${ownerUserId}, 'admin')
   `;
   const pslug = `act-proj-${seq++}`;
   const projects = await sql<{ id: string }[]>`

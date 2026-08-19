@@ -23,8 +23,11 @@ import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { assetUploadService, projectService } from "@server/modules";
-import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
+import {
+  assertStorageAllowance,
+  assetUploadService,
+  projectService,
+} from "@server/modules";
 import {
   getStorageAdapter,
   getStorageConfig,

@@ -32,8 +32,12 @@ import {
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { assertSkillUsable } from "@breatic/domain";
-import { projectService, authService, precheckCredits } from "@server/modules";
-import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
+import {
+  assertStorageAllowance,
+  authService,
+  precheckCredits,
+  projectService,
+} from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import {
   AppError,
