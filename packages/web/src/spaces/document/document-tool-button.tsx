@@ -108,6 +108,13 @@ export const ToolButton = React.memo(function ToolButton({
       disabled={readOnly || !state.available}
       onClick={() => tool.run(editor)}
       data-testid={`doc-${carrier}-tool-${tool.id}`}
+      // The bubble bar stays out of the tab order entirely (ruling §5.2): it
+      // floats over the body, and anything floating over the body that takes
+      // focus collides with the body's own focus. The top bar sits beside the
+      // body and is always there, so it keeps its tab stops — it is the
+      // keyboard route to these same six commands, together with their
+      // shortcuts.
+      tabIndex={carrier === 'bubble' ? -1 : undefined}
       // The bubble bar sits over the text, so its buttons are a notch shorter
       // than the top bar's — but only shorter. The demo's `.pop .tb-btn`
       // (`:209`) overrides height alone, leaving `.tb-btn`'s own

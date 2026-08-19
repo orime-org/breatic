@@ -10,7 +10,7 @@
  * have several entry points; what is forbidden is mixing objects inside one
  * carrier). This slice adds no command of its own.
  *
- * ## Four things the stock component does not do for us
+ * ## Six things the stock component does not do for us
  *
  * Read off the installed `@tiptap/extension-bubble-menu@3.29.2`, whose props
  * `@tiptap/react/menus` passes straight through:
@@ -36,10 +36,32 @@
  *   neither selection nor document changed). Our scrolling happens inside the
  *   ScrollArea viewport, whose scroll events do not reach `window`. Left
  *   unset, the bar would sit still while the text moved under it.
+ * - **Which box decides "it does not fit".** `flip`'s boundary defaults to the
+ *   clipping ancestors (floating-ui `detectOverflow`), which here is the
+ *   workspace's `overflow-hidden` layer — its top sits 40px ABOVE the text, so
+ *   flip believes there is room where the reader sees none. The box to judge
+ *   against is the body's own visible area, which is what Lexical compares to
+ *   (`editorScrollerRect.top`). Hence `flip: { boundary }`.
+ * - **The gap.** The plugin builds its middleware in the order flip, shift,
+ *   offset (`:195-218`), and floating-ui runs them in array order — so flip
+ *   decides before the 8px gap exists. floating-ui's own guidance is the
+ *   opposite ("offset() should generally be placed at the beginning of your
+ *   middleware array") and the plugin takes no custom middleware array, so the
+ *   order cannot be fixed from here. The gap therefore lives in the anchor
+ *   rectangle instead — see {@link anchorRect} — and no `offset` is passed.
+ *
+ * ## And one thing it does that we undo
+ *
+ * `:178` makes the bar itself focusable (`tabIndex = 0`). The ruling (§5.2)
+ * keeps the whole bar out of the tab order: the top bar sits BESIDE the body
+ * and is always there, while this one floats ON TOP of it, and anything
+ * floating over the body that takes focus collides with the body's own focus
+ * with no way to reconcile them. The six commands stay reachable from the
+ * keyboard through the top bar and their own shortcuts.
  */
 
 import * as React from 'react';
-import type { Editor } from '@tiptap/react';
+import { useEditorState, type Editor } from '@tiptap/react';
 import { posToDOMRect } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 import { BubbleMenu } from '@tiptap/react/menus';
@@ -48,13 +70,14 @@ import {
   ToolButton,
   type ToolDef,
 } from '@web/spaces/document/document-tool-button';
-import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/DocumentToolbar';
+import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
+import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 
 /** The commands this carrier shows, in the order the ruling lists them. */
 const BUBBLE_TOOLS: ToolDef[] = [...MARK_TOOLS, ...BLOCK_TOOLS];
 
-/** How far above the selection the bar sits, per the ruling's visual spec. */
-const OFFSET_FROM_SELECTION_PX = 8;
+/** How far from the selection the bar sits, per the ruling's visual spec. */
+const GAP_FROM_SELECTION_PX = 8;
 
 /**
  * The document position the bar sits above.
@@ -93,7 +116,9 @@ function pickAnchorPos(view: EditorView, bounds: DOMRect): number {
     return line.bottom > bounds.top && line.top < bounds.bottom;
   };
 
-  if (head >= from && head <= to && isVisible(head)) return head;
+  // `head` is always inside `[from, to]` — a selection defines them as the min
+  // and max of its anchor and head — so the only question is whether it shows.
+  if (isVisible(head)) return head;
   if (isVisible(from)) return from;
 
   // The selection starts above the fold. Ask what sits on the first visible
@@ -106,17 +131,50 @@ function pickAnchorPos(view: EditorView, bounds: DOMRect): number {
 }
 
 /**
- * A zero-width rectangle standing in for one line of text.
+ * The box the selection occupies on screen.
+ *
+ * The live DOM range rather than `posToDOMRect`: that helper takes the min of
+ * the two endpoints' x (`@tiptap/core` `dist/index.js:2443`), which over a
+ * selection spanning several lines is neither endpoint's line nor the leftmost
+ * edge the reader sees — a middle line starting at the block edge is left out
+ * of the sample entirely. The range's own bounding box covers every line.
+ *
+ * The range is in step with the editor's selection whenever the bar is up: the
+ * plugin only shows it while the editor holds focus, and the bar itself never
+ * takes focus away (see the note at the top of this file).
+ * @param view - The editor view, for the fallback measurement.
+ * @returns The selection's bounding box in viewport coordinates.
+ */
+function selectionBox(view: EditorView): DOMRect {
+  const selection = view.dom.ownerDocument.defaultView?.getSelection();
+  if (selection && selection.rangeCount > 0) {
+    return selection.getRangeAt(0).getBoundingClientRect();
+  }
+  const { from, to } = view.state.selection;
+  return posToDOMRect(view, from, to);
+}
+
+/**
+ * A zero-width rectangle standing in for one line of text, grown by the gap.
+ *
+ * The gap belongs here rather than in an `offset` middleware because flip runs
+ * BEFORE offset in this plugin and would otherwise decide whether the bar fits
+ * without knowing the bar needs 8px more than its own height. Growing the
+ * anchor says the same thing in a form flip can see, and it says it on both
+ * sides at once, so the gap comes out right whichever way the bar ends up.
  *
  * Zero width is not a shortcut: `top-start` reads the left edge and the top,
  * and a right edge would only invite the shift middleware to slide the bar
  * along a box the user never selected.
- * @param left - Left edge, in viewport coordinates.
- * @param top - Top edge, in viewport coordinates.
- * @param bottom - Bottom edge, in viewport coordinates.
+ * @param left - Left edge of the selection, in viewport coordinates.
+ * @param line - The anchored line's vertical extent, in viewport coordinates.
+ * @param line.top - Its top edge.
+ * @param line.bottom - Its bottom edge.
  * @returns The rectangle.
  */
-function lineRect(left: number, top: number, bottom: number): DOMRect {
+function anchorRect(left: number, line: { top: number; bottom: number }): DOMRect {
+  const top = line.top - GAP_FROM_SELECTION_PX;
+  const bottom = line.bottom + GAP_FROM_SELECTION_PX;
   return new DOMRect(left, top, 0, Math.max(0, bottom - top));
 }
 
@@ -136,54 +194,87 @@ interface SelectionBubbleBarProps {
 
 /**
  * The formatting bar that follows the selection.
+ *
+ * Resolves the body's scroll container and renders nothing until it has it.
+ * That is not defensiveness: the plugin reads `options.scrollTarget` when it
+ * registers, and the only chance to hand it the right one is before that.
+ * Handing it over on a later render does not work either — the React wrapper
+ * drops the first update after registration (`skipFirstUpdateRef`,
+ * `@tiptap/react/dist/menus/index.js`), and React batches that skipped update
+ * with the state change that carries the viewport. Measured: passed late, the
+ * plugin's target stayed `window` through mount and selection and only became
+ * the viewport once something else re-rendered `DocumentEditor` — which, being
+ * memoised on a history object that changes only after the user edits, never
+ * happens in a freshly opened document. Waiting one commit costs nothing;
+ * there is no selection to float above on the first frame either.
+ *
+ * Splitting the resolution from the bar is what keeps every branch below live:
+ * with the viewport known non-null, nothing downstream has to ask again.
  * @param root0 - Bar props.
  * @param root0.editor - The editor this bar acts on.
  * @param root0.readOnly - True for a viewer; the bar stays away entirely.
- * @returns The bar, or null for a viewer.
+ * @returns The bar, or null for a viewer and until the scroller is in hand.
  */
 export function SelectionBubbleBar({
   editor,
   readOnly = false,
 }: SelectionBubbleBarProps): React.JSX.Element | null {
-  // Resolved when the plugin mounts the bar rather than on render: at render
-  // time the scroller may not be in the document yet, and `appendTo` accepts a
-  // function precisely so the answer can be given later (`dist/index.js:366`).
-  const appendTo = React.useCallback(
-    () => document.querySelector<HTMLElement>('.doc-body-scroller')?.parentElement
-      ?? document.body,
-    [],
-  );
-
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
   // The viewport exists one commit after this component first renders, so it
   // cannot be read during that first render.
   React.useEffect(() => {
     setViewport(
       document.querySelector<HTMLElement>(
-        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+        `.${BODY_SCROLLER_CLASS} [data-radix-scroll-area-viewport]`,
       ),
     );
   }, []);
 
+  if (readOnly) return null;
+  if (!viewport) return null;
+  return <BubbleBar editor={editor} viewport={viewport} />;
+}
+
+/**
+ * The bar itself, once the scroller it lives against is known.
+ * @param root0 - Bar props.
+ * @param root0.editor - The editor this bar acts on.
+ * @param root0.viewport - The body's visible box: what the anchor is judged
+ *   against, what flip treats as its boundary, and what scrolling is watched on.
+ * @returns The bar.
+ */
+function BubbleBar({
+  editor,
+  viewport,
+}: {
+  editor: Editor;
+  viewport: HTMLElement;
+}): React.JSX.Element {
+  // Resolved when the plugin mounts the bar rather than on render: at render
+  // time the scroller may not be in the document yet, and `appendTo` accepts a
+  // function precisely so the answer can be given later (`dist/index.js:366`).
+  const appendTo = React.useCallback(
+    () =>
+      document.querySelector<HTMLElement>(`.${BODY_SCROLLER_CLASS}`)
+        ?.parentElement ?? document.body,
+    [],
+  );
+
   const getReferencedVirtualElement = React.useCallback(() => {
-    if (!viewport) return null;
     const { view } = editor;
     if (view.state.selection.empty) return null;
-    const bounds = viewport.getBoundingClientRect();
-    const { from, to } = view.state.selection;
-    const line = view.coordsAtPos(pickAnchorPos(view, bounds));
+    const line = view.coordsAtPos(
+      pickAnchorPos(view, viewport.getBoundingClientRect()),
+    );
     // The two axes come from different places, and they have to. Vertically the
     // bar belongs to ONE line — the anchor. Horizontally the ruling asks for
-    // the selection's left edge, and the anchor's own x is no such thing: the
-    // anchor is usually the head, which for a `Mod-a` sits at the END of the
-    // last line. Measured, taking x from the anchor put the bar 314px right of
-    // where the ruling wants it.
-    const left = posToDOMRect(view, from, to).left;
-    // Clip the line into the viewport. Whole-block selections start at the top
-    // of a block that may itself be half scrolled away, and a bar hung off the
-    // part above the fold is a bar nobody can see.
-    const top = Math.max(line.top, bounds.top);
-    const rect = lineRect(left, top, Math.max(top, line.bottom));
+    // the selection's left edge, which is the left of the box it occupies: the
+    // anchor's own x is no such thing (it is usually the head, and a `Mod-a`'s
+    // head sits at the END of the last line — measured, taking x from there put
+    // the bar 314px right of where the ruling wants it), and neither is
+    // `posToDOMRect`, which samples only the two endpoints and so misses the
+    // block edge that a middle line starts at.
+    const rect = anchorRect(selectionBox(view).left, line);
     return {
       getBoundingClientRect: () => rect,
       getClientRects: () => [rect] as unknown as DOMRectList,
@@ -193,46 +284,60 @@ export function SelectionBubbleBar({
   const options = React.useMemo(
     () => ({
       placement: 'top-start' as const,
-      offset: OFFSET_FROM_SELECTION_PX,
-      flip: true,
-      ...(viewport ? { scrollTarget: viewport } : {}),
+      // Off, not absent: the plugin's own default is `offset: 8`
+      // (`dist/index.js:49`) and our options are spread over the defaults, so
+      // leaving it out keeps it. The gap is part of the anchor already (see
+      // `anchorRect`); letting the middleware add it too would double it.
+      offset: false as const,
+      flip: { boundary: viewport },
+      scrollTarget: viewport,
     }),
     [viewport],
   );
 
-  if (readOnly) return null;
-  // Nothing is rendered until the viewport is in hand, and that is the whole
-  // point: the plugin reads `options.scrollTarget` once, in its constructor
-  // (`dist/index.js:172`). Handing the option over later does not reach it —
-  // the component's own update path drops the first change it is given
-  // (`@tiptap/react/dist/menus/index.js` sets `skipFirstUpdateRef` when the
-  // plugin registers, and React batches that with this component's own state
-  // update, so the two collapse into the one update that gets skipped).
-  // Measured: with the option passed late, the plugin's `scrollTarget` stayed
-  // `window` through mount and selection, and only became the viewport after
-  // something else re-rendered `DocumentEditor` — which, being memoised on a
-  // history object that only changes once the user has edited, does not happen
-  // in a freshly opened document at all. Waiting one commit costs nothing:
-  // there is no selection to float above on the very first frame either.
-  if (!viewport) return null;
+  const barRef = React.useRef<HTMLDivElement | null>(null);
+  // The last word on the bar's tab index. The plugin assigns `tabIndex = 0` in
+  // its constructor (`dist/index.js:178`), which the React wrapper runs in a
+  // passive effect — after the layout effect that writes our props
+  // (`@tiptap/react/dist/menus/index.js:275`), so passing `tabIndex` as a prop
+  // loses. A parent's effects run after its children's, so this one is last;
+  // no dependency array, because the plugin re-registers inside an effect of
+  // its own and every such re-registration is followed by this.
+  React.useEffect(() => {
+    if (barRef.current) barRef.current.tabIndex = -1;
+  });
+
+  // Whether there is a selection at all, subscribed rather than read during
+  // render — a co-editor's change arrives with no React render behind it. The
+  // buttons are built only while it is true: each of them runs its command's
+  // dry run on every transaction, and the bar spends almost all of its life
+  // hidden, so leaving them mounted doubles that work (six extra dry runs per
+  // keystroke) for a carrier nobody can see.
+  const hasSelection = useEditorState({
+    editor,
+    selector: ({ editor: e }) => (e ? !e.state.selection.empty : false),
+  });
 
   return (
     <BubbleMenu
       editor={editor}
       appendTo={appendTo}
       getReferencedVirtualElement={getReferencedVirtualElement}
+      ref={barRef}
       options={options}
       data-testid='doc-selection-bubble-bar'
       className='flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
     >
-      {BUBBLE_TOOLS.map((tool) => (
-        <ToolButton
-          key={tool.id}
-          tool={tool}
-          editor={editor}
-          carrier='bubble'
-        />
-      ))}
+      {hasSelection
+        ? BUBBLE_TOOLS.map((tool) => (
+          <ToolButton
+            key={tool.id}
+            tool={tool}
+            editor={editor}
+            carrier='bubble'
+          />
+        ))
+        : null}
     </BubbleMenu>
   );
 }

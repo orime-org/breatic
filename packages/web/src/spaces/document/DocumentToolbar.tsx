@@ -2,26 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type { Editor } from '@tiptap/react';
-import {
-  Bold,
-  Italic,
-  List,
-  ListOrdered,
-  Quote,
-  Redo2,
-  Strikethrough,
-  Undo2,
-} from 'lucide-react';
+import { Bold, Redo2, Undo2 } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { Separator } from '@web/components/ui/separator';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
-import {
-  ToolButton,
-  type ToolDef,
-} from '@web/spaces/document/document-tool-button';
+import { ToolButton } from '@web/spaces/document/document-tool-button';
+import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
 import type { DocumentHistoryState } from '@web/spaces/document/use-document-history';
 
 interface DocumentToolbarProps {
@@ -79,90 +68,6 @@ const HISTORY_TOOLS: ActionDef[] = [
     Icon: Redo2,
     isEnabled: (history) => history.canRedo,
     run: (e) => e.chain().focus().redo().run(),
-  },
-];
-
-/**
- * The formatting controls. What they DO is untouched by this slice — the
- * editing feature set is separate work — and three things about how they do it
- * changed, each because the document is now shared:
- *
- * 1. They are disabled for a viewer. Before, nothing was: there was no viewer
- *    role to speak of, because the document was local to whoever opened it.
- * 2. Their pressed state is subscribed rather than read during render. A
- *    co-editor's change arrives with no React render behind it, so a value
- *    computed in the render body would show whatever was true last time this
- *    component happened to re-render.
- * 3. Their labels go through i18n, where they were hard-coded English. Undo and
- *    redo could not be hard-coded, and a toolbar half translated is worse than
- *    either.
- */
-export const MARK_TOOLS: ToolDef[] = [
-  {
-    id: 'bold',
-    labelKey: 'spaces.document.toolbar.bold',
-    Icon: Bold,
-    isActive: (e) => e.isActive('bold'),
-    canRun: (e) => e.can().chain().toggleBold().run(),
-    run: (e) => e.chain().focus().toggleBold().run(),
-  },
-  {
-    id: 'italic',
-    labelKey: 'spaces.document.toolbar.italic',
-    Icon: Italic,
-    isActive: (e) => e.isActive('italic'),
-    canRun: (e) => e.can().chain().toggleItalic().run(),
-    run: (e) => e.chain().focus().toggleItalic().run(),
-  },
-  {
-    id: 'strike',
-    labelKey: 'spaces.document.toolbar.strike',
-    Icon: Strikethrough,
-    isActive: (e) => e.isActive('strike'),
-    canRun: (e) => e.can().chain().toggleStrike().run(),
-    run: (e) => e.chain().focus().toggleStrike().run(),
-  },
-];
-
-/**
- * Block-level formatting, likewise unchanged.
- *
- * These ask the dry run and nothing else, exactly as the marks above do. The
- * dry run is conservative for the two list commands — they clear the block
- * type before wrapping, and a dry run performs no steps, so over a body
- * heading or code block it answers no while the command works. That belongs to
- * the slice that owns the body's editing behaviour (#85); a dark button that
- * would have worked is the direction R7 permits.
- *
- * Two attempts to widen the answer past the dry run are what this reverts.
- * The second lit the list buttons over a selection where pressing one
- * stripped a body heading to a paragraph and produced no list, because the
- * clearing step lands even when the wrap that follows it fails.
- */
-export const BLOCK_TOOLS: ToolDef[] = [
-  {
-    id: 'bullet-list',
-    labelKey: 'spaces.document.toolbar.bulletList',
-    Icon: List,
-    isActive: (e) => e.isActive('bulletList'),
-    canRun: (e) => e.can().chain().toggleBulletList().run(),
-    run: (e) => e.chain().focus().toggleBulletList().run(),
-  },
-  {
-    id: 'ordered-list',
-    labelKey: 'spaces.document.toolbar.orderedList',
-    Icon: ListOrdered,
-    isActive: (e) => e.isActive('orderedList'),
-    canRun: (e) => e.can().chain().toggleOrderedList().run(),
-    run: (e) => e.chain().focus().toggleOrderedList().run(),
-  },
-  {
-    id: 'quote',
-    labelKey: 'spaces.document.toolbar.quote',
-    Icon: Quote,
-    isActive: (e) => e.isActive('blockquote'),
-    canRun: (e) => e.can().chain().toggleBlockquote().run(),
-    run: (e) => e.chain().focus().toggleBlockquote().run(),
   },
 ];
 

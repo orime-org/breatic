@@ -25,7 +25,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
-import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/DocumentToolbar';
+import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
 
 /** 空的撤销重做状态——本文件不测历史，给它一个静止值就够。 */
 const NO_HISTORY = { canUndo: false, canRedo: false } as const;
@@ -106,8 +106,14 @@ function mount(editor: Editor, readOnly = false): void {
 
 /** 插件视图上我们真正配进去的那几样，取出来直接问。 */
 interface BubblePluginView {
+  element?: HTMLElement;
   scrollTarget?: unknown;
   getReferencedVirtualElement?: () => { getBoundingClientRect: () => DOMRect } | null;
+  floatingUIOptions?: {
+    offset?: unknown;
+    flip?: { boundary?: unknown } | boolean;
+    placement?: string;
+  };
 }
 
 /**
@@ -140,6 +146,21 @@ function pinViewport(box: DOMRect): void {
   );
   expect(viewport).not.toBeNull();
   (viewport as HTMLElement).getBoundingClientRect = () => box;
+}
+
+/** 锚点测试里选区包围盒的固定值，`left` 是水平轴唯一该取的那个数。 */
+const SELECTION_BOX = new DOMRect(137, 0, 400, 20);
+
+/**
+ * 把选区包围盒钉成一个已知的矩形。
+ *
+ * 水平方向取的是它，跟竖直方向取自文档位置是两回事——jsdom 里两样都得钉。
+ * 改的是 `Range.prototype`，而 `vitest.setup.ts` 只在它缺失时才补一个零矩形，
+ * 所以这里是覆盖不是叠加；afterEach 不用还原，下一个文件重新跑 setup。
+ * @param box - 要钉的包围盒。
+ */
+function pinSelectionBox(box: DOMRect): void {
+  Range.prototype.getBoundingClientRect = () => box;
 }
 
 /** 正文带标记的样子，用来判命令有没有真的改到文档。 */
@@ -238,6 +259,10 @@ describe('选中浮出条', () => {
   // 而这段逻辑判的正是「这一行看得见吗」。所以钉一个可见框（纵向 100 到 500），
   // 再让每个文档位置回答一个已知的行坐标。
   describe('锚点', () => {
+    beforeEach(() => {
+      pinSelectionBox(SELECTION_BOX);
+    });
+
     /**
      * 让每个文档位置回答一个已知的行坐标。
      * @param editor - 编辑器。
@@ -270,9 +295,11 @@ describe('选中浮出条', () => {
         ?.getBoundingClientRect();
 
       expect(rect).toBeDefined();
-      expect(rect?.top).toBe(250);
-      // 竖直取自那一行，水平取自选区自己的左边——全选的 from 是 0，左边 40。
-      expect(rect?.left).toBe(40);
+      // 那一行是 250 到 270，锚点矩形上下各撑一个间距（8），所以是 242 到 278。
+      expect(rect?.top).toBe(242);
+      expect(rect?.bottom).toBe(278);
+      // 水平取自选区包围盒，跟锚定在哪一行无关。
+      expect(rect?.left).toBe(SELECTION_BOX.left);
     });
 
     it('拖出来的选区锚在松手那一行——也就是选区的 head', async () => {
@@ -292,12 +319,40 @@ describe('选中浮出条', () => {
         .getReferencedVirtualElement?.()
         ?.getBoundingClientRect();
 
-      expect(rect?.top).toBe(200);
-      // 锚的是 6 那一行，左边仍然是选区左边缘（from = 1 → 41），不是行尾。
-      expect(rect?.left).toBe(41);
+      // 锚的是 6 那一行（200 到 220），上下各撑 8。
+      expect(rect?.top).toBe(192);
+      expect(rect?.bottom).toBe(228);
+      // 左边取自选区包围盒，不是行尾、也不是锚定那一行的 x。
+      expect(rect?.left).toBe(SELECTION_BOX.left);
     });
 
-    it('锚的那一行只露出下半截时，浮出条贴在可见区域上沿', async () => {
+    it('间距做在锚点矩形上，不交给 offset 中间件', async () => {
+      const editor = open('<p>hello world</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+
+      // 插件只有在 `options.offset` 为真时才往中间件里推 offset
+      // （`dist/index.js:211-217`）。间距既然做进了锚点，这里必须是假值，
+      // 否则 8px 会被加两次。
+      expect(bubblePluginView(editor).floatingUIOptions?.offset).toBeFalsy();
+    });
+
+    it('翻转的判据是正文可见区，不是默认的裁切祖先', async () => {
+      const editor = open('<p>hello world</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+
+      const viewport = document.querySelector(
+        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+      );
+      const flip = bubblePluginView(editor).floatingUIOptions?.flip;
+
+      expect(viewport).not.toBeNull();
+      expect(typeof flip).toBe('object');
+      expect((flip as { boundary?: unknown }).boundary).toBe(viewport);
+    });
+
+    it('锚定那一行在可见区上方时不再被夹住——翻不翻由 flip 定', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 6);
@@ -313,9 +368,10 @@ describe('选中浮出条', () => {
         .getReferencedVirtualElement?.()
         ?.getBoundingClientRect();
 
-      // 锚到 90 就是锚到看不见的地方，收进来才对。
-      expect(rect?.top).toBe(100);
-      expect(rect?.bottom).toBe(110);
+      // 原来这里会把顶夹到 100。夹住等于骗 flip：它看到的空间比实际多，
+      // 于是永远不翻，而条被裁掉一截。现在如实交出去。
+      expect(rect?.top).toBe(82);
+      expect(rect?.bottom).toBe(118);
     });
 
     it('选区为空时不给锚点', async () => {
@@ -332,6 +388,107 @@ describe('选中浮出条', () => {
         bubblePluginView(editor).getReferencedVirtualElement?.(),
       ).toBeNull();
     });
+  });
+
+  // 没有选区时六个按钮根本不建。查的是插件自己那个元素而不是 document：条隐藏
+  // 时它被 `element.remove()` 摘出文档（`dist/index.js:377-379`），从 document
+  // 里查什么都查不到，那样的断言分辨不出「没建」和「建了但不在文档里」。
+  //
+  // 为什么要不建：每个按钮都在每一笔事务上跑一次自己命令的干跑（`canRun`），
+  // 而浮出条绝大多数时间是隐藏的——留着它们等于给每次击键多付六次干跑，换来
+  // 一个没人看得见的载体。
+  it('没有选区时，浮出条里一个按钮都不建', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+    const view = bubblePluginView(editor);
+    expect(
+      view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
+    ).toHaveLength(6);
+
+    act(() => {
+      editor.commands.setTextSelection(3);
+    });
+
+    await waitFor(() => {
+      expect(
+        view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
+      ).toHaveLength(0);
+    });
+  });
+
+  // A9：浮出条整条不进 tab 序（定稿 §5.2，user 2026-08-19 拍定）。
+  //
+  // 理由是层次：顶部横条跟正文并排、常驻，这一条浮在正文**上面**，而浮在上面
+  // 的东西一旦拿走焦点就跟正文的焦点直接冲突。插件默认把容器设成
+  // `tabIndex = 0`（`dist/index.js:178`），六个按钮又是原生 `<button>`、天生
+  // 可聚焦，所以两样都要显式关掉。
+  it('浮出条整条不接受 Tab 焦点：容器和六个按钮都是 -1', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const bar = document.querySelector<HTMLElement>(
+      '[data-testid="doc-selection-bubble-bar"]',
+    );
+    const buttons = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid^="doc-bubble-tool-"]'),
+    );
+
+    expect(bar).not.toBeNull();
+    expect(bar?.tabIndex).toBe(-1);
+    expect(buttons).toHaveLength(6);
+    for (const button of buttons) {
+      expect(button.tabIndex).toBe(-1);
+    }
+  });
+
+  // A9 的另一半：顶部横条**不受影响**，它照常在 tab 序里——键盘用户的路就是它。
+  it('顶部横条的按钮照常可聚焦', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const toolbarButtons = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid^="doc-toolbar-tool-"]'),
+    );
+
+    expect(toolbarButtons.length).toBeGreaterThan(0);
+    for (const button of toolbarButtons) {
+      expect(button.tabIndex).toBe(0);
+    }
+  });
+
+  // A8：两个载体的同名命令共用同一个 `canRun`，所以同一选区下亮暗必须一致。
+  // 设计 §9 写了这一条，第一轮却一条测试都没有。
+  it.each([
+    ['整段普通文字都能用', '<p>hello world</p>', 1, 6, false],
+    ['代码块里标记类命令用不了', '<pre><code>hello</code></pre>', 1, 6, true],
+  ])('%s：两个载体的同名按钮亮暗一致', async (_name, body, from, to, hasDark) => {
+    const editor = open(body);
+    mount(editor);
+    await selectWithFocus(editor, from, to);
+
+    // 先确认这个选区真的造出了要测的那种局面。少了这一句，将来某天六个按钮
+    // 全亮或全暗，两个载体照样「一致」，这条测试就变成了空话。
+    const bubbleDisabled = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('[data-testid^="doc-bubble-tool-"]'),
+    ).filter((b) => b.disabled).length;
+    expect(bubbleDisabled > 0).toBe(hasDark);
+
+    for (const tool of [...MARK_TOOLS, ...BLOCK_TOOLS]) {
+      const inBubble = document.querySelector<HTMLButtonElement>(
+        `[data-testid="doc-bubble-tool-${tool.id}"]`,
+      );
+      const inToolbar = document.querySelector<HTMLButtonElement>(
+        `[data-testid="doc-toolbar-tool-${tool.id}"]`,
+      );
+      expect(inBubble).not.toBeNull();
+      expect(inToolbar).not.toBeNull();
+      expect(`${tool.id}:${String(inBubble?.disabled)}`).toBe(
+        `${tool.id}:${String(inToolbar?.disabled)}`,
+      );
+    }
   });
 
   // A7：viewer 整条不出现（定稿 §3.3.1）。

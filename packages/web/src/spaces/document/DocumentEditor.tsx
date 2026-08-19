@@ -6,6 +6,7 @@ import type { Editor } from '@tiptap/react';
 import * as React from 'react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DocumentToolbar } from '@web/spaces/document/DocumentToolbar';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 import type { DocumentHistoryState } from '@web/spaces/document/use-document-history';
@@ -48,7 +49,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           The top and bottom breathing room does not: it belongs to the
           editable surface itself, or the strip of it below the last block
           answers no clicks (see `index.css`, `.doc-body-editor .ProseMirror`). */}
-      <ScrollArea className='doc-body-scroller flex-1' viewportClassName='px-6'>
+      <ScrollArea
+        className={`${BODY_SCROLLER_CLASS} flex-1`}
+        viewportClassName='px-6'
+      >
         <EditorContent
           editor={editor}
           data-testid='document-editor-content'

@@ -20,14 +20,31 @@ test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 test.use({ viewport: { width: 1680, height: 950 } });
 
-/** 登录并进到一个新建的 Document Space，光标已在正文里。 */
-async function openFreshDocument(page: Page): Promise<void> {
+/** 正文可见区的顶距窗口顶多少 —— 顶部那排 chrome 是固定高度，实测恒为它。 */
+const BODY_VIEWPORT_TOP = 120;
+
+// 一次登录，全文件共用一个页面。登录限流是 5 次每分钟，而这里有 7 条用例——
+// 每条各登一次必然从第六条起全部超时在登录页上（实测）。串行加共用页面既避开
+// 限流，也避开「同一个账号同时开好几个会话」这种本文件不打算测的东西。
+test.describe.configure({ mode: 'serial' });
+
+let page: Page;
+
+test.beforeAll(async ({ browser }) => {
+  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
   await page.goto('/login');
   await page.locator('#login-email').fill(email as string);
   await page.locator('#login-password').fill(password as string);
   await page.locator('form button[type="submit"]').click();
   await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+});
 
+test.afterAll(async () => {
+  await page?.close();
+});
+
+/** 进到一个新建的 Document Space，光标已在正文里。 */
+async function openFreshDocument(page: Page): Promise<void> {
   await page.goto('/studio');
   const firstProject = page.locator('a[href^="/project/"]').first();
   await expect(firstProject).toBeVisible({ timeout: 15_000 });
@@ -54,8 +71,100 @@ async function selectFirstParagraph(page: Page): Promise<void> {
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
 }
 
+/**
+ * 三击选中第 i 段。
+ *
+ * 不用 `Shift+End`：macOS 上 `End` 是「跳到文档末尾」不是「行尾」，那样选到的
+ * 是从点击处到全文结尾，head 落在最后一行，量到的完全是另一个场景（实测）。
+ *
+ * 先把上一次的选区收掉、等浮出条真的从 DOM 里消失，再三击。少了这一步，第二
+ * 次调用时浮出条本来就还在屏上，`toBeVisible` 当场返回，量到的是它**还没重算
+ * 完**的旧位置（插件对选区变化有 250ms 防抖）—— 实测因此量出过 237px 的间距，
+ * 而单独跑同一个场景是 8。
+ *
+ * 收选区用按键不用点击：单击之后紧接着三击，浏览器会把它们拼成一串更多次的
+ * 点击，选中的就不是一整段了 —— 实测那样量出来的锚点落在**下一段**上，浮出条
+ * 正好压在选中的那一行上（444 到 480 压着 451 到 470）。
+ */
+async function selectParagraph(page: Page, i: number): Promise<void> {
+  const paragraph = page
+    .locator('[data-testid="document-space"] .ProseMirror p')
+    .nth(i);
+  const bar = page.getByTestId('doc-selection-bubble-bar');
+
+  if (await bar.isVisible()) {
+    await page.keyboard.press('ArrowRight');
+    await expect(bar).not.toBeAttached({ timeout: 5_000 });
+  }
+  await paragraph.click({ clickCount: 3 });
+  await expect(bar).toBeVisible({ timeout: 5_000 });
+}
+
+/** 把正文滚动容器停在一个绝对位置，并给插件一帧去重算。 */
+async function scrollBodyTo(page: Page, y: number): Promise<void> {
+  await page.evaluate((top) => {
+    document
+      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      ?.scrollTo(0, top);
+  }, y);
+  await page.waitForTimeout(400);
+}
+
+/** 敲出一篇够长、能滚起来的正文。 */
+async function typeLongBody(page: Page): Promise<void> {
+  for (let i = 0; i < 40; i += 1) {
+    await page.keyboard.type(`line ${i} of a document long enough to scroll`);
+    await page.keyboard.press('Enter');
+  }
+}
+
+/** 浮出条、选中那一行、裁切它的那个盒子，三者的位置。 */
+async function readGeometry(page: Page): Promise<{
+  barTop: number;
+  barBottom: number;
+  lineTop: number;
+  lineBottom: number;
+  clipTop: number;
+  below: boolean;
+  gap: number;
+  hitAtOwnTop: boolean;
+}> {
+  return page.evaluate(() => {
+    const bar = document.querySelector(
+      '[data-testid="doc-selection-bubble-bar"]',
+    ) as HTMLElement;
+    const b = bar.getBoundingClientRect();
+    const line = window.getSelection()?.getRangeAt(0).getBoundingClientRect();
+    // 真正裁切浮出条的那一层，从它自己往上找第一个会裁的祖先。
+    let clipTop = 0;
+    for (let n = bar.parentElement; n && n !== document.body; n = n.parentElement) {
+      const cs = getComputedStyle(n);
+      if (/hidden|clip|auto|scroll/.test(cs.overflowY + cs.overflowX)) {
+        clipTop = n.getBoundingClientRect().top;
+        break;
+      }
+    }
+    const below = !!line && b.top >= line.bottom;
+    return {
+      barTop: Math.round(b.top),
+      barBottom: Math.round(b.bottom),
+      lineTop: line ? Math.round(line.top) : 0,
+      lineBottom: line ? Math.round(line.bottom) : 0,
+      clipTop: Math.round(clipTop),
+      below,
+      gap: line
+        ? Math.round(below ? b.top - line.bottom : line.top - b.bottom)
+        : -1,
+      // 打在浮出条自己的顶上：命中它自己才说明那一行像素真的画出来了。
+      hitAtOwnTop: !!document
+        .elementFromPoint(b.left + b.width / 2, b.top + 2)
+        ?.closest('[data-testid="doc-selection-bubble-bar"]'),
+    };
+  });
+}
+
 for (const scheme of ['light', 'dark'] as const) {
-  test(`浮出条的位置和视觉规格（${scheme}）`, async ({ page }) => {
+  test(`浮出条的位置和视觉规格（${scheme}）`, async () => {
     test.setTimeout(120_000);
     // 主题跟随系统，所以模拟系统配色就是走产品自己那条路（`useThemeMode` 订阅
     // `prefers-color-scheme`，把结果写进 `<html data-theme>`）。
@@ -73,7 +182,8 @@ for (const scheme of ['light', 'dark'] as const) {
         '[data-testid="doc-selection-bubble-bar"]',
       ) as HTMLElement;
       const b = el.getBoundingClientRect();
-      const line = window.getSelection()?.getRangeAt(0).getClientRects()[0];
+      // 选区自己的包围盒——水平轴取的就是它的左边，跟条落在上方还是下方无关。
+      const box = window.getSelection()?.getRangeAt(0).getBoundingClientRect();
       const cs = getComputedStyle(el);
       // 底色比对不写死颜色字面量：临时放一个只声明了那个 token 的元素，读它
       // 算出来的颜色。明暗两套、以后改 token 值，这条断言都还成立，而写死
@@ -95,9 +205,14 @@ for (const scheme of ['light', 'dark'] as const) {
         b.left + b.width / 2,
         b.top + b.height / 2,
       );
+      const below = !!box && b.top >= box.bottom;
       return {
-        gap: line ? Math.round(line.top - b.bottom) : null,
-        leftDelta: line ? Math.round(b.left - line.left) : null,
+        // 间距按条落在哪一侧算——首段选中时上方放不下，它会翻到下方，
+        // 那时「选区顶减条底」是个负数，不是规格没兑现。
+        gap: box
+          ? Math.round(below ? b.top - box.bottom : box.top - b.bottom)
+          : null,
+        leftDelta: box ? Math.round(b.left - box.left) : null,
         borderWidth: cs.borderTopWidth,
         radius: cs.borderTopLeftRadius,
         tokenRadius: getComputedStyle(document.documentElement)
@@ -113,7 +228,7 @@ for (const scheme of ['light', 'dark'] as const) {
       };
     });
 
-    // A6：贴选区上方 8px、左边缘对齐选区左边缘。
+    // A6：贴选区 8px、左边缘对齐选区左边缘。
     expect(geo.gap).toBe(8);
     expect(Math.abs(geo.leftDelta ?? 999)).toBeLessThanOrEqual(1);
     // A6：定稿 §5 的四样——底、边、圆角、阴影。
@@ -134,105 +249,125 @@ for (const scheme of ['light', 'dark'] as const) {
   });
 }
 
-test('正文滚动时浮出条跟着选区走，不停在原地', async ({ page }) => {
-  test.setTimeout(120_000);
+test('正文滚动时浮出条跟着选区走，相对位置不变', async () => {
+  test.setTimeout(180_000);
   await openFreshDocument(page);
-  // 造出一篇够长的正文，好让它真的能滚。
-  for (let i = 0; i < 40; i += 1) {
-    await page.keyboard.type(`line ${i} of a document long enough to scroll`);
-    await page.keyboard.press('Enter');
-  }
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+  // 选中间某一段：它上方空间充足，滚动一小段之后仍然充足，所以整段过程里
+  // 浮出条一直在选区上方，可以拿「相对选区的偏移」当不变量。
+  await selectParagraph(page, 8);
 
-  await selectFirstParagraph(page);
-  const bar = page.getByTestId('doc-selection-bubble-bar');
-  await expect(bar).toBeVisible();
+  const before = await readGeometry(page);
+  expect(before.below).toBe(false);
+  expect(before.gap).toBe(8);
 
-  const before = await bar.boundingBox();
-  await page.evaluate(() => {
-    document
-      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
-      ?.scrollBy(0, 300);
-  });
-  // 位置重算是插件监听 scroll 之后做的，给它一帧。
-  await expect
-    .poll(async () => (await bar.boundingBox())?.y, { timeout: 5_000 })
-    .not.toBe(before?.y);
+  await scrollBodyTo(page, 120);
+
+  const after = await readGeometry(page);
+  // 只断言「动了」是不够的：条跳到任何地方都能满足。真正的不变量是它跟选中
+  // 那一行的相对位置，而那一行自己是随滚动移动的。
+  expect(after.lineTop).not.toBe(before.lineTop);
+  expect(after.below).toBe(false);
+  expect(after.gap).toBe(8);
 });
 
-test('窗口再矮，浮出条也放得下、不越出窗口顶', async ({ page }) => {
-  test.setTimeout(120_000);
+test('上方放不下就翻到选区下方，放得下就留在上方', async () => {
+  test.setTimeout(180_000);
   await openFreshDocument(page);
-  await page.keyboard.type('the quick brown fox jumps over the lazy dog');
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
 
-  // 这条钉的是「上方够不够放」这件事本身。实测（2026-08-19，四个窗口高度
-  // 950 / 600 / 420 / 300）正文滚动容器的顶恒在离窗口顶 120px —— 顶部那排
-  // chrome 是固定高度，不随窗口缩，所以浮出条要的 44px（36 高 + 8 间距）
-  // 永远有。`options.flip` 因此是一张用不上的保险，不是这条在验的东西。
-  await page.setViewportSize({ width: 1680, height: 300 });
-  await selectFirstParagraph(page);
-  const bar = page.getByTestId('doc-selection-bubble-bar');
-  await expect(bar).toBeVisible();
+  // 首段：它上方到正文可见区顶只有约 30px，而浮出条要 36 高加 8 间距。
+  await selectParagraph(page, 0);
+  const first = await readGeometry(page);
+  expect(first.lineTop - BODY_VIEWPORT_TOP).toBeLessThan(44);
+  expect(first.below).toBe(true);
+  expect(first.gap).toBe(8);
+  expect(first.barTop).toBeGreaterThanOrEqual(first.clipTop);
+  expect(first.hitAtOwnTop).toBe(true);
 
-  const m = await page.evaluate(() => {
-    const el = document.querySelector(
-      '[data-testid="doc-selection-bubble-bar"]',
-    ) as HTMLElement;
-    const b = el.getBoundingClientRect();
-    const vp = document.querySelector(
-      '.doc-body-scroller [data-radix-scroll-area-viewport]',
-    ) as HTMLElement;
-    const line = window.getSelection()?.getRangeAt(0).getClientRects()[0];
-    return {
-      barTop: b.top,
-      gap: line ? Math.round(line.top - b.bottom) : null,
-      roomAboveText: Math.round(vp.getBoundingClientRect().top),
-      hitInsideBar: !!document
-        .elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)
-        ?.closest('[data-testid="doc-selection-bubble-bar"]'),
-    };
-  });
+  // 中间某段：上方空间充足，照旧在上方。
+  await selectParagraph(page, 8);
+  const middle = await readGeometry(page);
+  expect(middle.lineTop - BODY_VIEWPORT_TOP).toBeGreaterThan(44);
+  expect(middle.below).toBe(false);
+  expect(middle.gap).toBe(8);
+  expect(middle.barTop).toBeGreaterThanOrEqual(middle.clipTop);
+  expect(middle.hitAtOwnTop).toBe(true);
+});
 
-  expect(m.roomAboveText).toBe(120);
-  expect(m.barTop).toBeGreaterThanOrEqual(0);
+test('选中的那一行被滚到正文顶部时，浮出条翻到下方而不是被裁掉', async () => {
+  test.setTimeout(180_000);
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+  await selectParagraph(page, 6);
+
+  // 滚到让那一行正好停在正文可见区上沿下面 10px：上方只剩 10，放不下 44。
+  // 滚动量按量到的位置算，不写死——写死的数字随字号和行距一起漂，而漂到
+  // 「整段滚出视野」时测的就完全是另一件事了（那种情形不在本次范围内）。
+  const before = await readGeometry(page);
+  await scrollBodyTo(page, before.lineTop - BODY_VIEWPORT_TOP - 10);
+
+  const m = await readGeometry(page);
+  expect(m.lineTop - BODY_VIEWPORT_TOP).toBeLessThan(44);
+  // 第一轮实现在这里把浮出条画到了裁切盒之外，顶上 4px 被削掉
+  // （实测 barTop 76、clipTop 80）。现在它该翻到选区下方。
+  expect(m.below).toBe(true);
   expect(m.gap).toBe(8);
-  expect(m.hitInsideBar).toBe(true);
+  expect(m.barTop).toBeGreaterThanOrEqual(m.clipTop);
+  expect(m.hitAtOwnTop).toBe(true);
 });
 
-test('Tab 进浮出条，焦点看得见', async ({ page }) => {
+test('浮出条不占 tab 站：从正文按 Tab 不会落进它', async () => {
   test.setTimeout(120_000);
   await openFreshDocument(page);
   await page.keyboard.type('the quick brown fox jumps over the lazy dog');
   await selectFirstParagraph(page);
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
 
-  // 先记下没聚焦时第一个按钮长什么样，Tab 之后跟它比。
-  // 直接断言「有 outline 或有 box-shadow」是句永远成立的话：按钮本来就可能
-  // 带阴影，而 `getComputedStyle(null)` 这种写法连没有焦点元素时都为真。
-  const first = page.getByTestId('doc-bubble-tool-bold');
-  const idle = await first.evaluate((el) => {
-    const cs = getComputedStyle(el);
-    return { outline: cs.outlineStyle, shadow: cs.boxShadow };
-  });
+  const landed: string[] = [];
+  for (let i = 0; i < 3; i += 1) {
+    await page.keyboard.press('Tab');
+    landed.push(
+      await page.evaluate(() => {
+        const active = document.activeElement;
+        if (!active) return 'none';
+        return active.closest('[data-testid="doc-selection-bubble-bar"]')
+          ? 'in-bar'
+          : (active.getAttribute('data-testid') ?? active.tagName);
+      }),
+    );
+  }
 
-  await page.keyboard.press('Tab');
+  // 连按三次都不许落进浮出条——一次不够：插件把容器设成 tabIndex=0，第一站
+  // 是容器、第二站才是第一个按钮，只按一次分辨不出这两种失败。
+  expect(landed).not.toContain('in-bar');
+});
 
-  const focused = await page.evaluate(() => {
-    const active = document.activeElement;
-    if (!active) return null;
-    const cs = getComputedStyle(active);
-    return {
-      testid: active.getAttribute('data-testid'),
-      inBar: !!active.closest('[data-testid="doc-selection-bubble-bar"]'),
-      outline: cs.outlineStyle,
-      shadow: cs.boxShadow,
-    };
-  });
+test('在真浏览器里按浮出条上的按钮，文档真的变了', async () => {
+  test.setTimeout(120_000);
+  await openFreshDocument(page);
+  await page.keyboard.type('the quick brown fox');
+  await selectFirstParagraph(page);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
 
-  expect(focused).not.toBeNull();
-  expect(focused?.inBar).toBe(true);
-  // 焦点落在浮出条自己的按钮上，而且它的样子跟没聚焦时不一样——变的是描边
-  // 还是环都算，但必须真的变了。
-  const changed =
-    focused?.outline !== idle.outline || focused?.shadow !== idle.shadow;
-  expect(changed).toBe(true);
+  const html = () =>
+    page.evaluate(
+      () =>
+        document.querySelector('[data-testid="document-space"] .ProseMirror')
+          ?.innerHTML ?? '',
+    );
+
+  // 单测里的点击走的是 jsdom 的 `.click()`，它不移动焦点；真机点击会先把焦点
+  // 从正文拿走，而浮出条的显示恰恰依赖编辑器的焦点状态。这条走的就是那条路。
+  expect(await html()).not.toContain('<strong>');
+  await page.getByTestId('doc-bubble-tool-bold').click();
+  await expect.poll(html).toContain('<strong>');
+
+  // 按完之后条还在、选区还在，可以接着按第二个命令。
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+  await page.getByTestId('doc-bubble-tool-italic').click();
+  await expect.poll(html).toContain('<em>');
 });
