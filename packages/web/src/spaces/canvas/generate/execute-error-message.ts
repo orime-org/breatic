@@ -10,8 +10,9 @@
  */
 
 /**
- * Maps a failed execute request to a user-facing message. Credit / lock /
- * outage are the meaningful task-create failures (server `AppError`s).
+ * Maps a failed execute request to a user-facing message. Credits, a locked
+ * node, full storage and an outage are the meaningful task-create failures
+ * (server `AppError`s).
  * @param status - The HTTP status, or undefined for a non-API error.
  * @param translate - The i18n translate function.
  * @returns A localized error message.
@@ -25,6 +26,8 @@ export function executeErrorMessage(
       return translate('canvas.generatePanel.errorCredits');
     case 409:
       return translate('canvas.generatePanel.errorBusy');
+    case 507:
+      return translate('canvas.generatePanel.errorStorageFull');
     case 503:
       return translate('canvas.generatePanel.errorUnavailable');
     default:

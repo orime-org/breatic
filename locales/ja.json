@@ -320,7 +320,8 @@
       "errorNoDrivingVideo": "動きの元になる動画を選んでください",
       "errorNoDrivingAudio": "口の動きの元になる音声を選んでください",
       "promptNotUsed": "このモードにプロンプトは必要ありません。",
-      "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません"
+      "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません",
+      "errorStorageFull": "Studio のストレージがいっぱいです。生成できません。"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -344,7 +345,8 @@
       "tooLarge": "{filename} はアップロードサイズの上限を超えています。",
       "empty": "{filename} は空のファイルです。追加できる内容がありません。",
       "videoCodecUnsupported": "この動画の形式はブラウザで読み込めません。H.264 / MP4 に変換してからもう一度お試しください。",
-      "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。"
+      "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
+      "storageFull": "Studio のストレージがいっぱいです。アップロードできません。"
     },
     "minimap": {
       "label": "キャンバスのミニマップ"
@@ -770,7 +772,8 @@
       "projectInviteRequest": "{actor} さんが {project} への参加に招待しました",
       "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました",
       "membershipEnded": "{tier} メンバーシップが終了しました",
-      "membershipUpgradeIncomplete": "{tier} へのアップグレードは完了しませんでした"
+      "membershipUpgradeIncomplete": "{tier} へのアップグレードは完了しませんでした",
+      "storageQuotaExceeded": "ストレージがいっぱいです"
     },
     "actorFallback": "誰か",
     "subtitle": {

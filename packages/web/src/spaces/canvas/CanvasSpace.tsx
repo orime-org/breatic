@@ -1974,6 +1974,22 @@ function CanvasSpaceInner({
       file: File,
       lease: UploadLease,
     ): void => {
+      if (reason === 'storage') {
+        // No stash and no Retry: retrying asks again for room nobody has
+        // freed. What the node says is fixed English because it goes into
+        // Yjs and every collaborator reads it; the sentence explaining WHY
+        // is a toast, so it is in the language of the person who tried.
+        clearRetryFile(projectId, spaceId, nodeId);
+        failNodeHandling(
+          projectId,
+          spaceId,
+          nodeId,
+          `Storage is full: ${file.name}`,
+          lease,
+        );
+        toast.error(t('canvas.upload.storageFull'));
+        return;
+      }
       if (reason === 'hash') {
         // CLEAR any stash from an earlier attempt (Gate-2 R5): leaving one
         // behind keeps the Retry button alive on a node whose error says the

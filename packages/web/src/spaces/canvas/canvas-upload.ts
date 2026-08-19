@@ -127,10 +127,13 @@ export interface UploadReportResult {
  * Why an upload ended in `onFailure` — the caller picks the message from this.
  * `hash` means the browser could not fingerprint the file (worker/WASM/read
  * failure), which no retry of the SAME page fixes: the fix is a reload.
+ * `storage` means the studio's account is out of room (#89), which no retry
+ * fixes either — but for the opposite reason: nothing is broken, there is
+ * simply nowhere to put the bytes until the admin acts.
  * `upload` is everything else (config / presign / PUT / report), which a retry
  * can fix.
  */
-export type UploadFailureReason = 'hash' | 'upload';
+export type UploadFailureReason = 'hash' | 'storage' | 'upload';
 
 /**
  * Carries an {@link UploadFailureReason} across the Promise boundary of the
@@ -156,7 +159,25 @@ class MediaUploadError extends Error {
  * @returns The failure reason to report.
  */
 function failureReasonOf(err: unknown): UploadFailureReason {
-  return err instanceof MediaUploadError ? err.reason : 'upload';
+  if (err instanceof MediaUploadError) return err.reason;
+  return isStorageFull(err) ? 'storage' : 'upload';
+}
+
+/**
+ * Whether a rejection is the server saying the account is out of storage.
+ *
+ * Read off the status rather than the message: the sentence is localized on
+ * the server side and matching on it would break the moment anyone edits the
+ * copy or a user switches language.
+ * @param err - The rejection value.
+ * @returns True for a 507 answer.
+ */
+function isStorageFull(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { status?: unknown }).status === 507
+  );
 }
 
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */
@@ -282,8 +303,8 @@ export async function runMediaUpload(
       hash,
     });
     deps.onSuccess(report?.fileUrl ?? res.fileUrl);
-  } catch {
-    deps.onFailure('upload');
+  } catch (err) {
+    deps.onFailure(failureReasonOf(err));
   }
 }
 
@@ -577,6 +598,10 @@ function uploadFailed(
   lease: UploadLease,
   deps: Pick<FillNodeDeps, 'setError' | 'onHashUnavailable'>,
 ): void {
+  if (reason === 'storage') {
+    deps.setError(nodeId, `Storage is full: ${file.name}`, lease);
+    return;
+  }
   if (reason === 'hash') {
     if (deps.onHashUnavailable) {
       deps.onHashUnavailable(nodeId, file, lease);

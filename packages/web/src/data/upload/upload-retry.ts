@@ -102,6 +102,12 @@ function errorStatus(err: unknown): number | null {
  */
 export function isTransientUploadError(err: unknown): boolean {
   const status = errorStatus(err);
+  // 507 is the one 5xx that says nothing about the server: the account is out
+  // of storage (#89), and nobody frees any in the seconds a retry takes. Left
+  // in the band below, a refused upload would ask three more times and then
+  // report a generic failure — burying the one sentence that could be acted
+  // on, which arrived with the first answer.
+  if (status === 507) return false;
   // status 0 = no HTTP response reached us (network drop / timeout / CORS),
   // which apiGet normalizes to `.status = 0` — the most retryable case.
   if (status !== null) return status === 0 || status >= 500 || status === 429;
