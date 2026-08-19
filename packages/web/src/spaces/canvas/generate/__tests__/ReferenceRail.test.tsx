@@ -285,11 +285,11 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
   // 2026-07-11) — that part is unchanged. What #1945 changed is the SCOPE of
   // the dim. It used to be applied per row by modality, reaching image rows
   // only, which is how audio and video rows stayed bright and removable in a
-  // mode that would never read them (#1930, #1940). The dim now belongs to the
-  // row — every REFERENCE MATERIAL row carries it, and so does its ✕:
-  // references are shared across modes, so throwing one away here loses it for
-  // the mode the user is coming back to (decision 2026-08-11). A text row is
-  // prompt material and outside the rule.
+  // mode that would never read them (#1930, #1940). The dim now covers every
+  // REFERENCE MATERIAL row rather than the image one alone; #1952 then moved it
+  // off the row wrapper onto the row's CONTENT button, so the ✕ beside it never
+  // inherits it and removal works in every state. A text row is prompt material
+  // and outside the rule.
   //
   // The rule's subject is the REFERENCE MATERIAL: a text row substitutes into
   // the prompt STRING, so it is outside this rule entirely — lit, insertable

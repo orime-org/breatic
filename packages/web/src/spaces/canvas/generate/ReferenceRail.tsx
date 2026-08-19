@@ -59,31 +59,26 @@ interface ReferenceRailProps {
   onInsert: (item: ReferenceRailItem) => void;
   /**
    * Does the active mode consume the reference pool at all? False dims every
-   * REFERENCE MATERIAL row and freezes its ✕ — references are shared across
-   * modes, so a row thrown away in a mode that ignores it would be gone on
-   * switching back (decision 2026-08-11). A text row is prompt material and
-   * outside this rule entirely (user 2026-08-13). Among the rows it does
-   * govern the verdict never varies by modality: dimming by type is what left
-   * audio / video rows looking live and removable inside a mode that would
-   * never read them (#1930, #1940). The ways out of a dark rail — switch to a
-   * mode that uses references, or delete the edge on the canvas — are named by
-   * the REMOVE message, the one refusal where the user is being denied
-   * something they asked to be rid of (#1934).
+   * REFERENCE MATERIAL row's CONTENT and refuses its insert. The row's ✕ is
+   * untouched — it removes in every state (user 2026-08-19), so a row this
+   * mode cannot use is still a row the user can clear.
+   *
+   * A text row is prompt material and outside this rule entirely (user
+   * 2026-08-13). Among the rows it does govern the verdict never varies by
+   * modality: dimming by type is what left audio / video rows looking live
+   * inside a mode that would never read them (#1930, #1940).
    */
   modeTakesReferences?: boolean;
   /**
-   * Does the ACTIVE MODEL consume the prompt (#1966)? False freezes INSERT on
-   * every row — there is nowhere to insert into — and the ✕ on TEXT rows only,
-   * which also dims them (the dim reads the ✕ verdict).
+   * Does the ACTIVE MODEL consume the prompt (#1966)? False refuses INSERT on
+   * every row — there is nowhere to insert into — and so dims every row.
    *
    * Text rows are exempt from `modeTakesReferences` because they are prompt
    * material; that exemption only holds while there IS a prompt. A mode
-   * sending none has nothing for a text row to be material for, so it freezes
+   * sending none has nothing for a text row to be material for, so it dims
    * there too (user 2026-08-16). A media row keeps answering to
-   * `modeTakesReferences`: of the two questions, only that one names a state
-   * the user can leave and reach a mode where the row WORKS, and both controls
-   * on a row have to give the same first answer or the row would show two
-   * contradictory reasons at once.
+   * `modeTakesReferences` as well: of the two questions, only that one names a
+   * state the user can leave and reach a mode where the row WORKS.
    *
    * Defaulted `true` for the same reason as the prop above: a caller that
    * knows nothing about prompts gets the pre-#1966 rail.
@@ -127,19 +122,14 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     }),
     [modeTakesReferences, modelTakesPrompt],
   );
-  // Three refusal reasons, six messages, and the split is not 3 + 3 by reason:
-  // insert states all three; remove states only two (`source-type-unused` never
-  // reaches it) and one of those splits by row, because a focus crop has no
-  // edge to delete.
-  // Insert names only the cause, because the mode selector is in this same
-  // panel and every dimmed row is visibly dark. The reference-family remove
-  // messages also name the way out, which is why the crop variant exists at
-  // all — a focus crop has no edge to delete, so the shared sentence would
-  // offer it an exit it does not have.
+  // Three refusal reasons, three messages, one each — they all belong to
+  // insert now. Removal asks nothing since #1952, so there is no second family
+  // and no crop variant (that one existed only because a focus crop has no
+  // edge to delete, which mattered when removal could be refused).
   //
-  // The no-prompt remove message names no way out: UI copy states the
-  // situation and does not explain it (user 2026-08-17), and this one fires on
-  // a click, where a paragraph is the wrong shape. The two reference sentences
+  // Each message names only the cause, not the way out: the mode selector is
+  // in this same panel and every dimmed row is visibly dark, and UI copy states
+  // the situation rather than explaining it (user 2026-08-17). Two of the three
   // predate that rule and are queued to follow it (todo #1970).
   const refuseInsert = React.useCallback(
     (refusal: ReferenceRefusal, kind: NodeKind): void => {
@@ -164,10 +154,10 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     >
       {references.map((ref) => {
         const NodeIcon = getNodeIcon(ref.sourceNodeType);
-        // Both start from the row kind, and each asks only what can refuse
-        // that kind: a text row answers to the prompt question, a media row to
-        // the reference one. Insert then asks two more of a media row — is
-        // there a prompt to insert INTO, and can the pool carry this modality.
+        // The one verdict on this row: can this mode use it. It drives the
+        // content's dim and the insert button, and — through the same
+        // `insertRefusal` call — what the `@` picker offers. The ✕ does not
+        // consult it.
         const insertRefused = insertRefusal(ref.sourceNodeType, usabilityCtx);
         // Empty-source hint (H, user 2026-07-12): a source that has produced
         // nothing has no preview to show, so say so rather than opening a
@@ -189,32 +179,22 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             key={ref.refId}
             role='listitem'
             data-testid={`generate-ref-${ref.refId}`}
-            // The dim belongs to the ROW, because what it says is about the
-            // whole row: this mode does not use this reference. Putting it on
-            // the controls instead (as it was until #1945) said it about them
-            // individually, which is why it could reach the image row's two
-            // buttons and no other row at all. The controls carry no opacity
-            // of their own, so nothing multiplies down to 0.25.
-            //
-            // It reads the ✕ verdict, which for a media row is the
-            // reference question and for a text row is the prompt question.
-            // So a text row stays lit under a mode that merely ignores
-            // references — that rule is not about it (user 2026-08-13) — and
-            // dims under one whose model sends no prompt, where it really has
-            // nothing to be material for (#1966). This component answers that
-            // second question from `modelTakesPrompt`; the video container used
-            // to answer it on insert, and that second home is gone (#1962).
-            //
-            // The hover preview is deliberately NOT dimmed: it is portaled, so
-            // this opacity does not reach it, and that is the wanted outcome —
-            // a dark row still shows its picture at full strength (user
-            // 2026-08-13).
             // The row itself never dims: the ✕ lives here too and it stays
             // usable in every state (user 2026-08-19). The dim belongs to the
             // CONTENT button below, which is the part this mode can or cannot
-            // use. Keeping it here was what forced "the whole rail lights or
-            // darkens together" — a per-row dim would have taken the ✕ with it
-            // and left the user unable to clear a row they cannot use.
+            // use. Keeping it on the row was what forced "the whole rail lights
+            // or darkens together" — a per-row dim would have taken the ✕ with
+            // it and left the user unable to clear a row they cannot use.
+            //
+            // Exactly one layer of opacity, on the content button. Two (a row
+            // AND a control) would multiply to 0.25 and read as broken rather
+            // than unavailable, which is what #1945 was fixing when it moved
+            // the dim up here.
+            //
+            // The hover preview is unaffected either way: it is portaled, so
+            // no opacity on this subtree reaches it, and that is the wanted
+            // outcome — a dark row still shows its picture at full strength
+            // (user 2026-08-13).
             className='group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5'
           >
             <HoverPreview

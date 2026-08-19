@@ -52,14 +52,15 @@
  * would have sent its user to t2v / i2v / first_last / animate — all of which
  * send a prompt and still refuse it.
  *
- * Insert then asks two more, because insertion needs more than removal does: a
- * destination to insert INTO, and a row the pool can carry.
+ * A media row is asked two further things: is there a destination to insert
+ * INTO, and can the pool carry this row.
  *
- * The dim still reads on REFERENCE MATERIAL alone: a text row is prompt
- * material, and the dim rule's subject is the reference material, not every row
- * in the rail (user 2026-08-13).
+ * The dim follows this one verdict for every row, text included: a text row is
+ * lit under a mode that merely ignores references — that rule is not about it
+ * (user 2026-08-13) — and dark under a model that sends no prompt, where it has
+ * nothing to be material for (#1966).
  *
- * Neither dimension reads anything asynchronous, and that is deliberate. An
+ * The verdict reads nothing asynchronous, and that is deliberate. An
  * earlier version took the consumable types from `ModelEntry.sourcesByMode`,
  * which made both answers depend on whether the model catalog had loaded.
  * Three rounds of adversarial review produced three different wrong answers to
@@ -94,15 +95,16 @@ export interface ReferenceUsabilityContext {
   /**
    * Does this mode consume the `@`-picked pool at all (`modeTakesReferences`
    * on the video panel, `!imageSourcesOff` on the image one)? This is the
-   * row-level dimension: false dims every REFERENCE MATERIAL row and freezes
-   * its ✕. Text rows are outside it — see the module docstring.
+   * row-level dimension: false dims every REFERENCE MATERIAL row's content and
+   * refuses its insert. Text rows are outside it — see the module docstring.
+   * The ✕ is outside it too, and outside everything else here (#1952).
    */
   takesReferences: boolean;
   /**
    * Does the ACTIVE MODEL consume the prompt (`ModelEntry.takes_prompt`,
-   * #1966)? False freezes INSERT on every row — there is no editor to insert
-   * into — and freezes the ✕ on TEXT rows, which are prompt material and have
-   * nothing to be material FOR under such a mode (user 2026-08-16).
+   * #1966)? False refuses INSERT on every row — there is no editor to insert
+   * into — including TEXT rows, which are prompt material and have nothing to
+   * be material FOR under such a mode (user 2026-08-16).
    *
    * A plain boolean the caller passes in, exactly like `takesReferences`: the
    * value comes from the model catalog, but this module still reads nothing
@@ -112,14 +114,14 @@ export interface ReferenceUsabilityContext {
 }
 
 /**
- * Whether a row is REFERENCE MATERIAL — the thing both dimensions read on.
+ * Whether a row is REFERENCE MATERIAL — what `takesReferences` reads on.
  *
- * A named predicate rather than a check spelled out at each site: the dim, the
- * ✕ and the empty hint all ask this one question, and when two of them spelled
- * it differently ("is it one of the three media kinds" vs "is it not text")
- * they disagreed about `3d` and `web` — one lit the row while the other froze
- * its ✕. Text is the only modality that is not reference material, because it
- * is prompt material: its content substitutes into the prompt string.
+ * A named predicate rather than a check spelled out at each site: the refusal
+ * and the empty hint both ask this one question, and when they spelled it
+ * differently ("is it one of the three media kinds" vs "is it not text") they
+ * disagreed about `3d` and `web` — one lit the row while the other refused it.
+ * Text is the only modality that is not reference material, because it is
+ * prompt material: its content substitutes into the prompt string.
  * @param kind - The upstream node's modality.
  * @returns True for everything except text.
  */

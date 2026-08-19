@@ -73,7 +73,7 @@ const ROWS: ReferenceRailItem[] = [
   },
 ];
 
-/** All six refusal messages the rail can send. */
+/** All three refusal messages the rail can send — they all belong to insert (#1952). */
 const KEY = {
   modeOff: 'canvas.generatePanel.refuseInsertModeOff',
   typeUnused: 'canvas.generatePanel.refuseInsertTypeUnused',
@@ -144,10 +144,12 @@ describe('ReferenceRail — a mode that ignores references dims its reference ma
     expect(removeBtn('e-image')).not.toHaveClass('opacity-50');
   });
 
-  it('keeps the TEXT row removable — this mode is already using it', () => {
-    // The reason for freezing a ✕ is "you would lose it before switching
-    // back to the mode that uses it". A text row is used by THIS mode, so the
-    // premise never holds.
+  it('keeps the TEXT row untouched — this mode is already using it', () => {
+    // This block is about the TEXT EXEMPTION: a mode that ignores references
+    // says nothing about a row that feeds the prompt. Since #1952 every ✕
+    // removes regardless, so what this case still adds over
+    // `ReferenceRail-decoupled.test.tsx` is that the exemption holds for the
+    // text row specifically, not that removal is possible at all.
     const { onRemove } = renderRail(false);
     expect(removeBtn('e-text')).not.toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(removeBtn('e-text'));

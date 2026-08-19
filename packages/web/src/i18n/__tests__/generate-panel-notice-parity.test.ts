@@ -13,7 +13,8 @@ import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 // `refuseExecuteNoPrompt`；#1951 添了目录里一个可用档都没有那句
 // `catalogNoModels`。#1966 当时还加过一句 ✕ 的 `refuseRemoveNoPrompt`，
 // #1952 把 ✕ 变成任何状态下都可用之后它没有读者了，连同另外两句移除拒绝语
-// 一起删掉。共六条。
+// 一起删掉；同一片给 `@` 弹层加了 `mentionEmpty` 和 `mentionNoMatch` 两句，
+// 并把两句既有的插入拒绝语补进来。数字跟着下面那个数组走，别在这儿写死。
 //
 // 仓里的 i18n 守卫盯不住这件事：`i18n-no-missing-keys` 只拿英文那份当
 // 目录（`SOURCE_CATALOG = "locales/en.json"`），另外四份有没有它不看。

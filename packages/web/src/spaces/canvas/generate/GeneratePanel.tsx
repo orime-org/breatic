@@ -54,11 +54,10 @@ interface GeneratePanelProps {
    * the prompt slot (a sentence stands in for the editor when it is false) and
    * the reference rail.
    *
-   * In the rail it freezes INSERT on every row — nothing can be inserted into
-   * a prompt that is not sent — and the ✕ on TEXT rows only. A text row lives
-   * in the prompt, so removing it under a mode that sends none would take it
-   * out of the prompt every other mode shares; a media row answers to
-   * `modeTakesReferences` instead, because that is the question whose answer
+   * In the rail it refuses INSERT on every row — nothing can be inserted into
+   * a prompt that is not sent — and so dims every row, text included. The ✕ is
+   * untouched: it removes in every state (#1952). A media row is dimmed by
+   * `modeTakesReferences` as well, because that is the question whose answer
    * points at a mode where the row actually works.
    */
   promptRequired: boolean;
@@ -244,13 +243,14 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
         // Text-to-image reads no source images at all, so its reference
-        // material rows go dark — and with them their ✕, because references
-        // are shared across modes (decision 2026-08-11). A text row stays lit
-        // under this question either way: it feeds the prompt string, which
-        // both modes send. What could dim it is the prop below, and no image
-        // model reachable from this panel declares `takes_prompt: false`
-        // today. Image-to-image is the mode that lights the rest back up;
-        // this panel has exactly those two (`ImageGenMode`).
+        // material rows go dark. Their ✕ does not — references are shared
+        // across modes, and a row this mode cannot use is exactly a row the
+        // user may want to clear (user 2026-08-19). A text row stays lit under
+        // this question either way: it feeds the prompt string, which both
+        // modes send. What could dim it is the prop below, and no image model
+        // reachable from this panel declares `takes_prompt: false` today.
+        // Image-to-image is the mode that lights the rest back up; this panel
+        // has exactly those two (`ImageGenMode`).
         modeTakesReferences={!imageSourcesOff}
         modelTakesPrompt={promptRequired}
         pendingFocus={pendingFocus}

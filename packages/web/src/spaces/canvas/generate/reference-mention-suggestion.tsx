@@ -83,23 +83,20 @@ export function makeReferenceSuggestion(input: {
 }): Omit<SuggestionOptions<ReferenceRailItem>, 'editor'> {
   const isLocalUserInput = input.isLocalUserInput ?? wasLastChangeLocalUserInput;
   /**
-   * Filters the LIVE pool to the rows offerable for a query under the CURRENT
-   * mode. Extracted so every popup show path computes from the same live inputs
-   * (`getPool` + `getUsabilityContext`): the plugin's `items()` on each keystroke,
-   * AND the focus re-show below. `@tiptap/suggestion` only re-runs `items()` on a
-   * query / range change (its `handleChange`), so a mode toggle — which lives on
-   * the canvas node, not the prompt doc — never triggered a recompute; a popup
-   * hidden (by clicking the mode picker) and re-shown on refocus then kept the
-   * pre-toggle list. Computing here on every show path fixes that (#1799/#1800).
-   * @param query - The text typed after `@`.
-   * @returns The matching pool rows (capped at 8).
-   */
-  /**
    * The rows this mode can use at all, before the typed query narrows them.
    *
-   * Split out because the two empty states are different sentences and only
-   * this layer can tell them apart: `ReferenceMentionList` receives the rows
-   * AFTER both filters and cannot see which one emptied the list.
+   * Reads the LIVE inputs (`getPool` + `getUsabilityContext`) on every call, so
+   * every popup show path agrees: the plugin's `items()` on each keystroke, and
+   * the focus re-show below. `@tiptap/suggestion` only re-runs `items()` on a
+   * query / range change (its `handleChange`), so a mode toggle — which lives
+   * on the canvas node, not the prompt doc — never triggered a recompute; a
+   * popup hidden (by clicking the mode picker) and re-shown on refocus then
+   * kept the pre-toggle list. Computing here fixes that (#1799/#1800).
+   *
+   * Split from the query filter because the two empty states are different
+   * sentences and only this layer can tell them apart: `ReferenceMentionList`
+   * receives the rows AFTER both filters and cannot see which one emptied the
+   * list.
    * @returns The rows the active mode accepts.
    */
   const usableRows = (): ReferenceRailItem[] => {

@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The reference rail's three-dimension state model (#1945, #1966).
+ * The reference rail's three-dimension state model (#1945, #1966, #1952).
  *
- * Dimension one — "does this mode use references at all" — dims the whole row
- * and governs the ✕. Dimension two — "is this row's modality one this run
- * consumes" — governs insertion and the `@` picker. These two are CONJUNCT for
- * media rows and do not reach text rows at all, and the point of pinning all 24
- * video combinations plus all 8 image ones is that a single boolean used to
- * carry both meanings and got both wrong.
+ * All three feed ONE verdict — `insertRefusal` — which drives the content dim,
+ * the insert button and the `@` picker alike. The ✕ reads none of them: it
+ * removes in every state (user 2026-08-19).
+ *
+ * Dimension one — "does this mode use references at all". Dimension two — "is
+ * this row's modality one this run consumes". These two are CONJUNCT for media
+ * rows and do not reach text rows at all, and the point of pinning all 24 video
+ * combinations plus all 8 image ones is that a single boolean used to carry
+ * both meanings and got both wrong.
  *
  * Dimension three — "does the ACTIVE MODEL take a prompt" (#1966) — is the one
- * that DOES govern text rows, and it is the only one that does. The 24 + 8
+ * that DOES reach text rows, and it is the only one that does. The 24 + 8
  * enumeration holds it true throughout, so those cases isolate the first two;
  * the third has its own block at the bottom, which walks it against both other
  * dimensions.
@@ -158,7 +161,7 @@ describe('insertRefusal — the criterion depends on nothing asynchronous', () =
   });
 });
 
-describe('isReferenceMaterial — one name for the thing both dimensions read on', () => {
+describe('isReferenceMaterial — one name for what `takesReferences` reads on', () => {
   it('holds for the three media modalities and not for text', () => {
     for (const kind of ['image', 'audio', 'video'] as const) {
       expect(isReferenceMaterial(kind), kind).toBe(true);
