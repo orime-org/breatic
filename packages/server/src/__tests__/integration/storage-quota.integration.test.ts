@@ -105,7 +105,7 @@ vi.mock("@breatic/core", async (io) => {
           if (prop === "info") {
             return (ctx: Record<string, unknown>, line: string) => {
               logged.push({ line, ctx });
-              real.info(ctx, line);
+              real.info?.(ctx, line);
             };
           }
           const value = real[prop];

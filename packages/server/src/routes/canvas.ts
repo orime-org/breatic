@@ -33,6 +33,7 @@ import {
 import { nodeHistoryService } from "@breatic/domain";
 import { assertSkillUsable } from "@breatic/domain";
 import { projectService, authService, precheckCredits } from "@server/modules";
+import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import {
   AppError,
@@ -162,6 +163,12 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   // negative, the accepted trade-off of a soft pre-check. Same shared
   // helper and 402 shape as the /mini-tools routes.
   await precheckCredits(user.id, estimateTaskCredits(body.model));
+
+  // #89: storage gate, the other soft pre-check. AFTER credits, because
+  // refusing for storage tells the studio's admin about it — and a request
+  // that was going to be refused for credits anyway should not send anyone
+  // mail about storage.
+  await assertStorageAllowance(projectId, "generate");
 
   // Same gate the chat entry uses. This path had none: a skill_name went
   // from the request body into the task row and the queue untouched.

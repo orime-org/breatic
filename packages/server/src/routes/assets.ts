@@ -24,6 +24,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { assetUploadService, projectService } from "@server/modules";
+import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import {
   getStorageAdapter,
   getStorageConfig,
@@ -184,6 +185,12 @@ assets.get(
         },
       });
     }
+
+    // #89: storage gate. AFTER the dedup return above, deliberately — that
+    // path mints no key, issues no grant and adds no `studio_assets` row, so
+    // it consumes nothing and there is nothing to refuse. From here on the
+    // upload is real, so a full account stops here and gets no upload URL.
+    await assertStorageAllowance(project_id, "upload");
 
     const kind = detectKind(content_type);
     // storageKey's ext contract is dotted (#1630): the upload filename yields a
