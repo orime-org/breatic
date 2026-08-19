@@ -46,7 +46,7 @@ const PROJECT = 'p-1';
 const RUNNING = 'c-1';
 
 /** The signal the in-flight request was handed. */
-let sent: AbortSignal | undefined;
+let sent: AbortSignal | null | undefined;
 
 /**
  * Start a turn in a conversation and wait for its request to be out.

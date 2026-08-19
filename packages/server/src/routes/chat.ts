@@ -35,7 +35,6 @@ import { toUiMessages } from "@server/modules/conversation/message-part-mapping.
 import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig } from "@breatic/core";
 import { assertSkillUsable } from "@breatic/domain";
-import { SSE_HEARTBEAT_INTERVAL_MS } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
 
 /**
@@ -140,7 +139,7 @@ async function streamTurn(
     // on the work this turn does before it can speak, and a turn that is
     // doing fine gets killed for it.
     sayAlive();
-    const beat = setInterval(sayAlive, SSE_HEARTBEAT_INTERVAL_MS);
+    const beat = setInterval(sayAlive, getAgentConfig().sse_heartbeat_interval_ms);
 
     try {
       await runWithContext(
@@ -470,5 +469,27 @@ chat.delete(
     return c.json({ data: { ok: true } });
   },
 );
+
+/**
+ * `GET /chat/stream-config` — the one knob a browser needs to read a turn's
+ * stream, from `config/agent.yaml`.
+ *
+ * How often this server says a stream is alive is the same fact as how long a
+ * browser waits before deciding it is not, so it has one home and the browser
+ * asks for it. Two copies, and an operator who changed this one would leave
+ * every browser either declaring healthy streams dead or waiting longer than
+ * it meant to -- silently, because nothing on either side would notice.
+ *
+ * How many beats in a row may go missing is deliberately not here. A server
+ * collecting garbage can miss two in a row on a stream that is perfectly
+ * healthy, so a deployment that tuned that figure down would be tuning down
+ * how many working turns it kills.
+ *
+ * Shaped like `GET /assets/upload-config`, which serves the browser's upload
+ * knobs out of `config/storage.yaml` for the same reason.
+ */
+chat.get("/stream-config", (c) => {
+  return c.json({ data: { heartbeatIntervalMs: getAgentConfig().sse_heartbeat_interval_ms } });
+});
 
 export { chat as chatRoute };

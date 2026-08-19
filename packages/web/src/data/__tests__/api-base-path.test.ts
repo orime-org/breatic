@@ -61,7 +61,7 @@ describe('the API prefix has one definition', () => {
   it('the agent chat stream opens under it', async () => {
     // Driven rather than read off the transport: the SDK keeps `api`
     // protected, and what matters is the address a turn actually goes to.
-    const fetching = vi.fn(async () => new Response('', { status: 204 }));
+    const fetching = vi.fn(async (_url: string) => new Response('', { status: 204 }));
     vi.stubGlobal('fetch', fetching);
 
     await chatSessionFor({
@@ -71,7 +71,8 @@ describe('the API prefix has one definition', () => {
       onTitled: () => undefined,
     }).sendMessage({ text: 'hi' });
 
-    expect(String(fetching.mock.calls[0]?.[0])).toBe(`${API_BASE_PATH}/chat/message`);
+    const [url] = fetching.mock.calls[0] ?? [];
+    expect(String(url)).toBe(`${API_BASE_PATH}/chat/message`);
   });
 
   it('the text mini-tool stream opens under it', async () => {

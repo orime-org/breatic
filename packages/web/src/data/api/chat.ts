@@ -85,7 +85,42 @@ export interface OpenChatResult {
   };
 }
 
+/** The knobs a browser needs to read a turn's stream. */
+export interface StreamConfig {
+  /** How often this server says a running stream is alive, in milliseconds. */
+  heartbeatIntervalMs: number;
+}
+
+/**
+ * What the server last said about its stream, so it is asked for once.
+ *
+ * The promise and not the answer, so that two conversations opening at the
+ * same moment make one request between them rather than one each.
+ */
+let streamConfigAsked: Promise<StreamConfig> | null = null;
+
 export const chatApi = {
+  /**
+   * How long to wait on a silent stream before deciding it is gone.
+   *
+   * Asked for rather than known: the beat is one number in
+   * `config/agent.yaml`, and a copy of it here would be a second answer to a
+   * question the server has already answered -- one that goes wrong silently,
+   * because a browser waiting the wrong length of time neither errors nor
+   * says anything.
+   * @returns The knobs, from cache after the first call.
+   */
+  streamConfig(): Promise<StreamConfig> {
+    streamConfigAsked ??= apiGet<StreamConfig>('/chat/stream-config').catch(
+      (failed: unknown) => {
+        // Not kept, so the next turn asks again. A cached rejection would
+        // leave every later turn unwatched over one bad moment.
+        streamConfigAsked = null;
+        throw failed;
+      },
+    );
+    return streamConfigAsked;
+  },
   /**
    * Open chat in a project.
    *

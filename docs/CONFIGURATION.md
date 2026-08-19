@@ -115,6 +115,13 @@ loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 
 |---|---|---|
 | `conversation_page_size` | 30 | 会话列表一页几条。**服务端定,前端不发** —— 前端只发游标,页大小是服务端的事;两边各定一个就是同一个问题的两个答案。`POST /chat/open` 和 `GET /chat/conversations` 用同一个值 |
 | `conversation_title_max_chars` | 60 | 用第一句话给会话起名时截到多少个**字符**(不是 UTF-16 码元 —— 按码元切会把一个字切成两半,存进去是个替换符)。loader 里另有一道 200 的硬上限,防止把配置写成一个列宽装不下的数 |
+| `message_page_size` | 30 | 一条会话的消息一页几条,**按轮对齐**(切开的那一轮整轮留给下一页)。跟 `conversation_page_size` 同一个数、同一类旋钮 |
+
+**Agent 聊天的流**(2026-08-19 加):
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `sse_heartbeat_interval_ms` | 5000 | 服务端多久说一次「这条流还活着」。**浏览器问服务端要这个数**(`GET /chat/stream-config`),不自己存一份 —— 发的节奏和等的耐心是同一件事,两边各写一个,调了服务端这个就会让浏览器要么误判健康的流已死、要么等得比它以为的久,而且两头都不会报错。**「连续几次没收到算死」不在配置里**,写死在 `packages/shared/src/agent/heartbeat.ts` 的 `SSE_HEARTBEAT_MISSES_ALLOWED = 3`:服务端 GC 期间健康的流也会连丢两次,把它做成旋钮等于给运维一个能把正常轮次杀掉的开关 |
 
 **韧性相关**:
 

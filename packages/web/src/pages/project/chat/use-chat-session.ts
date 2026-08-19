@@ -12,7 +12,7 @@ import { conversationRuntime, useConversationRuntime } from '@web/stores/convers
 import type { OpenStatus, TurnPhase } from '@web/stores/conversation-runtime';
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
-import { chatSessionFor, stopChatSession } from '@web/stores/chat-sessions';
+import { chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import type { ConversationOnTheWire } from '@web/data/api/chat';
 import type { ChatMessage } from '@web/pages/project/chat/types';
@@ -232,12 +232,17 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
       // panel has not been told about it yet when this runs.
       const opened = await conversationRuntime.conversationForSending(projectId);
       if (opened === undefined) return;
-      await chatSessionFor({
+      chatSessionFor({
         projectId,
         conversationId: opened,
         history: NO_MESSAGES,
         onTitled: noteTitle(opened),
-      }).sendMessage({ text: said });
+      });
+      // Through the session rather than straight at the `Chat`: what a running
+      // turn needs looking after -- the wait for the next beat, and giving up
+      // when none comes -- lives with the session, and a send that went round
+      // it would be a turn nobody was watching.
+      await sendInSession(opened, said);
     },
     [projectId, noteTitle],
   );

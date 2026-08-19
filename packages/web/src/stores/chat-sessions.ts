@@ -24,7 +24,9 @@
 import { Chat } from '@ai-sdk/react';
 import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
+import { SSE_HEARTBEAT_MISSES_ALLOWED } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
+import { chatApi } from '@web/data/api/chat';
 import type { StoredUiMessage } from '@web/data/api/chat';
 
 /** What starting a conversation's state takes. */
@@ -65,6 +67,14 @@ const TITLED = 'data-conversation-titled';
 
 /** Every conversation whose state is being kept, by conversation id. */
 const sessions = new Map<string, Chat<StoredUiMessage>>();
+
+/**
+ * Which project each of them belongs to.
+ *
+ * Kept beside the sessions because a word about a turn is addressed to a
+ * project as well as to a conversation, and the turn is run from here.
+ */
+const projectOf = new Map<string, string>();
 
 /**
  * What a panel subscribes to before it knows which conversation it is showing.
@@ -181,6 +191,105 @@ function markTheReply(chat: Chat<StoredUiMessage>, mark: 'data-interrupted' | 'd
   ];
 }
 
+/** The wait each running conversation is under, by conversation id. */
+const watchdogs = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** The chunk the server proves a running stream alive with. */
+const BEAT = 'data-heartbeat';
+
+/**
+ * Stop waiting on a conversation, whichever way its turn ended.
+ * @param conversationId - The conversation whose turn is over.
+ */
+function stopWatching(conversationId: string): void {
+  const waiting = watchdogs.get(conversationId);
+  if (waiting !== undefined) clearTimeout(waiting);
+  watchdogs.delete(conversationId);
+}
+
+/**
+ * Give up on a stream that has stopped saying it is alive.
+ *
+ * The turn is ended the way pressing stop ends one, but the reader pressed
+ * nothing -- so unlike stop, this is worth a word.
+ *
+ * What is taken back is the sentence the reader sent, and only while nothing
+ * has answered it. The SDK pushes that message at the press and does not roll
+ * it back; once the turn is over the renderer stops holding it out of the
+ * list, so it appears -- while the words are also still in the box, which was
+ * never emptied because no frame ever arrived. The same sentence in two
+ * places, and a reader who sends again has said it twice.
+ * @param projectId - The project it was running in.
+ * @param conversationId - The conversation it was running in.
+ */
+function giveUpOn(projectId: string, conversationId: string): void {
+  const chat = sessions.get(conversationId);
+  if (!chat) return;
+  const nothingAnswered = chat.status === 'submitted';
+  void chat.stop();
+  stopWatching(conversationId);
+  if (nothingAnswered) {
+    const said = chat.messages[chat.messages.length - 1];
+    if (said?.role === 'user') chat.messages = chat.messages.slice(0, -1);
+  } else {
+    markTheReply(chat, 'data-interrupted');
+  }
+  tell({ projectId, conversationId, kind: 'network' });
+}
+
+/**
+ * Start, or restart, the wait for the next beat.
+ *
+ * The budget runs from the press rather than from the first beat: a request
+ * that never opens at all is the one case nothing else reports, and it has to
+ * be covered. So the deadline is worked out against when the press happened,
+ * and asking the server how long the budget is -- which is itself a request --
+ * spends part of it rather than resetting it.
+ * @param projectId - The project the conversation is in.
+ * @param conversationId - The conversation being waited on.
+ * @param pressedAt - When the reader pressed send.
+ */
+async function expectAnotherBeat(
+  projectId: string,
+  conversationId: string,
+  pressedAt: number,
+): Promise<void> {
+  const { heartbeatIntervalMs } = await chatApi.streamConfig();
+  // Ended while the question was out. Arming now would be waiting on a turn
+  // that is over.
+  if (!sessions.has(conversationId)) return;
+  stopWatching(conversationId);
+  const spent = Date.now() - pressedAt;
+  const left = heartbeatIntervalMs * SSE_HEARTBEAT_MISSES_ALLOWED - spent;
+  watchdogs.set(
+    conversationId,
+    setTimeout(() => giveUpOn(projectId, conversationId), Math.max(left, 0)),
+  );
+}
+
+/**
+ * Say one thing in a conversation, and watch the stream it comes back on.
+ *
+ * The one way a turn is started. Everything a running turn needs looking
+ * after -- the wait for the next beat, and the giving up when none comes --
+ * belongs with the session rather than with whichever panel pressed the
+ * button, for the same reason the session does.
+ * @param conversationId - The conversation to say it in.
+ * @param said - What the reader typed, trimmed.
+ * @returns When the turn is over, however it ended.
+ */
+export async function sendInSession(conversationId: string, said: string): Promise<void> {
+  const chat = sessions.get(conversationId);
+  if (!chat) return;
+  const pressedAt = Date.now();
+  void expectAnotherBeat(projectOf.get(conversationId) ?? '', conversationId, pressedAt);
+  try {
+    await chat.sendMessage({ text: said });
+  } finally {
+    stopWatching(conversationId);
+  }
+}
+
 /**
  * Stop the turn a conversation is running, as the reader asked.
  *
@@ -193,6 +302,7 @@ export function stopChatSession(conversationId: string): void {
   const chat = sessions.get(conversationId);
   if (!chat) return;
   void chat.stop();
+  stopWatching(conversationId);
   markTheReply(chat, 'data-interrupted');
 }
 
@@ -214,6 +324,10 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
     messages: init.history,
     transport: transportFor(projectId, conversationId),
     onData: (part) => {
+      if (part.type === BEAT) {
+        void expectAnotherBeat(projectId, conversationId, Date.now());
+        return;
+      }
       if (part.type !== TITLED) return;
       const { title } = part.data as { title: string | null };
       onTitled(title);
@@ -226,6 +340,7 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
     },
   });
   sessions.set(init.conversationId, chat);
+  projectOf.set(init.conversationId, projectId);
   return chat;
 }
 
@@ -239,7 +354,9 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
  */
 export function evictChatSession(conversationId: string): void {
   sessions.get(conversationId)?.stop();
+  stopWatching(conversationId);
   sessions.delete(conversationId);
+  projectOf.delete(conversationId);
 }
 
 /**
@@ -248,6 +365,10 @@ export function evictChatSession(conversationId: string): void {
  * For leaving a project, where what is being left is all of them at once.
  */
 export function evictAllChatSessions(): void {
-  for (const chat of sessions.values()) void chat.stop();
+  for (const [id, chat] of sessions) {
+    void chat.stop();
+    stopWatching(id);
+  }
   sessions.clear();
+  projectOf.clear();
 }
