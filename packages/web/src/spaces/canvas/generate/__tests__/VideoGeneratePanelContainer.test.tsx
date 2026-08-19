@@ -1262,16 +1262,17 @@ describe('VideoGeneratePanelContainer', () => {
       // prompt material and stays lit), and the refusal is aria-disabled
       // rather than the HTML attribute (which would block click and hover).
       expect(
-        screen.getByTestId('generate-ref-r-a').classList.contains('opacity-50'),
+        screen
+          .getByTestId('generate-ref-insert-r-a')
+          .classList.contains('opacity-50'),
       ).toBe(true);
       expect(insert).toHaveAttribute('aria-disabled', 'true');
-      // And it cannot be thrown away while it is dimmed: references are shared
-      // across modes, so a ✕ pressed here would lose an image the user is
-      // coming back for (design decision 2026-08-11).
-      expect(screen.getByTestId('generate-ref-remove-r-a')).toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
+      // But it CAN still be thrown away (#1952, user 2026-08-19): a row this
+      // mode cannot use is exactly a row the user may want to clear, and the
+      // door swings both ways — a deleted reference can be added back.
+      expect(
+        screen.getByTestId('generate-ref-remove-r-a'),
+      ).not.toHaveAttribute('aria-disabled', 'true');
     });
 
     it('keeps offering to add a reference in every mode', async () => {

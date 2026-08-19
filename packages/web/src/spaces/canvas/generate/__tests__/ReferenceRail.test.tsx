@@ -311,30 +311,33 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     );
     // Both rows still render — the edges stay visible, they just cannot act.
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
-    // The dim is on each ROW, not on the rail container and not on the
-    // controls: one opacity, so a dark row's buttons cannot end up at 0.25.
+    // The dim is on each row's CONTENT button (#1952) — not on the rail
+    // container, not on the row wrapper, and not on the ✕: one opacity, so a
+    // dark row's controls cannot end up at 0.25, and the ✕ stays usable.
     expect(screen.getByTestId('generate-reference-rail')).not.toHaveClass(
       'opacity-50',
     );
-    expect(screen.getByTestId('generate-ref-a->me')).toHaveClass('opacity-50');
+    expect(screen.getByTestId('generate-ref-a->me')).not.toHaveClass(
+      'opacity-50',
+    );
+    expect(screen.getByTestId('generate-ref-insert-a->me')).toHaveClass(
+      'opacity-50',
+    );
     // The text row is prompt material and stays lit — the dim rule's subject
     // is the reference material (user 2026-08-13, second clarification).
-    expect(screen.getByTestId('generate-ref-b->me')).not.toHaveClass(
+    expect(screen.getByTestId('generate-ref-insert-b->me')).not.toHaveClass(
       'opacity-50',
     );
-    expect(screen.getByTestId('generate-ref-insert-a->me')).not.toHaveClass(
-      'opacity-50',
-    );
-    // Image row: refuses both insert and remove.
+    // Image row: refuses INSERT only. Its ✕ stays live like every other one
+    // (#1952, user 2026-08-19) — the two halves of a row are decoupled.
     expect(screen.getByTestId('generate-ref-insert-a->me')).toHaveAttribute(
       'aria-disabled',
       'true',
     );
-    expect(screen.getByTestId('generate-ref-remove-a->me')).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    // The text row's ✕ stays live, because this mode is already using it.
+    expect(
+      screen.getByTestId('generate-ref-remove-a->me'),
+    ).not.toHaveAttribute('aria-disabled', 'true');
+    // The text row's ✕ stays live too — every ✕ does now.
     expect(screen.getByTestId('generate-ref-remove-b->me')).not.toHaveAttribute(
       'aria-disabled',
       'true',

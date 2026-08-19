@@ -11,7 +11,6 @@ import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-refer
 import {
   insertRefusal,
   isReferenceMaterial,
-  removeRefusal,
   type ReferenceUsabilityContext,
   type ReferenceRefusal,
 } from '@web/spaces/canvas/generate/reference-usability';
@@ -156,39 +155,6 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     },
     [t],
   );
-  const refuseRemove = React.useCallback(
-    (refusal: ReferenceRefusal, isCrop: boolean): void => {
-      // Remove takes the REASON now, not just the crop flag (#1966). Reusing
-      // the insert copy here would answer a different question than the one
-      // asked — the user clicked ✕, and "no prompt to insert into" tells them
-      // nothing about getting rid of the row. Freezing a control while being
-      // unable to explain itself is exactly what `aria-disabled` rather than
-      // the HTML attribute exists to avoid.
-      //
-      // No crop variant on this branch, and it is not an omission: this reason
-      // reaches the ✕ only for a TEXT row (`removeRefusal` asks the reference
-      // question for every other kind), while a focus crop is always an image
-      // row (`focusToRailItem` writes `sourceNodeType: 'image'`). The two
-      // cannot coexist, so a crop-specific message here would be a string no
-      // one could ever read.
-      if (refusal === 'model-takes-no-prompt') {
-        toast.warning(t('canvas.generatePanel.refuseRemoveNoPrompt'));
-        return;
-      }
-      // A focus crop is a standalone copy, not an edge projection — its ✕
-      // removes the crop, never an edge. The shared message offers two ways
-      // out and one of them, "delete its edge on the canvas", does not exist
-      // for this row, so the crop gets the half that is true for it.
-      toast.warning(
-        t(
-          isCrop
-            ? 'canvas.generatePanel.refuseRemoveModeOffCrop'
-            : 'canvas.generatePanel.refuseRemoveModeOff',
-        ),
-      );
-    },
-    [t],
-  );
   if (references.length === 0 && pendingFocus.length === 0) return null;
   return (
     <div
@@ -202,11 +168,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
         // that kind: a text row answers to the prompt question, a media row to
         // the reference one. Insert then asks two more of a media row — is
         // there a prompt to insert INTO, and can the pool carry this modality.
-        // `removeRefused` answers for the row dim as well as the ✕: they are
-        // the same question, and spelling it twice is how a row once ended up
-        // lit with its ✕ frozen (#1940).
         const insertRefused = insertRefusal(ref.sourceNodeType, usabilityCtx);
-        const removeRefused = removeRefusal(ref.sourceNodeType, usabilityCtx);
         // Empty-source hint (H, user 2026-07-12): a source that has produced
         // nothing has no preview to show, so say so rather than opening a
         // blank card. Keyed on the ASSET rather than the thumbnail, because
@@ -247,9 +209,13 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             // this opacity does not reach it, and that is the wanted outcome —
             // a dark row still shows its picture at full strength (user
             // 2026-08-13).
-            className={`group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5 ${
-              removeRefused === null ? '' : 'opacity-50'
-            }`}
+            // The row itself never dims: the ✕ lives here too and it stays
+            // usable in every state (user 2026-08-19). The dim belongs to the
+            // CONTENT button below, which is the part this mode can or cannot
+            // use. Keeping it here was what forced "the whole rail lights or
+            // darkens together" — a per-row dim would have taken the ✕ with it
+            // and left the user unable to clear a row they cannot use.
+            className='group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5'
           >
             <HoverPreview
               // The row's REAL modality, so audio and video preview as
@@ -317,7 +283,13 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                     ? refuseInsert(insertRefused, ref.sourceNodeType)
                     : onInsert(ref)
                 }
-                className='flex items-center gap-1.5 rounded-overlay'
+                // The content dims exactly when it cannot be used, which is
+                // the same answer the `@` popup gives this row (#1952). One
+                // layer of opacity per row, and it is this one — the wrapper
+                // no longer carries it, so 0.5 x 0.5 never happens.
+                className={`flex items-center gap-1.5 rounded-overlay ${
+                  insertRefused === null ? '' : 'opacity-50'
+                }`}
               >
                 {ref.thumbnail ? (
                   <img
@@ -375,12 +347,12 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                     ref.sourceNodeName || t('canvas.generatePanel.reference'),
                 },
               )}
-              aria-disabled={removeRefused !== null}
-              onClick={() =>
-                removeRefused
-                  ? refuseRemove(removeRefused, ref.focus === true)
-                  : onRemove(ref)
-              }
+              // Always usable, whatever the mode says about the content
+              // (user 2026-08-19): a row you cannot use is exactly a row you
+              // may want to clear, and the earlier "you might delete it by
+              // accident" worry was withdrawn — the door swings both ways, a
+              // deleted reference can be added back.
+              onClick={() => onRemove(ref)}
               className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
             >
               <X className='h-3 w-3' aria-hidden='true' />

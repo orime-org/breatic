@@ -121,9 +121,12 @@ afterEach(() => {
 
 describe('ReferenceRail — a mode that ignores references dims its reference material rows', () => {
   it('dims every REFERENCE MATERIAL row, not just the image ones (#1930)', () => {
+    // #1952 moved the dim off the row and onto its CONTENT button: the ✕ lives
+    // on the row too and it stays usable in every state now, so a dim there
+    // would have taken the delete control with it.
     renderRail(false);
     for (const id of ['e-image', 'e-audio', 'e-video']) {
-      expect(row(id), id).toHaveClass('opacity-50');
+      expect(insertBtn(id), id).toHaveClass('opacity-50');
     }
   });
 
@@ -132,27 +135,16 @@ describe('ReferenceRail — a mode that ignores references dims its reference ma
     // row is prompt material and never dims. Painting it half-strength said it
     // was unusable while this very mode was consuming it.
     renderRail(false);
-    expect(row('e-text')).not.toHaveClass('opacity-50');
+    expect(insertBtn('e-text')).not.toHaveClass('opacity-50');
   });
 
   it('does not stack the row dim with a second dim on the controls', () => {
     // 0.5 × 0.5 = 0.25 would make a dark row's controls read as broken rather
-    // than inactive. The row owns the dim; the buttons own only their own
-    // unusable state, which is expressed by aria-disabled, not opacity.
+    // than inactive. Still one layer per row after #1952 — it just moved: the
+    // CONTENT button owns it, so the row wrapper and the ✕ must carry none.
     renderRail(false);
-    expect(insertBtn('e-image')).not.toHaveClass('opacity-50');
+    expect(row('e-image')).not.toHaveClass('opacity-50');
     expect(removeBtn('e-image')).not.toHaveClass('opacity-50');
-  });
-
-  it('freezes every media ✕ — including audio and video (#1940)', () => {
-    const { onRemove } = renderRail(false);
-    for (const id of ['e-image', 'e-audio', 'e-video']) {
-      expect(removeBtn(id), id).toHaveAttribute('aria-disabled', 'true');
-      fireEvent.click(removeBtn(id));
-    }
-    expect(onRemove).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledTimes(3);
-    expect(toast.warning).toHaveBeenLastCalledWith(KEY.removeOff);
   });
 
   it('keeps the TEXT row removable — this mode is already using it', () => {
@@ -282,6 +274,11 @@ describe('ReferenceRail — the dim does not reach the hover preview', () => {
     // or something above the card could carry an opacity of its own. Asserting
     // instead on a `dimmed` prop would test neither — that prop no longer
     // exists, so the assertion could only ever hold.
+    //
+    // #1952 moved the dim from the row onto its CONTENT button, which is the
+    // very element the card hangs off. So the anchor moved with it: the button
+    // must be dim (otherwise this test proves nothing) and the card must still
+    // carry none of that opacity.
     vi.useFakeTimers();
     render(
       <ReferenceRail
@@ -301,7 +298,7 @@ describe('ReferenceRail — the dim does not reach the hover preview', () => {
       />,
     );
     const dimmedRow = row('e-image');
-    expect(dimmedRow).toHaveClass('opacity-50');
+    expect(insertBtn('e-image')).toHaveClass('opacity-50');
 
     fireEvent.pointerEnter(insertBtn('e-image'), { pointerType: 'mouse' });
     act(() => {
@@ -313,35 +310,6 @@ describe('ReferenceRail — the dim does not reach the hover preview', () => {
     for (let el = card as HTMLElement | null; el; el = el.parentElement) {
       expect(el.className, el.tagName).not.toContain('opacity-');
     }
-  });
-});
-
-describe('ReferenceRail — a focus crop has no edge to delete', () => {
-  it('gives the crop row its own remove refusal', () => {
-    // A focus crop is a standalone copy, not an edge projection — its ✕
-    // removes the crop, never an edge (derive-references.ts). The shared
-    // message offers two ways out, one of which ("delete its edge on the
-    // canvas") does not exist for this row.
-    render(
-      <ReferenceRail
-        references={[
-          {
-            refId: 'focus:c1',
-            sourceNodeId: 'focus:c1',
-            sourceNodeType: 'image',
-            sourceNodeName: 'Face',
-            thumbnail: 'https://cdn/crop.png',
-            mediaUrl: 'https://cdn/crop.png',
-            focus: true,
-          },
-        ]}
-        onInsert={vi.fn()}
-        onRemove={vi.fn()}
-        modeTakesReferences={false}
-      />,
-    );
-    fireEvent.click(screen.getByTestId('generate-ref-remove-focus:c1'));
-    expect(toast.warning).toHaveBeenCalledWith(KEY.removeOffCrop);
   });
 });
 
@@ -366,41 +334,35 @@ describe('ReferenceRail — a model that sends no prompt (#1966)', () => {
     );
   }
 
-  it('文本行两个动作都冻住，且各说各的', () => {
-    // 两个按钮问的是同一件事的两面，说的必须是两句不同的话 —— 用户按插入
-    // 想的是「放进去」，按 ✕ 想的是「拿掉」。把 ✕ 换成插入那句，这条会红；
-    // 实测过在补它之前，改成插入那句全仓 3979 条一条都不红。
+  it('文本行的插入冻住并说清是提示词那个理由', () => {
+    // 原来这条同时钉着 ✕；#1952 之后 ✕ 在任何状态下都可用（user 2026-08-19），
+    // 那一半移进 ReferenceRail-decoupled.test.tsx 的「任何状态下都能删」。
     renderNoPrompt();
     expect(
       screen.getByTestId('generate-ref-insert-e-text').getAttribute('aria-disabled'),
     ).toBe('true');
     fireEvent.click(screen.getByTestId('generate-ref-insert-e-text'));
     expect(toast.warning).toHaveBeenCalledWith(KEY.insertNoPrompt);
-
-    vi.mocked(toast.warning).mockClear();
-    expect(
-      screen.getByTestId('generate-ref-remove-e-text').getAttribute('aria-disabled'),
-    ).toBe('true');
-    fireEvent.click(screen.getByTestId('generate-ref-remove-e-text'));
-    expect(toast.warning).toHaveBeenCalledWith(KEY.removeNoPrompt);
   });
 
-  it('媒体行的两个动作给同一个理由「不吃参考」，不给提示词那个', () => {
+  it('媒体行的插入给「不吃参考」那个理由，不给提示词那个', () => {
     // 媒体行在这一档里两条约束都不满足，而只有「切到使用参考的档」这条路
-    // 真走得通 —— 切到一个发提示词但不吃参考的档，两个动作照样做不了。
+    // 真走得通 —— 切到一个发提示词但不吃参考的档，插入照样做不了。
     renderNoPrompt();
     for (const id of ['e-image', 'e-audio', 'e-video']) {
       vi.mocked(toast.warning).mockClear();
       fireEvent.click(screen.getByTestId(`generate-ref-insert-${id}`));
       expect(toast.warning, `insert ${id}`).toHaveBeenCalledWith(KEY.modeOff);
-      vi.mocked(toast.warning).mockClear();
-      fireEvent.click(screen.getByTestId(`generate-ref-remove-${id}`));
-      expect(toast.warning, `remove ${id}`).toHaveBeenCalledWith(KEY.removeOff);
     }
   });
 
   it('文本行在这一档里也变暗 —— 它是提示词素材，而这一档没有提示词', () => {
     renderNoPrompt();
-    expect(screen.getByTestId('generate-ref-e-text').className).toContain('opacity-50');
+    // 判精确 token：`Button` 基类带着 `disabled:opacity-50`，子串匹配恒真。
+    expect(
+      screen
+        .getByTestId('generate-ref-insert-e-text')
+        .classList.contains('opacity-50'),
+    ).toBe(true);
   });
 });

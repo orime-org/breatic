@@ -681,9 +681,10 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     });
     const insert = await screen.findByTestId('generate-ref-insert-e1');
     expect(insert.getAttribute('aria-disabled')).toBe('true');
+    // 只有插入冻住。✕ 在任何状态下都可用（#1952，user 2026-08-19）。
     expect(
       screen.getByTestId('generate-ref-remove-e1').getAttribute('aria-disabled'),
-    ).toBe('true');
+    ).not.toBe('true');
     listSpy.mockRestore();
   });
 
@@ -706,9 +707,10 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     });
     const insert = await screen.findByTestId('generate-ref-insert-e1');
     expect(insert.getAttribute('aria-disabled')).toBe('false');
+    // ✕ 不再带 aria-disabled 这个属性：它永远可用，标一个 false 是多余的。
     expect(
       screen.getByTestId('generate-ref-remove-e1').getAttribute('aria-disabled'),
-    ).toBe('false');
+    ).toBeNull();
     listSpy.mockRestore();
   });
 
