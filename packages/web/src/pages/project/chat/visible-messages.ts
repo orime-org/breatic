@@ -3,9 +3,6 @@
 
 /**
  * What the conversation shows, given what the library holds.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 7.2.
  */
 import type { ChatStatus, UIMessage } from 'ai';
 

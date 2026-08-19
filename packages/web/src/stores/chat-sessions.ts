@@ -17,9 +17,6 @@
  * `@ai-sdk/react@4.0.71` (`dist/index.js:301-311`): the hook only stores the
  * callbacks it was passed when it was *not* given a `chat`, so ones handed to
  * a `useChat({ chat })` are never called.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 6.3.
  */
 import { Chat } from '@ai-sdk/react';
 import { tell } from '@web/stores/chat-mishaps';

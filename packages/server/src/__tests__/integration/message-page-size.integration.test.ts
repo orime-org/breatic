@@ -14,9 +14,6 @@
  * alignment is right today and is asserted here so it stays right: a page is
  * cut on a turn boundary, because half a turn read back is an answer with no
  * question or a question with no answer.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 8.5. Acceptance A19.
  */
 import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
 import postgres from "postgres";

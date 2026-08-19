@@ -10,9 +10,6 @@
  *
  * 库里存的仍是我们自己的 `MessagePart[]`（定稿 §6.4，user 2026-08-19 拍定：
  * 落库格式不跟 AI SDK 走），转换发生在交给浏览器之前。
- *
- * 设计见 inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * §6.4.1。
  */
 
 import { describe, it, expect, vi } from "vitest";

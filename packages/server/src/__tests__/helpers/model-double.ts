@@ -80,18 +80,43 @@ export function finishedSpending(outputTotal: number): ModelStreamPart {
  * Takes a function rather than a list because the model is built once, inside
  * a module mock, and each case changes what it should say.
  * @param parts - Consulted at call time for this turn's output.
+ * @param onCalled - Handed what the model was asked, for cases about what a
+ *   turn puts in front of it rather than about what it says back.
  * @returns A model the turn can be run against.
  */
-export function modelProducing(parts: () => ModelStreamPart[]): MockLanguageModelV4 {
+export function modelProducing(
+  parts: () => ModelStreamPart[],
+  onCalled?: (asked: { prompt: unknown }) => void,
+): MockLanguageModelV4 {
   return new MockLanguageModelV4({
-    doStream: async () => ({
-      stream: new ReadableStream<ModelStreamPart>({
-        start(controller) {
-          for (const part of parts()) controller.enqueue(part);
-          controller.close();
-        },
-      }),
-    }),
+    doStream: async (asked) => {
+      onCalled?.(asked);
+      return {
+        stream: new ReadableStream<ModelStreamPart>({
+          start(controller) {
+            for (const part of parts()) controller.enqueue(part);
+            controller.close();
+          },
+        }),
+      };
+    },
+  });
+}
+
+/**
+ * A model whose call never produces a stream at all.
+ *
+ * Different from a stream carrying an `error` part: this one fails before
+ * there is a stream, which is what an invalid request looks like -- the SDK
+ * validates what it is about to send and throws at the door. Nothing of the
+ * turn has reached the client at that point, so what the client is told is
+ * entirely down to how the failure is handled.
+ * @param why - What the call fails with.
+ * @returns A model the turn can be run against.
+ */
+export function modelFailingToStart(why: Error): MockLanguageModelV4 {
+  return new MockLanguageModelV4({
+    doStream: () => Promise.reject(why),
   });
 }
 

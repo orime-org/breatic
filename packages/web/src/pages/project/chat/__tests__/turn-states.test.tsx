@@ -7,9 +7,6 @@
  * 传输和状态都由 `useChat` 管：面板订阅一个 `Chat` 实例，那个实例把消息
  * 发出去、把回来的东西攒起来。这个文件从 `fetch` 那一层往上全是真的——真的
  * transport 解析流、真的 `Chat` 状态机、真的 hook 订阅——只有网络本身是替身。
- *
- * 设计见 inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * §6.3 与 §7.2。验收 A3、B1、B2。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';

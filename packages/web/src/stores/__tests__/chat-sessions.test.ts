@@ -11,9 +11,6 @@
  *
  * 这件事今天已经成立（`conversation-switching.test.ts:63` 钉着），迁移后
  * 「不得回退」，所以这里钉的是新做法下它仍然成立。
- *
- * 设计见 inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * §6.3。验收 A4。
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import {

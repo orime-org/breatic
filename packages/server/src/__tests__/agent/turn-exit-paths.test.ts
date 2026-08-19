@@ -15,9 +15,6 @@
  * produces, because that is how it happens: the reader presses stop or the
  * page goes, the route raises the signal, and the SDK ends the turn. There is
  * no part a model can send that means "the user left".
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 5.1.3, 5.1.4. Acceptance A13, A15.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

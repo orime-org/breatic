@@ -15,9 +15,6 @@
  * deliberately: the server garbage collects, two misses in a row happen to a
  * healthy stream, and a deployment that tuned this down would start killing
  * turns that were doing fine.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 8.5 and 11. Acceptance A9, A19, C1.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";

@@ -18,9 +18,6 @@
  * they travel as data parts -- the one channel the protocol leaves open for
  * what it does not define. They are not transient: a reader who reloads has
  * to still see that a turn was cut off.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 6.4.1. Acceptance A7.
  */
 import { describe, it, expect } from "vitest";
 import type { MessagePart } from "@breatic/shared";

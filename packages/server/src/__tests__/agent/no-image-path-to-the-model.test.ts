@@ -16,9 +16,6 @@
  * sends from has always written `resource_list: []`. The model this build
  * moves to takes text only, so the dead path would not survive the move
  * anyway.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 11.1. Acceptance C4.
  */
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";

@@ -14,9 +14,6 @@
  * they travel as data parts -- the one channel the protocol leaves open for
  * what it does not define -- and not transient ones: a reader who reloads has
  * to still see that a turn was cut off.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 6.4.1.
  */
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
@@ -61,7 +58,7 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
   };
   // Written only in the state that has one. A pending row carrying an empty
   // output would read as a tool that answered with nothing.
-  if (status === "success") stored.output = part.output as string;
+  if (status === "success") stored.output = part.output;
   if (status === "error" && "errorText" in part) stored.errorMessage = part.errorText;
   return stored;
 }

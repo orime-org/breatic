@@ -19,9 +19,6 @@
  * and `show_search_results` put something on screen and the model is meant to
  * keep writing around them, several times in one turn if it likes; stopping
  * on those would make the first card a turn draws the last thing it says.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 5.1.3. Acceptance A12, A13.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ToolSet } from "ai";

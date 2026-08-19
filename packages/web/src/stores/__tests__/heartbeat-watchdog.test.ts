@@ -14,9 +14,6 @@
  * 判死之后要把 SDK 已经 push 进去的那条用户消息收回来（B5）：`status` 回到
  * `ready` 之后渲染侧不再排除它，那条气泡会当场出现，而输入框里的字还在（第一
  * 帧没到过，从来没清过），同一句话就同时在两处，用户重发一次就是两条。
- *
- * 设计见 inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * §8.5。验收 A9、B5。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SSE_HEARTBEAT_MISSES_ALLOWED } from '@breatic/shared';

@@ -8,9 +8,6 @@
  * figures live in `index.css` beside the other two animations this app
  * defines; the shape came from
  * `engineering/demo/2026-08-12-chat-waiting-animation.html`.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 7.3.
  */
 import type { ReactElement } from 'react';
 import { useTranslation } from '@web/i18n/use-translation';

@@ -14,9 +14,6 @@
  * tool part carries that already, in its own type: `tool-ask_user_question`,
  * `tool-ask_user_choice`, and so on. So the prefix goes, the string goes, and
  * `execute` returns the payload itself.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 9.2.1. Acceptance A6.
  */
 import { describe, it, expect } from "vitest";
 import { TOOL_MAP } from "@domain/agent/tools/index.js";

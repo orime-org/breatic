@@ -14,10 +14,7 @@
  * mismatched. That is gone: the client's own message list is what
  * `POST /chat/open` gave it, and a connection that drops mid-reply leaves the
  * screen out of step with a server whose records are intact -- which the
- * reader gets out of by reloading. Design: inner
- * `engineering/specs/2026-08-19-usechat-migration-design.md` 5.1.1.
- *
- * Acceptance A14.
+ * reader gets out of by reloading.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";

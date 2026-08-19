@@ -17,6 +17,8 @@
  */
 
 import type { ModelMessage } from "ai";
+import type { ToolResultPart } from "ai";
+
 import { toolCallHasOutcome } from "@breatic/shared";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
@@ -30,16 +32,33 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  * with `z.discriminatedUnion` before the request goes out, so handing over the
  * stored string is rejected at the door.
  *
+ * Which arm depends on what the tool answered with, and both arms are real:
+ * a search tool answers with prose, and the four interaction tools answer
+ * with the object the panel needs to draw the question. Putting an object in
+ * the `text` arm fails validation, and it fails inside the stream -- nothing
+ * reaches the screen and nothing says why, so a conversation goes quiet from
+ * its first interaction tool onward.
+ *
  * Only called for parts that `toolCallHasOutcome` accepted, so an `error`
  * here always carries its reason.
  * @param part - The tool part to render
  * @returns The output in its typed form, saying plainly when the tool failed
  */
-function toolOutput(part: ToolPart): { type: "text" | "error-text"; value: string } {
+function toolOutput(part: ToolPart): ToolResultPart["output"] {
   if (part.status === "error") {
     return { type: "error-text", value: part.errorMessage ?? "" };
   }
-  return { type: "text", value: part.output ?? "" };
+  if (typeof part.output === "string") return { type: "text", value: part.output };
+  // Whatever the tool answered with, as it was stored. It came out of a
+  // `JSON.stringify` on the way into the table, so it is JSON by
+  // construction -- the cast says that rather than re-deriving it.
+  return {
+    type: "json",
+    value: (part.output ?? null) as Extract<
+      ToolResultPart["output"],
+      { type: "json" }
+    >["value"],
+  };
 }
 
 /**

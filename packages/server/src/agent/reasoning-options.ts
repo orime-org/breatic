@@ -15,9 +15,6 @@
  * with no name of its own, and `createOpenAI` without a name is called
  * `openai`. `resolveProvider` answers a different question -- who to record a
  * charge against -- and says "openrouter" for the same model.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 11.
  */
 
 import type { streamText } from "ai";

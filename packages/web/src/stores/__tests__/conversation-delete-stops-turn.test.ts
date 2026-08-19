@@ -18,9 +18,6 @@
  * Written against the request rather than the store's internals: what the
  * server sees is the signal being raised, and that stays true whichever end
  * holds the controller.
- *
- * 设计见 inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * §6.6 与 §13.5.2。验收 A17。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as ChatApiModule from '@web/data/api/chat';

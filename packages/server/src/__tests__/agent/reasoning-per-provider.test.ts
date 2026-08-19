@@ -18,9 +18,6 @@
  * `resolveProvider()` answers a different question -- which company to record
  * a charge against -- and returns "openrouter" here. The two must not be
  * confused.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 11. Acceptance C2.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";

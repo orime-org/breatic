@@ -15,9 +15,6 @@
  * library holds and what a reader sees, and every case it has to get right
  * is here: a history that already ends in a user message, someone who sent
  * two in a row, a status where this does not apply at all.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 7.2. Acceptance B1.
  */
 import { describe, it, expect } from 'vitest';
 import type { UIMessage } from 'ai';

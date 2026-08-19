@@ -16,9 +16,6 @@
  * itself rather than from a computed style. That keeps the numbers the demo
  * fixed under a test; whether they add up to the right thing on screen is
  * measured on a real browser.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 7.3 and B3. Acceptance B3.
  */
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';

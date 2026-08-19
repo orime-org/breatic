@@ -15,9 +15,6 @@
  * describe is about to be rewritten and has no other cover: a turn that
  * logged `exit: "completed"` for a turn the user stopped would read as normal
  * for as long as nobody went looking.
- *
- * Design: inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * 13.5.2. Acceptance A18.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -27,7 +24,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 const logInfo = vi.fn();
 
 /** What the model produces this case. */
-const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
+const modelSays = vi.hoisted(() => ({ parts: [] as unknown[], failsToStart: null as Error | null }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
@@ -53,13 +50,16 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
   const actual = await importOriginal<Record<string, unknown>>();
-  const { modelProducing } = await import("../helpers/model-double.js");
+  const { modelProducing, modelFailingToStart } = await import("../helpers/model-double.js");
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "test", instructions: "system", tools: {} }),
     finalizeTurn: async () => [],
-    getModel: () => modelProducing(() => modelSays.parts as ModelStreamPart[]),
+    getModel: () =>
+      modelSays.failsToStart
+        ? modelFailingToStart(modelSays.failsToStart)
+        : modelProducing(() => modelSays.parts as ModelStreamPart[]),
   };
 });
 
@@ -87,6 +87,7 @@ vi.mock("@server/agent/context.js", () => ({
  */
 async function turnLog(parts: ModelStreamPart[]): Promise<Record<string, unknown> | undefined> {
   modelSays.parts = parts;
+  modelSays.failsToStart = null;
 
   const { MainAgent } = await import("@server/agent/main-agent.js");
   const { runWithContext } = await import("@breatic/core");
@@ -131,6 +132,27 @@ describe("what a finished turn writes to the log", () => {
       FINISHED,
     ]);
     expect(line?.exit).toBe("failed");
+  });
+
+  it("names a call that never got off the ground as a failure too", async () => {
+    // 请求在出门前就被判非法（SDK 校验它正要发的东西）—— 这时流上一个字都
+    // 没有过。日志漏记它，就等于一轮什么都没发生、也没人知道。
+    modelSays.parts = [];
+    modelSays.failsToStart = new Error("上游拒收这份请求");
+
+    const { MainAgent } = await import("@server/agent/main-agent.js");
+    const { runWithContext } = await import("@breatic/core");
+    const chunks: Array<{ type: string }> = [];
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("说点什么");
+      for await (const chunk of turn) chunks.push(chunk);
+    });
+
+    // 客户端必须听见这一轮完了。听不见的话，屏幕上就是按了发送之后什么都
+    // 不发生 —— 输入框锁着，等一个永远不来的回复。
+    expect(chunks.map((c) => c.type)).toContain("error");
+    const line = logInfo.mock.calls.find((call) => call[1] === "agent_response");
+    expect((line?.[0] as Record<string, unknown> | undefined)?.exit).toBe("failed");
   });
 
   it("carries the user and the conversation, or the line names nothing", async () => {

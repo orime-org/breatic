@@ -11,9 +11,6 @@
  *
  * 「连续几次没收到算死」不在这上面，故意的：服务端 GC 期间健康的流也会连丢
  * 两次，把它做成可调的等于给运维一个能把正常轮次杀掉的旋钮。
- *
- * 设计见 inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * §8.5。验收 A9。
  */
 import { describe, it, expect, vi } from "vitest";
 

@@ -4,15 +4,13 @@
 /**
  * 线上流说的是 AI SDK 的话，不是我们自己发明的那 8 个事件。
  *
- * 设计见 inner `engineering/specs/2026-08-19-usechat-migration-design.md` §5：
  * 后端出口从「`for await` 循环加 `switch (part.type)`，逐个改写成自定义事件」
  * 换成 `createUIMessageStream`，于是工具调用的参数、结果、失败原因全都由协议
  * 自带，不用我们再定一份契约。
  *
- * 这个文件钉两条验收：
- * A1 —— 一轮纯文本对话，流上是 `text-start` / `text-delta` / `text-end`。
- * A5 —— 一轮有工具调用，流上是 `tool-input-available`（带参数与 toolCallId）
- *        与 `tool-output-available`（带结果），两者按同一个 id 对上。
+ * 这个文件钉两条：一轮纯文本对话，流上是 `text-start` / `text-delta` /
+ * `text-end`；一轮有工具调用，流上是 `tool-input-available`（带参数与
+ * toolCallId）与 `tool-output-available`（带结果），两者按同一个 id 对上。
  *
  * 替身放在**模型**那一层，不放在 `streamTextRetry` 上。这两条要钉的正是
  * 「模型吐出来的东西经 SDK 变成什么上线」，把 `streamTextRetry` 换成替身就等于

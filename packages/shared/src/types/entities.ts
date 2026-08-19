@@ -85,12 +85,16 @@ export type MessagePart =
       /**
        * What the tool returned, as the tool returned it.
        *
-       * The interaction tools prefix their result with an internal marker that
-       * tells the turn loop which event to raise; that marker is consumed
-       * before this is written and never reaches the store. Absent while the
-       * status is still `pending`.
+       * Whatever the tool's own return type is: the search tools answer with
+       * prose, the four interaction tools answer with the object the panel
+       * needs to draw their question. Narrowing this to a string would be a
+       * type that disagrees with the rows already in the table -- and the
+       * disagreement shows up two turns later, when the history goes back to
+       * the model in the wrong arm of its output union.
+       *
+       * Absent while the status is still `pending`.
        */
-      output?: string;
+      output?: unknown;
       /** Why it failed. Only set when the status is `error`. */
       errorMessage?: string;
     }

@@ -12,9 +12,6 @@
  * 这几条原来钉在 store 的事件 switch 上；轮次搬进会话实例之后，出错也是在
  * 那儿学到的，所以测试跟着搬。判据换了：以前看的是自写传输层抛的三种异常，
  * 现在看的是 SDK 抛出来的那一个 `Error`，以及它是不是 `TypeError`。
- *
- * 设计见 inner `engineering/specs/2026-08-19-usechat-migration-design.md`
- * §6.3。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as ChatApiModule from '@web/data/api/chat';
