@@ -42,7 +42,7 @@ const buildAgentConfig = vi.hoisted(() => vi.fn());
 const thisCase = vi.hoisted(() => ({
   parts: [] as unknown[],
   endsOnItsOwn: true,
-  model: undefined,
+  model: undefined as MockLanguageModelV4 | undefined,
 }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
@@ -231,7 +231,7 @@ describe("what a plain chat turn hands the model", () => {
   it("gives it the six baseline tools, and only those", async () => {
     await runTurn(saidAndSpent("hi", 100));
 
-    const called = (thisCase.model as MockLanguageModelV4).doStreamCalls[0];
+    const called = thisCase.model?.doStreamCalls[0];
     const names = (called?.tools ?? []).map((t) => t.name).sort();
     expect(names).toEqual([
       "ask_user_choice",

@@ -20,7 +20,7 @@
  */
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
-import type { MessagePart } from "@breatic/shared";
+import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** What one message's parts look like on the wire. */
 type UiParts = UIMessage["parts"];
@@ -114,4 +114,42 @@ export function toUiParts(parts: MessagePart[]): UiParts {
     }
     return { ...base, state: "input-available" } as UiPart;
   });
+}
+
+/**
+ * What a message carries besides its parts, on its way to the browser.
+ *
+ * The turn is what the client pages back with; the timestamp is what it shows.
+ * Both are ours rather than the protocol's, which is what `metadata` is for.
+ */
+export type StoredMessageMetadata = {
+  /** The turn this message belongs to. Increments on each user message. */
+  turnIndex: number;
+  /** When the row was written, ISO-formatted. */
+  ts: string;
+};
+
+/** One stored message as the client's `Chat` takes it. */
+export type StoredUiMessage = UIMessage<StoredMessageMetadata>;
+
+/**
+ * Turn stored messages into what the client renders them from.
+ *
+ * The flat views the row also carries -- `content` and `thinking`, the parts
+ * read out as plain strings -- do not come along. They exist so a reader that
+ * wants only the prose need not walk the parts, and on the wire they would be
+ * a second copy of what the parts already say, which the client would have to
+ * keep in step with the first.
+ * @param messages - The messages as they were written down.
+ * @returns The same messages in the shape the SDK's client holds.
+ */
+export function toUiMessages(messages: MessageData[]): StoredUiMessage[] {
+  return messages.map((message) => ({
+    // The row's own id. Keying on anything else -- position, turn index --
+    // would be making up something the store already knows.
+    id: message.id ?? "",
+    role: message.role,
+    parts: toUiParts(message.parts),
+    metadata: { turnIndex: message.turnIndex, ts: message.ts },
+  }));
 }

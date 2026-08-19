@@ -31,6 +31,7 @@ import { conversationService } from "@server/modules";
 import { attachmentService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { MainAgent } from "@server/agent/main-agent.js";
+import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
 import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig } from "@breatic/core";
 import { assertSkillUsable } from "@breatic/domain";
@@ -369,8 +370,13 @@ chat.patch(
 chat.post("/open", validate("json", chatOpenSchema), async (c) => {
   const user = c.get("user");
   const { project_id: projectId } = c.req.valid("json");
-  const result = await conversationService.openChat(user.id, projectId);
-  return c.json({ data: result });
+  const { current, ...rest } = await conversationService.openChat(user.id, projectId);
+  return c.json({
+    data: {
+      ...rest,
+      current: { ...current, messages: toUiMessages(current.messages) },
+    },
+  });
 });
 
 /**
@@ -382,8 +388,8 @@ chat.post("/open", validate("json", chatOpenSchema), async (c) => {
 chat.get("/conversations/:id", validate("param", conversationIdParamSchema), async (c) => {
   const user = c.get("user");
   const conversationId = c.req.param("id");
-  const result = await conversationService.getWithMessages(conversationId, user.id);
-  return c.json({ data: result });
+  const { messages, ...rest } = await conversationService.getWithMessages(conversationId, user.id);
+  return c.json({ data: { ...rest, messages: toUiMessages(messages) } });
 });
 
 /**
@@ -403,12 +409,12 @@ chat.get(
   async (c) => {
     const user = c.get("user");
     const { before_turn: beforeTurn } = c.req.valid("query");
-    const page = await conversationService.getEarlierMessages(
+    const { messages, ...rest } = await conversationService.getEarlierMessages(
       c.req.param("id"),
       user.id,
       beforeTurn,
     );
-    return c.json({ data: page });
+    return c.json({ data: { ...rest, messages: toUiMessages(messages) } });
   },
 );
 

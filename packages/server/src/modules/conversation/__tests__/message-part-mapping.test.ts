@@ -26,6 +26,7 @@ import { describe, it, expect } from "vitest";
 import type { MessagePart } from "@breatic/shared";
 import {
   toStoredParts,
+  toUiMessages,
   toUiParts,
 } from "@server/modules/conversation/message-part-mapping.js";
 
@@ -205,5 +206,70 @@ describe("a message that goes out and comes back", () => {
     ];
 
     expect(toStoredParts(toUiParts(original))).toEqual(original);
+  });
+});
+
+describe("a stored message on its way to the browser", () => {
+  it("carries the row's own id, so the list keys on what the store knows", () => {
+    const [message] = toUiMessages([
+      {
+        id: "row-1",
+        role: "user",
+        parts: [{ type: "text", text: "说点什么" }],
+        content: "说点什么",
+        ts: "2026-08-19T00:00:00Z",
+        turnIndex: 3,
+      },
+    ]);
+
+    expect(message?.id).toBe("row-1");
+    expect(message?.role).toBe("user");
+    expect(message?.parts).toEqual([{ type: "text", text: "说点什么" }]);
+  });
+
+  it("keeps the turn it belongs to, which is how the page before it is asked for", () => {
+    // Paging back through a conversation is done by turn: the client holds the
+    // oldest turn it has and asks for what came before. Dropping this leaves
+    // it with nothing to ask with.
+    const [message] = toUiMessages([
+      {
+        id: "row-1",
+        role: "assistant",
+        parts: [{ type: "text", text: "好的" }],
+        content: "好的",
+        ts: "2026-08-19T00:00:01Z",
+        turnIndex: 3,
+      },
+    ]);
+
+    expect(message?.metadata).toEqual({ turnIndex: 3, ts: "2026-08-19T00:00:01Z" });
+  });
+
+  it("drops the flat views, which the browser now works out for itself", () => {
+    // `content` and `thinking` are the parts read out flat, stored twice so a
+    // reader that only wants the prose does not have to walk them. On the wire
+    // they would be a second copy the client has to keep in step with the
+    // first, and the protocol gives it no place to put them.
+    const [message] = toUiMessages([
+      {
+        id: "row-1",
+        role: "assistant",
+        parts: [
+          { type: "reasoning", text: "先想一下" },
+          { type: "text", text: "好的" },
+        ],
+        content: "好的",
+        thinking: "先想一下",
+        ts: "2026-08-19T00:00:01Z",
+        turnIndex: 3,
+      },
+    ]);
+
+    expect(message).not.toHaveProperty("content");
+    expect(message).not.toHaveProperty("thinking");
+    expect(message?.parts).toEqual([
+      { type: "reasoning", text: "先想一下" },
+      { type: "text", text: "好的" },
+    ]);
   });
 });
