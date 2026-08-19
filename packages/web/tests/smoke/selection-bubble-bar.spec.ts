@@ -284,7 +284,9 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ()
   expect(first.lineTop - BODY_VIEWPORT_TOP).toBeLessThan(44);
   expect(first.below).toBe(true);
   expect(first.gap).toBe(8);
-  expect(first.barTop).toBeGreaterThanOrEqual(first.clipTop);
+  // 不断言 barTop >= clipTop：上面已经断言了它在选区下方且间距 8，而选区必在
+  // 正文可见区内（顶 120）、裁切盒顶是 80，所以那句话在此恒真、逮不到任何东西。
+  // 真正要量的是它有没有被画出来——打在它自己顶上，命中的必须是它自己。
   expect(first.hitAtOwnTop).toBe(true);
 
   // 中间某段：上方空间充足，照旧在上方。
@@ -293,7 +295,7 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ()
   expect(middle.lineTop - BODY_VIEWPORT_TOP).toBeGreaterThan(44);
   expect(middle.below).toBe(false);
   expect(middle.gap).toBe(8);
-  expect(middle.barTop).toBeGreaterThanOrEqual(middle.clipTop);
+
   expect(middle.hitAtOwnTop).toBe(true);
 });
 
@@ -316,7 +318,6 @@ test('选中的那一行被滚到正文顶部时，浮出条翻到下方而不�
   // （实测 barTop 76、clipTop 80）。现在它该翻到选区下方。
   expect(m.below).toBe(true);
   expect(m.gap).toBe(8);
-  expect(m.barTop).toBeGreaterThanOrEqual(m.clipTop);
   expect(m.hitAtOwnTop).toBe(true);
 });
 
@@ -370,4 +371,70 @@ test('在真浏览器里按浮出条上的按钮，文档真的变了', async ()
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
   await page.getByTestId('doc-bubble-tool-italic').click();
   await expect.poll(html).toContain('<em>');
+});
+
+test('正文列右边放不下时，浮出条改成右边缘对齐选区左边缘', async () => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openFreshDocument(page);
+  await page.keyboard.type(
+    'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi '
+    + 'omicron pi rho sigma tau upsilon phi chi psi omega and more words after',
+  );
+
+  // 双击行尾那个词：选区左边到正文列右沿的余量小于条宽，flip 的 crossAxis
+  // 就会把 `top-start` 翻成 `top-end`。这是水平方向的自适应，跟竖直方向翻到
+  // 下方是同一套机制（定稿 §5.1）。
+  const spot = await page.evaluate(() => {
+    const p = document.querySelector('[data-testid="document-space"] .ProseMirror p');
+    const text = p?.firstChild as Text;
+    const range = document.createRange();
+    // 走一遍每个字符，找出**第一行**上最靠右的那一个。写死「倒数第 7 个字符」
+    // 不行：那行字会折行，倒数第 7 个字符多半在第二行的开头，右边余量反而最大
+    // ——第一版就是这么写的，量出来余量 345，预置条件根本没成立。
+    const first = { top: 0, right: 0, offset: 0 };
+    for (let i = 0; i < text.length; i += 1) {
+      range.setStart(text, i);
+      range.setEnd(text, i + 1);
+      const r = range.getBoundingClientRect();
+      if (i === 0) first.top = r.top;
+      if (Math.abs(r.top - first.top) > 2) break;
+      if (r.right > first.right) {
+        first.right = r.right;
+        first.offset = i;
+      }
+    }
+    range.setStart(text, Math.max(0, first.offset - 2));
+    range.setEnd(text, first.offset + 1);
+    const r = range.getBoundingClientRect();
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  });
+  await page.mouse.dblclick(spot.x, spot.y);
+  const bar = page.getByTestId('doc-selection-bubble-bar');
+  await expect(bar).toBeVisible({ timeout: 5_000 });
+
+  const m = await page.evaluate(() => {
+    const el = document.querySelector(
+      '[data-testid="doc-selection-bubble-bar"]',
+    ) as HTMLElement;
+    const b = el.getBoundingClientRect();
+    const box = window.getSelection()?.getRangeAt(0).getBoundingClientRect();
+    const column = document
+      .querySelector('[data-testid="document-space"] .ProseMirror')
+      ?.getBoundingClientRect();
+    return {
+      roomToTheRight: box && column ? Math.round(column.right - box.left) : null,
+      barWidth: Math.round(b.width),
+      leftDelta: box ? Math.round(b.left - box.left) : null,
+      rightDelta: box ? Math.round(b.right - box.left) : null,
+      insideWindow: b.left >= 0 && b.right <= window.innerWidth,
+    };
+  });
+
+  // 先确认这个几何真的造出了「放不下」，否则下面的断言测的是另一件事。
+  expect(m.roomToTheRight).toBeLessThan(m.barWidth);
+  // 放不下时它不再左对齐，而是把右边缘落在选区左边缘上。
+  expect(m.leftDelta).toBe(-m.barWidth);
+  expect(m.rightDelta).toBe(0);
+  expect(m.insideWindow).toBe(true);
 });

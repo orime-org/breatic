@@ -17,7 +17,7 @@
  * 会当场变红。
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
@@ -43,6 +43,9 @@ afterEach(() => {
     e.destroy();
   });
   doc.destroy();
+  // 还原 `pinSelectionBox` 打在 `Range.prototype` 上的桩。不还原就会漏给同一个
+  // jsdom 里之后跑的每一个文件（`singleFork`，环境只建一次）。
+  vi.restoreAllMocks();
 });
 
 /**
@@ -108,6 +111,7 @@ function mount(editor: Editor, readOnly = false): void {
 interface BubblePluginView {
   element?: HTMLElement;
   scrollTarget?: unknown;
+  resizeDelay?: number;
   getReferencedVirtualElement?: () => { getBoundingClientRect: () => DOMRect } | null;
   floatingUIOptions?: {
     offset?: unknown;
@@ -155,12 +159,18 @@ const SELECTION_BOX = new DOMRect(137, 0, 400, 20);
  * 把选区包围盒钉成一个已知的矩形。
  *
  * 水平方向取的是它，跟竖直方向取自文档位置是两回事——jsdom 里两样都得钉。
- * 改的是 `Range.prototype`，而 `vitest.setup.ts` 只在它缺失时才补一个零矩形，
- * 所以这里是覆盖不是叠加；afterEach 不用还原，下一个文件重新跑 setup。
+ *
+ * 早先这里直接写 `Range.prototype.getBoundingClientRect = ...` 且不还原，注释
+ * 说「下一个文件重新跑 setup」——**那是假的**：`vitest.setup.ts` 那一行是
+ * `??=`，对已经存在的函数是空操作，还原不了任何东西；而 `vitest.config.ts` 是
+ * `forks` 加 `singleFork`，jsdom 环境在文件循环外只建一次，`Range.prototype`
+ * 整个包共用一个对象。实测：本文件之后跑的文件里 `createRange()` 量出来的是
+ * 这里钉的 137 乘 400，而不是零矩形，而 `reference-mention-caret.ts` 正是拿它
+ * 去定拖拽虚影的宽度。所以改成 `vi.spyOn`，`afterEach` 里统一还原。
  * @param box - 要钉的包围盒。
  */
 function pinSelectionBox(box: DOMRect): void {
-  Range.prototype.getBoundingClientRect = () => box;
+  vi.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue(box);
 }
 
 /** 正文带标记的样子，用来判命令有没有真的改到文档。 */
@@ -374,6 +384,78 @@ describe('选中浮出条', () => {
       expect(rect?.bottom).toBe(118);
     });
 
+    // 第三条分支：选区两端都在可见范围外时，问 `posAtCoords` 视口顶那一行是谁。
+    // 第三轮实证这一支零保护——查询坐标、范围校验、最后兜底三样全改坏，21 条
+    // 测试仍全绿。下面三条各钉一样。
+    it('两端都看不见时，锚点问的是视口顶那一行', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      act(() => {
+        editor.commands.selectAll();
+      });
+      const { from, to } = editor.state.selection;
+      pinLines(editor, { [from]: -300, [to]: 900, 7: 250 });
+      const asked: { left: number; top: number }[] = [];
+      editor.view.posAtCoords = (coords) => {
+        asked.push({ left: Math.round(coords.left), top: Math.round(coords.top) });
+        return { pos: 7, inside: -1 };
+      };
+      editor.view.dom.getBoundingClientRect = () => new DOMRect(300, 0, 500, 900);
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      // 问的坐标必须是「编辑器自己的左边缘再往里一点」加「可见范围的顶再往下
+      // 一点」——问滚动容器的左边缘会落在没有文字的边距里。
+      expect(asked).toEqual([{ left: 301, top: 101 }]);
+      expect(rect?.top).toBe(242);
+    });
+
+    it('视口顶那一行不在选区里时，退回选区起点', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      act(() => {
+        editor.commands.setTextSelection({ from: 6, to: 9 });
+      });
+      pinLines(editor, { 6: -300, 9: 900, 2: 250 });
+      // 视口顶那一行是 pos 2，落在选区 [6, 9] 外面——不能拿它当锚点。
+      editor.view.posAtCoords = () => ({ pos: 2, inside: -1 });
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      // 退回 from（pos 6，行顶 -300），而不是采信那个界外的答案。
+      expect(rect?.top).toBe(-308);
+    });
+
+    it('问不出视口顶那一行时，退回选区起点', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      act(() => {
+        editor.commands.setTextSelection({ from: 6, to: 9 });
+      });
+      pinLines(editor, { 6: -300, 9: 900 });
+      // jsdom 没有命中测试，真实的 `posAtCoords` 在这里本来就答 null。
+      editor.view.posAtCoords = () => null;
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      expect(rect?.top).toBe(-308);
+    });
+
     it('选区为空时不给锚点', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
@@ -415,6 +497,43 @@ describe('选中浮出条', () => {
         view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
       ).toHaveLength(0);
     });
+  });
+
+  // A12 的另一半：滚动时**每个事件**都重算，不是滚完才算。
+  //
+  // 插件默认 `resizeDelay = 60`（`dist/index.js:37`），而 `:95` 的 handler 每次
+  // 都先 `clearTimeout` 再重排，所以滚动手势期间那个计时器永远到不了期——条
+  // 在整个滚动过程中一动不动，手停下 60ms 才跳过去（真机实测：十步滚动里
+  // barTop 全程 407，选中行从 379 走到 331）。
+  //
+  // 业界没有一家这么做：floating-ui 官方 `autoUpdate` 的 `ancestorScroll`
+  // 默认每次滚动都更新、无防抖；Lexical 的浮出格式条在 scroll 回调里直接重算。
+  it('滚动重算没有防抖', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    expect(bubblePluginView(editor).resizeDelay).toBe(0);
+  });
+
+  // A5 在 jsdom 层能测的那一半：浮出条挂在滚动容器**外面**。
+  //
+  // 第三轮实证：把 `appendTo` 整个删掉（条就落回库默认的 `view.dom.parentElement`，
+  // 也就是滚动容器内部，正是 A5 禁止的），21 条单测一条不红。位置和裁切确实要真
+  // 浏览器才量得了，但「它挂在谁下面」是 DOM 结构问题，jsdom 完全答得了。
+  it('浮出条挂在滚动容器外面，不在它内部', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]');
+    const scroller = document.querySelector('.doc-body-scroller');
+
+    expect(bar).not.toBeNull();
+    expect(scroller).not.toBeNull();
+    expect(bar?.closest('.doc-body-scroller')).toBeNull();
+    // 挂的正是滚动容器的父元素——比「不在里面」更具体，换个地方挂也会红。
+    expect(bar?.parentElement).toBe(scroller?.parentElement);
   });
 
   // A9：浮出条整条不进 tab 序（定稿 §5.2，user 2026-08-19 拍定）。

@@ -324,6 +324,15 @@ function BubbleBar({
       appendTo={appendTo}
       getReferencedVirtualElement={getReferencedVirtualElement}
       ref={barRef}
+      // No debounce on the scroll recompute. The plugin's default is 60ms and
+      // its handler clears the timer on every event (`dist/index.js:37/95`), so
+      // through a scrolling gesture the timer never fires — measured, the bar
+      // stood still for the whole gesture while the text moved under it, the
+      // gap running 8 to -152, and only snapped back once scrolling stopped.
+      // Both references do it per event with no debounce: floating-ui's
+      // `autoUpdate` (`ancestorScroll`, on by default) and Lexical's floating
+      // toolbar, which recomputes straight inside its scroll handler.
+      resizeDelay={0}
       options={options}
       data-testid='doc-selection-bubble-bar'
       className='flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
