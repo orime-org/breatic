@@ -1149,3 +1149,80 @@ describe('这个部署服务不了的档 (#1951)', () => {
     listSpy.mockRestore();
   });
 });
+
+describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#1952)', () => {
+  /**
+   * 打开面板、在提示词里打 `@` 加给定的字，交出弹层空态里显示的那句话。
+   * @param graph - 画布上的节点和边。
+   * @param query - `@` 后面打的字。
+   * @returns 空态元素的文字；弹层没进空态就返回 null。
+   */
+  async function emptyStateText(
+    graph: Parameters<typeof mountContainer>[0],
+    query: string,
+  ): Promise<{ text: string | null; unmount: () => void }> {
+    seedImageNode();
+    const view = mountContainer(graph);
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    await screen.findByTestId('generate-prompt-editor');
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+    const { editor } = document.querySelector('.ProseMirror') as unknown as {
+      editor: { commands: { insertContent: (s: string) => void } };
+    };
+    act(() => {
+      editor.commands.insertContent(`@${query}`);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    const box = document.querySelector(
+      '[data-testid="reference-mention-empty"]',
+    );
+    return { text: box?.textContent ?? null, unmount: view.unmount };
+  }
+
+  // 断言的是「两句不一样」，不是具体文案：把两个 label 写成同一个 key 是这条
+  // 接线唯一会出的错，而它 typecheck 绿、别的测试也绿（两个 key 都存在、都是
+  // string）。比文案本身更耐改，locale 怎么润色都不会假红。
+  it('「一项都用不了」和「你打的字筛光了」是两句不同的话', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL]));
+
+    // t2i 不吃参考素材，所以这条图片边一项都用不了 → 第一句。
+    const nothingUsable = await emptyStateText(
+      {
+        nodes: [
+          { id: 'target', data: { kind: 'image', status: 'idle' } },
+          { id: 'src', data: { kind: 'image', status: 'idle' } },
+        ],
+        edges: [{ id: 'e1', source: 'src', target: 'target' }],
+      },
+      '',
+    );
+    expect(nothingUsable.text).not.toBeNull();
+    nothingUsable.unmount();
+
+    // 文本行是提示词素材，t2i 下照样能用 → 池子非空，只是打的字没匹配上 →
+    // 第二句。
+    const nothingMatched = await emptyStateText(
+      {
+        nodes: [
+          { id: 'target', data: { kind: 'image', status: 'idle' } },
+          { id: 'src', data: { kind: 'text', status: 'idle' } },
+        ],
+        edges: [{ id: 'e1', source: 'src', target: 'target' }],
+      },
+      'zzz',
+    );
+    expect(nothingMatched.text).not.toBeNull();
+    nothingMatched.unmount();
+
+    expect(nothingUsable.text).not.toBe(nothingMatched.text);
+    listSpy.mockRestore();
+  });
+});

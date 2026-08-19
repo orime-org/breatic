@@ -1755,3 +1755,71 @@ describe('这个部署服务不了的档 (#1951)', () => {
     expect(data.mode).toBe('i2v');
   });
 });
+
+describe('VideoGeneratePanelContainer — 两句空态各自取自己那个 key (#1952)', () => {
+  const PICTURE = {
+    id: 'src',
+    data: {
+      kind: 'image' as const,
+      status: 'idle' as const,
+      name: 'Alpha',
+      content: 'https://cdn/a.png',
+    },
+  };
+  const WIRE = [{ id: 'e1', source: 'src', target: 'target' }];
+
+  /**
+   * 在给定档位下打开面板、在提示词里打 `@` 加给定的字，交出弹层空态那句话。
+   * @param mode - 生成子模式。
+   * @param model - 该档下选中的模型名。
+   * @param query - `@` 后面打的字。
+   * @returns 空态元素的文字和卸载函数；弹层没进空态就返回 null。
+   */
+  async function emptyStateText(
+    mode: string,
+    model: string,
+    query: string,
+  ): Promise<{ text: string | null; unmount: () => void }> {
+    const view = await openPanelInMode(mode, model, {}, {
+      nodes: [PICTURE],
+      edges: WIRE,
+    });
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+    const { editor } = document.querySelector('.ProseMirror') as unknown as {
+      editor: { commands: { insertContent: (s: string) => void } };
+    };
+    act(() => {
+      editor.commands.insertContent(`@${query}`);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    const box = document.querySelector(
+      '[data-testid="reference-mention-empty"]',
+    );
+    return { text: box?.textContent ?? null, unmount: view.unmount };
+  }
+
+  // 跟图片面板那条同一个理由：断言两句不一样而不是断言具体文案。把两个 label
+  // 写成同一个 key 是这条接线唯一会出的错，两个 key 都存在、都是 string，
+  // typecheck 和别的测试都拦不住。
+  it('「一项都用不了」和「你打的字筛光了」是两句不同的话', async () => {
+    // t2v 不吃参考素材，那条图片边一项都用不了。
+    const nothingUsable = await emptyStateText('t2v', 'veo-3.1', '');
+    expect(nothingUsable.text).not.toBeNull();
+    nothingUsable.unmount();
+
+    // ref 档吃图片参考，池子非空，只是打的字没匹配上。
+    const nothingMatched = await emptyStateText(
+      'ref',
+      'kling-o3-pro-ref',
+      'zzz',
+    );
+    expect(nothingMatched.text).not.toBeNull();
+    nothingMatched.unmount();
+
+    expect(nothingUsable.text).not.toBe(nothingMatched.text);
+  });
+});

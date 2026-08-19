@@ -597,3 +597,95 @@ describe('PromptEditor — effects after the editor is rebuilt', () => {
     );
   });
 });
+
+describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952）', () => {
+  const EMPTY = 'NOTHING-TO-OFFER';
+  const NO_MATCH = 'NOTHING-MATCHED';
+
+  const picture = (name: string): ReferenceRailItem => ({
+    refId: `${name}->me`,
+    sourceNodeId: name,
+    sourceNodeType: 'image',
+    sourceNodeName: name,
+    thumbnail: `${name}.png`,
+  });
+
+  /**
+   * 挂一个编辑器，打 `@` 加上给定的字，等弹层提交完。
+   *
+   * 落点必须在这个文件而不是 `reference-mention.test.tsx`：那边的 `makeEditor()`
+   * 造的是没有 `EditorContent` 宿主的裸编辑器，而 `ReactRenderer.render()` 最后
+   * 一句是 `editor?.contentComponent?.setRenderer(...)`，`contentComponent` 为
+   * null 时那棵 React 子树永远不提交，弹层里什么都没有。这里渲染的是真组件，
+   * `PromptEditor.tsx` 里有 `<EditorContent editor={editor} />`。
+   * @param opts - 池子、这一档吃不吃参考、`@` 后面打的字。
+   * @returns 什么都不返回，断言直接查屏幕。
+   */
+  async function typeMention(opts: {
+    references: ReferenceRailItem[];
+    imageRefsDisabled: boolean;
+    query?: string;
+  }): Promise<void> {
+    const doc = new Y.Doc();
+    render(
+      <PromptEditor
+        fragment={doc.getXmlFragment('prompt')}
+        placeholder='Describe'
+        onTextChange={vi.fn()}
+        onAtMentionsChange={vi.fn()}
+        references={opts.references}
+        imageRefsDisabled={opts.imageRefsDisabled}
+        mentionEmptyLabel={EMPTY}
+        mentionNoMatchLabel={NO_MATCH}
+      />,
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+    const { editor } = document.querySelector('.ProseMirror') as unknown as {
+      editor: { commands: { insertContent: (s: string) => void } };
+    };
+    act(() => {
+      editor.commands.insertContent(`@${opts.query ?? ''}`);
+    });
+    // 弹层的子树经 portal 提交，同一 tick 里还没 commit —— 不等这一拍，查出来恒为 0。
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 40));
+    });
+  }
+
+  it('池子空：屏幕上看得见「这一档没有可引用的内容」那句', async () => {
+    await typeMention({ references: [], imageRefsDisabled: false });
+    expect(screen.getByText(EMPTY)).toBeVisible();
+    expect(screen.queryByText(NO_MATCH)).toBeNull();
+  });
+
+  it('池子非空但被模式滤光：说的还是同一句，而且它可见', async () => {
+    await typeMention({
+      references: [picture('Alpha')],
+      imageRefsDisabled: true,
+    });
+    expect(screen.getByText(EMPTY)).toBeVisible();
+    expect(screen.queryByText(NO_MATCH)).toBeNull();
+  });
+
+  it('这一档有货、只是打的字没匹配上：说的是另一句，而且它可见', async () => {
+    await typeMention({
+      references: [picture('Alpha')],
+      imageRefsDisabled: false,
+      query: 'zzz',
+    });
+    expect(screen.getByText(NO_MATCH)).toBeVisible();
+    expect(screen.queryByText(EMPTY)).toBeNull();
+  });
+
+  it('有匹配时两句都不出场', async () => {
+    await typeMention({
+      references: [picture('Alpha')],
+      imageRefsDisabled: false,
+      query: 'alp',
+    });
+    expect(screen.queryByText(EMPTY)).toBeNull();
+    expect(screen.queryByText(NO_MATCH)).toBeNull();
+  });
+});

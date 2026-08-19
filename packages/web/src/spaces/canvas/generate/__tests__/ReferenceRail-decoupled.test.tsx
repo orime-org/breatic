@@ -120,11 +120,15 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-// 三档覆盖了判据的全部三种输入组合：吃参考、不吃参考、模型不发提示词。
+// 判据读两个布尔量，所以有四种输入组合，四格全列。第四格不是补齐用的：
+// 口播档（`video-mode-options.ts` 的 talking_head）`takesReferences: false`，
+// 而它正是唯一一个模型不发提示词的档，两条约束同时成立的就是它。「✕ 在任何
+// 状态下可点」这条承诺，在真实产品里最需要它成立的那一格此前没有测试钉着。
 const MODES = [
   { name: '吃参考的档', takesReferences: true, takesPrompt: true },
   { name: '不吃参考的档', takesReferences: false, takesPrompt: true },
   { name: '模型不发提示词的档', takesReferences: true, takesPrompt: false },
+  { name: '口播档：两条都不成立', takesReferences: false, takesPrompt: false },
 ] as const;
 
 describe('✕ 跟内容解耦：任何状态下都能删', () => {
@@ -178,6 +182,14 @@ describe('内容的亮暗 = 这一行现在能不能用', () => {
     renderRail({ takesReferences: true, takesPrompt: false });
     for (const id of ALL_IDS) {
       expect(dimmed(insertBtn(id))).toBe(true);
+    }
+  });
+
+  it('口播档：两条都不成立时每一行都暗，而 ✕ 全部照旧可点', () => {
+    renderRail({ takesReferences: false, takesPrompt: false });
+    for (const id of ALL_IDS) {
+      expect(dimmed(insertBtn(id))).toBe(true);
+      expect(removeBtn(id).getAttribute('aria-disabled')).not.toBe('true');
     }
   });
 });
