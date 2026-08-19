@@ -64,6 +64,7 @@ import * as React from 'react';
 import { useEditorState, type Editor } from '@tiptap/react';
 import { posToDOMRect } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
+import { Selection } from '@tiptap/pm/state';
 import { BubbleMenu } from '@tiptap/react/menus';
 
 import {
@@ -78,6 +79,37 @@ const BUBBLE_TOOLS: ToolDef[] = [...MARK_TOOLS, ...BLOCK_TOOLS];
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
 const GAP_FROM_SELECTION_PX = 8;
+
+/**
+ * The box of the line holding a position.
+ *
+ * `coordsAtPos` answers a line box for a position inside a text block, but a
+ * BLOCK BOUNDARY — the document's end, the seam between two blocks — sits
+ * inside no line, and there it answers a zero-height separator instead: the
+ * block branch returns `flattenH(...)`, which collapses top onto bottom
+ * (`prosemirror-view@1.42.2/dist/index.js:618`).
+ *
+ * An `AllSelection`'s head is exactly such a boundary — pressing `Mod-a` twice
+ * puts it at `doc.content.size` — and measuring from there took the gap from
+ * the last paragraph's BOTTOM edge rather than its line's top, which put the
+ * bar 17px into that paragraph's text and covered the one above it whole
+ * (measured in a browser: bar 205–241, last line 224–249).
+ *
+ * So a boundary is walked into the nearest text position before measuring.
+ * Which line to anchor is decided elsewhere and unchanged; this only makes
+ * sure the answer is a line at all.
+ * @param view - The editor view to measure against.
+ * @param pos - A document position.
+ * @returns The line's extent, in viewport coordinates.
+ */
+function lineAt(
+  view: EditorView,
+  pos: number,
+): { top: number; bottom: number } {
+  const coords = view.coordsAtPos(pos);
+  if (coords.bottom > coords.top) return coords;
+  return view.coordsAtPos(Selection.near(view.state.doc.resolve(pos), -1).head);
+}
 
 /**
  * The document position the bar sits above.
@@ -112,7 +144,7 @@ function pickAnchorPos(view: EditorView, bounds: DOMRect): number {
    * @returns True when any part of its line is on screen.
    */
   const isVisible = (pos: number): boolean => {
-    const line = view.coordsAtPos(pos);
+    const line = lineAt(view, pos);
     return line.bottom > bounds.top && line.top < bounds.bottom;
   };
 
@@ -175,7 +207,7 @@ function selectionBox(view: EditorView): DOMRect {
 function anchorRect(left: number, line: { top: number; bottom: number }): DOMRect {
   const top = line.top - GAP_FROM_SELECTION_PX;
   const bottom = line.bottom + GAP_FROM_SELECTION_PX;
-  return new DOMRect(left, top, 0, Math.max(0, bottom - top));
+  return new DOMRect(left, top, 0, bottom - top);
 }
 
 interface SelectionBubbleBarProps {
@@ -220,15 +252,19 @@ export function SelectionBubbleBar({
   readOnly = false,
 }: SelectionBubbleBarProps): React.JSX.Element | null {
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
-  // The viewport exists one commit after this component first renders, so it
-  // cannot be read during that first render.
+  // Looked up from the editor's own element rather than from the document: the
+  // body's scroller is the one this editor sits in, and `ScrollArea` puts its
+  // children inside the viewport, so walking up from `view.dom` answers that by
+  // construction. Asking the document for the first match instead would tie the
+  // bar to "at most one body scroller exists", which nothing enforces.
+  //
+  // In an effect because the element exists one commit after this component
+  // first renders, so it cannot be read during that first render.
   React.useEffect(() => {
     setViewport(
-      document.querySelector<HTMLElement>(
-        `.${BODY_SCROLLER_CLASS} [data-radix-scroll-area-viewport]`,
-      ),
+      editor.view.dom.closest<HTMLElement>('[data-radix-scroll-area-viewport]'),
     );
-  }, []);
+  }, [editor]);
 
   if (readOnly) return null;
   if (!viewport) return null;
@@ -250,22 +286,21 @@ function BubbleBar({
   editor: Editor;
   viewport: HTMLElement;
 }): React.JSX.Element {
-  // Resolved when the plugin mounts the bar rather than on render: at render
-  // time the scroller may not be in the document yet, and `appendTo` accepts a
-  // function precisely so the answer can be given later (`dist/index.js:366`).
+  // Walked up from the viewport already in hand rather than looked up again:
+  // this is the scroller the bar is judged against, so its parent is the box
+  // the bar must hang outside of. A second document-wide lookup would be a
+  // second chance to land on a different editor's scroller.
   const appendTo = React.useCallback(
     () =>
-      document.querySelector<HTMLElement>(`.${BODY_SCROLLER_CLASS}`)
-        ?.parentElement ?? document.body,
-    [],
+      viewport.closest<HTMLElement>(`.${BODY_SCROLLER_CLASS}`)?.parentElement
+      ?? document.body,
+    [viewport],
   );
 
   const getReferencedVirtualElement = React.useCallback(() => {
     const { view } = editor;
     if (view.state.selection.empty) return null;
-    const line = view.coordsAtPos(
-      pickAnchorPos(view, viewport.getBoundingClientRect()),
-    );
+    const line = lineAt(view, pickAnchorPos(view, viewport.getBoundingClientRect()));
     // The two axes come from different places, and they have to. Vertically the
     // bar belongs to ONE line — the anchor. Horizontally the ruling asks for
     // the selection's left edge, which is the left of the box it occupies: the

@@ -347,6 +347,17 @@ describe('选中浮出条', () => {
       expect(bubblePluginView(editor).floatingUIOptions?.offset).toBeFalsy();
     });
 
+    it('左边缘对齐选区左边缘——靠的是 placement 带 -start', async () => {
+      const editor = open('<p>hello world</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+
+      // A6 的水平对齐全部落在这一个值上：`@floating-ui/core` 只在 placement
+      // 带 `-start` / `-end` 时才在对齐轴上偏移，裸 `top` 是居中。改成裸
+      // `top` 时条心会压在选区左边缘上、半个条宽悬在选区外。
+      expect(bubblePluginView(editor).floatingUIOptions?.placement).toBe('top-start');
+    });
+
     it('翻转的判据是正文可见区，不是默认的裁切祖先', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
@@ -454,6 +465,35 @@ describe('选中浮出条', () => {
         ?.getBoundingClientRect();
 
       expect(rect?.top).toBe(-308);
+    });
+
+    it('整篇选中时锚的是最后那一行的行盒，不是文档末尾那条零高度的边界', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      act(() => {
+        editor.commands.selectAll();
+      });
+      const { head } = editor.state.selection;
+      // `AllSelection` 的 head 落在文档末尾这个块级边界上，而 `coordsAtPos` 在
+      // 块级边界回答的是一条零高度的分隔线（上下都等于最后一段的底边），不是
+      // 行盒。真浏览器实测：三段各占 25px 时条底落在 241，扎进最后一行 17px。
+      editor.view.coordsAtPos = (pos: number) => {
+        if (pos === head) return { top: 270, bottom: 270, left: 300, right: 300 };
+        if (pos === head - 1) return { top: 250, bottom: 270, left: 40, right: 60 };
+        return { top: 0, bottom: 20, left: 40, right: 60 };
+      };
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      // 最后一行是 250 到 270，上下各撑 8。拿零高度那条边界去算会得到 262，
+      // 那样条底就压在这一行的字上。
+      expect(rect?.top).toBe(242);
+      expect(rect?.bottom).toBe(278);
     });
 
     it('选区为空时不给锚点', async () => {
