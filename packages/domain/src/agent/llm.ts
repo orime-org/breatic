@@ -95,7 +95,11 @@ function getOpenai(): OpenAIProvider {
  * @returns AI SDK LanguageModel instance
  */
 export function getModel(modelString?: string): LanguageModel {
-  const model = modelString ?? "anthropic/claude-sonnet-4-6";
+  // Every caller passes one; this is what the signature promises if one ever
+  // does not. The default that decides what a turn actually runs on lives in
+  // `config/agent.yaml`, and this string is kept in step with it so the two
+  // never name different models.
+  const model = modelString ?? "deepseek/deepseek-v4-pro";
 
   // Route to direct provider if API key is configured, otherwise fall back to OpenRouter
   if (model.startsWith("anthropic/") && env.ANTHROPIC_API_KEY) {
@@ -121,7 +125,11 @@ export function getModel(modelString?: string): LanguageModel {
  * @returns The resolved provider name: `"anthropic"`, `"google"`, `"openai"`, or `"openrouter"`.
  */
 export function resolveProvider(modelString?: string): string {
-  const model = modelString ?? "anthropic/claude-sonnet-4-6";
+  // Every caller passes one; this is what the signature promises if one ever
+  // does not. The default that decides what a turn actually runs on lives in
+  // `config/agent.yaml`, and this string is kept in step with it so the two
+  // never name different models.
+  const model = modelString ?? "deepseek/deepseek-v4-pro";
 
   if (model.startsWith("anthropic/") && env.ANTHROPIC_API_KEY) return "anthropic";
   if (model.startsWith("google/") && env.GOOGLE_API_KEY) return "google";

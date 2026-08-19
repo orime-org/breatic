@@ -20,12 +20,16 @@
  */
 
 import { and, asc, desc, eq, inArray, isNull, lt, lte, gt, max } from "drizzle-orm";
-import { db, conversations, conversationMessages, NotFoundError } from "@breatic/core";
+import {
+  db,
+  conversations,
+  conversationMessages,
+  getAgentConfig,
+  NotFoundError,
+} from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { MessageData, MessageInput, MessagePart } from "@breatic/shared";
-
-const MAX_HISTORY = 50;
 
 /** A stored row, as far as the mapping functions care. */
 type StoredRow = {
@@ -190,6 +194,10 @@ export async function getMessages(
   id: string,
   opts: { beforeTurn?: number } = {},
 ): Promise<MessagePage> {
+  // Read here rather than at module load: the config is not there yet when
+  // this module is first imported.
+  const pageSize = getAgentConfig().message_page_size;
+
   // One more than a page holds, which is how a page learns there is anything
   // behind it without a second query.
   const rows = await db
@@ -213,9 +221,9 @@ export async function getMessages(
       ),
     )
     .orderBy(desc(conversationMessages.turnIndex), desc(conversationMessages.seq))
-    .limit(MAX_HISTORY + 1);
+    .limit(pageSize + 1);
 
-  const hasMore = rows.length > MAX_HISTORY;
+  const hasMore = rows.length > pageSize;
 
   // Rows come newest first, so the last one is the oldest — and when there is
   // more behind it, it is the turn the limit cut through. Drop it whole and

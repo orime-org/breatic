@@ -25,8 +25,8 @@ const agentConfigSchema = z.object({
    * Both used to be literals in three places, disagreeing 40 against 15.
    */
   skill_agent_max_steps: z.number().int().positive().default(15),
-  default_model: z.string().default("anthropic/claude-sonnet-4-6"),
-  consolidation_model: z.string().default("anthropic/claude-sonnet-4-6"),
+  default_model: z.string().default("deepseek/deepseek-v4-pro"),
+  consolidation_model: z.string().default("deepseek/deepseek-v4-pro"),
   memory_window: z.number().int().positive().default(20),
   /**
    * How much of the first message a conversation keeps as its name.
@@ -47,6 +47,27 @@ const agentConfigSchema = z.object({
     .max(CONVERSATION_TITLE_MAX_CHARS)
     .default(60),
   conversation_page_size: z.number().int().positive().default(30),
+  /**
+   * How many messages one page of a conversation holds.
+   *
+   * The same figure as the list above it, on purpose: the two are the same
+   * kind of dial and whoever reads this file should not have to hold two
+   * numbers. It replaces a literal in the message repo whose value had no
+   * reason recorded anywhere near it.
+   *
+   * A page is cut on a turn boundary, so what arrives is at most this and
+   * lands on whole turns.
+   */
+  message_page_size: z.number().int().positive().default(30),
+  /**
+   * How often the chat stream says it is still alive, in milliseconds.
+   *
+   * The client treats three missed beats as a stream that has gone, and that
+   * count stays in code: the server garbage collects, two misses in a row
+   * happen to a healthy stream, and a deployment that tuned the count down
+   * would start killing turns that were doing fine.
+   */
+  sse_heartbeat_interval_ms: z.number().int().positive().default(5000),
   memory_keep_recent_turns: z.number().int().positive().default(3),
   full_detail_turns: z.number().int().positive().default(3),
   memory_project_max_size: z.number().int().positive().default(3072),
@@ -68,11 +89,14 @@ const agentConfigSchema = z.object({
   /**
    * Whether to ask the provider for the model's working while it answers.
    *
-   * Defaults off: asking currently gets nothing back. Measured 2026-08-11
-   * against claude-sonnet-4-6 with the summary asked for by name — three
-   * turns, no reasoning, one of them a question that spelled out "show your
-   * reasoning step by step". The pipeline that carries it is built and
-   * tested; what is missing is on the provider side.
+   * Off, and the measurement behind that is now about a model this build no
+   * longer calls: 2026-08-11, claude-sonnet-4-6, summary asked for by name,
+   * three turns and no reasoning at all — one of them a question that spelled
+   * out "show your reasoning step by step". The default model moved to
+   * DeepSeek V4 Pro on 2026-08-19 and nobody has measured this on it yet, so
+   * it stays off until someone does rather than on a guess. The pipeline that
+   * carries reasoning is built and tested; what was missing was the provider
+   * end of it.
    */
   thinking_enabled: z.boolean().default(false),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
