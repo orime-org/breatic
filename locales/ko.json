@@ -98,6 +98,10 @@
       "same_tier": "이미 이 멤버십입니다.",
       "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
       "unavailable": "멤버십을 사용할 수 없습니다."
+    },
+    "storage": {
+      "quota_exceeded_upload": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
+      "quota_exceeded_generate": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다."
     }
   },
   "chat": {

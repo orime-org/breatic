@@ -216,11 +216,10 @@ describe("assertStorageAllowance", () => {
     const projectId = await insertProject(personalStudioId, userId);
     await sql`
       INSERT INTO subscriptions (
-        user_id, stripe_subscription_id, stripe_customer_id, tier,
-        status, current_period_end
+        user_id, stripe_subscription_id, tier, status, current_period_end
       )
       VALUES (
-        ${userId}, ${`sub_${seq++}`}, ${`cus_${seq++}`}, 'pro',
+        ${userId}, ${`sub_${seq++}`}, 'pro',
         'active', now() - interval '400 days'
       )
     `;

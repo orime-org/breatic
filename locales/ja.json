@@ -98,6 +98,10 @@
       "same_tier": "すでにこのメンバーシップです。",
       "payment_overdue": "このメンバーシップの支払いが遅延しています。",
       "unavailable": "メンバーシップは利用できません。"
+    },
+    "storage": {
+      "quota_exceeded_upload": "Studio のストレージがいっぱいです。アップロードできません。",
+      "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。"
     }
   },
   "chat": {

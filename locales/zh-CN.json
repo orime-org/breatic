@@ -98,6 +98,10 @@
       "same_tier": "你已经在这一档会员。",
       "payment_overdue": "这个会员有一期款项未付。",
       "unavailable": "会员当前不可用。"
+    },
+    "storage": {
+      "quota_exceeded_upload": "Studio 存储已满，当前无法上传。",
+      "quota_exceeded_generate": "Studio 存储已满，当前无法生成。"
     }
   },
   "chat": {

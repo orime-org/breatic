@@ -98,6 +98,10 @@
       "same_tier": "You are already on this membership.",
       "payment_overdue": "Payment for this membership is overdue.",
       "unavailable": "Memberships are unavailable."
+    },
+    "storage": {
+      "quota_exceeded_upload": "Studio storage is full. Uploading is unavailable.",
+      "quota_exceeded_generate": "Studio storage is full. Generating is unavailable."
     }
   },
   "chat": {
