@@ -147,7 +147,14 @@ function transportFor(
  * @returns Which kind of mishap it is, and the server's own words if it wrote
  *   any.
  */
-function readTurnFailure(error: unknown): { kind: 'server'; message: string } | { kind: 'turn' } {
+function readTurnFailure(
+  error: unknown,
+): { kind: 'server'; message: string } | { kind: 'turn' } | { kind: 'network' } {
+  // Nothing answered at all. `fetch` rejects with a `TypeError` for a network
+  // error and with nothing else, which is the whole of what separates "never
+  // reached anything" from "reached something whose answer we cannot read" --
+  // and those are two different sentences to the reader.
+  if (error instanceof TypeError) return { kind: 'network' };
   const body = error instanceof Error ? error.message : '';
   try {
     const envelope: unknown = JSON.parse(body);

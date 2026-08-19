@@ -174,9 +174,7 @@ describe('switching to another conversation', () => {
           id: 'm-9',
           role: 'user',
           parts: [{ type: 'text', text: 'said in the other one' }],
-          content: 'said in the other one',
-          ts: '2026-08-15T00:00:00Z',
-          turnIndex: 3,
+          metadata: { turnIndex: 3, ts: '2026-08-15T00:00:00Z' },
         },
       ],
       hasMore: true,
@@ -186,7 +184,7 @@ describe('switching to another conversation', () => {
 
     expect(currentId()).toBe('c-2');
     const held = useConversationRuntime.getState().conversations['c-2'];
-    expect(held?.messages.map((m) => m.content)).toEqual(['said in the other one']);
+    expect(held?.messages.map((m) => m.id)).toEqual(['m-9']);
     // Carried across, or the panel it lands in cannot know whether there is
     // anything for "load earlier" to load.
     expect(held?.hasMore).toBe(true);
