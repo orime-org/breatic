@@ -44,6 +44,22 @@ describe('MessageBubble', () => {
     expect(screen.getByLabelText('streaming')).toBeInTheDocument();
   });
 
+  it('shows one breathing dot while the first word has not arrived', () => {
+    // 这一刻读者除了「等着」什么都没有:回复还没长出来,按钮已经变成停止,
+    // 两样都只看得见。定稿定的是一个点呼吸(user 2026-08-12 定、08-19 复核
+    // 维持),不是一个方块在闪 —— 方块是打字游标,它要有字才说得通。
+    setup({ id: 'm1', role: 'assistant', content: '', streaming: true });
+
+    expect(screen.getByTestId('chat-waiting-dot')).toBeInTheDocument();
+    expect(screen.queryByLabelText('streaming')).not.toBeInTheDocument();
+  });
+
+  it('drops the dot as soon as there is something to read', () => {
+    setup({ id: 'm1', role: 'assistant', content: '好', streaming: true });
+
+    expect(screen.queryByTestId('chat-waiting-dot')).not.toBeInTheDocument();
+  });
+
   it('renders ThinkingFold when thinking is present', () => {
     setup({
       id: 'm1',

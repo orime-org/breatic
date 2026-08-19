@@ -8,6 +8,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { ToolCallCard } from '@web/pages/project/chat/ToolCallCard';
+import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
 interface MessageBubbleProps {
@@ -67,10 +68,19 @@ export const MessageBubble = React.memo(function MessageBubble({
             data-testid='message-bubble-content'
           >
             {message.content}
+            {/* Two marks for two moments, and only ever one of them. Before
+                the first word there is nothing to put a caret after, and a
+                caret with no text behind it reads as a cursor sitting in an
+                empty box rather than as an answer on its way. Once there is
+                text, the dot has nothing left to say. */}
             {message.streaming ? (
-              <span aria-label='streaming' className='ml-1 animate-pulse'>
-                ▌
-              </span>
+              message.content ? (
+                <span aria-label='streaming' className='ml-1 animate-pulse'>
+                  ▌
+                </span>
+              ) : (
+                <WaitingDot />
+              )
             ) : null}
           </div>
         ) : null}
