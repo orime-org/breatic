@@ -24,6 +24,7 @@
 import { Chat } from '@ai-sdk/react';
 import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
+import { API_BASE_PATH } from '@web/data/api/base-path';
 import type { StoredUiMessage } from '@web/data/api/chat';
 
 /** What starting a conversation's state takes. */
@@ -92,7 +93,10 @@ function transportFor(
   conversationId: string,
 ): DefaultChatTransport<StoredUiMessage> {
   return new DefaultChatTransport<StoredUiMessage>({
-    api: '/api/v1/chat/message',
+    // Built from the one definition of the prefix rather than spelled out.
+    // Two spellings is how both streaming endpoints once came to post at an
+    // address the server does not serve, with nothing complaining.
+    api: `${API_BASE_PATH}/chat/message`,
     // The session cookie is what says who is asking, and a cross-origin
     // default would leave it off in any deployment where the API is not the
     // page's own origin.
