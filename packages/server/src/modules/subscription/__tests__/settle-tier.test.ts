@@ -80,6 +80,33 @@ describe("settleTier — 订阅只管它自己给出的那些档位", () => {
   );
 });
 
+describe("settleTier — 账本记的原因由落点决定", () => {
+  // 这个判断此前在两个调用方各写一遍，而两遍问的不是同一个问题：webhook 问
+  // 档位是不是 base，对账问处境是不是 none —— 对「唯一那条活订阅还没付成」
+  // 的账号，两者答案相反。收回来一处算之后，两半都要有人钉着。
+
+  it.each([
+    ["base", "subscription_ended"],
+    ["pro", "subscription_activated"],
+    ["team", "subscription_activated"],
+  ] as const)("落到 %s 记 %s", async (toTier, expected) => {
+    vi.mocked(changeMembershipTier).mockResolvedValueOnce({
+      changed: true,
+      fromTier: toTier === "base" ? "pro" : "base",
+    });
+
+    await settleTier({ userId: USER, toTier });
+
+    expect(changeMembershipTier).toHaveBeenCalledWith(
+      USER,
+      toTier,
+      expected,
+      undefined,
+      undefined,
+    );
+  });
+});
+
 describe("settleTier (#106 §9)", () => {
   it("rings the bell when a paid tier falls back to base", async () => {
     vi.mocked(changeMembershipTier).mockResolvedValueOnce({

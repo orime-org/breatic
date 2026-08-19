@@ -22,11 +22,17 @@
 -- them "newest first", which `created_at` cannot establish (it defaults to
 -- `now()`, the TRANSACTION's start time, so rows written in one transaction
 -- tie) and a random-UUID primary key cannot either. That is fixed where it
--- lives, in `subscription-state.ts`: the live row is now chosen by tier first,
--- then by the later paid period, then by subscription id -- an order that is
--- total, independent of insertion order, and defensible to the person paying
--- (two subscriptions means two payments, and they get the higher of what they
--- bought).
+-- lives, in `subscription-state.ts`: the live row is chosen by whether it has
+-- been paid for at all, then by tier, then by the later paid period, then by
+-- subscription id -- an order that is total and independent of insertion
+-- order.
+--
+-- Paid-before-unpaid comes first, and leaving it out was a defect in its own
+-- right. Ordering by tier alone let an `incomplete` Team subscription -- one
+-- nobody has paid a cent for -- outrank a running PRO, and an unsettled first
+-- invoice earns `base`, so the account dropped to the free tier while being
+-- billed for PRO. "Two subscriptions means two payments" is only true of two
+-- subscriptions that were actually paid for.
 --
 -- Stopping the second subscription from being created is Stripe's own job, and
 -- Stripe has a setting for it: "limit customers to one subscription" redirects

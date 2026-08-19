@@ -42,6 +42,8 @@ vi.mock("@breatic/core", () => ({
   NotFoundError: class NotFoundError extends Error {},
   t: (key: string) => key,
   env: { PAYMENT_ENABLED: true },
+  getStripeReadTimeoutMs: () => 5000,
+  LIVE_SUBSCRIPTION_STATUSES: ["incomplete", "active", "past_due"],
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
@@ -226,16 +228,67 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     expect(stripe.checkout.sessions.create).toHaveBeenCalled();
   });
 
-  it("那张订阅在 Stripe 那边已经没了，照常开新结账", async () => {
-    // 本地那一行会过期（只有 webhook 写它，而 Stripe 三天后就不再重投）。
-    // 它指的东西已经不存在 = 要作废的理由本来就满足了；这时候拒掉结账，
-    // 等于让这个账号从此再也订不了，每次都栽在一张不存在的订阅上。
+  it.each(["canceled", "incomplete_expired", "unpaid"] as const)(
+    "那张订阅在 Stripe 那边已经是 %s，照常开新结账",
+    async (status) => {
+      // 实测：对一条已终结的订阅调 retrieve，Stripe 返回 200 加那个终结状态，
+      // 不是 resource_missing —— 后者只从 cancel、或者对一个压根不存在的 id
+      // 才出得来。所以「不是 incomplete 就说他已经有会员了」这个判据，会对
+      // 一个名下一份会员都没有的人说「你已经订了」，让他再也订不上。
+      situationIs("firstPaymentUnsettled", {
+        stripeSubscriptionId: "sub_dead",
+        tier: "pro",
+      });
+      stripe.subscriptions.retrieve.mockResolvedValueOnce({
+        id: "sub_dead",
+        status,
+      });
+
+      await service.startCheckout({
+        userId: USER,
+        tier: "pro",
+        returnUrl: RETURN_URL,
+      });
+
+      expect(stripe.subscriptions.cancel).not.toHaveBeenCalled();
+      expect(stripe.checkout.sessions.create).toHaveBeenCalled();
+    },
+  );
+
+  it("那个订阅 id 在 Stripe 那边根本不存在，也照常开新结账", async () => {
     situationIs("firstPaymentUnsettled", {
       stripeSubscriptionId: "sub_gone",
       tier: "pro",
     });
     stripe.subscriptions.retrieve.mockRejectedValueOnce(
       Object.assign(new Error("No such subscription: sub_gone"), {
+        code: "resource_missing",
+      }),
+    );
+
+    await service.startCheckout({
+      userId: USER,
+      tier: "pro",
+      returnUrl: RETURN_URL,
+    });
+
+    expect(stripe.checkout.sessions.create).toHaveBeenCalled();
+  });
+
+  it("查到之后、取消之前那张订阅刚好过期，也不算失败", async () => {
+    // retrieve 和 cancel 之间隔着一次网络往返，而 incomplete 订阅 24 小时
+    // 就到期。正好卡在这中间的话，cancel 会吐 resource_missing —— 它要作废
+    // 的东西已经没了，目的达到了，不该把这次结账搞失败。
+    situationIs("firstPaymentUnsettled", {
+      stripeSubscriptionId: "sub_expiring",
+      tier: "pro",
+    });
+    stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: "sub_expiring",
+      status: "incomplete",
+    });
+    stripe.subscriptions.cancel.mockRejectedValueOnce(
+      Object.assign(new Error("No such subscription: sub_expiring"), {
         code: "resource_missing",
       }),
     );

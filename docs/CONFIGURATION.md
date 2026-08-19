@@ -37,6 +37,7 @@ loader:`packages/server/src/config/rate-limits.ts`(`getRateLimit(action)`);中�
 | `presign` | 30 / 60s | user | 上传预签名 URL |
 | `asset-report` | 120 / 60s | user | 活动流上报(`/assets/uploaded`、`/assets/deleted`) |
 | `membership-read` | 60 / 60s | user | 读会员面板(`GET /account/membership`)。它每次都跟 Stripe 对一次账,所以不限流等于让一个账号无限调别人的 API |
+| `subscription-write` | 10 / 60s | user | 订阅的四个写端点(结账 / 换档 / 取消 / 恢复)。每一个都往 Stripe 打真实调用,而 Stripe 的限额是我们整个账号共用的 |
 
 ## 3. `config/limits.yaml` — 业务容量 + 分页
 

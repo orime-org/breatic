@@ -27,7 +27,9 @@
 import type Stripe from "stripe";
 import {
   ConflictError,
+  LIVE_SUBSCRIPTION_STATUSES,
   ValidationError,
+  getStripeReadTimeoutMs,
   getSubscriptionPlan,
   listSubscriptions,
   logger,
@@ -205,37 +207,42 @@ function itemToReplace(record: StoredSubscription): string {
  * payment link that opens in a NEW tab, so the tab they came from keeps
  * showing the old state and never refetches on focus; paying there and coming
  * back to press a tier button is a path we laid out ourselves. Cancelling on
- * the strength of the stale row would then cancel a subscription that was just
- * paid for, and Stripe's cancel refunds nothing.
+ * the strength of the stale row would then cancel a subscription that was
+ * just paid for, and Stripe's cancel refunds nothing.
  *
- * Three answers, because the row can be wrong in three ways:
+ * What Stripe says decides, and only a subscription that is BOTH live and
+ * past its first invoice stops the checkout:
  *
- * The subscription is live and settled — they paid. Nothing is cancelled and
- * nothing is sold: they already hold the membership they are trying to buy.
+ * Live and settled (`active`, `past_due`) — they paid. Nothing is cancelled
+ * and nothing is sold: they already hold the membership they came to buy.
  *
- * The subscription is gone at Stripe (`resource_missing`). The row describes
- * something that no longer exists, so the reason for cancelling it is already
- * satisfied and the checkout proceeds. Refusing would leave the account unable
- * to subscribe at all, every attempt failing on a subscription that is not
- * there.
+ * Live and unsettled (`incomplete`) — the case this branch exists for. It is
+ * cancelled, and the checkout goes ahead.
  *
- * Anything else — Stripe unreachable, a timeout, a permissions failure — has
- * established nothing, and proceeding would risk two payable subscriptions.
- * So it throws and the reader is told the checkout could not start.
+ * Already over (`canceled`, `unpaid`, `incomplete_expired`) — measured, not
+ * assumed: `retrieve` answers 200 with the terminal status rather than
+ * `resource_missing`, which only comes back from `cancel` or from an id that
+ * never existed. There is nothing left to void, so the checkout goes ahead.
+ * Treating these as "you already have a membership" told somebody with no
+ * membership at all that they could not buy one.
  * @param subscriptionId - The unpaid subscription at Stripe.
  * @param userId - The account, for the log line.
- * @throws {ConflictError} if Stripe says that subscription is now live.
+ * @throws {ConflictError} if Stripe says that subscription is live and paid.
  * @throws {Error} if Stripe failed for any reason other than it being gone.
  */
 async function voidUnpaidSubscription(
   subscriptionId: string,
   userId: string,
 ): Promise<void> {
-  let fresh: Stripe.Subscription | null = null;
+  let fresh: Stripe.Subscription;
   try {
-    fresh = await getStripeClient().subscriptions.retrieve(subscriptionId);
+    fresh = await getStripeClient().subscriptions.retrieve(subscriptionId, {
+      timeout: getStripeReadTimeoutMs(),
+      maxNetworkRetries: 0,
+    });
   } catch (err) {
     if (!subscriptionGoneAtStripe(err)) throw err;
+    // No such subscription. Nothing to void, so nothing stands in the way.
     logger.warn(
       { userId, subscriptionId },
       "subscription_unpaid_already_gone_at_stripe",
@@ -243,10 +250,9 @@ async function voidUnpaidSubscription(
     return;
   }
 
+  if (!LIVE_SUBSCRIPTION_STATUSES.includes(fresh.status as never)) return;
+
   if (fresh.status !== "incomplete") {
-    // Settled while the reader was looking at a stale tab. `incomplete` is the
-    // only status this branch was ever meant to act on; anything else means
-    // the premise is gone, and if it is live they hold what they came to buy.
     logger.info(
       { userId, subscriptionId, status: fresh.status },
       "subscription_unpaid_settled_before_checkout",
@@ -254,11 +260,27 @@ async function voidUnpaidSubscription(
     throw new ConflictError(t("server.membership.already_subscribed"));
   }
 
-  await getStripeClient().subscriptions.cancel(subscriptionId);
+  try {
+    await getStripeClient().subscriptions.cancel(subscriptionId);
+  } catch (err) {
+    // An `incomplete` subscription expires by itself within a day, and this
+    // call is one network round trip after the read above. Landing exactly on
+    // that boundary means the thing being voided is already gone, which is
+    // what this call wanted.
+    if (!subscriptionGoneAtStripe(err)) throw err;
+    logger.warn(
+      { userId, subscriptionId },
+      "subscription_unpaid_expired_before_cancel",
+    );
+  }
 }
 
 /**
  * Whether a Stripe error says the subscription no longer exists there.
+ *
+ * Comes back from `cancel` on a subscription that has already ended, and from
+ * either call on an id Stripe never had. NOT from `retrieve` on a subscription
+ * that ended — that answers 200 with the terminal status.
  * @param err - Whatever the SDK threw.
  * @returns Whether this is Stripe's "that object is gone" answer.
  */
