@@ -248,7 +248,9 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         // user may want to clear (user 2026-08-19). A text row stays lit under
         // this question either way: it feeds the prompt string, which both
         // modes send. What could dim it is the prop below, and no image model
-        // reachable from this panel declares `takes_prompt: false` today.
+        // reachable from this panel declares `takes_prompt: false` (verified
+        // 2026-08-19: the only image model that does is `topaz-upscale`, whose
+        // mode is `upscale` and therefore not in `IMAGE_MODE_OPTIONS`).
         // Image-to-image is the mode that lights the rest back up; this panel
         // has exactly those two (`ImageGenMode`).
         modeTakesReferences={!imageSourcesOff}
