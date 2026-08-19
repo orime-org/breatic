@@ -22,7 +22,10 @@ import type { ChatStatus, UIMessage } from 'ai';
  * @param status - Where the request stands.
  * @returns The messages to render.
  */
-export function visibleMessages(messages: UIMessage[], status: ChatStatus): UIMessage[] {
+export function visibleMessages<Message extends UIMessage<unknown>>(
+  messages: readonly Message[],
+  status: ChatStatus,
+): readonly Message[] {
   if (status !== 'submitted') return messages;
   return messages.at(-1)?.role === 'user' ? messages.slice(0, -1) : messages;
 }

@@ -7,7 +7,7 @@ import {
   conversationRuntime,
   useConversationRuntime,
 } from '@web/stores/conversation-runtime';
-import type { ChatMishap } from '@web/stores/conversation-runtime';
+import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';

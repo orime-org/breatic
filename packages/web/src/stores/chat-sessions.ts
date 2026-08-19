@@ -22,31 +22,21 @@
  * 6.3.
  */
 import { Chat } from '@ai-sdk/react';
+import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
-import type { UIMessage } from 'ai';
-
-/**
- * What a stored message carries besides its parts.
- *
- * Mirrors what `POST /chat/open` sends; the server builds it in
- * `server/src/modules/conversation/message-part-mapping.ts`.
- */
-export interface StoredMessageMetadata {
-  /** The turn this message belongs to, which is what earlier pages are asked for by. */
-  turnIndex: number;
-  /** When the row was written, ISO-formatted. */
-  ts: string;
-}
-
-/** One message as this app holds it. */
-export type StoredUiMessage = UIMessage<StoredMessageMetadata>;
+import type { StoredUiMessage } from '@web/data/api/chat';
 
 /** What starting a conversation's state takes. */
 export interface ChatSessionInit {
   /** The project it belongs to, which the server checks access against. */
   projectId: string;
-  /** Which conversation. Also the key this is held under. */
-  conversationId: string;
+  /**
+   * Which conversation, and the key this is held under.
+   *
+   * Undefined while a panel is still finding out which one it is showing —
+   * see {@link NOTHING_OPEN}.
+   */
+  conversationId: string | undefined;
   /**
    * What the store had for it, as the starting point.
    *
@@ -55,10 +45,36 @@ export interface ChatSessionInit {
    * happening is older than what is on screen.
    */
   history: StoredUiMessage[];
+  /**
+   * Called when the turn says what the conversation is called now.
+   *
+   * The server names a conversation from its first message and says so once,
+   * on the stream. Nothing else carries it: the list is a page fetched when
+   * the project was opened, and until it is fetched again the row would go on
+   * saying the conversation has no name.
+   *
+   * Handed in rather than reached for, so that this module depends on nothing
+   * above it.
+   */
+  onTitled: (title: string | null) => void;
 }
+
+/** The chunk the server names a conversation on. */
+const TITLED = 'data-conversation-titled';
 
 /** Every conversation whose state is being kept, by conversation id. */
 const sessions = new Map<string, Chat<StoredUiMessage>>();
+
+/**
+ * What a panel subscribes to before it knows which conversation it is showing.
+ *
+ * A hook cannot be called conditionally, so a panel opening a project has to
+ * subscribe to something during the round trip that tells it which
+ * conversation that is. This one is empty and stays empty: nothing sends
+ * through it, because sending reaches for the session by id at the moment of
+ * the press rather than using whatever the last render subscribed to.
+ */
+const NOTHING_OPEN = new Chat<StoredUiMessage>({ id: 'no-conversation-yet', messages: [] });
 
 /**
  * Build the transport one conversation's turns go out on.
@@ -100,19 +116,110 @@ function transportFor(
 }
 
 /**
+ * Read a failed turn as the reader would hear it.
+ *
+ * What the transport throws for a refused turn is `new Error(responseText)`
+ * (`ai@7.0.68` `dist/index.js:17351`) -- the body and nothing else, no status
+ * on it. So a sentence of our own is recognised by its envelope: our errors
+ * answer with `{ error: "..." }`, and anything else that answered is not ours
+ * to quote.
+ *
+ * A conversation the server no longer has is one of these, and it gets the
+ * same treatment as the rest: said, and left. Opening a replacement and
+ * putting the words on it would leave the reader watching their own sentence
+ * appear in a conversation they were not in, while the one on screen still
+ * shows the history it always had.
+ * @param error - Whatever the send threw.
+ * @returns Which kind of mishap it is, and the server's own words if it wrote
+ *   any.
+ */
+function readTurnFailure(error: unknown): { kind: 'server'; message: string } | { kind: 'turn' } {
+  const body = error instanceof Error ? error.message : '';
+  try {
+    const envelope: unknown = JSON.parse(body);
+    if (
+      typeof envelope === 'object' &&
+      envelope !== null &&
+      'error' in envelope &&
+      typeof envelope.error === 'string'
+    ) {
+      return { kind: 'server', message: envelope.error };
+    }
+  } catch {
+    // Not JSON at all, which is what a gateway or a dropped connection
+    // leaves. Falls through to the sentence the panel writes itself.
+  }
+  return { kind: 'turn' };
+}
+
+/**
+ * Put a mark on the reply that was being written, if one was.
+ *
+ * The server writes the same mark into the row when it stores the turn, so
+ * this is what a reader sees before that row is ever read back. Without it a
+ * stopped turn and a failed one look on screen exactly like one that finished
+ * -- until a reload, when the word appears out of nowhere.
+ *
+ * Only ever the last message, and only when it is a reply: a turn refused
+ * before the model said anything has none, and the last message then is the
+ * reader's own sentence, which nothing happened to.
+ * @param chat - The session whose turn ended this way.
+ * @param mark - Which of the two marks, in the protocol's naming.
+ */
+function markTheReply(chat: Chat<StoredUiMessage>, mark: 'data-interrupted' | 'data-failed'): void {
+  const { messages } = chat;
+  const reply = messages[messages.length - 1];
+  if (reply === undefined || reply.role !== 'assistant') return;
+  if (reply.parts.some((part) => part.type === mark)) return;
+  chat.messages = [
+    ...messages.slice(0, -1),
+    { ...reply, parts: [...reply.parts, { type: mark, data: null }] },
+  ];
+}
+
+/**
+ * Stop the turn a conversation is running, as the reader asked.
+ *
+ * Stopping is what this end can do; whether the server sees it as the reader
+ * stopping or as the connection dying, it records the turn the same way. The
+ * mark says what this end knows, which is that the reply was cut off.
+ * @param conversationId - The conversation to stop.
+ */
+export function stopChatSession(conversationId: string): void {
+  const chat = sessions.get(conversationId);
+  if (!chat) return;
+  void chat.stop();
+  markTheReply(chat, 'data-interrupted');
+}
+
+/**
  * The state of one conversation, started if this is the first time it is asked
  * for.
  * @param init - Which conversation, and what the store had for it.
  * @returns Its `Chat`, the same one every time until it is evicted.
  */
 export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
+  if (init.conversationId === undefined) return NOTHING_OPEN;
+
   const existing = sessions.get(init.conversationId);
   if (existing) return existing;
 
+  const { projectId, conversationId, onTitled } = init;
   const chat = new Chat<StoredUiMessage>({
-    id: init.conversationId,
+    id: conversationId,
     messages: init.history,
-    transport: transportFor(init.projectId, init.conversationId),
+    transport: transportFor(projectId, conversationId),
+    onData: (part) => {
+      if (part.type !== TITLED) return;
+      const { title } = part.data as { title: string | null };
+      onTitled(title);
+    },
+    // On the instance rather than on `useChat`: the hook only keeps callbacks
+    // it was given when it was not handed a chat.
+    onError: (error) => {
+      markTheReply(chat, 'data-failed');
+      tell({ projectId, conversationId, ...readTurnFailure(error) });
+    },
   });
   sessions.set(init.conversationId, chat);
   return chat;
