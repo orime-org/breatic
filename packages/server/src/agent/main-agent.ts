@@ -8,9 +8,9 @@
  * `streamText()`, whose tool-call loop is bounded by `stopWhen`.
  */
 
-import { createUIMessageStream, stepCountIs } from "ai";
+import { createUIMessageStream, hasToolCall, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import type { ModelMessage, UIMessageChunk } from "ai";
+import type { ModelMessage, StopCondition, ToolSet, UIMessageChunk } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/domain";
 import { buildAgentConfig, finalizeTurn } from "@breatic/domain";
@@ -37,6 +37,18 @@ import { toModelMessages } from "@server/agent/model-messages.js";
  * URLs and key hints, and ours carry file paths.
  */
 const FAILED_TEXT = "The assistant could not finish this turn.";
+
+/**
+ * The tools whose whole purpose is to put a question to the reader.
+ *
+ * A turn that called one of these has said everything it can say: what comes
+ * next is the reader's answer, and that opens a turn of its own. The other two
+ * interaction tools put something on screen -- a set of results, a proposed
+ * canvas edit -- and the model is meant to keep writing around them, several
+ * times in one turn if it likes; stopping on those would make the first card a
+ * turn draws the last thing it says.
+ */
+const TOOLS_THAT_ASK = ["ask_user", "ask_user_choice"] as const;
 
 /**
  * Main Agent for streaming chat interactions.
@@ -187,6 +199,30 @@ export class MainAgent {
     // inside `execute`, which is where the config is assembled.
     let modelId = "";
 
+    // Whether this turn ended by putting a question to the reader.
+    //
+    // Written by the stop condition below, because that is the only place
+    // that knows. Asking the reader something and running out of steps both
+    // end as `stopWhen` firing, and the SDK reports the same `finishReason`
+    // for either -- so a turn waiting on an answer and a turn that hit its
+    // ceiling are indistinguishable from the outside.
+    let askedTheUser = false;
+
+    /**
+     * Stop after a step that asked the reader something, and record that it
+     * did.
+     * @param options - The steps so far, from the SDK.
+     * @param options.steps - Every step this turn has completed.
+     * @returns Whether the turn should stop here.
+     */
+    const stopIfItAsked = async (options: {
+      steps: Parameters<StopCondition<ToolSet>>[0]["steps"];
+    }): Promise<boolean> => {
+      const asked = await hasToolCall(...TOOLS_THAT_ASK)(options);
+      if (asked) askedTheUser = true;
+      return asked;
+    };
+
     // Counted off each step as it finishes, never from `result.usage`. That
     // getter is not a passive read: it returns `totalUsage`, which calls
     // `consumeStream()`. On the exit that matters most -- the reader closing
@@ -255,7 +291,7 @@ export class MainAgent {
         system: agentConfig.instructions,
         messages,
         tools: agentConfig.tools,
-        stopWhen: stepCountIs(agentCfg.max_tool_iterations),
+        stopWhen: [stepCountIs(agentCfg.max_tool_iterations), stopIfItAsked],
         temperature: 0.2,
         // The middle ring of the stop chain. Without it the route can notice
         // the client leaving and the end of the stream can settle up, and the
@@ -317,7 +353,13 @@ export class MainAgent {
           logger.warn({ err, userId, conversationId }, "memory_consolidation_failed"),
         );
 
-        const exit = isAborted ? "aborted" : failure !== undefined ? "failed" : "completed";
+        const exit = isAborted
+          ? "aborted"
+          : failure !== undefined
+            ? "failed"
+            : askedTheUser
+              ? "blocked"
+              : "completed";
 
         const replyParts = toStoredParts(responseMessage.parts);
 

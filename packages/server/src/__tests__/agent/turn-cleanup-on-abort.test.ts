@@ -27,7 +27,6 @@
  * defect survived -- every test was green the whole time.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { SSE_EVENT_NAMES } from "@breatic/shared";
 import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
 
@@ -45,8 +44,12 @@ vi.mock("@server/agent/turn-context.js", () => ({
     compressedHistory: [],
   })),
 }));
-vi.mock("ai", () => ({
-  tool: (c: Record<string, unknown>) => c,
+// The real `createUIMessageStream` and its helpers stay: they are what the
+// turn's output is made of, and a double for them would leave these cases
+// asserting on a shape nothing produces. Only the model call itself is
+// replaced, which is what these files are actually holding still.
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   streamText: vi.fn(),
   generateText: vi.fn(),
   stepCountIs: vi.fn(() => 40),
@@ -147,19 +150,29 @@ describe("a turn cut short by the client", () => {
     //
     // A stream that keeps producing, so the consumer is what stops the turn
     // rather than the stream running out.
-    streamTextRetry.mockReturnValue({
-      fullStream: (async function* () {
-        yield { type: "text-delta", text: "hello " };
-        yield { type: "finish-step", usage: { totalTokens: 900 } };
-        yield { type: "text-delta", text: "world" };
-        // Never reached: the consumer walks away first.
-        yield { type: "text-delta", text: " and more" };
-      })(),
-      get usage() {
-        usageRead();
-        return Promise.resolve({ totalTokens: 1200 });
-      },
-    });
+    // The double stays on the call rather than the model: what this case
+    // watches is whether our own code reads that getter, and only something
+    // standing in for the call can see it being read.
+    streamTextRetry.mockImplementation(
+      (opts: { onStepFinish?: (e: { usage: { totalTokens: number } }) => void }) => ({
+        toUIMessageStream: () =>
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue({ type: "text-start", id: "t1" });
+              controller.enqueue({ type: "text-delta", id: "t1", delta: "hello " });
+              opts.onStepFinish?.({ usage: { totalTokens: 900 } });
+              controller.enqueue({ type: "text-delta", id: "t1", delta: "world" });
+              controller.enqueue({ type: "text-end", id: "t1" });
+              // Left open on purpose: the consumer walking away is what ends
+              // this turn, not the stream running out.
+            },
+          }),
+        get usage() {
+          usageRead();
+          return Promise.resolve({ totalTokens: 1200 });
+        },
+      }),
+    );
 
     const { MainAgent } = await import("@server/agent/main-agent.js");
     const { runWithContext } = await import("@breatic/core");
@@ -174,17 +187,15 @@ describe("a turn cut short by the client", () => {
       },
       async () => {
         const agent = new MainAgent();
-        const gen = agent.chat("hi");
-        // Every turn opens by handing over the stored conversation, which is
-        // not part of what this case is about -- so it is pulled and set
-        // aside, and the two pulls below are the model's own output, far
-        // enough in to have passed the step the billing figure comes from.
-        const settleUp = await gen.next();
-        expect(settleUp.value?.event).toBe(SSE_EVENT_NAMES.CHAT_TURN_STARTED);
-        await gen.next();
-        await gen.next();
+        const reader = (await agent.chat("hi")).getReader();
+        // Read far enough in to have passed the step the billing figure comes
+        // from, then walk away: the name the turn gave the conversation, the
+        // start of the message, and one piece of prose.
+        await reader.read();
+        await reader.read();
+        await reader.read();
         // The browser goes away.
-        await gen.return(undefined);
+        await reader.cancel();
       },
     );
 
