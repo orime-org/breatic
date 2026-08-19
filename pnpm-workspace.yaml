@@ -38,7 +38,12 @@ catalog:
   "@ai-sdk/anthropic": ^4.0.37
   "@ai-sdk/google": ^4.0.41
   "@ai-sdk/openai": ^4.0.37
-  "ai": ^7.0.59
+  # The React bindings depend on an exact core version, so the core entry
+  # follows theirs. Anything looser risks two copies of `ai` in one install —
+  # the browser holding one and the server the other, agreeing at the type
+  # level and disagreeing at runtime.
+  "@ai-sdk/react": ^4.0.71
+  "ai": ^7.0.68
 
   # Collaboration: the Yjs stack is shared by web, collab and the server, and a
   # split here means two clients speaking different wire formats.

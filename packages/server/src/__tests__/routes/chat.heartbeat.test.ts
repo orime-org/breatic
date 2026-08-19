@@ -213,7 +213,7 @@ describe("a beat", () => {
   it("is transient, so it never becomes part of the message", async () => {
     // Without this flag the beat is an ordinary data part: it lands in
     // `state.message.parts`, gets stored with the reply and renders in the
-    // conversation. The SDK reads the flag at index.js:7407 and stops there,
+    // conversation. The SDK reads the flag at index.js:7416 and stops there,
     // handing the chunk to `onData` and nothing else. A beat carries no
     // meaning of its own -- its arrival is the whole message -- so anything
     // that keeps it around is keeping rubbish.
