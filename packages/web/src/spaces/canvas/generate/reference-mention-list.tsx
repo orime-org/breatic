@@ -29,7 +29,11 @@ interface ReferenceMentionListProps {
   items: ReferenceRailItem[];
   /** Picks a row — inserts the reference mention. */
   command: (item: ReferenceRailItem) => void;
-  /** Localized empty-state text (no connected references match). */
+  /**
+   * Localized text for an empty list. WHICH sentence it is gets decided one
+   * layer up, where both filters are still visible: nothing this mode can use
+   * at all, or something it can use that the typed query filtered out (#1952).
+   */
   emptyLabel: string;
 }
 

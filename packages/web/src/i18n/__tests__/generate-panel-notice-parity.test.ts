@@ -21,9 +21,11 @@ import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 const NOTICE_KEYS = [
   // 提示词那一格在模型不吃提示词时显示的说明，两个面板共用这一句。
   'canvas.generatePanel.promptNotUsed',
-  // 点参考轨道的文本行时的两句拒绝语：插入说的是「放不进去」，✕ 说的是
-  // 这一档的状态 —— 两个按钮问的是同一件事的两面，话不能是同一句。
+  // 点参考轨道上一行插不进去的内容时的三句拒绝语。#1952 之前 ✕ 也有自己的
+  // 三句，那之后 ✕ 在任何状态下都可用、没有可拒绝的东西，所以只剩插入这边。
   'canvas.generatePanel.refuseInsertNoPrompt',
+  'canvas.generatePanel.refuseInsertModeOff',
+  'canvas.generatePanel.refuseInsertTypeUnused',
   // #1949：执行按钮点下去说缺提示词的那句。跟上面两句同族（同命名空间、同
   // `toast.warning` 出口、缺了就完全静默），所以它也归这里管 —— 仓里的
   // `i18n-no-missing-keys` 只读 en.json，另外四份没有别的东西盯着。
@@ -33,6 +35,10 @@ const NOTICE_KEYS = [
   'canvas.generatePanel.catalogUnavailable',
   'canvas.generatePanel.catalogOffline',
   'canvas.generatePanel.catalogNoModels',
+  // `@` 弹层没得提供时的两句（#1952）：一句说这一档一项都用不了，一句说
+  // 你打的字把它们筛光了。缺哪句，那个语种的用户打完 `@` 只看得到裸 key。
+  'canvas.generatePanel.mentionEmpty',
+  'canvas.generatePanel.mentionNoMatch',
 ] as const;
 
 describe.each(NOTICE_KEYS)('%s 五个语种都有', (key) => {

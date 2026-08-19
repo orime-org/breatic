@@ -207,10 +207,12 @@ describe('referenceMentionContent — video chip thumbnail attr (#1824 consumer 
   });
 });
 
-// I3 (batch-5, user 2026-07-12): typing `@` as ordinary text (no matching
-// reference in the pool) still popped a "No connected references" box, which
-// was noise. The popup must appear ONLY when the pool has ≥1 matching row —
-// zero matches shows nothing at all, so plain `@` typing is uninterrupted.
+// I3 (batch-5, user 2026-07-12) once hid the popup at zero matches so that
+// typing `@` as ordinary text was never interrupted by an empty box. He
+// withdrew that in #1952 ("那个事情其实有点苛刻了"): the popup always appears
+// and SAYS which of the two situations it is in. A user who wants a literal
+// `@` can ignore it. What survives from I3 is the other half — the list is
+// computed from the LIVE pool, never from what the plugin hands us.
 describe('makeReferenceSuggestion — the popup shows what the LIVE pool matches', () => {
   const row: ReferenceRailItem = {
     refId: 'a->me',

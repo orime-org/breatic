@@ -182,9 +182,11 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   // Text-to-image generates from scratch and ignores SOURCE IMAGES (§2.5).
   // References stay AVAILABLE — the reference button is enabled and text
   // references still feed the prompt via their @-chips (R3-4 = A) — but every
-  // IMAGE source is scoped out: the rail dims its image rows, the canvas pick
-  // rejects image nodes, the @-picker hides them, and Focus (which crops an
-  // image) is disabled. i2i uses the full source pool.
+  // IMAGE source is scoped out: the rail dims the CONTENT of its image rows
+  // (#1952 — their ✕ stays live), the @-picker hides them, and Focus (which
+  // crops an image) is disabled. The canvas PICK does not scope by mode —
+  // #1797 made it one flow, so connecting an image under t2i is allowed and
+  // the scoping happens where the image would be used. i2i uses the full pool.
   const imageSourcesOff = !imageModeTakesReferences(mode);
   // shrink-0 keeps the fixed-size footer icons from being squeezed when the
   // pickers' labels run long (the footer row has no flex-wrap by design).
