@@ -23,6 +23,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { tool } from "ai";
 import { z } from "zod";
 import type * as CoreModule from "@breatic/core";
+import { FINISHED } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
@@ -94,13 +95,6 @@ vi.mock("@server/agent/context.js", () => ({
   buildSystemPrompt: () => "系统提示词",
 }));
 
-/** 一轮结束的那个片段，每个用例都要有，否则 `streamText` 不认为这一步跑完了。 */
-const finished: ModelStreamPart = {
-  type: "finish",
-  finishReason: "stop",
-  usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-};
-
 /**
  * 跑一轮，把线上流上出现过的每一帧收集起来。
  * @param parts - 模型这一轮吐什么，用 provider 那一层的片段说。
@@ -133,7 +127,7 @@ describe("线上流说的是 SDK 的话", () => {
       { type: "text-start", id: "t1" },
       { type: "text-delta", id: "t1", delta: "好" },
       { type: "text-end", id: "t1" },
-      finished,
+      FINISHED,
     ]);
 
     const types = frames.map((f) => f.type);
@@ -151,7 +145,7 @@ describe("线上流说的是 SDK 的话", () => {
         toolName: "web_fetch",
         input: JSON.stringify({ url: "https://example.com" }),
       },
-      finished,
+      FINISHED,
     ]);
 
     // 工具真跑过：结果是它返回的，不是这个文件编的。

@@ -384,7 +384,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // the per-deployment suffix is covered by session-store's own test.
     sessionCookieName: () => "breatic_session",
     // Config
-    env: { ENV: "dev", PORT: 3000, ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled" },
+    env: { ENV: "dev", PORT: 3000, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled" },
     MONOREPO_ROOT: "/tmp",
     getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, full_detail_turns: 3, memory_user_max_size: 1000, memory_project_max_size: 1000, thinking_enabled: true, conversation_page_size: 30 }),
     // Values intentionally differ from config/storage.yaml so route tests

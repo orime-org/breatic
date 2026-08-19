@@ -21,6 +21,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
+import { FINISHED } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
@@ -86,12 +87,6 @@ vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
-/** One step's worth of ending, which `streamText` waits for. */
-const finished: ModelStreamPart = {
-  type: "finish",
-  finishReason: "stop",
-  usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-};
 
 /**
  * Run one turn over the given model output and collect what went on the wire.
@@ -101,7 +96,7 @@ const finished: ModelStreamPart = {
 async function chunksFrom(
   parts: ModelStreamPart[],
 ): Promise<Array<Record<string, unknown>>> {
-  modelSays.parts = [...parts, finished];
+  modelSays.parts = [...parts, FINISHED];
 
   const seen: Array<Record<string, unknown>> = [];
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {

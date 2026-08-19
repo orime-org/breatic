@@ -70,7 +70,7 @@ describe('sending a message', () => {
     sseStream.mockClear();
   });
 
-  it('sends exactly the five fields the server validates', async () => {
+  it('sends exactly the four fields the server validates', async () => {
     await chatApi.streamMessage(
       { projectId: 'p-1', conversationId: 'c-1', message: 'find me references' },
       { onEvent: () => undefined },
@@ -84,7 +84,6 @@ describe('sending a message', () => {
       project_id: 'p-1',
       conversation_id: 'c-1',
       attached_chips: [],
-      resource_list: [],
     });
   });
 

@@ -46,7 +46,7 @@ function shippedConfig(): Record<string, unknown> {
  * @returns The parsed defaults.
  */
 function defaults(): Record<string, unknown> {
-  return agentConfigSchemaForTests.parse({}) as Record<string, unknown>;
+  return agentConfigSchemaForTests.parse({});
 }
 
 describe("the model this build talks to", () => {

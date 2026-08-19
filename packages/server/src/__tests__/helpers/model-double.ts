@@ -29,19 +29,50 @@ type ModelStream = Awaited<ReturnType<MockLanguageModelV4["doStream"]>>["stream"
  */
 export type ModelStreamPart = ModelStream extends ReadableStream<infer Part> ? Part : never;
 
+/** The end of one step, as the provider layer states it. */
+type FinishPart = Extract<ModelStreamPart, { type: "finish" }>;
+
+/**
+ * One step's ending.
+ *
+ * Both fields the provider layer states here are shaped differently from
+ * their counterparts one layer in, and writing either as the flatter shape
+ * type-checks nowhere but reads as though it should: the finish reason is an
+ * object carrying the provider's own wording alongside the unified one, and
+ * the usage is nested with no total of its own -- the flat `totalTokens` the
+ * turn adds up is what the SDK works out from this.
+ * @param unified - Why the step ended, in the SDK's own vocabulary.
+ * @param outputTotal - Output tokens the step spent.
+ * @returns The finish part.
+ */
+function finishing(
+  unified: FinishPart["finishReason"]["unified"],
+  outputTotal: number,
+): ModelStreamPart {
+  return {
+    type: "finish",
+    finishReason: { unified, raw: undefined },
+    usage: {
+      inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: outputTotal, text: outputTotal, reasoning: 0 },
+    },
+  };
+}
+
 /** One step's worth of ending, which `streamText` waits for. */
-export const FINISHED: ModelStreamPart = {
-  type: "finish",
-  finishReason: "stop",
-  usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-};
+export const FINISHED: ModelStreamPart = finishing("stop", 1);
 
 /** The same, for a step that ends by asking for a tool. */
-export const FINISHED_ASKING_FOR_A_TOOL: ModelStreamPart = {
-  type: "finish",
-  finishReason: "tool-calls",
-  usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-};
+export const FINISHED_ASKING_FOR_A_TOOL: ModelStreamPart = finishing("tool-calls", 1);
+
+/**
+ * A step that ended normally, having spent a stated number of output tokens.
+ * @param outputTotal - What to report for the step.
+ * @returns The finish part.
+ */
+export function finishedSpending(outputTotal: number): ModelStreamPart {
+  return finishing("stop", outputTotal);
+}
 
 /**
  * A model that produces whatever the caller is holding when it is called.

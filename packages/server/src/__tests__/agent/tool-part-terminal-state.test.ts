@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { tool } from "ai";
 import { z } from "zod";
 import type * as CoreModule from "@breatic/core";
+import { FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 import type { MessagePart } from "@breatic/shared";
 
@@ -125,12 +126,6 @@ vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
-/** One step's worth of ending, which `streamText` waits for. */
-const finished: ModelStreamPart = {
-  type: "finish",
-  finishReason: "tool-calls",
-  usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-};
 
 /** The model asking for the one tool this file registers. */
 const asksForTheTool: ModelStreamPart = {
@@ -149,7 +144,7 @@ async function storedPartsWhenTool(
   toolDoes: "answers" | "throws" | "stops the turn",
 ): Promise<MessagePart[]> {
   thisCase.toolDoes = toolDoes;
-  thisCase.parts = [asksForTheTool, finished];
+  thisCase.parts = [asksForTheTool, FINISHED_ASKING_FOR_A_TOOL];
   const stopper = new AbortController();
   thisCase.stopper = stopper;
 

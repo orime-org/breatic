@@ -24,6 +24,7 @@
  * 5.1.3. Acceptance A12, A13.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ToolSet } from "ai";
 import type * as CoreModule from "@breatic/core";
 import { FINISHED, FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -77,7 +78,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
    * @param description - What it is for.
    * @returns A tool the turn can call.
    */
-  const answering = (description: string): ReturnType<typeof makeTool> =>
+  const answering = (description: string): ToolSet[string] =>
     makeTool({
       description,
       inputSchema: zod.object({ text: zod.string() }),
