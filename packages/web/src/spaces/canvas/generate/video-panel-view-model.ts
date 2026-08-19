@@ -20,6 +20,7 @@ import { validFocusImages } from '@web/data/focus-images';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,
+  focusRefId,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
 import {
@@ -347,8 +348,18 @@ export function buildVideoPanelViewModel(input: {
   // decides whether anything is sent: otherwise the images someone connected
   // for reference-to-video would ride into a first-last-frame task.
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
+  const focusImages = validFocusImages(content?.focusImages);
   const referenceUrls = modeTakesReferences(mode)
-    ? mentionedImageUrls(references, atMentioned, nodes)
+    ? [
+      ...mentionedImageUrls(references, atMentioned, nodes),
+      // Crops travel under the same `@`-only rule as node references
+      // (#1978): being in the pool offers one, mentioning it uses it.
+      // Appended after the node references, so payload order matches pool
+      // order.
+      ...focusImages
+        .filter((f) => atMentioned.has(focusRefId(f.id)))
+        .map((f) => f.url),
+    ]
     : [];
 
   return {
@@ -372,7 +383,7 @@ export function buildVideoPanelViewModel(input: {
     // Yjs data, untrusted — sanitized through the one shared reader so this
     // panel, the image panel and the pool-cap count all agree on what counts
     // as an entry (#1978).
-    focusImages: validFocusImages(content?.focusImages),
+    focusImages,
     referenceUrls,
     maxReferences: positiveCap(current?.params.images?.max_items),
     // The model states it (#1966). This used to be inferred from a `prompt`

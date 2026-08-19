@@ -9,6 +9,7 @@ import type { NodeView } from '@web/spaces/canvas/types/node-view';
 import type { VideoGenMode } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
+import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
@@ -927,5 +928,49 @@ describe('视频面板交出这个节点的聚焦裁剪（#1978）', () => {
       mode: 't2v',
     });
     expect(vm.focusImages).toEqual([crop]);
+  });
+});
+
+describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
+  const crop = {
+    id: 'c1',
+    url: 'https://cdn/crop-1.png',
+    name: 'Hero',
+    width: 400,
+    height: 300,
+  };
+  const models = [makeModel('kling-o3-pro-ref', { mode: 'ref' })];
+
+  it('提到了就上路，排在节点参考之后', () => {
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [node('n1', videoView({ focusImages: [crop] }))],
+      models,
+      mode: 'ref',
+      atMentionedSourceIds: new Set([focusRefId(crop.id)]),
+    });
+    expect(vm.referenceUrls).toEqual([crop.url]);
+  });
+
+  it('没提到就不上路 —— 池子里有不等于用了它', () => {
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [node('n1', videoView({ focusImages: [crop] }))],
+      models,
+      mode: 'ref',
+      atMentionedSourceIds: new Set(),
+    });
+    expect(vm.referenceUrls).toEqual([]);
+  });
+
+  it('这一档不吃参考图时，提到了也不上路', () => {
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [node('n1', videoView({ focusImages: [crop] }))],
+      models: [makeModel('veo-3.1', { mode: 't2v' })],
+      mode: 't2v',
+      atMentionedSourceIds: new Set([focusRefId(crop.id)]),
+    });
+    expect(vm.referenceUrls).toEqual([]);
   });
 });
