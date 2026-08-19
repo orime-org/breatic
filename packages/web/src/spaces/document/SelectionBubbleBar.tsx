@@ -21,7 +21,7 @@
  *   that line is scrolled far out of view. `getReferencedVirtualElement` is the
  *   official way out (`dist/index.d.ts:66`) and it wins outright: `:254`
  *   returns it before every other branch. We hand back one line the reader can
- *   see — see {@link pickAnchorPos}.
+ *   see — see {@link pickAnchorLine}.
  * - **The alignment.** The default `placement` is `'top'` (`dist/index.js:48`),
  *   and floating-ui only shifts along the alignment axis when the placement
  *   carries `-start` or `-end` (`@floating-ui/core` `:49-51`); bare `top`
@@ -95,31 +95,41 @@ const GAP_FROM_SELECTION_PX = 8;
  * bar 17px into that paragraph's text and covered the one above it whole
  * (measured in a browser: bar 205–241, last line 224–249).
  *
- * So a boundary is walked into the nearest text position before measuring.
- * Which line to anchor is decided elsewhere and unchanged; this only makes
- * sure the answer is a line at all.
+ * So a boundary is walked into the nearest text position before measuring, and
+ * WHICH WAY it walks is the caller's to say, because a boundary has a line on
+ * either side and only the caller knows which one it meant. Asking for a
+ * selection's end means the line above; asking what sits on the reader's top
+ * row means the line below. One fixed direction gets one of them wrong: with
+ * `-1` throughout, the top-row question answered with a line that had already
+ * scrolled past, and the bar drew above the body's visible area — measured, one
+ * scroll position in 23 put the bar's top at 116 against a visible area of 120.
  *
- * The walk moves only where there is text to move into. Behind an atom block —
+ * The walk moves only where there is text to move into. Beside an atom block —
  * today only `unsupportedBlock`, which needs a peer running a build that knows
  * a type this one does not — `Selection.near` answers a `NodeSelection` whose
  * head is the position it was given, and the measurement falls back to the
- * separator: the bar would sit against that block's bottom edge rather than its
- * top. Task #124 brings back a text-less block on purpose and carries this.
+ * separator: the bar sits against that block's edge rather than a line's. Task
+ * #124 brings back a text-less block on purpose and carries this.
  * @param view - The editor view to measure against.
  * @param pos - A document position.
+ * @param bias - Which side of a boundary the caller means: -1 for the line
+ *   above it, 1 for the line below.
  * @returns The line's extent, in viewport coordinates.
  */
 function lineAt(
   view: EditorView,
   pos: number,
+  bias: -1 | 1,
 ): { top: number; bottom: number } {
   const coords = view.coordsAtPos(pos);
   if (coords.bottom > coords.top) return coords;
-  return view.coordsAtPos(Selection.near(view.state.doc.resolve(pos), -1).head);
+  return view.coordsAtPos(
+    Selection.near(view.state.doc.resolve(pos), bias).head,
+  );
 }
 
 /**
- * The document position the bar sits above.
+ * The line the bar sits against.
  *
  * One rule covers both ways a selection gets made, because the head of a
  * selection IS the end the user is moving: dragging with the mouse, the head
@@ -133,40 +143,61 @@ function lineAt(
  * selection crosses the top edge — never the selection's own start, which for
  * `Mod-a` is a first line that may be scrolled arbitrarily far away.
  *
- * Positions rather than DOM rectangles, deliberately. `Range.getClientRects()`
+ * Lines rather than DOM rectangles, deliberately. `Range.getClientRects()`
  * hands back the BORDER BOX of any element the range wholly contains, so a
  * fully selected paragraph yields one tall rectangle instead of one per line —
  * and `Mod-a` selects whole blocks by definition. Asking the editor where a
  * position sits always yields a single line, whatever the range happens to
  * span.
+ *
+ * The line rather than the position, because each branch has to say which side
+ * of a block boundary it means and only it knows (see `lineAt`): an end of the
+ * selection means the line above, the reader's top row means the line below.
  * @param view - The editor view to measure against.
  * @param bounds - The visible box of the body's scroll container.
- * @returns A position inside the current selection.
+ * @returns The anchored line's extent, in viewport coordinates.
  */
-function pickAnchorPos(view: EditorView, bounds: DOMRect): number {
+function pickAnchorLine(
+  view: EditorView,
+  bounds: DOMRect,
+): { top: number; bottom: number } {
   const { from, to, head } = view.state.selection;
   /**
-   * Whether the line holding a position overlaps the visible box at all.
-   * @param pos - A document position.
-   * @returns True when any part of its line is on screen.
+   * Whether a line overlaps the visible box at all.
+   * @param line - A line's vertical extent.
+   * @param line.top - Its top edge.
+   * @param line.bottom - Its bottom edge.
+   * @returns True when any part of it is on screen.
    */
-  const isVisible = (pos: number): boolean => {
-    const line = lineAt(view, pos);
-    return line.bottom > bounds.top && line.top < bounds.bottom;
-  };
+  const isVisible = (line: { top: number; bottom: number }): boolean =>
+    line.bottom > bounds.top && line.top < bounds.bottom;
 
   // `head` is always inside `[from, to]` — a selection defines them as the min
   // and max of its anchor and head — so the only question is whether it shows.
-  if (isVisible(head)) return head;
-  if (isVisible(from)) return from;
+  // Both ends read the line the selection reaches INTO, hence -1 for the end
+  // it stops at and 1 for the one it starts from.
+  //
+  // Those two directions say what these branches mean; they do not change what
+  // they do, and no test pins them. A selection's ends land on a block boundary
+  // only at the document's own ends, and there both directions answer the same
+  // position — measured on `<p>one</p><p>two</p><p>three</p>`: position 0 walks
+  // to 1 either way, position 17 to 16 either way, while the seam at 5 walks to
+  // 4 or 6. Only the top-row branch below can reach a seam, which is why only
+  // its direction is observable and pinned.
+  const headLine = lineAt(view, head, -1);
+  if (isVisible(headLine)) return headLine;
+  const fromLine = lineAt(view, from, 1);
+  if (isVisible(fromLine)) return fromLine;
 
   // The selection starts above the fold. Ask what sits on the first visible
   // row instead — measured from the editor's own left edge, since the
   // scroller's is out in the gutter where there is no text to hit.
   const editorLeft = view.dom.getBoundingClientRect().left;
   const atTop = view.posAtCoords({ left: editorLeft + 1, top: bounds.top + 1 });
-  if (atTop && atTop.pos > from && atTop.pos < to) return atTop.pos;
-  return from;
+  if (atTop && atTop.pos > from && atTop.pos < to) {
+    return lineAt(view, atTop.pos, 1);
+  }
+  return fromLine;
 }
 
 /**
@@ -236,7 +267,10 @@ interface SelectionBubbleBarProps {
  *
  * Resolves the body's scroll container and renders nothing until it has it.
  * That is not defensiveness: the plugin reads `options.scrollTarget` when it
- * registers, and the only chance to hand it the right one is before that.
+ * registers, and on THIS wiring that is the only chance to hand it the right
+ * one. The plugin itself can take it later — `updateOptions` rebinds the scroll
+ * listener when the target changes (`dist/index.js:405-409`) — but the update
+ * that would carry it never arrives here.
  * Handing it over on a later render does not work either — the React wrapper
  * drops the first update after registration (`skipFirstUpdateRef`,
  * `@tiptap/react/dist/menus/index.js`), and React batches that skipped update
@@ -307,7 +341,7 @@ function BubbleBar({
   const getReferencedVirtualElement = React.useCallback(() => {
     const { view } = editor;
     if (view.state.selection.empty) return null;
-    const line = lineAt(view, pickAnchorPos(view, viewport.getBoundingClientRect()));
+    const line = pickAnchorLine(view, viewport.getBoundingClientRect());
     // The two axes come from different places, and they have to. Vertically the
     // bar belongs to ONE line — the anchor. Horizontally the ruling asks for
     // the selection's left edge, which is the left of the box it occupies: the

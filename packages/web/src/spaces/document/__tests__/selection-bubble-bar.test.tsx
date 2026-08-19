@@ -496,6 +496,42 @@ describe('选中浮出条', () => {
       expect(rect?.bottom).toBe(278);
     });
 
+    it('视口顶落在两段之间时，锚的是下面那一行，不是上面那一行', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      act(() => {
+        editor.commands.selectAll();
+      });
+      // 正文段落之间有一条外边距。查询点落进那条空隙时 `posAtCoords` 答的是
+      // 两段之间的块级边界（`prosemirror-view` 的 `posFromCaret` 就是为这个
+      // 写的），而边界不属于任何一行。真浏览器实测：一屏正文里约每三个滚动
+      // 位置就有一个这样落。
+      editor.view.posAtCoords = () => ({ pos: 5, inside: -1 });
+      editor.view.coordsAtPos = (pos: number) => {
+        // 边界本身：零高度的分隔线，值是上一段的底边。
+        if (pos === 5) return { top: 100, bottom: 100, left: 40, right: 40 };
+        // 边界上面那一行，已经滚出可见区。
+        if (pos === 4) return { top: 80, bottom: 100, left: 40, right: 60 };
+        // 边界下面那一行，是读者看得见的第一行。
+        if (pos === 6) return { top: 110, bottom: 130, left: 40, right: 60 };
+        // 选区两端：一个在可见区上方，一个在下方，都够不着。
+        if (pos <= 1) return { top: -300, bottom: -280, left: 40, right: 60 };
+        return { top: 900, bottom: 920, left: 40, right: 60 };
+      };
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      // 看得见的那一行是 110 到 130，上下各撑 8。取上面那一行会得到 72，
+      // 而那一行在可见区外面——条会跟着画到正文可见区之上。
+      expect(rect?.top).toBe(102);
+      expect(rect?.bottom).toBe(138);
+    });
+
     it('选区为空时不给锚点', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
