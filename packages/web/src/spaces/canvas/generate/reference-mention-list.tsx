@@ -29,7 +29,11 @@ interface ReferenceMentionListProps {
   items: ReferenceRailItem[];
   /** Picks a row — inserts the reference mention. */
   command: (item: ReferenceRailItem) => void;
-  /** Localized empty-state text (no connected references match). */
+  /**
+   * Localized text for an empty list. WHICH sentence it is gets decided one
+   * layer up, where both filters are still visible: nothing this mode can use
+   * at all, or something it can use that the typed query filtered out (#1952).
+   */
   emptyLabel: string;
 }
 
@@ -98,7 +102,14 @@ export const ReferenceMentionList = React.forwardRef<
 
   if (items.length === 0) {
     return (
-      <div className='w-56 rounded-overlay border border-border bg-popover px-3 py-2 text-xs text-muted-foreground shadow-md'>
+      <div
+        // Named so a container test can read WHICH of the two sentences landed
+        // here. The container picks between them by locale key, and picking the
+        // wrong one type-checks (both are strings) — only reading the rendered
+        // text catches it.
+        data-testid='reference-mention-empty'
+        className='w-56 rounded-overlay border border-border bg-popover px-3 py-2 text-xs text-muted-foreground shadow-md'
+      >
         {emptyLabel}
       </div>
     );

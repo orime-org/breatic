@@ -79,6 +79,10 @@ import {
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { useCanvasStore } from '@web/stores';
+import {
+  LOCALE_CATALOGS,
+  readPath,
+} from '@web/test-utils/locale-catalogs';
 
 type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
 
@@ -681,9 +685,10 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     });
     const insert = await screen.findByTestId('generate-ref-insert-e1');
     expect(insert.getAttribute('aria-disabled')).toBe('true');
+    // 只有插入冻住。✕ 在任何状态下都可用（#1952，user 2026-08-19）。
     expect(
       screen.getByTestId('generate-ref-remove-e1').getAttribute('aria-disabled'),
-    ).toBe('true');
+    ).not.toBe('true');
     listSpy.mockRestore();
   });
 
@@ -706,9 +711,10 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     });
     const insert = await screen.findByTestId('generate-ref-insert-e1');
     expect(insert.getAttribute('aria-disabled')).toBe('false');
+    // ✕ 不再带 aria-disabled 这个属性：它永远可用，标一个 false 是多余的。
     expect(
       screen.getByTestId('generate-ref-remove-e1').getAttribute('aria-disabled'),
-    ).toBe('false');
+    ).toBeNull();
     listSpy.mockRestore();
   });
 
@@ -1144,6 +1150,97 @@ describe('这个部署服务不了的档 (#1951)', () => {
     const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
       ?.data as { mode?: string };
     expect(data.mode).toBe('i2i');
+    listSpy.mockRestore();
+  });
+});
+
+describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#1952)', () => {
+  /**
+   * 那句话在 en 里的原文。
+   * @param key - `canvas.generatePanel` 下的键名。
+   * @returns 该键在英文目录里的值。
+   */
+  function sentence(key: 'mentionEmpty' | 'mentionNoMatch'): string {
+    return readPath(
+      LOCALE_CATALOGS[0][1],
+      `canvas.generatePanel.${key}`,
+    ) as string;
+  }
+
+  /**
+   * 打开面板、在提示词里打 `@` 加给定的字，交出弹层空态里显示的那句话。
+   * @param graph - 画布上的节点和边。
+   * @param query - `@` 后面打的字。
+   * @returns 空态元素的文字；弹层没进空态就返回 null。
+   */
+  async function emptyStateText(
+    graph: Parameters<typeof mountContainer>[0],
+    query: string,
+  ): Promise<{ text: string | null; unmount: () => void }> {
+    seedImageNode();
+    const view = mountContainer(graph);
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    await screen.findByTestId('generate-prompt-editor');
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+    const { editor } = document.querySelector('.ProseMirror') as unknown as {
+      editor: { commands: { insertContent: (s: string) => void } };
+    };
+    act(() => {
+      editor.commands.insertContent(`@${query}`);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    const box = document.querySelector(
+      '[data-testid="reference-mention-empty"]',
+    );
+    return { text: box?.textContent ?? null, unmount: view.unmount };
+  }
+
+  // 断言每句各自等于它那个 key 在 en 里的值。断言「两句不一样」不够：把两个
+  // key **对调**是同样两行、同样 typecheck 绿的第二种错，而对调之后两句依然
+  // 不同，`generate/` 和 `i18n/` 两个目录的 1252 条断言一条都不红（实测）。
+  // 用户端的后果正是这一片要消灭的那句谎——t2i 下连着一张图、`@` 后一个字都
+  // 没打，弹层说「没有匹配的内容」。
+  //
+  // 取值而不是写死英文措辞，所以 locale 润色不会假红。
+  it('每一句各自取自己那个 key，不是「两句不一样」就算数', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL]));
+
+    // t2i 不吃参考素材，所以这条图片边一项都用不了 → 第一句。
+    const nothingUsable = await emptyStateText(
+      {
+        nodes: [
+          { id: 'target', data: { kind: 'image', status: 'idle' } },
+          { id: 'src', data: { kind: 'image', status: 'idle' } },
+        ],
+        edges: [{ id: 'e1', source: 'src', target: 'target' }],
+      },
+      '',
+    );
+    expect(nothingUsable.text).toBe(sentence('mentionEmpty'));
+    nothingUsable.unmount();
+
+    // 文本行是提示词素材，t2i 下照样能用 → 池子非空，只是打的字没匹配上 →
+    // 第二句。
+    const nothingMatched = await emptyStateText(
+      {
+        nodes: [
+          { id: 'target', data: { kind: 'image', status: 'idle' } },
+          { id: 'src', data: { kind: 'text', status: 'idle' } },
+        ],
+        edges: [{ id: 'e1', source: 'src', target: 'target' }],
+      },
+      'zzz',
+    );
+    expect(nothingMatched.text).toBe(sentence('mentionNoMatch'));
+    nothingMatched.unmount();
     listSpy.mockRestore();
   });
 });

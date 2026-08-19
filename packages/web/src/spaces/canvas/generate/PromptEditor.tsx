@@ -80,6 +80,13 @@ interface PromptEditorProps {
   /** Localized empty-state text for the `@` picker popup. */
   mentionEmptyLabel: string;
   /**
+   * Localized text for "there IS something, your query filtered it out".
+   * Separate from {@link PromptEditorProps.mentionEmptyLabel}: telling a user
+   * whose typing narrowed a non-empty list that there is nothing would be a
+   * lie (user 2026-08-19).
+   */
+  mentionNoMatchLabel: string;
+  /**
    * The canvas-space doc's provider (its awareness carries collaborator
    * carets — batch-2 item 14). Null until the socket connects; the caret
    * extension mounts only when present (it throws on a null provider).
@@ -101,7 +108,8 @@ interface PromptEditorProps {
  * @param root0.onAtMentionsChange - Receives the `@`-picked source node ids.
  * @param root0.references - The current reference pool (the `@` picker options).
  * @param root0.imageRefsDisabled - Whether image `@` chips are inert (greyed).
- * @param root0.mentionEmptyLabel - Localized empty-state text for the `@` popup.
+ * @param root0.mentionEmptyLabel - Localized text for "this mode has nothing to offer".
+ * @param root0.mentionNoMatchLabel - Localized text for "your query matched none of them".
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
@@ -118,6 +126,7 @@ export const PromptEditor = React.forwardRef<
     references,
     imageRefsDisabled,
     mentionEmptyLabel,
+    mentionNoMatchLabel,
     caretProvider = null,
   }: PromptEditorProps,
   ref,
@@ -168,6 +177,7 @@ export const PromptEditor = React.forwardRef<
           suggestion: makeReferenceSuggestion({
             getPool: () => poolRef.current,
             emptyLabel: mentionEmptyLabel,
+            noMatchLabel: mentionNoMatchLabel,
             // Same verdict as the rail's insert button, from the same call:
             // a row the picker offers is a row the rail would insert.
             getUsabilityContext: () => ({
@@ -217,6 +227,7 @@ export const PromptEditor = React.forwardRef<
       fragment,
       placeholder,
       mentionEmptyLabel,
+      mentionNoMatchLabel,
       caretProvider,
       collaboratorNames?.resolve,
     ],

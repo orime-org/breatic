@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The reference rail's three-dimension state model (#1945, #1966).
+ * The reference rail's three-dimension state model (#1945, #1966, #1952).
  *
- * Dimension one — "does this mode use references at all" — dims the whole row
- * and governs the ✕. Dimension two — "is this row's modality one this run
- * consumes" — governs insertion and the `@` picker. These two are CONJUNCT for
- * media rows and do not reach text rows at all, and the point of pinning all 24
- * video combinations plus all 8 image ones is that a single boolean used to
- * carry both meanings and got both wrong.
+ * All three feed ONE verdict — `insertRefusal` — which drives the content dim,
+ * the insert button and the `@` picker alike. The ✕ reads none of them: it
+ * removes in every state (user 2026-08-19).
+ *
+ * Dimension one — "does this mode use references at all". Dimension two — "is
+ * this row's modality one this run consumes". These two are CONJUNCT for media
+ * rows and do not reach text rows at all, and the point of pinning all 24 video
+ * combinations plus all 8 image ones is that a single boolean used to carry
+ * both meanings and got both wrong.
  *
  * Dimension three — "does the ACTIVE MODEL take a prompt" (#1966) — is the one
- * that DOES govern text rows, and it is the only one that does. The 24 + 8
+ * that DOES reach text rows, and it is the only one that does. The 24 + 8
  * enumeration holds it true throughout, so those cases isolate the first two;
  * the third has its own block at the bottom, which walks it against both other
  * dimensions.
@@ -23,7 +26,6 @@ import { describe, it, expect } from 'vitest';
 import {
   insertRefusal,
   isReferenceMaterial,
-  removeRefusal,
   type ReferenceUsabilityContext,
 } from '@web/spaces/canvas/generate/reference-usability';
 import type { NodeKind } from '@web/spaces/canvas/types/node-view';
@@ -129,58 +131,6 @@ describe('insertRefusal — media rows need BOTH conditions', () => {
   });
 });
 
-describe('removeRefusal — the ✕ follows the dim, which reads on reference material', () => {
-  it('refuses every MEDIA row in a mode that does not take references', () => {
-    for (const { mode, ctx } of [...VIDEO_MODES, ...IMAGE_MODES].filter(
-      (m) => !m.ctx.takesReferences,
-    )) {
-      for (const kind of ['image', 'audio', 'video'] as const) {
-        expect(removeRefusal(kind, ctx), `remove ${kind} in ${mode}`).toBe(
-          'mode-takes-no-references',
-        );
-      }
-    }
-  });
-
-  it('allows every media row in a mode that takes references', () => {
-    for (const { mode, ctx } of [...VIDEO_MODES, ...IMAGE_MODES].filter(
-      (m) => m.ctx.takesReferences,
-    )) {
-      for (const kind of ['image', 'audio', 'video'] as const) {
-        expect(removeRefusal(kind, ctx), `remove ${kind} in ${mode}`).toBeNull();
-      }
-    }
-  });
-
-  it('never refuses a TEXT row over references, in any mode of either panel', () => {
-    // The dim rule reads on REFERENCE MATERIAL, and text is prompt material
-    // (user 2026-08-13, second clarification). The reason for freezing a ✕ is
-    // "this mode cannot use the row, so do not let you throw it away before
-    // switching back" — and that premise is about reference material, which a
-    // text row is not, so there is nothing to hold in trust.
-    //
-    // Scoped to the reference question, and the fixtures are what scope it:
-    // every one of them takes a prompt. A model that takes none DOES freeze a
-    // text row's ✕ — that is #1965, settled in #1966 — and the block at the
-    // bottom of this file is where that case lives.
-    for (const { mode, ctx } of [...VIDEO_MODES, ...IMAGE_MODES]) {
-      expect(removeRefusal('text', ctx), `remove text in ${mode}`).toBeNull();
-    }
-  });
-
-  it('does not let the media rows disagree with each other', () => {
-    // The asymmetry this replaces: audio / video rows stayed removable inside
-    // a dimmed mode while image rows were frozen (#1940). All three media
-    // kinds now answer identically for a given mode.
-    for (const { mode, ctx } of VIDEO_MODES) {
-      const verdicts = (['image', 'audio', 'video'] as const).map((k) =>
-        removeRefusal(k, ctx),
-      );
-      expect(new Set(verdicts).size, `media rows disagree in ${mode}`).toBe(1);
-    }
-  });
-});
-
 describe('insertRefusal — the criterion depends on nothing asynchronous', () => {
   it('answers from two plain booleans — no catalog handle, no promise', () => {
     // #1966 added the second field, and it is model-derived, so this is no
@@ -211,7 +161,7 @@ describe('insertRefusal — the criterion depends on nothing asynchronous', () =
   });
 });
 
-describe('isReferenceMaterial — one name for the thing both dimensions read on', () => {
+describe('isReferenceMaterial — one name for what `takesReferences` reads on', () => {
   it('holds for the three media modalities and not for text', () => {
     for (const kind of ['image', 'audio', 'video'] as const) {
       expect(isReferenceMaterial(kind), kind).toBe(true);
@@ -290,44 +240,26 @@ describe('这一档不发提示词时 (#1966)', () => {
     expect(insertRefusal('text', noPrompt)).toBe('model-takes-no-prompt');
   });
 
-  it('文本行的 ✕ 也被拒，同一个理由', () => {
-    expect(removeRefusal('text', noPrompt)).toBe('model-takes-no-prompt');
-  });
-
-  it('参考素材行的两个动作说同一句：「这一档不吃参考」', () => {
-    // 两个按钮问的是同一个问题的两面，答案必须一致，否则同一行会给出两个
-    // 互相矛盾的理由。而在两条约束同时成立时，只有「不吃参考」这一句指得出
-    // 真走得通的路：切到使用参考的档（ref）一次就成，切到一个发提示词但不吃
-    // 参考的档（t2v / i2v / first_last / animate）仍然两个动作都做不了。
+  it('参考素材行的插入说「这一档不吃参考」，不说提示词那句', () => {
+    // 两条约束同时成立时，只有「不吃参考」这一句指得出真走得通的路：切到
+    // 使用参考的档（ref）一次就成，切到一个发提示词但不吃参考的档（t2v /
+    // i2v / first_last / animate）仍然插不进去。
     for (const kind of ['image', 'audio', 'video'] as const) {
       expect(insertRefusal(kind, noPrompt), `insert ${kind}`).toBe(
-        'mode-takes-no-references',
-      );
-      expect(removeRefusal(kind, noPrompt), `remove ${kind}`).toBe(
         'mode-takes-no-references',
       );
     }
   });
 
-  it('这一档吃参考素材但不发提示词时，插入说没框、✕ 放行', () => {
+  it('这一档吃参考素材但不发提示词时，插入说没框', () => {
     // 今天不可达（面板里唯一 takesPrompt=false 的模式，takesReferences 也是
     // false），但判定必须是全序，所以这一格要有定义。参考那一问已经过了，
-    // 所以插入才轮到提示词那一问；而这一档真的在用这一行，所以删得掉。
+    // 所以插入才轮到提示词那一问。
     expect(insertRefusal('image', noPromptButRefs)).toBe('model-takes-no-prompt');
-    expect(removeRefusal('image', noPromptButRefs)).toBeNull();
-  });
-
-  it('文本行的 ✕ 不受「吃不吃参考」影响，只看发不发提示词', () => {
-    // 文本行不是参考素材，参考那一问对它不成立；它是提示词素材，所以只有
-    // 提示词那一问管得着它，而「切到发提示词的档」对它确实是能走通的出路。
-    expect(removeRefusal('text', noPromptButRefs)).toBe('model-takes-no-prompt');
-    expect(removeRefusal('text', { takesReferences: false, takesPrompt: true })).toBeNull();
   });
 
   it('发提示词的档一切照旧，这一维不影响它', () => {
     expect(insertRefusal('text', normal)).toBeNull();
-    expect(removeRefusal('text', normal)).toBeNull();
     expect(insertRefusal('image', normal)).toBeNull();
-    expect(removeRefusal('image', normal)).toBeNull();
   });
 });
