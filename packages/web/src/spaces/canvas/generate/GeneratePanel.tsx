@@ -31,7 +31,10 @@ import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import {
+  imageModeTakesReferences,
+  type ImageGenMode,
+} from '@web/spaces/canvas/generate/image-mode-selection';
 
 interface GeneratePanelProps {
   /** Catalog image models (already narrowed to the active mode). */
@@ -182,7 +185,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   // IMAGE source is scoped out: the rail dims its image rows, the canvas pick
   // rejects image nodes, the @-picker hides them, and Focus (which crops an
   // image) is disabled. i2i uses the full source pool.
-  const imageSourcesOff = mode === 't2i';
+  const imageSourcesOff = !imageModeTakesReferences(mode);
   // shrink-0 keeps the fixed-size footer icons from being squeezed when the
   // pickers' labels run long (the footer row has no flex-wrap by design).
   const placeholderClass =

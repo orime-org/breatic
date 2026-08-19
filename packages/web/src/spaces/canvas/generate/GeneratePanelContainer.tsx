@@ -47,6 +47,7 @@ import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
+  imageModeTakesReferences,
   IMAGE_MODE_OPTIONS,
   resolveMode,
 } from '@web/spaces/canvas/generate/image-mode-selection';
@@ -500,7 +501,7 @@ function GeneratePanelBody({
   React.useEffect(() => {
     const session = useCanvasStore.getState().pickSession;
     if (
-      vm.mode === 't2i' &&
+      !imageModeTakesReferences(vm.mode) &&
       session?.nodeId === nodeId &&
       session.purpose === 'focus'
     ) {
@@ -755,7 +756,7 @@ function GeneratePanelBody({
   const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   // Text-to-image generates from scratch and ignores source images, so an
   // image `@` chip contributes nothing and the editor greys it (§2.4 C).
-  const imageRefsOff = vm.mode === 't2i';
+  const imageRefsOff = !imageModeTakesReferences(vm.mode);
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
