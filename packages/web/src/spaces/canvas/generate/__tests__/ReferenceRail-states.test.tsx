@@ -76,11 +76,8 @@ const ROWS: ReferenceRailItem[] = [
 /** All six refusal messages the rail can send. */
 const KEY = {
   modeOff: 'canvas.generatePanel.refuseInsertModeOff',
-  removeOff: 'canvas.generatePanel.refuseRemoveModeOff',
-  removeOffCrop: 'canvas.generatePanel.refuseRemoveModeOffCrop',
   typeUnused: 'canvas.generatePanel.refuseInsertTypeUnused',
   insertNoPrompt: 'canvas.generatePanel.refuseInsertNoPrompt',
-  removeNoPrompt: 'canvas.generatePanel.refuseRemoveNoPrompt',
 } as const;
 
 /**

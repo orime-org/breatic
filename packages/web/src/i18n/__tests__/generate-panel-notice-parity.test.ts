@@ -8,10 +8,12 @@ import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 // 生成面板在「这里本该有反馈」时说的每一句话。它们的共同点是：缺哪个语种，
 // 那个语种的用户就只剩一片空白或一次静默 —— 而这正是这几句存在的理由。
 // 起于 #1950 片6 的两句（`refuseInsertNoPrompt` 和当时叫 `videoPromptNotUsed`
-// 的那句），#1966 新增两句（`catalogOffline`、✕ 的 `refuseRemoveNoPrompt`）并把
-// 那句改名成 `promptNotUsed`；`catalogUnavailable` 更早就有；
-// #1949 又添了执行按钮那句 `refuseExecuteNoPrompt`；#1951 添了目录里一个可用
-// 档都没有那句 `catalogNoModels`。共七条。
+// 的那句），#1966 新增 `catalogOffline` 并把那句改名成 `promptNotUsed`；
+// `catalogUnavailable` 更早就有；#1949 又添了执行按钮那句
+// `refuseExecuteNoPrompt`；#1951 添了目录里一个可用档都没有那句
+// `catalogNoModels`。#1966 当时还加过一句 ✕ 的 `refuseRemoveNoPrompt`，
+// #1952 把 ✕ 变成任何状态下都可用之后它没有读者了，连同另外两句移除拒绝语
+// 一起删掉。共六条。
 //
 // 仓里的 i18n 守卫盯不住这件事：`i18n-no-missing-keys` 只拿英文那份当
 // 目录（`SOURCE_CATALOG = "locales/en.json"`），另外四份有没有它不看。
@@ -22,7 +24,6 @@ const NOTICE_KEYS = [
   // 点参考轨道的文本行时的两句拒绝语：插入说的是「放不进去」，✕ 说的是
   // 这一档的状态 —— 两个按钮问的是同一件事的两面，话不能是同一句。
   'canvas.generatePanel.refuseInsertNoPrompt',
-  'canvas.generatePanel.refuseRemoveNoPrompt',
   // #1949：执行按钮点下去说缺提示词的那句。跟上面两句同族（同命名空间、同
   // `toast.warning` 出口、缺了就完全静默），所以它也归这里管 —— 仓里的
   // `i18n-no-missing-keys` 只读 en.json，另外四份没有别的东西盯着。
