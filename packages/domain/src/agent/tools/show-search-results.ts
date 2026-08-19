@@ -22,8 +22,6 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 /** Sentinel detected by main-agent to interrupt the loop and yield AGENT_SEARCH_RESULTS SSE event. */
-export const SHOW_SEARCH_RESULTS_SENTINEL = "__SHOW_SEARCH_RESULTS__";
-
 const resultItem = z.object({
   url: z.string().describe("Direct URL to the asset / page"),
   title: z.string().describe("Display title for the user"),
@@ -46,7 +44,7 @@ const inputSchema = z.object({
     ),
 });
 
-export const showSearchResults: Tool<z.infer<typeof inputSchema>, string> = tool({
+export const showSearchResults: Tool<z.infer<typeof inputSchema>, z.infer<typeof inputSchema>> = tool({
   description:
     "Display search results (images / videos / audios / links) to " +
     "the user as a thumbnail grid. Each thumbnail has '+ Add to " +
@@ -62,7 +60,7 @@ export const showSearchResults: Tool<z.infer<typeof inputSchema>, string> = tool
     // to abandon. Declared so the shape is the same across every tool — the
     // reasoning lives in tools/__tests__/tool-cancellation.test.ts.
     _options: { abortSignal?: AbortSignal },
-  ): Promise<string> => {
-    return `${SHOW_SEARCH_RESULTS_SENTINEL}${JSON.stringify(input)}`;
+  ): Promise<z.infer<typeof inputSchema>> => {
+    return input;
   },
 });

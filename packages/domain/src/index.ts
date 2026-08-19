@@ -46,10 +46,9 @@ export { buildToolSet, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
 // service: producer and reader agreeing on one spelling means the tool that
 // writes the string is the only file that holds it.
 export {
-  ASK_USER_SENTINEL,
-  ASK_USER_CHOICE_SENTINEL,
-  PROPOSE_CANVAS_ACTION_SENTINEL,
-  SHOW_SEARCH_RESULTS_SENTINEL,
+
+
+
 } from "@domain/agent/tools/index.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
 export { assertSkillUsable } from "@domain/agent/skill-gate.js";
