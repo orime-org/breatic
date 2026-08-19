@@ -93,7 +93,7 @@ export const users = pgTable(
     // fresh code is generated + re-shown.
     recoveryCodeHash: text("recovery_code_hash"),
     recoveryCodeUsedAt: timestamp("recovery_code_used_at", { withTimezone: true }),
-    // The Stripe customer this account pays through (0054, #106).
+    // The Stripe customer this account pays through (0055, #106).
     //
     // Written before the first Checkout Session is created, never after an
     // event arrives — which is the whole point of it. Subscription events
@@ -399,7 +399,10 @@ export const conversations = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    title: varchar("title", { length: 200 }).default("New conversation").notNull(),
+    // Null while the conversation has no name of its own. What the reader
+    // sees in that case is decided where their language is known, which is
+    // not here.
+    title: varchar("title", { length: 200 }),
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
@@ -660,7 +663,7 @@ export const payments = pgTable(
 // ── 7b. Subscriptions ────────────────────────────────────────────────
 
 /**
- * Every subscription an account has ever held (0054, #106 §5.2).
+ * Every subscription an account has ever held (0055, #106 §5.2).
  *
  * Not one row per account. A subscription that ends stays here as a ledger
  * entry and a new one is inserted alongside it, so "does this account
@@ -670,7 +673,7 @@ export const payments = pgTable(
  * came back, and the refusal would land on somebody who had already paid.
  *
  * The same reasoning rules out a partial one over the live statuses, which
- * 0056 added and 0058 removed. This table mirrors Stripe, so the only
+ * 0057 added and 0059 removed. This table mirrors Stripe, so the only
  * constraints it can carry are the ones Stripe guarantees — and Stripe will
  * hold two live subscriptions for one customer. A constraint cannot prevent
  * that; it can only decide what happens when it reaches us, and its only
@@ -702,7 +705,7 @@ export const subscriptions = pgTable(
       length: 255,
     }).notNull(),
     // The tier this subscription was bought for. Same CHECK constraint as
-    // `users.membership_tier`, added by hand in 0054 for the same reason the
+    // `users.membership_tier`, added by hand in 0055 for the same reason the
     // one there is not declared in drizzle: migrations here are hand-written,
     // so a `check()` beside the column would be a second copy nothing compares
     // against the first.
@@ -722,7 +725,7 @@ export const subscriptions = pgTable(
     hasPendingUpdate: boolean("has_pending_update").default(false).notNull(),
     pendingTier: varchar("pending_tier", { length: 16 }),
     payableInvoiceUrl: text("payable_invoice_url"),
-    // When the snapshot this row was written from was taken (0057).
+    // When the snapshot this row was written from was taken (0058).
     //
     // Two paths write here — the webhook and the panel's reconciliation — and
     // both ask Stripe first and write second, so the one that asked first can
@@ -746,7 +749,7 @@ export const subscriptions = pgTable(
 // ── 7c. Stripe Webhook Events ────────────────────────────────────────
 
 /**
- * Which Stripe events have been processed (0054, #106 §5.3).
+ * Which Stripe events have been processed (0055, #106 §5.3).
  *
  * The primary key IS the idempotency: the insert goes in the same transaction
  * as the tier change it guards, and a redelivery collides. `changeMembership
@@ -1053,8 +1056,8 @@ export const notifications = pgTable(
      * - 'studio.invite_accepted' - invitee accepted; the inviting admin is notified
      * - 'project.invite_request' - owner invites the user to a project (TTL; answered on the decision page)
      * - 'project.invite_accepted' - invitee accepted; the inviting owner is notified
-     * - 'membership.ended' - the account fell back to the free tier (0055)
-     * - 'membership.upgrade_incomplete' - an upgrade's invoice went unpaid (0055)
+     * - 'membership.ended' - the account fell back to the free tier (0056)
+     * - 'membership.upgrade_incomplete' - an upgrade's invoice went unpaid (0056)
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**

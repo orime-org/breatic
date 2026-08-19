@@ -42,6 +42,7 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
     tier: 'optional',
     cost_per_call: 5,
     generation_time: 10,
+    takes_prompt: true,
     params: {
       aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
       resolution: { description: '', values: ['1k', '2k'], default: '1k' },
@@ -386,7 +387,9 @@ describe('buildGeneratePanelViewModel', () => {
       nodeId: 'n1',
       nodes,
       edges,
-      models,
+      // 目录必须真有 i2i 模型，否则 i2i 这一档在这个部署里不成立、当前档
+      // 会被解析回 t2i（#1951）—— 而这条测的是 i2i 下的载荷。
+      models: i2iModels,
       atMentionedSourceIds: new Set(['src', 'focus:f1']),
     });
     expect(vm.referenceUrls).toEqual([
@@ -398,7 +401,7 @@ describe('buildGeneratePanelViewModel', () => {
       nodeId: 'n1',
       nodes,
       edges,
-      models,
+      models: i2iModels,
       atMentionedSourceIds: new Set(['src']),
     });
     expect(vmNone.referenceUrls).toEqual(['https://cdn/source.png']);
@@ -483,31 +486,26 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.creditEstimate).toBe(0);
   });
 
-  it('flags catalogEmpty on GLOBAL generatable-model emptiness, not the active mode (§ round-2)', () => {
-    const nodes = [node('n1', imageView())]; // t2i
-    const toolsOnly = [makeModel('bg', { mode: 'remove_bg', tier: 'internal' })];
-    // loading / failed (no models) -> empty
-    expect(
-      buildVm({ nodeId: 'n1', nodes, edges: [], models: [] }).catalogEmpty,
-    ).toBe(true);
-    // only pure tools, zero generatable -> empty
-    expect(
-      buildVm({ nodeId: 'n1', nodes, edges: [], models: toolsOnly }).catalogEmpty,
-    ).toBe(true);
-    // has generatable models -> NOT empty
-    expect(
-      buildVm({ nodeId: 'n1', nodes, edges: [], models }).catalogEmpty,
-    ).toBe(false);
-    // i2i mode with ZERO i2i models but t2i models present: catalogEmpty stays
-    // false so the toggle can escape back to t2i (round-2 fix).
+  it('当前档必须是这个部署服务得了的那些之一 (#1951)', () => {
+    // 节点存着 i2i，而这个目录只有 t2i 模型：以前 i2i 合法就放行，节点停在
+    // 一个选择器里根本没有的档上；现在解析回可用的那个。
     expect(
       buildVm({
         nodeId: 'n1',
         nodes: [node('n1', imageView({ mode: 'i2i' }))],
         edges: [],
-        models,
-      }).catalogEmpty,
-    ).toBe(false);
+        models, // 只有 t2i 模型
+      }).mode,
+    ).toBe('t2i');
+    // 存的档可用就照用，不受影响。
+    expect(
+      buildVm({
+        nodeId: 'n1',
+        nodes: [node('n1', imageView({ mode: 'i2i' }))],
+        edges: [],
+        models: [...models, ...i2iModels],
+      }).mode,
+    ).toBe('i2i');
   });
 
   it('excludes pure-tool models (remove_bg / upscale) from the picker', () => {
@@ -751,5 +749,29 @@ describe('buildGeneratePanelViewModel — maxReferences (#1735 count gate)', () 
       });
       expect(vm.maxReferences).toBeUndefined();
     }
+  });
+});
+
+// #1966: 图片面板此前把这个答案写死成 true，写死在容器里、而且写死了两处
+// （按钮闸门和提交前的复核）。当时那么写有理由：判据是「模型有没有声明
+// params.prompt」，而一个图片模型都没声明过，照搬会把整个图片目录判成不要
+// 提示词。现在模型自己说，两个面板读同一个字段。
+describe('promptRequired 读模型自己的声明 (#1966)', () => {
+  it('模型说吃提示词就是 true', () => {
+    const models = [makeModel('m-yes', { takes_prompt: true })];
+    const nodes = [node('n1', imageView({ model: 'm-yes' }))];
+    expect(buildVm({ nodeId: 'n1', nodes, edges: [], models }).promptRequired).toBe(true);
+  });
+
+  it('模型说不吃就是 false，跟模式名无关', () => {
+    const models = [makeModel('m-no', { takes_prompt: false })];
+    const nodes = [node('n1', imageView({ model: 'm-no' }))];
+    expect(buildVm({ nodeId: 'n1', nodes, edges: [], models }).promptRequired).toBe(false);
+  });
+
+  // 跟视频面板同一条兜底：认不出的模型不是「可以少一道要求」的许可。
+  it('目录里一个模型都没有时回落到 true', () => {
+    const nodes = [node('n1', imageView({ model: 'gone' }))];
+    expect(buildVm({ nodeId: 'n1', nodes, edges: [], models: [] }).promptRequired).toBe(true);
   });
 });

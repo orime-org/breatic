@@ -1,7 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ArrowUp, Globe, Languages, Sparkles, Star, X } from 'lucide-react';
+import {
+  ArrowUp,
+  Globe,
+  Languages,
+  Loader2,
+  Sparkles,
+  Star,
+  X,
+} from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
@@ -9,11 +17,16 @@ import type { ModelEntry } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
+  isExecuteButtonDisabled,
+  type ExecuteRefusal,
+} from '@web/spaces/canvas/generate/generate-guards';
+import {
   CameraPicker,
   type CameraValue,
 } from '@web/spaces/canvas/generate/CameraPicker';
 import { GenerateToolbar } from '@web/spaces/canvas/generate/GenerateToolbar';
 import { ImageModeToggle } from '@web/spaces/canvas/generate/ImageModeToggle';
+import type { ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
@@ -28,20 +41,40 @@ interface GeneratePanelProps {
   /** Active generation sub-mode (drives the t2i / i2i toggle). */
   mode: ImageGenMode;
   /**
-   * Whether the GLOBAL generatable catalog is empty (loading / failed / none
-   * configured). Gates the mode toggle's disabled state — NOT `models.length`
-   * (the active-mode subset), so a node in a mode with zero models can still
-   * toggle back to the populated mode.
+   * The modes this deployment can serve, in display order (#1951) — a mode
+   * with no model is not offered at all. The panel only renders when this is
+   * non-empty: `CatalogGatedFrame` holds it shut otherwise.
    */
-  catalogEmpty: boolean;
+  modeOptions: ReadonlyArray<ModeOption>;
+  /**
+   * Whether the active model consumes the prompt (#1966). Two things read it:
+   * the prompt slot (a sentence stands in for the editor when it is false) and
+   * the reference rail.
+   *
+   * In the rail it freezes INSERT on every row — nothing can be inserted into
+   * a prompt that is not sent — and the ✕ on TEXT rows only. A text row lives
+   * in the prompt, so removing it under a mode that sends none would take it
+   * out of the prompt every other mode shares; a media row answers to
+   * `modeTakesReferences` instead, because that is the question whose answer
+   * points at a mode where the row actually works.
+   */
+  promptRequired: boolean;
   /** Current ratio + resolution selection. */
   params: { aspect_ratio?: string; resolution?: string } & CameraValue;
   /** The node's derived reference rows. */
   references: ReferenceRailItem[];
   /** Estimated credit cost of one generation (current model's cost_per_call). */
   creditEstimate: number;
-  /** Whether execute is allowed (prompt non-empty). */
-  canExecute: boolean;
+  /**
+   * Which execute precondition fails, or null when Generate may proceed.
+   *
+   * The panel is one of the two consumers of that answer, and it reads it for
+   * a narrower question than the submit path does: which refusals grey the
+   * button out, and which one puts a spinner in it. Both questions are
+   * answered here rather than by a pair of booleans from the container, so
+   * "clickable" and "in flight" can never disagree about the same state.
+   */
+  executeRefusal: ExecuteRefusal | null;
   /** The collaborative prompt editor, injected by the container (TipTap + Yjs). */
   promptSlot: React.ReactNode;
   /** Close the panel without generating (exit button). */
@@ -115,11 +148,12 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   models,
   model,
   mode,
-  catalogEmpty,
+  modeOptions,
+  promptRequired,
   params,
   references,
   creditEstimate,
-  canExecute,
+  executeRefusal,
   promptSlot,
   onExit,
   onSelectModel,
@@ -207,10 +241,13 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         // Text-to-image reads no source images at all, so its reference
         // material rows go dark — and with them their ✕, because references
         // are shared across modes (decision 2026-08-11). A text row stays lit
-        // either way: it feeds the prompt string, which t2i sends like any
-        // other mode. Image-to-image is the mode that lights the rest back up;
+        // under this question either way: it feeds the prompt string, which
+        // both modes send. What could dim it is the prop below, and no image
+        // model reachable from this panel declares `takes_prompt: false`
+        // today. Image-to-image is the mode that lights the rest back up;
         // this panel has exactly those two (`ImageGenMode`).
         modeTakesReferences={!imageSourcesOff}
+        modelTakesPrompt={promptRequired}
         pendingFocus={pendingFocus}
       />
 
@@ -220,7 +257,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         <ImageModeToggle
           value={mode}
           onChange={onToggleMode}
-          disabled={catalogEmpty}
+          options={modeOptions}
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
         {currentModel ? (
@@ -266,11 +303,19 @@ export const GeneratePanel = React.memo(function GeneratePanel({
             size={null}
             data-testid='generate-execute'
             aria-label={t('canvas.generatePanel.execute')}
-            disabled={!canExecute}
+            disabled={isExecuteButtonDisabled(executeRefusal)}
             onClick={onExecute}
             className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
           >
-            <ArrowUp className='h-4 w-4' aria-hidden='true' />
+            {executeRefusal === 'submitting' ? (
+              <Loader2
+                data-testid='generate-execute-pending'
+                className='h-4 w-4 animate-spin'
+                aria-hidden='true'
+              />
+            ) : (
+              <ArrowUp className='h-4 w-4' aria-hidden='true' />
+            )}
           </Button>
         </div>
       </div>

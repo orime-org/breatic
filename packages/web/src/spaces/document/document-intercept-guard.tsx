@@ -45,13 +45,12 @@ export function DocumentInterceptGuard({
   spaceId,
 }: DocumentInterceptGuardProps): null {
   const name = docName.documentSpace(projectId, spaceId);
-  const bodyDoc = React.useMemo(() => getDoc(name), [name]);
   const metaDoc = React.useMemo(
     () => getDoc(docName.projectMeta(projectId)),
     [projectId],
   );
 
-  const { intercepted } = useDocumentSchemaIntercept({ metaDoc, bodyDoc });
+  const { intercepted } = useDocumentSchemaIntercept({ metaDoc });
 
   React.useEffect(() => {
     if (intercepted) evictDocumentEditor(name);

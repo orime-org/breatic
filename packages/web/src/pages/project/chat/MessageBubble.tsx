@@ -43,15 +43,19 @@ export const MessageBubble = React.memo(function MessageBubble({
     >
       <div
         className={cn(
-          'rounded-lg px-3 py-2 text-sm',
-          // Only what a person says is held back from the far edge. That gap
-          // is what makes a message read as one side of a conversation, and
-          // the agent is not taking a side in one — it is the panel talking,
-          // so its text runs the full width with the same margin on both
-          // sides.
+          'text-sm',
+          // Only what a person says gets a container. The agent is not one
+          // side of a conversation -- it is the panel talking -- so its words
+          // sit directly on the surface, with nothing drawn around them.
+          //
+          // The reader's own words keep theirs, held back from the far edge:
+          // that gap is what makes a message read as one side of an exchange.
+          // `bg-accent` because it has to lift off the surface in both
+          // themes, and it is the only neutral fill that does -- `bg-muted`
+          // is a recess and goes darker than the surface in dark mode.
           isUser
-            ? 'max-w-[80%] bg-primary text-primary-foreground'
-            : 'w-full bg-muted text-foreground',
+            ? 'max-w-[80%] rounded-lg bg-accent px-3 py-2 text-foreground'
+            : 'w-full text-foreground',
         )}
       >
         {message.thinking ? (

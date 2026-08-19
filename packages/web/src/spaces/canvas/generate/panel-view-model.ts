@@ -8,11 +8,7 @@
  * all unit-testable without React / Yjs / react-query.
  */
 
-import {
-  isImageGenerationMode,
-  type FocusImage,
-  type ModelEntry,
-} from '@breatic/shared';
+import type { FocusImage, ModelEntry } from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
@@ -22,10 +18,12 @@ import {
 } from '@web/spaces/canvas/generate/derive-references';
 import { validFocusImages } from '@web/data/focus-images';
 import {
+  IMAGE_MODE_OPTIONS,
   resolveMode,
   type ImageGenMode,
 } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
+  filterAvailableModes,
   filterModelsByMode,
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
@@ -106,13 +104,19 @@ export interface GeneratePanelViewModel {
    */
   maxReferences?: number;
   /**
-   * Whether the GLOBAL generatable-image catalog is empty (still loading, failed
-   * to load, or no generation model configured). Distinct from `models.length`,
-   * which is the ACTIVE-mode-filtered subset: the mode toggle gates its disabled
-   * state on THIS (not the mode subset) so a node stuck in a mode with zero
-   * models can still toggle back to the populated mode (adversarial round 2).
+   * Whether the active model consumes the prompt (#1966) — the model states
+   * it, this panel does not decide.
+   *
+   * It used to be stated as a literal `true` at the two gates in the
+   * container, because the video panel's derivation (a `prompt` entry under
+   * `params`) would have answered "no" for every image model: not one of them
+   * writes that entry. That was a per-catalog writing habit, and the field
+   * replaces it with something each model says about itself.
+   *
+   * `true` when no model resolves: an unrecognised model is not a licence to
+   * skip a requirement every other one has. Same fallback as the video panel.
    */
-  catalogEmpty: boolean;
+  promptRequired: boolean;
 }
 
 /**
@@ -178,11 +182,16 @@ export function buildGeneratePanelViewModel(input: {
 }): GeneratePanelViewModel {
   const { nodeId, nodes, edges } = input;
   const content = asContentView(nodes.find((n) => n.id === nodeId)?.data);
-  const mode = resolveMode(content?.mode);
-  // Wide filter kept separately: catalogEmpty means "no generatable model in
-  // ANY mode" (it gates the whole panel), which is a different question from
-  // "what does this mode offer" and the only remaining use of this predicate.
-  const generatable = input.models.filter((m) => isImageGenerationMode(m.mode));
+  // Availability first (#1951): a stored mode this deployment cannot serve is
+  // resolved away rather than passed through, so nothing downstream has to
+  // have an answer for a node sitting on a mode the picker does not list.
+  // Computed here rather than taken as an input because the result is not
+  // returned — handing an array out of the view model would rebuild it on
+  // every canvas mutation and defeat the pickers' React.memo.
+  const mode = resolveMode(
+    content?.mode,
+    filterAvailableModes(IMAGE_MODE_OPTIONS, input.models),
+  );
   const models = selectModeModels(input.models, mode);
 
   const model = pickModelForMode(content?.model, mode, content?.modelByMode, models);
@@ -268,6 +277,6 @@ export function buildGeneratePanelViewModel(input: {
     // `spec.max_items` guard, so all three layers agree (else a `max_items: 0`
     // would block every submit here with a nonsensical "limit: 0" toast).
     maxReferences: positiveCap(current?.params.images?.max_items),
-    catalogEmpty: generatable.length === 0,
+    promptRequired: current?.takes_prompt ?? true,
   };
 }

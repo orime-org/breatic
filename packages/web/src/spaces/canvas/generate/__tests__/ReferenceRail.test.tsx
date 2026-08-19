@@ -294,8 +294,9 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
   // The rule's subject is the REFERENCE MATERIAL: a text row substitutes into
   // the prompt STRING, so it is outside this rule entirely — lit, insertable
   // and removable whatever the mode does with references. (Whether the active
-  // model takes a prompt at all is a different question, asked by the
-  // container since #1950.) The full
+  // model takes a prompt at all is a different question; the rail asks it
+  // itself since #1966, off the `modelTakesPrompt` prop. It used to be the
+  // video container's, and that second home is what #1962 removed.) The full
   // 24-combination matrix and the refusal messages live in
   // `ReferenceRail-states.test.tsx`; this one keeps the t2i case anchored
   // where the rest of the rail's rendering is pinned.

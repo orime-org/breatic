@@ -202,7 +202,7 @@ async function readOne(
  * Runs the insert-or-update for one subscription row.
  *
  * No handling for "this account already holds a live subscription": that
- * constraint is gone (0058). It wrote a business rule onto a table that
+ * constraint is gone (0059). It wrote a business rule onto a table that
  * mirrors Stripe, and Stripe does not guarantee it — so the only thing the
  * constraint could do was fail the write, and neither writer had anywhere to
  * go from there. Which of two live rows governs the account is decided when

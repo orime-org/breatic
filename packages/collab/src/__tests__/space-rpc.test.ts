@@ -292,13 +292,10 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       return doc;
     }
 
+    // Empty on purpose: a document starts with no blocks at all (#121 定稿
+    // §6.2)。创建者输入的名字只住在 meta 的 Space 条目上。
     const body = documentBodyFragment(await seededContentDoc("document"));
-    expect(body.length).toBe(1);
-    // A title carrying the name the caller typed — this is the path that HAS
-    // one (`space:create` payload), unlike a project's first Space.
-    const title = body.get(0) as Y.XmlElement;
-    expect(title.nodeName).toBe("title");
-    expect(title.toString()).toBe("<title>S</title>");
+    expect(body.length).toBe(0);
 
     expect((await seededContentDoc("canvas")).share.size).toBe(0);
   });

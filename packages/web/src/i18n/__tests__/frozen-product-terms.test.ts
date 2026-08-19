@@ -81,6 +81,7 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   // `TierOffer`, and each tier has its own button in the comparison table.
   'membership.pricePerMonth',
   'membership.upgrade',
+  'chat.conversation.startNew',
   'notifications.roleHint.editor',
   'notifications.roleHint.viewer',
   'notifications.request.audio',

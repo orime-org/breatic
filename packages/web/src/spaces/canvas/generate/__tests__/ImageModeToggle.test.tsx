@@ -5,7 +5,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { ImageModeToggle } from '@web/spaces/canvas/generate/ImageModeToggle';
-import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import {
+  IMAGE_MODE_OPTIONS,
+  type ImageGenMode,
+} from '@web/spaces/canvas/generate/image-mode-selection';
 import { panCanvasViewport } from '@web/spaces/canvas/generate/__tests__/canvas-viewport-test-utils';
 
 /**
@@ -18,7 +21,13 @@ function setup(
   value: ImageGenMode,
   onChange: (mode: ImageGenMode) => void = () => {},
 ): ReturnType<typeof render> {
-  return render(<ImageModeToggle value={value} onChange={onChange} />);
+  return render(
+    <ImageModeToggle
+      value={value}
+      onChange={onChange}
+      options={IMAGE_MODE_OPTIONS}
+    />,
+  );
 }
 
 describe('ImageModeToggle — the t2i / i2i mode popover', () => {
@@ -82,16 +91,18 @@ describe('ImageModeToggle — the t2i / i2i mode popover', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('disables the trigger (cannot open) when the catalog is empty', () => {
-    // Set while the model catalog is empty (loading / failed) so a switch can't
-    // resolve an empty model and clobber the node's stored model/params.
-    const onChange = vi.fn();
-    render(<ImageModeToggle value='t2i' onChange={onChange} disabled />);
-    const trigger = screen.getByTestId('generate-mode-trigger');
-    expect(trigger).toBeDisabled();
-    fireEvent.click(trigger);
+  it('只列出传进来的档 (#1951)', () => {
+    // 哪些档能出现是容器的决定（它才拿得到目录），组件只负责如实渲染。
+    render(
+      <ImageModeToggle
+        value='t2i'
+        onChange={vi.fn()}
+        options={IMAGE_MODE_OPTIONS.filter((o) => o.value === 't2i')}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+    expect(screen.getByTestId('generate-mode-t2i')).toBeInTheDocument();
     expect(screen.queryByTestId('generate-mode-i2i')).not.toBeInTheDocument();
-    expect(onChange).not.toHaveBeenCalled();
   });
 
   // #1796: the mode toggle is a Radix Popover whose Floating-UI auto-update does

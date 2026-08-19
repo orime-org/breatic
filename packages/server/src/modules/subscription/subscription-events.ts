@@ -21,7 +21,7 @@
  * lock, then fetch — holds one row and one database connection for however
  * long Stripe takes, and the row it holds is the one every tier change needs.
  * Which of two concurrent writers wins is settled instead by the moment each
- * one asked (`observed_at`, migration 0057), so the later view wins whichever
+ * one asked (`observed_at`, migration 0058), so the later view wins whichever
  * commits first.
  */
 

@@ -44,6 +44,59 @@ export function filterModelsByMode(
 }
 
 /**
+ * Keeps only the modes this deployment can actually serve — those with at
+ * least one model (#1951).
+ *
+ * A deployment configures its own models, so a mode with none is not a
+ * capability temporarily out of reach: it is one this deployment does not
+ * have, and offering it would show the user something they can never get
+ * (user 2026-08-18). That is why the answer is to remove the mode rather
+ * than to show it disabled with an explanation — the disabled-with-reason
+ * pattern speaks to "you could qualify for this", and nobody here can.
+ *
+ * The option type is only constrained to carry a `value`, which keeps every
+ * caller's own fields — a video option's `slots` and `takesReferences` ride
+ * through untouched, and the returned entries are the SAME objects, not
+ * copies, so identity-based memoisation upstream still holds.
+ * @param options - The modes a panel offers, in display order.
+ * @param models - The catalog models for this panel's modality.
+ * @returns The subset with at least one model, in input order.
+ */
+export function filterAvailableModes<T extends { value: string }>(
+  options: readonly T[],
+  models: ModelEntry[],
+): T[] {
+  return options.filter((o) => filterModelsByMode(models, o.value).length > 0);
+}
+
+/**
+ * Which mode a node opens in: the one it stored if this deployment still
+ * serves it, else the first one that is served (#1951).
+ *
+ * Availability is the test, not legality: an unavailable mode is worth nothing
+ * to any step that follows, so it never becomes the current one (user
+ * 2026-08-18). The resolvers this replaces asked only whether the stored value
+ * names a mode the panel knows, which let a node sit on a mode whose models
+ * the deployment has since dropped — and then every control downstream had to
+ * have an answer for a state that should not exist. Asking about availability
+ * first removes the state instead of describing it.
+ *
+ * Nothing is written back: this is derived per render, and a node's stored
+ * mode only changes when the user actually switches. Put the models back and
+ * the node reads as its original mode again.
+ * @param stored - The node's stored mode (free string on the wire).
+ * @param availableModes - This panel's modes that have a model, in display order.
+ * @returns The mode to open in, or undefined when nothing is available.
+ */
+export function resolveAvailableMode(
+  stored: string | undefined,
+  availableModes: readonly { value: string }[],
+): string | undefined {
+  if (stored && availableModes.some((o) => o.value === stored)) return stored;
+  return availableModes[0]?.value;
+}
+
+/**
  * Picks which model a mode should open with, in priority order (user
  * 2026-07-11): the one the user last chose in that mode if it is still in the
  * catalog, else the first model the mode offers. The `recommended` tier is

@@ -28,7 +28,7 @@
 -- Writers must demote an ending subscription before inserting its replacement.
 -- The reconciliation loop therefore writes ended subscriptions first.
 --
--- Hand-written (same pattern as 0018/0025/0026/0049/0052/0053/0054/0055):
+-- Hand-written (same pattern as 0018/0025/0026/0049/0052/0053/0055/0056):
 -- .sql + _journal entry, no snapshot.
 
 CREATE UNIQUE INDEX IF NOT EXISTS "subscriptions_one_live_per_user_idx"

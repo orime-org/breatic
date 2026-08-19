@@ -81,6 +81,19 @@ export interface ModelEntry {
   params: Record<string, ParamDescriptor>;
   providers: ModelProvider[];
   /**
+   * Whether this model consumes the text the user writes (#1966). Declared
+   * per model in yaml, never derived: it used to be read off a `prompt` entry
+   * under `params`, which is a per-catalog writing habit rather than a rule —
+   * no image model ever wrote one, so that derivation answered "no prompt"
+   * for the whole image catalog. Both Generate panels mount (or refuse to
+   * mount) their prompt editor on this, and the reference rail freezes a
+   * row's insert and ✕ on it.
+   *
+   * Not optional: a model that omits it fails to load. Defaulting to `false`
+   * would let a forgotten line silently unmount the editor.
+   */
+  takes_prompt: boolean;
+  /**
    * Per-mode source requirements (#1675 cross-modality execute gate),
    * computed backend-side (the rule lives in domain). Maps each of the
    * model's modes to the source types that mode needs (`t2i` → `[]`,
@@ -111,12 +124,17 @@ export interface ModelCatalog {
 
 // ── Image model classification ───────────────────────────────────────
 //
-// Single source of truth (web + backend) for which image `mode`s make a model
-// GENERATABLE — i.e. it produces or edits an image from a prompt (optionally
-// using an upstream reference as the source image), as opposed to a pure
-// utility tool (`remove_bg` / `upscale`) that belongs in the mini-tool system.
-// Both the Generate panel's model picker and the agent's image-plan skill
-// filter through this so they always offer the same set.
+// Which image `mode`s make a model GENERATABLE — i.e. it produces or edits an
+// image from a prompt (optionally using an upstream reference as the source
+// image), as opposed to a pure utility tool (`remove_bg` / `upscale`) that
+// belongs in the mini-tool system.
+//
+// One consumer: the agent's image-plan skill (`domain/agent/skills-loader.ts`).
+// The Generate panel does NOT read this — its picker narrows the catalog to the
+// mode the user is on (`filterModelsByMode`), and since #1951 it offers only the
+// modes this deployment has a model for. It used to be a shared predicate; the
+// web side of it lost its last caller when the picker started asking about
+// availability instead of about classification.
 
 /**
  * Image model `mode` values that make a model generatable: text-to-image and
@@ -127,18 +145,6 @@ export interface ModelCatalog {
  * mini-tool system.
  */
 export const IMAGE_GENERATION_MODES = ["t2i", "i2i"] as const;
-
-/**
- * Whether an image model's `mode` makes it offerable for generation (Generate
- * picker + agent image plan) versus a pure utility tool. A model qualifies when
- * any single mode is a generation mode, so a multi-mode model (e.g.
- * `["i2i", "edit"]`) qualifies as long as it can do t2i or i2i.
- * @param mode - The model's `mode` (a single string or an array of modes).
- * @returns True when any of the model's modes is a generation mode.
- */
-export function isImageGenerationMode(mode: string | string[]): boolean {
-  return anyModeIn(mode, IMAGE_GENERATION_MODES);
-}
 
 /**
  * Video model `mode` values that make a model offerable in the video Generate
@@ -180,22 +186,6 @@ export const VIDEO_GENERATION_MODES = [
   "ref",
   "talking_head",
 ] as const;
-
-/**
- * Whether any of a model's modes appears in an allowed list. A model declares
- * `mode` as either one string or an array of them, so testing membership means
- * normalising first — which is the only thing this helper exists to hold.
- * @param mode - The model's `mode` (a single string or an array of modes).
- * @param allowed - The modes that qualify for the caller's purpose.
- * @returns True when at least one of the model's modes is allowed.
- */
-function anyModeIn(
-  mode: string | string[],
-  allowed: readonly string[],
-): boolean {
-  const modes = Array.isArray(mode) ? mode : [mode];
-  return modes.some((m) => allowed.includes(m));
-}
 
 // The source-image predicates (SOURCE_IMAGE_MODES / requiresSourceImage /
 // supportsTextToImage) were replaced by the cross-modality execute gate
@@ -279,6 +269,21 @@ const modelEntrySchema = z.object({
   sourcesByMode: z
     .record(z.string(), z.array(z.enum(["image", "video", "audio"])))
     .catch({}),
+  // Whether the model consumes the user's text (#1966). The backend refuses to
+  // load a catalog where a model omits it, so this `.catch` only fires on a
+  // corrupted or version-skewed wire — and there it degrades OPEN, same as
+  // `sourcesByMode` above.
+  //
+  // `true` mounts the editor and makes `canExecuteGenerate` demand a non-empty
+  // prompt, which at worst reproduces the pre-#1966 behaviour of a prompt the
+  // model ignores — the user types something that goes nowhere.
+  //
+  // `false` is the expensive direction, and not for the reason it looks: the
+  // execute gate reads `!promptRequired || promptText.trim()`, so a false here
+  // does not block anything — it REMOVES the demand. The panel would hide the
+  // editor and then happily submit a paid generation with an empty prompt from
+  // a model that actually wanted one.
+  takes_prompt: z.boolean().catch(true),
 });
 
 /** One modality bucket: a non-array coerces to [], garbage entries drop out. */

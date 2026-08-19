@@ -107,9 +107,18 @@ loader:`packages/core/src/config/storage.ts`。
 |---|---|---|
 | `avatar.max_bytes` | 2097152(2 MiB)| 单次头像上传字节上限;超限返 413。按 PNG 最坏情况定,见上方说明 |
 
-## 7. `config/agent.yaml` — LLM 韧性(节选)
+## 7. `config/agent.yaml` — LLM 韧性与会话列表(节选)
 
-loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 行为 / 记忆 / 工具旋钮;韧性相关:
+loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 行为 / 记忆 / 工具旋钮。
+
+**会话列表**(2026-08-18 加):
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `conversation_page_size` | 30 | 会话列表一页几条。**服务端定,前端不发** —— 前端只发游标,页大小是服务端的事;两边各定一个就是同一个问题的两个答案。`POST /chat/open` 和 `GET /chat/conversations` 用同一个值 |
+| `conversation_title_max_chars` | 60 | 用第一句话给会话起名时截到多少个**字符**(不是 UTF-16 码元 —— 按码元切会把一个字切成两半,存进去是个替换符)。loader 里另有一道 200 的硬上限,防止把配置写成一个列宽装不下的数 |
+
+**韧性相关**:
 
 | 参数 | 默认 | 含义 |
 |---|---|---|

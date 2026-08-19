@@ -2,23 +2,36 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import type { MessageData } from '@breatic/shared';
 
-import { useChatStore } from '@web/stores';
+import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
+
 import {
   conversationRuntime,
   turnPhaseOf,
   useConversationRuntime,
   watchChatMishaps,
 } from '@web/stores/conversation-runtime';
-import type { ChatMessageData, ChatMishap, TurnPhase } from '@web/stores/conversation-runtime';
+import type {
+  ChatMessageData,
+  ChatMishap,
+  OpenStatus,
+  TurnPhase,
+} from '@web/stores/conversation-runtime';
+import type { ConversationOnTheWire } from '@web/data/api/chat';
 import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
 
 export interface ChatSession {
   /** Every message to show, history and the reply in flight alike. */
   messages: ChatMessage[];
-  /** True until the server has answered — not the same as an empty chat. */
-  isPending: boolean;
+  /**
+   * How far opening this project's chat has got.
+   *
+   * Read rather than collapsed into a boolean, because two different things
+   * are decided by it and they are not the same question: whether there is a
+   * conversation to render at all, and whether this wait has gone on long
+   * enough to be worth showing.
+   */
+  status: OpenStatus;
   /**
    * How far along the turn is, if there is one.
    *
@@ -27,6 +40,17 @@ export interface ChatSession {
    * do differs in all three -- send, wait, or stop.
    */
   turnPhase: TurnPhase;
+  /**
+   * The panel is on its way to another conversation.
+   *
+   * Separate from `turnPhase`, which is about the exchange inside the
+   * conversation on screen. This one is about which conversation that is:
+   * for as long as it is true, the one being shown is not the one the reader
+   * just asked for.
+   */
+  navigating: boolean;
+  /** A request for the next page of the conversation list is out. */
+  loadingMore: boolean;
   /** The conversation reaches back further than the messages on screen. */
   hasMore: boolean;
   /**
@@ -53,6 +77,44 @@ export interface ChatSession {
   send: (draft: string) => Promise<void>;
   /** Stop the turn in flight. */
   abort: () => void;
+  /** The conversations fetched so far here, most recently used first. */
+  conversations: ConversationOnTheWire[];
+  /** The project has conversations older than the ones listed. */
+  hasMoreConversations: boolean;
+  /** Fetch the page after the ones listed. */
+  loadMoreConversations: () => void;
+  /**
+   * The last attempt at that page failed.
+   *
+   * While this is true the end of the list is not watched at all; a
+   * single scroll is. A failure moves nothing, so an end still in view would
+   * have the failure asking again on its own behalf, over and over. What asks
+   * again is the reader moving.
+   */
+  nextPageFailed: boolean;
+  /** The first page of the list is on its way. */
+  listLoading: boolean;
+  /**
+   * What went wrong with something done to a row, for the list to say.
+   *
+   * Apart from {@link mishap} because the two are about different things and
+   * either can be worth saying: this one belongs where the reader is looking,
+   * which is inside a sheet that covers the panel's own line.
+   */
+  rowMishap: ChatMishap | null;
+  /** Fetch the list again from its first page. */
+  reloadList: () => void;
+  /** Which one is on screen, for the list to mark. */
+  currentId: string | undefined;
+  /** What this conversation has half-typed, and how to change it. */
+  draft: string;
+  setDraft: (text: string) => void;
+  /** Show a different conversation. */
+  switchTo: (conversationId: string) => void;
+  /** Name one. */
+  rename: (conversationId: string, title: string) => void;
+  /** Delete one, after the reader has confirmed. */
+  remove: (conversationId: string) => void;
 }
 
 /**
@@ -66,7 +128,7 @@ function toChatMessage(message: ChatMessageData, justFailed: boolean): ChatMessa
   const toolCalls: ToolCall[] = message.parts
     .filter((p) => p.type === 'tool')
     .map((p) => {
-      const part = p as Extract<MessageData['parts'][number], { type: 'tool' }>;
+      const part = p;
       return {
         id: part.toolCallId,
         name: part.toolName,
@@ -96,14 +158,13 @@ function toChatMessage(message: ChatMessageData, justFailed: boolean): ChatMessa
 const NO_MESSAGES: ChatMessageData[] = [];
 
 /**
- * How long one line about something going wrong stays on screen.
+ * The list before one has arrived.
  *
- * It goes away on its own because it is an event, not a state: the reader was
- * told, and a reader who was looking elsewhere is not owed it later. Four
- * seconds is what every other one-off message in this app lasts -- the toast
- * library's own default, which the rest of the product uses unchanged.
+ * Module-level, because an array built at each read is a changed value to
+ * every subscriber -- and this one is read on every store change.
  */
-const MISHAP_LINGERS_MS = 4000;
+const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
+
 
 /**
  * The chat panel's view of the conversation it is showing.
@@ -113,10 +174,11 @@ const MISHAP_LINGERS_MS = 4000;
  * `stores/conversation-runtime`, so that collapsing the agent column is
  * collapsing a column rather than ending the answer the user is waiting for.
  * @param projectId - Project whose chat this is
+ * @param listOpen - Whether the conversation list is on screen, which decides
+ *   where a word about one of its rows is drawn
  * @returns The messages, whether they have arrived, and what can be done
  */
-export function useChatSession(projectId: string): ChatSession {
-  const setActiveConversationId = useChatStore((s) => s.setActiveConversationId);
+export function useChatSession(projectId: string, listOpen = false): ChatSession {
 
   const conversationId = useConversationRuntime((s) => s.currentByProject[projectId]);
   const openStatus = useConversationRuntime((s) => s.openStatus[projectId] ?? 'idle');
@@ -124,6 +186,8 @@ export function useChatSession(projectId: string): ChatSession {
     (s) => (conversationId ? s.conversations[conversationId]?.messages : undefined) ?? NO_MESSAGES,
   );
   const turnPhase = useConversationRuntime((s) => turnPhaseOf(s, projectId));
+  const navigating = useConversationRuntime((s) => s.navigatingByProject[projectId] === true);
+  const loadingMore = useConversationRuntime((s) => s.listLoadingMore[projectId] === true);
   const hasMore = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.hasMore ?? false) : false,
   );
@@ -133,14 +197,26 @@ export function useChatSession(projectId: string): ChatSession {
   const failedReplyId = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.failedReplyId ?? null) : null,
   );
+  const conversations = useConversationRuntime(
+    (s) => s.listByProject[projectId] ?? NO_CONVERSATIONS,
+  );
+  const hasMoreConversations = useConversationRuntime(
+    (s) => s.listHasMore[projectId] ?? false,
+  );
+  const nextPageFailed = useConversationRuntime(
+    (s) => s.listMoreFailed[projectId] ?? false,
+  );
+  const listLoading = useConversationRuntime((s) => s.listLoading[projectId] === true);
+  // A draft belongs to the conversation it was typed in, and there is always
+  // one: the box is read-only for the round trip before the first arrives.
+  const draft = useConversationRuntime(
+    (s) => (conversationId === undefined ? '' : (s.draftByConversation[conversationId] ?? '')),
+  );
 
   React.useEffect(() => {
     void conversationRuntime.ensureLoaded(projectId);
   }, [projectId]);
 
-  React.useEffect(() => {
-    if (conversationId) setActiveConversationId(conversationId);
-  }, [conversationId, setActiveConversationId]);
 
   /**
    * How many turns had already failed in this conversation when it came up.
@@ -176,6 +252,37 @@ export function useChatSession(projectId: string): ChatSession {
     if (conversationId) void conversationRuntime.loadEarlier(conversationId);
   }, [conversationId]);
 
+  const setDraft = React.useCallback(
+    (text: string): void => conversationRuntime.setDraft(conversationId, text),
+    [conversationId],
+  );
+
+  const switchTo = React.useCallback(
+    (id: string): void => void conversationRuntime.switchTo(projectId, id),
+    [projectId],
+  );
+
+  const loadMoreConversations = React.useCallback(
+    (): void => void conversationRuntime.loadMoreConversations(projectId),
+    [projectId],
+  );
+
+  /** Fetch the list again from its first page. */
+  const reloadList = React.useCallback(
+    (): void => void conversationRuntime.reloadConversationList(projectId),
+    [projectId],
+  );
+
+  const rename = React.useCallback(
+    (id: string, title: string): void => void conversationRuntime.rename(projectId, id, title),
+    [projectId],
+  );
+
+  const remove = React.useCallback(
+    (id: string): void => void conversationRuntime.remove(projectId, id),
+    [projectId],
+  );
+
   /**
    * What just went wrong here, until it stops being just now.
    *
@@ -186,6 +293,18 @@ export function useChatSession(projectId: string): ChatSession {
    * a stream knows.
    */
   const [mishap, setMishap] = React.useState<ChatMishap | null>(null);
+  /**
+   * The one that belongs in the list rather than in the panel.
+   *
+   * The list covers the whole column while it is open, so the panel's line --
+   * on the top edge of the composer -- is a line nobody can read while it is
+   * up. What decides is therefore where the reader is looking, not which
+   * entrance they used: renaming can be started from the header too. Kept
+   * apart from {@link mishap} rather than routed by whichever came last,
+   * because the two are about different things and can both be worth saying.
+   */
+  const [rowMishap, setRowMishap] = React.useState<ChatMishap | null>(null);
+
 
   React.useEffect(
     () =>
@@ -194,17 +313,43 @@ export function useChatSession(projectId: string): ChatSession {
         // Only this conversation's. Another one may be streaming in the
         // background -- that is allowed -- and its trouble is not this
         // reader's to be interrupted by.
-        if (told.conversationId !== null && told.conversationId !== conversationId) return;
+        // Except when the reader did it on purpose. Renaming or deleting a
+        // conversation from the list is something they pressed and are waiting
+        // to hear back about, and it is usually about a conversation other
+        // than the one on screen -- that is what the list is for. The
+        // question this filter asks is "is this the reader's own doing", not
+        // "which conversation was it about".
+        // A word about a row goes to the list only while the list is on
+        // screen. Which entrance the reader used does not decide this -- the
+        // header renames the conversation too, and the sheet is shut then, so
+        // a line drawn inside it would be a line nobody reads.
+        if (told.aboutRow === true && listOpen) {
+          setRowMishap(told);
+          return;
+        }
+        if (
+          told.deliberate !== true &&
+          told.conversationId !== null &&
+          told.conversationId !== conversationId
+        ) {
+          return;
+        }
         setMishap(told);
       }),
-    [projectId, conversationId],
+    [projectId, conversationId, listOpen],
   );
 
   React.useEffect(() => {
     if (mishap === null) return undefined;
-    const forgetting = setTimeout(() => setMishap(null), MISHAP_LINGERS_MS);
+    const forgetting = setTimeout(() => setMishap(null), NOTICE_LINGERS_MS);
     return () => clearTimeout(forgetting);
   }, [mishap]);
+
+  React.useEffect(() => {
+    if (rowMishap === null) return undefined;
+    const forgetting = setTimeout(() => setRowMishap(null), NOTICE_LINGERS_MS);
+    return () => clearTimeout(forgetting);
+  }, [rowMishap]);
 
   // What the panel was handed for each stored message last time round.
   //
@@ -234,12 +379,27 @@ export function useChatSession(projectId: string): ChatSession {
 
   return {
     messages,
-    isPending: openStatus === 'idle' || openStatus === 'loading',
+    status: openStatus,
     turnPhase,
+    navigating,
+    loadingMore,
     hasMore,
     mishap,
     loadEarlier,
     send,
     abort,
+    conversations,
+    hasMoreConversations,
+    loadMoreConversations,
+    nextPageFailed,
+    listLoading,
+    rowMishap,
+    reloadList,
+    currentId: conversationId,
+    draft,
+    setDraft,
+    switchTo,
+    rename,
+    remove,
   };
 }

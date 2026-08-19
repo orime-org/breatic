@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { ChatEmpty } from '@web/pages/project/chat/ChatEmpty';
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
@@ -13,13 +14,25 @@ import type { ChatMessage } from '@web/pages/project/chat/types';
 interface MessageListProps {
   messages: ReadonlyArray<ChatMessage>;
   /**
-   * The conversation has not arrived yet.
+   * The conversation has arrived and can be drawn.
    *
    * Different from having no messages: an empty chat invites the user to
    * start one, and showing that over a conversation still on its way makes
-   * their own history flash past as if it were not there.
+   * their own history flash past as if it were not there. So nothing is
+   * drawn at all until this is true -- including, and especially, the
+   * greeting that belongs to an empty conversation.
    */
-  loading?: boolean;
+  ready?: boolean;
+  /**
+   * The wait has gone on long enough to be worth showing.
+   *
+   * A separate question from {@link ready}, and it has to be: the answer
+   * usually arrives inside the 300ms the panel waits before asking for one, and
+   * a skeleton that comes and goes inside that reads as a flicker. So the first gate decides whether
+   * there is anything to draw, and this one decides whether to say we are
+   * waiting.
+   */
+  skeleton?: boolean;
   /**
    * How many times the reader has pressed send in this panel.
    *
@@ -29,11 +42,22 @@ interface MessageListProps {
    * reply in the form it was stored — a change with no reader behind it.
    */
   sentCount?: number;
+  /**
+   * Which conversation these messages belong to.
+   *
+   * Read only to notice that it changed: arriving in another conversation puts
+   * a different exchange in front of the reader, and it starts at its last
+   * word -- wherever they had scrolled to in the one before says nothing about
+   * this one.
+   */
+  conversationId?: string;
   /** The conversation reaches back further than what is on screen. */
   hasEarlier?: boolean;
   /** Load what comes before the messages on screen. */
   onLoadEarlier?: () => void;
   onQuickAction?: (label: string) => void;
+  /** The panel is on its way to another conversation. */
+  navigating?: boolean;
 }
 
 /**
@@ -47,26 +71,71 @@ interface MessageListProps {
 const AT_BOTTOM_SLACK_PX = 64;
 
 /**
+ * What a conversation looks like before it has arrived.
+ *
+ * Shaped like the messages it stands in for -- one wide block for a reply, one
+ * narrow one held to the right for a question -- so what replaces it does not
+ * jump. It is drawn only once the wait has run past the point where anything
+ * is worth saying about it; the gate for that is the caller's.
+ * @returns The placeholder rows.
+ */
+function MessageSkeleton(): React.JSX.Element {
+  return (
+    <div className='flex flex-col p-3' data-testid='message-skeleton' aria-hidden>
+      {[0, 1, 2].map((round) => (
+        <div key={round} className='mb-3.5'>
+          {/* One question, two lines of answer, laid out the way real messages
+              are. A stack of blocks reads as "something is blinking", not as a
+              conversation, and a conversation is what the reader is waiting
+              for. The widths grow group by group so it reads as content rather
+              than as three identical cells. */}
+          {/* `h-3` is what the rest of the app uses for a line of text
+              standing in for itself. The question keeps its bubble's radius;
+              the answer has no bubble, so it keeps the component's own. */}
+          <Skeleton
+            data-skeleton-bar
+            className='ml-auto mb-2 h-3 rounded-lg'
+            style={{ width: `${56 + round * 9}%` }}
+          />
+          <Skeleton data-skeleton-bar className='mb-1 h-3' style={{ width: '93%' }} />
+          <Skeleton
+            data-skeleton-bar
+            className='h-3'
+            style={{ width: `${64 + round * 8}%` }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Scrollable message column. Follows a reply as it is written, but only while
  * the reader is at the bottom: once they scroll up, the column stays where
  * they put it until they come back down. Renders `<ChatEmpty />` when there
  * are no messages yet (new conversation greeting + quick actions).
  * @param root0 - The component props.
  * @param root0.messages - The messages to render in order.
- * @param root0.loading - The conversation has not arrived yet.
+ * @param root0.ready - The conversation has arrived and can be drawn.
+ * @param root0.skeleton - The wait is long enough to be worth showing.
+ * @param root0.conversationId - Which conversation these messages belong to.
  * @param root0.sentCount - How many times the reader has pressed send.
  * @param root0.hasEarlier - The conversation reaches back further than this.
  * @param root0.onLoadEarlier - Called to load what comes before these.
  * @param root0.onQuickAction - Called with a quick-action label from the empty state.
+ * @param root0.navigating - The panel is on its way to another conversation.
  * @returns The scrollable message column, or the empty-conversation state.
  */
 function MessageListInner({
   messages,
-  loading = false,
+  ready = false,
+  skeleton = false,
   sentCount,
+  conversationId,
   hasEarlier = false,
   onLoadEarlier,
   onQuickAction,
+  navigating = false,
 }: MessageListProps): React.JSX.Element {
   const t = useTranslation();
   const bottomRef = React.useRef<HTMLDivElement>(null);
@@ -110,7 +179,13 @@ function MessageListInner({
     // something sees nothing move at all: not their own message, not a word
     // of the reply.
     stickToBottom.current = true;
-  }, [sentCount]);
+    // And on arriving in another conversation, for the same reason as sending:
+    // what is in front of the reader now is not what they scrolled away from.
+    // Done here rather than by keying this component on the conversation --
+    // that tore down the scroller, every bubble in it and the observers around
+    // them, to set one boolean back to true, and the scroller it left behind
+    // stayed on screen as an empty half-column.
+  }, [sentCount, conversationId]);
 
   React.useEffect(() => {
     const viewport = bottomRef.current?.closest('[data-radix-scroll-area-viewport]');
@@ -138,8 +213,10 @@ function MessageListInner({
 
   return (
     <ScrollArea className='min-h-0 flex-1' data-testid='message-list'>
-      {loading ? null : count === 0 ? (
-        <ChatEmpty onQuickAction={onQuickAction} />
+      {!ready ? (
+        skeleton ? <MessageSkeleton /> : null
+      ) : count === 0 ? (
+        <ChatEmpty onQuickAction={onQuickAction} frozen={navigating} />
       ) : (
         <div className='flex flex-col gap-2 p-3'>
           {/* At the top, because that is where the conversation continues

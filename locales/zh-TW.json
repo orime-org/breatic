@@ -119,8 +119,7 @@
     "empty": {
       "greetingWithName": "嗨,{name}!",
       "greetingDefault": "嗨!",
-      "hintNodes": "試試 @ 節點提問",
-      "hintDirect": "或直接在下方輸入對話 ↓",
+      "hintDirect": "在下方輸入對話 ↓",
       "quick": {
         "findReference": "幫我找賽博龐克風格的參考圖",
         "writePrompt": "幫我寫一個生成插畫的提示詞",
@@ -130,7 +129,10 @@
     "history": {
       "title": "Session 列表",
       "description": "切換或回顧之前的對話。",
-      "empty": "尚無歷史對話"
+      "empty": "尚無歷史對話",
+      "moreFailed": "沒能載入更早的對話",
+      "loadingMore": "正在載入更早的對話",
+      "loading": "正在載入對話列表"
     },
     "relative": {
       "justNow": "剛剛",
@@ -152,7 +154,25 @@
     "tool": {
       "unfinished": "未跑完就停止了"
     },
-    "loadEarlier": "載入更早的訊息"
+    "loadEarlier": "載入更早的訊息",
+    "conversation": {
+      "untitled": "未命名對話",
+      "rename": "重新命名",
+      "delete": "刪除",
+      "renamePlaceholder": "為這個對話命名",
+      "deleteTitle": "刪除這個對話？",
+      "deleteBody": "對話裡說過的內容會一起刪除，無法復原。",
+      "deleteConfirm": "刪除",
+      "deleteCancel": "取消",
+      "rowActions": "重新命名或刪除這條對話",
+      "gone": "這條對話已經不存在了"
+    },
+    "load": {
+      "failedTitle": "網路錯誤",
+      "failedBody": "沒能讀取這個 Project 的對話。",
+      "retry": "重新載入",
+      "refusedTitle": "打不開這個對話"
+    }
   },
   "canvas": {
     "group": {
@@ -218,6 +238,8 @@
       "refuseInsertModeOff": "這一檔不使用參考素材",
       "refuseRemoveModeOff": "參考在各檔之間共用 — 切到使用參考的檔才能刪掉它，或者在畫布上刪掉它那條連線",
       "refuseRemoveModeOffCrop": "參考在各檔之間共用 — 切到使用參考的檔才能刪掉這個裁剪",
+      "refuseRemoveNoPrompt": "這一檔不需要提示詞",
+      "refuseExecuteNoPrompt": "先寫提示詞",
       "refuseInsertTypeUnused": "{kind, select, audio {參考只收圖片，不收音訊} video {參考只收圖片，不收視訊} other {參考只收圖片，不收這類素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的畫面內容，@ 引用參考",
@@ -256,6 +278,8 @@
       "referencePoolFull": "參考池已滿(上限 {cap})——請先移除一些參考或聚焦圖。",
       "modelUnavailable": "該模型已無法使用——請另選一個。",
       "catalogUnavailable": "模型清單載入失敗,請稍後再試",
+      "catalogOffline": "你現在離線，取不到模型清單。連上網路再試。",
+      "catalogNoModels": "沒有可用模型，請設定 provider 的 API key",
       "selectFocusFromCanvas": "請在圖片上框選聚焦區域",
       "focusCancel": "取消",
       "focusConfirm": "確認",
@@ -295,7 +319,7 @@
       "removeDrivingAudio": "移除驅動音訊",
       "errorNoDrivingVideo": "先挑一段驅動影片",
       "errorNoDrivingAudio": "先挑一段驅動音訊",
-      "videoPromptNotUsed": "這一檔跟著音訊走。要改內容，去換音訊。",
+      "promptNotUsed": "這一檔不需要提示詞。",
       "refuseInsertNoPrompt": "這一檔沒有提示詞框，插不進去"
     },
     "nodeMenu": {
@@ -643,7 +667,14 @@
       },
       "refusedNotice": "與這個文件的連線被拒絕了。你看到的內容可能不是最新的，變更也不會被儲存。",
       "placeholder": "開始寫作…",
-      "titlePlaceholder": "未命名文件",
+      "clearConfirm": {
+        "title": "刪除全部內容？",
+        "confirm": "刪除",
+        "cancel": "取消"
+      },
+      "unsupported": {
+        "label": "不支援的內容"
+      },
       "toolbar": {
         "undo": "復原",
         "redo": "重做",
@@ -1043,7 +1074,6 @@
       "creditsBalance": "積分餘額",
       "addCredits": "新增積分",
       "home": "首頁",
-      "conversationCount": "{count} 個對話",
       "scrollTabsLeft": "向左捲動標籤",
       "scrollTabsRight": "向右捲動標籤",
       "spacesToolbar": "Spaces",

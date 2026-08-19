@@ -163,7 +163,6 @@ export {
   modelCatalogSchema,
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
-  isImageGenerationMode,
   VIDEO_GENERATION_MODES,
 } from "@shared/types/index.js";
 
@@ -196,6 +195,9 @@ export {
   chatConversationsQuerySchema,
   chatOpenSchema,
   chatEarlierMessagesQuerySchema,
+  chatCreateConversationSchema,
+  chatRenameConversationSchema,
+  CONVERSATION_TITLE_MAX_CHARS,
 } from "@shared/schemas/index.js";
 
 export type {
@@ -213,6 +215,8 @@ export type {
   CheckoutInput,
   PaginationInput,
   ChatConversationsQueryInput,
+  ChatCreateConversationInput,
+  ChatRenameConversationInput,
 } from "@shared/schemas/index.js";
 
 export {
@@ -239,7 +243,6 @@ export {
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export {
-  DOCUMENT_TITLE_NODE,
   documentBodyFragment,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";

@@ -16,6 +16,7 @@ vi.mock('@web/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
+import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 
 const MODEL: ModelEntry = {
@@ -28,6 +29,7 @@ const MODEL: ModelEntry = {
   tier: 'recommended',
   cost_per_call: 7,
   generation_time: 30,
+  takes_prompt: true,
   params: {
     aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
     resolution: { description: '', values: ['1K', '2K'], default: '1K' },
@@ -49,11 +51,12 @@ function setup(
       models={[MODEL]}
       model='nano_banana_pro'
       mode='t2i'
-      catalogEmpty={false}
+      promptRequired
+      modeOptions={IMAGE_MODE_OPTIONS}
       params={{ aspect_ratio: '16:9', resolution: '2K' }}
       references={[]}
       creditEstimate={7}
-      canExecute
+      executeRefusal={null}
       promptSlot={<div data-testid='prompt-slot'>prompt</div>}
       onExit={() => {}}
       onInsertReference={() => {}}
@@ -126,14 +129,14 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
-  it('disables the execute button when canExecute is false', () => {
-    setup({ canExecute: false });
+  it('disables the execute button for a refusal the user cannot act on', () => {
+    setup({ executeRefusal: 'no-model' as const });
     expect(screen.getByTestId('generate-execute')).toBeDisabled();
   });
 
   it('fires onExecute when execute is clicked and enabled', () => {
     const onExecute = vi.fn();
-    setup({ canExecute: true, onExecute });
+    setup({ executeRefusal: null, onExecute });
     fireEvent.click(screen.getByTestId('generate-execute'));
     expect(onExecute).toHaveBeenCalledTimes(1);
   });
@@ -174,22 +177,14 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.getByTestId('generate-tool-focus')).not.toBeDisabled();
   });
 
-  it('disables the mode toggle while the GLOBAL catalog is empty (loading/failed) — guards the data-clobber', () => {
-    // Adversarial round 1 (2026-07-09): toggling before the catalog resolves
-    // would clobber the node's stored model/params. The toggle is inert while
-    // the whole generatable catalog is empty (loading / failed / none configured).
-    setup({ catalogEmpty: true, models: [] });
-    expect(screen.getByTestId('generate-mode-trigger')).toBeDisabled();
-  });
-
-  it('keeps the mode toggle ENABLED when the current mode is empty but the catalog is not (escape hatch)', () => {
-    // Adversarial round 2 (2026-07-09): the round-1 fix wrongly gated on the
-    // CURRENT-mode-filtered model count, so a node stuck in a mode with zero
-    // models (e.g. i2i on a t2i-only deployment) had BOTH buttons disabled and
-    // no way back. The disable must gate on GLOBAL catalog emptiness so the user
-    // can always toggle to the populated mode.
-    setup({ mode: 'i2i', models: [], catalogEmpty: false });
-    expect(screen.getByTestId('generate-mode-trigger')).not.toBeDisabled();
+  it('模式选择器只列出这个部署能服务的档 (#1951)', () => {
+    // 「目录整个为空」这个状态在面板里不存在了：CatalogGatedFrame 会把面板
+    // 挡在外面（generate-panel-frame.test.tsx 钉）。面板要做的只有一件事 ——
+    // 把拿到的档如实列出来。
+    setup({ modeOptions: IMAGE_MODE_OPTIONS.filter((o) => o.value === 't2i') });
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+    expect(screen.getByTestId('generate-mode-t2i')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-mode-i2i')).not.toBeInTheDocument();
   });
 
   it('refuses insert on the image row in t2i, text row stays insertable', () => {

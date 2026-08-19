@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import { describe, it, expect, vi } from 'vitest';
 import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import type { ModelEntry } from '@breatic/shared';
@@ -25,6 +26,7 @@ function model(name: string, cost = 88): ModelEntry {
     tier: 'recommended',
     cost_per_call: cost,
     generation_time: 120,
+    takes_prompt: true,
     params: {
       aspect_ratio: { description: '', values: ['16:9', '9:16'], default: '16:9' },
       duration: { description: '', values: [4, 8], default: 8 },
@@ -58,7 +60,8 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         creditEstimate={88}
         mode='t2v'
         onToggleMode={() => {}}
-        catalogEmpty={false}
+        modeOptions={VIDEO_MODE_OPTIONS}
+        promptRequired
         references={[]}
         onAddReference={() => {}}
         referencePicking={false}
@@ -69,7 +72,7 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         slotThumbnails={{}}
         onPickSlot={() => {}}
         onClearSlot={() => {}}
-        canExecute
+        executeRefusal={null}
         promptSlot={<div data-testid='prompt-slot' />}
         onExit={onExit}
         onSelectModel={() => {}}
@@ -104,7 +107,7 @@ describe('VideoGeneratePanel', () => {
   });
 
   it('refuses to submit when the container says it cannot', () => {
-    const { onExecute } = renderPanel({ canExecute: false });
+    const { onExecute } = renderPanel({ executeRefusal: 'no-model' as const });
     const execute = screen.getByTestId('generate-video-execute');
     expect(execute).toBeDisabled();
     fireEvent.click(execute);
@@ -140,11 +143,14 @@ describe('VideoGeneratePanel', () => {
     expect(screen.getByTestId('generate-video-mode-t2v')).toBeInTheDocument();
   });
 
-  it('cannot switch mode while no mode has a model to switch to', () => {
-    // A switch then resolves nothing and would clobber the node's stored
-    // model and params, which do not self-heal.
-    renderPanel({ catalogEmpty: true });
-    expect(screen.getByTestId('generate-video-mode-trigger')).toBeDisabled();
+  it('模式选择器只列出这个部署能服务的档 (#1951)', () => {
+    // 一个档都没有那个状态由 CatalogGatedFrame 挡在外面，面板拿到的一定非空。
+    renderPanel({
+      modeOptions: VIDEO_MODE_OPTIONS.filter((o) => o.value === 't2v'),
+    });
+    fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
+    expect(screen.getByTestId('generate-video-mode-t2v')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-video-mode-i2v')).not.toBeInTheDocument();
   });
 
   it('always offers the reference tool, in every mode', () => {

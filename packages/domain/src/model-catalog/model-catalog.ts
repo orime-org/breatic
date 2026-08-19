@@ -21,6 +21,7 @@ import {
   violatesReferenceCount,
   type ReferenceCountViolation,
 } from "@domain/model-catalog/reference-count.js";
+import { assertTakesPromptDeclared } from "@domain/model-catalog/takes-prompt.js";
 import type {
   ModelCatalog,
   ModelEntry,
@@ -79,6 +80,13 @@ export interface FullModelEntry {
   cost_per_call?: number;
   generation_time?: number;
   icon?: string;
+  /**
+   * Whether this model consumes the text the user writes (#1966). Optional
+   * HERE because this interface mirrors what is literally on disk, and a yaml
+   * file can omit it — `assertTakesPromptDeclared` is what makes omission an
+   * error, so the wire type (`ModelEntry.takes_prompt`) can be non-optional.
+   */
+  takes_prompt?: boolean;
   params?: Record<string, FullParamSpec>;
   providers?: FullProviderEndpoint[];
   [extra: string]: unknown;
@@ -139,6 +147,15 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
     } | null;
     if (parsed?.models) models.push(...parsed.models);
   }
+
+  // #1966: refuse the whole modality rather than let one silent `undefined`
+  // become `false` downstream. The two entries that can reach this catalog —
+  // server and worker — preheat it at startup, so a typo surfaces when the
+  // deployment starts instead of under whoever first opens a Generate panel.
+  // Collab is the third service entry and does neither: it is barred from
+  // importing `@breatic/domain` at all (`collab-no-domain-import`), and it
+  // serves no AIGC path that would read a model.
+  assertTakesPromptDeclared(modality, models);
 
   let providers: Record<string, ProviderConnectionConfig> = {};
   const providersPath = resolve(dir, "providers.yaml");
@@ -221,6 +238,10 @@ function projectModelEntry(
     // mirrors what is literally on disk.
     params: (m.params ?? {}) as unknown as Record<string, ParamDescriptor>,
     providers,
+    // #1966: declared per model in yaml, never derived. The loader has
+    // already refused any modality where a model omits it, so the wire
+    // field is a plain boolean the panels can read without a fallback.
+    takes_prompt: m.takes_prompt as boolean,
     // #1675 cross-modality execute gate: precompute per-mode source needs so
     // the frontend reads them off the wire (the rule stays backend-side).
     sourcesByMode: computeSourcesByMode(modality, m.mode as string | string[]),
@@ -233,9 +254,20 @@ let _cache: ModelCatalog | null = null;
 /**
  * Load the full model catalog from YAML configs.
  *
- * Results are cached after first load. Models are filtered to only include
- * those with at least one available provider (has API key configured),
- * unless no keys are configured at all (returns everything for development).
+ * Results are cached after first load. A model is in the catalog when at
+ * least one of its providers has an API key configured — no exception, so an
+ * empty catalog is the honest answer for a deployment that has configured
+ * nothing (#1951).
+ *
+ * There used to be one: with not a single key set anywhere, the filter was
+ * skipped and every model came back, for development. What that bought was a
+ * full catalog with nothing configured — one placeholder does not buy it back,
+ * since a set variable only unlocks the models of that one provider and there
+ * are 17 distinct `api_key_env` names across the configs. Availability asks
+ * only whether the variable is non-empty, never whether the key works.
+ * What it cost was a deployment showing capabilities it cannot deliver:
+ * the panel opened, the pickers filled, the execute button armed, and the
+ * task failed upstream (user 2026-08-18 ruled it a bug).
  * @returns Complete model catalog grouped by modality
  */
 export function getModelCatalog(): ModelCatalog {
@@ -262,19 +294,10 @@ export function getModelCatalog(): ModelCatalog {
     );
   }
 
-  // Check if any keys are configured at all
-  const anyKeyConfigured = [...keyMap.values()].some((envVar) => {
-    const value = (env as Record<string, unknown>)[envVar];
-    return typeof value === "string" && value.length > 0;
-  });
-
-  // If keys are configured, filter to only available models
-  if (anyKeyConfigured) {
-    for (const modality of MODALITIES) {
-      catalog[modality] = catalog[modality].filter(
-        (m) => m.providers.some((p) => p.available),
-      );
-    }
+  for (const modality of MODALITIES) {
+    catalog[modality] = catalog[modality].filter(
+      (m) => m.providers.some((p) => p.available),
+    );
   }
 
   const total = MODALITIES.reduce((sum, m) => sum + catalog[m].length, 0);

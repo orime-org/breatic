@@ -8,14 +8,12 @@ import type * as Y from 'yjs';
 
 import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
-import { modelsApi } from '@web/data/api/models';
 import { ApiException } from '@web/data/api/types';
 import {
   clearNodeStyleImage,
   getPromptFragment,
   isNodeHandling,
   isNodeLocked,
-  nodeExists,
   readCanvasGraph,
   readNodeLeaseGen,
   removeEdge,
@@ -36,7 +34,10 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
-import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
+import {
+  evaluateExecute,
+  refusalToastKey,
+} from '@web/spaces/canvas/generate/generate-guards';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
@@ -45,13 +46,19 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
-import { resolveMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import {
+  IMAGE_MODE_OPTIONS,
+  resolveMode,
+} from '@web/spaces/canvas/generate/image-mode-selection';
 import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
 import {
   resolveModelSwitch,
   resolveParamsEdit,
 } from '@web/spaces/canvas/generate/model-params';
-import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
+import {
+  filterAvailableModes,
+  resolveModeSwitch,
+} from '@web/spaces/canvas/generate/mode-selection';
 import {
   buildGeneratePanelViewModel,
   selectModeModels,
@@ -69,6 +76,8 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 
 /**
  * For the two derivations below that deliberately want no body text. Shared so
@@ -142,20 +151,27 @@ function GeneratePanelBody({
   // answers in the codebase to "whose caret is this".
   const { caretProvider } = useCanvasContext();
 
-  const { data: catalog } = useQuery({
-    queryKey: ['models'],
-    queryFn: () => modelsApi.list(),
-  });
-  // `?? []` covers only the loading window (catalog is undefined until the query
-  // resolves). Once resolved, modelsApi.list() has run the response through
+  const { data: catalog } = useQuery(modelCatalogQuery());
+  // `?? []` is pure defence now: since #1966 this body mounts only inside
+  // `CatalogGatedFrame`, which withholds it until the query has data, so
+  // `catalog` is defined every time this line runs. Kept because the type still
+  // admits undefined and a gate is a runtime promise, not a compile-time one.
+  // Once resolved, modelsApi.list() has run the response through
   // sanitizeModelCatalog, so catalog.image is a guaranteed ModelEntry[] — no
   // per-field guarding needed here.
   const models = React.useMemo(() => catalog?.image ?? [], [catalog]);
 
-  // Two mirrors of each execute-critical value: state drives the button's
-  // enabled look (a frame of lag is fine there); a ref is read SYNCHRONOUSLY in
-  // onExecute so a rapid re-click or a collaborator's keystroke that React has
-  // batched-but-not-flushed can't submit a stale prompt or double-fire.
+  // Two mirrors of each execute-critical value. The ref is read SYNCHRONOUSLY
+  // in onExecute so a rapid re-click or a collaborator's keystroke that React
+  // has batched-but-not-flushed can't submit a stale prompt or double-fire.
+  //
+  // The state feeds the button's own `evaluateExecute` call, so both sides ask
+  // the same question of their own inputs (#1949). What the button DRAWS is the
+  // same either way — `prompt-missing` and `null` both leave it live and
+  // arrow-shaped — but the two are different values, so `GeneratePanel` (a
+  // default-shallow `React.memo`) does re-render on the transition. It is an
+  // INPUT to a gate that must stay complete, not a line whose answer nothing
+  // reads.
   const [promptText, setPromptText] = React.useState('');
   const promptTextRef = React.useRef('');
   const handlePromptChange = React.useCallback((text: string) => {
@@ -251,6 +267,17 @@ function GeneratePanelBody({
     () => selectModeModels(models, vm.mode),
     [models, vm.mode],
   );
+  // The modes this deployment can serve (#1951). Memoized on [models] alone
+  // for the same reason as the line above: it flows down three React.memo
+  // components — GeneratePanel, ImageModeToggle, ModeToggle — and a
+  // freshly-filtered array would defeat all three on every frame of a node
+  // drag. This is also why it is not a view-model FIELD: the view model
+  // rebuilds on every canvas mutation. (It calls `filterAvailableModes` too,
+  // to resolve which mode is current, but that result never leaves it.)
+  const availableModes = React.useMemo(
+    () => filterAvailableModes(IMAGE_MODE_OPTIONS, models),
+    [models],
+  );
   // Same discipline for the sibling props (round-3 adversarial): params and
   // references are rebuilt with the vm every canvas mutation; without a
   // content-stable identity they defeat the React.memo on GeneratePanel /
@@ -325,19 +352,15 @@ function GeneratePanelBody({
     return data && 'status' in data ? data : undefined;
   }, [projectId, spaceId, nodeId]);
 
-  const canExecute = canExecuteGenerate({
+  const executeRefusal = evaluateExecute({
     promptText,
     model: vm.model,
     nodeStatus: vm.nodeStatus,
     isSubmitting,
-    // This panel has always required a prompt and still does. Stated rather
-    // than derived because the video panel's derivation (`params.prompt !=
-    // null`) reads the model's catalog entry, and not one image model
-    // declares a prompt param — the prompt is its own argument, carried
-    // beside the params rather than in them, and whether a catalog states it
-    // anyway varies by bucket. Deriving here would turn the requirement off
-    // for every image model at once (#1935).
-    promptRequired: true,
+    // The model states it (#1966). This was a literal `true` until the field
+    // existed, because the only derivation available then read a `prompt`
+    // entry under `params` that no image model writes.
+    promptRequired: vm.promptRequired,
   });
 
   const onSelectModel = React.useCallback(
@@ -360,12 +383,12 @@ function GeneratePanelBody({
         projectId,
         spaceId,
         nodeId,
-        resolveMode(content?.mode),
+        resolveMode(content?.mode, availableModes),
         modelId,
         paramsByModel,
       );
     },
-    [models, projectId, spaceId, nodeId, freshContent, t],
+    [models, availableModes, projectId, spaceId, nodeId, freshContent, t],
   );
 
   const onToggleMode = React.useCallback(
@@ -381,12 +404,14 @@ function GeneratePanelBody({
         newMode,
         models,
       );
-      // Never persist an empty model: the catalog may still be loading / have
-      // failed (models === []), or the target mode may offer nothing. The
-      // resolver pairs an empty model with an empty record set, and writing
-      // that clobbers the node's stored model AND every model's records — not
-      // just the incoming one's. Bail (the toggle is also disabled while the
-      // catalog is empty; this backstops the target-mode-empty case).
+      // Never persist an empty model: the resolver pairs one with an empty
+      // record set, and writing that clobbers the node's stored model AND
+      // every model's records, not just the incoming one's.
+      //
+      // Unreachable since #1951 — the picker only offers modes this
+      // deployment serves, so the target always resolves a model, and a
+      // modality that serves none does not open a panel at all. Kept as
+      // defence against a layer above breaking.
       if (!model) return;
       setNodeMode(projectId, spaceId, nodeId, newMode, model, paramsByModel);
     },
@@ -556,17 +581,25 @@ function GeneratePanelBody({
     // render-time closure, which React batching + live collab make stale:
     //   - submittingRef: a synchronous re-entry latch (state lags a frame, so a
     //     rapid second click would slip past an isSubmitting-state guard).
-    //   - nodeExists / isNodeHandling: fresh Yjs reads, so a node a collaborator
-    //     just deleted or flipped to handling can't get a task submitted.
+    //   - isNodeLocked / isNodeHandling: fresh Yjs reads, so a node a collaborator
+    //     locked or flipped to handling can't get a task submitted. Deletion is
+    //     NOT one of theirs — both answer false for a node that is gone; the
+    //     execute gate below is what refuses that, with `node-gone`.
     //   - promptTextRef: the prompt at click time (a collaborator's batched
     //     keystroke may not have flushed into promptText state yet).
     if (submittingRef.current) return;
-    if (!nodeExists(projectId, spaceId, nodeId)) return;
+    // No separate existence check: the execute gate below derives from a fresh
+    // graph read, so a node a collaborator deleted has no status and
+    // `evaluateExecute` answers `node-gone`. A line that can never change the
+    // outcome reads to the next person as if it can (#1949, the video
+    // container has said so at its own gate since #1899).
+    //
     // Node-state gate (bug 2): a locked node — or one a task started writing
     // since the panel opened — can't submit. Fresh Yjs reads (never a captured
     // menu / render value). Toast the reason so a locked node's clickable
     // Execute is an actionable message, not a dead control (the button is
-    // disabled only while handling). Editing the prompt stays allowed; the gate
+    // not greyed out for either — see `isExecuteButtonDisabled`). Editing the
+    // prompt stays allowed; the gate
     // blocks the submit alone.
     const gateBlock = evaluateNodeGate(
       {
@@ -579,28 +612,50 @@ function GeneratePanelBody({
       warnNodeGate(t(gateBlock.toastKey));
       return;
     }
-    // Serialize the backend prompt AT CLICK TIME (spec §9.1): a text chip
-    // substitutes its source node's CURRENT words, and that node may have been
-    // edited since the last prompt keystroke — the ref would carry the stale
-    // substitution. Falls back to the ref when the editor is gone (unmounting).
-    const freshPrompt =
-      promptEditorRef.current?.serializePrompt() ?? promptTextRef.current;
     // Re-derive model / params / references from LIVE Yjs — never the render
     // closure — so a collaborator's just-deleted reference or changed model
     // can't ride into the payload. The `@`-picked source ids are read
     // synchronously from the ref (the prompt's state at click time) so i2i sends
     // exactly the images the prompt @-mentions right now (design B).
     const fresh = freshVm(new Set(atMentionedRef.current));
-    if (
-      !canExecuteGenerate({
-        promptText: freshPrompt,
-        model: fresh.model,
-        nodeStatus: fresh.nodeStatus,
-        isSubmitting: false,
-        // Same as the button's gate above, and stated for the same reason.
-        promptRequired: true,
-      })
-    ) {
+    // Serialize the backend prompt AT CLICK TIME (spec §9.1): a text chip
+    // substitutes its source node's CURRENT words, and that node may have been
+    // edited since the last prompt keystroke — the ref would carry the stale
+    // substitution. Falls back to the ref when the editor is gone (unmounting).
+    //
+    // A model that declares no `prompt` sends none, and that takes this
+    // explicit branch (#1950, #1966): not mounting the editor only stops
+    // someone typing HERE. The mirror still holds whatever was typed under the
+    // previous model — `handlePromptChange` is the only writer and nothing
+    // clears it, and the editor does not call back on unmount — so without this
+    // line a task for a model that wants no prompt would carry the last one's
+    // words. Same line, same reason, as `VideoGeneratePanelContainer.tsx`.
+    const freshPrompt = fresh.promptRequired
+      ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
+      : '';
+    // One evaluation, its own inputs: the button asked the same question of
+    // the RENDER-time view model, this asks it of live Yjs. Never reuse the
+    // button's answer — React batching and live collaboration make a render
+    // closure stale, and `prompt-missing` in particular is judged against a
+    // different value here (the editor re-serializes so a text chip carries
+    // its source node's CURRENT words).
+    //
+    // `isSubmitting: false` because the synchronous latch above already
+    // answered that question, and it answers it earlier than a state flag can
+    // (a rapid second click would slip past a re-render). So `'submitting'`
+    // never reaches the check below — it exists for the button.
+    const refusal = evaluateExecute({
+      promptText: freshPrompt,
+      model: fresh.model,
+      nodeStatus: fresh.nodeStatus,
+      isSubmitting: false,
+      promptRequired: fresh.promptRequired,
+    });
+    if (refusal != null) {
+      // WHICH refusal speaks is policy, and it lives in one place for the same
+      // reason the disabled set does — both panels ask, neither spells it out.
+      const key = refusalToastKey(refusal);
+      if (key) toast.warning(t(key));
       return;
     }
     // #1675 execute gate: an i2i / edit model needs a source image. With no
@@ -610,7 +665,7 @@ function GeneratePanelBody({
     // disabled), so the user gets an actionable message, not a dead control. The
     // server re-checks this before billing (defence in depth).
     if (fresh.requiresSource && fresh.referenceUrls.length === 0) {
-      toast.error(t('canvas.generatePanel.errorNoSourceImage'));
+      toast.warning(t('canvas.generatePanel.errorNoSourceImage'));
       return;
     }
     // #1735 count gate: too many @-picked reference images for this model. Toast
@@ -622,7 +677,7 @@ function GeneratePanelBody({
       fresh.maxReferences,
     );
     if (overCap) {
-      toast.error(t('canvas.generatePanel.errorTooManyReferences', overCap));
+      toast.warning(t('canvas.generatePanel.errorTooManyReferences', overCap));
       return;
     }
     submittingRef.current = true;
@@ -702,7 +757,9 @@ function GeneratePanelBody({
   const imageRefsOff = vm.mode === 't2i';
   const promptSlot = React.useMemo(
     () =>
-      fragment ? (
+      !vm.promptRequired ? (
+        <PromptNotUsedNotice />
+      ) : fragment ? (
         <PromptEditor
           ref={promptEditorRef}
           fragment={fragment}
@@ -716,6 +773,7 @@ function GeneratePanelBody({
         />
       ) : null,
     [
+      vm.promptRequired,
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
@@ -732,11 +790,12 @@ function GeneratePanelBody({
       models={stableModels}
       model={vm.model}
       mode={vm.mode}
-      catalogEmpty={vm.catalogEmpty}
+      modeOptions={availableModes}
+      promptRequired={vm.promptRequired}
       params={stableParams}
       references={stableReferences}
       creditEstimate={vm.creditEstimate}
-      canExecute={canExecute}
+      executeRefusal={executeRefusal}
       promptSlot={promptSlot}
       onExit={closeActivePanel}
       onSelectModel={onSelectModel}
@@ -773,7 +832,7 @@ export function GeneratePanelContainer(
   const nodeId = useOpenPanelNode('generate', props.nodes);
   if (nodeId == null) return null;
   return (
-    <CatalogGatedFrame nodeId={nodeId}>
+    <CatalogGatedFrame nodeId={nodeId} modality='image'>
       {/* key={nodeId} makes switching the panel to another node a full REMOUNT:
           promptText / promptTextRef / submittingRef all reset to the new node's
           fresh state, so a prompt typed for node A can never be submitted to

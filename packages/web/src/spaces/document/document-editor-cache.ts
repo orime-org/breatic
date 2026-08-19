@@ -59,6 +59,18 @@ export interface DocumentEditorHandle {
    * which misses silently against a duplicated copy of the binding.
    */
   undoManager: DocumentUndoManager;
+  /**
+   * Subscribe to the guarded whole-document delete asking for confirmation.
+   *
+   * The ask is wired into the extensions at construction, and the editor
+   * outlives any one mount — so the extension cannot hold a component's
+   * callback. It emits here instead, and whichever `DocumentSpace` is mounted
+   * subscribes for its lifetime and shows the dialog.
+   * @param listener - Called each time the delete keys land on a
+   *   whole-document selection.
+   * @returns Unsubscribe.
+   */
+  onClearDocumentRequest: (listener: () => void) => () => void;
 }
 
 /**
@@ -96,15 +108,28 @@ function createDocumentEditor(
   inputs: DocumentEditorInputs,
 ): DocumentEditorHandle {
   const undoManager = createDocumentUndoManager(doc);
+  const clearListeners = new Set<() => void>();
   const editor = new Editor({
     extensions: buildDocumentExtensions({
       fragment: documentBodyFragment(doc),
       caretProvider: inputs.caretProvider,
       resolveCollaboratorName: inputs.resolveCollaboratorName,
       undoManager,
+      onClearDocumentRequest: () => {
+        clearListeners.forEach((listener) => listener());
+      },
     }),
   });
-  return { editor, undoManager };
+  return {
+    editor,
+    undoManager,
+    onClearDocumentRequest: (listener) => {
+      clearListeners.add(listener);
+      return () => {
+        clearListeners.delete(listener);
+      };
+    },
+  };
 }
 
 const cache = createDocScopedCache<DocumentEditorHandle, DocumentEditorInputs>(

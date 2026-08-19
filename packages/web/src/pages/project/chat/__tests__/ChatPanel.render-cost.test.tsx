@@ -52,9 +52,9 @@ vi.mock('@web/pages/project/chat/ConversationHistorySheet', async () => {
 
 import { chatApi } from '@web/data/api/chat';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
+import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
-import { useChatStore } from '@web/stores';
 import { _resetForTests } from '@web/stores/conversation-runtime';
 
 /** The stream handlers the store installed on its last send. */
@@ -62,7 +62,6 @@ let handlers: { onEvent: (e: SSEEventEnvelope) => void };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useChatStore.getState().reset();
   _resetForTests();
   counts.composer = 0;
   counts.history = 0;
@@ -77,11 +76,11 @@ beforeEach(() => {
 
 describe('a reply arriving piece by piece', () => {
   it('does not re-render the composer or the history sheet', async () => {
-    render(<ChatPanel projectId='p1' />);
+    render(<ChatPanel historyOpen={false} onHistoryOpenChange={() => undefined} projectId='p1' />);
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
     await act(async () => {
-      useChatStore.getState().setComposerDraft('hello');
+      conversationRuntime.setDraft('c1', 'hello');
     });
     await act(async () => {
       // Sent through the store rather than the composer, because the composer

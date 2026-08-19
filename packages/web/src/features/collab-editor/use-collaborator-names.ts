@@ -89,7 +89,10 @@ export interface CollaboratorNames {
  * page loads it once for the member stack; deriving from that means one query
  * and one answer, and — just as importantly — it keeps every space body and
  * every editor free of a data dependency they would otherwise carry all the
- * way down into ReactFlow, where there is no QueryClientProvider to satisfy it.
+ * way down into ReactFlow. That subtree does have a `QueryClientProvider`
+ * since #1966 (`CanvasSpace` prefetches the model catalog on mount), so the
+ * reason is no longer "nothing there could satisfy it" — it is that one query
+ * answered once at the top beats the same query re-asked per editor.
  * @param members - The project roster, from the page that owns it.
  * @returns A stable resolver plus the roster snapshot behind it.
  */

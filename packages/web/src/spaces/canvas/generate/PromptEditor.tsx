@@ -170,8 +170,12 @@ export const PromptEditor = React.forwardRef<
             emptyLabel: mentionEmptyLabel,
             // Same verdict as the rail's insert button, from the same call:
             // a row the picker offers is a row the rail would insert.
-            getModeContext: () => ({
+            getUsabilityContext: () => ({
               takesReferences: !imageRefsDisabledRef.current,
+              // Always true here: BOTH containers render a line of copy in
+              // place of this editor when the model consumes no prompt
+              // (#1966), so there is no `@` picker to open in that state.
+              takesPrompt: true,
             }),
             refreshRef: suggestionRefreshRef,
           }),

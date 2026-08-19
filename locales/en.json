@@ -119,8 +119,7 @@
     "empty": {
       "greetingWithName": "Hi, {name}!",
       "greetingDefault": "Hi!",
-      "hintNodes": "Try asking @ a node",
-      "hintDirect": "Or type your prompt below ↓",
+      "hintDirect": "Type your prompt below ↓",
       "quick": {
         "findReference": "Find cyberpunk-style reference images",
         "writePrompt": "Write a prompt for an illustration",
@@ -130,7 +129,10 @@
     "history": {
       "title": "Session list",
       "description": "Switch to or review previous conversations.",
-      "empty": "No previous conversations"
+      "empty": "No previous conversations",
+      "moreFailed": "Could not load older conversations",
+      "loadingMore": "Loading earlier conversations",
+      "loading": "Loading conversations"
     },
     "relative": {
       "justNow": "just now",
@@ -152,7 +154,25 @@
     "tool": {
       "unfinished": "Stopped before it finished"
     },
-    "loadEarlier": "Load earlier messages"
+    "loadEarlier": "Load earlier messages",
+    "conversation": {
+      "untitled": "Untitled conversation",
+      "rename": "Rename",
+      "delete": "Delete",
+      "renamePlaceholder": "Name this conversation",
+      "deleteTitle": "Delete this conversation?",
+      "deleteBody": "Everything said in it goes with it. This cannot be undone.",
+      "deleteConfirm": "Delete",
+      "deleteCancel": "Cancel",
+      "rowActions": "Rename or delete this conversation",
+      "gone": "This conversation no longer exists"
+    },
+    "load": {
+      "failedTitle": "Network error",
+      "failedBody": "Could not read this project's conversations.",
+      "retry": "Reload",
+      "refusedTitle": "Cannot open this chat"
+    }
   },
   "canvas": {
     "group": {
@@ -227,6 +247,8 @@
       "refuseInsertModeOff": "This mode doesn't use reference material",
       "refuseRemoveModeOff": "References are shared across modes — switch to a mode that uses them to remove this one, or delete its edge on the canvas",
       "refuseRemoveModeOffCrop": "References are shared across modes — switch to a mode that uses them to remove this crop",
+      "refuseRemoveNoPrompt": "This mode does not need a prompt",
+      "refuseExecuteNoPrompt": "Write a prompt first",
       "refuseInsertTypeUnused": "{kind, select, audio {References take images only, not audio} video {References take images only, not video} other {References take images only, not this kind of material}}",
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",
@@ -265,6 +287,8 @@
       "referencePoolFull": "Reference pool is full ({cap} max) — remove some references or focus crops first.",
       "modelUnavailable": "That model is no longer available — pick another.",
       "catalogUnavailable": "Model list unavailable — please try again later",
+      "catalogOffline": "You are offline — the model list cannot be loaded. Reconnect and try again.",
+      "catalogNoModels": "No models available. Configure a provider API key",
       "selectFocusFromCanvas": "Drag a marquee on an image to crop a focus reference",
       "focusCancel": "Cancel",
       "focusConfirm": "Confirm",
@@ -304,7 +328,7 @@
       "removeDrivingAudio": "Remove driving audio",
       "errorNoDrivingVideo": "Pick a driving video",
       "errorNoDrivingAudio": "Pick a driving audio track",
-      "videoPromptNotUsed": "This mode follows the audio. Change the audio to change what is said.",
+      "promptNotUsed": "This mode does not need a prompt.",
       "refuseInsertNoPrompt": "This mode has no prompt to insert into"
     },
     "edge": {
@@ -643,7 +667,14 @@
       },
       "refusedNotice": "The connection to this document was refused. What you see may be out of date, and changes will not be saved.",
       "placeholder": "Start writing…",
-      "titlePlaceholder": "Untitled document",
+      "clearConfirm": {
+        "title": "Delete all content?",
+        "confirm": "Delete",
+        "cancel": "Cancel"
+      },
+      "unsupported": {
+        "label": "Unsupported content"
+      },
       "toolbar": {
         "undo": "Undo",
         "redo": "Redo",
@@ -1043,7 +1074,6 @@
       "creditsBalance": "Credits balance",
       "addCredits": "Add credits",
       "home": "Home",
-      "conversationCount": "{count} conversations",
       "scrollTabsLeft": "Scroll tabs left",
       "scrollTabsRight": "Scroll tabs right",
       "spacesToolbar": "Spaces",

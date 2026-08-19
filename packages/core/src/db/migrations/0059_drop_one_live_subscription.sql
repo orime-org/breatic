@@ -1,6 +1,6 @@
--- Removes the partial unique index added in 0056, which was the wrong tool.
+-- Removes the partial unique index added in 0057, which was the wrong tool.
 --
--- 0056 wrote a business rule ("one account, at most one live subscription")
+-- 0057 wrote a business rule ("one account, at most one live subscription")
 -- as a constraint on `subscriptions`. But that table is a MIRROR of Stripe:
 -- one row per subscription Stripe reports, history included. A mirror can
 -- only carry constraints the source guarantees, and Stripe guarantees no such
@@ -17,7 +17,7 @@
 -- being billed. That is strictly worse than the inaccuracy it was added to
 -- prevent.
 --
--- What 0056 was really trying to fix was a reading, not a write: the situation
+-- What 0057 was really trying to fix was a reading, not a write: the situation
 -- reading took whichever live row came first and the caller was asked to pass
 -- them "newest first", which `created_at` cannot establish (it defaults to
 -- `now()`, the TRANSACTION's start time, so rows written in one transaction

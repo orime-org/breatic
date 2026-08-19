@@ -119,8 +119,7 @@
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
       "greetingDefault": "やあ!",
-      "hintNodes": "@ でノードに質問してみよう",
-      "hintDirect": "または下に直接プロンプトを入力 ↓",
+      "hintDirect": "下の入力欄からどうぞ ↓",
       "quick": {
         "findReference": "サイバーパンク風の参考画像を探して",
         "writePrompt": "イラスト生成のプロンプトを書いて",
@@ -130,7 +129,10 @@
     "history": {
       "title": "セッション一覧",
       "description": "以前の会話に切り替えたり振り返ったりできます。",
-      "empty": "履歴の会話はまだありません"
+      "empty": "履歴の会話はまだありません",
+      "moreFailed": "以前の会話を読み込めませんでした",
+      "loadingMore": "以前の会話を読み込んでいます",
+      "loading": "会話リストを読み込んでいます"
     },
     "relative": {
       "justNow": "たった今",
@@ -152,7 +154,25 @@
     "tool": {
       "unfinished": "完了前に停止しました"
     },
-    "loadEarlier": "以前のメッセージを読み込む"
+    "loadEarlier": "以前のメッセージを読み込む",
+    "conversation": {
+      "untitled": "無題の会話",
+      "rename": "名前を変更",
+      "delete": "削除",
+      "renamePlaceholder": "この会話に名前を付ける",
+      "deleteTitle": "この会話を削除しますか？",
+      "deleteBody": "会話の内容もすべて削除されます。元に戻せません。",
+      "deleteConfirm": "削除",
+      "deleteCancel": "キャンセル",
+      "rowActions": "この会話の名前を変更、または削除",
+      "gone": "この会話はもう存在しません"
+    },
+    "load": {
+      "failedTitle": "ネットワークエラー",
+      "failedBody": "この Project の会話を読み込めませんでした。",
+      "retry": "再読み込み",
+      "refusedTitle": "このチャットを開けません"
+    }
   },
   "canvas": {
     "group": {
@@ -218,6 +238,8 @@
       "refuseInsertModeOff": "このモードは参照素材を使いません",
       "refuseRemoveModeOff": "参照はモード間で共有されます — 削除するには参照を使うモードに切り替えるか、キャンバスで接続線を削除してください",
       "refuseRemoveModeOffCrop": "参照はモード間で共有されます — この切り抜きを削除するには参照を使うモードに切り替えてください",
+      "refuseRemoveNoPrompt": "このモードはプロンプトを必要としません",
+      "refuseExecuteNoPrompt": "プロンプトを入力してください",
       "refuseInsertTypeUnused": "{kind, select, audio {参照は画像のみで、音声は使えません} video {参照は画像のみで、動画は使えません} other {参照は画像のみで、この種類の素材は使えません}}",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",
@@ -256,6 +278,8 @@
       "referencePoolFull": "参照プールが上限({cap})に達しました——先に参照またはフォーカス画像を削除してください。",
       "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。",
       "catalogUnavailable": "モデル一覧を読み込めませんでした。後でもう一度お試しください",
+      "catalogOffline": "オフラインのためモデル一覧を取得できません。接続し直してからお試しください。",
+      "catalogNoModels": "利用可能なモデルがありません。provider の API key を設定してください",
       "selectFocusFromCanvas": "画像上をドラッグして範囲を選択してください",
       "focusCancel": "キャンセル",
       "focusConfirm": "確認",
@@ -295,7 +319,7 @@
       "removeDrivingAudio": "口の動きの元の音声を削除",
       "errorNoDrivingVideo": "動きの元になる動画を選んでください",
       "errorNoDrivingAudio": "口の動きの元になる音声を選んでください",
-      "videoPromptNotUsed": "このモードは音声に従います。内容を変えるには音声を差し替えてください。",
+      "promptNotUsed": "このモードにプロンプトは必要ありません。",
       "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません"
     },
     "nodeMenu": {
@@ -643,7 +667,14 @@
       },
       "refusedNotice": "このドキュメントへの接続が拒否されました。表示中の内容は最新ではない可能性があり、変更も保存されません。",
       "placeholder": "書き始めましょう…",
-      "titlePlaceholder": "無題のドキュメント",
+      "clearConfirm": {
+        "title": "すべての内容を削除しますか？",
+        "confirm": "削除",
+        "cancel": "キャンセル"
+      },
+      "unsupported": {
+        "label": "未対応のコンテンツ"
+      },
       "toolbar": {
         "undo": "元に戻す",
         "redo": "やり直す",
@@ -1043,7 +1074,6 @@
       "creditsBalance": "クレジット残高",
       "addCredits": "クレジットを追加",
       "home": "ホーム",
-      "conversationCount": "{count} 件の会話",
       "scrollTabsLeft": "タブを左へスクロール",
       "scrollTabsRight": "タブを右へスクロール",
       "spacesToolbar": "Spaces",

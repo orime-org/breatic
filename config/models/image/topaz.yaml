@@ -24,6 +24,7 @@ models:
     display_name: "Topaz Upscale"
     icon: "topaz"
     mode: "upscale"
+    takes_prompt: false
     tier: internal
     description: "AI upscale to 2K/4K/8K"
     guide: "Professional AI image upscaling. Enlarges images to target resolution (2K/4K/8K) while preserving original aspect ratio and adding real detail. Provide source_width and source_height so the system can calculate the correct output dimensions. Standard V2 model handles most cases well. Max output 32000px per side. Choose for enlarging low-res images to print or display quality."

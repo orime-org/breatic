@@ -93,7 +93,7 @@ export interface DocumentSchema {
  * beside it, which decides who stops editing, is computed from the lists.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-08-15T00:00:00Z",
+  publishedAt: "2026-08-18T00:00:00Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -110,7 +110,6 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     orderedList: ["start", "type"],
     paragraph: [],
     text: [],
-    title: [],
     // The three stand-in types. They must exist in every version: content one
     // build cannot represent is wrapped in these rather than deleted, and a
     // client that meets an already-wrapped element has to recognise the

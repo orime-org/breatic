@@ -7,6 +7,8 @@ import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+import { modelsApi } from '@web/data/api';
 import { toast } from 'sonner';
 import { Awareness } from 'y-protocols/awareness';
 import type * as React from 'react';
@@ -160,6 +162,29 @@ function dispatchPaste(text: string): void {
   });
 }
 
+/**
+ * Mounts the space with a query client around it, the way the real app always
+ * does (`App.tsx` wraps everything in one).
+ *
+ * The space itself asks for the model catalog now — it prefetches it on mount
+ * so the Generate panel, which since #1964 refuses to render without one, does
+ * not make the first Generate of a session wait. A bare mount would throw
+ * "No QueryClient set". A fresh client per mount keeps one test's cached
+ * catalog out of the next one.
+ * @param readOnly - Mount the space in its read-only form.
+ * @returns The render result.
+ */
+function renderSpace(readOnly = false): ReturnType<typeof render> {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <CanvasSpace projectId='p' spaceId='s' readOnly={readOnly} />
+    </QueryClientProvider>,
+  );
+}
+
 describe('CanvasSpace (ReactFlow mount)', () => {
   beforeEach(() => {
     mockUseCanvasSpace.mockReset();
@@ -201,7 +226,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // arrives looks exactly like a collaborator who is not typing.
   it('resolves the caret channel from the space document, not some other doc', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const names = vi
       .mocked(useSocket)
       .mock.calls.map((call) => call[0]?.name);
@@ -257,7 +282,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const shell = document.querySelector('.react-flow__node');
     fireEvent.keyDown(shell as HTMLElement, { key: 'Enter' });
     await waitFor(() =>
@@ -303,7 +328,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
   it('shows the empty-state hint when there are no nodes', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     expect(screen.getByTestId('canvas-space')).toBeInTheDocument();
     expect(screen.getByTestId('canvas-empty')).toBeInTheDocument();
   });
@@ -313,7 +338,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // only adds when panOnDrag enables the left button).
   it('left-button drag selects instead of panning (pane is not draggable)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const pane = document.querySelector('.react-flow__pane');
     expect(pane).not.toBeNull();
     expect(pane?.className).not.toContain('draggable');
@@ -325,7 +350,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   it('consumes a viewport command posted by the chrome zoom toolbar', async () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     useCanvasStore.getState().requestViewportCommand('fit');
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     await waitFor(() =>
       expect(useCanvasStore.getState().pendingViewportCommand).toBeNull(),
     );
@@ -344,7 +369,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     expect(screen.getByTestId('image-node')).toBeInTheDocument();
     expect(screen.queryByTestId('canvas-empty')).not.toBeInTheDocument();
   });
@@ -394,7 +419,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
           ],
         }),
       );
-      render(<CanvasSpace projectId='p' spaceId='s' />);
+      renderSpace();
       // Selection is LOCAL state, not a Yjs field — the mirror deliberately
       // does not carry it (`toFlowNode` sets no `selected`), so putting it in
       // the mocked space would never reach the copy path. Mark it where the
@@ -483,7 +508,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
 
     const shell = document.querySelector('.react-flow__node');
     expect(shell).not.toBeNull();
@@ -532,7 +557,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const shell = document.querySelector('.react-flow__node') as HTMLElement;
 
     fireEvent.keyDown(shell, { key: 'Enter' });
@@ -595,7 +620,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const shell = document.querySelector('.react-flow__node') as HTMLElement;
 
     fireEvent.keyDown(shell, { key: 'Enter' });
@@ -640,7 +665,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const shell = document.querySelector('.react-flow__node') as HTMLElement;
 
     fireEvent.keyDown(shell, { key: 'Enter' });
@@ -694,7 +719,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
 
     fireEvent.keyDown(document.querySelector('.react-flow__node') as HTMLElement, {
@@ -725,7 +750,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+    renderSpace(true);
     const node = document.querySelector('.react-flow__node');
     expect(node).not.toBeNull();
     expect(node?.className).not.toContain('draggable');
@@ -744,7 +769,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const node = document.querySelector('.react-flow__node');
     expect(node).not.toBeNull();
     expect(node?.className).toContain('draggable');
@@ -788,10 +813,12 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
-    // Enter pick mode directly — the overlay keys off pickSession
-    // alone (opening the real panel would drag in the models useQuery, which
-    // needs a QueryClientProvider this mount doesn't have).
+    renderSpace();
+    // Enter pick mode directly — the overlay keys off pickSession alone, so
+    // this asserts the overlay and nothing about how a panel opens. (The old
+    // reason given here, that a real panel would need a QueryClientProvider
+    // this mount lacks, stopped being true when `renderSpace` started
+    // providing one.)
     act(() => {
       useCanvasStore.getState().startReferencePick('target');
     });
@@ -823,7 +850,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startFirstFramePick('target');
     });
@@ -853,10 +880,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
-    // Stand in for the panel's tool row: the real panel needs a QueryClient
-    // this mount does not have, and what is under test is the handoff, not
-    // the panel. The id is the one the video toolbar renders.
+    renderSpace();
+    // Stand in for the panel's tool row: what is under test is the handoff,
+    // not the panel, and standing the button in keeps a whole panel's worth of
+    // catalog and Yjs wiring out of the assertion. The id is the one the video
+    // toolbar renders.
     const tool = document.createElement('button');
     tool.setAttribute('data-testid', 'generate-video-tool-first-frame');
     document.body.appendChild(tool);
@@ -888,7 +916,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const tool = document.createElement('button');
     tool.setAttribute('data-testid', VIDEO_SLOTS.endFrame.testId);
     document.body.appendChild(tool);
@@ -937,7 +965,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startReferencePick('target');
     });
@@ -979,7 +1007,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startReferencePick('target');
     });
@@ -1020,7 +1048,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
     // MouseEvent with the pointer type name: jsdom-safe, carries clientX/Y, and
     // fires the handler (listeners key on the type string, not the class).
@@ -1059,7 +1087,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
     const ev = (type: string, x: number, y: number, buttons = 0): MouseEvent =>
       new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, buttons });
@@ -1093,7 +1121,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
     const ev = (type: string, x: number, y: number, buttons = 0): MouseEvent =>
       new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, buttons });
@@ -1129,7 +1157,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
     const handle = el.querySelector('.react-flow__handle');
     expect(handle).not.toBeNull();
@@ -1177,7 +1205,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startStylePick('target');
     });
@@ -1220,7 +1248,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startEndFramePick('target');
     });
@@ -1267,7 +1295,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startEndFramePick('target');
     });
@@ -1319,7 +1347,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startDrivingVideoPick('target');
     });
@@ -1370,7 +1398,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startDrivingVideoPick('target');
     });
@@ -1418,7 +1446,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startCharacterImagePick('target');
     });
@@ -1478,7 +1506,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startEndFramePick('target');
     });
@@ -1509,7 +1537,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startEndFramePick('target');
     });
@@ -1540,7 +1568,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startReferencePick('target');
     });
@@ -1563,7 +1591,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startStylePick('target');
     });
@@ -1608,7 +1636,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startReferencePick('target');
     });
@@ -1649,7 +1677,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startReferencePick('target');
     });
@@ -1694,7 +1722,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startStylePick('target');
     });
@@ -1737,7 +1765,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startStylePick('target');
     });
@@ -1775,7 +1803,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.getState().startStylePick('target');
     });
@@ -2238,7 +2266,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     await waitFor(() =>
       expect(useCanvasGraphStore.getState().flowNodes).toHaveLength(1),
     );
@@ -2259,7 +2287,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .mockImplementation(() => undefined);
     useCanvasStore.getState().requestNodeCreate('image');
 
-    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+    renderSpace(true);
 
     await waitFor(() =>
       expect(useCanvasStore.getState().pendingNodeCreate).toBeNull(),
@@ -2275,7 +2303,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .mockImplementation(() => undefined);
     useCanvasStore.getState().requestNodeCreate('image');
 
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
 
     await waitFor(() => expect(addNode).toHaveBeenCalledTimes(1));
     expect(addNode.mock.calls[0][2].type).toBe('image');
@@ -2287,7 +2315,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
 
     dispatchPaste('hello from clipboard');
 
@@ -2303,7 +2331,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
 
     dispatchPaste(
       serializeNodes([
@@ -2324,7 +2352,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
-    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+    renderSpace(true);
 
     dispatchPaste('text while read-only');
 
@@ -2337,7 +2365,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const input = document.createElement('input');
     document.body.appendChild(input);
     input.focus();
@@ -2355,7 +2383,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // (the Paste item proves it mounted).
   it('right-clicking the pane suppresses the native menu and opens the custom menu', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const pane = document.querySelector('.react-flow__pane');
     expect(pane).not.toBeNull();
 
@@ -2376,7 +2404,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // (spec R5).
   it('readOnly pane right-click suppresses the native menu but opens no custom menu', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
-    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+    renderSpace(true);
     const pane = document.querySelector('.react-flow__pane');
 
     const event = new MouseEvent('contextmenu', {
@@ -2395,7 +2423,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
   it('mirrors the hook undo availability into the canvas store (canvas → chrome)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true, canRedo: false }));
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     expect(useCanvasStore.getState().canUndo).toBe(true);
     expect(useCanvasStore.getState().canRedo).toBe(false);
   });
@@ -2403,7 +2431,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   it('consumes an undo command posted by the chrome toolbar (chrome → canvas mailbox)', async () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true }));
     useCanvasStore.getState().requestHistoryCommand('undo');
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     await waitFor(() =>
       expect(useCanvasStore.getState().pendingHistoryCommand).toBeNull(),
     );
@@ -2413,7 +2441,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
   it('Cmd+Z (mac) triggers undo; Cmd+Shift+Z triggers redo', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true, canRedo: true }));
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
 
     dispatchKeyDown('z', { meta: true });
     expect(undoSpy).toHaveBeenCalledTimes(1);
@@ -2424,7 +2452,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
   it('Ctrl+Z (windows) triggers undo; Ctrl+Y triggers redo', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true, canRedo: true }));
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
 
     dispatchKeyDown('z', { ctrl: true });
     expect(undoSpy).toHaveBeenCalledTimes(1);
@@ -2435,7 +2463,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
   it('keyboard undo is a no-op while a field is focused (input native undo wins)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true }));
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const input = document.createElement('input');
     document.body.appendChild(input);
     input.focus();
@@ -2449,7 +2477,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   it('readOnly canvas ignores keyboard undo and posted history commands', async () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true }));
     useCanvasStore.getState().requestHistoryCommand('undo');
-    render(<CanvasSpace projectId='p' spaceId='s' readOnly />);
+    renderSpace(true);
 
     await waitFor(() =>
       expect(useCanvasStore.getState().pendingHistoryCommand).toBeNull(),
@@ -2475,7 +2503,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .mockReturnValue(
         new Promise(() => {}) as ReturnType<typeof assetsApi.fetchUploadConfig>,
       );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
 
     const surface = screen.getByTestId('canvas-space');
     const file = new File(['x'], 'a.png', { type: 'image/png' });
@@ -2517,7 +2545,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const target = document.querySelector('.react-flow__handle.target');
     const source = document.querySelector('.react-flow__handle.source');
     expect(target).not.toBeNull();
@@ -2565,7 +2593,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const handle = document.querySelector('.react-flow__handle');
     expect(handle?.className).toContain('connectable');
     // Pick state only — the panel (its own catalog/query stack) is not
@@ -2601,7 +2629,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
     });
@@ -2641,7 +2669,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     // The real trigger lives in the Generate panel (kept open by the pick);
     // this test plants a stand-in so the hand-off contract is provable
     // without mounting the full panel stack (catalog fetch + socket).
@@ -2686,7 +2714,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     act(() => {
       useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
     });
@@ -2712,7 +2740,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const elsewhere = document.createElement('button');
     document.body.appendChild(elsewhere);
     try {
@@ -2755,7 +2783,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // finally-cleanup: a failing assertion mid-test must not leak the pick
     // state / prototype spy into later tests (bit us in the red phase).
     try {
-      render(<CanvasSpace projectId='p' spaceId='s' />);
+      renderSpace();
       act(() => {
         useCanvasStore.setState({ pickSession: { nodeId: 'other', purpose: 'reference' } });
       });
@@ -2803,7 +2831,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    render(<CanvasSpace projectId='p' spaceId='s' />);
+    renderSpace();
     const node = document.querySelector('.react-flow__node');
     act(() => {
       node?.dispatchEvent(
@@ -2841,7 +2869,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .spyOn(canvasSpace, 'isNodeLocked')
       .mockReturnValue(true);
     try {
-      render(<CanvasSpace projectId='p' spaceId='s' />);
+      renderSpace();
       const placeholder = screen.getByTestId('node-placeholder');
       act(() => {
         placeholder.dispatchEvent(
@@ -2888,7 +2916,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .mockReturnValue(true);
     try {
       useCanvasStore.setState({ panelHostId: null, panelKind: null });
-      render(<CanvasSpace projectId='p' spaceId='s' />);
+      renderSpace();
       const node = document.querySelector('.react-flow__node');
       act(() => {
         node?.dispatchEvent(
@@ -2932,7 +2960,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .spyOn(canvasSpace, 'isNodeLocked')
       .mockReturnValue(false);
     try {
-      render(<CanvasSpace projectId='p' spaceId='s' />);
+      renderSpace();
       act(() => {
         useCanvasStore.getState().openEmptyImagePanel('img');
       });
@@ -2975,7 +3003,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .spyOn(canvasSpace, 'isNodeLocked')
       .mockReturnValue(false);
     try {
-      render(<CanvasSpace projectId='p' spaceId='s' />);
+      renderSpace();
       act(() => {
         useCanvasStore.getState().openEmptyImagePanel('img');
       });
@@ -3207,5 +3235,34 @@ describe('onLocateSource absolute-position contract (item 7 grouped source)', ()
     // The regression is centering on `node.position` (relative for a grouped
     // member). setCenter must not be fed a bare `.position.x`.
     expect(locate).not.toMatch(/setCenter\(\s*node\.position\.x/);
+  });
+});
+
+// The space warms the model catalog on mount (#1966). Pinned here rather than
+// left to the hook's own test, because the hook and the CALL are two different
+// invariants: `use-prefetch-model-catalog.test.tsx` proves the hook prefetches,
+// and this proves anything at all invokes it. Measured before it was written —
+// deleting `usePrefetchModelCatalog()` from `CanvasSpace` left all 364 web test
+// files and 3975 assertions green, so nothing in the suite held the wire.
+//
+// The assertion is that a request goes out with no panel opened, which is the
+// whole point of a prefetch: without it the first Generate of a session pays
+// for the round trip behind a panel that refuses to render until it lands.
+describe('model catalog prefetch (#1966)', () => {
+  it('asks for the catalog on mount, with no panel open', async () => {
+    const list = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue({ image: [], video: [], audio: [] } as never);
+    try {
+      mockUseCanvasSpace.mockReturnValue(mockSpace());
+      renderSpace();
+      await waitFor(() => expect(list).toHaveBeenCalled());
+      // No Generate panel was opened, and none is on screen — the request came
+      // from the space itself.
+      expect(screen.queryByTestId('generate-video-execute')).toBeNull();
+      expect(screen.queryByTestId('generate-execute')).toBeNull();
+    } finally {
+      list.mockRestore();
+    }
   });
 });

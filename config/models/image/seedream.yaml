@@ -18,6 +18,7 @@ models:
     display_name: "Seedream 5.0 Lite"
     icon: "seedream"
     mode: "t2i"
+    takes_prompt: true
     tier: recommended
     description: "Latest, reasoning + web search"
     guide: "Intelligence-first model with web search and spatial reasoning. Best at infographics, diagrams, labeled illustrations, and knowledge-rich content. Supports one style reference image. Fast (~3-5s). Less photorealistic than 4.5 but better prompt understanding. Choose for content requiring real-time knowledge or complex layouts."

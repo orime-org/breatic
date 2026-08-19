@@ -119,8 +119,7 @@
     "empty": {
       "greetingWithName": "嗨, {name}!",
       "greetingDefault": "嗨!",
-      "hintNodes": "试试 @ 节点提问",
-      "hintDirect": "或直接在下方输入对话 ↓",
+      "hintDirect": "在下方输入对话 ↓",
       "quick": {
         "findReference": "帮我找赛博朋克风格的参考图",
         "writePrompt": "帮我写一个生成插画的提示词",
@@ -130,7 +129,10 @@
     "history": {
       "title": "Session 列表",
       "description": "切换或回顾之前的对话。",
-      "empty": "暂无历史会话"
+      "empty": "暂无历史会话",
+      "moreFailed": "没能加载更早的对话",
+      "loadingMore": "正在加载更早的对话",
+      "loading": "正在加载对话列表"
     },
     "relative": {
       "justNow": "刚刚",
@@ -152,7 +154,25 @@
     "tool": {
       "unfinished": "未跑完就停止了"
     },
-    "loadEarlier": "加载更早的消息"
+    "loadEarlier": "加载更早的消息",
+    "conversation": {
+      "untitled": "未命名对话",
+      "rename": "重命名",
+      "delete": "删除",
+      "renamePlaceholder": "给这条对话起个名字",
+      "deleteTitle": "删除这条对话？",
+      "deleteBody": "对话里说过的内容会一起删掉，无法撤销。",
+      "deleteConfirm": "删除",
+      "deleteCancel": "取消",
+      "rowActions": "重命名或删除这条对话",
+      "gone": "这条对话已经不存在了"
+    },
+    "load": {
+      "failedTitle": "网络错误",
+      "failedBody": "没能读到这个 Project 的对话。",
+      "retry": "重新加载",
+      "refusedTitle": "打不开这个对话"
+    }
   },
   "canvas": {
     "group": {
@@ -218,6 +238,8 @@
       "refuseInsertModeOff": "这一档不使用参考素材",
       "refuseRemoveModeOff": "参考在各档之间共用 — 切到使用参考的档才能删掉它，或者在画布上删掉它那条连线",
       "refuseRemoveModeOffCrop": "参考在各档之间共用 — 切到使用参考的档才能删掉这个裁剪",
+      "refuseRemoveNoPrompt": "这一档不需要提示词",
+      "refuseExecuteNoPrompt": "先写提示词",
       "refuseInsertTypeUnused": "{kind, select, audio {参考只收图片，不收音频} video {参考只收图片，不收视频} other {参考只收图片，不收这类素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用参考",
@@ -256,6 +278,8 @@
       "referencePoolFull": "参考池已满(上限 {cap})——请先移除一些参考或聚焦图。",
       "modelUnavailable": "该模型已不可用——请另选一个。",
       "catalogUnavailable": "模型列表加载失败,请稍后再试",
+      "catalogOffline": "你现在离线，取不到模型列表。连上网络再试。",
+      "catalogNoModels": "没有可用模型，请配置 provider 的 API key",
       "selectFocusFromCanvas": "请在图片上框选聚焦区域",
       "focusCancel": "取消",
       "focusConfirm": "确认",
@@ -295,7 +319,7 @@
       "removeDrivingAudio": "移除驱动音频",
       "errorNoDrivingVideo": "先挑一段驱动视频",
       "errorNoDrivingAudio": "先挑一段驱动音频",
-      "videoPromptNotUsed": "这一档跟着音频走。要改内容，去换音频。",
+      "promptNotUsed": "这一档不需要提示词。",
       "refuseInsertNoPrompt": "这一档没有提示词框，插不进去"
     },
     "nodeMenu": {
@@ -643,7 +667,14 @@
       },
       "refusedNotice": "与这个文档的连接被拒绝了。你看到的内容可能不是最新的，改动也不会被保存。",
       "placeholder": "开始写作…",
-      "titlePlaceholder": "未命名文档",
+      "clearConfirm": {
+        "title": "删除全部内容？",
+        "confirm": "删除",
+        "cancel": "取消"
+      },
+      "unsupported": {
+        "label": "不支持的内容"
+      },
       "toolbar": {
         "undo": "撤销",
         "redo": "重做",
@@ -1043,7 +1074,6 @@
       "creditsBalance": "积分余额",
       "addCredits": "添加积分",
       "home": "首页",
-      "conversationCount": "{count} 个对话",
       "scrollTabsLeft": "向左滚动标签",
       "scrollTabsRight": "向右滚动标签",
       "spacesToolbar": "Spaces",

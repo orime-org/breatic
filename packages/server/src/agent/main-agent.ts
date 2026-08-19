@@ -25,6 +25,7 @@ import { SSEEventType } from "@server/agent/types.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import type { SSEEvent } from "@server/agent/types.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
+import * as conversationService from "@server/modules/conversation/conversation.service.js";
 import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -140,8 +141,14 @@ export class MainAgent {
     // Read after the write above, never before: the page has to contain the
     // message this very turn is about, or a browser that replaces what it
     // holds would take the reader's own words back off the screen.
+    // A conversation takes its name from the first thing said in it, so this
+    // is the moment it gets one. Sent with the event rather than left for the
+    // client to work out: the list and the header are showing the placeholder
+    // right now, and nothing else on this stream would ever correct them.
+    const title = await conversationService.titleForTurn(conversationId, said);
+
     const settled = await messageRepo.getMessages(conversationId);
-    yield this.sse(SSEEventType.CHAT_TURN_STARTED, { ...settled });
+    yield this.sse(SSEEventType.CHAT_TURN_STARTED, { ...settled, title });
 
     // Only now the work that takes a while: three round trips for memory,
     // the conversation and its history, and then the compression. All of it

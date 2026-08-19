@@ -28,18 +28,16 @@ afterEach(() => {
   });
 });
 
-const TITLE = 'T';
-
 /** 一份滤掉了 DocumentSplitBlock 的编辑器——回车走 tiptap 自带的 splitBlock。 */
 function openStock(bodyHtml: string): Editor {
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document', TITLE));
+  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const all = buildDocumentExtensions({ fragment: documentBodyFragment(doc) });
   const editor = new Editor({
     extensions: all.filter((x) => (x as { name?: string }).name !== 'documentSplitBlock'),
   });
   editors.push(editor);
-  editor.commands.setContent(`<h1 class="doc-title">${TITLE}</h1>${bodyHtml}`);
+  editor.commands.setContent(bodyHtml);
   return editor;
 }
 
@@ -52,9 +50,8 @@ function press(e: Editor, key: string): void {
 /** 选中正文里第 first 到第 last 个文本节点之间那一段（含两端）。 */
 function selectText(e: Editor, first: number, last: number): void {
   const positions: Array<{ pos: number; size: number }> = [];
-  const start = e.state.doc.child(0).nodeSize;
   e.state.doc.descendants((node, pos) => {
-    if (node.isText && pos >= start) positions.push({ pos, size: node.nodeSize });
+    if (node.isText) positions.push({ pos, size: node.nodeSize });
   });
   const a = positions[first];
   const b = positions[last];

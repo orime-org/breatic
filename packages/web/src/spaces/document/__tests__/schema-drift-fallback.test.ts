@@ -115,7 +115,7 @@ const ItemList = TiptapNode.create({
 /**
  * 内容规则是 `text*`：只收文字，两个兜底类型一个都收不了。
  *
- * 两个版本都认识它。真实的对应物是 document space 的 `title`。
+ * 两个版本都认识它。真实的对应物是 document space 的 `codeBlock`。
  */
 const Caption = TiptapNode.create({
   name: 'caption',
@@ -344,11 +344,10 @@ describe('验收 6：名字认识的构造失败，保持上游自愈', () => {
 
 describe('父节点的内容规则开头不收、但后面的位置收', () => {
   it('列表项里排在段落后面的未知块，包成块级兜底，内容一个字节都不少', () => {
-    // `item` 的内容规则是 `paragraph block*`：**开头**只收段落，所以问
-    // `parentType.contentMatch.matchType(unsupportedBlock)`（那是内容表达式的
-    // 起始匹配点）会答「不收」。但未知块的真实位置在那个段落之后，`block*`
-    // 那一段完全收得下它。判据必须问「这个内容表达式里有没有一个位置收它」，
-    // 不是「开头收不收」—— 否则真实的 listItem 里每一个新块类型都会被删掉。
+    // `item` 的内容规则是 `paragraph block*`：**开头**只收段落。判据从
+    // `parentType.contentMatch` 出发、按前序兄弟逐个 matchType 走到未知块
+    // 自己的位置再问 —— 这里走过那个段落之后，`block*` 那一段收块级兜底。
+    // 只问表达式起点会答「不收」，真实的 listItem 里每一个新块类型都会被删掉。
     const staleDoc = new Y.Doc();
     docs.push(staleDoc);
     staleDoc.transact(() => {
@@ -375,10 +374,75 @@ describe('父节点的内容规则开头不收、但后面的位置收', () => {
   });
 });
 
+describe('强制前缀的首位不收，判据答的是这个位置', () => {
+  it('列表项首位的未知块只丢它自己，列表项和里面的文字都还在', () => {
+    // `item` 的首位只收段落。旧判据问「表达式里有没有某个位置收块」，答收，
+    // 于是把块级兜底塞进首位 —— item 自己构造失败，落进那个被原样留着的
+    // catch，整个列表项连用户写的字一起从共享文档里消失。逐位置判据在首位
+    // 答「不收」，这个未知块单独落进 catch：丢的只有它一个。
+    const staleDoc = new Y.Doc();
+    docs.push(staleDoc);
+    staleDoc.transact(() => {
+      const callout = new Y.XmlElement('callout');
+      const inner = new Y.XmlElement('paragraph');
+      inner.insert(0, [new Y.XmlText('里面的字')]);
+      callout.insert(0, [inner]);
+      const para = new Y.XmlElement('paragraph');
+      para.insert(0, [new Y.XmlText('要点')]);
+
+      const item = new Y.XmlElement('item');
+      item.insert(0, [callout, para]);
+      const list = new Y.XmlElement('itemList');
+      list.insert(0, [item]);
+      staleDoc.getXmlFragment('body').insert(0, [list]);
+    });
+
+    makeEditor(staleDoc);
+
+    const body = staleDoc.getXmlFragment('body').toString();
+    expect(body).toContain('<item>');
+    expect(body).toContain('要点');
+    expect(body).not.toContain('<callout>');
+  });
+
+  it('前面有一个也不认识的兄弟时，按它替换后的类型代入，两个都保住', () => {
+    // 走到后一个未知块的位置，要经过前一个未知块 —— 它自己会被换成块级
+    // 兜底，走位置时就按兜底类型代入。要是把不认识的兄弟当「走不过去」，
+    // 后一个就拿不到兜底、被 catch 删掉。
+    const staleDoc = new Y.Doc();
+    docs.push(staleDoc);
+    staleDoc.transact(() => {
+      const para = new Y.XmlElement('paragraph');
+      para.insert(0, [new Y.XmlText('要点')]);
+      const calloutOne = new Y.XmlElement('callout');
+      const innerOne = new Y.XmlElement('paragraph');
+      innerOne.insert(0, [new Y.XmlText('第一块')]);
+      calloutOne.insert(0, [innerOne]);
+      const calloutTwo = new Y.XmlElement('callout');
+      const innerTwo = new Y.XmlElement('paragraph');
+      innerTwo.insert(0, [new Y.XmlText('第二块')]);
+      calloutTwo.insert(0, [innerTwo]);
+
+      const item = new Y.XmlElement('item');
+      item.insert(0, [para, calloutOne, calloutTwo]);
+      const list = new Y.XmlElement('itemList');
+      list.insert(0, [item]);
+      staleDoc.getXmlFragment('body').insert(0, [list]);
+    });
+
+    makeEditor(staleDoc);
+
+    const body = staleDoc.getXmlFragment('body').toString();
+    expect(body).toContain('第一块');
+    expect(body).toContain('第二块');
+    expect((body.match(/<callout>/g) ?? []).length).toBe(2);
+  });
+});
+
 describe('父节点两种兜底都不收时', () => {
   it('只有那个不认识的元素消失，父元素和它的文字都还在', () => {
     // `text*` 的父节点两个兜底都收不了：行内兜底是个节点、不是文字，块级兜底
-    // 更不行。document space 真实的 `title` 就是这个形状（`listItem` 的
+    // 更不行。document space 真实的 `codeBlock` 就是这个形状（`listItem` 的
     // `paragraph block*` 同理，首位必须是段落）。补丁挑兜底不能写成二选一 ——
     // 那样会往 caption 里塞一个它收不了的块，caption 自己构造失败，落进那个
     // 被原样留着的 catch，整段连文字一起从共享文档里消失。

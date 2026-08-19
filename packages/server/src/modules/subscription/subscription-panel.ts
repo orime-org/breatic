@@ -136,7 +136,7 @@ async function writeAll(
   // Order does not matter: each row is keyed by its own Stripe id, and which
   // one governs the account is decided when they are read. This used to write
   // ended ones first, to get past a unique index that refused a second live
-  // row — an index that could only ever refuse the write, and is gone (0058).
+  // row — an index that could only ever refuse the write, and is gone (0059).
   for (const write of writes) {
     await upsertSubscription(write, tx);
   }

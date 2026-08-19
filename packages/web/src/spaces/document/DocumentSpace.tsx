@@ -4,6 +4,15 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import * as React from 'react';
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
 import { toast } from '@web/lib/toast';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -94,7 +103,6 @@ export function DocumentSpace({
   );
   const { intercepted, publishedAt } = useDocumentSchemaIntercept({
     metaDoc,
-    bodyDoc: doc,
   });
 
   const handle = useDocumentEditor({
@@ -131,6 +139,33 @@ export function DocumentSpace({
   // 2026-07-29 weighed this against the alternative and chose it).
   const editor = hasEverSynced ? (handle?.editor ?? null) : null;
   const history = useDocumentHistory(handle?.undoManager ?? null);
+
+  // The guarded whole-document delete: the extension asks instead of deleting
+  // (see document-select-all.ts), and this mount answers with the dialog.
+  const [clearAsked, setClearAsked] = React.useState(false);
+  React.useEffect(() => {
+    if (!handle) return undefined;
+    return handle.onClearDocumentRequest(() => setClearAsked(true));
+  }, [handle]);
+  const onClearConfirm = React.useCallback(() => {
+    handle?.editor.commands.clearDocument();
+  }, [handle]);
+  // Focus is handed back HERE, on every way out of the dialog — confirm,
+  // cancel, Escape. There is no trigger element to return to (a keystroke
+  // opened it), so Radix's default would drop focus on <body>, stranding the
+  // keyboard (measured; same shape as the Space drawer's confirm).
+  const onClearCloseAutoFocus = React.useCallback(
+    (event: Event) => {
+      event.preventDefault();
+      // The dialog's unmount can outlive the editor: closing a tab while the
+      // dialog is up destroys the editor first, and a destroyed editor's
+      // `commands` getter throws rather than answering.
+      const editor = handle?.editor;
+      if (!editor || editor.isDestroyed) return;
+      editor.commands.focus();
+    },
+    [handle],
+  );
 
   return (
     <div
@@ -180,6 +215,31 @@ export function DocumentSpace({
           {t('spaces.document.loading')}
         </div>
       )}
+      <AlertDialog open={clearAsked} onOpenChange={setClearAsked}>
+        <AlertDialogContent
+          data-testid='document-clear-confirm'
+          aria-describedby={undefined}
+          onCloseAutoFocus={onClearCloseAutoFocus}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('spaces.document.clearConfirm.title')}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t('spaces.document.clearConfirm.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant='destructive'
+              onClick={onClearConfirm}
+              data-testid='document-clear-confirm-action'
+            >
+              {t('spaces.document.clearConfirm.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

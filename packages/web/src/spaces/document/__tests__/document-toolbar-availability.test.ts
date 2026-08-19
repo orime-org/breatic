@@ -4,28 +4,20 @@
 /**
  * R7: no control that looks usable and does nothing when pressed.
  *
- * That is the whole of what the design doc asks for (§6.5), and the title is
- * what made it possible to break: it takes no marks and cannot be wrapped, so
- * a button aimed at it would have been exactly such a control.
+ * The table below RECORDS what the six buttons say for each shape of cursor
+ * or selection in the untitled document; the rows are not a judgement on how
+ * the body ought to behave, which belongs to the slice that owns editing.
+ * Whole-document selection rows (the two-tier select-all's second stage) are
+ * deliberately absent — the availability rules for those are task #85's to
+ * define against the untitled structure.
  *
- * The table below covers selections that never touch the title as well. Those
- * rows RECORD what the buttons say there today; they are not a judgement on
- * how the body ought to behave, which belongs to the slice that owns it.
- *
- * Three assertions, and the third is the one this slice exists for:
+ * Two assertions:
  *
  * 1. Each shape of cursor or selection gets the exact answer the table names,
  *    for all six buttons.
  * 2. Every live button does something when pressed. A collapsed cursor counts
  *    marks armed for the next keystroke as "something", because arming IS the
  *    effect there.
- * 3. Where the selection touches the title, pressing a MARK button leaves the
- *    title block untouched — the body half of the same selection may well be
- *    marked, which is the mark doing its job. The block buttons are only
- *    asserted dark there, not pressed. This is R7 read from the other side,
- *    and the dark half is what a reverted attempt had broken: a widened answer
- *    lit the list buttons over a selection spanning the title, and pressing one
- *    stripped a body heading to a paragraph while producing no list.
  *
  * The reverse of the first — that a dark button would also do nothing — is NOT
  * asserted. The dry run is conservative for the list commands over a body
@@ -51,19 +43,19 @@ afterEach(() => {
 });
 
 /**
- * A document with a title and the given body.
- * @param bodyHtml - Body HTML after the title.
+ * A document with the given content.
+ * @param bodyHtml - The document's HTML.
  * @returns The editor.
  */
 function open(bodyHtml: string): Editor {
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document', 'TITLE'));
+  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const editor = new Editor({
     extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
   });
   editors.push(editor);
   if (bodyHtml) {
-    editor.commands.setContent(`<h1 class="doc-title">TITLE</h1>${bodyHtml}`);
+    editor.commands.setContent(bodyHtml);
   }
   return editor;
 }
@@ -77,94 +69,33 @@ interface Case {
   /** Both list buttons. */
   readonly lists: boolean;
   readonly quote: boolean;
-  /** True when the selection reaches the title. */
-  readonly touchesTitle: boolean;
 }
 
 const CASES: readonly Case[] = [
   {
-    name: 'the caret in the title',
+    name: 'the caret in a paragraph',
     body: '<p>body</p>',
-    place: (e) => e.commands.setTextSelection(3),
-    marks: false,
-    lists: false,
-    quote: false,
-    touchesTitle: true,
-  },
-  {
-    name: 'the caret in a body paragraph',
-    body: '<p>body</p>',
-    place: (e) => e.commands.setTextSelection(e.state.doc.child(0).nodeSize + 2),
+    place: (e) => e.commands.setTextSelection(2),
     marks: true,
     lists: true,
     quote: true,
-    touchesTitle: false,
   },
   {
-    name: 'the caret in a body heading',
+    name: 'the caret in a heading',
     body: '<h2>sec</h2>',
-    place: (e) => e.commands.setTextSelection(e.state.doc.child(0).nodeSize + 2),
+    place: (e) => e.commands.setTextSelection(2),
     marks: true,
     lists: false,
     quote: true,
-    touchesTitle: false,
   },
   {
     name: 'the caret in a code block',
     body: '<pre><code>x</code></pre>',
-    place: (e) => e.commands.setTextSelection(e.state.doc.child(0).nodeSize + 2),
-    // A code block refuses marks, which is the editor's own rule and nothing
-    // to do with the title.
+    place: (e) => e.commands.setTextSelection(2),
+    // A code block refuses marks — the editor's own rule.
     marks: false,
     lists: false,
     quote: true,
-    touchesTitle: false,
-  },
-  {
-    name: 'everything selected, with only a title to select',
-    body: '',
-    place: (e) => e.commands.selectAll(),
-    marks: false,
-    lists: false,
-    quote: false,
-    touchesTitle: true,
-  },
-  {
-    name: 'everything selected, title and body',
-    body: '<p>body</p>',
-    place: (e) => e.commands.selectAll(),
-    // Bold reaches the body's text; a list cannot wrap a range holding the
-    // title.
-    marks: true,
-    lists: false,
-    quote: false,
-    touchesTitle: true,
-  },
-  {
-    // The shape a reverted attempt got wrong, and the shape its table was
-    // missing: every title-touching case here used a body PARAGRAPH, where the
-    // widened answer happened to agree. Give the body a heading and it lit the
-    // list buttons, and pressing one stripped the heading with no list to show.
-    name: 'everything selected, title and a body heading',
-    body: '<h2>sec</h2>',
-    place: (e) => e.commands.selectAll(),
-    marks: true,
-    lists: false,
-    quote: false,
-    touchesTitle: true,
-  },
-  {
-    name: 'a selection running from the title into the body',
-    body: '<p>body</p>',
-    place: (e) =>
-      e.commands.setTextSelection({
-        from: 2,
-        to: e.state.doc.child(0).nodeSize + 3,
-      }),
-    marks: true,
-    lists: false,
-    quote: false,
-    touchesTitle: true,
   },
   {
     // A whole block selected rather than a range inside one. `Mod`-clicking a
@@ -173,27 +104,16 @@ const CASES: readonly Case[] = [
     // `document-click-to-write` passes modified clicks through. The selection
     // then sits OUTSIDE the block, at document level, which is a shape none of
     // the caret-in-a-textblock cases above covers.
-    //
-    // This replaces two cases built on the divider — one with it selected as a
-    // node, one with a gap cursor beside it. Both are unreachable now (#111):
-    // the divider is gone, and with it the last node in this schema that
-    // `GapCursor.valid` accepts a position next to (measured 2026-08-15 across
-    // paragraphs, headings, quotes, lists and code blocks: no valid position in
-    // any of them). The gap-cursor case had already stopped meaning anything —
-    // its `<hr>` body parsed to nothing, and `new GapCursor` does not check
-    // `valid`, so it was asserting on a selection no user could hold.
-    name: 'a whole body paragraph selected as a node',
+    name: 'a whole paragraph selected as a node',
     body: '<p>body</p><p>more</p>',
     place: (e) => {
-      const pos = e.state.doc.child(0).nodeSize;
       e.view.dispatch(
-        e.state.tr.setSelection(NodeSelection.create(e.state.doc, pos)),
+        e.state.tr.setSelection(NodeSelection.create(e.state.doc, 0)),
       );
     },
     marks: true,
     lists: true,
     quote: true,
-    touchesTitle: false,
   },
   {
     // A plain list item takes the list commands (they toggle it off) and not
@@ -204,19 +124,17 @@ const CASES: readonly Case[] = [
     marks: true,
     lists: true,
     quote: false,
-    touchesTitle: false,
   },
   {
     // A heading nested one level down. The dry run is conservative here for
-    // the same reason as the plain body heading above, and for the same
-    // reason it is out of this slice.
+    // the same reason as the plain heading above, and for the same reason it
+    // is out of this slice.
     name: 'the caret in a heading inside a quote',
     body: '<blockquote><h2>h</h2></blockquote>',
     place: (e) => e.commands.setTextSelection(e.state.doc.content.size - 2),
     marks: true,
     lists: false,
     quote: true,
-    touchesTitle: false,
   },
 ];
 
@@ -256,32 +174,6 @@ describe('and what actually happens when they are pressed', () => {
           `${tool.id}: live and changed=true`,
         );
       });
-    });
-  });
-
-  CASES.filter((c) => c.touchesTitle).forEach((c) => {
-    it(`with ${c.name}, the title takes nothing from any button`, () => {
-      MARK_TOOLS.forEach((tool) => {
-        const editor = open(c.body);
-        c.place(editor);
-        const titleBefore = JSON.stringify(editor.state.doc.child(0).toJSON());
-        tool.run(editor);
-
-        // A mark may still land on the body half of the same selection — that
-        // is the mark doing its job. What it may never do is mark the title,
-        // whose content rule accepts no marks at all.
-        expect(
-          `${tool.id}: ${JSON.stringify(editor.state.doc.child(0).toJSON())}`,
-        ).toBe(`${tool.id}: ${titleBefore}`);
-      });
-
-      // The block wrappers are NOT pressed here, and that is deliberate. What
-      // this slice promises is that they are dark when the selection holds the
-      // title, which the table above asserts. Whether the command itself is
-      // all-or-nothing is the body editing slice's business: `toggleBulletList`
-      // clears the block type before wrapping and lands that clearing even
-      // when the wrap fails, so invoking it directly here would fail for a
-      // reason this slice neither owns nor can fix.
     });
   });
 });

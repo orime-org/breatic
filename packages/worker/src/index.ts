@@ -30,6 +30,7 @@ import {
   runGracefulShutdown,
   getSkillRouting,
 } from "@breatic/core";
+import { modelCatalog } from "@breatic/domain";
 
 initLogger("worker");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
@@ -65,6 +66,18 @@ try {
   getSkillRouting();
 } catch (err) {
   logger.error({ err }, "skill_routing_config_invalid");
+  process.exit(1);
+}
+
+// Same preflight for config/models/*.yaml (#1966). Every model must declare
+// `takes_prompt`, and the catalog is as lazy as the routing config above —
+// lazy here means a missing declaration surfaces inside whichever job first
+// resolves a model, which BullMQ then retries into the same wall. Loading it
+// here puts that in front of whoever edited the file.
+try {
+  modelCatalog.getModelCatalog();
+} catch (err) {
+  logger.error({ err }, "model_catalog_invalid");
   process.exit(1);
 }
 import { runTask } from "@worker/handlers/dispatch.js";

@@ -14,6 +14,27 @@ interface TitleEditableProps {
    */
   maxWidth?: number;
   /**
+   * How many characters the name may run to.
+   *
+   * Defaults to what a project name may hold, which is what this box was
+   * written for. A caller whose thing is stored with a different limit passes
+   * its own -- otherwise opening this box and closing it again would shorten
+   * a name that is perfectly legal where it lives, without the reader having
+   * changed a thing.
+   */
+  maxLength?: number;
+  /**
+   * What to show while the thing has no name of its own.
+   *
+   * A stand-in, not a name: it is drawn in place of an empty value and it goes
+   * in the box's `placeholder`, so opening the box shows an empty field rather
+   * than pre-filling the words on screen. Passing it as `value` instead makes
+   * the stand-in indistinguishable from a name -- typing exactly those words
+   * then reads as "nothing changed" and the rename is dropped, with nothing on
+   * screen moving to say so.
+   */
+  placeholder?: string;
+  /**
    * Whether the title is editable (default true). When false the title is
    * a plain read-only span — no double-click-to-edit, no keyboard edit
    * affordance, not exposed as a focusable textbox. Used to gate the
@@ -23,8 +44,17 @@ interface TitleEditableProps {
   editable?: boolean;
 }
 
-/** Project title length cap — system-wide limit, enforced on backend too. */
-const MAX_TITLE_LEN = 80;
+/**
+ * How long a name may be when the caller does not say.
+ *
+ * What this box has always capped project names at, kept as the default so
+ * that behaviour does not change. It is not what the server allows -- a
+ * project name may be 255 -- so it is a display cap, not a limit. A caller
+ * whose thing is stored with a limit of its own has to pass it: otherwise
+ * opening this box and closing it again would quietly shorten a name that was
+ * perfectly legal where it lives.
+ */
+const DEFAULT_MAX_TITLE_LEN = 80;
 /** Default visible width cap when caller doesn't override. */
 const DEFAULT_TITLE_MAX_WIDTH = 320;
 
@@ -56,13 +86,15 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
  * expects (content scrolls right-to-left while the caret stays put).
  *
  * Commit semantics:
- *   - Enter / blur commit (trim, drop newlines, slice to MAX_TITLE_LEN,
+ *   - Enter / blur commit (trim, drop newlines, slice to the length cap,
  *     reject empty).
  *   - Escape cancel (restore previous value, exit edit mode).
  * @param root0 - Editable title props.
  * @param root0.value - Current project title shown in static mode and seeded as the edit draft.
  * @param root0.onChange - Called with the trimmed, length-capped new title once the user commits a rename.
  * @param root0.maxWidth - Visible width cap in pixels; defaults to the Agent column width.
+ * @param root0.maxLength - How many characters the name may run to; defaults to what a project name may hold.
+ * @param root0.placeholder - What to show while the thing has no name of its own.
  * @param root0.editable - Whether the title can be edited; defaults to true. When false the span is read-only.
  * @returns the static truncated title span, or the editing input while in edit mode.
  */
@@ -70,6 +102,8 @@ export function TitleEditable({
   value,
   onChange,
   maxWidth = DEFAULT_TITLE_MAX_WIDTH,
+  maxLength = DEFAULT_MAX_TITLE_LEN,
+  placeholder,
   editable = true,
 }: TitleEditableProps): React.JSX.Element {
   const [editing, setEditing] = React.useState(false);
@@ -94,7 +128,7 @@ export function TitleEditable({
    * fires `onChange` when changed and non-empty, and leaves edit mode.
    */
   const commit = (): void => {
-    const next = draft.replace(/\n/g, '').trim().slice(0, MAX_TITLE_LEN);
+    const next = draft.replace(/\n/g, '').trim().slice(0, maxLength);
     if (next.length > 0 && next !== value) onChange(next);
     if (next.length === 0) setDraft(value);
     setEditing(false);
@@ -108,6 +142,11 @@ export function TitleEditable({
     setEditing(false);
   };
 
+  // What the static span reads. `draft` is the name, and while there is none
+  // the stand-in takes its place on screen -- without ever becoming the value
+  // the box opens with or the one a commit is compared against.
+  const shown = draft.length > 0 ? draft : (placeholder ?? '');
+
   const sharedStyle: React.CSSProperties = {
     padding: '2px var(--space-2)',
     borderRadius: 'var(--radius-chrome)',
@@ -119,7 +158,8 @@ export function TitleEditable({
       <input
         ref={inputRef}
         value={draft}
-        maxLength={MAX_TITLE_LEN}
+        placeholder={placeholder}
+        maxLength={maxLength}
         spellCheck={false}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
@@ -159,9 +199,9 @@ export function TitleEditable({
         className='inline-block min-w-0 truncate align-middle text-sm font-medium'
         style={sharedStyle}
         data-testid='title-display'
-        title={value}
+        title={shown}
       >
-        {value}
+        {shown}
       </span>
     );
   }
@@ -188,9 +228,9 @@ export function TitleEditable({
       className='inline-block min-w-0 cursor-text truncate align-middle text-sm font-medium outline-none hover:bg-accent'
       style={sharedStyle}
       data-testid='title-display'
-      title={draft}
+      title={shown}
     >
-      {draft}
+      {shown}
     </span>
   );
 }

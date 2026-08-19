@@ -12,45 +12,60 @@ import {
 } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 
+import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
+import { OPEN_CONVERSATION_HISTORY_TESTID } from '@web/pages/project/chat/ConversationHistorySheet';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 
 interface AgentColHeaderProps {
   conversationName: string;
-  messageCount: number;
-  onOpenHistory: () => void;
+  conversationNamePlaceholder: string;
+  /**
+   * Show the conversation history, or hide it if it is showing.
+   *
+   * The button is a switch, and the sheet has to let its press through to get
+   * there: pressing it while the sheet is open counts as pressing outside, so
+   * the sheet closes itself first unless it recognises the button.
+   */
+  onToggleHistory: () => void;
   onNewConversation: () => void;
   onRenameConversation: (next: string) => void;
 }
 
 /**
  * Agent column header — sits above the ChatPanel:
- *   [💬 open history] [count chip] [conversation name (editable)] [+ new]
+ *   [💬 open history] [conversation name (editable)] [+ new]
  *
- * Layout (2026-05-21 user spec, revised):
- *   - History trigger uses `MessagesSquare` icon (the mock's original
- *     glyph) — semantics "list of past conversations", which the user
- *     judged more accurate than `PanelLeftOpen` ("open a side panel")
- *     after seeing the first cut.
- *   - Count chip sits immediately to the right of the icon, NOT inside
- *     the title, so it visually pairs with the history action ("how many
- *     conversations behind that button").
- *   - Conversation name uses `TitleEditable` (same as TopBar project
- *     title) — click to edit, Enter / blur commit, Escape cancel.
+ * The history trigger uses `MessagesSquare` rather than `PanelLeftOpen`:
+ * what is behind it is a list of past conversations, not a side panel.
  *
- * History sheet + composer state lives in the chat store; this header
- * just wires the triggers.
+ * No count. How many conversations a project holds is not something a reader
+ * needs to know -- what they need is which one they are in -- and the list is
+ * paged, so the number held here would not be the total anyway.
+ *
+ * The name uses `TitleEditable`, the same box as the project title in the top
+ * bar, with the length a conversation name may run to rather than the default
+ * that box carries for project names.
+ *
+ * The name and the words shown while there is none travel separately, because
+ * they are different things: a conversation with no name holds null, and the
+ * sentence on screen is standing in for it. Handing the stand-in over as the
+ * name would make "call it exactly that" read as a change to nothing.
+ *
+ * Which conversation is on screen, and the list to choose from, live in the
+ * conversation runtime; the column above assembles them and this header just
+ * wires the triggers.
  * @param root0 - Component props.
- * @param root0.conversationName - Current conversation name shown in the editable title.
- * @param root0.messageCount - Number of past conversations displayed in the count chip.
- * @param root0.onOpenHistory - Opens the conversation history sheet.
+ * @param root0.conversationName - The conversation's own name, empty while it has none.
+ * @param root0.conversationNamePlaceholder - What the title reads while the conversation has no name.
+ * @param root0.onToggleHistory - Shows the conversation history, or hides it if it is showing.
  * @param root0.onNewConversation - Starts a new conversation.
  * @param root0.onRenameConversation - Commits a new conversation name when the title is edited.
- * @returns The agent column header row with history, count chip, editable title, and new-conversation actions.
+ * @returns The agent column header row with history, editable title, and new-conversation actions.
  */
 export function AgentColHeader({
   conversationName,
-  messageCount,
-  onOpenHistory,
+  conversationNamePlaceholder,
+  onToggleHistory,
   onNewConversation,
   onRenameConversation,
 }: AgentColHeaderProps): React.JSX.Element {
@@ -67,8 +82,8 @@ export function AgentColHeader({
             variant='chrome-ghost'
             size='chrome'
             aria-label={t('chrome.tooltip.openHistory')}
-            onClick={onOpenHistory}
-            data-testid='open-conversation-history'
+            onClick={onToggleHistory}
+            data-testid={OPEN_CONVERSATION_HISTORY_TESTID}
           >
             <MessagesSquare className='h-[18px] w-[18px]' />
           </Button>
@@ -77,18 +92,13 @@ export function AgentColHeader({
           {t('chrome.tooltip.openHistory')}
         </TooltipContent>
       </Tooltip>
-      <span
-        className='inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-muted px-[6px] text-2xs font-medium tabular-nums text-muted-foreground'
-        data-testid='conversation-count-chip'
-        aria-label={t('chrome.aria.conversationCount', { count: messageCount })}
-      >
-        {messageCount}
-      </span>
       <div className='flex min-w-0 flex-1 items-center'>
         <TitleEditable
           value={conversationName}
+          placeholder={conversationNamePlaceholder}
           onChange={onRenameConversation}
           maxWidth={180}
+          maxLength={CONVERSATION_TITLE_MAX_CHARS}
         />
       </div>
       <Tooltip>

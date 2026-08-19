@@ -104,6 +104,13 @@ async function eventsFromOneTurn(): Promise<Array<{ event: string; data: unknown
   return raised;
 }
 
+// The turn asks the conversation what it is called, so it can say so in the
+// event that opens the turn. Answered with a name already set: these tests are
+// about what a turn streams, not about how a conversation comes by its name.
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  titleForTurn: vi.fn(async () => "already named"),
+}));
+
 describe("a turn that begins by settling up", () => {
   beforeEach(() => {
     streamTextRetry.mockClear();
@@ -125,12 +132,15 @@ describe("a turn that begins by settling up", () => {
     expect(first?.event).toBe(SSE_EVENT_NAMES.CHAT_TURN_STARTED);
     // The whole page, the same one opening the conversation hands out: the
     // browser replaces what it is holding with this, so a partial answer
-    // would be worse than none.
+    // would be worse than none. The name rides along because this turn may be
+    // the one that gave the conversation its name, and nothing else on this
+    // stream would ever tell the list and the header about it.
     expect(first?.data).toEqual({
       messages: [
         expect.objectContaining({ id: "stored-1", content: "what the server has" }),
       ],
       hasMore: true,
+      title: "already named",
     });
   });
 
