@@ -64,6 +64,12 @@ interface VideoGeneratePanelProps {
   promptRequired: boolean;
   /** Reference rows derived from this node's incoming edges. */
   references: ReferenceRailItem[];
+  /**
+   * Crops whose upload is still in flight (#1978), rendered as placeholder
+   * rows so the rail says something between the confirmed marquee and the
+   * landed asset.
+   */
+  pendingFocus?: ReadonlyArray<{ id: string; name: string }>;
   /** Enter / exit the canvas reference pick. */
   onAddReference: () => void;
   /** Whether the reference pick is running. */
@@ -134,6 +140,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   modeOptions,
   promptRequired,
   references,
+  pendingFocus,
   onAddReference,
   referencePicking,
   onRemoveReference,
@@ -181,6 +188,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
 
       <ReferenceRail
         references={references}
+        pendingFocus={pendingFocus}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
         // Reference-to-video is the only mode that reads the pool — the other

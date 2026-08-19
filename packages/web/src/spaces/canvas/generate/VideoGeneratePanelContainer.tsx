@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 import type * as Y from 'yjs';
 
+import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import {
@@ -14,6 +15,7 @@ import {
   readCanvasGraph,
   readNodeLeaseGen,
   removeEdge,
+  removeNodeFocusImage,
   setNodeMode,
   setNodeModel,
   setNodeParams,
@@ -21,6 +23,10 @@ import {
   type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
+import {
+  assetUrlSurvives,
+  isReportableAssetUrl,
+} from '@web/spaces/canvas/canvas-upload';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -36,6 +42,8 @@ import {
 } from '@web/spaces/canvas/generate/generate-panel-frame';
 import {
   deriveReferences,
+  focusIdOfRefId,
+  focusToRailItem,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
@@ -313,13 +321,30 @@ function VideoGeneratePanelBody({
     }),
     [aspectRatio, resolution, duration, generateAudio],
   );
+  // Crops uploading right now, for THIS node (#1978). Without them the rail
+  // stays empty from the moment the marquee is confirmed until the upload
+  // lands — and on a node whose rail is otherwise empty the rail does not
+  // render at all, so the row appears out of nowhere on success.
+  const pendingFocusAll = useCanvasStore((s) => s.pendingFocusUploads);
+  const pendingFocus = React.useMemo(
+    () =>
+      pendingFocusAll
+        .filter((p) => p.nodeId === nodeId)
+        .map((p) => ({ id: p.id, name: p.name })),
+    [pendingFocusAll, nodeId],
+  );
   // References change identity on every derive; key the memo on their CONTENT
   // (a small array — a stringify key is cheap and exact), or the rail's memo
   // would be defeated on every frame of any node drag.
-  const referencesKey = JSON.stringify(references);
+  //
+  // Two sources, one list (#1978): edge-derived rows, then this node's focus
+  // crops turned into rows of the same shape. Downstream — rail, `@` pool,
+  // submit — there is one code path, exactly as on the image panel.
+  const referencesKey =
+    JSON.stringify(references) + JSON.stringify(vm.focusImages);
   const stableReferences = React.useMemo(
-    () => references,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS the input, serialized
+    () => [...references, ...vm.focusImages.map(focusToRailItem)],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS both inputs, serialized
     [referencesKey],
   );
   // The picked slot URLs are a fresh object per view-model build, on the same
@@ -498,12 +523,46 @@ function VideoGeneratePanelBody({
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {
-      // A rail row IS an incoming edge here (video nodes carry no focus crops,
-      // which is the image panel's other row source), so removing one is
-      // removing that connection.
+      // Two row sources since #1978, and the ✕ means a different thing on
+      // each: an edge row is a connection to cut, a crop row is a stored copy
+      // to delete. Routed by the ROW's identity, never by parsing the id
+      // string — edge ids are untrusted collaborative data, and a crafted one
+      // starting with `focus:` must not misroute the ✕ (the image panel took
+      // that finding in its round 2). Only a real crop row carries
+      // `focus: true`, so its refId is trusted to parse.
+      if (item.focus === true) {
+        const focusId = focusIdOfRefId(item.refId);
+        if (focusId === null) return;
+        // Gate the reporting below on the ACTUAL removal: a double-click, or
+        // a ✕ after a remote removal already synced in, hits a no-op here and
+        // reporting anyway would append a duplicate asset:deleted row.
+        const removed = removeNodeFocusImage(projectId, spaceId, nodeId, focusId);
+        if (!removed) return;
+        // Delete-side ledger parity with the image panel: a crop is an
+        // uploaded asset. The survivor check reads the FRESH post-removal
+        // graph, so the removed instance is naturally excluded; a URL still
+        // alive elsewhere (dedup) is not reported. Silent catch — the removal
+        // already succeeded, and a toast would read as a failed remove.
+        const url = item.thumbnail;
+        if (
+          typeof url === 'string' &&
+          isReportableAssetUrl(url) &&
+          !assetUrlSurvives(url, readCanvasGraph(projectId, spaceId).nodes)
+        ) {
+          void assetsApi
+            .reportDeleted({
+              projectId,
+              entries: [{ fileUrl: url, kind: 'image', nodeId, spaceId }],
+            })
+            .catch(() => {
+              // Silent: audit-feed miss at worst (reportDeletedAssets parity).
+            });
+        }
+        return;
+      }
       removeEdge(projectId, spaceId, item.refId);
     },
-    [projectId, spaceId],
+    [projectId, spaceId, nodeId],
   );
   // A slot's ✕: clears the node's pick-time copy. Available whenever the slot
   // is — which is only in a mode that collects it. A copy left behind by a
@@ -755,6 +814,7 @@ function VideoGeneratePanelBody({
       modeOptions={availableModes}
       promptRequired={vm.promptRequired}
       references={stableReferences}
+      pendingFocus={pendingFocus}
       onAddReference={onAddReference}
       referencePicking={referencePicking}
       onRemoveReference={onRemoveReference}

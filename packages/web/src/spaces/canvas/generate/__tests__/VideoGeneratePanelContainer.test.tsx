@@ -1836,3 +1836,55 @@ describe('VideoGeneratePanelContainer — 两句空态各自取自己那个 key 
     nothingMatched.unmount();
   });
 });
+
+describe('视频面板的聚焦裁剪（#1978）', () => {
+  const CROP = {
+    id: 'c1',
+    url: 'https://cdn/crop-1.png',
+    name: 'Hero',
+    width: 400,
+    height: 300,
+  };
+  const ROW = 'focus:c1';
+
+  it('节点上的裁剪作为一行出现在参考轨道', async () => {
+    await openPanelInMode('ref', 'kling-o3-pro-ref', { focusImages: [CROP] });
+    expect(await screen.findByTestId(`generate-ref-${ROW}`)).toBeInTheDocument();
+    // 裁剪行带自己的标记，跟连线进来的节点行分得开
+    expect(
+      screen.getByTestId(`generate-ref-focus-badge-${ROW}`),
+    ).toBeInTheDocument();
+  });
+
+  it('点裁剪行的 ✕ 把裁剪从节点上删掉 —— 它不是一条边，removeEdge 对它是空操作', async () => {
+    await openPanelInMode('ref', 'kling-o3-pro-ref', { focusImages: [CROP] });
+    expect(await screen.findByTestId(`generate-ref-${ROW}`)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId(`generate-ref-remove-${ROW}`));
+
+    // 断言落在 Yjs 上而不是 DOM 上：这个测试台给面板的 `nodes` 是一个静态
+    // 数组（见 openPanelInMode 的注释），删除写进文档、prop 不动，所以行不会
+    // 从屏幕上消失。真正要钉的也正是「那条裁剪从节点上没了」。
+    await waitFor(() => {
+      const node = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target');
+      const data = node?.data as { focusImages?: unknown[] } | undefined;
+      expect(data?.focusImages ?? []).toHaveLength(0);
+    });
+  });
+
+  it('上传在途时轨道上先出现一行占位', async () => {
+    // 轨道本身为空的节点：没有这一步接线，用户框完之后连轨道都不出现，
+    // 直到上传成功那一刻才凭空冒出一行（ReferenceRail 在两者皆空时返回 null）。
+    await openPanelInMode('ref', 'kling-o3-pro-ref');
+    act(() => {
+      useCanvasStore.getState().addPendingFocusUpload({
+        id: 'p1',
+        nodeId: 'target',
+        name: 'Hero',
+      });
+    });
+    expect(
+      await screen.findByTestId('generate-focus-pending-p1'),
+    ).toBeInTheDocument();
+  });
+});
