@@ -7,6 +7,7 @@ import * as React from 'react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { DocumentToolbar } from '@web/spaces/document/DocumentToolbar';
+import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 import type { DocumentHistoryState } from '@web/spaces/document/use-document-history';
 
 interface DocumentEditorProps {
@@ -54,6 +55,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
         />
       </ScrollArea>
+      {/* Rendered as a sibling of the scroller, not inside it: the bar has to
+          escape that clipping context, and the plugin needs somewhere outside
+          it to append to. */}
+      <SelectionBubbleBar editor={editor} readOnly={readOnly} />
     </>
   );
 });

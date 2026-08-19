@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type { Editor } from '@tiptap/react';
-import { useEditorState } from '@tiptap/react';
 import {
   Bold,
   Italic,
@@ -19,6 +18,10 @@ import { Button } from '@web/components/ui/button';
 import { Separator } from '@web/components/ui/separator';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
+import {
+  ToolButton,
+  type ToolDef,
+} from '@web/spaces/document/document-tool-button';
 import type { DocumentHistoryState } from '@web/spaces/document/use-document-history';
 
 interface DocumentToolbarProps {
@@ -33,33 +36,6 @@ interface DocumentToolbarProps {
    * fork of the document that no one else will ever see.
    */
   readOnly?: boolean;
-}
-
-/** A toggle whose pressed state mirrors what is under the cursor. */
-export interface ToolDef {
-  id: string;
-  labelKey: string;
-  Icon: typeof Bold;
-  isActive: (e: Editor) => boolean;
-  /**
-   * Whether the command can run against the current selection.
-   *
-   * Asked of the command the button runs, never of where the caret is. R7 asks
-   * for one thing — no control that looks usable and does nothing when pressed
-   * — and a dry run of the command itself is the only answer that tracks the
-   * selection shapes as they actually are: caret-position heuristics answer
-   * wrongly for selections that start at the document rather than inside any
-   * block, and for blocks that refuse formatting (a code block takes no
-   * marks).
-   *
-   * The dry run is CONSERVATIVE for the two list commands over a body heading
-   * or code block — it says no where the command works. That is a body-editing
-   * shortcoming, it is out of this slice, and it is the safe direction: R7
-   * forbids a live button that does nothing, not a dark button that would have
-   * worked.
-   */
-  canRun: (e: Editor) => boolean;
-  run: (e: Editor) => void;
 }
 
 /** An action that is either available or not — history, in practice. */
@@ -105,6 +81,9 @@ const HISTORY_TOOLS: ActionDef[] = [
     run: (e) => e.chain().focus().redo().run(),
   },
 ];
+
+/** Re-exported so the carriers can keep importing it from here. */
+export type { ToolDef };
 
 /**
  * The formatting controls. What they DO is untouched by this slice — the
@@ -225,11 +204,23 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {MARK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} editor={editor} readOnly={readOnly} />
+        <ToolButton
+          key={t.id}
+          tool={t}
+          editor={editor}
+          carrier='toolbar'
+          readOnly={readOnly}
+        />
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {BLOCK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} editor={editor} readOnly={readOnly} />
+        <ToolButton
+          key={t.id}
+          tool={t}
+          editor={editor}
+          carrier='toolbar'
+          readOnly={readOnly}
+        />
       ))}
     </div>
   );
@@ -254,45 +245,6 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
  * @param root0.readOnly - True for a viewer; the toggle is inert whatever the command says.
  * @returns The toggle button element for one document tool.
  */
-const ToolButton = React.memo(function ToolButton({
-  tool,
-  editor,
-  readOnly = false,
-}: {
-  tool: ToolDef;
-  editor: Editor;
-  readOnly?: boolean;
-}): React.JSX.Element {
-  const t = useTranslation();
-  const state = useEditorState({
-    editor,
-    selector: ({ editor: e }) => ({
-      active: e ? tool.isActive(e) : false,
-      available: e ? tool.canRun(e) : false,
-    }),
-    // Compared field by field: the selector builds a fresh object on every
-    // transaction, so identity would report a change on every keystroke and
-    // re-render all six buttons for nothing.
-    equalityFn: (a, b) =>
-      b !== null && a.active === b.active && a.available === b.available,
-  });
-  const Icon = tool.Icon;
-  return (
-    <Button
-      variant={state.active ? 'secondary' : 'ghost'}
-      size='icon'
-      aria-label={t(tool.labelKey)}
-      aria-pressed={state.active}
-      disabled={readOnly || !state.available}
-      onClick={() => tool.run(editor)}
-      data-testid={`doc-tool-${tool.id}`}
-      className={cn('h-7 w-7')}
-    >
-      <Icon className='h-4 w-4' />
-    </Button>
-  );
-});
-
 /**
  * A single toolbar action, enabled or disabled by the caller.
  * @param root0 - Action button props.
@@ -319,7 +271,7 @@ const ActionButton = React.memo(function ActionButton({
       aria-label={t(action.labelKey)}
       disabled={!enabled}
       onClick={() => action.run(editor)}
-      data-testid={`doc-tool-${action.id}`}
+      data-testid={`doc-toolbar-tool-${action.id}`}
       className={cn('h-7 w-7')}
     >
       <Icon className='h-4 w-4' />

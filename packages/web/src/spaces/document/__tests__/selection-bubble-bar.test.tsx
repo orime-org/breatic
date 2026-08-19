@@ -18,14 +18,17 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
+import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/DocumentToolbar';
+
+/** 空的撤销重做状态——本文件不测历史，给它一个静止值就够。 */
+const NO_HISTORY = { canUndo: false, canRedo: false } as const;
 
 const editors: Editor[] = [];
 let doc: Y.Doc;
@@ -56,6 +59,51 @@ function open(bodyHtml: string): Editor {
   return editor;
 }
 
+/**
+ * 选中一段文字，并让编辑器真的持有焦点。
+ *
+ * 焦点不是可有可无的布置：bubble-menu 默认的 `shouldShow` 第一个条件就是
+ * `view.hasFocus()`（`dist/index.js:72-73`），不满足就不调 `show()`；而那个
+ * 浮出条元素是在 `show()` 里才 `appendChild` 进 DOM 的（`:366-367`）。没有
+ * 焦点，它一辈子不在 document 里，任何查询都落空。
+ * @param editor - 编辑器。
+ * @param from - 选区起点。
+ * @param to - 选区终点。
+ */
+async function selectWithFocus(
+  editor: Editor,
+  from: number,
+  to: number,
+): Promise<void> {
+  act(() => {
+    editor.view.dom.focus();
+    editor.commands.setTextSelection({ from, to });
+  });
+  // 插件对选区变化有 250ms 防抖（`updateDelay` 的默认值），而 `show()` 里才
+  // 把浮出条 `appendChild` 进 DOM。同步断言会跑在它前面、什么都查不到。
+  await waitFor(() => {
+    expect(
+      document.querySelectorAll('[data-testid^="doc-bubble-tool-"]').length,
+    ).toBeGreaterThan(0);
+  });
+}
+
+/**
+ * 把编辑器连同它的两个载体渲染进 document。
+ *
+ * 走真实的 `DocumentEditor` 而不是自己搭一个壳：浮出条那个 div 是
+ * `BubbleMenu` 自己 `createElement` 出来的，要靠插件的 `appendTo` 挂进 DOM，
+ * 而 `appendTo` 默认落在 `view.dom.parentElement` —— 编辑器不真挂进
+ * document，那个 div 就永远进不去，测什么都测不到。
+ * @param editor - 已经装好正文的编辑器。
+ * @param readOnly - 是否只读。
+ */
+function mount(editor: Editor, readOnly = false): void {
+  render(
+    <DocumentEditor editor={editor} history={NO_HISTORY} readOnly={readOnly} />,
+  );
+}
+
 /** 正文带标记的样子，用来判命令有没有真的改到文档。 */
 function markupOf(): string {
   return documentBodyFragment(doc)
@@ -65,12 +113,10 @@ function markupOf(): string {
 }
 
 describe('选中浮出条', () => {
-  it('选中文字时出现，装的正好是那六个命令', () => {
+  it('选中文字时出现，装的正好是那六个命令', async () => {
     const editor = open('<p>hello world</p>');
-    render(<SelectionBubbleBar editor={editor} />);
-    act(() => {
-      editor.commands.setTextSelection({ from: 1, to: 6 });
-    });
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
 
     const ids = Array.from(
       document.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
@@ -82,19 +128,19 @@ describe('选中浮出条', () => {
   });
 
   // A11：这一步存在的唯一理由。六个逐一验，不抽验。
+  // 标记是 Yjs 片段里的 schema 节点名，不是 HTML 标签名——`toString()` 打出来
+  // 的是 `<bold>` / `<bulletlist>` 这一套。
   it.each([
-    ['bold', '<strong>', '<p>hello world</p>', 1, 6],
-    ['italic', '<em>', '<p>hello world</p>', 1, 6],
-    ['strike', '<s>', '<p>hello world</p>', 1, 6],
-    ['bullet-list', '<ul>', '<p>hello world</p>', 1, 6],
-    ['ordered-list', '<ol>', '<p>hello world</p>', 1, 6],
+    ['bold', '<bold>', '<p>hello world</p>', 1, 6],
+    ['italic', '<italic>', '<p>hello world</p>', 1, 6],
+    ['strike', '<strike>', '<p>hello world</p>', 1, 6],
+    ['bullet-list', '<bulletlist>', '<p>hello world</p>', 1, 6],
+    ['ordered-list', '<orderedlist', '<p>hello world</p>', 1, 6],
     ['quote', '<blockquote>', '<p>hello world</p>', 1, 6],
-  ])('在浮出条里点 %s，文档真的变了', (id, marker, body, from, to) => {
+  ])('在浮出条里点 %s，文档真的变了', async (id, marker, body, from, to) => {
     const editor = open(body);
-    render(<SelectionBubbleBar editor={editor} />);
-    act(() => {
-      editor.commands.setTextSelection({ from, to });
-    });
+    mount(editor);
+    await selectWithFocus(editor, from, to);
     expect(markupOf()).not.toContain(marker);
 
     act(() => {
@@ -105,12 +151,10 @@ describe('选中浮出条', () => {
   });
 
   // A13：两个载体的同名命令必须能分别指认。
-  it('浮出条的 testid 带自己的载体前缀，不跟顶部横条撞', () => {
+  it('浮出条的 testid 带自己的载体前缀，不跟顶部横条撞', async () => {
     const editor = open('<p>hello world</p>');
-    render(<SelectionBubbleBar editor={editor} />);
-    act(() => {
-      editor.commands.setTextSelection({ from: 1, to: 6 });
-    });
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
 
     expect(
       document.querySelectorAll('[data-testid="doc-bubble-tool-bold"]'),
@@ -122,11 +166,17 @@ describe('选中浮出条', () => {
   });
 
   // A7：viewer 整条不出现（定稿 §3.3.1）。
-  it('只读时整条不出现', () => {
+  it('只读时整条不出现', async () => {
     const editor = open('<p>hello world</p>');
-    render(<SelectionBubbleBar editor={editor} readOnly />);
+    mount(editor, true);
+    // 这里不能用 selectWithFocus——它等的正是「浮出条出现」，而这条要证明它
+    // 不出现。改成设完选区后等足防抖，再断言仍然没有。
     act(() => {
+      editor.view.dom.focus();
       editor.commands.setTextSelection({ from: 1, to: 6 });
+    });
+    await new Promise((resolve) => {
+      setTimeout(resolve, 400);
     });
 
     expect(
