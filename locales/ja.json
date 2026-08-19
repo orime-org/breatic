@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "このサーバーでは直接アップロードを利用できません"
+    },
+    "membership": {
+      "already_subscribed": "すでにメンバーシップに加入しています。",
+      "no_subscription": "メンバーシップに加入していません。",
+      "not_cancelling": "このメンバーシップは終了予定ではありません。",
+      "downgrade_not_offered": "下位プランへの変更はできません。",
+      "same_tier": "すでにこのメンバーシップです。",
+      "payment_overdue": "このメンバーシップの支払いが遅延しています。",
+      "unavailable": "メンバーシップは利用できません。"
     }
   },
   "chat": {
@@ -759,7 +768,9 @@
       "studioInviteRequest": "{actor} さんが {studio} への参加に招待しました",
       "studioInviteAccepted": "{actor} さんが {studio} への招待を承認しました",
       "projectInviteRequest": "{actor} さんが {project} への参加に招待しました",
-      "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました"
+      "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました",
+      "membershipEnded": "{tier} メンバーシップが終了しました",
+      "membershipUpgradeIncomplete": "{tier} へのアップグレードは完了しませんでした"
     },
     "actorFallback": "誰か",
     "subtitle": {
@@ -1164,9 +1175,8 @@
       "enterprise": "エンタープライズ"
     },
     "priceFree": "無料",
-    "pricePerMonth": "{amount} / 月",
+    "taxNote": "価格は税抜きです。",
     "tierNote": "プランで決まるのは容量と共同編集の規模です。制作機能とモデルはどのプランでも同じです。",
-    "upgrade": "アップグレード",
     "myQuota": "利用状況",
     "quota": {
       "teamStudios": "チーム Studio",
@@ -1191,6 +1201,22 @@
     "contactEnterprise": "より大きな規模や個別の商用条件が必要ですか。メールでご相談ください:",
     "contactSelfHosted": "商用ライセンスや個別のサポート条件が必要ですか。メールでご相談ください:",
     "contactEnterpriseAccount": "利用上限についてのご質問や変更のご相談は、メールでお問い合わせください:",
-    "loadFailed": "メンバーシップ情報を読み込めませんでした。通信の問題かもしれません。少し時間をおいてお試しください。"
+    "loadFailed": "メンバーシップ情報を読み込めませんでした。通信の問題かもしれません。少し時間をおいてお試しください。",
+    "action": {
+      "choose": "{tier} を選ぶ",
+      "inProgress": "処理中",
+      "current": "現在"
+    },
+    "nextCharge": "次回請求 {date}",
+    "endsOn": "メンバーシップ終了 {date}",
+    "cancel": "メンバーシップを解約",
+    "resume": "メンバーシップを再開",
+    "notice": {
+      "firstPaymentPending": "支払いが完了していません",
+      "upgradePending": "アップグレードの支払いが完了していません",
+      "paymentOverdue": "今月の支払いができませんでした"
+    },
+    "payNow": "支払う",
+    "actionFailed": "実行できませんでした。もう一度お試しください。"
   }
 }

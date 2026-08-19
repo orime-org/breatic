@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "当前服务器不支持直接上传"
+    },
+    "membership": {
+      "already_subscribed": "你已有会员。",
+      "no_subscription": "你没有会员。",
+      "not_cancelling": "这个会员没有预约结束。",
+      "downgrade_not_offered": "会员不能降到更低档位。",
+      "same_tier": "你已经在这一档会员。",
+      "payment_overdue": "这个会员有一期款项未付。",
+      "unavailable": "会员当前不可用。"
     }
   },
   "chat": {
@@ -759,7 +768,9 @@
       "studioInviteRequest": "{actor} 邀请你加入 {studio}",
       "studioInviteAccepted": "{actor} 接受了你对 {studio} 的邀请",
       "projectInviteRequest": "{actor} 邀请你加入 {project}",
-      "projectInviteAccepted": "{actor} 接受了你对 {project} 的邀请"
+      "projectInviteAccepted": "{actor} 接受了你对 {project} 的邀请",
+      "membershipEnded": "{tier} 会员已结束",
+      "membershipUpgradeIncomplete": "升级到 {tier} 未完成"
     },
     "actorFallback": "某人",
     "subtitle": {
@@ -1164,9 +1175,8 @@
       "enterprise": "企业版"
     },
     "priceFree": "免费",
-    "pricePerMonth": "{amount} / 月",
+    "taxNote": "价格不含税。",
     "tierNote": "这一档决定你的容量和协作规模。所有创作功能和模型在每一档都完全一样。",
-    "upgrade": "升级",
     "myQuota": "我的额度",
     "quota": {
       "teamStudios": "团队 Studio",
@@ -1191,6 +1201,22 @@
     "contactEnterprise": "需要更大规模或单独的商用条款？发邮件跟我们谈：",
     "contactSelfHosted": "需要商用授权或单独的支持条款？发邮件跟我们谈：",
     "contactEnterpriseAccount": "额度有疑问或需要调整？发邮件跟我们谈：",
-    "loadFailed": "没能读到你的会员信息，可能是网络问题。稍后再试一次。"
+    "loadFailed": "没能读到你的会员信息，可能是网络问题。稍后再试一次。",
+    "action": {
+      "choose": "选择 {tier}",
+      "inProgress": "处理中",
+      "current": "当前"
+    },
+    "nextCharge": "下次扣费 {date}",
+    "endsOn": "会员 {date} 结束",
+    "cancel": "取消会员",
+    "resume": "恢复会员",
+    "notice": {
+      "firstPaymentPending": "付款未完成",
+      "upgradePending": "升级付款未完成",
+      "paymentOverdue": "这个月的款项没有扣成功"
+    },
+    "payNow": "去付款",
+    "actionFailed": "没有成功，请再试一次。"
   }
 }

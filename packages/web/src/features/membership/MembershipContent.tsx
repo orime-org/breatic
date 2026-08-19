@@ -4,17 +4,18 @@
 import * as React from 'react';
 import {
   isComparableMembershipTier,
+  subscriptionActions,
   type AccountMembership,
+  type ComparableMembershipTier,
 } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { formatBytes } from '@web/features/membership/format';
 import { QuotaRow } from '@web/features/membership/QuotaRow';
-import {
-  SALES_EMAIL,
-  TIER_MONTHLY_PRICE_USD,
-} from '@web/features/membership/pricing';
+import { SALES_EMAIL } from '@web/features/membership/pricing';
+import { SubscriptionLines } from '@web/features/membership/SubscriptionLines';
+import { useSubscriptionActions } from '@web/features/membership/use-subscription-actions';
 import { TierComparison } from '@web/features/membership/TierComparison';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -85,7 +86,7 @@ function ContactLine({
  *   - The tier it is on. Priced tiers also get a price and an upgrade button.
  *   - Its allowances. Only the two counted account-wide are listed; the other
  *     four are per-studio, and their values are read off the comparison table
- *     below — which is why `self_hosted`, the one tier that gets no table,
+ *     below — which is why `self_hosted`, which has ceilings but no table,
  *     lists them here instead.
  *   - The comparison table, for accounts that could move between the tiers on
  *     it. `self_hosted` is a deployment shape and `enterprise` is negotiated,
@@ -102,46 +103,44 @@ export function MembershipContent({
   membership,
 }: MembershipContentProps): React.JSX.Element {
   const t = useTranslation();
-  const { tier, limits, usage, catalog } = membership;
+  const { tier, limits, usage, catalog, subscription } = membership;
   const onPriceList = isComparableMembershipTier(tier);
-  const price = onPriceList ? TIER_MONTHLY_PRICE_USD[tier] : null;
+  const { choose, cancel, resume, busy } = useSubscriptionActions(subscription);
+  // What this account may do, decided on the same rule the server enforces.
+  // Both ends asking their own version is what drew a resume button the
+  // server always refused, and an upgrade entrance during the retry window
+  // that design §13 says not to draw.
+  const actions = React.useMemo(
+    () =>
+      subscriptionActions(
+        subscription?.state ?? 'none',
+        subscription?.cancelAtPeriodEnd ?? false,
+      ),
+    [subscription?.state, subscription?.cancelAtPeriodEnd],
+  );
+
+  // The table offers every comparable tier, `base` included; only the ones
+  // that can be subscribed to reach the action.
+  const handleChoose = React.useCallback(
+    (chosen: ComparableMembershipTier) => {
+      if (chosen !== 'base') choose(chosen);
+    },
+    [choose],
+  );
 
   return (
     <div className='flex flex-col gap-8'>
       <section className='flex flex-col gap-1.5'>
         <SectionHeading>{t('membership.currentTier')}</SectionHeading>
-        <div className='flex items-start justify-between gap-4'>
-          <div>
-            <div className='text-2xl font-bold' data-testid='current-tier-name'>
-              {t(`membership.tier.${tier}`)}
-            </div>
-            {price === null ? null : (
-              <div className='text-sm text-muted-foreground'>
-                {price === 0
-                  ? t('membership.priceFree')
-                  : t('membership.pricePerMonth', { amount: `$${String(price)}` })}
-              </div>
-            )}
+        <div className='flex flex-col gap-1'>
+          <div className='text-2xl font-bold' data-testid='current-tier-name'>
+            {t(`membership.tier.${tier}`)}
           </div>
-          {onPriceList ? (
-            // Upgrading has nowhere to go until the checkout work lands, and
-            // the entry says so rather than pretending. `aria-disabled` and
-            // not `disabled`: the latter takes it out of the tab order, and
-            // the reader most likely to want the notice is the one moving by
-            // focus. Same treatment as the account menu's coming entries.
-            <Button
-              type='button'
-              aria-disabled='true'
-              data-testid='membership-upgrade'
-              onClick={(event) => event.preventDefault()}
-              className='shrink-0 cursor-not-allowed gap-2 opacity-50'
-            >
-              {t('membership.upgrade')}
-              <span className='rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
-                {t('studio.topBar.notOpenYet')}
-              </span>
-            </Button>
-          ) : null}
+          {/* Under the tier name: when the next charge is, or that the
+              membership is ending, or that a payment is outstanding. Which of
+              those follows from the subscription's situation, and a static
+              price would be wrong in three of them. */}
+          <SubscriptionLines subscription={subscription} />
         </div>
         <p className='text-sm text-foreground-secondary'>
           {t('membership.tierNote')}
@@ -255,12 +254,44 @@ export function MembershipContent({
               so the label lines up with the tier names instead of floating
               above a column that would otherwise have none. */}
           <ScrollArea scrollbars='horizontal'>
-            <TierComparison offers={catalog} currentTier={tier} />
+            <TierComparison
+              offers={catalog}
+              currentTier={tier}
+              // No handler where this deployment sells nothing, which removes
+              // the action row rather than showing buttons that cannot work.
+              onChoose={subscription ? handleChoose : undefined}
+              busy={busy}
+              upgrade={actions.upgrade}
+            />
           </ScrollArea>
-          <ContactLine
-            text={t('membership.contactEnterprise')}
-            testId='membership-contact-priced'
-          />
+          {/* One line, contact on the left and the subscription control on
+              the right — the ratified layout (design §13, and the demo it
+              points at). The control sat beside the tier name before, which
+              put an action in the panel's quietest corner and crowded the
+              close button. */}
+          <div className='flex items-center justify-between gap-4'>
+            <ContactLine
+              text={t('membership.contactEnterprise')}
+              testId='membership-contact-priced'
+            />
+            {/* The same list the server reads, so an action this panel draws
+                is one the server will accept. */}
+            {actions.cancel || actions.resume ? (
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                disabled={busy}
+                data-testid={
+                  actions.resume ? 'membership-resume' : 'membership-cancel'
+                }
+                onClick={actions.resume ? resume : cancel}
+                className='shrink-0'
+              >
+                {actions.resume ? t('membership.resume') : t('membership.cancel')}
+              </Button>
+            ) : null}
+          </div>
         </section>
       ) : null}
     </div>

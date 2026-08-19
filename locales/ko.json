@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "이 서버에서는 직접 업로드를 사용할 수 없습니다"
+    },
+    "membership": {
+      "already_subscribed": "이미 멤버십이 있습니다.",
+      "no_subscription": "멤버십이 없습니다.",
+      "not_cancelling": "이 멤버십은 종료 예정이 아닙니다.",
+      "downgrade_not_offered": "하위 등급으로 변경할 수 없습니다.",
+      "same_tier": "이미 이 멤버십입니다.",
+      "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
+      "unavailable": "멤버십을 사용할 수 없습니다."
     }
   },
   "chat": {
@@ -759,7 +768,9 @@
       "studioInviteRequest": "{actor}님이 {studio}에 초대했습니다",
       "studioInviteAccepted": "{actor}님이 {studio} 초대를 수락했습니다",
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",
-      "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다"
+      "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다",
+      "membershipEnded": "{tier} 멤버십이 종료되었습니다",
+      "membershipUpgradeIncomplete": "{tier} 업그레이드가 완료되지 않았습니다"
     },
     "actorFallback": "누군가",
     "subtitle": {
@@ -1164,9 +1175,8 @@
       "enterprise": "엔터프라이즈"
     },
     "priceFree": "무료",
-    "pricePerMonth": "{amount} / 월",
+    "taxNote": "가격은 세금 별도입니다.",
     "tierNote": "등급이 정하는 것은 용량과 협업 규모입니다. 모든 창작 기능과 모델은 어느 등급에서나 동일합니다.",
-    "upgrade": "업그레이드",
     "myQuota": "내 사용량",
     "quota": {
       "teamStudios": "팀 Studio",
@@ -1191,6 +1201,22 @@
     "contactEnterprise": "더 큰 규모나 별도의 상업 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactSelfHosted": "상업용 라이선스나 별도의 지원 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactEnterpriseAccount": "사용 한도에 대해 궁금하거나 조정이 필요하신가요? 메일로 문의해 주세요:",
-    "loadFailed": "멤버십 정보를 읽지 못했습니다. 네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요."
+    "loadFailed": "멤버십 정보를 읽지 못했습니다. 네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요.",
+    "action": {
+      "choose": "{tier} 선택",
+      "inProgress": "처리 중",
+      "current": "현재"
+    },
+    "nextCharge": "다음 결제 {date}",
+    "endsOn": "멤버십 종료 {date}",
+    "cancel": "멤버십 해지",
+    "resume": "멤버십 재개",
+    "notice": {
+      "firstPaymentPending": "결제가 완료되지 않았습니다",
+      "upgradePending": "업그레이드 결제가 완료되지 않았습니다",
+      "paymentOverdue": "이번 달 결제가 이루어지지 않았습니다"
+    },
+    "payNow": "결제하기",
+    "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요."
   }
 }

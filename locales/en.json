@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "Direct upload is not available on this server"
+    },
+    "membership": {
+      "already_subscribed": "You already have a membership.",
+      "no_subscription": "You do not have a membership.",
+      "not_cancelling": "This membership is not scheduled to end.",
+      "downgrade_not_offered": "Memberships cannot be moved to a lower tier.",
+      "same_tier": "You are already on this membership.",
+      "payment_overdue": "Payment for this membership is overdue.",
+      "unavailable": "Memberships are unavailable."
     }
   },
   "chat": {
@@ -759,7 +768,9 @@
       "studioInviteRequest": "{actor} invited you to join {studio}",
       "studioInviteAccepted": "{actor} accepted your invite to {studio}",
       "projectInviteRequest": "{actor} invited you to join {project}",
-      "projectInviteAccepted": "{actor} accepted your invite to {project}"
+      "projectInviteAccepted": "{actor} accepted your invite to {project}",
+      "membershipEnded": "Your {tier} membership has ended",
+      "membershipUpgradeIncomplete": "Your upgrade to {tier} was not completed"
     },
     "actorFallback": "Someone",
     "subtitle": {
@@ -1164,9 +1175,8 @@
       "enterprise": "Enterprise"
     },
     "priceFree": "Free",
-    "pricePerMonth": "{amount} / month",
+    "taxNote": "Prices exclude tax.",
     "tierNote": "Your tier decides capacity and collaboration scale. Every creative feature and every model is the same on all tiers.",
-    "upgrade": "Upgrade",
     "myQuota": "My allowances",
     "quota": {
       "teamStudios": "Team Studios",
@@ -1191,6 +1201,22 @@
     "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
     "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
     "contactEnterpriseAccount": "Questions about your allowances, or need them changed? Email us:",
-    "loadFailed": "We could not read your membership. It may be a network problem — try again in a moment."
+    "loadFailed": "We could not read your membership. It may be a network problem — try again in a moment.",
+    "action": {
+      "choose": "Choose {tier}",
+      "inProgress": "In progress",
+      "current": "Current"
+    },
+    "nextCharge": "Next charge {date}",
+    "endsOn": "Membership ends {date}",
+    "cancel": "Cancel membership",
+    "resume": "Resume membership",
+    "notice": {
+      "firstPaymentPending": "Payment not completed",
+      "upgradePending": "Upgrade payment not completed",
+      "paymentOverdue": "This month's payment did not go through"
+    },
+    "payNow": "Pay now",
+    "actionFailed": "That did not go through. Try again."
   }
 }
