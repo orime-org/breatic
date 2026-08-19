@@ -54,7 +54,10 @@ export const PICK_PURPOSE_UI = {
   },
   focus: {
     banner: 'canvas.generatePanel.selectFocusFromCanvas',
-    trigger: { generate: 'generate-tool-focus' },
+    trigger: {
+      generate: 'generate-tool-focus',
+      generateVideo: 'generate-video-tool-focus',
+    },
   },
   firstFrame: {
     banner: 'canvas.generatePanel.selectFirstFrameFromCanvas',
