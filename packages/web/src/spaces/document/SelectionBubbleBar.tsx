@@ -141,7 +141,7 @@ export function SelectionBubbleBar({
         ...(viewport ? { scrollTarget: viewport } : {}),
       }}
       data-testid='doc-selection-bubble-bar'
-      className='flex items-center gap-0.5 rounded-overlay border border-border bg-popover p-1 shadow-md'
+      className='flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
     >
       {BUBBLE_TOOLS.map((tool) => (
         <ToolButton

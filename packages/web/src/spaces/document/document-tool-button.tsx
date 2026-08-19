@@ -101,7 +101,10 @@ export const ToolButton = React.memo(function ToolButton({
       disabled={readOnly || !state.available}
       onClick={() => tool.run(editor)}
       data-testid={`doc-${carrier}-tool-${tool.id}`}
-      className={cn('h-7 w-7')}
+      // The bubble bar sits over the text, so its buttons are a notch
+      // smaller than the top bar's — the demo spells that out as
+      // `.pop .tb-btn { height: 26px }` against the bar's own 28px.
+      className={cn(carrier === 'bubble' ? 'h-[26px] w-[26px]' : 'h-7 w-7')}
     >
       <Icon className='h-4 w-4' />
     </Button>
