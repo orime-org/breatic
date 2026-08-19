@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Plus } from 'lucide-react';
+import { Focus, Plus } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
@@ -20,6 +20,10 @@ interface VideoGenerateToolbarProps {
   onReference: () => void;
   /** Whether the reference pick is running — highlights the button. */
   referenceActive?: boolean;
+  /** Toggle the focus crop pick (#1978, marquee → focusImages append). */
+  onFocus: () => void;
+  /** Whether the focus pick is running — highlights the Focus button. */
+  focusActive?: boolean;
   /** The source slots the active mode collects, in display order. */
   slots: readonly VideoSlot[];
   /** What is picked, by slot; a slot missing from here renders empty. */
@@ -66,6 +70,8 @@ interface VideoGenerateToolbarProps {
  */
 export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
   onReference,
+  onFocus,
+  focusActive = false,
   referenceActive = false,
   slots,
   slotUrls,
@@ -84,6 +90,18 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
         Icon={Plus}
         onClick={onReference}
         active={referenceActive}
+      />
+      {/* Focus sits immediately right of Reference and is present in every
+          mode (user 2026-08-19). It is never disabled: the pool row it
+          produces goes dark under a mode that cannot use an image reference
+          (#1952), which is where the refusal belongs — not on the entry. */}
+      <ToggleTool
+        testId='generate-video-tool-focus'
+        label={t('canvas.generatePanel.focus')}
+        tip={t('canvas.generatePanel.focusTip')}
+        Icon={Focus}
+        onClick={onFocus}
+        active={focusActive}
       />
       {slots.map((slot) => {
         const spec = VIDEO_SLOTS[slot];

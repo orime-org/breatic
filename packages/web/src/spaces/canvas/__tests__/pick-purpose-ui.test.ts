@@ -70,7 +70,9 @@ describe('聚焦这个挑选在两个面板上都有回得去的入口（#1978�
   // 顺手补上另一个面板的入口。
   it('恰好这两个 purpose 是两个面板共有的', () => {
     const both = (Object.keys(PICK_PURPOSE_UI) as PickPurpose[]).filter((p) => {
-      const t = PICK_PURPOSE_UI[p].trigger;
+      // `in` rather than property access: each row's trigger is narrowed to
+      // exactly the panels it names, so reading an absent key is a type error.
+      const t: Record<string, string> = PICK_PURPOSE_UI[p].trigger;
       return t.generate !== undefined && t.generateVideo !== undefined;
     });
     expect(both.sort()).toEqual(['focus', 'reference']);

@@ -459,6 +459,22 @@ function VideoGeneratePanelBody({
     (s) =>
       s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
   );
+  const focusPicking = useCanvasStore(
+    (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'focus',
+  );
+  // Focus pick, toggled from the toolbar (#1978). Same shape as the image
+  // panel's: a second click on a running focus pick for THIS node ends it,
+  // so the button is a real toggle rather than a one-way trip.
+  const startFocusPick = useCanvasStore((s) => s.startFocusPick);
+  const onFocus = React.useCallback(() => {
+    const session = useCanvasStore.getState().pickSession;
+    if (session?.nodeId === nodeId && session.purpose === 'focus') {
+      endPick();
+    } else {
+      startFocusPick(nodeId);
+    }
+  }, [startFocusPick, endPick, nodeId]);
+
   // One starter per slot. `Record<VideoSlot, …>` is what makes a new slot
   // impossible to half-wire: leaving it out here does not compile.
   const startSlotPick: Record<VideoSlot, (id: string) => void> = React.useMemo(
@@ -815,6 +831,8 @@ function VideoGeneratePanelBody({
       promptRequired={vm.promptRequired}
       references={stableReferences}
       pendingFocus={pendingFocus}
+      onFocus={onFocus}
+      focusActive={focusPicking}
       onAddReference={onAddReference}
       referencePicking={referencePicking}
       onRemoveReference={onRemoveReference}

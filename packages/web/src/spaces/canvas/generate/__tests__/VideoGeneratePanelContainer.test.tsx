@@ -1888,3 +1888,37 @@ describe('视频面板的聚焦裁剪（#1978）', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('视频面板的聚焦按钮（#1978）', () => {
+  it('紧跟在参考右边，六档都可点，槽位排在它后面', async () => {
+    // first_last 有两个槽位，正好能验「其余往右移一个」这条顺序。
+    await openPanelInMode('first_last', 'kling-o3-pro-first-last');
+    const focus = await screen.findByTestId('generate-video-tool-focus');
+    const reference = screen.getByTestId('generate-video-tool-reference');
+    const firstFrame = screen.getByTestId('generate-video-tool-first-frame');
+
+    // 六档都可点：不加 disabled 是 user 2026-08-19 拍的 A —— 入口稳定，
+    // 取回来的行在用不了的档次按 #1952 变暗，而不是在入口处拦。
+    expect(focus).not.toBeDisabled();
+
+    // 顺序：参考 → 聚焦 → 首帧。DOCUMENT_POSITION_FOLLOWING = 后者在前者之后。
+    expect(
+      reference.compareDocumentPosition(focus) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      focus.compareDocumentPosition(firstFrame) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('点它进入聚焦挑选，再点一次退出', async () => {
+    await openPanelInMode('t2v', 'veo-3.1');
+    fireEvent.click(await screen.findByTestId('generate-video-tool-focus'));
+    expect(useCanvasStore.getState().pickSession).toEqual({
+      nodeId: 'target',
+      purpose: 'focus',
+    });
+
+    fireEvent.click(screen.getByTestId('generate-video-tool-focus'));
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+});
