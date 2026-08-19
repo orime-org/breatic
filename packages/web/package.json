@@ -62,6 +62,7 @@
     "@tiptap/y-tiptap": "catalog:",
     "@xyflow/react": "^12.11.2",
     "ahooks": "^3.9.7",
+    "ai": "catalog:",
     "ali-oss": "catalog:",
     "axios": "^1.19.0",
     "class-variance-authority": "^0.7.1",

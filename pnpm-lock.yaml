@@ -732,6 +732,9 @@ importers:
       ahooks:
         specifier: ^3.9.7
         version: 3.9.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      ai:
+        specifier: 'catalog:'
+        version: 7.0.68(zod@4.4.3)
       ali-oss:
         specifier: 'catalog:'
         version: 6.23.0
