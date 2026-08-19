@@ -429,6 +429,23 @@ describe("assertStorageAllowance — telling the admin", () => {
     );
   });
 
+  it("gives the window back when the notice did not go out", async () => {
+    // Found on a real machine: the window is claimed BEFORE anything is sent,
+    // and it means "this account has been told". The first attempt failed on
+    // the bell insert, so nobody was told — and without giving the slot back,
+    // the next refusal is silenced too and an account that is still full goes
+    // a whole window unmentioned.
+    const { adminUserId, projectId } = await fullAccount();
+
+    bellCtl.fail = true;
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toThrow();
+    expect(await bellRows(adminUserId)).toHaveLength(0);
+
+    bellCtl.fail = false;
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toThrow();
+    expect(await bellRows(adminUserId)).toHaveLength(1);
+  });
+
   it("still refuses with 507, and still notifies, when Redis throws", async () => {
     // The window claim is what decides whether to notify. Redis being down
     // must not swallow the notice — better a duplicate bell row than silence

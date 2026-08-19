@@ -31,15 +31,39 @@ import { getStorageNoticeWindowSeconds } from "@server/config/limits.js";
  *   it anyway rather than go quiet.
  */
 export async function claimNoticeWindow(adminUserId: string): Promise<boolean> {
-  // Same shape as the other DB0 keys (`checkRateLimit` builds
-  // `${env.ENV}:ratelimit:…`): environment, service, entity, id.
-  const key = `${env.ENV}:server:storage-notice:${adminUserId}`;
   const claimed = await getRedis().set(
-    key,
+    noticeKey(adminUserId),
     1,
     "EX",
     getStorageNoticeWindowSeconds(),
     "NX",
   );
   return claimed === "OK";
+}
+
+/**
+ * Give the slot back, because no notice went out after all.
+ *
+ * The key means "an account has been told", so a claim that ended in a failed
+ * insert or a failed send is holding a place for something that never
+ * happened. Left there, the next refusal is silenced too and the admin hears
+ * nothing for a whole window about an account that is still full.
+ * @param adminUserId - The account whose slot to release.
+ * @throws {Error} if Redis is unreachable; the caller already has nothing to
+ *   report and treats this the same way.
+ */
+export async function releaseNoticeWindow(adminUserId: string): Promise<void> {
+  await getRedis().del(noticeKey(adminUserId));
+}
+
+/**
+ * The DB0 key holding one account's notice window.
+ *
+ * Same shape as the other keys there (`checkRateLimit` builds
+ * `${env.ENV}:ratelimit:…`): environment, service, entity, id.
+ * @param adminUserId - The account the window belongs to.
+ * @returns The Redis key.
+ */
+function noticeKey(adminUserId: string): string {
+  return `${env.ENV}:server:storage-notice:${adminUserId}`;
 }

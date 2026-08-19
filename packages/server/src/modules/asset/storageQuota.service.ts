@@ -32,7 +32,10 @@ import { AppError, getStudioStorageQuota, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { assetService } from "@breatic/domain";
 import { accountStorageUsage } from "@server/modules/asset/assetUsage.service.js";
-import { claimNoticeWindow } from "@server/modules/asset/storage-notice-throttle.js";
+import {
+  claimNoticeWindow,
+  releaseNoticeWindow,
+} from "@server/modules/asset/storage-notice-throttle.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { getUserById } from "@server/modules/auth/user.repo.js";
@@ -151,5 +154,17 @@ async function tellTheAdmin(
     }, { userId: adminUserId, subject: "storage_quota_exceeded" });
   } catch (err) {
     logger.error({ err, adminUserId, studioId }, "storage_notice_failed");
+    // The window was claimed before any of this was attempted, and it means
+    // "this account has been told". Nothing told them, so give it back —
+    // otherwise the next refusal is silenced too and an account that is still
+    // full goes a whole window unmentioned.
+    try {
+      await releaseNoticeWindow(adminUserId);
+    } catch (releaseErr) {
+      logger.error(
+        { err: releaseErr, adminUserId },
+        "storage_notice_window_release_failed",
+      );
+    }
   }
 }
