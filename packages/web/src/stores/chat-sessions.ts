@@ -261,7 +261,18 @@ async function expectAnotherBeat(
   conversationId: string,
   pressedAt: number,
 ): Promise<void> {
-  const { heartbeatIntervalMs } = await chatApi.streamConfig();
+  let heartbeatIntervalMs: number;
+  try {
+    ({ heartbeatIntervalMs } = await chatApi.streamConfig());
+  } catch (failed) {
+    // Nothing is said to the reader: their turn is running and there is
+    // nothing for them to do about a request they did not make. What it costs
+    // is this turn going unwatched -- a stream that dies quietly will hang
+    // rather than end -- so it is written down where an operator can find it
+    // rather than swallowed.
+    console.error('[chat] the turn is running unwatched: no stream config', failed);
+    return;
+  }
   // Ended while the question was out. Arming now would be waiting on a turn
   // that is over.
   if (!sessions.has(conversationId)) return;
@@ -292,6 +303,12 @@ export async function sendInSession(conversationId: string, said: string): Promi
   void expectAnotherBeat(projectOf.get(conversationId) ?? '', conversationId, pressedAt);
   try {
     await chat.sendMessage({ text: said });
+  } catch {
+    // Already said. `Chat` hands whatever went wrong to its own `onError`
+    // before it rethrows, and that is where the reader is told -- so what
+    // reaches here is a second copy of news that has been delivered. Letting
+    // it out would make every caller catch a failure they cannot add to, and
+    // the press that started this is a click handler with nothing above it.
   } finally {
     stopWatching(conversationId);
   }
