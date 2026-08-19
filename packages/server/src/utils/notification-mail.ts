@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Notification email templates (studio / project invitations + transfers).
+ * Notification email templates — the best-effort half of every bell
+ * notification that also goes out by mail.
  *
  * These builders are best-effort NOTIFICATION emails: the bell
  * notification is the always-delivered path, the email is an optional
@@ -283,5 +284,40 @@ export function buildMembershipEndedMail(
     subject: `${BRAND} - your ${input.tierLabel} membership has ended`,
     leadHtml: `Your <strong>${escapeHtml(input.tierLabel)}</strong> membership has ended. Your account is on the free plan.`,
     footer: "Subscribe again at any time from the membership panel.",
+  });
+}
+
+/** What the storage-full email needs. */
+interface StorageQuotaExceededMailInput {
+  /** Where to send it — the admin of the studio the write was aimed at. */
+  recipientEmail: string;
+  /** The studio that write was aimed at, for "where did this happen". */
+  studioName: string;
+}
+
+/**
+ * Build the storage-full email (#89).
+ *
+ * A notice, not a request: nothing is waiting to be answered, so no action
+ * link and no deadline — `expiryFooter` would be about a decision window that
+ * does not exist here.
+ *
+ * Says the ACCOUNT is full, not the studio. Storage is counted across every
+ * studio the account administers, so naming only the studio would send the
+ * reader to look at one that may hold hardly anything.
+ * @param input - Recipient email and the studio the refused write was aimed at.
+ * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ */
+export function buildStorageQuotaExceededMail(
+  input: StorageQuotaExceededMailInput,
+): SendMailOptions {
+  return renderNotificationMail({
+    to: input.recipientEmail,
+    subject: `${BRAND} - your storage is full`,
+    leadHtml:
+      `Your storage is full, so uploads and generations were refused in ` +
+      `<strong>${escapeHtml(input.studioName)}</strong>. Storage is counted ` +
+      `across every studio you administer, not just this one.`,
+    footer: "Raise your membership to get more room.",
   });
 }

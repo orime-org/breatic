@@ -20,7 +20,16 @@
  *   4. 企业档放行，且 limitBytes 是 null —— 不是编一个数，也不是 500。
  */
 
-import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterAll,
+  inject,
+  vi,
+} from "vitest";
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -32,6 +41,80 @@ vi.mock("ai", () => ({
   stepCountIs: (_n: number) => () => false,
   tool: (config: Record<string, unknown>) => config,
 }));
+
+// 三个替身，用来观察通知那一段，并且能让它的每一条腿单独失败。
+// 拒绝本身是承诺内的行为，通知是它的附加动作 —— 附加动作炸了不许把 507
+// 变成 500，而这三条腿今天各有各的失败方式。
+const sentMail = vi.fn();
+const mailCtl = { fail: false };
+
+vi.mock("@server/utils/send-best-effort-mail.js", () => ({
+  sendBestEffortMail: async (
+    build: () => Promise<unknown>,
+    ctx: Record<string, unknown>,
+  ) => {
+    if (mailCtl.fail) throw new Error("synthetic mail failure");
+    sentMail(await build(), ctx);
+  },
+}));
+
+const bellCtl = { fail: false };
+
+vi.mock("@server/modules/notification/notification.service.js", async (io) => {
+  const actual = await io<Record<string, unknown>>();
+  return {
+    ...actual,
+    createStorageQuotaExceeded: async (input: unknown) => {
+      if (bellCtl.fail) throw new Error("synthetic bell failure");
+      return (
+        actual.createStorageQuotaExceeded as (i: unknown) => Promise<unknown>
+      )(input);
+    },
+  };
+});
+
+const throttleCtl = { fail: false };
+
+vi.mock("@server/modules/asset/storage-notice-throttle.js", async (io) => {
+  const actual = await io<Record<string, unknown>>();
+  return {
+    ...actual,
+    claimNoticeWindow: async (adminUserId: string) => {
+      if (throttleCtl.fail) throw new Error("synthetic redis failure");
+      return (actual.claimNoticeWindow as (a: string) => Promise<boolean>)(
+        adminUserId,
+      );
+    },
+  };
+});
+
+const logged: { line: string; ctx: Record<string, unknown> }[] = [];
+
+vi.mock("@breatic/core", async (io) => {
+  const orig = await io<Record<string, unknown>>();
+  const real = orig.logger as Record<string, (...a: unknown[]) => void>;
+  return {
+    ...orig,
+    // 转发而不是展开：pino 的方法挂在原型上，`{ ...real }` 只拿得到自有属性，
+    // 于是 `logger.error` 会是 undefined —— 而生产代码里正是靠它兜住通知那
+    // 一段的失败，替身缺了它，测试就在测替身自己。
+    logger: new Proxy(
+      {},
+      {
+        get: (_target, prop: string) => {
+          if (prop === "info") {
+            return (ctx: Record<string, unknown>, line: string) => {
+              logged.push({ line, ctx });
+              real.info(ctx, line);
+            };
+          }
+          const value = real[prop];
+          return typeof value === "function" ? value.bind(real) : value;
+        },
+      },
+    ),
+  };
+});
 
 import crypto from "node:crypto";
 import postgres from "postgres";
@@ -241,5 +324,121 @@ describe("assertStorageAllowance", () => {
     expect(allowance.limitBytes).toBeNull();
     expect(allowance.remainingBytes).toBeNull();
     expect(allowance.usedBytes).toBe(PRO_STORAGE * 10);
+  });
+});
+
+describe("assertStorageAllowance — telling the admin", () => {
+  beforeEach(() => {
+    sentMail.mockClear();
+    logged.length = 0;
+    mailCtl.fail = false;
+    bellCtl.fail = false;
+    throttleCtl.fail = false;
+  });
+
+  /**
+   * An account already past its ceiling, with a project to write into.
+   * @returns The admin id, their studio, and a project in it.
+   */
+  async function fullAccount(): Promise<{
+    adminUserId: string;
+    studioId: string;
+    projectId: string;
+  }> {
+    const { userId, personalStudioId } = await insertUser("base");
+    const projectId = await insertProject(personalStudioId, userId);
+    await seedAsset(personalStudioId, userId, BASE_STORAGE);
+    return { adminUserId: userId, studioId: personalStudioId, projectId };
+  }
+
+  /**
+   * The storage notifications sitting in an account's bell.
+   * @param userId - Whose inbox to read.
+   * @returns One row per notification, payload parsed.
+   */
+  async function bellRows(
+    userId: string,
+  ): Promise<{ payload: Record<string, unknown> }[]> {
+    return sql<{ payload: Record<string, unknown> }[]>`
+      SELECT payload FROM notifications
+      WHERE user_id = ${userId} AND type = 'storage.quota_exceeded'
+    `;
+  }
+
+  it("puts a row in the admin's bell and sends the mail", async () => {
+    const { adminUserId, studioId, projectId } = await fullAccount();
+
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toMatchObject(
+      { statusCode: 507 },
+    );
+
+    const rows = await bellRows(adminUserId);
+    expect(rows).toHaveLength(1);
+    // Both ids, because they answer different questions: the account is what
+    // is full, the studio is only where this refusal happened.
+    expect(rows[0]!.payload).toMatchObject({ studioId });
+    expect(sentMail).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends one notice per account per window, not one per studio", async () => {
+    // The case that tells an account-keyed window apart from a studio-keyed
+    // one: one admin, two studios, one refusal in each. Keyed by studio this
+    // would send twice — and the second would name a studio that is nearly
+    // empty, since what is full is the account.
+    const { userId, personalStudioId } = await insertUser("base");
+    const otherStudioId = await insertTeamStudio(userId);
+    const projectA = await insertProject(personalStudioId, userId);
+    const projectB = await insertProject(otherStudioId, userId);
+    await seedAsset(personalStudioId, userId, BASE_STORAGE);
+
+    await expect(assertStorageAllowance(projectA, "upload")).rejects.toThrow();
+    await expect(assertStorageAllowance(projectB, "generate")).rejects.toThrow();
+
+    expect(await bellRows(userId)).toHaveLength(1);
+    expect(sentMail).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs every refusal, including the ones the window silences", async () => {
+    // The bell is for the admin and is deliberately quietened. The log is for
+    // whoever is on call, and must not be — otherwise "how often did this gate
+    // fire today" has no answer after the first hit of each window.
+    const { adminUserId, projectId } = await fullAccount();
+
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toThrow();
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toThrow();
+
+    const lines = logged.filter((l) => l.line === "storage_quota_exceeded");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]!.ctx).toMatchObject({ adminUserId, purpose: "upload" });
+    expect(await bellRows(adminUserId)).toHaveLength(1);
+  });
+
+  it("still refuses with 507 when the mail leg throws", async () => {
+    const { projectId } = await fullAccount();
+    mailCtl.fail = true;
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toMatchObject(
+      { statusCode: 507 },
+    );
+  });
+
+  it("still refuses with 507 when the bell insert throws", async () => {
+    const { projectId } = await fullAccount();
+    bellCtl.fail = true;
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toMatchObject(
+      { statusCode: 507 },
+    );
+  });
+
+  it("still refuses with 507, and still notifies, when Redis throws", async () => {
+    // The window claim is what decides whether to notify. Redis being down
+    // must not swallow the notice — better a duplicate bell row than silence
+    // about a full account.
+    const { adminUserId, projectId } = await fullAccount();
+    throttleCtl.fail = true;
+
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toMatchObject(
+      { statusCode: 507 },
+    );
+    expect(await bellRows(adminUserId)).toHaveLength(1);
   });
 });

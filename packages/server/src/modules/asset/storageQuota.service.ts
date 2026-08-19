@@ -29,10 +29,16 @@
  * could only guess.
  */
 
-import { AppError, getStudioStorageQuota } from "@breatic/core";
+import { AppError, getStudioStorageQuota, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { assetService } from "@breatic/domain";
 import { accountStorageUsage } from "@server/modules/asset/assetUsage.service.js";
+import { claimNoticeWindow } from "@server/modules/asset/storage-notice-throttle.js";
+import * as notificationService from "@server/modules/notification/notification.service.js";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { getUserById } from "@server/modules/auth/user.repo.js";
+import { buildStorageQuotaExceededMail } from "@server/utils/notification-mail.js";
+import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 
 /** Which write is being attempted — only decides which sentence the user reads. */
 export type StorageWritePurpose = "upload" | "generate";
@@ -81,6 +87,15 @@ export async function assertStorageAllowance(
 
   const remainingBytes = storageBytes - usedBytes;
   if (remainingBytes <= 0) {
+    // Logged on EVERY refusal, unlike the notice below. The bell is for the
+    // admin and is deliberately quietened to one per window; this line is for
+    // whoever is on call, and silencing it would leave "how often did this
+    // gate fire today, and for whom" with no answer after the first hit.
+    logger.info(
+      { studioId, adminUserId, storageBytes, usedBytes, purpose },
+      "storage_quota_exceeded",
+    );
+    await tellTheAdmin(adminUserId, studioId);
     throw new AppError(
       INSUFFICIENT_STORAGE,
       t(
@@ -91,4 +106,51 @@ export async function assertStorageAllowance(
     );
   }
   return { limitBytes: storageBytes, usedBytes, remainingBytes };
+}
+
+/**
+ * Put a storage-full notice in the admin's bell and mail box. Never throws.
+ *
+ * The refusal is the promise; the notice is what makes it actionable, since
+ * whoever was refused can neither raise the membership nor delete assets. So
+ * nothing in here may turn a 507 into a 500 — every leg has its own way of
+ * failing (Redis unreachable, the insert rejected, the mail backend down) and
+ * all three end the same way: log it, and let the refusal stand.
+ *
+ * A lost Redis claim sends the notice rather than skipping it. A duplicate
+ * bell row is a nuisance; silence about a full account is the thing the notice
+ * exists to prevent.
+ * @param adminUserId - The account that is out of storage.
+ * @param studioId - Where this particular refusal happened.
+ */
+async function tellTheAdmin(
+  adminUserId: string,
+  studioId: string,
+): Promise<void> {
+  try {
+    let firstThisWindow = true;
+    try {
+      firstThisWindow = await claimNoticeWindow(adminUserId);
+    } catch (err) {
+      logger.error({ err, adminUserId }, "storage_notice_window_unavailable");
+    }
+    if (!firstThisWindow) return;
+
+    const studio = await studioRepo.getById(studioId);
+    const studioName = studio?.name ?? "";
+    await notificationService.createStorageQuotaExceeded({
+      userId: adminUserId,
+      payload: { studioId, studioName },
+    });
+    await sendBestEffortMail(async () => {
+      const admin = await getUserById(adminUserId);
+      if (!admin) return null;
+      return buildStorageQuotaExceededMail({
+        recipientEmail: admin.email,
+        studioName,
+      });
+    }, { userId: adminUserId, subject: "storage_quota_exceeded" });
+  } catch (err) {
+    logger.error({ err, adminUserId, studioId }, "storage_notice_failed");
+  }
 }
