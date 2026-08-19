@@ -176,8 +176,11 @@ export async function countTeamStudiosAdministeredBy(
  * Take the studio's own row for the rest of the transaction.
  *
  * This is what serialises the checks against anything a studio holds a fixed
- * number of — projects and members today (#86, #87); concurrent writable
- * connections and storage are still to come. Counting rows and then inserting
+ * number of — projects and members today (#86, #87). The other two ceilings
+ * are not serialised here and do not need to be: concurrent writable
+ * connections are counted in collab's own cross-instance registry (#88), and
+ * storage is a soft pre-check that is deliberately allowed to overshoot
+ * (#89). Counting rows and then inserting
  * is not a decision under concurrency: two transactions both count, both see
  * room, and both insert. Measured on the account-level ceiling in block one —
  * three simultaneous requests against a ceiling of one left two rows behind.

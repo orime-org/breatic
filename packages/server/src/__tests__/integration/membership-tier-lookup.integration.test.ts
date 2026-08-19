@@ -4,7 +4,7 @@
 /**
  * Which tier governs a given account and a given studio (task #16) — real-PG.
  *
- * Two lookups, because the ratified rule has two halves. How many team
+ * Two routes, because the ratified rule has two halves. How many team
  * studios an account may administer is decided by that account's own tier.
  * Everything else a studio caps — projects, members, concurrent writable
  * connections, storage — is decided by the tier of that studio's CURRENT
@@ -355,19 +355,18 @@ describe("getStudioStorageQuota", () => {
 });
 
 /**
- * The two functions callers actually use. Everything above resolves a tier;
- * these turn a tier into the six numbers, and they are the only place that
- * conversion happens.
+ * The functions that turn a tier into numbers. Everything above resolves a
+ * tier; these price it, and they are the only place that conversion happens.
  *
- * Why it matters that there is exactly one such place: five ceilings already
- * go through these functions — team studios, projects per studio, the two
- * kinds of member cap, and since #88 the concurrent-connection one tested
- * below. Storage is the one still to come. Written as "look up
- * the tier, then index the config" at every one of them, the pair would end up
+ * Why it matters that there are so few such places: all six ceilings go
+ * through them — team studios, projects per studio, the two kinds of member
+ * cap, the concurrent-connection one tested below (#88), and storage (#89,
+ * through `getStudioStorageQuota` above). Written as "look up the tier, then
+ * index the config" at every one of them, that pair of steps would end up
  * copied six to eight times — and the enterprise tier, whose ceilings are
  * negotiated per customer and will be read from the database, would then have
- * to be threaded through every copy. Miss one and that customer is quietly held to the
- * standard tier on that one path, with no error.
+ * to be threaded through every copy. Miss one and that customer is quietly
+ * held to the standard tier on that one path, with no error.
  */
 describe("getLimitsForUser", () => {
   it("returns that account's own tier's six ceilings", async () => {

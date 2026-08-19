@@ -15,8 +15,8 @@
  * an action is taken, so moving the value IS moving what the account may do.
  *
  * **Call points do not run the tier lookup and index the config themselves.**
- * They call one of the three exported `…LimitsFor…` functions below, which
- * differ only in what they start from and whether they lock:
+ * They call one of the four exported lookups below, which differ in what they
+ * start from, whether they lock, and how many ceilings they answer with:
  *
  *   - `getLimitsForUser`  — an account, no lock. For reads.
  *   - `lockLimitsForUser` — an account, row locked. For the one ceiling whose
@@ -24,20 +24,28 @@
  *   - `getLimitsForStudio`— a studio, resolved through its current admin. No
  *     lock: a ceiling counted per studio is serialised on the STUDIO's row,
  *     which is not this module's to take (see `studioRepo.lockStudio`).
+ *   - `getStudioStorageQuota` — a studio, one ceiling. The odd one out, and
+ *     for the reason spelled out on it: storage is the only ceiling whose
+ *     product rule for the enterprise tier has been decided, so it is the
+ *     only one that can answer with a value where the others must throw.
  *
- * One ceiling is still to come — storage. The two kinds of member cap landed
- * with #87 and the concurrent writable connection ceiling with #88 (see
- * `getProjectConcurrentEditorLimit` below). Each has its own check point, so
- * "look up the tier, then index the config" would otherwise end up written out
- * six to eight times across the codebase.
+ * All six ceilings are enforced now: the two kinds of member cap landed with
+ * #87, the concurrent writable connection ceiling with #88 (see
+ * `getProjectConcurrentEditorLimit` below), and storage with #89 on the two
+ * write paths in server. Each has its own check point, so "look up the tier,
+ * then index the config" would otherwise end up written out six to eight
+ * times across the codebase.
  *
  * There are two routes from an id to a tier here, not one: an account's tier
- * is its own column, a studio's is its admin's. Both end at `limitsFor`, and
- * both carry the ACCOUNT id there — `readStudioAdmin` returns it for exactly
- * this reason. That is what lets `limitsFor` name the account when it cannot
- * price a tier, and it is where the enterprise ceilings will be read from the
+ * is its own column, a studio's is its admin's. Both carry the ACCOUNT id to
+ * wherever the tier is priced — `readStudioAdmin` returns it for exactly this
+ * reason. That is what lets `limitsFor` name the account when it cannot price
+ * a tier, and it is where the enterprise ceilings will be read from the
  * database once they are negotiable. Saying "there is one seam" would be
- * tidier and it would be false.
+ * tidier and it would be false — and since #89 a second place knows that the
+ * enterprise tier has no configured ceiling: `getStudioStorageQuota` answers
+ * null where `limitsFor` throws. Both change when those ceilings become
+ * readable.
  *
  * Two lookups because the ratified rule has two halves. How many team studios
  * an account may administer is decided by that account's own tier. Everything
@@ -52,10 +60,11 @@
  * A studio has exactly one admin, so there is nothing to choose between; the
  * question "whose tier?" has one answer by construction rather than by policy.
  *
- * Lives in core because three services ask: server for four of the ceilings,
- * collab for the concurrency one, worker for storage on the generation path.
- * Neither collab nor worker may import server, which is where `user.repo`
- * lives.
+ * Lives in core because two services ask: server for five of the ceilings
+ * (storage among them since #89) and collab for the concurrency one. Worker
+ * asks for none — a generation that has already started is never re-checked,
+ * so every ceiling is read before the work is queued. Collab may not import
+ * server, which is where `user.repo` lives.
  *
  * **On reading `users` from here.** `user.repo` owns user BUSINESS logic —
  * creating accounts, passwords, recovery codes — not every read of the table.
@@ -240,29 +249,6 @@ async function readUserTier(
   return asKnownTier(tier, { accountId: userId });
 }
 
-/**
- * The tier that governs a studio's ceilings — its current admin's.
- *
- * Personal studios need no special case: their owner holds the `admin` row
- * like any other studio's does, so the same query answers both.
- *
- * Throws rather than falling back when a studio has no live admin. That state
- * is data corruption (the product keeps exactly one admin per studio), and a
- * fallback tier would silently decide every ceiling on that studio against a
- * number nobody chose — the kind of wrong that surfaces only in an audit.
- * @param studioId - The studio whose governing tier to resolve
- * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
- *   for why a caller inside a transaction must pass it
- * @returns The current admin's membership tier
- * @throws {Error} if the studio is gone, or has no live admin, or that admin's
- *   account is gone — all three are corruption, so it is not an AppError
- */
-export async function getStudioMembershipTier(
-  studioId: string,
-  tx?: DbTx,
-): Promise<MembershipTier> {
-  return (await readStudioAdmin(studioId, tx)).tier;
-}
 
 /**
  * The account that administers a studio, and that account's tier.
@@ -409,6 +395,43 @@ async function honouredTier(
  */
 export async function lockAccountRow(userId: string, tx: DbTx): Promise<void> {
   await readUserTier(userId, tx, true);
+}
+
+/**
+ * Who administers a studio, and how many bytes that account's tier allows.
+ *
+ * Separate from {@link getLimitsForStudio} because storage is the one ceiling
+ * whose ratified product rule covers the enterprise tier: it passes through
+ * (user 2026-08-19). The other five have never had that question answered, so
+ * `limitsFor` still throws for them and this returns `null` instead — the
+ * divergence is real product behaviour, not a second copy of one decision.
+ *
+ * Answers the admin id too, because a storage decision needs it twice over:
+ * the usage roll-up is per ACCOUNT across every studio that account
+ * administers, and it is that account, not whoever tripped the gate, who gets
+ * told the storage is full and can do something about it.
+ * @param studioId - The studio whose storage ceiling to resolve
+ * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
+ *   for why a caller inside a transaction must pass it
+ * @returns The current admin's account id, and that account's storage ceiling
+ *   in bytes — `null` on the enterprise tier, which has no configured ceiling
+ * @throws {Error} if the studio is gone, or has no live admin, or that admin's
+ *   stored tier is not one this build knows — all three are corruption
+ */
+export async function getStudioStorageQuota(
+  studioId: string,
+  tx?: DbTx,
+): Promise<{ adminUserId: string; storageBytes: number | null }> {
+  const admin = await readStudioAdmin(studioId, tx);
+  const tier = await honouredTier(admin.adminUserId, admin.tier, tx);
+  return {
+    adminUserId: admin.adminUserId,
+    storageBytes:
+      tier === "enterprise"
+        ? null
+        : limitsFor(tier, { accountId: admin.adminUserId, studioId })
+            .storage_bytes,
+  };
 }
 
 /**
