@@ -162,13 +162,18 @@ if (typeof Element !== 'undefined') {
 
 // jsdom implements no hit testing, so `document.elementFromPoint` is absent
 // entirely (not "returns null" — the property does not exist). ProseMirror's
-// `posAtCoords` calls it unconditionally (`prosemirror-view/dist/index.js:467`)
-// and throws a TypeError without it, which surfaces as an unhandled error from
-// inside a debounced plugin timer rather than as a failing assertion. Answering
-// null is the honest reply for a DOM with no layout: `posAtCoords` then falls
-// back to the editor's own (zero) bounding box, finds the point outside it, and
-// returns null — which is what a caller asking "what is at this pixel" should
-// get in a document that has no pixels.
+// `posAtCoords` reaches it on every call (`prosemirror-view/dist/index.js:467`
+// picks the receiver with a ternary, and in jsdom both of its branches are the
+// same `document`), so without this the editor throws a TypeError that surfaces
+// as an unhandled error from inside a debounced plugin timer rather than as a
+// failing assertion.
+//
+// Answering null does NOT mean `posAtCoords` answers null. Measured: it answers
+// `{pos: 0, inside: -1}` for (0,0) and (1,1), null from (2,2) out. Every
+// rectangle in jsdom is zero-sized at the origin, and `inRect` allows 1px of
+// slack (`dist/index.js:389-391`), so points within 1px of the origin are read
+// as inside the editor and resolved to a real position. Worth knowing because
+// a zero-rect layout makes many callers ask about exactly that corner.
 if (typeof Document !== 'undefined') {
   Document.prototype.elementFromPoint ??= () => null;
 }

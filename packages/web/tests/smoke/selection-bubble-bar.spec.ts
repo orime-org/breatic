@@ -18,14 +18,16 @@ const password = process.env.SMOKE_PASSWORD;
 
 test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
-test.use({ viewport: { width: 1680, height: 950 } });
-
 /** 正文可见区的顶距窗口顶多少 —— 顶部那排 chrome 是固定高度，实测恒为它。 */
 const BODY_VIEWPORT_TOP = 120;
 
-// 一次登录，全文件共用一个页面。登录限流是 5 次每分钟，而这里有 7 条用例——
-// 每条各登一次必然从第六条起全部超时在登录页上（实测）。串行加共用页面既避开
-// 限流，也避开「同一个账号同时开好几个会话」这种本文件不打算测的东西。
+// 一次登录，全文件共用一个页面。登录限流是 5 次每分钟，而这里有 8 条实跑用例
+// （最后那条视觉规格在明暗两套上各跑一遍）——每条各登一次必然从第六条起全部
+// 超时在登录页上（实测）。串行加共用页面既避开限流，也避开「同一个账号同时开
+// 好几个会话」这种本文件不打算测的东西。
+//
+// 视口不走 `test.use`：那个配的是 `page` fixture 的选项，而这里没有任何用例取
+// 它，页面是 `beforeAll` 自己 `browser.newPage` 建的，尺寸在那儿给。
 test.describe.configure({ mode: 'serial' });
 
 let page: Page;
@@ -118,13 +120,9 @@ async function typeLongBody(page: Page): Promise<void> {
   }
 }
 
-/** 浮出条、选中那一行、裁切它的那个盒子，三者的位置。 */
+/** 浮出条相对选中那一行的位置，以及它有没有真的被画出来。 */
 async function readGeometry(page: Page): Promise<{
-  barTop: number;
-  barBottom: number;
   lineTop: number;
-  lineBottom: number;
-  clipTop: number;
   below: boolean;
   gap: number;
   hitAtOwnTop: boolean;
@@ -135,22 +133,9 @@ async function readGeometry(page: Page): Promise<{
     ) as HTMLElement;
     const b = bar.getBoundingClientRect();
     const line = window.getSelection()?.getRangeAt(0).getBoundingClientRect();
-    // 真正裁切浮出条的那一层，从它自己往上找第一个会裁的祖先。
-    let clipTop = 0;
-    for (let n = bar.parentElement; n && n !== document.body; n = n.parentElement) {
-      const cs = getComputedStyle(n);
-      if (/hidden|clip|auto|scroll/.test(cs.overflowY + cs.overflowX)) {
-        clipTop = n.getBoundingClientRect().top;
-        break;
-      }
-    }
     const below = !!line && b.top >= line.bottom;
     return {
-      barTop: Math.round(b.top),
-      barBottom: Math.round(b.bottom),
       lineTop: line ? Math.round(line.top) : 0,
-      lineBottom: line ? Math.round(line.bottom) : 0,
-      clipTop: Math.round(clipTop),
       below,
       gap: line
         ? Math.round(below ? b.top - line.bottom : line.top - b.bottom)
@@ -284,7 +269,7 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ()
   expect(first.lineTop - BODY_VIEWPORT_TOP).toBeLessThan(44);
   expect(first.below).toBe(true);
   expect(first.gap).toBe(8);
-  // 不断言 barTop >= clipTop：上面已经断言了它在选区下方且间距 8，而选区必在
+  // 不量「有没有越出裁切盒」：上面已经断言了它在选区下方且间距 8，而选区必在
   // 正文可见区内（顶 120）、裁切盒顶是 80，所以那句话在此恒真、逮不到任何东西。
   // 真正要量的是它有没有被画出来——打在它自己顶上，命中的必须是它自己。
   expect(first.hitAtOwnTop).toBe(true);
@@ -314,8 +299,8 @@ test('选中的那一行被滚到正文顶部时，浮出条翻到下方而不�
 
   const m = await readGeometry(page);
   expect(m.lineTop - BODY_VIEWPORT_TOP).toBeLessThan(44);
-  // 第一轮实现在这里把浮出条画到了裁切盒之外，顶上 4px 被削掉
-  // （实测 barTop 76、clipTop 80）。现在它该翻到选区下方。
+  // 第一轮实现在这里把浮出条画到了裁切盒之外，顶上 4px 被削掉（实测条顶 76、
+  // 裁切盒顶 80）。现在它该翻到选区下方。
   expect(m.below).toBe(true);
   expect(m.gap).toBe(8);
   expect(m.hitAtOwnTop).toBe(true);
@@ -419,11 +404,15 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
     ) as HTMLElement;
     const b = el.getBoundingClientRect();
     const box = window.getSelection()?.getRangeAt(0).getBoundingClientRect();
-    const column = document
-      .querySelector('[data-testid="document-space"] .ProseMirror')
+    // 量的必须是 flip 量的那个盒子。它的 boundary 是正文可见区，而正文列比它
+    // 窄一整条居中外边距（1280 下差 96px，窗口越宽差得越多）——拿正文列去量，
+    // 这句前置断言在 1440 下照样成立，而 flip 已经不翻了，下面三句会红在一个
+    // 跟被测行为无关的原因上（实测：列内余量恒 59，可见区余量 155 → 235）。
+    const viewport = document
+      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
       ?.getBoundingClientRect();
     return {
-      roomToTheRight: box && column ? Math.round(column.right - box.left) : null,
+      roomToTheRight: box && viewport ? Math.round(viewport.right - box.left) : null,
       barWidth: Math.round(b.width),
       leftDelta: box ? Math.round(b.left - box.left) : null,
       rightDelta: box ? Math.round(b.right - box.left) : null,
