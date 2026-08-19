@@ -140,7 +140,8 @@
       "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。"
     },
     "message": {
-      "interrupted": "停止しました"
+      "interrupted": "停止しました",
+      "waiting": "応答を待っています"
     },
     "tool": {
       "unfinished": "完了前に停止しました"

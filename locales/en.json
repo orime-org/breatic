@@ -140,7 +140,8 @@
       "turnFailed": "This reply could not be finished. Try sending it again."
     },
     "message": {
-      "interrupted": "Stopped"
+      "interrupted": "Stopped",
+      "waiting": "Waiting for a reply"
     },
     "tool": {
       "unfinished": "Stopped before it finished"
