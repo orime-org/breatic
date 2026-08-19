@@ -16,7 +16,12 @@
  * §6.3。验收 A4。
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { chatSessionFor, evictChatSession, evictAllChatSessions } from '@web/stores/chat-sessions';
+import {
+  chatSessionFor,
+  evictChatSession,
+  evictAllChatSessions,
+  prependHistory,
+} from '@web/stores/chat-sessions';
 import type { StoredUiMessage } from '@web/data/api/chat';
 
 /** 一条读回来的历史，够用就行。 */
@@ -65,6 +70,37 @@ describe('会话的 Chat 实例', () => {
 
     expect(again.messages).toHaveLength(1);
     expect(again.messages[0]?.id).toBe('in-flight');
+  });
+
+  it('把更早的一页接在头上，正在写的那半不动', () => {
+    // 「加载更早」读回来的那一页要出现在屏幕上,而屏幕读的是这个实例 ——
+    // 只写进 store 的话,它给下一个新建的实例当起点,对已经存在的这个毫无
+    // 作用,读者按了按钮什么都不会发生。
+    const chat = chatSessionFor({
+      projectId: 'p-1',
+      conversationId: 'c-1',
+      history: [],
+      onTitled: () => undefined,
+    });
+    chat.messages = [
+      {
+        id: 'in-flight',
+        role: 'assistant',
+        parts: [{ type: 'text', text: '正在写' }],
+        metadata: { turnIndex: 2, ts: '2026-08-19T00:00:02Z' },
+      },
+    ];
+
+    prependHistory('c-1', HISTORY);
+
+    expect(chat.messages.map((m) => m.id)).toEqual(['row-1', 'in-flight']);
+  });
+
+  it('对一条没在这儿的会话什么都不做', () => {
+    // 面板走开之后那一页才回来,或者这条会话已经被删了。
+    expect(() => {
+      prependHistory('c-gone', HISTORY);
+    }).not.toThrow();
   });
 
   it('驱逐之后再拿是新的一个', () => {

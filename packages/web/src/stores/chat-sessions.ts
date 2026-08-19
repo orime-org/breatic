@@ -369,6 +369,29 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
 }
 
 /**
+ * Put a page of older messages at the head of a conversation's list.
+ *
+ * What "load earlier" reads back has to reach the list the panel is drawing,
+ * and that list is here. Written to the store as well, but a session that
+ * already exists never re-reads what the store holds -- it cannot, or a
+ * history read while a turn is running would replace the reply being written
+ * with a snapshot taken before it existed.
+ *
+ * The head is the half no turn touches: a reply is appended to the tail, so
+ * the two writers never contend.
+ *
+ * Nothing happens when the conversation has no session here -- it was deleted,
+ * or the project was left, while the page was on its way.
+ * @param conversationId - The conversation reaching further back.
+ * @param earlier - The page, oldest first.
+ */
+export function prependHistory(conversationId: string, earlier: StoredUiMessage[]): void {
+  const chat = sessions.get(conversationId);
+  if (!chat) return;
+  chat.messages = [...earlier, ...chat.messages];
+}
+
+/**
  * Drop one conversation's state.
  *
  * For when the conversation itself is gone — deleted, or the project it was in

@@ -21,7 +21,7 @@ import { create } from 'zustand';
 import { chatApi } from '@web/data/api/chat';
 import { ApiException } from '@web/data/api/types';
 import type { ConversationOnTheWire, OpenChatResult } from '@web/data/api/chat';
-import { evictChatSession } from '@web/stores/chat-sessions';
+import { evictChatSession, prependHistory } from '@web/stores/chat-sessions';
 import { readMishap, tell } from '@web/stores/chat-mishaps';
 import type { StoredUiMessage } from '@web/data/api/chat';
 
@@ -656,6 +656,11 @@ async function loadEarlier(conversationId: string): Promise<void> {
         hasMore: earlier.hasMore,
         oldestLoadedTurn: oldestTurnOf(earlier.messages) ?? c.oldestLoadedTurn,
       }));
+      // And onto the list the panel is drawing, which is the session's. What
+      // is written above is the starting point a session is built from; a
+      // session that already exists never reads it again, so a page that
+      // stopped here would be a button the reader presses to no effect.
+      prependHistory(conversationId, earlier.messages);
     } catch (err) {
       // Except when the visit is over, which includes this failure being the
       // abort itself: nobody asked for this page any more.

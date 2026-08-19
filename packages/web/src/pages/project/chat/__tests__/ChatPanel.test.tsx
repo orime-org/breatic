@@ -2,15 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', () => ({
+vi.mock('@web/data/api/chat', async (importOriginal) => ({
+  ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000 })),
     openChat: vi.fn(),
-    streamMessage: vi.fn(),
     messagesBefore: vi.fn(),
     renameConversation: vi.fn(),
     deleteConversation: vi.fn(),
@@ -20,13 +22,12 @@ vi.mock('@web/data/api/chat', () => ({
   },
 }));
 
-import { SSE_EVENT_NAMES } from '@breatic/shared';
-import type { SSEEventEnvelope } from '@breatic/shared';
-
 import { chatApi } from '@web/data/api/chat';
-import { StreamRefusedError, StreamUnreachableError } from '@web/data/stream/sse';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { conversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
+import { evictAllChatSessions } from '@web/stores/chat-sessions';
+import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
+import type { WatchedWire } from '@web/test-utils/chat-wire';
 
 /** The conversation every case in this file is opened into. */
 const CONV = 'c1';
@@ -53,60 +54,37 @@ function renderPanel(
   );
 }
 
+/** 这一轮的流，用例自己往里推东西。 */
+let wire: WatchedWire;
+
 /**
- * Make the stream fail the way the real one does.
+ * 让这一轮被拒。
  *
- * `sseStream` catches everything, hands it to `onError` and then resolves
- * (sse.ts:218-222) — it never rejects. A mock that rejects is modelling
- * something the transport does not do, and a panel tested against it is
- * tested against a shape it will never see.
- * @param err - What went wrong, already classified the way sse.ts does it
+ * 传输层非 2xx 时抛的是 `new Error(await response.text())` —— body 而已，
+ * 状态码不在上面。所以「服务器写了一句给读者的话」是靠信封认出来的：我们的
+ * 错误答 `{ error: "..." }`。
+ * @param body - 服务器的答复原文。
+ * @param status - 状态码。
  */
-function streamFailsWith(err: unknown): void {
-  vi.mocked(chatApi.streamMessage).mockImplementation(async (_input, handlers) => {
-    handlers.onError?.(err);
-  });
+function theTurnIsRefused(body: string, status = 500): void {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { status })));
 }
 
-/** The stream handlers the panel's last send installed. */
-let handlers: {
-  onEvent: (e: SSEEventEnvelope) => void;
-  onClose?: () => void;
-  onError?: (err: unknown) => void;
-};
-
-/**
- * Hold the stream open, the way a real turn does for as long as it runs.
- *
- * Nothing is answered until a case says so, which is what makes the wait
- * between pressing send and the server's first word observable at all.
- */
-function streamStaysOpen(): void {
-  vi.mocked(chatApi.streamMessage).mockImplementation((_input, h) => {
-    handlers = h;
-    return new Promise<void>(() => {});
-  });
+/** 让这一轮的请求根本没连上，这是「什么都没答」那一种。 */
+function theRequestNeverLeft(): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
+  );
 }
 
 /**
- * Say the turn has begun, which is the server's first word on every turn.
- * @param texts - What the server says the conversation now holds, in order
+ * 让这一轮开始流，第一帧到位。
+ * @param text - 回复的第一片。
  */
-function turnStarts(texts: string[]): void {
-  handlers.onEvent({
-    event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
-    data: {
-      messages: texts.map((text, i) => ({
-        id: `srv${i}`,
-        role: 'user',
-        parts: [{ type: 'text', text }],
-        content: text,
-        ts: '2026-08-14T00:00:00Z',
-        turnIndex: 10 + i,
-      })),
-      hasMore: false,
-    },
-  });
+function theReplyStartsArriving(text: string): void {
+  for (const chunk of turnOpens()) wire.current()?.push(chunk);
+  wire.current()?.push({ type: 'text-delta', id: 't1', delta: text });
 }
 
 /**
@@ -122,9 +100,7 @@ function chatOpensWith(texts: string[]): void {
         id: `m${i}`,
         role: i % 2 === 0 ? 'user' : 'assistant',
         parts: [{ type: 'text', text }],
-        content: text,
-        ts: '2026-08-11T00:00:00Z',
-        turnIndex: 1,
+        metadata: { turnIndex: 1, ts: '2026-08-11T00:00:00Z' },
       })),
       hasMore: false,
     },
@@ -139,8 +115,14 @@ describe('ChatPanel', () => {
     // The conversation runtime is a module singleton, so it carries whatever
     // the last case left in it into the next one.
     _resetForTests();
+    evictAllChatSessions();
+    wire = stubChatWire();
     chatOpensWith([]);
-    vi.mocked(chatApi.streamMessage).mockResolvedValue(undefined);
+    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000 });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('has no a11y violations', async () => {
@@ -172,19 +154,15 @@ describe('ChatPanel', () => {
 
   it('sends the trimmed draft, and empties the box when the server has it', async () => {
     const user = userEvent.setup();
-    streamStaysOpen();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
     conversationRuntime.setDraft(CONV, '  test  ');
     await user.click(screen.getByTestId('chat-composer-send'));
 
-    await waitFor(() =>
-      expect(chatApi.streamMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'test', conversationId: 'c1' }),
-        expect.anything(),
-      ),
-    );
+    await waitFor(() => {
+      expect(wire.sent()[0]).toMatchObject({ message: 'test', conversation_id: 'c1' });
+    });
     // Still in the box, because so far nothing has confirmed it went anywhere.
     // Emptying it now is a promise the browser is in no position to make: the
     // words would be gone from the only place they exist, with nothing on
@@ -194,24 +172,24 @@ describe('ChatPanel', () => {
     expect(screen.getByTestId('chat-composer-sending')).toBeInTheDocument();
 
     act(() => {
-      turnStarts(['test']);
+      theReplyStartsArriving('好的');
     });
 
-    // The server has the message and has handed the conversation back. Now the
-    // box is empty, and the stop button is the one thing worth pressing.
+    // 服务端接下了这句话并且开始答。现在框空了,而值得按的只剩停止。
     await waitFor(() => expect(conversationRuntime.draftOf(CONV)).toBe(''));
     expect(screen.getByTestId('chat-composer-abort')).toBeInTheDocument();
   });
 
   it('takes nothing into the box while the server has not answered', async () => {
     const user = userEvent.setup();
-    streamStaysOpen();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
     conversationRuntime.setDraft(CONV, 'first question');
     await user.click(screen.getByTestId('chat-composer-send'));
-    await waitFor(() => expect(chatApi.streamMessage).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(wire.current()).not.toBeNull();
+    });
 
     // The box shows what was sent and accepts nothing more, so there is never
     // a moment where it holds one sentence of ours and another of theirs.
@@ -221,7 +199,7 @@ describe('ChatPanel', () => {
     expect(conversationRuntime.draftOf(CONV)).toBe('first question');
 
     act(() => {
-      turnStarts(['first question']);
+      theReplyStartsArriving('好的');
     });
 
     // And then it is emptied, with no rule applied to the text: only one
@@ -232,7 +210,7 @@ describe('ChatPanel', () => {
 
   it('says so on the composer when the message never went out', async () => {
     const user = userEvent.setup();
-    streamFailsWith(new StreamUnreachableError(new Error('offline')));
+    theRequestNeverLeft();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
@@ -248,7 +226,7 @@ describe('ChatPanel', () => {
 
   it('says it again when it fails again, in the same words', async () => {
     const user = userEvent.setup();
-    streamFailsWith(new StreamUnreachableError(new Error('offline')));
+    theRequestNeverLeft();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
@@ -264,12 +242,13 @@ describe('ChatPanel', () => {
     // DOM would not move and a screen reader would announce nothing. The
     // second failure has to be its own line.
     await waitFor(() => expect(screen.getByTestId('chat-notice')).not.toBe(firstLine));
-    expect(chatApi.streamMessage).toHaveBeenCalledTimes(2);
+    // 两次按下,两次请求。第二次被吞掉就是「看着能按、按下去没反应」。
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });
 
   it('says what the server said when it refused', async () => {
     const user = userEvent.setup();
-    streamFailsWith(new StreamRefusedError(403, 'You do not have access to this project', true));
+    theTurnIsRefused('{"error":"You do not have access to this project"}', 403);
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
@@ -345,7 +324,6 @@ describe('ChatPanel', () => {
     // and it covers the header too. So nothing here is turned off -- there
     // would be no way to reach it anyway.
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
-    streamStaysOpen();
     renderPanel();
 
     await waitFor(() =>
@@ -372,7 +350,7 @@ describe('ChatPanel', () => {
 
   it('leaves the words where they are when the message never went out', async () => {
     const user = userEvent.setup();
-    streamFailsWith(new StreamUnreachableError(new Error('never left')));
+    theRequestNeverLeft();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
     await waitFor(() =>
@@ -406,9 +384,7 @@ describe('a conversation longer than one page', () => {
             id: 'm1',
             role: 'user',
             parts: [{ type: 'text', text: 'the oldest thing on screen' }],
-            content: 'the oldest thing on screen',
-            ts: '2026-08-13T00:00:00Z',
-            turnIndex: 12,
+            metadata: { turnIndex: 12, ts: '2026-08-13T00:00:00Z' },
           },
         ],
         hasMore: true,
@@ -419,7 +395,7 @@ describe('a conversation longer than one page', () => {
   it('stops saying it on its own, without waiting to be cleared', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    streamFailsWith(new StreamUnreachableError(new Error('offline')));
+    theRequestNeverLeft();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
@@ -444,9 +420,7 @@ describe('a conversation longer than one page', () => {
           id: 'm0',
           role: 'user',
           parts: [{ type: 'text', text: 'from further back' }],
-          content: 'from further back',
-          ts: '2026-08-12T00:00:00Z',
-          turnIndex: 4,
+          metadata: { turnIndex: 4, ts: '2026-08-12T00:00:00Z' },
         },
       ],
       hasMore: false,
