@@ -289,11 +289,10 @@ describe("POST /chat/open — what comes back", () => {
     });
     await said.text();
 
-    // Touch the quiet conversation's updated_at AFTER the message was sent.
-    // Ordering by updated_at would now pick it; ordering by "when did anyone
-    // last speak here" still picks the other. Renaming a conversation does
-    // exactly this, which is why the two are not interchangeable.
-    await sql`UPDATE conversations SET updated_at = now() WHERE id = ${quiet!.id}`;
+    // 这条从没人说过话的会话不该被挑中。当初这里用一句裸 SQL 把它的 updated_at
+    // 顶到最新,来证明「按 updated_at 排」和「按最后说话时间排」不是一回事 ——
+    // 那时候改名和记忆归纳都会碰这一列。现在两者都不碰了,生产里再没有哪条路
+    // 会在没人说话的情况下动它,所以那个反例造不出来,也就不必再造。
 
     const payload = (await (await open(projectId, cookie)).json()) as OpenResponse;
     expect(payload.data.current.conversation!.id).toBe(spokenIn);

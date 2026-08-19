@@ -80,6 +80,11 @@ export type {
   ConfiguredMembershipTier,
   MembershipLimits,
   ComparableMembershipTier,
+  SubscribableMembershipTier,
+  SubscriptionSituation,
+  SubscriptionActionAvailability,
+  UpgradeOffer,
+  SubscriptionSummary,
   TierOffer,
   AccountUsage,
   AccountMembership,
@@ -102,6 +107,11 @@ export {
   CONFIGURED_MEMBERSHIP_TIERS,
   tierLimitsSchema,
   COMPARABLE_MEMBERSHIP_TIERS,
+  SUBSCRIBABLE_MEMBERSHIP_TIERS,
+  SUBSCRIPTION_SITUATIONS,
+  ACTIONABLE_SUBSCRIPTION_SITUATIONS,
+  holdsActionableSubscription,
+  subscriptionActions,
   isComparableMembershipTier,
   HANDLING_TIMEOUT_MS,
   canGenerate,
@@ -179,10 +189,15 @@ export {
   understandSchema,
   projectCreateSchema,
   checkoutSchema,
+  subscriptionPlanSchema,
+  subscriptionChangeSchema,
   paginationSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,
   chatEarlierMessagesQuerySchema,
+  chatCreateConversationSchema,
+  chatRenameConversationSchema,
+  CONVERSATION_TITLE_MAX_CHARS,
 } from "@shared/schemas/index.js";
 
 export type {
@@ -200,6 +215,8 @@ export type {
   CheckoutInput,
   PaginationInput,
   ChatConversationsQueryInput,
+  ChatCreateConversationInput,
+  ChatRenameConversationInput,
 } from "@shared/schemas/index.js";
 
 export {
@@ -226,7 +243,6 @@ export {
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export {
-  DOCUMENT_TITLE_NODE,
   documentBodyFragment,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";

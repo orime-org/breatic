@@ -4,10 +4,11 @@
 /**
  * Clicking the empty space under the last block opens one to type in.
  *
- * A document Space is born holding a title and no body blocks, so without this
- * there is nowhere for the caret to go and the document cannot be written into
- * at all. The same click matters later for a different reason: a code block at
- * the end of the body leaves a user no way to get past it, and
+ * A document Space is born holding no blocks at all, so without this there is
+ * nowhere for the caret to go by mouse and the document cannot be clicked into
+ * at all (the first keystroke also opens a block — that is the browser's own
+ * text-input path). The same click matters later for a different reason: a
+ * code block at the end of the body leaves a user no way to get past it, and
  * this repo deliberately does not run the extension that would append a
  * trailing paragraph on its own — see the note beside `trailingNode: false` in
  * `document-extensions`. Its append is a write to a document everyone shares,
@@ -30,12 +31,13 @@
  *
  * Is it below the last line? The first question alone is not enough, which is
  * what the first version of this file got wrong. The editor's own box shows
- * through wherever blocks are separated by margin — the title carries 28px of
- * it, and margin belongs to no child's box — so a press in that gap reports the
- * editor as its target while sitting near the TOP of the document. Acting on it
- * appended a paragraph at the far end of the document and dragged the caret and
- * the scroll position down there with it. Reproduced in a real browser on a
- * document with a title and one paragraph before this was written.
+ * through wherever blocks are separated by margin — margin belongs to no
+ * child's box — so a press in such a gap reports the editor as its target
+ * while sitting near the TOP of the document. Acting on it appended a
+ * paragraph at the far end of the document and dragged the caret and the
+ * scroll position down there with it. Reproduced in a real browser before
+ * this was written. A document with no blocks at all skips the question:
+ * every click on the empty editor is an invitation to write.
  *
  * The vertical edge comes from `coordsAtPos` at the end of the document rather
  * than from the last child element's rectangle: a widget decoration — a remote
@@ -133,7 +135,15 @@ export const DocumentClickToWrite = Extension.create({
               // Something got selected, so the pointer dragged rather than
               // clicked. The user was reading, not asking to write.
               if (!view.state.selection.empty) return false;
-              if (!isBelowTheLastLine(view, event.clientY)) return false;
+              // A document with no blocks has no "last line" to be below —
+              // the whole editor is empty space, and any click on it asks to
+              // write.
+              if (
+                view.state.doc.childCount > 0 &&
+                !isBelowTheLastLine(view, event.clientY)
+              ) {
+                return false;
+              }
               return openABlockToTypeIn(view);
             },
           },

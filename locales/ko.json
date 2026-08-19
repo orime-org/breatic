@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "이 서버에서는 직접 업로드를 사용할 수 없습니다"
+    },
+    "membership": {
+      "already_subscribed": "이미 멤버십이 있습니다.",
+      "no_subscription": "멤버십이 없습니다.",
+      "not_cancelling": "이 멤버십은 종료 예정이 아닙니다.",
+      "downgrade_not_offered": "하위 등급으로 변경할 수 없습니다.",
+      "same_tier": "이미 이 멤버십입니다.",
+      "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
+      "unavailable": "멤버십을 사용할 수 없습니다."
     }
   },
   "chat": {
@@ -110,8 +119,7 @@
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
       "greetingDefault": "안녕하세요!",
-      "hintNodes": "@로 노드에 물어보세요",
-      "hintDirect": "또는 아래에 프롬프트를 입력하세요 ↓",
+      "hintDirect": "아래에 입력해 보세요 ↓",
       "quick": {
         "findReference": "사이버펑크 스타일 참고 이미지를 찾아줘",
         "writePrompt": "일러스트 생성 프롬프트를 써줘",
@@ -121,7 +129,10 @@
     "history": {
       "title": "세션 목록",
       "description": "이전 대화로 전환하거나 다시 확인할 수 있습니다.",
-      "empty": "이전 대화가 없습니다"
+      "empty": "이전 대화가 없습니다",
+      "moreFailed": "이전 대화를 불러오지 못했습니다",
+      "loadingMore": "이전 대화를 불러오는 중",
+      "loading": "대화 목록을 불러오는 중"
     },
     "relative": {
       "justNow": "방금 전",
@@ -143,7 +154,25 @@
     "tool": {
       "unfinished": "완료되기 전에 중지됨"
     },
-    "loadEarlier": "이전 메시지 불러오기"
+    "loadEarlier": "이전 메시지 불러오기",
+    "conversation": {
+      "untitled": "제목 없는 대화",
+      "rename": "이름 변경",
+      "delete": "삭제",
+      "renamePlaceholder": "이 대화의 이름 지정",
+      "deleteTitle": "이 대화를 삭제할까요?",
+      "deleteBody": "대화에서 나눈 내용도 함께 삭제되며 되돌릴 수 없습니다.",
+      "deleteConfirm": "삭제",
+      "deleteCancel": "취소",
+      "rowActions": "이 대화 이름 바꾸기 또는 삭제",
+      "gone": "이 대화는 더 이상 존재하지 않습니다"
+    },
+    "load": {
+      "failedTitle": "네트워크 오류",
+      "failedBody": "이 Project의 대화를 읽지 못했습니다.",
+      "retry": "다시 불러오기",
+      "refusedTitle": "이 대화를 열 수 없습니다"
+    }
   },
   "canvas": {
     "group": {
@@ -634,7 +663,14 @@
       },
       "refusedNotice": "이 문서에 대한 연결이 거부되었습니다. 보고 있는 내용이 최신이 아닐 수 있으며 변경 사항도 저장되지 않습니다.",
       "placeholder": "작성을 시작하세요…",
-      "titlePlaceholder": "제목 없는 문서",
+      "clearConfirm": {
+        "title": "모든 내용을 삭제할까요?",
+        "confirm": "삭제",
+        "cancel": "취소"
+      },
+      "unsupported": {
+        "label": "지원되지 않는 콘텐츠"
+      },
       "toolbar": {
         "undo": "실행 취소",
         "redo": "다시 실행",
@@ -728,7 +764,9 @@
       "studioInviteRequest": "{actor}님이 {studio}에 초대했습니다",
       "studioInviteAccepted": "{actor}님이 {studio} 초대를 수락했습니다",
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",
-      "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다"
+      "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다",
+      "membershipEnded": "{tier} 멤버십이 종료되었습니다",
+      "membershipUpgradeIncomplete": "{tier} 업그레이드가 완료되지 않았습니다"
     },
     "actorFallback": "누군가",
     "subtitle": {
@@ -1032,7 +1070,6 @@
       "creditsBalance": "크레딧 잔액",
       "addCredits": "크레딧 추가",
       "home": "홈",
-      "conversationCount": "대화 {count}개",
       "scrollTabsLeft": "탭 왼쪽으로 스크롤",
       "scrollTabsRight": "탭 오른쪽으로 스크롤",
       "spacesToolbar": "Spaces",
@@ -1134,9 +1171,8 @@
       "enterprise": "엔터프라이즈"
     },
     "priceFree": "무료",
-    "pricePerMonth": "{amount} / 월",
+    "taxNote": "가격은 세금 별도입니다.",
     "tierNote": "등급이 정하는 것은 용량과 협업 규모입니다. 모든 창작 기능과 모델은 어느 등급에서나 동일합니다.",
-    "upgrade": "업그레이드",
     "myQuota": "내 사용량",
     "quota": {
       "teamStudios": "팀 Studio",
@@ -1161,6 +1197,22 @@
     "contactEnterprise": "더 큰 규모나 별도의 상업 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactSelfHosted": "상업용 라이선스나 별도의 지원 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactEnterpriseAccount": "사용 한도에 대해 궁금하거나 조정이 필요하신가요? 메일로 문의해 주세요:",
-    "loadFailed": "멤버십 정보를 읽지 못했습니다. 네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요."
+    "loadFailed": "멤버십 정보를 읽지 못했습니다. 네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요.",
+    "action": {
+      "choose": "{tier} 선택",
+      "inProgress": "처리 중",
+      "current": "현재"
+    },
+    "nextCharge": "다음 결제 {date}",
+    "endsOn": "멤버십 종료 {date}",
+    "cancel": "멤버십 해지",
+    "resume": "멤버십 재개",
+    "notice": {
+      "firstPaymentPending": "결제가 완료되지 않았습니다",
+      "upgradePending": "업그레이드 결제가 완료되지 않았습니다",
+      "paymentOverdue": "이번 달 결제가 이루어지지 않았습니다"
+    },
+    "payNow": "결제하기",
+    "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요."
   }
 }

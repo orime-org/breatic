@@ -76,6 +76,12 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
  * decisions and its role hints and per-kind request lines lost their reader.
  */
 const REMOVED_DEAD_KEYS: readonly string[] = [
+  // The panel's static price line and its placeholder upgrade button, both
+  // replaced in #106: prices now come from the subscription config through
+  // `TierOffer`, and each tier has its own button in the comparison table.
+  'membership.pricePerMonth',
+  'membership.upgrade',
+  'chat.conversation.startNew',
   'notifications.roleHint.editor',
   'notifications.roleHint.viewer',
   'notifications.request.audio',

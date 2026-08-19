@@ -17,6 +17,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { paymentService } from "@server/modules";
 import { verifyWebhookSignature } from "@server/infra/stripe.js";
 import { logger } from "@breatic/core";
+import { handleSubscriptionEvent } from "@server/modules/subscription/subscription-events.js";
 
 const payment = new Hono<{ Variables: AuthVariables }>();
 
@@ -70,6 +71,38 @@ payment.post("/webhook", async (c) => {
   } catch (err) {
     logger.warn({ err }, "Stripe webhook signature verification failed");
     return c.json({ error: "Invalid signature" }, 400);
+  }
+
+  // Subscriptions first: the membership leg has its own event types, its own
+  // idempotency, and its own identification chain. It answers `notMine` only
+  // for events that are genuinely the credit-pack leg's — including the
+  // `checkout.session.completed` of a credit-pack session, which is the one
+  // type both legs receive.
+  const subscriptionOutcome = await handleSubscriptionEvent(event);
+  if (subscriptionOutcome.status !== "notMine") {
+    // A `noop` is logged at warn, not info: the two ways to reach it are an
+    // account we cannot identify and a price this deployment does not sell,
+    // and both mean somebody may have paid for something we did not record.
+    // Everything else here is a normal event, `acknowledged` most of all —
+    // one of those is what a successful membership checkout produces.
+    //
+    // Written as two calls rather than one through a variable holding the
+    // method: pino's level methods live on the prototype and use `this`, so
+    // `const log = logger.warn` hands back an unbound function that throws
+    // `TypeError` the moment it is called. Every subscription event would
+    // reach this line, throw after the database work had already been done,
+    // and answer 500.
+    const line = {
+      eventId: event.id,
+      type: event.type,
+      ...subscriptionOutcome,
+    };
+    if (subscriptionOutcome.status === "noop") {
+      logger.warn(line, "subscription_webhook_handled");
+    } else {
+      logger.info(line, "subscription_webhook_handled");
+    }
+    return c.json({ received: true });
   }
 
   const session = event.data.object as { id: string; payment_intent?: string };

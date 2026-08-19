@@ -8,28 +8,34 @@ import userEvent from '@testing-library/user-event';
 import {
   ConversationHistorySheet,
   relativeTime,
-  type ConversationSummary,
+  type ConversationRow,
   type RelativeTime,
 } from '@web/pages/project/chat/ConversationHistorySheet';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 import { expectEveryLocaleRenders } from '@web/test-utils/i18n-keys';
 
-const CONVS: ConversationSummary[] = [
+const CONVS: ConversationRow[] = [
   {
     id: 'c1',
-    name: 'Main plot research',
-    preview: 'We discussed cyberpunk setting and…',
+    title: 'Main plot research',
     updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
-    messageCount: 5,
   },
   {
     id: 'c2',
-    name: 'Character design',
-    preview: 'Lin Xia\'s growth arc and motives…',
+    title: 'Character design',
     updatedAt: new Date(Date.now() - 26 * 3_600_000).toISOString(),
-    messageCount: 12,
   },
 ];
+
+/** The handlers every case passes but none of these assert on. */
+const NOOPS = {
+  onRename: () => undefined,
+  onDelete: () => undefined,
+  hasMore: false,
+  onReachEnd: () => undefined,
+  nextPageFailed: false,
+  loadingMore: false,
+};
 
 describe('relativeTime', () => {
   const NOW = Date.parse('2026-05-21T12:00:00Z');
@@ -110,6 +116,7 @@ describe('ConversationHistorySheet', () => {
         conversations={CONVS}
         activeId='c1'
         onPick={() => {}}
+        {...NOOPS}
       />,
     );
     await expectNoA11yViolations(document.body);
@@ -122,6 +129,7 @@ describe('ConversationHistorySheet', () => {
         onOpenChange={() => undefined}
         conversations={[]}
         onPick={() => undefined}
+        {...NOOPS}
       />,
     );
     expect(
@@ -136,6 +144,7 @@ describe('ConversationHistorySheet', () => {
         onOpenChange={() => undefined}
         conversations={CONVS}
         onPick={() => undefined}
+        {...NOOPS}
       />,
     );
     expect(screen.getByTestId('conversation-c1')).toBeInTheDocument();
@@ -150,14 +159,18 @@ describe('ConversationHistorySheet', () => {
         conversations={CONVS}
         activeId='c1'
         onPick={() => undefined}
+        {...NOOPS}
       />,
     );
-    expect(screen.getByTestId('conversation-c1')).toHaveAttribute(
+    // On the row's own region rather than the row: the row is a container
+    // holding that region and the menu, and a container is not what gets
+    // selected.
+    expect(screen.getByTestId('conversation-open-c1')).toHaveAttribute(
       'aria-current',
       'true',
     );
     expect(
-      screen.getByTestId('conversation-c2').getAttribute('aria-current'),
+      screen.getByTestId('conversation-open-c2').getAttribute('aria-current'),
     ).toBeNull();
   });
 
@@ -170,9 +183,39 @@ describe('ConversationHistorySheet', () => {
         onOpenChange={() => undefined}
         conversations={CONVS}
         onPick={onPick}
+        {...NOOPS}
       />,
     );
-    await user.click(screen.getByTestId('conversation-c2'));
+    await user.click(screen.getByTestId('conversation-open-c2'));
     expect(onPick).toHaveBeenCalledWith('c2');
+  });
+});
+
+describe('asking to delete a conversation', () => {
+  it('leaves the question on screen for the reader to answer', async () => {
+    // 走用户真实的三步:打开列表、打开那行的菜单、点删除。确认框必须还在 ——
+    // 它要是跟着菜单一起消失,这条路上用户永远删不掉任何东西,而屏幕上只会
+    // 闪一下,看不出发生过什么。
+    const user = userEvent.setup();
+    const onDelete = vi.fn();
+    render(
+      <ConversationHistorySheet
+        open
+        onOpenChange={() => undefined}
+        conversations={CONVS}
+        activeId='c1'
+        onPick={() => undefined}
+        {...NOOPS}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByTestId('conversation-menu-c2'));
+    await user.click(await screen.findByTestId('conversation-delete-c2'));
+
+    expect(await screen.findByTestId('conversation-delete-dialog')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('conversation-delete-confirm'));
+    expect(onDelete).toHaveBeenCalledWith('c2');
   });
 });

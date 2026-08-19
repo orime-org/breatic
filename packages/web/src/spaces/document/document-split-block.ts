@@ -48,7 +48,8 @@ import { Extension, defaultBlockAt, getSplittedAttributes } from '@tiptap/core';
 import type { RawCommands } from '@tiptap/core';
 import { splitBlockAs } from '@tiptap/pm/commands';
 import type { Mark, Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
-import type { EditorState, Transaction } from '@tiptap/pm/state';
+import { EditorState, TextSelection } from '@tiptap/pm/state';
+import type { Transaction } from '@tiptap/pm/state';
 
 /**
  * The marks a split should hand to whatever gets typed next.
@@ -79,6 +80,51 @@ export const DocumentSplitBlock = Extension.create({
       splitBlock:
         ({ keepMarks = true } = {}) =>
           ({ state, dispatch, editor, tr }) => {
+            // A document with no blocks has no depth to split at, and the
+            // official command says so itself: ahead of its deletion line it
+            // asks `if (!state.selection.$from.depth) return false`. Answering the
+            // same keeps the chain from walking into the missing depth chain
+            // AND keeps the contract identical to the command being replaced
+            // — the zero-block Enter no-op the ruling describes is delivered
+            // by `DocumentSelectAll`, which claims the key before this.
+            if (state.doc.childCount === 0) return false;
+            // A text selection whose deletion empties the document entirely —
+            // legal under `block*`, unreachable under the mainstream schemas
+            // the official command grew up with — sends `splitBlockAs`
+            // walking a depth chain that no longer exists (`$from.node(-1)`
+            // at depth 0, a TypeError). The ruled behaviour is simpler than a
+            // split anyway: the deletion happens, and there is nothing left
+            // to split. Probed on a THROWAWAY state built from the COMMAND's
+            // document and selection — not from `editor.state`, which in a
+            // chained call is the pre-chain snapshot and probes a document
+            // earlier steps already changed (adversarial round 1).
+            //
+            // `TextSelection` alone, because it is the only shape that
+            // reaches the crash: upstream deletes a `TextSelection` or an
+            // `AllSelection`, but an `AllSelection`'s `$from` sits at depth 0
+            // and that same depth check — which stands between its
+            // `NodeSelection` branch and its deletion line — turns it away
+            // BEFORE anything is deleted. Probing it
+            // here would turn that refusal into a silent whole-document
+            // deletion, and a block `NodeSelection` (never deleted upstream
+            // either) into a whole-block one (adversarial rounds 2 and 3).
+            if (
+              !state.selection.empty &&
+              state.selection instanceof TextSelection
+            ) {
+              const probe = EditorState.create({
+                doc: state.doc,
+                selection: state.selection,
+              }).tr;
+              probe.deleteSelection();
+              if (probe.doc.childCount === 0) {
+                if (dispatch) {
+                  tr.deleteSelection();
+                  tr.scrollIntoView();
+                }
+                return true;
+              }
+            }
             const attributes = editor.extensionManager.attributes;
             const splittable = editor.extensionManager.splittableMarks;
             const surviving = marksThatSurvive(state, splittable);

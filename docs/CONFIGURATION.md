@@ -36,6 +36,8 @@ loader:`packages/server/src/config/rate-limits.ts`(`getRateLimit(action)`);中�
 | `avatar-upload` | 20 / 3600s | user | 上传 studio 头像(每次都永久新增一个存储对象)|
 | `presign` | 30 / 60s | user | 上传预签名 URL |
 | `asset-report` | 120 / 60s | user | 活动流上报(`/assets/uploaded`、`/assets/deleted`) |
+| `membership-read` | 60 / 60s | user | 读会员面板(`GET /account/membership`)。它每次都跟 Stripe 对一次账,所以不限流等于让一个账号无限调别人的 API |
+| `subscription-write` | 10 / 60s | user | 订阅的四个写端点(结账 / 换档 / 取消 / 恢复)。每一个都往 Stripe 打真实调用,而 Stripe 的限额是我们整个账号共用的 |
 
 ## 3. `config/limits.yaml` — 业务容量 + 分页
 
@@ -105,9 +107,18 @@ loader:`packages/core/src/config/storage.ts`。
 |---|---|---|
 | `avatar.max_bytes` | 2097152(2 MiB)| 单次头像上传字节上限;超限返 413。按 PNG 最坏情况定,见上方说明 |
 
-## 7. `config/agent.yaml` — LLM 韧性(节选)
+## 7. `config/agent.yaml` — LLM 韧性与会话列表(节选)
 
-loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 行为 / 记忆 / 工具旋钮;韧性相关:
+loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 行为 / 记忆 / 工具旋钮。
+
+**会话列表**(2026-08-18 加):
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `conversation_page_size` | 30 | 会话列表一页几条。**服务端定,前端不发** —— 前端只发游标,页大小是服务端的事;两边各定一个就是同一个问题的两个答案。`POST /chat/open` 和 `GET /chat/conversations` 用同一个值 |
+| `conversation_title_max_chars` | 60 | 用第一句话给会话起名时截到多少个**字符**(不是 UTF-16 码元 —— 按码元切会把一个字切成两半,存进去是个替换符)。loader 里另有一道 200 的硬上限,防止把配置写成一个列宽装不下的数 |
+
+**韧性相关**:
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
@@ -179,6 +190,7 @@ loader:`packages/core/src/config/membership.ts`。**惰性加载**:首次被调�
 | 文件 | loader | 内容 |
 |---|---|---|
 | `config/pricing.yaml` | `packages/server/src/config/pricing.ts` | 积分购买档位(Stripe test/live Price ID) |
+| `config/subscription.yaml` | `packages/core/src/config/subscription.ts` | 会员订阅计划:每个可订阅档位的月费 + Stripe test/live Price ID + `stale_after_days`(订阅过期多久后不再认它的档位)+ `stripe_read_timeout_ms`(问 Stripe 订阅现状时等多久 —— 面板对账和 webhook 两条路共用)。跟 `config/membership.yaml`(那档的六项上限)和 `config/pricing.yaml`(积分包,买断不是订阅)是三件事 |
 | `config/text-tools.yaml` | `packages/server/src/config/text-tools.ts` | 文本 mini-tool 模型 + 参数 |
 | `config/agent.yaml` | `packages/core/src/config/*` | MainAgent 行为 / 记忆 / 工具 / worker 限制 |
 | `config/skill-routing.yaml` | `packages/core/src/config/skill-routing.ts` | 哪个 skill 能在哪个面用、用户能不能直接调、模型能不能自己调起 |

@@ -228,3 +228,23 @@ describe("parseConfig — REDIS_KEY_PREFIX", () => {
     ).toBe("dev-agent");
   });
 });
+
+describe("agent config — a title longer than the column can hold", () => {
+  it("refuses a conversation title cap above what the column stores", async () => {
+    // 这个数决定首句截到多长,而截出来的东西要存进一个定宽的列。让它超过列宽,
+    // 存的时候会被按码元切一刀 —— 一个 emoji 正好跨在刀口上就永久坏在库里,
+    // 改回配置也救不回那些行。
+    const { CONVERSATION_TITLE_MAX_CHARS } = await import("@breatic/shared");
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+
+    const tooLong = agentConfigSchemaForTests.safeParse({
+      conversation_title_max_chars: CONVERSATION_TITLE_MAX_CHARS + 1,
+    });
+    const atTheEdge = agentConfigSchemaForTests.safeParse({
+      conversation_title_max_chars: CONVERSATION_TITLE_MAX_CHARS,
+    });
+
+    expect(tooLong.success).toBe(false);
+    expect(atTheEdge.success).toBe(true);
+  });
+});

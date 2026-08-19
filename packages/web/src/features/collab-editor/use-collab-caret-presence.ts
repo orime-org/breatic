@@ -88,13 +88,13 @@ export function useCollabCaretPresence(
   //
   // Empty is not the same as inert. `beforeTransaction` / `afterTransaction`
   // fire regardless, and `CollabUndoSelection` listens to them. What keeps the
-  // reconciliation itself harmless is that the fragment is never empty: the
-  // backend writes a title into it before anyone connects, and no user gesture
-  // can remove that block (`@breatic/shared`'s `document-body`). That is what
-  // removes the layer disagreement the reconciliation would otherwise be
-  // resolving — without it, a reconciliation after an undo destroys the redo
-  // stack. Note it is the TITLE that does this, not a body paragraph: the body
-  // is allowed to hold no blocks at all.
+  // reconciliation itself harmless is that the two layers cannot disagree
+  // about an empty fragment: the document schema allows zero blocks
+  // (`content: 'block*'`, `@breatic/shared`'s `document-body`), so an empty
+  // fragment maps to an empty ProseMirror document with nothing for the
+  // reconciliation to repair — and a reconciliation with nothing to write is
+  // what leaves the redo stack alive after an undo. Pinned by the
+  // keeps-redo-alive case in `backend-seed-contract.test.ts`.
   const awareness = caretProvider?.awareness ?? null;
 
   // Publish. Receivers dim on a literal `false` only, so a client that never

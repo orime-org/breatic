@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "Direct upload is not available on this server"
+    },
+    "membership": {
+      "already_subscribed": "You already have a membership.",
+      "no_subscription": "You do not have a membership.",
+      "not_cancelling": "This membership is not scheduled to end.",
+      "downgrade_not_offered": "Memberships cannot be moved to a lower tier.",
+      "same_tier": "You are already on this membership.",
+      "payment_overdue": "Payment for this membership is overdue.",
+      "unavailable": "Memberships are unavailable."
     }
   },
   "chat": {
@@ -110,8 +119,7 @@
     "empty": {
       "greetingWithName": "Hi, {name}!",
       "greetingDefault": "Hi!",
-      "hintNodes": "Try asking @ a node",
-      "hintDirect": "Or type your prompt below ↓",
+      "hintDirect": "Type your prompt below ↓",
       "quick": {
         "findReference": "Find cyberpunk-style reference images",
         "writePrompt": "Write a prompt for an illustration",
@@ -121,7 +129,10 @@
     "history": {
       "title": "Session list",
       "description": "Switch to or review previous conversations.",
-      "empty": "No previous conversations"
+      "empty": "No previous conversations",
+      "moreFailed": "Could not load older conversations",
+      "loadingMore": "Loading earlier conversations",
+      "loading": "Loading conversations"
     },
     "relative": {
       "justNow": "just now",
@@ -143,7 +154,25 @@
     "tool": {
       "unfinished": "Stopped before it finished"
     },
-    "loadEarlier": "Load earlier messages"
+    "loadEarlier": "Load earlier messages",
+    "conversation": {
+      "untitled": "Untitled conversation",
+      "rename": "Rename",
+      "delete": "Delete",
+      "renamePlaceholder": "Name this conversation",
+      "deleteTitle": "Delete this conversation?",
+      "deleteBody": "Everything said in it goes with it. This cannot be undone.",
+      "deleteConfirm": "Delete",
+      "deleteCancel": "Cancel",
+      "rowActions": "Rename or delete this conversation",
+      "gone": "This conversation no longer exists"
+    },
+    "load": {
+      "failedTitle": "Network error",
+      "failedBody": "Could not read this project's conversations.",
+      "retry": "Reload",
+      "refusedTitle": "Cannot open this chat"
+    }
   },
   "canvas": {
     "group": {
@@ -634,7 +663,14 @@
       },
       "refusedNotice": "The connection to this document was refused. What you see may be out of date, and changes will not be saved.",
       "placeholder": "Start writing…",
-      "titlePlaceholder": "Untitled document",
+      "clearConfirm": {
+        "title": "Delete all content?",
+        "confirm": "Delete",
+        "cancel": "Cancel"
+      },
+      "unsupported": {
+        "label": "Unsupported content"
+      },
       "toolbar": {
         "undo": "Undo",
         "redo": "Redo",
@@ -728,7 +764,9 @@
       "studioInviteRequest": "{actor} invited you to join {studio}",
       "studioInviteAccepted": "{actor} accepted your invite to {studio}",
       "projectInviteRequest": "{actor} invited you to join {project}",
-      "projectInviteAccepted": "{actor} accepted your invite to {project}"
+      "projectInviteAccepted": "{actor} accepted your invite to {project}",
+      "membershipEnded": "Your {tier} membership has ended",
+      "membershipUpgradeIncomplete": "Your upgrade to {tier} was not completed"
     },
     "actorFallback": "Someone",
     "subtitle": {
@@ -1032,7 +1070,6 @@
       "creditsBalance": "Credits balance",
       "addCredits": "Add credits",
       "home": "Home",
-      "conversationCount": "{count} conversations",
       "scrollTabsLeft": "Scroll tabs left",
       "scrollTabsRight": "Scroll tabs right",
       "spacesToolbar": "Spaces",
@@ -1134,9 +1171,8 @@
       "enterprise": "Enterprise"
     },
     "priceFree": "Free",
-    "pricePerMonth": "{amount} / month",
+    "taxNote": "Prices exclude tax.",
     "tierNote": "Your tier decides capacity and collaboration scale. Every creative feature and every model is the same on all tiers.",
-    "upgrade": "Upgrade",
     "myQuota": "My allowances",
     "quota": {
       "teamStudios": "Team Studios",
@@ -1161,6 +1197,22 @@
     "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
     "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
     "contactEnterpriseAccount": "Questions about your allowances, or need them changed? Email us:",
-    "loadFailed": "We could not read your membership. It may be a network problem — try again in a moment."
+    "loadFailed": "We could not read your membership. It may be a network problem — try again in a moment.",
+    "action": {
+      "choose": "Choose {tier}",
+      "inProgress": "In progress",
+      "current": "Current"
+    },
+    "nextCharge": "Next charge {date}",
+    "endsOn": "Membership ends {date}",
+    "cancel": "Cancel membership",
+    "resume": "Resume membership",
+    "notice": {
+      "firstPaymentPending": "Payment not completed",
+      "upgradePending": "Upgrade payment not completed",
+      "paymentOverdue": "This month's payment did not go through"
+    },
+    "payNow": "Pay now",
+    "actionFailed": "That did not go through. Try again."
   }
 }

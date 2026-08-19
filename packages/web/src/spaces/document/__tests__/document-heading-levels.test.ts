@@ -56,19 +56,19 @@ afterEach(() => {
 });
 
 /**
- * A document with a title and an editor bound to its body fragment.
- * @param bodyHtml - HTML for the blocks after the title.
+ * An editor bound to a freshly-seeded document's body fragment.
+ * @param bodyHtml - HTML for the document's blocks.
  * @returns The editor.
  */
 function open(bodyHtml = ''): Editor {
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document', 'T'));
+  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const editor = new Editor({
     extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
   });
   editors.push(editor);
   if (bodyHtml) {
-    editor.commands.setContent(`<h1 class="doc-title">T</h1>${bodyHtml}`);
+    editor.commands.setContent(bodyHtml);
   }
   return editor;
 }
@@ -95,12 +95,11 @@ function type(editor: Editor, text: string): void {
 /**
  * The body blocks, as `type` plus `level` where a block has one.
  * @param editor - The editor to read.
- * @returns One entry per block after the title.
+ * @returns One entry per block.
  */
 function blocks(editor: Editor): Array<{ type: string; level?: number }> {
   const out: Array<{ type: string; level?: number }> = [];
-  editor.state.doc.forEach((node, _offset, index) => {
-    if (index === 0) return; // the title
+  editor.state.doc.forEach((node) => {
     const level = node.attrs.level as number | undefined;
     out.push(level === undefined ? { type: node.type.name } : { type: node.type.name, level });
   });
@@ -112,7 +111,7 @@ function blocks(editor: Editor): Array<{ type: string; level?: number }> {
  * @param editor - The editor to place the caret in.
  */
 function caretInBody(editor: Editor): void {
-  editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
+  editor.commands.setTextSelection(1);
 }
 
 describe('what the body can be typed into', () => {
@@ -298,13 +297,13 @@ describe('a fourth-level heading already stored in the document', () => {
    */
   function withStoredFourth(): Editor {
     const authored = new Y.Doc();
-    Y.applyUpdate(authored, encodeInitialSpaceContent('document', 'T'));
+    Y.applyUpdate(authored, encodeInitialSpaceContent('document'));
     const olderPeer = new Editor({
       extensions: sixLevelExtensions(documentBodyFragment(authored)),
     });
     editors.push(olderPeer);
     olderPeer.commands.setContent(
-      '<h1 class="doc-title">T</h1><p>before</p><h4>FOURTH</h4><p>after</p>',
+      '<p>before</p><h4>FOURTH</h4><p>after</p>',
     );
 
     const received = new Y.Doc();

@@ -335,6 +335,10 @@ function iconForType(type: NotificationType): string {
       return initialsFromString('PI');
     case 'project.invite_accepted':
       return '✓';
+    case 'membership.ended':
+      return initialsFromString('ME');
+    case 'membership.upgrade_incomplete':
+      return initialsFromString('UI');
     default:
       return '?';
   }

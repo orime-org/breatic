@@ -653,11 +653,9 @@ async function handleCreate(
   try {
     seeded = await yjsDocumentsRepo.seedInitialState(
       spaceContentDocName(projectId, spaceId, type),
-      // The name the creator gave the Space becomes the document's title —
-      // they are the same name. The other seed path (`lazy-seed`, a project's
-      // first Space) passes the name it generates for the tab, for the same
-      // reason; there is no path that seeds a document without one.
-      encodeInitialSpaceContent(type, name),
+      // The name the creator gave the Space lives on its tab, in meta — the
+      // content document starts empty and carries no name of its own.
+      encodeInitialSpaceContent(type),
     );
   } catch (seedError) {
     logger.error(

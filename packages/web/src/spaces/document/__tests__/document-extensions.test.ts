@@ -33,9 +33,9 @@ import { buildDocumentExtensions } from '@web/spaces/document/document-extension
  * travels with the entry and a future addition has to state one.
  */
 const ALLOWED_STARTERKIT_OVERRIDES: Readonly<Record<string, string>> = {
-  // StarterKit's own Document is `block+`, which is wrong on both halves: it
-  // has no title, and it forbids the empty body the title makes safe.
-  document: 'the document opens with a title and may hold no body block',
+  // StarterKit's own Document is `block+`, which forbids the empty document
+  // this schema makes legal on purpose.
+  document: 'the document may hold no blocks at all',
   // A second, client-blind undo stack: a peer's edit arrives as a local
   // transaction there, so one Cmd+Z deletes their paragraph.
   undoRedo: 'collaboration owns history through the shared undo manager',
@@ -65,7 +65,7 @@ const ALLOWED_STARTERKIT_OVERRIDES: Readonly<Record<string, string>> = {
  */
 const REMOVED_NODES: Readonly<Record<string, string>> = {
   horizontalRule:
-    'a divider is a feature nobody asked this document for; it came in as a StarterKit default, and it is the one visible block with no text in it — nothing else in the body can be selected without being seen to be',
+    'the divider is not offered yet: it was switched off when "everything visible can be selected" priced in a block with no text to select, and bringing it back together with the selected-look such a block needs is task #124',
 };
 
 /**
@@ -75,7 +75,6 @@ const REMOVED_NODES: Readonly<Record<string, string>> = {
  * a further addition has to state one rather than slip in as a name.
  */
 const ADDED_NODES: Readonly<Record<string, string>> = {
-  title: 'the undeletable first block that keeps the shared fragment inhabited',
   unsupportedBlock:
     'where a block this build has no vocabulary for is kept, instead of being deleted from the shared document',
   unsupportedInline:
@@ -113,8 +112,7 @@ describe('the document schema', () => {
       ...Object.keys(ADDED_NODES),
     ].sort();
     expect(Object.keys(ours.nodes).sort()).toEqual(expected);
-    // The title refuses every mark rather than adding one of its own, so the
-    // only additions here are the fallbacks.
+    // The only mark addition is the fallback.
     expect(Object.keys(ours.marks).sort()).toEqual(
       [...Object.keys(stock.marks), ...Object.keys(ADDED_MARKS)].sort(),
     );

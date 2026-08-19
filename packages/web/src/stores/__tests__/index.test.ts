@@ -12,7 +12,6 @@ describe('stores barrel', () => {
     expect(typeof stores.useCanvasStore).toBe('function');
     expect(typeof stores.useMiniToolStore).toBe('function');
     expect(typeof stores.useInpaintStore).toBe('function');
-    expect(typeof stores.useChatStore).toBe('function');
     expect(typeof stores.useProjectStore).toBe('function');
     expect(typeof stores.useToastStore).toBe('function');
   });

@@ -65,6 +65,18 @@ export {
   getDefaultMembershipTier,
 } from "@core/config/membership.js";
 export type { MembershipConfig, MembershipLimits } from "@core/config/membership.js";
+export {
+  getSubscriptionPlans,
+  getSubscriptionPlan,
+  findSubscribableTierByPriceId,
+  getSubscriptionStaleAfterDays,
+  getStripeReadTimeoutMs,
+  resetSubscriptionConfigCache,
+} from "@core/config/subscription.js";
+export type {
+  SubscriptionPlan,
+  SubscriptionPlans,
+} from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
 export { getAgentConfig } from "@core/config/loader.js";
 export { getSkillRouting, resetSkillRouting, SKILL_SURFACES } from "@core/config/skill-routing.js";
@@ -150,10 +162,35 @@ export {
   getLimitsForStudio,
   getProjectConcurrentEditorLimit,
   lockLimitsForUser,
+  lockAccountRow,
   changeMembershipTier,
   TIER_CHANGE_REASONS,
 } from "@core/auth/membership.repo.js";
 export type { TierChangeReason } from "@core/auth/membership.repo.js";
+// Subscriptions: the rows, and the reading that turns them into the situation
+// an account is in. The reading is here rather than in server because the
+// ceilings above are read here too, and a subscription whose paid period ran
+// out says the tier on the account is stale.
+export {
+  listSubscriptions,
+  upsertSubscription,
+} from "@core/auth/subscription.repo.js";
+export type {
+  StoredSubscription,
+  SubscriptionWrite,
+} from "@core/auth/subscription.repo.js";
+export {
+  subscriptionSituation,
+  tierForSituation,
+  STRIPE_SUBSCRIPTION_STATUSES,
+  LIVE_SUBSCRIPTION_STATUSES,
+} from "@core/auth/subscription-state.js";
+export type {
+  StripeSubscriptionStatus,
+  SubscriptionRecord,
+  SubscriptionSituation,
+  SituationReading,
+} from "@core/auth/subscription-state.js";
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";

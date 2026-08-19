@@ -319,6 +319,78 @@ export async function createStudioTransferRequest(input: {
   );
 }
 
+/** Payload for `membership.ended` — which tier the account fell from. */
+export interface MembershipEndedPayload {
+  /** The paid tier that just ended. */
+  fromTier: string;
+}
+
+/**
+ * Tell an account its membership ended and it is back on the free tier
+ * (#106 §9).
+ *
+ * Informational: nothing to answer, so no deadline. It carries no actor —
+ * nobody did this to them, a subscription ran out — and no entity, so the bell
+ * renders it as a plain sentence rather than through the actor/entity frame.
+ *
+ * The always-delivered half of the pair. The matching email only leaves when
+ * an SMTP backend is configured, and `EMAIL_BACKEND` defaults to `disabled`.
+ * @param input - Recipient inbox, which tier ended, and optional transaction.
+ * @param input.userId - The account whose membership ended.
+ * @param input.payload - The tier it fell from.
+ * @param input.tx - The transaction the tier change is being made in, so the
+ *   notice and the change stand or fall together.
+ * @returns The inserted `membership.ended` notification.
+ */
+export async function createMembershipEnded(input: {
+  userId: string;
+  payload: MembershipEndedPayload;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "membership.ended",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
+/** Payload for `membership.upgrade_incomplete` — the tier that was not reached. */
+export interface MembershipUpgradeIncompletePayload {
+  /** The tier the upgrade was for. */
+  toTier: string;
+}
+
+/**
+ * Tell an account its upgrade was discarded because the difference went
+ * unpaid (#106 §7.3).
+ *
+ * Stripe holds a priced change for 23 hours and then drops it. Nothing is
+ * owed and nothing broke — but somebody who clicked upgrade, saw a payment
+ * page, and then saw their tier unchanged has no other way to learn why.
+ * @param input - Recipient inbox, which tier was not reached, and optional tx.
+ * @param input.userId - The account whose upgrade lapsed.
+ * @param input.payload - The tier the upgrade was for.
+ * @param input.tx - The transaction the subscription write is being made in.
+ * @returns The inserted `membership.upgrade_incomplete` notification.
+ */
+export async function createMembershipUpgradeIncomplete(input: {
+  userId: string;
+  payload: MembershipUpgradeIncompletePayload;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "membership.upgrade_incomplete",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
 /**
  * Notify the OLD admin that the transfer they initiated was accepted
  * (slice 3).

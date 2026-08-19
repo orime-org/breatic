@@ -46,12 +46,11 @@ export interface ToolDef {
    *
    * Asked of the command the button runs, never of where the caret is. R7 asks
    * for one thing — no control that looks usable and does nothing when pressed
-   * — and the title is what made that possible: it takes no marks and cannot be
-   * wrapped, so a button aimed at it would have been exactly that control. An
-   * earlier version asked "is the caret in the title", which is only ever an
-   * approximation: it answered "no" to Cmd+A, whose selection starts at the
-   * document rather than inside any block, and lit all six buttons on a
-   * document whose only block takes no formatting at all.
+   * — and a dry run of the command itself is the only answer that tracks the
+   * selection shapes as they actually are: caret-position heuristics answer
+   * wrongly for selections that start at the document rather than inside any
+   * block, and for blocks that refuse formatting (a code block takes no
+   * marks).
    *
    * The dry run is CONSERVATIVE for the two list commands over a body heading
    * or code block — it says no where the command works. That is a body-editing
@@ -156,14 +155,13 @@ export const MARK_TOOLS: ToolDef[] = [
  * dry run is conservative for the two list commands — they clear the block
  * type before wrapping, and a dry run performs no steps, so over a body
  * heading or code block it answers no while the command works. That belongs to
- * the slice that owns the body's editing behaviour; it cannot make this
- * toolbar claim anything false about the title, which is what R7 is about.
+ * the slice that owns the body's editing behaviour (#85); a dark button that
+ * would have worked is the direction R7 permits.
  *
  * Two attempts to widen the answer past the dry run are what this reverts.
- * Both reached into selections that never touch the title, and the second lit
- * the list buttons over a selection that DOES: pressing one there stripped a
- * body heading to a paragraph and produced no list, because the clearing step
- * lands even when the wrap that follows it fails.
+ * The second lit the list buttons over a selection where pressing one
+ * stripped a body heading to a paragraph and produced no list, because the
+ * clearing step lands even when the wrap that follows it fails.
  */
 export const BLOCK_TOOLS: ToolDef[] = [
   {
@@ -210,8 +208,8 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
 }: DocumentToolbarProps): React.JSX.Element {
   // Whether each formatting control is live is decided by the control itself,
   // against the command it runs — see `ToolDef.canRun` and `ToolButton`. Undo
-  // and redo are not part of that: they work in the title exactly as they do
-  // in the body, and their availability comes from the history state.
+  // and redo are not part of that: their availability comes from the history
+  // state, not from any selection.
   return (
     <div
       data-testid='document-toolbar'

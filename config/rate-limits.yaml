@@ -35,3 +35,17 @@ presign:        { max: 30,  window_seconds: 60 }
 # fire once per upload / node-delete; 120/60s covers a heavy multi-file
 # drag while capping a flood loop against the append-only feed table.
 asset-report:   { max: 120, window_seconds: 60 }
+
+# Reading the membership panel. It reconciles with Stripe on every read
+# (#106 §10.2), so an unthrottled reader is an unthrottled caller of somebody
+# else's API. Sixty a minute leaves the panel feeling instant while capping
+# what one account can send outward.
+membership-read: { max: 60, window_seconds: 60 }
+
+# The four subscription actions (#106 §7). Each one reaches Stripe: checkout
+# creates a Checkout Session, the other three update a subscription. Nothing a
+# person does to their own membership needs more than a handful of tries in a
+# minute -- clicking "subscribe" ten times in sixty seconds is already well
+# past anything the panel asks for -- while an unthrottled caller here spends
+# our Stripe rate limit, and Stripe's limit is shared by every account we have.
+subscription-write: { max: 10, window_seconds: 60 }

@@ -15,55 +15,28 @@
  *
  * ```
  * content
- *   ├─ title          exactly one, always first, cannot be deleted
- *   └─ …blocks        zero or more; an empty body is a legal state
+ *   └─ …blocks        zero or more; an empty document is a legal state
  * ```
  *
- * The title is what makes the fragment safe. ProseMirror's document model
- * cannot represent a document with nothing in it, while a Yjs fragment's idea
- * of empty is nothing at all. Measured 2026-08-16: binding an editor to an
- * empty fragment writes NOTHING back to Yjs — each client papers over the
- * difference locally instead, and that is the real hazard: two clients opening
- * the same fresh document each invent their own filler block, the two are
- * different objects, and the merge keeps both — type one character on each
- * side and the result is two paragraphs, one per author. A first block that
- * NOBODY can issue a delete for closes that gap by construction: every client
- * binds to a fragment that is already inhabited, so no one invents anything
- * and there is nothing for a merge to duplicate. That is also why the blocks
- * after it are optional — once the title guarantees the fragment is inhabited,
- * requiring a body block would re-open exactly the gap the title just closed.
+ * There is no title block. The document's only name is the Space's name on
+ * its tab, held in the project's meta document — one name, one home. A user
+ * who wants a visual heading writes one.
  *
- * The title's undeletability is enforced by the editor's schema, in
- * `web/spaces/document/document-title`. Measured there against every gesture
- * that could plausibly remove it.
+ * Emptiness is safe because the editor's schema allows it (`block*`): a
+ * fragment with nothing in it maps to a document with no blocks, so no client
+ * ever has to invent a filler block to satisfy the schema, and there is
+ * nothing for a merge to duplicate. The hazard this replaces was measured
+ * (2026-08-16): under a schema that demanded content, two clients opening the
+ * same fresh document each papered over the gap locally, and one keystroke on
+ * each side merged into two paragraphs nobody wrote together. With emptiness
+ * legal, what merges is only what users actually did — and two people each
+ * starting a paragraph in an empty document converging on two paragraphs is
+ * the accepted, expected outcome.
  *
- * ## Why the backend seeds it, and not the editor
- *
- * The editor cannot do it without three preconditions that the backend does
- * not have: it has to wait for the document to sync (seeding a title that has
- * merely not loaded yet puts one in front of the server's content), it has to
- * know whether this client may write at all (a viewer's seed is dropped by the
- * server without an error, leaving them permanently one block ahead of
- * everyone else), and it has to survive remounting when the user switches
- * Space tabs. None of the three can be got right from the browser, and the
- * guard that looks like it settles it — insert only when the fragment reads
- * empty — is a purely local read: two clients opening a brand-new Space within
- * one round trip both see zero, both insert, and Yjs keeps both.
- *
- * The backend runs exactly once, before any client connects, so all three
- * preconditions dissolve. Its write is also not on anyone's undo stack: a
- * `Y.UndoManager` only tracks the origins it is told to, and the seed happens
- * before there is a client to have one.
- *
- * ## What this makes the backend responsible for
- *
- * Writing these bytes makes the backend a producer of ProseMirror content
- * without going through ProseMirror's schema. Get the node name, the
- * attributes, or the fragment key wrong and the first client to connect will
- * not error — it will quietly repair the difference by deleting what it does
- * not recognise, and broadcast that deletion as its own edit. The contract
- * tests on both sides of this module exist for that reason, and they are
- * anchored here so neither end can be checked against a copy of itself.
+ * The selection ruling, the empty-state interaction and the select-all tiers
+ * that sit on top of this shape are the editor's business — the decision
+ * record lives in the private engineering repo (document structure DD,
+ * 2026-08-17).
  */
 
 import * as Y from "yjs";
@@ -80,14 +53,6 @@ import type { SpaceType } from "@shared/types/space.js";
 const DOCUMENT_BODY_KEY = "content";
 
 /**
- * Node name of the document's title block.
- *
- * Exported because the editor's schema has to register a node under exactly
- * this name; a mismatch is silent — the editor deletes what it cannot resolve.
- */
-export const DOCUMENT_TITLE_NODE = "title";
-
-/**
  * Get a document Space's body fragment — what the editor binds to.
  * @param doc - The document Space's Y.Doc.
  * @returns The body fragment, created on first access.
@@ -99,55 +64,25 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
 /**
  * Encode the initial state for a fresh Space's content document.
  *
- * A canvas and a timeline start with nothing — their editors build their own
- * structure on first bind. A document starts with the title described at the
- * top of this file and no body blocks at all.
+ * Every kind starts with nothing: canvas and timeline editors build their own
+ * structure on first bind, and a document's empty state is legal by schema —
+ * the editor offers a placeholder and opens a paragraph on the first click or
+ * keystroke.
  *
- * `name` is the Space's name — the one shown on its tab. A document Space's
- * title and its tab name start out as the same thing, on both creation paths:
- * a Space made from the new-Space dialog carries the name its creator typed,
- * and a project's first Space carries the one the backend derives from the
- * Space type. It is required rather than optional precisely because there is
- * no path without one, and an optional argument would be a branch someone
- * could forget to pass.
- *
- * They are the same only at birth. Renaming the tab afterwards does not touch
- * the title, and editing the title does not touch the tab — they live in two
- * different Yjs documents (the tab name in the project's meta document, the
- * title in this one), and syncing them would mean deciding who wins when both
- * change at once.
- *
- * The bytes need not be identical across calls. The row is written with
- * `ON CONFLICT DO NOTHING`, so concurrent first-seeds converge by document
- * name and the loser re-fetches the winner's bytes rather than comparing them.
- * That is also why the `clientID` is left as yjs assigns it: pinning it would
- * make two seeds from different releases merge into one block instead of two,
- * and which block survived would depend on arrival order, with both sides
- * believing they had the whole story. Two blocks is visible and fixable; a
- * silent divergence is neither.
+ * The `kind` parameter is what keeps this function the single home for the
+ * initial-content policy even though the three answers are currently the
+ * same: a future kind that needs a seed changes one switch here, not a call
+ * site somewhere else.
  * @param kind - The kind of Space this content document belongs to.
- * @param name - The Space's name, which is also the document's opening title.
  * @returns The encoded Yjs update, ready to persist as the initial state.
  */
-export function encodeInitialSpaceContent(
-  kind: SpaceType,
-  name: string,
-): Uint8Array {
+export function encodeInitialSpaceContent(kind: SpaceType): Uint8Array {
   const doc = new Y.Doc();
-  // Returning from inside each branch is what makes the switch exhaustive:
-  // TypeScript reports a missing return path when a fourth kind is added,
-  // which is the whole point. Returning after the switch compiles fine and
-  // would ship the new kind an empty document with nothing to say so.
+  // Returning from inside each branch keeps the switch exhaustive: TypeScript
+  // reports a missing return path when a fourth kind is added, which is the
+  // point — a new kind must state its initial content on purpose.
   switch (kind) {
-    case "document": {
-      const titleNode = new Y.XmlElement(DOCUMENT_TITLE_NODE);
-      // An empty name would give the document an empty title, which is a
-      // legal state the placeholder covers — but no caller has one, so it is
-      // not worth a branch that no test could reach.
-      if (name) titleNode.insert(0, [new Y.XmlText(name)]);
-      documentBodyFragment(doc).push([titleNode]);
-      return Y.encodeStateAsUpdate(doc);
-    }
+    case "document":
     case "canvas":
     case "timeline":
       return Y.encodeStateAsUpdate(doc);

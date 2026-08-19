@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MAX_TIMER_MS } from "@breatic/shared";
+import { CONVERSATION_TITLE_MAX_CHARS, MAX_TIMER_MS } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const agentConfigSchema = z.object({
@@ -28,6 +28,25 @@ const agentConfigSchema = z.object({
   default_model: z.string().default("anthropic/claude-sonnet-4-6"),
   consolidation_model: z.string().default("anthropic/claude-sonnet-4-6"),
   memory_window: z.number().int().positive().default(20),
+  /**
+   * How much of the first message a conversation keeps as its name.
+   *
+   * A conversation is named after the first thing said in it, and people open
+   * one by typing a whole paragraph as often as a line. Cut so the list stays
+   * readable; the full message is a scroll away in the conversation itself.
+   */
+  // Capped at what the column stores, and both sides count the same thing:
+  // characters. They did not always -- the cut on the way in counted UTF-16
+  // code units, so a name of emoji within the limit was cut anyway, between
+  // the halves of one of them, and the replacement mark that produced stayed
+  // in that name for good.
+  conversation_title_max_chars: z
+    .number()
+    .int()
+    .positive()
+    .max(CONVERSATION_TITLE_MAX_CHARS)
+    .default(60),
+  conversation_page_size: z.number().int().positive().default(30),
   memory_keep_recent_turns: z.number().int().positive().default(3),
   full_detail_turns: z.number().int().positive().default(3),
   memory_project_max_size: z.number().int().positive().default(3072),
@@ -62,6 +81,14 @@ const agentConfigSchema = z.object({
 
 /** Validated agent configuration type. */
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
+
+/**
+ * The agent config shape, for tests that assert on its bounds.
+ *
+ * Exported rather than rebuilt in the test: a copy would pass while the real
+ * one drifts, which is the whole failure this bound exists to prevent.
+ */
+export const agentConfigSchemaForTests = agentConfigSchema;
 
 let _cachedConfig: Readonly<AgentConfig> | null = null;
 

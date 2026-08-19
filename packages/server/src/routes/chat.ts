@@ -19,7 +19,11 @@ import {
   skillCommandSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,
+  chatCreateConversationSchema,
+  chatRenameConversationSchema,
   chatEarlierMessagesQuerySchema,
+  conversationIdParamSchema,
+  attachmentParamSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -29,7 +33,7 @@ import { projectService } from "@server/modules";
 import { MainAgent } from "@server/agent/main-agent.js";
 import { serializeSSE, SSEEventType } from "@server/agent/types.js";
 import type { SSEEvent } from "@server/agent/types.js";
-import { runWithContext, logger } from "@breatic/core";
+import { runWithContext, logger, getAgentConfig } from "@breatic/core";
 import { assertSkillUsable } from "@breatic/domain";
 import { SSE_HEARTBEAT_INTERVAL_MS } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
@@ -253,20 +257,87 @@ chat.post("/skill", validate("json", skillCommandSchema), async (c) => {
  * Optional `project_id` query scopes the result to one project so the
  * frontend doesn't have to client-side filter a paginated response.
  * @param c - Hono context with pagination + optional `project_id`
- * @returns Array of conversation entities
+ * @returns One page of conversations, and whether the list goes on past it
  */
 chat.get(
   "/conversations",
   validate("query", chatConversationsQuerySchema),
   async (c) => {
     const user = c.get("user");
-    const { limit, offset, project_id: projectId } = c.req.valid("query");
-    const conversations = await conversationService.list(user.id, {
-      projectId,
+    const {
       limit,
-      offset,
+      project_id: projectId,
+      before_updated_at: beforeUpdatedAt,
+      before_id: beforeId,
+    } = c.req.valid("query");
+    // Both halves or neither. Half a position is not a position -- the order
+    // is over two columns, and a query given only one of them would silently
+    // page through a different order than the one the rows came back in.
+    const after =
+      beforeUpdatedAt !== undefined && beforeId !== undefined
+        ? { updatedAt: new Date(beforeUpdatedAt), id: beforeId }
+        : undefined;
+    const page = await conversationService.list(user.id, {
+      projectId,
+      limit: limit ?? getAgentConfig().conversation_page_size,
+      after,
     });
-    return c.json({ data: conversations });
+    return c.json({ data: page });
+  },
+);
+
+/**
+ * `POST /chat/conversations` — start another conversation in a project.
+ *
+ * The deliberate counterpart to `POST /chat/open`: that one hands back the
+ * conversation already there and only creates when there is none, which is
+ * exactly what someone pressing "new conversation" is refusing. So this one
+ * never looks first.
+ * @param c - Hono context with a `project_id` body
+ * @returns The conversation that was just created
+ * @throws {AppError} `404` if the caller is not a member or the project is
+ *   gone, `403` if they are a member but may only read
+ */
+chat.post(
+  "/conversations",
+  validate("json", chatCreateConversationSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { project_id: projectId } = c.req.valid("json");
+    const conversation = await conversationService.createConversation(
+      user.id,
+      projectId,
+    );
+    return c.json({ data: conversation });
+  },
+);
+
+/**
+ * `PATCH /chat/conversations/:id` — name a conversation.
+ *
+ * The body carries the project as well as the title. The id in the path came
+ * from the client, so three things have to hold before anything is written,
+ * and one of them is which project this conversation lives in.
+ * @param c - Hono context with the conversation id in the path and a
+ *   `project_id` + `title` body
+ * @returns The conversation as it now stands
+ * @throws {AppError} `404` if it is missing, deleted, someone else's, or in a
+ *   different project — one answer for all four, on purpose
+ */
+chat.patch(
+  "/conversations/:id",
+  validate("param", conversationIdParamSchema),
+  validate("json", chatRenameConversationSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { project_id: projectId, title } = c.req.valid("json");
+    const conversation = await conversationService.rename(
+      c.req.param("id"),
+      user.id,
+      projectId,
+      title,
+    );
+    return c.json({ data: conversation });
   },
 );
 
@@ -298,7 +369,7 @@ chat.post("/open", validate("json", chatOpenSchema), async (c) => {
  * @returns Conversation entity and its message history
  * @throws {AppError} `404` if not found, `403` if not the owner
  */
-chat.get("/conversations/:id", async (c) => {
+chat.get("/conversations/:id", validate("param", conversationIdParamSchema), async (c) => {
   const user = c.get("user");
   const conversationId = c.req.param("id");
   const result = await conversationService.getWithMessages(conversationId, user.id);
@@ -317,6 +388,7 @@ chat.get("/conversations/:id", async (c) => {
  */
 chat.get(
   "/conversations/:id/messages",
+  validate("param", conversationIdParamSchema),
   validate("query", chatEarlierMessagesQuerySchema),
   async (c) => {
     const user = c.get("user");
@@ -336,7 +408,7 @@ chat.get(
  * @returns `200` with success message
  * @throws {AppError} `404` if not found, `403` if not the owner
  */
-chat.delete("/conversations/:id", async (c) => {
+chat.delete("/conversations/:id", validate("param", conversationIdParamSchema), async (c) => {
   const user = c.get("user");
   const conversationId = c.req.param("id");
   await conversationService.deleteConversation(conversationId, user.id);
@@ -354,13 +426,17 @@ chat.delete("/conversations/:id", async (c) => {
  * could enumerate another user's attachment URLs by guessing the
  * conversation UUID.
  */
-chat.get("/conversations/:id/attachments", async (c) => {
-  const user = c.get("user");
-  const conversationId = c.req.param("id");
-  await conversationService.assertAccess(conversationId, user.id);
-  const list = await attachmentService.listByConversation(conversationId);
-  return c.json({ data: list });
-});
+chat.get(
+  "/conversations/:id/attachments",
+  validate("param", conversationIdParamSchema),
+  async (c) => {
+    const user = c.get("user");
+    const conversationId = c.req.param("id");
+    await conversationService.assertAccess(conversationId, user.id);
+    const list = await attachmentService.listByConversation(conversationId);
+    return c.json({ data: list });
+  },
+);
 
 /**
  * `DELETE /chat/conversations/:cid/attachments/:aid` — soft-delete.
@@ -368,11 +444,15 @@ chat.get("/conversations/:id/attachments", async (c) => {
  * Marks the attachment as deleted. The DB record and underlying file
  * are retained — soft delete only hides it from the active list.
  */
-chat.delete("/conversations/:cid/attachments/:aid", async (c) => {
-  const user = c.get("user");
-  const aid = c.req.param("aid");
-  await attachmentService.softDelete(aid, user.id);
-  return c.json({ data: { ok: true } });
-});
+chat.delete(
+  "/conversations/:cid/attachments/:aid",
+  validate("param", attachmentParamSchema),
+  async (c) => {
+    const user = c.get("user");
+    const aid = c.req.param("aid");
+    await attachmentService.softDelete(aid, user.id);
+    return c.json({ data: { ok: true } });
+  },
+);
 
 export { chat as chatRoute };

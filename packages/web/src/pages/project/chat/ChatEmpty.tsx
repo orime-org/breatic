@@ -30,6 +30,15 @@ const QUICK_ACTIONS: ReadonlyArray<QuickAction> = [
 
 interface ChatEmptyProps {
   onQuickAction?: (label: string) => void;
+  /**
+   * The panel is on its way to another conversation.
+   *
+   * These write into the composer, and the composer is held still for that
+   * window. Left live they would put their sentence into the conversation
+   * being left behind, where the reader watches it vanish as the new one
+   * lands.
+   */
+  frozen?: boolean;
 }
 
 /**
@@ -37,8 +46,7 @@ interface ChatEmptyProps {
  * zero messages. Mirrors the chrome-baseline mock `chat-empty`:
  *
  *   Hi, <name>!                              ← bold foreground greeting
- *   Try asking @ a node                      ← muted instruction
- *   Or type your prompt below ↓
+ *   Type your prompt below ↓                 ← muted instruction
  *   [🖼️ Find me a reference]                 ← stacked quick actions,
  *   [✨ Write a prompt for this]                see QUICK_ACTIONS above
  *   [✏️ Refine this prompt]
@@ -49,10 +57,12 @@ interface ChatEmptyProps {
  * the LangSwitcher.
  * @param root0 - The component props.
  * @param root0.onQuickAction - Called with a quick-action label when one is picked.
+ * @param root0.frozen - The panel is on its way to another conversation.
  * @returns The empty-conversation greeting with stacked quick-action buttons.
  */
 export function ChatEmpty({
   onQuickAction,
+  frozen = false,
 }: ChatEmptyProps): React.JSX.Element {
   const t = useTranslation();
   const userName = useCurrentUserStore((s) => s.user?.name);
@@ -66,11 +76,7 @@ export function ChatEmpty({
       className='flex flex-col items-center px-4 py-8 text-center text-sm leading-relaxed text-muted-foreground'
     >
       <strong className='mb-2 block text-foreground'>{greeting}</strong>
-      <p className='leading-relaxed'>
-        {t('chat.empty.hintNodes')}
-        <br />
-        {t('chat.empty.hintDirect')}
-      </p>
+      <p className='leading-relaxed'>{t('chat.empty.hintDirect')}</p>
       <div className='mt-4 flex w-full flex-col gap-1.5'>
         {QUICK_ACTIONS.map((qa) => {
           const Icon = qa.icon;
@@ -81,6 +87,7 @@ export function ChatEmpty({
               type='button'
               variant={null}
               size={null}
+              disabled={frozen}
               onClick={() => onQuickAction?.(label)}
               className='flex items-center gap-2 rounded-md border border-border bg-transparent px-3 py-2 text-left text-xs text-foreground transition-colors hover:bg-accent'
               data-testid={`chat-empty-qa-${qa.id}`}

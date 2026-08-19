@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "目前的伺服器不支援直接上傳"
+    },
+    "membership": {
+      "already_subscribed": "你已有會員。",
+      "no_subscription": "你沒有會員。",
+      "not_cancelling": "這個會員沒有預約結束。",
+      "downgrade_not_offered": "會員不能降到更低檔位。",
+      "same_tier": "你已經在這一檔會員。",
+      "payment_overdue": "這個會員有一期款項未付。",
+      "unavailable": "會員目前無法使用。"
     }
   },
   "chat": {
@@ -110,8 +119,7 @@
     "empty": {
       "greetingWithName": "嗨,{name}!",
       "greetingDefault": "嗨!",
-      "hintNodes": "試試 @ 節點提問",
-      "hintDirect": "或直接在下方輸入對話 ↓",
+      "hintDirect": "在下方輸入對話 ↓",
       "quick": {
         "findReference": "幫我找賽博龐克風格的參考圖",
         "writePrompt": "幫我寫一個生成插畫的提示詞",
@@ -121,7 +129,10 @@
     "history": {
       "title": "Session 列表",
       "description": "切換或回顧之前的對話。",
-      "empty": "尚無歷史對話"
+      "empty": "尚無歷史對話",
+      "moreFailed": "沒能載入更早的對話",
+      "loadingMore": "正在載入更早的對話",
+      "loading": "正在載入對話列表"
     },
     "relative": {
       "justNow": "剛剛",
@@ -143,7 +154,25 @@
     "tool": {
       "unfinished": "未跑完就停止了"
     },
-    "loadEarlier": "載入更早的訊息"
+    "loadEarlier": "載入更早的訊息",
+    "conversation": {
+      "untitled": "未命名對話",
+      "rename": "重新命名",
+      "delete": "刪除",
+      "renamePlaceholder": "為這個對話命名",
+      "deleteTitle": "刪除這個對話？",
+      "deleteBody": "對話裡說過的內容會一起刪除，無法復原。",
+      "deleteConfirm": "刪除",
+      "deleteCancel": "取消",
+      "rowActions": "重新命名或刪除這條對話",
+      "gone": "這條對話已經不存在了"
+    },
+    "load": {
+      "failedTitle": "網路錯誤",
+      "failedBody": "沒能讀取這個 Project 的對話。",
+      "retry": "重新載入",
+      "refusedTitle": "打不開這個對話"
+    }
   },
   "canvas": {
     "group": {
@@ -634,7 +663,14 @@
       },
       "refusedNotice": "與這個文件的連線被拒絕了。你看到的內容可能不是最新的，變更也不會被儲存。",
       "placeholder": "開始寫作…",
-      "titlePlaceholder": "未命名文件",
+      "clearConfirm": {
+        "title": "刪除全部內容？",
+        "confirm": "刪除",
+        "cancel": "取消"
+      },
+      "unsupported": {
+        "label": "不支援的內容"
+      },
       "toolbar": {
         "undo": "復原",
         "redo": "重做",
@@ -728,7 +764,9 @@
       "studioInviteRequest": "{actor} 邀請你加入 {studio}",
       "studioInviteAccepted": "{actor} 接受了你對 {studio} 的邀請",
       "projectInviteRequest": "{actor} 邀請你加入 {project}",
-      "projectInviteAccepted": "{actor} 接受了你對 {project} 的邀請"
+      "projectInviteAccepted": "{actor} 接受了你對 {project} 的邀請",
+      "membershipEnded": "{tier} 會員已結束",
+      "membershipUpgradeIncomplete": "升級到 {tier} 未完成"
     },
     "actorFallback": "某人",
     "subtitle": {
@@ -1032,7 +1070,6 @@
       "creditsBalance": "積分餘額",
       "addCredits": "新增積分",
       "home": "首頁",
-      "conversationCount": "{count} 個對話",
       "scrollTabsLeft": "向左捲動標籤",
       "scrollTabsRight": "向右捲動標籤",
       "spacesToolbar": "Spaces",
@@ -1134,9 +1171,8 @@
       "enterprise": "企業版"
     },
     "priceFree": "免費",
-    "pricePerMonth": "{amount} / 月",
+    "taxNote": "價格不含稅。",
     "tierNote": "這一檔決定你的容量與協作規模。所有創作功能和模型在每一檔都完全一樣。",
-    "upgrade": "升級",
     "myQuota": "我的額度",
     "quota": {
       "teamStudios": "團隊 Studio",
@@ -1161,6 +1197,22 @@
     "contactEnterprise": "需要更大規模或單獨的商用條款？寄信跟我們談：",
     "contactSelfHosted": "需要商用授權或單獨的支援條款？寄信跟我們談：",
     "contactEnterpriseAccount": "額度有疑問或需要調整？寄信跟我們談：",
-    "loadFailed": "沒能讀到你的會員資訊，可能是網路問題。稍後再試一次。"
+    "loadFailed": "沒能讀到你的會員資訊，可能是網路問題。稍後再試一次。",
+    "action": {
+      "choose": "選擇 {tier}",
+      "inProgress": "處理中",
+      "current": "目前"
+    },
+    "nextCharge": "下次扣款 {date}",
+    "endsOn": "會員 {date} 結束",
+    "cancel": "取消會員",
+    "resume": "恢復會員",
+    "notice": {
+      "firstPaymentPending": "付款未完成",
+      "upgradePending": "升級付款未完成",
+      "paymentOverdue": "這個月的款項沒有扣款成功"
+    },
+    "payNow": "去付款",
+    "actionFailed": "沒有成功，請再試一次。"
   }
 }

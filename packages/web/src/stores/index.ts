@@ -24,7 +24,6 @@ export { useMiniToolStore } from '@web/stores/mini-tool';
 export type { MiniToolStatus, MiniToolSession } from '@web/stores/mini-tool';
 export { useInpaintStore } from '@web/stores/inpaint';
 export type { BrushMode } from '@web/stores/inpaint';
-export { useChatStore } from '@web/stores/chat';
 export { useProjectStore } from '@web/stores/project';
 export type { ProjectRole, ActiveProjectMeta } from '@web/stores/project';
 export { useToastStore } from '@web/stores/toast';

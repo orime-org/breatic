@@ -12,6 +12,7 @@
  */
 
 import { z } from "zod";
+import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@shared/types/membership.js";
 
 import { SpaceTypeSchema } from "@shared/types/space.js";
 
@@ -342,6 +343,32 @@ export const checkoutSchema = z.object({
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 
+/**
+ * Starting or changing a membership subscription (#106).
+ *
+ * Separate from {@link checkoutSchema}, which sells credit packs: that one
+ * names a pack by a free-form string and carries its own return URLs, where
+ * this one names a membership tier and comes back to the page the panel was
+ * opened from.
+ *
+ * The tier is checked against the tiers that can actually be subscribed to, so
+ * `base` — the tier an account falls back to — is refused at the boundary
+ * rather than reaching Stripe as a missing price.
+ */
+export const subscriptionPlanSchema = z.object({
+  // Built from the one list of subscribable tiers, so a fourth priced tier
+  // becomes acceptable here by itself rather than by somebody remembering.
+  tier: z.enum(SUBSCRIBABLE_MEMBERSHIP_TIERS),
+  return_url: z.string().url(),
+});
+export type SubscriptionPlanInput = z.infer<typeof subscriptionPlanSchema>;
+
+/** Changing an existing subscription's tier (#106) — no return URL involved. */
+export const subscriptionChangeSchema = z.object({
+  tier: z.enum(SUBSCRIBABLE_MEMBERSHIP_TIERS),
+});
+export type SubscriptionChangeInput = z.infer<typeof subscriptionChangeSchema>;
+
 // ── Pagination ───────────────────────────────────────────────────────
 
 export const paginationSchema = z.object({
@@ -356,8 +383,22 @@ export type PaginationInput = z.infer<typeof paginationSchema>;
  * page and client-side `find` for a matching project, which dropped
  * silently when the target conversation sat past the page boundary.
  */
-export const chatConversationsQuerySchema = paginationSchema.extend({
+export const chatConversationsQuerySchema = z.object({
   project_id: z.string().uuid().optional(),
+  // How many conversations a page holds is a runtime knob that lives in
+  // `config/agent.yaml`, and the two routes that list them have to agree on
+  // it; a default here would be a second answer to the same question, in a
+  // package that cannot read the config. Absent means "whatever the server is
+  // configured for".
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  // Where the last page stopped, rather than how many rows to skip. The list
+  // is ordered by when each conversation was last used, so it moves under a
+  // reader who is paging through it: someone speaks and a row rises, someone
+  // starts one and everything shifts down. Counting rows to skip then lands
+  // in the wrong place -- the same conversation comes back twice, or one is
+  // stepped over and cannot be reached at all. A position does not move.
+  before_updated_at: z.string().datetime({ offset: true }).optional(),
+  before_id: z.string().uuid().optional(),
 });
 export type ChatConversationsQueryInput = z.infer<typeof chatConversationsQuerySchema>;
 
@@ -372,6 +413,51 @@ export const chatOpenSchema = z.object({
   project_id: z.string().uuid(),
 });
 export type ChatOpenInput = z.infer<typeof chatOpenSchema>;
+
+/**
+ * Body for starting a conversation on purpose.
+ *
+ * Names the project and nothing else — the same shape as opening chat, and for
+ * the same reason: everything about the new conversation is the server's to
+ * decide. What separates the two is only whether the caller is willing to be
+ * given the one already there.
+ */
+export const chatCreateConversationSchema = z.object({
+  project_id: z.string().uuid(),
+});
+export type ChatCreateConversationInput = z.infer<typeof chatCreateConversationSchema>;
+
+/**
+ * How long a conversation's name may be.
+ *
+ * One number, because six places enforce it: the two boxes a reader can type
+ * a name into, the schema this sits beside, the two writes that cut a name to
+ * the column's width before storing it, and the bound on the configurable
+ * limit, which cannot be set past what the column takes. Two numbers means the
+ * shorter one silently rewrites names the longer one accepted -- and the
+ * reader never asked for that, they only opened a box and closed it again.
+ * The column is `varchar(200)`; keep them in step.
+ */
+export const CONVERSATION_TITLE_MAX_CHARS = 200;
+
+/**
+ * Body for naming a conversation.
+ *
+ * Carries the project as well as the title, because the id in the path came
+ * from the client and three things have to hold before anything is written:
+ * the conversation exists, it belongs to this user, and it lives in this
+ * project. The last of those is the one this field answers; the other two are
+ * asked of the signed-in user and the id alone.
+ *
+ * The title is trimmed before it is measured, so a name of nothing but spaces
+ * is refused rather than stored — a row showing an empty name reads as a
+ * rendering fault, which is worse than the default title it replaced.
+ */
+export const chatRenameConversationSchema = z.object({
+  project_id: z.string().uuid(),
+  title: z.string().trim().min(1).max(CONVERSATION_TITLE_MAX_CHARS),
+});
+export type ChatRenameConversationInput = z.infer<typeof chatRenameConversationSchema>;
 
 /**
  * Query for the page of a conversation that comes before the one in hand.
