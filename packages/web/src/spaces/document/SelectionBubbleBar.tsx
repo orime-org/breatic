@@ -119,15 +119,27 @@ export function SelectionBubbleBar({
   }, []);
 
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
-  // The viewport arrives one commit after this component first renders, so the
-  // option cannot be read during that first render. Reading it in an effect and
-  // holding it in state lets the plugin pick it up through its own props
-  // update (`dist/index.js:405-409` swaps the scroll listener when it changes).
+  // The viewport exists one commit after this component first renders, so it
+  // cannot be read during that first render.
   React.useEffect(() => {
     setViewport(scrollTarget());
   }, [scrollTarget]);
 
   if (readOnly) return null;
+  // Nothing is rendered until the viewport is in hand, and that is the whole
+  // point: the plugin reads `options.scrollTarget` once, in its constructor
+  // (`dist/index.js:172`). Handing the option over later does not reach it —
+  // the component's own update path drops the first change it is given
+  // (`@tiptap/react/dist/menus/index.js` sets `skipFirstUpdateRef` when the
+  // plugin registers, and React batches that with this component's own state
+  // update, so the two collapse into the one update that gets skipped).
+  // Measured: with the option passed late, the plugin's `scrollTarget` stayed
+  // `window` through mount and selection, and only became the viewport after
+  // something else re-rendered `DocumentEditor` — which, being memoised on a
+  // history object that only changes once the user has edited, does not happen
+  // in a freshly opened document at all. Waiting one commit costs nothing:
+  // there is no selection to float above on the very first frame either.
+  if (!viewport) return null;
 
   return (
     <BubbleMenu

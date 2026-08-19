@@ -165,6 +165,34 @@ describe('选中浮出条', () => {
     );
   });
 
+  // A12 的回归钉：滚动跟随要在**一次额外重渲染都没有**的情况下就成立。
+  //
+  // 插件只在构造时读一次 `options.scrollTarget`（`dist/index.js:172`），而
+  // `DocumentEditor` 是 memo 的、它的 `history` 只在用户编辑过之后才换对象。
+  // 所以「先把选项交出去、指望之后的 props 更新补上」在一篇刚打开、还没被
+  // 编辑过的文档里永远补不上——实现对抗 2026-08-19 实测：挂载后和选区出现
+  // 后 `scrollTarget` 都还是 `window`。初版 E2E 正好先敲了 40 行字，
+  // `canUndo` 翻真触发了那次重渲染，于是绕过了这个缺口、绿着。
+  it('不靠任何额外重渲染，插件拿到的就是正文的滚动容器', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const views =
+      (editor.view as unknown as { pluginViews: unknown[] }).pluginViews ?? [];
+    const bubbleView = views.find(
+      (v) => v !== null && typeof v === 'object' && 'scrollTarget' in v,
+    ) as { scrollTarget?: unknown } | undefined;
+    const viewport = document.querySelector(
+      '.doc-body-scroller [data-radix-scroll-area-viewport]',
+    );
+
+    expect(viewport).not.toBeNull();
+    expect(bubbleView).toBeDefined();
+    expect(bubbleView?.scrollTarget).toBe(viewport);
+    expect(bubbleView?.scrollTarget).not.toBe(window);
+  });
+
   // A7：viewer 整条不出现（定稿 §3.3.1）。
   it('只读时整条不出现', async () => {
     const editor = open('<p>hello world</p>');
