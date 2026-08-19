@@ -113,7 +113,7 @@ export class MainAgent {
     signal: AbortSignal | undefined,
     skillName?: string,
   ): Promise<ReadableStream<UIMessageChunk>> {
-    const { userId, conversationId, projectId } = this.ctx;
+    const { conversationId } = this.ctx;
 
     // Save what the user said. The turn it opened is what the rest of this
     // run is filed under: the reply goes in it, and billing builds a stable
@@ -124,61 +124,20 @@ export class MainAgent {
       parts: [{ type: "text", text: said }],
     });
 
-    // Now say what the conversation holds, before asking the model anything.
-    //
-    // Two things at once, and both are about the client not having to assume
-    // anything. It is the answer to "did that get through" — sent the moment
-    // it is true, rather than left to be inferred from a reply that may be
-    // seconds away. And it settles up for whatever came before: a stream is
-    // one-directional and connections go without warning, so the browser can
-    // be holding half a reply nobody recorded, or missing the end of one that
-    // was recorded in full, and it cannot tell which from where it stands. So
-    // every turn opens by handing over the stored truth, and the browser
-    // takes it whole.
-    //
-    // Read after the write above, never before: the page has to contain the
-    // message this very turn is about, or a browser that replaces what it
-    // holds would take the reader's own words back off the screen.
     // A conversation takes its name from the first thing said in it, so this
-    // is the moment it gets one. Sent with the event rather than left for the
-    // client to work out: the list and the header are showing the placeholder
-    // right now, and nothing else on this stream would ever correct them.
+    // is the moment it gets one -- after the write above, which is what there
+    // is to name it after. Sent on the stream rather than left for the client
+    // to work out: the list and the header are showing a placeholder right
+    // now, and nothing else would ever correct them.
     const title = await conversationService.titleForTurn(conversationId, said);
 
-
-    // Only now the work that takes a while: three round trips for memory,
-    // the conversation and its history, and then the compression. All of it
-    // used to run before the stream was even opened, so nothing of the turn
-    // could reach the reader until it was done — the first word of the reply
-    // included, which is the one thing they were waiting for.
-    //
-    // The running turn is left out of that history on purpose. Its message is
-    // put in front of the model separately, a few lines below, so a copy in
-    // the history would be the same question asked twice — and it would be a
-    // candidate for compression, which could shorten the very thing being
-    // asked.
-    const { memoryContext, compressedHistory } = await buildTurnContext(
-      userId,
-      conversationId,
-      projectId,
-      turnIndex,
-    );
-
-    // One factory decides model, instructions and tools — see
-    // domain/agent/agent-config.ts for why nothing else may assemble them.
-    const agentConfig = buildAgentConfig({
-      ...(skillName !== undefined ? { skillName } : {}),
-      basePrompt: buildSystemPrompt(),
-      memoryContext,
-      interactive: true,
-    });
-
-    const messages: ModelMessage[] = [
-      ...toModelMessages(compressedHistory),
-      { role: "user", content: said },
-    ];
-
-    return this.runStream(agentConfig, messages, turnIndex, title, signal);
+    // Everything slow happens inside the stream, not before it. The three
+    // round trips for memory, the conversation and its history, and then the
+    // compression, all used to run before the stream was even opened -- so
+    // nothing of the turn could reach the reader until they were done, the
+    // first word of the reply included, which is the one thing they were
+    // waiting for.
+    return this.runStream(said, turnIndex, title, signal, skillName);
   }
 
   /**
@@ -197,8 +156,12 @@ export class MainAgent {
    * consolidated, and one line says how it went. That callback runs when the
    * stream ends *and* when a reader lets go of it -- the SDK attaches it to
    * both `flush` and `cancel` -- so a closed page still closes the books.
-   * @param agentConfig - Model, instructions and tools, from the one factory that decides them.
-   * @param messages - Conversation history plus the current user message.
+   * Assembling what the model is asked happens inside `execute`, not before
+   * the stream is built. Everything it takes -- three round trips for memory,
+   * the conversation and its history, then the compression -- is time the
+   * reader spends in front of a screen where nothing has happened, and a
+   * stream that exists already has somewhere to put the name in the meantime.
+   * @param said - What the user said, put in front of the model on its own.
    * @param turnIndex - The turn this run answers. A parameter and not a
    *   context field: it is known one line before the call, both the reply and
    *   the charge are filed under it, and neither has anything sensible to do
@@ -207,17 +170,22 @@ export class MainAgent {
    *   when it already had one. Sent ahead of the model's own stream so the
    *   list and the header stop showing a placeholder.
    * @param signal - Raised when the user stops the turn or the client goes away.
+   * @param skillName - The skill scoping this turn, when it is a command.
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
-    agentConfig: ResolvedAgentConfig,
-    messages: ModelMessage[],
+    said: string,
     turnIndex: number,
     title: string | null,
     signal?: AbortSignal,
+    skillName?: string,
   ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
     const agentCfg = getAgentConfig();
+
+    // What the turn ended up running on, for the charge at the end. Settled
+    // inside `execute`, which is where the config is assembled.
+    let modelId = "";
 
     // Counted off each step as it finishes, never from `result.usage`. That
     // getter is not a passive read: it returns `totalUsage`, which calls
@@ -250,49 +218,84 @@ export class MainAgent {
     // the error itself, before any of that.
     const whyToolFailed = new Map<string, string>();
 
-    const result = streamTextRetry({
-      model: getModel(agentConfig.modelId),
-      system: agentConfig.instructions,
-      messages,
-      tools: agentConfig.tools,
-      stopWhen: stepCountIs(agentCfg.max_tool_iterations),
-      temperature: 0.2,
-      // The middle ring of the stop chain. Without it the route can notice
-      // the client leaving and the end of the stream can settle up, and the
-      // model keeps running regardless: a signal handed in here ends the
-      // stream within milliseconds, makes no further model call, and is
-      // passed on to every tool the turn invokes.
-      abortSignal: signal,
-      onStepFinish: ({ usage }) => {
-        tokensUsed += usage?.totalTokens ?? 0;
-      },
-      onToolExecutionEnd: ({ toolCall, toolOutput }) => {
-        if (toolOutput.type !== "tool-error") return;
-        whyToolFailed.set(
-          toolCall.toolCallId,
-          toolOutput.error instanceof Error ? toolOutput.error.message : String(toolOutput.error),
-        );
-      },
-      // Deliberately does nothing. The same failure reaches the end of the
-      // stream as an error chunk and is recorded there, alongside the ones
-      // our own code throws; recording it twice would put two lines in the
-      // log for one failed turn. What this is for is the default it
-      // replaces, which writes the provider's error -- endpoint and key
-      // hints included -- straight to the console, around our logger.
-      onError: () => undefined,
-      ...reasoningOptionsFor(agentConfig.modelId, agentCfg.thinking_enabled),
-    });
+    /**
+     * Ask the model, once everything it needs has been read.
+     * @returns The model's answer, as the stream the protocol is made of.
+     */
+    const askTheModel = async (): Promise<ReadableStream<UIMessageChunk>> => {
+      // The running turn is left out of the history on purpose. Its message
+      // is put in front of the model separately, below, so a copy in the
+      // history would be the same question asked twice -- and it would be a
+      // candidate for compression, which could shorten the very thing being
+      // asked.
+      const { memoryContext, compressedHistory } = await buildTurnContext(
+        userId,
+        conversationId,
+        projectId,
+        turnIndex,
+      );
+
+      // One factory decides model, instructions and tools — see
+      // domain/agent/agent-config.ts for why nothing else may assemble them.
+      const agentConfig: ResolvedAgentConfig = buildAgentConfig({
+        ...(skillName !== undefined ? { skillName } : {}),
+        basePrompt: buildSystemPrompt(),
+        memoryContext,
+        interactive: true,
+      });
+      modelId = agentConfig.modelId;
+
+      const messages: ModelMessage[] = [
+        ...toModelMessages(compressedHistory),
+        { role: "user", content: said },
+      ];
+
+      const result = streamTextRetry({
+        model: getModel(agentConfig.modelId),
+        system: agentConfig.instructions,
+        messages,
+        tools: agentConfig.tools,
+        stopWhen: stepCountIs(agentCfg.max_tool_iterations),
+        temperature: 0.2,
+        // The middle ring of the stop chain. Without it the route can notice
+        // the client leaving and the end of the stream can settle up, and the
+        // model keeps running regardless: a signal handed in here ends the
+        // stream within milliseconds, makes no further model call, and is
+        // passed on to every tool the turn invokes.
+        abortSignal: signal,
+        onStepFinish: ({ usage }) => {
+          tokensUsed += usage?.totalTokens ?? 0;
+        },
+        onToolExecutionEnd: ({ toolCall, toolOutput }) => {
+          if (toolOutput.type !== "tool-error") return;
+          whyToolFailed.set(
+            toolCall.toolCallId,
+            toolOutput.error instanceof Error ? toolOutput.error.message : String(toolOutput.error),
+          );
+        },
+        // Deliberately does nothing. The same failure reaches the end of the
+        // stream as an error chunk and is recorded there, alongside the ones
+        // our own code throws; recording it twice would put two lines in the
+        // log for one failed turn. What this is for is the default it
+        // replaces, which writes the provider's error -- endpoint and key
+        // hints included -- straight to the console, around our logger.
+        onError: () => undefined,
+        ...reasoningOptionsFor(agentConfig.modelId, agentCfg.thinking_enabled),
+      });
+
+      return result.toUIMessageStream();
+    };
 
     return createUIMessageStream({
-      execute: ({ writer }) => {
+      execute: async ({ writer }) => {
         // A conversation is named after the first thing said in it, and the
         // name is settled before the model is asked anything. Written ahead
-        // of the model's own stream so the panel and the list can show it
-        // while the answer is still arriving.
+        // of everything below so the panel and the list stop showing a
+        // placeholder while the rest of this is still going on.
         if (title !== null) {
           writer.write({ type: "data-conversation-titled", data: { title } });
         }
-        writer.merge(result.toUIMessageStream());
+        writer.merge(await askTheModel());
       },
       // The one place a failed turn is noticed, whichever way it failed: the
       // SDK hands this callback both an error chunk arriving on the stream
@@ -378,8 +381,8 @@ export class MainAgent {
                 "Agent chat",
                 {
                   tokensUsed,
-                  model: agentConfig.modelId,
-                  provider: resolveProvider(agentConfig.modelId),
+                  model: modelId,
+                  provider: resolveProvider(modelId),
                 },
               );
             },

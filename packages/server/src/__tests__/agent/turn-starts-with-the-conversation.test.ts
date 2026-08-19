@@ -2,50 +2,40 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Every turn begins by saying what the conversation actually holds.
+ * What a turn says before it has anything to say.
  *
- * A stream is one-directional and a connection can go at any moment, so
- * neither side can promise the two views match. What can be promised is that
- * they are made to match again at a moment the reader is already waiting
- * through: they pressed send, the server stored what they said, and before
- * the model is asked anything the whole conversation goes back down the wire.
+ * A conversation takes its name from the first thing said in it, and that
+ * settles before the model is asked anything -- so the name goes out first,
+ * while the panel and the list are still showing a placeholder. Nothing else
+ * on this stream would ever correct them.
  *
- * So each turn settles up for the one before it, and the reader never has to
- * do anything about a reply that stopped arriving — their next message clears
- * it.
+ * The other thing a turn used to open with was the whole stored conversation,
+ * as a settling-up for anything an earlier dropped connection had left
+ * mismatched. That is gone: the client's own message list is what
+ * `POST /chat/open` gave it, and a connection that drops mid-reply leaves the
+ * screen out of step with a server whose records are intact -- which the
+ * reader gets out of by reloading. Design: inner
+ * `engineering/specs/2026-08-19-usechat-migration-design.md` 5.1.1.
+ *
+ * Acceptance A14.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import { SSE_EVENT_NAMES } from "@breatic/shared";
+import { saying } from "../helpers/model-double.js";
+import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 7);
-const getMessages = vi.fn(async () => ({
-  messages: [
-    {
-      id: "stored-1",
-      role: "user" as const,
-      parts: [{ type: "text" as const, text: "what the server has" }],
-      content: "what the server has",
-      ts: "2026-08-14T00:00:00Z",
-      turnIndex: 7,
-    },
-  ],
-  hasMore: true,
-}));
 const consolidateIfNeeded = vi.fn(async () => undefined);
-const streamTextRetry = vi.fn();
+
+/** What the model produces this case. */
+const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
 
 const buildTurnContext = vi.fn(async () => ({
   memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
   compressedHistory: [],
 }));
+
 vi.mock("@server/agent/turn-context.js", () => ({ buildTurnContext }));
-vi.mock("ai", () => ({
-  tool: (c: Record<string, unknown>) => c,
-  streamText: vi.fn(),
-  generateText: vi.fn(),
-  stepCountIs: vi.fn(() => 40),
-}));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
@@ -54,22 +44,31 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return { ...base, runWithContext: actual.runWithContext, getContext: actual.getContext };
 });
 
-vi.mock("@breatic/domain", async () => {
+vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
+  const actual = await importOriginal<Record<string, unknown>>();
+  const { modelProducing } = await import("../helpers/model-double.js");
   return {
     ...base,
+    streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "test", instructions: "system", tools: {} }),
     finalizeTurn: async () => [],
-    streamTextRetry,
-    getModel: () => ({ modelId: "test" }),
+    getModel: () => modelProducing(() => modelSays.parts as ModelStreamPart[]),
   };
 });
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  getMessages,
+  getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
+
+// The turn asks the conversation what it is called. Answered with a name it
+// did not have before, which is the case that has anything to send.
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  titleForTurn: vi.fn(async () => "已经有名字了"),
+}));
+
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
@@ -77,114 +76,80 @@ const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
 /**
- * Run one turn and collect what it sent out, in order.
- * @returns Every SSE event the turn raised.
+ * Run one turn and collect what went on the wire.
+ * @returns Every chunk the turn put out, in order.
  */
-async function eventsFromOneTurn(): Promise<Array<{ event: string; data: unknown }>> {
-  streamTextRetry.mockReturnValue({
-    fullStream: (async function* () {
-      yield { type: "text-delta", text: "the reply" };
-      yield { type: "finish-step", usage: { totalTokens: 10 } };
-    })(),
-    text: Promise.resolve("the reply"),
-    totalUsage: Promise.resolve({ totalTokens: 10 }),
-  });
+async function chunksFromOneTurn(): Promise<Array<Record<string, unknown>>> {
+  modelSays.parts = saying("the reply");
 
-  const raised: Array<{ event: string; data: unknown }> = [];
-  await runWithContext(
-    {
-      userId: "u1",
-      conversationId: "c1",
-      projectId: "p1",
-    },
-    async () => {
-      for await (const event of new MainAgent().chat("a new question")) raised.push(event);
-    },
-  );
-  return raised;
+  const seen: Array<Record<string, unknown>> = [];
+  await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+    const turn = await new MainAgent().chat("a new question");
+    for await (const chunk of turn) seen.push(chunk);
+  });
+  return seen;
 }
 
-// The turn asks the conversation what it is called, so it can say so in the
-// event that opens the turn. Answered with a name already set: these tests are
-// about what a turn streams, not about how a conversation comes by its name.
-vi.mock("@server/modules/conversation/conversation.service.js", () => ({
-  titleForTurn: vi.fn(async () => "already named"),
-}));
-
-describe("a turn that begins by settling up", () => {
+describe("the name a turn gives its conversation", () => {
   beforeEach(() => {
-    streamTextRetry.mockClear();
     addMessage.mockClear();
-    getMessages.mockClear();
     buildTurnContext.mockClear();
   });
 
-  it("is a name both sides know", () => {
-    // The browser reads event names from this one list. A name only the
-    // server knows is a message nobody is listening for.
-    expect(Object.values(SSE_EVENT_NAMES)).toContain("chat_turn_started");
-  });
+  it("goes out before a word of the reply", async () => {
+    const chunks = await chunksFromOneTurn();
 
-  it("sends the conversation before it sends a word of the reply", async () => {
-    const raised = await eventsFromOneTurn();
-
-    const first = raised[0];
-    expect(first?.event).toBe(SSE_EVENT_NAMES.CHAT_TURN_STARTED);
-    // The whole page, the same one opening the conversation hands out: the
-    // browser replaces what it is holding with this, so a partial answer
-    // would be worse than none. The name rides along because this turn may be
-    // the one that gave the conversation its name, and nothing else on this
-    // stream would ever tell the list and the header about it.
-    expect(first?.data).toEqual({
-      messages: [
-        expect.objectContaining({ id: "stored-1", content: "what the server has" }),
-      ],
-      hasMore: true,
-      title: "already named",
+    // First, and ahead of the model's own stream: the list and the header are
+    // showing a placeholder right now, and this is the only thing that
+    // corrects them.
+    expect(chunks[0]).toEqual({
+      type: "data-conversation-titled",
+      data: { title: "已经有名字了" },
     });
   });
 
-  it("does none of the slow work before it has said this much", async () => {
-    streamTextRetry.mockReturnValue({
-      fullStream: (async function* () {})(),
-      text: Promise.resolve(""),
-      totalUsage: Promise.resolve({ totalTokens: 0 }),
-    });
+  it("is settled after the message is stored, never before", async () => {
+    await chunksFromOneTurn();
 
-    await runWithContext(
-      { userId: "u1", conversationId: "c1", projectId: "p1" },
-      async () => {
-        const turn = new MainAgent().chat("a new question");
-        // Pulled one event at a time, because what is being watched is what
-        // has happened by the time the first one is out -- draining the whole
-        // turn would say nothing about the order.
-        const first = await turn.next();
-        expect((first.value as { event: string }).event).toBe(
-          SSE_EVENT_NAMES.CHAT_TURN_STARTED,
-        );
-
-        // Three round trips -- the memories, the conversation and its history
-        // -- and then the compression, and every one of them is time the
-        // reader spends looking at a screen where nothing has happened. Their
-        // own message does not appear until this event is out, so all of it
-        // belongs after.
-        expect(buildTurnContext).not.toHaveBeenCalled();
-
-        await turn.return(undefined);
-      },
-    );
-  });
-
-  it("reads the conversation only after storing what the user said", async () => {
-    await eventsFromOneTurn();
-
-    // The other way round would send back a conversation without the message
-    // this very turn is about, and the browser — which replaces what it holds
-    // — would take the reader's own words off the screen.
+    // A conversation is named after the first thing said in it, so the thing
+    // said has to be on record before there is anything to name it after.
+    // One call and not two: what the assistant said back is written by the
+    // finalizer, which this file replaces.
     expect(addMessage).toHaveBeenCalledTimes(1);
-    expect(getMessages).toHaveBeenCalledTimes(1);
-    expect(addMessage.mock.invocationCallOrder[0]).toBeLessThan(
-      getMessages.mock.invocationCallOrder[0]!,
+    expect(addMessage.mock.calls[0]?.[1]).toMatchObject({ role: "user" });
+  });
+
+  it("does not wait for the slow work before saying it", async () => {
+    modelSays.parts = saying("the reply");
+
+    // Held open, so that anything waiting on it waits forever. Three round
+    // trips -- the memories, the conversation and its history -- and then the
+    // compression, and every one of them is time the reader spends in front
+    // of a screen where nothing has happened.
+    let releaseTheSlowWork = (): void => undefined;
+    buildTurnContext.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseTheSlowWork = (): void => {
+            resolve({
+              memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+              compressedHistory: [],
+            });
+          };
+        }),
     );
+
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("a new question");
+      // Read one chunk rather than draining: what is being watched is what
+      // gets out while the work above is still unfinished, and a drained turn
+      // would say nothing about it.
+      const reader = turn.getReader();
+      const first = await reader.read();
+      expect((first.value as { type: string }).type).toBe("data-conversation-titled");
+
+      releaseTheSlowWork();
+      await reader.cancel();
+    });
   });
 });
