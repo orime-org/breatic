@@ -25,7 +25,7 @@ vi.mock('@web/data/api/chat', () => ({
 
 import { chatApi } from '@web/data/api/chat';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
-import { _resetForTests } from '@web/stores/conversation-runtime';
+import { conversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
 
 /** 这一轮的流，测试自己往里推东西。 */
@@ -178,6 +178,67 @@ describe('发一条消息', () => {
     expect(panel.result.current.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
     expect(panel.result.current.messages[0]?.content).toBe('找几张参考图');
     expect(panel.result.current.messages[1]?.content).toBe('好的');
+  });
+});
+
+describe('输入框里的字', () => {
+  it('第一帧到了才清空，不是按下发送就清', async () => {
+    const panel = render();
+    await waitFor(() => {
+      expect(panel.result.current.status).toBe('ready');
+    });
+    act(() => {
+      conversationRuntime.setDraft('c-1', '找几张参考图');
+    });
+
+    act(() => {
+      void panel.result.current.send('找几张参考图');
+    });
+    await waitFor(() => {
+      expect(panel.result.current.turnPhase).toBe('sending');
+    });
+    // 服务端还没答话。这时候清掉，一旦这一轮被拒，用户的字就没了、也没有
+    // 任何东西能把它放回去。
+    expect(panel.result.current.draft).toBe('找几张参考图');
+
+    act(() => {
+      wire?.push({ type: 'start' });
+      wire?.push({ type: 'start-step' });
+      wire?.push({ type: 'text-start', id: 't1' });
+      wire?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+    });
+
+    await waitFor(() => {
+      expect(panel.result.current.draft).toBe('');
+    });
+  });
+
+  it('只清这一条会话的，别人那条不动', async () => {
+    const panel = render();
+    await waitFor(() => {
+      expect(panel.result.current.status).toBe('ready');
+    });
+    act(() => {
+      conversationRuntime.setDraft('c-2', '另一条里没发出去的半句话');
+    });
+
+    act(() => {
+      void panel.result.current.send('找几张参考图');
+    });
+    await waitFor(() => {
+      expect(wire).not.toBeNull();
+    });
+    act(() => {
+      wire?.push({ type: 'start' });
+      wire?.push({ type: 'start-step' });
+      wire?.push({ type: 'text-start', id: 't1' });
+      wire?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+    });
+    await waitFor(() => {
+      expect(panel.result.current.turnPhase).toBe('running');
+    });
+
+    expect(conversationRuntime.draftOf('c-2')).toBe('另一条里没发出去的半句话');
   });
 });
 

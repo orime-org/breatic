@@ -211,6 +211,17 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
     void conversationRuntime.ensureLoaded(projectId);
   }, [projectId]);
 
+  // The box is emptied when the first frame lands, not when send is pressed.
+  // What separates the two is whether anything of this turn exists anywhere
+  // but in this browser: before, the words are only in the box the reader
+  // typed them into, and a turn the server refuses leaves them exactly there
+  // with nothing to put back. This conversation's box and no other -- another
+  // may be holding a sentence its reader has not sent.
+  React.useEffect(() => {
+    if (status !== 'streaming' || conversationId === undefined) return;
+    conversationRuntime.setDraft(conversationId, '');
+  }, [status, conversationId]);
+
 
   const send = React.useCallback(
     async (draft: string): Promise<void> => {
