@@ -603,6 +603,35 @@ describe('选中浮出条', () => {
       expect(rect?.left).toBe(420);
     });
 
+    it('条摆出来之后点掉选区，再在正文外全选，它不许拿旧位置回来', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      // 先在正文里全选一次，条摆出来、钉在这儿。
+      moveMouseTo(420, 250);
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow(editor)).toBe(true);
+
+      // 点掉选区——这一步是关键：钉住的位置必须跟着这次「不再是全选」作废，
+      // 而作废不能依赖某个恰好会被调用的函数。选区一空，判显示的那条路和给
+      // 锚点的那条路都会提前返回，谁都走不到清理。
+      act(() => {
+        editor.commands.setTextSelection(3);
+      });
+
+      // 鼠标离开正文，再全选：手里没有区域内的坐标，就不该显示。
+      moveMouseTo(420, 50);
+      act(() => {
+        editor.commands.selectAll();
+      });
+
+      expect(shouldShowNow(editor)).toBe(false);
+    });
+
     it('选了一部分时不看鼠标在哪——那一档跟着选区走', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);

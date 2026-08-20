@@ -21,6 +21,9 @@ test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 /** 正文可见区的顶距窗口顶多少 —— 顶部那排 chrome 是固定高度，实测恒为它。 */
 const BODY_VIEWPORT_TOP = 120;
 
+/** 条跟它锚定那一行之间的间距，跟实现里的 `GAP_FROM_SELECTION_PX` 同一个数。 */
+const GAP_FROM_SELECTION_PX = 8;
+
 // 一次登录，全文件共用一个页面。登录限流是 5 次每分钟，而这里有 8 条实跑用例
 // （最后那条视觉规格在明暗两套上各跑一遍）——每条各登一次必然从第六条起全部
 // 超时在登录页上（实测）。串行加共用页面既避开限流，也避开「同一个账号同时开
@@ -426,4 +429,283 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
   expect(m.leftDelta).toBe(-m.barWidth);
   expect(m.rightDelta).toBe(0);
   expect(m.insideWindow).toBe(true);
+});
+
+/**
+ * 全选：按两次 `Mod-a`。
+ *
+ * 一次不够——实测第一次只选中光标所在那个块（选到的文字就是那一段），走的还是
+ * 「选了一部分」那一档；第二次才是整篇。判据是 `AllSelection`，所以只有第二次
+ * 之后才进钉鼠标那一档。
+ * @param page - 页面。
+ */
+async function selectWholeDocument(page: Page): Promise<void> {
+  const mod = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';
+  await page.keyboard.press(mod);
+  await page.keyboard.press(mod);
+  await page.waitForTimeout(400);
+}
+
+/** 浮出条现在在不在屏幕上，以及它在哪。 */
+async function readBar(page: Page): Promise<{
+  shown: boolean;
+  left: number | null;
+  top: number | null;
+}> {
+  return page.evaluate(() => {
+    const el = document.querySelector(
+      '[data-testid="doc-selection-bubble-bar"]',
+    ) as HTMLElement | null;
+    // 「不显示」有两种落法，都要算作不显示：插件把元素整个摘出文档
+    // （`hide()` 里的 `element.remove()`），或者 `hide` 中间件把它设成
+    // `visibility: hidden`。只查 DOM 在不在会把后者读成「显示着」。
+    if (!el || !el.isConnected) return { shown: false, left: null, top: null };
+    if (getComputedStyle(el).visibility === 'hidden') {
+      return { shown: false, left: null, top: null };
+    }
+    const b = el.getBoundingClientRect();
+    return { shown: true, left: Math.round(b.left), top: Math.round(b.top) };
+  });
+}
+
+// A14。四条走完一条完整的路：全选时鼠标在正文里就摆在鼠标那儿、滚动不动它；
+// 鼠标在外面就不摆，滚多远都不摆；鼠标回到正文里，下一次滚动把它摆出来。
+test('全选时条钉在鼠标那儿，滚动不改变它的屏幕坐标', async () => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  // 把鼠标停在正文里一个确定的点上，全选之后条就该出现在这儿。
+  const spot = await page.evaluate(() => {
+    const v = document
+      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      ?.getBoundingClientRect();
+    return { x: Math.round((v?.left ?? 0) + 300), y: Math.round((v?.top ?? 0) + 240) };
+  });
+  await page.mouse.move(spot.x, spot.y);
+  await selectWholeDocument(page);
+
+  const before = await readBar(page);
+  expect(before.shown).toBe(true);
+  // 条的左边缘就是鼠标那一点，间距做在竖直方向（条底在鼠标上方 8px）。
+  expect(before.left).toBe(spot.x);
+
+  await scrollBodyTo(page, 300);
+  const after = await readBar(page);
+  expect(after.shown).toBe(true);
+  expect(after.left).toBe(before.left);
+  expect(after.top).toBe(before.top);
+});
+
+test('全选时鼠标不在正文里就不显示，滚多远都不显示', async () => {
+  test.setTimeout(180_000);
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  // 先让编辑器拿到焦点（点一下正文），再把鼠标挪到窗口左上角——那儿在正文
+  // 显示区外面，是顶部横条那一带。
+  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await page.mouse.move(8, 8);
+  await selectWholeDocument(page);
+
+  expect((await readBar(page)).shown).toBe(false);
+
+  // 滚动本身不构成「可以摆出来了」——鼠标还在外面。
+  await scrollBodyTo(page, 200);
+  expect((await readBar(page)).shown).toBe(false);
+  await scrollBodyTo(page, 600);
+  expect((await readBar(page)).shown).toBe(false);
+});
+
+test('全选后鼠标回到正文里，下一次滚动把条摆出来并钉住', async () => {
+  test.setTimeout(180_000);
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await page.mouse.move(8, 8);
+  await selectWholeDocument(page);
+  expect((await readBar(page)).shown).toBe(false);
+
+  // 鼠标回到正文里，但不选也不点——只有滚动这一个信号。
+  const spot = await page.evaluate(() => {
+    const v = document
+      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      ?.getBoundingClientRect();
+    return { x: Math.round((v?.left ?? 0) + 420), y: Math.round((v?.top ?? 0) + 300) };
+  });
+  await page.mouse.move(spot.x, spot.y);
+  // 移动鼠标本身不摆——判断只发生在全选那一刻和每一次滚动。
+  expect((await readBar(page)).shown).toBe(false);
+
+  await scrollBodyTo(page, 150);
+  const shown = await readBar(page);
+  expect(shown.shown).toBe(true);
+  expect(shown.left).toBe(spot.x);
+
+  // 摆出来之后就钉住了，再滚不动。
+  await scrollBodyTo(page, 450);
+  const again = await readBar(page);
+  expect(again.shown).toBe(true);
+  expect(again.left).toBe(shown.left);
+  expect(again.top).toBe(shown.top);
+});
+
+// 手工走真实用户路径时逮到的：钉住的位置必须跟着「不再是全选」作废。第一版把
+// 作废写在取锚点那个函数里，而选区一空，判显示和取锚点两条路都提前返回、滚动
+// 那条又被「已经钉住了」挡下——三条路没有一条走得到清理，于是下一次全选时条
+// 带着上一次的坐标回来，哪怕鼠标已经在正文外面。
+test('全选摆出条之后点掉选区，再在正文外全选，条不许拿旧位置回来', async () => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  const spot = await page.evaluate(() => {
+    const v = document
+      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      ?.getBoundingClientRect();
+    return { x: Math.round((v?.left ?? 0) + 320), y: Math.round((v?.top ?? 0) + 260) };
+  });
+  await page.mouse.move(spot.x, spot.y);
+  await selectWholeDocument(page);
+  const pinned = await readBar(page);
+  expect(pinned.shown).toBe(true);
+  expect(pinned.left).toBe(spot.x);
+
+  // 点掉选区，条跟着走。
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(400);
+  expect((await readBar(page)).shown).toBe(false);
+
+  // 鼠标到正文外面，再全选：手里没有区域内的坐标，就不该显示——尤其不该显示
+  // 在上一次那个位置上。
+  await page.mouse.move(8, 8);
+  await selectWholeDocument(page);
+  expect((await readBar(page)).shown).toBe(false);
+});
+
+// A15。逐像素扫描：锚定那一行跟正文可见区不相交的每一个滚动位置上，条都不能
+// 在屏幕上。不能只断言「它被裁掉了」——条挂在滚动容器外面，裁它的那一层比正文
+// 可见区高 40px，只靠裁切它会在那条 40px 的带子里露出来，画在顶部横条上。
+test('选了一部分时，锚定那一行滚出正文显示区，条就不显示', async () => {
+  test.setTimeout(240_000);
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+  await selectParagraph(page, 6);
+
+  const start = await readGeometry(page);
+  const bad: { scroll: number; barTop: number | null; lineTop: number }[] = [];
+  const stray: { scroll: number; barTop: number; viewTop: number }[] = [];
+  // 从「那一行还在屏上」一路滚到「它早已滚过去」，每 6px 量一次。
+  for (let y = 0; y <= start.lineTop + 240; y += 6) {
+    await page.evaluate((top) => {
+      document
+        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+        ?.scrollTo(0, top);
+    }, y);
+    // 滚动重算没有防抖，一帧足够。
+    await page.waitForTimeout(30);
+    const m = await page.evaluate(() => {
+      const el = document.querySelector(
+        '[data-testid="doc-selection-bubble-bar"]',
+      ) as HTMLElement | null;
+      const shown = !!el && el.isConnected
+        && getComputedStyle(el).visibility !== 'hidden';
+      const box = window.getSelection()?.rangeCount
+        ? window.getSelection()!.getRangeAt(0).getBoundingClientRect()
+        : null;
+      const v = document
+        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+        ?.getBoundingClientRect();
+      return {
+        shown,
+        barTop: el ? Math.round(el.getBoundingClientRect().top) : null,
+        // 锚定的是 head 那一行，看不见才退到 from 那一行。这里选区是一整段，
+        // 两端在同一段里，段落的包围盒够用。
+        lineTop: box ? Math.round(box.top) : 0,
+        lineBottom: box ? Math.round(box.bottom) : 0,
+        viewTop: v ? Math.round(v.top) : 0,
+        viewBottom: v ? Math.round(v.bottom) : 0,
+      };
+    });
+    // 判的是喂给 `hide` 中间件的那个锚点矩形，也就是那一行上下各撑一个间距
+    // ——间距是锚点的一部分（做进锚点是为了让 `flip` 看到条真实需要的空间），
+    // 所以行盒本身刚离开可见区时锚点矩形还差 8px 才算完全离开。拿没撑过的行盒
+    // 去判会比实现严 8px：实测在 6px 的扫描步长下落进两个采样点（滚动位置 276
+    // 和 282），而那两处条顶分别是 127 和 121，都在可见区（顶 120）里面。
+    const anchorTop = m.lineTop - GAP_FROM_SELECTION_PX;
+    const anchorBottom = m.lineBottom + GAP_FROM_SELECTION_PX;
+    const overlaps = anchorBottom > m.viewTop && anchorTop < m.viewBottom;
+    if (!overlaps && m.shown) {
+      bad.push({ scroll: y, barTop: m.barTop, lineTop: m.lineTop });
+    }
+    // A15 真正要防的后果，单独量一次：条挂在滚动容器外面，裁它的那一层比正文
+    // 可见区高 40px，所以只靠裁切它会在那条带子里露出来、画在顶部横条上。
+    if (m.shown && m.barTop !== null && m.barTop < m.viewTop) {
+      stray.push({ scroll: y, barTop: m.barTop, viewTop: m.viewTop });
+    }
+  }
+
+  expect(bad).toEqual([]);
+  expect(stray).toEqual([]);
+});
+
+// A16。左右都不许伸出正文显示区，两档各量一次。
+test('条的左右不伸出正文显示区——选了一部分和全选各量一次', async () => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openFreshDocument(page);
+  await page.keyboard.type(
+    'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi '
+    + 'omicron pi rho sigma tau upsilon phi chi psi omega and more words after',
+  );
+
+  /** 条的左右边缘跟正文可见区左右边缘的关系。 */
+  const edges = async (): Promise<{
+    barLeft: number;
+    barRight: number;
+    viewLeft: number;
+    viewRight: number;
+  }> =>
+    page.evaluate(() => {
+      const el = document.querySelector(
+        '[data-testid="doc-selection-bubble-bar"]',
+      ) as HTMLElement;
+      const b = el.getBoundingClientRect();
+      const v = document
+        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+        .getBoundingClientRect();
+      return {
+        barLeft: Math.round(b.left),
+        barRight: Math.round(b.right),
+        viewLeft: Math.round(v.left),
+        viewRight: Math.round(v.right),
+      };
+    });
+
+  // 选了一部分：选区做到正文列最右端那个词上。
+  await selectParagraph(page, 0);
+  const partial = await edges();
+  expect(partial.barRight).toBeLessThanOrEqual(partial.viewRight);
+  expect(partial.barLeft).toBeGreaterThanOrEqual(partial.viewLeft);
+
+  // 全选：鼠标停在正文可见区右边缘往里 2px，条整个得被推回区域内。
+  const rightEdge = await page.evaluate(() => {
+    const v = document
+      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+      .getBoundingClientRect();
+    return { x: Math.round(v.right) - 2, y: Math.round(v.top) + 200 };
+  });
+  await page.mouse.move(rightEdge.x, rightEdge.y);
+  await selectWholeDocument(page);
+  const all = await edges();
+  expect(all.barRight).toBeLessThanOrEqual(all.viewRight);
+  expect(all.barLeft).toBeGreaterThanOrEqual(all.viewLeft);
 });

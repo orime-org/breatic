@@ -331,6 +331,30 @@ function BubbleBar({
     };
   }, []);
 
+  // Dropping the pin is its own subscription, not a line inside the getter
+  // below. Every caller of that getter returns early on an empty selection —
+  // `shouldShow` and `getReferencedVirtualElement` both check emptiness first,
+  // and the scroll handler leaves as soon as a pin exists — so clearing from
+  // inside it never ran on the one transition that has to clear it: selecting
+  // all, clicking the selection away, then selecting all again. Measured in a
+  // browser: the bar came back at the previous pin's coordinates with the
+  // pointer outside the body entirely.
+  //
+  // On `transaction` rather than on a React render because a co-editor's change
+  // arrives with no render behind it.
+  React.useEffect(() => {
+    /** Forget where the bar was pinned once the selection stops being a select-all. */
+    const drop = (): void => {
+      if (!(editor.state.selection instanceof AllSelection)) {
+        pinnedRef.current = null;
+      }
+    };
+    editor.on('transaction', drop);
+    return () => {
+      editor.off('transaction', drop);
+    };
+  }, [editor]);
+
   /**
    * Where the bar is pinned over a select-all, or null when it stays away.
    *
@@ -341,15 +365,12 @@ function BubbleBar({
    * later calls answer the same coordinates, so scrolling recomputes to the
    * same screen position and moving the pointer away changes nothing.
    *
-   * The pin is dropped as soon as the selection stops being a select-all,
-   * which is the only event that ends this mode.
+   * What ends the mode is the selection ceasing to be a select-all, and the
+   * effect above is what watches for it.
    * @returns The pinned point, or null when there is none to pin to.
    */
   const pinnedPointer = React.useCallback((): { x: number; y: number } | null => {
-    if (!(editor.state.selection instanceof AllSelection)) {
-      pinnedRef.current = null;
-      return null;
-    }
+    if (!(editor.state.selection instanceof AllSelection)) return null;
     if (pinnedRef.current) return pinnedRef.current;
     const pointer = pointerRef.current;
     if (!pointer) return null;
