@@ -25,6 +25,12 @@ vi.mock('@web/components/ui/tooltip', () => ({
 }));
 
 // So the component test never opens a real WebSocket.
+// 裁剪行的 ✕ 会走到资产删除登记（remove-reference-row.ts）。不 stub 的话这个
+// 文件里点一次 ✕ 就真发一次 HTTP，成败还被那处静默 catch 吞掉。
+vi.mock('@web/data/api/assets', () => ({
+  assetsApi: { reportDeleted: vi.fn(() => Promise.resolve()) },
+}));
+
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: vi.fn(
     (): {
@@ -113,6 +119,20 @@ const I2V: ModelEntry = {
   sourcesByMode: { i2v: ['image'], first_last: ['image'] },
 };
 
+/**
+ * An image-animation model, shaped like `wan-2.2-animate`: a character image
+ * plus a driving video. Without it `animate` has no model, `filterAvailableModes`
+ * drops the mode, and anything asking for that mode silently lands on t2v
+ * instead (adversarial round 2).
+ */
+const ANIMATE: ModelEntry = {
+  ...T2V,
+  name: 'wan-2.2-animate',
+  display_name: 'Wan 2.2 Animate',
+  mode: 'animate',
+  sourcesByMode: { animate: ['image', 'video'] },
+};
+
 /** An image model, so "the video panel offers video models" is a real claim. */
 const T2I: ModelEntry = {
   ...T2V,
@@ -181,12 +201,12 @@ const TALKING_HEAD_WITH_PROMPT: ModelEntry = {
 function catalog(): ModelCatalog {
   return {
     image: [T2I],
-    video: [T2V, T2V_LITE, I2V, REF, TALKING_HEAD, TALKING_HEAD_WITH_PROMPT],
+    video: [T2V, T2V_LITE, I2V, ANIMATE, REF, TALKING_HEAD, TALKING_HEAD_WITH_PROMPT],
     audio: [],
     tts: [],
     three_d: [],
     understand: [],
-    total: 7,
+    total: 8,
   };
 }
 
@@ -1947,6 +1967,12 @@ describe('视频面板的聚焦按钮（#1978）', () => {
   for (const option of VIDEO_MODE_OPTIONS) {
     it(`${option.value} 档的聚焦按钮可点`, async () => {
       await openPanelInMode(option.value, MODEL_FOR_MODE[option.value]!);
+      // 先确认面板真的停在这一档。目录里没有这一档的模型时
+      // `resolveAvailableMode` 会静默回落到第一个可用档，于是这一轮测的是
+      // 那一档的重跑而不是本档 —— animate 起初就是这么少掉的（对抗第二轮）。
+      expect(
+        screen.getByTestId('generate-video-mode-trigger').textContent,
+      ).toBe(option.label);
       expect(
         await screen.findByTestId('generate-video-tool-focus'),
       ).not.toBeDisabled();

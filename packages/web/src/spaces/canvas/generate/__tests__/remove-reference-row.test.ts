@@ -17,6 +17,7 @@ import type { CanvasNodeFields, FocusImage } from '@breatic/shared';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
+  addEdge,
   addNode,
   addNodeFocusImage,
   readCanvasGraph,
@@ -33,6 +34,8 @@ vi.mock('@web/data/api/assets', () => ({
 const PID = 'p1';
 const SID = 's1';
 const NODE = 'gen';
+const SRC = 'src';
+const EDGE = 'e1';
 
 /** A stored crop with a distinct asset URL. */
 const crop = (id: string, url = `https://cdn/${id}.png`): FocusImage => ({
@@ -79,6 +82,14 @@ function cropRow(c: FocusImage): ReferenceRailItem {
     mediaUrl: c.url,
     focus: true,
   };
+}
+
+/**
+ * Reads the edge ids currently in the document.
+ * @returns The ids, in read order.
+ */
+function storedEdges(): string[] {
+  return readCanvasGraph(PID, SID).edges.map((e) => e.id);
 }
 
 /**
@@ -164,11 +175,18 @@ describe('removeReferenceRow', () => {
   });
 
   it('连线行的 ✕ 断的是那条边，不碰节点上的裁剪', () => {
+    // 这条边得是真的：`addEdge` 在事务里校验两端节点都在（canvas-space.ts:1707），
+    // 少建一个端点它就静默拒绝、什么都不写，断言「边没了」于是恒真。既有的
+    // VideoGeneratePanelContainer.test.tsx:850 正是这么假绿的（见 #1989）。
+    addNode(PID, SID, genNode(SRC));
+    expect(addEdge(PID, SID, { id: EDGE, source: SRC, target: NODE })).toBe(true);
+    expect(storedEdges()).toEqual([EDGE]);
+
     const c = crop('c1');
     addNodeFocusImage(PID, SID, NODE, c);
     const edgeRow: ReferenceRailItem = {
-      refId: 'e1',
-      sourceNodeId: 'src',
+      refId: EDGE,
+      sourceNodeId: SRC,
       sourceNodeType: 'image',
       sourceNodeName: 'Src',
       thumbnail: 'https://cdn/src.png',
@@ -182,7 +200,8 @@ describe('removeReferenceRow', () => {
       nodeId: NODE,
     });
 
-    // 裁剪没被动过，也没有人替它登记删除。
+    // 边断了；裁剪没被动过，也没有人替它登记删除。
+    expect(storedEdges()).toEqual([]);
     expect(storedCrops()).toHaveLength(1);
     expect(assetsApi.reportDeleted).not.toHaveBeenCalled();
   });
