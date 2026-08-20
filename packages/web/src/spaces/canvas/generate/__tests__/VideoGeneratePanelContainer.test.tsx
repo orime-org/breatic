@@ -1910,15 +1910,49 @@ describe('视频面板的聚焦按钮（#1978）', () => {
     ).toBeTruthy();
   });
 
-  it('点它进入聚焦挑选，再点一次退出', async () => {
+  it('点它进入聚焦挑选，再点一次退出，按钮跟着亮灭', async () => {
     await openPanelInMode('t2v', 'veo-3.1');
-    fireEvent.click(await screen.findByTestId('generate-video-tool-focus'));
+    const focus = await screen.findByTestId('generate-video-tool-focus');
+    expect(focus).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(focus);
     expect(useCanvasStore.getState().pickSession).toEqual({
       nodeId: 'target',
       purpose: 'focus',
     });
+    // 挑选进行中按钮要亮着：这是用户唯一能看出「现在点画布是在选聚焦源」的地方。
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-video-tool-focus')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+    });
 
     fireEvent.click(screen.getByTestId('generate-video-tool-focus'));
     expect(useCanvasStore.getState().pickSession).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-video-tool-focus')).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
+  });
+
+  it('别的节点在挑选时这个按钮不亮 —— 高亮跟的是本节点的会话', async () => {
+    // 挑选会话是画布级的一个值，面板只该认自己那一个：不按 nodeId 过滤的话，
+    // 画布上任何一处挑选都会把这个按钮点亮。
+    await openPanelInMode('t2v', 'veo-3.1');
+    await screen.findByTestId('generate-video-tool-focus');
+
+    act(() => {
+      useCanvasStore.getState().startFocusPick('someone-else');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-video-tool-focus')).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
   });
 });

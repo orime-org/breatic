@@ -788,7 +788,7 @@ function VideoGeneratePanelBody({
       references={stableReferences}
       pendingFocus={pendingFocus}
       onFocus={onFocus}
-      focusActive={focusPicking}
+      focusPicking={focusPicking}
       onAddReference={onAddReference}
       referencePicking={referencePicking}
       onRemoveReference={onRemoveReference}

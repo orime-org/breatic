@@ -75,7 +75,7 @@ interface VideoGeneratePanelProps {
   /** Toggle the focus crop pick (#1978). */
   onFocus: () => void;
   /** Whether the focus pick is running. */
-  focusActive?: boolean;
+  focusPicking: boolean;
   /** Whether the reference pick is running. */
   referencePicking: boolean;
   /** Remove one reference (deletes its edge). */
@@ -147,7 +147,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   pendingFocus,
   onAddReference,
   onFocus,
-  focusActive,
+  focusPicking,
   referencePicking,
   onRemoveReference,
   onInsertReference,
@@ -172,7 +172,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         <VideoGenerateToolbar
           onReference={onAddReference}
           onFocus={onFocus}
-          focusActive={focusActive}
+          focusActive={focusPicking}
           referenceActive={referencePicking}
           slots={slots}
           slotUrls={slotUrls}
