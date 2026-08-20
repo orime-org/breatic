@@ -61,6 +61,10 @@ import {
 } from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
 import { useCanvasStore } from '@web/stores';
+import {
+  LOCALE_CATALOGS,
+  readPath,
+} from '@web/test-utils/locale-catalogs';
 
 /** A text-to-video model, the one kind this slice offers. */
 const T2V: ModelEntry = {
@@ -1262,16 +1266,17 @@ describe('VideoGeneratePanelContainer', () => {
       // prompt material and stays lit), and the refusal is aria-disabled
       // rather than the HTML attribute (which would block click and hover).
       expect(
-        screen.getByTestId('generate-ref-r-a').classList.contains('opacity-50'),
+        screen
+          .getByTestId('generate-ref-insert-r-a')
+          .classList.contains('opacity-50'),
       ).toBe(true);
       expect(insert).toHaveAttribute('aria-disabled', 'true');
-      // And it cannot be thrown away while it is dimmed: references are shared
-      // across modes, so a ✕ pressed here would lose an image the user is
-      // coming back for (design decision 2026-08-11).
-      expect(screen.getByTestId('generate-ref-remove-r-a')).toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
+      // But it CAN still be thrown away (#1952, user 2026-08-19): a row this
+      // mode cannot use is exactly a row the user may want to clear, and the
+      // door swings both ways — a deleted reference can be added back.
+      expect(
+        screen.getByTestId('generate-ref-remove-r-a'),
+      ).not.toHaveAttribute('aria-disabled', 'true');
     });
 
     it('keeps offering to add a reference in every mode', async () => {
@@ -1752,5 +1757,82 @@ describe('这个部署服务不了的档 (#1951)', () => {
     const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
       ?.data as { mode?: string };
     expect(data.mode).toBe('i2v');
+  });
+});
+
+describe('VideoGeneratePanelContainer — 两句空态各自取自己那个 key (#1952)', () => {
+  /**
+   * 那句话在 en 里的原文。
+   * @param key - `canvas.generatePanel` 下的键名。
+   * @returns 该键在英文目录里的值。
+   */
+  function sentence(key: 'mentionEmpty' | 'mentionNoMatch'): string {
+    return readPath(
+      LOCALE_CATALOGS[0][1],
+      `canvas.generatePanel.${key}`,
+    ) as string;
+  }
+
+  const PICTURE = {
+    id: 'src',
+    data: {
+      kind: 'image' as const,
+      status: 'idle' as const,
+      name: 'Alpha',
+      content: 'https://cdn/a.png',
+    },
+  };
+  const WIRE = [{ id: 'e1', source: 'src', target: 'target' }];
+
+  /**
+   * 在给定档位下打开面板、在提示词里打 `@` 加给定的字，交出弹层空态那句话。
+   * @param mode - 生成子模式。
+   * @param model - 该档下选中的模型名。
+   * @param query - `@` 后面打的字。
+   * @returns 空态元素的文字和卸载函数；弹层没进空态就返回 null。
+   */
+  async function emptyStateText(
+    mode: string,
+    model: string,
+    query: string,
+  ): Promise<{ text: string | null; unmount: () => void }> {
+    const view = await openPanelInMode(mode, model, {}, {
+      nodes: [PICTURE],
+      edges: WIRE,
+    });
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+    const { editor } = document.querySelector('.ProseMirror') as unknown as {
+      editor: { commands: { insertContent: (s: string) => void } };
+    };
+    act(() => {
+      editor.commands.insertContent(`@${query}`);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    const box = document.querySelector(
+      '[data-testid="reference-mention-empty"]',
+    );
+    return { text: box?.textContent ?? null, unmount: view.unmount };
+  }
+
+  // 跟图片面板那条同一个理由，见那边的注释：断言「两句不一样」挡不住把两个
+  // key 对调，而对调是同样两行、同样 typecheck 绿的第二种错。
+  it('每一句各自取自己那个 key，不是「两句不一样」就算数', async () => {
+    // t2v 不吃参考素材，那条图片边一项都用不了。
+    const nothingUsable = await emptyStateText('t2v', 'veo-3.1', '');
+    expect(nothingUsable.text).toBe(sentence('mentionEmpty'));
+    nothingUsable.unmount();
+
+    // ref 档吃图片参考，池子非空，只是打的字没匹配上。
+    const nothingMatched = await emptyStateText(
+      'ref',
+      'kling-o3-pro-ref',
+      'zzz',
+    );
+    expect(nothingMatched.text).toBe(sentence('mentionNoMatch'));
+    nothingMatched.unmount();
   });
 });

@@ -18,6 +18,7 @@ import {
 } from '@web/spaces/canvas/generate/derive-references';
 import { validFocusImages } from '@web/data/focus-images';
 import {
+  imageModeTakesReferences,
   IMAGE_MODE_OPTIONS,
   resolveMode,
   type ImageGenMode,
@@ -217,7 +218,7 @@ export function buildGeneratePanelViewModel(input: {
 
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
   const referenceUrls =
-    mode === 't2i'
+    !imageModeTakesReferences(mode)
       ? []
       : [
         ...mentionedImageUrls(references, atMentioned, nodes),

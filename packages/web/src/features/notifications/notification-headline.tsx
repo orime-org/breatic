@@ -264,6 +264,17 @@ function actorNode(
 }
 
 /**
+ * How the product writes each paid tier's name.
+ *
+ * Not translated: `PRO` and `Team` are the names on the price list, and the
+ * same words appear in the comparison table beside this notice.
+ */
+const TIER_LABEL: Record<string, string> = {
+  pro: 'PRO',
+  team: 'Team',
+};
+
+/**
  * Build the localized, link-bearing headline for a bell notification: the actor
  * (name + `@handle` → personal studio) and the entity (project / studio name → its
  * page) are clickable links dropped into the translated sentence frame. Both links
@@ -278,6 +289,20 @@ export function notificationHeadline(
   resolved: NotificationResolved,
   t: ReturnType<typeof useTranslation>,
 ): React.ReactNode {
+  // A membership that ended has neither an actor nor an entity: nobody did it
+  // to you, a subscription ran out, and there is nothing to open. It is one
+  // localized sentence, so it skips the frame below entirely.
+  if (n.type === 'membership.ended') {
+    return t('notifications.headline.membershipEnded', {
+      tier: TIER_LABEL[str(n.payload, 'fromTier')] ?? '',
+    });
+  }
+  if (n.type === 'membership.upgrade_incomplete') {
+    return t('notifications.headline.membershipUpgradeIncomplete', {
+      tier: TIER_LABEL[str(n.payload, 'toTier')] ?? '',
+    });
+  }
+
   const parts = headlinePartsFor(n, resolved);
   if (!parts) return n.type;
 

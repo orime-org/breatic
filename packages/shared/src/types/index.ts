@@ -82,6 +82,11 @@ export type {
   ConfiguredMembershipTier,
   MembershipLimits,
   ComparableMembershipTier,
+  SubscribableMembershipTier,
+  SubscriptionSituation,
+  SubscriptionActionAvailability,
+  UpgradeOffer,
+  SubscriptionSummary,
   TierOffer,
   AccountUsage,
   AccountMembership,
@@ -92,6 +97,11 @@ export {
   CONFIGURED_MEMBERSHIP_TIERS,
   tierLimitsSchema,
   COMPARABLE_MEMBERSHIP_TIERS,
+  SUBSCRIBABLE_MEMBERSHIP_TIERS,
+  SUBSCRIPTION_SITUATIONS,
+  ACTIONABLE_SUBSCRIPTION_SITUATIONS,
+  holdsActionableSubscription,
+  subscriptionActions,
   isComparableMembershipTier,
 } from "@shared/types/membership.js";
 

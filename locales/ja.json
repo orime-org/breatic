@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "このサーバーでは直接アップロードを利用できません"
+    },
+    "membership": {
+      "already_subscribed": "すでにメンバーシップに加入しています。",
+      "no_subscription": "メンバーシップに加入していません。",
+      "not_cancelling": "このメンバーシップは終了予定ではありません。",
+      "downgrade_not_offered": "下位プランへの変更はできません。",
+      "same_tier": "すでにこのメンバーシップです。",
+      "payment_overdue": "このメンバーシップの支払いが遅延しています。",
+      "unavailable": "メンバーシップは利用できません。"
     }
   },
   "chat": {
@@ -228,14 +237,12 @@
       "emptyImageReference": "まだ生成・アップロードされていません",
       "emptyTextReference": "内容がありません",
       "refuseInsertModeOff": "このモードは参照素材を使いません",
-      "refuseRemoveModeOff": "参照はモード間で共有されます — 削除するには参照を使うモードに切り替えるか、キャンバスで接続線を削除してください",
-      "refuseRemoveModeOffCrop": "参照はモード間で共有されます — この切り抜きを削除するには参照を使うモードに切り替えてください",
-      "refuseRemoveNoPrompt": "このモードはプロンプトを必要としません",
       "refuseExecuteNoPrompt": "プロンプトを入力してください",
       "refuseInsertTypeUnused": "{kind, select, audio {参照は画像のみで、音声は使えません} video {参照は画像のみで、動画は使えません} other {参照は画像のみで、この種類の素材は使えません}}",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",
-      "mentionEmpty": "参照できる画像がありません — まず画像から線をつないでください",
+      "mentionEmpty": "参照できるものがありません",
+      "mentionNoMatch": "一致するものがありません",
       "selectFromCanvas": "キャンバスから参照を選択",
       "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
       "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
@@ -244,7 +251,6 @@
       "selectDrivingVideoFromCanvas": "キャンバスで動きの元にする動画を選択",
       "selectDrivingAudioFromCanvas": "キャンバスで口の動きに合わせる音声を選択",
       "removeStyle": "スタイル参照を削除",
-      "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
       "locateSource": "ソースノードに移動",
       "presets": "プリセット",
@@ -290,7 +296,6 @@
       "videoParams": "パラメータ",
       "videoPromptPlaceholder": "生成したい動画を説明してください。@ で参照を追加",
       "errorNoReferenceMention": "このモードには参考画像が必要です —— このノードに画像をつないでから、プロンプトで @ を入力して指定してください。",
-      "videoMentionEmpty": "参照できるものがまだありません",
       "firstFrame": "最初のフレーム",
       "firstFrameTip": "動画の最初のフレームにする画像を選ぶ",
       "removeFirstFrame": "最初のフレームを削除",
@@ -760,7 +765,9 @@
       "studioInviteRequest": "{actor} さんが {studio} への参加に招待しました",
       "studioInviteAccepted": "{actor} さんが {studio} への招待を承認しました",
       "projectInviteRequest": "{actor} さんが {project} への参加に招待しました",
-      "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました"
+      "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました",
+      "membershipEnded": "{tier} メンバーシップが終了しました",
+      "membershipUpgradeIncomplete": "{tier} へのアップグレードは完了しませんでした"
     },
     "actorFallback": "誰か",
     "subtitle": {
@@ -1165,9 +1172,8 @@
       "enterprise": "エンタープライズ"
     },
     "priceFree": "無料",
-    "pricePerMonth": "{amount} / 月",
+    "taxNote": "価格は税抜きです。",
     "tierNote": "プランで決まるのは容量と共同編集の規模です。制作機能とモデルはどのプランでも同じです。",
-    "upgrade": "アップグレード",
     "myQuota": "利用状況",
     "quota": {
       "teamStudios": "チーム Studio",
@@ -1192,6 +1198,22 @@
     "contactEnterprise": "より大きな規模や個別の商用条件が必要ですか。メールでご相談ください:",
     "contactSelfHosted": "商用ライセンスや個別のサポート条件が必要ですか。メールでご相談ください:",
     "contactEnterpriseAccount": "利用上限についてのご質問や変更のご相談は、メールでお問い合わせください:",
-    "loadFailed": "メンバーシップ情報を読み込めませんでした。通信の問題かもしれません。少し時間をおいてお試しください。"
+    "loadFailed": "メンバーシップ情報を読み込めませんでした。通信の問題かもしれません。少し時間をおいてお試しください。",
+    "action": {
+      "choose": "{tier} を選ぶ",
+      "inProgress": "処理中",
+      "current": "現在"
+    },
+    "nextCharge": "次回請求 {date}",
+    "endsOn": "メンバーシップ終了 {date}",
+    "cancel": "メンバーシップを解約",
+    "resume": "メンバーシップを再開",
+    "notice": {
+      "firstPaymentPending": "支払いが完了していません",
+      "upgradePending": "アップグレードの支払いが完了していません",
+      "paymentOverdue": "今月の支払いができませんでした"
+    },
+    "payNow": "支払う",
+    "actionFailed": "実行できませんでした。もう一度お試しください。"
   }
 }

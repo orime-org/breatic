@@ -58,12 +58,17 @@ interface NotificationMailShell {
   subject: string;
   /** Inner HTML of the lead paragraph — the caller escapes user fields. */
   leadHtml: string;
-  /** Raw link target — escaped into the `href` attribute here. */
-  linkHref: string;
+  /**
+   * Raw link target — escaped into the `href` attribute here.
+   *
+   * Absent on an email with nothing to do: a membership that ended is a
+   * notice, and a link that only says "open the app" is noise.
+   */
+  linkHref?: string;
   /** Visible link text, e.g. `Open the invitation`. */
-  linkLabel: string;
+  linkLabel?: string;
   /** Text after `</a>`, e.g. ` to accept or decline.` */
-  linkTrailing: string;
+  linkTrailing?: string;
   /** Gray footer sentence (expiry hint). */
   footer: string;
 }
@@ -78,11 +83,15 @@ function renderNotificationMail(shell: NotificationMailShell): SendMailOptions {
   return {
     to: shell.to,
     subject: shell.subject,
-    html: `
-      <p>${shell.leadHtml}</p>
-      <p><a href="${escapeHtml(shell.linkHref)}">${shell.linkLabel}</a>${shell.linkTrailing}</p>
-      <p style="color: #666; font-size: 90%;">${shell.footer}</p>
-    `.trim(),
+    html: [
+      `<p>${shell.leadHtml}</p>`,
+      shell.linkHref
+        ? `<p><a href="${escapeHtml(shell.linkHref)}">${shell.linkLabel}</a>${shell.linkTrailing ?? ""}</p>`
+        : null,
+      `<p style="color: #666; font-size: 90%;">${shell.footer}</p>`,
+    ]
+      .filter(Boolean)
+      .join("\n      "),
   };
 }
 
@@ -246,5 +255,33 @@ export function buildRoleUpgradeRequestMail(
     // Not "transfer request": nothing is changing hands, somebody is asking
     // for a bigger role on something that stays where it is.
     footer: expiryFooter("This request"),
+  });
+}
+
+/** Fields for the membership-ended email. */
+export interface MembershipEndedMailInput {
+  /** Where to send it. */
+  recipientEmail: string;
+  /** The paid tier that just ended, as the product names it. */
+  tierLabel: string;
+}
+
+/**
+ * Build the membership-ended email (#106 §9).
+ *
+ * A notice, not a request: nothing is waiting to be answered, so it carries no
+ * action link and no deadline. The bell row beside it is the delivery
+ * guarantee; this only leaves when an SMTP backend is configured.
+ * @param input - Recipient email and the tier that ended.
+ * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ */
+export function buildMembershipEndedMail(
+  input: MembershipEndedMailInput,
+): SendMailOptions {
+  return renderNotificationMail({
+    to: input.recipientEmail,
+    subject: `${BRAND} - your ${input.tierLabel} membership has ended`,
+    leadHtml: `Your <strong>${escapeHtml(input.tierLabel)}</strong> membership has ended. Your account is on the free plan.`,
+    footer: "Subscribe again at any time from the membership panel.",
   });
 }

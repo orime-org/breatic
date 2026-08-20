@@ -70,8 +70,11 @@ describe('mentionedImageUrls', () => {
 
   it('drops a mentioned row whose source has no content yet', () => {
     // An image node that has not been generated or uploaded carries no URL.
-    // It reaching the payload as undefined would be worse than dropping it;
-    // that it drops SILENTLY is tracked separately (#1932).
+    // It reaching the payload as undefined would be worse than dropping it.
+    // Dropping it silently was once filed as a defect (#1932); user 2026-08-18
+    // ruled it is not one — a reference is a LIVE projection, so a row whose
+    // source is still empty is a row the user connected on purpose and will
+    // fill in. That task is closed.
     const empty = node('e', { kind: 'image', status: 'idle' });
     expect(mentionedImageUrls(rows('e'), new Set(['e']), [empty])).toEqual([]);
   });

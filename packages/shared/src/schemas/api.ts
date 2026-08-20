@@ -12,6 +12,7 @@
  */
 
 import { z } from "zod";
+import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@shared/types/membership.js";
 
 import { SpaceTypeSchema } from "@shared/types/space.js";
 
@@ -339,6 +340,32 @@ export const checkoutSchema = z.object({
   cancel_url: z.string().url(),
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
+
+/**
+ * Starting or changing a membership subscription (#106).
+ *
+ * Separate from {@link checkoutSchema}, which sells credit packs: that one
+ * names a pack by a free-form string and carries its own return URLs, where
+ * this one names a membership tier and comes back to the page the panel was
+ * opened from.
+ *
+ * The tier is checked against the tiers that can actually be subscribed to, so
+ * `base` — the tier an account falls back to — is refused at the boundary
+ * rather than reaching Stripe as a missing price.
+ */
+export const subscriptionPlanSchema = z.object({
+  // Built from the one list of subscribable tiers, so a fourth priced tier
+  // becomes acceptable here by itself rather than by somebody remembering.
+  tier: z.enum(SUBSCRIBABLE_MEMBERSHIP_TIERS),
+  return_url: z.string().url(),
+});
+export type SubscriptionPlanInput = z.infer<typeof subscriptionPlanSchema>;
+
+/** Changing an existing subscription's tier (#106) — no return URL involved. */
+export const subscriptionChangeSchema = z.object({
+  tier: z.enum(SUBSCRIBABLE_MEMBERSHIP_TIERS),
+});
+export type SubscriptionChangeInput = z.infer<typeof subscriptionChangeSchema>;
 
 // ── Pagination ───────────────────────────────────────────────────────
 

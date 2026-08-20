@@ -167,8 +167,8 @@ function VideoGeneratePanelBody({
     atMentionedRef.current = sourceIds;
   }, []);
   // Holds the prompt editor when one is mounted. Inserting a reference-rail
-  // chip goes through `handleInsertReference` below, which refuses first when
-  // this model takes no prompt.
+  // chip goes through `handleInsertReference` below, which only forwards —
+  // the rail refuses on its own since #1966.
   const promptEditorRef = React.useRef<PromptEditorHandle>(null);
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -678,14 +678,14 @@ function VideoGeneratePanelBody({
   // put it in `useEditor`'s dependency list (PromptEditor bakes it into the
   // extensions at creation), and @tiptap/react rebuilds the whole editor when
   // a dep changes — taking the prompt's undo history with it. The gap it was
-  // written to close is real but lives elsewhere: with only IMAGE references
-  // connected, typing `@` in a mode that cannot use them opens nothing at
-  // all — the popup hides itself at zero matches rather than showing the
-  // empty-state label it is handed (#1901). A connected text reference still
-  // opens it; the picker drops image rows only. That silence is what has to
-  // explain itself, not this sentence.
+  // written to close is real but lives elsewhere, and #1952 closed it there:
+  // with only IMAGE references connected, typing `@` in a mode that cannot use
+  // them used to open nothing at all — the popup hid itself at zero matches
+  // rather than showing the empty-state label it was handed (#1901). It now
+  // opens and says so. That was the silence to fix, not this sentence.
   const promptPlaceholder = t('canvas.generatePanel.videoPromptPlaceholder');
-  const mentionEmptyLabel = t('canvas.generatePanel.videoMentionEmpty');
+  const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
+  const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   // A node made before video generation existed carries no prompt container,
   // and #1880 ratified that those are NOT repaired — creating one when the
   // panel opens is the exact race that decision removed (two people opening
@@ -722,6 +722,7 @@ function VideoGeneratePanelBody({
           // while typing `@` still offered it at full strength.
           imageRefsDisabled={imageRefsDisabled}
           mentionEmptyLabel={mentionEmptyLabel}
+          mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
         />
       ) : null,
@@ -730,6 +731,7 @@ function VideoGeneratePanelBody({
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
+      mentionNoMatchLabel,
       stableReferences,
       handlePromptChange,
       handleAtMentionsChange,

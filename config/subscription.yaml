@@ -1,0 +1,53 @@
+# Membership subscription plans (task #106).
+#
+# One entry per subscribable tier. `base` has no entry: it is what an account
+# falls back to when it subscribes to nothing, so there is nothing to sell.
+#
+# Separate from config/membership.yaml on purpose. That file answers "what are
+# this tier's six ceilings" and its header states that every number in it is a
+# plain ceiling; a monthly price is not one. config/pricing.yaml is the other
+# leg of the product entirely — credit packs bought once, not a subscription.
+#
+# `test` price ids are used outside production, `live` in production, the same
+# split config/pricing.yaml already uses.
+plans:
+  pro:
+    price_cents: 1200
+    currency: usd
+    stripe_price_id:
+      test: "price_1U5OqmGeRYMxofhepn2ij8zp"
+      live: ""
+  team:
+    price_cents: 3900
+    currency: usd
+    stripe_price_id:
+      test: "price_1U5OrkGeRYMxofhepeUDWhqB"
+      live: ""
+
+# How long a stored subscription may sit past its paid period before its tier
+# stops being honoured.
+#
+# A subscription that is really renewing has its period pushed forward by
+# Stripe, so a row still marked live long after its period ended means the
+# event that ended it never reached us. Fourteen days is Stripe's own Smart
+# Retries window: inside it, a subscription behind on payment is one Stripe is
+# still collecting for, and taking the tier away would punish somebody whose
+# card is about to go through.
+stale_after_days: 14
+
+# How long to wait when asking Stripe what a subscription looks like now —
+# the panel's reconciliation, the webhook's fetch, and the check before a fresh
+# checkout that the stored unpaid subscription is still unpaid.
+#
+# One value for all three, because all three ask the same question and none of
+# them wants to wait. The SDK's own default is 80 seconds with two retries, so an unbounded
+# call sits for around four minutes: the panel holds a reader in front of a
+# spinner, and the webhook holds a request Stripe has already given up on and
+# queued a redelivery for.
+#
+# Five seconds is long enough for a healthy call (Stripe answers in well under
+# one) and short enough that neither waiter notices. Retries are off in both
+# places for the same reason: each path already has a better recovery than
+# retrying inside one request — the panel repairs on the next open, and Stripe
+# redelivers a failed webhook for three days with exponential backoff.
+stripe_read_timeout_ms: 5000

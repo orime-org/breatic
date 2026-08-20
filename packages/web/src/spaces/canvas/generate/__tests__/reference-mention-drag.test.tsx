@@ -96,6 +96,7 @@ async function mountWithChip(): Promise<{
       references={[imgRef]}
       imageRefsDisabled={false}
       mentionEmptyLabel='No references'
+      mentionNoMatchLabel='No matches'
     />,
   );
   await waitFor(() => expect(ref.current).not.toBeNull());
@@ -258,6 +259,7 @@ async function mountWithTwoChips(): Promise<{
       references={[imgRef, chipRefB]}
       imageRefsDisabled={false}
       mentionEmptyLabel='No references'
+      mentionNoMatchLabel='No matches'
     />,
   );
   await waitFor(() => expect(ref.current).not.toBeNull());
@@ -617,7 +619,11 @@ describe('drop residue heal (D1)', () => {
         PMText,
         Collaboration.configure({ fragment: new Y.Doc().getXmlFragment('prompt') }),
         ReferenceMention.configure({
-          suggestion: makeReferenceSuggestion({ getPool: () => [], emptyLabel: 'No references' }),
+          suggestion: makeReferenceSuggestion({
+            getPool: () => [],
+            emptyLabel: 'No references',
+            noMatchLabel: 'No matches',
+          }),
         }),
       ],
     });
@@ -907,7 +913,11 @@ describe('drag source restore on drop (#1776, Safari selection-follows-drop-care
         PMText,
         Collaboration.configure({ fragment: new Y.Doc().getXmlFragment('prompt') }),
         ReferenceMention.configure({
-          suggestion: makeReferenceSuggestion({ getPool: () => [], emptyLabel: 'No references' }),
+          suggestion: makeReferenceSuggestion({
+            getPool: () => [],
+            emptyLabel: 'No references',
+            noMatchLabel: 'No matches',
+          }),
         }),
       ],
     });
@@ -1059,7 +1069,11 @@ describe('unified chip drag ghost (Safari had none — tiptap only sets one via 
         PMText,
         Collaboration.configure({ fragment: new Y.Doc().getXmlFragment('prompt') }),
         ReferenceMention.configure({
-          suggestion: makeReferenceSuggestion({ getPool: () => [], emptyLabel: 'No references' }),
+          suggestion: makeReferenceSuggestion({
+            getPool: () => [],
+            emptyLabel: 'No references',
+            noMatchLabel: 'No matches',
+          }),
         }),
       ],
     });

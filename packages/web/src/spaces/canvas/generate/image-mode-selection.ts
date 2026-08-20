@@ -58,3 +58,23 @@ export function resolveMode(
     ? resolved
     : NO_AVAILABLE_MODE_FALLBACK;
 }
+
+/**
+ * Whether this image mode consumes the `@`-picked reference pool (#1952).
+ *
+ * One statement, four readers, mirroring what the video panel has had all
+ * along (`video-mode-options.ts`): the payload collects the picked URLs only
+ * for a mode that says yes, the rail dims the content of every reference
+ * material row for a mode that says no, the `@` picker drops those rows from
+ * its list, and the Focus trigger follows too — a focus crop IS a reference
+ * image (#1782), so the mode that cannot use one cannot make one either.
+ *
+ * A named function rather than four `mode === 't2i'` literals: they were the
+ * same question answered four times, which is exactly the shape this slice
+ * exists to remove.
+ * @param mode - The active image mode.
+ * @returns True when this mode reads reference images.
+ */
+export function imageModeTakesReferences(mode: ImageGenMode): boolean {
+  return mode !== 't2i';
+}

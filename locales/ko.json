@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "이 서버에서는 직접 업로드를 사용할 수 없습니다"
+    },
+    "membership": {
+      "already_subscribed": "이미 멤버십이 있습니다.",
+      "no_subscription": "멤버십이 없습니다.",
+      "not_cancelling": "이 멤버십은 종료 예정이 아닙니다.",
+      "downgrade_not_offered": "하위 등급으로 변경할 수 없습니다.",
+      "same_tier": "이미 이 멤버십입니다.",
+      "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
+      "unavailable": "멤버십을 사용할 수 없습니다."
     }
   },
   "chat": {
@@ -228,14 +237,12 @@
       "emptyImageReference": "아직 생성 또는 업로드되지 않음",
       "emptyTextReference": "내용 없음",
       "refuseInsertModeOff": "이 모드는 참조 소재를 사용하지 않습니다",
-      "refuseRemoveModeOff": "참조는 모드 간에 공유됩니다 — 삭제하려면 참조를 사용하는 모드로 전환하거나 캔버스에서 연결선을 삭제하세요",
-      "refuseRemoveModeOffCrop": "참조는 모드 간에 공유됩니다 — 이 자르기를 삭제하려면 참조를 사용하는 모드로 전환하세요",
-      "refuseRemoveNoPrompt": "이 모드는 프롬프트가 필요하지 않습니다",
       "refuseExecuteNoPrompt": "프롬프트를 먼저 입력하세요",
       "refuseInsertTypeUnused": "{kind, select, audio {참조는 이미지만 받습니다. 오디오는 사용할 수 없습니다} video {참조는 이미지만 받습니다. 비디오는 사용할 수 없습니다} other {참조는 이미지만 받습니다. 이런 종류의 소재는 사용할 수 없습니다}}",
       "exit": "종료",
       "promptPlaceholder": "생성할 이미지를 설명하세요. @ 로 참조 추가",
-      "mentionEmpty": "참조할 이미지가 없습니다 — 먼저 이미지에서 선을 연결하세요",
+      "mentionEmpty": "참조할 수 있는 항목이 없습니다",
+      "mentionNoMatch": "일치하는 항목이 없습니다",
       "selectFromCanvas": "캔버스에서 참조 선택",
       "selectStyleFromCanvas": "캔버스에서 스타일 참조 선택",
       "selectFirstFrameFromCanvas": "캔버스에서 첫 프레임으로 쓸 이미지 선택",
@@ -244,7 +251,6 @@
       "selectDrivingVideoFromCanvas": "캔버스에서 동작을 가져올 영상 선택",
       "selectDrivingAudioFromCanvas": "캔버스에서 입 모양이 따라갈 음성 선택",
       "removeStyle": "스타일 참조 제거",
-      "returnToNode": "노드로 돌아가기",
       "exitSelect": "종료",
       "locateSource": "소스 노드로 이동",
       "presets": "프리셋",
@@ -290,7 +296,6 @@
       "videoParams": "매개변수",
       "videoPromptPlaceholder": "생성할 영상을 설명하세요. @ 로 참조 추가",
       "errorNoReferenceMention": "이 모드에는 참고 이미지가 필요합니다 —— 이 노드에 이미지를 연결한 뒤 프롬프트에 @ 를 입력해 지정하세요.",
-      "videoMentionEmpty": "아직 언급할 참조가 없습니다",
       "firstFrame": "첫 프레임",
       "firstFrameTip": "영상의 첫 프레임으로 쓸 이미지를 고르세요",
       "removeFirstFrame": "첫 프레임 제거",
@@ -760,7 +765,9 @@
       "studioInviteRequest": "{actor}님이 {studio}에 초대했습니다",
       "studioInviteAccepted": "{actor}님이 {studio} 초대를 수락했습니다",
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",
-      "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다"
+      "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다",
+      "membershipEnded": "{tier} 멤버십이 종료되었습니다",
+      "membershipUpgradeIncomplete": "{tier} 업그레이드가 완료되지 않았습니다"
     },
     "actorFallback": "누군가",
     "subtitle": {
@@ -1165,9 +1172,8 @@
       "enterprise": "엔터프라이즈"
     },
     "priceFree": "무료",
-    "pricePerMonth": "{amount} / 월",
+    "taxNote": "가격은 세금 별도입니다.",
     "tierNote": "등급이 정하는 것은 용량과 협업 규모입니다. 모든 창작 기능과 모델은 어느 등급에서나 동일합니다.",
-    "upgrade": "업그레이드",
     "myQuota": "내 사용량",
     "quota": {
       "teamStudios": "팀 Studio",
@@ -1192,6 +1198,22 @@
     "contactEnterprise": "더 큰 규모나 별도의 상업 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactSelfHosted": "상업용 라이선스나 별도의 지원 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactEnterpriseAccount": "사용 한도에 대해 궁금하거나 조정이 필요하신가요? 메일로 문의해 주세요:",
-    "loadFailed": "멤버십 정보를 읽지 못했습니다. 네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요."
+    "loadFailed": "멤버십 정보를 읽지 못했습니다. 네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요.",
+    "action": {
+      "choose": "{tier} 선택",
+      "inProgress": "처리 중",
+      "current": "현재"
+    },
+    "nextCharge": "다음 결제 {date}",
+    "endsOn": "멤버십 종료 {date}",
+    "cancel": "멤버십 해지",
+    "resume": "멤버십 재개",
+    "notice": {
+      "firstPaymentPending": "결제가 완료되지 않았습니다",
+      "upgradePending": "업그레이드 결제가 완료되지 않았습니다",
+      "paymentOverdue": "이번 달 결제가 이루어지지 않았습니다"
+    },
+    "payNow": "결제하기",
+    "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요."
   }
 }

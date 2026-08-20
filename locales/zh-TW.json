@@ -89,6 +89,15 @@
     },
     "asset": {
       "direct_upload_unavailable": "目前的伺服器不支援直接上傳"
+    },
+    "membership": {
+      "already_subscribed": "你已有會員。",
+      "no_subscription": "你沒有會員。",
+      "not_cancelling": "這個會員沒有預約結束。",
+      "downgrade_not_offered": "會員不能降到更低檔位。",
+      "same_tier": "你已經在這一檔會員。",
+      "payment_overdue": "這個會員有一期款項未付。",
+      "unavailable": "會員目前無法使用。"
     }
   },
   "chat": {
@@ -228,14 +237,12 @@
       "emptyImageReference": "尚未生成或上傳",
       "emptyTextReference": "暫無內容",
       "refuseInsertModeOff": "這一檔不使用參考素材",
-      "refuseRemoveModeOff": "參考在各檔之間共用 — 切到使用參考的檔才能刪掉它，或者在畫布上刪掉它那條連線",
-      "refuseRemoveModeOffCrop": "參考在各檔之間共用 — 切到使用參考的檔才能刪掉這個裁剪",
-      "refuseRemoveNoPrompt": "這一檔不需要提示詞",
       "refuseExecuteNoPrompt": "先寫提示詞",
       "refuseInsertTypeUnused": "{kind, select, audio {參考只收圖片，不收音訊} video {參考只收圖片，不收視訊} other {參考只收圖片，不收這類素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的畫面內容，@ 引用參考",
-      "mentionEmpty": "還沒有可引用的圖 — 先從一張圖連線過來",
+      "mentionEmpty": "沒有可引用的內容",
+      "mentionNoMatch": "沒有匹配的內容",
       "selectFromCanvas": "從畫布選擇參考",
       "selectStyleFromCanvas": "從畫布選擇風格參考",
       "selectFirstFrameFromCanvas": "在畫布上選一張圖片作為首幀",
@@ -244,7 +251,6 @@
       "selectDrivingVideoFromCanvas": "在畫布上選一段影片來驅動動作",
       "selectDrivingAudioFromCanvas": "在畫布上選一段音訊，口型跟著它動",
       "removeStyle": "移除風格參考",
-      "returnToNode": "返回節點",
       "exitSelect": "退出",
       "locateSource": "定位到來源節點",
       "presets": "預設",
@@ -290,7 +296,6 @@
       "videoParams": "參數",
       "videoPromptPlaceholder": "描述你想生成的影片，@ 引用參考",
       "errorNoReferenceMention": "這一檔需要參考圖 —— 先把圖連到這個節點，再在提示詞裡輸入 @ 引用它。",
-      "videoMentionEmpty": "還沒有可引用的參考",
       "firstFrame": "首幀",
       "firstFrameTip": "挑一張圖作為影片的第一幀",
       "removeFirstFrame": "移除首幀",
@@ -760,7 +765,9 @@
       "studioInviteRequest": "{actor} 邀請你加入 {studio}",
       "studioInviteAccepted": "{actor} 接受了你對 {studio} 的邀請",
       "projectInviteRequest": "{actor} 邀請你加入 {project}",
-      "projectInviteAccepted": "{actor} 接受了你對 {project} 的邀請"
+      "projectInviteAccepted": "{actor} 接受了你對 {project} 的邀請",
+      "membershipEnded": "{tier} 會員已結束",
+      "membershipUpgradeIncomplete": "升級到 {tier} 未完成"
     },
     "actorFallback": "某人",
     "subtitle": {
@@ -1165,9 +1172,8 @@
       "enterprise": "企業版"
     },
     "priceFree": "免費",
-    "pricePerMonth": "{amount} / 月",
+    "taxNote": "價格不含稅。",
     "tierNote": "這一檔決定你的容量與協作規模。所有創作功能和模型在每一檔都完全一樣。",
-    "upgrade": "升級",
     "myQuota": "我的額度",
     "quota": {
       "teamStudios": "團隊 Studio",
@@ -1192,6 +1198,22 @@
     "contactEnterprise": "需要更大規模或單獨的商用條款？寄信跟我們談：",
     "contactSelfHosted": "需要商用授權或單獨的支援條款？寄信跟我們談：",
     "contactEnterpriseAccount": "額度有疑問或需要調整？寄信跟我們談：",
-    "loadFailed": "沒能讀到你的會員資訊，可能是網路問題。稍後再試一次。"
+    "loadFailed": "沒能讀到你的會員資訊，可能是網路問題。稍後再試一次。",
+    "action": {
+      "choose": "選擇 {tier}",
+      "inProgress": "處理中",
+      "current": "目前"
+    },
+    "nextCharge": "下次扣款 {date}",
+    "endsOn": "會員 {date} 結束",
+    "cancel": "取消會員",
+    "resume": "恢復會員",
+    "notice": {
+      "firstPaymentPending": "付款未完成",
+      "upgradePending": "升級付款未完成",
+      "paymentOverdue": "這個月的款項沒有扣款成功"
+    },
+    "payNow": "去付款",
+    "actionFailed": "沒有成功，請再試一次。"
   }
 }
