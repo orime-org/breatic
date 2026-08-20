@@ -917,13 +917,18 @@ describe('选中浮出条', () => {
 
   // 第九轮实现对抗查实：去掉 tabindex 只改了焦点的落点，没挡住焦点离开正文。
   // 点条的内边距，正文失焦、选中高亮消失，而插件的 `preventHide`（捕获相
-  // mousedown，`dist/index.js:180`）让 `blurHandler`（`:100-103`）直接返回，条
-  // 不隐藏；之后没有事务，也就没有人再问一次该不该显示。
+  // mousedown，`dist/index.js:78-79` 定义、`:182` 注册）让 `blurHandler` 走到
+  // `:106-108` 就返回，条不隐藏；之后没有事务，也就没有人再问一次该不该显示。
   //
   // 做法跟 Slate 官方 hovering-toolbar 示例一致（`site/examples/ts/
   // hovering-toolbar.tsx`，注释原文「prevent toolbar from taking focus away
   // from editor」）：在条上阻止 mousedown 的默认行为，焦点根本不动。
-  it('按下浮出条时阻止默认行为，焦点不离开正文', async () => {
+  //
+  // 这里只验「默认行为被阻止了」这一件事，**焦点真的没走**在这一层验不了：
+  // jsdom 的 mousedown 默认行为本来就不移动焦点，阻不阻止都一样。量焦点的是
+  // `tests/smoke/selection-bubble-bar.spec.ts` 的「按过浮出条之后再点到编辑器
+  // 外面，条要消失」，那条在真浏览器里数过——按条 0 次 blur、按 Tab 2 次。
+  it('按下浮出条时阻止默认行为', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);

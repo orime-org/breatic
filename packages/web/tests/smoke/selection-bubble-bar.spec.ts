@@ -607,6 +607,36 @@ test('全选后鼠标回到正文里，条自己就出来了——不用滚动',
   expect(again.top).toBe(shown.top);
 });
 
+// 定稿 §5.1 的两档对照表给全选那一格写的是「竖直方向夹」。这一档的锚点是一个
+// 钉住的点，`hide` 中间件在这一档永远不开火（锚点矩形恒在边界内），所以真正
+// 挡着条跑到正文区域上方的只有 `flip`。之前五条 E2E 的钉点全在离上沿 200px
+// 以外，这一格从没被量过——而 `isInside` 接受指针正好落在上沿。
+test('全选时鼠标贴着正文区域上沿，条也不画到区域外面', async () => {
+  test.setTimeout(180_000);
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+
+  const spot = await page.evaluate(() => {
+    const v = document
+      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      ?.getBoundingClientRect();
+    const top = Math.round(v?.top ?? 0);
+    return { x: Math.round((v?.left ?? 0) + 420), y: top + 4, top };
+  });
+  await page.mouse.move(spot.x, spot.y);
+  await selectWholeDocument(page);
+  await page.waitForTimeout(400);
+
+  const bar = await readBar(page);
+  expect(bar.shown).toBe(true);
+  // 锚点上方只剩 4px，条要 44px 加 8px 间距——放不下，`flip` 该把它翻到锚点
+  // 下方去，而不是让它压在正文区域上面那条属于顶部横条的带子里。
+  expect(bar.top).toBeGreaterThanOrEqual(spot.top);
+});
+
 // 规则一的后半句：鼠标位置不知道的时候，全选也不摆条。这条只有真浏览器测得了
 // ——「不知道」的唯一来源是指针离开了页面，而那个事件 jsdom 里只能手工派发。
 test('鼠标离开浏览器之后，键盘全选不把条摆出来', async () => {

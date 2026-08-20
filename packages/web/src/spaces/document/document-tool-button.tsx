@@ -19,11 +19,17 @@
  * one by id would break the moment a test made a selection. Naming the carrier
  * keeps each one addressable.
  *
- * The React subtree, incidentally, outlives the bar: the plugin takes the bar
- * out of the document on hide (`dist/index.js:377-379` sets `visibility` and
- * then calls `element.remove()`), but the element it was portalled into is the
- * plugin's own and survives, so the buttons are rebuilt into the document
- * on the next `show()` rather than remounted.
+ * These buttons come and go with the selection. `SelectionBubbleBar` renders
+ * them only while one exists, because each of them dry-runs its command on
+ * every transaction and the bar spends almost all of its life hidden. So the
+ * window in which two buttons share a command is the window in which a
+ * selection exists — which is also the only window anything wants to address
+ * one of them in.
+ *
+ * (The bar's own element is a separate matter: the plugin removes it from the
+ * document on hide — `dist/index.js:377-379` sets `visibility` and then calls
+ * `element.remove()` — and appends the same element back on the next
+ * `show()`. That element is the plugin's, not React's.)
  */
 
 import * as React from 'react';

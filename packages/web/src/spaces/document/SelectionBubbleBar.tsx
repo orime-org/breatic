@@ -165,6 +165,12 @@ function selectionBox(view: EditorView): DOMRect {
   if (selection && selection.rangeCount > 0) {
     return selection.getRangeAt(0).getBoundingClientRect();
   }
+  // No user path is known to reach this. Getting here needs the bar to be up
+  // (so: focused editor, non-empty selection) while the document reports no
+  // range at all — `getSelection()` is typed nullable and a detached document
+  // returns null, but nothing in this app detaches one. It is the two calls
+  // above having a value the type system does not promise, not a guard
+  // against a scenario anyone could name.
   const { from, to } = view.state.selection;
   return posToDOMRect(view, from, to);
 }
