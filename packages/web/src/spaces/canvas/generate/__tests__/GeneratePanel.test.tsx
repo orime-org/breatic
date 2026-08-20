@@ -167,9 +167,15 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
   });
 
-  it('disables Focus in t2i — a focus crop is an image source (#1782 / #1788 batch-3 #1)', () => {
+  it('keeps Focus ENABLED in t2i — collecting a crop is never refused at the entry (#1986)', () => {
+    // Same shape as the reference button above, and for the same reason: what
+    // a mode cannot use is refused on the ROW, which dims and explains itself
+    // (#1952). This one was turned off in t2i by #1782 itself, the slice that
+    // added focus — leaving a button that swallowed the click and said
+    // nothing. User 2026-08-19 ruled both panels behave alike, and the video
+    // one has been live in every mode since #1978.
     setup({ mode: 't2i' });
-    expect(screen.getByTestId('generate-tool-focus')).toBeDisabled();
+    expect(screen.getByTestId('generate-tool-focus')).not.toBeDisabled();
   });
 
   it('enables Focus in i2i (#1782)', () => {
