@@ -298,33 +298,6 @@ describe('选中浮出条', () => {
       };
     }
 
-    it('全选时锚的是视口里看得见的那一行，不是整篇的包围盒顶端', async () => {
-      const editor = open('<p>one</p><p>two</p><p>three</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 4);
-      pinViewport(new DOMRect(0, 100, 800, 400));
-
-      act(() => {
-        editor.commands.selectAll();
-      });
-      const { from, to } = editor.state.selection;
-      // 选区起点在视口上方、终点在下方——两端都够不着，只剩「视口顶那一行」，
-      // 它由 posAtCoords 报出来（pos 7，行顶 250，稳稳在可见框里）。
-      pinLines(editor, { [from]: -300, [to]: 900, 7: 250 });
-      editor.view.posAtCoords = () => ({ pos: 7, inside: -1 });
-
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-
-      expect(rect).toBeDefined();
-      // 那一行是 250 到 270，锚点矩形上下各撑一个间距（8），所以是 242 到 278。
-      expect(rect?.top).toBe(242);
-      expect(rect?.bottom).toBe(278);
-      // 水平取自选区包围盒，跟锚定在哪一行无关。
-      expect(rect?.left).toBe(SELECTION_BOX.left);
-    });
-
     it('拖出来的选区锚在松手那一行——也就是选区的 head', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
@@ -347,6 +320,48 @@ describe('选中浮出条', () => {
       expect(rect?.bottom).toBe(228);
       // 左边取自选区包围盒，不是行尾、也不是锚定那一行的 x。
       expect(rect?.left).toBe(SELECTION_BOX.left);
+    });
+
+    it('head 那一行看不见时，锚的是选区起点那一行', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      act(() => {
+        editor.commands.setTextSelection({ from: 2, to: 12 });
+      });
+      // 往下拖出去的选区：松手那端（12）已经滚过可见区下沿，起点（2）还在屏上。
+      pinLines(editor, { 2: 200, 12: 900 });
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      // 起点那一行是 200 到 220，上下各撑 8。
+      expect(rect?.top).toBe(192);
+      expect(rect?.bottom).toBe(228);
+    });
+
+    it('两端都看不见时也锚起点那一行——藏不藏归 hide 中间件管', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      act(() => {
+        editor.commands.setTextSelection({ from: 2, to: 12 });
+      });
+      // 选区整个跨过了可见区：起点在上面、松手那端在下面。这里不再去找第三条
+      // 「读者当下看得见的行」——那条分支是前六轮实现对抗里五次承诺内问题的
+      // 共同出处，现在锚点照常给出去，由 `hide` 判它在不在正文区域里。
+      pinLines(editor, { 2: -300, 12: 900 });
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      expect(rect?.top).toBe(-308);
     });
 
     it('间距做在锚点矩形上，不交给 offset 中间件', async () => {
@@ -408,78 +423,6 @@ describe('选中浮出条', () => {
       expect(rect?.bottom).toBe(118);
     });
 
-    // 第三条分支：选区两端都在可见范围外时，问 `posAtCoords` 视口顶那一行是谁。
-    // 第三轮实证这一支零保护——查询坐标、范围校验、最后兜底三样全改坏，21 条
-    // 测试仍全绿。下面三条各钉一样。
-    it('两端都看不见时，锚点问的是视口顶那一行', async () => {
-      const editor = open('<p>one</p><p>two</p><p>three</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 4);
-      pinViewport(new DOMRect(0, 100, 800, 400));
-
-      act(() => {
-        editor.commands.selectAll();
-      });
-      const { from, to } = editor.state.selection;
-      pinLines(editor, { [from]: -300, [to]: 900, 7: 250 });
-      const asked: { left: number; top: number }[] = [];
-      editor.view.posAtCoords = (coords) => {
-        asked.push({ left: Math.round(coords.left), top: Math.round(coords.top) });
-        return { pos: 7, inside: -1 };
-      };
-      editor.view.dom.getBoundingClientRect = () => new DOMRect(300, 0, 500, 900);
-
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-
-      // 问的坐标必须是「编辑器自己的左边缘再往里一点」加「可见范围的顶再往下
-      // 一点」——问滚动容器的左边缘会落在没有文字的边距里。
-      expect(asked).toEqual([{ left: 301, top: 101 }]);
-      expect(rect?.top).toBe(242);
-    });
-
-    it('视口顶那一行不在选区里时，退回选区起点', async () => {
-      const editor = open('<p>one</p><p>two</p><p>three</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 4);
-      pinViewport(new DOMRect(0, 100, 800, 400));
-
-      act(() => {
-        editor.commands.setTextSelection({ from: 6, to: 9 });
-      });
-      pinLines(editor, { 6: -300, 9: 900, 2: 250 });
-      // 视口顶那一行是 pos 2，落在选区 [6, 9] 外面——不能拿它当锚点。
-      editor.view.posAtCoords = () => ({ pos: 2, inside: -1 });
-
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-
-      // 退回 from（pos 6，行顶 -300），而不是采信那个界外的答案。
-      expect(rect?.top).toBe(-308);
-    });
-
-    it('问不出视口顶那一行时，退回选区起点', async () => {
-      const editor = open('<p>one</p><p>two</p><p>three</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 4);
-      pinViewport(new DOMRect(0, 100, 800, 400));
-
-      act(() => {
-        editor.commands.setTextSelection({ from: 6, to: 9 });
-      });
-      pinLines(editor, { 6: -300, 9: 900 });
-      // jsdom 没有命中测试，真实的 `posAtCoords` 在这里本来就答 null。
-      editor.view.posAtCoords = () => null;
-
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-
-      expect(rect?.top).toBe(-308);
-    });
-
     it('整篇选中时锚的是最后那一行的行盒，不是文档末尾那条零高度的边界', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
@@ -507,42 +450,6 @@ describe('选中浮出条', () => {
       // 那样条底就压在这一行的字上。
       expect(rect?.top).toBe(242);
       expect(rect?.bottom).toBe(278);
-    });
-
-    it('视口顶落在两段之间时，锚的是下面那一行，不是上面那一行', async () => {
-      const editor = open('<p>one</p><p>two</p><p>three</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 4);
-      pinViewport(new DOMRect(0, 100, 800, 400));
-
-      act(() => {
-        editor.commands.selectAll();
-      });
-      // 正文段落之间有一条外边距。查询点落进那条空隙时 `posAtCoords` 答的是
-      // 两段之间的块级边界（`prosemirror-view` 的 `posFromCaret` 就是为这个
-      // 写的），而边界不属于任何一行。真浏览器实测：一屏正文里约每三个滚动
-      // 位置就有一个这样落。
-      editor.view.posAtCoords = () => ({ pos: 5, inside: -1 });
-      editor.view.coordsAtPos = (pos: number) => {
-        // 边界本身：零高度的分隔线，值是上一段的底边。
-        if (pos === 5) return { top: 100, bottom: 100, left: 40, right: 40 };
-        // 边界上面那一行，已经滚出可见区。
-        if (pos === 4) return { top: 80, bottom: 100, left: 40, right: 60 };
-        // 边界下面那一行，是读者看得见的第一行。
-        if (pos === 6) return { top: 110, bottom: 130, left: 40, right: 60 };
-        // 选区两端：一个在可见区上方，一个在下方，都够不着。
-        if (pos <= 1) return { top: -300, bottom: -280, left: 40, right: 60 };
-        return { top: 900, bottom: 920, left: 40, right: 60 };
-      };
-
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-
-      // 看得见的那一行是 110 到 130，上下各撑 8。取上面那一行会得到 72，
-      // 而那一行在可见区外面——条会跟着画到正文可见区之上。
-      expect(rect?.top).toBe(102);
-      expect(rect?.bottom).toBe(138);
     });
 
     it('选区为空时不给锚点', async () => {

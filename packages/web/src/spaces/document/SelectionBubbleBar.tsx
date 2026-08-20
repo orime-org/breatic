@@ -63,8 +63,10 @@
 import * as React from 'react';
 import { useEditorState, type Editor } from '@tiptap/react';
 import { posToDOMRect } from '@tiptap/core';
+import { isTextSelection } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
-import { Selection } from '@tiptap/pm/state';
+import { AllSelection, PluginKey, Selection } from '@tiptap/pm/state';
+import type { EditorState } from '@tiptap/pm/state';
 import { BubbleMenu } from '@tiptap/react/menus';
 
 import {
@@ -129,30 +131,33 @@ function lineAt(
 }
 
 /**
- * The line the bar sits against.
+ * The line the bar sits against, for a selection that covers part of the body.
  *
- * One rule covers both ways a selection gets made, because the head of a
+ * One rule covers both ways such a selection gets made, because the head of a
  * selection IS the end the user is moving: dragging with the mouse, the head
  * is where the button came up; extending with the keyboard, it is the edge
  * being pushed. Anchor there whenever the reader can see it, which is always
- * true of a drag — the pointer was on screen when it was released.
+ * true of a drag — the pointer was on screen when it was released. Otherwise
+ * anchor the other end.
  *
- * A `Mod-a` selection is the case that forces the fallback: its head is the
- * end of the document, usually far below the fold. Then the anchor is the top
- * of the selection if that is on screen, and otherwise the position where the
- * selection crosses the top edge — never the selection's own start, which for
- * `Mod-a` is a first line that may be scrolled arbitrarily far away.
+ * Neither end being on screen is not this function's problem: the `hide`
+ * middleware takes the anchor it returns and hides the bar when that anchor
+ * has left the body area (see the options below). Hunting for some third line
+ * the reader can currently see is exactly what this used to do, and that
+ * branch was the common source of the in-scope defects found in five of the
+ * six implementation-adversarial rounds. None of Lexical, Slate, ProseMirror's
+ * own example, or this plugin does it either.
  *
  * Lines rather than DOM rectangles, deliberately. `Range.getClientRects()`
  * hands back the BORDER BOX of any element the range wholly contains, so a
- * fully selected paragraph yields one tall rectangle instead of one per line —
- * and `Mod-a` selects whole blocks by definition. Asking the editor where a
- * position sits always yields a single line, whatever the range happens to
- * span.
+ * fully selected paragraph yields one tall rectangle instead of one per line.
+ * Asking the editor where a position sits always yields a single line,
+ * whatever the range happens to span.
  *
  * The line rather than the position, because each branch has to say which side
- * of a block boundary it means and only it knows (see `lineAt`): an end of the
- * selection means the line above, the reader's top row means the line below.
+ * of a block boundary it means and only it knows (see `lineAt`): the end the
+ * selection stops at means the line above, the end it starts from means the
+ * line below.
  * @param view - The editor view to measure against.
  * @param bounds - The visible box of the body's scroll container.
  * @returns The anchored line's extent, in viewport coordinates.
@@ -161,43 +166,21 @@ function pickAnchorLine(
   view: EditorView,
   bounds: DOMRect,
 ): { top: number; bottom: number } {
-  const { from, to, head } = view.state.selection;
-  /**
-   * Whether a line overlaps the visible box at all.
-   * @param line - A line's vertical extent.
-   * @param line.top - Its top edge.
-   * @param line.bottom - Its bottom edge.
-   * @returns True when any part of it is on screen.
-   */
-  const isVisible = (line: { top: number; bottom: number }): boolean =>
-    line.bottom > bounds.top && line.top < bounds.bottom;
-
+  const { from, head } = view.state.selection;
   // `head` is always inside `[from, to]` — a selection defines them as the min
   // and max of its anchor and head — so the only question is whether it shows.
-  // Both ends read the line the selection reaches INTO, hence -1 for the end
-  // it stops at and 1 for the one it starts from.
   //
-  // Those two directions say what these branches mean; they do not change what
+  // The two directions say what these branches mean; they do not change what
   // they do, and no test pins them. A selection's ends land on a block boundary
   // only at the document's own ends, and there both directions answer the same
   // position — measured on `<p>one</p><p>two</p><p>three</p>`: position 0 walks
-  // to 1 either way, position 17 to 16 either way, while the seam at 5 walks to
-  // 4 or 6. Only the top-row branch below can reach a seam, which is why only
-  // its direction is observable and pinned.
+  // to 1 either way, position 17 to 16 either way, while only the seam at 5
+  // walks to 4 or 6, and no end of a selection lands on a seam.
   const headLine = lineAt(view, head, -1);
-  if (isVisible(headLine)) return headLine;
-  const fromLine = lineAt(view, from, 1);
-  if (isVisible(fromLine)) return fromLine;
-
-  // The selection starts above the fold. Ask what sits on the first visible
-  // row instead — measured from the editor's own left edge, since the
-  // scroller's is out in the gutter where there is no text to hit.
-  const editorLeft = view.dom.getBoundingClientRect().left;
-  const atTop = view.posAtCoords({ left: editorLeft + 1, top: bounds.top + 1 });
-  if (atTop && atTop.pos > from && atTop.pos < to) {
-    return lineAt(view, atTop.pos, 1);
+  if (headLine.bottom > bounds.top && headLine.top < bounds.bottom) {
+    return headLine;
   }
-  return fromLine;
+  return lineAt(view, from, 1);
 }
 
 /**
@@ -338,24 +321,157 @@ function BubbleBar({
     [viewport],
   );
 
+  const barRef = React.useRef<HTMLDivElement | null>(null);
+  const pointerRef = React.useRef<{ x: number; y: number } | null>(null);
+  const pinnedRef = React.useRef<{ x: number; y: number } | null>(null);
+
+  // On `document`, not on the editor: the question this feeds is whether the
+  // pointer is INSIDE the body area, so the moment it leaves has to be seen
+  // too. Listening on the body would freeze the last reading at whatever it
+  // was on the way out and the test would answer "inside" forever.
+  //
+  // `wheel` as well as `mousemove` because a wheel gesture moves the text
+  // under a still pointer: the pointer's own coordinates are unchanged but the
+  // event carries them, and it is the only pointer-bearing event a scroll
+  // produces — `scroll` itself is a plain `Event` with no coordinates at all.
+  React.useEffect(() => {
+    /**
+     * Keep the pointer's latest viewport coordinates.
+     * @param event - A pointer-bearing event.
+     */
+    const remember = (event: MouseEvent): void => {
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+    };
+    document.addEventListener('mousemove', remember);
+    document.addEventListener('wheel', remember);
+    return () => {
+      document.removeEventListener('mousemove', remember);
+      document.removeEventListener('wheel', remember);
+    };
+  }, []);
+
+  /**
+   * Where the bar is pinned over a select-all, or null when it stays away.
+   *
+   * Two rules, both settled by the user on 2026-08-20. A select-all pins the
+   * bar to the pointer, and only while the pointer is inside the body area —
+   * over a whole document no line deserves the bar more than any other, and a
+   * position nobody asked for is worse than no bar. Once pinned it stays put:
+   * later calls answer the same coordinates, so scrolling recomputes to the
+   * same screen position and moving the pointer away changes nothing.
+   *
+   * The pin is dropped as soon as the selection stops being a select-all,
+   * which is the only event that ends this mode.
+   * @returns The pinned point, or null when there is none to pin to.
+   */
+  const pinnedPointer = React.useCallback((): { x: number; y: number } | null => {
+    if (!(editor.state.selection instanceof AllSelection)) {
+      pinnedRef.current = null;
+      return null;
+    }
+    if (pinnedRef.current) return pinnedRef.current;
+    const pointer = pointerRef.current;
+    if (!pointer) return null;
+    const box = viewport.getBoundingClientRect();
+    const inside =
+      pointer.x >= box.left
+      && pointer.x <= box.right
+      && pointer.y >= box.top
+      && pointer.y <= box.bottom;
+    if (!inside) return null;
+    pinnedRef.current = pointer;
+    return pointer;
+  }, [editor, viewport]);
+
+  // The plugin's own default, plus the select-all rule. Passing `shouldShow`
+  // REPLACES the default (`dist/index.js:180-182`) rather than adding to it,
+  // so its four conditions are restated here: focus somewhere that counts, a
+  // selection that is not empty, one that is not an empty text block, and an
+  // editable editor (`:62-77`).
+  const shouldShow = React.useCallback(
+    ({
+      view,
+      state,
+      from,
+      to,
+    }: {
+      view: EditorView;
+      state: EditorState;
+      from: number;
+      to: number;
+    }): boolean => {
+      const { doc, selection } = state;
+      if (selection.empty || !editor.isEditable) return false;
+      if (!doc.textBetween(from, to).length && isTextSelection(selection)) {
+        return false;
+      }
+      const inBar = barRef.current?.contains(document.activeElement) ?? false;
+      if (!view.hasFocus() && !inBar) return false;
+      if (selection instanceof AllSelection) return pinnedPointer() !== null;
+      return true;
+    },
+    [editor, pinnedPointer],
+  );
+
   const getReferencedVirtualElement = React.useCallback(() => {
     const { view } = editor;
     if (view.state.selection.empty) return null;
-    const line = pickAnchorLine(view, viewport.getBoundingClientRect());
-    // The two axes come from different places, and they have to. Vertically the
-    // bar belongs to ONE line — the anchor. Horizontally the ruling asks for
-    // the selection's left edge, which is the left of the box it occupies: the
-    // anchor's own x is no such thing (it is usually the head, and a `Mod-a`'s
-    // head sits at the END of the last line — measured, taking x from there put
-    // the bar 314px right of where the ruling wants it), and neither is
-    // `posToDOMRect`, which samples only the two endpoints and so misses the
-    // block edge that a middle line starts at.
-    const rect = anchorRect(selectionBox(view).left, line);
+    const pinned = pinnedPointer();
+    // A pinned point has no extent, so both edges of the "line" are the same
+    // coordinate and `anchorRect` grows it into the gap on either side — the
+    // same shape a real line gets, which is what keeps the flip behaviour
+    // identical across the two modes.
+    //
+    // Its x comes from the pointer too, not from the selection's box: over a
+    // select-all that box is the whole body column and its left edge says
+    // nothing about where the reader is looking.
+    const rect = pinned
+      ? anchorRect(pinned.x, { top: pinned.y, bottom: pinned.y })
+      // The two axes come from different places here, and they have to.
+      // Vertically the bar belongs to ONE line — the anchor. Horizontally the
+      // ruling asks for the selection's left edge, which is the left of the
+      // box it occupies: the anchor's own x is no such thing (it is usually
+      // the head, and measured, taking x from there put the bar 314px right of
+      // where the ruling wants it), and neither is `posToDOMRect`, which
+      // samples only the two endpoints and so misses the block edge that a
+      // middle line starts at.
+      : anchorRect(
+        selectionBox(view).left,
+        pickAnchorLine(view, viewport.getBoundingClientRect()),
+      );
     return {
       getBoundingClientRect: () => rect,
       getClientRects: () => [rect] as unknown as DOMRectList,
     };
-  }, [editor, viewport]);
+  }, [editor, viewport, pinnedPointer]);
+
+  // Ours rather than the wrapper's auto-generated one, because the scroll
+  // handler below has to address this plugin by key to wake it.
+  const pluginKey = React.useMemo(() => new PluginKey('selectionBubbleBar'), []);
+
+  // The second of the two select-all rules: a scroll leaves a shown bar alone,
+  // and only when there is none does it ask where the pointer is.
+  //
+  // It has to be us who asks. The plugin's own scroll handler only calls
+  // `updatePosition` (`dist/index.js:89-96`), whose first line is
+  // `if (!this.isVisible) return` (`:300-302`) — a bar that is not up stays
+  // down however far the reader scrolls. Waking it takes two metas rather than
+  // one: `'show'` runs `updatePosition()` BEFORE `show()` (`:157-160`), so on
+  // its own it would put the bar back at whatever position it last computed.
+  React.useEffect(() => {
+    /** Put the bar up if this scroll is the moment it becomes placeable. */
+    const onScroll = (): void => {
+      if (pinnedRef.current) return;
+      if (!pinnedPointer()) return;
+      const { view } = editor;
+      view.dispatch(view.state.tr.setMeta(pluginKey, 'show'));
+      view.dispatch(view.state.tr.setMeta(pluginKey, 'updatePosition'));
+    };
+    viewport.addEventListener('scroll', onScroll);
+    return () => {
+      viewport.removeEventListener('scroll', onScroll);
+    };
+  }, [editor, viewport, pinnedPointer, pluginKey]);
 
   const options = React.useMemo(
     () => ({
@@ -366,12 +482,21 @@ function BubbleBar({
       // `anchorRect`); letting the middleware add it too would double it.
       offset: false as const,
       flip: { boundary: viewport },
+      // Already on by default (`:51`), but against the wrong box: every one of
+      // these boundaries falls back to the clipping ancestors, and ours is the
+      // workspace's `overflow-hidden` layer whose top sits 40px above the text.
+      // This one keeps the whole bar inside the body's left and right edges.
+      shift: { boundary: viewport },
+      // Off by default (`:55`). This is what takes the bar away once its anchor
+      // has left the body area: the plugin reads the middleware's verdict and
+      // sets `visibility: hidden` (`:316-319`). Clipping alone would not do it
+      // — the bar hangs outside the scroller, so the layer that clips it starts
+      // 40px higher and the bar would show in that strip, over the top bar.
+      hide: { boundary: viewport },
       scrollTarget: viewport,
     }),
     [viewport],
   );
-
-  const barRef = React.useRef<HTMLDivElement | null>(null);
   // The last word on the bar's tab index. The plugin assigns `tabIndex = 0` in
   // its constructor (`dist/index.js:178`), which the React wrapper runs in a
   // passive effect — after the layout effect that writes our props
@@ -398,6 +523,8 @@ function BubbleBar({
     <BubbleMenu
       editor={editor}
       appendTo={appendTo}
+      pluginKey={pluginKey}
+      shouldShow={shouldShow}
       getReferencedVirtualElement={getReferencedVirtualElement}
       ref={barRef}
       // No debounce on the scroll recompute. The plugin's default is 60ms and
