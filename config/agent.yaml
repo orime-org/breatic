@@ -78,13 +78,20 @@ web_search_timeout_ms: 10000
 # ── Thinking ──────────────────────────────────────────────
 # Whether to ask the provider for the model's working while it answers.
 #
-# Off, and the measurement behind that is about a model this build no longer
-# calls: 2026-08-11 against claude-sonnet-4-6, summary asked for by name,
-# three turns and no reasoning at all — including one that spelled out "show
-# your reasoning step by step". The default model moved to DeepSeek V4 Pro on
-# 2026-08-19 and nobody has measured this on it yet, so it stays off until
-# someone does rather than flipping on a guess. Leaving it on when nothing
-# comes back pays the wait on every turn for an empty fold.
+# Off, because asking for it changes nothing that comes back. Measured twice
+# on the model this build actually calls: 2026-08-20, deepseek/deepseek-v4-pro
+# through OpenRouter, this switch on, two turns — one of them asking in so
+# many words for the working to be written out. Both turns opened a reasoning
+# channel and closed it again about 300ms later with zero reasoning-delta
+# between: the stream carries reasoning-start and reasoning-end and nothing
+# else. The earlier measurement said the same thing about a different model
+# (2026-08-11, claude-sonnet-4-6, three turns, nothing).
+#
+# So the wire looks identical either way, and leaving it on pays the ask on
+# every turn for a fold with nothing in it. Why nothing comes back is not
+# settled: what we send for a non-Anthropic model is OpenAI's own
+# `reasoningEffort`, and these turns reach OpenRouter, whose reasoning
+# parameter is spelled differently — see the agent backlog.
 thinking_enabled: false
 
 # ── LLM resilience ────────────────────────────────────────

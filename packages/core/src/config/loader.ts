@@ -89,14 +89,18 @@ const agentConfigSchema = z.object({
   /**
    * Whether to ask the provider for the model's working while it answers.
    *
-   * Off, and the measurement behind that is now about a model this build no
-   * longer calls: 2026-08-11, claude-sonnet-4-6, summary asked for by name,
-   * three turns and no reasoning at all — one of them a question that spelled
-   * out "show your reasoning step by step". The default model moved to
-   * DeepSeek V4 Pro on 2026-08-19 and nobody has measured this on it yet, so
-   * it stays off until someone does rather than on a guess. The pipeline that
-   * carries reasoning is built and tested; what was missing was the provider
-   * end of it.
+   * Off, because asking for it changes nothing that comes back. Measured on
+   * the model this build calls: 2026-08-20, deepseek/deepseek-v4-pro through
+   * OpenRouter, two turns with this on — one of them asking in so many words
+   * for the working to be written out. Both opened a reasoning channel and
+   * closed it about 300ms later with zero `reasoning-delta` between. The
+   * earlier measurement said the same of a different model (2026-08-11,
+   * claude-sonnet-4-6, three turns, nothing).
+   *
+   * The pipeline that carries reasoning is built and tested; what is missing
+   * is the provider end. Why is not settled — what we send for a
+   * non-Anthropic model is OpenAI's `reasoningEffort`, and these turns reach
+   * OpenRouter, which spells its reasoning parameter differently.
    */
   thinking_enabled: z.boolean().default(false),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */

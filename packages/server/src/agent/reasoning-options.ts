@@ -30,14 +30,18 @@ type ReasoningOptions = Pick<Parameters<typeof streamText>[0], "providerOptions"
 
 /**
  * The provider options that ask this model to show its working.
- * @param modelId - The model the turn runs on, as `provider/model`.
+ * @param provider - Who is actually going to be called, as `resolveProvider`
+ *   works it out. Not the model id: a model named `anthropic/...` is called
+ *   through OpenRouter in any deployment without an Anthropic key, and asking
+ *   that one the way Anthropic wants to be asked addresses a provider that is
+ *   not there.
  * @param enabled - Whether the config asks for reasoning at all.
  * @returns Options to spread into the model call; empty when it is off.
  */
-export function reasoningOptionsFor(modelId: string, enabled: boolean): ReasoningOptions {
+export function reasoningOptionsFor(provider: string, enabled: boolean): ReasoningOptions {
   if (!enabled) return {};
 
-  if (modelId.startsWith("anthropic/")) {
+  if (provider === "anthropic") {
     // Both fields carry weight. Anthropic leaves extended thinking off unless
     // asked, so without `type` there is no reasoning to forward at all; and on
     // the adaptive tier the blocks arrive with empty text unless the summary

@@ -304,7 +304,7 @@ export class MainAgent {
         // replaces, which writes the provider's error -- endpoint and key
         // hints included -- straight to the console, around our logger.
         onError: () => undefined,
-        ...reasoningOptionsFor(agentConfig.modelId, agentCfg.thinking_enabled),
+        ...reasoningOptionsFor(resolveProvider(agentConfig.modelId), agentCfg.thinking_enabled),
       });
 
       return result.toUIMessageStream();

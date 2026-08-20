@@ -34,6 +34,8 @@ import type { MockLanguageModelV4 } from "ai/test";
 const runningOn = vi.hoisted(() => ({
   modelId: "",
   thinking: true,
+  /** What this deployment has for an Anthropic key, if anything. */
+  anthropicKey: undefined as string | undefined,
   model: undefined as MockLanguageModelV4 | undefined,
 }));
 
@@ -54,6 +56,14 @@ vi.mock("@breatic/core", async (importOriginal) => {
     runWithContext: actual.runWithContext,
     getContext: actual.getContext,
     getAgentConfig: () => ({ ...config, thinking_enabled: runningOn.thinking }),
+    // Whether this deployment has an Anthropic key of its own is what decides
+    // between calling Anthropic and reaching the same model through
+    // OpenRouter -- and those two take the request differently. Per case, so
+    // both deployments are covered.
+    env: new Proxy(base.env as Record<string, unknown>, {
+      get: (target, key) =>
+        key === "ANTHROPIC_API_KEY" ? runningOn.anthropicKey : Reflect.get(target, key),
+    }),
   };
 });
 
@@ -65,6 +75,10 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
+    // The real one. What this file is about is which provider instance ends
+    // up being called, and stubbing the function that decides that would
+    // leave the question unasked.
+    resolveProvider: actual.resolveProvider,
     buildAgentConfig: () => ({
       modelId: runningOn.modelId,
       instructions: "system",
@@ -105,9 +119,11 @@ vi.mock("@server/agent/context.js", () => ({
 async function providerOptionsFor(
   modelId: string,
   thinking: boolean,
+  anthropicKey?: string,
 ): Promise<Record<string, Record<string, unknown>> | undefined> {
   runningOn.modelId = modelId;
   runningOn.thinking = thinking;
+  runningOn.anthropicKey = anthropicKey;
 
   const { MainAgent } = await import("@server/agent/main-agent.js");
   const { runWithContext } = await import("@breatic/core");
@@ -156,12 +172,23 @@ describe("asking Claude for its working", () => {
     // already worked. Both fields carry weight -- without `type` extended
     // thinking stays off, and on the adaptive tier the blocks arrive empty
     // unless the summary is asked for by name.
-    const options = await providerOptionsFor("anthropic/claude-sonnet-4-6", true);
+    const options = await providerOptionsFor("anthropic/claude-sonnet-4-6", true, "sk-ant-test");
     expect(options?.anthropic?.thinking).toEqual({
       type: "adaptive",
       display: "summarized",
     });
     expect(options?.openai).toBeUndefined();
+  });
+
+  it("asks the OpenAI-compatible way when the same model is reached through OpenRouter", async () => {
+    // Same model id, deployment without an Anthropic key of its own. What is
+    // actually called then is `createOpenAI` pointed at OpenRouter, whose
+    // options live under `openai` -- so addressing Anthropic here would be
+    // addressing a provider that is not on the other end, and the switch
+    // would read as working while nothing had been asked for.
+    const options = await providerOptionsFor("anthropic/claude-sonnet-4-6", true);
+    expect(options?.openai?.reasoningEffort).toBe("high");
+    expect(options?.anthropic).toBeUndefined();
   });
 });
 
