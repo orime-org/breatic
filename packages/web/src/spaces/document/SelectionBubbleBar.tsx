@@ -306,53 +306,8 @@ function BubbleBar({
     null,
   );
 
-  // On `document`, not on the editor: the question this feeds is whether the
-  // pointer is INSIDE the body area, so the moment it leaves has to be seen
-  // too. Listening on the body would freeze the last reading at whatever it
-  // was on the way out and the test would answer "inside" forever.
-  //
-  // `wheel` as well as `mousemove` because a wheel gesture moves the text
-  // under a still pointer: the pointer's own coordinates are unchanged but the
-  // event carries them, and it is the only pointer-bearing event a scroll
-  // produces — `scroll` itself is a plain `Event` with no coordinates at all.
-  React.useEffect(() => {
-    /**
-     * Keep the pointer's latest viewport coordinates.
-     * @param event - A pointer-bearing event.
-     */
-    const remember = (event: MouseEvent): void => {
-      pointerRef.current = { x: event.clientX, y: event.clientY };
-    };
-    // Leaving the document is the one thing the two events above cannot say.
-    // Without it the last coordinate stands forever, and a keyboard select-all
-    // made while the pointer sits in another application would put the bar
-    // where the pointer used to be. Only ever reached before the bar is up: a
-    // bar already placed reads its pin, not this.
-    /** Forget the pointer's coordinates once it leaves the document. */
-    const forget = (): void => {
-      pointerRef.current = null;
-    };
-    document.addEventListener('mousemove', remember);
-    document.addEventListener('wheel', remember);
-    document.addEventListener('mouseleave', forget);
-    return () => {
-      document.removeEventListener('mousemove', remember);
-      document.removeEventListener('wheel', remember);
-      document.removeEventListener('mouseleave', forget);
-    };
-  }, []);
+  const pluginKey = React.useMemo(() => new PluginKey('selectionBubbleBar'), []);
 
-  // Dropping the pin is its own subscription, not a line inside the getter
-  // below. Every caller of that getter returns early on an empty selection —
-  // `shouldShow` and `getReferencedVirtualElement` both check emptiness first,
-  // and the scroll handler leaves as soon as a pin exists — so clearing from
-  // inside it never ran on the one transition that has to clear it: selecting
-  // all, clicking the selection away, then selecting all again. Measured in a
-  // browser: the bar came back at the previous pin's coordinates with the
-  // pointer outside the body entirely.
-  //
-  // On `transaction` rather than on a React render because a co-editor's change
-  // arrives with no render behind it.
   /**
    * Whether a viewport coordinate falls inside a box.
    * @param point - A viewport coordinate.
@@ -389,7 +344,17 @@ function BubbleBar({
     const pin = pinnedRef.current;
     if (!pin) return null;
     const area = viewport.getBoundingClientRect();
-    if (area.width === pin.area.width && area.height === pin.area.height) {
+    const sameSize =
+      area.width === pin.area.width && area.height === pin.area.height;
+    // A zero-sized reading — a Space mid-switch, a collapsed panel — would make
+    // the ratio a division by zero and write NaN back over the only copy of the
+    // pinned point, and NaN never equals the new size either, so every later
+    // call would repeat it. There is nothing to rescale against, so keep what
+    // we have and wait for a real measurement.
+    const measurable =
+      pin.area.width > 0 && pin.area.height > 0
+      && area.width > 0 && area.height > 0;
+    if (sameSize || !measurable) {
       return { x: pin.x, y: pin.y };
     }
     const moved = {
@@ -483,6 +448,62 @@ function BubbleBar({
     return true;
   }, [editor, isWarranted, pinnedPoint]);
 
+  // The second of the two moments that decide whether the bar goes up over a
+  // select-all: the pointer crossing INTO the body area. (The first is the
+  // transaction that makes the selection a select-all, above.) The rule used to
+  // name a scroll instead, which meant a reader whose pointer was already back
+  // over the text had to scroll before the bar would appear (user 2026-08-20).
+  //
+  // Read off `mousemove` rather than `mouseenter` on the viewport because the
+  // answer has to be an EDGE — inside now, outside on the previous reading. A
+  // pointer wandering around inside the body must not re-decide anything: once
+  // the bar is up it stays where it was put.
+  //
+  // `wheel` feeds the same reading: a wheel gesture moves the text under a
+  // still pointer, and it is the only pointer-bearing event a scroll produces
+  // (`scroll` itself is a plain `Event`, no coordinates at all).
+  //
+  // On `document`, not on the body: the question is whether the pointer is
+  // INSIDE the body area, so the moment it leaves has to be seen too.
+  React.useEffect(() => {
+    /**
+     * Record where the pointer is, and raise the bar if this is the crossing.
+     * @param event - A pointer-bearing event.
+     */
+    const remember = (event: MouseEvent): void => {
+      const point = { x: event.clientX, y: event.clientY };
+      const previous = pointerRef.current;
+      pointerRef.current = point;
+      const area = viewport.getBoundingClientRect();
+      const crossedIn =
+        isInside(point, area) && !(previous && isInside(previous, area));
+      if (!crossedIn || pinnedRef.current) return;
+      const { view } = editor;
+      if (!isWarranted(view) || !pinToPointer()) return;
+      view.dispatch(view.state.tr.setMeta(pluginKey, 'show'));
+      view.dispatch(view.state.tr.setMeta(pluginKey, 'updatePosition'));
+    };
+    /**
+     * Forget the pointer once it leaves the document.
+     *
+     * Without this the last coordinate stands forever, and a keyboard
+     * select-all made while the pointer sits in another application would put
+     * the bar where the pointer used to be. It also makes the next return a
+     * genuine crossing rather than a move within the area.
+     */
+    const forget = (): void => {
+      pointerRef.current = null;
+    };
+    document.addEventListener('mousemove', remember);
+    document.addEventListener('wheel', remember);
+    document.addEventListener('mouseleave', forget);
+    return () => {
+      document.removeEventListener('mousemove', remember);
+      document.removeEventListener('wheel', remember);
+      document.removeEventListener('mouseleave', forget);
+    };
+  }, [editor, viewport, isWarranted, pinToPointer, pluginKey]);
+
   const getReferencedVirtualElement = React.useCallback(() => {
     const { view } = editor;
     if (view.state.selection.empty) return null;
@@ -515,35 +536,6 @@ function BubbleBar({
     };
   }, [editor, viewport, pinnedPoint]);
 
-  // Ours rather than the wrapper's auto-generated one, because the scroll
-  // handler below has to address this plugin by key to wake it.
-  const pluginKey = React.useMemo(() => new PluginKey('selectionBubbleBar'), []);
-
-  // The second of the two select-all rules: a scroll leaves a shown bar alone,
-  // and only when there is none does it ask where the pointer is.
-  //
-  // It has to be us who asks. The plugin's own scroll handler only calls
-  // `updatePosition` (`dist/index.js:89-96`), whose first line is
-  // `if (!this.isVisible) return` (`:300-302`) — a bar that is not up stays
-  // down however far the reader scrolls. Waking it takes two metas rather than
-  // one: `'show'` runs `updatePosition()` BEFORE `show()` (`:157-160`), so on
-  // its own it would put the bar back at whatever position it last computed.
-  React.useEffect(() => {
-    /** Put the bar up if this scroll is the moment it becomes placeable. */
-    const onScroll = (): void => {
-      if (pinnedRef.current) return;
-      const { view } = editor;
-      if (!isWarranted(view)) return;
-      if (!pinToPointer()) return;
-      view.dispatch(view.state.tr.setMeta(pluginKey, 'show'));
-      view.dispatch(view.state.tr.setMeta(pluginKey, 'updatePosition'));
-    };
-    viewport.addEventListener('scroll', onScroll);
-    return () => {
-      viewport.removeEventListener('scroll', onScroll);
-    };
-  }, [editor, viewport, isWarranted, pinToPointer, pluginKey]);
-
   const options = React.useMemo(
     () => ({
       placement: 'top-start' as const,
@@ -568,15 +560,23 @@ function BubbleBar({
     }),
     [viewport],
   );
-  // The last word on the bar's tab index. The plugin assigns `tabIndex = 0` in
-  // its constructor (`dist/index.js:178`), which the React wrapper runs in a
+  // The last word on the bar's focusability. The plugin assigns `tabIndex = 0`
+  // in its constructor (`dist/index.js:178`), which the React wrapper runs in a
   // passive effect — after the layout effect that writes our props
   // (`@tiptap/react/dist/menus/index.js:275`), so passing `tabIndex` as a prop
   // loses. A parent's effects run after its children's, so this one is last;
   // no dependency array, because the plugin re-registers inside an effect of
   // its own and every such re-registration is followed by this.
+  //
+  // The attribute is REMOVED, not set to -1. A negative tabindex keeps the
+  // element focusable and only takes it out of the tab order, so clicking the
+  // bar's padding or a disabled button moved focus into it — which cleared the
+  // body's selection highlight and ate the editor's one and only blur, since
+  // both of the plugin's hide paths (`preventHide`, and the `relatedTarget`
+  // test) let that case through. The bar then stayed on screen through clicks
+  // anywhere else. A plain div carries no focusability to take away.
   React.useEffect(() => {
-    if (barRef.current) barRef.current.tabIndex = -1;
+    barRef.current?.removeAttribute('tabindex');
   });
 
   // Whether there is a selection at all, subscribed rather than read during

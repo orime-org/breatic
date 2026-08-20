@@ -499,7 +499,7 @@ test('全选时条钉在鼠标那儿，滚动不改变它的屏幕坐标', async
   expect(after.top).toBe(before.top);
 });
 
-test('全选时鼠标不在正文里就不显示，滚多远都不显示', async () => {
+test('全选时鼠标不在正文里就不显示，鼠标不进来滚多远都不显示', async () => {
   test.setTimeout(180_000);
   await openFreshDocument(page);
   await typeLongBody(page);
@@ -520,7 +520,7 @@ test('全选时鼠标不在正文里就不显示，滚多远都不显示', async
   expect((await readBar(page)).shown).toBe(false);
 });
 
-test('全选后鼠标回到正文里，下一次滚动把条摆出来并钉住', async () => {
+test('全选后鼠标回到正文里，条自己就出来了——不用滚动', async () => {
   test.setTimeout(180_000);
   await openFreshDocument(page);
   await typeLongBody(page);
@@ -531,7 +531,8 @@ test('全选后鼠标回到正文里，下一次滚动把条摆出来并钉住',
   await selectWholeDocument(page);
   expect((await readBar(page)).shown).toBe(false);
 
-  // 鼠标回到正文里，但不选也不点——只有滚动这一个信号。
+  // 鼠标从正文外面进到正文里。这一下就是触发时刻——user 2026-08-20 把条件
+  // 从「每次滚动」改成「鼠标进入正文」，所以不需要滚，也不需要再按全选。
   const spot = await page.evaluate(() => {
     const v = document
       .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
@@ -539,15 +540,16 @@ test('全选后鼠标回到正文里，下一次滚动把条摆出来并钉住',
     return { x: Math.round((v?.left ?? 0) + 420), y: Math.round((v?.top ?? 0) + 300) };
   });
   await page.mouse.move(spot.x, spot.y);
-  // 移动鼠标本身不摆——判断只发生在全选那一刻和每一次滚动。
-  expect((await readBar(page)).shown).toBe(false);
+  await page.waitForTimeout(400);
 
-  await scrollBodyTo(page, 150);
   const shown = await readBar(page);
   expect(shown.shown).toBe(true);
   expect(shown.left).toBe(spot.x);
 
-  // 摆出来之后就钉住了，再滚不动。
+  // 摆出来之后就钉住了：鼠标继续在正文里动、滚动，它都不动。
+  await page.mouse.move(spot.x + 200, spot.y + 100);
+  await page.waitForTimeout(300);
+  expect((await readBar(page)).left).toBe(shown.left);
   await scrollBodyTo(page, 450);
   const again = await readBar(page);
   expect(again.shown).toBe(true);

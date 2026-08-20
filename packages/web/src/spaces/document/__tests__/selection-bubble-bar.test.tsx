@@ -573,7 +573,7 @@ describe('选中浮出条', () => {
       expect(rect?.left).toBe(420);
     });
 
-    it('鼠标回到正文区域之后，下一次滚动把条摆出来', async () => {
+    it('鼠标从正文外面进到正文里，条就摆出来——不用等滚动', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -586,13 +586,9 @@ describe('选中浮出条', () => {
       });
       expect(shouldShowNow(editor)).toBe(false);
 
-      // 鼠标回到正文里，但用户没有再选也没有再点——只有滚动这一个信号。
+      // 鼠标进到正文里。这一下就是触发时刻——不需要滚动，也不需要再按一次
+      // 全选（user 2026-08-20 把触发条件从「每次滚动」改成「鼠标进入正文」）。
       moveMouseTo(420, 250);
-      act(() => {
-        document
-          .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
-          ?.dispatchEvent(new Event('scroll'));
-      });
 
       expect(shouldShowNow(editor)).toBe(true);
       expect(bubblePluginView(editor).isVisible).toBe(true);
@@ -603,65 +599,51 @@ describe('选中浮出条', () => {
       expect(rect?.left).toBe(420);
     });
 
-    it('条摆出来之后点掉选区，再在正文外全选，它不许拿旧位置回来', async () => {
+    it('条摆出来之后鼠标再进出正文，位置一动不动', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
       pinViewport(VIEWPORT);
 
-      // 先在正文里全选一次，条摆出来、钉在这儿。
       moveMouseTo(420, 250);
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(true);
-
-      // 点掉选区——这一步是关键：钉住的位置必须跟着这次「不再是全选」作废，
-      // 而作废不能依赖某个恰好会被调用的函数。选区一空，判显示的那条路和给
-      // 锚点的那条路都会提前返回，谁都走不到清理。
-      act(() => {
-        editor.commands.setTextSelection(3);
-      });
-
-      // 鼠标离开正文，再全选：手里没有区域内的坐标，就不该显示。
-      moveMouseTo(420, 50);
-      act(() => {
-        editor.commands.selectAll();
-      });
-
-      expect(shouldShowNow(editor)).toBe(false);
-    });
-
-    it('窗口尺寸变了，钉住的坐标按正文区域新旧尺寸等比例重算', async () => {
-      const editor = open('<p>one</p><p>two</p><p>three</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 4);
-      // 正文区域 x 从 320 到 1680（宽 1360），y 从 100 到 500（高 400）。
-      pinViewport(new DOMRect(320, 100, 1360, 400));
-
-      // 钉在区域宽度的 83% 处、高度的 50% 处。
-      moveMouseTo(1448, 300);
-      act(() => {
-        editor.commands.selectAll();
-      });
-      const before = bubblePluginView(editor)
+      const first = bubblePluginView(editor)
         .getReferencedVirtualElement?.()
         ?.getBoundingClientRect();
-      expect(before?.left).toBe(1448);
+      expect(first?.left).toBe(420);
 
-      // 窗口缩窄：区域变成 x 从 320 到 900（宽 580），高度不变。
-      // 「位置不动」那条规则只约束滚动；窗口尺寸变化是另一件事，此时坐标按
-      // 相对位置重算，条既不消失也不画到区域外面（user 2026-08-20 拍定）。
-      pinViewport(new DOMRect(320, 100, 580, 400));
+      // 出去再进来：条已经摆出来了，这一进不该把它挪到新位置。
+      moveMouseTo(420, 50);
+      moveMouseTo(700, 300);
 
       const after = bubblePluginView(editor)
         .getReferencedVirtualElement?.()
         ?.getBoundingClientRect();
+      expect(after?.left).toBe(420);
+      expect(after?.top).toBe(first?.top);
+    });
 
-      // 320 + (1448 - 320) / 1360 * 580 = 801.06…
-      expect(after?.left).toBeCloseTo(801, 0);
-      // 竖直方向区域没变，坐标也就不变。
-      expect(after?.top).toBe(292);
+    it('鼠标进正文时不是全选，什么都不发生', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      // 选区只是一小段，鼠标从外面进来——这一档跟着选区走，不看鼠标。
+      moveMouseTo(420, 50);
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 4 });
+      });
+      editor.view.coordsAtPos = () => ({ top: 200, bottom: 220, left: 40, right: 60 });
+      moveMouseTo(420, 250);
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+      // 锚在行上（200 撑 8），不是鼠标那一点。
+      expect(rect?.top).toBe(192);
     });
 
     it('滚动唤醒不绕开显示判据：编辑器没有焦点时，滚动不把条摆出来', async () => {
@@ -694,25 +676,6 @@ describe('选中浮出条', () => {
       expect(bubblePluginView(editor).isVisible).toBe(false);
     });
 
-    it('钉鼠标只发生在全选那一刻和滚动那一刻，别的时候只读不钉', async () => {
-      const editor = open('<p>one</p><p>two</p><p>three</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 4);
-      pinViewport(VIEWPORT);
-
-      // 鼠标在正文外全选：不显示，也不钉。
-      moveMouseTo(420, 50);
-      act(() => {
-        editor.commands.selectAll();
-      });
-      expect(shouldShowNow(editor)).toBe(false);
-
-      // 鼠标移进正文。按规则这一刻不该有任何判断——判断只在全选那一刻和每次
-      // 滚动。而问显示与否的那条路会顺手把鼠标钉住，于是位置被采纳了。
-      moveMouseTo(420, 250);
-      expect(shouldShowNow(editor)).toBe(false);
-      expect(shouldShowNow(editor)).toBe(false);
-    });
 
     it('文档里一个字都没有时，全选不显示这条', async () => {
       const editor = open('<p></p>');
@@ -758,6 +721,59 @@ describe('选中浮出条', () => {
       expect(rect?.top).toBe(192);
       expect(rect?.left).toBe(SELECTION_BOX.left);
     });
+  });
+
+  // 第八轮实现对抗查实：`tabIndex = -1` 挡的是 Tab，不挡鼠标。点条的内边距
+  // 或一个禁用按钮，焦点就落进条里、正文的选中高亮被清掉，而插件那两条 hide
+  // 路径（preventHide 和 relatedTarget）双双被吃掉，条从此赖在正文上。
+  it('浮出条整条不可聚焦——鼠标点它的空白处也带不走焦点', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const bar = document.querySelector<HTMLElement>(
+      '[data-testid="doc-selection-bubble-bar"]',
+    );
+    expect(bar).not.toBeNull();
+    // 没有 tabindex 属性的 div 天生不可聚焦，Tab 和鼠标两条路一起断掉；
+    // `tabIndex = -1` 只断前一条。
+    expect(bar?.hasAttribute('tabindex')).toBe(false);
+
+    act(() => {
+      bar?.focus();
+    });
+    expect(document.activeElement).not.toBe(bar);
+  });
+
+  it('正文区域被读到零尺寸时，钉住的坐标不会变成 NaN', async () => {
+    const editor = open('<p>one</p><p>two</p><p>three</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 4);
+    pinSelectionBox(SELECTION_BOX);
+    pinViewport(new DOMRect(0, 100, 800, 400));
+
+    act(() => {
+      document.dispatchEvent(
+        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
+      );
+      editor.commands.selectAll();
+    });
+    const before = bubblePluginView(editor)
+      .getReferencedVirtualElement?.()
+      ?.getBoundingClientRect();
+    expect(before?.left).toBe(420);
+
+    // Space 刚切换、面板折叠的一瞬间，滚动容器量出来可以是零尺寸。按比例
+    // 换算在这里会除以零，把钉住的坐标永久写成 NaN。
+    pinViewport(new DOMRect(0, 100, 0, 0));
+    bubblePluginView(editor).getReferencedVirtualElement?.();
+
+    // 尺寸回来之后，坐标必须还是原来那个。
+    pinViewport(new DOMRect(0, 100, 800, 400));
+    const after = bubblePluginView(editor)
+      .getReferencedVirtualElement?.()
+      ?.getBoundingClientRect();
+    expect(after?.left).toBe(420);
   });
 
   it('锚点离开正文可见区就隐藏，靠的是 hide 中间件', async () => {
