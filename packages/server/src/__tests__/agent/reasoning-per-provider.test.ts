@@ -62,7 +62,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // between calling Anthropic and reaching the same model through
     // OpenRouter -- and those two take the request differently. Per case, so
     // both deployments are covered.
-    env: new Proxy(base.env as Record<string, unknown>, {
+    env: new Proxy(base.env, {
       get: (target, key) =>
         key === "ANTHROPIC_API_KEY"
           ? runningOn.anthropicKey

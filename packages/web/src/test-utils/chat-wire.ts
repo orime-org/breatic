@@ -154,7 +154,7 @@ export function turnOpens(textId = 't1'): Array<Record<string, unknown>> {
     // with the name it has, so this goes out even when the name did not
     // change (`main-agent.ts`, the first line of `execute`). It is not
     // transient, so it is the frame that moves the status.
-    { type: 'data-conversation-titled', data: { title: '一句话' } },
+    { type: 'data-conversation-titled', data: { title: 'a title' } },
     // With an id, which is how it arrives: `handleUIMessageStreamFinish`
     // gives every `start` one. A bare `start` takes a different path in the
     // SDK -- it pushes no assistant message at all -- so a double that sent
