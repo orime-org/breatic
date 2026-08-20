@@ -1,14 +1,21 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
+import { useCanvasStore } from '@web/stores/canvas';
 
 beforeAll(() => {
   HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
   HTMLMediaElement.prototype.pause = vi.fn();
+});
+
+afterEach(() => {
+  // The canvas store is a module singleton: a session left open here reaches
+  // every file that runs after this one.
+  useCanvasStore.setState({ pickSession: null });
 });
 
 describe('VideoNode', () => {
@@ -89,5 +96,38 @@ describe('VideoNode', () => {
   it('empty video node shows no resolution badge (#1616)', () => {
     render(<VideoNode data={{ kind: 'video', status: 'idle' }} />);
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
+  });
+
+  // #1987 A5. The wiring half: MediaPlayer's own test pins prop → DOM, this
+  // pins store → prop. Stubbing one of them out is how a chain looks green
+  // while nothing is connected.
+  it('hides its control bar for the whole focus pick session (#1987 A5)', () => {
+    const data = {
+      kind: 'video' as const,
+      status: 'idle' as const,
+      content: 'https://e.com/v.mp4',
+    };
+    render(<VideoNode data={data} />);
+    expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
+    // A focus session opens on SOME node — every video hides its bar, not just
+    // the one being picked for.
+    act(() => {
+      useCanvasStore.setState({
+        pickSession: { nodeId: 'other-node', purpose: 'focus' },
+      });
+    });
+    expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(true);
+    // A style pick is a different session: nothing about it makes a video's
+    // own controls a problem.
+    act(() => {
+      useCanvasStore.setState({
+        pickSession: { nodeId: 'other-node', purpose: 'style' },
+      });
+    });
+    expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
+    act(() => {
+      useCanvasStore.setState({ pickSession: null });
+    });
+    expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
   });
 });
