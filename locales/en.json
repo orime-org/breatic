@@ -154,7 +154,7 @@
     },
     "message": {
       "interrupted": "Stopped",
-      "waiting": "Waiting for a reply"
+      "waiting": "Replying"
     },
     "tool": {
       "unfinished": "Stopped before it finished"

@@ -154,7 +154,7 @@
     },
     "message": {
       "interrupted": "중지됨",
-      "waiting": "응답 대기 중"
+      "waiting": "응답 중"
     },
     "tool": {
       "unfinished": "완료되기 전에 중지됨"

@@ -154,7 +154,7 @@
     },
     "message": {
       "interrupted": "停止しました",
-      "waiting": "応答を待っています"
+      "waiting": "応答中"
     },
     "tool": {
       "unfinished": "完了前に停止しました"

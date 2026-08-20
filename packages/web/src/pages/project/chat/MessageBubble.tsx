@@ -68,20 +68,15 @@ export const MessageBubble = React.memo(function MessageBubble({
             data-testid='message-bubble-content'
           >
             {message.content}
-            {/* Two marks for two moments, and only ever one of them. Before
-                the first word there is nothing to put a caret after, and a
-                caret with no text behind it reads as a cursor sitting in an
-                empty box rather than as an answer on its way. Once there is
-                text, the dot has nothing left to say. */}
-            {message.streaming ? (
-              message.content ? (
-                <span aria-label='streaming' className='ml-1 animate-pulse'>
-                  ▌
-                </span>
-              ) : (
-                <WaitingDot />
-              )
-            ) : null}
+            {/* One mark for the whole turn, always at the end of what has
+                been said so far. It starts alone in an empty bubble and stays
+                on the heels of the last character until the turn is over
+                (user 2026-08-20: the dot must not disappear and must not turn
+                into a bar). A caret was drawn here instead once there was
+                text, which took the mark away over the whole stretch where
+                the reader most needs to see that the answer is still
+                coming. */}
+            {message.streaming ? <WaitingDot /> : null}
           </div>
         ) : null}
         {message.interrupted ? (

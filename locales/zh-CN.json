@@ -154,7 +154,7 @@
     },
     "message": {
       "interrupted": "已停止",
-      "waiting": "等待回复"
+      "waiting": "正在回复"
     },
     "tool": {
       "unfinished": "未跑完就停止了"

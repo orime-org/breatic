@@ -9,7 +9,7 @@ import type { ChatMessage } from '@web/pages/project/chat/types';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 function setup(message: ChatMessage) {
-  render(<MessageBubble message={message} />);
+  return render(<MessageBubble message={message} />);
 }
 
 describe('MessageBubble', () => {
@@ -39,23 +39,32 @@ describe('MessageBubble', () => {
     );
   });
 
-  it('shows the streaming caret when streaming=true', () => {
-    setup({ id: 'm1', role: 'assistant', content: 'x', streaming: true });
-    expect(screen.getByLabelText('streaming')).toBeInTheDocument();
-  });
-
-  it('shows one breathing dot while the first word has not arrived', () => {
+  it('第一个字还没到,气泡里只有那个点', () => {
     // 这一刻读者除了「等着」什么都没有:回复还没长出来,按钮已经变成停止,
     // 两样都只看得见。定稿定的是一个点呼吸(user 2026-08-12 定、08-19 复核
     // 维持),不是一个方块在闪 —— 方块是打字游标,它要有字才说得通。
     setup({ id: 'm1', role: 'assistant', content: '', streaming: true });
 
     expect(screen.getByTestId('chat-waiting-dot')).toBeInTheDocument();
-    expect(screen.queryByLabelText('streaming')).not.toBeInTheDocument();
   });
 
-  it('drops the dot as soon as there is something to read', () => {
-    setup({ id: 'm1', role: 'assistant', content: '好', streaming: true });
+  it('字来了那个点不走,跟在最后一个字后面', () => {
+    // user 2026-08-20 定:「圆点不能消失,也不能换成竖杠,那个圆点就一直是在
+    // 最后一个字后面」。此前是两个标记二选一 —— 没字画点、有字换成一个闪烁
+    // 的竖条,于是那个点在读者最需要「它还在说」这个信号的整段时间里反而不
+    // 在。现在只有一个标记,它从这一轮开始跟到结束。
+    const { container } = setup({ id: 'm1', role: 'assistant', content: '好', streaming: true });
+
+    const dot = screen.getByTestId('chat-waiting-dot');
+    expect(dot).toBeInTheDocument();
+    // 在最后一个字后面,不是气泡里别的什么位置。
+    const said = container.querySelector('[data-testid="message-bubble-content"]');
+    expect(said?.lastElementChild).toBe(dot);
+    expect(said?.textContent).toContain('好');
+  });
+
+  it('这一轮结束,那个点跟着走', () => {
+    setup({ id: 'm1', role: 'assistant', content: '好', streaming: false });
 
     expect(screen.queryByTestId('chat-waiting-dot')).not.toBeInTheDocument();
   });
