@@ -485,7 +485,7 @@ async function readBar(page: Page): Promise<{
 }
 
 // A14。四条走完一条完整的路：全选时鼠标在正文里就摆在鼠标那儿、滚动不动它；
-// 鼠标在外面就不摆，滚多远都不摆；鼠标回到正文里，下一次滚动把它摆出来。
+// 鼠标在外面就不摆，滚多远都不摆；鼠标回到正文里，条自己就出来，不用滚。
 test('全选时条钉在鼠标那儿，滚动不改变它的屏幕坐标', async () => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1680, height: 950 });
@@ -575,6 +575,36 @@ test('全选后鼠标回到正文里，条自己就出来了——不用滚动',
   expect(again.shown).toBe(true);
   expect(again.left).toBe(shown.left);
   expect(again.top).toBe(shown.top);
+});
+
+// 规则一的后半句：鼠标位置不知道的时候，全选也不摆条。这条只有真浏览器测得了
+// ——「不知道」的唯一来源是指针离开了页面，而那个事件 jsdom 里只能手工派发。
+test('鼠标离开浏览器之后，键盘全选不把条摆出来', async () => {
+  test.setTimeout(180_000);
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+
+  // 先在正文里待过，好让「最后一次已知位置」确实落在正文里——不这样的话
+  // 断言的就是「从没知道过」，跟这条要测的「知道过又作废」不是一回事。
+  const spot = await page.evaluate(() => {
+    const v = document
+      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      ?.getBoundingClientRect();
+    return { x: Math.round((v?.left ?? 0) + 420), y: Math.round((v?.top ?? 0) + 300) };
+  });
+  await page.mouse.move(spot.x, spot.y);
+
+  // 出页面。视口外的坐标让 Chrome 发一个 relatedTarget 为空的 mouseout。
+  await page.mouse.move(spot.x, -20);
+  await page.waitForTimeout(200);
+
+  await selectWholeDocument(page);
+  await page.waitForTimeout(400);
+
+  expect((await readBar(page)).shown).toBe(false);
 });
 
 // 手工走真实用户路径时逮到的：钉住的位置必须跟着「不再是全选」作废。第一版把

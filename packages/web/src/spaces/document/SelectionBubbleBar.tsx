@@ -546,15 +546,23 @@ function BubbleBar({
      * the bar where the pointer used to be. It also makes the next return a
      * genuine crossing rather than a move within the area.
      *
-     * `mouseout` with no `relatedTarget`, not `mouseleave`: `mouseleave` does
-     * not bubble (MDN, Element/mouseleave_event: "mouseleave does not bubble
-     * and mouseout does"), and its target is an Element, so a listener bound
-     * here in the bubbling phase would never run. `mouseout` bubbles to
-     * `document` by definition, and its `relatedTarget` is "the EventTarget
-     * the pointing device entered to" (MDN, MouseEvent/relatedTarget), which
-     * is null exactly when the pointer entered nothing — it left the page.
-     * Inside the page every `mouseout` names the element being entered, so
-     * this cannot fire while the pointer is still over the body.
+     * `mouseout` with a null `relatedTarget`, not `mouseleave`. Both are
+     * about the pointer leaving, and only one of them is promised to us:
+     * `mouseleave` does not bubble and its target is an Element (MDN,
+     * Element/mouseleave_event: "mouseleave does not bubble and mouseout
+     * does"), so nothing in the specification says a listener bound here
+     * would run. `mouseout` bubbles, and its `relatedTarget` is "the
+     * EventTarget the pointing device entered to" (MDN,
+     * MouseEvent/relatedTarget) — null exactly when it entered nothing, which
+     * is to say it left the page.
+     *
+     * Measured in Chrome 2026-08-20 (probe: pointer moved to y = -20 with
+     * listeners on document, documentElement and window): `document` received
+     * `mouseout` with a null `relatedTarget` AND a `mouseleave` whose target
+     * was `#document` — so the `mouseleave` form did work there, as an extra
+     * the engine offers rather than one the specification requires. Two
+     * moves that stayed inside produced only `mouseout`, each naming the
+     * element being entered, which is what keeps the null test honest.
      * @param event - The pointer leaving something.
      */
     const forget = (event: MouseEvent): void => {
