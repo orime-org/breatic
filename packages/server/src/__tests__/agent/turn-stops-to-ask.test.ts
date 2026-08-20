@@ -89,7 +89,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       modelId: "test",
       instructions: "system",
       tools: {
-        ask_user: answering("问用户一个问题"),
+        ask_user_question: answering("问用户一个问题"),
         ask_user_choice: answering("让用户在几个选项里挑一个"),
         show_search_results: answering("把搜索结果摆出来"),
       },
@@ -184,7 +184,7 @@ describe("a turn that asked the user something", () => {
   });
 
   it("stops after the question instead of talking past it", async () => {
-    const { modelCalls } = await runTurn([asksFor("ask_user"), carriesOn]);
+    const { modelCalls } = await runTurn([asksFor("ask_user_question"), carriesOn]);
 
     // One call, not two. The second entry in the script is what the model
     // would have said next, and the point is that it never gets asked.
@@ -197,7 +197,7 @@ describe("a turn that asked the user something", () => {
   });
 
   it("says in the log that this is why it stopped", async () => {
-    const { exit } = await runTurn([asksFor("ask_user"), carriesOn]);
+    const { exit } = await runTurn([asksFor("ask_user_question"), carriesOn]);
 
     // Not "completed": a turn waiting on an answer and a turn that finished
     // what it had to say read the same in every other respect, and the

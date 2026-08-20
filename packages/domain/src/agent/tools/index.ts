@@ -59,12 +59,12 @@ export const BASELINE_TOOLS: readonly string[] = [
 ];
 
 /**
- * The tools whose result is a sentinel the caller has to decode.
+ * The tools that put something in front of the user rather than doing work.
  *
- * They do not do anything on their own — they hand back a marker that the
- * SSE loop turns into an event the frontend draws. A caller with no such
- * loop must not be offered them, or the model will ask a question nobody
- * can see and read the raw sentinel back as its answer.
+ * They do not do anything on their own — each returns a payload the frontend
+ * draws as a component. A caller with no way to draw one must not be offered
+ * them, or the model will ask a question nobody can see and read its own
+ * request back as the answer.
  */
 export const INTERACTION_TOOLS: readonly string[] = [
   "ask_user_question",
@@ -72,6 +72,8 @@ export const INTERACTION_TOOLS: readonly string[] = [
   "propose_canvas_action",
   "show_search_results",
 ];
+
+export { TOOLS_THAT_BLOCK } from "@domain/agent/tools/blocking-tools.js";
 
 /**
  * What each tool needs configured before it can do anything.

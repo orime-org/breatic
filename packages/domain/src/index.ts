@@ -40,7 +40,7 @@ export * as assetRepo from "@domain/asset/asset.repo.js";
 // ── Agent (AIGC execution kernel: model / tools / skill loading / prompt extraction) ──
 export { getModel, resolveProvider } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
-export { buildToolSet, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
+export { buildToolSet, BASELINE_TOOLS, TOOLS_THAT_BLOCK } from "@domain/agent/tools/index.js";
 // The prefixes the interaction tools glue onto their results. Exported
 // because the agent loop has to recognise them, and the loop lives in a
 // service: producer and reader agreeing on one spelling means the tool that

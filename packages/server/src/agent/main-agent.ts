@@ -13,7 +13,7 @@ import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, StopCondition, ToolSet, UIMessageChunk } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/domain";
-import { buildAgentConfig, finalizeTurn } from "@breatic/domain";
+import { buildAgentConfig, finalizeTurn, TOOLS_THAT_BLOCK } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { reasoningOptionsFor } from "@server/agent/reasoning-options.js";
@@ -37,18 +37,6 @@ import { toModelMessages } from "@server/agent/model-messages.js";
  * URLs and key hints, and ours carry file paths.
  */
 const FAILED_TEXT = "The assistant could not finish this turn.";
-
-/**
- * The tools whose whole purpose is to put a question to the reader.
- *
- * A turn that called one of these has said everything it can say: what comes
- * next is the reader's answer, and that opens a turn of its own. The other two
- * interaction tools put something on screen -- a set of results, a proposed
- * canvas edit -- and the model is meant to keep writing around them, several
- * times in one turn if it likes; stopping on those would make the first card a
- * turn draws the last thing it says.
- */
-const TOOLS_THAT_ASK = ["ask_user", "ask_user_choice"] as const;
 
 /**
  * Main Agent for streaming chat interactions.
@@ -218,7 +206,7 @@ export class MainAgent {
     const stopIfItAsked = async (options: {
       steps: Parameters<StopCondition<ToolSet>>[0]["steps"];
     }): Promise<boolean> => {
-      const asked = await hasToolCall(...TOOLS_THAT_ASK)(options);
+      const asked = await hasToolCall(...TOOLS_THAT_BLOCK)(options);
       if (asked) askedTheUser = true;
       return asked;
     };
