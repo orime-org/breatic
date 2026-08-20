@@ -504,6 +504,21 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
 }
 
 /**
+ * Whether this conversation's state is already being kept here.
+ *
+ * Asked by whoever holds the rest of what is true of a conversation on
+ * screen. The list is here once a session exists, and everything derived from
+ * that list -- how far back it reaches, whether there is more behind it --
+ * has to stay with it rather than being recomputed from a page the server
+ * happens to hand out later.
+ * @param conversationId - Which conversation.
+ * @returns True when a session for it exists.
+ */
+export function hasChatSession(conversationId: string): boolean {
+  return sessions.has(conversationId);
+}
+
+/**
  * Put a page of older messages at the head of a conversation's list.
  *
  * What "load earlier" reads back has to reach the list the panel is drawing,

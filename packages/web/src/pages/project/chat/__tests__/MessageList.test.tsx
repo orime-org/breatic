@@ -305,19 +305,15 @@ describe('MessageList', () => {
     fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
     scrollIntoView.mockClear();
 
-    // Then they type into the composer and hit enter: the count goes up, and
-    // their own message and the reply about to be written are appended.
+    // Then they type into the composer and hit enter. The list does not
+    // change: until the first frame arrives their own message is held out of
+    // it (B1), and there is no reply yet. Sending is the only thing that
+    // happened, so sending is what has to move the column -- an earlier
+    // version of this case appended two messages in the same rerender, and
+    // was satisfied by the count going up rather than by the press.
     geometry.scrollHeight = 2200;
     rerender(
-      <MessageList
-        ready
-        messages={[
-          bubble('m1', 'an earlier answer'),
-          { id: 'm2', role: 'user', content: 'what about this' },
-          bubble('m3', ''),
-        ]}
-        sentCount={1}
-      />,
+      <MessageList ready messages={[bubble('m1', 'an earlier answer')]} sentCount={1} />,
     );
 
     // Scrolling up says "let me read". Sending says "show me what happens

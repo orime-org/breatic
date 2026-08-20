@@ -21,7 +21,12 @@ import { create } from 'zustand';
 import { chatApi } from '@web/data/api/chat';
 import { ApiException } from '@web/data/api/types';
 import type { ConversationOnTheWire, OpenChatResult } from '@web/data/api/chat';
-import { evictAllChatSessions, evictChatSession, prependHistory } from '@web/stores/chat-sessions';
+import {
+  evictAllChatSessions,
+  evictChatSession,
+  hasChatSession,
+  prependHistory,
+} from '@web/stores/chat-sessions';
 import { readMishap, tell } from '@web/stores/chat-mishaps';
 import type { StoredUiMessage } from '@web/data/api/chat';
 
@@ -517,6 +522,15 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
   // Called here for the copy the list draws: the setState below rebuilds the
   // conversation whole, name included, but never touches `listByProject`.
   applyTitle(projectId, conversationId, opened.conversation.title ?? null);
+  // A conversation already on screen keeps everything about how far back it
+  // reaches. The list is the session's once one exists, and these three are
+  // read off that list -- overwriting them with a fresh page moves the cursor
+  // forward while the screen still shows everything behind it, so the next
+  // press of "load earlier" asks for a page that is already up there and
+  // prepends a second copy of it.
+  const held = hasChatSession(conversationId)
+    ? useStore.getState().conversations[conversationId]
+    : undefined;
   useStore.setState((s) => ({
     openStatus: { ...s.openStatus, [projectId]: 'ready' },
     // Whatever went wrong last time is over. A reason kept past it would
@@ -532,9 +546,9 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
         // one is the session's and stays there -- this page is only ever the
         // starting point a session is built from, and a session that already
         // exists keeps the list it has.
-        messages: opened.messages,
-        hasMore: opened.hasMore,
-        oldestLoadedTurn: oldestTurnOf(opened.messages),
+        messages: held?.messages ?? opened.messages,
+        hasMore: held?.hasMore ?? opened.hasMore,
+        oldestLoadedTurn: held ? held.oldestLoadedTurn : oldestTurnOf(opened.messages),
         title: opened.conversation.title ?? null,
       },
     },

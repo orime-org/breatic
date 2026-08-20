@@ -27,12 +27,19 @@ const FAILED = 'data-failed';
 /**
  * How far a tool got, in the panel's words.
  * @param state - The tool part's state, as the SDK reports it.
+ * @param stillRunning - Whether the turn that made this call is still going.
  * @returns Our word for the same thing.
  */
-function statusOf(state: string): ToolCall['status'] {
+function statusOf(state: string, stillRunning: boolean): ToolCall['status'] {
   if (state === 'output-available') return 'success';
   if (state === 'output-error' || state === 'output-denied') return 'error';
-  return 'pending';
+  // Not finished, and nothing is coming: a turn stopped locally leaves its
+  // calls exactly where they were -- the SDK does not push them to any end
+  // state -- so a card left on `pending` here spins until the page is
+  // reloaded. The server settles the same thing before it stores a turn
+  // (`main-agent.ts`, "nothing in a stored record may still say it is
+  // running"); this is that same reading, one moment earlier.
+  return stillRunning ? 'pending' : 'error';
 }
 
 /**
@@ -57,7 +64,7 @@ export function toChatMessage(
 
   for (const part of message.parts) {
     if (isToolUIPart(part)) {
-      const status = statusOf(part.state);
+      const status = statusOf(part.state, options.streaming === true);
       toolCalls.push({
         id: part.toolCallId,
         name: getToolName(part),
