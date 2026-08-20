@@ -166,9 +166,12 @@ export class MainAgent {
    *   context field: it is known one line before the call, both the reply and
    *   the charge are filed under it, and neither has anything sensible to do
    *   with a turn it could not identify.
-   * @param title - The name this turn settled on the conversation, or null
-   *   when it already had one. Sent ahead of the model's own stream so the
-   *   list and the header stop showing a placeholder.
+   * @param title - What the conversation is called now, or null when there was
+   *   nothing to name it after. An already-named conversation answers with
+   *   the name it has (`conversation.service.ts` returns it rather than
+   *   null), so this is sent on every turn and the client writes down the
+   *   same name again -- which is what keeps the list and the header from
+   *   showing a placeholder after the turn that named it.
    * @param signal - Raised when the user stops the turn or the client goes away.
    * @param skillName - The skill scoping this turn, when it is a command.
    * @returns The turn's chunks, in the SDK's own protocol.

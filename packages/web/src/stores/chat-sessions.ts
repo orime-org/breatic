@@ -327,12 +327,10 @@ function stopWatching(conversationId: string): void {
  * The turn is ended the way pressing stop ends one, but the reader pressed
  * nothing -- so unlike stop, this is worth a word.
  *
- * What is taken back is the sentence the reader sent, and only while nothing
- * has answered it. The SDK pushes that message at the press and does not roll
- * it back; once the turn is over the renderer stops holding it out of the
- * list, so it appears -- while the words are also still in the box, which was
- * never emptied because no frame ever arrived. The same sentence in two
- * places, and a reader who sends again has said it twice.
+ * Everything that happens next belongs to {@link settleTurn}, which every
+ * ending goes through. All this decides is which of the two silent endings
+ * this was: stopping is stopping as far as the SDK is concerned, and only one
+ * of them is news to the reader.
  * @param conversationId - The conversation whose turn is being given up on.
  */
 function giveUpOn(conversationId: string): void {

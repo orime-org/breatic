@@ -98,9 +98,11 @@ const agentConfigSchema = z.object({
    * claude-sonnet-4-6, three turns, nothing).
    *
    * The pipeline that carries reasoning is built and tested; what is missing
-   * is the provider end. Why is not settled — what we send for a
-   * non-Anthropic model is OpenAI's `reasoningEffort`, and these turns reach
-   * OpenRouter, which spells its reasoning parameter differently.
+   * is that nothing is actually asked for. `@ai-sdk/openai@4.0.37` decides
+   * whether a model reasons from its id (the o-series, gpt-5 and up), and
+   * `deepseek/deepseek-v4-pro` matches neither — so `reasoningEffort` is
+   * dropped with an `unsupported` warning rather than sent
+   * (`dist/index.js:6306-6311`).
    */
   thinking_enabled: z.boolean().default(false),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */

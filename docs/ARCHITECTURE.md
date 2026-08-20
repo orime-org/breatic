@@ -181,9 +181,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 `web_search` | `web_fetch`
 
-**交互工具(4)**:`ask_user_question` | `ask_user_choice` | `propose_canvas_action` | `show_search_results` —— LLM 调用它们发送结构化 payload 供前端渲染成 UI 组件,不执行动作;`main-agent` 检测 sentinel 前缀的结果后 yield 对应 SSE 事件。
+**交互工具(4)**:`ask_user_question` | `ask_user_choice` | `propose_canvas_action` | `show_search_results` —— LLM 调用它们发送结构化 payload 供前端渲染成 UI 组件,不执行动作。它们的 `execute` 直接返回 payload 对象,经 SDK 的原生 tool part 到前端(`tool-ask_user_question` 这类类型),前端按类型认。**其中两个「问问题」的工具会让这一轮停下等回答**,名字在 `packages/domain/src/agent/tools/blocking-tools.ts`。
 
-**四个 sentinel 前缀各只在写它的那个工具文件里声明一次**(`packages/domain/src/agent/tools/`),读它的 server 从 `@breatic/domain` import。它们是**工具返回值与 agent 循环之间**的记号,SSE 事件名才是前后端协议;走 SSE 出去的事件把前缀切掉了,**落库那条路也切**(`main-agent.ts` 在把工具结果写进这一轮的消息零件时调 `stripSentinel`),所以历史端点交不出带前缀的串 —— 那个记号只有 agent 循环自己读,之后没有读者。守卫 `packages/domain/src/agent/__tests__/sentinel-single-definition.test.ts` 扫 domain / server / worker 的**非测试源码**(`__tests__/` 目录与 `*.test.ts` 整个跳过 —— 守卫自己要写出这四个串来验匹配器),这些文件里任何一处写出它们(含注释)即 fail;要在文字里提它们,写常量名。
+**哨兵前缀机制已删除**(#127):工具不再把记号拼进返回字符串,`stripSentinel` 和守卫 `sentinel-single-definition.test.ts` 一并移除。工具返回什么,SDK 的 tool part 就原样带什么到前端。
 
 **六个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。四个交互工具不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
 
@@ -193,7 +193,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Agent 聊天的 SSE 事件契约
 
-**事件名与信封只在 `packages/shared/src/agent/sse-events.ts` 定义一次**,web 和 server 共用:server 的 `SSEEventType` **就是**那个对象(不是内容相同的拷贝),`serializeSSE` 产出的信封类型也来自它。这条流上的每个事件都由 `MainAgent.sse()` 构造,而它的入参类型就是这份契约 —— 所以经这条路发一个契约里没有的名字直接编译不过,这个方向不需要测试。**编译器管的是这条路、不是 socket**:路由拿的 `StreamingApi` 的 `write` 收任意字符串(text mini-tool 的路由就是手工拼帧的),chat 两处今天都走 `serializeSSE`,那是路由的写法、不是类型给的保证。
+**线上格式就是 AI SDK 的 UI message stream 协议**(#127):`packages/shared/src/agent/sse-events.ts` 连同我们自造的事件名一起删除,server 用 `createUIMessageStream` 出流、浏览器用 `useChat` 收流,两端共用的是 SDK 的 chunk 类型而不是我们写的信封。心跳是唯一的例外,见下。
 
 **契约只列今天真的在跑的事件**。声明一个还没人发的名字,等于告诉前端去等一个永远不来的东西;要新增事件,在**让它真正发出来的那次改动里**加进契约。`agent_thinking` 就是这么处理的:它是 PR-3 批⑥ 要做的思考流,在那之前不进契约,**批⑥ 让它真的发出来那次才加进去**(`main-agent.ts` 的 `case "reasoning-delta"` 逐个 delta 发,带 `blockId` 分块)。它的出厂开关是关的(`config/agent.yaml` 的 `thinking_enabled`),**但那是另一回事** —— 关的是要不要向 provider 索取思考,不是「声明了没人发」。
 
@@ -201,7 +201,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **这条流每 5 秒说一次自己还活着**(`heartbeat`,`data` 为空)。一轮可能长时间什么都不产出 —— 首字慢、在等一个工具 —— 而那在线路上跟连接死掉一模一样:同样的沉默、同样开着的 socket。浏览器分不出来,所以服务端按固定节奏发这个帧,**它到达本身就是全部内容**;客户端连着三个间隔没收到就当这条流没了,走跟用户点停止**完全同一条路**(标中断、输入框恢复可按),**只多一句话** —— 向正在看的人闪一句「网络错误」,四个字、不解释也不建议;它是一次性事件不是常驻提示条,4 秒后自己消失,而用户自己点停止是零提示的(他知道自己干了什么)。
 
-**间隔是常量不是部署配置**(`SSE_HEARTBEAT_INTERVAL_MS`,客户端的耐心 `SSE_HEARTBEAT_TIMEOUT_MS` 由它派生成三倍):发送节奏和接收耐心是**同一个事实的两面**,一个部署只改一边,要么把健康的流判死、要么等得比自己以为的久。这跟统一 HTTP 传输层把重试次数写死是同一条理由 —— 那次正是两份配置漂成了两种含义。**两个入口共用一份实现**(`routes/chat.ts` 的 `streamTurn`),定时器在流结束时清掉:每条结束的流留一个活着的计时器,就是往没人读的 socket 里一直写、并把进程挂住。
+**间隔是部署配置,次数写死**(#127):间隔在 `config/agent.yaml` 的 `sse_heartbeat_interval_ms`,经只读端点 `GET /chat/stream-config` 下发给浏览器;客户端的耐心由它乘 `SSE_HEARTBEAT_MISSES_ALLOWED`(3,写死在 `packages/shared/src/agent/heartbeat.ts`)得出:发送节奏和接收耐心是**同一个事实的两面**,一个部署只改一边,要么把健康的流判死、要么等得比自己以为的久。这跟统一 HTTP 传输层把重试次数写死是同一条理由 —— 那次正是两份配置漂成了两种含义。**两个入口共用一份实现**(`routes/chat.ts` 的 `streamTurn`),定时器在流结束时清掉:每条结束的流留一个活着的计时器,就是往没人读的 socket 里一直写、并把进程挂住。
 
 ### Configuration files
 

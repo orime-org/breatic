@@ -130,7 +130,7 @@ loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `llm_max_retries` | 2 | 每次 LLM 调用的重试次数(maxRetries),由 model-call wrapper 统一注入(#1625 Slice 3)|
-| `thinking_enabled` | false | 要不要向 provider 索取模型的思考过程。**默认关,因为要了也拿不到** —— 2026-08-20 对当前默认模型 `deepseek/deepseek-v4-pro`(走 OpenRouter)实测两轮,其中一轮明写要求把推理过程写出来:两轮都只有 `reasoning-start` 和 `reasoning-end`(相隔约 300 毫秒)、零个 `reasoning-delta`。更早那次对 claude-sonnet-4-6 的实测(2026-08-11,三轮)结论相同。开着只会每轮白等一次、换一个空的折叠块。承载它的那条通路已经建好也测过,缺的在 provider 那一侧 —— 非 Anthropic 模型我们发的是 OpenAI 自己的 `reasoningEffort`,而这些轮次到的是 OpenRouter,它的 reasoning 参数拼法不同 |
+| `thinking_enabled` | false | 要不要向 provider 索取模型的思考过程。**默认关,因为要了也拿不到** —— 2026-08-20 对当前默认模型 `deepseek/deepseek-v4-pro`(走 OpenRouter)实测两轮,其中一轮明写要求把推理过程写出来:两轮都只有 `reasoning-start` 和 `reasoning-end`(相隔约 300 毫秒)、零个 `reasoning-delta`。更早那次对 claude-sonnet-4-6 的实测(2026-08-11,三轮)结论相同。开着只会每轮白等一次、换一个空的折叠块。承载它的那条通路已经建好也测过,缺的是**根本没要**:`@ai-sdk/openai@4.0.37` 按模型 id 判断一个模型算不算 reasoning 模型(o 系列、gpt-5 及以上),`deepseek/deepseek-v4-pro` 两样都不是,于是 `reasoningEffort` 只产生一条 `unsupported` 警告、压根不进请求体(`dist/index.js:6306-6311`) |
 | `skill_agent_max_steps` | 15 | worker 跑一个 skill 时的步数上限。跟 `max_tool_iterations`(主对话 40)分开:主对话有人在等、可以多轮,worker 是一个有边界的后台任务 |
 | `web_fetch_timeout_ms` | 30000 | `web_fetch` **一次投递**的时长上限,不是整次抓取的:统一 HTTP 传输层最多投递 3 次,每次都拿这个数;跟着重定向走时每一跳还要再乘一遍。上界是定时器能装下的最大延迟(2147483647),超了定时器会把它悄悄改写成 1 毫秒,所以在配置加载时就拒 |
 | `web_search_timeout_ms` | 10000 | 同上,给 `web_search`。它是一次请求、没有重定向,所以给得比抓网页短:搜索接口要么答要么不答,而一个网页可能因为自己的原因慢 |
