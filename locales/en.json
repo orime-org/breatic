@@ -293,6 +293,7 @@
       "selectFocusFromCanvas": "Drag a marquee on an image to crop a focus reference",
       "focusCancel": "Cancel",
       "focusConfirm": "Confirm",
+      "focusTimelineLabel": "Timeline",
       "focusCropTag": "Focus crop",
       "insertReferenceNamed": "Insert into prompt: {name}",
       "insertFocusCropNamed": "Insert into prompt: {name} (Focus crop)",

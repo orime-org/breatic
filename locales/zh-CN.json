@@ -284,6 +284,7 @@
       "selectFocusFromCanvas": "请在图片上框选聚焦区域",
       "focusCancel": "取消",
       "focusConfirm": "确认",
+      "focusTimelineLabel": "时间轴",
       "focusCropTag": "聚焦裁剪",
       "insertReferenceNamed": "插入到提示词:{name}",
       "insertFocusCropNamed": "插入到提示词:{name}(聚焦裁剪)",

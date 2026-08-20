@@ -58,8 +58,12 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * duration): seeking to the CURRENT position (0 at load) may not fire `seeked`
  * in every browser, so nudging by this guarantees the event AND a paintable
  * decode while staying on the first frame.
+ *
+ * Exported because the focus crop export (#1987) faces the same seek: a
+ * freshly built element sits at 0 and the frame the user wants is often 0
+ * too. One definition, so the two cannot drift to different offsets.
  */
-const FIRST_FRAME_SEEK_S = 0.0001;
+export const FIRST_FRAME_SEEK_S = 0.0001;
 
 /**
  * Extract the first frame of a local video File as a PNG cover blob, or

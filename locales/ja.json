@@ -284,6 +284,7 @@
       "selectFocusFromCanvas": "画像上をドラッグして範囲を選択してください",
       "focusCancel": "キャンセル",
       "focusConfirm": "確認",
+      "focusTimelineLabel": "タイムライン",
       "focusCropTag": "フォーカス切り抜き",
       "insertReferenceNamed": "{name} をプロンプトに挿入",
       "insertFocusCropNamed": "{name}(フォーカス切り抜き)をプロンプトに挿入",
