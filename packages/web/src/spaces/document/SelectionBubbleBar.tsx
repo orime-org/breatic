@@ -311,8 +311,46 @@ function BubbleBar({
   const pinnedRef = React.useRef<{ x: number; y: number; area: DOMRect } | null>(
     null,
   );
+  // Whether the last transaction found a select-all, so the next one can tell
+  // "the selection just became one" from "it already was". See `follow`.
+  const wasSelectAllRef = React.useRef(false);
 
   const pluginKey = React.useMemo(() => new PluginKey('selectionBubbleBar'), []);
+
+  /**
+   * The conditions that hold whichever path is asking.
+   *
+   * The plugin's own `shouldShow` (`dist/index.js:62-77`) is REPLACED rather
+   * than extended when we pass ours, so its conditions live here: focus
+   * somewhere that counts, a selection that is not empty, text inside it, and
+   * an editable editor. Both the plugin's question and our scroll handler go
+   * through this — the scroll handler used to carry its own shorter list and
+   * so put the bar up over an editor the reader had already left.
+   *
+   * The text condition drops the plugin's `isTextSelection` guard on purpose:
+   * an `AllSelection` is not a `TextSelection`, so with that guard a
+   * select-all over an emptied document showed a bar whose every button was
+   * dead. What matters is whether the selection holds text, not its class.
+   *
+   * The focus condition is the editor's focus and nothing else. It used to
+   * also accept focus sitting inside the bar, from the days when the bar was
+   * focusable; the bar now refuses the focus change a press would cause (see
+   * the note further down), so that branch had no way left to be true.
+   *
+   * Takes the view rather than reading it off the editor: the plugin asks this
+   * during teardown too, and by then `editor.view` throws.
+   * @param view - The editor view the caller already holds.
+   * @returns True when a bar is warranted at all.
+   */
+  const isWarranted = React.useCallback((view: EditorView): boolean => {
+    const { doc, selection } = view.state;
+    if (selection.empty || !editor.isEditable) return false;
+    // Focus before text: `textBetween` walks the selection and builds a string
+    // as long as it, so over a multi-screen selection it is the expensive one.
+    // Everything above and below it answers in constant time.
+    if (!view.hasFocus()) return false;
+    return doc.textBetween(selection.from, selection.to).length > 0;
+  }, [editor]);
 
   /**
    * Where the bar sits over a select-all, or null when it stays away.
@@ -405,60 +443,36 @@ function BubbleBar({
      * transition that needs it, since an empty selection returns earlier.
      */
     const follow = (): void => {
-      if (editor.state.selection instanceof AllSelection) {
-        // Idempotent, which is what makes the ruling's third line ("once the
-        // bar is up, nothing re-decides where it sits") hold on this path:
-        // `pinToPointer` returns early when a pin already exists, so a later
-        // transaction over the same select-all — a co-editor's keystroke, say
-        // — cannot move a bar the reader already has. That early return is the
-        // single copy of the guarantee. Asking here as well whether the
-        // selection just BECAME a select-all would be a second copy of it, and
-        // two copies of one rule drift apart.
-        pinToPointer();
+      const { view } = editor;
+      const isAll = view.state.selection instanceof AllSelection;
+      // The ruling's FIRST moment is "全选那一刻" — the instant the selection
+      // becomes a select-all, not every transaction that happens to find one.
+      // Transactions arrive from everywhere: a co-editor's keystroke, the
+      // editor regaining focus, an undo. Acting on all of them means the pin
+      // is made from wherever the pointer last happened to be, at a moment
+      // nobody asked about. Measured with a second Y.Doc over the wire: the
+      // reader select-alls with the pointer outside the body (no bar, right),
+      // switches away, the pointer drifts across the text, a co-editor types,
+      // the reader comes back — and the bar appears at a spot they merely
+      // passed over.
+      const became = isAll && !wasSelectAllRef.current;
+      wasSelectAllRef.current = isAll;
+      if (!isAll) {
+        pinnedRef.current = null;
         return;
       }
-      pinnedRef.current = null;
+      if (!became) return;
+      // Same order as the mouse path, for the same reason: pinning is a WRITE,
+      // and a pin made while no bar is warranted would sit there waiting.
+      if (!isWarranted(view)) return;
+      pinToPointer();
     };
     editor.on('transaction', follow);
     return () => {
       editor.off('transaction', follow);
     };
-  }, [editor, pinToPointer]);
+  }, [editor, isWarranted, pinToPointer]);
 
-  /**
-   * The conditions that hold whichever path is asking.
-   *
-   * The plugin's own `shouldShow` (`dist/index.js:62-77`) is REPLACED rather
-   * than extended when we pass ours, so its conditions live here: focus
-   * somewhere that counts, a selection that is not empty, text inside it, and
-   * an editable editor. Both the plugin's question and our scroll handler go
-   * through this — the scroll handler used to carry its own shorter list and
-   * so put the bar up over an editor the reader had already left.
-   *
-   * The text condition drops the plugin's `isTextSelection` guard on purpose:
-   * an `AllSelection` is not a `TextSelection`, so with that guard a
-   * select-all over an emptied document showed a bar whose every button was
-   * dead. What matters is whether the selection holds text, not its class.
-   *
-   * The focus condition is the editor's focus and nothing else. It used to
-   * also accept focus sitting inside the bar, from the days when the bar was
-   * focusable; the bar now refuses the focus change a press would cause (see
-   * the note further down), so that branch had no way left to be true.
-   *
-   * Takes the view rather than reading it off the editor: the plugin asks this
-   * during teardown too, and by then `editor.view` throws.
-   * @param view - The editor view the caller already holds.
-   * @returns True when a bar is warranted at all.
-   */
-  const isWarranted = React.useCallback((view: EditorView): boolean => {
-    const { doc, selection } = view.state;
-    if (selection.empty || !editor.isEditable) return false;
-    // Focus before text: `textBetween` walks the selection and builds a string
-    // as long as it, so over a multi-screen selection it is the expensive one.
-    // Everything above and below it answers in constant time.
-    if (!view.hasFocus()) return false;
-    return doc.textBetween(selection.from, selection.to).length > 0;
-  }, [editor]);
 
   /**
    * Whether a bar belongs on screen right now — the plugin's own question.
@@ -526,6 +540,14 @@ function BubbleBar({
       if (pinnedRef.current) return;
       const { view } = editor;
       if (!(view.state.selection instanceof AllSelection)) return;
+      // Then the box, then the two questions that cost something. `isWarranted`
+      // ends in `doc.textBetween` over the whole selection, which under a
+      // select-all is the whole document — and this handler runs on every
+      // mouse event anywhere on the page, including the ones nowhere near the
+      // body. Asking "is the pointer even in there" first costs one rectangle.
+      if (!isInside(pointerRef.current, viewport.getBoundingClientRect())) {
+        return;
+      }
       // `isWarranted` before `pinToPointer`, not after: pinning is a write,
       // and a pin made while no bar is warranted would sit there waiting. The
       // reader would then get the bar at a place the pointer passed through

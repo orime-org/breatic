@@ -788,6 +788,76 @@ describe('选中浮出条', () => {
       ).toBe(600);
     });
 
+    it('编辑器没有焦点时变成全选，不钉——焦点回来也不会凭空摆出来', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      // 鼠标在正文里，但用户人在别处，编辑器没有焦点。
+      moveMouseTo(420, 250);
+      act(() => {
+        editor.view.dom.blur();
+      });
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow(editor)).toBe(false);
+
+      // 焦点回来。「全选那一刻」已经过去了，而那一刻条件不满足；这一刻不是
+      // 任何一个判断时刻，所以条不该凭空出现。删掉 `follow` 里那句
+      // `isWarranted` 这条就红——全选那一刻会钉，焦点一回来条就摆出来。
+      act(() => {
+        editor.view.dom.focus();
+      });
+      expect(shouldShowNow(editor)).toBe(false);
+    });
+
+    it('编辑器没有焦点时，别人的事务不该替鼠标把位置钉下来', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      // 鼠标在正文外面全选：不显示，也没钉。
+      moveMouseTo(420, 50);
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow(editor)).toBe(false);
+
+      // 用户切走了，编辑器失焦；鼠标路过正文。这一下 `remember` 会被
+      // `isWarranted` 挡住，不钉——这一半本轮已经做对了。
+      act(() => {
+        editor.view.dom.blur();
+      });
+      moveMouseTo(420, 250);
+      expect(shouldShowNow(editor)).toBe(false);
+
+      // 协作对端敲一个字。选区仍是全选，于是 `follow` 跑——而它不问有没有
+      // 焦点，直接拿「鼠标最后路过的那个点」钉了下来。
+      const remote = new Y.Doc();
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
+      const paragraph = documentBodyFragment(remote).get(0) as Y.XmlElement;
+      (paragraph.get(0) as Y.XmlText).insert(0, 'x');
+      act(() => {
+        Y.applyUpdate(
+          doc,
+          Y.encodeStateAsUpdate(remote, Y.encodeStateVector(doc)),
+        );
+      });
+      remote.destroy();
+
+      // 鼠标早就走了，用户也切回来了（焦点回来，选区没变）。条不该拿那个
+      // 早已作废的点摆出来。
+      moveMouseTo(700, 380);
+      act(() => {
+        editor.view.dom.focus();
+      });
+
+      expect(shouldShowNow(editor)).toBe(false);
+    });
+
     it('鼠标离开页面之后位置就不知道了——键盘全选不把条摆出来', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);

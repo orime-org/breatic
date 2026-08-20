@@ -398,10 +398,11 @@ test('按过浮出条之后再点到编辑器外面，条要消失', async () =>
   });
   expect(stillFocused).toBe(true);
 
-  // 按 Tab 把焦点送出正文。实测这一下派发两次 blur：第一次被上面那个闩吃掉
-  // 并把它复位，第二次才走到隐藏。所以闩「只进不出」这件事在真机上够不成
-  // 后果——这条测的是用户看到的结果，不是那个闩。
-  await page.keyboard.press('Tab');
+  // 真的用鼠标点，不是按 Tab。两条路进插件的方式不同：实测点击派发**一次**
+  // blur、Tab 派发两次，而那个闩（按条时置真、只在 blurHandler 里复位）按理
+  // 会吃掉单独的那一次。实测两条路条都从 DOM 里消失——点击那条走的不是
+  // blurHandler，是这一下产生的编辑器事务让插件重问了 `shouldShow`。
+  await page.locator('[data-testid="space-tab-bar"], header').first().click();
   await page.waitForTimeout(500);
 
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeHidden();
