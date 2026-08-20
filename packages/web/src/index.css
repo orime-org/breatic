@@ -252,8 +252,13 @@ body {
 
 /* The mark an agent bubble carries until its first word arrives: one dot,
    breathing. Settled 2026-08-12 over two busier proposals; every figure here
-   comes from the demo that settled it. The twenty-pixel line is what keeps
-   the bubble from resizing the moment text lands in it.
+   comes from the demo that settled it.
+
+   The bubble does not resize when the first word lands, and nothing here is
+   what makes that true: the dot and a line of text both sit on a 21px line
+   at the bubble's own font size. A `line-height` was written here for it and
+   did nothing — this box has no text of its own, so it has no line box to
+   size, and overriding the declaration changed neither measurement.
 
    No prefers-reduced-motion override here either, and for the same reason as
    the skeleton above: this dot is the whole of what says an answer is on its
@@ -267,7 +272,6 @@ body {
   border-radius: 50%;
   background: var(--color-muted-foreground);
   vertical-align: middle;
-  line-height: 20px;
   animation: chat-waiting-dot 1.2s ease-in-out infinite;
 }
 @keyframes chat-waiting-dot {

@@ -84,8 +84,15 @@ describe('the figures the demo fixed', () => {
     expect(rule).toContain('border-radius: 50%');
   });
 
-  it('holds a twenty-pixel line so the bubble does not resize when text lands', () => {
-    expect(ruleBody('.chat-waiting-dot')).toContain('20px');
+  it('不自己定行高，气泡的高度由气泡自己说了算', () => {
+    // 这里原本写着 `line-height: 20px`,名字叫「撑住二十像素的行,文字落下来
+    // 时气泡才不会变高」。两件事都不成立:这个点是个空的 inline-block,没有
+    // 自己的文字就没有行框可撑,真机上把那条声明盖掉,点和一行文字量出来都还
+    // 是 21px —— 不变高是气泡自己的行高定的,跟这里无关。
+    //
+    // 而那条测试之所以能一直绿,是因为它查的是样式表里有没有「20px」这四个
+    // 字符,不是屏幕上有没有发生什么。
+    expect(ruleBody('.chat-waiting-dot')).not.toContain('line-height');
   });
 
   it('takes its colour from a token the rest of the sheet also uses', () => {

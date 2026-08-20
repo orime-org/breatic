@@ -200,12 +200,14 @@ function transportFor(
   return {
     sendMessages: async (options) =>
       sayWhenItOpens(await wire.sendMessages(options), () => {
-        // Both under the same guard, because they are the same signal. A
-        // frame still in the pipe when the turn is already settled -- the
-        // reader pressed stop, and abort does not drain what is queued --
-        // must not empty the composer: the sentence has just been taken back
-        // out of the list, and emptying the box would leave it in neither
-        // place, which is the state B5 exists to prevent.
+        // The turn is always there when a frame arrives: a stream is only
+        // read while its turn is running, and both ways one ends -- the
+        // stream closing, or the reader stopping it -- take the reader's end
+        // of the pipe away first, after which nothing more is pulled through
+        // this transform. So this branch exists because the map answers
+        // `number | undefined`, not because there is a frame it turns away.
+        // Both halves are behind it anyway: they are one signal, and a guard
+        // that let one through would be saying they are two.
         const turn = runningTurn.get(conversationId);
         if (turn === undefined) return;
         answeredTurn.set(conversationId, turn);

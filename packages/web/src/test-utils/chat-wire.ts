@@ -168,11 +168,19 @@ export function turnOpens(textId = 't1'): Array<Record<string, unknown>> {
 /**
  * The chunks a turn ends with, after all of its content.
  *
- * Closing the stream is not the end of a turn. The SDK settles a turn on
- * these -- until they arrive the status stays `streaming`, `onFinish` has not
- * run, and a second send lands on a turn that never finished. A case that
- * only closed the stream and then sent again was running its second turn
- * against the first one's answer, and read as though it worked.
+ * Here for the same reason as {@link turnOpens}: what a case runs against
+ * should be the stream the server writes, not a shorter one that happens to
+ * work. A double that opened differently from the server is how a defect
+ * about which frame counts as the first went through a whole round of review
+ * green.
+ *
+ * They are not what ends the turn, and it is worth saying so because the
+ * commit that added this claimed they were. Closing the stream is enough on
+ * its own -- measured by emptying this function out, after which all of
+ * `turn-lifecycle.test.ts` still passes. What that commit actually fixed was
+ * `settle()`, which spun too few microtasks to carry a closed stream through
+ * to `status === 'ready'` and left turns stopped halfway, where they look
+ * exactly like turns still running.
  * @returns Those chunks, in order.
  */
 export function turnEnds(): Array<Record<string, unknown>> {
