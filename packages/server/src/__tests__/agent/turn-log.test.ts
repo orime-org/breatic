@@ -122,6 +122,15 @@ describe("what a finished turn writes to the log", () => {
     expect(line?.exit).toBe("completed");
   });
 
+  it("names the model the turn actually ran on", async () => {
+    // Which model answered is a deployment question with no other answer:
+    // the config says what was asked for, and nothing else says what was
+    // used. Reading it back out of a credit ledger row is not something
+    // anyone does at three in the morning.
+    const line = await turnLog(saying("好的"));
+    expect(line?.modelId).toBe("test");
+  });
+
   it("names a provider failure as one", async () => {
     // A provider failure does not break the stream: the SDK puts an error
     // chunk on it and closes it normally, so a turn that went by whether the

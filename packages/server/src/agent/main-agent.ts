@@ -433,6 +433,10 @@ export class MainAgent {
           {
             userId,
             conversationId,
+            // Which model answered. The config says what was asked for; only
+            // this says what ran, and a deployment that moved to another
+            // model has nothing else to read.
+            modelId,
             responseLength: this.proseLengthOf(replyParts),
             creditsUsed,
             exit,
