@@ -87,7 +87,7 @@ export async function assertStorageAllowance(
     // whoever is on call, and silencing it would leave "how often did this
     // gate fire today, and for whom" with no answer after the first hit.
     logger.info(
-      { studioId, adminUserId, storageBytes, usedBytes, purpose },
+      { projectId, studioId, adminUserId, storageBytes, usedBytes, purpose },
       "storage_quota_exceeded",
     );
     await tellTheAdmin(adminUserId, studioId);

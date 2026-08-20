@@ -16,6 +16,10 @@
  * than "this studio's admin", and it answers with a 429 that would displace
  * the 507. It is also several commands in a `pipeline()`, which batches the
  * round trips without making them one step.
+ *
+ * The window can also be given back, because the key means "an account has
+ * been told" rather than "somebody tried": a claim whose notice never landed
+ * is holding a place for nothing. See {@link releaseNoticeWindow}.
  */
 
 import { env, getRedis } from "@breatic/core";
@@ -44,10 +48,14 @@ export async function claimNoticeWindow(adminUserId: string): Promise<boolean> {
 /**
  * Give the slot back, because no notice went out after all.
  *
- * The key means "an account has been told", so a claim that ended in a failed
- * insert or a failed send is holding a place for something that never
- * happened. Left there, the next refusal is silenced too and the admin hears
- * nothing for a whole window about an account that is still full.
+ * The key means "an account has been told", so a claim whose bell insert then
+ * failed is holding a place for something that never happened. Left there, the
+ * next refusal is silenced too and the admin hears nothing for a whole window
+ * about an account that is still full.
+ *
+ * A failed MAIL is not one of those: everything the mail needs is read and
+ * sent inside the best-effort boundary, which swallows its own failures — the
+ * bell row is already in, so that account has been told and keeps its window.
  * @param adminUserId - The account whose slot to release.
  * @throws {Error} if Redis is unreachable; the caller already has nothing to
  *   report and treats this the same way.

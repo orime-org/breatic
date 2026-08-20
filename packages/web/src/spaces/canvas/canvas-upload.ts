@@ -596,17 +596,18 @@ export interface FillNodeDeps {
 }
 
 /**
- * Write a refused/failed upload back onto the node, wording it by cause. Shared
- * by the plain and the atomic-video paths so both stay identical.
+ * Hand a failed upload to the caller, reason and all.
  *
- * A hashing failure is NOT a transient upload failure: retrying on the same
- * page hits the same broken worker, so the node says the file could not be
- * read and the caller additionally toasts the remedy (reload).
+ * Shared by the plain and the atomic-video paths so both report identically.
+ * It decides nothing itself: what a reason needs — the wording, and whether
+ * the file is worth stashing for Retry — is knowable only where the node and
+ * the reader's language are, and keeping a second opinion here would be a
+ * copy of the answer that could drift from the one users see.
  * @param reason - Why the upload ended.
  * @param nodeId - Node being filled.
- * @param file - The picked file (its name goes into the wire string).
+ * @param file - The picked file, which the caller needs to stash or name.
  * @param lease - The owner triple guarding the write-back.
- * @param deps - The fill sinks (error write-back + the hash-toast hook).
+ * @param deps - Carries the caller's failure sink.
  */
 function uploadFailed(
   reason: UploadFailureReason,

@@ -42,11 +42,13 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-// 三个替身，用来观察通知那一段，并且能让它的每一条腿单独失败。
-// 拒绝本身是承诺内的行为，通知是它的附加动作 —— 附加动作炸了不许把 507
-// 变成 500，而这三条腿今天各有各的失败方式。
+// 四个替身，用来观察通知那一段并让它逐段失败。拒绝本身是承诺内的行为，
+// 通知是它的附加动作 —— 附加动作炸了不许把 507 变成 500。
+// 每个替身对应一段：邮件工厂（mailCtl）· 铃铛插入（bellCtl）· 窗口认领
+// （throttleCtl）· 邮件要用的那次 studio 读（studioReadCtl）。
+// 邮件的**发送**失败不在这里 —— 那一层自己吞掉，由它自己的单测钉住。
 const sentMail = vi.fn();
-const mailCtl = { fail: false };
+const mailCtl = { failFactory: false };
 
 // 这个替身照着真实的 sendBestEffortMail 写：**它吞掉一切、永不抛**
 // （`send-best-effort-mail.ts:40-45` 把准备和发送整个包在 try/catch 里）。
@@ -58,8 +60,13 @@ vi.mock("@server/utils/send-best-effort-mail.js", () => ({
     ctx: Record<string, unknown>,
   ) => {
     try {
-      if (mailCtl.fail) throw new Error("synthetic mail failure");
-      sentMail(await build(), ctx);
+      if (mailCtl.failFactory) throw new Error("synthetic factory failure");
+      const mail = await build();
+      // 真实那层在这里短路：`if (!mail) return;` —— 工厂说「别发」时既不
+      // 发信也不记结果。替身漏掉这一句的话，一个恒返回 null 的工厂在测试
+      // 里看起来跟正常发信一模一样。
+      if (!mail) return;
+      sentMail(mail, ctx);
     } catch {
       // 跟真的一样：吞掉，不影响调用方。
     }
@@ -389,7 +396,7 @@ describe("assertStorageAllowance — telling the admin", () => {
   beforeEach(() => {
     sentMail.mockClear();
     logged.length = 0;
-    mailCtl.fail = false;
+    mailCtl.failFactory = false;
     bellCtl.fail = false;
     throttleCtl.fail = false;
     studioReadCtl.fail = false;
@@ -401,13 +408,24 @@ describe("assertStorageAllowance — telling the admin", () => {
    */
   async function fullAccount(): Promise<{
     adminUserId: string;
+    adminEmail: string;
     studioId: string;
+    studioName: string;
     projectId: string;
   }> {
     const { userId, personalStudioId } = await insertUser("base");
     const projectId = await insertProject(personalStudioId, userId);
     await seedAsset(personalStudioId, userId, BASE_STORAGE);
-    return { adminUserId: userId, studioId: personalStudioId, projectId };
+    const [row] = await sql<{ email: string }[]>`
+      SELECT email FROM users WHERE id = ${userId}
+    `;
+    return {
+      adminUserId: userId,
+      adminEmail: row!.email,
+      studioId: personalStudioId,
+      studioName: "Personal",
+      projectId,
+    };
   }
 
   /**
@@ -425,7 +443,8 @@ describe("assertStorageAllowance — telling the admin", () => {
   }
 
   it("puts a row in the admin's bell and sends the mail", async () => {
-    const { adminUserId, studioId, projectId } = await fullAccount();
+    const { adminUserId, adminEmail, studioId, studioName, projectId } =
+      await fullAccount();
 
     await expect(assertStorageAllowance(projectId, "upload")).rejects.toMatchObject(
       { statusCode: 507 },
@@ -436,7 +455,15 @@ describe("assertStorageAllowance — telling the admin", () => {
     // The row records WHERE it happened. The line the admin reads says only
     // that storage is full, because what is full is the account.
     expect(rows[0]!.payload).toEqual({ studioId });
+    // 断言信本身，不只是「发过一次」：只数次数的话，工厂返回 null、或者
+    // 把信寄给别人，测试照样绿。
     expect(sentMail).toHaveBeenCalledTimes(1);
+    const [mail] = sentMail.mock.calls[0] as [
+      { to: string; subject: string; html: string },
+    ];
+    expect(mail.to).toBe(adminEmail);
+    expect(mail.subject).toContain("storage is full");
+    expect(mail.html).toContain(studioName);
   });
 
   it("sends one notice per account per window, not one per studio", async () => {
@@ -469,6 +496,19 @@ describe("assertStorageAllowance — telling the admin", () => {
     const lines = logged.filter((l) => l.line === "storage_quota_exceeded");
     expect(lines).toHaveLength(2);
     expect(lines[0]!.ctx).toMatchObject({ adminUserId, purpose: "upload" });
+    expect(await bellRows(adminUserId)).toHaveLength(1);
+  });
+
+  it("sends nothing when the mail factory refuses, and keeps the refusal", async () => {
+    // 工厂抛错是真实那层唯一会自己吞掉的一类失败（准备阶段的读挂了）。
+    // 它既不该发信，也不该动到拒绝本身。
+    const { adminUserId, projectId } = await fullAccount();
+    mailCtl.failFactory = true;
+
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toMatchObject(
+      { statusCode: 507 },
+    );
+    expect(sentMail).not.toHaveBeenCalled();
     expect(await bellRows(adminUserId)).toHaveLength(1);
   });
 

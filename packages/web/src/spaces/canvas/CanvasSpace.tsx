@@ -1961,12 +1961,17 @@ function CanvasSpaceInner({
     [spaceId],
   );
 
-  // The one place an upload failure is presented, for every entry that has
+  // Where a failed upload ONTO A NODE is presented, for every entry that has
   // one: dropping onto the canvas, filling an existing node (double-click /
   // Upload menu / Retry / reset-to-empty), and the video-with-cover path. Each
   // hands its reason here rather than deciding for itself, because what a
   // reason needs — the Retry stash and the wording — differs per reason and is
   // knowable only here.
+  //
+  // The focus crop is the one upload with no node to write to: it fills a
+  // reference pool entry, so its failures are toast-only and it has its own
+  // sink further up. It reads the same reason vocabulary and reaches for the
+  // same two toast keys, which is what keeps the two consistent.
   //
   // Fixed-English wire string — like AIGC failure messages and the group
   // default name: errorMessage goes into Yjs and renders raw to every
@@ -2134,13 +2139,8 @@ function CanvasSpaceInner({
                     toast.warning(t('canvas.upload.ownershipLost'));
                   }
                 },
-                // Fixed-English wire string — like AIGC failure messages and the
-                // group default name. errorMessage is written to Yjs and rendered
-                // raw to every collaborator, so it must not freeze the uploader's
-                // locale into the shared doc. The filename is the locale-free part
-                // telling the user which file failed. The File is stashed BEFORE
-                // the error lands so the error re-render already sees the Retry
-                // stash (#1609 P4).
+                // Reason and all — `failUploadNode` above owns what each one
+                // means for the node text, the Retry stash and the toast.
                 onFailure: (reason) =>
                   failUploadNode(reason, nodeId, file, lease),
                 onUploaded: (info) => reportUploadedAsset(nodeId, info, file),

@@ -94,9 +94,10 @@ export function errorStatus(err: unknown): number | null {
 }
 
 /**
- * Whether a presign failure is transient (worth retrying): 5xx / 429
- * responses, and network-level failures, which apiGet reports as status 0.
- * Other 4xx and unknown programming errors are final.
+ * Whether a presign failure is transient (worth retrying): 5xx other than
+ * 507, 429, and network-level failures, which apiGet reports as status 0.
+ * Other 4xx, 507, and unknown programming errors are final — see the 507
+ * carve-out in the body for why a full account is not a server hiccup.
  *
  * It once also recognised a bare `TypeError` and an `AbortError` /
  * `TimeoutError` — the shapes raw `fetch` throws. Those were for the PUT,
