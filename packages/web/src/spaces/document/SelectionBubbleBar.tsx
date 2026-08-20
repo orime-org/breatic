@@ -10,7 +10,7 @@
  * have several entry points; what is forbidden is mixing objects inside one
  * carrier). This slice adds no command of its own.
  *
- * ## Six things the stock component does not do for us
+ * ## What the stock component does not do for us
  *
  * Read off the installed `@tiptap/extension-bubble-menu@3.29.2`, whose props
  * `@tiptap/react/menus` passes straight through:
@@ -20,8 +20,21 @@
  *   the entire document, so the bar would anchor above the first line even when
  *   that line is scrolled far out of view. `getReferencedVirtualElement` is the
  *   official way out (`dist/index.d.ts:66`) and it wins outright: `:254`
- *   returns it before every other branch. We hand back one line the reader can
- *   see — see {@link pickAnchorLine}.
+ *   returns it before every other branch. What we hand back depends on the
+ *   selection: a select-all anchors to the pointer, anything smaller to one of
+ *   its own two ends — see {@link pickAnchorLine}.
+ * - **Whether to show at all.** The stock `shouldShow` asks only about focus
+ *   and emptiness (`:62-77`). A select-all with the pointer outside the body
+ *   has nowhere to put the bar, and a position nobody asked for is worse than
+ *   no bar, so ours adds that condition.
+ * - **Putting the bar up on a scroll.** The plugin's scroll path only calls
+ *   `updatePosition`, which returns immediately while the bar is down
+ *   (`:300-302`), so a bar withheld for want of a pointer would never appear
+ *   however far the reader scrolls. Our own scroll handler wakes it.
+ * - **Taking the bar away when its anchor leaves.** Clipping does not do it —
+ *   the bar hangs outside the scroller, so the layer that clips it starts 40px
+ *   higher and the bar would show in that strip, over the top bar. The `hide`
+ *   middleware does, once given the right boundary.
  * - **The alignment.** The default `placement` is `'top'` (`dist/index.js:48`),
  *   and floating-ui only shifts along the alignment axis when the placement
  *   carries `-start` or `-end` (`@floating-ui/core` `:49-51`); bare `top`
@@ -65,7 +78,7 @@ import { useEditorState, type Editor } from '@tiptap/react';
 import { posToDOMRect } from '@tiptap/core';
 import { isTextSelection } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
-import { AllSelection, PluginKey, Selection } from '@tiptap/pm/state';
+import { AllSelection, PluginKey } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { BubbleMenu } from '@tiptap/react/menus';
 
@@ -91,43 +104,23 @@ const GAP_FROM_SELECTION_PX = 8;
  * block branch returns `flattenH(...)`, which collapses top onto bottom
  * (`prosemirror-view@1.42.2/dist/index.js:618`).
  *
- * An `AllSelection`'s head is exactly such a boundary — pressing `Mod-a` twice
- * puts it at `doc.content.size` — and measuring from there took the gap from
- * the last paragraph's BOTTOM edge rather than its line's top, which put the
- * bar 17px into that paragraph's text and covered the one above it whole
- * (measured in a browser: bar 205–241, last line 224–249).
- *
- * So a boundary is walked into the nearest text position before measuring, and
- * WHICH WAY it walks is the caller's to say, because a boundary has a line on
- * either side and only the caller knows which one it meant. Asking for a
- * selection's end means the line above; asking what sits on the reader's top
- * row means the line below. One fixed direction gets one of them wrong: with
- * `-1` throughout, the top-row question answered with a line that had already
- * scrolled past, and the bar drew above the body's visible area — measured, one
- * scroll position in 23 put the bar's top at 116 against a visible area of 120.
- *
- * The walk moves only where there is text to move into. Beside an atom block —
- * today only `unsupportedBlock`, which needs a peer running a build that knows
- * a type this one does not — `Selection.near` answers a `NodeSelection` whose
- * head is the position it was given, and the measurement falls back to the
- * separator: the bar sits against that block's edge rather than a line's. Task
- * #124 brings back a text-less block on purpose and carries this.
+ * This used to walk such a boundary into the nearest text position before
+ * measuring, because an `AllSelection`'s head lands on one — `Mod-a` puts it at
+ * `doc.content.size` — and measuring the separator took the gap from the last
+ * paragraph's BOTTOM edge rather than its line's top, putting the bar 17px into
+ * that paragraph's text. A select-all no longer reaches this function at all
+ * (it anchors to the pointer), and the walk has no effect anywhere else: the
+ * ends of a `TextSelection` are inside text, so the first reading already
+ * answers a line; and beside an atom block `Selection.near` hands back a
+ * `NodeSelection` whose head is the position it was given — measured on a
+ * document ending in an `unsupportedBlock`, both ends walked to the same
+ * position they started from.
  * @param view - The editor view to measure against.
  * @param pos - A document position.
- * @param bias - Which side of a boundary the caller means: -1 for the line
- *   above it, 1 for the line below.
  * @returns The line's extent, in viewport coordinates.
  */
-function lineAt(
-  view: EditorView,
-  pos: number,
-  bias: -1 | 1,
-): { top: number; bottom: number } {
-  const coords = view.coordsAtPos(pos);
-  if (coords.bottom > coords.top) return coords;
-  return view.coordsAtPos(
-    Selection.near(view.state.doc.resolve(pos), bias).head,
-  );
+function lineAt(view: EditorView, pos: number): { top: number; bottom: number } {
+  return view.coordsAtPos(pos);
 }
 
 /**
@@ -153,11 +146,6 @@ function lineAt(
  * fully selected paragraph yields one tall rectangle instead of one per line.
  * Asking the editor where a position sits always yields a single line,
  * whatever the range happens to span.
- *
- * The line rather than the position, because each branch has to say which side
- * of a block boundary it means and only it knows (see `lineAt`): the end the
- * selection stops at means the line above, the end it starts from means the
- * line below.
  * @param view - The editor view to measure against.
  * @param bounds - The visible box of the body's scroll container.
  * @returns The anchored line's extent, in viewport coordinates.
@@ -169,18 +157,11 @@ function pickAnchorLine(
   const { from, head } = view.state.selection;
   // `head` is always inside `[from, to]` — a selection defines them as the min
   // and max of its anchor and head — so the only question is whether it shows.
-  //
-  // The two directions say what these branches mean; they do not change what
-  // they do, and no test pins them. A selection's ends land on a block boundary
-  // only at the document's own ends, and there both directions answer the same
-  // position — measured on `<p>one</p><p>two</p><p>three</p>`: position 0 walks
-  // to 1 either way, position 17 to 16 either way, while only the seam at 5
-  // walks to 4 or 6, and no end of a selection lands on a seam.
-  const headLine = lineAt(view, head, -1);
+  const headLine = lineAt(view, head);
   if (headLine.bottom > bounds.top && headLine.top < bounds.bottom) {
     return headLine;
   }
-  return lineAt(view, from, 1);
+  return lineAt(view, from);
 }
 
 /**
