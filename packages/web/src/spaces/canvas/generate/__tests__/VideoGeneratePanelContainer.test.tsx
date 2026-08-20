@@ -24,13 +24,13 @@ vi.mock('@web/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children?: ReactNode }) => children,
 }));
 
-// So the component test never opens a real WebSocket.
 // 裁剪行的 ✕ 会走到资产删除登记（remove-reference-row.ts）。不 stub 的话这个
 // 文件里点一次 ✕ 就真发一次 HTTP，成败还被那处静默 catch 吞掉。
 vi.mock('@web/data/api/assets', () => ({
   assetsApi: { reportDeleted: vi.fn(() => Promise.resolve()) },
 }));
 
+// So the component test never opens a real WebSocket.
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: vi.fn(
     (): {
@@ -1942,13 +1942,19 @@ describe('视频面板的聚焦按钮（#1978）', () => {
     const focus = await screen.findByTestId('generate-video-tool-focus');
     const reference = screen.getByTestId('generate-video-tool-reference');
     const firstFrame = screen.getByTestId('generate-video-tool-first-frame');
+    const endFrame = screen.getByTestId('generate-video-tool-end-frame');
 
-    // 顺序：参考 → 聚焦 → 首帧。DOCUMENT_POSITION_FOLLOWING = 后者在前者之后。
+    // 顺序：参考 → 聚焦 → 首帧 → 尾帧。两个槽位都断言，「其余往右移一个」
+    // 才真的被验到 —— 只看第一个槽位的话，一个槽位的档也能让这条通过。
+    // DOCUMENT_POSITION_FOLLOWING = 后者在前者之后。
     expect(
       reference.compareDocumentPosition(focus) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
       focus.compareDocumentPosition(firstFrame) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      firstFrame.compareDocumentPosition(endFrame) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

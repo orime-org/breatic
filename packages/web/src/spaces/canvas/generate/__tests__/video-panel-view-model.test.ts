@@ -880,7 +880,7 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
 
 describe('视频面板交出这个节点的聚焦裁剪（#1978）', () => {
   // 裁剪存在节点自己身上（`data.focusImages`），跟连线无关 —— 图片面板早就
-  // 这样交出去了（panel-view-model.ts:217）。视频面板此前一个 focus 符号都
+  // 这样交出去了（`panel-view-model.ts` 的 `focusImages`）。视频面板此前一个 focus 符号都
   // 没有，于是同一个节点上的裁剪在视频面板里根本不存在：轨道少一行、`@`
   // 弹层也选不到。轨道那一行由容器拼（vm.references + 裁剪），所以 vm 这一
   // 层要先把它交出来。
