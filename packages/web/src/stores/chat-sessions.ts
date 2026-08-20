@@ -200,8 +200,15 @@ function transportFor(
   return {
     sendMessages: async (options) =>
       sayWhenItOpens(await wire.sendMessages(options), () => {
+        // Both under the same guard, because they are the same signal. A
+        // frame still in the pipe when the turn is already settled -- the
+        // reader pressed stop, and abort does not drain what is queued --
+        // must not empty the composer: the sentence has just been taken back
+        // out of the list, and emptying the box would leave it in neither
+        // place, which is the state B5 exists to prevent.
         const turn = runningTurn.get(conversationId);
-        if (turn !== undefined) answeredTurn.set(conversationId, turn);
+        if (turn === undefined) return;
+        answeredTurn.set(conversationId, turn);
         onFirstFrame();
       }),
     reconnectToStream: (options) => wire.reconnectToStream(options),

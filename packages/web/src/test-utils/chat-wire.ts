@@ -125,7 +125,16 @@ export const OPENING_BEAT = { type: 'data-heartbeat', transient: true, data: {} 
 export function turnOpens(textId = 't1'): Array<Record<string, unknown>> {
   return [
     OPENING_BEAT,
-    { type: 'start' },
+    // What the route writes next, on every turn: the conversation answers
+    // with the name it has, so this goes out even when the name did not
+    // change (`main-agent.ts`, the first line of `execute`). It is not
+    // transient, so it is the frame that moves the status.
+    { type: 'data-conversation-titled', data: { title: '一句话' } },
+    // With an id, which is how it arrives: `handleUIMessageStreamFinish`
+    // gives every `start` one. A bare `start` takes a different path in the
+    // SDK -- it pushes no assistant message at all -- so a double that sent
+    // one was testing a stream no server produces.
+    { type: 'start', messageId: 'm-reply' },
     { type: 'start-step' },
     { type: 'text-start', id: textId },
   ];
