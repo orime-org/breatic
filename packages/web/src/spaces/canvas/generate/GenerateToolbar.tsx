@@ -35,8 +35,6 @@ interface GenerateToolbarProps {
   onFocus: () => void;
   /** Whether the focus pick is running — highlights the Focus button. */
   focusActive?: boolean;
-  /** Disable Focus — like Reference it feeds i2i source images (t2i off). */
-  focusDisabled?: boolean;
 }
 
 /**
@@ -45,11 +43,13 @@ interface GenerateToolbarProps {
  * do; Style is a slot, and a slot's one hover surface is its preview, which
  * carries the same sentence as the card's hint while empty (#1946). (Mark
  * was dropped 2026-07-17, user decision C: its intent is already covered by
- * Focus). Reference is available in both modes — text-to-image scopes the pick
- * to text sources (the canvas pick rejects image nodes), image-to-image uses
- * the full pool; Style holds ONE picked style image as a pick-time copy (#1664)
- * — gated on the active MODEL's capability (`style_images` on the wire), never
- * on the mode; Focus crops a region into a standalone reference (#1782).
+ * Focus). Reference and Focus are live in BOTH modes and neither takes a
+ * disabled flag: the canvas pick stopped scoping by mode in #1797, so what a
+ * t2i node cannot use is refused on the reference ROW, which dims and names
+ * the mode to switch to (#1952 / #1986). Style is the one that can go dark
+ * here, and on a different axis — the active MODEL's `style_images`
+ * capability, never the mode (#1664). Focus crops a region into a standalone
+ * reference (#1782).
  * @param root0 - Component props.
  * @param root0.onReference - Enter the reference-pick mode.
  * @param root0.referenceActive - Whether the reference pick is running.
@@ -58,6 +58,8 @@ interface GenerateToolbarProps {
  * @param root0.styleThumbnail - The picked style image URL, if any.
  * @param root0.onClearStyle - Clear the picked style image.
  * @param root0.styleDisabled - Disable style picking (model capability gate).
+ * @param root0.onFocus - Enter / exit the focus crop pick.
+ * @param root0.focusActive - Whether the focus pick is running.
  * @returns The tool row.
  */
 export const GenerateToolbar = React.memo(function GenerateToolbar({
@@ -70,7 +72,6 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
   styleDisabled = false,
   onFocus,
   focusActive = false,
-  focusDisabled = false,
 }: GenerateToolbarProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -90,7 +91,6 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         Icon={Focus}
         onClick={onFocus}
         active={focusActive}
-        disabled={focusDisabled}
       />
       <SlotTool
         testId='generate-tool-style'

@@ -179,13 +179,14 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   const t = useTranslation();
   const currentModel = models.find((m) => m.name === model);
   // Text-to-image generates from scratch and ignores SOURCE IMAGES (§2.5).
-  // References stay AVAILABLE — the reference button is enabled and text
-  // references still feed the prompt via their @-chips (R3-4 = A) — but every
-  // IMAGE source is scoped out: the rail dims the CONTENT of its image rows
-  // (#1952 — their ✕ stays live), the @-picker hides them, and Focus (which
-  // crops an image) is disabled. The canvas PICK does not scope by mode —
-  // #1797 made it one flow, so connecting an image under t2i is allowed and
-  // the scoping happens where the image would be used. i2i uses the full pool.
+  // Nothing that COLLECTS one is refused for it: the Reference and Focus
+  // buttons are live in both modes, and the canvas pick has not scoped by mode
+  // since #1797. The scoping happens where the image would be USED — the rail
+  // dims the CONTENT of its reference rows and refuses their insert (#1952 —
+  // their ✕ stays live), and the @-picker hides them. Every refusal therefore
+  // sits on the row, which can name the mode to switch to; an entry that goes
+  // dark can only swallow the click (#1986, user 2026-08-19). i2i uses the
+  // full pool.
   const imageSourcesOff = !imageModeTakesReferences(mode);
   // shrink-0 keeps the fixed-size footer icons from being squeezed when the
   // pickers' labels run long (the footer row has no flex-wrap by design).
@@ -205,9 +206,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           styleDisabled={!styleSupported}
           onFocus={onFocus}
           focusActive={focusPicking}
-          // Focus crops an image, so it follows the image-source scoping: a
-          // t2i node cannot focus-crop (#1782).
-          focusDisabled={imageSourcesOff}
         />
         <div className='flex items-center gap-1.5'>
           {HEADER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
