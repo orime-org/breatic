@@ -6,9 +6,10 @@
  *
  * Both panels carry a tool row and both rows are made of the same two things:
  * a toggle that enters a canvas pick, and a slot that holds one picked image.
- * They differ only in WHICH tools they show — image has style and focus, video
- * has the source slots its mode needs — so the tools themselves live here and
- * each panel's row just arranges them.
+ * They differ only in WHICH tools they show — reference and focus are on both,
+ * style is the image panel's alone, and the video panel adds the source slots
+ * its mode needs — so the tools themselves live here and each panel's row just
+ * arranges them.
  */
 
 import { X, type LucideIcon } from 'lucide-react';

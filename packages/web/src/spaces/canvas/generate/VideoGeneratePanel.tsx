@@ -62,13 +62,26 @@ interface VideoGeneratePanelProps {
    * question whose answer points at a mode where the row actually works.
    */
   promptRequired: boolean;
-  /** Reference rows derived from this node's incoming edges. */
+  /** Rail rows: this node's incoming edges, then its focus crops (#1978). */
   references: ReferenceRailItem[];
+  /**
+   * Crops whose upload is still in flight (#1978), rendered as placeholder
+   * rows so the rail says something between the confirmed marquee and the
+   * landed asset.
+   */
+  pendingFocus?: ReadonlyArray<{ id: string; name: string }>;
   /** Enter / exit the canvas reference pick. */
   onAddReference: () => void;
+  /** Toggle the focus crop pick (#1978). */
+  onFocus: () => void;
+  /** Whether the focus pick is running. */
+  focusPicking: boolean;
   /** Whether the reference pick is running. */
   referencePicking: boolean;
-  /** Remove one reference (deletes its edge). */
+  /**
+   * Remove one rail row: an edge row cuts the edge, a crop row deletes the
+   * stored crop and reports the asset (#1978).
+   */
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert one reference as an `@` chip in the prompt. */
   onInsertReference: (item: ReferenceRailItem) => void;
@@ -134,7 +147,10 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   modeOptions,
   promptRequired,
   references,
+  pendingFocus,
   onAddReference,
+  onFocus,
+  focusPicking,
   referencePicking,
   onRemoveReference,
   onInsertReference,
@@ -158,6 +174,8 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
       <div className='flex items-start justify-between'>
         <VideoGenerateToolbar
           onReference={onAddReference}
+          onFocus={onFocus}
+          focusActive={focusPicking}
           referenceActive={referencePicking}
           slots={slots}
           slotUrls={slotUrls}
@@ -181,6 +199,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
 
       <ReferenceRail
         references={references}
+        pendingFocus={pendingFocus}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
         // Reference-to-video is the only mode that reads the pool — the other
