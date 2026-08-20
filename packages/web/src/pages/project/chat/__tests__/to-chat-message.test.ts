@@ -49,6 +49,42 @@ describe('一个工具调用走到哪了', () => {
     expect(view.toolCalls?.[0]?.status).toBe('error');
   });
 
+  it('工具自己报了错，跟这一轮跑没跑完无关', () => {
+    // 这一支跟「没跑完」是两回事：工具跑了、答复回来了、内容是一个失败。卡片
+    // 上要显示它自己的错，不是「被这一轮的结束扫掉的」。
+    const failed = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-web_fetch',
+          toolCallId: 'call-1',
+          state: 'output-error',
+          input: {},
+          errorText: '取不到那个地址',
+        },
+      ],
+    } as unknown as UIMessage;
+
+    for (const streaming of [true, false]) {
+      const view = toChatMessage(failed, { streaming });
+      expect(view.toolCalls?.[0]?.status).toBe('error');
+      expect(view.toolCalls?.[0]?.errorMessage).toBe('取不到那个地址');
+    }
+  });
+
+  it('用户拒了这次调用，同样是终态', () => {
+    const denied = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-web_fetch', toolCallId: 'call-1', state: 'output-denied', input: {} },
+      ],
+    } as unknown as UIMessage;
+
+    expect(toChatMessage(denied, { streaming: true }).toolCalls?.[0]?.status).toBe('error');
+  });
+
   it('答复回来了就是成功，跟这一轮跑没跑完无关', () => {
     const done = {
       ...replyWithTool('output-available'),

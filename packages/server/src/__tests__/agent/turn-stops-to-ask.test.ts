@@ -92,6 +92,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         ask_user_question: answering("问用户一个问题"),
         ask_user_choice: answering("让用户在几个选项里挑一个"),
         show_search_results: answering("把搜索结果摆出来"),
+        propose_canvas_action: answering("提一个画布操作"),
       },
     }),
     finalizeTurn: async () => [],
@@ -205,6 +206,14 @@ describe("a turn that asked the user something", () => {
     // word is the one the old loop used, so a search for it still finds
     // both.
     expect(exit).toBe("blocked");
+  });
+
+  it("keeps going after proposing a canvas action, which is also just shown", async () => {
+    // 这一条跟下面那条是两个不同的工具，各钉一次：`TOOLS_THAT_BLOCK` 是一份
+    // 名单，只钉住「名单里的会停」证明不了「名单外的不停」——把这个工具误加
+    // 进名单，画布建议一出现这一轮就结束，用户得再说一句才拿得到后面的话。
+    const { modelCalls } = await runTurn([asksFor("propose_canvas_action"), carriesOn]);
+    expect(modelCalls).toBe(2);
   });
 
   it("keeps going after a tool that only shows the user something", async () => {

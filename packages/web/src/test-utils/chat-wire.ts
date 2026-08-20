@@ -33,6 +33,19 @@ export interface WatchedWire {
   sent: () => Array<Record<string, unknown>>;
   /** The abort signal of the turn that is running. */
   signal: () => AbortSignal | null | undefined;
+  /**
+   * Make the next request be refused instead of opening a stream.
+   *
+   * Here rather than by stubbing `fetch` a second time: a case that wants one
+   * turn to succeed and the next to be refused cannot swap the stub between
+   * them -- the `Chat` has already taken the transport built over the first
+   * one, and the second stub is never reached. Which is a thing worth saying
+   * out loud, because a case written that way reads as though it works and
+   * quietly runs both turns against the first answer.
+   * @param status - The status to refuse with.
+   * @param message - The sentence the server writes for the reader.
+   */
+  refuseNext: (status: number, message: string) => void;
 }
 
 /**
@@ -46,6 +59,7 @@ export function stubChatWire(): WatchedWire {
   const encoder = new TextEncoder();
   let wire: ChatWire | null = null;
   let signal: AbortSignal | null | undefined;
+  let refusal: { status: number; message: string } | null = null;
   const bodies: Array<Record<string, unknown>> = [];
 
   vi.stubGlobal(
@@ -53,6 +67,14 @@ export function stubChatWire(): WatchedWire {
     vi.fn(async (_url: string, init?: RequestInit) => {
       signal = init?.signal;
       bodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+      if (refusal) {
+        const { status, message } = refusal;
+        refusal = null;
+        return new Response(JSON.stringify({ error: { code: status, message } }), {
+          status,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       let controller: ReadableStreamDefaultController<Uint8Array>;
       const body = new ReadableStream<Uint8Array>({
         start(c) {
@@ -78,6 +100,9 @@ export function stubChatWire(): WatchedWire {
     current: () => wire,
     sent: () => bodies,
     signal: () => signal,
+    refuseNext: (status, message) => {
+      refusal = { status, message };
+    },
   };
 }
 
