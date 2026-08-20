@@ -101,7 +101,8 @@ export interface VideoPanelViewModel {
   slotThumbnails: VideoSlotUrls;
   /**
    * Reference rail rows derived from incoming edges — everything connected,
-   * whether or not the prompt mentions it. What the rail SHOWS.
+   * whether or not the prompt mentions it. HALF of what the rail shows: the
+   * container appends this node's crops (below) to build the rail's rows.
    */
   references: ReferenceRailItem[];
   /**

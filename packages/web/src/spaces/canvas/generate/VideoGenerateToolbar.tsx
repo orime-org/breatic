@@ -48,11 +48,14 @@ interface VideoGenerateToolbarProps {
  * control per source slot the active mode collects (design §4.2 — "leftmost is
  * always Reference"; Focus took the seat beside it in #1978, user 2026-08-19).
  *
- * Reference and Focus are present in every mode. A connected node feeds the
- * prompt's `@` mentions whatever the model generates from, and a crop is one
- * more row in that same pool. The slots come from the mode, so a mode that
- * takes no source shows no slot rather than offering a pick the submit then
- * ignores, and a new slot is a registry entry rather than another branch here.
+ * Reference and Focus are present in every mode, and that is a decision about
+ * the ENTRY rather than a claim about the modes: only `ref` consumes the
+ * reference pool, and a row collected under any other mode goes dark in the
+ * rail (#1952). Keeping both entries live means the answer to "can I collect
+ * one here" never moves; the refusal belongs on the row, where it can explain
+ * itself. The slots come from the mode, so a mode that takes no source shows
+ * no slot rather than offering a pick the submit then ignores, and a new slot
+ * is a registry entry rather than another branch here.
  *
  * Its own row rather than a mode of the image toolbar: Style is the image
  * panel's alone, and the slots are this panel's alone. What the two rows are

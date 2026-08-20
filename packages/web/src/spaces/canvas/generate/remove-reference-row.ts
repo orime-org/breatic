@@ -7,9 +7,10 @@
  * A rail has two row sources and the ✕ means a different thing on each: an
  * edge row is a connection to cut, a crop row is a stored copy to delete plus
  * a delete-side ledger entry. The rule was the image panel's alone until
- * #1978 gave the video panel crops and all 27 lines were copied over
- * verbatim; it lives here now so the next panel inherits it instead of
- * copying it a third time.
+ * #1978 gave the video panel crops and its 27 lines of code were copied over
+ * character for character — comments aside, which were rewritten and lost the
+ * round-5 note now kept below. It lives here so the next panel inherits the
+ * rule instead of copying it a third time.
  */
 
 import { assetsApi } from '@web/data/api/assets';
