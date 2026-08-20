@@ -322,7 +322,17 @@ function BubbleBar({
   );
   // Whether the last transaction found a select-all, so the next one can tell
   // "the selection just became one" from "it already was". See `follow`.
-  const wasSelectAllRef = React.useRef(false);
+  //
+  // Seeded from the selection this bar is born looking at, not from `false`:
+  // the ref's whole job is to say what the previous look found, and on the
+  // first look that is whatever is there now. Hardcoding `false` would assert
+  // something never measured. (Three ways of mounting this component with a
+  // select-all already in place were tried and none of them holds: mounting
+  // resets the selection each time. So this is not a fix for a reachable
+  // defect — it is the initial value meaning what the name says.)
+  const wasSelectAllRef = React.useRef(
+    editor.state.selection instanceof AllSelection,
+  );
 
   // A ref, not `useMemo`: this key IS the plugin's identity, and `useMemo` is
   // a cache React is allowed to drop and recompute. A new key mid-life would
@@ -461,8 +471,8 @@ function BubbleBar({
     const follow = (): void => {
       const { view } = editor;
       const isAll = view.state.selection instanceof AllSelection;
-      // The ruling's FIRST moment is "全选那一刻" — the instant the selection
-      // becomes a select-all, not every transaction that happens to find one.
+      // The ruling's FIRST moment is the INSTANT the selection becomes a
+      // select-all, not every transaction that happens to find one.
       // Transactions arrive from everywhere: a co-editor's keystroke, the
       // editor regaining focus, an undo. Acting on all of them means the pin
       // is made from wherever the pointer last happened to be, at a moment
@@ -518,10 +528,12 @@ function BubbleBar({
     return true;
   }, [isWarranted, pinnedPoint]);
 
-  // The second of the two moments the ruling names: A MOUSE EVENT ARRIVES
-  // (user 2026-08-20, restating it — "鼠标移动是一种情况，能侦测到鼠标事件了。
-  // 侦测到鼠标事件的时候，就应该去重算一下。你滚滚轮的时候，不也是鼠标事件
-  // 嘛"). The first is the transaction that makes the selection a select-all.
+  // The second of the two moments the ruling names: A MOUSE EVENT ARRIVES.
+  // Not "the pointer moved" and not "the page scrolled" — any mouse event at
+  // all, a wheel gesture included, because each one carries a fresh reading
+  // of where the pointer is (user 2026-08-20; the wording is quoted in the
+  // design record, §5.1). The first moment is the transaction that makes the
+  // selection a select-all.
   //
   // So the question asked here is not "did the pointer cross a line" but
   // "there is a fresh reading of where the pointer is — does the bar have
