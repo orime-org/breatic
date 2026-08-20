@@ -805,6 +805,32 @@ describe('选中浮出条', () => {
     expect(after?.left).toBe(420);
   });
 
+  // 第九轮实现对抗查实：去掉 tabindex 只改了焦点的落点，没挡住焦点离开正文。
+  // 点条的内边距，正文失焦、选中高亮消失，而插件的 `preventHide`（捕获相
+  // mousedown，`dist/index.js:180`）让 `blurHandler`（`:100-103`）直接返回，条
+  // 不隐藏；之后没有事务，也就没有人再问一次该不该显示。
+  //
+  // 做法跟 Slate 官方 hovering-toolbar 示例一致（`site/examples/ts/
+  // hovering-toolbar.tsx`，注释原文「prevent toolbar from taking focus away
+  // from editor」）：在条上阻止 mousedown 的默认行为，焦点根本不动。
+  it('按下浮出条时阻止默认行为，焦点不离开正文', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const bar = document.querySelector<HTMLElement>(
+      '[data-testid="doc-selection-bubble-bar"]',
+    );
+    expect(bar).not.toBeNull();
+
+    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    act(() => {
+      bar?.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
   it('锚点离开正文可见区就隐藏，靠的是 hide 中间件', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);

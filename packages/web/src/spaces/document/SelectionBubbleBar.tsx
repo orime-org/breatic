@@ -591,13 +591,37 @@ function BubbleBar({
   //
   // The attribute is REMOVED, not set to -1. A negative tabindex keeps the
   // element focusable and only takes it out of the tab order, so clicking the
-  // bar's padding or a disabled button moved focus into it — which cleared the
-  // body's selection highlight and ate the editor's one and only blur, since
-  // both of the plugin's hide paths (`preventHide`, and the `relatedTarget`
-  // test) let that case through. The bar then stayed on screen through clicks
-  // anywhere else. A plain div carries no focusability to take away.
+  // bar's padding used to move focus into it. A plain div carries no
+  // focusability to take away.
+  //
+  // That alone was not enough, and the ninth adversarial round caught it:
+  // removing the attribute changes where focus LANDS, not whether it LEAVES the
+  // body. Measured — after clicking the bar's padding, focus was in neither the
+  // editor nor the bar, the body's selection highlight was gone, and the bar
+  // was still there. The plugin's capture-phase mousedown sets `preventHide`
+  // (`dist/index.js:180`), so `blurHandler` (`:100-103`) returns without
+  // hiding, and with no transaction to follow, nothing asks again.
+  //
+  // So the bar also refuses the focus change outright. Same move as Slate's
+  // official hovering-toolbar example, whose comment reads "prevent toolbar
+  // from taking focus away from editor"
+  // (`site/examples/ts/hovering-toolbar.tsx`). The buttons keep working: their
+  // commands run on click, and the editor never lost focus to begin with.
   React.useEffect(() => {
-    barRef.current?.removeAttribute('tabindex');
+    const bar = barRef.current;
+    if (!bar) return undefined;
+    bar.removeAttribute('tabindex');
+    /**
+     * Refuse the focus change a press would otherwise cause.
+     * @param event - The press.
+     */
+    const keepFocusInBody = (event: MouseEvent): void => {
+      event.preventDefault();
+    };
+    bar.addEventListener('mousedown', keepFocusInBody);
+    return () => {
+      bar.removeEventListener('mousedown', keepFocusInBody);
+    };
   });
 
   // Whether there is a selection at all, subscribed rather than read during
