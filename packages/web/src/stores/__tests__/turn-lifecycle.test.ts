@@ -154,6 +154,26 @@ describe('第一帧到达', () => {
     expect(firstFrames).toBe(1);
   });
 
+  it('会话报名字那一帧算开口，它不是 transient', async () => {
+    // 判据是「这一帧会不会进 write()」，不是「它是不是 data-」。服务端在心跳
+    // 之后写的第一帧就是 `data-conversation-titled`（`main-agent.ts` 的
+    // `execute` 第一行，每轮都写，名字没改也写），它没有 transient 标记，SDK
+    // 会把它变成消息的一部分、status 从 submitted 走到 streaming。把判据写成
+    // 「所有 data- 都不算」，这一帧就被漏掉，输入框要多等到 start 才清。
+    const wire = stubChatWire();
+    aConversation();
+    void sendInSession('c-1', '帮我找参考图');
+    await settle();
+
+    wire.current()?.push(OPENING_BEAT);
+    await settle();
+    expect(firstFrames).toBe(0);
+
+    wire.current()?.push({ type: 'data-conversation-titled', data: { title: '一句话' } });
+    await settle();
+    expect(firstFrames).toBe(1);
+  });
+
   it('说一次，不管这会儿有没有面板在看', async () => {
     const wire = stubChatWire();
     aConversation();
@@ -251,6 +271,83 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     // 没有第二条，也没有人在一条空闲会话上盖记号。
     expect(told).toHaveLength(1);
     expect(chat.messages).toHaveLength(0);
+  });
+
+  it('这一轮结束时那块表要撤掉，不管它是怎么结束的', async () => {
+    // 表是这一轮装的，也只为这一轮而装。一轮结束是它唯一的撤除点 —— 留着它，
+    // 十五秒后它照样到点，把这条会话记进放弃名单，而名单是下一轮结束时读的：
+    // 下一轮明明答完了，读者却收到一句「网络问题」。
+    const wire = stubChatWire();
+    const chat = aConversation();
+    void sendInSession('c-1', '第一句');
+    await settle();
+
+    // 这一轮还跑着的时候心跳间隔就回来了，所以表真的装上了。
+    answerConfig?.({ heartbeatIntervalMs: BEAT_MS });
+    await settle();
+
+    for (const chunk of turnOpens()) wire.current()?.push(chunk);
+    wire.current()?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+    wire.current()?.push({ type: 'text-end', id: 't1' });
+    for (const chunk of turnEnds()) wire.current()?.push(chunk);
+    wire.current()?.close();
+    await settle();
+    expect(chat.status).toBe('ready');
+
+    // 表原本会在这段时间里到点。
+    await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
+    await settle();
+
+    void sendInSession('c-1', '第二句');
+    await settle();
+    for (const chunk of turnOpens('t2')) wire.current()?.push(chunk);
+    wire.current()?.push({ type: 'text-delta', id: 't2', delta: '也好' });
+    wire.current()?.push({ type: 'text-end', id: 't2' });
+    for (const chunk of turnEnds()) wire.current()?.push(chunk);
+    wire.current()?.close();
+    await settle();
+
+    expect(chat.status).toBe('ready');
+    expect(told).toEqual([]);
+  });
+
+  it('轮次是一轮一个号，第一轮的答复不能装到第二轮头上', async () => {
+    // 闸问的是「回来的这个号，还是正在跑的那个吗」，所以号必须真的一轮一变。
+    // 号要是恒定的，第一轮那次迟到的答复就会认领第二轮 —— 装上的表按第一轮
+    // 按下的时刻算剩余时间，早就该到点了，于是第二轮刚开口就被判死。
+    const wire = stubChatWire();
+    const chat = aConversation();
+    void sendInSession('c-1', '第一句');
+    await settle();
+    // 第一轮问出去的那次，攥在手里晚点再答 —— 第二轮会把 answerConfig 覆盖掉。
+    const answerFirstTurn = answerConfig;
+
+    for (const chunk of turnOpens()) wire.current()?.push(chunk);
+    wire.current()?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+    wire.current()?.push({ type: 'text-end', id: 't1' });
+    for (const chunk of turnEnds()) wire.current()?.push(chunk);
+    wire.current()?.close();
+    await settle();
+    expect(chat.status).toBe('ready');
+
+    void sendInSession('c-1', '第二句');
+    await settle();
+
+    // 第一轮那次现在才回来，而正在跑的是第二轮。
+    answerFirstTurn?.({ heartbeatIntervalMs: BEAT_MS });
+    await settle();
+    await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
+    await settle();
+
+    for (const chunk of turnOpens('t2')) wire.current()?.push(chunk);
+    wire.current()?.push({ type: 'text-delta', id: 't2', delta: '也好' });
+    wire.current()?.push({ type: 'text-end', id: 't2' });
+    for (const chunk of turnEnds()) wire.current()?.push(chunk);
+    wire.current()?.close();
+    await settle();
+
+    expect(chat.status).toBe('ready');
+    expect(told).toEqual([]);
   });
 
   it('会话还在不算数，要看这一轮还在不在', async () => {

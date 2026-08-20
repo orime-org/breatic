@@ -355,6 +355,37 @@ describe('loading what came before', () => {
     expect(sent?.aborted).toBe(false);
   });
 
+  it('会话实例还在时，重新读它不许把「还能往前翻吗」覆盖回去', async () => {
+    // 这三样(列表、还能不能往前翻、翻到哪一轮了)是一体的:读者已经把这条
+    // 会话翻到了头,而服务端交回来的永远是最新那一页、它自己那份 `hasMore`
+    // 说的是「这一页之前还有」。只保住列表、让这一个跟着服务端走,屏幕上就
+    // 会重新出现一个「加载更早」按钮,按下去请求的是列表里已经有的那一页。
+    openChatAnswers({ hasMore: true });
+    await conversationRuntime.ensureLoaded('p-1');
+    await aTurnIsRunningIn('c-1');
+
+    vi.mocked(chatApi.messagesBefore).mockResolvedValue({
+      messages: [
+        {
+          id: 'm0',
+          role: 'user',
+          parts: [{ type: 'text', text: 'oldest' }],
+          content: 'oldest',
+          ts: '2026-08-01T00:00:00Z',
+          turnIndex: 0,
+        },
+      ],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.messagesBefore>>);
+    await conversationRuntime.loadEarlier('c-1');
+    expect(conversation()?.hasMore).toBe(false);
+
+    // 服务端这次交回来的那一页自称还有更早的。
+    await theConversationIsReadAgainFrom(60);
+
+    expect(conversation()?.hasMore).toBe(false);
+  });
+
   it('drops a page that no longer joins onto the list', async () => {
     openChatAnswers({ hasMore: true });
     await conversationRuntime.ensureLoaded('p-1');
