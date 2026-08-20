@@ -265,7 +265,7 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-muted-fg);
+  background: var(--color-muted-foreground);
   vertical-align: middle;
   line-height: 20px;
   animation: chat-waiting-dot 1.2s ease-in-out infinite;

@@ -88,8 +88,20 @@ describe('the figures the demo fixed', () => {
     expect(ruleBody('.chat-waiting-dot')).toContain('20px');
   });
 
-  it('takes its colour from the muted token rather than a literal', () => {
-    expect(ruleBody('.chat-waiting-dot')).toContain('var(--color-muted-fg)');
+  it('takes its colour from a token the rest of the sheet also uses', () => {
+    // 只查「写了 var(...)」查不出任何东西:一个拼错的 token 名照样是一句
+    // 合法的 `var()`,浏览器把它算成透明 —— 屏幕上什么都没有,而这条测试
+    // 照绿。这正是发生过的事(2026-08-20 真机量出来的:`--color-muted-fg`
+    // 全仓只有这一处,那个点是透明的)。
+    //
+    // 判据不是「它在这个文件里被定义过」——语义 token 由 Tailwind 从
+    // `@theme` 生成,文本里根本没有它的定义行。判据是「别处也在用它」:
+    // 一个活着的 token 名到处都是,一个拼错的只会出现一次。
+    const used = /background:\s*var\((--[a-z0-9-]+)\)/.exec(ruleBody('.chat-waiting-dot'));
+    expect(used).not.toBeNull();
+    const token = used![1]!;
+    const elsewhere = stylesheet().split(`var(${token})`).length - 1;
+    expect(elsewhere).toBeGreaterThan(1);
   });
 
   it('travels between the two states the demo set', () => {
