@@ -106,6 +106,7 @@ async function speakAndHearTitle(
     conversationId,
     history: [],
     onTitled: (named) => conversationRuntime.noteActivity(PROJECT, conversationId, named),
+    onFirstFrame: () => undefined,
   });
   void sendInSession(conversationId, said);
   await vi.waitFor(() => {

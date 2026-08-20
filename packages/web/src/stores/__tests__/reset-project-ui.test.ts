@@ -121,6 +121,7 @@ describe('resetProjectUiStores (#1771)', () => {
       conversationId: 'c-1',
       history: [],
       onTitled: () => undefined,
+      onFirstFrame: () => undefined,
     }).sendMessage({ text: '在跑的一轮' });
     await vi.waitFor(() => {
       expect(sent).toBeDefined();

@@ -112,6 +112,7 @@ describe('a reply arriving piece by piece', () => {
         conversationId: 'c1',
         history: [],
         onTitled: () => undefined,
+        onFirstFrame: () => undefined,
       }).sendMessage({ text: 'hello' });
       await waitFor(() => {
         expect(wire).not.toBeNull();

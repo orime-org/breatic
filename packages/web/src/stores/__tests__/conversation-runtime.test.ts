@@ -49,6 +49,7 @@ async function aTurnIsRunningIn(conversationId: string): Promise<void> {
     conversationId,
     history: [],
     onTitled: () => undefined,
+    onFirstFrame: () => undefined,
   });
   void sendInSession(conversationId, '一个要答很久的问题');
   await vi.waitFor(() => {

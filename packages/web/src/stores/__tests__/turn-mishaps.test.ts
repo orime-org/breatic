@@ -52,6 +52,7 @@ async function aTurnRunsAndEnds(): Promise<ReturnType<typeof chatSessionFor>> {
     conversationId: 'c-1',
     history: [],
     onTitled: () => undefined,
+    onFirstFrame: () => undefined,
   });
   await sendInSession('c-1', '找几张参考图');
   return chat;
@@ -70,9 +71,14 @@ afterEach(() => {
 
 describe('一轮没能跑完', () => {
   it('服务器写了话就原样转达，那是用他自己的语言写的', async () => {
+    // 信封就是 `middleware/error-handler.ts` 写出来的那个形状。这条用例原先
+    // 造的是 `{ error: "..." }`，服务端从来不答那个形状 —— 于是读它的那一支
+    // 从写下那天起就没被走到过，而线上每一次被拒的轮次都读不出服务端的话。
     theServerAnswers(
       async () =>
-        new Response('{"error":"You are out of credits."}', { status: 402 }),
+        new Response('{"error":{"code":402,"message":"You are out of credits."}}', {
+          status: 402,
+        }),
     );
 
     await aTurnRunsAndEnds();
@@ -120,6 +126,7 @@ describe('一轮没能跑完', () => {
       conversationId: 'c-1',
       history: [],
       onTitled: () => undefined,
+      onFirstFrame: () => undefined,
     });
     const running = sendInSession('c-1', '找几张参考图');
     await vi.waitFor(() => {
@@ -131,7 +138,10 @@ describe('一轮没能跑完', () => {
 
     // 他刚做完这件事，不用再告诉他一遍。
     expect(told).toEqual([]);
-    expect(chat.messages.at(-1)?.parts.some((p) => p.type === 'data-interrupted')).toBe(false);
+    // 这一轮一个字都没答上来（流开着但什么都没推），所以那条用户消息被收回 ——
+    // 跟心跳判死那条路一样，也跟输入框里还留着同一句话这件事对得上（第一帧没
+    // 到过，从来没清过）。定稿 §7.3.3。
+    expect(chat.messages).toHaveLength(0);
   });
 
   it('没人在看的时候说了也是白说，不留着以后讲', async () => {

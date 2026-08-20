@@ -69,6 +69,7 @@ describe('the API prefix has one definition', () => {
       conversationId: 'c1',
       history: [],
       onTitled: () => undefined,
+      onFirstFrame: () => undefined,
     }).sendMessage({ text: 'hi' });
 
     const [url] = fetching.mock.calls[0] ?? [];

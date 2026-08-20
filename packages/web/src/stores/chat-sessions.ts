@@ -21,6 +21,7 @@
 import { Chat } from '@ai-sdk/react';
 import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
+import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
@@ -57,6 +58,22 @@ export interface ChatSessionInit {
    * above it.
    */
   onTitled: (title: string | null) => void;
+  /**
+   * Called once per turn, when the first frame of it arrives.
+   *
+   * What it is for is emptying the composer, which happens then and not at the
+   * press: before the first frame the words are only in the box the reader
+   * typed them into, and a turn the server refuses leaves them exactly there
+   * with nothing to put back.
+   *
+   * It is told from here rather than watched from a panel because a panel is
+   * not always there to watch. Collapsing the agent column or switching to
+   * another conversation unmounts it while the turn goes on (A4), and a turn
+   * whose first frame lands in that gap would never have its box emptied --
+   * while a panel coming back to a turn already streaming would empty it a
+   * second time, over whatever the reader has typed since.
+   */
+  onFirstFrame: () => void;
 }
 
 /** The chunk the server names a conversation on. */
@@ -85,6 +102,36 @@ const projectOf = new Map<string, string>();
 const NOTHING_OPEN = new Chat<StoredUiMessage>({ id: 'no-conversation-yet', messages: [] });
 
 /**
+ * Say when a turn's stream opens, and pass every frame along untouched.
+ *
+ * This is the one place the moment is observable. `Chat` builds its own state
+ * object and takes no subscription to it, so `status` going from `submitted`
+ * to `streaming` -- which the SDK does on the very frame this sees
+ * (`ai@7.0.68` `index.js:17974`) -- cannot be watched from outside except by a
+ * render that happens to be mounted.
+ * @param stream - The turn's stream, as the transport built it.
+ * @param onFirstFrame - Told once, on the first frame of this stream.
+ * @returns The same frames, in the same order.
+ */
+function sayWhenItOpens(
+  stream: ReadableStream<UIMessageChunk>,
+  onFirstFrame: () => void,
+): ReadableStream<UIMessageChunk> {
+  let opened = false;
+  return stream.pipeThrough(
+    new TransformStream<UIMessageChunk, UIMessageChunk>({
+      transform(chunk, controller) {
+        if (!opened) {
+          opened = true;
+          onFirstFrame();
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+}
+
+/**
  * Build the transport one conversation's turns go out on.
  *
  * The body is ours, not the protocol's: the server takes one message and the
@@ -93,13 +140,15 @@ const NOTHING_OPEN = new Chat<StoredUiMessage>({ id: 'no-conversation-yet', mess
  * server what the conversation contains.
  * @param projectId - The project the conversation is in.
  * @param conversationId - The conversation being written to.
+ * @param onFirstFrame - Told when this conversation's turn starts answering.
  * @returns A transport pointed at the chat endpoint.
  */
 function transportFor(
   projectId: string,
   conversationId: string,
-): DefaultChatTransport<StoredUiMessage> {
-  return new DefaultChatTransport<StoredUiMessage>({
+  onFirstFrame: () => void,
+): ChatTransport<StoredUiMessage> {
+  const wire = new DefaultChatTransport<StoredUiMessage>({
     // Built from the one definition of the prefix rather than spelled out.
     // Two spellings is how both streaming endpoints once came to post at an
     // address the server does not serve, with nothing complaining.
@@ -124,34 +173,32 @@ function transportFor(
       };
     },
   });
+  return {
+    sendMessages: async (options) =>
+      sayWhenItOpens(await wire.sendMessages(options), onFirstFrame),
+    reconnectToStream: (options) => wire.reconnectToStream(options),
+  };
 }
 
 /**
- * Read a failed turn as the reader would hear it.
+ * The sentence our own server wrote for this reader, if it wrote one.
  *
  * What the transport throws for a refused turn is `new Error(responseText)`
  * (`ai@7.0.68` `dist/index.js:17351`) -- the body and nothing else, no status
- * on it. So a sentence of our own is recognised by its envelope: our errors
- * answer with `{ error: "..." }`, and anything else that answered is not ours
- * to quote.
+ * on it. So a sentence of our own is recognised by its envelope, and the
+ * envelope is the one `middleware/error-handler.ts` writes:
+ * `{ error: { code, message } }`. Anything else that answered -- a gateway, a
+ * proxy, a page of HTML -- is not ours to quote.
  *
  * A conversation the server no longer has is one of these, and it gets the
  * same treatment as the rest: said, and left. Opening a replacement and
  * putting the words on it would leave the reader watching their own sentence
  * appear in a conversation they were not in, while the one on screen still
  * shows the history it always had.
- * @param error - Whatever the send threw.
- * @returns Which kind of mishap it is, and the server's own words if it wrote
- *   any.
+ * @param error - Whatever the turn ended with.
+ * @returns The server's own words, or undefined if what answered was not ours.
  */
-function readTurnFailure(
-  error: unknown,
-): { kind: 'server'; message: string } | { kind: 'turn' } | { kind: 'network' } {
-  // Nothing answered at all. `fetch` rejects with a `TypeError` for a network
-  // error and with nothing else, which is the whole of what separates "never
-  // reached anything" from "reached something whose answer we cannot read" --
-  // and those are two different sentences to the reader.
-  if (error instanceof TypeError) return { kind: 'network' };
+function serverSentence(error: unknown): string | undefined {
   const body = error instanceof Error ? error.message : '';
   try {
     const envelope: unknown = JSON.parse(body);
@@ -159,15 +206,18 @@ function readTurnFailure(
       typeof envelope === 'object' &&
       envelope !== null &&
       'error' in envelope &&
-      typeof envelope.error === 'string'
+      typeof envelope.error === 'object' &&
+      envelope.error !== null &&
+      'message' in envelope.error &&
+      typeof envelope.error.message === 'string'
     ) {
-      return { kind: 'server', message: envelope.error };
+      return envelope.error.message;
     }
   } catch {
     // Not JSON at all, which is what a gateway or a dropped connection
-    // leaves. Falls through to the sentence the panel writes itself.
+    // leaves. The panel writes its own sentence for that.
   }
-  return { kind: 'turn' };
+  return undefined;
 }
 
 /**
@@ -198,6 +248,18 @@ function markTheReply(chat: Chat<StoredUiMessage>, mark: 'data-interrupted' | 'd
 /** The wait each running conversation is under, by conversation id. */
 const watchdogs = new Map<string, ReturnType<typeof setTimeout>>();
 
+/**
+ * How many turns each conversation has run, so a turn can be named.
+ *
+ * A turn is the unit everything about a running conversation belongs to, and
+ * until now nothing named one -- which is why work started for one turn could
+ * land on the conversation after that turn was over.
+ */
+const turnsRun = new Map<string, number>();
+
+/** Which turn each conversation is running right now, if any. */
+const runningTurn = new Map<string, number>();
+
 /** The chunk the server proves a running stream alive with. */
 const BEAT = 'data-heartbeat';
 
@@ -223,22 +285,90 @@ function stopWatching(conversationId: string): void {
  * list, so it appears -- while the words are also still in the box, which was
  * never emptied because no frame ever arrived. The same sentence in two
  * places, and a reader who sends again has said it twice.
- * @param projectId - The project it was running in.
- * @param conversationId - The conversation it was running in.
+ * @param conversationId - The conversation whose turn is being given up on.
  */
-function giveUpOn(projectId: string, conversationId: string): void {
+function giveUpOn(conversationId: string): void {
   const chat = sessions.get(conversationId);
   if (!chat) return;
-  const nothingAnswered = chat.status === 'submitted';
+  // Everything that follows is `onFinish`'s, the way it is for every other way
+  // a turn can end. All this leaves behind is which of the two silent ways
+  // this was, because stopping is stopping as far as the SDK is concerned and
+  // only one of them is worth a word.
+  givenUpOn.add(conversationId);
   void chat.stop();
+}
+
+/**
+ * The conversations whose current turn was given up on rather than stopped.
+ *
+ * Pressing stop and running out of heartbeats both reach the SDK as an abort
+ * and are indistinguishable there. They differ in one thing: a reader who
+ * pressed stop knows why the answer ended, and one whose connection died does
+ * not, so only the second is told anything.
+ */
+const givenUpOn = new Set<string>();
+
+/**
+ * Settle a turn, whichever way it ended.
+ *
+ * The one place a turn's ending is written down. Every way out arrives here:
+ * `onFinish` runs in `makeRequest`'s `finally` (`ai@7.0.68`
+ * `index.js:18038`), so a turn that finished, one that was aborted and one
+ * that failed before its stream ever opened all pass through -- the last of
+ * those because `activeResponse` is set before `sendMessages` is called
+ * (`:17941` before `:17950`).
+ *
+ * Having one place is the point rather than a tidiness. Split across an error
+ * handler and a watchdog, each did part of it: a turn the server refused kept
+ * the reader's sentence in the list while the same sentence sat in the
+ * composer, and nothing but the watchdog ever took one back.
+ * @param conversationId - The conversation whose turn ended.
+ * @param how - What the SDK says about how it ended.
+ * @param how.isAbort - This end stopped it.
+ * @param how.isDisconnect - Nothing answered, or the answer stopped arriving.
+ * @param how.isError - It ended by failing.
+ */
+function settleTurn(
+  conversationId: string,
+  how: { isAbort: boolean; isDisconnect: boolean; isError: boolean },
+): void {
+  const gaveUp = givenUpOn.delete(conversationId);
   stopWatching(conversationId);
-  if (nothingAnswered) {
-    const said = chat.messages[chat.messages.length - 1];
-    if (said?.role === 'user') chat.messages = chat.messages.slice(0, -1);
-  } else {
-    markTheReply(chat, 'data-interrupted');
+  runningTurn.delete(conversationId);
+  const chat = sessions.get(conversationId);
+  if (!chat) return;
+  const projectId = projectOf.get(conversationId) ?? '';
+
+  // Nothing answered means the reply was never pushed, so the last message is
+  // still the reader's own sentence. Read off the list rather than off
+  // `status`, which by now says how the turn ended rather than how far it got.
+  const last = chat.messages[chat.messages.length - 1];
+  const nothingAnswered = last?.role === 'user';
+
+  if (how.isAbort || how.isError) {
+    if (nothingAnswered) {
+      // Take it back: the renderer only holds it out of the list while the
+      // status is `submitted`, and the composer still has the same words --
+      // the first frame never arrived to empty it. Left alone, the sentence
+      // is in two places and sending again says it twice.
+      chat.messages = chat.messages.slice(0, -1);
+    } else {
+      markTheReply(chat, how.isAbort ? 'data-interrupted' : 'data-failed');
+    }
   }
-  tell({ projectId, conversationId, kind: 'network' });
+
+  if (gaveUp) {
+    tell({ projectId, conversationId, kind: 'network' });
+    return;
+  }
+  // A reader who pressed stop knows what they did.
+  if (how.isAbort || !how.isError) return;
+  const said = serverSentence(chat.error);
+  if (said !== undefined) {
+    tell({ projectId, conversationId, kind: 'server', message: said });
+    return;
+  }
+  tell({ projectId, conversationId, kind: how.isDisconnect ? 'network' : 'turn' });
 }
 
 /**
@@ -249,13 +379,13 @@ function giveUpOn(projectId: string, conversationId: string): void {
  * be covered. So the deadline is worked out against when the press happened,
  * and asking the server how long the budget is -- which is itself a request --
  * spends part of it rather than resetting it.
- * @param projectId - The project the conversation is in.
  * @param conversationId - The conversation being waited on.
+ * @param turn - Which turn of it this wait belongs to.
  * @param pressedAt - When the reader pressed send.
  */
 async function expectAnotherBeat(
-  projectId: string,
   conversationId: string,
+  turn: number,
   pressedAt: number,
 ): Promise<void> {
   let heartbeatIntervalMs: number;
@@ -270,15 +400,18 @@ async function expectAnotherBeat(
     console.error('[chat] the turn is running unwatched: no stream config', failed);
     return;
   }
-  // Ended while the question was out. Arming now would be waiting on a turn
-  // that is over.
-  if (!sessions.has(conversationId)) return;
+  // The turn this wait was for is over, or a later one has started. Asking
+  // whether the session is still here would not catch either: a session
+  // outlives every turn it runs, so arming on that answer puts a timer on an
+  // idle conversation, and fifteen seconds later it marks a finished reply as
+  // cut off and reports a network problem to a reader with nothing running.
+  if (runningTurn.get(conversationId) !== turn) return;
   stopWatching(conversationId);
   const spent = Date.now() - pressedAt;
   const left = heartbeatIntervalMs * SSE_HEARTBEAT_MISSES_ALLOWED - spent;
   watchdogs.set(
     conversationId,
-    setTimeout(() => giveUpOn(projectId, conversationId), Math.max(left, 0)),
+    setTimeout(() => giveUpOn(conversationId), Math.max(left, 0)),
   );
 }
 
@@ -297,17 +430,18 @@ export async function sendInSession(conversationId: string, said: string): Promi
   const chat = sessions.get(conversationId);
   if (!chat) return;
   const pressedAt = Date.now();
-  void expectAnotherBeat(projectOf.get(conversationId) ?? '', conversationId, pressedAt);
+  const turn = (turnsRun.get(conversationId) ?? 0) + 1;
+  turnsRun.set(conversationId, turn);
+  runningTurn.set(conversationId, turn);
+  void expectAnotherBeat(conversationId, turn, pressedAt);
   try {
     await chat.sendMessage({ text: said });
   } catch {
-    // Already said. `Chat` hands whatever went wrong to its own `onError`
-    // before it rethrows, and that is where the reader is told -- so what
+    // Already said. `Chat` hands whatever went wrong to its own `onFinish`
+    // before it rethrows, and that is where the turn was settled -- so what
     // reaches here is a second copy of news that has been delivered. Letting
     // it out would make every caller catch a failure they cannot add to, and
     // the press that started this is a click handler with nothing above it.
-  } finally {
-    stopWatching(conversationId);
   }
 }
 
@@ -315,16 +449,15 @@ export async function sendInSession(conversationId: string, said: string): Promi
  * Stop the turn a conversation is running, as the reader asked.
  *
  * Stopping is what this end can do; whether the server sees it as the reader
- * stopping or as the connection dying, it records the turn the same way. The
- * mark says what this end knows, which is that the reply was cut off.
+ * stopping or as the connection dying, it records the turn the same way. What
+ * this end knows -- that the reply was cut off -- is written down where every
+ * other ending is, in {@link settleTurn}.
  * @param conversationId - The conversation to stop.
  */
 export function stopChatSession(conversationId: string): void {
   const chat = sessions.get(conversationId);
   if (!chat) return;
   void chat.stop();
-  stopWatching(conversationId);
-  markTheReply(chat, 'data-interrupted');
 }
 
 /**
@@ -339,14 +472,15 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
   const existing = sessions.get(init.conversationId);
   if (existing) return existing;
 
-  const { projectId, conversationId, onTitled } = init;
+  const { projectId, conversationId, onTitled, onFirstFrame } = init;
   const chat = new Chat<StoredUiMessage>({
     id: conversationId,
     messages: init.history,
-    transport: transportFor(projectId, conversationId),
+    transport: transportFor(projectId, conversationId, onFirstFrame),
     onData: (part) => {
       if (part.type === BEAT) {
-        void expectAnotherBeat(projectId, conversationId, Date.now());
+        const turn = runningTurn.get(conversationId);
+        if (turn !== undefined) void expectAnotherBeat(conversationId, turn, Date.now());
         return;
       }
       if (part.type !== TITLED) return;
@@ -355,9 +489,13 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
     },
     // On the instance rather than on `useChat`: the hook only keeps callbacks
     // it was given when it was not handed a chat.
-    onError: (error) => {
-      markTheReply(chat, 'data-failed');
-      tell({ projectId, conversationId, ...readTurnFailure(error) });
+    //
+    // Only `onFinish` is taken. It runs for every ending including this one
+    // (`ai@7.0.68` `index.js:18031` then the `finally` at `:18036`), and
+    // taking both would mean two handlers deciding what a failed turn leaves
+    // behind -- which is the split this replaced.
+    onFinish: ({ isAbort, isDisconnect, isError }) => {
+      settleTurn(conversationId, { isAbort, isDisconnect, isError });
     },
   });
   sessions.set(init.conversationId, chat);
@@ -401,6 +539,9 @@ export function evictChatSession(conversationId: string): void {
   stopWatching(conversationId);
   sessions.delete(conversationId);
   projectOf.delete(conversationId);
+  turnsRun.delete(conversationId);
+  runningTurn.delete(conversationId);
+  givenUpOn.delete(conversationId);
 }
 
 /**
@@ -415,4 +556,7 @@ export function evictAllChatSessions(): void {
   }
   sessions.clear();
   projectOf.clear();
+  turnsRun.clear();
+  runningTurn.clear();
+  givenUpOn.clear();
 }

@@ -82,6 +82,29 @@ export function stubChatWire(): WatchedWire {
 }
 
 /**
+ * Stub `fetch` with one that refuses every turn the way our server refuses.
+ *
+ * The envelope matters and is not a detail: our error handler answers
+ * `{ error: { code, message } }` (`middleware/error-handler.ts`), and a double
+ * that answers some other shape lets a reader of that shape pass while the
+ * real one fails. That is exactly what happened once.
+ * @param status - The status to refuse with.
+ * @param message - The sentence the server writes for the reader.
+ */
+export function stubRefusingWire(status: number, message: string): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: { code: status, message } }), {
+          status,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ),
+  );
+}
+
+/**
  * The chunks a turn opens with, before any of its content.
  *
  * Named because every case that wants a reply on screen has to send them, and

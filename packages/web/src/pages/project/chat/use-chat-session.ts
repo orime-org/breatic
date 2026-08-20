@@ -173,11 +173,28 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
     [projectId],
   );
 
+  // The box is emptied when the first frame lands, and the session is what
+  // says so. What separates the press from the first frame is whether
+  // anything of this turn exists anywhere but in this browser: before, the
+  // words are only in the box the reader typed them into, and a turn the
+  // server refuses leaves them exactly there with nothing to put back.
+  //
+  // Told rather than watched, because this panel is not always here to watch:
+  // collapsing the column or switching conversations unmounts it while the
+  // turn goes on. A render-time watch would miss the turns whose first frame
+  // lands in that gap, and empty the box a second time for the turns it comes
+  // back to — over whatever the reader has typed since.
+  const emptyTheBox = React.useCallback(
+    (id: string) => (): void => conversationRuntime.setDraft(id, ''),
+    [],
+  );
+
   const chat = chatSessionFor({
     projectId,
     conversationId,
     history,
     onTitled: noteTitle(conversationId ?? ''),
+    onFirstFrame: emptyTheBox(conversationId ?? ''),
   });
   const { messages: onScreen, status, error } = useChat({ chat });
   // The stretch of a send with no turn to carry the wait: the first message in
@@ -211,18 +228,6 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
     void conversationRuntime.ensureLoaded(projectId);
   }, [projectId]);
 
-  // The box is emptied when the first frame lands, not when send is pressed.
-  // What separates the two is whether anything of this turn exists anywhere
-  // but in this browser: before, the words are only in the box the reader
-  // typed them into, and a turn the server refuses leaves them exactly there
-  // with nothing to put back. This conversation's box and no other -- another
-  // may be holding a sentence its reader has not sent.
-  React.useEffect(() => {
-    if (status !== 'streaming' || conversationId === undefined) return;
-    conversationRuntime.setDraft(conversationId, '');
-  }, [status, conversationId]);
-
-
   const send = React.useCallback(
     async (draft: string): Promise<void> => {
       const said = draft.trim();
@@ -237,6 +242,7 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
         conversationId: opened,
         history: NO_MESSAGES,
         onTitled: noteTitle(opened),
+        onFirstFrame: emptyTheBox(opened),
       });
       // Through the session rather than straight at the `Chat`: what a running
       // turn needs looking after -- the wait for the next beat, and giving up
@@ -244,7 +250,7 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
       // it would be a turn nobody was watching.
       await sendInSession(opened, said);
     },
-    [projectId, noteTitle],
+    [projectId, noteTitle, emptyTheBox],
   );
 
   const abort = React.useCallback((): void => {

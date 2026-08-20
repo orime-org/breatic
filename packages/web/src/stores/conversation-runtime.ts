@@ -21,7 +21,7 @@ import { create } from 'zustand';
 import { chatApi } from '@web/data/api/chat';
 import { ApiException } from '@web/data/api/types';
 import type { ConversationOnTheWire, OpenChatResult } from '@web/data/api/chat';
-import { evictChatSession, prependHistory } from '@web/stores/chat-sessions';
+import { evictAllChatSessions, evictChatSession, prependHistory } from '@web/stores/chat-sessions';
 import { readMishap, tell } from '@web/stores/chat-mishaps';
 import type { StoredUiMessage } from '@web/data/api/chat';
 
@@ -1597,6 +1597,13 @@ function leaveProject(projectId: string): void {
  * case after it.
  */
 export function _resetForTests(): void {
+  // The sessions too, and not as a courtesy: a `Chat` outlives the store it
+  // was seeded from, so a case that resets only the store and then opens the
+  // same conversation id gets the previous case's instance -- history and all
+  // -- and never sees the history it set up. One case in `ChatPanel.test.tsx`
+  // was passing on exactly that, drawing a message the case before it had
+  // left behind.
+  evictAllChatSessions();
   opening.clear();
   loadingEarlier.clear();
   visits.clear();

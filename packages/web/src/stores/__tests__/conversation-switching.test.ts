@@ -72,6 +72,7 @@ async function aTurnIsRunningIn(conversationId: string): Promise<void> {
     conversationId,
     history: [],
     onTitled: () => undefined,
+    onFirstFrame: () => undefined,
   });
   void sendInSession(conversationId, '一个要答很久的问题');
   await vi.waitFor(() => {
@@ -107,6 +108,7 @@ describe('switching away from a running turn and back', () => {
       conversationId: 'c-1',
       history: [],
       onTitled: () => undefined,
+      onFirstFrame: () => undefined,
     });
 
     vi.mocked(chatApi.readConversation).mockImplementation((id) =>
@@ -126,6 +128,7 @@ describe('switching away from a running turn and back', () => {
         conversationId: 'c-1',
         history: [],
         onTitled: () => undefined,
+        onFirstFrame: () => undefined,
       }),
     ).toBe(running);
     expect(sent?.aborted).toBe(false);

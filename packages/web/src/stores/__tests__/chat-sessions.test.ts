@@ -37,15 +37,15 @@ describe('会话的 Chat 实例', () => {
   });
 
   it('同一条会话拿到的是同一个', () => {
-    const first = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined });
-    const again = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined });
+    const first = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined, onFirstFrame: () => undefined });
+    const again = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined, onFirstFrame: () => undefined });
 
     expect(again).toBe(first);
   });
 
   it('两条会话各是各的', () => {
-    const one = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined });
-    const other = chatSessionFor({ projectId: 'p-1', conversationId: 'c-2', history: [], onTitled: () => undefined });
+    const one = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined, onFirstFrame: () => undefined });
+    const other = chatSessionFor({ projectId: 'p-1', conversationId: 'c-2', history: [], onTitled: () => undefined, onFirstFrame: () => undefined });
 
     expect(other).not.toBe(one);
   });
@@ -53,7 +53,7 @@ describe('会话的 Chat 实例', () => {
   it('第二次给的历史不动已有的那条会话', () => {
     // 这一条是 A4 的核心。一轮正在跑的时候，面板重新挂载会再读一次历史；
     // 拿它去覆盖，屏幕上正在长出来的那半句就没了。
-    const chat = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined });
+    const chat = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined, onFirstFrame: () => undefined });
     chat.messages = [
       {
         id: 'in-flight',
@@ -63,7 +63,7 @@ describe('会话的 Chat 实例', () => {
       },
     ];
 
-    const again = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined });
+    const again = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined, onFirstFrame: () => undefined });
 
     expect(again.messages).toHaveLength(1);
     expect(again.messages[0]?.id).toBe('in-flight');
@@ -78,6 +78,7 @@ describe('会话的 Chat 实例', () => {
       conversationId: 'c-1',
       history: [],
       onTitled: () => undefined,
+      onFirstFrame: () => undefined,
     });
     chat.messages = [
       {
@@ -101,9 +102,9 @@ describe('会话的 Chat 实例', () => {
   });
 
   it('驱逐之后再拿是新的一个', () => {
-    const before = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined });
+    const before = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined, onFirstFrame: () => undefined });
     evictChatSession('c-1');
-    const after = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined });
+    const after = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined, onFirstFrame: () => undefined });
 
     expect(after).not.toBe(before);
     expect(after.messages).toHaveLength(1);

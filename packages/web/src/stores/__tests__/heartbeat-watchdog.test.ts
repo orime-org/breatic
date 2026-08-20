@@ -56,6 +56,7 @@ async function aTurnGoesOut(): ReturnType<typeof chatSessionFor> extends infer T
     conversationId: 'c-1',
     history: [],
     onTitled: () => undefined,
+    onFirstFrame: () => undefined,
   });
   void sendInSession('c-1', '找几张参考图');
   // 冲刷微任务，不用 `vi.waitFor`：假时钟下它会自己往前拨，而这一轮的预算正是

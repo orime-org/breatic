@@ -56,6 +56,7 @@ async function aTurnIsRunningIn(conversationId: string): Promise<void> {
     conversationId,
     history: [],
     onTitled: () => undefined,
+    onFirstFrame: () => undefined,
   }).sendMessage({ text: '说点什么' });
   await vi.waitFor(() => {
     expect(sent).toBeDefined();

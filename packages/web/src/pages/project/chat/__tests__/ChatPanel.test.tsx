@@ -248,7 +248,11 @@ describe('ChatPanel', () => {
 
   it('says what the server said when it refused', async () => {
     const user = userEvent.setup();
-    theTurnIsRefused('{"error":"You do not have access to this project"}', 403);
+    // 信封照 `middleware/error-handler.ts` 写的那个形状，不是随手编一个。
+    theTurnIsRefused(
+      '{"error":{"code":403,"message":"You do not have access to this project"}}',
+      403,
+    );
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 

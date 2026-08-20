@@ -101,13 +101,24 @@ export function watchChatMishaps(watch: (mishap: ChatMishap) => void): () => voi
 }
 
 /**
+ * One mishap as a caller states it, before it is given its telling number.
+ *
+ * Distributive on purpose. A bare `Omit<ChatMishap, 'at'>` flattens the union
+ * to the keys its branches share, which is `kind` alone -- so `message` is
+ * dropped from the type entirely and `{ kind: 'server' }` with nothing to
+ * quote type-checks. Naming a bare type parameter in the check makes the
+ * conditional distribute, so each branch is narrowed on its own and keeps what
+ * it carries.
+ */
+type Reportable<M> = M extends unknown ? Omit<M, 'at'> : never;
+
+/**
  * Tell whoever is watching. Nobody watching means it is not told.
  * @param mishap - What went wrong.
  */
-export function tell(mishap: Omit<ChatMishap, 'at'>): void {
+export function tell(mishap: Reportable<ChatMishap>): void {
   told += 1;
-  const withIdentity = { ...mishap, at: told } as ChatMishap;
-  for (const watch of watchers) watch(withIdentity);
+  for (const watch of watchers) watch({ ...mishap, at: told });
 }
 
 /**
