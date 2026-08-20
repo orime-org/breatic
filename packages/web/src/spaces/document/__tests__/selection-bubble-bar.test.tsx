@@ -443,8 +443,9 @@ describe('选中浮出条', () => {
   /**
    * 全选那一档（A14）。
    *
-   * 规则是 user 2026-08-20 定的两条：全选时鼠标在正文区域内就把条摆在鼠标那儿、
-   * 不在就不显示；滚动的时候条已经显示就不动它，没显示才去判鼠标在哪。
+   * 规则是 user 2026-08-20 定的三条：全选那一刻鼠标在正文区域内就把条摆在鼠标
+   * 那儿、不在就不显示；鼠标从正文外进到正文里时，如果是全选而条还没摆出来，
+   * 就摆在鼠标那儿；条已经摆出来之后一律不再判、也不动。
    *
    * 「全选」的判据是 `AllSelection` —— 选了四分之三仍是区域选择，走上面那一组。
    */
@@ -646,7 +647,7 @@ describe('选中浮出条', () => {
       expect(rect?.top).toBe(192);
     });
 
-    it('滚动唤醒不绕开显示判据：编辑器没有焦点时，滚动不把条摆出来', async () => {
+    it('鼠标进正文不绕开显示判据：编辑器没有焦点时，条不摆出来', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -664,18 +665,13 @@ describe('选中浮出条', () => {
         editor.view.dom.blur();
       });
 
-      // 鼠标回到正文里再滚动。滚动这条路自己另写了一套判据，绕过了「编辑器
-      // 得有焦点」这一条，于是条会浮在正文上，而用户正在别的输入框里打字。
+      // 鼠标回到正文里。这一路自己也要问「编辑器有没有焦点」——它跟插件问的
+      // 是同一个 `isWarranted`，不是另写一套；早先鼠标这条路带着自己那份更短
+      // 的判据，于是条会浮在正文上，而用户正在别的输入框里打字。
       moveMouseTo(420, 250);
-      act(() => {
-        document
-          .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
-          ?.dispatchEvent(new Event('scroll'));
-      });
 
       expect(bubblePluginView(editor).isVisible).toBe(false);
     });
-
 
     it('文档里一个字都没有时，全选不显示这条', async () => {
       const editor = open('<p></p>');
@@ -696,7 +692,7 @@ describe('选中浮出条', () => {
       expect(shouldShowNow(editor)).toBe(false);
     });
 
-    it('已经是全选之后，别的事务不会重新钉——协作对端敲字也不会', async () => {
+    it('已经是全选之后，本地再来一笔事务也不会重新钉', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -711,9 +707,9 @@ describe('选中浮出条', () => {
         ?.getBoundingClientRect();
       expect(pinned?.left).toBe(420);
 
-      // 把鼠标挪到别处，然后造一个事务。选区仍是全选，所以「变成全选那一刻」
-      // 这个边沿不成立，钉的位置不该动——这正是 `wasSelectAllRef` 那个边沿
-      // 判据在挡的事，删掉它这条就红。
+      // 把鼠标挪到别处，然后造一个事务。选区仍是全选，钉的位置不该动。挡住
+      // 它的是 `pinToPointer` 开头那句 `if (pinnedPoint()) return true`——
+      // 已经钉过就直接答「有位置了」，不再看鼠标。把那一句删掉这条就红。
       moveMouseTo(700, 300);
       act(() => {
         editor.view.dispatch(editor.state.tr.insertText('x', 1, 1));
@@ -723,6 +719,93 @@ describe('选中浮出条', () => {
         .getReferencedVirtualElement?.()
         ?.getBoundingClientRect();
       expect(after?.left).toBe(420);
+    });
+
+    it('条钉住之后，协作对端敲字不会把它挪到当下的鼠标位置', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      moveMouseTo(420, 250);
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(
+        bubblePluginView(editor)
+          .getReferencedVirtualElement?.()
+          ?.getBoundingClientRect().left,
+      ).toBe(420);
+
+      // 真的走一遍 wire：另一个 Y.Doc 上打一个字，把增量应用回来。上一条用的
+      // 本地 dispatch 代替不了它——y-prosemirror 把每一笔远程变更投递成整篇
+      // 文档的替换，途中的选区跟本地事务里那个不是一回事。
+      const remote = new Y.Doc();
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
+      const paragraph = documentBodyFragment(remote).get(0) as Y.XmlElement;
+      (paragraph.get(0) as Y.XmlText).insert(0, 'x');
+
+      moveMouseTo(700, 300);
+      act(() => {
+        Y.applyUpdate(
+          doc,
+          Y.encodeStateAsUpdate(remote, Y.encodeStateVector(doc)),
+        );
+      });
+      remote.destroy();
+
+      expect(
+        bubblePluginView(editor)
+          .getReferencedVirtualElement?.()
+          ?.getBoundingClientRect().left,
+      ).toBe(420);
+    });
+
+    it('鼠标离开页面之后位置就不知道了——键盘全选不把条摆出来', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      moveMouseTo(420, 250);
+
+      // 指针离开页面：`mouseout` 冒泡到 document，而 `relatedTarget` 是空的
+      // ——它没有进入任何元素，也就是去了浏览器外面。
+      act(() => {
+        document.dispatchEvent(
+          new MouseEvent('mouseout', { bubbles: true, relatedTarget: null }),
+        );
+      });
+
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow(editor)).toBe(false);
+    });
+
+    it('页面内部的 mouseout 不算离开——最后那个坐标还作数', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      moveMouseTo(420, 250);
+
+      // 指针从一个元素移到另一个元素，页面内部每一次都这样发一遍。
+      // `relatedTarget` 指名了进入的那个元素，所以这不是离开。
+      act(() => {
+        document.dispatchEvent(
+          new MouseEvent('mouseout', {
+            bubbles: true,
+            relatedTarget: document.body,
+          }),
+        );
+      });
+
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow(editor)).toBe(true);
     });
 
     it('选了一部分时不看鼠标在哪——那一档跟着选区走', async () => {
@@ -933,23 +1016,23 @@ describe('选中浮出条', () => {
   // A9：浮出条整条不进 tab 序（定稿 §5.2，user 2026-08-19 拍定）。
   //
   // 理由是层次：顶部横条跟正文并排、常驻，这一条浮在正文**上面**，而浮在上面
-  // 的东西一旦拿走焦点就跟正文的焦点直接冲突。插件默认把容器设成
-  // `tabIndex = 0`（`dist/index.js:178`），六个按钮又是原生 `<button>`、天生
-  // 可聚焦，所以两样都要显式关掉。
-  it('浮出条整条不接受 Tab 焦点：容器和六个按钮都是 -1', async () => {
+  // 的东西一旦拿走焦点就跟正文的焦点直接冲突。六个按钮是原生 `<button>`、天生
+  // 可聚焦，所以每个都显式设成 -1。
+  //
+  // 容器那一半不在这里：插件默认给它 `tabIndex = 0`（`dist/index.js:178`），
+  // 而实现的做法是把属性整个删掉、不是设成 -1（-1 仍然可聚焦，只是不进 Tab
+  // 序，鼠标点得进去）。钉它的是上面「整条不可聚焦」那条的
+  // `hasAttribute('tabindex')`。这里读 `bar.tabIndex` 读不出区别——没有属性的
+  // div 本来就答 -1。
+  it('浮出条的六个按钮都不进 Tab 序', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
 
-    const bar = document.querySelector<HTMLElement>(
-      '[data-testid="doc-selection-bubble-bar"]',
-    );
     const buttons = Array.from(
       document.querySelectorAll<HTMLElement>('[data-testid^="doc-bubble-tool-"]'),
     );
 
-    expect(bar).not.toBeNull();
-    expect(bar?.tabIndex).toBe(-1);
     expect(buttons).toHaveLength(6);
     for (const button of buttons) {
       expect(button.tabIndex).toBe(-1);

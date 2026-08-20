@@ -218,6 +218,23 @@ function anchorRect(left: number, line: { top: number; bottom: number }): DOMRec
   return new DOMRect(left, top, 0, bottom - top);
 }
 
+/**
+ * Whether a viewport coordinate falls inside a box.
+ * @param point - A viewport coordinate.
+ * @param point.x - Its horizontal position.
+ * @param point.y - Its vertical position.
+ * @param box - The box to test against.
+ * @returns True when the point is within the box.
+ */
+function isInside(point: { x: number; y: number }, box: DOMRect): boolean {
+  return (
+    point.x >= box.left
+    && point.x <= box.right
+    && point.y >= box.top
+    && point.y <= box.bottom
+  );
+}
+
 interface SelectionBubbleBarProps {
   /** The editor this bar acts on. */
   editor: Editor;
@@ -317,20 +334,6 @@ function BubbleBar({
   const pluginKey = React.useMemo(() => new PluginKey('selectionBubbleBar'), []);
 
   /**
-   * Whether a viewport coordinate falls inside a box.
-   * @param point - A viewport coordinate.
-   * @param point.x - Its horizontal position.
-   * @param point.y - Its vertical position.
-   * @param box - The box to test against.
-   * @returns True when the point is within the box.
-   */
-  const isInside = (point: { x: number; y: number }, box: DOMRect): boolean =>
-    point.x >= box.left
-    && point.x <= box.right
-    && point.y >= box.top
-    && point.y <= box.bottom;
-
-  /**
    * Where the bar sits over a select-all, or null when it stays away.
    *
    * It never pins to the POINTER — that happens at the two moments the rule
@@ -359,15 +362,16 @@ function BubbleBar({
     const area = viewport.getBoundingClientRect();
     const sameSize =
       area.width === pin.area.width && area.height === pin.area.height;
-    // A zero-sized reading — a Space mid-switch, a collapsed panel — would make
-    // the ratio a division by zero and write NaN back over the only copy of the
-    // pinned point, and NaN never equals the new size either, so every later
-    // call would repeat it. There is nothing to rescale against, so keep what
-    // we have and wait for a real measurement.
-    const measurable =
-      pin.area.width > 0 && pin.area.height > 0
-      && area.width > 0 && area.height > 0;
-    if (sameSize || !measurable) {
+    // The ratio below divides by the new area. A zero reading has no producer
+    // we could name — Space switching remounts the whole bar (`ProjectPage`
+    // keys the outlet on the Space id) and collapsing a panel only narrows
+    // this box — so this is not a guard against some known event; it is the
+    // divisor's own domain. It is worth stating because the failure would be
+    // permanent rather than momentary: NaN would go back over the only copy of
+    // the pinned point, and NaN never equals the next size either, so every
+    // later call would divide by zero again. The old area needs no such test —
+    // a pin is only written after `isInside` accepted the pointer against it.
+    if (sameSize || area.width === 0 || area.height === 0) {
       return { x: pin.x, y: pin.y };
     }
     const moved = {
@@ -412,11 +416,14 @@ function BubbleBar({
      */
     const follow = (): void => {
       if (editor.state.selection instanceof AllSelection) {
-        // Idempotent: `pinToPointer` keeps an existing pin, so a later
-        // transaction over the same select-all — a co-editor's keystroke, say —
-        // cannot move a bar the reader already has. An edge test on top of that
-        // would be a second copy of the same guarantee; measured, deleting
-        // either one alone changes nothing and deleting both moves the bar.
+        // Idempotent, which is what makes the ruling's third line ("once the
+        // bar is up, nothing re-decides where it sits") hold on this path:
+        // `pinToPointer` returns early when a pin already exists, so a later
+        // transaction over the same select-all — a co-editor's keystroke, say
+        // — cannot move a bar the reader already has. That early return is the
+        // single copy of the guarantee. Asking here as well whether the
+        // selection just BECAME a select-all would be a second copy of it, and
+        // two copies of one rule drift apart.
         pinToPointer();
         return;
       }
@@ -475,17 +482,24 @@ function BubbleBar({
   // name a scroll instead, which meant a reader whose pointer was already back
   // over the text had to scroll before the bar would appear (user 2026-08-20).
   //
-  // Read off `mousemove` rather than `mouseenter` on the viewport because the
-  // answer has to be an EDGE — inside now, outside on the previous reading. A
-  // pointer wandering around inside the body must not re-decide anything: once
-  // the bar is up it stays where it was put.
+  // `mousemove` rather than `mouseenter`, and on `document` rather than on the
+  // viewport, for one reason: the pointer's position has to be known
+  // CONTINUOUSLY, not just at the crossing. The first of the two moments reads
+  // it long after any crossing — a select-all made from the keyboard asks
+  // "where is the pointer right now", and `mouseenter` stopped reporting the
+  // moment it fired. The same need explains `document`: a pointer that walks
+  // out of the body has to be seen leaving, or the last coordinate inside
+  // would stand as the current one.
   //
-  // `wheel` feeds the same reading: a wheel gesture moves the text under a
-  // still pointer, and it is the only pointer-bearing event a scroll produces
-  // (`scroll` itself is a plain `Event`, no coordinates at all).
+  // The crossing itself is then computed rather than received — `crossedIn`
+  // below compares this reading with the previous one.
   //
-  // On `document`, not on the body: the question is whether the pointer is
-  // INSIDE the body area, so the moment it leaves has to be seen too.
+  // `wheel` is a second source for the same reading, and it earns its place in
+  // exactly one case: the pointer has not moved since the page appeared, so no
+  // `mousemove` ever fired and the position is unknown. A wheel gesture
+  // carries coordinates (`scroll` is a plain `Event` and carries none), so a
+  // reader who select-alls from the keyboard without touching the mouse gets
+  // the bar on the first scroll rather than never.
   React.useEffect(() => {
     /**
      * Record where the pointer is, and raise the bar if this is the crossing.
@@ -495,11 +509,31 @@ function BubbleBar({
       const point = { x: event.clientX, y: event.clientY };
       const previous = pointerRef.current;
       pointerRef.current = point;
+      // Both early exits read a field and nothing else; the measurement below
+      // makes the browser settle layout, and this handler runs on every
+      // pointer move anywhere in the document. A bar already placed has no
+      // second moment to decide, and a selection that is not a select-all has
+      // no pin to place — `pinToPointer` would refuse on both counts anyway,
+      // several lines and one forced layout later.
+      if (pinnedRef.current) return;
+      const { view } = editor;
+      if (!(view.state.selection instanceof AllSelection)) return;
       const area = viewport.getBoundingClientRect();
+      // The ruling's second line, word for word: the pointer crossed FROM
+      // outside INTO the body. Its second half has no test, and the honest
+      // reason is that nothing can currently tell the two readings apart:
+      // holding "not pinned yet, pointer already inside" across two pointer
+      // moves needs some show condition to go from false to true without a
+      // transaction, and every way the editor regains focus brings one along —
+      // which `follow` answers first, pinning before this handler is asked
+      // again. That is reasoning, not a measurement; what was measured is the
+      // other direction (make this half constant and no test changes colour).
+      // It stays because it is the sentence itself, and because the early
+      // return above answers a different sentence — the third line, "once the
+      // bar is up, nothing re-decides where it sits".
       const crossedIn =
         isInside(point, area) && !(previous && isInside(previous, area));
-      if (!crossedIn || pinnedRef.current) return;
-      const { view } = editor;
+      if (!crossedIn) return;
       if (!isWarranted(view) || !pinToPointer()) return;
       view.dispatch(view.state.tr.setMeta(pluginKey, 'show'));
       view.dispatch(view.state.tr.setMeta(pluginKey, 'updatePosition'));
@@ -511,17 +545,29 @@ function BubbleBar({
      * select-all made while the pointer sits in another application would put
      * the bar where the pointer used to be. It also makes the next return a
      * genuine crossing rather than a move within the area.
+     *
+     * `mouseout` with no `relatedTarget`, not `mouseleave`: `mouseleave` does
+     * not bubble (MDN, Element/mouseleave_event: "mouseleave does not bubble
+     * and mouseout does"), and its target is an Element, so a listener bound
+     * here in the bubbling phase would never run. `mouseout` bubbles to
+     * `document` by definition, and its `relatedTarget` is "the EventTarget
+     * the pointing device entered to" (MDN, MouseEvent/relatedTarget), which
+     * is null exactly when the pointer entered nothing — it left the page.
+     * Inside the page every `mouseout` names the element being entered, so
+     * this cannot fire while the pointer is still over the body.
+     * @param event - The pointer leaving something.
      */
-    const forget = (): void => {
+    const forget = (event: MouseEvent): void => {
+      if (event.relatedTarget !== null) return;
       pointerRef.current = null;
     };
     document.addEventListener('mousemove', remember);
     document.addEventListener('wheel', remember);
-    document.addEventListener('mouseleave', forget);
+    document.addEventListener('mouseout', forget);
     return () => {
       document.removeEventListener('mousemove', remember);
       document.removeEventListener('wheel', remember);
-      document.removeEventListener('mouseleave', forget);
+      document.removeEventListener('mouseout', forget);
     };
   }, [editor, viewport, isWarranted, pinToPointer, pluginKey]);
 
