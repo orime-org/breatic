@@ -33,8 +33,8 @@ interface PickPurposeUi {
   /**
    * Test id of the tool that starts this pick, per panel. Focus returns there
    * when the banner unmounts. Partial on purpose: most purposes belong to one
-   * panel — style and focus are the image panel's, the frame slots are the
-   * video panel's, and only reference exists in both.
+   * panel — style is the image panel's, the frame and character slots are the
+   * video panel's. Reference and focus are the two both panels offer.
    */
   trigger: Partial<Record<PickingPanelKind, string>>;
 }

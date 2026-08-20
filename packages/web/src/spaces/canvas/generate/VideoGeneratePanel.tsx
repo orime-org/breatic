@@ -62,7 +62,7 @@ interface VideoGeneratePanelProps {
    * question whose answer points at a mode where the row actually works.
    */
   promptRequired: boolean;
-  /** Reference rows derived from this node's incoming edges. */
+  /** Rail rows: this node's incoming edges, then its focus crops (#1978). */
   references: ReferenceRailItem[];
   /**
    * Crops whose upload is still in flight (#1978), rendered as placeholder
@@ -78,7 +78,10 @@ interface VideoGeneratePanelProps {
   focusPicking: boolean;
   /** Whether the reference pick is running. */
   referencePicking: boolean;
-  /** Remove one reference (deletes its edge). */
+  /**
+   * Remove one rail row: an edge row cuts the edge, a crop row deletes the
+   * stored crop and reports the asset (#1978).
+   */
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert one reference as an `@` chip in the prompt. */
   onInsertReference: (item: ReferenceRailItem) => void;

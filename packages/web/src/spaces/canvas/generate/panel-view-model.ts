@@ -212,7 +212,9 @@ export function buildGeneratePanelViewModel(input: {
   // the #1675 execute gate then blocks submitting an i2i task with no source.
   // Focus crops (#1782): stored on the node as a plain array — collaborative
   // Yjs data, untrusted. ONE sanitizer shared with the pool-cap count so
-  // every reader agrees on what an entry is (validFocusImages).
+  // every reader agrees on what an entry is (validFocusImages). Which of them
+  // ride the payload is `mentionedReferenceUrls`, shared with the video panel
+  // since #1978 gave that panel crops too.
   const focusImages: FocusImage[] = validFocusImages(content?.focusImages);
 
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
