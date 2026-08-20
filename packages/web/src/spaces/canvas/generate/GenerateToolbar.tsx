@@ -44,12 +44,13 @@ interface GenerateToolbarProps {
  * carries the same sentence as the card's hint while empty (#1946). (Mark
  * was dropped 2026-07-17, user decision C: its intent is already covered by
  * Focus). Reference and Focus are live in BOTH modes and neither takes a
- * disabled flag: the canvas pick stopped scoping by mode in #1797, so what a
- * t2i node cannot use is refused on the reference ROW, which dims and names
- * the mode to switch to (#1952 / #1986). Style is the one that can go dark
- * here, and on a different axis — the active MODEL's `style_images`
- * capability, never the mode (#1664). Focus crops a region into a standalone
- * reference (#1782).
+ * disabled flag. Neither pick scopes by mode: the reference one stopped in
+ * #1797, and the focus one never did — its candidate rule asks only for a
+ * non-empty idle image node. So what a t2i node cannot use is refused on the
+ * reference ROW, which dims and says why this mode has no use for it
+ * (#1952 / #1986). Style is the one that can go dark here, and on a different
+ * axis — the active MODEL's `style_images` capability, never the mode
+ * (#1664). Focus crops a region into a standalone reference (#1782).
  * @param root0 - Component props.
  * @param root0.onReference - Enter the reference-pick mode.
  * @param root0.referenceActive - Whether the reference pick is running.

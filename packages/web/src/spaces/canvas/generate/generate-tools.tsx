@@ -60,11 +60,11 @@ interface ToggleToolProps {
  *
  * It takes no disabled flag, and that is a decision about ENTRIES rather than
  * an omission: a toggle only COLLECTS something, and what the active mode
- * cannot use is refused on the row it produced, where the refusal can name the
- * mode to switch to (#1952 / #1986). A dark entry has nowhere to say that — a
- * natively disabled button dispatches no click at all. {@link SlotTool} does
- * take one, on a different axis: a slot HOLDS a value, and the model's
- * declared capability decides whether it can hold one at all.
+ * cannot use is refused on the row it produced, where the refusal can say why
+ * this mode has no use for it (#1952 / #1986). A dark entry cannot say even
+ * that — a natively disabled button dispatches no click at all.
+ * {@link SlotTool} does take one, on a different axis: a slot HOLDS a value,
+ * and the model's declared capability decides whether it can hold one at all.
  * @param root0 - Component props.
  * @param root0.testId - Stable test id.
  * @param root0.label - Visible + a11y label.

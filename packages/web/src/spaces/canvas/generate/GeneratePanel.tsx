@@ -180,13 +180,13 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   const currentModel = models.find((m) => m.name === model);
   // Text-to-image generates from scratch and ignores SOURCE IMAGES (§2.5).
   // Nothing that COLLECTS one is refused for it: the Reference and Focus
-  // buttons are live in both modes, and the canvas pick has not scoped by mode
-  // since #1797. The scoping happens where the image would be USED — the rail
-  // dims the CONTENT of its reference rows and refuses their insert (#1952 —
-  // their ✕ stays live), and the @-picker hides them. Every refusal therefore
-  // sits on the row, which can name the mode to switch to; an entry that goes
-  // dark can only swallow the click (#1986, user 2026-08-19). i2i uses the
-  // full pool.
+  // buttons are live in both modes, and neither pick scopes by mode — the
+  // reference one stopped in #1797, the focus one never did. The scoping
+  // happens where the image would be USED — the rail dims the CONTENT of its
+  // reference rows and refuses their insert (#1952 — their ✕ stays live), and
+  // the @-picker hides them. Every refusal therefore sits on the row, which
+  // can say why this mode has no use for it; an entry that goes dark can only
+  // swallow the click (#1986, user 2026-08-19). i2i uses the full pool.
   const imageSourcesOff = !imageModeTakesReferences(mode);
   // shrink-0 keeps the fixed-size footer icons from being squeezed when the
   // pickers' labels run long (the footer row has no flex-wrap by design).
