@@ -73,6 +73,22 @@ vi.mock("@server/modules/notification/notification.service.js", async (io) => {
   };
 });
 
+// 记下每一次全账号求和，好断言企业档那条路根本没走到它。
+const usageCalls: string[] = [];
+
+vi.mock("@server/modules/asset/assetUsage.service.js", async (io) => {
+  const actual = await io<Record<string, unknown>>();
+  return {
+    ...actual,
+    accountStorageUsage: async (userId: string) => {
+      usageCalls.push(userId);
+      return (actual.accountStorageUsage as (u: string) => Promise<number>)(
+        userId,
+      );
+    },
+  };
+});
+
 const throttleCtl = { fail: false };
 
 vi.mock("@server/modules/asset/storage-notice-throttle.js", async (io) => {
@@ -234,15 +250,16 @@ const BASE_STORAGE = getMembershipLimits("base").storage_bytes;
 const PRO_STORAGE = getMembershipLimits("pro").storage_bytes;
 
 describe("assertStorageAllowance", () => {
-  it("lets a write through while there is room, and answers the remaining bytes", async () => {
+  it("lets a write through while there is room", async () => {
+    // 它不回答「还剩多少」—— 那是另一个问题、另一批读者（#120 的属性页）。
+    // 这里能观察到的只有「过了」和「没过」，而这正是调用方需要知道的全部。
     const { userId, personalStudioId } = await insertUser("base");
     const projectId = await insertProject(personalStudioId, userId);
     await seedAsset(personalStudioId, userId, 1024);
 
-    const allowance = await assertStorageAllowance(projectId, "upload");
-    expect(allowance.limitBytes).toBe(BASE_STORAGE);
-    expect(allowance.usedBytes).toBe(1024);
-    expect(allowance.remainingBytes).toBe(BASE_STORAGE - 1024);
+    await expect(
+      assertStorageAllowance(projectId, "upload"),
+    ).resolves.toBeUndefined();
   });
 
   it("refuses with 507 once the account is at its ceiling", async () => {
@@ -272,9 +289,10 @@ describe("assertStorageAllowance", () => {
     const projectId = await insertProject(teamStudioId, admin.userId);
     await seedAsset(editor.personalStudioId, editor.userId, BASE_STORAGE);
 
-    const allowance = await assertStorageAllowance(projectId, "upload");
-    expect(allowance.limitBytes).toBe(PRO_STORAGE);
-    expect(allowance.usedBytes).toBe(0);
+    // 判操作者的话这里会抛：editor 自己那份正好压满 base 的上限。
+    await expect(
+      assertStorageAllowance(projectId, "upload"),
+    ).resolves.toBeUndefined();
   });
 
   it("sums the admin's whole account, not just the studio being written to", async () => {
@@ -315,15 +333,29 @@ describe("assertStorageAllowance", () => {
     });
   });
 
-  it("lets the enterprise tier through with a null ceiling", async () => {
+  it("does not measure an account it has no ceiling to compare against", async () => {
+    // 企业档没有可比的上限，那次跨 studio 的求和就没人会读 —— 早返回排在它
+    // 之前。把顺序换回去这条会红（那次求和会真的发生）。
+    const { userId, personalStudioId } = await insertUser("enterprise");
+    const projectId = await insertProject(personalStudioId, userId);
+    const before = usageCalls.length;
+
+    await assertStorageAllowance(projectId, "upload");
+
+    expect(usageCalls.length).toBe(before);
+  });
+
+  it("lets the enterprise tier through however much it holds", async () => {
+    // 同样的用量在任何一个配置了上限的档位上都会被拒。「上限是 null 而不是
+    // 编出来的数」由 membership-tier-lookup 那套直接钉在 getStudioStorageQuota
+    // 上，这里钉的是产品规则本身：企业档放行。
     const { userId, personalStudioId } = await insertUser("enterprise");
     const projectId = await insertProject(personalStudioId, userId);
     await seedAsset(personalStudioId, userId, PRO_STORAGE * 10);
 
-    const allowance = await assertStorageAllowance(projectId, "generate");
-    expect(allowance.limitBytes).toBeNull();
-    expect(allowance.remainingBytes).toBeNull();
-    expect(allowance.usedBytes).toBe(PRO_STORAGE * 10);
+    await expect(
+      assertStorageAllowance(projectId, "generate"),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -374,9 +406,9 @@ describe("assertStorageAllowance — telling the admin", () => {
 
     const rows = await bellRows(adminUserId);
     expect(rows).toHaveLength(1);
-    // Both ids, because they answer different questions: the account is what
-    // is full, the studio is only where this refusal happened.
-    expect(rows[0]!.payload).toMatchObject({ studioId });
+    // The row records WHERE it happened. The line the admin reads says only
+    // that storage is full, because what is full is the account.
+    expect(rows[0]!.payload).toEqual({ studioId });
     expect(sentMail).toHaveBeenCalledTimes(1);
   });
 
@@ -413,7 +445,10 @@ describe("assertStorageAllowance — telling the admin", () => {
     expect(await bellRows(adminUserId)).toHaveLength(1);
   });
 
-  it("still refuses with 507 when the mail leg throws", async () => {
+  it("still refuses with 507 when anything after the bell throws", async () => {
+    // 替身让 sendBestEffortMail 抛，而真实的那个把一切吞进 logger.error、
+    // 生产里永不抛 —— 所以这条钉的不是「邮件失败」，是「通知那一整段之后
+    // 无论抛出什么，拒绝都还在」。邮件自身的失败由它自己那层兜住。
     const { projectId } = await fullAccount();
     mailCtl.fail = true;
     await expect(assertStorageAllowance(projectId, "upload")).rejects.toMatchObject(

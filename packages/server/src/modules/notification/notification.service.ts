@@ -691,10 +691,16 @@ export async function markRead(id: string, userId: string): Promise<void> {
 
 /** Payload for `storage.quota_exceeded` — where the refusal happened. */
 export interface StorageQuotaExceededPayload {
-  /** The studio whose project the refused write was aimed at. */
+  /**
+   * The studio whose project the refused write was aimed at.
+   *
+   * The bell line does not say it, and deliberately: what filled up is the
+   * ACCOUNT, summed across every studio it administers, so naming one studio
+   * there would send the reader to look at somewhere that may hold hardly
+   * anything. It is on the row because the row is the record of one refusal,
+   * and a question about a particular notice has to be answerable later.
+   */
   studioId: string;
-  /** That studio's name, so the bell line can say where without a lookup. */
-  studioName: string;
 }
 
 /**

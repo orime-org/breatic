@@ -4,7 +4,9 @@
 import { isDedupHit, type PresignResponse } from '@web/data/api/assets';
 import { validFocusImages } from '@web/data/focus-images';
 import {
+  errorStatus,
   retryTransient,
+  STORAGE_FULL_STATUS,
   type UploadClientConfig,
 } from '@web/data/upload/upload-retry';
 import {
@@ -152,9 +154,11 @@ class MediaUploadError extends Error {
 }
 
 /**
- * Recover the failure reason from a rejected sub-upload, defaulting to
- * `upload` for anything that is not a {@link MediaUploadError} (an unexpected
- * throw is a transient failure as far as the user is concerned).
+ * Recover the failure reason from a rejected sub-upload.
+ *
+ * A {@link MediaUploadError} already carries one. Otherwise a 507 answer means
+ * the account is out of room, and anything else is a transient failure as far
+ * as the user is concerned.
  * @param err - The rejection value.
  * @returns The failure reason to report.
  */
@@ -168,16 +172,14 @@ function failureReasonOf(err: unknown): UploadFailureReason {
  *
  * Read off the status rather than the message: the sentence is localized on
  * the server side and matching on it would break the moment anyone edits the
- * copy or a user switches language.
+ * copy or a user switches language. Both the status reader and the number
+ * itself come from the retry module, which asks the other half of the same
+ * question — two copies would have to be kept in step by hand.
  * @param err - The rejection value.
  * @returns True for a 507 answer.
  */
 function isStorageFull(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as { status?: unknown }).status === 507
-  );
+  return errorStatus(err) === STORAGE_FULL_STATUS;
 }
 
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */
@@ -525,15 +527,24 @@ export interface FillNodeDeps {
   onExtractRejected?: (nodeId: string) => void;
   /**
    * Called INSTEAD of {@link FillNodeDeps.setError} when the browser could not
-   * fingerprint the file, so the upload was refused up front (no hash → no
-   * ledger row → the node would pin an orphan). The caller owns the whole
-   * outcome here because it differs from a transient failure in two ways: the
-   * remedy (reload — the hashing worker's own code is what broke) can only be
-   * said in a localized toast, and the file must NOT be stashed for Retry,
-   * since retrying on this page hits the same broken worker. Absent → falls
-   * back to the plain error write-back.
+   * Hand the whole outcome of a failed upload to the caller, reason and all.
+   *
+   * Every reason needs something only the caller can do — pick or clear the
+   * Retry stash, and say the remedy in the reader's own language — and what
+   * each one needs differs: a hashing refusal must not be stashed (retrying on
+   * this page hits the same broken worker) and a full account must not be
+   * either (nobody frees storage in the seconds a retry takes), while an
+   * ordinary transient failure must be. This started as a hook for the hashing
+   * case alone; a second reason with the same needs made the per-reason shape
+   * the wrong one, since every new reason then has to be remembered in two
+   * places. Absent → falls back to the plain fixed-English write-backs below.
    */
-  onHashUnavailable?: (nodeId: string, file: File, lease: UploadLease) => void;
+  onUploadFailure?: (
+    reason: UploadFailureReason,
+    nodeId: string,
+    file: File,
+    lease: UploadLease,
+  ) => void;
   /**
    * Open the lease (`handling` + owner triple); `undefined` = node gone.
    * The returned token threads through to the write-backs below.
@@ -596,22 +607,27 @@ function uploadFailed(
   nodeId: string,
   file: File,
   lease: UploadLease,
-  deps: Pick<FillNodeDeps, 'setError' | 'onHashUnavailable'>,
+  deps: Pick<FillNodeDeps, 'setError' | 'onUploadFailure'>,
 ): void {
-  if (reason === 'storage') {
-    deps.setError(nodeId, `Storage is full: ${file.name}`, lease);
+  if (deps.onUploadFailure) {
+    deps.onUploadFailure(reason, nodeId, file, lease);
     return;
   }
-  if (reason === 'hash') {
-    if (deps.onHashUnavailable) {
-      deps.onHashUnavailable(nodeId, file, lease);
-      return;
-    }
-    deps.setError(nodeId, `Could not read file: ${file.name}`, lease);
-    return;
-  }
-  deps.setError(nodeId, `Upload failed: ${file.name}`, lease);
+  deps.setError(nodeId, WIRE_ERROR[reason](file.name), lease);
 }
+
+/**
+ * The fixed-English sentence each failure writes onto the node.
+ *
+ * Fixed English because it goes into Yjs and every collaborator renders it, so
+ * it must not freeze the language of whoever happened to be uploading into the
+ * shared document. The filename is the locale-free part that says which file.
+ */
+const WIRE_ERROR: Record<UploadFailureReason, (name: string) => string> = {
+  hash: (name) => `Could not read file: ${name}`,
+  storage: (name) => `Storage is full: ${name}`,
+  upload: (name) => `Upload failed: ${name}`,
+};
 
 /**
  * Fill an **existing** (empty) node from a picked file — the double-click /

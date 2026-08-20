@@ -64,8 +64,15 @@ export class UploadHttpError extends Error {
   }
 }
 
+/** The account is out of storage (RFC 4918 §11.5) — nothing a retry can fix. */
+export const STORAGE_FULL_STATUS = 507;
+
 /**
  * Extract an HTTP status from a presign failure, if it carries one.
+ *
+ * Exported because two questions are asked of the same answer and they must
+ * not drift: whether to retry (below) and, in the canvas upload pipeline,
+ * which failure to tell the user about.
  *
  * One shape reaches this now: the project's `ApiException`, whose status is
  * FLAT on `.status` and NOT at `{response:{status}}`. Reading only the axios
@@ -79,7 +86,7 @@ export class UploadHttpError extends Error {
  * @param err - The thrown value.
  * @returns The status, or null when the error carries none (network-level).
  */
-function errorStatus(err: unknown): number | null {
+export function errorStatus(err: unknown): number | null {
   if (typeof err !== 'object' || err === null) return null;
   const flat = (err as { status?: unknown }).status;
   if (typeof flat === 'number') return flat;
@@ -107,7 +114,7 @@ export function isTransientUploadError(err: unknown): boolean {
   // in the band below, a refused upload would ask three more times and then
   // report a generic failure — burying the one sentence that could be acted
   // on, which arrived with the first answer.
-  if (status === 507) return false;
+  if (status === STORAGE_FULL_STATUS) return false;
   // status 0 = no HTTP response reached us (network drop / timeout / CORS),
   // which apiGet normalizes to `.status = 0` — the most retryable case.
   if (status !== null) return status === 0 || status >= 500 || status === 429;

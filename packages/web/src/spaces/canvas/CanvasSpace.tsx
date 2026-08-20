@@ -838,10 +838,16 @@ function CanvasSpaceInner({
           },
           onFailure: (stage) => {
             useCanvasStore.getState().removePendingFocusUpload(pendingId);
-            // A hashing refusal needs the RELOAD wording — retrying the crop on
-            // this page hits the same broken worker (Gate-2 R5).
+            // Two of these are not retryable, and saying "try again" to
+            // either is worse than useless: a hashing refusal hits the same
+            // broken worker on this page (Gate-2 R5), and a full account has
+            // no room to find in the seconds a retry takes (#89).
             if (stage === 'hash') {
               toast.error(t('canvas.upload.hashUnavailable'));
+              return;
+            }
+            if (stage === 'storage') {
+              toast.error(t('canvas.upload.storageFull'));
               return;
             }
             toast.error(
@@ -2916,18 +2922,16 @@ function CanvasSpaceInner({
             if (!landed) toast.warning(t('canvas.upload.ownershipLost'));
             return landed;
           },
-          setError: (id, message, lease) => {
-            // Stash media Files for the Retry button (upload failures
-            // only — a text-extraction failure has nothing to re-upload).
-            if (fileToNodeSpec(file).needsUpload) {
-              stashRetryFile(projectId, spaceId, id, file);
-            }
-            return failNodeHandling(projectId, spaceId, id, message, lease);
-          },
-          // Same outcome as the drop path: inline error + reload toast, and
-          // NO Retry stash (retrying here would hit the same broken worker).
-          onHashUnavailable: (id, f, lease) =>
-            failUploadNode('hash', id, f, lease),
+          // Only the text path reaches this now, and a text-extraction
+          // failure has nothing to re-upload — every upload failure goes
+          // through `onUploadFailure` below, where the Retry stash is decided
+          // per reason.
+          setError: (id, message, lease) =>
+            failNodeHandling(projectId, spaceId, id, message, lease),
+          // The same outcome as the drop path, reason for reason: one place
+          // decides the stash and says the remedy in the reader's language.
+          onUploadFailure: (reason, id, f, lease) =>
+            failUploadNode(reason, id, f, lease),
           onUploaded: (id, info, coverInfo) =>
             reportUploadedAsset(id, info, file, coverInfo),
           onCoverUploaded: (info, coverFile) =>

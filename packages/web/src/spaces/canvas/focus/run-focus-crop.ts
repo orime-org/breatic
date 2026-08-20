@@ -29,11 +29,14 @@ export interface FocusCropDeps {
   /** Append the finished copy to the panel node's focusImages (Yjs). */
   addFocusImage: (image: FocusImage) => void;
   /**
-   * Failure sink, discriminated by stage (for the toast wording). `hash` means
-   * the browser could not fingerprint the crop, which no retry of this page can
-   * fix — the remedy is a reload, so it must not share the retryable wording.
+   * Failure sink, discriminated by stage (for the toast wording). Two of these
+   * are not retryable and must not share the retryable wording: `hash` means
+   * the browser could not fingerprint the crop, whose remedy is a reload, and
+   * `storage` means the account is out of room, whose remedy is the admin's to
+   * apply. The upload pipeline already tells these apart, so this carries its
+   * verdict out rather than folding everything but `hash` into `upload`.
    */
-  onFailure: (stage: 'export' | 'upload' | 'hash') => void;
+  onFailure: (stage: 'export' | 'upload' | 'hash' | 'storage') => void;
   /** Id factory (uuid v4 in production; fixed in tests). */
   makeId: () => string;
 }
@@ -94,10 +97,11 @@ export async function runFocusCrop(
       height: params.crop.height,
     });
   } catch (err) {
-    // The upload pipeline tags a hashing refusal so the caller can offer the
-    // right remedy (reload, not retry).
+    // The upload pipeline tags every refusal it can tell apart, so the caller
+    // can offer the right remedy. Anything it did not tag is transient.
+    const tagged = err instanceof Error ? err.message : '';
     deps.onFailure(
-      err instanceof Error && err.message === 'hash' ? 'hash' : 'upload',
+      tagged === 'hash' || tagged === 'storage' ? tagged : 'upload',
     );
   }
 }

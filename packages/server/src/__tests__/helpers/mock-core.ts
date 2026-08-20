@@ -216,11 +216,7 @@ export const mocks = {
    * did not set it up is not asking about storage, and a gate that refused by
    * default would make every such test fail for a reason it never named.
    */
-  assertStorageAllowance: vi.fn(async () => ({
-    limitBytes: 1_000_000,
-    usedBytes: 0,
-    remainingBytes: 1_000_000,
-  })),
+  assertStorageAllowance: vi.fn(async () => undefined),
   assetUploadService: {
     checkUploadDedup: vi.fn(),
     verifyDedupUpload: vi.fn(),
