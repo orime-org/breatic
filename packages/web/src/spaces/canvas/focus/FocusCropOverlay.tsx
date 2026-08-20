@@ -433,39 +433,47 @@ export function FocusCropOverlay({
     resizeObsRef.current = null;
   }, [nodeId]);
 
-  // Display mirrors of the video element's position and length (#1987). The
-  // Slider needs a controlled value to move, and these give it one — but they
-  // are for DISPLAY only: confirm reads the element, so there is never a
-  // second answer to "which frame is this".
+  // The timeline's own value: WHERE THE USER PUT THE HANDLE, seeded from the
+  // element when the overlay attaches to it. The Slider needs a controlled
+  // value to move, and this is it. Confirm reads the element, not this — so
+  // there is never a second answer to "which frame is this".
   const [currentTime, setCurrentTime] = React.useState(0);
   const [duration, setDuration] = React.useState(Number.NaN);
 
-  // Park the video and follow it. One effect keyed on the element identity:
+  // Park the video and read it. One effect keyed on the element identity:
   // pause it if it is playing, seed from it, then subscribe — in that order,
   // and all three together so a remount cannot leave any of them behind.
   //
   // Seeding is not optional. The node's element is `preload='metadata'` and
   // fired `loadedmetadata` long before the user picked it, so an effect that
   // only subscribes shows no handle at all on the path everyone walks.
+  //
+  // `seeked` is deliberately NOT subscribed. A media element never stores the
+  // position you write — it rounds to its own time base (measured in Chrome:
+  // writing 1/24 reads back as 0.041666). Feeding that rounded value back into
+  // the Slider's controlled value knocks it off the step grid, and Radix's
+  // keyboard step only snaps an off-grid value to the nearest grid point —
+  // which is where it already is. Measured in the browser: the handle advanced
+  // once and then no arrow key or PageUp could move it again, ever. Nothing
+  // else writes this element during a focus session (the node's own controls
+  // are inert), so the subscription bought nothing and cost the keyboard.
   React.useEffect(() => {
     if (!(sourceEl instanceof HTMLVideoElement)) return;
     const video = sourceEl;
     // Picking a playing video parks it where it was (user 2026-08-20). One
     // already parked is left alone — there is nothing to pause.
     if (!video.paused) video.pause();
-    /** Copy the element's position and length into the display mirrors. */
-    const sync = (): void => {
+    /** Seed both mirrors from the element. */
+    const seed = (): void => {
       setCurrentTime(video.currentTime);
       setDuration(video.duration);
     };
-    sync();
-    video.addEventListener('loadedmetadata', sync);
-    video.addEventListener('durationchange', sync);
-    video.addEventListener('seeked', sync);
+    seed();
+    video.addEventListener('loadedmetadata', seed);
+    video.addEventListener('durationchange', seed);
     return () => {
-      video.removeEventListener('loadedmetadata', sync);
-      video.removeEventListener('durationchange', sync);
-      video.removeEventListener('seeked', sync);
+      video.removeEventListener('loadedmetadata', seed);
+      video.removeEventListener('durationchange', seed);
     };
   }, [sourceEl]);
 
@@ -477,9 +485,10 @@ export function FocusCropOverlay({
     ([next]: number[]): void => {
       if (next === undefined || !(sourceEl instanceof HTMLVideoElement)) return;
       sourceEl.currentTime = next;
-      // Mirror immediately rather than waiting for `seeked`: the property
-      // updates synchronously even though the picture catches up later, so
-      // the handle tracks the pointer instead of lagging the decode.
+      // Keep the REQUESTED position, not what the element rounded it to: this
+      // is the Slider's controlled value and has to stay on the step grid for
+      // the keyboard to keep advancing (see the effect above). The difference
+      // is under a millisecond and the frame is the same one.
       setCurrentTime(next);
     },
     [sourceEl],
@@ -928,12 +937,19 @@ export function FocusCropOverlay({
             data-testid='focus-crop-controls'
             // rounded-overlay = the 6px chrome radius (user 2026-07-17 #3;
             // rounded-md is 12px in this theme).
-            // Fixed width (user 2026-08-20): the ratio row gains an "whole
+            // Fixed width (user 2026-08-20): the ratio row gains a "whole
             // image" preset later (#1991), and a bar that sizes to its content
             // would jump — and take the timeline's length with it — the day
             // that lands. Content nodes are 288px wide regardless of the
             // media's aspect, so one width serves every target.
-            className='pointer-events-auto absolute flex w-[400px] -translate-x-1/2 flex-col gap-1.5 rounded-overlay border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
+            //
+            // 432px = the widest locale's content (English, 413px measured in
+            // the browser at this font size) plus this bar's own 16px padding
+            // and 2px border. Japanese needs 410; Chinese and Korean fit under
+            // 382. Every item here is nowrap + no-shrink, so a bar measured
+            // from Chinese alone would push English and Japanese out past the
+            // border rather than wrap. Re-measure when #1991 adds its preset.
+            className='pointer-events-auto absolute flex w-[432px] -translate-x-1/2 flex-col gap-1.5 rounded-overlay border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
             // Anchored under the picked node like the generate panel (user
             // 2026-07-17): always centered below the img box, allowed to
             // overflow the viewport — the earlier viewport clamp pulled the

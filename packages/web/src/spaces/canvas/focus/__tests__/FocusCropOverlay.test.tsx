@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { ReactFlowProvider } from '@xyflow/react';
 import * as React from 'react';
 
@@ -705,6 +705,12 @@ interface VideoStub {
  * @param opts.videoWidth - Intrinsic width; 0 means metadata has not arrived.
  * @param opts.videoHeight - Intrinsic height.
  * @param opts.paused - Whether it is parked rather than playing.
+ * @param opts.quantize - Reproduce the browser's own rounding of a written
+ *   `currentTime` (measured in Chrome: writing 1/24 reads back as 0.041666).
+ *   A real element NEVER stores what you wrote, and that difference is what
+ *   broke the keyboard.
+ * @param opts.announceSeeked - Fire `seeked` after each write, as a real
+ *   element does.
  * @returns The element's recorders.
  */
 function stubVideo(
@@ -715,6 +721,8 @@ function stubVideo(
     videoWidth?: number;
     videoHeight?: number;
     paused?: boolean;
+    quantize?: boolean;
+    announceSeeked?: boolean;
   } = {},
 ): VideoStub {
   const writes: number[] = [];
@@ -727,8 +735,17 @@ function stubVideo(
     configurable: true,
     get: () => time,
     set: (value: number) => {
-      time = value;
+      // Six decimals is what Chrome was measured to keep (#1987 smoke).
+      time = opts.quantize ? Math.floor(value * 1e6) / 1e6 : value;
       writes.push(value);
+      // ASYNCHRONOUSLY, like the real thing: a seek completes on a later task,
+      // so anything the write handler does after assigning `currentTime`
+      // happens FIRST and the seek's own notification lands last. Announcing
+      // it synchronously reverses that order and hides the bug entirely —
+      // this stub did, and the test passed while the browser was broken.
+      if (opts.announceSeeked) {
+        setTimeout(() => el.dispatchEvent(new Event('seeked')), 0);
+      }
     },
   });
   Object.defineProperty(el, 'videoWidth', {
@@ -865,6 +882,45 @@ describe('FocusCropOverlay：视频目标与时间轴（#1987）', () => {
     fireEvent.keyDown(thumb, { key: 'ArrowRight' });
     // Radix defaults to step=1 — that default lands on 1 and this fails.
     expect(video.currentTime).toBeCloseTo(STEP_SECONDS, 5);
+  });
+
+  it('连按方向键要一直往前走：元素读回来的值跟步进网格对不齐也不许卡住（A8/A9）', async () => {
+    // A real <video> never stores what you write: Chrome quantised 1/24 to
+    // 0.041666 (measured in the smoke run). Radix computes the next keyboard
+    // step from the CONTROLLED value, and its "not on the grid" branch only
+    // snaps to the nearest grid point — so a controlled value taken from the
+    // element lands off-grid, snaps back to where it already is, and every
+    // further press is a no-op. Measured: the handle froze after ONE press
+    // and neither arrows nor PageUp could move it again.
+    const { stub, video } = renderVideoOverlay({
+      duration: 10,
+      currentTime: 0,
+      videoWidth: 800,
+      videoHeight: 600,
+      quantize: true,
+      announceSeeked: true,
+    });
+    const thumb = screen.getByRole('slider');
+    thumb.focus();
+    /**
+     * Press a key and let the pending seek notification land.
+     * @returns The element's position afterwards.
+     */
+    const press = async (): Promise<number> => {
+      fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      return video.currentTime;
+    };
+    const afterFirst = await press();
+    const afterSecond = await press();
+    const afterThird = await press();
+    expect(afterFirst).toBeGreaterThan(0);
+    expect(afterSecond).toBeGreaterThan(afterFirst);
+    expect(afterThird).toBeGreaterThan(afterSecond);
+    // Three presses, three frames — not three writes of the same number.
+    expect(new Set(stub.writes).size).toBe(stub.writes.length);
   });
 
   it('duration 不是有限正数：整条 Slider 不渲染，两端显示 --:--（A8）', () => {
