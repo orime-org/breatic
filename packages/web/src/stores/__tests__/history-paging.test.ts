@@ -60,8 +60,17 @@ const NEWEST_PAGE = {
   },
 };
 
-/** 比它更早的那一页。 */
-const EARLIER_PAGE = { messages: [said('m4', 4)], hasMore: false };
+/**
+ * 服务端手里更早的那两页，按「从哪一轮往回要」分。
+ *
+ * 两页而不是一页：只有一页时，「游标退回起点」和「游标跟着列表走」会朝同一个
+ * 地址要东西，两者分不出来 —— 而游标退回正是要钉住的那件事。
+ */
+const EARLIER_PAGES: Record<number, { messages: Array<Record<string, unknown>>; hasMore: boolean }> =
+  {
+    12: { messages: [said('m4', 4)], hasMore: true },
+    4: { messages: [said('m1', 1)], hasMore: false },
+  };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -77,8 +86,11 @@ beforeEach(() => {
         hasMore: id === C,
       }) as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>,
   );
-  vi.mocked(chatApi.messagesBefore).mockResolvedValue(
-    EARLIER_PAGE as unknown as Awaited<ReturnType<typeof chatApi.messagesBefore>>,
+  vi.mocked(chatApi.messagesBefore).mockImplementation(
+    async (_id: string, beforeTurn: number) =>
+      (EARLIER_PAGES[beforeTurn] ?? { messages: [], hasMore: false }) as unknown as Awaited<
+        ReturnType<typeof chatApi.messagesBefore>
+      >,
   );
 });
 
@@ -107,8 +119,9 @@ describe('翻过页之后又回到这条会话', () => {
     await conversationRuntime.switchTo(P, C);
     await conversationRuntime.loadEarlier(C);
 
-    // 更早那一页已经拿过了，而且服务端说过它后面没有了。再按一次不该重新去要。
-    expect(chatApi.messagesBefore).toHaveBeenCalledTimes(1);
+    // 第二次该从更早那一页的起点往回要，不是从最新那一页的起点。
+    expect(chatApi.messagesBefore).toHaveBeenCalledTimes(2);
+    expect(chatApi.messagesBefore).toHaveBeenLastCalledWith(C, 4, expect.anything());
   });
 
   it('屏幕上那份列表不会同一条出现两遍', async () => {
@@ -126,6 +139,7 @@ describe('翻过页之后又回到这条会话', () => {
     await conversationRuntime.switchTo(P, C);
     await conversationRuntime.loadEarlier(C);
 
-    expect(chat.messages.map((m) => m.id)).toEqual(['m4', 'm12']);
+    // 三页各一条，从早到晚，没有重复。
+    expect(chat.messages.map((m) => m.id)).toEqual(['m1', 'm4', 'm12']);
   });
 });

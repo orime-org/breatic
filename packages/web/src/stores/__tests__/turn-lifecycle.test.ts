@@ -49,6 +49,7 @@ import {
   OPENING_BEAT,
   stubChatWire,
   stubRefusingWire,
+  turnEnds,
   turnOpens,
 } from '@web/test-utils/chat-wire';
 
@@ -74,9 +75,15 @@ function aConversation(): ReturnType<typeof chatSessionFor> {
   });
 }
 
-/** 让排着的微任务都跑完，不动假时钟。 */
+/**
+ * 让排着的微任务都跑完，不动假时钟。
+ *
+ * 次数给得足：一轮从「流关掉」走到 `status === 'ready'` 要穿过读流、
+ * `consumeStream`、`onFinish` 好几层 await，二十来个微任务只够走到一半 ——
+ * 而停在半路的那一轮看起来跟正常跑着的一模一样，下一次发送会撞在它身上。
+ */
 async function settle(): Promise<void> {
-  for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  for (let i = 0; i < 200; i += 1) await Promise.resolve();
 }
 
 beforeEach(() => {
@@ -196,6 +203,34 @@ describe('答复已经开始之后才失败', () => {
   });
 });
 
+describe('答复已经开始过的会话，下一轮又被拒', () => {
+  it('照样收回，「开口过没有」是每一轮各自的事', async () => {
+    // `answeredTurn` 记的是「这一轮开口了」，每轮结束要复位。不复位的话，一条
+    // 成功答过一次的会话此后每一轮都被当成「服务端已经收下了」，被拒的那一轮
+    // 就不再收回用户消息 —— 那句话留在列表里，而库里什么都没有。
+    const wire = stubChatWire();
+    const chat = aConversation();
+    void sendInSession('c-1', '第一句');
+    await settle();
+    for (const chunk of turnOpens()) wire.current()?.push(chunk);
+    wire.current()?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+    wire.current()?.push({ type: 'text-end', id: 't1' });
+    for (const chunk of turnEnds()) wire.current()?.push(chunk);
+    wire.current()?.close();
+    await settle();
+    expect(chat.status).toBe('ready');
+    expect(chat.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+
+    wire.refuseNext(402, '积分不足');
+    await sendInSession('c-1', '第二句');
+    await settle();
+
+    expect(chat.status).toBe('error');
+    // 第一轮那两条还在，第二句被收回了。
+    expect(chat.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+  });
+});
+
 describe('问心跳间隔的那次往返，比这一轮还长', () => {
   it('答复回来时这一轮已经结束了，就不再装表', async () => {
     stubRefusingWire(404, '这条会话已经不在了');
@@ -216,5 +251,43 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     // 没有第二条，也没有人在一条空闲会话上盖记号。
     expect(told).toHaveLength(1);
     expect(chat.messages).toHaveLength(0);
+  });
+
+  it('会话还在不算数，要看这一轮还在不在', async () => {
+    // 判据必须是轮次，不能是「这条会话的实例还在不在」：实例活得比每一轮都
+    // 长，按它判就等于永远放行。装上的那块表到点之后会把这条会话记进「放弃
+    // 名单」，而名单是下一轮结束时读的 —— 于是下一轮明明好好答完，读者却收
+    // 到一句「网络问题」。
+    const wire = stubChatWire();
+    const chat = aConversation();
+    void sendInSession('c-1', '第一句');
+    await settle();
+    for (const chunk of turnOpens()) wire.current()?.push(chunk);
+    wire.current()?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+    wire.current()?.push({ type: 'text-end', id: 't1' });
+    for (const chunk of turnEnds()) wire.current()?.push(chunk);
+    wire.current()?.close();
+    await settle();
+    expect(chat.status).toBe('ready');
+
+    // 问心跳间隔的那次往返这时才回来，而这一轮早就结束了。
+    answerConfig?.({ heartbeatIntervalMs: BEAT_MS });
+    await settle();
+    await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
+    await settle();
+
+    // 下一轮正常答完。
+    void sendInSession('c-1', '第二句');
+    await settle();
+    for (const chunk of turnOpens('t2')) wire.current()?.push(chunk);
+    wire.current()?.push({ type: 'text-delta', id: 't2', delta: '也好' });
+    wire.current()?.push({ type: 'text-end', id: 't2' });
+    for (const chunk of turnEnds()) wire.current()?.push(chunk);
+    wire.current()?.close();
+    await settle();
+
+    // 两轮都顺利，读者一句话都不该收到。
+    expect(chat.status).toBe('ready');
+    expect(told).toEqual([]);
   });
 });

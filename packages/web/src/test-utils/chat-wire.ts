@@ -164,3 +164,17 @@ export function turnOpens(textId = 't1'): Array<Record<string, unknown>> {
     { type: 'text-start', id: textId },
   ];
 }
+
+/**
+ * The chunks a turn ends with, after all of its content.
+ *
+ * Closing the stream is not the end of a turn. The SDK settles a turn on
+ * these -- until they arrive the status stays `streaming`, `onFinish` has not
+ * run, and a second send lands on a turn that never finished. A case that
+ * only closed the stream and then sent again was running its second turn
+ * against the first one's answer, and read as though it worked.
+ * @returns Those chunks, in order.
+ */
+export function turnEnds(): Array<Record<string, unknown>> {
+  return [{ type: 'finish-step' }, { type: 'finish' }];
+}
