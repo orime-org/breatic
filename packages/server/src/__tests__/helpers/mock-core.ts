@@ -211,6 +211,12 @@ export const mocks = {
   // Upload dedup service (#1609). The real one hits assetService.resolveOwnerStudioId
   // + DB, so override it — route tests that exercise the dedup /uploaded path
   // (incl. the #1824 dedup-cover decoupling) configure verifyDedupUpload per-test.
+  /**
+   * The storage gate (#89). Answers with room by default — a route test that
+   * did not set it up is not asking about storage, and a gate that refused by
+   * default would make every such test fail for a reason it never named.
+   */
+  assertStorageAllowance: vi.fn(async () => undefined),
   assetUploadService: {
     checkUploadDedup: vi.fn(),
     verifyDedupUpload: vi.fn(),
@@ -526,6 +532,10 @@ export const serverModulesMock = async (importOriginal: () => Promise<Record<str
     ...actual,
     authService: mocks.authService,
     assetUploadService: mocks.assetUploadService,
+    // #89: the storage gate now sits on presign and task creation. Route
+    // tests are about routing, so it answers "there is room" by default;
+    // its own behaviour is pinned by the integration suites.
+    assertStorageAllowance: mocks.assertStorageAllowance,
     projectService: mocks.projectService,
     conversationService: mocks.conversationService,
     conversationRepo: mocks.conversationRepo,

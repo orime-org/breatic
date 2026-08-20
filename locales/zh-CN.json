@@ -98,6 +98,10 @@
       "same_tier": "你已经在这一档会员。",
       "payment_overdue": "这个会员有一期款项未付。",
       "unavailable": "会员当前不可用。"
+    },
+    "storage": {
+      "quota_exceeded_upload": "Studio 存储已满，当前无法上传。",
+      "quota_exceeded_generate": "Studio 存储已满，当前无法生成。"
     }
   },
   "chat": {
@@ -316,7 +320,8 @@
       "errorNoDrivingVideo": "先挑一段驱动视频",
       "errorNoDrivingAudio": "先挑一段驱动音频",
       "promptNotUsed": "这一档不需要提示词。",
-      "refuseInsertNoPrompt": "这一档没有提示词框，插不进去"
+      "refuseInsertNoPrompt": "这一档没有提示词框，插不进去",
+      "errorStorageFull": "Studio 存储已满，当前无法生成。"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -340,7 +345,8 @@
       "tooLarge": "{filename} 超过上传大小限制。",
       "empty": "{filename} 是空文件,没有内容可以添加。",
       "videoCodecUnsupported": "这个视频的格式浏览器无法读取。请转换成 H.264 / MP4 后再上传。",
-      "hashUnavailable": "无法校验此文件,请刷新页面后重试。"
+      "hashUnavailable": "无法校验此文件,请刷新页面后重试。",
+      "storageFull": "Studio 存储已满，当前无法上传。"
     },
     "minimap": {
       "label": "画布缩略图"
@@ -766,7 +772,8 @@
       "projectInviteRequest": "{actor} 邀请你加入 {project}",
       "projectInviteAccepted": "{actor} 接受了你对 {project} 的邀请",
       "membershipEnded": "{tier} 会员已结束",
-      "membershipUpgradeIncomplete": "升级到 {tier} 未完成"
+      "membershipUpgradeIncomplete": "升级到 {tier} 未完成",
+      "storageQuotaExceeded": "存储已满"
     },
     "actorFallback": "某人",
     "subtitle": {
@@ -1188,7 +1195,7 @@
     "countConnections": "{count} 条连接",
     "overLimitTag": "已超出",
     "overLimit": {
-      "storage": "存储已超出上限。原有内容可正常使用，但不能再上传新内容，需要更多空间请升级会员。",
+      "storage": "存储已超出上限。原有内容可正常使用，但不能再上传或生成新内容，需要更多空间请升级会员。",
       "teamStudios": "团队 Studio 数量已超出上限。已建的可正常使用，但不能再建新的，需要更多请升级会员。"
     },
     "enterpriseQuota": "你的额度由单独协议约定，不在这里显示。",

@@ -14,9 +14,11 @@
  * tier out, so no caller can reach a ceiling for it by accident.
  *
  * Lives in core rather than beside the other business limits in server,
- * because three services need it: server enforces four of the ceilings,
- * collab enforces the concurrency one, and worker enforces the storage one
- * on the generation path. Neither collab nor worker may import server.
+ * because two services need it: server enforces five of the ceilings (storage
+ * among them since #89) and collab enforces the concurrency one. Worker
+ * enforces none — a generation that has already started is never re-checked,
+ * so every ceiling is read before the work is queued. Collab may not import
+ * server.
  *
  * Unlike the sibling loaders in this directory, **no field has a default**. A
  * quota that silently falls back to a number we invented would leave the

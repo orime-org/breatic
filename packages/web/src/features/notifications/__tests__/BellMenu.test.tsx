@@ -258,6 +258,7 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
       'project.transfer_approved',
       'membership.ended',
       'membership.upgrade_incomplete',
+      'storage.quota_exceeded',
     ] as const satisfies readonly NotifType[];
     // A list written by hand can fall behind the union it claims to cover, so
     // the gap is a type error rather than a quieter run of this test: leaving a

@@ -157,7 +157,7 @@ export * as projectAuthService from "@core/auth/projectAuth.service.js";
 export {
   asKnownTier,
   getUserMembershipTier,
-  getStudioMembershipTier,
+  getStudioStorageQuota,
   getLimitsForUser,
   getLimitsForStudio,
   getProjectConcurrentEditorLimit,

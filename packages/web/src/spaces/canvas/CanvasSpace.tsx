@@ -838,10 +838,16 @@ function CanvasSpaceInner({
           },
           onFailure: (stage) => {
             useCanvasStore.getState().removePendingFocusUpload(pendingId);
-            // A hashing refusal needs the RELOAD wording — retrying the crop on
-            // this page hits the same broken worker (Gate-2 R5).
+            // Two of these are not retryable, and saying "try again" to
+            // either is worse than useless: a hashing refusal hits the same
+            // broken worker on this page (Gate-2 R5), and a full account has
+            // no room to find in the seconds a retry takes (#89).
             if (stage === 'hash') {
               toast.error(t('canvas.upload.hashUnavailable'));
+              return;
+            }
+            if (stage === 'storage') {
+              toast.error(t('canvas.upload.storageFull'));
               return;
             }
             toast.error(
@@ -1955,18 +1961,31 @@ function CanvasSpaceInner({
     [spaceId],
   );
 
-  // Shared failure write-back for the drop path's uploads. Fixed-English wire
-  // string — like AIGC failure messages and the group default name:
-  // errorMessage goes into Yjs and renders raw to every collaborator, so it
-  // must not freeze the uploader's locale into the shared doc; the filename is
-  // the locale-free part telling the user WHICH file failed. The File is
-  // stashed BEFORE the error lands so the error re-render already sees the
-  // Retry stash (#1609 P4).
+  // Where a failed upload ONTO A NODE is presented, for every entry that has
+  // one: dropping onto the canvas, filling an existing node (double-click /
+  // Upload menu / Retry / reset-to-empty), and the video-with-cover path. Each
+  // hands its reason here rather than deciding for itself, because what a
+  // reason needs — the Retry stash and the wording — differs per reason and is
+  // knowable only here.
   //
-  // A `hash` failure is different in kind: the browser could not fingerprint
-  // the file, so no retry of THIS page can succeed (the hashing worker's code
-  // is what broke) and there is nothing to stash — the remedy is a reload,
-  // which only a localized toast can say.
+  // The focus crop is the one upload with no node to write to: it fills a
+  // reference pool entry, so its failures are toast-only and it has its own
+  // sink further up. It reads the same reason vocabulary and reaches for the
+  // same two toast keys, which is what keeps the two consistent.
+  //
+  // Fixed-English wire string — like AIGC failure messages and the group
+  // default name: errorMessage goes into Yjs and renders raw to every
+  // collaborator, so it must not freeze the uploader's locale into the shared
+  // doc; the filename is the locale-free part telling the user WHICH file
+  // failed. For a retryable failure the File is stashed BEFORE the error lands
+  // so the error re-render already sees the Retry stash (#1609 P4).
+  //
+  // Two reasons are different in kind and neither is stashed. A `hash` failure
+  // means the browser could not fingerprint the file, so no retry of THIS page
+  // can succeed (the hashing worker's code is what broke) and the remedy is a
+  // reload. A `storage` failure means the account is out of room (#89), and
+  // nobody frees any in the seconds a retry takes. Both remedies can only be
+  // said in a localized toast.
   const failUploadNode = React.useCallback(
     (
       reason: UploadFailureReason,
@@ -1974,6 +1993,22 @@ function CanvasSpaceInner({
       file: File,
       lease: UploadLease,
     ): void => {
+      if (reason === 'storage') {
+        // No stash and no Retry: retrying asks again for room nobody has
+        // freed. What the node says is fixed English because it goes into
+        // Yjs and every collaborator reads it; the sentence explaining WHY
+        // is a toast, so it is in the language of the person who tried.
+        clearRetryFile(projectId, spaceId, nodeId);
+        failNodeHandling(
+          projectId,
+          spaceId,
+          nodeId,
+          `Storage is full: ${file.name}`,
+          lease,
+        );
+        toast.error(t('canvas.upload.storageFull'));
+        return;
+      }
       if (reason === 'hash') {
         // CLEAR any stash from an earlier attempt (Gate-2 R5): leaving one
         // behind keeps the Retry button alive on a node whose error says the
@@ -2104,13 +2139,8 @@ function CanvasSpaceInner({
                     toast.warning(t('canvas.upload.ownershipLost'));
                   }
                 },
-                // Fixed-English wire string — like AIGC failure messages and the
-                // group default name. errorMessage is written to Yjs and rendered
-                // raw to every collaborator, so it must not freeze the uploader's
-                // locale into the shared doc. The filename is the locale-free part
-                // telling the user which file failed. The File is stashed BEFORE
-                // the error lands so the error re-render already sees the Retry
-                // stash (#1609 P4).
+                // Reason and all — `failUploadNode` above owns what each one
+                // means for the node text, the Retry stash and the toast.
                 onFailure: (reason) =>
                   failUploadNode(reason, nodeId, file, lease),
                 onUploaded: (info) => reportUploadedAsset(nodeId, info, file),
@@ -2900,18 +2930,16 @@ function CanvasSpaceInner({
             if (!landed) toast.warning(t('canvas.upload.ownershipLost'));
             return landed;
           },
-          setError: (id, message, lease) => {
-            // Stash media Files for the Retry button (upload failures
-            // only — a text-extraction failure has nothing to re-upload).
-            if (fileToNodeSpec(file).needsUpload) {
-              stashRetryFile(projectId, spaceId, id, file);
-            }
-            return failNodeHandling(projectId, spaceId, id, message, lease);
-          },
-          // Same outcome as the drop path: inline error + reload toast, and
-          // NO Retry stash (retrying here would hit the same broken worker).
-          onHashUnavailable: (id, f, lease) =>
-            failUploadNode('hash', id, f, lease),
+          // Only the text path reaches this now, and a text-extraction
+          // failure has nothing to re-upload — every upload failure goes
+          // through `onUploadFailure` below, where the Retry stash is decided
+          // per reason.
+          setError: (id, message, lease) =>
+            failNodeHandling(projectId, spaceId, id, message, lease),
+          // The same outcome as the drop path, reason for reason: one place
+          // decides the stash and says the remedy in the reader's language.
+          onUploadFailure: (reason, id, f, lease) =>
+            failUploadNode(reason, id, f, lease),
           onUploaded: (id, info, coverInfo) =>
             reportUploadedAsset(id, info, file, coverInfo),
           onCoverUploaded: (info, coverFile) =>
