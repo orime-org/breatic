@@ -484,6 +484,23 @@ describe("assertStorageAllowance — telling the admin", () => {
     expect(sentMail).toHaveBeenCalledTimes(1);
   });
 
+  it("lets exactly one of two simultaneous refusals take the window", async () => {
+    // 设计里说这条要写，理由是「共享一个 ioredis 客户端所以观察不到」被实测
+    // 推翻了：共享连接只把单条命令排成序，不把「先读一次再写一次」这两个来回
+    // 排成序 —— 两路都在 await 处让出，回来都以为自己是第一个。
+    // `SET NX EX` 是单命令所以这条绿；换成「先 get 再 set」会落两行铃铛。
+    const { adminUserId, projectId } = await fullAccount();
+
+    const both = await Promise.allSettled([
+      assertStorageAllowance(projectId, "upload"),
+      assertStorageAllowance(projectId, "generate"),
+    ]);
+    expect(both.every((r) => r.status === "rejected")).toBe(true);
+
+    expect(await bellRows(adminUserId)).toHaveLength(1);
+    expect(sentMail).toHaveBeenCalledTimes(1);
+  });
+
   it("logs every refusal, including the ones the window silences", async () => {
     // The bell is for the admin and is deliberately quietened. The log is for
     // whoever is on call, and must not be — otherwise "how often did this gate

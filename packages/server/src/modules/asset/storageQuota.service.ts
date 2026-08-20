@@ -2,8 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The storage gate: whoever is about to write bytes comes through here first
- * (#89, membership block five).
+ * The storage gate (#89, membership block five). Whoever calls it is asking
+ * permission to write bytes, and is either allowed to continue or thrown out
+ * of with a 507.
+ *
+ * It gates the two paths #89 covers — the upload handshake and canvas task
+ * creation. Other paths that end in stored bytes (the mini-tool endpoints,
+ * `POST /canvas/understand`) deliberately do not call it this round; the
+ * contract is that whoever writes comes through here, not that everyone
+ * already does.
  *
  * ONE PRE-CHECK, BEFORE THE ACTION, AND NEVER AGAIN. Nothing is frozen and
  * nothing is reserved, so storage CAN end up over the ceiling — an accepted

@@ -302,9 +302,12 @@ interface StorageQuotaExceededMailInput {
  * link and no deadline — `expiryFooter` would be about a decision window that
  * does not exist here.
  *
- * Says the ACCOUNT is full, not the studio. Storage is counted across every
- * studio the account administers, so naming only the studio would send the
- * reader to look at one that may hold hardly anything.
+ * Says the ACCOUNT is full, not the studio, and the difference is about WHEN
+ * it is read. The sentence on the operator's screen names the studio because
+ * they are looking at it right then; this arrives by mail and may be opened
+ * hours later, by somebody who administers several studios — naming one of
+ * them would send them to look at whichever studio happened to trigger it,
+ * which may hold hardly anything.
  * @param input - Recipient email and the studio the refused write was aimed at.
  * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
  */

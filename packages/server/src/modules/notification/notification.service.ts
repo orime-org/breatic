@@ -694,11 +694,12 @@ export interface StorageQuotaExceededPayload {
   /**
    * The studio whose project the refused write was aimed at.
    *
-   * The bell line does not say it, and deliberately: what filled up is the
-   * ACCOUNT, summed across every studio it administers, so naming one studio
-   * there would send the reader to look at somewhere that may hold hardly
-   * anything. It is on the row because the row is the record of one refusal,
-   * and a question about a particular notice has to be answerable later.
+   * The bell line does not say it, and deliberately. The sentence the operator
+   * sees on screen does name the studio — they are looking at it right then —
+   * but this line may be read hours later by somebody who administers several,
+   * and what filled up is the ACCOUNT, summed across all of them. It is on the
+   * row because the row is the record of one refusal, and a question about a
+   * particular notice has to be answerable later.
    */
   studioId: string;
 }

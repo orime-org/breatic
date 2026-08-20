@@ -10,12 +10,15 @@
  * them would name a studio holding hardly anything.
  *
  * `SET key 1 NX EX <window>` and nothing else. One command, so the claim is
- * atomic against any number of concurrent refusals; the repo's other throttle
- * (`checkRateLimit`) cannot be reused here for three separate reasons — it is
- * a Hono middleware with a `(c, next)` signature, it keys on ip-or-user rather
- * than "this studio's admin", and it answers with a 429 that would displace
- * the 507. It is also several commands in a `pipeline()`, which batches the
- * round trips without making them one step.
+ * atomic against any number of concurrent refusals.
+ *
+ * Neither half of the repo's request throttle fits. `rateLimitFor`
+ * (`server/src/middleware/rate-limit.ts`) is a Hono middleware with a
+ * `(c, next)` signature, keys on ip-or-user rather than "this studio's admin",
+ * and answers with a 429 that would displace the 507. The `checkRateLimit`
+ * underneath it (`core/src/infra/rate-limiter.ts`) is callable from here, but
+ * it is several commands in a `pipeline()` — batched round trips, not one
+ * step — so a claim through it would not be atomic.
  *
  * The window can also be given back, because the key means "an account has
  * been told" rather than "somebody tried": a claim whose notice never landed
