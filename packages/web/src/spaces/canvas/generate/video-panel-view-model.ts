@@ -20,7 +20,6 @@ import { validFocusImages } from '@web/data/focus-images';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,
-  focusRefId,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
 import {
@@ -30,7 +29,7 @@ import {
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
-import { mentionedImageUrls } from '@web/spaces/canvas/generate/reference-urls';
+import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import {
   modeTakesReferences,
   slotsForMode,
@@ -350,16 +349,7 @@ export function buildVideoPanelViewModel(input: {
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
   const focusImages = validFocusImages(content?.focusImages);
   const referenceUrls = modeTakesReferences(mode)
-    ? [
-      ...mentionedImageUrls(references, atMentioned, nodes),
-      // Crops travel under the same `@`-only rule as node references
-      // (#1978): being in the pool offers one, mentioning it uses it.
-      // Appended after the node references, so payload order matches pool
-      // order.
-      ...focusImages
-        .filter((f) => atMentioned.has(focusRefId(f.id)))
-        .map((f) => f.url),
-    ]
+    ? mentionedReferenceUrls({ references, focusImages, atMentioned, nodes })
     : [];
 
   return {

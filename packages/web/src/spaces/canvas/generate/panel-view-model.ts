@@ -13,7 +13,6 @@ import type { FocusImage, ModelEntry } from '@breatic/shared';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,
-  focusRefId,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
 import { validFocusImages } from '@web/data/focus-images';
@@ -30,7 +29,7 @@ import {
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
-import { mentionedImageUrls } from '@web/spaces/canvas/generate/reference-urls';
+import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import type {
   ContentNodeView,
   NodeView,
@@ -220,17 +219,7 @@ export function buildGeneratePanelViewModel(input: {
   const referenceUrls =
     !imageModeTakesReferences(mode)
       ? []
-      : [
-        ...mentionedImageUrls(references, atMentioned, nodes),
-        // Focus crops (#1782): the same @-only rule — a crop reaches the
-        // payload only when its focus: pool id is mentioned. Appended after
-        // node references (pool order → payload order).
-        // Focus crops (#1782) live on this panel alone, which is why they
-        // stay here rather than moving into the shared derivation above.
-        ...focusImages
-          .filter((f) => atMentioned.has(focusRefId(f.id)))
-          .map((f) => f.url),
-      ];
+      : mentionedReferenceUrls({ references, focusImages, atMentioned, nodes });
 
   // Style image (#1664): a pick-time URL copy stored on the node itself, so —
   // unlike i2i references — it survives t2i and rides the payload in every

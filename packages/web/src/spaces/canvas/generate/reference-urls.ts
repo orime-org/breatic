@@ -10,11 +10,16 @@
  * panel's copy was character-for-character the image panel's, down to the
  * sanitiser and its reason (#1927).
  *
- * The image panel appends its focus crops to the result; those live only on
- * that side, so they stay there.
+ * A panel's rail has TWO row sources, and both follow that one rule: rows
+ * derived from incoming edges, and focus crops stored on the panel's own node.
+ * `mentionedReferenceUrls` puts them in one list in rail order. That used to
+ * be the image panel's alone and was written there; the video panel gained
+ * crops in #1978 and the branch was copied over verbatim, which is the same
+ * duplication this module was created to end — so it moved here too.
  */
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 
 /** The part of a rail row this needs: which node it points at. */
@@ -73,4 +78,41 @@ export function mentionedImageUrls(
       // would slip a non-URL into the task payload.
       .filter((u): u is string => typeof u === 'string' && u.length > 0)
   );
+}
+
+/** The part of a focus crop this needs: its id and the asset it points at. */
+interface MentionableCrop {
+  /** The crop id; its pool id is this namespaced by {@link focusRefId}. */
+  id: string;
+  /** The crop asset's URL — an image by construction. */
+  url: string;
+}
+
+/**
+ * Every reference URL a submit sends: the mentioned edge-derived rows first,
+ * then the mentioned crops.
+ *
+ * Rail order, and the rail shows crops after node rows, so the payload reads
+ * the way the panel does. Crops need no node lookup — a crop IS its asset, and
+ * its pool id is namespaced (`focus:<id>`), so a node whose id happens to
+ * equal a crop id cannot pull that crop along.
+ * @param input - The two row sources plus what the prompt mentions.
+ * @param input.references - Edge-derived rail rows, in rail order.
+ * @param input.focusImages - The panel node's crops, in stored order.
+ * @param input.atMentioned - The pool ids the prompt mentions right now.
+ * @param input.nodes - Current canvas node views, for looking a row's source up.
+ * @returns The URLs to send, in rail order.
+ */
+export function mentionedReferenceUrls(input: {
+  references: ReadonlyArray<MentionableRow>;
+  focusImages: ReadonlyArray<MentionableCrop>;
+  atMentioned: ReadonlySet<string>;
+  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+}): string[] {
+  return [
+    ...mentionedImageUrls(input.references, input.atMentioned, input.nodes),
+    ...input.focusImages
+      .filter((f) => input.atMentioned.has(focusRefId(f.id)))
+      .map((f) => f.url),
+  ];
 }
