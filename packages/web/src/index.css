@@ -250,9 +250,11 @@ body {
    the animation on reduce-enabled machines and made the loading state
    unreadable — the very defect this slice fixes. Do not re-add one here. */
 
-/* The mark an agent bubble carries until its first word arrives: one dot,
-   breathing. Settled 2026-08-12 over two busier proposals; every figure here
-   comes from the demo that settled it.
+/* The mark an agent bubble carries for the whole turn: one dot, breathing,
+   at the end of whatever has been written so far. Settled 2026-08-12 over two
+   busier proposals; every figure here comes from the demo that settled it,
+   and it was widened from "before the first word" to the whole turn on
+   2026-08-20.
 
    The bubble does not resize when the first word lands, and nothing here is
    what makes that true: the line is the bubble's own, and the dot rides it
@@ -262,8 +264,10 @@ body {
    nothing: this box has no text, so it has no line box to size.
 
    No prefers-reduced-motion override here either, and for the same reason as
-   the skeleton above: this dot is the whole of what says an answer is on its
-   way, so blanking it leaves a bubble that looks broken rather than busy. It
+   the skeleton above: before the first word this dot is the whole of what
+   says an answer is on its way, so blanking it leaves a bubble that looks
+   broken rather than busy — and after the first word it is the only thing
+   separating a reply still being written from one that stopped. It
    also displaces nothing — no parallax, no travel, a scale of .85 to 1 on an
    8px dot — so it is not vestibular-trigger motion. */
 .chat-waiting-dot {

@@ -4,10 +4,12 @@
 /**
  * Asking for the model's working is asked for differently per provider.
  *
- * The request currently names Anthropic outright: `providerOptions.anthropic
+ * The request used to name Anthropic outright: `providerOptions.anthropic
  * .thinking`. That is not a setting the other providers ignore politely --
- * it is a key addressed to one of them, and every other model gets asked for
- * nothing while the switch that turns it on still reads as though it worked.
+ * it is a key addressed to one of them, and every other model got asked for
+ * nothing while the switch that turns it on still read as though it worked.
+ * `reasoning-options.ts` now picks the key from the provider being called;
+ * these cases are what keeps it picking the right one.
  *
  * Which key to use follows from which provider instance is being called, and
  * that is not the same as which company serves the model. Our OpenRouter

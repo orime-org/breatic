@@ -146,9 +146,12 @@ const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
  * The chat panel's view of the conversation it is showing.
  *
  * Reading only. What is happening in the conversation — the messages, and the
- * turn if one is running — belongs to the conversation and is held in
- * `stores/conversation-runtime`, so that collapsing the agent column is
- * collapsing a column rather than ending the answer the user is waiting for.
+ * turn if one is running — belongs to the conversation and is held in the
+ * `Chat` session `stores/chat-sessions` keeps for it, so that collapsing the
+ * agent column is collapsing a column rather than ending the answer the user
+ * is waiting for. `stores/conversation-runtime` holds what is around a
+ * conversation rather than inside it: which one is on screen, the list, the
+ * draft, and the page a session is first built from.
  * @param projectId - Project whose chat this is
  * @param listOpen - Whether the conversation list is on screen, which decides
  *   where a word about one of its rows is drawn

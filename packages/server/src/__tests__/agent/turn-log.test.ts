@@ -5,14 +5,14 @@
  * The one line a finished turn leaves behind, and the two fields on it.
  *
  * `agent_response` is what someone reads at three in the morning to find out
- * what a turn did: how much it said, and how it ended. Both fields are built
- * inside the loop this migration removes -- `exit` comes from a variable the
- * loop sets on its way out, `responseLength` from prose the loop accumulates
- * -- so both need somewhere else to come from, and nothing currently notices
- * if they arrive empty.
+ * what a turn did: how much it said, and how it ended. Both fields used to be
+ * built inside the hand-written stream loop -- `exit` from a variable the
+ * loop set on its way out, `responseLength` from prose it accumulated -- and
+ * that loop is gone. Both now come from `onFinish`: `exit` from `isAborted`
+ * and whether anything failed, `responseLength` from the reply's own parts.
  *
- * These assertions hold today. They are written now because the path they
- * describe is about to be rewritten and has no other cover: a turn that
+ * These cases were written before that move and are what carried the two
+ * fields across it. Nothing else notices if they arrive empty: a turn that
  * logged `exit: "completed"` for a turn the user stopped would read as normal
  * for as long as nobody went looking.
  */

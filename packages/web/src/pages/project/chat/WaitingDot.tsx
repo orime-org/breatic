@@ -2,18 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * What stands in for the answer until its first word arrives.
+ * What says the answer is still coming, for as long as it is.
  *
  * One dot, breathing, settled 2026-08-12 over two busier proposals. Its
  * figures live in `index.css` beside the other two animations this app
- * defines; the shape came from
- * `engineering/demo/2026-08-12-chat-waiting-animation.html`.
+ * defines; the shape came from the demo page that settled it.
+ *
+ * It stands alone in an empty bubble before the first word and then rides
+ * the end of the text until the turn is over (user 2026-08-20). What used to
+ * take its place once there was text — a blinking bar — is gone.
  */
 import type { ReactElement } from 'react';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /**
- * The waiting mark shown in an agent bubble with nothing in it yet.
+ * The mark an agent bubble carries while its turn is running.
  * @returns The dot.
  */
 export function WaitingDot(): ReactElement {

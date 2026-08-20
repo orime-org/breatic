@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * What stands in for the answer before its first word arrives.
+ * What says the answer is still coming, for as long as it is.
  *
- * One dot, breathing. Settled 2026-08-12 over two busier proposals, and
- * confirmed again on 2026-08-19; the shape comes from
- * `engineering/demo/2026-08-12-chat-waiting-animation.html`, whose `.pulse`
- * rule is the ground truth for every figure asserted here.
+ * One dot, breathing. Settled 2026-08-12 over two busier proposals, confirmed
+ * again on 2026-08-19, and widened on 2026-08-20 to run for the whole turn
+ * rather than only until the first word. The shape comes from the demo page
+ * that settled it, whose `.pulse` rule is the ground truth for every figure
+ * asserted here.
  *
- * What is shipping today is a block character on Tailwind's `animate-pulse`
- * -- a different mark on a different animation.
+ * The blinking bar that used to take over once there was text is gone, and
+ * with it the only other mark this bubble ever carried.
  *
  * jsdom applies no stylesheet, so the figures are read from the stylesheet
  * itself rather than from a computed style. That keeps the numbers the demo
