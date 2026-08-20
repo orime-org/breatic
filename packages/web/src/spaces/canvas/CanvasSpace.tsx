@@ -1961,18 +1961,26 @@ function CanvasSpaceInner({
     [spaceId],
   );
 
-  // Shared failure write-back for the drop path's uploads. Fixed-English wire
-  // string — like AIGC failure messages and the group default name:
-  // errorMessage goes into Yjs and renders raw to every collaborator, so it
-  // must not freeze the uploader's locale into the shared doc; the filename is
-  // the locale-free part telling the user WHICH file failed. The File is
-  // stashed BEFORE the error lands so the error re-render already sees the
-  // Retry stash (#1609 P4).
+  // The one place an upload failure is presented, for every entry that has
+  // one: dropping onto the canvas, filling an existing node (double-click /
+  // Upload menu / Retry / reset-to-empty), and the video-with-cover path. Each
+  // hands its reason here rather than deciding for itself, because what a
+  // reason needs — the Retry stash and the wording — differs per reason and is
+  // knowable only here.
   //
-  // A `hash` failure is different in kind: the browser could not fingerprint
-  // the file, so no retry of THIS page can succeed (the hashing worker's code
-  // is what broke) and there is nothing to stash — the remedy is a reload,
-  // which only a localized toast can say.
+  // Fixed-English wire string — like AIGC failure messages and the group
+  // default name: errorMessage goes into Yjs and renders raw to every
+  // collaborator, so it must not freeze the uploader's locale into the shared
+  // doc; the filename is the locale-free part telling the user WHICH file
+  // failed. For a retryable failure the File is stashed BEFORE the error lands
+  // so the error re-render already sees the Retry stash (#1609 P4).
+  //
+  // Two reasons are different in kind and neither is stashed. A `hash` failure
+  // means the browser could not fingerprint the file, so no retry of THIS page
+  // can succeed (the hashing worker's code is what broke) and the remedy is a
+  // reload. A `storage` failure means the account is out of room (#89), and
+  // nobody frees any in the seconds a retry takes. Both remedies can only be
+  // said in a localized toast.
   const failUploadNode = React.useCallback(
     (
       reason: UploadFailureReason,

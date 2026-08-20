@@ -123,14 +123,17 @@ describe('填充已有节点这条把失败原样交给唯一的出口', () => {
       extractText: async () => '',
       isHandling: () => false,
       onTypeMismatch: () => {},
-      setHandling: () => ({ token: 't', owner: 'o' }),
+      // 形状照 UploadLease 的定义写：替身返回的东西跟被替代那个函数的返回
+      // 类型不是同一个的话，测的就只是替身自己。
+      setHandling: () => ({ gen: 1, clientId: 7, userId: 'u1' }),
       setContent: () => true,
       setError: () => true,
+      onUploadFailure: () => {},
       ...extra,
     } as unknown as FillNodeDeps;
   }
 
-  it('接了出口就把 storage 交出去，自己不写节点', async () => {
+  it('把 storage 交给出口，自己不写节点', async () => {
     const onUploadFailure = vi.fn((_reason: UploadFailureReason) => {});
     const setError = vi.fn(() => true);
     await fillNodeFromFile('n1', pngFile(), 'image', 'p1', fillDeps({
@@ -139,17 +142,8 @@ describe('填充已有节点这条把失败原样交给唯一的出口', () => {
     }));
     expect(onUploadFailure).toHaveBeenCalledOnce();
     expect(onUploadFailure.mock.calls[0]?.[0]).toBe('storage');
-    // 出口接上时，固定英文那条兜底不许再写一遍 —— 两处都写会让节点文字和
-    // 提示各说一次，且 Retry 的取舍由出口决定。
+    // 用户读到的那句话由出口那一处写。这个模块自己不留一份，否则同一句话
+    // 有两份、改一份不影响用户看到的那份。
     expect(setError).not.toHaveBeenCalled();
-  });
-
-  it('没接出口时兜底写的是存储那句，不是通用的上传失败', async () => {
-    const setError = vi.fn((_id: string, _message: string) => true);
-    await fillNodeFromFile('n1', pngFile('b.png'), 'image', 'p1', fillDeps({
-      setError,
-    }));
-    expect(setError).toHaveBeenCalledOnce();
-    expect(setError.mock.calls[0]?.[1]).toBe('Storage is full: b.png');
   });
 });

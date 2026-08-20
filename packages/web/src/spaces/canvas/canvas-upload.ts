@@ -526,7 +526,6 @@ export interface FillNodeDeps {
    */
   onExtractRejected?: (nodeId: string) => void;
   /**
-   * Called INSTEAD of {@link FillNodeDeps.setError} when the browser could not
    * Hand the whole outcome of a failed upload to the caller, reason and all.
    *
    * Every reason needs something only the caller can do — pick or clear the
@@ -537,9 +536,16 @@ export interface FillNodeDeps {
    * ordinary transient failure must be. This started as a hook for the hashing
    * case alone; a second reason with the same needs made the per-reason shape
    * the wrong one, since every new reason then has to be remembered in two
-   * places. Absent → falls back to the plain fixed-English write-backs below.
+   * places.
+   *
+   * Required, and with no fallback beside it. An optional one meant this
+   * module kept its own copy of the three sentences the user reads, and the
+   * single production caller always supplies this — so that copy could never
+   * run, could drift from the one that does, and (being the only one a test
+   * could reach without wiring the hook) quietly became what the tests
+   * measured.
    */
-  onUploadFailure?: (
+  onUploadFailure: (
     reason: UploadFailureReason,
     nodeId: string,
     file: File,
@@ -607,27 +613,10 @@ function uploadFailed(
   nodeId: string,
   file: File,
   lease: UploadLease,
-  deps: Pick<FillNodeDeps, 'setError' | 'onUploadFailure'>,
+  deps: Pick<FillNodeDeps, 'onUploadFailure'>,
 ): void {
-  if (deps.onUploadFailure) {
-    deps.onUploadFailure(reason, nodeId, file, lease);
-    return;
-  }
-  deps.setError(nodeId, WIRE_ERROR[reason](file.name), lease);
+  deps.onUploadFailure(reason, nodeId, file, lease);
 }
-
-/**
- * The fixed-English sentence each failure writes onto the node.
- *
- * Fixed English because it goes into Yjs and every collaborator renders it, so
- * it must not freeze the language of whoever happened to be uploading into the
- * shared document. The filename is the locale-free part that says which file.
- */
-const WIRE_ERROR: Record<UploadFailureReason, (name: string) => string> = {
-  hash: (name) => `Could not read file: ${name}`,
-  storage: (name) => `Storage is full: ${name}`,
-  upload: (name) => `Upload failed: ${name}`,
-};
 
 /**
  * Fill an **existing** (empty) node from a picked file — the double-click /

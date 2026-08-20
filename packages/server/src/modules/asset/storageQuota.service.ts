@@ -20,12 +20,12 @@
  * IT DOES NOT LOOK AT HOW BIG THIS WRITE IS. More than zero bytes left means
  * go ahead; zero left means full, and is already refused (user 2026-08-19).
  *
- * IT COMPLETES THE REFUSAL ITSELF rather than reporting a verdict. Callers get
- * an allowance back or an exception — there is no third answer for them to act
- * on, and no way for a caller to learn that storage was short and then carry
- * on. That is what makes the notification honest: this module knows the
- * refusal actually happened, where a function that merely answered questions
- * could only guess.
+ * IT COMPLETES THE REFUSAL ITSELF rather than reporting a verdict. A caller
+ * either continues or is thrown out of — there is no third answer for it to
+ * act on, and no way for it to learn that storage was short and then carry on.
+ * That is what makes the notification honest: this module knows the refusal
+ * actually happened, where a function that merely answered questions could
+ * only guess.
  */
 
 import { AppError, getStudioStorageQuota, logger } from "@breatic/core";
@@ -138,14 +138,20 @@ async function tellTheAdmin(
       userId: adminUserId,
       payload: { studioId },
     });
-    const studio = await studioRepo.getById(studioId);
-    const studioName = studio?.name ?? "";
+    // Everything the mail needs is read INSIDE the best-effort boundary, the
+    // same way the transfer and invite paths do it. Reading it out here would
+    // put a database call between the bell insert and the catch below, and
+    // that catch gives the window back on the grounds that nobody was told —
+    // which stops being true the moment the insert succeeds.
     await sendBestEffortMail(async () => {
-      const admin = await getUserById(adminUserId);
-      if (!admin) return null;
+      const [admin, studio] = await Promise.all([
+        getUserById(adminUserId),
+        studioRepo.getById(studioId),
+      ]);
+      if (!admin || !studio) return null;
       return buildStorageQuotaExceededMail({
         recipientEmail: admin.email,
-        studioName,
+        studioName: studio.name,
       });
     }, { userId: adminUserId, subject: "storage_quota_exceeded" });
   } catch (err) {

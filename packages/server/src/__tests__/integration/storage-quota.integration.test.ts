@@ -48,13 +48,21 @@ vi.mock("ai", () => ({
 const sentMail = vi.fn();
 const mailCtl = { fail: false };
 
+// 这个替身照着真实的 sendBestEffortMail 写：**它吞掉一切、永不抛**
+// （`send-best-effort-mail.ts:40-45` 把准备和发送整个包在 try/catch 里）。
+// 让替身会抛，测出来的就只是替身自己 —— 而生产里铃铛落库之后没有任何东西
+// 能从这个边界里冒出来，下面那条「窗口不许被还回去」正是钉这件事。
 vi.mock("@server/utils/send-best-effort-mail.js", () => ({
   sendBestEffortMail: async (
     build: () => Promise<unknown>,
     ctx: Record<string, unknown>,
   ) => {
-    if (mailCtl.fail) throw new Error("synthetic mail failure");
-    sentMail(await build(), ctx);
+    try {
+      if (mailCtl.fail) throw new Error("synthetic mail failure");
+      sentMail(await build(), ctx);
+    } catch {
+      // 跟真的一样：吞掉，不影响调用方。
+    }
   },
 }));
 
@@ -84,6 +92,24 @@ vi.mock("@server/modules/asset/assetUsage.service.js", async (io) => {
       usageCalls.push(userId);
       return (actual.accountStorageUsage as (u: string) => Promise<number>)(
         userId,
+      );
+    },
+  };
+});
+
+// 取 studio 名字那次读只有邮件用得上。它在不在 best-effort 边界里面，决定了
+// 它抛错时铃铛那一行会不会连累窗口被还回去。
+const studioReadCtl = { fail: false };
+
+vi.mock("@server/modules/studio/studio.repo.js", async (io) => {
+  const actual = await io<Record<string, unknown>>();
+  return {
+    ...actual,
+    getById: async (id: string, tx?: unknown) => {
+      if (studioReadCtl.fail) throw new Error("synthetic studio read failure");
+      return (actual.getById as (i: string, t?: unknown) => Promise<unknown>)(
+        id,
+        tx,
       );
     },
   };
@@ -366,6 +392,7 @@ describe("assertStorageAllowance — telling the admin", () => {
     mailCtl.fail = false;
     bellCtl.fail = false;
     throttleCtl.fail = false;
+    studioReadCtl.fail = false;
   });
 
   /**
@@ -445,23 +472,29 @@ describe("assertStorageAllowance — telling the admin", () => {
     expect(await bellRows(adminUserId)).toHaveLength(1);
   });
 
-  it("still refuses with 507 when anything after the bell throws", async () => {
-    // 替身让 sendBestEffortMail 抛，而真实的那个把一切吞进 logger.error、
-    // 生产里永不抛 —— 所以这条钉的不是「邮件失败」，是「通知那一整段之后
-    // 无论抛出什么，拒绝都还在」。邮件自身的失败由它自己那层兜住。
-    const { projectId } = await fullAccount();
-    mailCtl.fail = true;
-    await expect(assertStorageAllowance(projectId, "upload")).rejects.toMatchObject(
-      { statusCode: 507 },
-    );
-  });
-
   it("still refuses with 507 when the bell insert throws", async () => {
     const { projectId } = await fullAccount();
     bellCtl.fail = true;
     await expect(assertStorageAllowance(projectId, "upload")).rejects.toMatchObject(
       { statusCode: 507 },
     );
+  });
+
+  it("keeps the window once the bell row is in, even if the mail's own reads fail", async () => {
+    // 上一轮把「没发出去就把窗口还回来」加进来之后，取 studio 名字那次读还在
+    // best-effort 边界外面、排在铃铛插入之后 —— 它一抛错，一个「已经通知过」
+    // 的窗口就被还了回去，同一窗口内的下一次拒绝会再写一行铃铛。
+    // 现在邮件要的东西全在边界里面读，所以铃铛落库之后没有任何东西能把窗口
+    // 拿走：第二次拒绝仍然静默。
+    const { adminUserId, projectId } = await fullAccount();
+
+    studioReadCtl.fail = true;
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toThrow();
+    expect(await bellRows(adminUserId)).toHaveLength(1);
+
+    studioReadCtl.fail = false;
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toThrow();
+    expect(await bellRows(adminUserId)).toHaveLength(1);
   });
 
   it("gives the window back when the notice did not go out", async () => {
