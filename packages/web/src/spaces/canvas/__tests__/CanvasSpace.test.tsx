@@ -3265,4 +3265,156 @@ describe('model catalog prefetch (#1966)', () => {
       list.mockRestore();
     }
   });
+
+  // ── #1987 视频节点也能被聚焦 ──────────────────────────────────────
+  // 聚焦的类型判据在仓里有两处：变暗规则（哪些节点看起来能选）和点击处理
+  // （点下去生不生效）。两处逐字相同但物理上是两份，:3279-3282 的注释记着
+  // round-4 修过「不变暗但点了没反应」的病。所以两处各有测试，缺一不可 ——
+  // 只钉变暗那半，对「看着能选、点了没反应」是瞎的。
+
+  it('聚焦挑选：视频节点是候选，不变暗（#1987 A1/A6）', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-video',
+            type: 'video',
+            position: { x: 300, y: 0 },
+            data: { kind: 'video', content: 'v.mp4', status: 'idle' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 600, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startFocusPick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    expect(cls('src-video')).toContain('canvas-pick-selectable');
+    expect(cls('src-video')).not.toContain('canvas-pick-dimmed');
+    // 图片仍然是候选（这次是加类型，不是换类型）
+    expect(cls('src-image')).toContain('canvas-pick-selectable');
+  });
+
+  it('风格挑选：视频节点仍然变暗，不受聚焦那次放宽影响（#1987 A6）', () => {
+    // 变暗规则那条分支 style 和 focus 共用同一个 'image' 回落值
+    // （CanvasSpace.tsx:3283），而 style 的点击侧只认图片。照着那个回落值放宽
+    // 会让视频在风格挑选里变成「看着能选、点了没反应」—— 正是上面那条注释
+    // 记的病。所以放宽必须只作用于 focus 那一支。
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-video',
+            type: 'video',
+            position: { x: 300, y: 0 },
+            data: { kind: 'video', content: 'v.mp4', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startStylePick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    expect(cls('src-video')).toContain('canvas-pick-dimmed');
+    expect(cls('src-video')).not.toContain('canvas-pick-selectable');
+  });
+
+  it('聚焦挑选：点中视频节点之后裁剪浮层挂上（#1987 A1）', () => {
+    // 判据的另一半。浮层的渲染门是 pickSession.purpose === 'focus' &&
+    // focusCropTargetId !== null，而 focusCropTargetId 是 CanvasSpace 的本地
+    // state，测试看不到它 —— 看得到的是浮层出没出来。
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-video',
+            type: 'video',
+            position: { x: 300, y: 0 },
+            data: { kind: 'video', content: 'v.mp4', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startFocusPick('target');
+    });
+    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.react-flow__node[data-id="src-video"]')!,
+      );
+    });
+    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+  });
+
+  it('聚焦挑选：音频节点两道都被拒（#1987）', () => {
+    // 音频的 <audio> 跟视频共用 media-element 这个 testid，所以判类型不能靠
+    // testid。这条钉的是候选那一道：音频不该变成候选。
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-audio',
+            type: 'audio',
+            position: { x: 300, y: 0 },
+            data: { kind: 'audio', content: 'a.m4a', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startFocusPick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    expect(cls('src-audio')).toContain('canvas-pick-dimmed');
+    expect(cls('src-audio')).not.toContain('canvas-pick-selectable');
+    // 点它也不该挂上浮层
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.react-flow__node[data-id="src-audio"]')!,
+      );
+    });
+    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+  });
 });
