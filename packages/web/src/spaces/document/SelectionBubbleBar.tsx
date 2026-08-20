@@ -76,10 +76,8 @@
 import * as React from 'react';
 import { useEditorState, type Editor } from '@tiptap/react';
 import { posToDOMRect } from '@tiptap/core';
-import { isTextSelection } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 import { AllSelection, PluginKey } from '@tiptap/pm/state';
-import type { EditorState } from '@tiptap/pm/state';
 import { BubbleMenu } from '@tiptap/react/menus';
 
 import {
@@ -304,7 +302,9 @@ function BubbleBar({
 
   const barRef = React.useRef<HTMLDivElement | null>(null);
   const pointerRef = React.useRef<{ x: number; y: number } | null>(null);
-  const pinnedRef = React.useRef<{ x: number; y: number } | null>(null);
+  const pinnedRef = React.useRef<{ x: number; y: number; area: DOMRect } | null>(
+    null,
+  );
 
   // On `document`, not on the editor: the question this feeds is whether the
   // pointer is INSIDE the body area, so the moment it leaves has to be seen
@@ -323,11 +323,22 @@ function BubbleBar({
     const remember = (event: MouseEvent): void => {
       pointerRef.current = { x: event.clientX, y: event.clientY };
     };
+    // Leaving the document is the one thing the two events above cannot say.
+    // Without it the last coordinate stands forever, and a keyboard select-all
+    // made while the pointer sits in another application would put the bar
+    // where the pointer used to be. Only ever reached before the bar is up: a
+    // bar already placed reads its pin, not this.
+    /** Forget the pointer's coordinates once it leaves the document. */
+    const forget = (): void => {
+      pointerRef.current = null;
+    };
     document.addEventListener('mousemove', remember);
     document.addEventListener('wheel', remember);
+    document.addEventListener('mouseleave', forget);
     return () => {
       document.removeEventListener('mousemove', remember);
       document.removeEventListener('wheel', remember);
+      document.removeEventListener('mouseleave', forget);
     };
   }, []);
 
@@ -342,83 +353,140 @@ function BubbleBar({
   //
   // On `transaction` rather than on a React render because a co-editor's change
   // arrives with no render behind it.
-  React.useEffect(() => {
-    /** Forget where the bar was pinned once the selection stops being a select-all. */
-    const drop = (): void => {
-      if (!(editor.state.selection instanceof AllSelection)) {
-        pinnedRef.current = null;
-      }
-    };
-    editor.on('transaction', drop);
-    return () => {
-      editor.off('transaction', drop);
-    };
-  }, [editor]);
+  /**
+   * Whether a viewport coordinate falls inside a box.
+   * @param point - A viewport coordinate.
+   * @param point.x - Its horizontal position.
+   * @param point.y - Its vertical position.
+   * @param box - The box to test against.
+   * @returns True when the point is within the box.
+   */
+  const isInside = (point: { x: number; y: number }, box: DOMRect): boolean =>
+    point.x >= box.left
+    && point.x <= box.right
+    && point.y >= box.top
+    && point.y <= box.bottom;
 
   /**
-   * Where the bar is pinned over a select-all, or null when it stays away.
+   * Where the bar sits over a select-all, or null when it stays away.
    *
-   * Two rules, both settled by the user on 2026-08-20. A select-all pins the
-   * bar to the pointer, and only while the pointer is inside the body area —
-   * over a whole document no line deserves the bar more than any other, and a
-   * position nobody asked for is worse than no bar. Once pinned it stays put:
-   * later calls answer the same coordinates, so scrolling recomputes to the
-   * same screen position and moving the pointer away changes nothing.
+   * READ ONLY — it never pins. Pinning happens at the two moments the rule
+   * names, and nowhere else: when the selection becomes a select-all, and on
+   * a scroll. Keeping the two apart is what makes "the pointer is only read at
+   * those two moments" true; when this doubled as the act of pinning, the
+   * plugin's own 250ms update debounce decided the moment instead, and a
+   * pointer moved within that window was taken as the answer.
    *
-   * What ends the mode is the selection ceasing to be a select-all, and the
-   * effect above is what watches for it.
-   * @returns The pinned point, or null when there is none to pin to.
+   * A pin survives a resize by moving with the body area rather than by
+   * staying at fixed coordinates. Staying put is a rule about SCROLLING (user
+   * 2026-08-20); a narrower window is a different event, and there the pin
+   * keeps its relative place in the area. Fixed coordinates would either leave
+   * the bar outside the area or let the hide middleware take it away for good.
+   * @returns The point the bar sits at, or null.
    */
-  const pinnedPointer = React.useCallback((): { x: number; y: number } | null => {
+  const pinnedPoint = React.useCallback((): { x: number; y: number } | null => {
     if (!(editor.state.selection instanceof AllSelection)) return null;
-    if (pinnedRef.current) return pinnedRef.current;
-    const pointer = pointerRef.current;
-    if (!pointer) return null;
-    const box = viewport.getBoundingClientRect();
-    const inside =
-      pointer.x >= box.left
-      && pointer.x <= box.right
-      && pointer.y >= box.top
-      && pointer.y <= box.bottom;
-    if (!inside) return null;
-    pinnedRef.current = pointer;
-    return pointer;
+    const pin = pinnedRef.current;
+    if (!pin) return null;
+    const area = viewport.getBoundingClientRect();
+    if (area.width === pin.area.width && area.height === pin.area.height) {
+      return { x: pin.x, y: pin.y };
+    }
+    const moved = {
+      x: area.left + ((pin.x - pin.area.left) / pin.area.width) * area.width,
+      y: area.top + ((pin.y - pin.area.top) / pin.area.height) * area.height,
+    };
+    pinnedRef.current = { ...moved, area };
+    return moved;
   }, [editor, viewport]);
 
-  // The plugin's own default, plus the select-all rule. Passing `shouldShow`
-  // REPLACES the default (`dist/index.js:180-182`) rather than adding to it,
-  // so its four conditions are restated here: focus somewhere that counts, a
-  // selection that is not empty, one that is not an empty text block, and an
-  // editable editor (`:62-77`).
-  const shouldShow = React.useCallback(
-    ({
-      view,
-      state,
-      from,
-      to,
-    }: {
-      view: EditorView;
-      state: EditorState;
-      from: number;
-      to: number;
-    }): boolean => {
-      const { doc, selection } = state;
-      if (selection.empty || !editor.isEditable) return false;
-      if (!doc.textBetween(from, to).length && isTextSelection(selection)) {
-        return false;
-      }
-      const inBar = barRef.current?.contains(document.activeElement) ?? false;
-      if (!view.hasFocus() && !inBar) return false;
-      if (selection instanceof AllSelection) return pinnedPointer() !== null;
-      return true;
-    },
-    [editor, pinnedPointer],
-  );
+  /**
+   * Pin the bar to the pointer, if there is a pointer inside the body area.
+   *
+   * Called only at the two moments the rule names. Answers whether there is
+   * now a point to sit at, which is the same question `pinnedPoint` answers
+   * afterwards.
+   * @returns True when the bar has a place to be.
+   */
+  const pinToPointer = React.useCallback((): boolean => {
+    if (!(editor.state.selection instanceof AllSelection)) return false;
+    if (pinnedPoint()) return true;
+    const pointer = pointerRef.current;
+    if (!pointer) return false;
+    const area = viewport.getBoundingClientRect();
+    if (!isInside(pointer, area)) return false;
+    pinnedRef.current = { ...pointer, area };
+    return true;
+  }, [editor, viewport, pinnedPoint]);
+
+  const wasSelectAllRef = React.useRef(false);
+  React.useEffect(() => {
+    /**
+     * Pin at the moment the selection becomes a select-all, drop it when it
+     * stops being one.
+     *
+     * Both acts ride on the transaction rather than on the question "should
+     * the bar show", because that question is asked on the plugin's schedule:
+     * 250ms after the fact (its update debounce), and again on every later
+     * transaction. Pinning there made the pointer's position 250ms after the
+     * select-all the answer, and let a co-editor's keystroke pin a bar the
+     * reader never asked for. Dropping there never ran at all on the one
+     * transition that needs it, since an empty selection returns earlier.
+     */
+    const follow = (): void => {
+      const isSelectAll = editor.state.selection instanceof AllSelection;
+      if (isSelectAll && !wasSelectAllRef.current) pinToPointer();
+      if (!isSelectAll) pinnedRef.current = null;
+      wasSelectAllRef.current = isSelectAll;
+    };
+    editor.on('transaction', follow);
+    return () => {
+      editor.off('transaction', follow);
+    };
+  }, [editor, pinToPointer]);
+
+  /**
+   * The conditions that hold whichever path is asking.
+   *
+   * The plugin's own `shouldShow` (`dist/index.js:62-77`) is REPLACED rather
+   * than extended when we pass ours, so its conditions live here: focus
+   * somewhere that counts, a selection that is not empty, text inside it, and
+   * an editable editor. Both the plugin's question and our scroll handler go
+   * through this — the scroll handler used to carry its own shorter list and
+   * so put the bar up over an editor the reader had already left.
+   *
+   * The text condition drops the plugin's `isTextSelection` guard on purpose:
+   * an `AllSelection` is not a `TextSelection`, so with that guard a
+   * select-all over an emptied document showed a bar whose every button was
+   * dead. What matters is whether the selection holds text, not its class.
+   *
+   * Takes the view rather than reading it off the editor: the plugin asks this
+   * during teardown too, and by then `editor.view` throws.
+   * @param view - The editor view the caller already holds.
+   * @returns True when a bar is warranted at all.
+   */
+  const isWarranted = React.useCallback((view: EditorView): boolean => {
+    const { doc, selection } = view.state;
+    if (selection.empty || !editor.isEditable) return false;
+    if (!doc.textBetween(selection.from, selection.to).length) return false;
+    const inBar = barRef.current?.contains(document.activeElement) ?? false;
+    return view.hasFocus() || inBar;
+  }, [editor]);
+
+  const shouldShow = React.useCallback(({ view }: { view: EditorView }): boolean => {
+    if (!isWarranted(view)) return false;
+    // Read only. The pin was set on the transaction that made this a
+    // select-all, or by a scroll; this question never pins.
+    if (editor.state.selection instanceof AllSelection) {
+      return pinnedPoint() !== null;
+    }
+    return true;
+  }, [editor, isWarranted, pinnedPoint]);
 
   const getReferencedVirtualElement = React.useCallback(() => {
     const { view } = editor;
     if (view.state.selection.empty) return null;
-    const pinned = pinnedPointer();
+    const pinned = pinnedPoint();
     // A pinned point has no extent, so both edges of the "line" are the same
     // coordinate and `anchorRect` grows it into the gap on either side — the
     // same shape a real line gets, which is what keeps the flip behaviour
@@ -445,7 +513,7 @@ function BubbleBar({
       getBoundingClientRect: () => rect,
       getClientRects: () => [rect] as unknown as DOMRectList,
     };
-  }, [editor, viewport, pinnedPointer]);
+  }, [editor, viewport, pinnedPoint]);
 
   // Ours rather than the wrapper's auto-generated one, because the scroll
   // handler below has to address this plugin by key to wake it.
@@ -464,8 +532,9 @@ function BubbleBar({
     /** Put the bar up if this scroll is the moment it becomes placeable. */
     const onScroll = (): void => {
       if (pinnedRef.current) return;
-      if (!pinnedPointer()) return;
       const { view } = editor;
+      if (!isWarranted(view)) return;
+      if (!pinToPointer()) return;
       view.dispatch(view.state.tr.setMeta(pluginKey, 'show'));
       view.dispatch(view.state.tr.setMeta(pluginKey, 'updatePosition'));
     };
@@ -473,7 +542,7 @@ function BubbleBar({
     return () => {
       viewport.removeEventListener('scroll', onScroll);
     };
-  }, [editor, viewport, pinnedPointer, pluginKey]);
+  }, [editor, viewport, isWarranted, pinToPointer, pluginKey]);
 
   const options = React.useMemo(
     () => ({

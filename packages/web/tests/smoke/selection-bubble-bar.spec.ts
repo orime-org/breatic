@@ -590,6 +590,83 @@ test('全选摆出条之后点掉选区，再在正文外全选，条不许拿�
   expect((await readBar(page)).shown).toBe(false);
 });
 
+// 窗口尺寸变了，两档的条都跟着动、都还在正文里。从用户角度这两档在这件事上
+// 没有区别（user 2026-08-20）：「位置不动」那条规则只约束滚动。
+test('窗口缩小时，两档的条都跟着动并留在正文区域内', async () => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  /** 条的位置、正文区域，以及条在不在区域里。 */
+  const geo = async (): Promise<{
+    shown: boolean;
+    barLeft: number;
+    barRight: number;
+    viewLeft: number;
+    viewRight: number;
+    inside: boolean;
+  }> =>
+    page.evaluate(() => {
+      const el = document.querySelector(
+        '[data-testid="doc-selection-bubble-bar"]',
+      ) as HTMLElement;
+      const b = el.getBoundingClientRect();
+      const v = document
+        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+        .getBoundingClientRect();
+      return {
+        shown: el.isConnected && getComputedStyle(el).visibility !== 'hidden',
+        barLeft: Math.round(b.left),
+        barRight: Math.round(b.right),
+        viewLeft: Math.round(v.left),
+        viewRight: Math.round(v.right),
+        inside: b.left >= v.left && b.right <= v.right,
+      };
+    });
+
+  // 选了一部分：锚点每次现场量，条自然跟着重排后的选区走。
+  await selectParagraph(page, 6);
+  const partialWide = await geo();
+  expect(partialWide.inside).toBe(true);
+  await page.setViewportSize({ width: 1000, height: 950 });
+  await page.waitForTimeout(700);
+  const partialNarrow = await geo();
+  expect(partialNarrow.shown).toBe(true);
+  expect(partialNarrow.inside).toBe(true);
+  expect(partialNarrow.barLeft).not.toBe(partialWide.barLeft);
+
+  // 全选：钉住的坐标按正文区域的新旧尺寸等比例重算。条既不消失，也不停在
+  // 一个已经在区域外面的位置上。
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await page.waitForTimeout(600);
+  const far = await page.evaluate(() => {
+    const v = document
+      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+      .getBoundingClientRect();
+    return { x: Math.round(v.right) - 40, y: Math.round(v.top) + 300 };
+  });
+  await page.mouse.move(far.x, far.y);
+  await selectWholeDocument(page);
+  const allWide = await geo();
+  expect(allWide.shown).toBe(true);
+  expect(allWide.inside).toBe(true);
+
+  await page.setViewportSize({ width: 1000, height: 950 });
+  await page.waitForTimeout(700);
+  const allNarrow = await geo();
+  expect(allNarrow.shown).toBe(true);
+  expect(allNarrow.inside).toBe(true);
+  // 相对位置守恒：钉住的点在区域宽度里占的比例，缩窄前后一致（差 ≤2px）。
+  const ratioWide =
+    (allWide.barRight - allWide.viewLeft) / (allWide.viewRight - allWide.viewLeft);
+  const ratioNarrow =
+    (allNarrow.barRight - allNarrow.viewLeft)
+    / (allNarrow.viewRight - allNarrow.viewLeft);
+  expect(Math.abs(ratioNarrow - ratioWide)).toBeLessThan(0.01);
+});
+
 // A15。逐像素扫描：锚定那一行跟正文可见区不相交的每一个滚动位置上，条都不能
 // 在屏幕上。不能只断言「它被裁掉了」——条挂在滚动容器外面，裁它的那一层比正文
 // 可见区高 40px，只靠裁切它会在那条 40px 的带子里露出来，画在顶部横条上。
