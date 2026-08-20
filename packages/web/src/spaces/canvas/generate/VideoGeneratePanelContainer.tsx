@@ -13,7 +13,6 @@ import {
   isNodeLocked,
   readCanvasGraph,
   readNodeLeaseGen,
-  removeEdge,
   setNodeMode,
   setNodeModel,
   setNodeParams,
@@ -36,9 +35,11 @@ import {
 } from '@web/spaces/canvas/generate/generate-panel-frame';
 import {
   deriveReferences,
+  focusToRailItem,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
+import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import {
   resolveModelSwitch,
   resolveParamsEdit,
@@ -313,13 +314,30 @@ function VideoGeneratePanelBody({
     }),
     [aspectRatio, resolution, duration, generateAudio],
   );
+  // Crops uploading right now, for THIS node (#1978). Without them the rail
+  // stays empty from the moment the marquee is confirmed until the upload
+  // lands — and on a node whose rail is otherwise empty the rail does not
+  // render at all, so the row appears out of nowhere on success.
+  const pendingFocusAll = useCanvasStore((s) => s.pendingFocusUploads);
+  const pendingFocus = React.useMemo(
+    () =>
+      pendingFocusAll
+        .filter((p) => p.nodeId === nodeId)
+        .map((p) => ({ id: p.id, name: p.name })),
+    [pendingFocusAll, nodeId],
+  );
   // References change identity on every derive; key the memo on their CONTENT
   // (a small array — a stringify key is cheap and exact), or the rail's memo
   // would be defeated on every frame of any node drag.
-  const referencesKey = JSON.stringify(references);
+  //
+  // Two sources, one list (#1978): edge-derived rows, then this node's focus
+  // crops turned into rows of the same shape. Downstream — rail, `@` pool,
+  // submit — there is one code path, exactly as on the image panel.
+  const referencesKey =
+    JSON.stringify(references) + JSON.stringify(vm.focusImages);
   const stableReferences = React.useMemo(
-    () => references,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS the input, serialized
+    () => [...references, ...vm.focusImages.map(focusToRailItem)],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS both inputs, serialized
     [referencesKey],
   );
   // The picked slot URLs are a fresh object per view-model build, on the same
@@ -434,6 +452,22 @@ function VideoGeneratePanelBody({
     (s) =>
       s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
   );
+  const focusPicking = useCanvasStore(
+    (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'focus',
+  );
+  // Focus pick, toggled from the toolbar (#1978). Same shape as the image
+  // panel's: a second click on a running focus pick for THIS node ends it,
+  // so the button is a real toggle rather than a one-way trip.
+  const startFocusPick = useCanvasStore((s) => s.startFocusPick);
+  const onFocus = React.useCallback(() => {
+    const session = useCanvasStore.getState().pickSession;
+    if (session?.nodeId === nodeId && session.purpose === 'focus') {
+      endPick();
+    } else {
+      startFocusPick(nodeId);
+    }
+  }, [startFocusPick, endPick, nodeId]);
+
   // One starter per slot. `Record<VideoSlot, …>` is what makes a new slot
   // impossible to half-wire: leaving it out here does not compile.
   const startSlotPick: Record<VideoSlot, (id: string) => void> = React.useMemo(
@@ -498,12 +532,9 @@ function VideoGeneratePanelBody({
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {
-      // A rail row IS an incoming edge here (video nodes carry no focus crops,
-      // which is the image panel's other row source), so removing one is
-      // removing that connection.
-      removeEdge(projectId, spaceId, item.refId);
+      removeReferenceRow({ item, projectId, spaceId, nodeId });
     },
-    [projectId, spaceId],
+    [projectId, spaceId, nodeId],
   );
   // A slot's ✕: clears the node's pick-time copy. Available whenever the slot
   // is — which is only in a mode that collects it. A copy left behind by a
@@ -755,6 +786,9 @@ function VideoGeneratePanelBody({
       modeOptions={availableModes}
       promptRequired={vm.promptRequired}
       references={stableReferences}
+      pendingFocus={pendingFocus}
+      onFocus={onFocus}
+      focusPicking={focusPicking}
       onAddReference={onAddReference}
       referencePicking={referencePicking}
       onRemoveReference={onRemoveReference}

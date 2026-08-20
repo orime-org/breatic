@@ -554,8 +554,8 @@ function CanvasSpaceInner({
   // pick trigger — still mounted, because the pick keeps the panel open. The
   // trigger is in the DOM right now (setState re-renders later), so the
   // synchronous focus lands before the banner unmounts. WHICH trigger depends
-  // on WHICH PANEL is showing it: each panel carries its own tool row, and
-  // only the reference tool exists in both (#1902). The two panels are never
+  // on WHICH PANEL is showing it: each panel carries its own tool row, and the
+  // tools both rows carry are reference and focus (#1902, focus since #1978). The two panels are never
   // mounted together (a node's panel is one kind), so trying the purpose's
   // candidate ids and taking whichever is on screen resolves it without
   // asking the store a second question. Nothing on screen — a pick that
