@@ -30,10 +30,10 @@
  *   nobody asked for is worse than no bar, so ours adds that condition — and
  *   restates the four, since passing `shouldShow` replaces the stock one
  *   rather than extending it.
- * - **Raising the bar when the pointer arrives.** The plugin only reconsiders
- *   on an editor transaction; a pointer crossing into the body is not one, and
+ * - **Raising the bar when a mouse event arrives.** The plugin only
+ *   reconsiders on an editor transaction; a mouse event is not one, and
  *   `updatePosition` returns immediately while the bar is down (`:300-302`).
- *   Our own pointer listener wakes it.
+ *   Our own listener wakes it.
  * - **Taking the bar away when its anchor leaves.** Clipping does not do it —
  *   the bar hangs outside the scroller, so the layer that clips it starts 40px
  *   higher and the bar would show in that strip, over the top bar. The `hide`
@@ -97,39 +97,6 @@ const BUBBLE_TOOLS: ToolDef[] = [...MARK_TOOLS, ...BLOCK_TOOLS];
 const GAP_FROM_SELECTION_PX = 8;
 
 /**
- * The box of the line holding a position.
- *
- * `coordsAtPos` answers a line box for a position inside a text block, but a
- * BLOCK BOUNDARY — the document's end, the seam between two blocks — sits
- * inside no line, and there it answers a zero-height separator instead: the
- * block branch returns `flattenH(...)`, which collapses top onto bottom
- * (`prosemirror-view@1.42.2/dist/index.js:618`).
- *
- * This used to walk such a boundary into the nearest text position before
- * measuring, because an `AllSelection`'s head lands on one — `Mod-a` puts it at
- * `doc.content.size` — and measuring the separator took the gap from the last
- * paragraph's BOTTOM edge rather than its line's top, putting the bar 17px into
- * that paragraph's text.
- *
- * The walk is gone because it no longer changes any answer that reaches the
- * screen. The ends of a `TextSelection` are inside text, so the first reading
- * already gives a line; beside an atom block `Selection.near` hands back a
- * `NodeSelection` whose head is the position it was given, measured on a
- * document ending in an `unsupportedBlock`. A select-all does still arrive
- * here — when it has no pin, `getReferencedVirtualElement` falls through to
- * {@link pickAnchorLine} — but a select-all without a pin is one the bar is
- * not showing, and the reading is discarded: `updatePosition` returns before
- * asking for an anchor while the bar is down, and `hide` takes it away when
- * the anchor is off screen. Both were measured in a browser.
- * @param view - The editor view to measure against.
- * @param pos - A document position.
- * @returns The line's extent, in viewport coordinates.
- */
-function lineAt(view: EditorView, pos: number): { top: number; bottom: number } {
-  return view.coordsAtPos(pos);
-}
-
-/**
  * The line the bar sits against, for a selection that covers part of the body.
  *
  * One rule covers both ways such a selection gets made, because the head of a
@@ -150,8 +117,14 @@ function lineAt(view: EditorView, pos: number): { top: number; bottom: number } 
  * Lines rather than DOM rectangles, deliberately. `Range.getClientRects()`
  * hands back the BORDER BOX of any element the range wholly contains, so a
  * fully selected paragraph yields one tall rectangle instead of one per line.
- * Asking the editor where a position sits always yields a single line,
- * whatever the range happens to span.
+ * `coordsAtPos` always yields a single line, whatever the range spans.
+ *
+ * Both ends measured here are inside text, so `coordsAtPos` answers a real
+ * line box for them. It answers a zero-height separator instead at a BLOCK
+ * BOUNDARY (`prosemirror-view@1.42.2/dist/index.js:618` collapses top onto
+ * bottom there), which is what an `AllSelection`'s head sits on — but that
+ * selection never reaches this function while the bar is showing: it anchors
+ * to its pin, and without a pin the bar is down and no anchor is asked for.
  * @param view - The editor view to measure against.
  * @param bounds - The visible box of the body's scroll container.
  * @returns The anchored line's extent, in viewport coordinates.
@@ -163,11 +136,11 @@ function pickAnchorLine(
   const { from, head } = view.state.selection;
   // `head` is always inside `[from, to]` — a selection defines them as the min
   // and max of its anchor and head — so the only question is whether it shows.
-  const headLine = lineAt(view, head);
+  const headLine = view.coordsAtPos(head);
   if (headLine.bottom > bounds.top && headLine.top < bounds.bottom) {
     return headLine;
   }
-  return lineAt(view, from);
+  return view.coordsAtPos(from);
 }
 
 /**
@@ -179,9 +152,11 @@ function pickAnchorLine(
  * edge the reader sees — a middle line starting at the block edge is left out
  * of the sample entirely. The range's own bounding box covers every line.
  *
- * The range is in step with the editor's selection whenever the bar is up: the
- * plugin only shows it while the editor holds focus, and the bar itself never
- * takes focus away (see the note at the top of this file).
+ * The range is in step with the editor's selection whenever the bar is up:
+ * {@link isWarranted} refuses without `view.hasFocus()`, and the bar refuses
+ * the focus change a press on it would cause (see the note further down), so
+ * a bar on screen means an editor holding focus, which in turn means a live
+ * DOM range that ProseMirror keeps synchronised with its own selection.
  * @param view - The editor view, for the fallback measurement.
  * @returns The selection's bounding box in viewport coordinates.
  */
@@ -360,18 +335,27 @@ function BubbleBar({
     const pin = pinnedRef.current;
     if (!pin) return null;
     const area = viewport.getBoundingClientRect();
-    const sameSize =
-      area.width === pin.area.width && area.height === pin.area.height;
-    // The ratio below divides by the new area. A zero reading has no producer
-    // we could name — Space switching remounts the whole bar (`ProjectPage`
-    // keys the outlet on the Space id) and collapsing a panel only narrows
-    // this box — so this is not a guard against some known event; it is the
-    // divisor's own domain. It is worth stating because the failure would be
-    // permanent rather than momentary: NaN would go back over the only copy of
-    // the pinned point, and NaN never equals the next size either, so every
-    // later call would divide by zero again. The old area needs no such test —
-    // a pin is only written after `isInside` accepted the pointer against it.
-    if (sameSize || area.width === 0 || area.height === 0) {
+    // All four numbers, not just the two sizes: the ratio below reads `left`
+    // and `top` as well, so an area that moved without resizing has to be
+    // rescaled too or the bar stays behind where the body used to be.
+    const unchanged =
+      area.left === pin.area.left
+      && area.top === pin.area.top
+      && area.width === pin.area.width
+      && area.height === pin.area.height;
+    // The divisor is the OLD area — `pin.area`, the box the point was placed
+    // in. It can be degenerate: `isInside` accepts a rectangle collapsed to a
+    // single point (`x >= left && x <= right` both hold when they are equal),
+    // so a pin can be written against a 0x0 reading. The new area is tested
+    // too, because a zero one would be stored back here and become the next
+    // call's divisor. Either way the failure is permanent rather than
+    // momentary — NaN would go over the only copy of the pinned point, and
+    // NaN never equals the next reading either, so every later call would
+    // repeat it. With nothing to rescale against, keep what we have.
+    const measurable =
+      pin.area.width > 0 && pin.area.height > 0
+      && area.width > 0 && area.height > 0;
+    if (unchanged || !measurable) {
       return { x: pin.x, y: pin.y };
     }
     const moved = {
@@ -450,6 +434,11 @@ function BubbleBar({
    * select-all over an emptied document showed a bar whose every button was
    * dead. What matters is whether the selection holds text, not its class.
    *
+   * The focus condition is the editor's focus and nothing else. It used to
+   * also accept focus sitting inside the bar, from the days when the bar was
+   * focusable; the bar now refuses the focus change a press would cause (see
+   * the note further down), so that branch had no way left to be true.
+   *
    * Takes the view rather than reading it off the editor: the plugin asks this
    * during teardown too, and by then `editor.view` throws.
    * @param view - The editor view the caller already holds.
@@ -461,79 +450,80 @@ function BubbleBar({
     // Focus before text: `textBetween` walks the selection and builds a string
     // as long as it, so over a multi-screen selection it is the expensive one.
     // Everything above and below it answers in constant time.
-    const inBar = barRef.current?.contains(document.activeElement) ?? false;
-    if (!view.hasFocus() && !inBar) return false;
+    if (!view.hasFocus()) return false;
     return doc.textBetween(selection.from, selection.to).length > 0;
   }, [editor]);
 
+  /**
+   * Whether a bar belongs on screen right now — the plugin's own question.
+   *
+   * Read-only: it never pins. A select-all shows exactly when a pin already
+   * exists, put there either by the transaction that made the selection a
+   * select-all or by a mouse event over the body.
+   *
+   * The mouse-event path below asks the same thing without coming through
+   * here, and it has to: the plugin's `'show'` meta runs `updatePosition()`
+   * and `show()` without consulting `shouldShow` at all
+   * (`dist/index.js:157-160`; its four metas — `updatePosition`,
+   * `updateOptions`, `hide`, `show` — are the whole vocabulary, there is no
+   * "reconsider" among them). What that path must not do is state the rule a
+   * second time, and it does not: it calls the same {@link isWarranted}, and
+   * then `pinToPointer`, whose true answer already means "this is a
+   * select-all AND there is now a pin" — the second half of the branch below.
+   * @param root0 - What the plugin passes its `shouldShow`.
+   * @param root0.view - The editor view.
+   * @returns True when the bar belongs on screen.
+   */
   const shouldShow = React.useCallback(({ view }: { view: EditorView }): boolean => {
     if (!isWarranted(view)) return false;
-    // Reads the pin; never sets one to the pointer. It was set either by the
-    // transaction that made this a select-all, or by the pointer crossing in.
-    if (editor.state.selection instanceof AllSelection) {
+    if (view.state.selection instanceof AllSelection) {
       return pinnedPoint() !== null;
     }
     return true;
-  }, [editor, isWarranted, pinnedPoint]);
+  }, [isWarranted, pinnedPoint]);
 
-  // The second of the two moments that decide whether the bar goes up over a
-  // select-all: the pointer crossing INTO the body area. (The first is the
-  // transaction that makes the selection a select-all, above.) The rule used to
-  // name a scroll instead, which meant a reader whose pointer was already back
-  // over the text had to scroll before the bar would appear (user 2026-08-20).
+  // The second of the two moments the ruling names: A MOUSE EVENT ARRIVES
+  // (user 2026-08-20, restating it — "鼠标移动是一种情况，能侦测到鼠标事件了。
+  // 侦测到鼠标事件的时候，就应该去重算一下。你滚滚轮的时候，不也是鼠标事件
+  // 嘛"). The first is the transaction that makes the selection a select-all.
   //
-  // `mousemove` rather than `mouseenter`, and on `document` rather than on the
-  // viewport, for one reason: the pointer's position has to be known
-  // CONTINUOUSLY, not just at the crossing. The first of the two moments reads
-  // it long after any crossing — a select-all made from the keyboard asks
-  // "where is the pointer right now", and `mouseenter` stopped reporting the
-  // moment it fired. The same need explains `document`: a pointer that walks
-  // out of the body has to be seen leaving, or the last coordinate inside
-  // would stand as the current one.
+  // So the question asked here is not "did the pointer cross a line" but
+  // "there is a fresh reading of where the pointer is — does the bar have
+  // somewhere to be now?". Both listeners below deliver that reading:
+  // `mousemove` when the pointer moves, `wheel` when it does not and the
+  // page does. (`scroll` is a plain `Event` and carries no coordinates, which
+  // is why the wheel is the one worth listening to.)
   //
-  // The crossing itself is then computed rather than received — `crossedIn`
-  // below compares this reading with the previous one.
+  // An earlier version compared this reading with the previous one and only
+  // acted on an edge. That was a second copy of the third line of the ruling
+  // ("once the bar is up, nothing re-decides where it sits") — a copy the
+  // `pinnedRef` exit below already makes true — and it was wrong in its own
+  // right: with the pointer standing still and the body area GROWING under it
+  // (the window widened), both readings sit inside the new area, no edge is
+  // ever computed, and the bar could never appear.
   //
-  // `wheel` is a second source for the same reading, and it earns its place in
-  // exactly one case: the pointer has not moved since the page appeared, so no
-  // `mousemove` ever fired and the position is unknown. A wheel gesture
-  // carries coordinates (`scroll` is a plain `Event` and carries none), so a
-  // reader who select-alls from the keyboard without touching the mouse gets
-  // the bar on the first scroll rather than never.
+  // On `document` rather than on the viewport: a pointer that walks out of
+  // the body has to be seen leaving, or the last coordinate inside would
+  // stand as the current one.
   React.useEffect(() => {
     /**
-     * Record where the pointer is, and raise the bar if this is the crossing.
-     * @param event - A pointer-bearing event.
+     * Record where the pointer is, and raise the bar if it now has a place.
+     * @param event - A mouse event, of any kind that carries coordinates.
      */
     const remember = (event: MouseEvent): void => {
-      const point = { x: event.clientX, y: event.clientY };
-      const previous = pointerRef.current;
-      pointerRef.current = point;
-      // Both early exits read a field and nothing else; the measurement below
-      // makes the browser settle layout, and this handler runs on every
-      // pointer move anywhere in the document. A bar already placed has no
-      // second moment to decide, and a selection that is not a select-all has
-      // no pin to place — `pinToPointer` would refuse on both counts anyway,
-      // several lines and one forced layout later.
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+      // Two field reads before the one measurement. `getBoundingClientRect`
+      // makes the browser settle layout, and this handler runs on every mouse
+      // event anywhere in the document. A bar already placed does not move,
+      // and a selection that is not a select-all has no pin to place —
+      // `pinToPointer` refuses on both counts anyway, one forced layout later.
       if (pinnedRef.current) return;
       const { view } = editor;
       if (!(view.state.selection instanceof AllSelection)) return;
-      const area = viewport.getBoundingClientRect();
-      // The ruling's second line, word for word: the pointer crossed FROM
-      // outside INTO the body. Its second half has no test, and the honest
-      // reason is that nothing can currently tell the two readings apart:
-      // holding "not pinned yet, pointer already inside" across two pointer
-      // moves needs some show condition to go from false to true without a
-      // transaction, and every way the editor regains focus brings one along —
-      // which `follow` answers first, pinning before this handler is asked
-      // again. That is reasoning, not a measurement; what was measured is the
-      // other direction (make this half constant and no test changes colour).
-      // It stays because it is the sentence itself, and because the early
-      // return above answers a different sentence — the third line, "once the
-      // bar is up, nothing re-decides where it sits".
-      const crossedIn =
-        isInside(point, area) && !(previous && isInside(previous, area));
-      if (!crossedIn) return;
+      // `isWarranted` before `pinToPointer`, not after: pinning is a write,
+      // and a pin made while no bar is warranted would sit there waiting. The
+      // reader would then get the bar at a place the pointer passed through
+      // while they were typing somewhere else entirely.
       if (!isWarranted(view) || !pinToPointer()) return;
       view.dispatch(view.state.tr.setMeta(pluginKey, 'show'));
       view.dispatch(view.state.tr.setMeta(pluginKey, 'updatePosition'));
@@ -543,8 +533,7 @@ function BubbleBar({
      *
      * Without this the last coordinate stands forever, and a keyboard
      * select-all made while the pointer sits in another application would put
-     * the bar where the pointer used to be. It also makes the next return a
-     * genuine crossing rather than a move within the area.
+     * the bar where the pointer used to be.
      *
      * `mouseout` with a null `relatedTarget`, not `mouseleave`. Both are
      * about the pointer leaving, and only one of them is promised to us:
@@ -652,9 +641,11 @@ function BubbleBar({
   // removing the attribute changes where focus LANDS, not whether it LEAVES the
   // body. Measured — after clicking the bar's padding, focus was in neither the
   // editor nor the bar, the body's selection highlight was gone, and the bar
-  // was still there. The plugin's capture-phase mousedown sets `preventHide`
-  // (`dist/index.js:180`), so `blurHandler` (`:100-103`) returns without
-  // hiding, and with no transaction to follow, nothing asks again.
+  // was still there. The plugin sets `preventHide` from a capture-phase
+  // mousedown on the whole bar (`dist/index.js:78-79` defines the handler,
+  // `:182` registers it), and `blurHandler` returns without hiding whenever
+  // that flag is up (`:106-108`, which is also its only reset). With no
+  // transaction to follow, nothing asks again.
   //
   // So the bar also refuses the focus change outright. Same move as Slate's
   // official hovering-toolbar example, whose comment reads "prevent toolbar

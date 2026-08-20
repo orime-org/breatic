@@ -377,6 +377,36 @@ test('在真浏览器里按浮出条上的按钮，文档真的变了', async ()
   await expect.poll(html).toContain('<em>');
 });
 
+test('按过浮出条之后再点到编辑器外面，条要消失', async () => {
+  test.setTimeout(120_000);
+  await openFreshDocument(page);
+  await page.keyboard.type('the quick brown fox');
+  await selectFirstParagraph(page);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+
+  // 按一下条上的按钮。插件在捕获相给整条挂了 mousedown，按下就把 preventHide
+  // 置真（`dist/index.js:78-79` 定义、`:182` 注册），而它全文件唯一的复位在
+  // `blurHandler` 的 `:106-108`，那一支返回、不隐藏。
+  await page.getByTestId('doc-bubble-tool-bold').click();
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+
+  const stillFocused = await page.evaluate(() => {
+    const editor = document.querySelector(
+      '[data-testid="document-space"] .ProseMirror',
+    );
+    return editor?.contains(document.activeElement) ?? false;
+  });
+  expect(stillFocused).toBe(true);
+
+  // 按 Tab 把焦点送出正文。实测这一下派发两次 blur：第一次被上面那个闩吃掉
+  // 并把它复位，第二次才走到隐藏。所以闩「只进不出」这件事在真机上够不成
+  // 后果——这条测的是用户看到的结果，不是那个闩。
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(500);
+
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeHidden();
+});
+
 test('正文列右边放不下时，浮出条改成右边缘对齐选区左边缘', async () => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1280, height: 900 });

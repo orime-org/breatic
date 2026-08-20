@@ -761,6 +761,33 @@ describe('选中浮出条', () => {
       ).toBe(420);
     });
 
+    it('鼠标一步没动，正文区域长大把它包了进来——下一个鼠标事件就该摆出条', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+
+      // 正文区域先是窄的，鼠标停在它右边外面。
+      pinViewport(new DOMRect(0, 100, 400, 400));
+      moveMouseTo(600, 250);
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow(editor)).toBe(false);
+
+      // 窗口拉宽，正文区域跟着长大，同一个坐标现在落在区域里。鼠标一步没动，
+      // 所以判据要是「这次在里面、上次在外面」就永远算不出来——两次读数是同
+      // 一个点，拿长大后的区域去判，两次都在里面。
+      pinViewport(new DOMRect(0, 100, 800, 400));
+      moveMouseTo(600, 250);
+
+      expect(shouldShowNow(editor)).toBe(true);
+      expect(
+        bubblePluginView(editor)
+          .getReferencedVirtualElement?.()
+          ?.getBoundingClientRect().left,
+      ).toBe(600);
+    });
+
     it('鼠标离开页面之后位置就不知道了——键盘全选不把条摆出来', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
