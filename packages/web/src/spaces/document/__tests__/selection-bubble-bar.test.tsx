@@ -20,6 +20,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { Editor } from '@tiptap/react';
+import type { EditorView } from '@tiptap/pm/view';
+import type { EditorState } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
@@ -112,10 +114,21 @@ interface BubblePluginView {
   element?: HTMLElement;
   scrollTarget?: unknown;
   resizeDelay?: number;
+  isVisible?: boolean;
   getReferencedVirtualElement?: () => { getBoundingClientRect: () => DOMRect } | null;
+  shouldShow?: (props: {
+    editor: Editor;
+    element: HTMLElement;
+    view: EditorView;
+    state: EditorState;
+    from: number;
+    to: number;
+  }) => boolean;
   floatingUIOptions?: {
     offset?: unknown;
     flip?: { boundary?: unknown } | boolean;
+    shift?: { boundary?: unknown } | boolean;
+    hide?: { boundary?: unknown } | boolean;
     placement?: string;
   };
 }
@@ -546,6 +559,231 @@ describe('选中浮出条', () => {
         bubblePluginView(editor).getReferencedVirtualElement?.(),
       ).toBeNull();
     });
+  });
+
+  /**
+   * 全选那一档（A14）。
+   *
+   * 规则是 user 2026-08-20 定的两条：全选时鼠标在正文区域内就把条摆在鼠标那儿、
+   * 不在就不显示；滚动的时候条已经显示就不动它，没显示才去判鼠标在哪。
+   *
+   * 「全选」的判据是 `AllSelection` —— 选了四分之三仍是区域选择，走上面那一组。
+   */
+  describe('全选那一档', () => {
+    const VIEWPORT = new DOMRect(0, 100, 800, 400);
+
+    beforeEach(() => {
+      pinSelectionBox(SELECTION_BOX);
+    });
+
+    /**
+     * 把最后一次已知的鼠标位置挪到某处。
+     *
+     * 事件发在 `document` 上而不是编辑器上：这个判据要回答的是「鼠标在不在正文
+     * 区域内」，鼠标离开正文之后必须还能收到它的位置，否则记下的永远是最后一次
+     * 在正文里的坐标、判据恒为真。
+     * @param x - 视口横坐标。
+     * @param y - 视口纵坐标。
+     */
+    function moveMouseTo(x: number, y: number): void {
+      act(() => {
+        document.dispatchEvent(
+          new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true }),
+        );
+      });
+    }
+
+    /**
+     * 全选，并把插件的显示判据问一遍。
+     * @param editor - 编辑器。
+     * @returns 插件此刻会不会显示这条。
+     */
+    function shouldShowNow(editor: Editor): boolean {
+      const view = bubblePluginView(editor);
+      expect(view.shouldShow).toBeTypeOf('function');
+      const { from, to } = editor.state.selection;
+      return view.shouldShow!({
+        editor,
+        element: view.element!,
+        view: editor.view,
+        state: editor.state,
+        from,
+        to,
+      });
+    }
+
+    it('鼠标在正文区域内时，锚的是鼠标那个点，不是任何一行', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+      // 每一行都给一个一眼认得出的坐标：锚点若还是从行算的，断言会读到它们。
+      editor.view.coordsAtPos = () => ({
+        top: 300,
+        bottom: 320,
+        left: 40,
+        right: 60,
+      });
+
+      moveMouseTo(420, 250);
+      act(() => {
+        editor.commands.selectAll();
+      });
+
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      expect(rect).toBeDefined();
+      // 鼠标点是零高度的，锚点矩形上下各撑一个间距（8）。
+      expect(rect?.top).toBe(242);
+      expect(rect?.bottom).toBe(258);
+      // 水平也取自鼠标，不再是选区包围盒——全选没有「选区左边缘」这回事，
+      // 整篇的包围盒左边缘是正文列的左边，跟用户在看哪儿无关。
+      expect(rect?.left).toBe(420);
+    });
+
+    it('鼠标在正文区域外时，这条不显示', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      // 正文可见区是 y 从 100 到 500；50 在它上方，也就是顶部横条那一带。
+      moveMouseTo(420, 50);
+      act(() => {
+        editor.commands.selectAll();
+      });
+
+      expect(shouldShowNow(editor)).toBe(false);
+    });
+
+    it('从来没有过鼠标位置时，这条不显示', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      act(() => {
+        editor.commands.selectAll();
+      });
+
+      expect(shouldShowNow(editor)).toBe(false);
+    });
+
+    it('条摆出来之后鼠标离开正文区域，它不跟着消失', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      moveMouseTo(420, 250);
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow(editor)).toBe(true);
+
+      // 摆出来之后它在屏幕上的坐标就定了，鼠标去哪都不再影响它。
+      moveMouseTo(420, 50);
+
+      expect(shouldShowNow(editor)).toBe(true);
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+      expect(rect?.top).toBe(242);
+      expect(rect?.left).toBe(420);
+    });
+
+    it('鼠标回到正文区域之后，下一次滚动把条摆出来', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      // 全选那一刻鼠标在正文外面，所以什么都不显示。
+      moveMouseTo(420, 50);
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow(editor)).toBe(false);
+
+      // 鼠标回到正文里，但用户没有再选也没有再点——只有滚动这一个信号。
+      moveMouseTo(420, 250);
+      act(() => {
+        document
+          .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+          ?.dispatchEvent(new Event('scroll'));
+      });
+
+      expect(shouldShowNow(editor)).toBe(true);
+      expect(bubblePluginView(editor).isVisible).toBe(true);
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+      expect(rect?.top).toBe(242);
+      expect(rect?.left).toBe(420);
+    });
+
+    it('选了一部分时不看鼠标在哪——那一档跟着选区走', async () => {
+      const editor = open('<p>hello world</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+      pinViewport(VIEWPORT);
+
+      // 鼠标停在正文区域外，而选区只是一小段：这一档照常显示，锚在行上。
+      moveMouseTo(420, 50);
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 6 });
+      });
+      editor.view.coordsAtPos = () => ({
+        top: 200,
+        bottom: 220,
+        left: 40,
+        right: 60,
+      });
+
+      expect(shouldShowNow(editor)).toBe(true);
+      const rect = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+      expect(rect?.top).toBe(192);
+      expect(rect?.left).toBe(SELECTION_BOX.left);
+    });
+  });
+
+  it('锚点离开正文可见区就隐藏，靠的是 hide 中间件', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const viewport = document.querySelector(
+      '.doc-body-scroller [data-radix-scroll-area-viewport]',
+    );
+    const hide = bubblePluginView(editor).floatingUIOptions?.hide;
+
+    // 插件默认 `hide: false`（`dist/index.js:55`），不传就没有这个中间件，
+    // 锚点滚出正文之后条会一直画在那儿。而它的边界默认是裁切祖先，那一层的顶
+    // 比正文可见区高 40px——不显式传边界等于没解决这 40px。
+    expect(viewport).not.toBeNull();
+    expect(typeof hide).toBe('object');
+    expect((hide as { boundary?: unknown }).boundary).toBe(viewport);
+  });
+
+  it('左右夹取交给 shift，边界也是正文可见区', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const viewport = document.querySelector(
+      '.doc-body-scroller [data-radix-scroll-area-viewport]',
+    );
+    const shift = bubblePluginView(editor).floatingUIOptions?.shift;
+
+    // shift 本来就开着（`dist/index.js:51` 默认 `{}`），我们要改的只是它量的
+    // 那个盒子——默认的裁切祖先跟正文可见区不是同一个。
+    expect(viewport).not.toBeNull();
+    expect(typeof shift).toBe('object');
+    expect((shift as { boundary?: unknown }).boundary).toBe(viewport);
   });
 
   // 没有选区时六个按钮根本不建。查的是插件自己那个元素而不是 document：条隐藏
