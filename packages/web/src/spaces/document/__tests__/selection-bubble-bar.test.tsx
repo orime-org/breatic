@@ -696,6 +696,35 @@ describe('选中浮出条', () => {
       expect(shouldShowNow(editor)).toBe(false);
     });
 
+    it('已经是全选之后，别的事务不会重新钉——协作对端敲字也不会', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      moveMouseTo(420, 250);
+      act(() => {
+        editor.commands.selectAll();
+      });
+      const pinned = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+      expect(pinned?.left).toBe(420);
+
+      // 把鼠标挪到别处，然后造一个事务。选区仍是全选，所以「变成全选那一刻」
+      // 这个边沿不成立，钉的位置不该动——这正是 `wasSelectAllRef` 那个边沿
+      // 判据在挡的事，删掉它这条就红。
+      moveMouseTo(700, 300);
+      act(() => {
+        editor.view.dispatch(editor.state.tr.insertText('x', 1, 1));
+      });
+
+      const after = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+      expect(after?.left).toBe(420);
+    });
+
     it('选了一部分时不看鼠标在哪——那一档跟着选区走', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);

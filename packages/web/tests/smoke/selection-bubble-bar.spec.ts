@@ -18,8 +18,24 @@ const password = process.env.SMOKE_PASSWORD;
 
 test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
-/** 正文可见区的顶距窗口顶多少 —— 顶部那排 chrome 是固定高度，实测恒为它。 */
-const BODY_VIEWPORT_TOP = 120;
+/**
+ * 正文可见区的顶，现场量。
+ *
+ * 早先这里写死 120（当时实测的值）。同一个文件另外三处都是现场量的，而写死
+ * 的那个数一旦顶部 chrome 改高度就不再是被测的那个盒子——队列里的 #129 正是
+ * 去掉 document space 顶部横条。设计文档 §11.3 记着同一个数出过的事故：拿一
+ * 个实测常量去回答另一个问题，据此得出的结论是错的。
+ * @param p - 页面。
+ * @returns 正文可见区顶到窗口顶的距离。
+ */
+async function bodyViewportTop(p: Page): Promise<number> {
+  return p.evaluate(() =>
+    Math.round(
+      document
+        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+        .getBoundingClientRect().top,
+    ));
+}
 
 /** 条跟它锚定那一行之间的间距，跟实现里的 `GAP_FROM_SELECTION_PX` 同一个数。 */
 const GAP_FROM_SELECTION_PX = 8;
@@ -269,7 +285,7 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ()
   // 首段：它上方到正文可见区顶只有约 30px，而浮出条要 36 高加 8 间距。
   await selectParagraph(page, 0);
   const first = await readGeometry(page);
-  expect(first.lineTop - BODY_VIEWPORT_TOP).toBeLessThan(44);
+  expect(first.lineTop - (await bodyViewportTop(page))).toBeLessThan(44);
   expect(first.below).toBe(true);
   expect(first.gap).toBe(8);
   // 不量「有没有越出裁切盒」：上面已经断言了它在选区下方且间距 8，而选区必在
@@ -280,7 +296,7 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ()
   // 中间某段：上方空间充足，照旧在上方。
   await selectParagraph(page, 8);
   const middle = await readGeometry(page);
-  expect(middle.lineTop - BODY_VIEWPORT_TOP).toBeGreaterThan(44);
+  expect(middle.lineTop - (await bodyViewportTop(page))).toBeGreaterThan(44);
   expect(middle.below).toBe(false);
   expect(middle.gap).toBe(8);
 
@@ -298,10 +314,10 @@ test('选中的那一行被滚到正文顶部时，浮出条翻到下方而不�
   // 滚动量按量到的位置算，不写死——写死的数字随字号和行距一起漂，而漂到
   // 「整段滚出视野」时测的就完全是另一件事了（那种情形不在本次范围内）。
   const before = await readGeometry(page);
-  await scrollBodyTo(page, before.lineTop - BODY_VIEWPORT_TOP - 10);
+  await scrollBodyTo(page, before.lineTop - (await bodyViewportTop(page)) - 10);
 
   const m = await readGeometry(page);
-  expect(m.lineTop - BODY_VIEWPORT_TOP).toBeLessThan(44);
+  expect(m.lineTop - (await bodyViewportTop(page))).toBeLessThan(44);
   // 第一轮实现在这里把浮出条画到了裁切盒之外，顶上 4px 被削掉（实测条顶 76、
   // 裁切盒顶 80）。现在它该翻到选区下方。
   expect(m.below).toBe(true);
@@ -544,6 +560,10 @@ test('全选后鼠标回到正文里，条自己就出来了——不用滚动',
 
   const shown = await readBar(page);
   expect(shown.shown).toBe(true);
+  // 落在鼠标那一点，不是上一次算出来的位置。唤醒插件要连发两个 meta：`'show'`
+  // 自己会先 `updatePosition()` 再 `show()`，而前者在条还没显示时立刻返回，所以
+  // 单发一个条会带着旧坐标出现——变异实测：删掉第二个 meta，条落在 616 而不是
+  // 鼠标所在的 820，而单测一条都不红（jsdom 里量不到位置）。
   expect(shown.left).toBe(spot.x);
 
   // 摆出来之后就钉住了：鼠标继续在正文里动、滚动，它都不动。
@@ -769,9 +789,39 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
       };
     });
 
-  // 选了一部分：选区做到正文列最右端那个词上。
-  await selectParagraph(page, 0);
+  // 选了一部分：选区必须真的做到正文列最右端，否则条离右边界还有几百像素，
+  // 两条断言恒真、`shift` 的 boundary 删掉都不会红（第八轮对抗查实）。
+  // 双击第一行最靠右的那个词，做法跟同文件那条水平翻转用例一致。
+  //
+  // 正文列是居中的，它的右端离正文可见区的右边还隔着一整条外边距——1680 宽下
+  // 实测余量 155px。这个余量本身就是设计（正文不贴边），所以前置断言按它的实
+  // 际量级定：条确实被推到了列的右端，而不是停在列中间。
+  const spot = await page.evaluate(() => {
+    const p = document.querySelector('[data-testid="document-space"] .ProseMirror p');
+    const text = p?.firstChild as Text;
+    const range = document.createRange();
+    const first = { top: 0, right: 0, offset: 0 };
+    for (let i = 0; i < text.length; i += 1) {
+      range.setStart(text, i);
+      range.setEnd(text, i + 1);
+      const r = range.getBoundingClientRect();
+      if (i === 0) first.top = r.top;
+      if (Math.abs(r.top - first.top) > 2) break;
+      if (r.right > first.right) {
+        first.right = r.right;
+        first.offset = i;
+      }
+    }
+    range.setStart(text, Math.max(0, first.offset - 2));
+    range.setEnd(text, first.offset + 1);
+    const r = range.getBoundingClientRect();
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  });
+  await page.mouse.dblclick(spot.x, spot.y);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({ timeout: 5_000 });
   const partial = await edges();
+  // 先确认这个几何真的把条推到了右边界附近，否则下面两句测的是别的东西。
+  expect(partial.viewRight - partial.barRight).toBeLessThan(200);
   expect(partial.barRight).toBeLessThanOrEqual(partial.viewRight);
   expect(partial.barLeft).toBeGreaterThanOrEqual(partial.viewLeft);
 

@@ -23,14 +23,17 @@
  *   returns it before every other branch. What we hand back depends on the
  *   selection: a select-all anchors to the pointer, anything smaller to one of
  *   its own two ends — see {@link pickAnchorLine}.
- * - **Whether to show at all.** The stock `shouldShow` asks only about focus
- *   and emptiness (`:62-77`). A select-all with the pointer outside the body
- *   has nowhere to put the bar, and a position nobody asked for is worse than
- *   no bar, so ours adds that condition.
- * - **Putting the bar up on a scroll.** The plugin's scroll path only calls
- *   `updatePosition`, which returns immediately while the bar is down
- *   (`:300-302`), so a bar withheld for want of a pointer would never appear
- *   however far the reader scrolls. Our own scroll handler wakes it.
+ * - **Whether to show at all.** The stock `shouldShow` (`:62-77`) asks four
+ *   things: focus somewhere that counts, a non-empty selection, a selection
+ *   that is not an empty text block, and an editable editor. A select-all with
+ *   the pointer outside the body has nowhere to put the bar, and a position
+ *   nobody asked for is worse than no bar, so ours adds that condition — and
+ *   restates the four, since passing `shouldShow` replaces the stock one
+ *   rather than extending it.
+ * - **Raising the bar when the pointer arrives.** The plugin only reconsiders
+ *   on an editor transaction; a pointer crossing into the body is not one, and
+ *   `updatePosition` returns immediately while the bar is down (`:300-302`).
+ *   Our own pointer listener wakes it.
  * - **Taking the bar away when its anchor leaves.** Clipping does not do it —
  *   the bar hangs outside the scroller, so the layer that clips it starts 40px
  *   higher and the bar would show in that strip, over the top bar. The `hide`
@@ -106,13 +109,18 @@ const GAP_FROM_SELECTION_PX = 8;
  * measuring, because an `AllSelection`'s head lands on one — `Mod-a` puts it at
  * `doc.content.size` — and measuring the separator took the gap from the last
  * paragraph's BOTTOM edge rather than its line's top, putting the bar 17px into
- * that paragraph's text. A select-all no longer reaches this function at all
- * (it anchors to the pointer), and the walk has no effect anywhere else: the
- * ends of a `TextSelection` are inside text, so the first reading already
- * answers a line; and beside an atom block `Selection.near` hands back a
- * `NodeSelection` whose head is the position it was given — measured on a
- * document ending in an `unsupportedBlock`, both ends walked to the same
- * position they started from.
+ * that paragraph's text.
+ *
+ * The walk is gone because it no longer changes any answer that reaches the
+ * screen. The ends of a `TextSelection` are inside text, so the first reading
+ * already gives a line; beside an atom block `Selection.near` hands back a
+ * `NodeSelection` whose head is the position it was given, measured on a
+ * document ending in an `unsupportedBlock`. A select-all does still arrive
+ * here — when it has no pin, `getReferencedVirtualElement` falls through to
+ * {@link pickAnchorLine} — but a select-all without a pin is one the bar is
+ * not showing, and the reading is discarded: `updatePosition` returns before
+ * asking for an anchor while the bar is down, and `hide` takes it away when
+ * the anchor is off screen. Both were measured in a browser.
  * @param view - The editor view to measure against.
  * @param pos - A document position.
  * @returns The line's extent, in viewport coordinates.
@@ -325,12 +333,17 @@ function BubbleBar({
   /**
    * Where the bar sits over a select-all, or null when it stays away.
    *
-   * READ ONLY — it never pins. Pinning happens at the two moments the rule
-   * names, and nowhere else: when the selection becomes a select-all, and on
-   * a scroll. Keeping the two apart is what makes "the pointer is only read at
-   * those two moments" true; when this doubled as the act of pinning, the
-   * plugin's own 250ms update debounce decided the moment instead, and a
-   * pointer moved within that window was taken as the answer.
+   * It never pins to the POINTER — that happens at the two moments the rule
+   * names and nowhere else: when the selection becomes a select-all, and when
+   * the pointer crosses into the body area. Keeping the two apart is what
+   * makes "the pointer is only read at those two moments" true; when this
+   * doubled as the act of pinning, the plugin's own 250ms update debounce
+   * decided the moment instead, and a pointer moved inside that window was
+   * taken as the answer.
+   *
+   * It does write one thing: a resize rescales the pin and stores the result,
+   * so the ratio is taken against the area the point was last placed in rather
+   * than compounding across every resize.
    *
    * A pin survives a resize by moving with the body area rather than by
    * staying at fixed coordinates. Staying put is a rule about SCROLLING (user
@@ -384,7 +397,6 @@ function BubbleBar({
     return true;
   }, [editor, viewport, pinnedPoint]);
 
-  const wasSelectAllRef = React.useRef(false);
   React.useEffect(() => {
     /**
      * Pin at the moment the selection becomes a select-all, drop it when it
@@ -399,10 +411,16 @@ function BubbleBar({
      * transition that needs it, since an empty selection returns earlier.
      */
     const follow = (): void => {
-      const isSelectAll = editor.state.selection instanceof AllSelection;
-      if (isSelectAll && !wasSelectAllRef.current) pinToPointer();
-      if (!isSelectAll) pinnedRef.current = null;
-      wasSelectAllRef.current = isSelectAll;
+      if (editor.state.selection instanceof AllSelection) {
+        // Idempotent: `pinToPointer` keeps an existing pin, so a later
+        // transaction over the same select-all — a co-editor's keystroke, say —
+        // cannot move a bar the reader already has. An edge test on top of that
+        // would be a second copy of the same guarantee; measured, deleting
+        // either one alone changes nothing and deleting both moves the bar.
+        pinToPointer();
+        return;
+      }
+      pinnedRef.current = null;
     };
     editor.on('transaction', follow);
     return () => {
@@ -433,15 +451,18 @@ function BubbleBar({
   const isWarranted = React.useCallback((view: EditorView): boolean => {
     const { doc, selection } = view.state;
     if (selection.empty || !editor.isEditable) return false;
-    if (!doc.textBetween(selection.from, selection.to).length) return false;
+    // Focus before text: `textBetween` walks the selection and builds a string
+    // as long as it, so over a multi-screen selection it is the expensive one.
+    // Everything above and below it answers in constant time.
     const inBar = barRef.current?.contains(document.activeElement) ?? false;
-    return view.hasFocus() || inBar;
+    if (!view.hasFocus() && !inBar) return false;
+    return doc.textBetween(selection.from, selection.to).length > 0;
   }, [editor]);
 
   const shouldShow = React.useCallback(({ view }: { view: EditorView }): boolean => {
     if (!isWarranted(view)) return false;
-    // Read only. The pin was set on the transaction that made this a
-    // select-all, or by a scroll; this question never pins.
+    // Reads the pin; never sets one to the pointer. It was set either by the
+    // transaction that made this a select-all, or by the pointer crossing in.
     if (editor.state.selection instanceof AllSelection) {
       return pinnedPoint() !== null;
     }
