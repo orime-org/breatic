@@ -4,7 +4,7 @@
 /**
  * Which tier governs a given account and a given studio (task #16) — real-PG.
  *
- * Two lookups, because the ratified rule has two halves. How many team
+ * Two routes, because the ratified rule has two halves. How many team
  * studios an account may administer is decided by that account's own tier.
  * Everything else a studio caps — projects, members, concurrent writable
  * connections, storage — is decided by the tier of that studio's CURRENT
@@ -53,7 +53,7 @@ import postgres from "postgres";
 import { initCore, loadLocales } from "@breatic/core";
 import {
   getUserMembershipTier,
-  getStudioMembershipTier,
+  getStudioStorageQuota,
   getLimitsForUser,
   getLimitsForStudio,
   getProjectConcurrentEditorLimit,
@@ -212,19 +212,28 @@ describe("getUserMembershipTier", () => {
   });
 });
 
-describe("getStudioMembershipTier", () => {
-  it("resolves a personal studio to its owner's tier", async () => {
-    const { personalStudioId } = await insertUser("team");
-    await expect(getStudioMembershipTier(personalStudioId)).resolves.toBe("team");
+describe("getStudioStorageQuota", () => {
+  // These cases were `getStudioMembershipTier`'s until #89 deleted it. They
+  // were never about the tier VALUE — every one of them is about finding the
+  // right admin — so they now assert the admin id this function returns,
+  // which says the same thing more directly.
+
+  it("resolves a personal studio to its owner", async () => {
+    const { userId, personalStudioId } = await insertUser("team");
+    const quota = await getStudioStorageQuota(personalStudioId);
+    expect(quota.adminUserId).toBe(userId);
+    expect(quota.storageBytes).toBe(getMembershipLimits("team").storage_bytes);
   });
 
-  it("resolves a team studio to its admin's tier", async () => {
+  it("resolves a team studio to its admin", async () => {
     const { userId } = await insertUser("pro");
     const studioId = await insertTeamStudio(userId);
-    await expect(getStudioMembershipTier(studioId)).resolves.toBe("pro");
+    const quota = await getStudioStorageQuota(studioId);
+    expect(quota.adminUserId).toBe(userId);
+    expect(quota.storageBytes).toBe(getMembershipLimits("pro").storage_bytes);
   });
 
-  it("ignores a non-admin member's tier", async () => {
+  it("ignores a non-admin member", async () => {
     // The ceilings of a studio are paid for by whoever administers it. A
     // maintainer on a richer tier must not raise them, and one on a poorer
     // tier must not lower them.
@@ -243,7 +252,9 @@ describe("getStudioMembershipTier", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${studioId}, ${member.userId}, 'maintainer')
     `;
-    await expect(getStudioMembershipTier(studioId)).resolves.toBe("base");
+    const quota = await getStudioStorageQuota(studioId);
+    expect(quota.adminUserId).toBe(admin.userId);
+    expect(quota.storageBytes).toBe(getMembershipLimits("base").storage_bytes);
   });
 
   it("refuses a studio whose only live member is not an admin", async () => {
@@ -264,16 +275,17 @@ describe("getStudioMembershipTier", () => {
       UPDATE studio_members SET deleted_at = now()
       WHERE studio_id = ${studioId} AND user_id = ${admin.userId}
     `;
-    await expect(getStudioMembershipTier(studioId)).rejects.toThrow();
+    await expect(getStudioStorageQuota(studioId)).rejects.toThrow();
   });
 
   it("follows a transfer to the new admin", async () => {
     // The load-bearing case. Ownership is the current `admin` row, never the
-    // immutable `created_by_user_id` — so the studio's ceilings move with it.
+    // immutable `created_by_user_id` — so the studio's ceilings move with it,
+    // and so does whom a full-storage notification goes to.
     const from = await insertUser("team");
     const to = await insertUser("base");
     const studioId = await insertTeamStudio(from.userId);
-    expect(await getStudioMembershipTier(studioId)).toBe("team");
+    expect((await getStudioStorageQuota(studioId)).adminUserId).toBe(from.userId);
 
     // Same two writes the transfer service makes: demote, then promote.
     await sql`
@@ -285,7 +297,9 @@ describe("getStudioMembershipTier", () => {
       VALUES (${studioId}, ${to.userId}, 'admin')
     `;
 
-    expect(await getStudioMembershipTier(studioId)).toBe("base");
+    const after = await getStudioStorageQuota(studioId);
+    expect(after.adminUserId).toBe(to.userId);
+    expect(after.storageBytes).toBe(getMembershipLimits("base").storage_bytes);
   });
 
   it("ignores a soft-deleted admin membership", async () => {
@@ -297,30 +311,62 @@ describe("getStudioMembershipTier", () => {
     `;
     // No live admin left: corrupt, and a fallback tier would silently decide
     // every ceiling on this studio.
-    await expect(getStudioMembershipTier(studioId)).rejects.toThrow();
+    await expect(getStudioStorageQuota(studioId)).rejects.toThrow();
   });
 
   it("throws for a studio that does not exist", async () => {
     await expect(
-      getStudioMembershipTier("00000000-0000-0000-0000-000000000000"),
+      getStudioStorageQuota("00000000-0000-0000-0000-000000000000"),
     ).rejects.toThrow();
+  });
+
+  it("answers null for the enterprise tier rather than throwing", async () => {
+    // Enterprise ceilings are negotiated per customer and are in no config
+    // file, so there is no number to answer with. Storage is the one ceiling
+    // whose ratified product rule is to let it through (user 2026-08-19), and
+    // a rule cannot be applied to an exception — hence a value, not a throw.
+    //
+    // The other five ceilings still throw, deliberately: what enterprise
+    // means for them has never been decided, and inventing an answer here
+    // would decide it silently.
+    const { personalStudioId } = await insertUser("enterprise");
+    const quota = await getStudioStorageQuota(personalStudioId);
+    expect(quota.storageBytes).toBeNull();
+    await expect(getLimitsForStudio(personalStudioId)).rejects.toThrow(
+      /enterprise tier/,
+    );
+  });
+
+  it("still refuses a tier this build does not know", async () => {
+    // Null means "this tier has no ceiling", which is a different fact from
+    // "this value is not a tier". The second must stay an error.
+    const badId = await insertUserWithBadTier("plutonium");
+    const [st] = await sql<{ id: string }[]>`
+      INSERT INTO studios (created_by_user_id, slug, type, name)
+      VALUES (${badId}, ${`tier-bad-s-${seq++}`}, 'personal', 'Personal')
+      RETURNING id
+    `;
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${st!.id}, ${badId}, 'admin')
+    `;
+    await expect(getStudioStorageQuota(st!.id)).rejects.toThrow(/plutonium/);
   });
 });
 
 /**
- * The two functions callers actually use. Everything above resolves a tier;
- * these turn a tier into the six numbers, and they are the only place that
- * conversion happens.
+ * The functions that turn a tier into numbers. Everything above resolves a
+ * tier; these price it, and they are the only place that conversion happens.
  *
- * Why it matters that there is exactly one such place: five ceilings already
- * go through these functions — team studios, projects per studio, the two
- * kinds of member cap, and since #88 the concurrent-connection one tested
- * below. Storage is the one still to come. Written as "look up
- * the tier, then index the config" at every one of them, the pair would end up
+ * Why it matters that there are so few such places: all six ceilings go
+ * through them — team studios, projects per studio, the two kinds of member
+ * cap, the concurrent-connection one tested below (#88), and storage (#89,
+ * through `getStudioStorageQuota` above). Written as "look up the tier, then
+ * index the config" at every one of them, that pair of steps would end up
  * copied six to eight times — and the enterprise tier, whose ceilings are
  * negotiated per customer and will be read from the database, would then have
- * to be threaded through every copy. Miss one and that customer is quietly held to the
- * standard tier on that one path, with no error.
+ * to be threaded through every copy. Miss one and that customer is quietly
+ * held to the standard tier on that one path, with no error.
  */
 describe("getLimitsForUser", () => {
   it("returns that account's own tier's six ceilings", async () => {

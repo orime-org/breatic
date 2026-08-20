@@ -339,6 +339,8 @@ function iconForType(type: NotificationType): string {
       return initialsFromString('ME');
     case 'membership.upgrade_incomplete':
       return initialsFromString('UI');
+    case 'storage.quota_exceeded':
+      return initialsFromString('SF');
     default:
       return '?';
   }

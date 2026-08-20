@@ -43,7 +43,10 @@ describe('GenerateToolbar — Style / Focus / Reference are the three live tools
     expect(screen.queryByTestId('generate-tool-mark')).toBeNull();
   });
 
-  it('enables Style + Focus + Reference by default', () => {
+  it('leaves Reference and Focus enabled — only Style takes a disabled flag (#1986)', () => {
+    // Not a default the caller can flip: since #1986 the toolbar accepts no
+    // flag for either of these two, so nothing it renders can turn them off.
+    // The refusal for what a mode cannot use lives on the reference row.
     setup();
     expect(screen.getByTestId('generate-tool-style')).not.toBeDisabled();
     expect(screen.getByTestId('generate-tool-focus')).not.toBeDisabled();
@@ -57,11 +60,6 @@ describe('GenerateToolbar — Style / Focus / Reference are the three live tools
     fireEvent.click(btn);
     expect(onFocus).toHaveBeenCalledTimes(1);
     expect(btn.getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('disables Focus when focusDisabled is set (text-to-image — same pool as references)', () => {
-    setup({ focusDisabled: true });
-    expect(screen.getByTestId('generate-tool-focus')).toBeDisabled();
   });
 
   it('fires onReference when Reference is clicked', () => {

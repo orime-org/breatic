@@ -27,7 +27,8 @@ export type NotificationType =
   | 'project.transfer_request'
   | 'project.transfer_approved'
   | 'membership.ended'
-  | 'membership.upgrade_incomplete';
+  | 'membership.upgrade_incomplete'
+  | 'storage.quota_exceeded';
 
 export interface Notification {
   id: string;

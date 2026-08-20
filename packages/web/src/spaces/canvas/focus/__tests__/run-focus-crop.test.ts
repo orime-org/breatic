@@ -85,6 +85,20 @@ describe('runFocusCrop', () => {
     expect(deps.onFailure).toHaveBeenCalledWith('upload');
     expect(deps.addFocusImage).not.toHaveBeenCalled();
   });
+
+  it('storage refusal: reports "storage", not the retryable wording', async () => {
+    // 上传管线把它认得出来的每一种拒绝都打上标记，这里要把标记原样带出去。
+    // 折成 'upload' 的话，用户读到的是「请重试」—— 而账号满了的时候，重试
+    // 要的那点空间没有人会在这几秒里腾出来。
+    const deps = makeDeps();
+    vi.mocked(deps.uploadFile).mockRejectedValue(new Error('storage'));
+    await runFocusCrop(
+      { sourceUrl: 'u', sourceName: 'n', crop: CROP, projectId: 'p1' },
+      deps,
+    );
+    expect(deps.onFailure).toHaveBeenCalledWith('storage');
+    expect(deps.addFocusImage).not.toHaveBeenCalled();
+  });
 });
 
 describe('focusCropFilename', () => {

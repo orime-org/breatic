@@ -91,6 +91,15 @@ async function insertUserWithPersonalStudio(): Promise<{
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${userId}, ${`ud-p-${seq++}`}, 'personal', 'Personal') RETURNING id
   `;
+  // Every studio has exactly one admin in production — a personal studio's
+  // owner holds that row like any other studio's does. The fixture went
+  // without it until #89 put a ceiling lookup on this path, which resolves a
+  // studio through its CURRENT admin and rightly treats a studio with none as
+  // corrupt.
+  await sql`
+    INSERT INTO studio_members (studio_id, user_id, role)
+    VALUES (${studios[0]!.id}, ${userId}, 'admin')
+  `;
   return { userId, personalStudioId: studios[0]!.id };
 }
 

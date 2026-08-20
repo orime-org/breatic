@@ -1056,8 +1056,12 @@ export const notifications = pgTable(
      * - 'studio.invite_accepted' - invitee accepted; the inviting admin is notified
      * - 'project.invite_request' - owner invites the user to a project (TTL; answered on the decision page)
      * - 'project.invite_accepted' - invitee accepted; the inviting owner is notified
+     * - 'project.transfer_request' - owner asks the user to take the project (TTL) (0039)
+     * - 'project.transfer_approved' - user accepted; the old owner is notified (0039)
      * - 'membership.ended' - the account fell back to the free tier (0056)
      * - 'membership.upgrade_incomplete' - an upgrade's invoice went unpaid (0056)
+     * - 'storage.quota_exceeded' - a write was refused because the admin's
+     *   account is out of storage (0060)
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**

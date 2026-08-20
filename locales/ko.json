@@ -98,6 +98,10 @@
       "same_tier": "이미 이 멤버십입니다.",
       "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
       "unavailable": "멤버십을 사용할 수 없습니다."
+    },
+    "storage": {
+      "quota_exceeded_upload": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
+      "quota_exceeded_generate": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다."
     }
   },
   "chat": {
@@ -317,7 +321,8 @@
       "errorNoDrivingVideo": "동작을 가져올 영상을 고르세요",
       "errorNoDrivingAudio": "입 모양이 따라갈 음성을 고르세요",
       "promptNotUsed": "이 모드에는 프롬프트가 필요하지 않습니다.",
-      "refuseInsertNoPrompt": "이 모드에는 프롬프트 입력란이 없어 넣을 수 없습니다"
+      "refuseInsertNoPrompt": "이 모드에는 프롬프트 입력란이 없어 넣을 수 없습니다",
+      "errorStorageFull": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다."
     },
     "nodeMenu": {
       "generate": "생성",
@@ -341,7 +346,8 @@
       "tooLarge": "{filename}은(는) 업로드 크기 제한을 초과했습니다.",
       "empty": "{filename}은(는) 빈 파일이라 추가할 내용이 없습니다.",
       "videoCodecUnsupported": "이 동영상 형식은 브라우저에서 읽을 수 없습니다. H.264 / MP4로 변환한 후 다시 시도하세요.",
-      "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요."
+      "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
+      "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다."
     },
     "minimap": {
       "label": "캔버스 미니맵"
@@ -767,7 +773,8 @@
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",
       "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다",
       "membershipEnded": "{tier} 멤버십이 종료되었습니다",
-      "membershipUpgradeIncomplete": "{tier} 업그레이드가 완료되지 않았습니다"
+      "membershipUpgradeIncomplete": "{tier} 업그레이드가 완료되지 않았습니다",
+      "storageQuotaExceeded": "저장 공간이 가득 찼습니다"
     },
     "actorFallback": "누군가",
     "subtitle": {
@@ -1189,7 +1196,7 @@
     "countConnections": "{count}개 연결",
     "overLimitTag": "초과",
     "overLimit": {
-      "storage": "저장 공간이 한도를 넘었습니다. 기존 내용은 그대로 쓸 수 있지만 새로 업로드할 수는 없습니다. 공간이 더 필요하면 업그레이드하세요.",
+      "storage": "저장 공간이 한도를 초과했습니다. 기존 콘텐츠는 그대로 사용할 수 있지만 새로 업로드하거나 생성할 수 없습니다. 공간을 늘리려면 업그레이드하세요.",
       "teamStudios": "팀 Studio 수가 한도를 넘었습니다. 이미 만든 것은 그대로 쓸 수 있지만 새로 만들 수는 없습니다. 더 필요하면 업그레이드하세요."
     },
     "enterpriseQuota": "사용 한도는 별도 계약으로 정해져 있어 여기에 표시되지 않습니다.",

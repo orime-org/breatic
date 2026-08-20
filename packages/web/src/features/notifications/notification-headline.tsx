@@ -302,6 +302,12 @@ export function notificationHeadline(
       tier: TIER_LABEL[str(n.payload, 'toTier')] ?? '',
     });
   }
+  // Like the two above: nobody did this to you and there is nothing to open.
+  // What ran out is the ACCOUNT's storage, summed across every studio it
+  // administers — the studio in the payload is only where it happened.
+  if (n.type === 'storage.quota_exceeded') {
+    return t('notifications.headline.storageQuotaExceeded');
+  }
 
   const parts = headlinePartsFor(n, resolved);
   if (!parts) return n.type;

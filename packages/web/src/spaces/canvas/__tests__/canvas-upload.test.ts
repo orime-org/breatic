@@ -579,6 +579,9 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       setHandling: vi.fn().mockReturnValue(LEASE),
       setContent: vi.fn().mockReturnValue(true),
       setError: vi.fn().mockReturnValue(true),
+      // 上传失败的唯一出口。它是必填的：这个模块不再自己留一份用户读到的
+      // 句子，谁失败都把原因交出去，由 CanvasSpace 那一处决定怎么呈现。
+      onUploadFailure: vi.fn(),
       sleep: () => Promise.resolve(),
       ...over,
     };
@@ -693,7 +696,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     expect(deps.setError).not.toHaveBeenCalled();
   });
 
-  it('video atomic failure (#1816): cover PUT fails → setError, never writes video-only', async () => {
+  it('video atomic failure (#1816): cover PUT fails → reports the failure, never writes video-only', async () => {
     const deps = makeDeps({
       presign: vi.fn().mockImplementation(videoCoverPresign),
       putFile: vi
@@ -709,24 +712,27 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     });
     await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).toHaveBeenCalledExactlyOnceWith(
+    expect(deps.onUploadFailure).toHaveBeenCalledExactlyOnceWith(
+      'upload',
       'n1',
-      'Upload failed: clip.mp4',
+      VIDEO_FILE,
       LEASE,
     );
   });
 
-  it('media upload failure: writes a fixed-English error onto the node (not a toast)', async () => {
+  it('media upload failure: reports the reason, and does not write the node itself', async () => {
     const deps = makeDeps({ presign: vi.fn().mockRejectedValue(new Error('403')) });
-    await fillNodeFromFile(
-      'n1',
-      new File(['x'], 'bad.png', { type: 'image/png' }),
-      'image',
-      'p1',
-      deps,
-    );
+    const file = new File(['x'], 'bad.png', { type: 'image/png' });
+    await fillNodeFromFile('n1', file, 'image', 'p1', deps);
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).toHaveBeenCalledExactlyOnceWith('n1', 'Upload failed: bad.png', LEASE);
+    // 节点上那句固定英文由出口那一处写，这里只钉「原因交对了」。
+    expect(deps.onUploadFailure).toHaveBeenCalledExactlyOnceWith(
+      'upload',
+      'n1',
+      file,
+      LEASE,
+    );
+    expect(deps.setError).not.toHaveBeenCalled();
   });
 
   it('non-media file: extract text locally → fill content (no upload)', async () => {

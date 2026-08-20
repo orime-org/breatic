@@ -4,7 +4,9 @@
 import { isDedupHit, type PresignResponse } from '@web/data/api/assets';
 import { validFocusImages } from '@web/data/focus-images';
 import {
+  errorStatus,
   retryTransient,
+  STORAGE_FULL_STATUS,
   type UploadClientConfig,
 } from '@web/data/upload/upload-retry';
 import {
@@ -127,10 +129,13 @@ export interface UploadReportResult {
  * Why an upload ended in `onFailure` — the caller picks the message from this.
  * `hash` means the browser could not fingerprint the file (worker/WASM/read
  * failure), which no retry of the SAME page fixes: the fix is a reload.
+ * `storage` means the studio's account is out of room (#89), which no retry
+ * fixes either — but for the opposite reason: nothing is broken, there is
+ * simply nowhere to put the bytes until the admin acts.
  * `upload` is everything else (config / presign / PUT / report), which a retry
  * can fix.
  */
-export type UploadFailureReason = 'hash' | 'upload';
+export type UploadFailureReason = 'hash' | 'storage' | 'upload';
 
 /**
  * Carries an {@link UploadFailureReason} across the Promise boundary of the
@@ -149,14 +154,32 @@ class MediaUploadError extends Error {
 }
 
 /**
- * Recover the failure reason from a rejected sub-upload, defaulting to
- * `upload` for anything that is not a {@link MediaUploadError} (an unexpected
- * throw is a transient failure as far as the user is concerned).
+ * Recover the failure reason from a rejected sub-upload.
+ *
+ * A {@link MediaUploadError} already carries one. Otherwise a 507 answer means
+ * the account is out of room, and anything else is a transient failure as far
+ * as the user is concerned.
  * @param err - The rejection value.
  * @returns The failure reason to report.
  */
 function failureReasonOf(err: unknown): UploadFailureReason {
-  return err instanceof MediaUploadError ? err.reason : 'upload';
+  if (err instanceof MediaUploadError) return err.reason;
+  return isStorageFull(err) ? 'storage' : 'upload';
+}
+
+/**
+ * Whether a rejection is the server saying the account is out of storage.
+ *
+ * Read off the status rather than the message: the sentence is localized on
+ * the server side and matching on it would break the moment anyone edits the
+ * copy or a user switches language. Both the status reader and the number
+ * itself come from the retry module, which asks the other half of the same
+ * question — two copies would have to be kept in step by hand.
+ * @param err - The rejection value.
+ * @returns True for a 507 answer.
+ */
+function isStorageFull(err: unknown): boolean {
+  return errorStatus(err) === STORAGE_FULL_STATUS;
 }
 
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */
@@ -282,8 +305,8 @@ export async function runMediaUpload(
       hash,
     });
     deps.onSuccess(report?.fileUrl ?? res.fileUrl);
-  } catch {
-    deps.onFailure('upload');
+  } catch (err) {
+    deps.onFailure(failureReasonOf(err));
   }
 }
 
@@ -503,16 +526,31 @@ export interface FillNodeDeps {
    */
   onExtractRejected?: (nodeId: string) => void;
   /**
-   * Called INSTEAD of {@link FillNodeDeps.setError} when the browser could not
-   * fingerprint the file, so the upload was refused up front (no hash → no
-   * ledger row → the node would pin an orphan). The caller owns the whole
-   * outcome here because it differs from a transient failure in two ways: the
-   * remedy (reload — the hashing worker's own code is what broke) can only be
-   * said in a localized toast, and the file must NOT be stashed for Retry,
-   * since retrying on this page hits the same broken worker. Absent → falls
-   * back to the plain error write-back.
+   * Hand the whole outcome of a failed upload to the caller, reason and all.
+   *
+   * Every reason needs something only the caller can do — pick or clear the
+   * Retry stash, and say the remedy in the reader's own language — and what
+   * each one needs differs: a hashing refusal must not be stashed (retrying on
+   * this page hits the same broken worker) and a full account must not be
+   * either (nobody frees storage in the seconds a retry takes), while an
+   * ordinary transient failure must be. This started as a hook for the hashing
+   * case alone; a second reason with the same needs made the per-reason shape
+   * the wrong one, since every new reason then has to be remembered in two
+   * places.
+   *
+   * Required, and with no fallback beside it. An optional one meant this
+   * module kept its own copy of the three sentences the user reads, and the
+   * single production caller always supplies this — so that copy could never
+   * run, could drift from the one that does, and (being the only one a test
+   * could reach without wiring the hook) quietly became what the tests
+   * measured.
    */
-  onHashUnavailable?: (nodeId: string, file: File, lease: UploadLease) => void;
+  onUploadFailure: (
+    reason: UploadFailureReason,
+    nodeId: string,
+    file: File,
+    lease: UploadLease,
+  ) => void;
   /**
    * Open the lease (`handling` + owner triple); `undefined` = node gone.
    * The returned token threads through to the write-backs below.
@@ -558,34 +596,27 @@ export interface FillNodeDeps {
 }
 
 /**
- * Write a refused/failed upload back onto the node, wording it by cause. Shared
- * by the plain and the atomic-video paths so both stay identical.
+ * Hand a failed upload to the caller, reason and all.
  *
- * A hashing failure is NOT a transient upload failure: retrying on the same
- * page hits the same broken worker, so the node says the file could not be
- * read and the caller additionally toasts the remedy (reload).
+ * Shared by the plain and the atomic-video paths so both report identically.
+ * It decides nothing itself: what a reason needs — the wording, and whether
+ * the file is worth stashing for Retry — is knowable only where the node and
+ * the reader's language are, and keeping a second opinion here would be a
+ * copy of the answer that could drift from the one users see.
  * @param reason - Why the upload ended.
  * @param nodeId - Node being filled.
- * @param file - The picked file (its name goes into the wire string).
+ * @param file - The picked file, which the caller needs to stash or name.
  * @param lease - The owner triple guarding the write-back.
- * @param deps - The fill sinks (error write-back + the hash-toast hook).
+ * @param deps - Carries the caller's failure sink.
  */
 function uploadFailed(
   reason: UploadFailureReason,
   nodeId: string,
   file: File,
   lease: UploadLease,
-  deps: Pick<FillNodeDeps, 'setError' | 'onHashUnavailable'>,
+  deps: Pick<FillNodeDeps, 'onUploadFailure'>,
 ): void {
-  if (reason === 'hash') {
-    if (deps.onHashUnavailable) {
-      deps.onHashUnavailable(nodeId, file, lease);
-      return;
-    }
-    deps.setError(nodeId, `Could not read file: ${file.name}`, lease);
-    return;
-  }
-  deps.setError(nodeId, `Upload failed: ${file.name}`, lease);
+  deps.onUploadFailure(reason, nodeId, file, lease);
 }
 
 /**

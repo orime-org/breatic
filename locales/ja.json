@@ -98,6 +98,10 @@
       "same_tier": "すでにこのメンバーシップです。",
       "payment_overdue": "このメンバーシップの支払いが遅延しています。",
       "unavailable": "メンバーシップは利用できません。"
+    },
+    "storage": {
+      "quota_exceeded_upload": "Studio のストレージがいっぱいです。アップロードできません。",
+      "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。"
     }
   },
   "chat": {
@@ -317,7 +321,8 @@
       "errorNoDrivingVideo": "動きの元になる動画を選んでください",
       "errorNoDrivingAudio": "口の動きの元になる音声を選んでください",
       "promptNotUsed": "このモードにプロンプトは必要ありません。",
-      "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません"
+      "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません",
+      "errorStorageFull": "Studio のストレージがいっぱいです。生成できません。"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -341,7 +346,8 @@
       "tooLarge": "{filename} はアップロードサイズの上限を超えています。",
       "empty": "{filename} は空のファイルです。追加できる内容がありません。",
       "videoCodecUnsupported": "この動画の形式はブラウザで読み込めません。H.264 / MP4 に変換してからもう一度お試しください。",
-      "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。"
+      "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
+      "storageFull": "Studio のストレージがいっぱいです。アップロードできません。"
     },
     "minimap": {
       "label": "キャンバスのミニマップ"
@@ -767,7 +773,8 @@
       "projectInviteRequest": "{actor} さんが {project} への参加に招待しました",
       "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました",
       "membershipEnded": "{tier} メンバーシップが終了しました",
-      "membershipUpgradeIncomplete": "{tier} へのアップグレードは完了しませんでした"
+      "membershipUpgradeIncomplete": "{tier} へのアップグレードは完了しませんでした",
+      "storageQuotaExceeded": "ストレージがいっぱいです"
     },
     "actorFallback": "誰か",
     "subtitle": {
@@ -1189,7 +1196,7 @@
     "countConnections": "{count} 接続",
     "overLimitTag": "超過",
     "overLimit": {
-      "storage": "ストレージが上限を超えています。既存のデータはこれまでどおり使えますが、新しくアップロードはできません。容量が必要な場合はアップグレードしてください。",
+      "storage": "ストレージが上限を超えています。既存のコンテンツはそのまま使えますが、新しいアップロードと生成はできません。容量を増やすにはアップグレードしてください。",
       "teamStudios": "チーム Studio の数が上限を超えています。既存のものはこれまでどおり使えますが、新しくは作成できません。必要な場合はアップグレードしてください。"
     },
     "enterpriseQuota": "利用上限は個別契約で定められているため、ここには表示されません。",

@@ -50,6 +50,7 @@ loader:`packages/server/src/config/limits.ts`。
 | `canvas_reference_pool_cap` | 50 | 单画布节点参考池上限(参考边 + 聚焦图合计,#1782);经 `GET /canvas/limits` 下发,前端加入时 gate(池在 Yjs,server 不 gate 协作写);区别于按模型的 `images.max_items` 执行 payload 上限(#1735)。聚焦图另受前端硬顶 `MAX_FOCUS_ENTRIES`(200,`web data/focus-images.ts`)约束——旋钮调高于 200 时聚焦图仍在 200 处被拒(带 toast) |
 | `node_history_page_size` | 20 | 节点历史找回面板每页请求的行数(无限滚动,#1619);经 `GET /canvas/limits` 下发,前端取(未加载前退化用 server 默认 20) |
 | `decision_window_days` | 7 | 等人答复的五件事共用的答复期限(天):studio 邀请 · project 邀请 · studio 转让 · project 转让 · 角色升级请求。**同一个数管四处**——落库的 `expires_at`、邮件正文里的那句话、决策落地页过期卡里的天数、以及任何需要「多久」而不是「到几时」的地方,全部读它,任何一处都不许再写自己的数字。代码经 `getDecisionWindowDays()` / `getDecisionWindowMs()` / `getDecisionWindowSeconds()` 读,ESLint 规则 `breatic/no-hardcoded-request-ttl` 禁止调用点自己把天数算出来(作用域 `packages/server/src/modules/**`,测试豁免;判的是算出来的**值**是不是整天数,所以换个写法绕不过去,正当的例外同行标 `request-ttl:allow` 加理由)。改这个值只影响此后新建的行,老行按当初盖的截止时间走 |
+| `storage_notice_window_seconds` | 86400 | 一个账号收到「存储已满」通知之后，多久之内不再收第二条(秒,#89)。**键按 admin 的账号、不按 studio** —— 上限本身就是账号跨 studio 求和，按 studio 去重的话一次事件会产出多条，其中大部分指名的是几乎空的 studio。只静默铃铛和邮件:每一次拒绝仍然照记日志(`storage_quota_exceeded`),铃铛是给 admin 的、可以安静,日志是给 oncall 的、不能安静。代码经 `getStorageNoticeWindowSeconds()` 读 |
 
 ## 4. `config/collab.yaml` — Hocuspocus 协作服务
 
@@ -177,9 +178,9 @@ loader:`packages/core/src/config/membership.ts`。**惰性加载**:首次被调�
 | `project_members` | 4 | 12 | 40 | 9999 | 一个 project 能有几个**显式邀请进来**的协作者。owner 本人不计(他已经占了 `studio_members` 的一个位),开放基线自动物化的 viewer(同 studio 的人打开这个 project 就自动落一行)也不计——把后者算进去,大 studio 里任何 project 一开就满 |
 | `storage_bytes` | 5368709120 | 214748364800 | 536870912000 | 109951162777600 | 该账号所有 studio 的存储字节数之和的上限 |
 
-**这张表只有四档,因为配额写在这份文件里的就是这四档**(代码里叫 `CONFIGURED_MEMBERSHIP_TIERS`)。产品上还有企业版(决议里的「商务谈」),**它是一个账号能在的合法档位** —— 在 `MEMBERSHIP_TIERS` 里、数据库的 CHECK 约束也接受它 —— 只是数值一家一谈、将来从数据库读,所以**不在这个文件里**:在这儿编一组数字,会让被设成企业版的账号拿到谁都没谈过的额度而且不报错。向它要配额会指名账号抛错(`packages/core/src/auth/membership.repo.ts` 的 `limitsFor`),`default_tier` 也拒收它。
+**这张表只有四档,因为配额写在这份文件里的就是这四档**(代码里叫 `CONFIGURED_MEMBERSHIP_TIERS`)。产品上还有企业版(决议里的「商务谈」),**它是一个账号能在的合法档位** —— 在 `MEMBERSHIP_TIERS` 里、数据库的 CHECK 约束也接受它 —— 只是数值一家一谈、将来从数据库读,所以**不在这个文件里**:在这儿编一组数字,会让被设成企业版的账号拿到谁都没谈过的额度而且不报错。向它要配额会指名账号抛错(`packages/core/src/auth/membership.repo.ts` 的 `limitsFor`),`default_tier` 也拒收它。**存储是唯一的例外**:它对企业档答 `null`(经 `getStudioStorageQuota`)而不是抛错,因为「企业档放行」是拍过板的产品规则(#89),而规则没法用在一个异常上;其余五项照旧抛错 —— 企业档在那五项上该给多少至今没人定过。
 
-**目前五项真的在拦人**:`team_studios` · `projects_per_studio` · `studio_members` · `project_members` · `concurrent_editors`。剩下的 `storage_bytes` 配置已就位、检查点随后续那一批接上。
+**六项全部真的在拦人**:`team_studios` · `projects_per_studio` · `studio_members` · `project_members` · `concurrent_editors` · `storage_bytes`(#89 起,拦在 server 的两条写入路径 —— 请求上传地址和发起生成)。
 
 ## 8. 连接 / 存储上传韧性(代码内,非 yaml)
 

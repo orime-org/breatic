@@ -22,8 +22,9 @@
  * non-image row. A node row goes through `mentionedImageUrls`, whose
  * `imageUrlOf` resolves `kind === 'image'` and nothing else. A focus crop
  * never reaches that function — its pool id is `focus:<id>`, which matches no
- * canvas node — and is appended by the image panel's own `focusImages`
- * branch, from a crop that is an image by construction. So this predicate is
+ * canvas node — and is appended by the crop branch of
+ * `mentionedReferenceUrls`, from a crop that is an image by construction (the
+ * branch both panels share since #1978). So this predicate is
  * not re-evaluating one expression the payload also evaluates; it asks for
  * the one property both producers require.
  *

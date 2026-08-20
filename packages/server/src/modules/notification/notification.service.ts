@@ -689,6 +689,54 @@ export async function markRead(id: string, userId: string): Promise<void> {
   }
 }
 
+/** Payload for `storage.quota_exceeded` — where the refusal happened. */
+export interface StorageQuotaExceededPayload {
+  /**
+   * The studio whose project the refused write was aimed at.
+   *
+   * The bell line does not say it, and deliberately. The sentence the operator
+   * sees on screen does name the studio — they are looking at it right then —
+   * but this line may be read hours later by somebody who administers several,
+   * and what filled up is the ACCOUNT, summed across all of them. It is on the
+   * row because the row is the record of one refusal, and a question about a
+   * particular notice has to be answerable later.
+   */
+  studioId: string;
+}
+
+/**
+ * Tell a studio's admin that a write was refused for lack of storage (#89).
+ *
+ * Goes to the ADMIN whoever tripped the gate, because they are the only one
+ * who can act: a member who is refused can neither raise the membership nor
+ * delete assets. It goes to them even when they tripped it themselves — the
+ * 507 on screen is gone as soon as the page changes, and upgrading is rarely
+ * something anyone does in that same minute.
+ *
+ * What is full is the ACCOUNT, summed across every studio it administers; the
+ * studio in the payload only says where this particular refusal happened, and
+ * may well be a nearly empty one.
+ * @param input - Recipient inbox, where it happened, and optional tx.
+ * @param input.userId - The admin whose account is out of storage.
+ * @param input.payload - The studio the refused write was aimed at.
+ * @param input.tx - A transaction to write the row in, if the caller has one.
+ * @returns The inserted `storage.quota_exceeded` notification.
+ */
+export async function createStorageQuotaExceeded(input: {
+  userId: string;
+  payload: StorageQuotaExceededPayload;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "storage.quota_exceeded",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
 /**
  * Mark all of a user's unread notifications as read. Idempotent —
  * returns the count of rows updated (0 if nothing was unread).

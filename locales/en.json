@@ -98,6 +98,10 @@
       "same_tier": "You are already on this membership.",
       "payment_overdue": "Payment for this membership is overdue.",
       "unavailable": "Memberships are unavailable."
+    },
+    "storage": {
+      "quota_exceeded_upload": "Studio storage is full. Uploading is unavailable.",
+      "quota_exceeded_generate": "Studio storage is full. Generating is unavailable."
     }
   },
   "chat": {
@@ -326,7 +330,8 @@
       "errorNoDrivingVideo": "Pick a driving video",
       "errorNoDrivingAudio": "Pick a driving audio track",
       "promptNotUsed": "This mode does not need a prompt.",
-      "refuseInsertNoPrompt": "This mode has no prompt to insert into"
+      "refuseInsertNoPrompt": "This mode has no prompt to insert into",
+      "errorStorageFull": "Studio storage is full. Generating is unavailable."
     },
     "edge": {
       "delete": "Delete connection"
@@ -341,7 +346,8 @@
       "tooLarge": "{filename} exceeds the upload size limit.",
       "empty": "{filename} is empty — there's nothing to add.",
       "videoCodecUnsupported": "This video's format can't be read in the browser. Convert it to H.264 / MP4 and try again.",
-      "hashUnavailable": "Couldn't verify this file. Reload the page and try again."
+      "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",
+      "storageFull": "Studio storage is full. Uploading is unavailable."
     },
     "minimap": {
       "label": "Canvas minimap"
@@ -767,7 +773,8 @@
       "projectInviteRequest": "{actor} invited you to join {project}",
       "projectInviteAccepted": "{actor} accepted your invite to {project}",
       "membershipEnded": "Your {tier} membership has ended",
-      "membershipUpgradeIncomplete": "Your upgrade to {tier} was not completed"
+      "membershipUpgradeIncomplete": "Your upgrade to {tier} was not completed",
+      "storageQuotaExceeded": "Your storage is full"
     },
     "actorFallback": "Someone",
     "subtitle": {
@@ -1189,7 +1196,7 @@
     "countConnections": "{count} connections",
     "overLimitTag": "over",
     "overLimit": {
-      "storage": "Storage is over the limit. What is already there works as before, but nothing new can be uploaded. Upgrade for more space.",
+      "storage": "Storage is over the limit. What is already there works as before, but nothing new can be uploaded or generated. Upgrade for more space.",
       "teamStudios": "You are over the team Studio limit. The ones you have work as before, but no new ones can be created. Upgrade for more."
     },
     "enterpriseQuota": "Your allowances are set by a separate agreement and are not shown here.",
