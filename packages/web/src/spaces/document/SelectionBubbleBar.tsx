@@ -315,7 +315,14 @@ function BubbleBar({
   // "the selection just became one" from "it already was". See `follow`.
   const wasSelectAllRef = React.useRef(false);
 
-  const pluginKey = React.useMemo(() => new PluginKey('selectionBubbleBar'), []);
+  // A ref, not `useMemo`: this key IS the plugin's identity, and `useMemo` is
+  // a cache React is allowed to drop and recompute. A new key mid-life would
+  // leave the metas we send addressed to a plugin nobody is listening for.
+  // `@tiptap/react`'s own menu wrapper holds its key the same way — a
+  // `useRef(...).current` (`dist/menus/index.js:306-308`).
+  const pluginKeyRef = React.useRef<PluginKey | null>(null);
+  pluginKeyRef.current ??= new PluginKey('selectionBubbleBar');
+  const pluginKey = pluginKeyRef.current;
 
   /**
    * The conditions that hold whichever path is asking.

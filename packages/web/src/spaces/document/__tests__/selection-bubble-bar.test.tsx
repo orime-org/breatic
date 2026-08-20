@@ -788,6 +788,35 @@ describe('选中浮出条', () => {
       ).toBe(600);
     });
 
+    it('鼠标从页面出现起一步没动过，滚一下滚轮就把条摆出来', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      // 一次 mousemove 都没派发过：位置未知，键盘全选摆不出条。
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow(editor)).toBe(false);
+
+      // 滚轮也是鼠标事件，它带着 clientX/clientY（`scroll` 不带）。这是
+      // 「鼠标一步没动」时唯一能知道它在哪的途径。删掉 `wheel` 那行监听
+      // 这条就红。
+      act(() => {
+        document.dispatchEvent(
+          new MouseEvent('wheel', { clientX: 420, clientY: 250, bubbles: true }),
+        );
+      });
+
+      expect(shouldShowNow(editor)).toBe(true);
+      expect(
+        bubblePluginView(editor)
+          .getReferencedVirtualElement?.()
+          ?.getBoundingClientRect().left,
+      ).toBe(420);
+    });
+
     it('编辑器没有焦点时变成全选，不钉——焦点回来也不会凭空摆出来', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
@@ -972,8 +1001,9 @@ describe('选中浮出条', () => {
       ?.getBoundingClientRect();
     expect(before?.left).toBe(420);
 
-    // Space 刚切换、面板折叠的一瞬间，滚动容器量出来可以是零尺寸。按比例
-    // 换算在这里会除以零，把钉住的坐标永久写成 NaN。
+    // 这里不针对任何具体场景——第九轮对抗把原稿点名的两个（Space 切换、
+    // 面板折叠）都证伪了。它是那个比例换算自己的定义域：零做分母会把钉住的
+    // 坐标写成 NaN，而 NaN 跟任何新读数都不相等，之后每次调用都重来一遍。
     pinViewport(new DOMRect(0, 100, 0, 0));
     bubblePluginView(editor).getReferencedVirtualElement?.();
 
@@ -983,6 +1013,65 @@ describe('选中浮出条', () => {
       .getReferencedVirtualElement?.()
       ?.getBoundingClientRect();
     expect(after?.left).toBe(420);
+  });
+
+  // 上一条判的是**新**读数为零；分母其实是**旧**框——点当初是在那个框里定的
+  // 位置。旧框也能是零：`isInside` 接受一个塌成一点的矩形（`x >= left &&
+  // x <= right` 在两者相等时同时成立），所以一次 0×0 的读数照样能让坐标被
+  // 记下来。删掉那半判据这条就红。
+  it('钉下坐标时区域是零尺寸，之后也不会算出 NaN', async () => {
+    const editor = open('<p>one</p><p>two</p><p>three</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 4);
+    pinSelectionBox(SELECTION_BOX);
+
+    // 区域塌成 (420,250) 这一个点，鼠标正好停在那儿——`isInside` 放行。
+    pinViewport(new DOMRect(420, 250, 0, 0));
+    act(() => {
+      document.dispatchEvent(
+        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
+      );
+      editor.commands.selectAll();
+    });
+
+    // 区域恢复正常尺寸。比例换算的分母是那个零，不判就写出 NaN。
+    pinViewport(new DOMRect(0, 100, 800, 400));
+    const rect = bubblePluginView(editor)
+      .getReferencedVirtualElement?.()
+      ?.getBoundingClientRect();
+    expect(rect?.left).toBe(420);
+    expect(Number.isNaN(rect?.left)).toBe(false);
+    expect(Number.isNaN(rect?.top)).toBe(false);
+  });
+
+  // 「区域变没变」比的是四个数。只比宽高的话，一个平移了但没缩放的区域会被
+  // 当成没变，而换算公式读的正是 left/top——条会留在正文原来的位置上。
+  it('区域整体平移、尺寸没变时，钉住的点跟着平移', async () => {
+    const editor = open('<p>one</p><p>two</p><p>three</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 4);
+    pinSelectionBox(SELECTION_BOX);
+    pinViewport(new DOMRect(0, 100, 800, 400));
+
+    act(() => {
+      document.dispatchEvent(
+        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
+      );
+      editor.commands.selectAll();
+    });
+    expect(
+      bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect().left,
+    ).toBe(420);
+
+    // 同样大小的区域，整体右移 100。点在区域里的相对位置不变，屏幕坐标 +100。
+    pinViewport(new DOMRect(100, 100, 800, 400));
+    expect(
+      bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect().left,
+    ).toBe(520);
   });
 
   // 第九轮实现对抗查实：去掉 tabindex 只改了焦点的落点，没挡住焦点离开正文。
