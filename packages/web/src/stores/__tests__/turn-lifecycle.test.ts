@@ -45,7 +45,12 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { chatSessionFor, evictAllChatSessions, sendInSession } from '@web/stores/chat-sessions';
-import { stubChatWire, stubRefusingWire, turnOpens } from '@web/test-utils/chat-wire';
+import {
+  OPENING_BEAT,
+  stubChatWire,
+  stubRefusingWire,
+  turnOpens,
+} from '@web/test-utils/chat-wire';
 
 /** 说出来的每一条。 */
 let told: ChatMishap[] = [];
@@ -121,6 +126,27 @@ describe('第一帧之前被服务端拒掉', () => {
 });
 
 describe('第一帧到达', () => {
+  it('心跳不算，它到的时候这一轮还什么都没说', async () => {
+    // 服务端每条流的第一帧都是心跳（`routes/chat.ts:141`，socket 一有就写一
+    // 次）。它是 transient，SDK 交给 `onData` 就丢掉、不进 `write()`，所以
+    // status 还停在 submitted、那条用户消息还被渲染侧挡着。这时候清空输入框，
+    // 那句话就两处都不在了。
+    const wire = stubChatWire();
+    aConversation();
+    void sendInSession('c-1', '帮我找参考图');
+    await settle();
+
+    wire.current()?.push(OPENING_BEAT);
+    wire.current()?.push(OPENING_BEAT);
+    await settle();
+    expect(firstFrames).toBe(0);
+
+    // 真正开口的那一帧到了才算。
+    wire.current()?.push({ type: 'start' });
+    await settle();
+    expect(firstFrames).toBe(1);
+  });
+
   it('说一次，不管这会儿有没有面板在看', async () => {
     const wire = stubChatWire();
     aConversation();
@@ -143,6 +169,30 @@ describe('第一帧到达', () => {
     await settle();
 
     expect(firstFrames).toBe(1);
+  });
+});
+
+describe('答复已经开始之后才失败', () => {
+  it('不把那条用户消息收回来，服务端已经把它记下了', async () => {
+    // 服务端存这句话是这一轮做的第一件事（`main-agent.ts` 的 `addMessage`），
+    // 而它在任何带内容的帧之前。所以只要开口的那一帧到过，库里就有这句话 ——
+    // 这时候把它从列表里拿掉，屏幕就跟刷新之后读到的对不上了。
+    const wire = stubChatWire();
+    const chat = aConversation();
+    void sendInSession('c-1', '帮我找参考图');
+    await settle();
+
+    wire.current()?.push(OPENING_BEAT);
+    wire.current()?.push({ type: 'start' });
+    await settle();
+
+    // 组装历史或调模型那一步失败，路由写一个 error 帧（`routes/chat.ts`）。
+    wire.current()?.push({ type: 'error', errorText: 'The turn could not be run.' });
+    wire.current()?.close();
+    await settle();
+
+    expect(chat.messages).toHaveLength(1);
+    expect(chat.messages[0]?.role).toBe('user');
   });
 });
 

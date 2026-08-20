@@ -104,17 +104,27 @@ export function stubRefusingWire(status: number, message: string): void {
   );
 }
 
+/** The frame the server opens every stream with, before anything else. */
+export const OPENING_BEAT = { type: 'data-heartbeat', transient: true, data: {} };
+
 /**
  * The chunks a turn opens with, before any of its content.
  *
- * Named because every case that wants a reply on screen has to send them, and
- * a case that forgets one gets a turn that never leaves `submitted` -- which
- * looks like the thing being tested failing.
+ * In the order the server writes them, and the first one matters: the route
+ * writes a heartbeat the moment there is a socket, before the interval starts
+ * (`routes/chat.ts:141`). It is transient, so the SDK hands it to `onData` and
+ * drops it there -- it is the one frame that arrives without the turn having
+ * said anything.
+ *
+ * A double that started at `start` was not a shorter version of the real
+ * opening but a different one, and it is the reason a defect about which
+ * frame counts as the first went through a full round of review green.
  * @param textId - The id the text part of this turn is written under.
  * @returns Those chunks, in order.
  */
 export function turnOpens(textId = 't1'): Array<Record<string, unknown>> {
   return [
+    OPENING_BEAT,
     { type: 'start' },
     { type: 'start-step' },
     { type: 'text-start', id: textId },

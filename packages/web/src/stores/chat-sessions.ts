@@ -102,27 +102,51 @@ const projectOf = new Map<string, string>();
 const NOTHING_OPEN = new Chat<StoredUiMessage>({ id: 'no-conversation-yet', messages: [] });
 
 /**
- * Say when a turn's stream opens, and pass every frame along untouched.
+ * Whether this frame is one the reader will see something of.
+ *
+ * Not every frame is. A transient data part is handed to `onData` and dropped
+ * there (`ai@7.0.68` `index.js:7416`: `if (dataChunk.transient) { onData(...);
+ * break; }`) -- it never reaches `write()`, so it does not become a message
+ * part and does not move `status` off `submitted`.
+ *
+ * The heartbeat is exactly that, and it is the first thing on every stream:
+ * the route writes one the moment there is a socket, before the interval even
+ * starts (`routes/chat.ts:141`). So "the first frame" read literally is always
+ * the beat, which is the one frame that means the turn has said nothing yet.
+ * @param chunk - One frame off the wire.
+ * @returns True when this frame is part of the answer.
+ */
+function isAnswering(chunk: UIMessageChunk): boolean {
+  return !(chunk.type.startsWith('data-') && 'transient' in chunk && chunk.transient === true);
+}
+
+/**
+ * Say when a turn starts answering, and pass every frame along untouched.
  *
  * This is the one place the moment is observable. `Chat` builds its own state
  * object and takes no subscription to it, so `status` going from `submitted`
- * to `streaming` -- which the SDK does on the very frame this sees
- * (`ai@7.0.68` `index.js:17974`) -- cannot be watched from outside except by a
- * render that happens to be mounted.
+ * to `streaming` -- which the SDK does on the first frame that reaches
+ * `write()` (`ai@7.0.68` `index.js:17974`) -- cannot be watched from outside
+ * except by a render that happens to be mounted.
+ *
+ * Which is why the beats have to be skipped rather than counted: telling the
+ * caller on the beat would empty the composer while the SDK still has the
+ * reader's message held out of the list, and the sentence would be in neither
+ * place until the answer began.
  * @param stream - The turn's stream, as the transport built it.
- * @param onFirstFrame - Told once, on the first frame of this stream.
+ * @param onFirstFrame - Told once, on the first frame that carries an answer.
  * @returns The same frames, in the same order.
  */
 function sayWhenItOpens(
   stream: ReadableStream<UIMessageChunk>,
   onFirstFrame: () => void,
 ): ReadableStream<UIMessageChunk> {
-  let opened = false;
+  let answering = false;
   return stream.pipeThrough(
     new TransformStream<UIMessageChunk, UIMessageChunk>({
       transform(chunk, controller) {
-        if (!opened) {
-          opened = true;
+        if (!answering && isAnswering(chunk)) {
+          answering = true;
           onFirstFrame();
         }
         controller.enqueue(chunk);
@@ -175,7 +199,11 @@ function transportFor(
   });
   return {
     sendMessages: async (options) =>
-      sayWhenItOpens(await wire.sendMessages(options), onFirstFrame),
+      sayWhenItOpens(await wire.sendMessages(options), () => {
+        const turn = runningTurn.get(conversationId);
+        if (turn !== undefined) answeredTurn.set(conversationId, turn);
+        onFirstFrame();
+      }),
     reconnectToStream: (options) => wire.reconnectToStream(options),
   };
 }
@@ -260,6 +288,21 @@ const turnsRun = new Map<string, number>();
 /** Which turn each conversation is running right now, if any. */
 const runningTurn = new Map<string, number>();
 
+/**
+ * The turns that got as far as an answer starting, by conversation.
+ *
+ * Which is also the answer to "has the server got this sentence": the route
+ * opens the stream and beats on it before the turn runs at all, but the first
+ * frame that carries anything comes from the turn itself -- and the turn
+ * stores the reader's message on its first line (`main-agent.ts`, the
+ * `addMessage` before anything else) before it can produce one.
+ *
+ * So one signal settles two things: when to empty the composer, and whether
+ * taking the sentence back would be taking back something the server has
+ * already written down.
+ */
+const answeredTurn = new Map<string, number>();
+
 /** The chunk the server proves a running stream alive with. */
 const BEAT = 'data-heartbeat';
 
@@ -339,20 +382,27 @@ function settleTurn(
   if (!chat) return;
   const projectId = projectOf.get(conversationId) ?? '';
 
-  // Nothing answered means the reply was never pushed, so the last message is
-  // still the reader's own sentence. Read off the list rather than off
-  // `status`, which by now says how the turn ended rather than how far it got.
+  // Whether this turn ever began answering. Not read off the message list:
+  // the list only says whether a reply was pushed here, and a turn can have
+  // been stored on the server without one.
+  const beganAnswering = answeredTurn.has(conversationId);
+  answeredTurn.delete(conversationId);
   const last = chat.messages[chat.messages.length - 1];
-  const nothingAnswered = last?.role === 'user';
 
   if (how.isAbort || how.isError) {
-    if (nothingAnswered) {
-      // Take it back: the renderer only holds it out of the list while the
-      // status is `submitted`, and the composer still has the same words --
-      // the first frame never arrived to empty it. Left alone, the sentence
-      // is in two places and sending again says it twice.
+    if (!beganAnswering && last?.role === 'user') {
+      // Take it back, and only here. Nothing of this turn ever began, which
+      // means the server refused it before the turn ran -- so there is
+      // nothing stored to contradict, the renderer is still holding the
+      // message out of the list, and the composer still has the same words.
+      // Left alone the sentence would be in two places and sending again
+      // would say it twice.
+      //
+      // Once an answer has begun the sentence is the server's record, not
+      // this browser's draft: taking it back here would leave the screen
+      // disagreeing with what a reload reads.
       chat.messages = chat.messages.slice(0, -1);
-    } else {
+    } else if (last?.role === 'assistant') {
       markTheReply(chat, how.isAbort ? 'data-interrupted' : 'data-failed');
     }
   }
@@ -556,6 +606,7 @@ export function evictChatSession(conversationId: string): void {
   projectOf.delete(conversationId);
   turnsRun.delete(conversationId);
   runningTurn.delete(conversationId);
+  answeredTurn.delete(conversationId);
   givenUpOn.delete(conversationId);
 }
 
@@ -573,5 +624,6 @@ export function evictAllChatSessions(): void {
   projectOf.clear();
   turnsRun.clear();
   runningTurn.clear();
+  answeredTurn.clear();
   givenUpOn.clear();
 }
