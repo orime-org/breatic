@@ -632,6 +632,107 @@ describe('选中浮出条', () => {
       expect(shouldShowNow(editor)).toBe(false);
     });
 
+    it('窗口尺寸变了，钉住的坐标按正文区域新旧尺寸等比例重算', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      // 正文区域 x 从 320 到 1680（宽 1360），y 从 100 到 500（高 400）。
+      pinViewport(new DOMRect(320, 100, 1360, 400));
+
+      // 钉在区域宽度的 83% 处、高度的 50% 处。
+      moveMouseTo(1448, 300);
+      act(() => {
+        editor.commands.selectAll();
+      });
+      const before = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+      expect(before?.left).toBe(1448);
+
+      // 窗口缩窄：区域变成 x 从 320 到 900（宽 580），高度不变。
+      // 「位置不动」那条规则只约束滚动；窗口尺寸变化是另一件事，此时坐标按
+      // 相对位置重算，条既不消失也不画到区域外面（user 2026-08-20 拍定）。
+      pinViewport(new DOMRect(320, 100, 580, 400));
+
+      const after = bubblePluginView(editor)
+        .getReferencedVirtualElement?.()
+        ?.getBoundingClientRect();
+
+      // 320 + (1448 - 320) / 1360 * 580 = 801.06…
+      expect(after?.left).toBeCloseTo(801, 0);
+      // 竖直方向区域没变，坐标也就不变。
+      expect(after?.top).toBe(292);
+    });
+
+    it('滚动唤醒不绕开显示判据：编辑器没有焦点时，滚动不把条摆出来', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      // 鼠标在正文外，全选：条不显示，也没钉住任何位置。
+      moveMouseTo(420, 50);
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow(editor)).toBe(false);
+
+      // 编辑器失去焦点——用户去别处打字了。
+      act(() => {
+        editor.view.dom.blur();
+      });
+
+      // 鼠标回到正文里再滚动。滚动这条路自己另写了一套判据，绕过了「编辑器
+      // 得有焦点」这一条，于是条会浮在正文上，而用户正在别的输入框里打字。
+      moveMouseTo(420, 250);
+      act(() => {
+        document
+          .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+          ?.dispatchEvent(new Event('scroll'));
+      });
+
+      expect(bubblePluginView(editor).isVisible).toBe(false);
+    });
+
+    it('钉鼠标只发生在全选那一刻和滚动那一刻，别的时候只读不钉', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      // 鼠标在正文外全选：不显示，也不钉。
+      moveMouseTo(420, 50);
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow(editor)).toBe(false);
+
+      // 鼠标移进正文。按规则这一刻不该有任何判断——判断只在全选那一刻和每次
+      // 滚动。而问显示与否的那条路会顺手把鼠标钉住，于是位置被采纳了。
+      moveMouseTo(420, 250);
+      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow(editor)).toBe(false);
+    });
+
+    it('文档里一个字都没有时，全选不显示这条', async () => {
+      const editor = open('<p></p>');
+      mount(editor);
+      // 空文档里没有选区可选，浮出条从不出现，所以不能用 selectWithFocus。
+      act(() => {
+        editor.view.dom.focus();
+      });
+      pinViewport(VIEWPORT);
+
+      moveMouseTo(420, 250);
+      act(() => {
+        editor.commands.selectAll();
+      });
+
+      // 六个按钮一个都不能用，一条全是死按钮的载体只是噪音（定稿 §3.3.1 给
+      // viewer 不渲染整条的正是这个理由）。
+      expect(shouldShowNow(editor)).toBe(false);
+    });
+
     it('选了一部分时不看鼠标在哪——那一档跟着选区走', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
