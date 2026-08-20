@@ -941,7 +941,7 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
   };
   const models = [makeModel('kling-o3-pro-ref', { mode: 'ref' })];
 
-  it('提到了就上路，排在节点参考之后', () => {
+  it('提到了就上路', () => {
     const vm = buildVm({
       nodeId: 'n1',
       nodes: [node('n1', videoView({ focusImages: [crop] }))],
@@ -950,6 +950,23 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
       atMentionedSourceIds: new Set([focusRefId(crop.id)]),
     });
     expect(vm.referenceUrls).toEqual([crop.url]);
+  });
+
+  it('排在节点参考之后 —— 载荷顺序跟着轨道顺序', () => {
+    // 必须真有连线进来的参考，顺序才看得出来：只有裁剪一项时，把两半的拼接
+    // 顺序颠倒过来这条断言照样成立。
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node('n1', videoView({ focusImages: [crop] })),
+        node('src-a', { kind: 'image', status: 'idle', content: 'https://cdn/a.png' }),
+      ],
+      edges: [{ id: 'e-a', source: 'src-a', target: 'n1' }],
+      models,
+      mode: 'ref',
+      atMentionedSourceIds: new Set(['src-a', focusRefId(crop.id)]),
+    });
+    expect(vm.referenceUrls).toEqual(['https://cdn/a.png', crop.url]);
   });
 
   it('没提到就不上路 —— 池子里有不等于用了它', () => {

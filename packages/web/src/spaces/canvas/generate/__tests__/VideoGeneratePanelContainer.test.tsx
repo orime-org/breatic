@@ -45,6 +45,7 @@ import * as Y from 'yjs';
 import { toast } from 'sonner';
 
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
+import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import {
   addEdge,
   addNode,
@@ -1887,19 +1888,40 @@ describe('视频面板的聚焦裁剪（#1978）', () => {
       await screen.findByTestId('generate-focus-pending-p1'),
     ).toBeInTheDocument();
   });
+
+  it('别的节点在传的裁剪不进这条轨道 —— 在传队列是画布级的一个列表', async () => {
+    // 上一条只放了本节点那一个，所以去掉按 nodeId 的过滤它照样绿：要看出
+    // 过滤在不在，队列里得同时有别人的那一条。
+    await openPanelInMode('ref', 'kling-o3-pro-ref');
+    act(() => {
+      useCanvasStore.getState().addPendingFocusUpload({
+        id: 'mine',
+        nodeId: 'target',
+        name: 'Hero',
+      });
+      useCanvasStore.getState().addPendingFocusUpload({
+        id: 'theirs',
+        nodeId: 'someone-else',
+        name: 'Theirs',
+      });
+    });
+
+    expect(
+      await screen.findByTestId('generate-focus-pending-mine'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('generate-focus-pending-theirs'),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('视频面板的聚焦按钮（#1978）', () => {
-  it('紧跟在参考右边，六档都可点，槽位排在它后面', async () => {
+  it('紧跟在参考右边，槽位排在它后面', async () => {
     // first_last 有两个槽位，正好能验「其余往右移一个」这条顺序。
     await openPanelInMode('first_last', 'kling-o3-pro-first-last');
     const focus = await screen.findByTestId('generate-video-tool-focus');
     const reference = screen.getByTestId('generate-video-tool-reference');
     const firstFrame = screen.getByTestId('generate-video-tool-first-frame');
-
-    // 六档都可点：不加 disabled 是 user 2026-08-19 拍的 A —— 入口稳定，
-    // 取回来的行在用不了的档次按 #1952 变暗，而不是在入口处拦。
-    expect(focus).not.toBeDisabled();
 
     // 顺序：参考 → 聚焦 → 首帧。DOCUMENT_POSITION_FOLLOWING = 后者在前者之后。
     expect(
@@ -1909,6 +1931,27 @@ describe('视频面板的聚焦按钮（#1978）', () => {
       focus.compareDocumentPosition(firstFrame) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
+
+  // 六档都可点是 user 2026-08-19 拍的 A：入口稳定，取回来的行在用不了的档次
+  // 按 #1952 变暗，而不是在入口处拦。逐档跑、不挑一档代表其余五档 —— 从
+  // VIDEO_MODE_OPTIONS 取档位，将来加第七档时这里自动跟着多一个数据点。
+  const MODEL_FOR_MODE: Record<string, string> = {
+    t2v: 'veo-3.1',
+    i2v: 'kling-i2v',
+    first_last: 'kling-o3-pro-first-last',
+    animate: 'wan-2.2-animate',
+    ref: 'kling-o3-pro-ref',
+    talking_head: 'omnihuman-1.5',
+  };
+
+  for (const option of VIDEO_MODE_OPTIONS) {
+    it(`${option.value} 档的聚焦按钮可点`, async () => {
+      await openPanelInMode(option.value, MODEL_FOR_MODE[option.value]!);
+      expect(
+        await screen.findByTestId('generate-video-tool-focus'),
+      ).not.toBeDisabled();
+    });
+  }
 
   it('点它进入聚焦挑选，再点一次退出，按钮跟着亮灭', async () => {
     await openPanelInMode('t2v', 'veo-3.1');
