@@ -30,6 +30,7 @@ export type {
   MessageData,
   MessageInput,
   MessagePart,
+  StoredMessageMetadata,
   TaskEntity,
   NodeHistoryEntity,
   StudioAssetEntity,

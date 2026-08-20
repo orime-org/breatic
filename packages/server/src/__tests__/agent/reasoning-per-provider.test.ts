@@ -36,6 +36,8 @@ const runningOn = vi.hoisted(() => ({
   thinking: true,
   /** What this deployment has for an Anthropic key, if anything. */
   anthropicKey: undefined as string | undefined,
+  /** And what it has for a Google key. */
+  googleKey: undefined as string | undefined,
   model: undefined as MockLanguageModelV4 | undefined,
 }));
 
@@ -62,7 +64,11 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // both deployments are covered.
     env: new Proxy(base.env as Record<string, unknown>, {
       get: (target, key) =>
-        key === "ANTHROPIC_API_KEY" ? runningOn.anthropicKey : Reflect.get(target, key),
+        key === "ANTHROPIC_API_KEY"
+          ? runningOn.anthropicKey
+          : key === "GOOGLE_API_KEY"
+            ? runningOn.googleKey
+            : Reflect.get(target, key),
     }),
   };
 });
@@ -120,10 +126,12 @@ async function providerOptionsFor(
   modelId: string,
   thinking: boolean,
   anthropicKey?: string,
+  googleKey?: string,
 ): Promise<Record<string, Record<string, unknown>> | undefined> {
   runningOn.modelId = modelId;
   runningOn.thinking = thinking;
   runningOn.anthropicKey = anthropicKey;
+  runningOn.googleKey = googleKey;
 
   const { MainAgent } = await import("@server/agent/main-agent.js");
   const { runWithContext } = await import("@breatic/core");
@@ -189,6 +197,24 @@ describe("asking Claude for its working", () => {
     const options = await providerOptionsFor("anthropic/claude-sonnet-4-6", true);
     expect(options?.openai?.reasoningEffort).toBe("high");
     expect(options?.anthropic).toBeUndefined();
+  });
+});
+
+describe("asking Gemini for its working", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("asks the way Google takes it, not the OpenAI-compatible way", async () => {
+    // A deployment with its own Google key calls Google directly, and Google
+    // neither reads `openai` options nor takes a level -- it takes a budget,
+    // plus a separate say-so for the thoughts themselves.
+    const options = await providerOptionsFor("google/gemini-2.5-pro", true, undefined, "goog-test");
+    expect(options?.google?.thinkingConfig).toEqual({
+      thinkingBudget: -1,
+      includeThoughts: true,
+    });
+    expect(options?.openai).toBeUndefined();
   });
 });
 

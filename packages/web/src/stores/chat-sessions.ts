@@ -209,7 +209,12 @@ function transportFor(
 }
 
 /**
- * The sentence our own server wrote for this reader, if it wrote one.
+ * The sentence our own server wrote, read out of a raw response body.
+ *
+ * Named for where it reads from, because `chat-mishaps` has one answering the
+ * same question off a different input: everything that goes through axios
+ * arrives as an `ApiException` with the envelope already taken apart, and can
+ * just ask it. A turn cannot -- see below.
  *
  * What the transport throws for a refused turn is `new Error(responseText)`
  * (`ai@7.0.68` `dist/index.js:17351`) -- the body and nothing else, no status
@@ -226,7 +231,7 @@ function transportFor(
  * @param error - Whatever the turn ended with.
  * @returns The server's own words, or undefined if what answered was not ours.
  */
-function serverSentence(error: unknown): string | undefined {
+function serverSentenceInBody(error: unknown): string | undefined {
   const body = error instanceof Error ? error.message : '';
   try {
     const envelope: unknown = JSON.parse(body);
@@ -413,7 +418,7 @@ function settleTurn(
   }
   // A reader who pressed stop knows what they did.
   if (how.isAbort || !how.isError) return;
-  const said = serverSentence(chat.error);
+  const said = serverSentenceInBody(chat.error);
   if (said !== undefined) {
     tell({ projectId, conversationId, kind: 'server', message: said });
     return;

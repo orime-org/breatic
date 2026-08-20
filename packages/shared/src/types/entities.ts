@@ -63,6 +63,27 @@ export interface ConversationEntity {
  * only want the prose. What does not happen is a reader receiving the flat
  * form and having to guess the pieces back out of it.
  */
+/**
+ * What a stored message carries besides its parts, on its way to the browser.
+ *
+ * The turn is what the client pages back with; the timestamp is what it shows.
+ * Both are ours rather than the streaming protocol's, which is what the SDK's
+ * `metadata` slot is for.
+ *
+ * Here rather than beside either side of the wire because both sides declare
+ * the same message type and neither imports the other: two hand-written
+ * copies both type-check, and a field renamed on one side would surface only
+ * as an undefined at runtime. The message type itself stays on each side --
+ * it is `UIMessage<StoredMessageMetadata>`, and `UIMessage` comes from `ai`,
+ * which this package does not depend on.
+ */
+export type StoredMessageMetadata = {
+  /** The turn this message belongs to. Increments on each user message. */
+  turnIndex: number;
+  /** When the row was written, ISO-formatted. */
+  ts: string;
+};
+
 export type MessagePart =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }

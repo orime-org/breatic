@@ -17,7 +17,7 @@
  */
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
-import type { MessageData, MessagePart } from "@breatic/shared";
+import type { MessageData, MessagePart, StoredMessageMetadata } from "@breatic/shared";
 
 /** What one message's parts look like on the wire. */
 type UiParts = UIMessage["parts"];
@@ -114,19 +114,12 @@ export function toUiParts(parts: MessagePart[]): UiParts {
 }
 
 /**
- * What a message carries besides its parts, on its way to the browser.
+ * One stored message as the client's `Chat` takes it.
  *
- * The turn is what the client pages back with; the timestamp is what it shows.
- * Both are ours rather than the protocol's, which is what `metadata` is for.
+ * The metadata comes from `@breatic/shared` so that this side and the browser
+ * declare the same fields once. The message type itself cannot: `UIMessage`
+ * is the SDK's, and shared does not depend on `ai`.
  */
-export type StoredMessageMetadata = {
-  /** The turn this message belongs to. Increments on each user message. */
-  turnIndex: number;
-  /** When the row was written, ISO-formatted. */
-  ts: string;
-};
-
-/** One stored message as the client's `Chat` takes it. */
 export type StoredUiMessage = UIMessage<StoredMessageMetadata>;
 
 /**

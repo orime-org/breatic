@@ -237,7 +237,13 @@ export function ChatPanel({
     <div
       data-testid='chat-panel'
       data-project-id={projectId}
-      className='flex h-full w-full flex-col'
+      // Takes the height that is left, not the height of the column. The
+      // column also holds a header, so `h-full` here came to 100% of a
+      // container this panel does not have all of -- the two together
+      // overflowed it by exactly the header, the page grew a scrollbar of its
+      // own, and whichever end it was scrolled to lost that much: the toolbar
+      // off the top, or the composer off the bottom.
+      className='flex w-full min-h-0 flex-1 flex-col'
     >
       <MessageList
         // The conversation travels as a prop rather than as a key. The list

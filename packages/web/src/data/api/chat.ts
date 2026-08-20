@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { ConversationEntity } from '@breatic/shared';
+import type { ConversationEntity, StoredMessageMetadata } from '@breatic/shared';
 import type { UIMessage } from 'ai';
 
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
@@ -14,12 +14,6 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
  * the protocol's: the turn is how the next page back is asked for, and the
  * time is what the row was written at.
  */
-export interface StoredMessageMetadata {
-  /** The turn this message belongs to. */
-  turnIndex: number;
-  /** When the row was written, ISO-formatted. */
-  ts: string;
-}
 
 /**
  * One message as it arrives from the server.

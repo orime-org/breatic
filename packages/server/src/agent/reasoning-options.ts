@@ -10,11 +10,18 @@
  * addressed to somebody else, so nothing is asked for while the switch that
  * turns it on still reads as though it worked.
  *
- * Which key to use follows from the provider instance being called, not from
- * the company serving the model: our OpenRouter provider is `createOpenAI`
- * with no name of its own, and `createOpenAI` without a name is called
- * `openai`. `resolveProvider` answers a different question -- who to record a
- * charge against -- and says "openrouter" for the same model.
+ * Which key to use follows from the provider instance being called, and
+ * `resolveProvider` is what decides that instance -- it answers with the four
+ * names `getModel` branches on, because both read the same thing: a model id
+ * plus whether this deployment has that provider's own key. Reading the model
+ * id here instead would disagree with it in any deployment missing a key,
+ * which is the case this exists to get right.
+ *
+ * Its answers do not all map to a key of the same name. `openrouter` is
+ * `createOpenAI` pointed elsewhere, and `createOpenAI` with no name of its
+ * own is called `openai` -- so that one's options live under `openai`
+ * whatever the model id says (`@ai-sdk/openai` `index.js:10037` for the
+ * default name, `:1642` for how the key is derived).
  */
 
 import type { streamText } from "ai";
@@ -56,10 +63,23 @@ export function reasoningOptionsFor(provider: string, enabled: boolean): Reasoni
     };
   }
 
-  // Everything else reaches its provider through the OpenAI-compatible
-  // endpoint, whose options live under `openai` whatever the model id says.
-  // `high` of the levels DeepSeek offers -- the top one is there for a
-  // setting that asks for it by name, and a boolean switch has one level to
-  // map onto.
+  if (provider === "google") {
+    // Google takes a budget rather than a level, and asking for the thoughts
+    // is separate from allowing them: without `includeThoughts` the model may
+    // think and say nothing about it, which is the same empty fold as not
+    // asking at all. `-1` is its own word for "decide per question", which is
+    // what a boolean switch means here (`@ai-sdk/google@4.0.41`
+    // `index.d.ts:19-21`).
+    return {
+      providerOptions: {
+        google: { thinkingConfig: { thinkingBudget: -1, includeThoughts: true } },
+      },
+    };
+  }
+
+  // Which leaves `openai` and `openrouter`, and both take the same key: the
+  // OpenRouter provider is `createOpenAI` and answers to `openai`. `high` of
+  // the levels DeepSeek offers -- the top one is there for a setting that
+  // asks for it by name, and a boolean switch has one level to map onto.
   return { providerOptions: { openai: { reasoningEffort: "high" } } };
 }
