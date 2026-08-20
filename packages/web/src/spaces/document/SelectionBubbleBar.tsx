@@ -119,12 +119,21 @@ const GAP_FROM_SELECTION_PX = 8;
  * fully selected paragraph yields one tall rectangle instead of one per line.
  * `coordsAtPos` always yields a single line, whatever the range spans.
  *
- * Both ends measured here are inside text, so `coordsAtPos` answers a real
- * line box for them. It answers a zero-height separator instead at a BLOCK
- * BOUNDARY (`prosemirror-view@1.42.2/dist/index.js:618` collapses top onto
- * bottom there), which is what an `AllSelection`'s head sits on — but that
- * selection never reaches this function while the bar is showing: it anchors
- * to its pin, and without a pin the bar is down and no anchor is asked for.
+ * A `TextSelection`'s two ends are inside text, so `coordsAtPos` answers a
+ * real line box for them. It answers a zero-height separator instead at a
+ * BLOCK BOUNDARY (`prosemirror-view@1.42.2/dist/index.js:618` collapses top
+ * onto bottom there), which is where an `AllSelection`'s head sits.
+ *
+ * A select-all DOES reach here, contrary to what this said before. It happens
+ * inside the plugin's own 250ms update debounce (`dist/index.js:36`): the
+ * selection has just become a select-all with the pointer outside the body,
+ * so there is no pin, while the bar is still up from the previous selection
+ * and `shouldShow` has not been asked again yet. Any `updatePosition` in that
+ * window — a scroll, a resize — takes the anchor from here. The reading is a
+ * zero-height line at the document's end, and the debounce ends by hiding the
+ * bar. So this is a stale anchor for at most 250ms, not a wrong resting
+ * place; the walk that used to convert such a boundary into a text position
+ * changed nothing that outlived that window, which is why it is gone.
  * @param view - The editor view to measure against.
  * @param bounds - The visible box of the body's scroll container.
  * @returns The anchored line's extent, in viewport coordinates.
@@ -491,7 +500,7 @@ function BubbleBar({
    * The mouse-event path below asks the same thing without coming through
    * here, and it has to: the plugin's `'show'` meta runs `updatePosition()`
    * and `show()` without consulting `shouldShow` at all
-   * (`dist/index.js:157-160`; its four metas — `updatePosition`,
+   * (`dist/index.js:159-161`; its four metas — `updatePosition`,
    * `updateOptions`, `hide`, `show` — are the whole vocabulary, there is no
    * "reconsider" among them). What that path must not do is state the rule a
    * second time, and it does not: it calls the same {@link isWarranted}, and
