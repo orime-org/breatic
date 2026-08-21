@@ -24,6 +24,7 @@ export type {
   RecentItem,
   MemoryContext,
   SkillMeta,
+  StoredMessageMetadata,
 } from "@shared/types/entities.js";
 
 export {

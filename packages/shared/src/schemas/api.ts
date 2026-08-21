@@ -165,7 +165,6 @@ export type ChatAttachedChip = z.infer<typeof chatAttachedChipSchema>;
 
 export const chatMessageSchema = z.object({
   message: z.string().min(1),
-  resource_list: z.array(z.string()).default([]),
   project_id: z.string().uuid(),
   /**
    * Which conversation this message belongs to. The client holds it — that is
@@ -203,7 +202,6 @@ export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 export const skillCommandSchema = z.object({
   skill_name: z.string().min(1),
   input: z.string().min(1),
-  resource_list: z.array(z.string()).default([]),
   /** Same contract as `chatMessageSchema` — both entrances are checked alike. */
   project_id: z.string().uuid(),
   conversation_id: z.string().uuid(),

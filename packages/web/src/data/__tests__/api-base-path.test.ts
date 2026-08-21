@@ -19,7 +19,7 @@
  *
  * @see packages/server/src/app.ts — the mount point these must match.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const fetchEventSourceMock = vi.hoisted(() => vi.fn());
 vi.mock('@microsoft/fetch-event-source', () => ({
@@ -28,8 +28,8 @@ vi.mock('@microsoft/fetch-event-source', () => ({
 
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { request } from '@web/data/api/request';
-import { chatApi } from '@web/data/api/chat';
 import { textToolsApi } from '@web/data/api/text-tools';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
 
 /**
  * The URL the last stream call was opened against.
@@ -42,6 +42,11 @@ function lastStreamUrl(): unknown {
 beforeEach(() => {
   fetchEventSourceMock.mockReset();
   fetchEventSourceMock.mockResolvedValue(undefined);
+  evictAllChatSessions();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('the API prefix has one definition', () => {
@@ -54,11 +59,21 @@ describe('the API prefix has one definition', () => {
   });
 
   it('the agent chat stream opens under it', async () => {
-    await chatApi.streamMessage(
-      { projectId: 'p1', conversationId: 'c1', message: 'hi' },
-      { onEvent: () => undefined },
-    );
-    expect(lastStreamUrl()).toBe(`${API_BASE_PATH}/chat/message`);
+    // Driven rather than read off the transport: the SDK keeps `api`
+    // protected, and what matters is the address a turn actually goes to.
+    const fetching = vi.fn(async (_url: string) => new Response('', { status: 204 }));
+    vi.stubGlobal('fetch', fetching);
+
+    await chatSessionFor({
+      projectId: 'p1',
+      conversationId: 'c1',
+      history: [],
+      onTitled: () => undefined,
+      onFirstFrame: () => undefined,
+    }).sendMessage({ text: 'hi' });
+
+    const [url] = fetching.mock.calls[0] ?? [];
+    expect(String(url)).toBe(`${API_BASE_PATH}/chat/message`);
   });
 
   it('the text mini-tool stream opens under it', async () => {

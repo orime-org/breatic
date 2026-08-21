@@ -15,16 +15,16 @@
  * which is the same as not being memoised at all.
  */
 
+import type * as ChatApiModule from '@web/data/api/chat';
 import * as React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, waitFor } from '@testing-library/react';
-import { SSE_EVENT_NAMES } from '@breatic/shared';
-import type { SSEEventEnvelope } from '@breatic/shared';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
 
 const counts = vi.hoisted(() => ({ composer: 0, history: 0 }));
 
-vi.mock('@web/data/api/chat', () => ({
-  chatApi: { openChat: vi.fn(), streamMessage: vi.fn() },
+vi.mock('@web/data/api/chat', async (importOriginal) => ({
+  ...(await importOriginal<typeof ChatApiModule>()),
+  chatApi: { openChat: vi.fn() },
 }));
 
 // Stand-ins that count. Memoised the way the real ones are, so what a count
@@ -52,26 +52,50 @@ vi.mock('@web/pages/project/chat/ConversationHistorySheet', async () => {
 
 import { chatApi } from '@web/data/api/chat';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
-import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
 import { _resetForTests } from '@web/stores/conversation-runtime';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
 
-/** The stream handlers the store installed on its last send. */
-let handlers: { onEvent: (e: SSEEventEnvelope) => void };
+/** The stream this turn is arriving on, which the test pushes into. */
+let wire: { push: (chunk: Record<string, unknown>) => void } | null = null;
 
 beforeEach(() => {
   vi.clearAllMocks();
   _resetForTests();
+  evictAllChatSessions();
   counts.composer = 0;
   counts.history = 0;
+  wire = null;
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: 'c1' }],
     current: { conversation: { id: 'c1' }, messages: [], hasMore: false },
   } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
-  vi.mocked(chatApi.streamMessage).mockImplementation(async (_input, h) => {
-    handlers = h as typeof handlers;
-  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      const encoder = new TextEncoder();
+      let controller: ReadableStreamDefaultController<Uint8Array>;
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          controller = c;
+        },
+      });
+      wire = {
+        push: (chunk) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        },
+      };
+      return new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    }),
+  );
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('a reply arriving piece by piece', () => {
@@ -79,16 +103,23 @@ describe('a reply arriving piece by piece', () => {
     render(<ChatPanel historyOpen={false} onHistoryOpenChange={() => undefined} projectId='p1' />);
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
+    // Sent through the session rather than the composer, because the composer
+    // is a stub here. What is being measured is what the panel does to its
+    // children while a reply arrives, not how the reply was asked for.
     await act(async () => {
-      conversationRuntime.setDraft('c1', 'hello');
-    });
-    await act(async () => {
-      // Sent through the store rather than the composer, because the composer
-      // is a stub here. What is being measured is what the panel does to its
-      // children while a reply arrives, not how the reply was asked for.
-      await import('@web/stores/conversation-runtime').then((m) =>
-        m.conversationRuntime.send('p1', 'hello'),
-      );
+      void chatSessionFor({
+        projectId: 'p1',
+        conversationId: 'c1',
+        history: [],
+        onTitled: () => undefined,
+        onFirstFrame: () => undefined,
+      }).sendMessage({ text: 'hello' });
+      await waitFor(() => {
+        expect(wire).not.toBeNull();
+      });
+      wire?.push({ type: 'start' });
+      wire?.push({ type: 'start-step' });
+      wire?.push({ type: 'text-start', id: 't1' });
     });
 
     const composerBefore = counts.composer;
@@ -96,12 +127,19 @@ describe('a reply arriving piece by piece', () => {
 
     // One commit per piece, the way they really arrive -- batching them into
     // a single act would only ever measure one render of the panel.
-    for (const text of ['a', 'b', 'c', 'd', 'e']) {
+    for (const delta of ['a', 'b', 'c', 'd', 'e']) {
       await act(async () => {
-        handlers.onEvent({ event: SSE_EVENT_NAMES.CHAT_CHUNK, data: { text } });
+        wire?.push({ type: 'text-delta', id: 't1', delta });
+        await new Promise((resolve) => setTimeout(resolve, 0));
       });
     }
 
+    // The premise first: an assertion about what a growing reply costs proves
+    // nothing if the reply never grew, and counts that stay put is exactly
+    // what a turn that never arrived looks like.
+    await waitFor(() => {
+      expect(screen.getAllByTestId('message-bubble-content').at(-1)).toHaveTextContent('abcde');
+    });
     expect(counts.composer).toBe(composerBefore);
     expect(counts.history).toBe(historyBefore);
   });

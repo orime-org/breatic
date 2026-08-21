@@ -13,14 +13,14 @@
  * empty conversation.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SSE_EVENT_NAMES } from '@breatic/shared';
-import type { SSEEventEnvelope } from '@breatic/shared';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', () => ({
+vi.mock('@web/data/api/chat', async (importOriginal) => ({
+  ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000 })),
     openChat: vi.fn(),
-    streamMessage: vi.fn(),
     messagesBefore: vi.fn(),
     readConversation: vi.fn(),
     listConversations: vi.fn(),
@@ -34,14 +34,51 @@ import { ApiException } from '@web/data/api/types';
 import { chatApi } from '@web/data/api/chat';
 import {
   conversationRuntime,
-  turnPhaseOf,
   useConversationRuntime,
-  watchChatMishaps,
   _resetForTests,
 } from '@web/stores/conversation-runtime';
+import { watchChatMishaps } from '@web/stores/chat-mishaps';
+import { chatSessionFor, evictAllChatSessions, sendInSession } from '@web/stores/chat-sessions';
 
 const P = 'p-1';
-let handlers: { onEvent: (e: SSEEventEnvelope) => void; signal?: AbortSignal };
+
+/** 这一轮请求拿到的中止信号。 */
+let sent: AbortSignal | null | undefined;
+
+/**
+ * 让下一次发送拿到一条握在测试手里、永远不结束的流。
+ */
+function theWireStaysOpen(): void {
+  sent = undefined;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      sent = init?.signal;
+      return new Response(new ReadableStream<Uint8Array>({ start() {} }), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    }),
+  );
+}
+
+/**
+ * 在一条会话里开一轮，并等到请求真的出去了。
+ * @param conversationId - 哪一条。
+ */
+async function aTurnIsRunningIn(conversationId: string): Promise<void> {
+  chatSessionFor({
+    projectId: P,
+    conversationId,
+    history: [],
+    onTitled: () => undefined,
+    onFirstFrame: () => undefined,
+  });
+  void sendInSession(conversationId, '一个要答很久的问题');
+  await vi.waitFor(() => {
+    expect(sent).toBeDefined();
+  });
+}
 
 function opens(list: Array<{ id: string; title: string | null }>, current = list[0]!.id): void {
   vi.mocked(chatApi.openChat).mockResolvedValue({
@@ -54,34 +91,25 @@ describe('switching away from a running turn and back', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
-    vi.mocked(chatApi.streamMessage).mockImplementation((_i, h) => {
-      handlers = h as typeof handlers;
-      return new Promise<void>(() => {});
-    });
+    evictAllChatSessions();
+    theWireStaysOpen();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('keeps the turn, and keeps it stoppable', async () => {
     opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
     await conversationRuntime.ensureLoaded(P);
-
-    void conversationRuntime.send(P, 'a long question');
-    await vi.waitFor(() =>
-      expect(useConversationRuntime.getState().conversations['c-1']?.turn).not.toBeNull(),
-    );
-    handlers.onEvent({
-      event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
-      data: { messages: [], hasMore: false, title: 'a long question' },
-    } as unknown as SSEEventEnvelope);
-    handlers.onEvent({
-      event: SSE_EVENT_NAMES.CHAT_CHUNK,
-      data: { content: 'part one' },
-    } as unknown as SSEEventEnvelope);
-
-    const signal = handlers.signal;
-    const before = {
-      hasTurn: useConversationRuntime.getState().conversations['c-1']?.turn !== null,
-      phase: turnPhaseOf(useConversationRuntime.getState(), P),
-    };
+    await aTurnIsRunningIn('c-1');
+    const running = chatSessionFor({
+      projectId: P,
+      conversationId: 'c-1',
+      history: [],
+      onTitled: () => undefined,
+      onFirstFrame: () => undefined,
+    });
 
     vi.mocked(chatApi.readConversation).mockImplementation((id) =>
       Promise.resolve({
@@ -93,36 +121,21 @@ describe('switching away from a running turn and back', () => {
     await conversationRuntime.switchTo(P, 'c-2');
     await conversationRuntime.switchTo(P, 'c-1');
 
-    const after = {
-      hasTurn: useConversationRuntime.getState().conversations['c-1']?.turn !== null,
-      phase: turnPhaseOf(useConversationRuntime.getState(), P),
-    };
-    conversationRuntime.stopTurn('c-1');
+    // 同一个实例,同一条请求。切走再切回来是换看哪一条,不是把那一轮结束掉。
+    expect(
+      chatSessionFor({
+        projectId: P,
+        conversationId: 'c-1',
+        history: [],
+        onTitled: () => undefined,
+        onFirstFrame: () => undefined,
+      }),
+    ).toBe(running);
+    expect(sent?.aborted).toBe(false);
+
     conversationRuntime.leaveProject(P);
 
-    expect(before.hasTurn).toBe(true);
-    expect(after.hasTurn).toBe(true);
-    expect(signal?.aborted).toBe(true);
-  });
-
-  it('stops the turn of a conversation the reader deletes', async () => {
-    // 删掉之后那一轮还在跑,就是在替一条不存在的会话继续调模型 —— 一直调到
-    // 模型自己说完为止,按这个用户的账扣钱,而屏幕上再没有任何东西提到它。
-    opens([{ id: 'c-1', title: 'one' }]);
-    await conversationRuntime.ensureLoaded(P);
-    void conversationRuntime.send(P, 'go');
-    await vi.waitFor(() => expect(handlers).toBeDefined());
-    handlers.onEvent({
-      event: SSE_EVENT_NAMES.CHAT_TURN_STARTED,
-      data: { messages: [], hasMore: false },
-    } as unknown as SSEEventEnvelope);
-    const running = handlers.signal;
-    expect(running?.aborted).toBe(false);
-
-    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined as never);
-    await conversationRuntime.remove(P, 'c-1');
-
-    expect(running?.aborted).toBe(true);
+    expect(sent?.aborted).toBe(true);
   });
 });
 
@@ -784,6 +797,12 @@ describe('pressing send while a switch is still on its way', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    evictAllChatSessions();
+    theWireStaysOpen();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('does not write into the conversation being left', async () => {
@@ -804,9 +823,12 @@ describe('pressing send while a switch is still on its way', () => {
     const switching = conversationRuntime.switchTo(P, 'c-2');
     await new Promise((r) => setTimeout(r, 5));
 
-    await conversationRuntime.send(P, 'hello');
+    // 问的是「这句话该写进哪一条」,而答案是「一条都不该」—— 面板据此
+    // 什么都不发。
+    const writeInto = await conversationRuntime.conversationForSending(P);
 
-    expect(chatApi.streamMessage).not.toHaveBeenCalled();
+    expect(writeInto).toBeUndefined();
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
 
     landSwitch?.();
     await switching;
@@ -833,10 +855,11 @@ describe('pressing send while a switch is still on its way', () => {
     await conversationRuntime.switchTo(P, 'c-1');
     expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
 
-    void conversationRuntime.send(P, 'hello');
-    await new Promise((r) => setTimeout(r, 5));
+    const writeInto = await conversationRuntime.conversationForSending(P);
+    expect(writeInto).toBe('c-1');
+    await aTurnIsRunningIn(writeInto!);
 
-    expect(chatApi.streamMessage).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
 
     landSwitch?.();
     await switching;

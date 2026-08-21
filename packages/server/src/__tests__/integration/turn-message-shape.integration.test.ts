@@ -20,32 +20,35 @@ import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 // The stream the model would have produced. Each test sets this before it
 // sends, so one double covers every shape a turn can take.
-const stream = vi.hoisted(() => ({ parts: [] as unknown[] }));
+const stream = vi.hoisted(() => ({ parts: [] as ModelStreamPart[] }));
 
 // What the double was handed on the way out. The store is one half of the
 // question and this is the other: a turn is written down in one shape and
 // read back out in another, and the tests below check both ends.
-const handedToModel = vi.hoisted(() => ({ calls: [] as Array<Record<string, unknown>> }));
+const handedToModel = vi.hoisted(() => ({ calls: [] as Array<{ prompt: unknown }> }));
 
-// `ai` is stubbed: no key, no network, and the SDK stays out of the module
-// graph. The parts below are what the loop in `main-agent.ts` reads, in the
-// order the real SDK delivers them (start-step, tool-call, tool-result,
-// finish-step — measured, see the comment at main-agent.ts:225).
-vi.mock("ai", () => ({
-  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
-  streamText: (opts: Record<string, unknown>) => (handedToModel.calls.push(opts), {
-    fullStream: (async function* () {
-      for (const part of stream.parts) yield part;
-    })(),
-    text: Promise.resolve(""),
-    usage: Promise.resolve({ totalTokens: 0 }),
-    totalUsage: Promise.resolve({ totalTokens: 0 }),
-  }),
-  stepCountIs: (_n: number) => () => false,
-  tool: (config: Record<string, unknown>) => config,
-}));
+// 替身在**模型**那一层，不在 `streamText` 上。后端出口现在是
+// `createUIMessageStream`，`streamText` 的结果经 `toUIMessageStream()` 变成上线
+// 的协议 —— 把 `streamText` 换成替身就等于把这段转换自己 mock 掉，而这几条要
+// 钉的正是「存下来的东西再交给模型时长什么样」，那段转换必须真跑。
+vi.mock("@breatic/domain", async (importOriginal) => {
+  const actual = await importOriginal<typeof DomainModule>();
+  const { modelProducing } = await import("../helpers/model-double.js");
+  return {
+    ...actual,
+    resolveProvider: () => "test",
+    getModel: () =>
+      modelProducing(
+        () => stream.parts,
+        (asked) => handedToModel.calls.push(asked),
+      ),
+  };
+});
 
+import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
+import { FINISHED_ASKING_FOR_A_TOOL, saying } from "../helpers/model-double.js";
+import type { ModelStreamPart } from "../helpers/model-double.js";
 import postgres from "postgres";
 import {
   initCore,
@@ -198,7 +201,7 @@ async function storedRows(conversationId: string): Promise<StoredRow[]> {
 function lastMessagesToModel(): Array<Record<string, unknown>> {
   const last = handedToModel.calls.at(-1);
   if (!last) throw new Error('the model double was never called');
-  return last.messages as Array<Record<string, unknown>>;
+  return last.prompt as Array<Record<string, unknown>>;
 }
 
 /**
@@ -211,6 +214,31 @@ function partsToModel(): Array<Record<string, unknown>> {
   );
 }
 
+/**
+ * 一轮:调一次工具,拿到结果,然后说一句话。
+ *
+ * 用 `ask_user` 而不是 `web_search`:替身在模型那一层,所以工具由真的
+ * `streamText` 按模型的请求真调 —— 而这几条要看的是「工具这件事怎么落库、
+ * 怎么再交给模型」,跟是哪个工具无关。`ask_user` 把参数装成一个对象就返回,
+ * 不碰网络,也不需要任何 key。
+ * @param toolCallId - 这次调用的 id。
+ * @param question - 问用户的那句。
+ * @param said - 拿到结果之后说的那句。
+ * @returns 模型这一轮吐出来的片段,按真实顺序。
+ */
+function usesATool(toolCallId: string, question: string, said: string): ModelStreamPart[] {
+  return [
+    {
+      type: 'tool-call',
+      toolCallId,
+      toolName: 'ask_user_question',
+      input: JSON.stringify({ question }),
+    },
+    FINISHED_ASKING_FOR_A_TOOL,
+    ...saying(said),
+  ];
+}
+
 describe("carrying a turn that used a tool back to the model", () => {
   // What a tool returned is stored as a string, because that is what a tool
   // returns. The protocol wants it as a typed value, and handing over the
@@ -221,21 +249,13 @@ describe("carrying a turn that used a tool back to the model", () => {
   // the other failing with nothing to say so.
 
   it("hands /chat/message a typed tool result, not the stored string", async () => {
-    stream.parts = [
-      { type: 'tool-call', toolCallId: 'tc-75a', toolName: 'web_search', input: { query: 'noir' } },
-      { type: 'tool-result', toolCallId: 'tc-75a', output: 'two links about noir' },
-      { type: 'text-delta', text: 'Found some.' },
-      { type: 'finish-step', usage: { totalTokens: 40 } },
-    ];
+    stream.parts = usesATool('tc-75a', 'which era of noir?', 'Found some.');
     const { projectId, cookie } = await seedProject();
     const conversationId = await openConversation(projectId, cookie);
     await sendAndDrain(conversationId, projectId, cookie, 'find me noir references');
 
     // Second turn: now the history in front of the model contains that tool.
-    stream.parts = [
-      { type: 'text-delta', text: 'Sure.' },
-      { type: 'finish-step', usage: { totalTokens: 10 } },
-    ];
+    stream.parts = saying('Sure.');
     handedToModel.calls.length = 0;
     await sendAndDrain(conversationId, projectId, cookie, 'and one more');
 
@@ -243,25 +263,19 @@ describe("carrying a turn that used a tool back to the model", () => {
     expect(result).toMatchObject({
       type: 'tool-result',
       toolCallId: 'tc-75a',
-      output: { type: 'text', value: 'two links about noir' },
+      // 有类型的值，不是那个存下来的字符串。裸字符串递过去，整轮在出发前
+      // 就失败 —— 一条会话从它第一次用工具起就不能用了（task #75）。
+      output: { type: 'json', value: { question: 'which era of noir?', options: [] } },
     });
   });
 
   it("hands /chat/skill the same typed tool result", async () => {
-    stream.parts = [
-      { type: 'tool-call', toolCallId: 'tc-75b', toolName: 'web_search', input: { query: 'noir' } },
-      { type: 'tool-result', toolCallId: 'tc-75b', output: 'two links about noir' },
-      { type: 'text-delta', text: 'Found some.' },
-      { type: 'finish-step', usage: { totalTokens: 40 } },
-    ];
+    stream.parts = usesATool('tc-75b', 'which era of noir?', 'Found some.');
     const { projectId, cookie } = await seedProject();
     const conversationId = await openConversation(projectId, cookie);
     await sendAndDrain(conversationId, projectId, cookie, 'find me noir references');
 
-    stream.parts = [
-      { type: 'text-delta', text: 'Sure.' },
-      { type: 'finish-step', usage: { totalTokens: 10 } },
-    ];
+    stream.parts = saying('Sure.');
     handedToModel.calls.length = 0;
     const res = await app.request('/api/v1/chat/skill', {
       method: 'POST',
@@ -280,19 +294,14 @@ describe("carrying a turn that used a tool back to the model", () => {
     expect(result).toMatchObject({
       type: 'tool-result',
       toolCallId: 'tc-75b',
-      output: { type: 'text', value: 'two links about noir' },
+      output: { type: 'json', value: { question: 'which era of noir?', options: [] } },
     });
   });
 });
 
 describe("what one turn leaves in the store", () => {
   it("keeps a turn that called a tool in a single assistant message", async () => {
-    stream.parts = [
-      { type: "tool-call", toolCallId: "tc-1", toolName: "web_search", input: { query: "cyberpunk" } },
-      { type: "tool-result", toolCallId: "tc-1", output: "three links about cyberpunk" },
-      { type: "text-delta", text: "Here is what I found." },
-      { type: "finish-step", usage: { totalTokens: 120 } },
-    ];
+    stream.parts = usesATool("tc-1", "which era of cyberpunk?", "Here is what I found.");
 
     const { projectId, cookie } = await seedProject();
     const conversationId = await openConversation(projectId, cookie);
@@ -309,12 +318,7 @@ describe("what one turn leaves in the store", () => {
   });
 
   it("puts the tool and the prose in that message's parts, in the order they happened", async () => {
-    stream.parts = [
-      { type: "tool-call", toolCallId: "tc-2", toolName: "web_search", input: { query: "noir" } },
-      { type: "tool-result", toolCallId: "tc-2", output: "two links about noir" },
-      { type: "text-delta", text: "Here you go." },
-      { type: "finish-step", usage: { totalTokens: 90 } },
-    ];
+    stream.parts = usesATool("tc-2", "which era of noir?", "Here you go.");
 
     const { projectId, cookie } = await seedProject();
     const conversationId = await openConversation(projectId, cookie);
@@ -329,10 +333,10 @@ describe("what one turn leaves in the store", () => {
     expect(toolPart).toMatchObject({
       type: "tool",
       toolCallId: "tc-2",
-      toolName: "web_search",
-      input: { query: "noir" },
+      toolName: "ask_user_question",
+      input: { question: "which era of noir?" },
       status: "success",
-      output: "two links about noir",
+      output: { question: "which era of noir?", options: [] },
     });
 
     expect(reply?.parts.find((p) => p.type === "text")).toMatchObject({
@@ -341,38 +345,7 @@ describe("what one turn leaves in the store", () => {
     });
   });
 
-  it("never lets the internal marker of an interaction tool reach the store", async () => {
-    // `ask_user_choice` answers with a sentinel-prefixed payload. The prefix
-    // tells the loop which SSE event to raise and has no meaning past that —
-    // the model does not need it and neither does the browser.
-    stream.parts = [
-      {
-        type: "tool-call",
-        toolCallId: "tc-3",
-        toolName: "ask_user_choice",
-        input: { question: "which one?", choices: [{ id: "a", label: "A" }, { id: "b", label: "B" }] },
-      },
-      {
-        type: "tool-result",
-        toolCallId: "tc-3",
-        output: '__ASK_USER_CHOICE__{"question":"which one?","choices":[{"id":"a","label":"A"},{"id":"b","label":"B"}]}',
-      },
-      { type: "finish-step", usage: { totalTokens: 60 } },
-    ];
-
-    const { projectId, cookie } = await seedProject();
-    const conversationId = await openConversation(projectId, cookie);
-    await sendAndDrain(conversationId, projectId, cookie, "ask me something");
-
-    const rows = await storedRows(conversationId);
-    const everythingStored = JSON.stringify(rows);
-
-    expect(everythingStored).not.toContain("__ASK_USER_CHOICE__");
-    expect(everythingStored).not.toContain("__ASK_USER__");
-
-    // The payload itself is still there — only the marker is gone.
-    const reply = rows.find((r) => r.role === "assistant");
-    const toolPart = reply?.parts.find((p) => p.type === "tool");
-    expect(toolPart?.output).toContain("which one?");
-  });
+  // 「哨兵前缀不许进库」那条删了:哨兵机制本身在这次迁移里删掉了,四个交互
+  // 工具改成直接返回 payload 对象。它们返回什么、怎么落库,由
+  // `domain/src/agent/tools/__tests__/interaction-tools-payload.test.ts` 钉。
 });

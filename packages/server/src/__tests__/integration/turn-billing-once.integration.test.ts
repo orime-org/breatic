@@ -33,21 +33,20 @@ import fc from "fast-check";
 // network, so this suite needs no API key and the SDK stays out of its module
 // graph. Its stream reports one finished step, because a turn that consumed
 // nothing owes nothing and would settle no ledger row to count.
-vi.mock("ai", () => ({
-  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
-  streamText: () => ({
-    fullStream: (async function* () {
-      yield { type: "text-delta", text: "hi" };
-      yield { type: "finish-step", usage: { totalTokens: 1000 } };
-    })(),
-    text: Promise.resolve("hi"),
-    usage: Promise.resolve({ totalTokens: 1000 }),
-    totalUsage: Promise.resolve({ totalTokens: 1000 }),
-  }),
-  stepCountIs: (_n: number) => () => false,
-  tool: (config: Record<string, unknown>) => config,
-}));
+// 替身在**模型**那一层。后端出口是 `createUIMessageStream`，`streamText` 的
+// 结果经 `toUIMessageStream()` 变成上线的协议 —— 把整个 `ai` 换掉，那段转换
+// 连同 `createUIMessageStream` 一起没了，而一轮真的跑完、真的结算正要经过它。
+vi.mock("@breatic/domain", async (importOriginal) => {
+  const actual = await importOriginal<typeof DomainModule>();
+  const { modelProducing, saying } = await import("../helpers/model-double.js");
+  return {
+    ...actual,
+    resolveProvider: () => "test",
+    getModel: () => modelProducing(() => saying("hi")),
+  };
+});
 
+import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
 import postgres from "postgres";
 import {

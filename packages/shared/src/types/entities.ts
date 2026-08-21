@@ -63,6 +63,27 @@ export interface ConversationEntity {
  * only want the prose. What does not happen is a reader receiving the flat
  * form and having to guess the pieces back out of it.
  */
+/**
+ * What a stored message carries besides its parts, on its way to the browser.
+ *
+ * The turn is what the client pages back with; the timestamp is what it shows.
+ * Both are ours rather than the streaming protocol's, which is what the SDK's
+ * `metadata` slot is for.
+ *
+ * Here rather than beside either side of the wire because both sides declare
+ * the same message type and neither imports the other: two hand-written
+ * copies both type-check, and a field renamed on one side would surface only
+ * as an undefined at runtime. The message type itself stays on each side --
+ * it is `UIMessage<StoredMessageMetadata>`, and `UIMessage` comes from `ai`,
+ * which this package does not depend on.
+ */
+export type StoredMessageMetadata = {
+  /** The turn this message belongs to. Increments on each user message. */
+  turnIndex: number;
+  /** When the row was written, ISO-formatted. */
+  ts: string;
+};
+
 export type MessagePart =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
@@ -85,12 +106,16 @@ export type MessagePart =
       /**
        * What the tool returned, as the tool returned it.
        *
-       * The interaction tools prefix their result with an internal marker that
-       * tells the turn loop which event to raise; that marker is consumed
-       * before this is written and never reaches the store. Absent while the
-       * status is still `pending`.
+       * Whatever the tool's own return type is: the search tools answer with
+       * prose, the four interaction tools answer with the object the panel
+       * needs to draw their question. Narrowing this to a string would be a
+       * type that disagrees with the rows already in the table -- and the
+       * disagreement shows up two turns later, when the history goes back to
+       * the model in the wrong arm of its output union.
+       *
+       * Absent while the status is still `pending`.
        */
-      output?: string;
+      output?: unknown;
       /** Why it failed. Only set when the status is `error`. */
       errorMessage?: string;
     }

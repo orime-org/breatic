@@ -1,0 +1,93 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * Three figures this build reads from `config/agent.yaml` rather than source.
+ *
+ * The model is one of them because a model id is data, not a choice made in
+ * code. The other two are on the path between pressing send and the first
+ * frame arriving: how often the server says the stream is alive, and how many
+ * messages one page of a conversation holds. Both were literals -- the beat
+ * in `shared/src/agent/sse-events.ts`, the page size in the message repo as
+ * `MAX_HISTORY = 50`, a figure with no recorded reason.
+ *
+ * How many missed beats mean the stream is gone stays in code at three, and
+ * deliberately: the server garbage collects, two misses in a row happen to a
+ * healthy stream, and a deployment that tuned this down would start killing
+ * turns that were doing fine.
+ */
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parse } from "yaml";
+import { agentConfigSchemaForTests } from "@core/config/loader.js";
+
+/** The model every chat turn and every consolidation runs on. */
+const MODEL = "deepseek/deepseek-v4-pro";
+
+/**
+ * The shipped `config/agent.yaml`, parsed.
+ *
+ * Read straight off disk rather than through `getAgentConfig`, which wants
+ * the environment loaded first. What is being checked here is the file we
+ * ship, so the file is what gets opened.
+ * @returns Its top-level keys and values.
+ */
+function shippedConfig(): Record<string, unknown> {
+  const path = resolve(import.meta.dirname, "../../../../../config/agent.yaml");
+  return parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+}
+
+/**
+ * Every default the schema hands back when the file says nothing.
+ * @returns The parsed defaults.
+ */
+function defaults(): Record<string, unknown> {
+  return agentConfigSchemaForTests.parse({});
+}
+
+describe("the model this build talks to", () => {
+  it("is DeepSeek V4 Pro in the shipped config", () => {
+    const config = shippedConfig();
+    expect(config.default_model).toBe(MODEL);
+    // Consolidation summarises old turns. Leaving it on the previous model
+    // would mean a conversation is read by one model and written by another,
+    // and the bill would name two.
+    expect(config.consolidation_model).toBe(MODEL);
+  });
+
+  it("is the schema default too, so a missing key cannot resurrect the old one", () => {
+    const parsed = defaults();
+    expect(parsed.default_model).toBe(MODEL);
+    expect(parsed.consolidation_model).toBe(MODEL);
+  });
+});
+
+describe("the figures on the path from pressing send to the first frame", () => {
+  it("declares how often the server says the stream is alive", () => {
+    expect(defaults().sse_heartbeat_interval_ms).toBe(5000);
+    expect(shippedConfig().sse_heartbeat_interval_ms).toBe(5000);
+  });
+
+  it("declares how many messages one page of a conversation holds", () => {
+    // Thirty, the same figure `conversation_page_size` already uses: the two
+    // are the same kind of dial and whoever reads this file should not have
+    // to hold two numbers. The 50 it replaces had no reason written anywhere.
+    expect(defaults().message_page_size).toBe(30);
+    expect(shippedConfig().message_page_size).toBe(30);
+  });
+
+  it("rejects a page size or interval that is not a positive whole number", () => {
+    // These reach a timer and a SQL limit. A zero, a negative or a fraction
+    // is not a slower stream or a shorter page -- it is a stream that never
+    // says anything and a page that returns nothing.
+    for (const bad of [0, -1, 1.5]) {
+      expect(agentConfigSchemaForTests.safeParse({ message_page_size: bad }).success).toBe(
+        false,
+      );
+      expect(
+        agentConfigSchemaForTests.safeParse({ sse_heartbeat_interval_ms: bad }).success,
+      ).toBe(false);
+    }
+  });
+});

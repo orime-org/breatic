@@ -98,18 +98,36 @@ describe("Conversation routes", () => {
 
   describe("GET /chat/conversations/:id — get with messages", () => {
     it("returns conversation with messages", async () => {
+      // The shape the service actually returns. What was here before was a
+      // flat `{ id, title, messages }` with message rows that had no parts --
+      // a shape nothing produces, so the assertions on it said nothing about
+      // this endpoint.
       mocks.conversationService.getWithMessages.mockResolvedValue({
-        id: "22222222-2222-4222-8222-222222222222",
-        title: "Chat 1",
-        messages: [{ role: "user", content: "hi" }],
+        conversation: {
+          id: "22222222-2222-4222-8222-222222222222",
+          title: "Chat 1",
+        },
+        messages: [
+          {
+            id: "row-1",
+            role: "user",
+            parts: [{ type: "text", text: "hi" }],
+            content: "hi",
+            ts: "2026-08-19T00:00:00Z",
+            turnIndex: 1,
+          },
+        ],
+        hasMore: false,
       });
 
       const app = createApp();
       const res = await app.request("/api/v1/chat/conversations/22222222-2222-4222-8222-222222222222", { headers: AUTH });
 
       expect(res.status).toBe(200);
-      const body = await res.json() as { data: { id: string; messages: unknown[] } };
-      expect(body.data.id).toBe("22222222-2222-4222-8222-222222222222");
+      const body = (await res.json()) as {
+        data: { conversation: { id: string }; messages: unknown[] };
+      };
+      expect(body.data.conversation.id).toBe("22222222-2222-4222-8222-222222222222");
       expect(body.data.messages).toHaveLength(1);
     });
   });

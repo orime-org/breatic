@@ -1,11 +1,28 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { ConversationEntity, MessageData, SSEEventEnvelope } from '@breatic/shared';
-import { SSE_EVENT_NAMES } from '@breatic/shared';
+import type { ConversationEntity, StoredMessageMetadata } from '@breatic/shared';
+import type { UIMessage } from 'ai';
 
-import { sseStream } from '@web/data/stream/sse';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
+
+/**
+ * What a stored message carries besides its parts.
+ *
+ * The server builds it in
+ * `server/src/modules/conversation/message-part-mapping.ts`. Neither field is
+ * the protocol's: the turn is how the next page back is asked for, and the
+ * time is what the row was written at.
+ */
+
+/**
+ * One message as it arrives from the server.
+ *
+ * The protocol's own shape, which is also the shape a conversation's `Chat`
+ * session holds: what the server hands out is the starting point for one, so
+ * a second shape in between would be a translation to maintain on this side.
+ */
+export type StoredUiMessage = UIMessage<StoredMessageMetadata>;
 
 /**
  * A conversation as it arrives here, which is not quite as the server holds it.
@@ -28,7 +45,7 @@ export type ConversationOnTheWire = Omit<
 /** One conversation with the newest page of what was said in it. */
 export interface ConversationRead {
   conversation: ConversationOnTheWire;
-  messages: MessageData[];
+  messages: StoredUiMessage[];
   /** The conversation reaches back further than these messages do. */
   hasMore: boolean;
 }
@@ -36,7 +53,7 @@ export interface ConversationRead {
 /** One page of a conversation, and whether anything is older. */
 export interface MessagePage {
   /** The messages, oldest first. */
-  messages: MessageData[];
+  messages: StoredUiMessage[];
   /** There are older messages than these. */
   hasMore: boolean;
 }
@@ -56,41 +73,48 @@ export interface OpenChatResult {
   /** The one to show, and what has been said in it. */
   current: {
     conversation: ConversationOnTheWire;
-    messages: MessageData[];
+    messages: StoredUiMessage[];
     /** The conversation reaches back further than these messages do. */
     hasMore: boolean;
   };
 }
 
-/** What the caller says; the field names the server reads are applied here. */
-export interface SendMessageInput {
-  projectId: string;
-  conversationId: string;
-  message: string;
+/** The knobs a browser needs to read a turn's stream. */
+export interface StreamConfig {
+  /** How often this server says a running stream is alive, in milliseconds. */
+  heartbeatIntervalMs: number;
 }
-
-/** Every event name the contract declares, for checking one off the wire. */
-const KNOWN_EVENTS = new Set<string>(Object.values(SSE_EVENT_NAMES));
 
 /**
- * Read one wire frame.
+ * What the server last said about its stream, so it is asked for once.
  *
- * A frame that will not parse, or that names an event the contract does not
- * carry, is dropped here rather than passed on: the panel has no rendering
- * for it, and handing it over would leave every consumer to guess.
- * @param data - The raw `data:` payload of one frame
- * @returns The event, or null when there is nothing usable in it
+ * The promise and not the answer, so that two conversations opening at the
+ * same moment make one request between them rather than one each.
  */
-function parseEvent(data: string): SSEEventEnvelope | null {
-  try {
-    const parsed = JSON.parse(data) as SSEEventEnvelope;
-    return KNOWN_EVENTS.has(parsed.event) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
+let streamConfigAsked: Promise<StreamConfig> | null = null;
 
 export const chatApi = {
+  /**
+   * How long to wait on a silent stream before deciding it is gone.
+   *
+   * Asked for rather than known: the beat is one number in
+   * `config/agent.yaml`, and a copy of it here would be a second answer to a
+   * question the server has already answered -- one that goes wrong silently,
+   * because a browser waiting the wrong length of time neither errors nor
+   * says anything.
+   * @returns The knobs, from cache after the first call.
+   */
+  streamConfig(): Promise<StreamConfig> {
+    streamConfigAsked ??= apiGet<StreamConfig>('/chat/stream-config').catch(
+      (failed: unknown) => {
+        // Not kept, so the next turn asks again. A cached rejection would
+        // leave every later turn unwatched over one bad moment.
+        streamConfigAsked = null;
+        throw failed;
+      },
+    );
+    return streamConfigAsked;
+  },
   /**
    * Open chat in a project.
    *
@@ -212,43 +236,5 @@ export const chatApi = {
    */
   deleteConversation(id: string): Promise<void> {
     return apiDelete(`/chat/conversations/${id}`);
-  },
-  /**
-   * Stream a reply to one message.
-   *
-   * Resolves when the stream closes; events arrive through `onEvent` as they
-   * come. Cancel with an `AbortController` — the server notices the client
-   * leaving and stops the turn rather than running it out for nobody.
-   * @param input - Who is speaking, where, and what they said
-   * @param handlers - Stream lifecycle callbacks
-   * @param handlers.onEvent - Invoked for each event the contract declares
-   * @param handlers.onClose - Invoked when the stream closes cleanly
-   * @param handlers.onError - Invoked on transport, parse or abort error
-   * @param handlers.signal - Abort signal to stop the turn
-   * @returns A promise that resolves when the stream closes
-   */
-  streamMessage(
-    input: SendMessageInput,
-    handlers: {
-      onEvent: (e: SSEEventEnvelope) => void;
-      onClose?: () => void;
-      onError?: (err: unknown) => void;
-      signal?: AbortSignal;
-    },
-  ): Promise<void> {
-    return sseStream<SSEEventEnvelope>({
-      url: '/chat/message',
-      body: {
-        message: input.message,
-        project_id: input.projectId,
-        conversation_id: input.conversationId,
-        // Attaching canvas nodes to a message is PR-5; the server takes these
-        // as given and validates them, so they go as empty rather than absent.
-        attached_chips: [],
-        resource_list: [],
-      },
-      parseEvent,
-      ...handlers,
-    });
   },
 };

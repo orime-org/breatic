@@ -8,6 +8,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { ToolCallCard } from '@web/pages/project/chat/ToolCallCard';
+import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
 interface MessageBubbleProps {
@@ -67,11 +68,15 @@ export const MessageBubble = React.memo(function MessageBubble({
             data-testid='message-bubble-content'
           >
             {message.content}
-            {message.streaming ? (
-              <span aria-label='streaming' className='ml-1 animate-pulse'>
-                ▌
-              </span>
-            ) : null}
+            {/* One mark for the whole turn, always at the end of what has
+                been said so far. It starts alone in an empty bubble and stays
+                on the heels of the last character until the turn is over
+                (user 2026-08-20: the dot must not disappear and must not turn
+                into a bar). A caret was drawn here instead once there was
+                text, which took the mark away over the whole stretch where
+                the reader most needs to see that the answer is still
+                coming. */}
+            {message.streaming ? <WaitingDot /> : null}
           </div>
         ) : null}
         {message.interrupted ? (

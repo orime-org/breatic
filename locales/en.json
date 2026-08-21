@@ -153,7 +153,8 @@
       "turnFailed": "This reply could not be finished. Try sending it again."
     },
     "message": {
-      "interrupted": "Stopped"
+      "interrupted": "Stopped",
+      "waiting": "Replying"
     },
     "tool": {
       "unfinished": "Stopped before it finished"

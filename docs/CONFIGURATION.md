@@ -118,13 +118,20 @@ loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 
 |---|---|---|
 | `conversation_page_size` | 30 | 会话列表一页几条。**服务端定,前端不发** —— 前端只发游标,页大小是服务端的事;两边各定一个就是同一个问题的两个答案。`POST /chat/open` 和 `GET /chat/conversations` 用同一个值 |
 | `conversation_title_max_chars` | 60 | 用第一句话给会话起名时截到多少个**字符**(不是 UTF-16 码元 —— 按码元切会把一个字切成两半,存进去是个替换符)。loader 里另有一道 200 的硬上限,防止把配置写成一个列宽装不下的数 |
+| `message_page_size` | 30 | 一条会话的消息一页几条,**按轮对齐**(切开的那一轮整轮留给下一页)。跟 `conversation_page_size` 同一个数、同一类旋钮 |
+
+**Agent 聊天的流**(2026-08-19 加):
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `sse_heartbeat_interval_ms` | 5000 | 服务端多久说一次「这条流还活着」。**浏览器问服务端要这个数**(`GET /chat/stream-config`),不自己存一份 —— 发的节奏和等的耐心是同一件事,两边各写一个,调了服务端这个就会让浏览器要么误判健康的流已死、要么等得比它以为的久,而且两头都不会报错。**「连续几次没收到算死」不在配置里**,写死在 `packages/shared/src/agent/heartbeat.ts` 的 `SSE_HEARTBEAT_MISSES_ALLOWED = 3`:服务端 GC 期间健康的流也会连丢两次,把它做成旋钮等于给运维一个能把正常轮次杀掉的开关 |
 
 **韧性相关**:
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `llm_max_retries` | 2 | 每次 LLM 调用的重试次数(maxRetries),由 model-call wrapper 统一注入(#1625 Slice 3)|
-| `thinking_enabled` | false | 要不要向 provider 索取模型的思考过程。**默认关,因为现在要了也拿不到** —— 2026-08-11 对 claude-sonnet-4-6 实测,按名字要了摘要仍然三轮零 reasoning,其中一轮的提问明写「show your reasoning step by step」。开着只会每轮白等一次、换一个空的折叠块。承载它的那条通路已经建好也测过,缺的在 provider 那一侧 |
+| `thinking_enabled` | false | 要不要向 provider 索取模型的思考过程。**默认关,因为要了也拿不到** —— 2026-08-20 对当前默认模型 `deepseek/deepseek-v4-pro`(走 OpenRouter)实测两轮,其中一轮明写要求把推理过程写出来:两轮都只有 `reasoning-start` 和 `reasoning-end`(相隔约 300 毫秒)、零个 `reasoning-delta`。更早那次对 claude-sonnet-4-6 的实测(2026-08-11,三轮)结论相同。开着只会每轮白等一次、换一个空的折叠块。承载它的那条通路已经建好也测过,缺的是**根本没要**:`@ai-sdk/openai@4.0.37` 按模型 id 判断一个模型算不算 reasoning 模型(o 系列、gpt-5 及以上),`deepseek/deepseek-v4-pro` 两样都不是,于是 `reasoningEffort` 只产生一条 `unsupported` 警告、压根不进请求体(`dist/index.js:6306-6311`) |
 | `skill_agent_max_steps` | 15 | worker 跑一个 skill 时的步数上限。跟 `max_tool_iterations`(主对话 40)分开:主对话有人在等、可以多轮,worker 是一个有边界的后台任务 |
 | `web_fetch_timeout_ms` | 30000 | `web_fetch` **一次投递**的时长上限,不是整次抓取的:统一 HTTP 传输层最多投递 3 次,每次都拿这个数;跟着重定向走时每一跳还要再乘一遍。上界是定时器能装下的最大延迟(2147483647),超了定时器会把它悄悄改写成 1 毫秒,所以在配置加载时就拒 |
 | `web_search_timeout_ms` | 10000 | 同上,给 `web_search`。它是一次请求、没有重定向,所以给得比抓网页短:搜索接口要么答要么不答,而一个网页可能因为自己的原因慢 |

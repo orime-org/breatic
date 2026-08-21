@@ -18,18 +18,20 @@ import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 // The SDK is stubbed. These tests POST to /chat/message, which runs a turn and
 // reaches `streamText`; without this they would need a key and would talk to a
 // vendor. The naming happens before any of that, but the turn still runs.
-vi.mock("ai", () => ({
-  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
-  streamText: () => ({
-    fullStream: (async function* () {})(),
-    text: Promise.resolve(""),
-    usage: Promise.resolve({ totalTokens: 0 }),
-    totalUsage: Promise.resolve({ totalTokens: 0 }),
-  }),
-  stepCountIs: (_n: number) => () => false,
-  tool: (config: Record<string, unknown>) => config,
-}));
+// 替身在**模型**那一层。后端出口是 `createUIMessageStream`，`streamText` 的
+// 结果经 `toUIMessageStream()` 变成上线的协议 —— 把整个 `ai` 换掉，那段转换
+// 连同 `createUIMessageStream` 一起没了，而给会话取名这条路要跑到底正要经过它。
+vi.mock("@breatic/domain", async (importOriginal) => {
+  const actual = await importOriginal<typeof DomainModule>();
+  const { modelProducing, saying } = await import("../helpers/model-double.js");
+  return {
+    ...actual,
+    resolveProvider: () => "test",
+    getModel: () => modelProducing(() => saying("hi")),
+  };
+});
 
+import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
 import postgres from "postgres";
 import {
@@ -288,7 +290,7 @@ describe("A conversation takes its name from the first thing said in it", () => 
     expect(await storedTitle(conversationId)).toBe("first line second line");
   });
 
-  it("tells the client the name in the event that opens the turn", async () => {
+  it("tells the client the name on the turn's own stream", async () => {
     // Without this the list and the header go on showing the placeholder
     // until the reader leaves the project and comes back.
     const { projectId, cookie } = await seedProject();
@@ -305,14 +307,16 @@ describe("A conversation takes its name from the first thing said in it", () => 
     });
     const body = await res.text();
 
-    const started = body
+    // 服务端给会话取名之后只说这一次。列表是打开项目那一刻取的一页，在它
+    // 被重新取一遍之前，那一行会一直显示占位符。
+    const named = body
       .split("\n")
       .filter((line) => line.startsWith("data: "))
-      .map((line) => JSON.parse(line.slice(6)) as { event: string; data: Record<string, unknown> })
-      .find((e) => e.event === "chat_turn_started");
+      .map((line) => JSON.parse(line.slice(6)) as { type: string; data: Record<string, unknown> })
+      .find((chunk) => chunk.type === "data-conversation-titled");
 
-    expect(started).toBeDefined();
-    expect(started!.data['title']).toBe("name this conversation");
+    expect(named).toBeDefined();
+    expect(named!.data['title']).toBe("name this conversation");
   });
 });
 

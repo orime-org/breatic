@@ -18,9 +18,6 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-/** Sentinel prefix detected by main-agent to interrupt the loop and yield AGENT_CHOICE SSE event. */
-export const ASK_USER_CHOICE_SENTINEL = "__ASK_USER_CHOICE__";
-
 const inputSchema = z.object({
   question: z.string().describe("The multiple-choice question to ask"),
   choices: z
@@ -42,7 +39,7 @@ const inputSchema = z.object({
     .describe("When true, user can select multiple choices; defaults to single-select"),
 });
 
-export const askUserChoice: Tool<z.infer<typeof inputSchema>, string> = tool({
+export const askUserChoice: Tool<z.infer<typeof inputSchema>, z.infer<typeof inputSchema>> = tool({
   description:
     "Ask the user to pick from a discrete set of options. Use when " +
     "you need disambiguation or preference selection from a known " +
@@ -55,7 +52,7 @@ export const askUserChoice: Tool<z.infer<typeof inputSchema>, string> = tool({
     // to abandon. Declared so the shape is the same across every tool — the
     // reasoning lives in tools/__tests__/tool-cancellation.test.ts.
     _options: { abortSignal?: AbortSignal },
-  ): Promise<string> => {
-    return `${ASK_USER_CHOICE_SENTINEL}${JSON.stringify(input)}`;
+  ): Promise<z.infer<typeof inputSchema>> => {
+    return input;
   },
 });

@@ -2,23 +2,36 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { useChat } from '@ai-sdk/react';
 
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
+import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
+import { visibleMessages } from '@web/pages/project/chat/visible-messages';
 
-import {
-  conversationRuntime,
-  turnPhaseOf,
-  useConversationRuntime,
-  watchChatMishaps,
-} from '@web/stores/conversation-runtime';
-import type {
-  ChatMessageData,
-  ChatMishap,
-  OpenStatus,
-  TurnPhase,
-} from '@web/stores/conversation-runtime';
+import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
+import type { OpenStatus, TurnPhase } from '@web/stores/conversation-runtime';
+import { watchChatMishaps } from '@web/stores/chat-mishaps';
+import type { ChatMishap } from '@web/stores/chat-mishaps';
+import { chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
+import type { StoredUiMessage } from '@web/data/api/chat';
 import type { ConversationOnTheWire } from '@web/data/api/chat';
-import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
+import type { ChatMessage } from '@web/pages/project/chat/types';
+
+/**
+ * How far along the turn is, from the status the SDK reports.
+ *
+ * Three of ours against four of theirs, and the join is deliberate: `error`
+ * and `ready` are both "nothing is happening", which is what the composer
+ * needs to know. What went wrong is said in a line of its own, not by leaving
+ * the box unusable.
+ * @param status - What the chat says it is doing.
+ * @returns The phase the panel works in.
+ */
+function phaseOf(status: string): TurnPhase {
+  if (status === 'submitted') return 'sending';
+  if (status === 'streaming') return 'running';
+  return 'idle';
+}
 
 export interface ChatSession {
   /** Every message to show, history and the reply in flight alike. */
@@ -117,45 +130,8 @@ export interface ChatSession {
   remove: (conversationId: string) => void;
 }
 
-/**
- * Adapt one stored message into what the panel renders.
- * @param message - The message as the store holds it
- * @param justFailed - This failure is happening now, with the reader waiting
- *   on it, rather than being read back out of the history
- * @returns The same message in the panel's shape
- */
-function toChatMessage(message: ChatMessageData, justFailed: boolean): ChatMessage {
-  const toolCalls: ToolCall[] = message.parts
-    .filter((p) => p.type === 'tool')
-    .map((p) => {
-      const part = p;
-      return {
-        id: part.toolCallId,
-        name: part.toolName,
-        args: part.input,
-        status: part.status,
-        ...(part.output !== undefined ? { result: part.output } : {}),
-        ...(part.errorMessage !== undefined ? { errorMessage: part.errorMessage } : {}),
-      };
-    });
-
-  return {
-    id: message.id ?? '',
-    // A stored role is only ever one of these two; the panel's third is for
-    // messages it makes up itself, which none of these are.
-    role: message.role,
-    content: message.content,
-    ...(message.thinking !== undefined ? { thinking: message.thinking } : {}),
-    ...(toolCalls.length > 0 ? { toolCalls } : {}),
-    ...(message.interrupted ? { interrupted: true as const } : {}),
-    ...(message.failed ? { failed: true } : {}),
-    ...(justFailed ? { failedJustNow: true as const } : {}),
-    ...(message.streaming ? { streaming: true } : {}),
-  };
-}
-
 /** What a panel is looking at before the conversation has arrived. */
-const NO_MESSAGES: ChatMessageData[] = [];
+const NO_MESSAGES: StoredUiMessage[] = [];
 
 /**
  * The list before one has arrived.
@@ -170,9 +146,12 @@ const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
  * The chat panel's view of the conversation it is showing.
  *
  * Reading only. What is happening in the conversation — the messages, and the
- * turn if one is running — belongs to the conversation and is held in
- * `stores/conversation-runtime`, so that collapsing the agent column is
- * collapsing a column rather than ending the answer the user is waiting for.
+ * turn if one is running — belongs to the conversation and is held in the
+ * `Chat` session `stores/chat-sessions` keeps for it, so that collapsing the
+ * agent column is collapsing a column rather than ending the answer the user
+ * is waiting for. `stores/conversation-runtime` holds what is around a
+ * conversation rather than inside it: which one is on screen, the list, the
+ * draft, and the page a session is first built from.
  * @param projectId - Project whose chat this is
  * @param listOpen - Whether the conversation list is on screen, which decides
  *   where a word about one of its rows is drawn
@@ -182,20 +161,55 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
 
   const conversationId = useConversationRuntime((s) => s.currentByProject[projectId]);
   const openStatus = useConversationRuntime((s) => s.openStatus[projectId] ?? 'idle');
-  const stored = useConversationRuntime(
+  // What the store read back when this conversation was opened. It is the
+  // starting point for its `Chat`, and after that the `Chat` is where the
+  // messages live -- a turn in flight is not something the store knows about.
+  const history = useConversationRuntime(
     (s) => (conversationId ? s.conversations[conversationId]?.messages : undefined) ?? NO_MESSAGES,
   );
-  const turnPhase = useConversationRuntime((s) => turnPhaseOf(s, projectId));
+
+  // Built once per conversation, so what it closes over never goes stale.
+  const noteTitle = React.useCallback(
+    (id: string) =>
+      (title: string | null): void =>
+        conversationRuntime.noteActivity(projectId, id, title),
+    [projectId],
+  );
+
+  // The box is emptied when the first frame lands, and the session is what
+  // says so. What separates the press from the first frame is whether
+  // anything of this turn exists anywhere but in this browser: before, the
+  // words are only in the box the reader typed them into, and a turn the
+  // server refuses leaves them exactly there with nothing to put back.
+  //
+  // Told rather than watched, because this panel is not always here to watch:
+  // collapsing the column or switching conversations unmounts it while the
+  // turn goes on. A render-time watch would miss the turns whose first frame
+  // lands in that gap, and empty the box a second time for the turns it comes
+  // back to — over whatever the reader has typed since.
+  const emptyTheBox = React.useCallback(
+    (id: string) => (): void => conversationRuntime.setDraft(id, ''),
+    [],
+  );
+
+  const chat = chatSessionFor({
+    projectId,
+    conversationId,
+    history,
+    onTitled: noteTitle(conversationId ?? ''),
+    onFirstFrame: emptyTheBox(conversationId ?? ''),
+  });
+  const { messages: onScreen, status, error } = useChat({ chat });
+  // The stretch of a send with no turn to carry the wait: the first message in
+  // a project opens a conversation first, and that is a whole request during
+  // which the SDK has not been asked for anything and says it is ready. Left
+  // out, the composer draws a live send button through it.
+  const opening = useConversationRuntime((s) => s.sendingByProject[projectId] === true);
+  const turnPhase = opening ? 'sending' : phaseOf(status);
   const navigating = useConversationRuntime((s) => s.navigatingByProject[projectId] === true);
   const loadingMore = useConversationRuntime((s) => s.listLoadingMore[projectId] === true);
   const hasMore = useConversationRuntime((s) =>
     conversationId ? (s.conversations[conversationId]?.hasMore ?? false) : false,
-  );
-  const failures = useConversationRuntime((s) =>
-    conversationId ? (s.conversations[conversationId]?.failures ?? 0) : 0,
-  );
-  const failedReplyId = useConversationRuntime((s) =>
-    conversationId ? (s.conversations[conversationId]?.failedReplyId ?? null) : null,
   );
   const conversations = useConversationRuntime(
     (s) => s.listByProject[projectId] ?? NO_CONVERSATIONS,
@@ -217,35 +231,33 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
     void conversationRuntime.ensureLoaded(projectId);
   }, [projectId]);
 
-
-  /**
-   * How many turns had already failed in this conversation when it came up.
-   *
-   * What a reader needs announced is a failure they are living through, not
-   * every failure the conversation ever had — those come back with the
-   * history and would be read out again on every open. The conversation
-   * counts them; this remembers where the count stood when it arrived.
-   *
-   * Kept per conversation and not per mount. The count belongs to the
-   * conversation and starts at zero in a new one, while the conversation on
-   * screen can be replaced without this panel going anywhere — a press into
-   * one another tab deleted opens a replacement. Held against a number
-   * carried over from the conversation before it, the first failure in the
-   * new one reads as old news and is never announced.
-   */
-  const arrivedAt = React.useRef({ conversationId, failures });
-  if (arrivedAt.current.conversationId !== conversationId) {
-    arrivedAt.current = { conversationId, failures };
-  }
-  const justFailed = failures > arrivedAt.current.failures ? failedReplyId : null;
-
   const send = React.useCallback(
-    (draft: string): Promise<void> => conversationRuntime.send(projectId, draft),
-    [projectId],
+    async (draft: string): Promise<void> => {
+      const said = draft.trim();
+      if (said === '') return;
+      // Which conversation this belongs in is settled at the press, not read
+      // off the last render: a first message opens a conversation, and the
+      // panel has not been told about it yet when this runs.
+      const opened = await conversationRuntime.conversationForSending(projectId);
+      if (opened === undefined) return;
+      chatSessionFor({
+        projectId,
+        conversationId: opened,
+        history: NO_MESSAGES,
+        onTitled: noteTitle(opened),
+        onFirstFrame: emptyTheBox(opened),
+      });
+      // Through the session rather than straight at the `Chat`: what a running
+      // turn needs looking after -- the wait for the next beat, and giving up
+      // when none comes -- lives with the session, and a send that went round
+      // it would be a turn nobody was watching.
+      await sendInSession(opened, said);
+    },
+    [projectId, noteTitle, emptyTheBox],
   );
 
   const abort = React.useCallback((): void => {
-    if (conversationId) conversationRuntime.stopTurn(conversationId);
+    if (conversationId) stopChatSession(conversationId);
   }, [conversationId]);
 
   const loadEarlier = React.useCallback((): void => {
@@ -351,31 +363,47 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
     return () => clearTimeout(forgetting);
   }, [rowMishap]);
 
-  // What the panel was handed for each stored message last time round.
+  // What the panel was handed for each message last time round.
   //
   // Every piece of a reply replaces that message, so this runs once per token.
   // Rebuilding all of it each time hands every bubble in the column a new
   // object, and a conversation is only ever appended to — one message is
-  // changing and the rest were settled long ago. Keyed on the stored message
-  // itself, which the store leaves untouched for everything it is not
+  // changing and the rest were settled long ago. Keyed on the message object
+  // itself, which the chat leaves untouched for everything it is not
   // rewriting, so identity is exactly the question "did this one change".
-  const rendered = React.useRef(new Map<ChatMessageData, ChatMessage>());
+  const rendered = React.useRef(new Map<StoredUiMessage, ChatMessage>());
 
   const messages = React.useMemo(() => {
-    const kept = new Map<ChatMessageData, ChatMessage>();
-    const out = stored.map((m) => {
-      const justNow = m.id === justFailed;
+    // The one the reader just sent is held back until the answer starts: the
+    // SDK pushes it and only then says the turn is under way, so a list that
+    // drew everything would put the message up during the wait it is supposed
+    // to be waiting through.
+    const shown = visibleMessages(onScreen, status);
+    const last = shown[shown.length - 1];
+    const kept = new Map<StoredUiMessage, ChatMessage>();
+    const out = shown.map((m) => {
+      // What a reader needs announced is a failure they are living through,
+      // not every failure the conversation ever had — those come back with the
+      // history and would be read out again on every open. What tells the two
+      // apart is the session's own error, which is set by the turn that failed
+      // and cleared by the next one that starts.
+      const justNow = error !== undefined && m === last && m.role === 'assistant';
+      const streaming = status === 'streaming' && m === last && m.role === 'assistant';
       const before = rendered.current.get(m);
-      // The second half matters on the one message whose failure has just
-      // stopped being news: nothing about it changed except that.
+      // The comparisons matter on the message whose situation has just
+      // changed while nothing about the message itself did.
       const view =
-        before && Boolean(before.failedJustNow) === justNow ? before : toChatMessage(m, justNow);
+        before &&
+        Boolean(before.failedJustNow) === justNow &&
+        Boolean(before.streaming) === streaming
+          ? before
+          : toChatMessage(m, { failedJustNow: justNow, streaming });
       kept.set(m, view);
       return view;
     });
     rendered.current = kept;
     return out;
-  }, [stored, justFailed]);
+  }, [onScreen, status, error]);
 
   return {
     messages,
