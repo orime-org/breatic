@@ -46,8 +46,9 @@
  * - **Where it lives.** Inside the scroller it gets clipped, so `appendTo`
  *   puts it outside — the use the prop's own doc comment names.
  * - **Scrolling.** That last choice creates a need of its own: the plugin
- *   recomputes on `scrollTarget`'s scroll and nothing else (`:172` defaults it
- *   to `window`, `:188` is the only listener; `:307` is a one-shot
+ *   recomputes on two events, `scrollTarget`'s scroll (`:188`) and the
+ *   window's resize (`:187`), both through the same handler (`:172` defaults
+ *   `scrollTarget` to `window`; `:307` is a one-shot
  *   `computePosition` with no `autoUpdate`, and `:121` returns early when
  *   neither selection nor document changed). Our scrolling happens inside the
  *   ScrollArea viewport, whose scroll events do not reach `window`. Left
@@ -375,9 +376,10 @@ function BubbleBar({
    * The plugin's own `shouldShow` (`dist/index.js:62-77`) is REPLACED rather
    * than extended when we pass ours, so its conditions live here: focus
    * somewhere that counts, a selection that is not empty, text inside it, and
-   * an editable editor. Both the plugin's question and our scroll handler go
-   * through this — the scroll handler used to carry its own shorter list and
-   * so put the bar up over an editor the reader had already left.
+   * an editable editor. Both askers go through this — the plugin's own
+   * question and the mouse-event path below. That path used to carry its own
+   * shorter list and so put the bar up over an editor the reader had already
+   * left.
    *
    * The text condition drops the plugin's `isTextSelection` guard on purpose:
    * an `AllSelection` is not a `TextSelection`, so with that guard a
@@ -586,11 +588,13 @@ function BubbleBar({
      */
     const remember = (event: MouseEvent): void => {
       pointerRef.current = { x: event.clientX, y: event.clientY };
-      // Two field reads before the one measurement. `getBoundingClientRect`
-      // makes the browser settle layout, and this handler runs on every mouse
-      // event anywhere in the document. A bar already placed does not move,
-      // and a selection that is not a select-all has no pin to place —
-      // `pinToPointer` refuses on both counts anyway, one forced layout later.
+      // Two field reads first, and they are not just an optimisation. On an
+      // existing pin `pinToPointer` answers TRUE (it is idempotent), so
+      // without this exit the two metas below would fire on every mouse event
+      // while a bar is up — waking the plugin over and over to be told
+      // nothing changed. The select-all test is the cheap half of what
+      // `pinToPointer` asks, and skipping the call keeps this handler's
+      // reading of the rules in one place.
       if (pinnedRef.current) return;
       const { view } = editor;
       if (!(view.state.selection instanceof AllSelection)) return;

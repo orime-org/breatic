@@ -774,7 +774,15 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
   const allNarrow = await geo();
   expect(allNarrow.shown).toBe(true);
   expect(allNarrow.inside).toBe(true);
-  // 相对位置守恒：钉住的点在区域宽度里占的比例，缩窄前后一致（差 ≤2px）。
+  // 相对位置守恒：钉住的点在区域宽度里占的比例，缩窄前后一致。容差是比值的
+  // 0.01，窄档正文可见区约 680px 时折合约 7px、宽档约 1360px 时约 14px——不是
+  // 2px，早先这里那个数说错了。
+  //
+  // 量的是 `barRight`，它等于钉住的 x **只在 flip 把对齐轴翻成 `-end` 时**成立
+  // ——鼠标放在离右沿 40px 处、条宽约 192px，放不下才会翻。下面先断言这个几何
+  // 真的成立，否则这两句量的是「钉住点 + 条宽」，那是另一回事。
+  expect(allWide.viewRight - allWide.barRight).toBeLessThan(40);
+  expect(allNarrow.viewRight - allNarrow.barRight).toBeLessThan(40);
   const ratioWide =
     (allWide.barRight - allWide.viewLeft) / (allWide.viewRight - allWide.viewLeft);
   const ratioNarrow =

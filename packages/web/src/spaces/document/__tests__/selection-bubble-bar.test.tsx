@@ -474,7 +474,13 @@ describe('选中浮出条', () => {
     }
 
     /**
-     * 全选，并把插件的显示判据问一遍。
+     * 把插件的显示判据问一遍。
+     *
+     * 它问的是「插件如果现在被问，会答什么」，**不是「条现在在不在屏幕上」**。
+     * 两者在这一档会分开：鼠标事件那条路要靠 `remember` 发两个 meta 去唤醒
+     * 插件，而那两行删掉之后本文件一条都不红——实测。真正钉住「条被摆出来
+     * 了」的是 `tests/smoke/selection-bubble-bar.spec.ts` 的「全选后鼠标回到
+     * 正文里，条自己就出来了」，同一个变异下它当场红。
      * @param editor - 编辑器。
      * @returns 插件此刻会不会显示这条。
      */
@@ -708,8 +714,12 @@ describe('选中浮出条', () => {
       expect(pinned?.left).toBe(420);
 
       // 把鼠标挪到别处，然后造一个事务。选区仍是全选，钉的位置不该动。挡住
-      // 它的是 `pinToPointer` 开头那句 `if (pinnedPoint()) return true`——
-      // 已经钉过就直接答「有位置了」，不再看鼠标。把那一句删掉这条就红。
+      // 它的是 `follow` 里的 `became`——选区在上一笔就已经是全选了，这一笔
+      // 不是「全选那一刻」，压根走不到 `pinToPointer`。
+      //
+      // `pinToPointer` 开头那句 `if (pinnedPoint()) return true` 挡的是同一
+      // 件事，但它是第三道：实测单独删掉它，本文件一条都不红。它留着是那个
+      // 函数自己的不变量（被调到时不覆盖已有的钉），不是这条规则的实现。
       moveMouseTo(700, 300);
       act(() => {
         editor.view.dispatch(editor.state.tr.insertText('x', 1, 1));
@@ -983,7 +993,7 @@ describe('选中浮出条', () => {
     expect(document.activeElement).not.toBe(bar);
   });
 
-  it('正文区域被读到零尺寸时，钉住的坐标不会变成 NaN', async () => {
+  it('正文区域被读到零尺寸时，钉住的坐标不参与换算', async () => {
     const editor = open('<p>one</p><p>two</p><p>three</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 4);
@@ -1002,8 +1012,8 @@ describe('选中浮出条', () => {
     expect(before?.left).toBe(420);
 
     // 这里不针对任何具体场景——第九轮对抗把原稿点名的两个（Space 切换、
-    // 面板折叠）都证伪了。它是那个比例换算自己的定义域：零做分母会把钉住的
-    // 坐标写成 NaN，而 NaN 跟任何新读数都不相等，之后每次调用都重来一遍。
+    // 面板折叠）都证伪了。它是那个比例换算自己的定义域。**新**框为零时算出
+    // 来的是 `0`（比例乘以零宽），不是 NaN——实测；条会跳到区域左上角。
     pinViewport(new DOMRect(0, 100, 0, 0));
     bubblePluginView(editor).getReferencedVirtualElement?.();
 
@@ -1019,7 +1029,7 @@ describe('选中浮出条', () => {
   // 位置。旧框也能是零：`isInside` 接受一个塌成一点的矩形（`x >= left &&
   // x <= right` 在两者相等时同时成立），所以一次 0×0 的读数照样能让坐标被
   // 记下来。删掉那半判据这条就红。
-  it('钉下坐标时区域是零尺寸，之后也不会算出 NaN', async () => {
+  it('钉下坐标时区域是零尺寸，之后也不拿它当分母', async () => {
     const editor = open('<p>one</p><p>two</p><p>three</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 4);
@@ -1034,14 +1044,15 @@ describe('选中浮出条', () => {
       editor.commands.selectAll();
     });
 
-    // 区域恢复正常尺寸。比例换算的分母是那个零，不判就写出 NaN。
+    // 区域恢复正常尺寸。分母是钉下时那个零宽——实测不判的话算出 `Infinity`
+    // （非零除以零），条被推到无穷远处。
     pinViewport(new DOMRect(0, 100, 800, 400));
     const rect = bubblePluginView(editor)
       .getReferencedVirtualElement?.()
       ?.getBoundingClientRect();
     expect(rect?.left).toBe(420);
-    expect(Number.isNaN(rect?.left)).toBe(false);
-    expect(Number.isNaN(rect?.top)).toBe(false);
+    expect(Number.isFinite(rect?.left)).toBe(true);
+    expect(Number.isFinite(rect?.top)).toBe(true);
   });
 
   // 窗口连着变两次，条落在哪，跟一步变到最终尺寸应当一致——A17 说的「跟着动」
@@ -1107,13 +1118,42 @@ describe('选中浮出条', () => {
         ?.getBoundingClientRect().left,
     ).toBe(420);
 
-    // 同样大小的区域，整体右移 100。点在区域里的相对位置不变，屏幕坐标 +100。
-    pinViewport(new DOMRect(100, 100, 800, 400));
-    expect(
-      bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect().left,
-    ).toBe(520);
+    // 同样大小的区域，整体右移 100、下移 50。点在区域里的相对位置不变，屏幕
+    // 坐标跟着 +100 / +50。
+    pinViewport(new DOMRect(100, 150, 800, 400));
+    const moved = bubblePluginView(editor)
+      .getReferencedVirtualElement?.()
+      ?.getBoundingClientRect();
+    expect(moved?.left).toBe(520);
+    // 锚点是零高度的点上下各撑 8，所以顶 = 钉住的 y 减 8。
+    expect(moved?.top).toBe(250 + 50 - 8);
+  });
+
+  // 竖直方向的换算单独走一遍：只改高度，不动宽度。上一条改的是位置，这条改
+  // 的是尺寸——把 `moved.y` 里的 `area.height` 写成 `area.width` 这类同族错误
+  // 只有这条钉得住，而两条轴的代码几乎一模一样，正是最容易漏改一个词的形状。
+  it('区域高度变了，钉住的点按高度比例跟着动', async () => {
+    const editorH = open('<p>one</p><p>two</p><p>three</p>');
+    mount(editorH);
+    await selectWithFocus(editorH, 1, 4);
+    pinSelectionBox(SELECTION_BOX);
+    pinViewport(new DOMRect(0, 100, 800, 400));
+    act(() => {
+      document.dispatchEvent(
+        new MouseEvent('mousemove', { clientX: 420, clientY: 300, bubbles: true }),
+      );
+      editorH.commands.selectAll();
+    });
+
+    // 点在区域里的纵向相对位置是 (300 − 100) ÷ 400 = 0.5。
+    // 高度减半之后应当落在 100 + 0.5 × 200 = 200。
+    pinViewport(new DOMRect(0, 100, 800, 200));
+    const rect = bubblePluginView(editorH)
+      .getReferencedVirtualElement?.()
+      ?.getBoundingClientRect();
+    expect(rect?.top).toBe(200 - 8);
+    // 宽度没变，横坐标不该动。
+    expect(rect?.left).toBe(420);
   });
 
   // 第九轮实现对抗查实：去掉 tabindex 只改了焦点的落点，没挡住焦点离开正文。
