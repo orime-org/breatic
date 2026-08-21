@@ -364,6 +364,77 @@ export interface CreditTransactionEntity {
 }
 
 /**
+ * Where a credit lot stands in its own life, independent of where it is
+ * designated. `refunding` is deliberately separate from `refunded`: Stripe
+ * refunds are asynchronous and can fail, and collapsing the two would leave a
+ * lot emptied while the money never arrived.
+ */
+export type CreditLotLifecycle =
+  | "active"
+  | "depleted"
+  | "refund_pending"
+  | "refunding"
+  | "refunded";
+
+/** The four things that can appear in the credit ledger. */
+export type CreditLedgerEntryType =
+  | "topup"
+  | "spend"
+  | "refund"
+  | "refund_rejected";
+
+/**
+ * One top-up, tracked for the rest of its life.
+ *
+ * Credit amounts are decimal strings, not numbers: the columns are
+ * `numeric(20, 6)` and a charge is split across lots, so passing them through
+ * binary floating point would strand a residue that can neither be spent nor
+ * refunded. `@domain/credit/credit-math` converts them for arithmetic.
+ */
+export interface CreditLotEntity {
+  id: string;
+  /** The payment this came from. Unique, so a payment grants credits once. */
+  paymentId: string;
+  /** Who bought it. Never changes — it is where the money came from. */
+  userId: string;
+  purchasedCredits: string;
+  remainingCredits: string;
+  /** Which studio may spend it. `null` means unassigned, so unspendable. */
+  designatedStudioId: string | null;
+  lifecycle: CreditLotLifecycle;
+  /** How many refund requests were refused — the lifecycle keeps no trace. */
+  refundAttempts: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * One movement of credits. Append-only: rows are never edited or deleted.
+ *
+ * `payerUserId` is whose credits moved, `actorUserId` is who spent them, and
+ * in a team they are routinely different people. `lotId` is absent only when
+ * payments are disabled, where usage is recorded but no purchase is drawn
+ * down.
+ */
+export interface CreditLedgerEntryEntity {
+  id: string;
+  payerUserId: string;
+  actorUserId: string | null;
+  lotId: string | null;
+  studioId: string | null;
+  projectId: string | null;
+  entryType: CreditLedgerEntryType;
+  /** Signed: positive in, negative out. Decimal string, see above. */
+  amount: string;
+  model: string | null;
+  provider: string | null;
+  tokensUsed: number | null;
+  description: string | null;
+  referenceId: string | null;
+  createdAt: Date;
+}
+
+/**
  * Notification entity (per-user inbox row). Hand-written domain shape so
  * the `notifications` Drizzle row type never leaks out of the repo layer
  * into service / route signatures (prohibition #3 — the repo maps the

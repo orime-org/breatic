@@ -10,6 +10,10 @@
       "rate_limited": "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요",
       "internal": "내부 서버 오류"
     },
+    "credit": {
+      "not_studio_admin": "크레딧은 본인이 관리하는 Studio에만 지정할 수 있습니다.",
+      "designation_locked": "이 결제는 환불 처리 중이라 지정을 변경할 수 없습니다."
+    },
     "auth": {
       "invalid_credentials": "이메일 또는 비밀번호가 올바르지 않습니다",
       "email_taken": "이미 등록된 이메일입니다",

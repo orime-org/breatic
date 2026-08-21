@@ -10,6 +10,10 @@
       "rate_limited": "Too many requests, please try again later",
       "internal": "Internal server error"
     },
+    "credit": {
+      "not_studio_admin": "You can only assign credits to a studio you administer.",
+      "designation_locked": "This purchase is being refunded and cannot be reassigned."
+    },
     "auth": {
       "invalid_credentials": "Invalid email or password",
       "email_taken": "Email already registered",

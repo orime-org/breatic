@@ -6,9 +6,13 @@
       "conflict": "資源衝突",
       "validation": "輸入資料無效",
       "upload_too_large": "檔案超過上傳大小限制。",
-      "insufficient_credits": "積分不足：需要 {required}，可用 {available}",
+      "insufficient_credits": "點數不足：需要 {required}，可用 {available}",
       "rate_limited": "請求過於頻繁，請稍後再試",
       "internal": "伺服器內部錯誤"
+    },
+    "credit": {
+      "not_studio_admin": "只能指定給你管理的 Studio。",
+      "designation_locked": "這筆點數在退款流程中，不能改指定。"
     },
     "auth": {
       "invalid_credentials": "電子郵件或密碼錯誤",

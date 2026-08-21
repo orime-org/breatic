@@ -10,6 +10,10 @@
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
       "internal": "内部サーバーエラー"
     },
+    "credit": {
+      "not_studio_admin": "クレジットを割り当てられるのは、自分が管理する Studio だけです。",
+      "designation_locked": "この購入は返金手続き中のため、割り当てを変更できません。"
+    },
     "auth": {
       "invalid_credentials": "メールアドレスまたはパスワードが正しくありません",
       "email_taken": "このメールアドレスは既に登録されています",

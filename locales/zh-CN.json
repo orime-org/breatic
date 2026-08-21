@@ -10,6 +10,10 @@
       "rate_limited": "请求过于频繁，请稍后再试",
       "internal": "服务器内部错误"
     },
+    "credit": {
+      "not_studio_admin": "只能指定给你管理的 Studio。",
+      "designation_locked": "这笔积分在退款流程中，不能改指定。"
+    },
     "text_tool": {
       "already_running": "另一个文本工具正在运行,请稍候。"
     },
