@@ -43,7 +43,7 @@ textTools.post(
 
     // Idempotency: the client may send `Idempotency-Key` (per RFC draft,
     // matches what Stripe/Square expect). When set, a retry of the same
-    // request bills exactly once via deductOnce. When absent, we fall back
+    // request records its usage exactly once. When absent, we fall back
     // to a server-generated UUID - each retry then becomes a separate
     // logical charge, which is acceptable since text tools re-generate
     // content on every call.
@@ -91,15 +91,6 @@ textTools.post(
             },
             "text_tool_completed",
           );
-          if (event.tokens > 0 && event.creditsUsed === 0) {
-            // creditsUsed===0 + tokens>0 = service-side deductOnce
-            // threw and swallowed (insufficient credits etc.) and
-            // returned 0 to keep the response un-blocked.
-            logger.warn(
-              { userId: user.id, tool, tokens: event.tokens },
-              "text_tool_credit_deduction_failed",
-            );
-          }
         } else if (event.type === "aborted") {
           logger.info(
             {

@@ -82,7 +82,8 @@ export const users = pgTable(
     // billing is a separate leg — this column is a value that can be read and
     // enforced, and what makes it change is the Stripe work that comes later.
     //
-    // Credits are yet another leg and live in `credit_balances`, never on the
+    // Credits are yet another leg and live in `credit_lots`, one row per
+    // purchase, never on the
     // account row.
     membershipTier: varchar("membership_tier", { length: 16 })
       .default("base")
@@ -127,7 +128,7 @@ export const users = pgTable(
  * start" have to be answerable from stored fact rather than from a Stripe
  * dashboard that may have been reconciled since.
  *
- * Same shape as `credit_transactions` and for the same reason: the current
+ * Same shape as `credit_ledger` and for the same reason: the current
  * value is a scalar somewhere else, and every change to it is appended here.
  *
  * Append-only, so `created_at` alone rather than the `timestamps` pair — a row
@@ -142,7 +143,7 @@ export const users = pgTable(
  * NOT what makes a redelivered webhook safe: comparing tiers converges on the
  * last call and cannot tell a replay from a new event, so the subscription
  * work keys idempotency on event identity the way `updatePaymentStatusCAS`
- * and `deductOnce` already do.
+ * and `chargeOnceForGeneration` already do.
  */
 export const membershipTierChanges = pgTable(
   "membership_tier_changes",
@@ -876,10 +877,11 @@ export const creditLots = pgTable(
  * that have to work: the buyer seeing where their money went, and the
  * spender seeing what they used.
  *
- * `lot_id` is nullable for exactly one situation: with payments disabled —
- * every local and self-hosted install — a generation still records its usage
- * but draws down no purchase. `payer_user_id` stays NOT NULL there, because
- * the account ledger reads by payer and those rows have to appear in it.
+ * `lot_id` is nullable for the three situations where usage is recorded but
+ * no purchase is drawn down: payments disabled, a route that carries no
+ * project to pick a pool from, and a studio with nothing spendable left.
+ * `payer_user_id` stays NOT NULL in all three, because the account ledger
+ * reads by payer and those rows have to appear in it.
  *
  * `created_at` only. No `updated_at`, because nothing here is ever edited,
  * and no `deleted_at`, which is the repository's soft-delete mandate being
@@ -1706,7 +1708,7 @@ export const studioAssets = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     /**
      * The generation task that produced an AI asset - links to cost via
-     * tasks.billed_credits + credit_transactions.reference_id. Null for
+     * tasks.billed_credits + credit_ledger.reference_id. Null for
      * uploads (user-supplied, no generation cost).
      */
     generationTaskId: uuid("generation_task_id").references(() => tasks.id, {

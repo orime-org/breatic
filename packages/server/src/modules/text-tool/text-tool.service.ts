@@ -165,7 +165,7 @@ export async function* executeTextTool(
     totalTokens = usage?.totalTokens ?? 0;
 
     // Deduct credits based on token usage
-    const creditsUsed = await deductForTokens(userId, totalTokens, tool, idempotencyKey);
+    const creditsUsed = await recordTokenUsage(userId, totalTokens, tool, idempotencyKey);
 
     if (signal.aborted) {
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
@@ -178,7 +178,7 @@ export async function* executeTextTool(
     // Deduct for consumed tokens even on error. Uses the same
     // idempotencyKey as the success path so the catch branch can't
     // double-charge if somehow both run for the same request.
-    const creditsUsed = await deductForTokens(userId, totalTokens, tool, idempotencyKey);
+    const creditsUsed = await recordTokenUsage(userId, totalTokens, tool, idempotencyKey);
 
     if (signal.aborted) {
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
@@ -194,20 +194,23 @@ export async function* executeTextTool(
 }
 
 /**
- * Deduct credits based on token consumption.
+ * Record what a text-tool run used, and charge for it.
  *
  * Uses a simple rate: 1 credit per 1000 tokens (configurable via CREDIT_MULTIPLIER).
  *
- * Billed through `deductOnce` with the per-request idempotency key so a
- * retry of the same HTTP request (same `Idempotency-Key` header) charges
- * at most once.
- * @param userId - Authenticated user ID to charge.
+ * Which pool pays is decided by the project a generation runs in, and this
+ * route carries no project id (#122). Until it does, a run records its usage
+ * and charges nobody, so the number returned here is zero.
+ *
+ * The per-request idempotency key makes a retry of the same HTTP request
+ * record at most once.
+ * @param userId - Authenticated user ID the usage is recorded against.
  * @param tokens - Total tokens consumed by the run, used to compute the credit amount.
- * @param tool - Tool name recorded in the deduction description.
- * @param idempotencyKey - Per-request key combined into the `texttool:` deduction ref to guarantee idempotency.
- * @returns Credits actually deducted
+ * @param tool - Tool name recorded on the ledger row.
+ * @param idempotencyKey - Per-request key combined into the `texttool:` ref to guarantee idempotency.
+ * @returns Credits actually charged.
  */
-async function deductForTokens(
+async function recordTokenUsage(
   userId: string,
   tokens: number,
   tool: string,
@@ -224,13 +227,17 @@ async function deductForTokens(
     // gap in the product, not a decision: the pool that pays is chosen by the
     // project a generation runs in, so until the route carries one, a text
     // tool records what it used and charges nobody.
-    await creditLotService.chargeOnceForGeneration(`texttool:${idempotencyKey}`, {
-      projectId: null,
-      actorUserId: userId,
-      amount: credits,
-      description: `Text tool: ${tool}`,
-    });
-    return credits;
+    const outcome = await creditLotService.chargeOnceForGeneration(
+      `texttool:${idempotencyKey}`,
+      {
+        projectId: null,
+        actorUserId: userId,
+        amount: credits,
+        description: `Text tool: ${tool}`,
+        tokensUsed: tokens,
+      },
+    );
+    return outcome?.charged ?? 0;
   } catch {
     // Don't fail the response if credit deduction fails (e.g.
     // insufficient credits). The text was already generated.

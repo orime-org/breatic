@@ -441,6 +441,54 @@ describe("GET /studio/:slug/credits", () => {
   });
 });
 
+describe("坏输入不该 500", () => {
+  it("路径里不是 uuid 时答 422，不是 500", async () => {
+    const fx = await seedFixture();
+    const res = await app.request("/api/v1/credits/lots/not-a-uuid/designation", {
+      method: "PATCH",
+      headers: { Cookie: fx.cookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ studioId: null }),
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it("结构合法但用不了的游标当第一页，不是 500", async () => {
+    // 解码器只校验「是有限数」和「是非空字符串」，所以这两种都能穿过去：
+    // 一个不是 uuid 的 id，和一个 Date 表示不了的时间戳。
+    const fx = await seedFixture();
+    await seedLot(fx, 100);
+    const bad = [
+      Buffer.from(JSON.stringify({ c: 1, i: "x" })).toString("base64url"),
+      Buffer.from(JSON.stringify({ c: 1e308, i: crypto.randomUUID() })).toString("base64url"),
+    ];
+    for (const cursor of bad) {
+      for (const url of ["/api/v1/credits/lots", "/api/v1/credits/ledger"]) {
+        const res = await app.request(`${url}?cursor=${encodeURIComponent(cursor)}`, {
+          headers: { Cookie: fx.cookie },
+        });
+        expect(res.status, `${url} 收到 ${cursor}`).toBe(200);
+      }
+    }
+  });
+
+  it("带游标翻页时不重发这个 studio 的全部笔", async () => {
+    // 客户端只读第一页那份 lots，后面每页都重算重传是白跑。
+    const fx = await seedFixture();
+    await seedLot(fx, 100, fx.studioId);
+    const cursor = Buffer.from(
+      JSON.stringify({ c: Date.now(), i: crypto.randomUUID() }),
+    ).toString("base64url");
+
+    const res = await app.request(
+      `/api/v1/studio/${fx.studioSlug}/credits?cursor=${encodeURIComponent(cursor)}`,
+      { headers: { Cookie: fx.cookie } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { lots?: unknown } };
+    expect(body.data.lots).toBeUndefined();
+  });
+});
+
 describe("PATCH /credits/lots/:id/designation", () => {
   it("未登录答 401", async () => {
     const fx = await seedFixture();

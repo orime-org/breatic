@@ -47,7 +47,7 @@ let providerParts: () => readonly Record<string, unknown>[];
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const consolidateIfNeeded = vi.fn(async () => undefined);
-const deductOnce = vi.fn(async (..._args: unknown[]) => undefined);
+const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 /** The tools the turn is given, set per test. */
 let turnTools: Record<string, unknown> = {};
 
@@ -105,7 +105,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       instructions: "system",
       tools: turnTools,
     }),
-    creditService: { deductOnce },
+    creditLotService: { chargeOnceForGeneration },
   };
 });
 
@@ -181,7 +181,7 @@ beforeEach(() => {
   fetchMock.mockReset();
   dnsLookupMock.mockReset();
   dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
-  [addMessage, consolidateIfNeeded, deductOnce].forEach((m) => m.mockClear());
+  [addMessage, consolidateIfNeeded, chargeOnceForGeneration].forEach((m) => m.mockClear());
 });
 
 afterEach(() => {

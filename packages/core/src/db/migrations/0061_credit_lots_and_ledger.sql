@@ -68,8 +68,9 @@ CREATE TABLE "credit_ledger" (
 	-- be an editor on a project and spends the admin's credits there. NULL on
 	-- top-ups and refunds, which have no actor.
 	"actor_user_id" uuid,
-	-- Which purchase was drawn down. NULL for exactly one situation: payments
-	-- disabled, where usage is recorded but no purchase is drawn down.
+	-- Which purchase was drawn down. NULL wherever usage is recorded without
+	-- one: payments disabled, no project to pick a pool from, or a studio with
+	-- nothing spendable left.
 	"lot_id" uuid,
 	"studio_id" uuid,
 	"project_id" uuid,

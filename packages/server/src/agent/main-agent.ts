@@ -118,7 +118,8 @@ export class MainAgent {
     // Save what the user said. The turn it opened is what the rest of this
     // run is filed under: the reply goes in it, and billing builds a stable
     // refKey from it (`turn:${conversationId}:${turnIndex}`) that survives
-    // retries — see domain/src/credit/credit.service.ts `deductOnce`.
+    // retries — see domain/src/credit/creditLot.service.ts
+    // `chargeOnceForGeneration`.
     const turnIndex = await messageRepo.addMessage(conversationId, {
       role: "user",
       parts: [{ type: "text", text: said }],
@@ -407,7 +408,7 @@ export class MainAgent {
               creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
               // The turn-scoped refKey makes this idempotent: a reconnect or
               // a re-entry on the same turn will not double-charge.
-              await creditLotService.chargeOnceForGeneration(
+              const outcome = await creditLotService.chargeOnceForGeneration(
                 `turn:${conversationId}:${turnIndex}`,
                 {
                   projectId,
@@ -419,6 +420,22 @@ export class MainAgent {
                   provider: resolveProvider(modelId),
                 },
               );
+              if (outcome && outcome.shortfall > 0) {
+                // The pool ran out mid-turn, or its credits were reassigned
+                // while the model was answering. The reply is already with the
+                // reader, so what could not be charged goes to reconciliation.
+                logger.error(
+                  {
+                    userId,
+                    conversationId,
+                    turnIndex,
+                    studioId: outcome.studioId,
+                    charged: outcome.charged,
+                    shortfall: outcome.shortfall,
+                  },
+                  "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
+                );
+              }
             },
           },
         });

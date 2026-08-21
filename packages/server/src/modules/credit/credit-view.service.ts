@@ -14,6 +14,7 @@
 
 import { creditLotRepo, creditLotService } from "@breatic/domain";
 import { encodeActivityCursor, decodeActivityCursor } from "@breatic/core";
+import type { ActivityCursor } from "@breatic/core";
 import type { CreditLotEntity, CreditLedgerEntryEntity } from "@breatic/shared";
 import { getCreditPageLimits } from "@server/config/limits.js";
 
@@ -54,6 +55,29 @@ export interface CreditPage<T> {
   items: T[];
   /** Feed back as `?cursor` for the next page; null at the end. */
   nextCursor: string | null;
+}
+
+/** Matches a canonical UUID, which is what the id columns hold. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Decode a cursor, treating anything unusable as "start from the beginning".
+ *
+ * The shared decoder checks that the timestamp is a finite number and the id a
+ * non-empty string, which two usable-looking shapes still get past: an id that
+ * is not a uuid reaches a uuid column, and a number no Date can represent
+ * reaches the driver as an invalid date. Both surface as a failed request on a
+ * value that arrived over the network.
+ * @param raw - The client's `?cursor`, if any.
+ * @returns The decoded cursor, or null to start from the beginning.
+ */
+function readCursor(raw: string | undefined): ActivityCursor | null {
+  if (!raw) return null;
+  const cursor = decodeActivityCursor(raw);
+  if (!cursor) return null;
+  if (!UUID.test(cursor.id)) return null;
+  if (Number.isNaN(cursor.createdAt.getTime())) return null;
+  return cursor;
 }
 
 /**
@@ -172,9 +196,7 @@ export async function listLots(
   rawCursor?: string,
 ): Promise<CreditPage<CreditLotView>> {
   const size = pageSize(rawLimit);
-  // A malformed cursor reads as "first page" rather than an error: it arrives
-  // from the network, and a garbage value must not fail the panel.
-  const cursor = rawCursor ? decodeActivityCursor(rawCursor) : null;
+  const cursor = readCursor(rawCursor);
   const rows = await creditLotRepo.listLotsByUser(userId, size + 1, cursor);
   return toPage(rows, size, toLotView, (row) => ({
     createdAt: row.createdAt,
@@ -197,7 +219,7 @@ export async function listLedger(
   studioId?: string,
 ): Promise<CreditPage<CreditLedgerView>> {
   const size = pageSize(rawLimit);
-  const cursor = rawCursor ? decodeActivityCursor(rawCursor) : null;
+  const cursor = readCursor(rawCursor);
   const rows = await creditLotRepo.listLedgerByPayer(
     userId,
     size + 1,
@@ -212,8 +234,10 @@ export async function listLedger(
 
 /** What one studio holds and has spent, for its credits tab. */
 export interface StudioCreditsView {
-  spendable: number;
-  lots: CreditLotView[];
+  /** Present on the first page only — it does not change between pages. */
+  spendable?: number;
+  /** Present on the first page only, for the same reason. */
+  lots?: CreditLotView[];
   ledger: CreditPage<CreditLedgerView>;
 }
 
@@ -236,10 +260,13 @@ export async function getStudioCredits(
   rawLimit?: string,
   rawCursor?: string,
 ): Promise<StudioCreditsView> {
+  const ledgerPage = listLedger(viewerUserId, rawLimit, rawCursor, studioId);
+  if (rawCursor) return { ledger: await ledgerPage };
+
   const [spendable, lots, ledger] = await Promise.all([
     creditLotService.getSpendableCredits(studioId),
     creditLotRepo.listLotsByStudio(studioId),
-    listLedger(viewerUserId, rawLimit, rawCursor, studioId),
+    ledgerPage,
   ]);
   return { spendable, lots: lots.map(toLotView), ledger };
 }

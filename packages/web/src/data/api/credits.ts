@@ -45,10 +45,10 @@ export interface CreditPage<T> {
 
 /** What one studio's credits tab shows. */
 export interface StudioCredits {
-  /** What this studio can spend right now. */
-  spendable: number;
-  /** The purchases making it up, oldest first — the order they are spent in. */
-  lots: CreditLotView[];
+  /** What this studio can spend right now. Sent with the first page only. */
+  spendable?: number;
+  /** The purchases making it up, oldest first. Sent with the first page only. */
+  lots?: CreditLotView[];
   /**
    * Movements of the reader's own credits in this studio. Taken by payer, so a
    * member sees what their money paid for here.

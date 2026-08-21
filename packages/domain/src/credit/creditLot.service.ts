@@ -169,8 +169,12 @@ export async function chargeForGeneration(
   input: ChargeInput,
 ): Promise<ChargeOutcome> {
   const amountMicro = toMicroCredits(input.amount);
+  // A project that vanished while the task ran leaves nothing to charge, and
+  // the usage still has to be recorded: the work was delivered. Letting the
+  // lookup throw would break the record before it is written, which is the one
+  // thing `lot_id` was made nullable for.
   const studioId = input.projectId
-    ? await resolveOwnerStudioId(input.projectId)
+    ? await resolveOwnerStudioId(input.projectId).catch(() => null)
     : null;
 
   const usageEntry = {
@@ -198,10 +202,11 @@ export async function chargeForGeneration(
     return { billed: false, charged: 0, shortfall: 0, studioId, lotIds: [] };
   }
 
-  // No project means no studio and therefore no pool. Today only the text
-  // tools reach here (#122): their route never took a project id, which is a
-  // gap in the product rather than a decision. Recording the usage keeps the
-  // account honest; the shortfall tells the caller to log it.
+  // No studio means no pool. Two ways to get here: the text tools, whose route
+  // never took a project id (#122, a gap in the product rather than a
+  // decision), and a project deleted while its task was still running.
+  // Recording the usage keeps the account honest; the shortfall tells the
+  // caller to log it.
   if (studioId === null) {
     await creditLotRepo.appendLedgerEntry({
       ...usageEntry,

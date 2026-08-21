@@ -141,6 +141,10 @@ export function CreditsTab({
     enabled: hasNextPage && !isFetchingNextPage,
     onReachEnd: loadMore,
     itemCount: ledgerRows.length,
+    // A page that did not arrive stops the watcher until the reader scrolls
+    // again; without it an end already in view asks for the same page back to
+    // back for as long as the failure lasts.
+    failed: query.isError,
   });
 
   if (query.isPending) {
@@ -152,7 +156,10 @@ export function CreditsTab({
     );
   }
 
-  if (query.isError || !head) {
+  // Only when there is nothing to show. A page that failed after the first one
+  // arrived leaves the balance, the purchases and the rows already read in
+  // hand, and throwing them away loses more than the failure did.
+  if (!head) {
     return (
       <div className='mx-auto max-w-3xl'>
         <p className='text-sm text-muted-foreground'>
@@ -175,20 +182,20 @@ export function CreditsTab({
             data-testid='studio-spendable'
             className='text-3xl font-extrabold leading-[1.1] tracking-[-0.02em] text-foreground'
           >
-            {formatAmount(head.spendable)}
+            {formatAmount(head.spendable ?? 0)}
             <small className='ml-1 align-baseline text-sm font-medium text-muted-foreground'>
               {t('studio.container.credits.unit')}
             </small>
           </p>
           <p className='mt-[3px] text-xs text-muted-foreground'>
-            {head.spendable > 0
+            {(head.spendable ?? 0) > 0
               ? t('studio.container.credits.spendableHint')
               : t('studio.container.credits.noneHint')}
           </p>
         </div>
       </div>
 
-      {head.spendable === 0 && isMember ? (
+      {(head.spendable ?? 0) === 0 && isMember ? (
         <p
           data-testid='studio-credits-unassigned-notice'
           className='rounded-content-sm border border-status-warning-border bg-status-warning-bg px-3 py-2.5 text-sm'
@@ -201,13 +208,13 @@ export function CreditsTab({
         <h3 className='mb-3 text-sm font-semibold'>
           {t('studio.container.credits.lotsTitle')}
         </h3>
-        {head.lots.length === 0 ? (
+        {(head.lots ?? []).length === 0 ? (
           <p className='text-sm text-muted-foreground'>
             {t('studio.container.credits.lotsEmpty')}
           </p>
         ) : (
           <ul className='flex flex-col'>
-            {head.lots.map((lot) => (
+            {(head.lots ?? []).map((lot) => (
               <LotRow key={lot.id} lot={lot} />
             ))}
           </ul>

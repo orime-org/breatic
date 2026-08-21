@@ -28,6 +28,7 @@
  */
 
 import { and, asc, desc, eq, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@breatic/core";
 import type { ActivityCursor, DbTx } from "@breatic/core";
@@ -38,6 +39,26 @@ import type {
   CreditLedgerEntryEntity,
   CreditLedgerEntryType,
 } from "@breatic/shared";
+
+/**
+ * What makes a lot spendable, stated once.
+ *
+ * Designated to a studio that is still there, and still `active`. The studio
+ * check is half of it: studios soft-delete and the foreign key is `restrict`,
+ * so nothing cascades and the column keeps pointing at a studio that is gone.
+ * Every caller composes this rather than restating it — the two halves drifting
+ * apart is how an account starts showing a number it cannot spend.
+ * @param studioId - The studio whose pool is being read.
+ * @returns The condition, to be combined with the caller's own.
+ */
+function spendableByStudio(studioId: string): SQL | undefined {
+  return and(
+    eq(creditLots.designatedStudioId, studioId),
+    eq(creditLots.lifecycle, "active"),
+    isNull(creditLots.deletedAt),
+    isNull(studios.deletedAt),
+  );
+}
 
 /**
  * Map a raw `credit_lots` row to the shared entity.
@@ -152,13 +173,7 @@ export async function listSpendableLots(
     .from(creditLots)
     .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(
-      and(
-        eq(creditLots.designatedStudioId, studioId),
-        eq(creditLots.lifecycle, "active"),
-        isNull(creditLots.deletedAt),
-        isNull(studios.deletedAt),
-        sql`${creditLots.remainingCredits} > 0`,
-      ),
+      and(spendableByStudio(studioId), sql`${creditLots.remainingCredits} > 0`),
     )
     .orderBy(asc(creditLots.createdAt), asc(creditLots.id));
   return rows.map((row) => toLotEntity(row.lot));
@@ -299,14 +314,7 @@ export async function sumSpendableForStudio(studioId: string): Promise<string> {
     .select({ total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text` })
     .from(creditLots)
     .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
-    .where(
-      and(
-        eq(creditLots.designatedStudioId, studioId),
-        eq(creditLots.lifecycle, "active"),
-        isNull(creditLots.deletedAt),
-        isNull(studios.deletedAt),
-      ),
-    );
+    .where(spendableByStudio(studioId));
   return rows[0]?.total ?? "0";
 }
 
@@ -397,9 +405,10 @@ export async function listLotsByUser(
 }
 
 /**
- * The lots a studio holds, oldest first — the order they will be spent in.
+ * The lots making up what a studio can spend, oldest first — the order they
+ * will be spent in.
  * @param studioId - The studio to read.
- * @returns Its live lots.
+ * @returns Its spendable lots.
  */
 export async function listLotsByStudio(
   studioId: string,
@@ -408,13 +417,7 @@ export async function listLotsByStudio(
     .select({ lot: creditLots })
     .from(creditLots)
     .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
-    .where(
-      and(
-        eq(creditLots.designatedStudioId, studioId),
-        isNull(creditLots.deletedAt),
-        isNull(studios.deletedAt),
-      ),
-    )
+    .where(spendableByStudio(studioId))
     .orderBy(asc(creditLots.createdAt), asc(creditLots.id));
   return rows.map((row) => toLotEntity(row.lot));
 }
@@ -506,6 +509,10 @@ export async function sumSpentByStudio(
         eq(creditLedger.payerUserId, payerUserId),
         eq(creditLedger.entryType, "spend"),
         isNotNull(creditLedger.studioId),
+        // Only rows that actually drew down a purchase. The three paths that
+        // record usage without charging write the same entry type with no lot,
+        // and counting those reports money that never left the account.
+        isNotNull(creditLedger.lotId),
       ),
     )
     .groupBy(creditLedger.studioId);
@@ -538,6 +545,9 @@ export async function sumSpendableByStudio(
       ),
     )
     .groupBy(creditLots.designatedStudioId);
+  // Same three conditions as `spendableByStudio`, grouped instead of pinned to
+  // one studio — the shared helper takes a studio id, which this one does not
+  // have.
   return rows
     .filter((row): row is { studioId: string; spendable: string } => row.studioId !== null)
     .map((row) => ({ studioId: row.studioId, spendable: row.spendable }));

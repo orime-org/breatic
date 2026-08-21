@@ -27,7 +27,7 @@ import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivity
 import { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { assetService } from "@breatic/domain";
-import { creditLotService } from "@breatic/domain";
+import { creditLotService, resolveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { publishNodeEvent } from "@breatic/core";
 import { releaseCanvasNodeLock, reacquireCanvasNodeLock } from "@breatic/domain";
@@ -806,6 +806,7 @@ async function runTaskBody(
         description: `Task: ${taskType}`,
         referenceId: taskId,
         model: (result.model as string | undefined) ?? model,
+        provider: resolveProvider((result.model as string | undefined) ?? model),
       });
       if (outcome.shortfall > 0) {
         // The studio's pool ran out mid-flight, or its credits were reassigned

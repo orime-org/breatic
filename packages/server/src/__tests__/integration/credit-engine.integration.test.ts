@@ -394,6 +394,69 @@ describe("扣费", () => {
   });
 });
 
+describe("扣不到笔时的记账", () => {
+  it("project 在任务跑的过程中被软删，用量记录照写", async () => {
+    // 产物已经交付了。定稿给「取不到笔」定的两种形态都要求写用量记录，
+    // 而解析 studio 是这条路上的第一步——它抛异常，整条记账就断在写记录之前。
+    const fx = await seedFixture();
+    await seedLot(fx, 100, fx.studioId);
+    await sql`UPDATE projects SET deleted_at = NOW() WHERE id = ${fx.projectId}`;
+
+    const outcome = await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 10,
+      referenceId: `gone-${Date.now()}`,
+    });
+
+    expect(outcome).toMatchObject({ billed: false, charged: 0, shortfall: 10 });
+    const [row] = await sql<{ lot_id: string | null; studio_id: string | null }[]>`
+      SELECT lot_id, studio_id FROM credit_ledger
+      WHERE payer_user_id = ${fx.userId} AND entry_type = 'spend'
+    `;
+    expect(row?.lot_id).toBeNull();
+    expect(row?.studio_id).toBeNull();
+  });
+});
+
+describe("总览的两个数", () => {
+  it("「花了多少」只算真扣到笔的那些，不算记了用量但一分没扣的", async () => {
+    // 三条不扣费的路径写的都是 entry_type='spend'，区别只在 lot_id 为空。
+    // 少了这个条件，面板会报出从未离开账户的钱。
+    const fx = await seedFixture();
+    await seedLot(fx, 100, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 30,
+    });
+    // 池子花光之后再生成一次：写用量、一分不扣。
+    await sql`UPDATE credit_lots SET remaining_credits = 0, lifecycle = 'depleted' WHERE user_id = ${fx.userId}`;
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 999,
+    });
+
+    const overview = await creditLotService.getOverview(fx.userId);
+    const mine = overview.studios.find((s) => s.studioId === fx.studioId);
+    expect(mine?.spent).toBe(30);
+  });
+
+  it("「由哪几笔构成」不列已经花光的笔", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 100,
+    });
+
+    expect((await readLot(lotId)).lifecycle).toBe("depleted");
+    expect(await creditLotRepo.listLotsByStudio(fx.studioId)).toEqual([]);
+  });
+});
+
 describe("指定", () => {
   it("把一笔指给自己管理的 studio", async () => {
     const fx = await seedFixture();

@@ -22,7 +22,8 @@
  * FENCING: each acquire writes a UNIQUE token (`SET key <token> EX ttl
  * NX`) and releases via a check-and-del Lua script, so an instance whose
  * lock expired and was re-acquired elsewhere never DELs the new holder's
- * lock. (Unlike `credit.service.deductOnce`, which uses a fixed value —
+ * lock. (Unlike `creditLot.service.chargeOnceForGeneration`, which uses a
+ * fixed value —
  * that is an idempotency key, not a mutex, so a wrong DEL there is
  * harmless; here it would let a third delete interleave.)
  *

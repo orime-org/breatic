@@ -25,6 +25,7 @@ import {
   creditPageQuerySchema,
   creditLedgerQuerySchema,
   designationSchema,
+  lotParamSchema,
 } from "@server/routes/schemas.js";
 
 const credits = new Hono<{ Variables: AuthVariables }>();
@@ -83,11 +84,12 @@ credits.get("/ledger", validate("query", creditLedgerQuerySchema), async (c) => 
  */
 credits.patch(
   "/lots/:id/designation",
+  validate("param", lotParamSchema),
   validate("json", designationSchema),
   async (c) => {
     const user = c.get("user");
     const data = await creditLotService.designateLot({
-      lotId: c.req.param("id"),
+      lotId: c.req.valid("param").id,
       requestingUserId: user.id,
       studioId: c.req.valid("json").studioId,
     });
