@@ -80,6 +80,7 @@ import * as React from 'react';
 import { useEditorState, type Editor } from '@tiptap/react';
 import { posToDOMRect } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { AllSelection, PluginKey } from '@tiptap/pm/state';
 import { BubbleMenu } from '@tiptap/react/menus';
 
@@ -206,6 +207,31 @@ function anchorRect(left: number, line: { top: number; bottom: number }): DOMRec
   const top = line.top - GAP_FROM_SELECTION_PX;
   const bottom = line.bottom + GAP_FROM_SELECTION_PX;
   return new DOMRect(left, top, 0, bottom - top);
+}
+
+/**
+ * Whether a range of the document holds any text at all.
+ *
+ * `doc.textBetween(from, to)` answers the same question by building the whole
+ * string first, and this runs on every mouse event anywhere on the page: over
+ * a select-all that string is the entire document, rebuilt each time. Walking
+ * instead stops at the first text node it finds.
+ * @param doc - The document node.
+ * @param from - Range start.
+ * @param to - Range end.
+ * @returns True when at least one non-empty text node lies in the range.
+ */
+function hasTextIn(doc: ProseMirrorNode, from: number, to: number): boolean {
+  let found = false;
+  doc.nodesBetween(from, to, (node) => {
+    if (found) return false;
+    if (node.isText && (node.text?.length ?? 0) > 0) {
+      found = true;
+      return false;
+    }
+    return true;
+  });
+  return found;
 }
 
 /**
@@ -375,23 +401,25 @@ function BubbleBar({
     // as long as it, so over a multi-screen selection it is the expensive one.
     // Everything above and below it answers in constant time.
     if (!view.hasFocus()) return false;
-    return doc.textBetween(selection.from, selection.to).length > 0;
+    return hasTextIn(doc, selection.from, selection.to);
   }, [editor]);
 
   /**
    * Where the bar sits over a select-all, or null when it stays away.
    *
-   * It never pins to the POINTER — that happens at the two moments the rule
-   * names and nowhere else: when the selection becomes a select-all, and when
-   * the pointer crosses into the body area. Keeping the two apart is what
-   * makes "the pointer is only read at those two moments" true; when this
-   * doubled as the act of pinning, the plugin's own 250ms update debounce
-   * decided the moment instead, and a pointer moved inside that window was
-   * taken as the answer.
+   * Pure: it reads the pin and never writes one. Pinning happens at the two
+   * moments the ruling names and nowhere else — the transaction that makes
+   * the selection a select-all, and a mouse event over the body. Keeping the
+   * two apart is what makes "the pointer is only read at those moments" true;
+   * when this doubled as the act of pinning, the plugin's own 250ms update
+   * debounce decided the moment instead, and a pointer moved inside that
+   * window was taken as the answer.
    *
-   * It does write one thing: a resize rescales the pin and stores the result,
-   * so the ratio is taken against the area the point was last placed in rather
-   * than compounding across every resize.
+   * It used to store the rescaled point back, on the reasoning that ratios
+   * would otherwise compound across resizes. They do not: this always maps
+   * from the ORIGINAL point and the area it was placed in, so two resizes in
+   * a row give the same answer as one straight to the final size, and with
+   * one division instead of two.
    *
    * A pin survives a resize by moving with the body area rather than by
    * staying at fixed coordinates. Staying put is a rule about SCROLLING (user
@@ -428,12 +456,10 @@ function BubbleBar({
     if (unchanged || !measurable) {
       return { x: pin.x, y: pin.y };
     }
-    const moved = {
+    return {
       x: area.left + ((pin.x - pin.area.left) / pin.area.width) * area.width,
       y: area.top + ((pin.y - pin.area.top) / pin.area.height) * area.height,
     };
-    pinnedRef.current = { ...moved, area };
-    return moved;
   }, [editor, viewport]);
 
   /**
@@ -568,14 +594,6 @@ function BubbleBar({
       if (pinnedRef.current) return;
       const { view } = editor;
       if (!(view.state.selection instanceof AllSelection)) return;
-      // Then the box, then the two questions that cost something. `isWarranted`
-      // ends in `doc.textBetween` over the whole selection, which under a
-      // select-all is the whole document — and this handler runs on every
-      // mouse event anywhere on the page, including the ones nowhere near the
-      // body. Asking "is the pointer even in there" first costs one rectangle.
-      if (!isInside(pointerRef.current, viewport.getBoundingClientRect())) {
-        return;
-      }
       // `isWarranted` before `pinToPointer`, not after: pinning is a write,
       // and a pin made while no bar is warranted would sit there waiting. The
       // reader would then get the bar at a place the pointer passed through

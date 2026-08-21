@@ -1044,6 +1044,48 @@ describe('选中浮出条', () => {
     expect(Number.isNaN(rect?.top)).toBe(false);
   });
 
+  // 窗口连着变两次，条落在哪，跟一步变到最终尺寸应当一致——A17 说的「跟着动」
+  // 不能因为中间经过了几步就漂。
+  //
+  // 这条**分辨不出**换算把中间结果存不存回去：两种写法都满足这个性质（线性
+  // 映射可传递），实测把存回那两行加回来它照样绿。所以它是这个性质的守卫，
+  // 不是那次改写的守卫；那次改写按非逻辑改动处理，依据是让读取函数不再写。
+  it('区域连着变两次，跟一步变到位算出来的是同一个点', async () => {
+    const editorA = open('<p>one</p><p>two</p><p>three</p>');
+    mount(editorA);
+    await selectWithFocus(editorA, 1, 4);
+    pinSelectionBox(SELECTION_BOX);
+    pinViewport(new DOMRect(0, 100, 800, 400));
+    act(() => {
+      document.dispatchEvent(
+        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
+      );
+      editorA.commands.selectAll();
+    });
+
+    // 走两步：800 → 600 → 400。
+    pinViewport(new DOMRect(0, 100, 600, 400));
+    bubblePluginView(editorA).getReferencedVirtualElement?.();
+    pinViewport(new DOMRect(0, 100, 400, 400));
+    const twoSteps = bubblePluginView(editorA)
+      .getReferencedVirtualElement?.()
+      ?.getBoundingClientRect();
+
+    // 一步到位：800 → 400。
+    pinViewport(new DOMRect(0, 100, 800, 400));
+    const oneStep = bubblePluginView(editorA)
+      .getReferencedVirtualElement?.()
+      ?.getBoundingClientRect();
+    expect(oneStep?.left).toBe(420);
+    pinViewport(new DOMRect(0, 100, 400, 400));
+    const direct = bubblePluginView(editorA)
+      .getReferencedVirtualElement?.()
+      ?.getBoundingClientRect();
+
+    expect(twoSteps?.left).toBe(direct?.left);
+    expect(twoSteps?.top).toBe(direct?.top);
+  });
+
   // 「区域变没变」比的是四个数。只比宽高的话，一个平移了但没缩放的区域会被
   // 当成没变，而换算公式读的正是 left/top——条会留在正文原来的位置上。
   it('区域整体平移、尺寸没变时，钉住的点跟着平移', async () => {
