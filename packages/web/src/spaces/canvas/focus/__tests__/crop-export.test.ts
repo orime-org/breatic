@@ -11,9 +11,12 @@
  * readable at all, and which frame lands in it.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
-import { prepareCropSource } from '@web/spaces/canvas/focus/crop-export';
+import {
+  prepareCropSource,
+  exportCropBlob,
+} from '@web/spaces/canvas/focus/crop-export';
 import { FIRST_FRAME_SEEK_S } from '@web/spaces/canvas/video-cover-extract';
 
 /**
@@ -61,6 +64,53 @@ function fakeVideo(): HTMLVideoElement {
   Object.defineProperty(el, 'videoHeight', { configurable: true, get: () => 1080 });
   return el;
 }
+
+describe('exportCropBlob', () => {
+  it('把时间点交给取源那一步，而不是把视频当静态图取（A9 的最后一跳）', async () => {
+    // This is the one link in confirm → seek that nothing else pins: replacing
+    // `source` with `{ url, timeSeconds: null }` here turns every video crop
+    // into frame 0, and the whole 4357-test suite stayed green (round 2).
+    // jsdom has no canvas raster, so the export throws AFTER the source has
+    // been built and seeked — which is exactly the half worth pinning.
+    const seeks: number[] = [];
+    const video = document.createElement('video');
+    let time = 0;
+    Object.defineProperty(video, 'src', {
+      configurable: true,
+      set: () => queueMicrotask(() => video.dispatchEvent(new Event('loadedmetadata'))),
+      get: () => '',
+    });
+    Object.defineProperty(video, 'currentTime', {
+      configurable: true,
+      get: () => time,
+      set: (value: number) => {
+        time = value;
+        seeks.push(value);
+        queueMicrotask(() => video.dispatchEvent(new Event('seeked')));
+      },
+    });
+    const created = vi
+      .spyOn(document, 'createElement')
+      .mockImplementation(((tag: string) =>
+        tag === 'video'
+          ? video
+          : Object.getPrototypeOf(document).createElement.call(
+            document,
+            tag,
+          )) as typeof document.createElement);
+    try {
+      await expect(
+        exportCropBlob(
+          { url: 'https://cdn/clip.mp4', timeSeconds: 4.375 },
+          { x: 0, y: 0, width: 10, height: 10 },
+        ),
+      ).rejects.toThrow();
+    } finally {
+      created.mockRestore();
+    }
+    expect(seeks).toEqual([4.375]);
+  });
+});
 
 describe('prepareCropSource', () => {
   it('图片源：重新用跨域模式取一份，网址带缓存破坏参数', async () => {

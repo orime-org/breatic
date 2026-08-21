@@ -12,6 +12,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import * as React from 'react';
 
 import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
+import { toast } from '@web/lib/toast';
 
 /** Screen boxes: overlay root at (0,0); node img at (100,50) — MUTABLE so
  * tests can simulate a zoom (box rescale) between measures. */
@@ -814,9 +815,13 @@ describe('FocusCropOverlay：视频目标与时间轴（#1987）', () => {
     // Metadata absent is the OPENING state of every video, not an edge case.
     renderVideoOverlay({ duration: 10, currentTime: 0, videoWidth: 0 }, onConfirm);
     draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    const said = vi.spyOn(toast, 'error');
     fireEvent.click(screen.getByTestId('focus-crop-confirm'));
     expect(onConfirm).not.toHaveBeenCalled();
-    // The marquee survives so the user can retry once metadata lands.
+    // BOTH halves of A7a. Asserting only the marquee let the message be
+    // deleted with the test still green (round-2 measured exactly that), and
+    // a dead button that says nothing is the round-2-of-#1782 bug returning.
+    expect(said).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
   });
 
@@ -934,6 +939,42 @@ describe('FocusCropOverlay：视频目标与时间轴（#1987）', () => {
     // not an unknown one.
     expect(screen.getByTestId('focus-crop-time-current')).toHaveTextContent('--:--');
     expect(screen.getByTestId('focus-crop-time-duration')).toHaveTextContent('--:--');
+  });
+
+  it('元数据晚到：手柄在 loadedmetadata 之后才出现，占位轨道让位（A8）', () => {
+    // The seed reads whatever the element has when the overlay attaches. When
+    // that is nothing yet, the ONLY route to a working timeline is the
+    // subscription — and deleting both listeners left the whole suite green.
+    const { video } = renderVideoOverlay({ videoWidth: 800, videoHeight: 600 });
+    expect(screen.queryByRole('slider')).toBeNull();
+    expect(screen.getByTestId('focus-crop-timeline-placeholder')).toBeInTheDocument();
+    Object.defineProperty(video, 'duration', { configurable: true, value: 7.5 });
+    act(() => {
+      video.dispatchEvent(new Event('loadedmetadata'));
+    });
+    const thumb = screen.getByRole('slider');
+    expect(thumb.getAttribute('aria-valuemax')).toBe('7.5');
+    expect(screen.queryByTestId('focus-crop-timeline-placeholder')).toBeNull();
+  });
+
+  it('已知时长时，当前时间读到百分之一秒，占位轨道不再出现（A8）', () => {
+    // The whole point of this timeline is landing on ONE frame; a m:ss readout
+    // cannot tell 2.00s from 2.50s, so the sub-second digits are the feedback.
+    renderVideoOverlay({
+      duration: 10,
+      currentTime: 2.5,
+      videoWidth: 800,
+      videoHeight: 600,
+    });
+    expect(screen.getByTestId('focus-crop-time-current')).toHaveTextContent('0:02.50');
+    expect(screen.getByTestId('focus-crop-time-duration')).toHaveTextContent('0:10');
+    expect(screen.queryByTestId('focus-crop-timeline-placeholder')).toBeNull();
+  });
+
+  it('时长未知时，轨道变淡（A8）', () => {
+    renderVideoOverlay({ currentTime: 0, videoWidth: 800, videoHeight: 600 });
+    const track = screen.getByTestId('focus-crop-timeline-placeholder');
+    expect(track.className).toContain('opacity-50');
   });
 
   it('元素换了身份之后，镜像和总时长从新元素重读（A9 / §5.3）', () => {
@@ -1072,10 +1113,9 @@ describe('FocusCropOverlay：换目标之后的选框判定（#1987）', () => {
     const video = screen.getByTestId('media-element') as HTMLVideoElement;
     stubVideo(video, { duration: 10, currentTime: 0, videoWidth: 0, videoHeight: 0 });
     result.rerender(tree('fresh-video'));
-    // A perfectly ordinary 60×60 drag. Against the video's real 1920×1080 it
-    // selects hundreds of source pixels; against the stale 64×64 the gauge
-    // demands 50 display px per axis and this only just clears it, so make it
-    // smaller than that to show which yardstick is in use.
+    // A 30×30 drag — deliberately UNDER the 50 display px per axis the stale
+    // 64×64 yardstick would demand, and far over what the video's own size
+    // asks for. A 60×60 drag clears both yardsticks, so it could not fail.
     draw({ x: 150, y: 100 }, { x: 180, y: 130 });
     expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
   });

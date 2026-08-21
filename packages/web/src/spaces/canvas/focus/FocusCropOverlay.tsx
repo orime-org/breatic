@@ -155,9 +155,9 @@ interface FocusCropOverlayProps {
   onConfirm: (result: FocusCropConfirm) => boolean;
   /**
    * Return to the PICK state (clear the crop target, keep the session —
-   * the banner stays and another image can be picked). Cancel and the
+   * the banner stays and another node can be picked). Cancel and the
    * no-marquee Esc both land here (user 2026-07-17, decision A: leaving
-   * one image's crop must not tear down the whole continuous session).
+   * one node's crop must not tear down the whole continuous session).
    * The overlay can NEVER hard-exit the session — that lives with the
    * banner Exit button and the canvas-level pick Esc handler.
    */
@@ -213,7 +213,8 @@ export function handOffFocusToPickBanner(overlayRoot: Element | null): void {
  * @param root0.nodePosition - The node's flow position (re-measure signal).
  * @param root0.onConfirm - Receives the confirmed natural-pixel crop.
  * @param root0.onBackToPick - Returns to the pick state (Cancel / bare Esc).
- * @returns The overlay, or null until the target source is measurable.
+ * @returns The overlay. Its interactive layers render only once the target
+ *   source has a measurable box; the root itself is always present.
  */
 export function FocusCropOverlay({
   nodeId,

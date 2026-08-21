@@ -608,13 +608,14 @@ function CanvasSpaceInner({
   /**
    * Return the focus session to its PICK state (user 2026-07-17 A): drop
    * the crop target so the overlay unmounts, but keep the session — the
-   * banner stays and another image can be picked. Cancel and the overlay's
+   * banner stays and another node can be picked. Cancel and the overlay's
    * bare Esc land here; a further Esc then exits via the pick Esc handler.
    */
   const onFocusBackToPick = React.useCallback((): void => {
     setFocusCropTargetId(null);
   }, []);
-  // The image node a focus crop marquee is open on (#1782), or null. Local
+  // The image or video node a focus crop marquee is open on (#1782, video
+  // #1987), or null. Local
   // React state — it only exists while THIS user's focus pick runs; the
   // effect clears it whenever the session ends or changes purpose (Exit,
   // zombie guards, a style/reference pick replacing it).

@@ -81,6 +81,16 @@ import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
+
+// Panel / pick state is a module singleton, and this file has five top-level
+// describes. A reset that lives inside one of them leaves the others running on
+// whatever the previously executed describe left behind — which is exactly how
+// `reference-pick interaction contract` came to depend on running before every
+// test that opens a pick session. File level, so no describe can be ordered
+// into a dirty start.
+beforeEach(() => {
+  useCanvasStore.setState({ panelHostId: null, panelKind: null, pickSession: null });
+});
 const mockRunFocusCrop = vi.mocked(runFocusCrop);
 
 let undoSpy: ReturnType<typeof vi.fn>;
@@ -215,11 +225,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       pendingHistoryCommand: null,
       canUndo: false,
       canRedo: false,
-      // Panel / pick state is global zustand — a test that leaves a panel
-      // open would leak into the next one (the open-selects-host effect keys
-      // on the id CHANGING, so a stale identical id suppresses it entirely).
-      panelHostId: null, panelKind: null,
-      pickSession: null,
     });
     useSpaceOperationsStore.setState({ operations: {} });
     useCurrentUserStore.getState().setUser({
@@ -3028,6 +3033,328 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       useCanvasStore.setState({ panelHostId: null, panelKind: null });
     }
   });
+
+  // ── #1987 视频节点也能被聚焦 ──────────────────────────────────────
+  // 聚焦的类型判据在仓里有两处：变暗规则（哪些节点看起来能选）和点击处理
+  // （点下去生不生效）。两处逐字相同但物理上是两份，:3279-3282 的注释记着
+  // round-4 修过「不变暗但点了没反应」的病。所以两处各有测试，缺一不可 ——
+  // 只钉变暗那半，对「看着能选、点了没反应」是瞎的。
+
+  it('聚焦挑选：视频节点是候选，不变暗（#1987 A1/A6）', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-video',
+            type: 'video',
+            position: { x: 300, y: 0 },
+            data: { kind: 'video', content: 'v.mp4', status: 'idle' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 600, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startFocusPick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    expect(cls('src-video')).toContain('canvas-pick-selectable');
+    expect(cls('src-video')).not.toContain('canvas-pick-dimmed');
+    // 图片仍然是候选（这次是加类型，不是换类型）
+    expect(cls('src-image')).toContain('canvas-pick-selectable');
+  });
+
+  it('风格挑选：视频节点仍然变暗，不受聚焦那次放宽影响（#1987 A6）', () => {
+    // 变暗规则那条分支里，style 和视频槽位共用一个回落值（`pickedNodes` 里
+    // 那句 `paintingSlot ? VIDEO_SLOTS[...].accepts : 'image'`，行号会漂、
+    // 按这个表达式找），而 style 的点击侧只认图片。照着那个回落值放宽
+    // 会让视频在风格挑选里变成「看着能选、点了没反应」—— 正是上面那条注释
+    // 记的病。所以放宽必须只作用于 focus 那一支。
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-video',
+            type: 'video',
+            position: { x: 300, y: 0 },
+            data: { kind: 'video', content: 'v.mp4', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startStylePick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    expect(cls('src-video')).toContain('canvas-pick-dimmed');
+    expect(cls('src-video')).not.toContain('canvas-pick-selectable');
+  });
+
+  it('聚焦挑选：点中视频节点之后裁剪浮层挂上（#1987 A1）', () => {
+    // 判据的另一半。浮层的渲染门是 pickSession.purpose === 'focus' &&
+    // focusCropTargetId !== null，而 focusCropTargetId 是 CanvasSpace 的本地
+    // state，测试看不到它 —— 看得到的是浮层出没出来。
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-video',
+            type: 'video',
+            position: { x: 300, y: 0 },
+            data: { kind: 'video', content: 'v.mp4', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startFocusPick('target');
+    });
+    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.react-flow__node[data-id="src-video"]')!,
+      );
+    });
+    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+  });
+
+  it('聚焦挑选：音频节点两道都被拒（#1987）', () => {
+    // 音频的 <audio> 跟视频共用 media-element 这个 testid，所以判类型不能靠
+    // testid。这条钉的是候选那一道：音频不该变成候选。
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-audio',
+            type: 'audio',
+            position: { x: 300, y: 0 },
+            data: { kind: 'audio', content: 'a.m4a', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startFocusPick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    expect(cls('src-audio')).toContain('canvas-pick-dimmed');
+    expect(cls('src-audio')).not.toContain('canvas-pick-selectable');
+    // 点它也不该挂上浮层
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.react-flow__node[data-id="src-audio"]')!,
+      );
+    });
+    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+  });
+
+  it('聚焦挑选：正在生成或出错的视频不是候选（#1987 A1 的 idle 门）', () => {
+    // The overlay anchors its marquee to a RENDERED element, and a handling /
+    // error node renders a skeleton or an error box instead — round-4 of #1782
+    // fixed exactly the "looks pickable, click does nothing" this causes.
+    // Round 2 measured that deleting this clause kept all 95 tests green.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'busy-video',
+            type: 'video',
+            position: { x: 300, y: 0 },
+            data: { kind: 'video', content: 'v.mp4', status: 'handling' },
+          },
+          {
+            id: 'broken-video',
+            type: 'video',
+            position: { x: 600, y: 0 },
+            data: { kind: 'video', content: 'v.mp4', status: 'error' },
+          },
+          {
+            id: 'empty-video',
+            type: 'video',
+            position: { x: 900, y: 0 },
+            data: { kind: 'video', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startFocusPick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    for (const id of ['busy-video', 'broken-video', 'empty-video']) {
+      expect(cls(id)).toContain('canvas-pick-dimmed');
+      expect(cls(id)).not.toContain('canvas-pick-selectable');
+    }
+    // And the click side agrees — the two predicates are the same function.
+    for (const id of ['busy-video', 'broken-video', 'empty-video']) {
+      act(() => {
+        fireEvent.click(
+          document.querySelector(`.react-flow__node[data-id="${id}"]`)!,
+        );
+      });
+      expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+    }
+  });
+
+  it('聚焦挑选：目标节点自己不是候选（#1987 A1）', () => {
+    // Cropping the node you are filling would feed it its own content.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'video',
+            position: { x: 0, y: 0 },
+            data: { kind: 'video', content: 'self.mp4', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startFocusPick('target');
+    });
+    const cls =
+      document.querySelector('.react-flow__node[data-id="target"]')?.className ??
+      '';
+    expect(cls).toContain('canvas-pick-dimmed');
+    act(() => {
+      fireEvent.click(document.querySelector('.react-flow__node[data-id="target"]')!);
+    });
+    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+  });
+
+  it('贯通：浮层交出的时间点原样到达 runFocusCrop 的入参（#1987 A9）', () => {
+    // 从浮层到取源之间有五个环节，其中一个是函数赋值 —— 编译器管不住它，
+    // 少给一个字段照样编译通过（`natural` 今天就是这么被吃掉的）。所以这条
+    // 走完整条链：真的点节点、真的画选框、真的点确认，然后看最下游收到什么。
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const isTarget = this.tagName === 'VIDEO';
+        return {
+          x: isTarget ? 100 : 0,
+          y: isTarget ? 50 : 0,
+          left: isTarget ? 100 : 0,
+          top: isTarget ? 50 : 0,
+          right: isTarget ? 500 : 1000,
+          bottom: isTarget ? 350 : 1000,
+          width: isTarget ? 400 : 1000,
+          height: isTarget ? 300 : 1000,
+          toJSON: () => ({}),
+        } as DOMRect;
+      });
+    try {
+      mockUseCanvasSpace.mockReturnValue(
+        mockSpace({
+          nodes: [
+            {
+              id: 'target',
+              type: 'image',
+              position: { x: 0, y: 0 },
+              data: { kind: 'image', status: 'idle' },
+            },
+            {
+              id: 'src-video',
+              type: 'video',
+              position: { x: 300, y: 0 },
+              data: {
+                kind: 'video',
+                content: 'https://cdn/clip.mp4',
+                name: 'Video Node 3',
+                status: 'idle',
+              },
+            },
+          ],
+        }),
+      );
+      renderSpace();
+      act(() => {
+        useCanvasStore.getState().startFocusPick('target');
+      });
+      act(() => {
+        fireEvent.click(
+          document.querySelector('.react-flow__node[data-id="src-video"]')!,
+        );
+      });
+      const video = screen.getByTestId('media-element') as HTMLVideoElement;
+      Object.defineProperty(video, 'videoWidth', { value: 800, configurable: true });
+      Object.defineProperty(video, 'videoHeight', { value: 600, configurable: true });
+      // 用户拖时间轴停在的那一帧，故意不是整秒。
+      Object.defineProperty(video, 'currentTime', {
+        value: 4.375,
+        writable: true,
+        configurable: true,
+      });
+      act(() => {
+        fireEvent(window, new Event('resize'));
+      });
+      const layer = screen.getByTestId('focus-crop-layer');
+      act(() => {
+        fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0 });
+        fireEvent.pointerMove(layer, { clientX: 250, clientY: 180 });
+        fireEvent.pointerUp(layer);
+      });
+      act(() => {
+        fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+      });
+      expect(mockRunFocusCrop).toHaveBeenCalledTimes(1);
+      expect(mockRunFocusCrop.mock.calls[0]![0]).toMatchObject({
+        sourceUrl: 'https://cdn/clip.mp4',
+        sourceTimeSeconds: 4.375,
+      });
+    } finally {
+      rect.mockRestore();
+    }
+  });
 });
 
 // Reference-pick mode cursor contract (canvas item 7, user 2026-07-10).
@@ -3278,240 +3605,4 @@ describe('model catalog prefetch (#1966)', () => {
     }
   });
 
-  // ── #1987 视频节点也能被聚焦 ──────────────────────────────────────
-  // 聚焦的类型判据在仓里有两处：变暗规则（哪些节点看起来能选）和点击处理
-  // （点下去生不生效）。两处逐字相同但物理上是两份，:3279-3282 的注释记着
-  // round-4 修过「不变暗但点了没反应」的病。所以两处各有测试，缺一不可 ——
-  // 只钉变暗那半，对「看着能选、点了没反应」是瞎的。
-
-  it('聚焦挑选：视频节点是候选，不变暗（#1987 A1/A6）', () => {
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'target',
-            type: 'image',
-            position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
-          },
-          {
-            id: 'src-video',
-            type: 'video',
-            position: { x: 300, y: 0 },
-            data: { kind: 'video', content: 'v.mp4', status: 'idle' },
-          },
-          {
-            id: 'src-image',
-            type: 'image',
-            position: { x: 600, y: 0 },
-            data: { kind: 'image', content: 'x.png', status: 'idle' },
-          },
-        ],
-      }),
-    );
-    renderSpace();
-    act(() => {
-      useCanvasStore.getState().startFocusPick('target');
-    });
-    const cls = (id: string): string =>
-      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
-      '';
-    expect(cls('src-video')).toContain('canvas-pick-selectable');
-    expect(cls('src-video')).not.toContain('canvas-pick-dimmed');
-    // 图片仍然是候选（这次是加类型，不是换类型）
-    expect(cls('src-image')).toContain('canvas-pick-selectable');
-  });
-
-  it('风格挑选：视频节点仍然变暗，不受聚焦那次放宽影响（#1987 A6）', () => {
-    // 变暗规则那条分支里，style 和视频槽位共用一个回落值（`pickedNodes` 里
-    // 那句 `paintingSlot ? VIDEO_SLOTS[...].accepts : 'image'`，行号会漂、
-    // 按这个表达式找），而 style 的点击侧只认图片。照着那个回落值放宽
-    // 会让视频在风格挑选里变成「看着能选、点了没反应」—— 正是上面那条注释
-    // 记的病。所以放宽必须只作用于 focus 那一支。
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'target',
-            type: 'image',
-            position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
-          },
-          {
-            id: 'src-video',
-            type: 'video',
-            position: { x: 300, y: 0 },
-            data: { kind: 'video', content: 'v.mp4', status: 'idle' },
-          },
-        ],
-      }),
-    );
-    renderSpace();
-    act(() => {
-      useCanvasStore.getState().startStylePick('target');
-    });
-    const cls = (id: string): string =>
-      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
-      '';
-    expect(cls('src-video')).toContain('canvas-pick-dimmed');
-    expect(cls('src-video')).not.toContain('canvas-pick-selectable');
-  });
-
-  it('聚焦挑选：点中视频节点之后裁剪浮层挂上（#1987 A1）', () => {
-    // 判据的另一半。浮层的渲染门是 pickSession.purpose === 'focus' &&
-    // focusCropTargetId !== null，而 focusCropTargetId 是 CanvasSpace 的本地
-    // state，测试看不到它 —— 看得到的是浮层出没出来。
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'target',
-            type: 'image',
-            position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
-          },
-          {
-            id: 'src-video',
-            type: 'video',
-            position: { x: 300, y: 0 },
-            data: { kind: 'video', content: 'v.mp4', status: 'idle' },
-          },
-        ],
-      }),
-    );
-    renderSpace();
-    act(() => {
-      useCanvasStore.getState().startFocusPick('target');
-    });
-    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
-    act(() => {
-      fireEvent.click(
-        document.querySelector('.react-flow__node[data-id="src-video"]')!,
-      );
-    });
-    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
-  });
-
-  it('聚焦挑选：音频节点两道都被拒（#1987）', () => {
-    // 音频的 <audio> 跟视频共用 media-element 这个 testid，所以判类型不能靠
-    // testid。这条钉的是候选那一道：音频不该变成候选。
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'target',
-            type: 'image',
-            position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
-          },
-          {
-            id: 'src-audio',
-            type: 'audio',
-            position: { x: 300, y: 0 },
-            data: { kind: 'audio', content: 'a.m4a', status: 'idle' },
-          },
-        ],
-      }),
-    );
-    renderSpace();
-    act(() => {
-      useCanvasStore.getState().startFocusPick('target');
-    });
-    const cls = (id: string): string =>
-      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
-      '';
-    expect(cls('src-audio')).toContain('canvas-pick-dimmed');
-    expect(cls('src-audio')).not.toContain('canvas-pick-selectable');
-    // 点它也不该挂上浮层
-    act(() => {
-      fireEvent.click(
-        document.querySelector('.react-flow__node[data-id="src-audio"]')!,
-      );
-    });
-    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
-  });
-
-  it('贯通：浮层交出的时间点原样到达 runFocusCrop 的入参（#1987 A9）', () => {
-    // 从浮层到取源之间有五个环节，其中一个是函数赋值 —— 编译器管不住它，
-    // 少给一个字段照样编译通过（`natural` 今天就是这么被吃掉的）。所以这条
-    // 走完整条链：真的点节点、真的画选框、真的点确认，然后看最下游收到什么。
-    const rect = vi
-      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-      .mockImplementation(function (this: HTMLElement) {
-        const isTarget = this.tagName === 'VIDEO';
-        return {
-          x: isTarget ? 100 : 0,
-          y: isTarget ? 50 : 0,
-          left: isTarget ? 100 : 0,
-          top: isTarget ? 50 : 0,
-          right: isTarget ? 500 : 1000,
-          bottom: isTarget ? 350 : 1000,
-          width: isTarget ? 400 : 1000,
-          height: isTarget ? 300 : 1000,
-          toJSON: () => ({}),
-        } as DOMRect;
-      });
-    try {
-      mockUseCanvasSpace.mockReturnValue(
-        mockSpace({
-          nodes: [
-            {
-              id: 'target',
-              type: 'image',
-              position: { x: 0, y: 0 },
-              data: { kind: 'image', status: 'idle' },
-            },
-            {
-              id: 'src-video',
-              type: 'video',
-              position: { x: 300, y: 0 },
-              data: {
-                kind: 'video',
-                content: 'https://cdn/clip.mp4',
-                name: 'Video Node 3',
-                status: 'idle',
-              },
-            },
-          ],
-        }),
-      );
-      renderSpace();
-      act(() => {
-        useCanvasStore.getState().startFocusPick('target');
-      });
-      act(() => {
-        fireEvent.click(
-          document.querySelector('.react-flow__node[data-id="src-video"]')!,
-        );
-      });
-      const video = screen.getByTestId('media-element') as HTMLVideoElement;
-      Object.defineProperty(video, 'videoWidth', { value: 800, configurable: true });
-      Object.defineProperty(video, 'videoHeight', { value: 600, configurable: true });
-      // 用户拖时间轴停在的那一帧，故意不是整秒。
-      Object.defineProperty(video, 'currentTime', {
-        value: 4.375,
-        writable: true,
-        configurable: true,
-      });
-      act(() => {
-        fireEvent(window, new Event('resize'));
-      });
-      const layer = screen.getByTestId('focus-crop-layer');
-      act(() => {
-        fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0 });
-        fireEvent.pointerMove(layer, { clientX: 250, clientY: 180 });
-        fireEvent.pointerUp(layer);
-      });
-      act(() => {
-        fireEvent.click(screen.getByTestId('focus-crop-confirm'));
-      });
-      expect(mockRunFocusCrop).toHaveBeenCalledTimes(1);
-      expect(mockRunFocusCrop.mock.calls[0]![0]).toMatchObject({
-        sourceUrl: 'https://cdn/clip.mp4',
-        sourceTimeSeconds: 4.375,
-      });
-    } finally {
-      rect.mockRestore();
-    }
-  });
 });
