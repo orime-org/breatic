@@ -9,6 +9,16 @@ import { useTranslation } from '@web/i18n/use-translation';
 
 import type { ToolCall } from '@web/pages/project/chat/types';
 
+/**
+ * What the card says when the failure came over without a line of its own.
+ *
+ * A turn still streaming is the ordinary way that happens: those parts are
+ * the SDK client's own, and it has nothing of ours to put on them. A blank
+ * row under a failure icon reads as a rendering fault, so the coarse line
+ * stands in until the stored version replaces it.
+ */
+const GENERIC_FAILURE = 'chat.tool.failure.generic';
+
 interface ToolCallCardProps {
   toolCall: ToolCall;
 }
@@ -63,7 +73,7 @@ export function ToolCallCard({
           className='mt-1 text-status-error-foreground'
           data-testid='tool-call-error'
         >
-          {toolCall.failureKey === undefined ? null : t(toolCall.failureKey)}
+          {t(toolCall.failureKey ?? GENERIC_FAILURE)}
         </div>
       ) : null}
     </div>

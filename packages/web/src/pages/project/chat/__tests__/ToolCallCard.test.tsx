@@ -91,6 +91,17 @@ describe('ToolCallCard', () => {
     expect(screen.getByTestId('tool-call-card').getAttribute('data-status')).toBe('error');
   });
 
+  it('still says something when no line came with the failure', () => {
+    // What a turn still streaming looks like: the SDK's client assembled the
+    // part and has no line of ours to put on it. A blank row under a failure
+    // icon reads as a rendering bug, so the coarse line stands in.
+    render(<ToolCallCard toolCall={call({ status: 'error' })} />);
+
+    const shown = screen.getByTestId('tool-call-error').textContent ?? '';
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown).not.toContain('chat.tool');
+  });
+
   it('shows nothing extra for a tool that came back normally', () => {
     render(<ToolCallCard toolCall={call({ status: 'success', result: 'two links' })} />);
 

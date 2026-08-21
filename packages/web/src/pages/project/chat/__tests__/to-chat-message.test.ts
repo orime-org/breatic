@@ -76,6 +76,33 @@ describe('一个工具调用走到哪了', () => {
     }
   });
 
+  it('流式期间那句 SDK 的默认错误，不当成我们的文案键', () => {
+    // 真机上逮到的：一轮正在跑的时候，前端的 part 是 SDK 客户端自己拼的，
+    // errorText 是它写死的一句英文（"An error occurred."）。当时我照单收下，
+    // 界面上就直接显示了那句英文——不过 i18n，而产品出五种语言。
+    // 判据是结构性的：failureKind 只有回放路才带，它不在就说明这个 errorText
+    // 不是我们给的。
+    const streaming = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-web_fetch',
+          toolCallId: 'call-1',
+          state: 'output-error',
+          input: {},
+          errorText: 'An error occurred.',
+        },
+      ],
+    } as unknown as UIMessage;
+
+    const view = toChatMessage(streaming, { streaming: true });
+
+    expect(view.toolCalls?.[0]?.status).toBe('error');
+    expect(view.toolCalls?.[0]?.failureKey).toBeUndefined();
+    expect(view.toolCalls?.[0]?.failureKind).toBeUndefined();
+  });
+
   it('用户拒了这次调用，同样是终态', () => {
     const denied = {
       id: 'm1',

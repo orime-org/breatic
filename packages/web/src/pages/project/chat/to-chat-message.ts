@@ -71,14 +71,18 @@ export function toChatMessage(
         args: (part.input ?? {}) as Record<string, unknown>,
         status,
         ...(status === 'success' ? { result: part.output as string } : {}),
-        // Both come off a replayed message. A turn still streaming carries
-        // neither: the SDK's client assembles those parts itself, and all it
-        // has for an error is one generic line it wrote.
-        ...(status === 'error' && 'errorText' in part && part.errorText !== undefined
-          ? { failureKey: part.errorText }
-          : {}),
+        // Both come off a replayed message, and `failureKind` is what says so.
+        // A turn still streaming has an `errorText` too — the SDK's client
+        // assembles those parts itself and writes one fixed English sentence
+        // for every error — and taking that as our own put it on the screen
+        // untranslated, in a product that ships five languages.
         ...(status === 'error' && 'failureKind' in part
-          ? { failureKind: (part as { failureKind: ToolCall['failureKind'] }).failureKind }
+          ? {
+            failureKind: (part as { failureKind: ToolCall['failureKind'] }).failureKind,
+            ...('errorText' in part && part.errorText !== undefined
+              ? { failureKey: part.errorText }
+              : {}),
+          }
           : {}),
       });
       continue;
