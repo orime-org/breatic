@@ -139,7 +139,7 @@ export interface FocusCropConfirm {
 }
 
 interface FocusCropOverlayProps {
-  /** The image node being cropped (its `data-id` in the ReactFlow DOM). */
+  /** The image or video node being cropped (its `data-id` in the ReactFlow DOM). */
   nodeId: string;
   /**
    * The target node's flow position — only used as a re-measure signal
@@ -200,20 +200,20 @@ export function handOffFocusToPickBanner(overlayRoot: Element | null): void {
 
 /**
  * The focus crop overlay (#1782): an absolutely-positioned marquee editor
- * aligned to the target node's rendered `<img>`. It lives OUTSIDE the
+ * aligned to the target node's rendered source element. It lives OUTSIDE the
  * ReactFlow transform (a sibling of the pick banner inside the canvas
  * wrapper), so its controls keep a constant screen size at any zoom and
  * its pointer gestures never fight ReactFlow's — the capture layer eats
  * them before the canvas sees anything. The box is re-measured whenever
  * the viewport transform, the node position, or the window changes. All
- * geometry funnels through the pure crop-math module in the img's screen
+ * geometry funnels through the pure crop-math module in the source's screen
  * pixel space; confirm maps to natural pixels via {@link toNaturalCrop}.
  * @param root0 - Component props.
- * @param root0.nodeId - The image node being cropped.
+ * @param root0.nodeId - The image or video node being cropped.
  * @param root0.nodePosition - The node's flow position (re-measure signal).
  * @param root0.onConfirm - Receives the confirmed natural-pixel crop.
  * @param root0.onBackToPick - Returns to the pick state (Cancel / bare Esc).
- * @returns The overlay, or null until the target img is measurable.
+ * @returns The overlay, or null until the target source is measurable.
  */
 export function FocusCropOverlay({
   nodeId,
@@ -238,7 +238,7 @@ export function FocusCropOverlay({
   // Mirror of `rect` for listeners that must read it without re-binding.
   const rectRef = React.useRef<CropRect | null>(null);
   rectRef.current = rect;
-  // Mirror of `box` STATE (null while the img is culled) for the Esc gate:
+  // Mirror of `box` STATE (null while the source is culled) for the Esc gate:
   // stage-one must not silently eat an off-screen marquee (round-9).
   const boxStateRef = React.useRef<CropRect | null>(null);
   boxStateRef.current = box;
@@ -246,7 +246,7 @@ export function FocusCropOverlay({
   // discard must use the SAME zoom-independent validity as Confirm.
   const naturalSizeRef = React.useRef<{ width: number; height: number } | null>(null);
   naturalSizeRef.current = naturalSize;
-  // The img src the current marquee was drawn against — a content swap
+  // The src the current marquee was drawn against — a content swap
   // (collaborator regenerate) invalidates the marquee entirely.
   const measuredSrcRef = React.useRef<string | null>(null);
   // Last measured box, read OUTSIDE state updaters (StrictMode-safe: no
@@ -265,15 +265,15 @@ export function FocusCropOverlay({
 
   const measure = React.useCallback((): void => {
     const root = rootRef.current;
-    const img = document.querySelector(cropSourceSelector(nodeId));
-    if (!root || !isCropSource(img)) {
-      // The target's <img> is ABSENT. Node deletion unmounts the whole
+    const el = document.querySelector(cropSourceSelector(nodeId));
+    if (!root || !isCropSource(el)) {
+      // The target's source element is ABSENT. Node deletion unmounts the whole
       // overlay upstream (round-8), so reaching here is viewport CULLING
       // (onlyRenderVisibleElements) or a handling skeleton: keep the
       // marquee and the src baseline — a pan-away-and-back must not eat a
       // careful selection. Only the live gesture and the element-bound
       // observer die (their element did); the REMOUNT path below compares
-      // the returning img's src against the kept baseline and discards
+      // the returning element's src against the kept baseline and discards
       // the marquee only when the content actually changed (round-5). A
       // gesture killed MID-FLIGHT never ran the pointer-up gauge — apply
       // it here so a sub-minimum sliver cannot survive into the return
@@ -298,12 +298,12 @@ export function FocusCropOverlay({
       setBox(null);
       return;
     }
-    if (lastSourceElRef.current !== img) {
+    if (lastSourceElRef.current !== el) {
       if (
         lastSourceElRef.current !== null &&
-        img.getAttribute('src') !== measuredSrcRef.current
+        el.getAttribute('src') !== measuredSrcRef.current
       ) {
-        // The img REMOUNTED with DIFFERENT content (handling cycle /
+        // The source REMOUNTED with DIFFERENT content (handling cycle /
         // regenerate): the marquee and baselines belong to the dead
         // element — start fresh (round-3). The in-flight gesture dies with
         // it (round-4). A same-src remount (viewport culling return,
@@ -313,24 +313,24 @@ export function FocusCropOverlay({
         measuredSrcRef.current = null;
         prevBoxRef.current = null;
       }
-      lastSourceElRef.current = img;
-      setSourceEl(img);
+      lastSourceElRef.current = el;
+      setSourceEl(el);
       if (typeof ResizeObserver !== 'undefined') {
         resizeObsRef.current?.disconnect();
         resizeObsRef.current = new ResizeObserver(measure);
-        resizeObsRef.current.observe(img);
+        resizeObsRef.current.observe(el);
       }
     }
     const rootRect = root.getBoundingClientRect();
-    const imgRect = img.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
     const next = {
-      x: imgRect.left - rootRect.left,
-      y: imgRect.top - rootRect.top,
-      width: imgRect.width,
-      height: imgRect.height,
+      x: elRect.left - rootRect.left,
+      y: elRect.top - rootRect.top,
+      width: elRect.width,
+      height: elRect.height,
     };
     if (next.width <= 0 || next.height <= 0) {
-      // The img is PRESENT but not laid out yet — a lazy-load remount
+      // The source is PRESENT but not laid out yet — a lazy-load remount
       // (#1772 culled-then-return) measures a zero box before decode.
       // A degenerate box cannot anchor the interactive layers, and
       // rescaling against it collapses the marquee to zero and then to
@@ -342,7 +342,7 @@ export function FocusCropOverlay({
       setBox(null);
       return;
     }
-    const src = img.getAttribute('src');
+    const src = el.getAttribute('src');
     const prev = prevBoxRef.current;
     if (measuredSrcRef.current !== null && measuredSrcRef.current !== src) {
       // Content swap under the marquee (adversarial 2026-07-16): the old
@@ -398,7 +398,7 @@ export function FocusCropOverlay({
     }
     measuredSrcRef.current = src;
     prevBoxRef.current = next;
-    const intrinsic = intrinsicSize(img);
+    const intrinsic = intrinsicSize(el);
     if (intrinsic.width > 0 && intrinsic.height > 0) {
       setNaturalSize((prevNat) =>
         prevNat &&
@@ -426,9 +426,16 @@ export function FocusCropOverlay({
     // prevBox let the measure's rescale branch resurrect the PREVIOUS
     // node's marquee re-projected onto the new image (round-3, HIGH).
     prevBoxRef.current = null;
+    // The source's own size belongs to the source (#1987). Left behind, the
+    // pointer-up gauge measures the NEW target against the OLD one's
+    // resolution — and a video reports 0×0 until its metadata arrives, so it
+    // cannot overwrite the stale value on its own. Measured: after picking a
+    // 64×64 image, an ordinary drag on a not-yet-ready video was thrown away
+    // on mouse-up, before the retry A7a promises was ever possible.
+    setNaturalSize(null);
     lastSourceElRef.current = null;
     // The previous target's ResizeObserver must die with it (round-4) —
-    // measure() rebinds a fresh one for the new target's img.
+    // measure() rebinds a fresh one for the new target's source.
     resizeObsRef.current?.disconnect();
     resizeObsRef.current = null;
   }, [nodeId]);
@@ -504,11 +511,11 @@ export function FocusCropOverlay({
   React.useLayoutEffect(() => {
     measure();
     window.addEventListener('resize', measure);
-    // Observe the node CONTAINER, not the img (round-3): a handling cycle
-    // REMOUNTS the img, permanently killing element-bound observers.
+    // Observe the node CONTAINER, not the source (round-3): a handling cycle
+    // REMOUNTS the source, permanently killing element-bound observers.
     // childList catches the remount, attributes catches both the src swap
     // (same-size regenerate, round-2) and node style resizes; the
-    // measure-managed ResizeObserver rebinds itself per img identity.
+    // measure-managed ResizeObserver rebinds itself per source identity.
     const container = document.querySelector(
       `.react-flow__node[data-id="${CSS.escape(nodeId)}"]`,
     );
@@ -622,13 +629,13 @@ export function FocusCropOverlay({
 
   // The root ALWAYS renders (measure needs its rect — a null-return here
   // would never mount the ref and the overlay could never appear); the
-  // interactive layers below render only once the img box is measured.
+  // interactive layers below render only once the source box is measured.
   const bounds = box
     ? { width: box.width, height: box.height }
     : { width: 0, height: 0 };
 
   /**
-   * Pointer position in the img box's local pixel space.
+   * Pointer position in the source box's local pixel space.
    * @param e - The pointer event.
    * @returns Local coordinates relative to the image box.
    */
@@ -829,20 +836,20 @@ export function FocusCropOverlay({
     if (naturalSize ? !isNaturalCropValid(rect, box, naturalSize) : !isCropValid(rect)) {
       return;
     }
-    const img = document.querySelector(cropSourceSelector(nodeId));
+    const el = document.querySelector(cropSourceSelector(nodeId));
     // Confirm-time swap check (round-2): the MutationObserver discards the
     // marquee live, but a swap can still land between the last measure and
     // this click — never crop NEW content at OLD marquee coordinates.
     if (
-      isCropSource(img) &&
+      isCropSource(el) &&
       measuredSrcRef.current !== null &&
-      img.getAttribute('src') !== measuredSrcRef.current
+      el.getAttribute('src') !== measuredSrcRef.current
     ) {
       setRect(null);
       toast.warning(t('canvas.generatePanel.focusSourceChanged'));
       return;
     }
-    if (!isCropSource(img) || intrinsicSize(img).width === 0) {
+    if (!isCropSource(el) || intrinsicSize(el).width === 0) {
       // The source exists but is not decodable yet (a bitmap still loading, a
       // broken URL, or a video whose metadata has not arrived — the opening
       // state of every video) — say so instead of a silent dead button
@@ -852,12 +859,12 @@ export function FocusCropOverlay({
       return;
     }
     if (measuredSrcRef.current === null) {
-      // No validated baseline (img never carried a src) — same treatment
+      // No validated baseline (the element never carried a src) — same treatment
       // as a not-yet-decodable source.
       toast.error(t('canvas.generatePanel.focusExportFailed'));
       return;
     }
-    const natural = intrinsicSize(img);
+    const natural = intrinsicSize(el);
     const accepted = onConfirm({
       crop: toNaturalCrop(rect, bounds, natural),
       natural,
@@ -866,7 +873,7 @@ export function FocusCropOverlay({
       // updated the moment a seek is requested, so this is where the user
       // dragged to even while the picture is still catching up.
       sourceTimeSeconds:
-        img instanceof HTMLVideoElement ? img.currentTime : null,
+        el instanceof HTMLVideoElement ? el.currentTime : null,
     });
     // A gate rejection (pool full, source gone) keeps the marquee — the
     // user's careful selection must survive a fixable rejection (round-3).
@@ -951,7 +958,7 @@ export function FocusCropOverlay({
             // border rather than wrap. Re-measure when #1991 adds its preset.
             className='pointer-events-auto absolute flex w-[432px] -translate-x-1/2 flex-col gap-1.5 rounded-overlay border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
             // Anchored under the picked node like the generate panel (user
-            // 2026-07-17): always centered below the img box, allowed to
+            // 2026-07-17): always centered below the source box, allowed to
             // overflow the viewport — the earlier viewport clamp pulled the
             // bar away from an edge-parked node.
             style={{

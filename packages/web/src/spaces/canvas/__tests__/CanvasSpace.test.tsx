@@ -3323,8 +3323,9 @@ describe('model catalog prefetch (#1966)', () => {
   });
 
   it('风格挑选：视频节点仍然变暗，不受聚焦那次放宽影响（#1987 A6）', () => {
-    // 变暗规则那条分支 style 和 focus 共用同一个 'image' 回落值
-    // （CanvasSpace.tsx:3283），而 style 的点击侧只认图片。照着那个回落值放宽
+    // 变暗规则那条分支里，style 和视频槽位共用一个回落值（`pickedNodes` 里
+    // 那句 `paintingSlot ? VIDEO_SLOTS[...].accepts : 'image'`，行号会漂、
+    // 按这个表达式找），而 style 的点击侧只认图片。照着那个回落值放宽
     // 会让视频在风格挑选里变成「看着能选、点了没反应」—— 正是上面那条注释
     // 记的病。所以放宽必须只作用于 focus 那一支。
     mockUseCanvasSpace.mockReturnValue(

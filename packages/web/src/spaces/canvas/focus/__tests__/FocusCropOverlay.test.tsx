@@ -1030,6 +1030,57 @@ function renderTwoVideoOverlay(): TwoVideoOverlay {
   };
 }
 
+describe('FocusCropOverlay：换目标之后的选框判定（#1987）', () => {
+  it('从图片换到元数据还没到的视频：选框按新目标判，不按上一个目标的分辨率（A7a）', () => {
+    // The pointer-up gauge asks "does this rect select at least 8 source
+    // pixels" and needs the SOURCE's own size to answer. A video reports 0×0
+    // until its metadata lands — the opening state of every video, and the
+    // state A7a is written for — so if the previous target's size is still
+    // sitting there, the gauge answers with the wrong yardstick and throws
+    // away a marquee the user could have retried with.
+    const onConfirm = vi.fn(() => true);
+    /**
+     * @param targetId - Which node the overlay is cropping.
+     * @returns The tree to render.
+     */
+    const tree = (targetId: string): React.ReactElement => (
+      <ReactFlowProvider>
+        <div className='react-flow__node' data-id='small-image'>
+          <img data-testid='image-node-img' src='https://cdn/tiny.png' alt='' />
+        </div>
+        <div className='react-flow__node' data-id='fresh-video'>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption -- mirrors MediaPlayer's own element. */}
+          <video data-testid='media-element' src='https://cdn/clip.mp4' />
+        </div>
+        <div data-testid='reference-pick-banner' tabIndex={-1} />
+        <FocusCropOverlay
+          nodeId={targetId}
+          nodePosition={{ x: 0, y: 0 }}
+          onConfirm={onConfirm}
+          onBackToPick={vi.fn()}
+        />
+      </ReactFlowProvider>
+    );
+    const result = render(tree('small-image'));
+    // A 64×64 asset shown in a 400×300 box: every display pixel is a fraction
+    // of a source pixel, so the gauge demands a LARGE rect.
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 64, configurable: true });
+    Object.defineProperty(img, 'naturalHeight', { value: 64, configurable: true });
+    fireEvent(window, new Event('resize'));
+    // Same session, second target: a video that has not reported its size yet.
+    const video = screen.getByTestId('media-element') as HTMLVideoElement;
+    stubVideo(video, { duration: 10, currentTime: 0, videoWidth: 0, videoHeight: 0 });
+    result.rerender(tree('fresh-video'));
+    // A perfectly ordinary 60×60 drag. Against the video's real 1920×1080 it
+    // selects hundreds of source pixels; against the stale 64×64 the gauge
+    // demands 50 display px per axis and this only just clears it, so make it
+    // smaller than that to show which yardstick is in use.
+    draw({ x: 150, y: 100 }, { x: 180, y: 130 });
+    expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+  });
+});
+
 describe('FocusCropOverlay：聚焦时的暂停（#1987）', () => {
   it('点中正在播的视频：只有它停下，别的照播（A3）', () => {
     const { first, second, pick } = renderTwoVideoOverlay();

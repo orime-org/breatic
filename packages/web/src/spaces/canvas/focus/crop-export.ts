@@ -33,12 +33,19 @@ export interface CropSourceFactories {
 }
 
 /**
- * How long to wait for a source to become drawable before giving up.
+ * How long to wait for a VIDEO source to reach a state before giving up.
+ *
+ * Bounds the two waits the video path makes: metadata, and the seek. The image
+ * path has no equivalent bound — it awaits `decode()`, which rejects on a
+ * failed load but has no deadline of its own for a connection that stays open.
+ * That is pre-existing and out of scope here; do not read this constant as
+ * covering both.
  *
  * Deliberately NOT the 10s the local first-frame extract uses: that one runs
  * off bytes the browser already holds, while this is a forced trip to the
  * network for a file that can be large. Provisional — the real-browser smoke
- * records how long a source actually takes and this gets calibrated to it.
+ * measured 237ms, 322ms and 702ms for the source fetch, so the headroom is
+ * large; calibrate if that ever stops being true.
  */
 export const CROP_SOURCE_TIMEOUT_MS = 20_000;
 
@@ -106,7 +113,9 @@ function once(el: HTMLMediaElement, event: string): Promise<void> {
  * @param source - The URL and, for a video, the frame to park on.
  * @param factories - Element factories; production uses the DOM.
  * @returns The element, ready to hand to `drawImage`.
- * @throws {Error} When the source cannot be loaded, seeked, or times out.
+ * @throws {Error} When the source cannot be loaded, or — video only — when
+ *   its metadata or its seek does not arrive within
+ *   {@link CROP_SOURCE_TIMEOUT_MS}.
  */
 export async function prepareCropSource(
   source: CropSource,
