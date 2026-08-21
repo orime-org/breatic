@@ -455,9 +455,9 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
     const b = el.getBoundingClientRect();
     const box = window.getSelection()?.getRangeAt(0).getBoundingClientRect();
     // 量的必须是 flip 量的那个盒子。它的 boundary 是正文可见区，而正文列比它
-    // 窄一整条居中外边距（1280 下差 96px，窗口越宽差得越多）——拿正文列去量，
-    // 这句前置断言在 1440 下照样成立，而 flip 已经不翻了，下面三句会红在一个
-    // 跟被测行为无关的原因上（实测：列内余量恒 59，可见区余量 155 → 235）。
+    // 窄一整条居中外边距，窗口越宽差得越多——拿正文列去量，会在某些宽度下
+    // 得出「放得下」而 flip 已经不翻了，下面三句就红在一个跟被测行为无关的
+    // 原因上。
     const viewport = document
       .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
       ?.getBoundingClientRect();
@@ -636,8 +636,9 @@ test('全选时鼠标贴着正文区域上沿，条也不画到区域外面', as
 
   const bar = await readBar(page);
   expect(bar.shown).toBe(true);
-  // 锚点上方只剩 4px，条要 44px 加 8px 间距——放不下，`flip` 该把它翻到锚点
-  // 下方去，而不是让它压在正文区域上面那条属于顶部横条的带子里。
+  // 锚点上方只剩 4px，而条要 36px（按钮 26 + 上下内距各 4 + 边框各 1）再加
+  // 8px 间距——放不下，`flip` 该把它翻到锚点下方去，而不是让它压在正文区域
+  // 上面那条属于顶部横条的带子里。
   expect(bar.top).toBeGreaterThanOrEqual(spot.top);
 });
 
@@ -900,9 +901,10 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
   // 两条断言恒真、`shift` 的 boundary 删掉都不会红（第八轮对抗查实）。
   // 双击第一行最靠右的那个词，做法跟同文件那条水平翻转用例一致。
   //
-  // 正文列是居中的，它的右端离正文可见区的右边还隔着一整条外边距——1680 宽下
-  // 实测余量 155px。这个余量本身就是设计（正文不贴边），所以前置断言按它的实
-  // 际量级定：条确实被推到了列的右端，而不是停在列中间。
+  // 正文列是居中的，它的右端离正文可见区的右边还隔着一整条外边距，而那条
+  // 外边距随窗口宽度变（正文列有最大宽度，窗口越宽外边距越大）。所以下面的
+  // 前置断言按「条被推到了列的右端、不是停在列中间」来写，不钉某个具体像素
+  // 数——那个数只在量它的那个视口下成立。
   const spot = await page.evaluate(() => {
     const p = document.querySelector('[data-testid="document-space"] .ProseMirror p');
     const text = p?.firstChild as Text;

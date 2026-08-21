@@ -1044,8 +1044,8 @@ describe('选中浮出条', () => {
       editor.commands.selectAll();
     });
 
-    // 区域恢复正常尺寸。分母是钉下时那个零宽——实测不判的话算出 `Infinity`
-    // （非零除以零），条被推到无穷远处。
+    // 区域恢复正常尺寸。分母是钉下时那个零宽，而分子也是零——指针只有正好
+    // 落在那一个点上才过得了 `isInside`，所以不判的话算的是 `0 / 0`，得 NaN。
     pinViewport(new DOMRect(0, 100, 800, 400));
     const rect = bubblePluginView(editor)
       .getReferencedVirtualElement?.()

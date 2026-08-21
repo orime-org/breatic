@@ -106,7 +106,16 @@ const GAP_FROM_SELECTION_PX = 8;
  * is where the button came up; extending with the keyboard, it is the edge
  * being pushed. Anchor there whenever the reader can see it, which is always
  * true of a drag — the pointer was on screen when it was released. Otherwise
- * anchor the other end.
+ * fall back to `from`.
+ *
+ * `from` is the other end only in a FORWARD selection. ProseMirror defines
+ * `from`/`to` as the min and max of anchor and head
+ * (`prosemirror-state@1.4.4/dist/index.js:41`/`:45`), so dragging upward or
+ * extending with Shift+Up gives `head === from` and the fallback re-measures
+ * the same line. That is not a gap being papered over: when the anchored line
+ * has left the body area the bar is meant to go away, and `hide` takes it —
+ * hunting for a third line the reader can currently see is exactly the branch
+ * this replaced.
  *
  * Neither end being on screen is not this function's problem: the `hide`
  * middleware takes the anchor it returns and hides the bar when that anchor
@@ -195,9 +204,14 @@ function selectionBox(view: EditorView): DOMRect {
  * anchor says the same thing in a form flip can see, and it says it on both
  * sides at once, so the gap comes out right whichever way the bar ends up.
  *
- * Zero width is not a shortcut: `top-start` reads the left edge and the top,
- * and a right edge would only invite the shift middleware to slide the bar
- * along a box the user never selected.
+ * Zero width is not a shortcut: under `top-start` the floating x works out to
+ * the reference's own left edge — the width terms cancel
+ * (`@floating-ui/core@1.8.0` `computeCoordsFromPlacement`) — so a right edge
+ * would change no position. It would change two other things: `flip` compares
+ * reference and floating widths when picking which side to try first, and
+ * `hide` measures the reference itself, so a wider rectangle would be judged
+ * visible for longer. `shift` reads neither — it only clamps the floating
+ * element, and its implementation never touches `rects.reference`.
  * @param left - Left edge of the selection, in viewport coordinates.
  * @param line - The anchored line's vertical extent, in viewport coordinates.
  * @param line.top - Its top edge.
@@ -406,9 +420,9 @@ function BubbleBar({
   const isWarranted = React.useCallback((view: EditorView): boolean => {
     const { doc, selection } = view.state;
     if (selection.empty || !editor.isEditable) return false;
-    // Focus before text: `textBetween` walks the selection and builds a string
-    // as long as it, so over a multi-screen selection it is the expensive one.
-    // Everything above and below it answers in constant time.
+    // Focus first, then the text. Both answer in constant time now —
+    // `hasTextIn` stops at the first text node — so this order is no longer
+    // about cost; it is just the cheapest question asked first.
     if (!view.hasFocus()) return false;
     return hasTextIn(doc, selection.from, selection.to);
   }, [editor]);
@@ -450,15 +464,20 @@ function BubbleBar({
       && area.top === pin.area.top
       && area.width === pin.area.width
       && area.height === pin.area.height;
+    // Two operands, two different failures.
+    //
     // The divisor is the OLD area — `pin.area`, the box the point was placed
     // in. It can be degenerate: `isInside` accepts a rectangle collapsed to a
     // single point (`x >= left && x <= right` both hold when they are equal),
-    // so a pin can be written against a 0x0 reading. The new area is tested
-    // too, because a zero one would be stored back here and become the next
-    // call's divisor. Either way the failure is permanent rather than
-    // momentary — NaN would go over the only copy of the pinned point, and
-    // NaN never equals the next reading either, so every later call would
-    // repeat it. With nothing to rescale against, keep what we have.
+    // and a pointer can only pass that test by sitting exactly on it, so the
+    // numerator is zero too: `0 / 0` is NaN. A pin is never rewritten once
+    // made, so that one is permanent.
+    //
+    // The NEW area is tested for a different reason. A zero there makes the
+    // product zero, not NaN, and the bar would sit at the area's own corner
+    // for that one frame — the next reading of a real size is correct again,
+    // because this function always maps from the original point. Momentary,
+    // not permanent, and still worth not doing.
     const measurable =
       pin.area.width > 0 && pin.area.height > 0
       && area.width > 0 && area.height > 0;
