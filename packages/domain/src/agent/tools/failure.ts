@@ -31,6 +31,16 @@ export const FAILURE_LINES = {
   unreachable: "chat.tool.failure.unreachable",
   /** The address is one we refuse to fetch. */
   blocked: "chat.tool.failure.blocked",
+  /**
+   * Something went wrong that no tool of ours described.
+   *
+   * Not for a tool to throw -- a tool knows what it was doing and can say so.
+   * This is for the turn, which also has to record calls that failed before
+   * any of our code ran: input the model shaped wrongly, a tool name that no
+   * longer exists. Those arrive as errors from the SDK with no detail of ours
+   * attached, and a record with nothing in it is what this replaced.
+   */
+  generic: "chat.tool.failure.generic",
 } as const;
 
 /** Which line a reader is shown. */
@@ -58,21 +68,21 @@ export function toolFailed(forModel: string, readerKey: FailureLine): Error {
  * a call that has no result -- but it is thrown as a different kind, and the
  * two are shown and replayed differently from there on.
  */
-const STOPPED_FOR_MODEL =
-  "The user stopped this turn while the tool was still running, so it never returned.";
+export const STOPPED_BY_USER: ToolFailure = {
+  kind: "user_aborted",
+  forModel:
+    "The user stopped this turn while the tool was still running, so it never returned.",
+  // The panel already has a line for a call that never finished, from when
+  // this was told apart by whether a message came with it.
+  readerKey: "chat.tool.unfinished",
+};
 
 /**
  * Build the error a tool throws when the user stopped the turn.
  * @returns The error to throw.
  */
 export function stoppedByUser(): Error {
-  return carrying(new Error(STOPPED_FOR_MODEL), {
-    kind: "user_aborted",
-    forModel: STOPPED_FOR_MODEL,
-    // The panel already has a line for a call that never finished, from when
-    // this was told apart by whether a message came with it.
-    readerKey: "chat.tool.unfinished",
-  } satisfies ToolFailure);
+  return carrying(new Error(STOPPED_BY_USER.forModel), STOPPED_BY_USER);
 }
 
 /**

@@ -61,7 +61,8 @@ describe('一个工具调用走到哪了', () => {
           toolCallId: 'call-1',
           state: 'output-error',
           input: {},
-          errorText: '取不到那个地址',
+          errorText: 'chat.tool.failure.unreachable',
+          failureKind: 'tool_failed',
         },
       ],
     } as unknown as UIMessage;
@@ -69,7 +70,9 @@ describe('一个工具调用走到哪了', () => {
     for (const streaming of [true, false]) {
       const view = toChatMessage(failed, { streaming });
       expect(view.toolCalls?.[0]?.status).toBe('error');
-      expect(view.toolCalls?.[0]?.errorMessage).toBe('取不到那个地址');
+      // 带过来的是要翻译的键，不是原因本身——原因只给模型。
+      expect(view.toolCalls?.[0]?.failureKey).toBe('chat.tool.failure.unreachable');
+      expect(view.toolCalls?.[0]?.failureKind).toBe('tool_failed');
     }
   });
 

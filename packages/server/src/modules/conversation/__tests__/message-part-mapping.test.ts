@@ -98,13 +98,16 @@ describe("what a finished turn writes down", () => {
       },
     ]);
 
+    // No `failure` here on purpose. What the wire carries at this point is the
+    // SDK's one generic line for every error it streams; the specific reason
+    // never went out, and the turn puts it on afterwards from the callback
+    // that was handed the error itself.
     expect(stored[0]).toEqual({
       type: "tool",
       toolCallId: "call-3",
       toolName: "web_fetch",
       input: { url: "https://example.com" },
       status: "error",
-      errorMessage: "读不到",
     });
   });
 
@@ -197,12 +200,59 @@ describe("a message that goes out and comes back", () => {
         toolName: "web_search",
         input: { query: "参考图" },
         status: "error",
-        errorMessage: "读不到",
       },
       { type: "interrupted" },
     ];
 
     expect(toStoredParts(toUiParts(original))).toEqual(original);
+  });
+
+  it("does not carry the model's reason out to the browser", () => {
+    // The one field that deliberately does not survive the round trip. It
+    // names hosts, statuses and, for a refused fetch, addresses inside the
+    // network; the browser is given a key to translate and what kind of
+    // ending it was, and that is the whole of it.
+    const [part] = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "call-5",
+        toolName: "web_fetch",
+        input: { url: "https://example.com" },
+        status: "error",
+        failure: {
+          kind: "tool_failed",
+          forModel: "Fetching https://example.com failed: the site answered HTTP 404.",
+          readerKey: "chat.tool.failure.upstream",
+        },
+      },
+    ]);
+
+    expect(JSON.stringify(part)).not.toContain("404");
+    expect(JSON.stringify(part)).not.toContain("example.com/");
+    expect(part).toMatchObject({
+      state: "output-error",
+      errorText: "chat.tool.failure.upstream",
+      failureKind: "tool_failed",
+    });
+  });
+
+  it("says which of the two endings a stopped call was", () => {
+    const [part] = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "call-6",
+        toolName: "web_search",
+        input: { query: "x" },
+        status: "error",
+        failure: {
+          kind: "user_aborted",
+          forModel: "The user stopped this turn while the tool was still running.",
+          readerKey: "chat.tool.unfinished",
+        },
+      },
+    ]);
+
+    expect(part).toMatchObject({ failureKind: "user_aborted" });
   });
 });
 

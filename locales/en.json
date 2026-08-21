@@ -157,7 +157,14 @@
       "waiting": "Replying"
     },
     "tool": {
-      "unfinished": "Stopped before it finished"
+      "unfinished": "Stopped before it finished",
+      "failure": {
+        "unavailable": "Currently unavailable",
+        "upstream": "The site returned an error",
+        "unreachable": "Address unreachable",
+        "blocked": "This address is not allowed",
+        "generic": "Did not run"
+      }
     },
     "loadEarlier": "Load earlier messages",
     "conversation": {

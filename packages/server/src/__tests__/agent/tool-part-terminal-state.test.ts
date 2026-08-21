@@ -178,7 +178,8 @@ describe("how a tool use is recorded when it does not come back", () => {
 
     const failed = toolPart(parts);
     expect(failed?.status).toBe("error");
-    expect(failed?.errorMessage).toContain("refused");
+    expect(failed?.failure?.kind).toBe("tool_failed");
+    expect(failed?.failure?.forModel).toContain("refused");
   });
 
   it("does not leave a tool the user stopped mid-flight looking like it is still running", async () => {
@@ -189,6 +190,11 @@ describe("how a tool use is recorded when it does not come back", () => {
     const stopped = toolPart(parts);
     expect(stopped).toBeDefined();
     expect(stopped?.status).not.toBe("pending");
+    // And it says which of the two endings it was, so neither the panel nor
+    // the next turn has to guess. This used to be told from whether a reason
+    // came with it, which made every failure look like the user's doing the
+    // moment a reason went missing.
+    expect(stopped?.failure?.kind).toBe("user_aborted");
     // And the turn itself is marked, or coming back to the conversation shows
     // an answer that simply stopped short with nothing to say why.
     expect(parts.some((p) => p.type === "interrupted")).toBe(true);

@@ -274,8 +274,6 @@ export { newId, deriveId } from "@shared/ids.js";
 // called dead. How often they arrive is `config/agent.yaml`'s, served to the
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
-export { toolCallHasOutcome } from "@shared/agent/tool-outcome.js";
-export type { ToolOutcomeFields } from "@shared/agent/tool-outcome.js";
 export { carrying, toolFailureOf } from "@shared/agent/tool-failure.js";
 export type { ToolFailure, ToolFailureKind } from "@shared/agent/tool-failure.js";
 

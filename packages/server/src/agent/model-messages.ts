@@ -19,7 +19,6 @@
 import type { ModelMessage } from "ai";
 import type { ToolResultPart } from "ai";
 
-import { toolCallHasOutcome } from "@breatic/shared";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
@@ -39,14 +38,15 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  * reaches the screen and nothing says why, so a conversation goes quiet from
  * its first interaction tool onward.
  *
- * Only called for parts that `toolCallHasOutcome` accepted, so an `error`
- * here always carries its reason.
+ * Only called for parts that ended, so an `error` here always carries its
+ * detail -- and it is the model's half of that detail that goes, never the
+ * key the panel translates.
  * @param part - The tool part to render
  * @returns The output in its typed form, saying plainly when the tool failed
  */
 function toolOutput(part: ToolPart): ToolResultPart["output"] {
   if (part.status === "error") {
-    return { type: "error-text", value: part.errorMessage ?? "" };
+    return { type: "error-text", value: part.failure?.forModel ?? "" };
   }
   if (typeof part.output === "string") return { type: "text", value: part.output };
   // Whatever the tool answered with, as it was stored. It came out of a
@@ -65,10 +65,14 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
  * Turn stored messages into the messages the model is sent.
  *
  * Reasoning never goes back: it is the model's own working, and returning it
- * teaches nothing while costing every turn. A call that never came back is
- * left out along with its own half — a call with no answer puts the exchange
- * in a state the protocol has no move for, and that is what a turn stopped
- * mid-tool leaves behind.
+ * teaches nothing while costing every turn. A call still in flight is left out
+ * along with its own half — a call with no answer puts the exchange in a state
+ * the protocol has no move for.
+ *
+ * A call the user stopped does go back, saying so. It used to be dropped whole,
+ * which left the next turn reading as one the model had finished answering: it
+ * had no way to know its own reply had been cut off, and carried on as though
+ * it had.
  * @param history - Stored messages, oldest first
  * @returns The same history in protocol form, oldest first
  */
@@ -87,7 +91,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
         continue;
       }
 
-      if (part.type !== "tool" || !toolCallHasOutcome(part)) continue;
+      if (part.type !== "tool" || part.status === "pending") continue;
 
       out.push({
         role: "assistant",

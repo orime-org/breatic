@@ -13,7 +13,7 @@ import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, StopCondition, ToolSet, UIMessageChunk } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/domain";
-import { buildAgentConfig, finalizeTurn, TOOLS_THAT_BLOCK } from "@breatic/domain";
+import { buildAgentConfig, finalizeTurn, STOPPED_BY_USER, TOOLS_THAT_BLOCK } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { reasoningOptionsFor } from "@server/agent/reasoning-options.js";
@@ -21,7 +21,7 @@ import { getAgentConfig } from "@breatic/core";
 import { env } from "@breatic/core";
 import { creditService } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
-import type { MessagePart } from "@breatic/shared";
+import type { MessagePart, ToolFailure } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -29,6 +29,7 @@ import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
+import { endingOf } from "@server/agent/tool-ending.js";
 
 /**
  * What a client is told when the turn's own code fails.
@@ -233,7 +234,7 @@ export class MainAgent {
     // both a provider that failed and our own code throwing.
     let failure: unknown;
 
-    // Why each failed tool call failed, by call id.
+    // How each tool call that came back with nothing ended, by call id.
     //
     // Kept because the protocol does not carry it: the SDK replaces every
     // error text on the wire with one generic line, deliberately, since the
@@ -243,7 +244,7 @@ export class MainAgent {
     // back next turn, so it cannot tell a refused connection from a bad
     // argument and cannot do anything differently. This callback is handed
     // the error itself, before any of that.
-    const whyToolFailed = new Map<string, string>();
+    const howToolEnded = new Map<string, ToolFailure>();
 
     /**
      * Ask the model, once everything it needs has been read.
@@ -295,10 +296,7 @@ export class MainAgent {
         },
         onToolExecutionEnd: ({ toolCall, toolOutput }) => {
           if (toolOutput.type !== "tool-error") return;
-          whyToolFailed.set(
-            toolCall.toolCallId,
-            toolOutput.error instanceof Error ? toolOutput.error.message : String(toolOutput.error),
-          );
+          howToolEnded.set(toolCall.toolCallId, endingOf(toolOutput.error));
         },
         // Deliberately does nothing. The same failure reaches the end of the
         // stream as an error chunk and is recorded there, alongside the ones
@@ -363,22 +361,25 @@ export class MainAgent {
 
         // Put the reasons back. What came off the wire says only that
         // something went wrong, and that sentence is what the model would
-        // read back next turn -- see `whyToolFailed`.
+        // read back next turn -- see `howToolEnded`.
         for (const [i, part] of replyParts.entries()) {
           if (part.type !== "tool" || part.status !== "error") continue;
-          const why = whyToolFailed.get(part.toolCallId);
-          if (why !== undefined) replyParts[i] = { ...part, errorMessage: why };
+          replyParts[i] = {
+            ...part,
+            failure: howToolEnded.get(part.toolCallId) ?? endingOf(undefined),
+          };
         }
 
         // A stored message is a record of something that already happened,
         // so nothing in it may still say "running". A call in flight when
         // the turn was stopped never gets a result, and there is no later
-        // moment that would close it out. No message is set: nothing went
-        // wrong with the tool, the turn simply ended around it, and what to
-        // say about that is the panel's to decide in the reader's language.
+        // moment that would close it out. It is recorded as the user
+        // stopping rather than as a failure: nothing went wrong with the
+        // tool, the turn simply ended around it, and the next turn reads
+        // that record.
         for (const [i, part] of replyParts.entries()) {
           if (part.type === "tool" && part.status === "pending") {
-            replyParts[i] = { ...part, status: "error" };
+            replyParts[i] = { ...part, status: "error", failure: STOPPED_BY_USER };
           }
         }
 

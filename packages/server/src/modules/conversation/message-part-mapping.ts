@@ -59,7 +59,11 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
   // Written only in the state that has one. A pending row carrying an empty
   // output would read as a tool that answered with nothing.
   if (status === "success") stored.output = part.output;
-  if (status === "error" && "errorText" in part) stored.errorMessage = part.errorText;
+  // Nothing is written for an error here. What the wire carries is the SDK's
+  // one generic line for every error it streams, deliberately, because that
+  // channel also carries provider failures naming endpoints and keys. The
+  // turn puts the real detail on afterwards, from the callback handed the
+  // error itself.
   return stored;
 }
 
@@ -107,7 +111,19 @@ export function toUiParts(parts: MessagePart[]): UiParts {
       return { ...base, state: "output-available", output: part.output } as UiPart;
     }
     if (part.status === "error") {
-      return { ...base, state: "output-error", errorText: part.errorMessage } as UiPart;
+      // Two fields, and neither of them is the reason. `errorText` carries a
+      // key for the panel to translate -- a key rather than a sentence
+      // because the row outlives the language it was written in -- and
+      // `failureKind` says which of the two endings this was, which is a
+      // different question from what to say about it. The model's copy of
+      // the reason names hosts, statuses and, for a refused fetch, addresses
+      // inside the network, and it stops here.
+      return {
+        ...base,
+        state: "output-error",
+        errorText: part.failure?.readerKey,
+        failureKind: part.failure?.kind,
+      } as UiPart;
     }
     return { ...base, state: "input-available" } as UiPart;
   });

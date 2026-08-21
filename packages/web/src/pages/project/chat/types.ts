@@ -7,6 +7,8 @@
  * regardless of the backend wire schema (data/api/chat.ts adapts).
  */
 
+import type { ToolFailureKind } from '@breatic/shared';
+
 export type ChatRole = 'user' | 'assistant' | 'system';
 
 export interface ToolCall {
@@ -16,7 +18,24 @@ export interface ToolCall {
   result?: unknown;
   /** How far this use of the tool got, as the store recorded it. */
   status: 'pending' | 'success' | 'error';
-  errorMessage?: string;
+  /**
+   * Which of the two endings left it without a result.
+   *
+   * A failure and a turn the user stopped both come over as `error`, and they
+   * are shown differently. Absent while a turn is still streaming: the SDK's
+   * client assembles those parts itself and knows only that something went
+   * wrong, which is a failure either way — a call the user stopped is left
+   * `pending` there, not `error`.
+   */
+  failureKind?: ToolFailureKind;
+  /**
+   * The line to show, as a translation key.
+   *
+   * Never the reason itself. That names hosts, statuses and, for a refused
+   * fetch, addresses inside the network; it goes to the model, which is what
+   * acts on it, and the user learns what happened from the reply.
+   */
+  failureKey?: string;
 }
 
 export interface ChatMessage {

@@ -5,10 +5,15 @@
  * How a tool use is shown once the turn it belonged to is over.
  *
  * Two endings leave a tool with no result and they are not the same thing.
- * The tool can fail, and then it says why. Or the user can stop the turn
- * while the tool is still running, and then nothing went wrong — it simply
- * never finished. Storage keeps both as `error`, because there is no third
- * terminal state; what separates them is whether a reason came with it.
+ * The tool can fail, or the user can stop the turn while it is still running,
+ * and then nothing went wrong — it simply never finished. Storage keeps both
+ * as `error`, because there is no third terminal state; which one it was
+ * comes over as its own field.
+ *
+ * What the card shows is a translated line, never the reason itself. The
+ * reason names hosts, statuses and, for a refused fetch, addresses inside the
+ * network, and it does not leave the backend — the user learns what happened
+ * from the assistant's reply, in its own words.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -26,17 +31,36 @@ function call(over: Partial<ToolCall>): ToolCall {
   return { id: 'tc-1', name: 'web_search', args: {}, status: 'success', ...over };
 }
 
+/** A call the tool itself failed. */
+const failed = {
+  status: 'error',
+  failureKind: 'tool_failed',
+  failureKey: 'chat.tool.failure.unreachable',
+} as const;
+
+/** A call the user stopped mid-flight. */
+const stopped = {
+  status: 'error',
+  failureKind: 'user_aborted',
+  failureKey: 'chat.tool.unfinished',
+} as const;
+
 describe('ToolCallCard', () => {
-  it('says why a tool failed, in the words the failure came with', () => {
-    render(<ToolCallCard toolCall={call({ status: 'error', errorMessage: 'the site refused' })} />);
-    expect(screen.getByTestId('tool-call-error').textContent).toBe('the site refused');
+  it('says a tool failed, in the reader’s own language', () => {
+    render(<ToolCallCard toolCall={call(failed)} />);
+
+    const shown = screen.getByTestId('tool-call-error').textContent ?? '';
+    expect(shown.length).toBeGreaterThan(0);
+    // Translated, not the key itself: an untranslated key would render as
+    // `chat.tool.failure.unreachable` and read as a bug to whoever saw it.
+    expect(shown).not.toContain('chat.tool');
   });
 
   it('does not call a tool the user stopped a failure', () => {
-    // Stored as `error` with no reason, because nothing went wrong: the turn
-    // was stopped while it was still running. Showing this as a failure tells
-    // the user something broke when they are the one who stopped it.
-    render(<ToolCallCard toolCall={call({ status: 'error' })} />);
+    // Showing this as a failure tells the user something broke when they are
+    // the one who stopped it.
+    render(<ToolCallCard toolCall={call(stopped)} />);
+
     expect(screen.queryByTestId('tool-call-error')).toBeNull();
     expect(screen.getByTestId('tool-call-unfinished')).toBeInTheDocument();
   });
@@ -44,21 +68,32 @@ describe('ToolCallCard', () => {
   it('does not draw a stopped call with the failure icon either', () => {
     // The caption and the icon are two ways of saying the same thing. Fixing
     // only the words leaves the louder one still calling it a failure.
-    const { container } = render(<ToolCallCard toolCall={call({ status: 'error' })} />);
+    const { container } = render(<ToolCallCard toolCall={call(stopped)} />);
+
     expect(screen.getByTestId('tool-call-card').getAttribute('data-status')).toBe('unfinished');
     expect(container.querySelector('.text-status-error')).toBeNull();
   });
 
   it('does draw a real failure with the failure icon', () => {
-    const { container } = render(
-      <ToolCallCard toolCall={call({ status: 'error', errorMessage: 'the site refused' })} />,
-    );
+    const { container } = render(<ToolCallCard toolCall={call(failed)} />);
+
     expect(screen.getByTestId('tool-call-card').getAttribute('data-status')).toBe('error');
     expect(container.querySelector('.text-status-error')).not.toBeNull();
   });
 
+  it('still calls it a failure when the ending came over without a line', () => {
+    // A record written before this field existed, or one whose failure the
+    // turn could not describe. `error` on its own is a failure — reading the
+    // absence of a line as "the user stopped it" is what the old rule did,
+    // and it turned every failure into somebody else's doing.
+    render(<ToolCallCard toolCall={call({ status: 'error' })} />);
+
+    expect(screen.getByTestId('tool-call-card').getAttribute('data-status')).toBe('error');
+  });
+
   it('shows nothing extra for a tool that came back normally', () => {
     render(<ToolCallCard toolCall={call({ status: 'success', result: 'two links' })} />);
+
     expect(screen.queryByTestId('tool-call-error')).toBeNull();
     expect(screen.queryByTestId('tool-call-unfinished')).toBeNull();
   });

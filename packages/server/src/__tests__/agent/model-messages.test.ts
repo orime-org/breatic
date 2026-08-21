@@ -173,7 +173,11 @@ describe("history on its way to the model", () => {
           toolName: "web_fetch",
           input: { url: "https://example.com" },
           status: "error",
-          errorMessage: "the site refused the connection",
+          failure: {
+            kind: "tool_failed",
+            forModel: "the site refused the connection",
+            readerKey: "chat.tool.failure.unreachable",
+          },
         },
       ]),
     ]).slice(1);
@@ -190,13 +194,36 @@ describe("history on its way to the model", () => {
     });
   });
 
-  it("leaves out a call that never came back", () => {
-    // A turn stopped while a tool was still running is swept to `error` on the
-    // way to storage, with nothing to say about why — because nothing went
-    // wrong, it simply never finished. That is how it comes back here, and a
-    // call with no result puts the conversation in a state the protocol has no
-    // answer for, so neither half goes.
-    const history = [
+  it("keeps the line meant for a reader out of what the model is sent", () => {
+    // Two audiences, two fields, and only one of them travels. The key is what
+    // the panel translates; the model has no use for it and every string put
+    // in front of a model is read as something it was meant to act on.
+    const messages = toModelMessages([
+      stored("user", [{ type: "text", text: "fetch it" }]),
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-3",
+          toolName: "web_fetch",
+          input: { url: "https://example.com" },
+          status: "error",
+          failure: {
+            kind: "tool_failed",
+            forModel: "the site refused the connection",
+            readerKey: "chat.tool.failure.unreachable",
+          },
+        },
+      ]),
+    ]);
+
+    expect(JSON.stringify(messages)).not.toContain("chat.tool.failure");
+  });
+
+  it("tells the model the last turn was stopped by the user", () => {
+    // Task #93. A stopped turn used to be dropped whole, so the next turn read
+    // as one the model had finished answering -- it had no way to know its own
+    // reply had been cut off, and would carry on as though it had.
+    const [, toolMessage] = toModelMessages([
       stored("user", [{ type: "text", text: "search" }]),
       stored("assistant", [
         {
@@ -205,8 +232,46 @@ describe("history on its way to the model", () => {
           toolName: "web_search",
           input: { query: "x" },
           status: "error",
+          failure: {
+            kind: "user_aborted",
+            forModel: "The user stopped this turn while the tool was still running.",
+            readerKey: "chat.tool.unfinished",
+          },
         },
         { type: "interrupted" },
+      ]),
+    ]).slice(1);
+
+    expect(toolMessage).toMatchObject({
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "tc-4",
+          output: {
+            type: "error-text",
+            value: expect.stringContaining("stopped"),
+          },
+        },
+      ],
+    });
+  });
+
+  it("leaves out a call still in flight", () => {
+    // The one state with nothing to replay. A stored part is never `pending`
+    // -- the turn sweeps it before writing -- but the conversion is handed
+    // parts from a turn still running too, and a call with no result puts the
+    // exchange in a state the protocol has no move for.
+    const history = [
+      stored("user", [{ type: "text", text: "search" }]),
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-5",
+          toolName: "web_search",
+          input: { query: "x" },
+          status: "pending",
+        },
       ]),
     ];
 

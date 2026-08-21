@@ -71,8 +71,14 @@ export function toChatMessage(
         args: (part.input ?? {}) as Record<string, unknown>,
         status,
         ...(status === 'success' ? { result: part.output as string } : {}),
+        // Both come off a replayed message. A turn still streaming carries
+        // neither: the SDK's client assembles those parts itself, and all it
+        // has for an error is one generic line it wrote.
         ...(status === 'error' && 'errorText' in part && part.errorText !== undefined
-          ? { errorMessage: part.errorText }
+          ? { failureKey: part.errorText }
+          : {}),
+        ...(status === 'error' && 'failureKind' in part
+          ? { failureKind: (part as { failureKind: ToolCall['failureKind'] }).failureKind }
           : {}),
       });
       continue;

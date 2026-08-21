@@ -157,7 +157,14 @@
       "waiting": "応答中"
     },
     "tool": {
-      "unfinished": "完了前に停止しました"
+      "unfinished": "完了前に停止しました",
+      "failure": {
+        "unavailable": "現在利用できません",
+        "upstream": "エラーが返されました",
+        "unreachable": "アドレスに接続できません",
+        "blocked": "このアドレスは許可されていません",
+        "generic": "実行できませんでした"
+      }
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {
