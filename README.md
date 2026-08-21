@@ -6,8 +6,6 @@ The AI-native operating system for content creators — a unified workspace wher
 
 ## Documentation
 
-- [docs/DEPLOY.md](./docs/DEPLOY.md) — Deployment guide (Docker Compose + nginx, configuration, troubleshooting)
-- [docs/ROADMAP.md](./docs/ROADMAP.md) — Development roadmap (Backend, Frontend, DevOps)
 - [docs/DD-PROCESS.md](./docs/DD-PROCESS.md) — Due Diligence process for major decisions
 - [docs/TDD-MANDATE.md](./docs/TDD-MANDATE.md) — Test-Driven Development discipline (AI-era mandate)
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guide, commit conventions, commit author policy
@@ -125,8 +123,6 @@ BREATIC_TAG=test_thinkai_cc   # track the test branch
 # or BREATIC_TAG=1.2.3         # pin a released version
 ```
 
-See [docs/DEPLOY.md](./docs/DEPLOY.md) for Nginx/SSL/CI details and the image tag reference.
-
 ### I want to contribute code (development)
 
 Runs API / Worker / Collab as native Node processes with hot-reload. Docker is only used for the PostgreSQL and Redis services — app code is read directly from the workspace.
@@ -195,7 +191,7 @@ All endpoints are under `/api/v1`:
 | `/tasks` | Task status and history |
 | `/skills` | Built-in + marketplace skills |
 | `/payment` | Stripe checkout and webhooks |
-| `/healthz` | Liveness probe — on a **dedicated port** (API `:3001`), not the main API port; see [docs/DEPLOY.md](./docs/DEPLOY.md#health-check-design) |
+| `/healthz` | Liveness probe — on a **dedicated port** (API `:3001`), not the main API port |
 
 ## Testing
 
@@ -215,10 +211,6 @@ pnpm lint
 # Generate API docs
 pnpm docs
 ```
-
-## Roadmap
-
-See [docs/ROADMAP.md](./docs/ROADMAP.md) for the full development roadmap.
 
 ## Security
 

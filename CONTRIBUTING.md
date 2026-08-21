@@ -12,13 +12,11 @@ Be kind. Be technical. Assume good intent. Disagree with ideas, not people.
 1. Fork the repository and clone your fork.
 2. Create a feature branch from `main`: `git checkout -b feat/your-feature`.
 3. Install dependencies: `pnpm install`.
-4. Copy environment template: `cp .env.dev .env` and fill in the values
-   you need (see [docs/DEPLOY.md](./docs/DEPLOY.md) for reference).
+4. Copy environment template: `cp .env.dev .env` and fill in the values you need.
 5. Run `pnpm typecheck` and `pnpm test` before committing.
 6. Open a pull request targeting `main`.
 
-See [docs/DEPLOY.md](./docs/DEPLOY.md) for full local development setup (Docker, DB,
-Redis, etc.) and [README.md](./README.md) for architecture overview.
+See [README.md](./README.md) for the architecture overview.
 
 ---
 
@@ -95,7 +93,7 @@ Examples:
 ```
 feat(canvas): add node history API
 fix(worker): handle null result from WaveSpeed
-docs: update ROADMAP with completed tasks
+docs: update the architecture doc
 chore(ci): bump pnpm to 9.15.0
 ```
 

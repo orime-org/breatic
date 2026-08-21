@@ -12,7 +12,7 @@
  *
  * Mirrors the `limits.ts` / `pricing.ts` / `text-tools.ts` business-
  * config loaders: a yaml file under `config/` validated by a Zod schema
- * and memoized. See `docs/CONFIGURATION.md` for the params catalog.
+ * and memoized.
  */
 
 import { readFileSync } from "node:fs";
