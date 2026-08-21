@@ -18,8 +18,6 @@
  */
 
 // ── Credit (the "spend" side: deduction + balance + ledger) ──────
-export * as creditService from "@domain/credit/credit.service.js";
-export * as creditRepo from "@domain/credit/credit.repo.js";
 // The lot-based engine (#11): the only writer of a lot's lifecycle, its
 // designation, and what is left on it.
 export * as creditLotService from "@domain/credit/creditLot.service.js";

@@ -769,44 +769,6 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
     .notNull(),
 });
 
-// ── 8. Credit Transactions ───────────────────────────────────────────
-
-export const creditTransactions = pgTable(
-  "credit_transactions",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    txType: varchar("tx_type", { length: 20 }).notNull(),
-    amount: doublePrecision("amount").notNull(),
-    balanceAfter: doublePrecision("balance_after").notNull(),
-    tokensUsed: integer("tokens_used").default(0),
-    model: varchar("model", { length: 100 }),
-    provider: varchar("provider", { length: 50 }),
-    description: text("description"),
-    referenceId: varchar("reference_id", { length: 255 }),
-    ...timestamps,
-  },
-  (table) => [index("credit_tx_user_id_idx").on(table.userId)],
-);
-
-// ── 8b. Credit Balances ──────────────────────────────────────────────
-
-/**
- * Per-user credit balance - one row per user, the single source of
- * truth for "how many credits a user has left". Migrated out of the
- * `users.credits` column (PR3, migration 0020) so the credit domain is
- * self-contained and no longer coupled to the user identity table.
- */
-export const creditBalances = pgTable("credit_balances", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "restrict" }),
-  balance: doublePrecision("balance").default(0).notNull(),
-  ...timestamps,
-});
-
 // ── 8c. Credit Lots & Ledger ─────────────────────────────────────────
 
 /**

@@ -179,12 +179,6 @@ export const mocks = {
   textToolService: {
     execute: vi.fn(),
   },
-  creditService: {
-    deduct: vi.fn().mockResolvedValue(100),
-    deductOnce: vi.fn().mockResolvedValue({ deducted: true, creditsAfter: 95 }),
-    getBalance: vi.fn().mockResolvedValue(100),
-    add: vi.fn().mockResolvedValue(200),
-  },
   // The lot engine (#11). Its shape follows the real module: the two reads
   // answer in credits, and a charge reports what it took and what it could
   // not. A route suite that leaves these unmocked reaches the real queries
@@ -208,15 +202,6 @@ export const mocks = {
     }),
     grantFromPayment: vi.fn(),
     designateLot: vi.fn(),
-  },
-  // Balance repo (credit_balances table, PR3).
-  creditRepo: {
-    getBalance: vi.fn().mockResolvedValue(100),
-    deductBalance: vi.fn().mockResolvedValue(70),
-    addBalance: vi.fn().mockResolvedValue(200),
-    createBalanceRow: vi.fn().mockResolvedValue(undefined),
-    recordTransaction: vi.fn().mockResolvedValue({ id: "tx-1" }),
-    listTransactionsByUser: vi.fn().mockResolvedValue([]),
   },
   taskRepo: {
     getById: vi.fn(),
@@ -463,9 +448,7 @@ export const domainMock = () => ({
   assetService: mocks.assetService,
   taskService: mocks.taskService,
   taskRepo: mocks.taskRepo,
-  creditService: mocks.creditService,
   creditLotService: mocks.creditLotService,
-  creditRepo: mocks.creditRepo,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,
   modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },

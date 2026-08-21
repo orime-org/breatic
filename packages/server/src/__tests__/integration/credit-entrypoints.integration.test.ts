@@ -135,9 +135,10 @@ describe("充值到账", () => {
     expect(lots).toHaveLength(1);
     expect(lots[0]?.remaining_credits).toBe("880.000000");
 
-    // 旧模型仅有的入账写入点就是这里。它还写着旧表，新账就永远是零。
+    // 归档表是上一个模型留下的只读记录，新的入账一行都不该落进去。
     const legacy = await sql<{ count: string }[]>`
-      SELECT COUNT(*)::text AS count FROM credit_balances WHERE user_id = ${fx.userId}
+      SELECT COUNT(*)::text AS count
+      FROM credit_transactions_archived WHERE user_id = ${fx.userId}
     `;
     expect(legacy[0]?.count).toBe("0");
   });
@@ -158,13 +159,16 @@ describe("充值到账", () => {
 });
 
 describe("注册", () => {
-  it("不再开余额行——新模型里没有这个东西", async () => {
+  it("注册出来的账号一分积分都没有，也没有任何积分行", async () => {
+    // 旧模型给每个新账号开一行余额。新模型里积分只从付款长出来，所以一个
+    // 刚注册的账号在积分这边不该留下任何痕迹。
     const email = `reg-${seq++}-${Date.now()}@example.test`;
     const { user } = await authService.register(email, "correct horse battery");
     const counted = await sql<{ count: string }[]>`
-      SELECT COUNT(*)::text AS count FROM credit_balances WHERE user_id = ${user.id}
+      SELECT COUNT(*)::text AS count FROM credit_lots WHERE user_id = ${user.id}
     `;
     expect(counted[0]?.count).toBe("0");
+    expect(await creditLotService.getUnassignedCredits(user.id)).toBe(0);
   });
 });
 

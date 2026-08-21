@@ -435,6 +435,13 @@
       "when": 1787279154257,
       "tag": "0061_credit_lots_and_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1787293160810,
+      "tag": "0062_retire_credit_balances",
+      "breakpoints": true
     }
   ]
 }

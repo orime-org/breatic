@@ -14,18 +14,13 @@ import { createRule } from "#rules/create-rule";
  */
 const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   ["payments", "append-only financial record; deleting one breaks the audit trail"],
-  ["creditTransactions", "append-only credit ledger; immutable accounting"],
   [
     "membershipTierChanges",
-    "append-only ledger of tier moves, the same carve-out as creditTransactions above: the column on users holds the current tier and every change to it is appended here, so deleting a row leaves a history that no longer adds up to the value on the account",
-  ],
-  [
-    "creditBalances",
-    "1:1 with users (PK = user_id); its soft-delete is derived from users.deleted_at through the join in credit.repo.ts, and an own column would be a second source of truth",
+    "append-only ledger of tier moves, the same carve-out as payments above: the column on users holds the current tier and every change to it is appended here, so deleting a row leaves a history that no longer adds up to the value on the account",
   ],
   [
     "creditLedger",
-    "append-only credit ledger (0061), the table that replaces creditTransactions above and inherits its carve-out: a lot's remaining balance IS this table summed over that lot, so deleting a row would silently change a balance that has already been spent against, and deleting a topup row would make that payment grantable again",
+    "append-only credit ledger (0061): a lot's remaining balance IS this table summed over that lot, so deleting a row would silently change a balance that has already been spent against, and deleting a topup row would make that payment grantable again",
   ],
   [
     "projectLifecycleOutbox",

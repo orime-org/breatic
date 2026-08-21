@@ -222,6 +222,21 @@ describe("credit_lots", () => {
   });
 });
 
+describe("旧模型退场（0062）", () => {
+  it("credit_balances 整张表撤掉了", async () => {
+    // 「未指定不能花」之后，账号总额不再是任何一个可花的数字。留着这张表，
+    // 就会有人拿它去做判断。
+    expect(await columnsOf("credit_balances")).toEqual(new Map());
+  });
+
+  it("credit_transactions 改名归档，行还在", async () => {
+    // 旧行没有 lot 维度，迁不出「属于哪一笔」，所以新账从新表起。旧行留着
+    // 只读，不参与任何查询。
+    expect((await columnsOf("credit_transactions")).size).toBe(0);
+    expect((await columnsOf("credit_transactions_archived")).size).toBeGreaterThan(0);
+  });
+});
+
 describe("credit_ledger", () => {
   it("requires a payer but not a lot", async () => {
     const cols = await columnsOf("credit_ledger");
