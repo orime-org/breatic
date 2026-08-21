@@ -223,7 +223,7 @@ export default function StudioContainerPage(): React.JSX.Element {
               ) : null}
               {tab === 'credits' ? (
                 <CreditsTab
-                  wallet={view.wallet}
+                  slug={slug}
                   studioRole={view.studio.myStudioRole}
                 />
               ) : null}
