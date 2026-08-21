@@ -185,10 +185,31 @@ export const mocks = {
     getBalance: vi.fn().mockResolvedValue(100),
     add: vi.fn().mockResolvedValue(200),
   },
-  // Balance repo (credit_balances table, PR3). The auth middleware now
-  // resolves AuthUser.credits via creditRepo.getBalance, so EVERY authed
-  // route touches this — without the mock, the real repo hits the empty
-  // mock `db` and 500s the whole route suite.
+  // The lot engine (#11). Its shape follows the real module: the two reads
+  // answer in credits, and a charge reports what it took and what it could
+  // not. A route suite that leaves these unmocked reaches the real queries
+  // against the empty mock `db` and 500s.
+  creditLotService: {
+    getSpendableCredits: vi.fn().mockResolvedValue(100),
+    getUnassignedCredits: vi.fn().mockResolvedValue(0),
+    chargeForGeneration: vi.fn().mockResolvedValue({
+      billed: true,
+      charged: 5,
+      shortfall: 0,
+      studioId: "s0000000-0000-4000-8000-000000000001",
+      lotIds: ["l0000000-0000-4000-8000-000000000001"],
+    }),
+    chargeOnceForGeneration: vi.fn().mockResolvedValue({
+      billed: true,
+      charged: 5,
+      shortfall: 0,
+      studioId: "s0000000-0000-4000-8000-000000000001",
+      lotIds: ["l0000000-0000-4000-8000-000000000001"],
+    }),
+    grantFromPayment: vi.fn(),
+    designateLot: vi.fn(),
+  },
+  // Balance repo (credit_balances table, PR3).
   creditRepo: {
     getBalance: vi.fn().mockResolvedValue(100),
     deductBalance: vi.fn().mockResolvedValue(70),
@@ -443,6 +464,7 @@ export const domainMock = () => ({
   taskService: mocks.taskService,
   taskRepo: mocks.taskRepo,
   creditService: mocks.creditService,
+  creditLotService: mocks.creditLotService,
   creditRepo: mocks.creditRepo,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,

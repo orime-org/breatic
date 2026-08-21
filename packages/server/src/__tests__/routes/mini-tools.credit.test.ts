@@ -54,7 +54,7 @@ const BINDING = {
 
 describe("Mini-tools credit pre-check (BUG-015)", () => {
   beforeEach(() => {
-    mocks.creditService.getBalance.mockReset();
+    mocks.creditLotService.getSpendableCredits.mockReset();
     mocks.taskService.create.mockReset();
     mocks.taskService.create.mockResolvedValue({ id: "task-1", taskType: "image" });
     mockQueueAdd.mockReset();
@@ -62,7 +62,7 @@ describe("Mini-tools credit pre-check (BUG-015)", () => {
   });
 
   it("rejects image tool with 402 when insufficient credits", async () => {
-    mocks.creditService.getBalance.mockResolvedValue(0);
+    mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
 
     const app = createApp();
     const res = await app.request("/api/v1/mini-tools/image", {
@@ -79,7 +79,7 @@ describe("Mini-tools credit pre-check (BUG-015)", () => {
   });
 
   it("allows image tool when credits sufficient", async () => {
-    mocks.creditService.getBalance.mockResolvedValue(100);
+    mocks.creditLotService.getSpendableCredits.mockResolvedValue(100);
 
     const app = createApp();
     const res = await app.request("/api/v1/mini-tools/image", {
@@ -98,8 +98,8 @@ describe("Mini-tools credit pre-check (BUG-015)", () => {
 
 describe("Mini-tools target_node_id forwarding (Phase 2 forward-fix A.4)", () => {
   beforeEach(() => {
-    mocks.creditService.getBalance.mockReset();
-    mocks.creditService.getBalance.mockResolvedValue(100);
+    mocks.creditLotService.getSpendableCredits.mockReset();
+    mocks.creditLotService.getSpendableCredits.mockResolvedValue(100);
     mocks.taskService.create.mockReset();
     mocks.taskService.create.mockResolvedValue({ id: "task-1", taskType: "image" });
     mocks.taskService.setJobId.mockReset();

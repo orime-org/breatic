@@ -34,7 +34,7 @@ const addMessage = vi.fn(
   async (_id: string, _msg: Record<string, unknown>) => 1,
 );
 const consolidateIfNeeded = vi.fn(async () => undefined);
-const deductOnce = vi.fn(async (..._args: unknown[]) => undefined);
+const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => undefined);
 /** Set when the code under test reads `usage`, which is what consumes a stream. */
 const usageRead = vi.fn();
 
@@ -88,7 +88,7 @@ vi.mock("@breatic/domain", async () => {
       instructions: "sys",
       tools: {},
     }),
-    creditService: { deductOnce },
+    creditLotService: { chargeOnceForGeneration },
     resolveProvider: () => "test",
     getModel: () => "model",
   };
@@ -123,7 +123,7 @@ vi.mock("@server/agent/context.js", () => ({
 }));
 
 beforeEach(() => {
-  [addMessage, consolidateIfNeeded, deductOnce, usageRead].forEach((m) => m.mockClear());
+  [addMessage, consolidateIfNeeded, chargeOnceForGeneration, usageRead].forEach((m) => m.mockClear());
 });
 
 // The turn asks the conversation what it is called, so it can say so in the
@@ -210,10 +210,10 @@ describe("a turn cut short by the client", () => {
       ),
     ).toBe(true);
     expect(consolidateIfNeeded).toHaveBeenCalled();
-    expect(deductOnce).toHaveBeenCalled();
+    expect(chargeOnceForGeneration).toHaveBeenCalled();
     // What it billed for is the step the stream actually reported, not the
     // figure the consuming getter would have produced.
-    expect(deductOnce.mock.calls[0]?.[4]).toMatchObject({ tokensUsed: 900 });
+    expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({ tokensUsed: 900 });
     expect(usageRead).not.toHaveBeenCalled();
   });
 });

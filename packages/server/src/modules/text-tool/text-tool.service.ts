@@ -16,7 +16,7 @@ import { t } from "@breatic/shared";
 import { getModel } from "@breatic/domain";
 import { getModelForTool, getPromptForTool } from "@server/config/text-tools.js";
 import { env } from "@breatic/core";
-import { creditService } from "@breatic/domain";
+import { creditLotService } from "@breatic/domain";
 import { getRedis } from "@breatic/core";
 
 /** SSE event yielded during text tool execution. */
@@ -220,12 +220,16 @@ async function deductForTokens(
   if (credits <= 0) return 0;
 
   try {
-    await creditService.deductOnce(
-      userId,
-      `texttool:${idempotencyKey}`,
-      credits,
-      `Text tool: ${tool}`,
-    );
+    // `projectId` is null because this route never took one (#122). That is a
+    // gap in the product, not a decision: the pool that pays is chosen by the
+    // project a generation runs in, so until the route carries one, a text
+    // tool records what it used and charges nobody.
+    await creditLotService.chargeOnceForGeneration(`texttool:${idempotencyKey}`, {
+      projectId: null,
+      actorUserId: userId,
+      amount: credits,
+      description: `Text tool: ${tool}`,
+    });
     return credits;
   } catch {
     // Don't fail the response if credit deduction fails (e.g.

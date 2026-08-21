@@ -504,12 +504,18 @@ describe("并发", () => {
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
+    let acquired: () => void = () => {};
+    // 等的是「闸门真的拿到了锁」这件事本身。等固定毫秒数在负载高的机器上
+    // 会放被测方先跑完，于是它一次都没停在锁上，而测试报的是探针超时。
+    const lockHeld = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
     const done = gate.begin(async (tx) => {
       await tx`SELECT id FROM credit_lots WHERE id = ${lotId} FOR UPDATE`;
+      acquired();
       await held;
     });
-    // 等闸门自己先拿到锁，否则被测方可能抢在它前面。
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await lockHeld;
     return async () => {
       release();
       await done;
@@ -595,12 +601,17 @@ describe("并发", () => {
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
+    let acquired: () => void = () => {};
+    const lockHeld = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
     const done = gate.begin(async (tx) => {
       await tx`SELECT id FROM credit_lots WHERE id = ${lotId} FOR UPDATE`;
+      acquired();
       await held;
       await tx`UPDATE credit_lots SET lifecycle = 'refund_pending' WHERE id = ${lotId}`;
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await lockHeld;
 
     const charging = creditLotService.chargeForGeneration({
       projectId: fx.projectId,

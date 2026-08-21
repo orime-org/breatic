@@ -98,7 +98,6 @@ describe('useCurrentUserStore', () => {
       id: 'u3',
       email: 'c@d.com',
       personalStudio: { name: 'Carol', slug: 'carol', avatarUrl: null },
-      credits: 0,
       membershipTier: 'pro',
     });
 
@@ -111,7 +110,6 @@ describe('useCurrentUserStore', () => {
       id: 'u4',
       email: 'e@f.com',
       personalStudio: null,
-      credits: 0,
       membershipTier: 'enterprise',
     });
 

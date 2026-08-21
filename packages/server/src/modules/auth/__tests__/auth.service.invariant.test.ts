@@ -28,13 +28,7 @@
  *      (b) Redis key deleted (no replay), (c) deleteAllSessions called
  *      (force re-login after reset). Defends against partial cleanup
  *      regressions.
- *
- *   5. register seeds credit_balances — every new user gets a balance
- *      row via creditRepo.createBalanceRow(user.id) (PR3 moved credits
- *      out of the users table into credit_balances). Defends against a
- *      regression that would leave new users with no balance row, which
- *      would make the auth middleware's getBalance throw on their first
- *      request.
+
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -64,16 +58,14 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
   };
 });
 
-// creditRepo.createBalanceRow moved to @breatic/domain (PR4). Mock it
-// EXPLICITLY (no importOriginal) so loading it never pulls the real agent
-// llm and the `ai` SDK behind it.
-const mockCreateBalanceRow = vi.fn().mockResolvedValue(undefined);
+// Mocked EXPLICITLY (no importOriginal) so loading @breatic/domain never
+// pulls the real agent llm and the `ai` SDK behind it.
 vi.mock("@breatic/domain", () => ({
   creditRepo: {
-    createBalanceRow: mockCreateBalanceRow,
     getBalance: vi.fn(),
     deductBalance: vi.fn(),
     addBalance: vi.fn(),
+    createBalanceRow: vi.fn(),
     recordTransaction: vi.fn(),
     listTransactionsByUser: vi.fn(),
   },
@@ -192,23 +184,6 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     expect(userId).toBe("u-new");
     expect(storedHash).toMatch(/^\$2[abxy]\$12\$/);
     expect(storedHash).not.toBe(result.recoveryCode);
-  });
-
-  it("register() seeds a credit_balances row for the new user (PR3 atomic-balance invariant)", async () => {
-    mockGetUserByEmail.mockResolvedValue(null);
-    mockCreateUser.mockResolvedValue({
-      id: "u-new",
-      email: "new@example.com",
-    });
-
-    const { register } = await import("../auth.service.js");
-    await register("new@example.com", "validPassword123");
-
-    // PR3 moved credits out of the users table into credit_balances;
-    // every newly-registered user must get a balance row seeded so the
-    // auth middleware's creditRepo.getBalance resolves on first request.
-    expect(mockCreateBalanceRow).toHaveBeenCalledOnce();
-    expect(mockCreateBalanceRow).toHaveBeenCalledWith("u-new");
   });
 
   it("resetPassword() also hashes with cost 12", async () => {

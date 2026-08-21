@@ -157,8 +157,8 @@ async function seed(balance = 100_000): Promise<Seeded> {
  */
 async function settlementsFor(userId: string): Promise<string[]> {
   const rows = await sql<{ reference_id: string }[]>`
-    SELECT reference_id FROM credit_transactions
-    WHERE user_id = ${userId} AND tx_type = 'deduct'
+    SELECT reference_id FROM credit_ledger
+    WHERE payer_user_id = ${userId} AND entry_type = 'spend'
     ORDER BY created_at
   `;
   return rows.map((r) => r.reference_id);

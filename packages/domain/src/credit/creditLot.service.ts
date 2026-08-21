@@ -29,9 +29,26 @@ import {
   fromMicroCredits,
   planCharge,
 } from "@domain/credit/credit-math.js";
-import { db, env, AppError, NotFoundError, ForbiddenError } from "@breatic/core";
+import {
+  db,
+  env,
+  getRedis,
+  AppError,
+  NotFoundError,
+  ForbiddenError,
+} from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { CreditLotEntity } from "@breatic/shared";
+
+/**
+ * The shape a caller-supplied idempotency key must take: ASCII alphanumerics
+ * plus `_`, `:`, `.` and `-`, 1 to 255 long. Checked at entry so a malformed
+ * key cannot collide with another by collapsing to the same lock key.
+ */
+export const REFKEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
+
+/** How long a billed key stays claimed. */
+const BILL_LOCK_TTL_SECONDS = 86_400;
 
 /** Lifecycles in which a lot is on its way out of the account. */
 const REFUND_LIFECYCLES: ReadonlySet<string> = new Set([
@@ -87,8 +104,8 @@ export interface ChargeOutcome {
  *
  * The lot is born unassigned, so the credits are not spendable until someone
  * designates them. That is a deliberate consequence of "unassigned cannot be
- * spent" and the interface has to say so — a buyer who is told only that they
- * may* assign will assume they can spend without it.
+ * spent" and the interface has to say so: a buyer told only that assigning is
+ * available will assume the credits already work.
  * @param input - The completed payment.
  * @param input.paymentId - The payment row. Unique across lots, so a redelivered webhook fails here.
  * @param input.userId - Who paid.
@@ -218,6 +235,35 @@ export async function chargeForGeneration(
     }
 
     const plan = planCharge(locked, amountMicro);
+
+    // Nothing could be taken: the studio holds no spendable lot, or the ones
+    // it held were reassigned or refunded while the task ran. The usage is
+    // recorded against the person with no lot behind it, the same shape a
+    // payments-off install writes — without it this generation leaves no
+    // trace at all, and the account shows work that never happened.
+    //
+    // A partial charge writes no such row: its allocations already record the
+    // generation under one reference id, and a second row for the uncovered
+    // part would double it in any sum over that id. What went uncharged there
+    // reaches the caller as `shortfall`.
+    if (plan.allocations.length === 0) {
+      await creditLotRepo.appendLedgerEntry(
+        {
+          ...usageEntry,
+          amount: fromMicroCredits(-amountMicro),
+          lotId: null,
+        },
+        tx,
+      );
+      return {
+        billed: false,
+        charged: 0,
+        shortfall: amountMicro / 1_000_000,
+        studioId,
+        lotIds: [],
+      };
+    }
+
     for (const allocation of plan.allocations) {
       await creditLotRepo.applyCharge(
         allocation.lotId,
@@ -244,6 +290,47 @@ export async function chargeForGeneration(
       lotIds: plan.allocations.map((allocation) => allocation.lotId),
     };
   });
+}
+
+/**
+ * Charge a generation at most once for a given key.
+ *
+ * A chat turn and a text-tool run can both arrive twice — a reconnect, a
+ * replayed stream — and the caller-supplied key is what makes the second
+ * arrival free. The lock sits outside the cross-lot logic, so a key that has
+ * already been billed never reaches it.
+ *
+ * The key is scoped by the acting user, matching how Stripe, Square, AWS and
+ * PayPal scope idempotency keys: two accounts whose keys collide never
+ * interfere, so nobody can skip their own charge by reusing somebody else's
+ * key. On failure the lock is released, leaving a retry able to charge.
+ * @param refKey - The caller's idempotency key.
+ * @param input - What to charge and on whose behalf.
+ * @returns The outcome on the first call, or null when this key was already billed.
+ * @throws {Error} If `refKey` does not match {@link REFKEY_PATTERN} — a caller
+ *   of ours built it, so this reaches the handler's 500 branch and is logged.
+ */
+export async function chargeOnceForGeneration(
+  refKey: string,
+  input: ChargeInput,
+): Promise<ChargeOutcome | null> {
+  if (!REFKEY_PATTERN.test(refKey)) {
+    throw new Error(
+      `chargeOnceForGeneration: refKey must match ${REFKEY_PATTERN} (got ${JSON.stringify(refKey)})`,
+    );
+  }
+
+  const redis = getRedis();
+  const lockKey = `${env.ENV}:bill:${input.actorUserId}:${refKey}`;
+  const acquired = await redis.set(lockKey, "1", "EX", BILL_LOCK_TTL_SECONDS, "NX");
+  if (acquired !== "OK") return null;
+
+  try {
+    return await chargeForGeneration({ ...input, referenceId: refKey });
+  } catch (err) {
+    await redis.del(lockKey);
+    throw err;
+  }
 }
 
 /**

@@ -19,7 +19,7 @@ import { buildSystemPrompt } from "@server/agent/context.js";
 import { reasoningOptionsFor } from "@server/agent/reasoning-options.js";
 import { getAgentConfig } from "@breatic/core";
 import { env } from "@breatic/core";
-import { creditService } from "@breatic/domain";
+import { creditLotService } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import type { MessagePart } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
@@ -407,12 +407,13 @@ export class MainAgent {
               creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
               // The turn-scoped refKey makes this idempotent: a reconnect or
               // a re-entry on the same turn will not double-charge.
-              await creditService.deductOnce(
-                userId,
+              await creditLotService.chargeOnceForGeneration(
                 `turn:${conversationId}:${turnIndex}`,
-                creditsUsed,
-                "Agent chat",
                 {
+                  projectId,
+                  actorUserId: userId,
+                  amount: creditsUsed,
+                  description: "Agent chat",
                   tokensUsed,
                   model: modelId,
                   provider: resolveProvider(modelId),

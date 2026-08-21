@@ -12,7 +12,6 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
 import * as userRepo from "@server/modules/auth/user.repo.js";
-import { creditRepo } from "@breatic/domain";
 import {
   generateRecoveryCode,
   hashRecoveryCode,
@@ -67,7 +66,6 @@ export async function register(
 
   const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const user = await userRepo.createUser({ email, hashedPassword });
-  await creditRepo.createBalanceRow(user.id);
 
   // Generate + store recovery code. Done after createUser so we have
   // a user.id to attach to. Failures here bubble up; the user row will
@@ -151,7 +149,6 @@ export async function loginOrCreateGoogle(
         (await userRepo.updateUser(user.id, { googleId })) ?? user;
     } else {
       user = await userRepo.createUser({ email, googleId });
-      await creditRepo.createBalanceRow(user.id);
     }
   }
 

@@ -12,7 +12,9 @@
     },
     "credit": {
       "not_studio_admin": "You can only assign credits to a studio you administer.",
-      "designation_locked": "This purchase is being refunded and cannot be reassigned."
+      "designation_locked": "This purchase is being refunded and cannot be reassigned.",
+      "unassigned": "You have {available} credits that are not assigned to a studio yet. Assign them to use them.",
+      "none": "Not enough credits. Add credits to continue."
     },
     "auth": {
       "invalid_credentials": "Invalid email or password",

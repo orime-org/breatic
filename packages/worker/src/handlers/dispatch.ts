@@ -27,7 +27,7 @@ import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivity
 import { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { assetService } from "@breatic/domain";
-import { creditService } from "@breatic/domain";
+import { creditLotService } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { publishNodeEvent } from "@breatic/core";
 import { releaseCanvasNodeLock, reacquireCanvasNodeLock } from "@breatic/domain";
@@ -799,13 +799,29 @@ async function runTaskBody(
 
   if (wasFirst && creditsUsed > 0) {
     try {
-      await creditService.deduct(
-        userId,
-        creditsUsed,
-        `Task: ${taskType}`,
-        taskId,
-        { model: (result.model as string | undefined) ?? model },
-      );
+      const outcome = await creditLotService.chargeForGeneration({
+        projectId: projectId ?? null,
+        actorUserId: userId,
+        amount: creditsUsed,
+        description: `Task: ${taskType}`,
+        referenceId: taskId,
+        model: (result.model as string | undefined) ?? model,
+      });
+      if (outcome.shortfall > 0) {
+        // The studio's pool ran out mid-flight, or its credits were reassigned
+        // while the task ran. The result is already delivered, so what is left
+        // uncharged goes to reconciliation.
+        logger.error(
+          {
+            taskId,
+            userId,
+            studioId: outcome.studioId,
+            charged: outcome.charged,
+            shortfall: outcome.shortfall,
+          },
+          "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
+        );
+      }
     } catch (err) {
       // Deduct failed AFTER the CAS marked billed_at. The file is
       // already persisted and the task is completed. Log loudly for

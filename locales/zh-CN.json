@@ -12,7 +12,9 @@
     },
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
-      "designation_locked": "这笔积分在退款流程中，不能改指定。"
+      "designation_locked": "这笔积分在退款流程中，不能改指定。",
+      "unassigned": "你有 {available} 积分未指定，指定给 Studio 后才能使用。",
+      "none": "积分不足，请先充值。"
     },
     "text_tool": {
       "already_running": "另一个文本工具正在运行,请稍候。"

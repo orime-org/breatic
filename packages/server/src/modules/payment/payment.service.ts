@@ -9,7 +9,7 @@
  */
 
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
-import { creditRepo } from "@breatic/domain";
+import { creditLotService } from "@breatic/domain";
 import { getStripeClient } from "@server/infra/stripe.js";
 import { findTierByName, getPricingTiers } from "@server/config/pricing.js";
 import type { PaymentEntity } from "@breatic/shared";
@@ -85,7 +85,8 @@ export type CheckoutCompletedOutcome =
       status: "completed";
       userId: string;
       creditsGranted: number;
-      newBalance: number;
+      /** The lot the purchase opened. Unassigned, so not yet spendable. */
+      lotId: string;
     };
 
 /**
@@ -120,24 +121,23 @@ export async function handleCheckoutCompleted(
     return { status: "replay" };
   }
 
-  const newBalance = await creditRepo.addBalance(payment.userId, payment.creditsGranted);
-
-  await creditRepo.recordTransaction({
+  // The lot IS the grant: one row per purchase, tracked for the rest of its
+  // life so a refund has something to point at. Its unique `payment_id` is
+  // what makes a redelivered webhook a failed insert rather than a second
+  // grant, and the CAS above is what keeps this from being reached twice.
+  const lot = await creditLotService.grantFromPayment({
+    paymentId: payment.id,
     userId: payment.userId,
-    txType: "purchase",
-    amount: payment.creditsGranted,
-    balanceAfter: newBalance,
-    description: `Credit purchase: ${payment.creditsGranted} credits`,
-    referenceId: payment.id,
+    purchasedCredits: payment.creditsGranted,
   });
 
   // Caller logs `payment_credits_granted` audit line with the
-  // returned userId / creditsGranted / newBalance.
+  // returned userId / creditsGranted / lotId.
   return {
     status: "completed",
     userId: payment.userId,
     creditsGranted: payment.creditsGranted,
-    newBalance,
+    lotId: lot.id,
   };
 }
 
