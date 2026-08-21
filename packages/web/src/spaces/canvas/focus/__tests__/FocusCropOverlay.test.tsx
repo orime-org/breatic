@@ -1113,8 +1113,8 @@ describe('FocusCropOverlay：换目标之后的选框判定（#1987）', () => {
     const video = screen.getByTestId('media-element') as HTMLVideoElement;
     stubVideo(video, { duration: 10, currentTime: 0, videoWidth: 0, videoHeight: 0 });
     result.rerender(tree('fresh-video'));
-    // A 30×30 drag — deliberately UNDER the 50 display px per axis the stale
-    // 64×64 yardstick would demand, and far over what the video's own size
+    // A 30×30 drag — deliberately UNDER what the stale 64×64 yardstick would
+    // demand (50 display px across, 37.5 down), and far over what the video's own size
     // asks for. A 60×60 drag clears both yardsticks, so it could not fail.
     draw({ x: 150, y: 100 }, { x: 180, y: 130 });
     expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();

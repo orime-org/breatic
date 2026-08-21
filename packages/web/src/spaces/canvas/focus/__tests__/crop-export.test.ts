@@ -67,9 +67,11 @@ function fakeVideo(): HTMLVideoElement {
 
 describe('exportCropBlob', () => {
   it('把时间点交给取源那一步，而不是把视频当静态图取（A9 的最后一跳）', async () => {
-    // This is the one link in confirm → seek that nothing else pins: replacing
-    // `source` with `{ url, timeSeconds: null }` here turns every video crop
-    // into frame 0, and the whole 4357-test suite stayed green (round 2).
+    // This is the one link in confirm → seek that nothing else pins: passing
+    // `{ url, timeSeconds: null }` here sends every video down the still-image
+    // path, where decoding an mp4 inside an <img> rejects and the whole crop
+    // fails. The web package's other 4357 tests stayed green through that
+    // mutation (round 2).
     // jsdom has no canvas raster, so the export throws AFTER the source has
     // been built and seeked — which is exactly the half worth pinning.
     const seeks: number[] = [];

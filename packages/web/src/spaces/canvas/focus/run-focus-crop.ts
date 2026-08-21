@@ -50,8 +50,11 @@ export interface FocusCropParams {
   sourceName: string;
   /**
    * For a video source, the frame the user parked on, in seconds; `null` for
-   * a still image. Required rather than optional so no link in this chain can
-   * drop it by omission — the type is what carries it the whole way.
+   * a still image. Required rather than optional so the object literals that
+   * build these params cannot omit it. The `exportCrop` assignment is outside
+   * that reach: parameter contravariance accepts an implementation that never
+   * reads this field, which is what the end-to-end test in
+   * `focus/__tests__/crop-export.test.ts` holds down.
    */
   sourceTimeSeconds: number | null;
   /** The confirmed crop in natural (source-resolution) pixels. */

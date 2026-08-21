@@ -14,7 +14,7 @@ beforeAll(() => {
 
 afterEach(() => {
   // The canvas store is a module singleton: a session left open here reaches
-  // every file that runs after this one.
+  // every later test in this file.
   useCanvasStore.setState({ pickSession: null });
 });
 

@@ -95,7 +95,8 @@ const UNKNOWN_TIME = '--:--';
  * The whole point of this timeline is stopping on one frame, and `m:ss` alone
  * cannot tell 4.00s from 4.37s — the user would have no way to read back what
  * they picked. {@link formatTime} stays as it is: it answers a different
- * question (how far in / how long left) at a different granularity.
+ * question (how far in / how long the media runs) at a different
+ * granularity.
  * @param seconds - Position in seconds.
  * @returns The `m:ss.SS` string.
  */
@@ -951,12 +952,14 @@ export function FocusCropOverlay({
             // that lands. Content nodes are 288px wide regardless of the
             // media's aspect, so one width serves every target.
             //
-            // 432px = the widest locale's content (English, 413px measured in
-            // the browser at this font size) plus this bar's own 16px padding
-            // and 2px border. Japanese needs 410; Chinese and Korean fit under
-            // 382. Every item here is nowrap + no-shrink, so a bar measured
-            // from Chinese alone would push English and Japanese out past the
-            // border rather than wrap. Re-measure when #1991 adds its preset.
+            // 432px covers the widest locale's content (English, 413px
+            // measured in the browser at this font size) plus this bar's own
+            // 16px padding and 2px border, rounded up from 431. Japanese needs
+            // 410; Chinese and Korean fit under 382. Every item on the ratio
+            // row is nowrap + no-shrink, so a bar measured from Chinese alone
+            // pushes English and Japanese out past the border. The timeline row
+            // takes up the slack through the slider's `min-w-0 flex-1`.
+            // Re-measure when #1991 adds its preset.
             className='pointer-events-auto absolute flex w-[432px] -translate-x-1/2 flex-col gap-1.5 rounded-overlay border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
             // Anchored under the picked node like the generate panel (user
             // 2026-07-17): always centered below the source box, allowed to

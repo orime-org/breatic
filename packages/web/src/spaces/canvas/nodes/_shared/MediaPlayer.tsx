@@ -39,7 +39,8 @@ interface MediaPlayerProps {
    */
   onDimensions?: (resolution: NodeResolution) => void;
   /**
-   * Slide the control bar away and take it out of reach (#1987 A5). Set for
+   * Slide the control bar away and take it out of reach (video only —
+   * #1987 A5). Set for
    * the whole of a focus pick session: while the user is picking a video to
    * crop, a click on the play button would both toggle playback and count as
    * picking that node, and the frame to crop is chosen on the crop overlay's
@@ -84,7 +85,7 @@ export function formatTime(seconds: number): string {
  * @param root0.poster - Poster image (video only).
  * @param root0.variant - `'full'` (node player, default) or `'preview'` (hover preview: no volume / fullscreen).
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
- * @param root0.controlsHidden - Slide the control bar out and make it unreachable (#1987).
+ * @param root0.controlsHidden - Slide the control bar out and make it unreachable (video only, #1987).
  * @returns The media player element.
  */
 export function MediaPlayer({

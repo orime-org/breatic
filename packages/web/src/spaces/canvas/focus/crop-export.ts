@@ -19,7 +19,9 @@ export interface CropSource {
   /**
    * The frame to grab, in seconds — `null` for a still image. Videos carry
    * the position the node's own element was parked at when the user
-   * confirmed, so the crop is of the frame they were looking at.
+   * confirmed, so the crop is of the frame the user parked the timeline on.
+   * Read off the element, which leads the painted picture while a seek is
+   * still resolving.
    */
   timeSeconds: number | null;
 }
@@ -108,8 +110,9 @@ function once(el: HTMLMediaElement, event: string): Promise<void> {
  * The video path waits for `loadedmetadata` rather than `loadeddata` — with
  * `preload='metadata'` that is the level the element is guaranteed to reach,
  * and it is everything a seek needs. (The local cover extract uses
- * `preload='auto'` + `loadeddata`; those two go together and copying half of
- * either pairing hangs.)
+ * `preload='auto'` + `loadeddata`; taking that event under
+ * `preload='metadata'` hangs, because the element may never reach
+ * HAVE_CURRENT_DATA.)
  * @param source - The URL and, for a video, the frame to park on.
  * @param factories - Element factories; production uses the DOM.
  * @returns The element, ready to hand to `drawImage`.
@@ -160,8 +163,9 @@ export async function prepareCropSource(
  * @param source - The source URL plus, for a video, the frame to crop.
  * @param crop - The crop rect in natural (source-resolution) pixels.
  * @returns The cropped PNG blob.
- * @throws {Error} When the source fails to load CORS-clean, a seek times out,
- *   or the canvas cannot export (tainted / zero-sized crop).
+ * @throws {Error} When the source fails to load CORS-clean, when a video's
+ *   metadata or its seek does not arrive within {@link CROP_SOURCE_TIMEOUT_MS},
+ *   or when the canvas cannot export (tainted / zero-sized crop).
  */
 export async function exportCropBlob(
   source: CropSource,
