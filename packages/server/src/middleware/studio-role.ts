@@ -6,8 +6,7 @@
  * member-management routes. Resolves the studio by its `:slug` route param,
  * loads the caller's studio role, and rejects anyone below `min` with a
  * generic 403 (which also hides studio existence from non-members). The member
- * routes all require 'admin': studio credits are shared, so only the admin
- * governs membership.
+ * routes all require 'admin': only the admin governs membership.
  */
 
 import type { MiddlewareHandler } from "hono";

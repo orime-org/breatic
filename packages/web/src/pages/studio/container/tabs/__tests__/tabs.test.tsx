@@ -82,8 +82,8 @@ describe('ProjectsTab (spec §4 invariant 1: visibility filter)', () => {
     ).toBeInTheDocument();
     maintainer.unmount();
 
-    // A plain guest cannot create — studio credits are shared, so creating is
-    // limited to admin/maintainer (spec §0.2 / §8.2).
+    // A plain guest cannot create — creating is limited to admin/maintainer
+    // (spec §0.2 / §8.2).
     const guest = withRouter(
       <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='guest' />,
     );
