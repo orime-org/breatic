@@ -59,25 +59,35 @@ vi.mock("@server/modules", async (importOriginal) => {
 const handedSignals: Array<AbortSignal | undefined> = [];
 
 vi.mock("@server/agent/main-agent.js", () => {
-  /** A turn that streams forever until someone stops it. */
-  async function* endless(signal?: AbortSignal): AsyncGenerator<unknown> {
+  /**
+   * A turn that streams forever until someone stops it.
+   * @param signal - The one the route handed in, kept for the assertion.
+   * @returns A stream that never ends on its own.
+   */
+  function endless(signal?: AbortSignal): ReadableStream<unknown> {
     handedSignals.push(signal);
-    for (;;) {
-      yield { event: "chat_chunk", data: { text: "." } };
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
+    let timer: ReturnType<typeof setInterval>;
+    return new ReadableStream<unknown>({
+      start(controller) {
+        timer = setInterval(() => {
+          controller.enqueue({ type: "text-delta", id: "t1", delta: "." });
+        }, 5);
+      },
+      cancel() {
+        clearInterval(timer);
+      },
+    });
   }
   return {
     MainAgent: class {
-      chat(_msg: string, _resources?: string[], signal?: AbortSignal): AsyncGenerator<unknown> {
+      async chat(_msg: string, signal?: AbortSignal): Promise<ReadableStream<unknown>> {
         return endless(signal);
       }
-      handleSkillCommand(
+      async handleSkillCommand(
         _skill: string,
         _input: string,
-        _resources?: string[],
         signal?: AbortSignal,
-      ): AsyncGenerator<unknown> {
+      ): Promise<ReadableStream<unknown>> {
         return endless(signal);
       }
     },

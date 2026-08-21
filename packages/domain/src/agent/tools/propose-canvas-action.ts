@@ -17,8 +17,6 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 /** Sentinel detected by main-agent to interrupt the loop and yield AGENT_CANVAS_ACTION SSE event. */
-export const PROPOSE_CANVAS_ACTION_SENTINEL = "__PROPOSE_CANVAS_ACTION__";
-
 const inputSchema = z.object({
   action: z
     .enum(["create_nodes", "update_node", "delete_node"])
@@ -46,7 +44,7 @@ const inputSchema = z.object({
     .describe("Brief explanation shown to the user for why this action is proposed"),
 });
 
-export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, string> = tool({
+export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, z.infer<typeof inputSchema>> = tool({
   description:
     "Propose creating / updating / deleting nodes on the user's " +
     "active canvas Space. The user sees a button + rationale and " +
@@ -61,7 +59,7 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, string> = to
     // to abandon. Declared so the shape is the same across every tool — the
     // reasoning lives in tools/__tests__/tool-cancellation.test.ts.
     _options: { abortSignal?: AbortSignal },
-  ): Promise<string> => {
-    return `${PROPOSE_CANVAS_ACTION_SENTINEL}${JSON.stringify(input)}`;
+  ): Promise<z.infer<typeof inputSchema>> => {
+    return input;
   },
 });

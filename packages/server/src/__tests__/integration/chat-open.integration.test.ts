@@ -64,7 +64,7 @@ type OpenResponse = {
     conversations: Array<{ id: string; title: string }>;
     current: {
       conversation: { id: string } | null;
-      messages: Array<{ role: string; content: string }>;
+      messages: Array<{ role: string; parts: Array<{ type: string; text?: string }> }>;
     };
   };
 };
@@ -298,7 +298,9 @@ describe("POST /chat/open — what comes back", () => {
     expect(payload.data.current.conversation!.id).toBe(spokenIn);
     expect(payload.data.current.conversation!.id).not.toBe(quiet!.id);
     expect(
-      payload.data.current.messages.filter((m) => m.role === "user").map((m) => m.content),
+      payload.data.current.messages
+        .filter((m) => m.role === "user")
+        .map((m) => m.parts.map((p) => p.text ?? "").join("")),
     ).toEqual(["the only thing anyone said"]);
   });
 
@@ -363,7 +365,9 @@ describe("POST /chat/open — what comes back", () => {
 
     const payload = (await (await open(projectId, cookie)).json()) as OpenResponse;
     expect(
-      payload.data.current.messages.filter((m) => m.role === "user").map((m) => m.content),
+      payload.data.current.messages
+        .filter((m) => m.role === "user")
+        .map((m) => m.parts.map((p) => p.text ?? "").join("")),
     ).toEqual(["first thing", "second thing"]);
   });
 

@@ -160,6 +160,24 @@ if (typeof Element !== 'undefined') {
   }
 }
 
+// jsdom implements no hit testing, so `document.elementFromPoint` is absent
+// entirely (not "returns null" — the property does not exist). ProseMirror's
+// `posAtCoords` reaches it on every call (`prosemirror-view/dist/index.js:467`
+// picks the receiver with a ternary, and in jsdom both of its branches are the
+// same `document`), so without this the editor throws a TypeError that surfaces
+// as an unhandled error from inside a debounced plugin timer rather than as a
+// failing assertion.
+//
+// Answering null does NOT mean `posAtCoords` answers null. Measured: it answers
+// `{pos: 0, inside: -1}` for (0,0) and (1,1), null from (2,2) out. Every
+// rectangle in jsdom is zero-sized at the origin, and `inRect` allows 1px of
+// slack (`dist/index.js:389-391`), so points within 1px of the origin are read
+// as inside the editor and resolved to a real position. Worth knowing because
+// a zero-rect layout makes many callers ask about exactly that corner.
+if (typeof Document !== 'undefined') {
+  Document.prototype.elementFromPoint ??= () => null;
+}
+
 // jsdom implements no ClipboardEvent at all (checked against jsdom 29:
 // `new ClipboardEvent('paste')` throws "ClipboardEvent is not defined").
 // ProseMirror's own `view.pasteHTML(html)` constructs one when the caller does

@@ -13,10 +13,12 @@ skill_agent_max_steps: 15
 
 # ── Models ────────────────────────────────────────────────
 # Default model for MainAgent chat.
-default_model: anthropic/claude-sonnet-4-6
+default_model: deepseek/deepseek-v4-pro
 
-# Model used for memory consolidation (summarizing old turns).
-consolidation_model: anthropic/claude-sonnet-4-6
+# Model used for memory consolidation (summarizing old turns). The same model
+# that writes a conversation reads it back: two would put the summary in one
+# voice and the reply in another, and name two providers on one bill.
+consolidation_model: deepseek/deepseek-v4-pro
 
 # ── Memory System ─────────────────────────────────────────
 # Number of recent turns (user → agent round-trips) before triggering consolidation.
@@ -32,6 +34,17 @@ conversation_title_max_chars: 60
 # round-trip size rather than a ceiling: there is no limit on how many
 # conversations a project may have.
 conversation_page_size: 30
+
+# How many messages one page of a conversation holds. Same figure as the list
+# above, on purpose: the two are the same kind of dial. A page is cut on a
+# turn boundary, so what arrives is at most this and lands on whole turns.
+message_page_size: 30
+
+# How often the chat stream says it is still alive, in milliseconds. The
+# client treats three missed beats as a stream that has gone; that count is
+# in code and not here, because the server garbage collects and two misses in
+# a row happen to a stream that is doing fine.
+sse_heartbeat_interval_ms: 5000
 
 # Number of recent turns to keep unconsolidated during memory consolidation.
 memory_keep_recent_turns: 3
@@ -65,12 +78,22 @@ web_search_timeout_ms: 10000
 # ── Thinking ──────────────────────────────────────────────
 # Whether to ask the provider for the model's working while it answers.
 #
-# Off, because asking currently gets nothing back. Measured 2026-08-11 against
-# claude-sonnet-4-6: with this on and the summary asked for by name, three
-# turns produced no reasoning at all — including one that spelled out "show
-# your reasoning step by step". Leaving it on would pay the wait on every turn
-# for an empty fold. What is missing is tracked separately; everything else
-# this needs is built and tested.
+# Off, because asking for it changes nothing that comes back. Measured twice
+# on the model this build actually calls: 2026-08-20, deepseek/deepseek-v4-pro
+# through OpenRouter, this switch on, two turns — one of them asking in so
+# many words for the working to be written out. Both turns opened a reasoning
+# channel and closed it again about 300ms later with zero reasoning-delta
+# between: the stream carries reasoning-start and reasoning-end and nothing
+# else. The earlier measurement said the same thing about a different model
+# (2026-08-11, claude-sonnet-4-6, three turns, nothing).
+#
+# And the reason is now known: nothing is asked for. `@ai-sdk/openai@4.0.37`
+# decides whether a model reasons from its id (the o-series, gpt-5 and up),
+# and `deepseek/deepseek-v4-pro` matches neither — so `reasoningEffort` is
+# dropped with an `unsupported` warning and never reaches the request body
+# (`dist/index.js:6306-6311`). Turning this on today spends the ask on every
+# turn for a fold with nothing in it. Making it actually work is a separate
+# piece of work; see the agent backlog.
 thinking_enabled: false
 
 # ── LLM resilience ────────────────────────────────────────

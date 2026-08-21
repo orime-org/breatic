@@ -165,7 +165,7 @@ async function timeTurn(signal: AbortSignal): Promise<number> {
       projectId: "p1",
     },
     async () => {
-      for await (const _event of new MainAgent().chat("hi", undefined, signal)) {
+      for await (const _event of await new MainAgent().chat("hi", signal)) {
         // Drained: the route writes these out; here only the timing matters.
       }
     },

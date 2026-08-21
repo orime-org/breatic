@@ -103,6 +103,32 @@ describe("history on its way to the model", () => {
     expect(typeof output).not.toBe("string");
   });
 
+  it("says a tool that answered with an object answered with an object", () => {
+    // 四个交互工具直接返回 payload 对象。`text` 那一档的 `value` 要求是字符串,
+    // 而 SDK 在请求出门前用 `z.discriminatedUnion` 校验 —— 把对象塞进 `text`
+    // 整轮在到达模型之前就失败,而失败发生在流里、屏幕上什么都不会发生。
+    // 于是一条会话从它第一次用交互工具起就再也说不了话。
+    const [, toolMessage] = toModelMessages([
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-3",
+          toolName: "ask_user_question",
+          input: { question: "which era?" },
+          status: "success",
+          output: { question: "which era?", options: [] } as unknown as string,
+        },
+      ]),
+    ]);
+
+    const output = (toolMessage as { content: Array<{ output: unknown }> } | undefined)
+      ?.content[0]?.output;
+    expect(output).toEqual({
+      type: "json",
+      value: { question: "which era?", options: [] },
+    });
+  });
+
   it("leaves out a turn that was stopped before it said or did anything", () => {
     const history = [
       stored("user", [{ type: "text", text: "hello" }]),

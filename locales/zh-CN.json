@@ -153,7 +153,8 @@
       "turnFailed": "这条回复没能完成，可以再发一次。"
     },
     "message": {
-      "interrupted": "已停止"
+      "interrupted": "已停止",
+      "waiting": "正在回复"
     },
     "tool": {
       "unfinished": "未跑完就停止了"

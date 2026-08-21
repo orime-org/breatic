@@ -2,73 +2,33 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * What is happening in each conversation, for as long as the conversation is.
+ * Which conversation each project is showing, and what has been read of it.
  *
- * A turn used to live in the chat panel: its request, the id of the reply
- * being written, and the flag saying one was in flight were all held in the
- * component, and the cleanup on unmount tore the request down. Collapsing the
- * agent column therefore ended the turn -- the user put a panel away and the
- * answer he was paying for stopped existing.
+ * What is *happening* in a conversation -- the turn in flight and the messages
+ * it is writing -- is the `Chat` session's, in `stores/chat-sessions`. This
+ * holds the questions that outlive any one turn: which conversation is on
+ * screen, what the list of them says, how far back the history has been read,
+ * and what is half-typed in each box.
  *
- * So the turn lives here instead, keyed by the conversation it belongs to. A
- * panel that mounts reads what is going on; a panel that goes away is a panel
- * that went away. What still ends a turn early is what the user did -- pressing
- * stop, leaving the project, or deleting the conversation it is running in --
- * and one thing they did not: the watchdog ending a stream that has stopped
- * saying it is alive. None of these is React unmounting a component, which is the whole of the change.
- *
- * Messages live here for the same reason -- a reply being written and the
- * history it is being appended to are one list, and a list only one of whose
- * halves survives the panel is two lists.
+ * The history read here is the starting point a `Chat` is built from. After
+ * that the `Chat` is where the messages live, and this does not follow them:
+ * a reply being written exists nowhere but in that session until the turn ends
+ * and the server stores it.
  */
 
 import { create } from 'zustand';
-import type { MessageData, SSEEventEnvelope } from '@breatic/shared';
-import { SSE_EVENT_NAMES, SSE_HEARTBEAT_TIMEOUT_MS, newId } from '@breatic/shared';
 
 import { chatApi } from '@web/data/api/chat';
 import { ApiException } from '@web/data/api/types';
 import type { ConversationOnTheWire, OpenChatResult } from '@web/data/api/chat';
 import {
-  StreamRefusedError,
-  StreamUnreachableError,
-  StreamDroppedError,
-} from '@web/data/stream/sse';
-
-/**
- * A message as this store holds it.
- *
- * A stored message minus the turn it belongs to, plus whether its reply is
- * being written right now. The turn index is dropped on the way in because
- * nothing here reads one, and a shape that has the field invites the code
- * that makes a local message up to invent a value for it -- which is what the
- * panel used to do, guessing from the last message it happened to be holding.
- * Where the history reaches back to is a property of the conversation, not of
- * each message, and it is kept as {@link ConversationRuntime.oldestLoadedTurn}.
- *
- * `streaming` is local: the server has no such state. It lasts exactly as long
- * as the message it is on, which is what makes this the right place for it.
- */
-export type ChatMessageData = Omit<MessageData, 'turnIndex'> & { streaming?: boolean };
-
-/** The turn a conversation is running, if it is running one. */
-interface Turn {
-  /** The reply being written, so whatever ends the turn can unmark it. */
-  replyId: string;
-  /** Raised to stop it. */
-  abort: AbortController;
-  /**
-   * The server has said it stored the message and the turn is under way.
-   *
-   * False for as long as the request is out and unanswered. What separates the
-   * two is not how far along the reply is -- it is whether anything of this
-   * turn exists anywhere but in this browser. Before, nothing does: the words
-   * are only in the box the reader typed them into, and this end cannot say
-   * whether they ever arrived. After, the server has them, has handed the
-   * whole conversation back, and is working.
-   */
-  started: boolean;
-}
+  evictAllChatSessions,
+  evictChatSession,
+  hasChatSession,
+  prependHistory,
+} from '@web/stores/chat-sessions';
+import { readMishap, tell } from '@web/stores/chat-mishaps';
+import type { StoredUiMessage } from '@web/data/api/chat';
 
 /**
  * How far along the turn a conversation is running is, if it is running one.
@@ -82,31 +42,16 @@ export type TurnPhase = 'idle' | 'sending' | 'running';
 export interface ConversationRuntime {
   /** The project it belongs to, so leaving that project can find it. */
   projectId: string;
-  /** Every message to show, history and the reply in flight alike. */
-  messages: ChatMessageData[];
   /**
-   * The turn under way.
-   *
-   * Not null is the whole answer to "is this conversation streaming". It
-   * replaces a boolean in one store and two refs in the panel, which said the
-   * same thing in three places and had to be kept in step by hand.
+   * The history read back from the server, as the conversation's `Chat` was
+   * started from. Not followed afterwards: the session owns the list from
+   * there, and a reply being written is in no other place.
    */
-  turn: Turn | null;
+  messages: StoredUiMessage[];
   /** The server has messages older than the ones loaded. */
   hasMore: boolean;
   /** The oldest turn loaded, which is where loading earlier starts from. */
   oldestLoadedTurn: number | null;
-  /**
-   * How many turns have failed here.
-   *
-   * A counter and not a flag, because what a reader needs to know is not
-   * "did one fail" -- that is on the message and comes back with the history
-   * -- but "did one fail while I was watching". A panel remembers the count
-   * it mounted with and announces only what came after.
-   */
-  failures: number;
-  /** The reply of the most recent failure, for the panel to point at. */
-  failedReplyId: string | null;
   /**
    * What this conversation is called, or null while it has no name.
    *
@@ -118,25 +63,6 @@ export interface ConversationRuntime {
    * name, which is a different sentence from the one it had.
    */
   title: string | null;
-}
-
-/**
- * How far along the send a project has under way, if it has one.
- *
- * The one place this is decided. A turn carries the wait for all but the first
- * moment of one, and a project-level mark carries it before there is a turn --
- * two halves of one fact, so anything asking either question asks here. What
- * reads it: the panel, to know whether to draw a send button, a waiting
- * indicator or a stop button; and `send`, to refuse a second press.
- * @param state - The runtime as it stands.
- * @param projectId - The project asked about.
- * @returns Idle, sending, or running.
- */
-export function turnPhaseOf(state: ConversationRuntimeState, projectId: string): TurnPhase {
-  const conversationId = state.currentByProject[projectId];
-  const turn = conversationId ? state.conversations[conversationId]?.turn : null;
-  if (turn) return turn.started ? 'running' : 'sending';
-  return state.sendingByProject[projectId] ? 'sending' : 'idle';
 }
 
 /** How far opening one project's chat has got. */
@@ -359,165 +285,6 @@ function forgetEarlierPages(conversationId: string): void {
 const visits = new Map<string, AbortController>();
 
 /**
- * Something that went wrong, told once to whoever is looking.
- *
- * Told, not kept. Every one of these belongs to a moment the reader was in --
- * they pressed send, or a reply they were watching stopped arriving -- and a
- * moment does not wait around. Nobody watching means nobody is in that
- * moment: the panel is collapsed, or they are reading another conversation.
- * What they come back to is a conversation that stopped moving, which is how
- * a reader of a stream knows something went wrong, and it needs no sentence
- * from us repeating it later.
- *
- * The four kinds are not a matter of wording. What tells them apart is what
- * came back: `server` carries the sentence the server wrote for the reader --
- * out of credits, too many requests, not allowed -- `turn` is an answer that
- * came back with none of ours in it, so there is nothing to quote and this
- * end has to supply the words, `network` is no answer at all, and `gone` is
- * our own 404, where the server did answer and what it said is that the
- * conversation is not there any more. That last one is not a failure, which
- * is why it is its own kind rather than a `server` sentence about a resource.
- */
-export type ChatMishap = {
-  /**
-   * The reader did this on purpose and is waiting to hear back.
-   *
-   * What separates a rename they just pressed from a turn failing in some
-   * other conversation in the background. The panel shows only its own
-   * conversation's trouble -- except for this, which is theirs whichever
-   * conversation it was about.
-   */
-  deliberate?: boolean;
-  /**
-   * It is about the list, or about one row in it.
-   *
-   * The list covers the whole column while it is open, so the panel's own
-   * line -- on the top edge of the composer -- is a line nobody can read
-   * then. This marks the words as ones the list can carry; whether they
-   * actually go there is decided by whether the list is on screen, since the
-   * header renames the conversation too and the list is shut for that.
-   */
-  aboutRow?: boolean;
-  /**
-   * Which telling this is.
-   *
-   * Two failures in a row say the same words, and a line that says the same
-   * words is a line React leaves alone -- the DOM does not move and a screen
-   * reader announces nothing. So the reader presses send a second time, it
-   * fails a second time, and nothing whatever happens on screen. This is what
-   * makes each telling its own: the panel keys the line by it, so the same
-   * sentence is torn down and put up again, which is both visible and spoken.
-   */
-  at: number;
-  /** The project it happened in. */
-  projectId: string;
-  /** The conversation, or null when there is not one yet to speak of. */
-  conversationId: string | null;
-} & (
-  | { kind: 'network' }
-  | { kind: 'server'; message: string }
-  // The stream reached us and the server said this turn is over without
-  // saying anything a reader could act on. Not `server`: that one carries the
-  // sentence the server wrote for the reader, and this one has none -- what
-  // comes down the wire here is an English string written for us.
-  | { kind: 'turn' }
-  // The conversation asked for is not there any more, which our own server
-  // said in so many words. Not `server` either: the sentence it sends is
-  // about a resource, and this end knows the far more useful thing -- which
-  // resource, and that nothing went wrong.
-  | { kind: 'gone' }
-);
-
-const watchers = new Set<(mishap: ChatMishap) => void>();
-
-/** How many have been told, which is what makes each one its own. */
-let told = 0;
-
-/**
- * Be told when something goes wrong, for as long as you are looking.
- * @param watch - Called once per mishap.
- * @returns Call to stop watching.
- */
-export function watchChatMishaps(watch: (mishap: ChatMishap) => void): () => void {
-  watchers.add(watch);
-  return () => {
-    watchers.delete(watch);
-  };
-}
-
-/**
- * Tell whoever is watching. Nobody watching means it is not told.
- * @param mishap - What went wrong.
- */
-function tell(mishap: Omit<ChatMishap, 'at'>): void {
-  told += 1;
-  const withIdentity = { ...mishap, at: told } as ChatMishap;
-  for (const watch of watchers) watch(withIdentity);
-}
-
-/**
- * The sentence our own server wrote for this reader, if it wrote one.
- *
- * The whole of what this answers. What to say when it answers nothing is not
- * the same question in every place that asks, so it is left to whoever asked.
- * @param err - Whatever the call threw.
- * @returns The server's own words, or nothing when they are not the server's.
- */
-function serverSentence(err: unknown): string | undefined {
-  // Only a sentence our own server wrote for this reader, whichever transport
-  // brought it. An answer coming back is not the same thing: a gateway that
-  // timed out also answers, and there is nothing of ours in what it sends --
-  // so each transport says whether the message it is carrying came out of our
-  // envelope, and this asks both of them the same question and nothing else.
-  if (err instanceof StreamRefusedError && err.fromServer) return err.message;
-  if (err instanceof ApiException && err.fromServer) return err.message;
-  return undefined;
-}
-
-/**
- * Read a failed request as the reader would hear it.
- *
- * For every request that fetches rather than runs a turn -- opening the
- * chat, reaching further back, switching, starting, renaming, removing, and
- * re-reading the list. Either the server wrote a sentence about it or nothing
- * did.
- *
- * A third case exists and is not told apart here: something answered, but
- * with nothing of ours in it. Saying "network error" for that is not right --
- * the network worked -- and there is no sentence yet that fits both of these
- * requests, so one has to be written before this can tell the difference.
- * The turn has one, and {@link readTurnMishap} uses it.
- * @param err - Whatever the call threw.
- * @returns Which kind of mishap it is, and the server's own words when it
- *   answered with any.
- */
-function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
-  const said = serverSentence(err);
-  return said === undefined ? { kind: 'network' } : { kind: 'server', message: said };
-}
-
-/**
- * Read a turn's ending as the reader would hear it.
- *
- * Three endings rather than two, because this is the one path with something
- * true to say about the third. A refusal means the request reached something
- * that answered: the network is not what went wrong, and if what answered was
- * not ours then the only thing left that holds is that this reply is not
- * coming and the words can go again.
- * @param ending - How the turn ended.
- * @returns Which kind of mishap it is, and the server's own words when it
- *   answered with any.
- */
-function readTurnMishap(
-  ending: unknown,
-): { kind: 'network' } | { kind: 'turn' } | { kind: 'server'; message: string } {
-  const said = serverSentence(ending);
-  if (said !== undefined) return { kind: 'server', message: said };
-  if (ending instanceof StreamRefusedError) return { kind: 'turn' };
-  return { kind: 'network' };
-}
-
-/**
  * The visit a project is on, starting one if it is not on any.
  * @param projectId - The project being visited.
  * @returns Its visit, whose signal is raised when the reader leaves.
@@ -562,39 +329,18 @@ function patchConversation(
 }
 
 /**
- * Rewrite one message of one conversation.
- * @param conversationId - The conversation holding it.
- * @param messageId - The message to rewrite.
- * @param change - Applied to it, returning the replacement.
- */
-function patchMessage(
-  conversationId: string,
-  messageId: string,
-  change: (m: ChatMessageData) => ChatMessageData,
-): void {
-  patchConversation(conversationId, (c) => ({
-    ...c,
-    messages: c.messages.map((m) => (m.id === messageId ? change(m) : m)),
-  }));
-}
-
-/**
- * Drop the turn index off a stored message.
- * @param message - The message as the server hands it out.
- * @returns The same message in this store's shape.
- */
-function toStored(message: MessageData): ChatMessageData {
-  const { turnIndex: _turnIndex, ...rest } = message;
-  return rest;
-}
-
-/**
- * The oldest turn among a batch of stored messages.
- * @param messages - The batch, as the server hands it out.
+ * The oldest turn among a batch of messages.
+ *
+ * Which turn a message belongs to rides in its metadata, put there by the
+ * server when it hands the history out. Asking the next page from the oldest
+ * one on screen is the only thing it is for.
+ * @param messages - The batch, as the server handed it out.
  * @returns That turn, or null when the batch is empty.
  */
-function oldestTurnOf(messages: readonly MessageData[]): number | null {
-  return messages.length > 0 ? Math.min(...messages.map((m) => m.turnIndex)) : null;
+function oldestTurnOf(messages: readonly StoredUiMessage[]): number | null {
+  return messages.length > 0
+    ? Math.min(...messages.map((m) => m.metadata?.turnIndex ?? 0))
+    : null;
 }
 
 /**
@@ -776,397 +522,37 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
   // Called here for the copy the list draws: the setState below rebuilds the
   // conversation whole, name included, but never touches `listByProject`.
   applyTitle(projectId, conversationId, opened.conversation.title ?? null);
-  useStore.setState((s) => {
-    const held = s.conversations[conversationId];
-    // The one thing this answer does NOT describe: a turn still running here.
-    // A reply is written to the database when the turn ends, so a turn under
-    // way is not a state the server has contradicted -- it is one the server
-    // has not written down yet. Dropping it took the reply off the screen,
-    // took the stop button with it, and left the request with nothing holding
-    // its abort handle: the model went on running, and on billing, with the
-    // switch out of reach.
-    const running = held?.turn ?? null;
-    const reply = running
-      ? held?.messages.find((m) => m.id === running.replyId)
-      : undefined;
-    const page = opened.messages.map(toStored);
-
-    return {
-      openStatus: { ...s.openStatus, [projectId]: 'ready' },
-      // Whatever went wrong last time is over. A reason kept past it would
-      // be shown as the reason for whatever goes wrong next.
-      openFailure: (({ [projectId]: _gone, ...rest }) => rest)(s.openFailure),
-      currentByProject: { ...s.currentByProject, [projectId]: conversationId },
-      conversations: {
-        ...s.conversations,
-        [conversationId]: {
-          projectId,
-          // The reply being written goes back on the end, where it was. It is
-          // not in the page: the server cannot hand back something it has not
-          // stored.
-          messages: reply ? [...page, reply] : page,
-          turn: running,
-          hasMore: opened.hasMore,
-          oldestLoadedTurn: oldestTurnOf(opened.messages),
-          // Carried over, unlike everything above it. What the server has just
-          // described is the conversation; how many of its turns failed while
-          // this reader was sitting here is not something it knows or is
-          // saying anything about. Restarting it at zero under a panel holding
-          // a baseline from before would make the next failure read as older
-          // than the one it is compared against, and go unannounced.
-          failures: held?.failures ?? 0,
-          failedReplyId: held?.failedReplyId ?? null,
-          title: opened.conversation.title ?? null,
-        },
-      },
-    };
-  });
-}
-
-/**
- * End the turn a conversation is running.
- *
- * Everything that ends a turn comes through here -- the server saying so, an
- * error, the user pressing stop, the connection going quiet -- so no path can
- * clear one mark and forget the other.
- * @param conversationId - The conversation whose turn ended.
- * @param replyId - The reply this ending belongs to. An ending arriving for a
- *   turn that is no longer the one running belongs to nothing: the server
- *   finishes a failed turn by sending `error` and only then writing it down,
- *   and the next turn can already be under way by then.
- */
-function finishTurn(conversationId: string, replyId: string): void {
-  patchConversation(conversationId, (c) => {
-    if (c.turn?.replyId !== replyId) return c;
-    return {
-      ...c,
-      turn: null,
-      messages: c.messages.map((m) => {
-        if (m.id !== replyId) return m;
-        const { streaming: _streaming, ...rest } = m;
-        return rest;
-      }),
-    };
-  });
-}
-
-/**
- * Stop the turn a conversation is running, if it is running one.
- *
- * The ending that means the reply was cut off, so it is marked as such
- * before the turn is forgotten -- leaving it out makes the identical message
- * read as a finished answer now and as a stopped one after a reload.
- *
- * The mark says what this end of the wire knows, and no more. When the user
- * pressed stop or left the project, the server saw the client go and recorded
- * the same thing. When a connection died instead, what the server has depends
- * on what happened to it, and this end cannot tell which: a path that broke
- * silently leaves the server finishing the turn and storing the whole reply
- * unmarked, while a server that went away stored nothing at all -- not even
- * the part that had already arrived here.
- *
- * The mark is put on anyway, and what it renders is one word: "Stopped". That
- * is the honest cost of this, written down rather than argued away -- on the
- * silent-break path the server may hold a finished reply with no such mark,
- * so a reload can make the word disappear. The alternative is worse: a reply
- * that stops mid-sentence with nothing at all said about it.
- *
- * A turn the server has not answered yet has no reply on screen to mark, and
- * marking it is skipped rather than special-cased: there is no message with
- * that id, so the rewrite finds nothing to rewrite. That is the right outcome
- * too -- nothing of that turn was ever shown, so nothing is left half-said.
- * @param conversationId - The conversation to stop.
- */
-function stopTurn(conversationId: string): void {
-  const turn = useStore.getState().conversations[conversationId]?.turn;
-  if (!turn) return;
-  patchMessage(conversationId, turn.replyId, (m) => ({ ...m, interrupted: true as const }));
-  turn.abort.abort();
-  finishTurn(conversationId, turn.replyId);
-}
-
-/**
- * Is this event still about the turn that is running.
- *
- * An ending can arrive after the turn it belongs to is over: the server
- * finishes a failed turn by sending `error` and only then writing it down, and
- * the next turn can already be under way. Acting on one then would mark, end
- * or take the screen over on behalf of something nobody is waiting for.
- *
- * What asks this: the watchdog, the stream's error handler, the `error`
- * frame, and `chat_turn_started` -- that last one for a different reason, it
- * being the only opening rather than an ending, and what it needs to know is
- * whether the turn it opens is still the one on screen. The server's own
- * ending -- `chat_done` -- does not, because what it
- * reaches are two writes that carry the same question inside them: marking a
- * message finds it by id, and `finishTurn` compares the running reply against
- * the one it was given.
- * @param conversationId - The conversation the event arrived for.
- * @param replyId - The reply the event belongs to.
- * @returns The conversation when it is still running that turn.
- */
-function stillRunning(
-  conversationId: string,
-  replyId: string,
-): (ConversationRuntime & { turn: Turn }) | undefined {
-  const conversation = useStore.getState().conversations[conversationId];
-  if (!conversation || conversation.turn?.replyId !== replyId) return undefined;
-  return { ...conversation, turn: conversation.turn };
-}
-
-/**
- * Everything one turn does to the store while it runs.
- * @param conversationId - The conversation it runs in.
- * @param replyId - The reply it is writing.
- * @param event - One event off the stream.
- */
-function applyEvent(conversationId: string, replyId: string, event: SSEEventEnvelope): void {
-  switch (event.event) {
-    // The server saying what it holds, at the one moment it can be sure the
-    // reader is waiting: they pressed send, so a list changing under them
-    // reads as their message arriving rather than as the screen jumping.
-    //
-    // Taken whole, because that is the point of it -- a browser that kept
-    // any of its own version would be keeping exactly the part that might be
-    // wrong. Everything except the reply being written: that one has not been
-    // stored yet, so the server could not have sent it, and it is the only
-    // thing here the server does not know better than we do.
-    case SSE_EVENT_NAMES.CHAT_TURN_STARTED: {
-      const settled = (event.data.messages ?? []) as MessageData[];
-      // Read, decide, then write. A conversation is rebuilt by a pure function
-      // of what it held, and this has to reach into another store; doing it
-      // inside that function would be changing the world from inside the
-      // description of a change.
-      const running = stillRunning(conversationId, replyId);
-      if (!running) break;
-      const started = running.turn;
-
-      // The words are in the conversation now, so the box no longer has to
-      // hold them. Emptied whatever is in it, because only one thing can be:
-      // the box takes nothing between the press and this event, so there is
-      // no sentence of the reader's own in there to take away. Three rules
-      // were tried for telling their letters from ours before it was clear
-      // that the question only exists if the box accepts input while it is
-      // showing something it did not get from them.
-      //
-      // This conversation's box, and no other. Another conversation may be
-      // holding a sentence its reader has not sent, and this turn landing
-      // here says nothing about that one.
-      setDraft(conversationId, '');
-
-      // The name arrives on this event because this turn may be the one that
-      // gave the conversation its name -- the first message in a conversation
-      // names it. Written whatever it says, including null: a conversation
-      // that has still not been named is a fact the list needs as much as a
-      // name is.
-      if ('title' in event.data) {
-        noteActivity(running.projectId, conversationId, event.data.title as string | null);
-      }
-
-      patchConversation(conversationId, (c) => {
-        // The place the reply will be written into, made here because this is
-        // the moment there is a reply to expect. Empty, and marked as being
-        // written, so the bubble can show the turn is under way before the
-        // first word of it arrives.
-        const reply: ChatMessageData = {
-          id: replyId,
-          role: 'assistant',
-          parts: [],
-          content: '',
-          ts: new Date().toISOString(),
-          streaming: true,
-        };
-        return {
-          ...c,
-          messages: [...settled.map(toStored), reply],
-          turn: { ...started, started: true },
-          hasMore: Boolean(event.data.hasMore),
-          // The list was replaced, so anything the reader had pulled up from
-          // further back went with it. Saying otherwise would send the next
-          // press asking from a turn no longer on screen, leaving a gap.
-          oldestLoadedTurn: oldestTurnOf(settled) ?? c.oldestLoadedTurn,
-        };
-      });
-      break;
-    }
-
-    case SSE_EVENT_NAMES.CHAT_CHUNK:
-      patchMessage(conversationId, replyId, (m) => ({
-        ...m,
-        content: m.content + String(event.data.text ?? ''),
-      }));
-      break;
-
-    case SSE_EVENT_NAMES.AGENT_THINKING:
-      patchMessage(conversationId, replyId, (m) => ({
-        ...m,
-        thinking: (m.thinking ?? '') + String(event.data.text ?? ''),
-      }));
-      break;
-
-    case SSE_EVENT_NAMES.CHAT_DONE:
-      if (event.data.aborted) {
-        patchMessage(conversationId, replyId, (m) => ({ ...m, interrupted: true as const }));
-      }
-      finishTurn(conversationId, replyId);
-      break;
-
-    case SSE_EVENT_NAMES.ERROR: {
-      const failing = stillRunning(conversationId, replyId);
-      if (!failing) break;
-      // What the server says here is a hardcoded English sentence; the panel
-      // shows its own wording, so only the fact matters.
-      patchMessage(conversationId, replyId, (m) => ({ ...m, failed: true }));
-      patchConversation(conversationId, (c) => ({
-        ...c,
-        failures: c.failures + 1,
-        failedReplyId: replyId,
-      }));
-      // Only when there is no bubble to say it. A turn can fail before the
-      // reply exists -- while the server is still storing the message and
-      // reading the conversation back -- and then the marks above land on
-      // nothing and the reader sees the waiting stop and nothing else happen.
-      // Once the bubble is there it says the same sentence itself, and saying
-      // it twice is two alerts for one failure.
-      if (!failing.messages.some((m) => m.id === replyId)) {
-        tell({ projectId: failing.projectId, conversationId, kind: 'turn' });
-      }
-      finishTurn(conversationId, replyId);
-      break;
-    }
-
-    // The stream saying it is alive. Its arrival is the whole message, and
-    // the watchdog that resets on it is set up where the turn is run.
-    case SSE_EVENT_NAMES.HEARTBEAT:
-      break;
-
-    // Raised as the model reaches for a tool, and as it hands back something
-    // for the panel to draw. Rendering those is PR-6; they are named here so
-    // a new event is a missing case rather than something silently ignored.
-    case SSE_EVENT_NAMES.AGENT_TOOL_HINT:
-    case SSE_EVENT_NAMES.AGENT_ASK:
-    case SSE_EVENT_NAMES.AGENT_CHOICE:
-    case SSE_EVENT_NAMES.AGENT_CANVAS_ACTION:
-    case SSE_EVENT_NAMES.AGENT_SEARCH_RESULTS:
-      break;
-  }
-}
-
-/** What ended a turn, when what ended it means the turn never ran. */
-type NeverRan = StreamRefusedError | StreamUnreachableError;
-
-/**
- * Run one turn against one conversation.
- * @param projectId - The project it belongs to.
- * @param conversationId - The conversation to write it to.
- * @param said - What was in the composer, as it stood there. Sent trimmed;
- *   nothing here writes to the box, either way this ends.
- * @returns The refusal that ended it, when one did.
- */
-async function runTurn(
-  projectId: string,
-  conversationId: string,
-  said: string,
-): Promise<NeverRan | undefined> {
-  const text = said.trim();
-  // `newId` and not `crypto.randomUUID`: same v4 shape, but it is the
-  // generator the rest of the app uses, and it works outside a secure context
-  // where `crypto.randomUUID` is undefined.
-  const replyId = `local-reply-${newId()}`;
-
-  // Nothing is written to the list here -- not the question, not a place for
-  // the reply. Both used to be, and both were the browser saying something it
-  // could not know: that the words got through, and that an answer to them is
-  // coming. Neither survives a server that refuses the turn, and putting them
-  // up meant taking them down again, which is a screen that changes its mind
-  // in front of the reader. The turn's first event says what is stored, and
-  // that is when this turn appears.
-  const abort = new AbortController();
-  patchConversation(conversationId, (c) => ({
-    ...c,
-    turn: { replyId, abort, started: false },
-    // Whatever failed before this is no longer what is happening: it has
-    // become part of the history, and the failure worth announcing from here
-    // on is this turn's, if it has one.
-    failedReplyId: null,
-  }));
-
-  // The stream says it is alive on a schedule of the server's, and this is
-  // what listens for it. A connection that dies without closing produces no
-  // error and no close -- the socket simply never says anything again -- so
-  // without this the turn would wait for a reply that is never coming, with
-  // no way to send anything for as long as it lasted. Missing beats end the turn the same
-  // way pressing stop does, because from here the two are the same fact:
-  // nothing more is coming.
-  // Armed before the request goes out, so the wait it measures starts at the
-  // press: a connection that never opens is exactly the case nothing else
-  // reports, and the budget has to cover it. The cost of that choice is that
-  // setting the connection up spends the same budget, so a network slow enough
-  // to take fifteen seconds getting a socket open ends the turn.
-  let watchdog: ReturnType<typeof setTimeout> | undefined;
-  /** Start the wait for the next beat over, whatever just arrived. */
-  const expectAnotherBeat = (): void => {
-    clearTimeout(watchdog);
-    watchdog = setTimeout(() => {
-      // Only the turn it was set for. A turn ends when the server says so,
-      // which is a moment before the socket closes and this is cleared -- and
-      // the composer is live for the whole of that gap, so the next turn can
-      // already be under way. A watchdog that stopped "whatever is running"
-      // would kill it on behalf of a turn that finished perfectly well.
-      if (!stillRunning(conversationId, replyId)) return;
-      stopTurn(conversationId);
-      // Ended the same way pressing stop does, but the reader did not press
-      // anything, so unlike stop this one is worth a word.
-      tell({ projectId, conversationId, kind: 'network' });
-    }, SSE_HEARTBEAT_TIMEOUT_MS);
-  };
-  expectAnotherBeat();
-
-  let neverRan: NeverRan | undefined;
-
-  await chatApi.streamMessage(
-    { projectId, conversationId, message: text },
-    {
-      signal: abort.signal,
-      onEvent: (event) => {
-        expectAnotherBeat();
-        applyEvent(conversationId, replyId, event);
-      },
-      onClose: () => finishTurn(conversationId, replyId),
-      onError: (err: unknown) => {
-        // Two endings, and which one it is decides who says so.
-        if (err instanceof StreamRefusedError || err instanceof StreamUnreachableError) {
-          // The server answered and said no, or the request never left. Either
-          // way the turn never ran and the words are still in the box -- and
-          // whether that is worth a word depends on what the caller does next,
-          // because one of the two refusals is worth trying again. Handed over
-          // rather than announced here: a line about a failure that healed
-          // itself is a line about nothing, and this end cannot tell which it
-          // is going to be.
-          neverRan = err;
-        } else if (stillRunning(conversationId, replyId) !== undefined) {
-          // The stream opened and then died. Nothing follows this -- there is
-          // no attempt to wait on and nobody to hand it to -- so it is said
-          // here, by the only ending that knows it is the last one.
-          //
-          // Guarded on this still being the turn that is running: an error
-          // arriving late belongs to a turn that already ended, and acting on
-          // it would mark or announce it over the turn that came after.
-          if (err instanceof StreamDroppedError) {
-            // The server sees this as the client going away and cannot tell it
-            // from the user pressing stop, so it records the turn as stopped
-            // and this says the same.
-            patchMessage(conversationId, replyId, (m) => ({ ...m, interrupted: true as const }));
-          }
-          tell({ projectId, conversationId, ...readTurnMishap(err) });
-        }
-        finishTurn(conversationId, replyId);
+  // A conversation already on screen keeps everything about how far back it
+  // reaches. The list is the session's once one exists, and these three are
+  // read off that list -- overwriting them with a fresh page moves the cursor
+  // forward while the screen still shows everything behind it, so the next
+  // press of "load earlier" asks for a page that is already up there and
+  // prepends a second copy of it.
+  const held = hasChatSession(conversationId)
+    ? useStore.getState().conversations[conversationId]
+    : undefined;
+  useStore.setState((s) => ({
+    openStatus: { ...s.openStatus, [projectId]: 'ready' },
+    // Whatever went wrong last time is over. A reason kept past it would
+    // be shown as the reason for whatever goes wrong next.
+    openFailure: (({ [projectId]: _gone, ...rest }) => rest)(s.openFailure),
+    currentByProject: { ...s.currentByProject, [projectId]: conversationId },
+    conversations: {
+      ...s.conversations,
+      [conversationId]: {
+        projectId,
+        // What the server holds, which is not everything on screen: a turn
+        // under way is writing a reply the server has not stored yet. That
+        // one is the session's and stays there -- this page is only ever the
+        // starting point a session is built from, and a session that already
+        // exists keeps the list it has.
+        messages: held?.messages ?? opened.messages,
+        hasMore: held?.hasMore ?? opened.hasMore,
+        oldestLoadedTurn: held ? held.oldestLoadedTurn : oldestTurnOf(opened.messages),
+        title: opened.conversation.title ?? null,
       },
     },
-  );
-
-  clearTimeout(watchdog);
-  return neverRan;
+  }));
 }
 
 /** The one refusal a second attempt can do anything about. */
@@ -1191,66 +577,30 @@ function alreadyGone(err: unknown): boolean {
 }
 
 /**
- * Is this ending one a second attempt could get past.
+ * The conversation a press should be written into, opened if there is not one.
  *
- * A conversation can be deleted from another tab while this one still holds
- * its id, and that is not something the reader did or can act on -- so the
- * send opens a replacement and puts the same words on it, and neither the
- * refusal nor the recovery is worth a word. Every other refusal says trying
- * again is pointless, and is told.
+ * Everything about *which* conversation stays here; what happens inside it is
+ * the `Chat` session's. The two are settled at different moments and this is
+ * the earlier one: a first message opens a conversation, and the panel has
+ * not been told about it yet when the press is handled.
  *
- * Note what this does not say: that a second attempt will work. The same 404
- * comes back from a project that is gone or that the reader has been taken
- * off, and then opening a replacement asks the same question of the same
- * project. Whoever tries is the one who finds out, which is why they are also
- * the one who speaks.
- *
- * The status alone is not enough to ask this of. A proxy answering 404 for a
- * path it does not know sends the same number as our own "that conversation
- * is gone", and acting on it opens a conversation and puts the reader's words
- * on it over an answer no part of our server produced. So the refusal has to
- * be one of ours before any of that is worth doing.
- * @param ending - How the turn ended.
- * @returns True when a replacement conversation is worth opening.
+ * A navigation in flight is on its way to replace what is on screen, so a
+ * press during one would be written into the conversation being left: the
+ * words and the reply both vanish when the switch lands, while that turn goes
+ * on running and being charged for. Only when there is one on screen -- a
+ * press with no conversation yet is a different thing, and opens one.
+ * @param projectId - The project being sent to.
+ * @returns Which conversation, or undefined when there is none to write to.
  */
-function worthASecondAttempt(ending: unknown): boolean {
-  return (
-    ending instanceof StreamRefusedError && ending.fromServer && ending.status === NOT_FOUND
-  );
-}
-
-/**
- * Say one thing in a project's chat and stream the reply into it.
- *
- * Opens a conversation first when there is not one. Pressing send is the whole
- * of what a reader has to do here: a chat that could not be opened when the
- * project came up leaves nothing for them to fix and nothing to press twice,
- * and the box they typed into stays exactly as they left it either way.
- *
- * Never rejects. Everything that can go wrong here is told to whoever is
- * looking, once, at the moment it happens -- and nothing else on the screen
- * moves, because nothing about it has changed.
- * @param projectId - The project whose chat this is.
- * @param said - What was in the composer, as it stood there.
- */
-async function send(projectId: string, said: string): Promise<void> {
-  if (said.trim().length === 0) return;
-  // One send at a time in a project. Two presses in the gap before a turn
-  // exists land as two turns: the same sentence stored twice, the model asked
-  // twice, both charged for, and the first turn overwritten by the second so
-  // nothing on screen can stop it.
-  if (turnPhaseOf(useStore.getState(), projectId) !== 'idle') return;
-  // The conversation this would be written into is the one on screen, and a
-  // navigation in flight is on its way to replace it. Sending now writes into
-  // the one being left: the words and the reply that follows both vanish when
-  // the switch lands, while that turn goes on running and being charged for,
-  // with no stop button anywhere -- the panel by then is reading the turn of
-  // the conversation the reader arrived in.
-  // Only when there is one on screen. A send with no conversation yet is a
-  // different thing, and `sendOnce` opens one and waits for it.
+async function conversationForSending(projectId: string): Promise<string | undefined> {
   const state = useStore.getState();
-  if (state.currentByProject[projectId] !== undefined && awaitedNavigationInFlight(projectId)) return;
-  await sendOnce(projectId, said);
+  if (state.currentByProject[projectId] !== undefined && awaitedNavigationInFlight(projectId)) {
+    return undefined;
+  }
+  if (state.currentByProject[projectId] === undefined) {
+    await whileOpening(projectId, () => ensureLoaded(projectId));
+  }
+  return useStore.getState().currentByProject[projectId];
 }
 
 /**
@@ -1276,80 +626,6 @@ async function whileOpening<T>(projectId: string, work: () => Promise<T>): Promi
       return { sendingByProject: rest };
     });
   }
-}
-
-/**
- * Open a conversation if there is not one, then run the turn in it.
- * @param projectId - The project whose chat this is.
- * @param said - What was in the composer, as it stood there.
- */
-async function sendOnce(projectId: string, said: string): Promise<void> {
-  // Held from the start, not read again later. Leaving the project raises
-  // this one and forgets it, so asking for the visit afterwards would hand
-  // back a fresh, unraised signal -- and every line below would be spoken to
-  // the visit the reader is on now about the one they walked out of.
-  const visit = currentVisit(projectId);
-  /**
-   * Say this, unless the reader has walked out of the project since.
-   * @param mishap - Which conversation it is about, and what to say.
-   */
-  const tellThisVisit = (mishap: Omit<ChatMishap, 'at' | 'projectId'>): void => {
-    if (visit.signal.aborted) return;
-    tell({ projectId, ...mishap });
-  };
-
-  if (useStore.getState().currentByProject[projectId] === undefined) {
-    await whileOpening(projectId, () => ensureLoaded(projectId));
-  }
-  const conversationId = useStore.getState().currentByProject[projectId];
-  // Opening said why it could not, to everyone who was looking. There is
-  // nothing to add and nothing to undo: no turn was started, and the words are
-  // where the reader left them.
-  if (!conversationId) return;
-
-  const ending = await runTurn(projectId, conversationId, said);
-  if (!ending) return;
-
-  // The turn hands back every ending it could not be the last word on, and
-  // this is where the last word is decided -- so every path out of here that
-  // stops trying says so exactly once.
-  if (!worthASecondAttempt(ending)) {
-    tellThisVisit({ conversationId, ...readTurnMishap(ending) });
-    return;
-  }
-
-  // Not `ensureLoaded`: by its reckoning this project is open already. What
-  // is needed is a new one, because the one on screen is the one the server
-  // just said it does not have.
-  const { answer: reopen } = await whileOpening(projectId, () =>
-    joinOrStart(opening, projectId, () => openAndAdopt(projectId)),
-  );
-  const fresh = useStore.getState().currentByProject[projectId];
-  // Compared against the one that was refused, not just checked for being
-  // there: a failed open leaves the old id in place, and running the turn
-  // against it again would send the same words to the conversation the server
-  // has just said it does not have -- refused again, re-opened again.
-  if (!fresh || fresh === conversationId) {
-    // What is quoted is the newer of the two answers when there is one: a
-    // reader whose access was taken away mid-send is owed that, not the
-    // sentence about the conversation the first attempt went looking for.
-    tellThisVisit({
-      conversationId: null,
-      ...readTurnMishap(reopen ? reopen.failed : ending),
-    });
-    return;
-  }
-
-  // A plain turn, not a resumed one: the first attempt never put anything on
-  // screen, and adopting the new conversation replaced the list besides.
-  // Nothing of the attempt is left to reuse, so the words go on again with the
-  // turn that is re-sending them.
-  //
-  // Once, not until it works. A second refusal is the answer, not an invitation
-  // to open a third conversation -- and it is this end of the line, so it is
-  // said rather than handed on to nobody.
-  const retry = await runTurn(projectId, fresh, said);
-  if (retry) tellThisVisit({ conversationId: fresh, ...readTurnMishap(retry) });
 }
 
 /**
@@ -1390,10 +666,15 @@ async function loadEarlier(conversationId: string): Promise<void> {
       }
       patchConversation(conversationId, (c) => ({
         ...c,
-        messages: [...earlier.messages.map(toStored), ...c.messages],
+        messages: [...earlier.messages, ...c.messages],
         hasMore: earlier.hasMore,
         oldestLoadedTurn: oldestTurnOf(earlier.messages) ?? c.oldestLoadedTurn,
       }));
+      // And onto the list the panel is drawing, which is the session's. What
+      // is written above is the starting point a session is built from; a
+      // session that already exists never reads it again, so a page that
+      // stopped here would be a button the reader presses to no effect.
+      prependHistory(conversationId, earlier.messages);
     } catch (err) {
       // Except when the visit is over, which includes this failure being the
       // abort itself: nobody asked for this page any more.
@@ -2126,8 +1407,10 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
 
   // Whatever it was running stops with it. Leaving the turn to finish would
   // go on calling the model, and being billed for it, on behalf of a
-  // conversation that no longer exists.
-  stopTurn(conversationId);
+  // conversation that no longer exists. Dropping the session from the map is
+  // not enough on its own -- the request is out, and nothing about a map
+  // entry disappearing reaches it.
+  evictChatSession(conversationId);
 
   const remaining = (useStore.getState().listByProject[projectId] ?? []).filter(
     (c) => c.id !== conversationId,
@@ -2243,7 +1526,7 @@ function leaveProject(projectId: string): void {
   const leaving = Object.entries(conversations).filter(([, c]) => c.projectId === projectId);
 
   for (const [id] of leaving) {
-    stopTurn(id);
+    evictChatSession(id);
     // Its pages are on their way to a conversation this visit will not be
     // reading any more. Dropped rather than left to settle, because a press
     // made after coming back would otherwise join one of these instead of
@@ -2328,6 +1611,13 @@ function leaveProject(projectId: string): void {
  * case after it.
  */
 export function _resetForTests(): void {
+  // The sessions too, and not as a courtesy: a `Chat` outlives the store it
+  // was seeded from, so a case that resets only the store and then opens the
+  // same conversation id gets the previous case's instance -- history and all
+  // -- and never sees the history it set up. One case in `ChatPanel.test.tsx`
+  // was passing on exactly that, drawing a message the case before it had
+  // left behind.
+  evictAllChatSessions();
   opening.clear();
   loadingEarlier.clear();
   visits.clear();
@@ -2358,8 +1648,8 @@ export const useConversationRuntime = useStore;
 
 export const conversationRuntime = {
   ensureLoaded,
-  send,
-  stopTurn,
+  conversationForSending,
+  noteActivity,
   loadEarlier,
   leaveProject,
   switchTo,

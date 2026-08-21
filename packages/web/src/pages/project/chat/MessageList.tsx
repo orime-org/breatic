@@ -179,6 +179,13 @@ function MessageListInner({
     // something sees nothing move at all: not their own message, not a word
     // of the reply.
     stickToBottom.current = true;
+    // And go there now, rather than waiting for something to arrive. Nothing
+    // is going to: the message just sent is held out of the list until the
+    // first frame (B1), so the count and the last bubble's shape -- what the
+    // effect below watches -- are both unchanged by the press. Following
+    // alone would leave the column exactly where the reader scrolled it,
+    // which reads as the press having done nothing.
+    bottomRef.current?.scrollIntoView();
     // And on arriving in another conversation, for the same reason as sending:
     // what is in front of the reader now is not what they scrolled away from.
     // Done here rather than by keying this component on the conversation --

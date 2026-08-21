@@ -250,6 +250,47 @@ body {
    the animation on reduce-enabled machines and made the loading state
    unreadable — the very defect this slice fixes. Do not re-add one here. */
 
+/* The mark an agent bubble carries for the whole turn: one dot, breathing,
+   at the end of whatever has been written so far. Settled 2026-08-12 over two
+   busier proposals; every figure here comes from the demo that settled it,
+   and it was widened from "before the first word" to the whole turn on
+   2026-08-20.
+
+   The bubble does not resize when the first word lands, and nothing here is
+   what makes that true: the line is the bubble's own, and the dot rides it
+   without changing it. Measured in the running app, in a real bubble — 13px
+   text on an 18px line — the dot and a line of text both come to 18px, with
+   or without a `line-height` of its own. One was written here and did
+   nothing: this box has no text, so it has no line box to size.
+
+   No prefers-reduced-motion override here either, and for the same reason as
+   the skeleton above: before the first word this dot is the whole of what
+   says an answer is on its way, so blanking it leaves a bubble that looks
+   broken rather than busy — and after the first word it is the only thing
+   separating a reply still being written from one that stopped. It
+   also displaces nothing — no parallax, no travel, a scale of .85 to 1 on an
+   8px dot — so it is not vestibular-trigger motion. */
+.chat-waiting-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-muted-foreground);
+  vertical-align: middle;
+  animation: chat-waiting-dot 1.2s ease-in-out infinite;
+}
+@keyframes chat-waiting-dot {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 /* Canvas edge colours. ReactFlow keys its dark edge vars off `.react-flow.dark`
    (set only when you pass colorMode="dark"), which never matches our
    `data-theme="dark"`-on-<html> toggle — so its light defaults (#b1b1b7 default /
