@@ -167,8 +167,7 @@ export const coreConfigSchema = z.object({
   //      not scoped by port (RFC 6265 §8.5).
   // Nothing else. Resolved by the transform below: unset or blank means `ENV`.
   //
-  // ⚠️ TWO THINGS CHANGE NAME WHEN THIS SHIPS. Both are one-off; see
-  // docs/DEPLOY.md "Upgrading" for the operator-facing version.
+  // ⚠️ TWO THINGS CHANGE NAME WHEN THIS SHIPS. Both are one-off.
   //   - The session cookie was a fixed `breatic_session` and becomes
   //     `breatic_session_{ENV}`, so every live session stops resolving and
   //     each user signs in once more. No data is touched — the old Redis rows
@@ -178,7 +177,7 @@ export const coreConfigSchema = z.object({
   //     it was already `{ENV}:hocuspocus:…`, so its names are unchanged.)
   //     A single-container deploy stops the old build before starting the new
   //     one, so nothing overlaps. But when server or collab runs MULTIPLE
-  //     replicas (see docs/DEPLOY.md, SaaS Production), a rolling update has
+  //     replicas, a rolling update has
   //     old and new instances live at once, and an old publisher's
   //     `project:…` never reaches a new subscriber's `{ENV}:project:*` — pub/sub
   //     drops unmatched publishes with no error. For that window, membership

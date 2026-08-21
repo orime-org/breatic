@@ -5,8 +5,8 @@
  * Distributed lock that serializes `space:delete` per project ACROSS
  * collab instances.
  *
- * Production runs multiple collab instances synced via Redis pub/sub
- * (see docs/DEPLOY.md). The "a project must keep >=1 space" guard reads
+ * Production runs multiple collab instances synced via Redis pub/sub.
+ * The "a project must keep >=1 space" guard reads
  * a count and then deletes — a classic read-modify-write. Within one
  * instance that is atomic (a single synchronous Yjs transact on a shared
  * in-memory doc), but two collaborators on DIFFERENT instances each see

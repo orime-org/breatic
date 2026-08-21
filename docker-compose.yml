@@ -9,7 +9,6 @@
 # postgres + redis pair below, which both dev and deploy can run via
 # `docker compose up -d postgres redis` (dev) or `up -d` (deploy).
 #
-# See docs/DEPLOY.md for the full deploy flow and BREATIC_TAG usage.
 
 services:
   # ── Infrastructure ─────────────────────────────
