@@ -25,12 +25,18 @@ import { z } from "zod";
 import { validate } from "@server/middleware/validate.js";
 import { t } from "@breatic/shared";
 import { createTeamStudioSchema, updateStudioSchema } from "@breatic/shared";
+import { creditPageQuerySchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { studioService, projectService, recentService } from "@server/modules";
-import { getStorageConfig, ValidationError } from "@breatic/core";
+import {
+  studioService,
+  projectService,
+  recentService,
+  creditViewService,
+} from "@server/modules";
+import { getStorageConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { readBoundedBody } from "@server/utils/read-bounded-body.js";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioAvatarService from "@server/modules/studio/studioAvatar.service.js";
@@ -465,6 +471,40 @@ studio.delete(
     const invitationId = c.req.param("invitationId");
     await studioInviteService.revokeInvite(slug, invitationId);
     return c.json({ data: { ok: true } });
+  },
+);
+
+/**
+ * `GET /api/v1/studio/:slug/credits` — this studio's credits, for its members.
+ *
+ * The pool belongs to the studio, so every member sees what it can spend and
+ * which purchases make it up. The ledger beside it is taken by the reader's
+ * own payments: it answers where THEIR money went in this studio, which is
+ * the question a member can act on.
+ *
+ * Guests included — a guest who is an editor on one of the studio's projects
+ * spends this pool, so being able to see how much is left is the same fact
+ * they already act on when they generate.
+ * @returns `200` with `{ data: StudioCreditsView }`; `403` for a non-member
+ *   (which also hides whether the studio exists), `401` when signed out
+ */
+studio.get(
+  "/:slug/credits",
+  requireStudioRole("guest"),
+  validate("query", creditPageQuerySchema),
+  async (c) => {
+    const user = c.get("user");
+    const slug = c.req.param("slug");
+    const target = await studioService.getStudioBySlug(slug);
+    if (!target) throw new NotFoundError(t("server.error.not_found"));
+    const { limit, cursor } = c.req.valid("query");
+    const data = await creditViewService.getStudioCredits(
+      target.id,
+      user.id,
+      limit,
+      cursor,
+    );
+    return c.json({ data });
   },
 );
 

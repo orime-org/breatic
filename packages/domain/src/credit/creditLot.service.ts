@@ -387,6 +387,65 @@ export async function designateLot(input: {
   });
 }
 
+/** One studio's line on the account overview. */
+export interface StudioCreditSummary {
+  studioId: string;
+  /** What this studio can spend of this account's money. */
+  spendable: number;
+  /** What it has already spent of it. */
+  spent: number;
+}
+
+/** What an account holds, and where. */
+export interface CreditOverview {
+  /** Sitting in studios, ready to spend. */
+  assignedCredits: number;
+  /** Bought but pointed at no live studio, so unspendable until assigned. */
+  unassignedCredits: number;
+  /** Every studio this account has money in or has spent money in. */
+  studios: StudioCreditSummary[];
+}
+
+/**
+ * What an account holds and where it went.
+ *
+ * A studio appears here if it holds credits of this account's or has spent
+ * some, which are different sets: a studio that spent its last credit still
+ * belongs on the panel, and one that was just assigned its first has nothing
+ * spent yet.
+ * @param userId - The account to summarise.
+ * @returns The overview.
+ */
+export async function getOverview(userId: string): Promise<CreditOverview> {
+  const [spendableRows, spentRows, unassigned] = await Promise.all([
+    creditLotRepo.sumSpendableByStudio(userId),
+    creditLotRepo.sumSpentByStudio(userId),
+    getUnassignedCredits(userId),
+  ]);
+
+  const byStudio = new Map<string, StudioCreditSummary>();
+  for (const row of spendableRows) {
+    byStudio.set(row.studioId, {
+      studioId: row.studioId,
+      spendable: toMicroCredits(row.spendable) / 1_000_000,
+      spent: 0,
+    });
+  }
+  for (const row of spentRows) {
+    const existing = byStudio.get(row.studioId);
+    const spent = toMicroCredits(row.spent) / 1_000_000;
+    if (existing) existing.spent = spent;
+    else byStudio.set(row.studioId, { studioId: row.studioId, spendable: 0, spent });
+  }
+
+  const studios = [...byStudio.values()];
+  return {
+    assignedCredits: studios.reduce((sum, s) => sum + s.spendable, 0),
+    unassignedCredits: unassigned,
+    studios,
+  };
+}
+
 /**
  * What a studio can spend right now.
  * @param studioId - The studio to total.

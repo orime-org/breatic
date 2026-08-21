@@ -283,3 +283,29 @@ export const attachmentParamSchema = z.object({
   cid: z.string().uuid(),
   aid: z.string().uuid(),
 });
+
+/**
+ * Keyset paging for the credit overlay. Both fields are optional: the first
+ * page asks for neither, and the page size falls back to the configured
+ * default when the client omits it. Kept as strings because the service
+ * clamps `limit` against `config/limits.yaml` and treats a malformed cursor
+ * as "first page" — a garbage value from the network must not fail the panel.
+ */
+export const creditPageQuerySchema = z.object({
+  limit: z.string().optional(),
+  cursor: z.string().optional(),
+});
+
+/** The ledger takes the same paging, plus an optional studio filter. */
+export const creditLedgerQuerySchema = creditPageQuerySchema.extend({
+  studioId: z.string().uuid().optional(),
+});
+
+/**
+ * Which studio may spend a purchase. `null` means unassigned, so the field is
+ * required rather than optional: omitting it is a malformed request, while
+ * sending null is an instruction to take the purchase back.
+ */
+export const designationSchema = z.object({
+  studioId: z.string().uuid().nullable(),
+});

@@ -27,9 +27,9 @@
  *      lock come back empty at the one moment it was needed.
  */
 
-import { and, asc, eq, isNull, isNotNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
-import type { DbTx } from "@breatic/core";
+import type { ActivityCursor, DbTx } from "@breatic/core";
 import { creditLots, creditLedger, studios } from "@breatic/core";
 import type {
   CreditLotEntity,
@@ -348,6 +348,168 @@ export async function setDesignation(
     .where(eq(creditLots.id, lotId))
     .returning();
   return toLotEntity(rows[0]!);
+}
+
+/**
+ * One account's purchases, newest first, one keyset page at a time.
+ *
+ * Keyset rather than offset: a purchase landing while someone pages would
+ * shift every later row down by one under an offset, which shows a row twice
+ * and hides another.
+ * @param userId - Whose purchases to list.
+ * @param limit - How many rows to return.
+ * @param cursor - The `(created_at, id)` of the previous page's last row.
+ * @returns The page, newest first.
+ */
+export async function listLotsByUser(
+  userId: string,
+  limit: number,
+  cursor: ActivityCursor | null,
+): Promise<CreditLotEntity[]> {
+  const rows = await db
+    .select()
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.userId, userId),
+        isNull(creditLots.deletedAt),
+        cursor
+          ? or(
+              lt(creditLots.createdAt, cursor.createdAt),
+              and(eq(creditLots.createdAt, cursor.createdAt), lt(creditLots.id, cursor.id)),
+            )
+          : undefined,
+      ),
+    )
+    .orderBy(desc(creditLots.createdAt), desc(creditLots.id))
+    .limit(limit);
+  return rows.map(toLotEntity);
+}
+
+/**
+ * The lots a studio holds, oldest first — the order they will be spent in.
+ * @param studioId - The studio to read.
+ * @returns Its live lots.
+ */
+export async function listLotsByStudio(
+  studioId: string,
+): Promise<CreditLotEntity[]> {
+  const rows = await db
+    .select({ lot: creditLots })
+    .from(creditLots)
+    .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
+    .where(
+      and(
+        eq(creditLots.designatedStudioId, studioId),
+        isNull(creditLots.deletedAt),
+        isNull(studios.deletedAt),
+      ),
+    )
+    .orderBy(asc(creditLots.createdAt), asc(creditLots.id));
+  return rows.map((row) => toLotEntity(row.lot));
+}
+
+/**
+ * One account's ledger, newest first, one keyset page at a time.
+ *
+ * Always taken by payer: this answers "where did my money go", and the person
+ * who spent it is a column on each row rather than a way of selecting them.
+ * @param payerUserId - Whose credits moved.
+ * @param limit - How many rows to return.
+ * @param cursor - The `(created_at, id)` of the previous page's last row.
+ * @param studioId - Narrow to one studio, when asked for.
+ * @returns The page, newest first.
+ */
+export async function listLedgerByPayer(
+  payerUserId: string,
+  limit: number,
+  cursor: ActivityCursor | null,
+  studioId?: string,
+): Promise<CreditLedgerEntryEntity[]> {
+  const rows = await db
+    .select()
+    .from(creditLedger)
+    .where(
+      and(
+        eq(creditLedger.payerUserId, payerUserId),
+        studioId ? eq(creditLedger.studioId, studioId) : undefined,
+        cursor
+          ? or(
+              lt(creditLedger.createdAt, cursor.createdAt),
+              and(
+                eq(creditLedger.createdAt, cursor.createdAt),
+                lt(creditLedger.id, cursor.id),
+              ),
+            )
+          : undefined,
+      ),
+    )
+    .orderBy(desc(creditLedger.createdAt), desc(creditLedger.id))
+    .limit(limit);
+  return rows.map(toLedgerEntity);
+}
+
+/**
+ * What each studio has spent of one account's money.
+ *
+ * Both conditions are load-bearing. Without the payer, a studio that changed
+ * hands still carries the previous owner's spending under this `studio_id`,
+ * and it would land on the wrong person's panel. And this cannot be derived
+ * from `purchased - remaining` on the lots: spending that happened before a
+ * lot was reassigned would move to the studio it was reassigned to, which
+ * contradicts a purchase's history being fixed once written.
+ * @param payerUserId - Whose money to account for.
+ * @returns One entry per studio the account has spent in.
+ */
+export async function sumSpentByStudio(
+  payerUserId: string,
+): Promise<{ studioId: string; spent: string }[]> {
+  const rows = await db
+    .select({
+      studioId: creditLedger.studioId,
+      spent: sql<string>`(-SUM(${creditLedger.amount}))::text`,
+    })
+    .from(creditLedger)
+    .where(
+      and(
+        eq(creditLedger.payerUserId, payerUserId),
+        eq(creditLedger.entryType, "spend"),
+        isNotNull(creditLedger.studioId),
+      ),
+    )
+    .groupBy(creditLedger.studioId);
+  return rows
+    .filter((row): row is { studioId: string; spent: string } => row.studioId !== null)
+    .map((row) => ({ studioId: row.studioId, spent: row.spent }));
+}
+
+/**
+ * How much each studio can spend of one account's money, per studio.
+ * @param userId - Whose lots to group.
+ * @returns One entry per studio holding a live lot of this account's.
+ */
+export async function sumSpendableByStudio(
+  userId: string,
+): Promise<{ studioId: string; spendable: string }[]> {
+  const rows = await db
+    .select({
+      studioId: creditLots.designatedStudioId,
+      spendable: sql<string>`SUM(${creditLots.remainingCredits})::text`,
+    })
+    .from(creditLots)
+    .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
+    .where(
+      and(
+        eq(creditLots.userId, userId),
+        eq(creditLots.lifecycle, "active"),
+        isNull(creditLots.deletedAt),
+        isNull(studios.deletedAt),
+      ),
+    )
+    .groupBy(creditLots.designatedStudioId);
+  return rows
+    .filter((row): row is { studioId: string; spendable: string } => row.studioId !== null)
+    .map((row) => ({ studioId: row.studioId, spendable: row.spendable }));
 }
 
 /**
