@@ -222,7 +222,14 @@ function anchorRect(left: number, line: { top: number; bottom: number }): DOMRec
  * @param to - Range end.
  * @returns True when at least one non-empty text node lies in the range.
  */
-function hasTextIn(doc: ProseMirrorNode, from: number, to: number): boolean {
+export function hasTextIn(doc: ProseMirrorNode, from: number, to: number): boolean {
+  // An empty range holds nothing, and `nodesBetween` would say otherwise: it
+  // still visits the text node the position sits inside. Measured against
+  // `textBetween(...).length > 0` over every (from, to) pair of ten document
+  // shapes — that is the only disagreement between the two, and this removes
+  // it, so the swap does not depend on the caller checking `selection.empty`
+  // first (it does, but the function should not need it to).
+  if (from >= to) return false;
   let found = false;
   doc.nodesBetween(from, to, (node) => {
     if (found) return false;
