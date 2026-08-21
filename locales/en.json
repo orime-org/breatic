@@ -913,6 +913,7 @@
         "activityEmpty": "Nothing spent yet.",
         "activityEnd": "No more",
         "colTime": "Date",
+        "colWho": "Who",
         "colProject": "Project",
         "colModel": "Model",
         "colAmount": "Credits",

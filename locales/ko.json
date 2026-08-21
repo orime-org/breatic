@@ -913,6 +913,7 @@
         "activityEmpty": "아직 사용 내역이 없습니다.",
         "activityEnd": "더 이상 없습니다",
         "colTime": "날짜",
+        "colWho": "누가",
         "colProject": "Project",
         "colModel": "모델",
         "colAmount": "크레딧",

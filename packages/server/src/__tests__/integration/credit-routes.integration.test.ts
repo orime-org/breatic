@@ -73,6 +73,8 @@ interface Fixture {
   studioId: string;
   studioSlug: string;
   projectId: string;
+  projectName: string;
+  personalStudioName: string;
   cookie: string;
 }
 
@@ -94,9 +96,16 @@ async function seedFixture(): Promise<Fixture> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, 'admin')
   `;
+  const projectName = `Route 项目 ${n}`;
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
-    VALUES (${studioId}, ${userId}, ${`route-p-${n}-${Date.now()}`}, 'Route') RETURNING id
+    VALUES (${studioId}, ${userId}, ${`route-p-${n}-${Date.now()}`}, ${projectName}) RETURNING id
+  `;
+  // 显示名住在个人 studio 上（users 是纯鉴权表），跟活动流取名字同一处。
+  const personalStudioName = `Route 本人 ${n}`;
+  await sql`
+    INSERT INTO studios (created_by_user_id, slug, type, name)
+    VALUES (${userId}, ${`route-me-${n}-${Date.now()}`}, 'personal', ${personalStudioName})
   `;
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
@@ -105,6 +114,8 @@ async function seedFixture(): Promise<Fixture> {
     studioId,
     studioSlug,
     projectId: project!.id,
+    projectName,
+    personalStudioName,
     cookie: `${sessionCookieName()}=${token}`,
   };
 }
@@ -338,15 +349,23 @@ describe("GET /credits/ledger", () => {
           entryType: string;
           amount: number;
           actorUserId: string | null;
+          actorName: string | null;
+          projectId: string | null;
+          projectName: string | null;
           studioId: string | null;
           model: string | null;
         }[];
       };
     };
     const spend = body.data.items.find((i) => i.entryType === "spend");
+    // 名字随行带出来：界面上要显示「谁」和「哪个 project」，而它手里只有
+    // 这一行；让它拿 id 再去问一次，一页三十行就是三十次请求。
     expect(spend).toMatchObject({
       amount: -10,
       actorUserId: guest.userId,
+      actorName: guest.personalStudioName,
+      projectId: owner.projectId,
+      projectName: owner.projectName,
       studioId: owner.studioId,
       model: "seedance-1.5-pro",
     });

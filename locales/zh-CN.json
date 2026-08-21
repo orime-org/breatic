@@ -913,6 +913,7 @@
         "activityEmpty": "还没有消耗记录。",
         "activityEnd": "没有更多了",
         "colTime": "时间",
+        "colWho": "谁",
         "colProject": "Project",
         "colModel": "模型",
         "colAmount": "积分",

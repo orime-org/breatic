@@ -35,6 +35,10 @@ export interface CreditLedgerView {
   entryType: string;
   amount: number;
   actorUserId: string | null;
+  /** Who spent it, by display name. */
+  actorName: string | null;
+  /** Where it was spent, by name. */
+  projectName: string | null;
   studioId: string | null;
   projectId: string | null;
   lotId: string | null;
@@ -101,6 +105,8 @@ function toLedgerView(entry: CreditLedgerEntryEntity): CreditLedgerView {
     entryType: entry.entryType,
     amount: toNumber(entry.amount),
     actorUserId: entry.actorUserId,
+    actorName: entry.actorName,
+    projectName: entry.projectName,
     studioId: entry.studioId,
     projectId: entry.projectId,
     lotId: entry.lotId,

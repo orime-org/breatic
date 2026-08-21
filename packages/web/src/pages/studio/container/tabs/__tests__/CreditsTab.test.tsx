@@ -51,6 +51,8 @@ function credits(over: Partial<StudioCredits> = {}): StudioCredits {
           entryType: 'spend',
           amount: -42.5,
           actorUserId: 'u-guest',
+          actorName: '李静',
+          projectName: '夏季广告片',
           studioId: 's1',
           projectId: 'p1',
           lotId: 'lot-1',
@@ -111,6 +113,8 @@ describe('CreditsTab', () => {
     renderTab(<CreditsTab slug='acme' studioRole='admin' />);
 
     const row = await screen.findByTestId('studio-ledger-e1');
+    expect(row).toHaveTextContent('李静');
+    expect(row).toHaveTextContent('夏季广告片');
     expect(row).toHaveTextContent('seedance-1.5-pro');
     expect(row).toHaveTextContent('-42.5');
   });

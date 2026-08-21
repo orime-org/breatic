@@ -420,6 +420,10 @@ export interface CreditLedgerEntryEntity {
   id: string;
   payerUserId: string;
   actorUserId: string | null;
+  /** Who spent it, by display name. Absent when nobody did, or they are gone. */
+  actorName: string | null;
+  /** Where it was spent, by name. Absent for anything but a charge. */
+  projectName: string | null;
   lotId: string | null;
   studioId: string | null;
   projectId: string | null;

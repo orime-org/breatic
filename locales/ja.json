@@ -913,6 +913,7 @@
         "activityEmpty": "まだ使用履歴はありません。",
         "activityEnd": "これ以上ありません",
         "colTime": "日付",
+        "colWho": "だれ",
         "colProject": "Project",
         "colModel": "モデル",
         "colAmount": "クレジット",

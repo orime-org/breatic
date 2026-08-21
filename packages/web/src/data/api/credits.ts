@@ -24,6 +24,8 @@ export interface CreditLedgerView {
   amount: number;
   /** Who spent them, which in a team is often not who paid. */
   actorUserId: string | null;
+  actorName: string | null;
+  projectName: string | null;
   studioId: string | null;
   projectId: string | null;
   lotId: string | null;

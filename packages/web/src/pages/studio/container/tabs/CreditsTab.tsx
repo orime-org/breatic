@@ -89,7 +89,8 @@ const LedgerRow = React.memo(function LedgerRow({
   return (
     <tr data-testid={`studio-ledger-${entry.id}`} className='border-t border-border'>
       <td className='py-1.5 text-muted-foreground'>{formatDate(entry.createdAt)}</td>
-      <td className='py-1.5 text-muted-foreground'>{entry.projectId ?? '—'}</td>
+      <td className='py-1.5'>{entry.actorName ?? '—'}</td>
+      <td className='py-1.5 text-muted-foreground'>{entry.projectName ?? '—'}</td>
       <td className='py-1.5 text-muted-foreground'>{entry.model ?? '—'}</td>
       <td className='py-1.5 text-right tabular-nums'>{formatAmount(entry.amount)}</td>
     </tr>
@@ -229,6 +230,9 @@ export function CreditsTab({
                   <tr>
                     <th className='sticky top-0 bg-background py-1 font-medium'>
                       {t('studio.container.credits.colTime')}
+                    </th>
+                    <th className='sticky top-0 bg-background py-1 font-medium'>
+                      {t('studio.container.credits.colWho')}
                     </th>
                     <th className='sticky top-0 bg-background py-1 font-medium'>
                       {t('studio.container.credits.colProject')}

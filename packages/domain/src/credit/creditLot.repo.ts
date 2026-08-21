@@ -28,9 +28,10 @@
  */
 
 import { and, asc, desc, eq, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "@breatic/core";
 import type { ActivityCursor, DbTx } from "@breatic/core";
-import { creditLots, creditLedger, studios } from "@breatic/core";
+import { creditLots, creditLedger, studios, projects } from "@breatic/core";
 import type {
   CreditLotEntity,
   CreditLotLifecycle,
@@ -61,12 +62,21 @@ function toLotEntity(row: typeof creditLots.$inferSelect): CreditLotEntity {
 /**
  * Map a raw `credit_ledger` row to the shared entity.
  * @param row - The Drizzle row.
+ * @param names - Display names joined alongside the row.
+ * @param names.actorName - Who spent it, by display name.
+ * @param names.projectName - Where it was spent, by name.
  * @returns The mapped entity.
  */
 function toLedgerEntity(
   row: typeof creditLedger.$inferSelect,
+  names: { actorName: string | null; projectName: string | null } = {
+    actorName: null,
+    projectName: null,
+  },
 ): CreditLedgerEntryEntity {
   return {
+    actorName: names.actorName,
+    projectName: names.projectName,
     id: row.id,
     payerUserId: row.payerUserId,
     actorUserId: row.actorUserId,
@@ -426,9 +436,25 @@ export async function listLedgerByPayer(
   cursor: ActivityCursor | null,
   studioId?: string,
 ): Promise<CreditLedgerEntryEntity[]> {
+  // Display names live on the personal studio (`users` is the pure auth
+  // table), the same place the activity feed reads an actor's name from.
+  const actorStudio = alias(studios, "actor_studio");
   const rows = await db
-    .select()
+    .select({
+      entry: creditLedger,
+      actorName: actorStudio.name,
+      projectName: projects.name,
+    })
     .from(creditLedger)
+    .leftJoin(
+      actorStudio,
+      and(
+        eq(actorStudio.createdByUserId, creditLedger.actorUserId),
+        eq(actorStudio.type, "personal"),
+        isNull(actorStudio.deletedAt),
+      ),
+    )
+    .leftJoin(projects, eq(projects.id, creditLedger.projectId))
     .where(
       and(
         eq(creditLedger.payerUserId, payerUserId),
@@ -446,7 +472,12 @@ export async function listLedgerByPayer(
     )
     .orderBy(desc(creditLedger.createdAt), desc(creditLedger.id))
     .limit(limit);
-  return rows.map(toLedgerEntity);
+  return rows.map((row) =>
+    toLedgerEntity(row.entry, {
+      actorName: row.actorName,
+      projectName: row.projectName,
+    }),
+  );
 }
 
 /**
