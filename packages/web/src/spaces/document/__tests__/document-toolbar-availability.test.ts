@@ -32,7 +32,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/DocumentToolbar';
+import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
 
 const editors: Editor[] = [];
 
