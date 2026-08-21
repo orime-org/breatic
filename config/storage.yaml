@@ -1,6 +1,5 @@
 # Browser upload knobs (#1609 asset slice 2). Served to the frontend via
-# GET /assets/upload-config (session-cached). Registered in
-# docs/CONFIGURATION.md.
+# GET /assets/upload-config (session-cached).
 upload:
   # Hard upload cap (bytes). Frontend rejects oversize files on selection
   # (no network traffic); /assets/presign enforces it authoritatively
@@ -32,7 +31,7 @@ upload:
   # no time limit (#1826, design §3.2). Local storage has no presigned URL.
   presign_expires_seconds: 300
 
-# Studio avatars. Registered in docs/CONFIGURATION.md.
+# Studio avatars.
 avatar:
   # Hard cap on one avatar upload, in bytes. Avatars do NOT use presigned
   # direct upload — the bytes come through the server — so this is also the

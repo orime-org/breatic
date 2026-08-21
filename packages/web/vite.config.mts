@@ -79,8 +79,8 @@ export default defineConfig(({ command, mode }) => {
     ],
     // Served from the nginx root, identically in dev and in a build. Sub-path
     // hosting is not supported: this is hard-coded, and same-origin is a
-    // requirement anyway (the frontend resolves the API and WebSocket URLs
-    // from `window.location` — see docs/DEPLOY.md "Canonical domain").
+    // requirement anyway — the frontend resolves the API and WebSocket URLs
+    // from `window.location` (`data/yjs/collab-socket.tsx`).
     base: '/',
     root: path.resolve(__dirname, 'src'),
     publicDir: path.resolve(__dirname, 'public'),
