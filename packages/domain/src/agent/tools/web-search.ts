@@ -9,7 +9,14 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { env, getAgentConfig } from "@breatic/core";
-import { httpRequest } from "@breatic/shared";
+import { httpRequest, toolFailureOf } from "@breatic/shared";
+import {
+  FAILURE_LINES,
+  isStop,
+  reasonOf,
+  stoppedByUser,
+  toolFailed,
+} from "@domain/agent/tools/failure.js";
 
 /** What the model may ask this tool to search for. */
 const inputSchema = z.object({
@@ -40,7 +47,14 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
     // read via the injected config Proxy, not process.env directly.
     const apiKey = env.BRAVE_SEARCH_API_KEY;
     if (!apiKey) {
-      return "Error: Brave Search API key not configured. Set BRAVE_SEARCH_API_KEY in your .env file.";
+      // Defensive: `buildToolSet` leaves this tool out of the set entirely
+      // when the key is missing, so a turn should never reach here.
+      throw toolFailed(
+        "Web search is not available on this deployment: it has no search credentials. " +
+          "Do not call this tool again on this turn. Answer from what you already know, " +
+          "and tell the user you could not search.",
+        FAILURE_LINES.unavailable,
+      );
     }
 
     const n = Math.min(Math.max(count ?? 5, 1), 10);
@@ -88,7 +102,13 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       );
 
       if (!res.ok) {
-        return `Error: Brave Search returned HTTP ${res.status}`;
+        throw toolFailed(
+          `Searching for "${query}" failed: the search service answered HTTP ${res.status}. ` +
+            "That is a fault on their side, not a problem with the query. Try a different " +
+            "wording at most once, then continue without search results and tell the user " +
+            "search is unavailable.",
+          FAILURE_LINES.upstream,
+        );
       }
 
       const data = (await res.json()) as {
@@ -104,8 +124,20 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       });
       return lines.join("\n");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return `Error: ${msg}`;
+      // The two throws above pass straight through: they already say what
+      // happened, and rewriting them here would replace a specific reason
+      // with this general one.
+      if (toolFailureOf(err) !== undefined) throw err;
+      if (isStop(err, abortSignal)) throw stoppedByUser();
+
+      throw toolFailed(
+        `Searching for "${query}" failed: the search service could not be reached ` +
+          `(${reasonOf(err)}). ` +
+          "The service is unreachable from here, which is not something a different query " +
+          "would fix. Do not repeat this call; continue without search results and tell the " +
+          "user search is unavailable.",
+        FAILURE_LINES.unreachable,
+      );
     }
   },
 });

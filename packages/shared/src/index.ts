@@ -276,6 +276,8 @@ export { newId, deriveId } from "@shared/ids.js";
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { toolCallHasOutcome } from "@shared/agent/tool-outcome.js";
 export type { ToolOutcomeFields } from "@shared/agent/tool-outcome.js";
+export { carrying, toolFailureOf } from "@shared/agent/tool-failure.js";
+export type { ToolFailure, ToolFailureKind } from "@shared/agent/tool-failure.js";
 
 // The one HTTP transport with retries — backend services and browser alike.
 // Anything aimed at OUR OWN backend keeps using the browser's axios singleton;

@@ -158,10 +158,15 @@ describe("web_fetch when the turn is stopped", () => {
     setTimeout(() => gaveUp.abort(new Error("user stopped")), 80);
 
     const started = Date.now();
-    await webFetch.execute?.(
-      { url: "https://public.example/page", maxChars: 1000 },
-      toolOptions(gaveUp.signal) as never,
-    );
+    // It throws rather than returns, and says which of the two endings this
+    // is: a stopped read is the user's doing, not something going wrong.
+    // Awaited bare before, from when a stop came back as a string.
+    await expect(
+      webFetch.execute?.(
+        { url: "https://public.example/page", maxChars: 1000 },
+        toolOptions(gaveUp.signal) as never,
+      ),
+    ).rejects.toThrow();
     expect(Date.now() - started).toBeLessThan(1_000);
   });
 

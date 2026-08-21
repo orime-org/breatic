@@ -9,6 +9,7 @@
  * inside the server package.
  */
 
+import type { ToolFailure } from "@shared/agent/tool-failure.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
 
@@ -116,8 +117,15 @@ export type MessagePart =
        * Absent while the status is still `pending`.
        */
       output?: unknown;
-      /** Why it failed. Only set when the status is `error`. */
-      errorMessage?: string;
+      /**
+       * Why it ended with nothing to show. Only set when the status is
+       * `error`, and set for every stored part that is.
+       *
+       * Optional in the type because a part is built up as the call runs and
+       * is `pending` until it is not. A stored `error` part without one is a
+       * record that cannot say what happened, which is what this replaced.
+       */
+      failure?: ToolFailure;
     }
   /**
    * The turn this message belongs to was stopped before it finished.

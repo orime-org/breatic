@@ -10,6 +10,14 @@
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";
+import { toolFailureOf } from "@breatic/shared";
+import {
+  FAILURE_LINES,
+  isStop,
+  reasonOf,
+  stoppedByUser,
+  toolFailed,
+} from "@domain/agent/tools/failure.js";
 import { safeFetch, SsrfError } from "@domain/agent/tools/safe-fetch.js";
 
 const USER_AGENT =
@@ -89,10 +97,13 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
       });
 
       if (!res.ok) {
-        return JSON.stringify({
-          error: `HTTP ${res.status}`,
-          url,
-        });
+        throw toolFailed(
+          `Fetching ${url} failed: the site answered HTTP ${res.status}. The address is ` +
+            "reachable, so it is this page that is not there or not public. Do not fetch " +
+            "the same address again; try another source, or tell the user this page could " +
+            "not be read.",
+          FAILURE_LINES.upstream,
+        );
       }
 
       // Read plainly. The signal handed to `safeFetch` above is still attached
@@ -121,11 +132,30 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
         text,
       });
     } catch (err: unknown) {
+      // The throw above already said what happened; restating it here as a
+      // general failure would lose the status it carries.
+      if (toolFailureOf(err) !== undefined) throw err;
+      if (isStop(err, abortSignal)) throw stoppedByUser();
+
       if (err instanceof SsrfError) {
-        return JSON.stringify({ error: `Blocked: ${err.message}`, url });
+        // Deliberately vague, and the one place where the model is told less
+        // than we know. Refusing this address meant resolving it, so the
+        // error names an internal address -- handing that back would make
+        // this tool a way to read the inside of the network from outside it.
+        // What went where stays in the log.
+        throw toolFailed(
+          `Fetching ${url} was refused: this address is not one that may be fetched. ` +
+            "Variations of it will be refused too. If the user needs this page, tell them " +
+            "it cannot be read from here.",
+          FAILURE_LINES.blocked,
+        );
       }
-      const msg = err instanceof Error ? err.message : String(err);
-      return JSON.stringify({ error: msg, url });
+
+      throw toolFailed(
+        `Fetching ${url} failed: ${reasonOf(err)}. Nothing answered at that address. Do not retry it; ` +
+          "try another source, or tell the user the page could not be read.",
+        FAILURE_LINES.unreachable,
+      );
     }
   },
 });
