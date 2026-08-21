@@ -170,11 +170,19 @@ export async function chargeForGeneration(
 ): Promise<ChargeOutcome> {
   const amountMicro = toMicroCredits(input.amount);
   // A project that vanished while the task ran leaves nothing to charge, and
-  // the usage still has to be recorded: the work was delivered. Letting the
-  // lookup throw would break the record before it is written, which is the one
+  // the usage still has to be recorded: the work was delivered. That is the one
   // thing `lot_id` was made nullable for.
+  //
+  // Only that one cause is absorbed. Any other failure — the connection went,
+  // the pool ran dry — leaves this code knowing nothing, and a row saying the
+  // studio had nothing to draw from would turn an unknown failure into a
+  // settled fact that the caller reads as a normal outcome and logs as a
+  // shortfall.
   const studioId = input.projectId
-    ? await resolveOwnerStudioId(input.projectId).catch(() => null)
+    ? await resolveOwnerStudioId(input.projectId).catch((err: unknown) => {
+        if (err instanceof NotFoundError) return null;
+        throw err;
+      })
     : null;
 
   const usageEntry = {
