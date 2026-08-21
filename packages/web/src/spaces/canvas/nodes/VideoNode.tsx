@@ -10,6 +10,7 @@ import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset'
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
+import { useCanvasStore } from '@web/stores/canvas';
 
 interface VideoNodeProps {
   data: VideoNodeView;
@@ -44,6 +45,11 @@ export const VideoNode = React.memo(function VideoNode({
 }: VideoNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
   const { resolution, setResolution } = useNodeResolution(data.content);
+  // Subscribe to the BOOLEAN, not the session object: this node re-renders
+  // only when the answer flips, not on every change to an unrelated pick.
+  const focusPicking = useCanvasStore(
+    (s) => s.pickSession?.purpose === 'focus',
+  );
   return (
     <ContentNodeFrame
       modality='video'
@@ -70,6 +76,7 @@ export const VideoNode = React.memo(function VideoNode({
               src={data.content ?? ''}
               poster={data.coverUrl}
               onDimensions={setResolution}
+              controlsHidden={focusPicking}
             />
           </NodeMediaInset>
         }

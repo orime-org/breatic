@@ -23,6 +23,88 @@ import {
   type CropHandle,
   type CropRect,
 } from '@web/spaces/canvas/focus/crop-math';
+import { Slider } from '@web/components/ui/slider';
+import { formatTime } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+
+/**
+ * The croppable element inside ONE target node. Image nodes render an `<img>`;
+ * video nodes render the shared media player's element, whose testid audio
+ * nodes share — which is why the match is narrowed by TAG below rather than
+ * trusted from the selector.
+ *
+ * A function rather than a constant because a comma in CSS separates whole
+ * selectors: `#node img, [testid=x]` means "an img inside #node" OR "any
+ * [testid=x] on the page". The node scope has to be repeated in each branch,
+ * and the version that forgot to found the FIRST video on the canvas whenever
+ * the crop target moved to a second one.
+ * @param nodeId - The target node's ReactFlow id.
+ * @returns A selector matching only that node's croppable element.
+ */
+function cropSourceSelector(nodeId: string): string {
+  const scope = `.react-flow__node[data-id="${CSS.escape(nodeId)}"]`;
+  return `${scope} [data-testid=image-node-img], ${scope} [data-testid=media-element]`;
+}
+
+/** Anything the nine-arg `drawImage` accepts as a source, in our nodes. */
+type CropSourceEl = HTMLImageElement | HTMLVideoElement;
+
+/**
+ * Whether a matched element is one we can crop.
+ *
+ * An audio node's `<audio>` carries the same testid as a video's `<video>`,
+ * so the tag is the judge: `drawImage` has nothing to read off a sound.
+ * @param el - The element the selector matched, if any.
+ * @returns Whether it is croppable.
+ */
+function isCropSource(el: Element | null): el is CropSourceEl {
+  return el instanceof HTMLImageElement || el instanceof HTMLVideoElement;
+}
+
+/**
+ * The source's own pixel size — the space crop rects are expressed in.
+ *
+ * Zero means "not decodable yet": a bitmap still loading, a broken URL, or a
+ * video whose metadata has not arrived. Both element kinds report it, under
+ * different names.
+ * @param el - The crop source.
+ * @returns Its intrinsic size, possibly `0 × 0`.
+ */
+function intrinsicSize(el: CropSourceEl): { width: number; height: number } {
+  return el instanceof HTMLImageElement
+    ? { width: el.naturalWidth, height: el.naturalHeight }
+    : { width: el.videoWidth, height: el.videoHeight };
+}
+
+/**
+ * One step of the crop timeline: the duration of a frame at the worst frame
+ * rate we expect to meet.
+ *
+ * This one number decides BOTH how finely a drag lands and how far one arrow
+ * key moves (Radix runs the keyboard off the same `step`). Radix's default of
+ * 1 would mean whole seconds — 30 frames at a stride; and a value far below a
+ * frame would mean several key presses before the picture changes at all.
+ */
+const TIMELINE_STEP_S = 1 / 24;
+
+/** Shown at both ends of the timeline while the duration is unknown. */
+const UNKNOWN_TIME = '--:--';
+
+/**
+ * Formats a position with sub-second precision (`m:ss.SS`).
+ *
+ * The whole point of this timeline is stopping on one frame, and `m:ss` alone
+ * cannot tell 4.00s from 4.37s — the user would have no way to read back what
+ * they picked. {@link formatTime} stays as it is: it answers a different
+ * question (how far in / how long the media runs) at a different
+ * granularity.
+ * @param seconds - Position in seconds.
+ * @returns The `m:ss.SS` string.
+ */
+function formatPreciseTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return `${formatTime(0)}.00`;
+  const hundredths = Math.floor((seconds % 1) * 100);
+  return `${formatTime(seconds)}.${String(hundredths).padStart(2, '0')}`;
+}
 
 /** The eight resize handles with their anchor classes (compass layout). */
 const HANDLES: ReadonlyArray<{ id: CropHandle; className: string }> = [
@@ -40,8 +122,14 @@ const HANDLES: ReadonlyArray<{ id: CropHandle; className: string }> = [
 export interface FocusCropConfirm {
   /** The crop in natural (source-resolution) pixels. */
   crop: CropRect;
-  /** The source image's natural size (for reference / debugging). */
+  /** The source's intrinsic size (for reference / debugging). */
   natural: { width: number; height: number };
+  /**
+   * For a video source, the frame the element was parked on when the user
+   * confirmed, in seconds; `null` for an image (#1987). Read off the element
+   * itself rather than the timeline's display mirror — one source of truth.
+   */
+  sourceTimeSeconds: number | null;
   /**
    * The src the marquee was drawn + validated against (round-3): the export
    * MUST crop exactly this URL — the graph store can lead the DOM by a
@@ -52,7 +140,7 @@ export interface FocusCropConfirm {
 }
 
 interface FocusCropOverlayProps {
-  /** The image node being cropped (its `data-id` in the ReactFlow DOM). */
+  /** The image or video node being cropped (its `data-id` in the ReactFlow DOM). */
   nodeId: string;
   /**
    * The target node's flow position — only used as a re-measure signal
@@ -68,9 +156,9 @@ interface FocusCropOverlayProps {
   onConfirm: (result: FocusCropConfirm) => boolean;
   /**
    * Return to the PICK state (clear the crop target, keep the session —
-   * the banner stays and another image can be picked). Cancel and the
+   * the banner stays and another node can be picked). Cancel and the
    * no-marquee Esc both land here (user 2026-07-17, decision A: leaving
-   * one image's crop must not tear down the whole continuous session).
+   * one node's crop must not tear down the whole continuous session).
    * The overlay can NEVER hard-exit the session — that lives with the
    * banner Exit button and the canvas-level pick Esc handler.
    */
@@ -113,20 +201,21 @@ export function handOffFocusToPickBanner(overlayRoot: Element | null): void {
 
 /**
  * The focus crop overlay (#1782): an absolutely-positioned marquee editor
- * aligned to the target node's rendered `<img>`. It lives OUTSIDE the
+ * aligned to the target node's rendered source element. It lives OUTSIDE the
  * ReactFlow transform (a sibling of the pick banner inside the canvas
  * wrapper), so its controls keep a constant screen size at any zoom and
  * its pointer gestures never fight ReactFlow's — the capture layer eats
  * them before the canvas sees anything. The box is re-measured whenever
  * the viewport transform, the node position, or the window changes. All
- * geometry funnels through the pure crop-math module in the img's screen
+ * geometry funnels through the pure crop-math module in the source's screen
  * pixel space; confirm maps to natural pixels via {@link toNaturalCrop}.
  * @param root0 - Component props.
- * @param root0.nodeId - The image node being cropped.
+ * @param root0.nodeId - The image or video node being cropped.
  * @param root0.nodePosition - The node's flow position (re-measure signal).
  * @param root0.onConfirm - Receives the confirmed natural-pixel crop.
  * @param root0.onBackToPick - Returns to the pick state (Cancel / bare Esc).
- * @returns The overlay, or null until the target img is measurable.
+ * @returns The overlay. Its interactive layers render only once the target
+ *   source has a measurable box; the root itself is always present.
  */
 export function FocusCropOverlay({
   nodeId,
@@ -151,7 +240,7 @@ export function FocusCropOverlay({
   // Mirror of `rect` for listeners that must read it without re-binding.
   const rectRef = React.useRef<CropRect | null>(null);
   rectRef.current = rect;
-  // Mirror of `box` STATE (null while the img is culled) for the Esc gate:
+  // Mirror of `box` STATE (null while the source is culled) for the Esc gate:
   // stage-one must not silently eat an off-screen marquee (round-9).
   const boxStateRef = React.useRef<CropRect | null>(null);
   boxStateRef.current = box;
@@ -159,33 +248,34 @@ export function FocusCropOverlay({
   // discard must use the SAME zoom-independent validity as Confirm.
   const naturalSizeRef = React.useRef<{ width: number; height: number } | null>(null);
   naturalSizeRef.current = naturalSize;
-  // The img src the current marquee was drawn against — a content swap
+  // The src the current marquee was drawn against — a content swap
   // (collaborator regenerate) invalidates the marquee entirely.
   const measuredSrcRef = React.useRef<string | null>(null);
   // Last measured box, read OUTSIDE state updaters (StrictMode-safe: no
   // side effects inside a setState updater).
   const prevBoxRef = React.useRef<CropRect | null>(null);
-  // The img ELEMENT the marquee belongs to: a handling cycle unmounts and
-  // remounts the img, killing element-bound observers and orphaning the
+  // The source ELEMENT the marquee belongs to: a handling cycle unmounts and
+  // remounts it, killing element-bound observers and orphaning the
   // src baseline — measure() rebinds + re-baselines on identity change
   // (round-3, HIGH). The ResizeObserver is measure-managed for the same
   // reason (an effect-bound one would stay on the dead element).
-  const lastImgElRef = React.useRef<HTMLImageElement | null>(null);
+  const lastSourceElRef = React.useRef<CropSourceEl | null>(null);
   const resizeObsRef = React.useRef<ResizeObserver | null>(null);
+  // The same element as React-visible state (#1987): the timeline binds to it
+  // in an effect, and a ref assignment triggers no re-render.
+  const [sourceEl, setSourceEl] = React.useState<CropSourceEl | null>(null);
 
   const measure = React.useCallback((): void => {
     const root = rootRef.current;
-    const img = document.querySelector(
-      `.react-flow__node[data-id="${CSS.escape(nodeId)}"] [data-testid=image-node-img]`,
-    );
-    if (!root || !(img instanceof HTMLImageElement)) {
-      // The target's <img> is ABSENT. Node deletion unmounts the whole
+    const el = document.querySelector(cropSourceSelector(nodeId));
+    if (!root || !isCropSource(el)) {
+      // The target's source element is ABSENT. Node deletion unmounts the whole
       // overlay upstream (round-8), so reaching here is viewport CULLING
       // (onlyRenderVisibleElements) or a handling skeleton: keep the
       // marquee and the src baseline — a pan-away-and-back must not eat a
       // careful selection. Only the live gesture and the element-bound
       // observer die (their element did); the REMOUNT path below compares
-      // the returning img's src against the kept baseline and discards
+      // the returning element's src against the kept baseline and discards
       // the marquee only when the content actually changed (round-5). A
       // gesture killed MID-FLIGHT never ran the pointer-up gauge — apply
       // it here so a sub-minimum sliver cannot survive into the return
@@ -200,18 +290,22 @@ export function FocusCropOverlay({
         if (!valid) setRect(null);
       }
       interactionRef.current = null;
-      lastImgElRef.current = null;
+      lastSourceElRef.current = null;
+      // The timeline must let go here too (#1987): this is the branch a
+      // culled / handling target takes, and it returns before the identity
+      // check below ever runs.
+      setSourceEl(null);
       resizeObsRef.current?.disconnect();
       resizeObsRef.current = null;
       setBox(null);
       return;
     }
-    if (lastImgElRef.current !== img) {
+    if (lastSourceElRef.current !== el) {
       if (
-        lastImgElRef.current !== null &&
-        img.getAttribute('src') !== measuredSrcRef.current
+        lastSourceElRef.current !== null &&
+        el.getAttribute('src') !== measuredSrcRef.current
       ) {
-        // The img REMOUNTED with DIFFERENT content (handling cycle /
+        // The source REMOUNTED with DIFFERENT content (handling cycle /
         // regenerate): the marquee and baselines belong to the dead
         // element — start fresh (round-3). The in-flight gesture dies with
         // it (round-4). A same-src remount (viewport culling return,
@@ -221,23 +315,24 @@ export function FocusCropOverlay({
         measuredSrcRef.current = null;
         prevBoxRef.current = null;
       }
-      lastImgElRef.current = img;
+      lastSourceElRef.current = el;
+      setSourceEl(el);
       if (typeof ResizeObserver !== 'undefined') {
         resizeObsRef.current?.disconnect();
         resizeObsRef.current = new ResizeObserver(measure);
-        resizeObsRef.current.observe(img);
+        resizeObsRef.current.observe(el);
       }
     }
     const rootRect = root.getBoundingClientRect();
-    const imgRect = img.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
     const next = {
-      x: imgRect.left - rootRect.left,
-      y: imgRect.top - rootRect.top,
-      width: imgRect.width,
-      height: imgRect.height,
+      x: elRect.left - rootRect.left,
+      y: elRect.top - rootRect.top,
+      width: elRect.width,
+      height: elRect.height,
     };
     if (next.width <= 0 || next.height <= 0) {
-      // The img is PRESENT but not laid out yet — a lazy-load remount
+      // The source is PRESENT but not laid out yet — a lazy-load remount
       // (#1772 culled-then-return) measures a zero box before decode.
       // A degenerate box cannot anchor the interactive layers, and
       // rescaling against it collapses the marquee to zero and then to
@@ -249,7 +344,7 @@ export function FocusCropOverlay({
       setBox(null);
       return;
     }
-    const src = img.getAttribute('src');
+    const src = el.getAttribute('src');
     const prev = prevBoxRef.current;
     if (measuredSrcRef.current !== null && measuredSrcRef.current !== src) {
       // Content swap under the marquee (adversarial 2026-07-16): the old
@@ -305,13 +400,14 @@ export function FocusCropOverlay({
     }
     measuredSrcRef.current = src;
     prevBoxRef.current = next;
-    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+    const intrinsic = intrinsicSize(el);
+    if (intrinsic.width > 0 && intrinsic.height > 0) {
       setNaturalSize((prevNat) =>
         prevNat &&
-        prevNat.width === img.naturalWidth &&
-        prevNat.height === img.naturalHeight
+        prevNat.width === intrinsic.width &&
+        prevNat.height === intrinsic.height
           ? prevNat
-          : { width: img.naturalWidth, height: img.naturalHeight },
+          : intrinsic,
       );
     }
     setBox(next);
@@ -332,12 +428,83 @@ export function FocusCropOverlay({
     // prevBox let the measure's rescale branch resurrect the PREVIOUS
     // node's marquee re-projected onto the new image (round-3, HIGH).
     prevBoxRef.current = null;
-    lastImgElRef.current = null;
+    // The source's own size belongs to the source (#1987). Left behind, the
+    // pointer-up gauge measures the NEW target against the OLD one's
+    // resolution — and a video reports 0×0 until its metadata arrives, so it
+    // cannot overwrite the stale value on its own. Measured: after picking a
+    // 64×64 image, an ordinary drag on a not-yet-ready video was thrown away
+    // on mouse-up, before the retry A7a promises was ever possible.
+    setNaturalSize(null);
+    lastSourceElRef.current = null;
     // The previous target's ResizeObserver must die with it (round-4) —
-    // measure() rebinds a fresh one for the new target's img.
+    // measure() rebinds a fresh one for the new target's source.
     resizeObsRef.current?.disconnect();
     resizeObsRef.current = null;
   }, [nodeId]);
+
+  // The timeline's own value: WHERE THE USER PUT THE HANDLE, seeded from the
+  // element when the overlay attaches to it. The Slider needs a controlled
+  // value to move, and this is it. Confirm reads the element, not this — so
+  // there is never a second answer to "which frame is this".
+  const [currentTime, setCurrentTime] = React.useState(0);
+  const [duration, setDuration] = React.useState(Number.NaN);
+
+  // Park the video and read it. One effect keyed on the element identity:
+  // pause it if it is playing, seed from it, then subscribe — in that order,
+  // and all three together so a remount cannot leave any of them behind.
+  //
+  // Seeding is not optional. The node's element is `preload='metadata'` and
+  // fired `loadedmetadata` long before the user picked it, so an effect that
+  // only subscribes shows no handle at all on the path everyone walks.
+  //
+  // `seeked` is deliberately NOT subscribed. A media element never stores the
+  // position you write — it rounds to its own time base (measured in Chrome:
+  // writing 1/24 reads back as 0.041666). Feeding that rounded value back into
+  // the Slider's controlled value knocks it off the step grid, and Radix's
+  // keyboard step only snaps an off-grid value to the nearest grid point —
+  // which is where it already is. Measured in the browser: the handle advanced
+  // once and then no arrow key or PageUp could move it again, ever. Nothing
+  // else writes this element during a focus session (the node's own controls
+  // are inert), so the subscription bought nothing and cost the keyboard.
+  React.useEffect(() => {
+    if (!(sourceEl instanceof HTMLVideoElement)) return;
+    const video = sourceEl;
+    // Picking a playing video parks it where it was (user 2026-08-20). One
+    // already parked is left alone — there is nothing to pause.
+    if (!video.paused) video.pause();
+    /** Seed both mirrors from the element. */
+    const seed = (): void => {
+      setCurrentTime(video.currentTime);
+      setDuration(video.duration);
+    };
+    seed();
+    video.addEventListener('loadedmetadata', seed);
+    video.addEventListener('durationchange', seed);
+    return () => {
+      video.removeEventListener('loadedmetadata', seed);
+      video.removeEventListener('durationchange', seed);
+    };
+  }, [sourceEl]);
+
+  /**
+   * Move the video to a dragged position: write the element, mirror locally.
+   * @param next - The requested position in seconds.
+   */
+  const onTimelineChange = React.useCallback(
+    ([next]: number[]): void => {
+      if (next === undefined || !(sourceEl instanceof HTMLVideoElement)) return;
+      sourceEl.currentTime = next;
+      // Keep the REQUESTED position, not what the element rounded it to: this
+      // is the Slider's controlled value and has to stay on the step grid for
+      // the keyboard to keep advancing (see the effect above). The difference
+      // is under a millisecond and the frame is the same one.
+      setCurrentTime(next);
+    },
+    [sourceEl],
+  );
+
+  const isVideoSource = sourceEl instanceof HTMLVideoElement;
+  const hasDuration = Number.isFinite(duration) && duration > 0;
 
   // Re-measure on mount, on any viewport change, on node drag, on window
   // resize — and on IMG layout/content changes the other signals miss (a
@@ -346,11 +513,11 @@ export function FocusCropOverlay({
   React.useLayoutEffect(() => {
     measure();
     window.addEventListener('resize', measure);
-    // Observe the node CONTAINER, not the img (round-3): a handling cycle
-    // REMOUNTS the img, permanently killing element-bound observers.
+    // Observe the node CONTAINER, not the source (round-3): a handling cycle
+    // REMOUNTS the source, permanently killing element-bound observers.
     // childList catches the remount, attributes catches both the src swap
     // (same-size regenerate, round-2) and node style resizes; the
-    // measure-managed ResizeObserver rebinds itself per img identity.
+    // measure-managed ResizeObserver rebinds itself per source identity.
     const container = document.querySelector(
       `.react-flow__node[data-id="${CSS.escape(nodeId)}"]`,
     );
@@ -464,13 +631,13 @@ export function FocusCropOverlay({
 
   // The root ALWAYS renders (measure needs its rect — a null-return here
   // would never mount the ref and the overlay could never appear); the
-  // interactive layers below render only once the img box is measured.
+  // interactive layers below render only once the source box is measured.
   const bounds = box
     ? { width: box.width, height: box.height }
     : { width: 0, height: 0 };
 
   /**
-   * Pointer position in the img box's local pixel space.
+   * Pointer position in the source box's local pixel space.
    * @param e - The pointer event.
    * @returns Local coordinates relative to the image box.
    */
@@ -671,39 +838,44 @@ export function FocusCropOverlay({
     if (naturalSize ? !isNaturalCropValid(rect, box, naturalSize) : !isCropValid(rect)) {
       return;
     }
-    const img = document.querySelector(
-      `.react-flow__node[data-id="${CSS.escape(nodeId)}"] [data-testid=image-node-img]`,
-    );
+    const el = document.querySelector(cropSourceSelector(nodeId));
     // Confirm-time swap check (round-2): the MutationObserver discards the
     // marquee live, but a swap can still land between the last measure and
     // this click — never crop NEW content at OLD marquee coordinates.
     if (
-      img instanceof HTMLImageElement &&
+      isCropSource(el) &&
       measuredSrcRef.current !== null &&
-      img.getAttribute('src') !== measuredSrcRef.current
+      el.getAttribute('src') !== measuredSrcRef.current
     ) {
       setRect(null);
       toast.warning(t('canvas.generatePanel.focusSourceChanged'));
       return;
     }
-    if (!(img instanceof HTMLImageElement) || img.naturalWidth === 0) {
-      // The source exists but is not decodable yet (new bitmap loading /
-      // broken URL) — say so instead of a silent dead button (round-2);
-      // the marquee stays so a loaded image can be confirmed on retry.
+    if (!isCropSource(el) || intrinsicSize(el).width === 0) {
+      // The source exists but is not decodable yet (a bitmap still loading, a
+      // broken URL, or a video whose metadata has not arrived — the opening
+      // state of every video) — say so instead of a silent dead button
+      // (round-2); the marquee stays so a retry can confirm the same
+      // selection once the source is ready.
       toast.error(t('canvas.generatePanel.focusExportFailed'));
       return;
     }
     if (measuredSrcRef.current === null) {
-      // No validated baseline (img never carried a src) — same treatment
+      // No validated baseline (the element never carried a src) — same treatment
       // as a not-yet-decodable source.
       toast.error(t('canvas.generatePanel.focusExportFailed'));
       return;
     }
-    const natural = { width: img.naturalWidth, height: img.naturalHeight };
+    const natural = intrinsicSize(el);
     const accepted = onConfirm({
       crop: toNaturalCrop(rect, bounds, natural),
       natural,
       sourceSrc: measuredSrcRef.current,
+      // Off the element, not the display mirror (#1987): the property is
+      // updated the moment a seek is requested, so this is where the user
+      // dragged to even while the picture is still catching up.
+      sourceTimeSeconds:
+        el instanceof HTMLVideoElement ? el.currentTime : null,
     });
     // A gate rejection (pool full, source gone) keeps the marquee — the
     // user's careful selection must survive a fixable rejection (round-3).
@@ -774,9 +946,23 @@ export function FocusCropOverlay({
             data-testid='focus-crop-controls'
             // rounded-overlay = the 6px chrome radius (user 2026-07-17 #3;
             // rounded-md is 12px in this theme).
-            className='pointer-events-auto absolute flex -translate-x-1/2 items-center gap-1 rounded-overlay border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
+            // Fixed width (user 2026-08-20): the ratio row gains a "whole
+            // image" preset later (#1991), and a bar that sizes to its content
+            // would jump — and take the timeline's length with it — the day
+            // that lands. Content nodes are 288px wide regardless of the
+            // media's aspect, so one width serves every target.
+            //
+            // 432px covers the widest locale's content (English, 413px
+            // measured in the browser at this font size) plus this bar's own
+            // 16px padding and 2px border, rounded up from 431. Japanese needs
+            // 410; Chinese and Korean fit under 382. Every item on the ratio
+            // row is nowrap + no-shrink, so a bar measured from Chinese alone
+            // pushes English and Japanese out past the border. The timeline row
+            // takes up the slack through the slider's `min-w-0 flex-1`.
+            // Re-measure when #1991 adds its preset.
+            className='pointer-events-auto absolute flex w-[432px] -translate-x-1/2 flex-col gap-1.5 rounded-overlay border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
             // Anchored under the picked node like the generate panel (user
-            // 2026-07-17): always centered below the img box, allowed to
+            // 2026-07-17): always centered below the source box, allowed to
             // overflow the viewport — the earlier viewport clamp pulled the
             // bar away from an edge-parked node.
             style={{
@@ -784,51 +970,96 @@ export function FocusCropOverlay({
               top: box.y + box.height + 8,
             }}
           >
-            {CROP_RATIOS.map(({ key, value }) => (
-              <Button
-                key={key}
-                type='button'
-                variant={null}
-                size={null}
-                data-testid={`focus-ratio-${key}`}
-                aria-pressed={ratio === value}
-                onClick={() => onRatioClick(value)}
-                // whitespace-nowrap + shrink-0 (user 2026-07-17 #1): an
-                // abspos bar near the viewport edge shrink-to-fits against
-                // the available width, and without these the CJK button
-                // labels wrapped one character per line.
-                className={
-                  'shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 tabular-nums transition-colors ' +
+            {isVideoSource ? (
+              <div
+                data-testid='focus-crop-timeline'
+                className='flex items-center gap-2'
+              >
+                <span
+                  data-testid='focus-crop-time-current'
+                  className='shrink-0 tabular-nums text-muted-foreground'
+                >
+                  {hasDuration ? formatPreciseTime(currentTime) : UNKNOWN_TIME}
+                </span>
+                {hasDuration ? (
+                  <Slider
+                    aria-label={t('canvas.generatePanel.focusTimelineLabel')}
+                    min={0}
+                    max={duration}
+                    // One step is one frame at the worst frame rate we expect
+                    // (TIMELINE_STEP_S) — see its comment for why neither the
+                    // Radix default nor a much smaller value works.
+                    step={TIMELINE_STEP_S}
+                    value={[currentTime]}
+                    onValueChange={onTimelineChange}
+                    className='min-w-0 flex-1'
+                  />
+                ) : (
+                  // No Slider at all rather than a disabled one: the shared
+                  // component renders its thumb unconditionally, and a handle
+                  // on a track that cannot be dragged is a lie about what the
+                  // user can do (user 2026-08-20).
+                  <div
+                    data-testid='focus-crop-timeline-placeholder'
+                    aria-hidden='true'
+                    className='h-1.5 min-w-0 flex-1 rounded-full bg-muted opacity-50'
+                  />
+                )}
+                <span
+                  data-testid='focus-crop-time-duration'
+                  className='shrink-0 tabular-nums text-muted-foreground'
+                >
+                  {hasDuration ? formatTime(duration) : UNKNOWN_TIME}
+                </span>
+              </div>
+            ) : null}
+            <div className='flex items-center gap-1'>
+              {CROP_RATIOS.map(({ key, value }) => (
+                <Button
+                  key={key}
+                  type='button'
+                  variant={null}
+                  size={null}
+                  data-testid={`focus-ratio-${key}`}
+                  aria-pressed={ratio === value}
+                  onClick={() => onRatioClick(value)}
+                  // whitespace-nowrap + shrink-0 (user 2026-07-17 #1): an
+                  // abspos bar near the viewport edge shrink-to-fits against
+                  // the available width, and without these the CJK button
+                  // labels wrapped one character per line.
+                  className={
+                    'shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 tabular-nums transition-colors ' +
               (ratio === value
                 ? 'bg-foreground text-background'
                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')
-                }
+                  }
+                >
+                  {key}
+                </Button>
+              ))}
+              <span aria-hidden='true' className='mx-1 h-4 w-px bg-border' />
+              <Button
+                type='button'
+                variant={null}
+                size={null}
+                data-testid='focus-crop-cancel'
+                onClick={backToPick}
+                className='shrink-0 whitespace-nowrap rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
               >
-                {key}
+                {t('canvas.generatePanel.focusCancel')}
               </Button>
-            ))}
-            <span aria-hidden='true' className='mx-1 h-4 w-px bg-border' />
-            <Button
-              type='button'
-              variant={null}
-              size={null}
-              data-testid='focus-crop-cancel'
-              onClick={backToPick}
-              className='shrink-0 whitespace-nowrap rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-            >
-              {t('canvas.generatePanel.focusCancel')}
-            </Button>
-            <Button
-              type='button'
-              variant={null}
-              size={null}
-              data-testid='focus-crop-confirm'
-              onClick={onConfirmClick}
-              disabled={confirmDisabled}
-              className='shrink-0 whitespace-nowrap rounded-sm bg-foreground px-2 py-0.5 text-background disabled:cursor-not-allowed disabled:opacity-50'
-            >
-              {t('canvas.generatePanel.focusConfirm')}
-            </Button>
+              <Button
+                type='button'
+                variant={null}
+                size={null}
+                data-testid='focus-crop-confirm'
+                onClick={onConfirmClick}
+                disabled={confirmDisabled}
+                className='shrink-0 whitespace-nowrap rounded-sm bg-foreground px-2 py-0.5 text-background disabled:cursor-not-allowed disabled:opacity-50'
+              >
+                {t('canvas.generatePanel.focusConfirm')}
+              </Button>
+            </div>
           </div>
         </>
       )}

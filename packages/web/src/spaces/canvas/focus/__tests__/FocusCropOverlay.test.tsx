@@ -7,11 +7,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { ReactFlowProvider } from '@xyflow/react';
 import * as React from 'react';
 
 import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
+import { toast } from '@web/lib/toast';
 
 /** Screen boxes: overlay root at (0,0); node img at (100,50) — MUTABLE so
  * tests can simulate a zoom (box rescale) between measures. */
@@ -57,16 +58,18 @@ beforeEach(() => {
   // jsdom has no layout: stub the overlay root at origin and the img box.
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
     function (this: HTMLElement) {
-      const isImg = this.tagName === 'IMG';
+      // Both crop sources share the stubbed box: the overlay anchors to a
+      // <video> exactly like it anchors to an <img> (#1987).
+      const isTarget = this.tagName === 'IMG' || this.tagName === 'VIDEO';
       return {
-        x: isImg ? IMG_BOX.left : 0,
-        y: isImg ? IMG_BOX.top : 0,
-        left: isImg ? IMG_BOX.left : 0,
-        top: isImg ? IMG_BOX.top : 0,
-        right: isImg ? IMG_BOX.left + IMG_BOX.width : 1000,
-        bottom: isImg ? IMG_BOX.top + IMG_BOX.height : 1000,
-        width: isImg ? IMG_BOX.width : 1000,
-        height: isImg ? IMG_BOX.height : 1000,
+        x: isTarget ? IMG_BOX.left : 0,
+        y: isTarget ? IMG_BOX.top : 0,
+        left: isTarget ? IMG_BOX.left : 0,
+        top: isTarget ? IMG_BOX.top : 0,
+        right: isTarget ? IMG_BOX.left + IMG_BOX.width : 1000,
+        bottom: isTarget ? IMG_BOX.top + IMG_BOX.height : 1000,
+        width: isTarget ? IMG_BOX.width : 1000,
+        height: isTarget ? IMG_BOX.height : 1000,
         toJSON: () => ({}),
       } as DOMRect;
     },
@@ -137,10 +140,15 @@ describe('FocusCropOverlay', () => {
     Object.defineProperty(img, 'naturalHeight', { value: 600 });
     draw({ x: 150, y: 100 }, { x: 250, y: 180 });
     fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    // Exact object, deliberately (#1987 §7.2): the confirm→export chain drops
+    // fields silently, so this assertion must name every field and gain the
+    // new one rather than loosen to objectContaining. An image target carries
+    // no time point.
     expect(onConfirm).toHaveBeenCalledWith({
       crop: { x: 100, y: 100, width: 200, height: 160 },
       natural: { width: 800, height: 600 },
       sourceSrc: 'https://cdn/original.png',
+      sourceTimeSeconds: null,
     });
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
   });
@@ -669,5 +677,507 @@ describe('FocusCropOverlay', () => {
     expect(rect.style.left).toBe('50px');
     expect(rect.style.width).toBe('100px');
     expect(rect.style.height).toBe('80px');
+  });
+});
+
+/** One step of the timeline: the worst-case frame duration (#1987 §4.3.2). */
+const STEP_SECONDS = 1 / 24;
+
+/** What a stubbed <video> records, per element (never on the prototype). */
+interface VideoStub {
+  /** Every value written to `currentTime`, in order. */
+  writes: number[];
+  /** This element's own `pause()`. */
+  pause: ReturnType<typeof vi.fn>;
+  /** This element's own `play()`. */
+  play: ReturnType<typeof vi.fn>;
+}
+
+/**
+ * Gives a jsdom <video> the media properties the overlay reads. jsdom
+ * implements none of them (duration is NaN, videoWidth/videoHeight are 0,
+ * currentTime is inert, play/pause throw "not implemented"), so each is
+ * defined on the instance — per element, so "which video was paused" is
+ * answerable.
+ * @param el - The element to stub.
+ * @param opts - The media state to expose.
+ * @param opts.duration - Total length in seconds; omitted means NaN.
+ * @param opts.currentTime - Where the video is parked.
+ * @param opts.videoWidth - Intrinsic width; 0 means metadata has not arrived.
+ * @param opts.videoHeight - Intrinsic height.
+ * @param opts.paused - Whether it is parked rather than playing.
+ * @param opts.quantize - Reproduce the browser's own rounding of a written
+ *   `currentTime` (measured in Chrome: writing 1/24 reads back as 0.041666).
+ *   A real element NEVER stores what you wrote, and that difference is what
+ *   broke the keyboard.
+ * @param opts.announceSeeked - Fire `seeked` after each write, as a real
+ *   element does.
+ * @returns The element's recorders.
+ */
+function stubVideo(
+  el: HTMLVideoElement,
+  opts: {
+    duration?: number;
+    currentTime?: number;
+    videoWidth?: number;
+    videoHeight?: number;
+    paused?: boolean;
+    quantize?: boolean;
+    announceSeeked?: boolean;
+  } = {},
+): VideoStub {
+  const writes: number[] = [];
+  let time = opts.currentTime ?? 0;
+  Object.defineProperty(el, 'duration', {
+    configurable: true,
+    get: () => opts.duration ?? NaN,
+  });
+  Object.defineProperty(el, 'currentTime', {
+    configurable: true,
+    get: () => time,
+    set: (value: number) => {
+      // Six decimals is what Chrome was measured to keep (#1987 smoke).
+      time = opts.quantize ? Math.floor(value * 1e6) / 1e6 : value;
+      writes.push(value);
+      // ASYNCHRONOUSLY, like the real thing: a seek completes on a later task,
+      // so anything the write handler does after assigning `currentTime`
+      // happens FIRST and the seek's own notification lands last. Announcing
+      // it synchronously reverses that order and hides the bug entirely —
+      // this stub did, and the test passed while the browser was broken.
+      if (opts.announceSeeked) {
+        setTimeout(() => el.dispatchEvent(new Event('seeked')), 0);
+      }
+    },
+  });
+  Object.defineProperty(el, 'videoWidth', {
+    configurable: true,
+    get: () => opts.videoWidth ?? 0,
+  });
+  Object.defineProperty(el, 'videoHeight', {
+    configurable: true,
+    get: () => opts.videoHeight ?? 0,
+  });
+  Object.defineProperty(el, 'paused', { configurable: true, get: () => opts.paused ?? true });
+  const pause = vi.fn();
+  const play = vi.fn();
+  Object.defineProperty(el, 'pause', { configurable: true, value: pause });
+  Object.defineProperty(el, 'play', { configurable: true, value: play });
+  return { writes, pause, play };
+}
+
+/**
+ * Renders a VIDEO node and then mounts the overlay onto it — in that order,
+ * deliberately: the node's <video> is `preload='metadata'` and has long since
+ * fired `loadedmetadata` by the time a user picks it, so an overlay that only
+ * subscribes (never seeds) shows no handle on the path everyone walks.
+ * @param opts - Media state for the stub, see {@link stubVideo}.
+ * @param onConfirm - Confirm spy.
+ * @param onBackToPick - Back-to-pick spy.
+ * @returns The render result plus the stubbed element and its recorders.
+ */
+function renderVideoOverlay(
+  opts: Parameters<typeof stubVideo>[1] = {},
+  onConfirm = vi.fn(() => true),
+  onBackToPick = vi.fn(),
+): ReturnType<typeof render> & { video: HTMLVideoElement; stub: VideoStub } {
+  /**
+   * @param withOverlay - Whether the crop overlay is mounted yet.
+   * @returns The tree to render.
+   */
+  const tree = (withOverlay: boolean): React.ReactElement => (
+    <ReactFlowProvider>
+      <div className='react-flow__node' data-id='n1'>
+        {/* Same testid the node's MediaPlayer renders (audio shares it). */}
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption -- mirrors MediaPlayer's own element, which carries no caption track either. */}
+        <video data-testid='media-element' src='https://cdn/clip.mp4' />
+      </div>
+      <div data-testid='reference-pick-banner' tabIndex={-1} />
+      {withOverlay ? (
+        <FocusCropOverlay
+          nodeId='n1'
+          nodePosition={{ x: 0, y: 0 }}
+          onConfirm={onConfirm}
+          onBackToPick={onBackToPick}
+        />
+      ) : null}
+    </ReactFlowProvider>
+  );
+  const result = render(tree(false));
+  const video = screen.getByTestId('media-element') as HTMLVideoElement;
+  const stub = stubVideo(video, opts);
+  result.rerender(tree(true));
+  return Object.assign(result, { video, stub });
+}
+
+describe('FocusCropOverlay：视频目标与时间轴（#1987）', () => {
+  it('确认之前元数据还没到（videoWidth 为 0）：给提示、选框留着（A7a）', () => {
+    const onConfirm = vi.fn(() => true);
+    // Metadata absent is the OPENING state of every video, not an edge case.
+    renderVideoOverlay({ duration: 10, currentTime: 0, videoWidth: 0 }, onConfirm);
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    const said = vi.spyOn(toast, 'error');
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    expect(onConfirm).not.toHaveBeenCalled();
+    // BOTH halves of A7a. Asserting only the marquee let the message be
+    // deleted with the test still green (round-2 measured exactly that), and
+    // a dead button that says nothing is the round-2-of-#1782 bug returning.
+    expect(said).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+  });
+
+  it('确认时交出的是元素当前停在的时间点（A9）', () => {
+    const onConfirm = vi.fn(() => true);
+    const { video } = renderVideoOverlay(
+      { duration: 10, currentTime: 4.375, videoWidth: 800, videoHeight: 600 },
+      onConfirm,
+    );
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    // Read off the ELEMENT, not the display mirror: one source of truth.
+    expect(onConfirm).toHaveBeenCalledWith({
+      crop: { x: 100, y: 100, width: 200, height: 160 },
+      natural: { width: 800, height: 600 },
+      sourceSrc: 'https://cdn/clip.mp4',
+      sourceTimeSeconds: video.currentTime,
+    });
+  });
+
+  it('时间轴只在视频目标出现，图片目标那一行不存在（A8）', () => {
+    renderOverlay();
+    expect(screen.queryByTestId('focus-crop-timeline')).toBeNull();
+    cleanup();
+    renderVideoOverlay({ duration: 10, currentTime: 0, videoWidth: 800, videoHeight: 600 });
+    expect(screen.getByTestId('focus-crop-timeline')).toBeInTheDocument();
+  });
+
+  it('元素在浮层打开前就已就绪：手柄立刻出现在它停的位置（A8，先播种）', () => {
+    renderVideoOverlay({ duration: 10, currentTime: 4, videoWidth: 800, videoHeight: 600 });
+    // Nothing fires loadedmetadata after the overlay mounts — a subscribe-only
+    // implementation shows no handle at all here.
+    const thumb = screen.getByRole('slider');
+    expect(thumb.getAttribute('aria-valuenow')).toBe('4');
+    expect(thumb.getAttribute('aria-valuemax')).toBe('10');
+  });
+
+  it('拖手柄写的是元素的 currentTime（A8）', () => {
+    const { stub, video } = renderVideoOverlay({
+      duration: 10,
+      currentTime: 0,
+      videoWidth: 800,
+      videoHeight: 600,
+    });
+    const track = screen.getByRole('slider').parentElement!;
+    // The stubbed rect makes the track 0..1000 wide: half way is 5s.
+    fireEvent.pointerDown(track, { clientX: 500, clientY: 0, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(track, { clientX: 500, clientY: 0, pointerId: 1 });
+    fireEvent.pointerUp(track, { pointerId: 1 });
+    expect(stub.writes.length).toBeGreaterThan(0);
+    expect(video.currentTime).toBeCloseTo(5, 1);
+  });
+
+  it('步进是 1/24 秒：按一次方向键换一帧，不是跳一整秒（A8）', () => {
+    const { video } = renderVideoOverlay({
+      duration: 10,
+      currentTime: 0,
+      videoWidth: 800,
+      videoHeight: 600,
+    });
+    const thumb = screen.getByRole('slider');
+    thumb.focus();
+    fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+    // Radix defaults to step=1 — that default lands on 1 and this fails.
+    expect(video.currentTime).toBeCloseTo(STEP_SECONDS, 5);
+  });
+
+  it('连按方向键要一直往前走：元素读回来的值跟步进网格对不齐也不许卡住（A8/A9）', async () => {
+    // A real <video> never stores what you write: Chrome quantised 1/24 to
+    // 0.041666 (measured in the smoke run). Radix computes the next keyboard
+    // step from the CONTROLLED value, and its "not on the grid" branch only
+    // snaps to the nearest grid point — so a controlled value taken from the
+    // element lands off-grid, snaps back to where it already is, and every
+    // further press is a no-op. Measured: the handle froze after ONE press
+    // and neither arrows nor PageUp could move it again.
+    const { stub, video } = renderVideoOverlay({
+      duration: 10,
+      currentTime: 0,
+      videoWidth: 800,
+      videoHeight: 600,
+      quantize: true,
+      announceSeeked: true,
+    });
+    const thumb = screen.getByRole('slider');
+    thumb.focus();
+    /**
+     * Press a key and let the pending seek notification land.
+     * @returns The element's position afterwards.
+     */
+    const press = async (): Promise<number> => {
+      fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      return video.currentTime;
+    };
+    const afterFirst = await press();
+    const afterSecond = await press();
+    const afterThird = await press();
+    expect(afterFirst).toBeGreaterThan(0);
+    expect(afterSecond).toBeGreaterThan(afterFirst);
+    expect(afterThird).toBeGreaterThan(afterSecond);
+    // Three presses, three frames — not three writes of the same number.
+    expect(new Set(stub.writes).size).toBe(stub.writes.length);
+  });
+
+  it('duration 不是有限正数：整条 Slider 不渲染，两端显示 --:--（A8）', () => {
+    renderVideoOverlay({ currentTime: 0, videoWidth: 800, videoHeight: 600 });
+    // The shared Slider renders its Thumb unconditionally, so "no handle"
+    // can only mean "no Slider".
+    expect(screen.queryByRole('slider')).toBeNull();
+    expect(screen.getByTestId('focus-crop-timeline')).toBeInTheDocument();
+    // Asserting the literal matters: formatTime's fallback for a non-finite
+    // input is '0:00', which reads as "parked at the start" — a wrong fact,
+    // not an unknown one.
+    expect(screen.getByTestId('focus-crop-time-current')).toHaveTextContent('--:--');
+    expect(screen.getByTestId('focus-crop-time-duration')).toHaveTextContent('--:--');
+  });
+
+  it('元数据晚到：手柄在 loadedmetadata 之后才出现，占位轨道让位（A8）', () => {
+    // The seed reads whatever the element has when the overlay attaches. When
+    // that is nothing yet, the ONLY route to a working timeline is the
+    // subscription — and deleting both listeners left the whole suite green.
+    const { video } = renderVideoOverlay({ videoWidth: 800, videoHeight: 600 });
+    expect(screen.queryByRole('slider')).toBeNull();
+    expect(screen.getByTestId('focus-crop-timeline-placeholder')).toBeInTheDocument();
+    Object.defineProperty(video, 'duration', { configurable: true, value: 7.5 });
+    act(() => {
+      video.dispatchEvent(new Event('loadedmetadata'));
+    });
+    const thumb = screen.getByRole('slider');
+    expect(thumb.getAttribute('aria-valuemax')).toBe('7.5');
+    expect(screen.queryByTestId('focus-crop-timeline-placeholder')).toBeNull();
+  });
+
+  it('已知时长时，当前时间读到百分之一秒，占位轨道不再出现（A8）', () => {
+    // The whole point of this timeline is landing on ONE frame; a m:ss readout
+    // cannot tell 2.00s from 2.50s, so the sub-second digits are the feedback.
+    renderVideoOverlay({
+      duration: 10,
+      currentTime: 2.5,
+      videoWidth: 800,
+      videoHeight: 600,
+    });
+    expect(screen.getByTestId('focus-crop-time-current')).toHaveTextContent('0:02.50');
+    expect(screen.getByTestId('focus-crop-time-duration')).toHaveTextContent('0:10');
+    expect(screen.queryByTestId('focus-crop-timeline-placeholder')).toBeNull();
+  });
+
+  it('时长未知时，轨道变淡（A8）', () => {
+    renderVideoOverlay({ currentTime: 0, videoWidth: 800, videoHeight: 600 });
+    const track = screen.getByTestId('focus-crop-timeline-placeholder');
+    expect(track.className).toContain('opacity-50');
+  });
+
+  it('元素换了身份之后，镜像和总时长从新元素重读（A9 / §5.3）', () => {
+    const { video } = renderVideoOverlay({
+      duration: 10,
+      currentTime: 4,
+      videoWidth: 800,
+      videoHeight: 600,
+    });
+    expect(screen.getByRole('slider').getAttribute('aria-valuenow')).toBe('4');
+    // A culling cycle unmounts the <video> and mounts a fresh one with the
+    // same src: it starts at 0 and may report a different length.
+    const node = document.querySelector('.react-flow__node[data-id="n1"]')!;
+    video.remove();
+    const back = document.createElement('video');
+    back.setAttribute('data-testid', 'media-element');
+    back.setAttribute('src', 'https://cdn/clip.mp4');
+    node.appendChild(back);
+    stubVideo(back, { duration: 8, currentTime: 0, videoWidth: 800, videoHeight: 600 });
+    fireEvent(window, new Event('resize'));
+    // Without a rebind the handle stays at 4s while the picture is at 0 —
+    // the screen would state two contradictory facts.
+    const thumb = screen.getByRole('slider');
+    expect(thumb.getAttribute('aria-valuenow')).toBe('0');
+    expect(thumb.getAttribute('aria-valuemax')).toBe('8');
+  });
+});
+
+/** A two-video canvas plus a way to move the crop target between them. */
+interface TwoVideoOverlay {
+  /** The node rendered first (`n1`). */
+  first: { el: HTMLVideoElement; stub: VideoStub };
+  /** The node rendered second (`n2`). */
+  second: { el: HTMLVideoElement; stub: VideoStub };
+  /** Point the overlay at a node — or move it to the other one. */
+  pick: (nodeId: string) => void;
+}
+
+/**
+ * Renders TWO video nodes with the overlay pointed at one of them.
+ * Changing the target does NOT remount the overlay (`CanvasSpace` renders it
+ * without a `key`), so anything hung on mount runs for the first video only.
+ * @returns Both elements with their recorders, and a way to move the target.
+ */
+function renderTwoVideoOverlay(): TwoVideoOverlay {
+  const onConfirm = vi.fn(() => true);
+  /**
+   * @param targetId - Which node the overlay is cropping, null before any.
+   * @returns The tree to render.
+   */
+  const tree = (targetId: string | null): React.ReactElement => (
+    <ReactFlowProvider>
+      {['n1', 'n2'].map((id) => (
+        <div key={id} className='react-flow__node' data-id={id}>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption -- mirrors MediaPlayer's own element. */}
+          <video data-testid='media-element' src={`https://cdn/${id}.mp4`} />
+        </div>
+      ))}
+      <div data-testid='reference-pick-banner' tabIndex={-1} />
+      {targetId === null ? null : (
+        <FocusCropOverlay
+          nodeId={targetId}
+          nodePosition={{ x: 0, y: 0 }}
+          onConfirm={onConfirm}
+          onBackToPick={vi.fn()}
+        />
+      )}
+    </ReactFlowProvider>
+  );
+  const result = render(tree(null));
+  const [firstEl, secondEl] = screen.getAllByTestId(
+    'media-element',
+  ) as HTMLVideoElement[];
+  // The first is mid-playback, the second is parked — the two cases the
+  // pause rule distinguishes.
+  const firstStub = stubVideo(firstEl!, {
+    duration: 10,
+    currentTime: 3,
+    videoWidth: 800,
+    videoHeight: 600,
+    paused: false,
+  });
+  const secondStub = stubVideo(secondEl!, {
+    duration: 10,
+    currentTime: 6,
+    videoWidth: 800,
+    videoHeight: 600,
+    paused: false,
+  });
+  return {
+    first: { el: firstEl!, stub: firstStub },
+    second: { el: secondEl!, stub: secondStub },
+    pick: (nodeId) => result.rerender(tree(nodeId)),
+  };
+}
+
+describe('FocusCropOverlay：换目标之后的选框判定（#1987）', () => {
+  it('从图片换到元数据还没到的视频：选框按新目标判，不按上一个目标的分辨率（A7a）', () => {
+    // The pointer-up gauge asks "does this rect select at least 8 source
+    // pixels" and needs the SOURCE's own size to answer. A video reports 0×0
+    // until its metadata lands — the opening state of every video, and the
+    // state A7a is written for — so if the previous target's size is still
+    // sitting there, the gauge answers with the wrong yardstick and throws
+    // away a marquee the user could have retried with.
+    const onConfirm = vi.fn(() => true);
+    /**
+     * @param targetId - Which node the overlay is cropping.
+     * @returns The tree to render.
+     */
+    const tree = (targetId: string): React.ReactElement => (
+      <ReactFlowProvider>
+        <div className='react-flow__node' data-id='small-image'>
+          <img data-testid='image-node-img' src='https://cdn/tiny.png' alt='' />
+        </div>
+        <div className='react-flow__node' data-id='fresh-video'>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption -- mirrors MediaPlayer's own element. */}
+          <video data-testid='media-element' src='https://cdn/clip.mp4' />
+        </div>
+        <div data-testid='reference-pick-banner' tabIndex={-1} />
+        <FocusCropOverlay
+          nodeId={targetId}
+          nodePosition={{ x: 0, y: 0 }}
+          onConfirm={onConfirm}
+          onBackToPick={vi.fn()}
+        />
+      </ReactFlowProvider>
+    );
+    const result = render(tree('small-image'));
+    // A 64×64 asset shown in a 400×300 box: every display pixel is a fraction
+    // of a source pixel, so the gauge demands a LARGE rect.
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 64, configurable: true });
+    Object.defineProperty(img, 'naturalHeight', { value: 64, configurable: true });
+    fireEvent(window, new Event('resize'));
+    // Same session, second target: a video that has not reported its size yet.
+    const video = screen.getByTestId('media-element') as HTMLVideoElement;
+    stubVideo(video, { duration: 10, currentTime: 0, videoWidth: 0, videoHeight: 0 });
+    result.rerender(tree('fresh-video'));
+    // A 30×30 drag — deliberately UNDER what the stale 64×64 yardstick would
+    // demand (50 display px across, 37.5 down), and far over what the video's own size
+    // asks for. A 60×60 drag clears both yardsticks, so it could not fail.
+    draw({ x: 150, y: 100 }, { x: 180, y: 130 });
+    expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+  });
+});
+
+describe('FocusCropOverlay：聚焦时的暂停（#1987）', () => {
+  it('点中正在播的视频：只有它停下，别的照播（A3）', () => {
+    const { first, second, pick } = renderTwoVideoOverlay();
+    pick('n1');
+    expect(first.stub.pause).toHaveBeenCalledTimes(1);
+    expect(second.stub.pause).not.toHaveBeenCalled();
+  });
+
+  it('点中没在播的视频：不去碰它（user 2026-08-20）', () => {
+    // It is already parked — there is nothing to pause, and calling pause()
+    // on it is an action nobody asked for.
+    const { stub } = renderVideoOverlay({
+      duration: 10,
+      currentTime: 2,
+      videoWidth: 800,
+      videoHeight: 600,
+      paused: true,
+    });
+    expect(stub.pause).not.toHaveBeenCalled();
+  });
+
+  it('一次会话里连点两个视频：第二个也停，第一个不被放回去（A3）', () => {
+    const { first, second, pick } = renderTwoVideoOverlay();
+    pick('n1');
+    first.stub.pause.mockClear();
+    pick('n2');
+    // The overlay does not remount on a target change, so a pause hung on
+    // mount would leave this at zero.
+    expect(second.stub.pause).toHaveBeenCalledTimes(1);
+    // Leaving a video is not a reason to start it again — it stays where the
+    // user parked it (user 2026-08-20).
+    expect(first.stub.play).not.toHaveBeenCalled();
+  });
+
+  it('确认之后与取消之后都不曾调 play()（A4）', () => {
+    const { stub } = renderVideoOverlay({
+      duration: 10,
+      currentTime: 4,
+      videoWidth: 800,
+      videoHeight: 600,
+      paused: false,
+    });
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    expect(stub.play).not.toHaveBeenCalled();
+    cleanup();
+    const cancelled = renderVideoOverlay({
+      duration: 10,
+      currentTime: 4,
+      videoWidth: 800,
+      videoHeight: 600,
+      paused: false,
+    });
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    fireEvent.click(screen.getByTestId('focus-crop-cancel'));
+    expect(cancelled.stub.play).not.toHaveBeenCalled();
+    // And it is still parked on the frame the user chose.
+    expect(cancelled.video.currentTime).toBe(4);
   });
 });

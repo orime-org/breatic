@@ -41,12 +41,18 @@ describe('runFocusCrop', () => {
       {
         sourceUrl: 'https://cdn/source.png',
         sourceName: 'Image Node 26',
+        sourceTimeSeconds: null,
         crop: CROP,
         projectId: 'p1',
       },
       deps,
     );
-    expect(deps.exportCrop).toHaveBeenCalledWith('https://cdn/source.png', CROP);
+    // Exact, deliberately (#1987 §7.2): this is the boundary that used to
+    // drop a field silently, so it names the whole source descriptor.
+    expect(deps.exportCrop).toHaveBeenCalledWith(
+      { url: 'https://cdn/source.png', timeSeconds: null },
+      CROP,
+    );
     // The uploaded file is a PNG named from the source snapshot.
     const uploadCall = vi.mocked(deps.uploadFile).mock.calls[0]!;
     const file = uploadCall[0];
@@ -67,7 +73,13 @@ describe('runFocusCrop', () => {
     const deps = makeDeps();
     vi.mocked(deps.exportCrop).mockRejectedValue(new Error('taint'));
     await runFocusCrop(
-      { sourceUrl: 'u', sourceName: 'n', crop: CROP, projectId: 'p1' },
+      {
+        sourceUrl: 'u',
+        sourceName: 'n',
+        sourceTimeSeconds: null,
+        crop: CROP,
+        projectId: 'p1',
+      },
       deps,
     );
     expect(deps.onFailure).toHaveBeenCalledWith('export');
@@ -79,7 +91,13 @@ describe('runFocusCrop', () => {
     const deps = makeDeps();
     vi.mocked(deps.uploadFile).mockRejectedValue(new Error('net'));
     await runFocusCrop(
-      { sourceUrl: 'u', sourceName: 'n', crop: CROP, projectId: 'p1' },
+      {
+        sourceUrl: 'u',
+        sourceName: 'n',
+        sourceTimeSeconds: null,
+        crop: CROP,
+        projectId: 'p1',
+      },
       deps,
     );
     expect(deps.onFailure).toHaveBeenCalledWith('upload');
@@ -93,11 +111,37 @@ describe('runFocusCrop', () => {
     const deps = makeDeps();
     vi.mocked(deps.uploadFile).mockRejectedValue(new Error('storage'));
     await runFocusCrop(
-      { sourceUrl: 'u', sourceName: 'n', crop: CROP, projectId: 'p1' },
+      {
+        sourceUrl: 'u',
+        sourceName: 'n',
+        sourceTimeSeconds: null,
+        crop: CROP,
+        projectId: 'p1',
+      },
       deps,
     );
     expect(deps.onFailure).toHaveBeenCalledWith('storage');
     expect(deps.addFocusImage).not.toHaveBeenCalled();
+  });
+
+  it('视频源：时间点原样传给取源那一步，一位小数都不改（#1987 A9）', async () => {
+    const deps = makeDeps();
+    await runFocusCrop(
+      {
+        sourceUrl: 'https://cdn/clip.mp4',
+        sourceName: 'Video Node 3',
+        // A frame the user parked on by dragging — not a round number, on
+        // purpose: rounding to whole seconds is a different frame.
+        sourceTimeSeconds: 4.375,
+        crop: CROP,
+        projectId: 'p1',
+      },
+      deps,
+    );
+    expect(deps.exportCrop).toHaveBeenCalledWith(
+      { url: 'https://cdn/clip.mp4', timeSeconds: 4.375 },
+      CROP,
+    );
   });
 });
 

@@ -38,14 +38,32 @@ interface MediaPlayerProps {
    * resolution badge without a data-model field.
    */
   onDimensions?: (resolution: NodeResolution) => void;
+  /**
+   * Slide the control bar away and take it out of reach (video only —
+   * #1987 A5). Set for
+   * the whole of a focus pick session: while the user is picking a video to
+   * crop, a click on the play button would both toggle playback and count as
+   * picking that node, and the frame to crop is chosen on the crop overlay's
+   * own timeline instead.
+   *
+   * The bar stays mounted — `inert` rather than unmounting, so the slide-out
+   * has an element to animate while keyboard, screen readers and the pointer
+   * all lose it.
+   */
+  controlsHidden?: boolean;
 }
 
 /**
  * Formats a seconds count as `m:ss` (e.g. 75 → "1:15").
+ *
+ * Exported for the focus crop timeline (#1987), which labels the same kind of
+ * position on a different surface — one definition rather than two that drift.
+ * Note the fallback: a non-finite input reads as "0:00", i.e. the start, so a
+ * caller that wants to say "unknown" must say so itself.
  * @param seconds - Time in seconds.
  * @returns The `m:ss` string ("0:00" for non-finite / negative input).
  */
-function formatTime(seconds: number): string {
+export function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -67,6 +85,7 @@ function formatTime(seconds: number): string {
  * @param root0.poster - Poster image (video only).
  * @param root0.variant - `'full'` (node player, default) or `'preview'` (hover preview: no volume / fullscreen).
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
+ * @param root0.controlsHidden - Slide the control bar out and make it unreachable (video only, #1987).
  * @returns The media player element.
  */
 export function MediaPlayer({
@@ -75,6 +94,7 @@ export function MediaPlayer({
   poster,
   onDimensions,
   variant = 'full',
+  controlsHidden = false,
 }: MediaPlayerProps): React.JSX.Element {
   const ref = React.useRef<HTMLMediaElement>(null);
   const p = useMediaPlayer(ref);
@@ -176,7 +196,10 @@ export function MediaPlayer({
         />
         <div
           data-testid='controls'
-          className='nodrag absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6 text-white'
+          inert={controlsHidden}
+          className={`nodrag absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6 text-white transition-transform ${
+            controlsHidden ? 'translate-y-full' : ''
+          }`}
         >
           {playButton}
           <span

@@ -155,4 +155,23 @@ describe('MediaPlayer', () => {
     fireEvent.loadedMetadata(screen.getByTestId('media-element'));
     expect(onDimensions).not.toHaveBeenCalled();
   });
+
+  // #1987 A5: during a focus pick the node's own control bar slides away and
+  // stops being reachable — clicking play on a node the user is trying to PICK
+  // fires both the toggle and the pick (§2.6).
+  it('video: controlsHidden slides the bar out AND makes it unreachable (#1987 A5)', () => {
+    const { rerender } = render(
+      <MediaPlayer modality='video' src='/v.mp4' controlsHidden />,
+    );
+    const bar = screen.getByTestId('controls');
+    // `inert` rather than unmounting: the element must stay for the slide-out
+    // to have something to animate, and inert takes it out of the tab order,
+    // the a11y tree and hit-testing all at once.
+    expect(bar.hasAttribute('inert')).toBe(true);
+    expect(bar.className).toContain('translate-y-full');
+    rerender(<MediaPlayer modality='video' src='/v.mp4' />);
+    const shown = screen.getByTestId('controls');
+    expect(shown.hasAttribute('inert')).toBe(false);
+    expect(shown.className).not.toContain('translate-y-full');
+  });
 });
