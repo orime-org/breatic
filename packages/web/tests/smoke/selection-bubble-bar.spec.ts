@@ -781,8 +781,13 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
   // 量的是 `barRight`，它等于钉住的 x **只在 flip 把对齐轴翻成 `-end` 时**成立
   // ——鼠标放在离右沿 40px 处、条宽约 192px，放不下才会翻。下面先断言这个几何
   // 真的成立，否则这两句量的是「钉住点 + 条宽」，那是另一回事。
-  expect(allWide.viewRight - allWide.barRight).toBeLessThan(40);
+  // 宽档：鼠标钉在离右沿 40 的地方，条翻过来之后右边缘就落在那个点上。
+  expect(allWide.viewRight - allWide.barRight).toBe(40);
+  // 窄档：那个点按比例重算过，离右沿的距离跟着区域一起缩，所以严格小于 40。
+  // 这两句同时也是「flip 真的翻了」的证据——没翻的话条的右边缘会是
+  // 「钉住点加条宽」，差值当场变成负数。
   expect(allNarrow.viewRight - allNarrow.barRight).toBeLessThan(40);
+  expect(allNarrow.viewRight - allNarrow.barRight).toBeGreaterThan(0);
   const ratioWide =
     (allWide.barRight - allWide.viewLeft) / (allWide.viewRight - allWide.viewLeft);
   const ratioNarrow =
