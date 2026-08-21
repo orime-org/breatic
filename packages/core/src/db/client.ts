@@ -53,8 +53,7 @@ import { env } from "@core/config/env.js";
  * when a caller explicitly opts in. The default policy stays
  * conservative because the long-running drift investigation
  * showed in-flight kills were not observed with the current 30s
- * idle / 30min lifetime values - revisiting the tradeoff is
- * tracked in docs/ROADMAP.md "follow-ups".
+ * idle / 30min lifetime values.
  *
  * `name` is required and feeds the postgres.js `connection.
  * application_name` field, which lands in PG's
