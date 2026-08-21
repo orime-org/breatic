@@ -134,6 +134,29 @@ const COMPARABLE_TIER_SET: ReadonlySet<string> = new Set(
   COMPARABLE_MEMBERSHIP_TIERS,
 );
 
+/** A tier somebody pays a monthly subscription for. */
+export type SubscribableMembershipTier = Exclude<
+  ComparableMembershipTier,
+  "base"
+>;
+
+/**
+ * The tiers a subscription can be bought for (#106).
+ *
+ * The price list minus the free tier: `base` is what an account falls back to
+ * when it subscribes to nothing, so there is no plan to sell for it.
+ *
+ * Derived from {@link COMPARABLE_MEMBERSHIP_TIERS} rather than written out
+ * again, so a fourth priced tier lands here by itself — and, because
+ * `config/subscription.yaml` is required to carry a plan for every member of
+ * this list, the missing plan is named on the first read instead of reaching
+ * Stripe as an undefined price id.
+ */
+export const SUBSCRIBABLE_MEMBERSHIP_TIERS =
+  COMPARABLE_MEMBERSHIP_TIERS.filter(
+    (tier): tier is SubscribableMembershipTier => tier !== "base",
+  );
+
 /**
  * Whether a tier is one of the priced ones.
  *
@@ -158,6 +181,144 @@ export interface TierOffer {
   readonly tier: ComparableMembershipTier;
   /** That tier's six ceilings, read from `config/membership.yaml`. */
   readonly limits: MembershipLimits;
+  /**
+   * What it costs per month, in the smallest currency unit.
+   *
+   * Null for the free tier, and null on every row when this deployment sells
+   * nothing: a self-hosted install has no prices, and inventing "$0" there
+   * would be a claim about a shop that does not exist.
+   */
+  readonly priceCents: number | null;
+  /** ISO 4217 code for `priceCents`, null wherever that is null. */
+  readonly currency: string | null;
+}
+
+/**
+ * Which situation an account's subscription puts it in (#106 §6.5.1).
+ *
+ * Not Stripe's status: `active` covers three situations that offer different
+ * actions — running normally, ending at the period boundary, and waiting on an
+ * upgrade's invoice — and the panel shows something different for each.
+ *
+ * In shared because it is part of the panel's contract. The reading that
+ * produces it is backend-only and lives in core.
+ */
+export const SUBSCRIPTION_SITUATIONS = [
+  "none",
+  "firstPaymentUnsettled",
+  "active",
+  "cancelling",
+  "upgradePending",
+  "retrying",
+  "unexpected",
+] as const;
+
+/** One of the situations an account's subscription can put it in. */
+export type SubscriptionSituation = (typeof SUBSCRIPTION_SITUATIONS)[number];
+
+/**
+ * The situations in which an account holds a subscription it can act on.
+ *
+ * One list, read by both ends. The server refuses a cancel outside it and the
+ * panel must not offer one, and when the two kept their own copies the panel
+ * drew a cancel button for `firstPaymentUnsettled` that the server answered
+ * "you have no membership" to.
+ *
+ * `firstPaymentUnsettled` is absent on purpose: Stripe cannot update a
+ * subscription whose first invoice has not settled, so there is nothing to
+ * cancel or change — those accounts start a fresh checkout instead.
+ */
+export const ACTIONABLE_SUBSCRIPTION_SITUATIONS = [
+  "active",
+  "cancelling",
+  "upgradePending",
+  "retrying",
+] as const;
+
+const ACTIONABLE_SITUATION_SET: ReadonlySet<string> = new Set(
+  ACTIONABLE_SUBSCRIPTION_SITUATIONS,
+);
+
+/**
+ * Whether the account holds a subscription it can cancel, resume or change.
+ * @param situation - The situation its subscription puts it in.
+ * @returns Whether there is a subscription to act on.
+ */
+export function holdsActionableSubscription(
+  situation: SubscriptionSituation,
+): boolean {
+  return ACTIONABLE_SITUATION_SET.has(situation);
+}
+
+/** What the panel may offer for the upgrade entrance (design §13). */
+export type UpgradeOffer = "offered" | "pending" | "withheld";
+
+/** Which of the three subscription actions an account can take right now. */
+export interface SubscriptionActionAvailability {
+  /**
+   * Whether a higher tier can be chosen — and if not, why not.
+   *
+   * `pending` is S4: an upgrade is already bought and waiting on its invoice,
+   * so the entrance shows as in progress rather than inviting a second one.
+   * `withheld` is S5: the server refuses to sell more while a card is already
+   * failing, so offering it would only produce a refusal.
+   */
+  readonly upgrade: UpgradeOffer;
+  /** Whether the membership can be set to end at the period boundary. */
+  readonly cancel: boolean;
+  /** Whether a scheduled ending can be taken back. */
+  readonly resume: boolean;
+}
+
+/**
+ * What an account may do about its subscription, decided once for both ends.
+ *
+ * The server refuses anything outside this and the panel draws nothing
+ * outside it. Keeping one copy each is what produced two defects at once: a
+ * "resume" button on an account behind on payment, which the server always
+ * refused because it asked whether the situation was `cancelling` while the
+ * panel asked whether a cancellation was scheduled — and those disagree for
+ * exactly the account that is both — and an upgrade button during the retry
+ * window, which design §13 says not to draw and the server answers 409 to.
+ *
+ * `resume` asks whether an ending is scheduled rather than whether the
+ * situation is `cancelling`, because that is what taking it back means. An
+ * account whose card is failing AND who asked to stop is both `retrying` and
+ * scheduled to end; the situation reading can only name one of those, and the
+ * one it names is not the one this question is about.
+ * @param state - The situation the account's subscription puts it in.
+ * @param cancelAtPeriodEnd - Whether it is set to end at the period boundary.
+ * @returns Which of the three actions are available.
+ */
+export function subscriptionActions(
+  state: SubscriptionSituation,
+  cancelAtPeriodEnd: boolean,
+): SubscriptionActionAvailability {
+  const actionable = holdsActionableSubscription(state);
+  return {
+    upgrade:
+      state === "retrying"
+        ? "withheld"
+        : state === "upgradePending"
+          ? "pending"
+          : "offered",
+    cancel: actionable && !cancelAtPeriodEnd,
+    resume: actionable && cancelAtPeriodEnd,
+  };
+}
+
+/** What the panel shows about an account's subscription. */
+export interface SubscriptionSummary {
+  /** Which situation it is in — {@link SubscriptionSituation}, not Stripe's word. */
+  readonly state: SubscriptionSituation;
+  /** The tier it has been paid for, which is not always the tier in force. */
+  readonly tier: MembershipTier;
+  /** When the paid period ends, ISO 8601, or null before the first payment. */
+  readonly currentPeriodEnd: string | null;
+  /** Whether it is set to end when that period runs out. */
+  readonly cancelAtPeriodEnd: boolean;
+  /** Where to pay an outstanding invoice, when there is one. */
+  readonly payableInvoiceUrl: string | null;
 }
 
 /** What one account has spent of the two allowances counted account-wide. */
@@ -191,4 +352,14 @@ export interface AccountMembership {
   readonly usage: AccountUsage;
   /** The tiers offered for comparison, in ascending order. */
   readonly catalog: readonly TierOffer[];
+  /**
+   * What the account's subscription is doing.
+   *
+   * Null means one thing and one thing only: this deployment sells no
+   * subscriptions. That is what makes the panel hide every subscription
+   * control on a self-hosted install without the front end needing to know
+   * why. An account that simply has not bought one gets a summary saying so
+   * (`state: "none"`) — it is the state the offers exist for.
+   */
+  readonly subscription: SubscriptionSummary | null;
 }

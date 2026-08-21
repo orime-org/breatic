@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Plus } from 'lucide-react';
+import { Focus, Plus } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
@@ -20,6 +20,10 @@ interface VideoGenerateToolbarProps {
   onReference: () => void;
   /** Whether the reference pick is running — highlights the button. */
   referenceActive?: boolean;
+  /** Toggle the focus crop pick (#1978, marquee → focusImages append). */
+  onFocus: () => void;
+  /** Whether the focus pick is running — highlights the Focus button. */
+  focusActive?: boolean;
   /** The source slots the active mode collects, in display order. */
   slots: readonly VideoSlot[];
   /** What is picked, by slot; a slot missing from here renders empty. */
@@ -40,21 +44,26 @@ interface VideoGenerateToolbarProps {
 }
 
 /**
- * The video Generate panel's top tool row: Reference first, then one control
- * per source slot the active mode collects (design §4.2 — "leftmost is always
- * Reference").
+ * The video Generate panel's top tool row: Reference, then Focus, then one
+ * control per source slot the active mode collects (design §4.2 — "leftmost is
+ * always Reference"; Focus took the seat beside it in #1978, user 2026-08-19).
  *
- * Reference is present in every mode: a connected node feeds the prompt's `@`
- * mentions whatever the model generates from. The slots come from the mode,
- * so a mode that takes no source shows no slot rather than offering a pick the
- * submit then ignores, and a new slot is a registry entry rather than another
- * branch here.
+ * Reference and Focus are present in every mode, and that is a decision about
+ * the ENTRY rather than a claim about the modes: only `ref` consumes the
+ * reference pool, and a row collected under any other mode goes dark in the
+ * rail (#1952). Keeping both entries live means the answer to "can I collect
+ * one here" never moves; the refusal belongs on the row, where it can explain
+ * itself. The slots come from the mode, so a mode that takes no source shows
+ * no slot rather than offering a pick the submit then ignores, and a new slot
+ * is a registry entry rather than another branch here.
  *
- * Its own row rather than a mode of the image toolbar: the image panel's tools
- * are Style and Focus, which mean nothing here. What the two rows are built
- * FROM is shared — {@link ToggleTool} and {@link SlotTool}.
+ * Its own row rather than a mode of the image toolbar: Style is the image
+ * panel's alone, and the slots are this panel's alone. What the two rows are
+ * built FROM is shared — {@link ToggleTool} and {@link SlotTool}.
  * @param root0 - Component props.
  * @param root0.onReference - Enter / exit the reference pick.
+ * @param root0.onFocus - Enter / exit the focus crop pick.
+ * @param root0.focusActive - Whether the focus pick is running.
  * @param root0.referenceActive - Whether the reference pick is running.
  * @param root0.slots - The slots the active mode collects.
  * @param root0.slotUrls - What is picked, by slot.
@@ -66,6 +75,8 @@ interface VideoGenerateToolbarProps {
  */
 export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
   onReference,
+  onFocus,
+  focusActive = false,
   referenceActive = false,
   slots,
   slotUrls,
@@ -84,6 +95,18 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
         Icon={Plus}
         onClick={onReference}
         active={referenceActive}
+      />
+      {/* Focus sits immediately right of Reference and is present in every
+          mode (user 2026-08-19). It is never disabled: the pool row it
+          produces goes dark under a mode that cannot use an image reference
+          (#1952), which is where the refusal belongs — not on the entry. */}
+      <ToggleTool
+        testId='generate-video-tool-focus'
+        label={t('canvas.generatePanel.focus')}
+        tip={t('canvas.generatePanel.focusTip')}
+        Icon={Focus}
+        onClick={onFocus}
+        active={focusActive}
       />
       {slots.map((slot) => {
         const spec = VIDEO_SLOTS[slot];

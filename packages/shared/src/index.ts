@@ -30,6 +30,7 @@ export type {
   MessageData,
   MessageInput,
   MessagePart,
+  StoredMessageMetadata,
   TaskEntity,
   NodeHistoryEntity,
   StudioAssetEntity,
@@ -80,6 +81,11 @@ export type {
   ConfiguredMembershipTier,
   MembershipLimits,
   ComparableMembershipTier,
+  SubscribableMembershipTier,
+  SubscriptionSituation,
+  SubscriptionActionAvailability,
+  UpgradeOffer,
+  SubscriptionSummary,
   TierOffer,
   AccountUsage,
   AccountMembership,
@@ -102,6 +108,11 @@ export {
   CONFIGURED_MEMBERSHIP_TIERS,
   tierLimitsSchema,
   COMPARABLE_MEMBERSHIP_TIERS,
+  SUBSCRIBABLE_MEMBERSHIP_TIERS,
+  SUBSCRIPTION_SITUATIONS,
+  ACTIONABLE_SUBSCRIPTION_SITUATIONS,
+  holdsActionableSubscription,
+  subscriptionActions,
   isComparableMembershipTier,
   HANDLING_TIMEOUT_MS,
   canGenerate,
@@ -179,10 +190,15 @@ export {
   understandSchema,
   projectCreateSchema,
   checkoutSchema,
+  subscriptionPlanSchema,
+  subscriptionChangeSchema,
   paginationSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,
   chatEarlierMessagesQuerySchema,
+  chatCreateConversationSchema,
+  chatRenameConversationSchema,
+  CONVERSATION_TITLE_MAX_CHARS,
 } from "@shared/schemas/index.js";
 
 export type {
@@ -200,6 +216,8 @@ export type {
   CheckoutInput,
   PaginationInput,
   ChatConversationsQueryInput,
+  ChatCreateConversationInput,
+  ChatRenameConversationInput,
 } from "@shared/schemas/index.js";
 
 export {
@@ -252,17 +270,12 @@ export type { AdjustValue } from "@shared/adjust-value.js";
 
 export { newId, deriveId } from "@shared/ids.js";
 
-// The agent chat stream's wire contract — the one place its event names and
-// envelope are written, for the server that sends them and the browser that
-// reads them. Sentinels are not here on purpose; see the file's own note.
-export {
-  SSE_EVENT_NAMES,
-  SSE_HEARTBEAT_INTERVAL_MS,
-  SSE_HEARTBEAT_TIMEOUT_MS,
-} from "@shared/agent/sse-events.js";
+// How many beats in a row may go missing before the agent chat stream is
+// called dead. How often they arrive is `config/agent.yaml`'s, served to the
+// browser at `GET /chat/stream-config`.
+export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { toolCallHasOutcome } from "@shared/agent/tool-outcome.js";
 export type { ToolOutcomeFields } from "@shared/agent/tool-outcome.js";
-export type { SSEEventName, SSEEventEnvelope } from "@shared/agent/sse-events.js";
 
 // The one HTTP transport with retries — backend services and browser alike.
 // Anything aimed at OUR OWN backend keeps using the browser's axios singleton;

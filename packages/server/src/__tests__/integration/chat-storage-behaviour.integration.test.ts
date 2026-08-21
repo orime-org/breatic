@@ -101,7 +101,7 @@ async function seedProject(): Promise<{ userId: string; projectId: string }> {
  * @returns The created conversation.
  */
 async function seedConversation(userId: string, projectId: string) {
-  const conv = await conversationRepo.createConversation(userId, "seeded");
+  const conv = await conversationRepo.createConversation(userId);
   await conversationRepo.setProjectId(conv.id, projectId);
   return { ...conv, projectId };
 }
@@ -443,6 +443,29 @@ describe("the memory chain still sees the same messages", () => {
 
     // Five user messages → turns 1..5; watermark at 2 leaves three.
     expect(await messageRepo.getUnconsolidatedTurnCount(conv.id)).toBe(3);
+  });
+
+  it("does not move the conversation when it records what it consolidated", async () => {
+    // 归纳是 fire-and-forget 的:它落地时读者可能已经在另一条会话里说过话了。
+    // 动了 updated_at,这条没人在说话的会话会反超到列表最前,下次打开 project
+    // 也落在它上面 —— 而归纳对读者是不可见的簿记。
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+    const turn = await messageRepo.addMessage(conv.id, {
+      role: "user",
+      parts: [{ type: "text", text: "q" }],
+    });
+    await messageRepo.addMessage(conv.id, {
+      role: "assistant",
+      parts: [{ type: "text", text: "a" }],
+      turnIndex: turn,
+    });
+    const before = await conversationRepo.getConversation(conv.id);
+
+    await conversationRepo.updateConsolidatedTurn(conv.id, 1);
+
+    const after = await conversationRepo.getConversation(conv.id);
+    expect(after!.updatedAt.getTime()).toBe(before!.updatedAt.getTime());
   });
 
   it("hands consolidation exactly the turns inside the window", async () => {

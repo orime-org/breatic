@@ -229,10 +229,12 @@ export interface FocusImage {
 // input for `target`), so the rail is derived live from the node's incoming
 // edges — single source of truth = the edges map, zero drift (see the web
 // `deriveReferences` helper). The prompt is stored as an opaque `Y.XmlFragment`
-// (`data.prompt`, typed `unknown` on the wire); its structured shape
-// (PromptDoc / ChipSnapshot) is a FRONTEND rendering concern and lives in web
-// (`spaces/canvas/generate/prompt-types`) — the backend only ever reads the
-// prompt as plain text via `extractPromptText`, never the chip structure.
+// (`data.prompt`, typed `unknown` on the wire). Its structured shape is a
+// FRONTEND rendering concern that never crossed this boundary: the backend
+// only ever reads the prompt as plain text via `extractPromptText`, never the
+// chip structure. (Web once carried a `prompt-types` module describing that
+// shape; it had no consumers and was deleted in #1952 — the live chip
+// attributes are the ones on `reference-mention.tsx`.)
 //
 // ── Text-node body ───────────────────────────────────────
 //

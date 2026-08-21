@@ -31,8 +31,12 @@ vi.mock("@server/agent/turn-context.js", () => ({
     compressedHistory: HISTORY,
   })),
 }));
-vi.mock("ai", () => ({
-  tool: (c: Record<string, unknown>) => c,
+// The real `createUIMessageStream` and its helpers stay: they are what the
+// turn's output is made of, and a double for them would leave these cases
+// asserting on a shape nothing produces. Only the model call itself is
+// replaced, which is what these files are actually holding still.
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   streamText: vi.fn(),
   generateText: vi.fn(),
   stepCountIs: vi.fn(() => 40),
@@ -71,6 +75,13 @@ vi.mock("@breatic/domain", async () => {
 const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage, getMessages }));
+// The turn asks the conversation what it is called, so it can say so in the
+// event that opens the turn. Answered with a name already set: these tests are
+// about what a turn streams, not about how a conversation comes by its name.
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  titleForTurn: vi.fn(async () => "already named"),
+}));
+
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
 
 // What the system prompt says is settled elsewhere and has its own tests; here
@@ -80,12 +91,23 @@ vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
-/** A stream that ends immediately — this suite only cares about the input. */
-function emptyStream(): Record<string, unknown> {
+/**
+ * A model call that answers with nothing.
+ *
+ * The double is on the call here, not on the model, because what these cases
+ * read is the argument it was given -- the history, on its way in. What comes
+ * back is beside the point, so long as it ends: a stream that never closes
+ * leaves the turn waiting on it forever.
+ * @returns Something shaped like a `streamText` result.
+ */
+function saysNothing(): Record<string, unknown> {
   return {
-    fullStream: (async function* () {})(),
-    text: Promise.resolve(""),
-    totalUsage: Promise.resolve({ totalTokens: 0 }),
+    toUIMessageStream: () =>
+      new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      }),
   };
 }
 
@@ -137,9 +159,9 @@ function toolResultSentToModel(): unknown {
  * @param run - Called with the agent; returns the stream to drain
  */
 async function turn(
-  run: (agent: InstanceType<typeof MainAgent>) => AsyncGenerator<unknown>,
+  run: (agent: InstanceType<typeof MainAgent>) => Promise<ReadableStream<unknown>>,
 ): Promise<void> {
-  streamTextRetry.mockReturnValue(emptyStream());
+  streamTextRetry.mockReturnValue(saysNothing());
   await runWithContext(
     {
       userId: "u1",
@@ -147,7 +169,7 @@ async function turn(
       projectId: "p1",
     },
     async () => {
-      for await (const _ of run(new MainAgent())) {
+      for await (const _ of await run(new MainAgent())) {
         // drained
       }
     },

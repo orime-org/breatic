@@ -264,3 +264,22 @@ describe('ChatComposer', () => {
     expect(onAbort).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('while the panel is on its way to another conversation', () => {
+  it('holds the box still instead of taking words nobody will read', () => {
+    // 屏幕上还是原来那条会话,而它马上要被换掉。这时候打进去的话会写进正在
+    // 离开的那条 —— 所以这个框在这段时间里必须一眼看得出不能用,而不是看着
+    // 能用、按下去没反应。
+    setup({ draft: 'half a sentence', navigating: true });
+
+    expect(screen.getByTestId('chat-composer-textarea')).toHaveAttribute('readonly');
+    expect(screen.getByTestId('chat-composer-send')).toBeDisabled();
+  });
+
+  it('gives it back once the conversation has arrived', () => {
+    setup({ draft: 'half a sentence', navigating: false });
+
+    expect(screen.getByTestId('chat-composer-textarea')).not.toHaveAttribute('readonly');
+    expect(screen.getByTestId('chat-composer-send')).not.toBeDisabled();
+  });
+});

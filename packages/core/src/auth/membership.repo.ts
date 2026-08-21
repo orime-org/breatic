@@ -15,8 +15,8 @@
  * an action is taken, so moving the value IS moving what the account may do.
  *
  * **Call points do not run the tier lookup and index the config themselves.**
- * They call one of the three exported `…LimitsFor…` functions below, which
- * differ only in what they start from and whether they lock:
+ * They call one of the four exported lookups below, which differ in what they
+ * start from, whether they lock, and how many ceilings they answer with:
  *
  *   - `getLimitsForUser`  — an account, no lock. For reads.
  *   - `lockLimitsForUser` — an account, row locked. For the one ceiling whose
@@ -24,20 +24,29 @@
  *   - `getLimitsForStudio`— a studio, resolved through its current admin. No
  *     lock: a ceiling counted per studio is serialised on the STUDIO's row,
  *     which is not this module's to take (see `studioRepo.lockStudio`).
+ *   - `getStudioStorageQuota` — a studio, one ceiling. The odd one out, and
+ *     for the reason spelled out on it: storage is the only ceiling whose
+ *     product rule for the enterprise tier has been decided, so it is the
+ *     only one that can answer with a value where the others must throw.
  *
- * One ceiling is still to come — storage. The two kinds of member cap landed
- * with #87 and the concurrent writable connection ceiling with #88 (see
- * `getProjectConcurrentEditorLimit` below). Each has its own check point, so
- * "look up the tier, then index the config" would otherwise end up written out
- * six to eight times across the codebase.
+ * All six ceilings are enforced now: the two kinds of member cap landed with
+ * #87, the concurrent writable connection ceiling with #88 (see
+ * `getProjectConcurrentEditorLimit` below), and storage with #89 on the two
+ * write paths in server. Each has its own check point, so "look up the tier,
+ * then index the config" would otherwise end up written out six to eight
+ * times across the codebase.
  *
  * There are two routes from an id to a tier here, not one: an account's tier
- * is its own column, a studio's is its admin's. Both end at `limitsFor`, and
- * both carry the ACCOUNT id there — `readStudioAdmin` returns it for exactly
- * this reason. That is what lets `limitsFor` name the account when it cannot
- * price a tier, and it is where the enterprise ceilings will be read from the
+ * is its own column, a studio's is its admin's. Both carry the ACCOUNT id to
+ * wherever the tier is priced — `readStudioAdmin` returns it for exactly this
+ * reason. That is what lets `limitsFor` name the account when it cannot price
+ * a tier, and it is where the enterprise ceilings will be read from the
  * database once they are negotiable. Saying "there is one seam" would be
- * tidier and it would be false.
+ * tidier and it would be false. Two other places already know that the
+ * enterprise tier has no configured ceiling and answer null rather than let it
+ * throw: `getStudioStorageQuota` below (#89) and the membership panel's read
+ * (`server/src/modules/account/membership.service.ts`). All three change when
+ * those ceilings become readable.
  *
  * Two lookups because the ratified rule has two halves. How many team studios
  * an account may administer is decided by that account's own tier. Everything
@@ -52,10 +61,11 @@
  * A studio has exactly one admin, so there is nothing to choose between; the
  * question "whose tier?" has one answer by construction rather than by policy.
  *
- * Lives in core because three services ask: server for four of the ceilings,
- * collab for the concurrency one, worker for storage on the generation path.
- * Neither collab nor worker may import server, which is where `user.repo`
- * lives.
+ * Lives in core because two services ask: server for five of the ceilings
+ * (storage among them since #89) and collab for the concurrency one. Worker
+ * asks for none — a generation that has already started is never re-checked,
+ * so every ceiling is read before the work is queued. Collab may not import
+ * server, which is where `user.repo` lives.
  *
  * **On reading `users` from here.** `user.repo` owns user BUSINESS logic —
  * creating accounts, passwords, recovery codes — not every read of the table.
@@ -67,7 +77,11 @@
  */
 
 import { and, eq, isNull } from "drizzle-orm";
-import { MEMBERSHIP_TIERS, type MembershipTier } from "@breatic/shared";
+import {
+  MEMBERSHIP_TIERS,
+  SUBSCRIBABLE_MEMBERSHIP_TIERS,
+  type MembershipTier,
+} from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
 import {
   membershipTierChanges,
@@ -77,8 +91,16 @@ import {
 } from "@core/db/schema.js";
 import * as projectsRepo from "@core/project/projects.repo.js";
 import { getMembershipLimits, type MembershipLimits } from "@core/config/membership.js";
+import { getSubscriptionStaleAfterDays } from "@core/config/subscription.js";
+import { listSubscriptions } from "@core/auth/subscription.repo.js";
+import { subscriptionSituation } from "@core/auth/subscription-state.js";
 
 const KNOWN_TIERS: ReadonlySet<string> = new Set(MEMBERSHIP_TIERS);
+
+/** The tiers a subscription can put an account on, and therefore lapse from. */
+const SUBSCRIBABLE_TIER_SET: ReadonlySet<string> = new Set(
+  SUBSCRIBABLE_MEMBERSHIP_TIERS,
+);
 
 /**
  * Whose stored tier is being read.
@@ -228,29 +250,6 @@ async function readUserTier(
   return asKnownTier(tier, { accountId: userId });
 }
 
-/**
- * The tier that governs a studio's ceilings — its current admin's.
- *
- * Personal studios need no special case: their owner holds the `admin` row
- * like any other studio's does, so the same query answers both.
- *
- * Throws rather than falling back when a studio has no live admin. That state
- * is data corruption (the product keeps exactly one admin per studio), and a
- * fallback tier would silently decide every ceiling on that studio against a
- * number nobody chose — the kind of wrong that surfaces only in an audit.
- * @param studioId - The studio whose governing tier to resolve
- * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
- *   for why a caller inside a transaction must pass it
- * @returns The current admin's membership tier
- * @throws {Error} if the studio is gone, or has no live admin, or that admin's
- *   account is gone — all three are corruption, so it is not an AppError
- */
-export async function getStudioMembershipTier(
-  studioId: string,
-  tx?: DbTx,
-): Promise<MembershipTier> {
-  return (await readStudioAdmin(studioId, tx)).tier;
-}
 
 /**
  * The account that administers a studio, and that account's tier.
@@ -318,9 +317,122 @@ export async function getLimitsForUser(
   userId: string,
   tx?: DbTx,
 ): Promise<MembershipLimits> {
-  return limitsFor(await readUserTier(userId, tx, false), {
+  const tier = await readUserTier(userId, tx, false);
+  return limitsFor(await honouredTier(userId, tier, tx), {
     accountId: userId,
   });
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * The tier an account's ceilings may actually be read from.
+ *
+ * Almost always the stored one. The exception is an account whose stored
+ * subscription is still marked live but whose paid period ended a long time
+ * ago: a subscription that is really renewing has its period pushed forward
+ * by Stripe, so that combination can only mean the event that ended it never
+ * reached us. Stripe gives up redelivering after three days, and nothing else
+ * would ever notice — the person on this side of the failure is getting a
+ * paid tier for free, and has no reason to open the membership panel where
+ * the other reconciliation runs.
+ *
+ * Costs one query and no external call, which is what lets it sit on the
+ * ceiling reads rather than on a page nobody in this state visits. Accounts
+ * with nothing to lose skip even that.
+ *
+ * Nothing is written here. Correcting the stored tier belongs to the paths
+ * that can also tell the account it happened; this one only stops handing out
+ * what has not been paid for.
+ * @param userId - The account whose tier was read.
+ * @param stored - The tier its row carries.
+ * @param tx - Transaction handle, when the caller is inside one.
+ * @returns The tier to read ceilings from.
+ */
+async function honouredTier(
+  userId: string,
+  stored: MembershipTier,
+  tx: DbTx | undefined,
+): Promise<MembershipTier> {
+  // Only a tier somebody could have SUBSCRIBED to can be stale, and the list
+  // of those is the same one the plans are read from. Naming `base` here
+  // instead was wrong twice over: `self_hosted` and `enterprise` are not
+  // bought, so a leftover subscription row could downgrade a self-hosted
+  // account to `base`, and every ceiling read on such a deployment paid for a
+  // query that could never change the answer.
+  if (!SUBSCRIBABLE_TIER_SET.has(stored)) return stored;
+
+  const { situation, record } = subscriptionSituation(
+    await listSubscriptions(userId, tx),
+  );
+  // Only a subscription claiming to be live says anything about now. An ended
+  // one is history, and `firstPaymentUnsettled` has no period to judge.
+  if (situation !== "active" && situation !== "cancelling" &&
+      situation !== "upgradePending" && situation !== "retrying") {
+    return stored;
+  }
+  const periodEnd = record?.currentPeriodEnd;
+  if (!periodEnd) return stored;
+
+  const lapsedMs = Date.now() - periodEnd.getTime();
+  return lapsedMs > getSubscriptionStaleAfterDays() * MS_PER_DAY
+    ? "base"
+    : stored;
+}
+
+/**
+ * Takes the account's row for the rest of the transaction, reading nothing.
+ *
+ * For a caller that must serialise on the account BEFORE it goes and fetches
+ * the facts it is about to write — the subscription webhook does, because two
+ * events for one account would otherwise each ask Stripe for the current state
+ * and the one that commits last could be holding the older answer.
+ *
+ * `changeMembershipTier` takes the same lock, so a caller that only writes at
+ * the end needs nothing from here.
+ * @param userId - The account to lock.
+ * @param tx - The enclosing transaction; the lock is meaningless without one.
+ * @throws {Error} if no live account has that id.
+ */
+export async function lockAccountRow(userId: string, tx: DbTx): Promise<void> {
+  await readUserTier(userId, tx, true);
+}
+
+/**
+ * Who administers a studio, and how many bytes that account's tier allows.
+ *
+ * Separate from {@link getLimitsForStudio} because storage is the one ceiling
+ * whose ratified product rule covers the enterprise tier: it passes through
+ * (user 2026-08-19). The other five have never had that question answered, so
+ * `limitsFor` still throws for them and this returns `null` instead — the
+ * divergence is real product behaviour, not a second copy of one decision.
+ *
+ * Answers the admin id too, because a storage decision needs it twice over:
+ * the usage roll-up is per ACCOUNT across every studio that account
+ * administers, and it is that account, not whoever tripped the gate, who gets
+ * told the storage is full and can do something about it.
+ * @param studioId - The studio whose storage ceiling to resolve
+ * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
+ *   for why a caller inside a transaction must pass it
+ * @returns The current admin's account id, and that account's storage ceiling
+ *   in bytes — `null` on the enterprise tier, which has no configured ceiling
+ * @throws {Error} if the studio is gone, or has no live admin, or that admin's
+ *   stored tier is not one this build knows — all three are corruption
+ */
+export async function getStudioStorageQuota(
+  studioId: string,
+  tx?: DbTx,
+): Promise<{ adminUserId: string; storageBytes: number | null }> {
+  const admin = await readStudioAdmin(studioId, tx);
+  const tier = await honouredTier(admin.adminUserId, admin.tier, tx);
+  return {
+    adminUserId: admin.adminUserId,
+    storageBytes:
+      tier === "enterprise"
+        ? null
+        : limitsFor(tier, { accountId: admin.adminUserId, studioId })
+            .storage_bytes,
+  };
 }
 
 /**
@@ -336,7 +448,10 @@ export async function getLimitsForStudio(
   tx?: DbTx,
 ): Promise<MembershipLimits> {
   const admin = await readStudioAdmin(studioId, tx);
-  return limitsFor(admin.tier, { accountId: admin.adminUserId, studioId });
+  return limitsFor(await honouredTier(admin.adminUserId, admin.tier, tx), {
+    accountId: admin.adminUserId,
+    studioId,
+  });
 }
 
 /**
@@ -377,7 +492,8 @@ export async function lockLimitsForUser(
   userId: string,
   tx: DbTx,
 ): Promise<MembershipLimits> {
-  return limitsFor(await readUserTier(userId, tx, true), { accountId: userId });
+  const tier = await readUserTier(userId, tx, true);
+  return limitsFor(await honouredTier(userId, tier, tx), { accountId: userId });
 }
 
 /**

@@ -8,6 +8,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { ToolCallCard } from '@web/pages/project/chat/ToolCallCard';
+import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
 interface MessageBubbleProps {
@@ -43,15 +44,19 @@ export const MessageBubble = React.memo(function MessageBubble({
     >
       <div
         className={cn(
-          'rounded-lg px-3 py-2 text-sm',
-          // Only what a person says is held back from the far edge. That gap
-          // is what makes a message read as one side of a conversation, and
-          // the agent is not taking a side in one — it is the panel talking,
-          // so its text runs the full width with the same margin on both
-          // sides.
+          'text-sm',
+          // Only what a person says gets a container. The agent is not one
+          // side of a conversation -- it is the panel talking -- so its words
+          // sit directly on the surface, with nothing drawn around them.
+          //
+          // The reader's own words keep theirs, held back from the far edge:
+          // that gap is what makes a message read as one side of an exchange.
+          // `bg-accent` because it has to lift off the surface in both
+          // themes, and it is the only neutral fill that does -- `bg-muted`
+          // is a recess and goes darker than the surface in dark mode.
           isUser
-            ? 'max-w-[80%] bg-primary text-primary-foreground'
-            : 'w-full bg-muted text-foreground',
+            ? 'max-w-[80%] rounded-lg bg-accent px-3 py-2 text-foreground'
+            : 'w-full text-foreground',
         )}
       >
         {message.thinking ? (
@@ -63,11 +68,15 @@ export const MessageBubble = React.memo(function MessageBubble({
             data-testid='message-bubble-content'
           >
             {message.content}
-            {message.streaming ? (
-              <span aria-label='streaming' className='ml-1 animate-pulse'>
-                ▌
-              </span>
-            ) : null}
+            {/* One mark for the whole turn, always at the end of what has
+                been said so far. It starts alone in an empty bubble and stays
+                on the heels of the last character until the turn is over
+                (user 2026-08-20: the dot must not disappear and must not turn
+                into a bar). A caret was drawn here instead once there was
+                text, which took the mark away over the whole stretch where
+                the reader most needs to see that the answer is still
+                coming. */}
+            {message.streaming ? <WaitingDot /> : null}
           </div>
         ) : null}
         {message.interrupted ? (

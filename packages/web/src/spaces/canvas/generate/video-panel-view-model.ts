@@ -14,8 +14,9 @@
  */
 
 import { VIDEO_GENERATION_MODES } from '@breatic/shared';
-import type { ModelEntry } from '@breatic/shared';
+import type { FocusImage, ModelEntry } from '@breatic/shared';
 
+import { validFocusImages } from '@web/data/focus-images';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,
@@ -28,7 +29,7 @@ import {
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
-import { mentionedImageUrls } from '@web/spaces/canvas/generate/reference-urls';
+import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import {
   modeTakesReferences,
   slotsForMode,
@@ -100,9 +101,19 @@ export interface VideoPanelViewModel {
   slotThumbnails: VideoSlotUrls;
   /**
    * Reference rail rows derived from incoming edges — everything connected,
-   * whether or not the prompt mentions it. What the rail SHOWS.
+   * whether or not the prompt mentions it. HALF of what the rail shows: the
+   * container appends this node's crops (below) to build the rail's rows.
    */
   references: ReferenceRailItem[];
+  /**
+   * The node's focus crops (#1978) — standalone copies stored on the node
+   * itself (`data.focusImages`), with no upstream edge behind them. The
+   * container appends them to the rail and the `@` pool exactly as the image
+   * panel does; a crop reaches the payload only when `@`-mentioned, the same
+   * explicit-selection rule node references follow. Malformed entries
+   * (untrusted Yjs) are dropped by the shared sanitizer.
+   */
+  focusImages: FocusImage[];
   /**
    * The reference image URLs this submit sends (#1927) — the `@`-mentioned
    * ones only, in rail order, and only under a mode that takes references.
@@ -337,8 +348,9 @@ export function buildVideoPanelViewModel(input: {
   // decides whether anything is sent: otherwise the images someone connected
   // for reference-to-video would ride into a first-last-frame task.
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
+  const focusImages = validFocusImages(content?.focusImages);
   const referenceUrls = modeTakesReferences(mode)
-    ? mentionedImageUrls(references, atMentioned, nodes)
+    ? mentionedReferenceUrls({ references, focusImages, atMentioned, nodes })
     : [];
 
   return {
@@ -359,6 +371,10 @@ export function buildVideoPanelViewModel(input: {
     slotUrls: readSlotUrls(content),
     slotThumbnails: readSlotThumbnails(content),
     references,
+    // Yjs data, untrusted — sanitized through the one shared reader so this
+    // panel, the image panel and the pool-cap count all agree on what counts
+    // as an entry (#1978).
+    focusImages,
     referenceUrls,
     maxReferences: positiveCap(current?.params.images?.max_items),
     // The model states it (#1966). This used to be inferred from a `prompt`

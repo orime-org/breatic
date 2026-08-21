@@ -6,7 +6,6 @@ import * as React from 'react';
 import { toast } from '@web/lib/toast';
 import type * as Y from 'yjs';
 
-import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import {
@@ -16,24 +15,19 @@ import {
   isNodeLocked,
   readCanvasGraph,
   readNodeLeaseGen,
-  removeEdge,
-  removeNodeFocusImage,
   setNodeMode,
   setNodeModel,
   setNodeParams,
   type CanvasEdge,
   type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
-import {
-  assetUrlSurvives,
-  isReportableAssetUrl,
-} from '@web/spaces/canvas/canvas-upload';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
+import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import {
   evaluateExecute,
   refusalToastKey,
@@ -47,6 +41,7 @@ import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
+  imageModeTakesReferences,
   IMAGE_MODE_OPTIONS,
   resolveMode,
 } from '@web/spaces/canvas/generate/image-mode-selection';
@@ -66,7 +61,6 @@ import {
 } from '@web/spaces/canvas/generate/panel-view-model';
 import {
   deriveReferences,
-  focusIdOfRefId,
   focusToRailItem,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
@@ -500,7 +494,7 @@ function GeneratePanelBody({
   React.useEffect(() => {
     const session = useCanvasStore.getState().pickSession;
     if (
-      vm.mode === 't2i' &&
+      !imageModeTakesReferences(vm.mode) &&
       session?.nodeId === nodeId &&
       session.purpose === 'focus'
     ) {
@@ -524,47 +518,7 @@ function GeneratePanelBody({
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {
-      // Routed by the ROW's identity, never by parsing the id string: edge
-      // ids are untrusted collaborative data, and a crafted edge id starting
-      // with `focus:` must not misroute the ✕ (adversarial round-2). Only a
-      // real focus row carries `focus: true` (built locally from sanitized
-      // crops), so its refId is trusted to parse.
-      if (item.focus === true) {
-        const focusId = focusIdOfRefId(item.refId);
-        if (focusId === null) return;
-        // Gate everything below on the ACTUAL removal: a double-click (or
-        // a ✕ after the remote removal already synced in) hits a no-op
-        // here, and reporting it anyway would append a duplicate
-        // asset:deleted activity row (round-3). TRULY concurrent
-        // cross-client ✕ (both inside the sync-latency window) still
-        // double-reports — accepted residual, audit-feed row only; a real
-        // fix needs a server-side idempotency key (round-5).
-        const removed = removeNodeFocusImage(projectId, spaceId, nodeId, focusId);
-        if (!removed) return;
-        // Delete-side ledger report (adversarial round-2): a crop is an
-        // uploaded asset — mirror the node-delete accounting. The survivor
-        // check reads the FRESH post-removal graph, so the removed instance
-        // is naturally excluded; dedup-shared URLs still alive elsewhere
-        // are not reported. Silent catch: the removal already succeeded, a
-        // toast would read as a failed remove (reportDeletedAssets parity).
-        const url = item.thumbnail;
-        if (
-          typeof url === 'string' &&
-          isReportableAssetUrl(url) &&
-          !assetUrlSurvives(url, readCanvasGraph(projectId, spaceId).nodes)
-        ) {
-          void assetsApi
-            .reportDeleted({
-              projectId,
-              entries: [{ fileUrl: url, kind: 'image', nodeId, spaceId }],
-            })
-            .catch(() => {
-              // Silent: audit-feed miss at worst (see reportDeletedAssets).
-            });
-        }
-        return;
-      }
-      removeEdge(projectId, spaceId, item.refId);
+      removeReferenceRow({ item, projectId, spaceId, nodeId });
     },
     [projectId, spaceId, nodeId],
   );
@@ -743,7 +697,7 @@ function GeneratePanelBody({
   // already stable (useCallback / useMemo), so memoizing the element on those
   // deps lets the panel bail when nothing prompt-related changed.
   //
-  // The two localized strings MUST be depended on by VALUE, not via `t`: `t`
+  // The localized strings MUST be depended on by VALUE, not via `t`: `t`
   // (useTranslation) is a stable module-level function whose identity never
   // changes on an in-session locale switch (locale updates re-render via
   // useSyncExternalStore), so depending on `t` alone would freeze the
@@ -752,9 +706,10 @@ function GeneratePanelBody({
   // switch re-creates the element and PromptEditor rebuilds with the new copy.
   const promptPlaceholder = t('canvas.generatePanel.promptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
+  const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   // Text-to-image generates from scratch and ignores source images, so an
   // image `@` chip contributes nothing and the editor greys it (§2.4 C).
-  const imageRefsOff = vm.mode === 't2i';
+  const imageRefsOff = !imageModeTakesReferences(vm.mode);
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
@@ -769,6 +724,7 @@ function GeneratePanelBody({
           references={stableReferences}
           imageRefsDisabled={imageRefsOff}
           mentionEmptyLabel={mentionEmptyLabel}
+          mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
         />
       ) : null,
@@ -777,6 +733,7 @@ function GeneratePanelBody({
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
+      mentionNoMatchLabel,
       handlePromptChange,
       handleAtMentionsChange,
       stableReferences,

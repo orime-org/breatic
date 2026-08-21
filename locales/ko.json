@@ -89,6 +89,19 @@
     },
     "asset": {
       "direct_upload_unavailable": "이 서버에서는 직접 업로드를 사용할 수 없습니다"
+    },
+    "membership": {
+      "already_subscribed": "이미 멤버십이 있습니다.",
+      "no_subscription": "멤버십이 없습니다.",
+      "not_cancelling": "이 멤버십은 종료 예정이 아닙니다.",
+      "downgrade_not_offered": "하위 등급으로 변경할 수 없습니다.",
+      "same_tier": "이미 이 멤버십입니다.",
+      "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
+      "unavailable": "멤버십을 사용할 수 없습니다."
+    },
+    "storage": {
+      "quota_exceeded_upload": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
+      "quota_exceeded_generate": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다."
     }
   },
   "chat": {
@@ -110,8 +123,7 @@
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
       "greetingDefault": "안녕하세요!",
-      "hintNodes": "@로 노드에 물어보세요",
-      "hintDirect": "또는 아래에 프롬프트를 입력하세요 ↓",
+      "hintDirect": "아래에 입력해 보세요 ↓",
       "quick": {
         "findReference": "사이버펑크 스타일 참고 이미지를 찾아줘",
         "writePrompt": "일러스트 생성 프롬프트를 써줘",
@@ -121,7 +133,10 @@
     "history": {
       "title": "세션 목록",
       "description": "이전 대화로 전환하거나 다시 확인할 수 있습니다.",
-      "empty": "이전 대화가 없습니다"
+      "empty": "이전 대화가 없습니다",
+      "moreFailed": "이전 대화를 불러오지 못했습니다",
+      "loadingMore": "이전 대화를 불러오는 중",
+      "loading": "대화 목록을 불러오는 중"
     },
     "relative": {
       "justNow": "방금 전",
@@ -138,12 +153,31 @@
       "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요."
     },
     "message": {
-      "interrupted": "중지됨"
+      "interrupted": "중지됨",
+      "waiting": "응답 중"
     },
     "tool": {
       "unfinished": "완료되기 전에 중지됨"
     },
-    "loadEarlier": "이전 메시지 불러오기"
+    "loadEarlier": "이전 메시지 불러오기",
+    "conversation": {
+      "untitled": "제목 없는 대화",
+      "rename": "이름 변경",
+      "delete": "삭제",
+      "renamePlaceholder": "이 대화의 이름 지정",
+      "deleteTitle": "이 대화를 삭제할까요?",
+      "deleteBody": "대화에서 나눈 내용도 함께 삭제되며 되돌릴 수 없습니다.",
+      "deleteConfirm": "삭제",
+      "deleteCancel": "취소",
+      "rowActions": "이 대화 이름 바꾸기 또는 삭제",
+      "gone": "이 대화는 더 이상 존재하지 않습니다"
+    },
+    "load": {
+      "failedTitle": "네트워크 오류",
+      "failedBody": "이 Project의 대화를 읽지 못했습니다.",
+      "retry": "다시 불러오기",
+      "refusedTitle": "이 대화를 열 수 없습니다"
+    }
   },
   "canvas": {
     "group": {
@@ -207,14 +241,12 @@
       "emptyImageReference": "아직 생성 또는 업로드되지 않음",
       "emptyTextReference": "내용 없음",
       "refuseInsertModeOff": "이 모드는 참조 소재를 사용하지 않습니다",
-      "refuseRemoveModeOff": "참조는 모드 간에 공유됩니다 — 삭제하려면 참조를 사용하는 모드로 전환하거나 캔버스에서 연결선을 삭제하세요",
-      "refuseRemoveModeOffCrop": "참조는 모드 간에 공유됩니다 — 이 자르기를 삭제하려면 참조를 사용하는 모드로 전환하세요",
-      "refuseRemoveNoPrompt": "이 모드는 프롬프트가 필요하지 않습니다",
       "refuseExecuteNoPrompt": "프롬프트를 먼저 입력하세요",
       "refuseInsertTypeUnused": "{kind, select, audio {참조는 이미지만 받습니다. 오디오는 사용할 수 없습니다} video {참조는 이미지만 받습니다. 비디오는 사용할 수 없습니다} other {참조는 이미지만 받습니다. 이런 종류의 소재는 사용할 수 없습니다}}",
       "exit": "종료",
       "promptPlaceholder": "생성할 이미지를 설명하세요. @ 로 참조 추가",
-      "mentionEmpty": "참조할 이미지가 없습니다 — 먼저 이미지에서 선을 연결하세요",
+      "mentionEmpty": "참조할 수 있는 항목이 없습니다",
+      "mentionNoMatch": "일치하는 항목이 없습니다",
       "selectFromCanvas": "캔버스에서 참조 선택",
       "selectStyleFromCanvas": "캔버스에서 스타일 참조 선택",
       "selectFirstFrameFromCanvas": "캔버스에서 첫 프레임으로 쓸 이미지 선택",
@@ -223,7 +255,6 @@
       "selectDrivingVideoFromCanvas": "캔버스에서 동작을 가져올 영상 선택",
       "selectDrivingAudioFromCanvas": "캔버스에서 입 모양이 따라갈 음성 선택",
       "removeStyle": "스타일 참조 제거",
-      "returnToNode": "노드로 돌아가기",
       "exitSelect": "종료",
       "locateSource": "소스 노드로 이동",
       "presets": "프리셋",
@@ -269,7 +300,6 @@
       "videoParams": "매개변수",
       "videoPromptPlaceholder": "생성할 영상을 설명하세요. @ 로 참조 추가",
       "errorNoReferenceMention": "이 모드에는 참고 이미지가 필요합니다 —— 이 노드에 이미지를 연결한 뒤 프롬프트에 @ 를 입력해 지정하세요.",
-      "videoMentionEmpty": "아직 언급할 참조가 없습니다",
       "firstFrame": "첫 프레임",
       "firstFrameTip": "영상의 첫 프레임으로 쓸 이미지를 고르세요",
       "removeFirstFrame": "첫 프레임 제거",
@@ -291,7 +321,8 @@
       "errorNoDrivingVideo": "동작을 가져올 영상을 고르세요",
       "errorNoDrivingAudio": "입 모양이 따라갈 음성을 고르세요",
       "promptNotUsed": "이 모드에는 프롬프트가 필요하지 않습니다.",
-      "refuseInsertNoPrompt": "이 모드에는 프롬프트 입력란이 없어 넣을 수 없습니다"
+      "refuseInsertNoPrompt": "이 모드에는 프롬프트 입력란이 없어 넣을 수 없습니다",
+      "errorStorageFull": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다."
     },
     "nodeMenu": {
       "generate": "생성",
@@ -315,7 +346,8 @@
       "tooLarge": "{filename}은(는) 업로드 크기 제한을 초과했습니다.",
       "empty": "{filename}은(는) 빈 파일이라 추가할 내용이 없습니다.",
       "videoCodecUnsupported": "이 동영상 형식은 브라우저에서 읽을 수 없습니다. H.264 / MP4로 변환한 후 다시 시도하세요.",
-      "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요."
+      "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
+      "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다."
     },
     "minimap": {
       "label": "캔버스 미니맵"
@@ -739,7 +771,10 @@
       "studioInviteRequest": "{actor}님이 {studio}에 초대했습니다",
       "studioInviteAccepted": "{actor}님이 {studio} 초대를 수락했습니다",
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",
-      "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다"
+      "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다",
+      "membershipEnded": "{tier} 멤버십이 종료되었습니다",
+      "membershipUpgradeIncomplete": "{tier} 업그레이드가 완료되지 않았습니다",
+      "storageQuotaExceeded": "저장 공간이 가득 찼습니다"
     },
     "actorFallback": "누군가",
     "subtitle": {
@@ -1043,7 +1078,6 @@
       "creditsBalance": "크레딧 잔액",
       "addCredits": "크레딧 추가",
       "home": "홈",
-      "conversationCount": "대화 {count}개",
       "scrollTabsLeft": "탭 왼쪽으로 스크롤",
       "scrollTabsRight": "탭 오른쪽으로 스크롤",
       "spacesToolbar": "Spaces",
@@ -1145,9 +1179,8 @@
       "enterprise": "엔터프라이즈"
     },
     "priceFree": "무료",
-    "pricePerMonth": "{amount} / 월",
+    "taxNote": "가격은 세금 별도입니다.",
     "tierNote": "등급이 정하는 것은 용량과 협업 규모입니다. 모든 창작 기능과 모델은 어느 등급에서나 동일합니다.",
-    "upgrade": "업그레이드",
     "myQuota": "내 사용량",
     "quota": {
       "teamStudios": "팀 Studio",
@@ -1163,7 +1196,7 @@
     "countConnections": "{count}개 연결",
     "overLimitTag": "초과",
     "overLimit": {
-      "storage": "저장 공간이 한도를 넘었습니다. 기존 내용은 그대로 쓸 수 있지만 새로 업로드할 수는 없습니다. 공간이 더 필요하면 업그레이드하세요.",
+      "storage": "저장 공간이 한도를 초과했습니다. 기존 콘텐츠는 그대로 사용할 수 있지만 새로 업로드하거나 생성할 수 없습니다. 공간을 늘리려면 업그레이드하세요.",
       "teamStudios": "팀 Studio 수가 한도를 넘었습니다. 이미 만든 것은 그대로 쓸 수 있지만 새로 만들 수는 없습니다. 더 필요하면 업그레이드하세요."
     },
     "enterpriseQuota": "사용 한도는 별도 계약으로 정해져 있어 여기에 표시되지 않습니다.",
@@ -1172,6 +1205,22 @@
     "contactEnterprise": "더 큰 규모나 별도의 상업 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactSelfHosted": "상업용 라이선스나 별도의 지원 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactEnterpriseAccount": "사용 한도에 대해 궁금하거나 조정이 필요하신가요? 메일로 문의해 주세요:",
-    "loadFailed": "멤버십 정보를 읽지 못했습니다. 네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요."
+    "loadFailed": "멤버십 정보를 읽지 못했습니다. 네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요.",
+    "action": {
+      "choose": "{tier} 선택",
+      "inProgress": "처리 중",
+      "current": "현재"
+    },
+    "nextCharge": "다음 결제 {date}",
+    "endsOn": "멤버십 종료 {date}",
+    "cancel": "멤버십 해지",
+    "resume": "멤버십 재개",
+    "notice": {
+      "firstPaymentPending": "결제가 완료되지 않았습니다",
+      "upgradePending": "업그레이드 결제가 완료되지 않았습니다",
+      "paymentOverdue": "이번 달 결제가 이루어지지 않았습니다"
+    },
+    "payNow": "결제하기",
+    "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요."
   }
 }

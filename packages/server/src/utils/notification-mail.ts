@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Notification email templates (studio / project invitations + transfers).
+ * Notification email templates — the best-effort half of every bell
+ * notification that also goes out by mail.
  *
  * These builders are best-effort NOTIFICATION emails: the bell
  * notification is the always-delivered path, the email is an optional
@@ -58,12 +59,17 @@ interface NotificationMailShell {
   subject: string;
   /** Inner HTML of the lead paragraph — the caller escapes user fields. */
   leadHtml: string;
-  /** Raw link target — escaped into the `href` attribute here. */
-  linkHref: string;
+  /**
+   * Raw link target — escaped into the `href` attribute here.
+   *
+   * Absent on an email with nothing to do: a membership that ended is a
+   * notice, and a link that only says "open the app" is noise.
+   */
+  linkHref?: string;
   /** Visible link text, e.g. `Open the invitation`. */
-  linkLabel: string;
+  linkLabel?: string;
   /** Text after `</a>`, e.g. ` to accept or decline.` */
-  linkTrailing: string;
+  linkTrailing?: string;
   /** Gray footer sentence (expiry hint). */
   footer: string;
 }
@@ -78,11 +84,15 @@ function renderNotificationMail(shell: NotificationMailShell): SendMailOptions {
   return {
     to: shell.to,
     subject: shell.subject,
-    html: `
-      <p>${shell.leadHtml}</p>
-      <p><a href="${escapeHtml(shell.linkHref)}">${shell.linkLabel}</a>${shell.linkTrailing}</p>
-      <p style="color: #666; font-size: 90%;">${shell.footer}</p>
-    `.trim(),
+    html: [
+      `<p>${shell.leadHtml}</p>`,
+      shell.linkHref
+        ? `<p><a href="${escapeHtml(shell.linkHref)}">${shell.linkLabel}</a>${shell.linkTrailing ?? ""}</p>`
+        : null,
+      `<p style="color: #666; font-size: 90%;">${shell.footer}</p>`,
+    ]
+      .filter(Boolean)
+      .join("\n      "),
   };
 }
 
@@ -246,5 +256,71 @@ export function buildRoleUpgradeRequestMail(
     // Not "transfer request": nothing is changing hands, somebody is asking
     // for a bigger role on something that stays where it is.
     footer: expiryFooter("This request"),
+  });
+}
+
+/** Fields for the membership-ended email. */
+export interface MembershipEndedMailInput {
+  /** Where to send it. */
+  recipientEmail: string;
+  /** The paid tier that just ended, as the product names it. */
+  tierLabel: string;
+}
+
+/**
+ * Build the membership-ended email (#106 §9).
+ *
+ * A notice, not a request: nothing is waiting to be answered, so it carries no
+ * action link and no deadline. The bell row beside it is the delivery
+ * guarantee; this only leaves when an SMTP backend is configured.
+ * @param input - Recipient email and the tier that ended.
+ * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ */
+export function buildMembershipEndedMail(
+  input: MembershipEndedMailInput,
+): SendMailOptions {
+  return renderNotificationMail({
+    to: input.recipientEmail,
+    subject: `${BRAND} - your ${input.tierLabel} membership has ended`,
+    leadHtml: `Your <strong>${escapeHtml(input.tierLabel)}</strong> membership has ended. Your account is on the free plan.`,
+    footer: "Subscribe again at any time from the membership panel.",
+  });
+}
+
+/** What the storage-full email needs. */
+interface StorageQuotaExceededMailInput {
+  /** Where to send it — the admin of the studio the write was aimed at. */
+  recipientEmail: string;
+  /** The studio that write was aimed at, for "where did this happen". */
+  studioName: string;
+}
+
+/**
+ * Build the storage-full email (#89).
+ *
+ * A notice, not a request: nothing is waiting to be answered, so no action
+ * link and no deadline — `expiryFooter` would be about a decision window that
+ * does not exist here.
+ *
+ * Says the ACCOUNT is full, not the studio, and the difference is about WHEN
+ * it is read. The sentence on the operator's screen names the studio because
+ * they are looking at it right then; this arrives by mail and may be opened
+ * hours later, by somebody who administers several studios — naming one of
+ * them would send them to look at whichever studio happened to trigger it,
+ * which may hold hardly anything.
+ * @param input - Recipient email and the studio the refused write was aimed at.
+ * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ */
+export function buildStorageQuotaExceededMail(
+  input: StorageQuotaExceededMailInput,
+): SendMailOptions {
+  return renderNotificationMail({
+    to: input.recipientEmail,
+    subject: `${BRAND} - your storage is full`,
+    leadHtml:
+      `Your storage is full, so uploads and generations were refused in ` +
+      `<strong>${escapeHtml(input.studioName)}</strong>. Storage is counted ` +
+      `across every studio you administer, not just this one.`,
+    footer: "Raise your membership to get more room.",
   });
 }

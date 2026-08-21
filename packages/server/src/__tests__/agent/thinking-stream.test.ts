@@ -4,34 +4,37 @@
 /**
  * The model's thinking, on its way to the screen.
  *
- * Everything this needed was already built — the loop had a case for it, the
- * store had a part for it, the panel had a foldable block for it — except the
- * two ends: nobody turned the model's thinking on, and nothing sent it out.
+ * Two things had to be true for any of it to arrive, and neither shows up as
+ * a failure: the provider has to be asked for thinking at all, and what it
+ * sends has to be forwarded. With thinking off the provider emits no
+ * reasoning, so a turn that forwards it perfectly forwards nothing; with it
+ * on but nothing forwarding, the thinking is stored and never seen.
  *
- * Both are load-bearing and neither shows up as a failure. With thinking off
- * the provider emits no reasoning at all, so a loop that forwards it perfectly
- * forwards nothing; and with it on but nothing forwarding, the thinking is
- * stored and never seen.
+ * Only the second half is asserted here. Which provider option asks for it is
+ * a question of who is being called, and `reasoning-per-provider.test.ts`
+ * answers it for all three -- asserting it a second time here would be a copy
+ * that covers one of them and goes stale on its own.
+ *
+ * Forwarding is no longer code of ours: the protocol carries reasoning the
+ * same way it carries text, so what these cases really check is that the
+ * turn puts the model's own stream on the wire rather than a reading of it.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import { SSE_EVENT_NAMES } from "@breatic/shared";
+import { FINISHED } from "../helpers/model-double.js";
+import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const consolidateIfNeeded = vi.fn(async () => undefined);
-const streamTextRetry = vi.fn();
+
+/** What the model produces this case. */
+const modelSays = vi.hoisted(() => ({ parts: [] as ModelStreamPart[] }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
-}));
-vi.mock("ai", () => ({
-  tool: (c: Record<string, unknown>) => c,
-  streamText: vi.fn(),
-  generateText: vi.fn(),
-  stepCountIs: vi.fn(() => 40),
 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -41,15 +44,20 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return { ...base, runWithContext: actual.runWithContext, getContext: actual.getContext };
 });
 
-vi.mock("@breatic/domain", async () => {
+// The model is the double, not the call around it: what is being checked is
+// what happens to the model's output on its way out, and replacing the call
+// would replace exactly that.
+vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
+  const actual = await importOriginal<Record<string, unknown>>();
+  const { modelProducing } = await import("../helpers/model-double.js");
   return {
     ...base,
+    streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "test", instructions: "system", tools: {} }),
     finalizeTurn: async () => [],
-    streamTextRetry,
-    getModel: () => ({ modelId: "test" }),
+    getModel: () => modelProducing(() => modelSays.parts),
   };
 });
 
@@ -62,110 +70,100 @@ vi.mock("@breatic/domain", async () => {
  */
 const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
-vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage, getMessages }));
+vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
+  addMessage,
+  getMessages,
+}));
+// The turn asks the conversation what it is called, so it can say so in the
+// event that opens the turn. Answered with a name already set: these tests are
+// about what a turn streams, not about how a conversation comes by its name.
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  titleForTurn: vi.fn(async () => "already named"),
+}));
+
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
-/**
- * Run one turn over the given stream and collect what it sent out.
- * @param parts - The parts the model's stream produces
- * @returns Every SSE event the turn raised, in order
- */
-async function eventsFrom(parts: unknown[]): Promise<Array<{ event: string; data: unknown }>> {
-  streamTextRetry.mockReturnValue({
-    fullStream: (async function* () {
-      for (const part of parts) yield part;
-    })(),
-    text: Promise.resolve(""),
-    totalUsage: Promise.resolve({ totalTokens: 0 }),
-  });
 
-  const raised: Array<{ event: string; data: unknown }> = [];
-  await runWithContext(
-    {
-      userId: "u1",
-      conversationId: "c1",
-      projectId: "p1",
-    },
-    async () => {
-      // The turn yields events as objects; turning them into wire frames is
-      // the route's job, further out.
-      for await (const event of new MainAgent().chat("think about this")) {
-        raised.push(event);
-      }
-    },
-  );
-  return raised;
+/**
+ * Run one turn over the given model output and collect what went on the wire.
+ * @param parts - The parts the model's stream produces.
+ * @returns Every chunk the turn put out, in order.
+ */
+async function chunksFrom(
+  parts: ModelStreamPart[],
+): Promise<Array<Record<string, unknown>>> {
+  modelSays.parts = [...parts, FINISHED];
+
+  const seen: Array<Record<string, unknown>> = [];
+  await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+    const turn = await new MainAgent().chat("think about this");
+    for await (const chunk of turn) {
+      seen.push(chunk);
+    }
+  });
+  return seen;
 }
 
 describe("the model's thinking on the wire", () => {
   beforeEach(() => {
-    streamTextRetry.mockClear();
     addMessage.mockClear();
   });
 
-  it("is a name both sides know", () => {
-    // The frontend reads event names from this one list. A name only the
-    // backend knows is a message nobody is listening for.
-    expect(Object.values(SSE_EVENT_NAMES)).toContain("agent_thinking");
-  });
-
   it("goes out as it arrives, not only into the store", async () => {
-    const raised = await eventsFrom([
-      { type: "reasoning-delta", id: "r1", text: "first I need to" },
-      { type: "reasoning-delta", id: "r1", text: " check something" },
-      { type: "text-delta", text: "Here is the answer." },
-      { type: "finish-step", usage: { totalTokens: 100 } },
+    const chunks = await chunksFrom([
+      { type: "reasoning-start", id: "r1" },
+      { type: "reasoning-delta", id: "r1", delta: "first I need to" },
+      { type: "reasoning-delta", id: "r1", delta: " check something" },
+      { type: "reasoning-end", id: "r1" },
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "Here is the answer." },
+      { type: "text-end", id: "t1" },
     ]);
 
-    const thinking = raised.filter((e) => e.event === "agent_thinking");
-    expect(thinking.map((e) => (e.data as { text: string }).text)).toEqual([
-      "first I need to",
-      " check something",
-    ]);
+    const thinking = chunks.filter((c) => c.type === "reasoning-delta");
+    expect(thinking.map((c) => c.delta)).toEqual(["first I need to", " check something"]);
   });
 
   it("says which block each piece belongs to, so two thoughts do not merge", async () => {
-    const raised = await eventsFrom([
+    const chunks = await chunksFrom([
       { type: "reasoning-start", id: "r1" },
-      { type: "reasoning-delta", id: "r1", text: "one" },
+      { type: "reasoning-delta", id: "r1", delta: "one" },
       { type: "reasoning-end", id: "r1" },
       { type: "reasoning-start", id: "r2" },
-      { type: "reasoning-delta", id: "r2", text: "two" },
-      { type: "finish-step", usage: { totalTokens: 100 } },
+      { type: "reasoning-delta", id: "r2", delta: "two" },
+      { type: "reasoning-end", id: "r2" },
     ]);
 
-    const thinking = raised.filter((e) => e.event === "agent_thinking");
-    expect(thinking.map((e) => (e.data as { blockId: string }).blockId)).toEqual(["r1", "r2"]);
+    // Two blocks, told apart by the id they carry -- without it the panel
+    // has one long thought where the model had two.
+    expect(chunks.filter((c) => c.type === "reasoning-start").map((c) => c.id)).toEqual([
+      "r1",
+      "r2",
+    ]);
+    expect(chunks.filter((c) => c.type === "reasoning-delta").map((c) => c.id)).toEqual([
+      "r1",
+      "r2",
+    ]);
   });
 
-  it("keeps quiet when the provider sends an empty piece", async () => {
-    // `@ai-sdk/anthropic` raises a reasoning-delta with no text when it
-    // forwards the block's signature. Sending that on is a stream of empty
-    // events the panel would have to learn to ignore.
-    const raised = await eventsFrom([
-      { type: "reasoning-delta", id: "r1", text: "" },
-      { type: "finish-step", usage: { totalTokens: 100 } },
+  it("sends thinking apart from prose, so the panel can fold one and not the other", async () => {
+    const chunks = await chunksFrom([
+      { type: "reasoning-start", id: "r1" },
+      { type: "reasoning-delta", id: "r1", delta: "working it out" },
+      { type: "reasoning-end", id: "r1" },
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "the answer" },
+      { type: "text-end", id: "t1" },
     ]);
 
-    expect(raised.filter((e) => e.event === "agent_thinking")).toHaveLength(0);
-  });
-
-  it("asks the provider for thinking it can actually read", async () => {
-    await eventsFrom([{ type: "finish-step", usage: { totalTokens: 10 } }]);
-
-    const sent = streamTextRetry.mock.calls[0]?.[0] as
-      | { providerOptions?: { anthropic?: Record<string, unknown> } }
-      | undefined;
-
-    // Off by default at the provider, and on with the summary omitted the
-    // blocks come through with empty text — so both fields carry weight.
-    expect(sent?.providerOptions?.anthropic?.thinking).toEqual({
-      type: "adaptive",
-      display: "summarized",
-    });
+    // Both on the wire and neither wearing the other's type. A turn that sent
+    // reasoning as text would read as an assistant thinking out loud at the
+    // reader, with nothing to fold away.
+    expect(chunks.find((c) => c.type === "reasoning-delta")?.delta).toBe("working it out");
+    expect(chunks.find((c) => c.type === "text-delta")?.delta).toBe("the answer");
   });
 });

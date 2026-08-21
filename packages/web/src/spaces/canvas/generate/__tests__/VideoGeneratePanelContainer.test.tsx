@@ -24,6 +24,12 @@ vi.mock('@web/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children?: ReactNode }) => children,
 }));
 
+// 裁剪行的 ✕ 会走到资产删除登记（remove-reference-row.ts）。不 stub 的话这个
+// 文件里点一次 ✕ 就真发一次 HTTP，成败还被那处静默 catch 吞掉。
+vi.mock('@web/data/api/assets', () => ({
+  assetsApi: { reportDeleted: vi.fn(() => Promise.resolve()) },
+}));
+
 // So the component test never opens a real WebSocket.
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: vi.fn(
@@ -45,6 +51,7 @@ import * as Y from 'yjs';
 import { toast } from 'sonner';
 
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
+import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import {
   addEdge,
   addNode,
@@ -61,6 +68,10 @@ import {
 } from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
 import { useCanvasStore } from '@web/stores';
+import {
+  LOCALE_CATALOGS,
+  readPath,
+} from '@web/test-utils/locale-catalogs';
 
 /** A text-to-video model, the one kind this slice offers. */
 const T2V: ModelEntry = {
@@ -106,6 +117,20 @@ const I2V: ModelEntry = {
   // the same model runs image-to-video and first-last frame.
   mode: ['i2v', 'first_last'],
   sourcesByMode: { i2v: ['image'], first_last: ['image'] },
+};
+
+/**
+ * An image-animation model, shaped like `wan-2.2-animate`: a character image
+ * plus a driving video. Without it `animate` has no model, `filterAvailableModes`
+ * drops the mode, and anything asking for that mode silently lands on t2v
+ * instead (adversarial round 2).
+ */
+const ANIMATE: ModelEntry = {
+  ...T2V,
+  name: 'wan-2.2-animate',
+  display_name: 'Wan 2.2 Animate',
+  mode: 'animate',
+  sourcesByMode: { animate: ['image', 'video'] },
 };
 
 /** An image model, so "the video panel offers video models" is a real claim. */
@@ -176,12 +201,12 @@ const TALKING_HEAD_WITH_PROMPT: ModelEntry = {
 function catalog(): ModelCatalog {
   return {
     image: [T2I],
-    video: [T2V, T2V_LITE, I2V, REF, TALKING_HEAD, TALKING_HEAD_WITH_PROMPT],
+    video: [T2V, T2V_LITE, I2V, ANIMATE, REF, TALKING_HEAD, TALKING_HEAD_WITH_PROMPT],
     audio: [],
     tts: [],
     three_d: [],
     understand: [],
-    total: 7,
+    total: 8,
   };
 }
 
@@ -1262,16 +1287,17 @@ describe('VideoGeneratePanelContainer', () => {
       // prompt material and stays lit), and the refusal is aria-disabled
       // rather than the HTML attribute (which would block click and hover).
       expect(
-        screen.getByTestId('generate-ref-r-a').classList.contains('opacity-50'),
+        screen
+          .getByTestId('generate-ref-insert-r-a')
+          .classList.contains('opacity-50'),
       ).toBe(true);
       expect(insert).toHaveAttribute('aria-disabled', 'true');
-      // And it cannot be thrown away while it is dimmed: references are shared
-      // across modes, so a ✕ pressed here would lose an image the user is
-      // coming back for (design decision 2026-08-11).
-      expect(screen.getByTestId('generate-ref-remove-r-a')).toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
+      // But it CAN still be thrown away (#1952, user 2026-08-19): a row this
+      // mode cannot use is exactly a row the user may want to clear, and the
+      // door swings both ways — a deleted reference can be added back.
+      expect(
+        screen.getByTestId('generate-ref-remove-r-a'),
+      ).not.toHaveAttribute('aria-disabled', 'true');
     });
 
     it('keeps offering to add a reference in every mode', async () => {
@@ -1752,5 +1778,256 @@ describe('这个部署服务不了的档 (#1951)', () => {
     const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')
       ?.data as { mode?: string };
     expect(data.mode).toBe('i2v');
+  });
+});
+
+describe('VideoGeneratePanelContainer — 两句空态各自取自己那个 key (#1952)', () => {
+  /**
+   * 那句话在 en 里的原文。
+   * @param key - `canvas.generatePanel` 下的键名。
+   * @returns 该键在英文目录里的值。
+   */
+  function sentence(key: 'mentionEmpty' | 'mentionNoMatch'): string {
+    return readPath(
+      LOCALE_CATALOGS[0][1],
+      `canvas.generatePanel.${key}`,
+    ) as string;
+  }
+
+  const PICTURE = {
+    id: 'src',
+    data: {
+      kind: 'image' as const,
+      status: 'idle' as const,
+      name: 'Alpha',
+      content: 'https://cdn/a.png',
+    },
+  };
+  const WIRE = [{ id: 'e1', source: 'src', target: 'target' }];
+
+  /**
+   * 在给定档位下打开面板、在提示词里打 `@` 加给定的字，交出弹层空态那句话。
+   * @param mode - 生成子模式。
+   * @param model - 该档下选中的模型名。
+   * @param query - `@` 后面打的字。
+   * @returns 空态元素的文字和卸载函数；弹层没进空态就返回 null。
+   */
+  async function emptyStateText(
+    mode: string,
+    model: string,
+    query: string,
+  ): Promise<{ text: string | null; unmount: () => void }> {
+    const view = await openPanelInMode(mode, model, {}, {
+      nodes: [PICTURE],
+      edges: WIRE,
+    });
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+    const { editor } = document.querySelector('.ProseMirror') as unknown as {
+      editor: { commands: { insertContent: (s: string) => void } };
+    };
+    act(() => {
+      editor.commands.insertContent(`@${query}`);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    const box = document.querySelector(
+      '[data-testid="reference-mention-empty"]',
+    );
+    return { text: box?.textContent ?? null, unmount: view.unmount };
+  }
+
+  // 跟图片面板那条同一个理由，见那边的注释：断言「两句不一样」挡不住把两个
+  // key 对调，而对调是同样两行、同样 typecheck 绿的第二种错。
+  it('每一句各自取自己那个 key，不是「两句不一样」就算数', async () => {
+    // t2v 不吃参考素材，那条图片边一项都用不了。
+    const nothingUsable = await emptyStateText('t2v', 'veo-3.1', '');
+    expect(nothingUsable.text).toBe(sentence('mentionEmpty'));
+    nothingUsable.unmount();
+
+    // ref 档吃图片参考，池子非空，只是打的字没匹配上。
+    const nothingMatched = await emptyStateText(
+      'ref',
+      'kling-o3-pro-ref',
+      'zzz',
+    );
+    expect(nothingMatched.text).toBe(sentence('mentionNoMatch'));
+    nothingMatched.unmount();
+  });
+});
+
+describe('视频面板的聚焦裁剪（#1978）', () => {
+  const CROP = {
+    id: 'c1',
+    url: 'https://cdn/crop-1.png',
+    name: 'Hero',
+    width: 400,
+    height: 300,
+  };
+  const ROW = 'focus:c1';
+
+  it('节点上的裁剪作为一行出现在参考轨道', async () => {
+    await openPanelInMode('ref', 'kling-o3-pro-ref', { focusImages: [CROP] });
+    expect(await screen.findByTestId(`generate-ref-${ROW}`)).toBeInTheDocument();
+    // 裁剪行带自己的标记，跟连线进来的节点行分得开
+    expect(
+      screen.getByTestId(`generate-ref-focus-badge-${ROW}`),
+    ).toBeInTheDocument();
+  });
+
+  it('点裁剪行的 ✕ 把裁剪从节点上删掉 —— 它不是一条边，removeEdge 对它是空操作', async () => {
+    await openPanelInMode('ref', 'kling-o3-pro-ref', { focusImages: [CROP] });
+    expect(await screen.findByTestId(`generate-ref-${ROW}`)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId(`generate-ref-remove-${ROW}`));
+
+    // 断言落在 Yjs 上而不是 DOM 上：这个测试台给面板的 `nodes` 是一个静态
+    // 数组（见 openPanelInMode 的注释），删除写进文档、prop 不动，所以行不会
+    // 从屏幕上消失。真正要钉的也正是「那条裁剪从节点上没了」。
+    await waitFor(() => {
+      const node = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target');
+      const data = node?.data as { focusImages?: unknown[] } | undefined;
+      expect(data?.focusImages ?? []).toHaveLength(0);
+    });
+  });
+
+  it('上传在途时轨道上先出现一行占位', async () => {
+    // 轨道本身为空的节点：没有这一步接线，用户框完之后连轨道都不出现，
+    // 直到上传成功那一刻才凭空冒出一行（ReferenceRail 在两者皆空时返回 null）。
+    await openPanelInMode('ref', 'kling-o3-pro-ref');
+    act(() => {
+      useCanvasStore.getState().addPendingFocusUpload({
+        id: 'p1',
+        nodeId: 'target',
+        name: 'Hero',
+      });
+    });
+    expect(
+      await screen.findByTestId('generate-focus-pending-p1'),
+    ).toBeInTheDocument();
+  });
+
+  it('别的节点在传的裁剪不进这条轨道 —— 在传队列是画布级的一个列表', async () => {
+    // 上一条只放了本节点那一个，所以去掉按 nodeId 的过滤它照样绿：要看出
+    // 过滤在不在，队列里得同时有别人的那一条。
+    await openPanelInMode('ref', 'kling-o3-pro-ref');
+    act(() => {
+      useCanvasStore.getState().addPendingFocusUpload({
+        id: 'mine',
+        nodeId: 'target',
+        name: 'Hero',
+      });
+      useCanvasStore.getState().addPendingFocusUpload({
+        id: 'theirs',
+        nodeId: 'someone-else',
+        name: 'Theirs',
+      });
+    });
+
+    expect(
+      await screen.findByTestId('generate-focus-pending-mine'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('generate-focus-pending-theirs'),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('视频面板的聚焦按钮（#1978）', () => {
+  it('紧跟在参考右边，槽位排在它后面', async () => {
+    // first_last 有两个槽位，正好能验「其余往右移一个」这条顺序。
+    await openPanelInMode('first_last', 'kling-o3-pro-first-last');
+    const focus = await screen.findByTestId('generate-video-tool-focus');
+    const reference = screen.getByTestId('generate-video-tool-reference');
+    const firstFrame = screen.getByTestId('generate-video-tool-first-frame');
+    const endFrame = screen.getByTestId('generate-video-tool-end-frame');
+
+    // 顺序：参考 → 聚焦 → 首帧 → 尾帧。两个槽位都断言，「其余往右移一个」
+    // 才真的被验到 —— 只看第一个槽位的话，一个槽位的档也能让这条通过。
+    // DOCUMENT_POSITION_FOLLOWING = 后者在前者之后。
+    expect(
+      reference.compareDocumentPosition(focus) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      focus.compareDocumentPosition(firstFrame) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      firstFrame.compareDocumentPosition(endFrame) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  // 六档都可点是 user 2026-08-19 拍的 A：入口稳定，取回来的行在用不了的档次
+  // 按 #1952 变暗，而不是在入口处拦。逐档跑、不挑一档代表其余五档 —— 从
+  // VIDEO_MODE_OPTIONS 取档位，将来加第七档时这里自动跟着多一个数据点。
+  const MODEL_FOR_MODE: Record<string, string> = {
+    t2v: 'veo-3.1',
+    i2v: 'kling-i2v',
+    first_last: 'kling-o3-pro-first-last',
+    animate: 'wan-2.2-animate',
+    ref: 'kling-o3-pro-ref',
+    talking_head: 'omnihuman-1.5',
+  };
+
+  for (const option of VIDEO_MODE_OPTIONS) {
+    it(`${option.value} 档的聚焦按钮可点`, async () => {
+      await openPanelInMode(option.value, MODEL_FOR_MODE[option.value]!);
+      // 先确认面板真的停在这一档。目录里没有这一档的模型时
+      // `resolveAvailableMode` 会静默回落到第一个可用档，于是这一轮测的是
+      // 那一档的重跑而不是本档 —— animate 起初就是这么少掉的（对抗第二轮）。
+      expect(
+        screen.getByTestId('generate-video-mode-trigger').textContent,
+      ).toBe(option.label);
+      expect(
+        await screen.findByTestId('generate-video-tool-focus'),
+      ).not.toBeDisabled();
+    });
+  }
+
+  it('点它进入聚焦挑选，再点一次退出，按钮跟着亮灭', async () => {
+    await openPanelInMode('t2v', 'veo-3.1');
+    const focus = await screen.findByTestId('generate-video-tool-focus');
+    expect(focus).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(focus);
+    expect(useCanvasStore.getState().pickSession).toEqual({
+      nodeId: 'target',
+      purpose: 'focus',
+    });
+    // 挑选进行中按钮要亮着：这是用户唯一能看出「现在点画布是在选聚焦源」的地方。
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-video-tool-focus')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+    });
+
+    fireEvent.click(screen.getByTestId('generate-video-tool-focus'));
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-video-tool-focus')).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
+  });
+
+  it('别的节点在挑选时这个按钮不亮 —— 高亮跟的是本节点的会话', async () => {
+    // 挑选会话是画布级的一个值，面板只该认自己那一个：不按 nodeId 过滤的话，
+    // 画布上任何一处挑选都会把这个按钮点亮。
+    await openPanelInMode('t2v', 'veo-3.1');
+    await screen.findByTestId('generate-video-tool-focus');
+
+    act(() => {
+      useCanvasStore.getState().startFocusPick('someone-else');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-video-tool-focus')).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
   });
 });

@@ -32,6 +32,20 @@ function fakeSleep(): { sleep: (ms: number) => Promise<void>; delays: number[] }
 }
 
 describe('isTransientUploadError — retry only what can heal', () => {
+  // #89: a full account answers 507, which sits inside the 5xx band this
+  // function otherwise treats as "the server had a moment". Retrying it means
+  // asking again for room that nobody has freed, three times, and then telling
+  // the user something generic — while the one sentence that would help was
+  // already in the first response.
+  it('never retries 507, even though it is a 5xx', () => {
+    expect(isTransientUploadError({ status: 507 })).toBe(false);
+    expect(
+      isTransientUploadError(
+        new ApiException({ status: 507, message: 'full', fromServer: true }),
+      ),
+    ).toBe(false);
+  });
+
   // Carried on a flat `.status`, which is the only shape that reaches this
   // function now: presign is its one caller, and axios normalises every
   // failure into an ApiException before it arrives.

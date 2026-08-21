@@ -55,21 +55,33 @@ interface VideoGeneratePanelProps {
    * the prompt slot (a sentence stands in for the editor when it is false) and
    * the reference rail.
    *
-   * In the rail it freezes INSERT on every row — nothing can be inserted into
-   * a prompt that is not sent — and the ✕ on TEXT rows only. A text row lives
-   * in the prompt, so removing it under a mode that sends none would take it
-   * out of the prompt every other mode shares; a media row answers to
-   * `modeTakesReferences` instead, because that is the question whose answer
-   * points at a mode where the row actually works.
+   * In the rail it refuses INSERT on every row — nothing can be inserted into
+   * a prompt that is not sent — and so dims every row's CONTENT, text included.
+   * The ✕ is untouched: it removes in every state (#1952). A media row's
+   * content is dimmed by `modeTakesReferences` as well, because that is the
+   * question whose answer points at a mode where the row actually works.
    */
   promptRequired: boolean;
-  /** Reference rows derived from this node's incoming edges. */
+  /** Rail rows: this node's incoming edges, then its focus crops (#1978). */
   references: ReferenceRailItem[];
+  /**
+   * Crops whose upload is still in flight (#1978), rendered as placeholder
+   * rows so the rail says something between the confirmed marquee and the
+   * landed asset.
+   */
+  pendingFocus?: ReadonlyArray<{ id: string; name: string }>;
   /** Enter / exit the canvas reference pick. */
   onAddReference: () => void;
+  /** Toggle the focus crop pick (#1978). */
+  onFocus: () => void;
+  /** Whether the focus pick is running. */
+  focusPicking: boolean;
   /** Whether the reference pick is running. */
   referencePicking: boolean;
-  /** Remove one reference (deletes its edge). */
+  /**
+   * Remove one rail row: an edge row cuts the edge, a crop row deletes the
+   * stored crop and reports the asset (#1978).
+   */
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert one reference as an `@` chip in the prompt. */
   onInsertReference: (item: ReferenceRailItem) => void;
@@ -135,7 +147,10 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   modeOptions,
   promptRequired,
   references,
+  pendingFocus,
   onAddReference,
+  onFocus,
+  focusPicking,
   referencePicking,
   onRemoveReference,
   onInsertReference,
@@ -159,6 +174,8 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
       <div className='flex items-start justify-between'>
         <VideoGenerateToolbar
           onReference={onAddReference}
+          onFocus={onFocus}
+          focusActive={focusPicking}
           referenceActive={referencePicking}
           slots={slots}
           slotUrls={slotUrls}
@@ -182,17 +199,18 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
 
       <ReferenceRail
         references={references}
+        pendingFocus={pendingFocus}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
         // Reference-to-video is the only mode that reads the pool — the other
         // five take their sources from slots or take none (#1903, landed with
-        // #1927). So the reference material rows go dark in five of six, which
-        // also freezes their ✕: references are shared across modes, and a ✕
-        // pressed here would throw away a source the user is coming back for
-        // (decision 2026-08-11). A text row is prompt material, so this
-        // question leaves it alone — the one below is the one that reaches it,
-        // and in talking head (the only mode whose model sends no prompt) it
-        // dims and freezes there too (#1966).
+        // #1927). So the reference material rows go dark in five of six. Their
+        // ✕ stays live throughout (#1952): a row this mode cannot use is
+        // exactly a row the user may want to clear, and it is reversible — a
+        // reference deleted by mistake can be connected again. A text row is
+        // prompt material, so this question leaves it alone — the one below is
+        // the one that reaches it, and in talking head (the only mode whose
+        // model sends no prompt) it dims there too (#1966).
         modeTakesReferences={modeTakesReferences(mode)}
         modelTakesPrompt={promptRequired}
       />

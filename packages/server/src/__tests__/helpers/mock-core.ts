@@ -16,6 +16,10 @@
  */
 
 import { vi } from "vitest";
+// The real names, read from the one file that holds them. A relative path
+// because this stub must not pull the domain barrel (and the `ai` SDK behind
+// it); test code is exempt from the alias rule.
+import { TOOLS_THAT_BLOCK as REAL_TOOLS_THAT_BLOCK } from "../../../../domain/src/agent/tools/blocking-tools.js";
 
 const mockPipeline = {
   zremrangebyscore: () => mockPipeline,
@@ -115,6 +119,8 @@ export const mocks = {
     list: vi.fn(),
     getWithMessages: vi.fn(),
     deleteConversation: vi.fn(),
+    createConversation: vi.fn(),
+    rename: vi.fn(),
   },
   conversationRepo: {
     getConversation: vi.fn().mockResolvedValue({ id: "conv-1", lastConsolidatedTurn: 0 }),
@@ -209,6 +215,12 @@ export const mocks = {
   // Upload dedup service (#1609). The real one hits assetService.resolveOwnerStudioId
   // + DB, so override it — route tests that exercise the dedup /uploaded path
   // (incl. the #1824 dedup-cover decoupling) configure verifyDedupUpload per-test.
+  /**
+   * The storage gate (#89). Answers with room by default — a route test that
+   * did not set it up is not asking about storage, and a gate that refused by
+   * default would make every such test fail for a reason it never named.
+   */
+  assertStorageAllowance: vi.fn(async () => undefined),
   assetUploadService: {
     checkUploadDedup: vi.fn(),
     verifyDedupUpload: vi.fn(),
@@ -382,9 +394,9 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // the per-deployment suffix is covered by session-store's own test.
     sessionCookieName: () => "breatic_session",
     // Config
-    env: { ENV: "dev", PORT: 3000, ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled" },
+    env: { ENV: "dev", PORT: 3000, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled" },
     MONOREPO_ROOT: "/tmp",
-    getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, full_detail_turns: 3, memory_user_max_size: 1000, memory_project_max_size: 1000, thinking_enabled: true }),
+    getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, full_detail_turns: 3, memory_user_max_size: 1000, memory_project_max_size: 1000, thinking_enabled: true, conversation_page_size: 30 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
@@ -445,18 +457,12 @@ export const domainMock = () => ({
   resolveProvider: vi.fn(),
   buildToolSet: vi.fn().mockReturnValue({}),
   BASELINE_TOOLS: [],
-  // The interaction sentinels, spelled out because this stub deliberately
-  // does not load the real module. They are not stand-ins: the agent loop
-  // recognises a tool result by `startsWith`, and tests feed it the literal
-  // strings, so a placeholder here would make the loop take a different
-  // branch than the one under test and still look green.
-  //
-  // Copies that must not drift, in other words —
-  // `agent/sentinel-stub-fidelity.test.ts` holds them to the real values.
-  ASK_USER_SENTINEL: "__ASK_USER__",
-  ASK_USER_CHOICE_SENTINEL: "__ASK_USER_CHOICE__",
-  PROPOSE_CANVAS_ACTION_SENTINEL: "__PROPOSE_CANVAS_ACTION__",
-  SHOW_SEARCH_RESULTS_SENTINEL: "__SHOW_SEARCH_RESULTS__",
+  // Not a placeholder and not written out by hand. What the turn does with
+  // these names is match them against the names the model was offered, so a
+  // stub that spells them itself is a second copy of the very thing being
+  // matched -- and one written-out copy of them said `ask_user`, a tool that
+  // does not exist, which is how a turn that should have stopped ran on.
+  TOOLS_THAT_BLOCK: REAL_TOOLS_THAT_BLOCK,
   getSkillRegistry: () => ({
     get: (name: string) =>
       ["gated_fixture", "creative_research", "canvas_fixture", "canvas_gated"].includes(name)
@@ -524,6 +530,10 @@ export const serverModulesMock = async (importOriginal: () => Promise<Record<str
     ...actual,
     authService: mocks.authService,
     assetUploadService: mocks.assetUploadService,
+    // #89: the storage gate now sits on presign and task creation. Route
+    // tests are about routing, so it answers "there is room" by default;
+    // its own behaviour is pinned by the integration suites.
+    assertStorageAllowance: mocks.assertStorageAllowance,
     projectService: mocks.projectService,
     conversationService: mocks.conversationService,
     conversationRepo: mocks.conversationRepo,

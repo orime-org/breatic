@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useCanvasStore } from '@web/stores/canvas';
-import { useChatStore } from '@web/stores/chat';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
 import { useConversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 import { useInpaintStore } from '@web/stores/inpaint';
 import { useMiniToolStore } from '@web/stores/mini-tool';
@@ -31,8 +31,6 @@ describe('resetProjectUiStores (#1771)', () => {
     useUIStore.getState().setSidebarOpen(false); // preference
     useUIStore.getState().setChatPanelCollapsed(true); // preference
 
-    useChatStore.getState().setComposerDraft('half-typed message');
-    useChatStore.getState().setActiveConversationId('conv-1');
 
     useInpaintStore.getState().setMaskDataUrl('data:image/png;base64,AAAA');
     useInpaintStore.getState().beginStroke({ radius: 8, alpha: 1 });
@@ -62,9 +60,6 @@ describe('resetProjectUiStores (#1771)', () => {
     expect(ui.activeOverlayId).toBeNull();
     expect(ui.drawerOpen).toBe(false);
 
-    const chat = useChatStore.getState();
-    expect(chat.composerDraft).toBe('');
-    expect(chat.activeConversationId).toBeNull();
 
     const inpaint = useInpaintStore.getState();
     expect(inpaint.strokes).toEqual([]);
@@ -97,31 +92,48 @@ describe('resetProjectUiStores (#1771)', () => {
    * it is told to is pinned in its own file; what is pinned here is that it
    * gets told at all.
    */
-  it('tells the conversation runtime the project is being left', () => {
+  it('tells the conversation runtime the project is being left', async () => {
     _resetForTests();
-    const abort = new AbortController();
+    evictAllChatSessions();
+    let sent: AbortSignal | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        sent = init?.signal ?? undefined;
+        return new Promise<Response>(() => {});
+      }),
+    );
     useConversationRuntime.setState({
       conversations: {
         'c-1': {
           projectId: 'project-1',
           messages: [],
-          turn: { replyId: 'r-1', abort, started: true },
           hasMore: false,
           oldestLoadedTurn: 1,
-          failures: 0,
-          failedReplyId: null,
+          title: null,
         },
       },
       currentByProject: { 'project-1': 'c-1' },
       openStatus: { 'project-1': 'ready' },
+    });
+    void chatSessionFor({
+      projectId: 'project-1',
+      conversationId: 'c-1',
+      history: [],
+      onTitled: () => undefined,
+      onFirstFrame: () => undefined,
+    }).sendMessage({ text: '在跑的一轮' });
+    await vi.waitFor(() => {
+      expect(sent).toBeDefined();
     });
 
     resetProjectUiStores('project-1');
 
     // Stopped, because once the project is off the screen there is no stop
     // button anywhere for this turn.
-    expect(abort.signal.aborted).toBe(true);
+    expect(sent?.aborted).toBe(true);
     expect(useConversationRuntime.getState().conversations['c-1']).toBeUndefined();
     expect(useConversationRuntime.getState().openStatus['project-1']).toBeUndefined();
+    vi.unstubAllGlobals();
   });
 });

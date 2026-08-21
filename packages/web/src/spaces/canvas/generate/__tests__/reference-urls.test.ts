@@ -14,7 +14,11 @@ import { describe, it, expect } from 'vitest';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
-import { mentionedImageUrls } from '@web/spaces/canvas/generate/reference-urls';
+import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
+import {
+  mentionedImageUrls,
+  mentionedReferenceUrls,
+} from '@web/spaces/canvas/generate/reference-urls';
 
 /**
  * A canvas node carrying whatever a case needs it to.
@@ -70,8 +74,11 @@ describe('mentionedImageUrls', () => {
 
   it('drops a mentioned row whose source has no content yet', () => {
     // An image node that has not been generated or uploaded carries no URL.
-    // It reaching the payload as undefined would be worse than dropping it;
-    // that it drops SILENTLY is tracked separately (#1932).
+    // It reaching the payload as undefined would be worse than dropping it.
+    // Dropping it silently was once filed as a defect (#1932); user 2026-08-18
+    // ruled it is not one — a reference is a LIVE projection, so a row whose
+    // source is still empty is a row the user connected on purpose and will
+    // fill in. That task is closed.
     const empty = node('e', { kind: 'image', status: 'idle' });
     expect(mentionedImageUrls(rows('e'), new Set(['e']), [empty])).toEqual([]);
   });
@@ -91,5 +98,59 @@ describe('mentionedImageUrls', () => {
   it('drops a row whose source is gone from the board', () => {
     // A collaborator can delete the source between a mention and a click.
     expect(mentionedImageUrls(rows('ghost'), new Set(['ghost']), [IMAGE_A])).toEqual([]);
+  });
+});
+
+describe('mentionedReferenceUrls', () => {
+  /** A crop stored on the panel's own node. */
+  const CROP = { id: 'c1', url: 'https://cdn/crop-1.png' };
+  /** A second crop, so crop order is observable too. */
+  const CROP_2 = { id: 'c2', url: 'https://cdn/crop-2.png' };
+
+  it('裁剪排在节点参考之后 —— 载荷顺序跟着轨道顺序', () => {
+    // 两个来源都提到了，才看得出谁在前。这条正是把两半合到一个函数里的理由：
+    // 顺序是这个函数的契约，散在两个面板里各写一遍就没人钉着它。
+    expect(
+      mentionedReferenceUrls({
+        references: rows('a', 'b'),
+        focusImages: [CROP],
+        atMentioned: new Set(['a', 'b', focusRefId(CROP.id)]),
+        nodes: [IMAGE_A, IMAGE_B],
+      }),
+    ).toEqual(['https://cdn/a.png', 'https://cdn/b.png', CROP.url]);
+  });
+
+  it('裁剪之间保持它们在节点上的顺序', () => {
+    expect(
+      mentionedReferenceUrls({
+        references: [],
+        focusImages: [CROP, CROP_2],
+        atMentioned: new Set([focusRefId(CROP.id), focusRefId(CROP_2.id)]),
+        nodes: [],
+      }),
+    ).toEqual([CROP.url, CROP_2.url]);
+  });
+
+  it('没提到的裁剪不上路 —— 在池子里不等于用了它', () => {
+    expect(
+      mentionedReferenceUrls({
+        references: [],
+        focusImages: [CROP, CROP_2],
+        atMentioned: new Set([focusRefId(CROP_2.id)]),
+        nodes: [],
+      }),
+    ).toEqual([CROP_2.url]);
+  });
+
+  it('裁剪的池子 id 带命名空间，跟同名的节点 id 分得开', () => {
+    // 一个 id 恰好等于某条裁剪 id 的节点被提到时，不该把那条裁剪也带上路。
+    expect(
+      mentionedReferenceUrls({
+        references: rows('c1'),
+        focusImages: [CROP],
+        atMentioned: new Set(['c1']),
+        nodes: [node('c1', { kind: 'image', status: 'idle', content: 'https://cdn/node-c1.png' })],
+      }),
+    ).toEqual(['https://cdn/node-c1.png']);
   });
 });

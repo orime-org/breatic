@@ -2,10 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import type { MembershipTier, TierOffer } from '@breatic/shared';
+import { getLocale } from '@breatic/shared';
+import type {
+  ComparableMembershipTier,
+  MembershipTier,
+  TierOffer,
+  UpgradeOffer,
+} from '@breatic/shared';
 
-import { formatBytes } from '@web/features/membership/format';
-import { TIER_MONTHLY_PRICE_USD } from '@web/features/membership/pricing';
+import { Button } from '@web/components/ui/button';
+import { formatBytes, formatPrice } from '@web/features/membership/format';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /** The comparison table's inputs. */
@@ -14,6 +20,24 @@ interface TierComparisonProps {
   offers: readonly TierOffer[];
   /** The account's own tier, so its column can be marked. */
   currentTier: MembershipTier;
+  /**
+   * Take the account to a tier above its own.
+   *
+   * Absent where this deployment sells nothing, which is what removes the
+   * whole action row rather than leaving buttons that cannot work.
+   */
+  onChoose?: (tier: ComparableMembershipTier) => void;
+  /** Whether a choice is already being carried out, so the row waits. */
+  busy?: boolean;
+  /**
+   * Whether a higher tier can be chosen right now (design §13).
+   *
+   * `pending` while an upgrade is bought and waiting on its invoice: the
+   * entrance says so instead of inviting a second one. `withheld` while a
+   * card is failing, which is the one situation the server refuses an upgrade
+   * in — drawing the button there produced nothing but a 409.
+   */
+  upgrade?: UpgradeOffer;
 }
 
 /**
@@ -45,8 +69,20 @@ interface TierComparisonProps {
 export const TierComparison = React.memo(function TierComparison({
   offers,
   currentTier,
+  onChoose,
+  busy = false,
+  upgrade = 'offered',
 }: TierComparisonProps): React.JSX.Element {
   const t = useTranslation();
+  // Read rather than subscribed to: `useTranslation` above already subscribes
+  // to locale changes and re-renders this component, so by the time this runs
+  // the locale is the current one. A second subscription would be redundant.
+  const locale = getLocale();
+  // Where the account's own tier sits, so the row below can tell "above me"
+  // from "below me". A tier that is not on this table at all — self-hosted,
+  // enterprise — gives -1, and then every column reads as above it, which is
+  // right: neither of those has a table rendered for it anyway.
+  const currentRank = offers.findIndex((offer) => offer.tier === currentTier);
 
   // Not memoised on `[t]`: `useTranslation` hands back the module-level
   // function, whose identity never changes, so such a memo would compute these
@@ -95,8 +131,13 @@ export const TierComparison = React.memo(function TierComparison({
       ? 'border-b border-border bg-accent px-2.5 py-2 text-right tabular-nums'
       : 'border-b border-border px-2.5 py-2 text-right tabular-nums';
 
+  // `border-separate` rather than `border-collapse`: under the collapsed
+  // border model browsers ignore a cell's border-radius outright, and the
+  // highlighted column's first and last cells are meant to be rounded.
+  // Spacing is zero, so each row still shows a single bottom border and the
+  // table looks exactly as it did.
   return (
-    <table className='w-full border-collapse text-sm'>
+    <table className='w-full border-separate border-spacing-0 text-sm'>
       <thead>
         <tr>
           {/* The corner is the section heading. It sits on the same line as
@@ -116,7 +157,7 @@ export const TierComparison = React.memo(function TierComparison({
               aria-current={offer.tier === currentTier ? 'true' : undefined}
               className={
                 offer.tier === currentTier
-                  ? 'border-b border-active-border bg-accent px-2.5 py-2 text-right text-xs font-semibold text-foreground'
+                  ? 'rounded-t-chrome border-b border-active-border bg-accent px-2.5 py-2 text-right text-xs font-semibold text-foreground'
                   : 'border-b border-border px-2.5 py-2 text-right text-xs font-semibold text-muted-foreground'
               }
             >
@@ -133,20 +174,23 @@ export const TierComparison = React.memo(function TierComparison({
           >
             {t('membership.monthlyFee')}
           </th>
-          {offers.map((offer) => {
-            const price = TIER_MONTHLY_PRICE_USD[offer.tier];
-            return (
-              <td
-                key={offer.tier}
-                data-testid={`compare-cell-${offer.tier}-monthlyFee`}
-                className={columnClass(offer.tier)}
-              >
-                {price === 0
+          {offers.map((offer) => (
+            <td
+              key={offer.tier}
+              data-testid={`compare-cell-${offer.tier}-monthlyFee`}
+              className={columnClass(offer.tier)}
+            >
+              {/* Two different nulls. The free tier has no price because it
+                  costs nothing, and says so. A priced tier has none when this
+                  deployment sells nothing, and "Free" would be a claim that
+                  PRO costs nothing — it costs $12 wherever it is sold. */}
+              {offer.priceCents !== null && offer.currency !== null
+                ? formatPrice(offer.priceCents, offer.currency, locale)
+                : offer.tier === 'base'
                   ? t('membership.priceFree')
-                  : `$${String(price)}`}
-              </td>
-            );
-          })}
+                  : '—'}
+            </td>
+          ))}
         </tr>
         {rows.map((row) => (
           <tr key={row.key}>
@@ -168,6 +212,60 @@ export const TierComparison = React.memo(function TierComparison({
           </tr>
         ))}
       </tbody>
+      {onChoose ? (
+        <tfoot>
+          <tr>
+            {/* The tax note sits in the label column: it belongs to the
+                price row above it, and a line under the whole table read as a
+                footnote about everything.
+
+                It says prices exclude tax and stops there. It used to add
+                "tax is added at checkout", which was not true — Stripe Tax
+                needs a tax registration first and is deferred (#107), so
+                nothing calculates tax anywhere. Saying so is acceptance item
+                8 and a ratified decision; saying what happens next was the
+                part that had to go. */}
+            <td className='px-2.5 py-3 text-left text-xs text-muted-foreground'>
+              {t('membership.taxNote')}
+            </td>
+            {offers.map((offer, index) => (
+              <td
+                key={offer.tier}
+                data-testid={`compare-action-${offer.tier}`}
+                className={
+                  offer.tier === currentTier
+                    ? 'rounded-b-chrome bg-accent px-2.5 py-3 text-center'
+                    : 'px-2.5 py-3 text-center'
+                }
+              >
+                {/* Three cases, and the third is deliberately empty. A tier
+                    below the account's own offers nothing at all: downgrading
+                    is not on offer, so there is no control and therefore
+                    nothing to explain. */}
+                {offer.tier === currentTier ? (
+                  <span className='text-xs font-semibold text-foreground'>
+                    {t('membership.action.current')}
+                  </span>
+                ) : index > currentRank && upgrade !== 'withheld' ? (
+                  <Button
+                    type='button'
+                    size='sm'
+                    disabled={busy || upgrade === 'pending'}
+                    data-testid={`membership-choose-${offer.tier}`}
+                    onClick={() => onChoose(offer.tier)}
+                  >
+                    {upgrade === 'pending'
+                      ? t('membership.action.inProgress')
+                      : t('membership.action.choose', {
+                        tier: t(`membership.tier.${offer.tier}`),
+                      })}
+                  </Button>
+                ) : null}
+              </td>
+            ))}
+          </tr>
+        </tfoot>
+      ) : null}
     </table>
   );
 });

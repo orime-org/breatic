@@ -8,30 +8,35 @@
  * `streamText()`, whose tool-call loop is bounded by `stopWhen`.
  */
 
-import { stepCountIs } from "ai";
+import { createUIMessageStream, hasToolCall, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import type { ModelMessage, TextPart, ImagePart } from "ai";
+import type { ModelMessage, StopCondition, ToolSet, UIMessageChunk } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/domain";
-import { buildAgentConfig, finalizeTurn } from "@breatic/domain";
+import { buildAgentConfig, finalizeTurn, TOOLS_THAT_BLOCK } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
+import { reasoningOptionsFor } from "@server/agent/reasoning-options.js";
 import { getAgentConfig } from "@breatic/core";
 import { env } from "@breatic/core";
 import { creditService } from "@breatic/domain";
-import { ASK_USER_SENTINEL } from "@breatic/domain";
-import type { MessagePart } from "@breatic/shared";
-import { SSEEventType } from "@server/agent/types.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
-import type { SSEEvent } from "@server/agent/types.js";
+import type { MessagePart } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
+import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
+import * as conversationService from "@server/modules/conversation/conversation.service.js";
 import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { parseInteractionSentinel, stripSentinel } from "@server/agent/interaction-sentinel.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 
-const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"]);
+/**
+ * What a client is told when the turn's own code fails.
+ *
+ * Deliberately not the underlying message: provider failures carry endpoint
+ * URLs and key hints, and ours carry file paths.
+ */
+const FAILED_TEXT = "The assistant could not finish this turn.";
 
 /**
  * Main Agent for streaming chat interactions.
@@ -55,40 +60,36 @@ export class MainAgent {
   /**
    * Run a streaming chat turn with the user.
    * @param userMessage - The user's text message
-   * @param resources - Optional attached resource URLs (images, files)
    * @param signal - Raised when the user stops the turn or the client goes
    *   away. Absent means this caller has no way to stop the turn.
-   * @yields SSE events for real-time frontend rendering
+   * @returns The turn, as the SDK's own message chunks.
    */
-  async *chat(
+  async chat(
     userMessage: string,
-    resources?: string[],
     signal?: AbortSignal,
-  ): AsyncGenerator<SSEEvent> {
-    yield* this.runTurn(userMessage, resources, signal);
+  ): Promise<ReadableStream<UIMessageChunk>> {
+    return this.runTurn(userMessage, signal);
   }
 
   /**
    * Execute a skill command (e.g. `/skill generate_image_plan ...`).
    * @param skillName - Name of the skill to invoke
    * @param userInput - User's input text for the skill
-   * @param resources - Optional attached resources
    * @param signal - Raised when the user stops the turn or the client goes
    *   away. Absent means this caller has no way to stop the turn.
-   * @yields SSE events
+   * @returns The turn, as the SDK's own message chunks.
    */
-  async *handleSkillCommand(
+  async handleSkillCommand(
     skillName: string,
     userInput: string,
-    resources?: string[],
     signal?: AbortSignal,
-  ): AsyncGenerator<SSEEvent> {
+  ): Promise<ReadableStream<UIMessageChunk>> {
     // Whether the skill exists is not asked here. `assertSkillUsable` on
     // the route has already answered it — with a 404 the client can act on,
     // before a message was saved or a stream opened. Asking again would be a
     // second answer to a settled question, which is how the two entry points
     // drifted apart in the first place.
-    yield* this.runTurn(`/skill ${skillName} ${userInput}`, resources, signal, skillName);
+    return this.runTurn(`/skill ${skillName} ${userInput}`, signal, skillName);
   }
 
   /**
@@ -103,18 +104,16 @@ export class MainAgent {
    * fixed (task #75): a line changed on one side and not the other, with
    * nothing to say so.
    * @param said - What to record and send as the user's turn
-   * @param resources - Attached resource URLs, if any
    * @param signal - Raised when the user stops the turn or the client leaves
    * @param skillName - The skill scoping this turn, when it is a command
-   * @yields SSE events for the turn
+   * @returns The turn, as the SDK's own message chunks.
    */
-  private async *runTurn(
+  private async runTurn(
     said: string,
-    resources: string[] | undefined,
     signal: AbortSignal | undefined,
     skillName?: string,
-  ): AsyncGenerator<SSEEvent> {
-    const { userId, conversationId, projectId } = this.ctx;
+  ): Promise<ReadableStream<UIMessageChunk>> {
+    const { conversationId } = this.ctx;
 
     // Save what the user said. The turn it opened is what the rest of this
     // run is filed under: the reply goes in it, and billing builds a stable
@@ -125,499 +124,351 @@ export class MainAgent {
       parts: [{ type: "text", text: said }],
     });
 
-    // Now say what the conversation holds, before asking the model anything.
-    //
-    // Two things at once, and both are about the client not having to assume
-    // anything. It is the answer to "did that get through" — sent the moment
-    // it is true, rather than left to be inferred from a reply that may be
-    // seconds away. And it settles up for whatever came before: a stream is
-    // one-directional and connections go without warning, so the browser can
-    // be holding half a reply nobody recorded, or missing the end of one that
-    // was recorded in full, and it cannot tell which from where it stands. So
-    // every turn opens by handing over the stored truth, and the browser
-    // takes it whole.
-    //
-    // Read after the write above, never before: the page has to contain the
-    // message this very turn is about, or a browser that replaces what it
-    // holds would take the reader's own words back off the screen.
-    const settled = await messageRepo.getMessages(conversationId);
-    yield this.sse(SSEEventType.CHAT_TURN_STARTED, { ...settled });
+    // A conversation takes its name from the first thing said in it, so this
+    // is the moment it gets one -- after the write above, which is what there
+    // is to name it after. Sent on the stream rather than left for the client
+    // to work out: the list and the header are showing a placeholder right
+    // now, and nothing else would ever correct them.
+    const title = await conversationService.titleForTurn(conversationId, said);
 
-    // Only now the work that takes a while: three round trips for memory,
-    // the conversation and its history, and then the compression. All of it
-    // used to run before the stream was even opened, so nothing of the turn
-    // could reach the reader until it was done — the first word of the reply
-    // included, which is the one thing they were waiting for.
-    //
-    // The running turn is left out of that history on purpose. Its message is
-    // put in front of the model separately, a few lines below, so a copy in
-    // the history would be the same question asked twice — and it would be a
-    // candidate for compression, which could shorten the very thing being
-    // asked.
-    const { memoryContext, compressedHistory } = await buildTurnContext(
-      userId,
-      conversationId,
-      projectId,
-      turnIndex,
-    );
-
-    // One factory decides model, instructions and tools — see
-    // domain/agent/agent-config.ts for why nothing else may assemble them.
-    const agentConfig = buildAgentConfig({
-      ...(skillName !== undefined ? { skillName } : {}),
-      basePrompt: buildSystemPrompt(),
-      memoryContext,
-      interactive: true,
-    });
-
-    const messages: ModelMessage[] = [
-      ...toModelMessages(compressedHistory),
-      { role: "user", content: MainAgent.buildUserContent(said, resources) },
-    ];
-
-    yield* this.runStream(agentConfig, messages, turnIndex, signal);
+    // Everything slow happens inside the stream, not before it. The three
+    // round trips for memory, the conversation and its history, and then the
+    // compression, all used to run before the stream was even opened -- so
+    // nothing of the turn could reach the reader until they were done, the
+    // first word of the reply included, which is the one thing they were
+    // waiting for.
+    return this.runStream(said, turnIndex, title, signal, skillName);
   }
 
   /**
-   * Core streaming loop using AI SDK `streamText()`.
+   * The turn, as a stream of the SDK's own message chunks.
    *
-   * AI SDK handles the tool-call iteration automatically; the step budget is
-   * `stopWhen: stepCountIs(agentCfg.max_tool_iterations)`.
+   * What used to be a loop translating each model part into an event of our
+   * own is now two things: the SDK's stream merged in as it is, and the
+   * turn's obligations settled once at the end. The protocol carries text,
+   * reasoning and every state of a tool call without us naming any of them,
+   * which is the whole reason for the move -- a tool's arguments and its
+   * result reach the client because the protocol has a place for them, not
+   * because we remembered to forward them.
    *
-   * The loop is wrapped in try/finally so the turn's obligations run however
-   * it ends. How each ending is recorded, and why one of them cannot record
-   * itself, is set out where `announced` is declared.
-   * @param agentConfig - Model, instructions and tools, from the one factory that decides them.
-   * @param messages - Conversation history plus the current user message.
+   * The obligations are unchanged and all of them live in `onFinish`: the
+   * reply is written down, the tokens are charged for, memories are
+   * consolidated, and one line says how it went. That callback runs when the
+   * stream ends *and* when a reader lets go of it -- the SDK attaches it to
+   * both `flush` and `cancel` -- so a closed page still closes the books.
+   * Assembling what the model is asked happens inside `execute`, not before
+   * the stream is built. Everything it takes -- three round trips for memory,
+   * the conversation and its history, then the compression -- is time the
+   * reader spends in front of a screen where nothing has happened, and a
+   * stream that exists already has somewhere to put the name in the meantime.
+   * @param said - What the user said, put in front of the model on its own.
    * @param turnIndex - The turn this run answers. A parameter and not a
    *   context field: it is known one line before the call, both the reply and
    *   the charge are filed under it, and neither has anything sensible to do
    *   with a turn it could not identify.
+   * @param title - What the conversation is called now, or null when there was
+   *   nothing to name it after. An already-named conversation answers with
+   *   the name it has (`conversation.service.ts` returns it rather than
+   *   null), so this is sent on every turn and the client writes down the
+   *   same name again -- which is what keeps the list and the header from
+   *   showing a placeholder after the turn that named it.
    * @param signal - Raised when the user stops the turn or the client goes away.
-   * @yields SSE events — chat chunks, tool hints, interaction prompts, an error, and the ending.
+   * @param skillName - The skill scoping this turn, when it is a command.
+   * @returns The turn's chunks, in the SDK's own protocol.
    */
-  private async *runStream(
-    agentConfig: ResolvedAgentConfig,
-    messages: ModelMessage[],
+  private runStream(
+    said: string,
     turnIndex: number,
+    title: string | null,
     signal?: AbortSignal,
-  ): AsyncGenerator<SSEEvent> {
+    skillName?: string,
+  ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
     const agentCfg = getAgentConfig();
 
-    const result = streamTextRetry({
-      model: getModel(agentConfig.modelId),
-      system: agentConfig.instructions,
-      messages,
-      tools: agentConfig.tools,
-      stopWhen: stepCountIs(agentCfg.max_tool_iterations),
-      temperature: 0.2,
-      // The middle ring of the stop chain. Without it the route can notice the
-      // client leaving and the loop can watch for the announcement, and the
-      // model keeps running regardless: measured on ai@7.0.58, a signal handed
-      // in here ends the stream within milliseconds and no further model call
-      // is made, and the SDK passes it on to every tool it invokes.
-      abortSignal: signal,
-      // Both fields carry weight. Anthropic leaves extended thinking off
-      // unless asked, so without `type` there is no reasoning to forward at
-      // all; and on the adaptive tier the blocks arrive with empty text unless
-      // the summary is asked for by name, so without `display` the loop would
-      // forward nothing while looking like it works. `adaptive` leaves it to
-      // the model whether a given question needs thinking through, which is
-      // why this is not a cost paid on every turn.
-      ...(agentCfg.thinking_enabled
-        ? {
-            providerOptions: {
-              anthropic: { thinking: { type: "adaptive", display: "summarized" } },
-            },
-          }
-        : {}),
-    });
+    // What the turn ended up running on, for the charge at the end. Settled
+    // inside `execute`, which is where the config is assembled.
+    let modelId = "";
 
-    let fullResponse = "";
-    let creditsUsed = 0;
+    // Whether this turn ended by putting a question to the reader.
+    //
+    // Written by the stop condition below, because that is the only place
+    // that knows. Asking the reader something and running out of steps both
+    // end as `stopWhen` firing, and the SDK reports the same `finishReason`
+    // for either -- so a turn waiting on an answer and a turn that hit its
+    // ceiling are indistinguishable from the outside.
+    let askedTheUser = false;
 
-    // What this turn did, in the order it did it. One turn of the assistant is
-    // one message, and this is that message being built: prose, reasoning and
-    // tool use land here as they happen and go to the store together at the
-    // end. Writing them out as they arrive instead is what used to split one
-    // reply across three rows, leaving every reader to put it back together.
-    const replyParts: MessagePart[] = [];
-
-    // Prose and reasoning arrive in fragments, so they are held here until
-    // something ends the run — a tool call, or the turn itself. Without that,
-    // a reply that wrote, called a tool, then wrote again would store its two
-    // halves as one block and lose where the tool sat between them.
-    let pendingText = "";
-    let pendingReasoning = "";
-
-    /** Close off whatever prose and reasoning have accumulated. */
-    const flushPending = (): void => {
-      if (pendingReasoning) {
-        replyParts.push({ type: "reasoning", text: pendingReasoning });
-        pendingReasoning = "";
-      }
-      if (pendingText) {
-        replyParts.push({ type: "text", text: pendingText });
-        pendingText = "";
-      }
+    /**
+     * Stop after a step that asked the reader something, and record that it
+     * did.
+     * @param options - The steps so far, from the SDK.
+     * @param options.steps - Every step this turn has completed.
+     * @returns Whether the turn should stop here.
+     */
+    const stopIfItAsked = async (options: {
+      steps: Parameters<StopCondition<ToolSet>>[0]["steps"];
+    }): Promise<boolean> => {
+      const asked = await hasToolCall(...TOOLS_THAT_BLOCK)(options);
+      if (asked) askedTheUser = true;
+      return asked;
     };
 
-    // Tokens are counted off the stream as it goes past, never from
-    // `result.usage`. That getter is not a passive read: on ai@7.0.58 it
-    // returns `totalUsage`, and `totalUsage` calls `consumeStream()`. On the
-    // exit that matters most — the user closing the page while the model
-    // loop is still mid-flight — reading it would drive the rest of that
-    // loop after everyone has gone, running real provider calls and real
-    // tool calls nobody asked for, then bill for them. Every step announces
-    // what it spent in a `finish-step` part, so adding those up as they
-    // arrive gives the figure with none of that, on every exit alike.
+    // Counted off each step as it finishes, never from `result.usage`. That
+    // getter is not a passive read: it returns `totalUsage`, which calls
+    // `consumeStream()`. On the exit that matters most -- the reader closing
+    // the page while the model loop is still mid-flight -- reading it would
+    // drive the rest of that loop after everyone has gone, running real
+    // provider calls and real tool calls nobody asked for, then bill for
+    // them. Every step says what it spent as it finishes, which gives the
+    // same figure with none of that, on every exit alike.
     let tokensUsed = 0;
 
-    // Everything below runs inside try/finally so the turn's obligations are
-    // met however it ends. Both early exits used to skip them -- a blocking
-    // interaction tool returning, and a failure -- leaving the reply unsaved
-    // and the turn unbilled.
+    // The SDK does not throw when the provider fails. It puts an `error`
+    // chunk on the stream and closes it normally, so nothing rejects and
+    // nothing is there to catch: an expired key, a 429 past the retry budget
+    // and a bad model id all end a turn that, read from the outside, looks
+    // like one that finished. The chunk is what says otherwise, and the
+    // stream's `onError` below is handed it -- so that one callback covers
+    // both a provider that failed and our own code throwing.
+    let failure: unknown;
+
+    // Why each failed tool call failed, by call id.
     //
-    // How this turn ended. Three of the four endings say so from inside the
-    // loop -- a provider failure, a stop, and a blocking tool -- and the
-    // fourth, a clean finish, is filled in on the line just after it. One
-    // ending says nothing at all, which is why this starts out as nothing
-    // rather than as a value: the consumer walking away arrives as `.return()`
-    // on this
-    // generator, which resumes it at whichever `yield` it was suspended on and
-    // goes straight to the `finally`, so no line in the loop gets to run. That
-    // ending is read off the absence, in the `finally`.
-    //
-    // It used to start at "aborted" and be rewritten to "completed" after the
-    // loop, which worked while that was the only silent ending. It stopped
-    // working the moment a stop could announce itself: a labelled `break`
-    // resumes on the line after the loop, so the announcement was overwritten
-    // on the way out and every stop was recorded as a clean finish. The two
-    // older `break`s survived that only because the values they set are not
-    // the one being rewritten.
-    let announced: "aborted" | "completed" | "blocked" | "failed" | undefined;
+    // Kept because the protocol does not carry it: the SDK replaces every
+    // error text on the wire with one generic line, deliberately, since the
+    // same channel also carries provider failures that name endpoints and
+    // hint at keys. That is the right call for the wire and the wrong one for
+    // the record -- a stored "An error occurred." is what the model reads
+    // back next turn, so it cannot tell a refused connection from a bad
+    // argument and cannot do anything differently. This callback is handed
+    // the error itself, before any of that.
+    const whyToolFailed = new Map<string, string>();
 
-    // Set when a blocking tool has fired: the turn is over, but not until the
-    // current step's `finish-step` goes by. That part carries the step's
-    // token count and arrives after its `tool-result` (measured against the
-    // real SDK: start-step, tool-call, tool-result, finish-step), so leaving
-    // at the tool-result threw away everything the step had spent.
-    let stopAfterStep = false;
-
-    try {
-      stream: for await (const part of result.fullStream) {
-        switch (part.type) {
-          case "text-delta":
-            fullResponse += part.text;
-            pendingText += part.text;
-            yield this.sse(SSEEventType.CHAT_CHUNK, { text: part.text });
-            break;
-
-          case "reasoning-delta":
-            pendingReasoning += part.text;
-            // `@ai-sdk/anthropic` raises one of these with no text when it
-            // forwards the block's signature; sending those on would be a
-            // stream of empty events for the panel to learn to ignore.
-            if (part.text) {
-              yield this.sse(SSEEventType.AGENT_THINKING, {
-                text: part.text,
-                blockId: part.id,
-              });
-            }
-            break;
-
-          case "finish-step":
-            tokensUsed += part.usage?.totalTokens ?? 0;
-            if (stopAfterStep) break stream;
-            break;
-
-          // The SDK does not throw when the provider fails -- it hands the
-          // failure back as a value and closes the stream. Measured on
-          // ai@7.0.58 with a model whose `doStream` throws: the loop saw
-          // ["start","error"] and did not throw. So an expired key, a 429 past
-          // the retry budget and a bad model id all arrive here, and the
-          // `catch` below never sees any of them.
-          case "error":
-            announced = "failed";
-            yield this.failed(part.error);
-            break stream;
-
-          // A stop arrives the same way, as a part on the stream rather than
-          // as an exception. Measured on ai@7.0.58: once the signal is raised
-          // the SDK emits this, makes no further model call, and delivers no
-          // tool-result or tool-error for whatever was in flight -- so this is
-          // the last thing the loop will ever see, and reading it is the only
-          // way the turn learns it was stopped.
-          case "abort":
-            announced = "aborted";
-            break stream;
-
-          case "tool-call":
-            // Whatever was being written stops here, so the reply records
-            // that the tool ran at this point and not somewhere else.
-            flushPending();
-            replyParts.push({
-              type: "tool",
-              toolCallId: part.toolCallId,
-              toolName: part.toolName,
-              input: part.input as Record<string, unknown>,
-              status: "pending",
-            });
-            yield this.sse(SSEEventType.AGENT_TOOL_HINT, { hint: part.toolName });
-            break;
-
-          // The SDK hands a failed tool back as its own part rather than
-          // throwing, the same way it does a failed provider call. Without
-          // this the call sits in the reply as "still running" for good.
-          case "tool-error": {
-            const failedIndex = replyParts.findIndex(
-              (p) => p.type === "tool" && p.toolCallId === part.toolCallId,
-            );
-            const failedCall = failedIndex >= 0 ? replyParts[failedIndex] : undefined;
-            if (failedCall?.type === "tool") {
-              replyParts[failedIndex] = {
-                ...failedCall,
-                status: "error",
-                errorMessage:
-                  part.error instanceof Error ? part.error.message : String(part.error),
-              };
-            }
-            break;
-          }
-
-          case "tool-result": {
-            // Stringify once; the same value is read for the marker, for the
-            // event payload, and for what gets stored.
-            const output = "output" in part ? part.output : undefined;
-            const resultStr = typeof output === "string" ? output : JSON.stringify(output);
-
-            const interaction = parseInteractionSentinel(resultStr);
-
-            // The call this answers is already in the reply, waiting. Replace
-            // it rather than mutate it in place, and store the result with its
-            // marker off — that marker is read here and has no reader after.
-            const callIndex = replyParts.findIndex(
-              (p) => p.type === "tool" && p.toolCallId === part.toolCallId,
-            );
-            const call = callIndex >= 0 ? replyParts[callIndex] : undefined;
-            if (call?.type === "tool") {
-              replyParts[callIndex] = {
-                ...call,
-                status: "success",
-                output: stripSentinel(resultStr),
-              };
-            }
-
-            if (resultStr.startsWith(ASK_USER_SENTINEL)) {
-              try {
-                const payload = JSON.parse(resultStr.slice(ASK_USER_SENTINEL.length)) as Record<string, unknown>;
-                yield this.sse(SSEEventType.AGENT_ASK, payload);
-              } catch {
-                yield this.sse(SSEEventType.AGENT_ASK, { question: resultStr });
-              }
-              // The turn stops here waiting for the user, but it still owes
-              // an ending, and it owes the charge for the step it just ran.
-              // So it leaves at this step's `finish-step` rather than here.
-              announced = "blocked";
-              stopAfterStep = true;
-              break;
-            }
-
-            if (interaction) {
-              yield this.sse(interaction.event, interaction.payload);
-              // Only the tools that asked the user something stop here. The
-              // ones that merely drew a card let the model write on around
-              // them, and let it draw more than one in a turn.
-              if (interaction.blocking) {
-                announced = "blocked";
-                stopAfterStep = true;
-              }
-            }
-            break;
-          }
-        }
-      }
-      // Reached by the stream running out and by all three `break`s, so it
-      // must not overwrite what a `break` just recorded -- assigning here is
-      // for the one arrival that has nothing to say for itself.
-      announced ??= "completed";
-    } catch (err) {
-      // The other failure shape: our own code inside the loop threw, or the
-      // stream was torn down with `controller.error()`. A failing provider
-      // does not land here -- see `case "error"` above.
-      announced = "failed";
-      yield this.failed(err);
-    } finally {
-      // Memory consolidation is an LLM call of its own and nobody is waiting
-      // for it — the user is waiting for the turn to be over. Starting it
-      // here rather than awaiting it keeps it out from in front of
-      // `chat_done`, and starting it inside the finally means a disconnect
-      // still triggers it. Its failure is logged here because it has nobody
-      // left to return to.
-      void consolidateIfNeeded(userId, conversationId, projectId).catch((err: unknown) =>
-        logger.warn({ err, userId, conversationId }, "memory_consolidation_failed"),
-      );
-
-      // Nothing announced means no line in the loop ran on the way out, which
-      // happens for exactly one ending: the consumer walked away and resumed
-      // this generator with `.return()`.
-      const exit = announced ?? "aborted";
-      const stopped = exit === "aborted";
-
-      // Close off whatever the loop was in the middle of writing, then record
-      // how it ended. Both have to happen before the reply is handed over:
-      // this is the only point that knows the turn is over, and every ending
-      // arrives here, including the one where nobody is listening any more.
-      flushPending();
-      if (stopped) replyParts.push({ type: "interrupted" });
-      // The other way a turn ends without finishing. Recorded for the same
-      // reason: without it a failed turn and a turn that simply had little to
-      // say are the same row, and the panel can only say so much as it
-      // happens — a reload would read it as a finished answer.
-      if (announced === "failed") replyParts.push({ type: "failed" });
-
-      // A stored message is a record of something that already happened, so
-      // nothing in it may still say "running". A call in flight when the turn
-      // was stopped never gets a result — measured, see the `abort` case — and
-      // there is no later moment that would close it out.
-      // No message is set: nothing went wrong with the tool, the turn simply
-      // ended around it. What to say about that is the panel's to decide, and
-      // it says it in the reader's language.
-      for (const [i, part] of replyParts.entries()) {
-        if (part.type === "tool" && part.status === "pending") {
-          replyParts[i] = { ...part, status: "error" };
-        }
-      }
-
-      const failures = await finalizeTurn({
-        steps: {
-          // Anything at all to record means a message. A stopped turn always
-          // has something -- the mark above -- so it is stored whether or not
-          // it got a word out: a turn stopped after a tool call and before any
-          // prose would otherwise leave no trace, and coming back to the
-          // conversation would show no sign it had ever happened.
-          persist:
-            replyParts.length > 0
-              ? async () => {
-                  await messageRepo.addMessage(conversationId, {
-                    role: "assistant",
-                    parts: replyParts,
-                    turnIndex,
-                  });
-                }
-              : undefined,
-          bill: async () => {
-            if (tokensUsed === 0) return;
-
-            creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
-            // The turn-scoped refKey makes this idempotent: an SSE reconnect
-            // or a re-entry on the same turn will not double-charge.
-            await creditService.deductOnce(
-              userId,
-              `turn:${conversationId}:${turnIndex}`,
-              creditsUsed,
-              "Agent chat",
-              {
-                tokensUsed,
-                model: agentConfig.modelId,
-                provider: resolveProvider(agentConfig.modelId),
-              },
-            );
-          },
-        },
-      });
-
-      // The finalizer does not log — it is in domain, which has no logger.
-      // This is the layer that knows the user and the conversation.
-      for (const failure of failures) {
-        logger.error(
-          { err: failure.error, userId, conversationId, step: failure.step },
-          "turn_finalizer_step_failed",
-        );
-      }
-
-      logger.info({
+    /**
+     * Ask the model, once everything it needs has been read.
+     * @returns The model's answer, as the stream the protocol is made of.
+     */
+    const askTheModel = async (): Promise<ReadableStream<UIMessageChunk>> => {
+      // The running turn is left out of the history on purpose. Its message
+      // is put in front of the model separately, below, so a copy in the
+      // history would be the same question asked twice -- and it would be a
+      // candidate for compression, which could shorten the very thing being
+      // asked.
+      const { memoryContext, compressedHistory } = await buildTurnContext(
         userId,
         conversationId,
-        responseLength: fullResponse.length,
-        creditsUsed,
-        exit,
-      }, "agent_response");
+        projectId,
+        turnIndex,
+      );
 
-      // Inside the finally so every exit emits it. A turn that ends without
-      // one leaves the frontend with nothing to switch out of its in-flight
-      // state — the stop button never clears.
-      //
-      // A stop is told apart by a field on this event rather than by an event
-      // of its own, so there stays exactly one ending to handle. A second
-      // terminal event would be a second place for a client to forget, and
-      // forgetting it looks like a turn that never ends.
-      yield this.sse(SSEEventType.CHAT_DONE, {
-        conversationId,
-        creditsUsed,
-        ...(stopped ? { aborted: true } : {}),
+      // One factory decides model, instructions and tools — see
+      // domain/agent/agent-config.ts for why nothing else may assemble them.
+      const agentConfig: ResolvedAgentConfig = buildAgentConfig({
+        ...(skillName !== undefined ? { skillName } : {}),
+        basePrompt: buildSystemPrompt(),
+        memoryContext,
+        interactive: true,
       });
-    }
-  }
+      modelId = agentConfig.modelId;
 
-  /**
-   * Log a turn that failed and produce the event its client gets.
-   *
-   * Written once because a turn can fail two ways that look nothing alike --
-   * a provider failure arrives as a value in the stream, our own code throws
-   * -- and both owe the user the same thing. The message is deliberately not
-   * the provider's: those carry endpoint URLs and key hints.
-   * @param err - Whatever failed, for the log.
-   * @returns The error event to send the client.
-   */
-  private failed(err: unknown): SSEEvent {
-    const { userId, conversationId } = this.ctx;
-    logger.error({ err, userId, conversationId }, "agent_turn_failed");
-    return this.sse(SSEEventType.ERROR, {
-      message: "The assistant could not finish this turn.",
+      const messages: ModelMessage[] = [
+        ...toModelMessages(compressedHistory),
+        { role: "user", content: said },
+      ];
+
+      const result = streamTextRetry({
+        model: getModel(agentConfig.modelId),
+        system: agentConfig.instructions,
+        messages,
+        tools: agentConfig.tools,
+        stopWhen: [stepCountIs(agentCfg.max_tool_iterations), stopIfItAsked],
+        temperature: 0.2,
+        // The middle ring of the stop chain. Without it the route can notice
+        // the client leaving and the end of the stream can settle up, and the
+        // model keeps running regardless: a signal handed in here ends the
+        // stream within milliseconds, makes no further model call, and is
+        // passed on to every tool the turn invokes.
+        abortSignal: signal,
+        onStepFinish: ({ usage }) => {
+          tokensUsed += usage?.totalTokens ?? 0;
+        },
+        onToolExecutionEnd: ({ toolCall, toolOutput }) => {
+          if (toolOutput.type !== "tool-error") return;
+          whyToolFailed.set(
+            toolCall.toolCallId,
+            toolOutput.error instanceof Error ? toolOutput.error.message : String(toolOutput.error),
+          );
+        },
+        // Deliberately does nothing. The same failure reaches the end of the
+        // stream as an error chunk and is recorded there, alongside the ones
+        // our own code throws; recording it twice would put two lines in the
+        // log for one failed turn. What this is for is the default it
+        // replaces, which writes the provider's error -- endpoint and key
+        // hints included -- straight to the console, around our logger.
+        onError: () => undefined,
+        ...reasoningOptionsFor(resolveProvider(agentConfig.modelId), agentCfg.thinking_enabled),
+      });
+
+      return result.toUIMessageStream();
+    };
+
+    return createUIMessageStream({
+      execute: async ({ writer }) => {
+        // A conversation is named after the first thing said in it, and the
+        // name is settled before the model is asked anything. Written ahead
+        // of everything below so the panel and the list stop showing a
+        // placeholder while the rest of this is still going on.
+        if (title !== null) {
+          writer.write({ type: "data-conversation-titled", data: { title } });
+        }
+        writer.merge(await askTheModel());
+      },
+      // The one place a failed turn is noticed, whichever way it failed: the
+      // SDK hands this callback both an error chunk arriving on the stream
+      // (which is how a provider failure gets here) and anything the turn's
+      // own code throws. Without it the line at the end reports a turn that
+      // finished.
+      onError: (err) => {
+        failure = err;
+        this.logFailure(err);
+        return FAILED_TEXT;
+      },
+      onFinish: async ({ responseMessage, isAborted }) => {
+        // Nobody is waiting for consolidation -- the reader is waiting for
+        // the turn to be over. Started rather than awaited so it stays out
+        // from in front of the ending, and started here so a disconnect
+        // still triggers it. Its failure is logged here because it has
+        // nobody left to return to.
+        void consolidateIfNeeded(userId, conversationId, projectId).catch((err: unknown) =>
+          logger.warn({ err, userId, conversationId }, "memory_consolidation_failed"),
+        );
+
+        const exit = isAborted
+          ? "aborted"
+          : failure !== undefined
+            ? "failed"
+            : askedTheUser
+              ? "blocked"
+              : "completed";
+
+        const replyParts = toStoredParts(responseMessage.parts);
+
+        // Both marks are recorded rather than left to be inferred: without
+        // them a stopped turn and a failed one read back as a turn that
+        // simply had little to say, and a reload would show either as a
+        // finished answer.
+        if (exit === "aborted") replyParts.push({ type: "interrupted" });
+        if (exit === "failed") replyParts.push({ type: "failed" });
+
+        // Put the reasons back. What came off the wire says only that
+        // something went wrong, and that sentence is what the model would
+        // read back next turn -- see `whyToolFailed`.
+        for (const [i, part] of replyParts.entries()) {
+          if (part.type !== "tool" || part.status !== "error") continue;
+          const why = whyToolFailed.get(part.toolCallId);
+          if (why !== undefined) replyParts[i] = { ...part, errorMessage: why };
+        }
+
+        // A stored message is a record of something that already happened,
+        // so nothing in it may still say "running". A call in flight when
+        // the turn was stopped never gets a result, and there is no later
+        // moment that would close it out. No message is set: nothing went
+        // wrong with the tool, the turn simply ended around it, and what to
+        // say about that is the panel's to decide in the reader's language.
+        for (const [i, part] of replyParts.entries()) {
+          if (part.type === "tool" && part.status === "pending") {
+            replyParts[i] = { ...part, status: "error" };
+          }
+        }
+
+        let creditsUsed = 0;
+        const failures = await finalizeTurn({
+          steps: {
+            // Anything at all to record means a message. A stopped turn
+            // always has something -- the mark above -- so it is stored
+            // whether or not it got a word out: a turn stopped after a tool
+            // call and before any prose would otherwise leave no trace, and
+            // coming back to the conversation would show no sign it had ever
+            // happened.
+            persist:
+              replyParts.length > 0
+                ? async () => {
+                    await messageRepo.addMessage(conversationId, {
+                      role: "assistant",
+                      parts: replyParts,
+                      turnIndex,
+                    });
+                  }
+                : undefined,
+            bill: async () => {
+              if (tokensUsed === 0) return;
+
+              creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
+              // The turn-scoped refKey makes this idempotent: a reconnect or
+              // a re-entry on the same turn will not double-charge.
+              await creditService.deductOnce(
+                userId,
+                `turn:${conversationId}:${turnIndex}`,
+                creditsUsed,
+                "Agent chat",
+                {
+                  tokensUsed,
+                  model: modelId,
+                  provider: resolveProvider(modelId),
+                },
+              );
+            },
+          },
+        });
+
+        // The finalizer does not log -- it is in domain, which has no
+        // logger. This is the layer that knows the user and the
+        // conversation.
+        for (const stepFailure of failures) {
+          logger.error(
+            { err: stepFailure.error, userId, conversationId, step: stepFailure.step },
+            "turn_finalizer_step_failed",
+          );
+        }
+
+        logger.info(
+          {
+            userId,
+            conversationId,
+            // Which model answered. The config says what was asked for; only
+            // this says what ran, and a deployment that moved to another
+            // model has nothing else to read.
+            modelId,
+            responseLength: this.proseLengthOf(replyParts),
+            creditsUsed,
+            exit,
+          },
+          "agent_response",
+        );
+      },
     });
   }
 
   /**
-   * Wrap a payload into the SSE event envelope.
-   *
-   * SSE events intentionally carry NO ownership ids. The stream is a
-   * per-request private response, and the conversation's user_id /
-   * project_id already live on the `conversations` row — repeating them on
-   * every event (incl. each token chunk) is redundant and has no consumer
-   * (the frontend routes by stream, not by id). See CLAUDE.md "SSE".
-   * @param event - The SSE event type to emit.
-   * @param data - The event payload.
-   * @returns The SSE event envelope.
+   * How much prose a turn produced, for the line that records it.
+   * @param parts - What the turn wrote down.
+   * @returns The number of characters of prose in it.
    */
-  private sse(event: SSEEventType, data: Record<string, unknown>): SSEEvent {
-    return { event, data };
+  private proseLengthOf(parts: MessagePart[]): number {
+    return parts.reduce((n, part) => (part.type === "text" ? n + part.text.length : n), 0);
   }
 
   /**
-   * Build multimodal user content from text + resource URLs.
-   * @param text - User's text message
-   * @param resources - Optional attached resource URLs
-   * @returns Plain string or multimodal content array
+   * Record a turn that failed, whichever of the two ways it failed.
+   *
+   * A turn fails in two places that look nothing alike -- the provider hands
+   * a value to the model stream's `onError`, our own code throws -- and both
+   * owe an on-call reader the same line.
+   * @param err - Whatever failed.
    */
-  static buildUserContent(text: string, resources?: string[]): string | Array<TextPart | ImagePart> {
-    if (!resources?.length) return text;
-
-    const parts: Array<TextPart | ImagePart> = [
-      { type: "text", text },
-    ];
-
-    for (const url of resources) {
-      const ext = url.slice(url.lastIndexOf(".")).toLowerCase();
-      if (IMAGE_EXTENSIONS.has(ext)) {
-        parts.push({ type: "image", image: new URL(url) });
-      } else {
-        parts.push({ type: "text", text: `[Attached resource: ${url}]` });
-      }
-    }
-
-    return parts;
+  private logFailure(err: unknown): void {
+    const { userId, conversationId } = this.ctx;
+    logger.error({ err, userId, conversationId }, "agent_turn_failed");
   }
-
 }

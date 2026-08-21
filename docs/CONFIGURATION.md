@@ -36,6 +36,8 @@ loader:`packages/server/src/config/rate-limits.ts`(`getRateLimit(action)`);中�
 | `avatar-upload` | 20 / 3600s | user | 上传 studio 头像(每次都永久新增一个存储对象)|
 | `presign` | 30 / 60s | user | 上传预签名 URL |
 | `asset-report` | 120 / 60s | user | 活动流上报(`/assets/uploaded`、`/assets/deleted`) |
+| `membership-read` | 60 / 60s | user | 读会员面板(`GET /account/membership`)。它每次都跟 Stripe 对一次账,所以不限流等于让一个账号无限调别人的 API |
+| `subscription-write` | 10 / 60s | user | 订阅的四个写端点(结账 / 换档 / 取消 / 恢复)。每一个都往 Stripe 打真实调用,而 Stripe 的限额是我们整个账号共用的 |
 
 ## 3. `config/limits.yaml` — 业务容量 + 分页
 
@@ -48,6 +50,7 @@ loader:`packages/server/src/config/limits.ts`。
 | `canvas_reference_pool_cap` | 50 | 单画布节点参考池上限(参考边 + 聚焦图合计,#1782);经 `GET /canvas/limits` 下发,前端加入时 gate(池在 Yjs,server 不 gate 协作写);区别于按模型的 `images.max_items` 执行 payload 上限(#1735)。聚焦图另受前端硬顶 `MAX_FOCUS_ENTRIES`(200,`web data/focus-images.ts`)约束——旋钮调高于 200 时聚焦图仍在 200 处被拒(带 toast) |
 | `node_history_page_size` | 20 | 节点历史找回面板每页请求的行数(无限滚动,#1619);经 `GET /canvas/limits` 下发,前端取(未加载前退化用 server 默认 20) |
 | `decision_window_days` | 7 | 等人答复的五件事共用的答复期限(天):studio 邀请 · project 邀请 · studio 转让 · project 转让 · 角色升级请求。**同一个数管四处**——落库的 `expires_at`、邮件正文里的那句话、决策落地页过期卡里的天数、以及任何需要「多久」而不是「到几时」的地方,全部读它,任何一处都不许再写自己的数字。代码经 `getDecisionWindowDays()` / `getDecisionWindowMs()` / `getDecisionWindowSeconds()` 读,ESLint 规则 `breatic/no-hardcoded-request-ttl` 禁止调用点自己把天数算出来(作用域 `packages/server/src/modules/**`,测试豁免;判的是算出来的**值**是不是整天数,所以换个写法绕不过去,正当的例外同行标 `request-ttl:allow` 加理由)。改这个值只影响此后新建的行,老行按当初盖的截止时间走 |
+| `storage_notice_window_seconds` | 86400 | 一个账号收到「存储已满」通知之后，多久之内不再收第二条(秒,#89)。**键按 admin 的账号、不按 studio** —— 上限本身就是账号跨 studio 求和，按 studio 去重的话一次事件会产出多条，其中大部分指名的是几乎空的 studio。只静默铃铛和邮件:每一次拒绝仍然照记日志(`storage_quota_exceeded`),铃铛是给 admin 的、可以安静,日志是给 oncall 的、不能安静。代码经 `getStorageNoticeWindowSeconds()` 读 |
 
 ## 4. `config/collab.yaml` — Hocuspocus 协作服务
 
@@ -105,14 +108,30 @@ loader:`packages/core/src/config/storage.ts`。
 |---|---|---|
 | `avatar.max_bytes` | 2097152(2 MiB)| 单次头像上传字节上限;超限返 413。按 PNG 最坏情况定,见上方说明 |
 
-## 7. `config/agent.yaml` — LLM 韧性(节选)
+## 7. `config/agent.yaml` — LLM 韧性与会话列表(节选)
 
-loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 行为 / 记忆 / 工具旋钮;韧性相关:
+loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 行为 / 记忆 / 工具旋钮。
+
+**会话列表**(2026-08-18 加):
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `conversation_page_size` | 30 | 会话列表一页几条。**服务端定,前端不发** —— 前端只发游标,页大小是服务端的事;两边各定一个就是同一个问题的两个答案。`POST /chat/open` 和 `GET /chat/conversations` 用同一个值 |
+| `conversation_title_max_chars` | 60 | 用第一句话给会话起名时截到多少个**字符**(不是 UTF-16 码元 —— 按码元切会把一个字切成两半,存进去是个替换符)。loader 里另有一道 200 的硬上限,防止把配置写成一个列宽装不下的数 |
+| `message_page_size` | 30 | 一条会话的消息一页几条,**按轮对齐**(切开的那一轮整轮留给下一页)。跟 `conversation_page_size` 同一个数、同一类旋钮 |
+
+**Agent 聊天的流**(2026-08-19 加):
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `sse_heartbeat_interval_ms` | 5000 | 服务端多久说一次「这条流还活着」。**浏览器问服务端要这个数**(`GET /chat/stream-config`),不自己存一份 —— 发的节奏和等的耐心是同一件事,两边各写一个,调了服务端这个就会让浏览器要么误判健康的流已死、要么等得比它以为的久,而且两头都不会报错。**「连续几次没收到算死」不在配置里**,写死在 `packages/shared/src/agent/heartbeat.ts` 的 `SSE_HEARTBEAT_MISSES_ALLOWED = 3`:服务端 GC 期间健康的流也会连丢两次,把它做成旋钮等于给运维一个能把正常轮次杀掉的开关 |
+
+**韧性相关**:
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `llm_max_retries` | 2 | 每次 LLM 调用的重试次数(maxRetries),由 model-call wrapper 统一注入(#1625 Slice 3)|
-| `thinking_enabled` | false | 要不要向 provider 索取模型的思考过程。**默认关,因为现在要了也拿不到** —— 2026-08-11 对 claude-sonnet-4-6 实测,按名字要了摘要仍然三轮零 reasoning,其中一轮的提问明写「show your reasoning step by step」。开着只会每轮白等一次、换一个空的折叠块。承载它的那条通路已经建好也测过,缺的在 provider 那一侧 |
+| `thinking_enabled` | false | 要不要向 provider 索取模型的思考过程。**默认关,因为要了也拿不到** —— 2026-08-20 对当前默认模型 `deepseek/deepseek-v4-pro`(走 OpenRouter)实测两轮,其中一轮明写要求把推理过程写出来:两轮都只有 `reasoning-start` 和 `reasoning-end`(相隔约 300 毫秒)、零个 `reasoning-delta`。更早那次对 claude-sonnet-4-6 的实测(2026-08-11,三轮)结论相同。开着只会每轮白等一次、换一个空的折叠块。承载它的那条通路已经建好也测过,缺的是**根本没要**:`@ai-sdk/openai@4.0.37` 按模型 id 判断一个模型算不算 reasoning 模型(o 系列、gpt-5 及以上),`deepseek/deepseek-v4-pro` 两样都不是,于是 `reasoningEffort` 只产生一条 `unsupported` 警告、压根不进请求体(`dist/index.js:6306-6311`) |
 | `skill_agent_max_steps` | 15 | worker 跑一个 skill 时的步数上限。跟 `max_tool_iterations`(主对话 40)分开:主对话有人在等、可以多轮,worker 是一个有边界的后台任务 |
 | `web_fetch_timeout_ms` | 30000 | `web_fetch` **一次投递**的时长上限,不是整次抓取的:统一 HTTP 传输层最多投递 3 次,每次都拿这个数;跟着重定向走时每一跳还要再乘一遍。上界是定时器能装下的最大延迟(2147483647),超了定时器会把它悄悄改写成 1 毫秒,所以在配置加载时就拒 |
 | `web_search_timeout_ms` | 10000 | 同上,给 `web_search`。它是一次请求、没有重定向,所以给得比抓网页短:搜索接口要么答要么不答,而一个网页可能因为自己的原因慢 |
@@ -159,9 +178,9 @@ loader:`packages/core/src/config/membership.ts`。**惰性加载**:首次被调�
 | `project_members` | 4 | 12 | 40 | 9999 | 一个 project 能有几个**显式邀请进来**的协作者。owner 本人不计(他已经占了 `studio_members` 的一个位),开放基线自动物化的 viewer(同 studio 的人打开这个 project 就自动落一行)也不计——把后者算进去,大 studio 里任何 project 一开就满 |
 | `storage_bytes` | 5368709120 | 214748364800 | 536870912000 | 109951162777600 | 该账号所有 studio 的存储字节数之和的上限 |
 
-**这张表只有四档,因为配额写在这份文件里的就是这四档**(代码里叫 `CONFIGURED_MEMBERSHIP_TIERS`)。产品上还有企业版(决议里的「商务谈」),**它是一个账号能在的合法档位** —— 在 `MEMBERSHIP_TIERS` 里、数据库的 CHECK 约束也接受它 —— 只是数值一家一谈、将来从数据库读,所以**不在这个文件里**:在这儿编一组数字,会让被设成企业版的账号拿到谁都没谈过的额度而且不报错。向它要配额会指名账号抛错(`packages/core/src/auth/membership.repo.ts` 的 `limitsFor`),`default_tier` 也拒收它。
+**这张表只有四档,因为配额写在这份文件里的就是这四档**(代码里叫 `CONFIGURED_MEMBERSHIP_TIERS`)。产品上还有企业版(决议里的「商务谈」),**它是一个账号能在的合法档位** —— 在 `MEMBERSHIP_TIERS` 里、数据库的 CHECK 约束也接受它 —— 只是数值一家一谈、将来从数据库读,所以**不在这个文件里**:在这儿编一组数字,会让被设成企业版的账号拿到谁都没谈过的额度而且不报错。向它要配额会指名账号抛错(`packages/core/src/auth/membership.repo.ts` 的 `limitsFor`),`default_tier` 也拒收它。**存储是唯一的例外**:它对企业档答 `null`(经 `getStudioStorageQuota`)而不是抛错,因为「企业档放行」是拍过板的产品规则(#89),而规则没法用在一个异常上;其余五项照旧抛错 —— 企业档在那五项上该给多少至今没人定过。
 
-**目前五项真的在拦人**:`team_studios` · `projects_per_studio` · `studio_members` · `project_members` · `concurrent_editors`。剩下的 `storage_bytes` 配置已就位、检查点随后续那一批接上。
+**六项全部真的在拦人**:`team_studios` · `projects_per_studio` · `studio_members` · `project_members` · `concurrent_editors` · `storage_bytes`(#89 起,拦在 server 的两条写入路径 —— 请求上传地址和发起生成)。
 
 ## 8. 连接 / 存储上传韧性(代码内,非 yaml)
 
@@ -179,6 +198,7 @@ loader:`packages/core/src/config/membership.ts`。**惰性加载**:首次被调�
 | 文件 | loader | 内容 |
 |---|---|---|
 | `config/pricing.yaml` | `packages/server/src/config/pricing.ts` | 积分购买档位(Stripe test/live Price ID) |
+| `config/subscription.yaml` | `packages/core/src/config/subscription.ts` | 会员订阅计划:每个可订阅档位的月费 + Stripe test/live Price ID + `stale_after_days`(订阅过期多久后不再认它的档位)+ `stripe_read_timeout_ms`(问 Stripe 订阅现状时等多久 —— 面板对账和 webhook 两条路共用)。跟 `config/membership.yaml`(那档的六项上限)和 `config/pricing.yaml`(积分包,买断不是订阅)是三件事 |
 | `config/text-tools.yaml` | `packages/server/src/config/text-tools.ts` | 文本 mini-tool 模型 + 参数 |
 | `config/agent.yaml` | `packages/core/src/config/*` | MainAgent 行为 / 记忆 / 工具 / worker 限制 |
 | `config/skill-routing.yaml` | `packages/core/src/config/skill-routing.ts` | 哪个 skill 能在哪个面用、用户能不能直接调、模型能不能自己调起 |

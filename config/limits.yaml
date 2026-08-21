@@ -41,3 +41,15 @@ activity_feed_page_max: 100
 # answer. (Recovery codes have no lifetime at all — single use, then
 # rotated.)
 decision_window_days: 7
+
+# ── Storage-full notice window ─────────────────────────
+# storage_notice_window_seconds: how long one account's "storage is full"
+# notice silences the next one, in seconds (#89). Keyed by the ADMIN's
+# ACCOUNT, not by studio: the ceiling is an account-wide sum, so a team
+# account with four studios would otherwise get four notices for one
+# event, three of them naming a studio that holds hardly anything.
+#
+# Only the bell row and the email are silenced. Every refusal is still
+# logged — the bell is for the admin and is deliberately quiet, the log
+# is for whoever is on call and must not be.
+storage_notice_window_seconds: 86400

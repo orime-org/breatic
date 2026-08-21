@@ -31,7 +31,10 @@ import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import {
+  imageModeTakesReferences,
+  type ImageGenMode,
+} from '@web/spaces/canvas/generate/image-mode-selection';
 
 interface GeneratePanelProps {
   /** Catalog image models (already narrowed to the active mode). */
@@ -51,12 +54,11 @@ interface GeneratePanelProps {
    * the prompt slot (a sentence stands in for the editor when it is false) and
    * the reference rail.
    *
-   * In the rail it freezes INSERT on every row — nothing can be inserted into
-   * a prompt that is not sent — and the ✕ on TEXT rows only. A text row lives
-   * in the prompt, so removing it under a mode that sends none would take it
-   * out of the prompt every other mode shares; a media row answers to
-   * `modeTakesReferences` instead, because that is the question whose answer
-   * points at a mode where the row actually works.
+   * In the rail it refuses INSERT on every row — nothing can be inserted into
+   * a prompt that is not sent — and so dims every row's CONTENT, text included.
+   * The ✕ is untouched: it removes in every state (#1952). A media row's
+   * content is dimmed by `modeTakesReferences` as well, because that is the
+   * question whose answer points at a mode where the row actually works.
    */
   promptRequired: boolean;
   /** Current ratio + resolution selection. */
@@ -177,12 +179,15 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   const t = useTranslation();
   const currentModel = models.find((m) => m.name === model);
   // Text-to-image generates from scratch and ignores SOURCE IMAGES (§2.5).
-  // References stay AVAILABLE — the reference button is enabled and text
-  // references still feed the prompt via their @-chips (R3-4 = A) — but every
-  // IMAGE source is scoped out: the rail dims its image rows, the canvas pick
-  // rejects image nodes, the @-picker hides them, and Focus (which crops an
-  // image) is disabled. i2i uses the full source pool.
-  const imageSourcesOff = mode === 't2i';
+  // Nothing that COLLECTS one is refused for it: the Reference and Focus
+  // buttons are live in both modes, and neither pick scopes by mode — the
+  // reference one stopped in #1797, the focus one never did. The scoping
+  // happens where the image would be USED — the rail dims the CONTENT of its
+  // reference rows and refuses their insert (#1952 — their ✕ stays live), and
+  // the @-picker hides them. Every refusal therefore sits on the row, which
+  // can say why this mode has no use for it; an entry that goes dark can only
+  // swallow the click (#1986, user 2026-08-19). i2i uses the full pool.
+  const imageSourcesOff = !imageModeTakesReferences(mode);
   // shrink-0 keeps the fixed-size footer icons from being squeezed when the
   // pickers' labels run long (the footer row has no flex-wrap by design).
   const placeholderClass =
@@ -201,9 +206,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           styleDisabled={!styleSupported}
           onFocus={onFocus}
           focusActive={focusPicking}
-          // Focus crops an image, so it follows the image-source scoping: a
-          // t2i node cannot focus-crop (#1782).
-          focusDisabled={imageSourcesOff}
         />
         <div className='flex items-center gap-1.5'>
           {HEADER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
@@ -239,13 +241,16 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
         // Text-to-image reads no source images at all, so its reference
-        // material rows go dark — and with them their ✕, because references
-        // are shared across modes (decision 2026-08-11). A text row stays lit
-        // under this question either way: it feeds the prompt string, which
-        // both modes send. What could dim it is the prop below, and no image
-        // model reachable from this panel declares `takes_prompt: false`
-        // today. Image-to-image is the mode that lights the rest back up;
-        // this panel has exactly those two (`ImageGenMode`).
+        // material rows go dark. Their ✕ does not — references are shared
+        // across modes, and a row this mode cannot use is exactly a row the
+        // user may want to clear (user 2026-08-19). A text row stays lit under
+        // this question either way: it feeds the prompt string, which both
+        // modes send. What could dim it is the prop below, and no image model
+        // reachable from this panel declares `takes_prompt: false` (verified
+        // 2026-08-19: the only image model that does is `topaz-upscale`, whose
+        // mode is `upscale` and therefore not in `IMAGE_MODE_OPTIONS`).
+        // Image-to-image is the mode that lights the rest back up; this panel
+        // has exactly those two (`ImageGenMode`).
         modeTakesReferences={!imageSourcesOff}
         modelTakesPrompt={promptRequired}
         pendingFocus={pendingFocus}

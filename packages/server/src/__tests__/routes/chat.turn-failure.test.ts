@@ -49,17 +49,24 @@ vi.mock("@server/modules", async (importOriginal) => {
 });
 
 vi.mock("@server/agent/main-agent.js", () => {
-  /** A turn that dies on its way to the model, before a word goes out. */
-  // eslint-disable-next-line require-yield -- it throws instead of yielding, which is the case.
-  async function* diesEarly(): AsyncGenerator<unknown> {
+  /**
+   * A turn that dies on its way to the model, before a word goes out.
+   *
+   * Thrown from the call itself rather than from the stream it would have
+   * returned: the work that can fail this way -- storing the message, reading
+   * the memories, compressing the history -- all runs before there is a
+   * stream to fail on.
+   * @throws {Error} Always, which is the case.
+   */
+  async function diesEarly(): Promise<never> {
     throw new Error("the memory store is down");
   }
   return {
     MainAgent: class {
-      chat(): AsyncGenerator<unknown> {
+      chat(): Promise<never> {
         return diesEarly();
       }
-      handleSkillCommand(): AsyncGenerator<unknown> {
+      handleSkillCommand(): Promise<never> {
         return diesEarly();
       }
     },
@@ -90,7 +97,16 @@ describe("a turn that fails before the model is asked", () => {
 
     // A clean end is what a finished turn looks like, so the browser would
     // leave an empty reply on screen with nothing to explain it.
-    expect(wire).toContain("event: error");
+    //
+    // The mark is a chunk naming itself in the protocol, not an `event:`
+    // line: every frame on this stream is a bare `data:` line, which is what
+    // the client reads.
+    const errors = wire
+      .split("\n\n")
+      .filter((f) => f.startsWith("data: "))
+      .map((f) => JSON.parse(f.slice("data: ".length)) as { type: string })
+      .filter((chunk) => chunk.type === "error");
+    expect(errors).toHaveLength(1);
   });
 
   it("logs it with the three things that say whose turn it was", async () => {

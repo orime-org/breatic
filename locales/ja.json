@@ -89,6 +89,19 @@
     },
     "asset": {
       "direct_upload_unavailable": "このサーバーでは直接アップロードを利用できません"
+    },
+    "membership": {
+      "already_subscribed": "すでにメンバーシップに加入しています。",
+      "no_subscription": "メンバーシップに加入していません。",
+      "not_cancelling": "このメンバーシップは終了予定ではありません。",
+      "downgrade_not_offered": "下位プランへの変更はできません。",
+      "same_tier": "すでにこのメンバーシップです。",
+      "payment_overdue": "このメンバーシップの支払いが遅延しています。",
+      "unavailable": "メンバーシップは利用できません。"
+    },
+    "storage": {
+      "quota_exceeded_upload": "Studio のストレージがいっぱいです。アップロードできません。",
+      "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。"
     }
   },
   "chat": {
@@ -110,8 +123,7 @@
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
       "greetingDefault": "やあ!",
-      "hintNodes": "@ でノードに質問してみよう",
-      "hintDirect": "または下に直接プロンプトを入力 ↓",
+      "hintDirect": "下の入力欄からどうぞ ↓",
       "quick": {
         "findReference": "サイバーパンク風の参考画像を探して",
         "writePrompt": "イラスト生成のプロンプトを書いて",
@@ -121,7 +133,10 @@
     "history": {
       "title": "セッション一覧",
       "description": "以前の会話に切り替えたり振り返ったりできます。",
-      "empty": "履歴の会話はまだありません"
+      "empty": "履歴の会話はまだありません",
+      "moreFailed": "以前の会話を読み込めませんでした",
+      "loadingMore": "以前の会話を読み込んでいます",
+      "loading": "会話リストを読み込んでいます"
     },
     "relative": {
       "justNow": "たった今",
@@ -138,12 +153,31 @@
       "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。"
     },
     "message": {
-      "interrupted": "停止しました"
+      "interrupted": "停止しました",
+      "waiting": "応答中"
     },
     "tool": {
       "unfinished": "完了前に停止しました"
     },
-    "loadEarlier": "以前のメッセージを読み込む"
+    "loadEarlier": "以前のメッセージを読み込む",
+    "conversation": {
+      "untitled": "無題の会話",
+      "rename": "名前を変更",
+      "delete": "削除",
+      "renamePlaceholder": "この会話に名前を付ける",
+      "deleteTitle": "この会話を削除しますか？",
+      "deleteBody": "会話の内容もすべて削除されます。元に戻せません。",
+      "deleteConfirm": "削除",
+      "deleteCancel": "キャンセル",
+      "rowActions": "この会話の名前を変更、または削除",
+      "gone": "この会話はもう存在しません"
+    },
+    "load": {
+      "failedTitle": "ネットワークエラー",
+      "failedBody": "この Project の会話を読み込めませんでした。",
+      "retry": "再読み込み",
+      "refusedTitle": "このチャットを開けません"
+    }
   },
   "canvas": {
     "group": {
@@ -207,14 +241,12 @@
       "emptyImageReference": "まだ生成・アップロードされていません",
       "emptyTextReference": "内容がありません",
       "refuseInsertModeOff": "このモードは参照素材を使いません",
-      "refuseRemoveModeOff": "参照はモード間で共有されます — 削除するには参照を使うモードに切り替えるか、キャンバスで接続線を削除してください",
-      "refuseRemoveModeOffCrop": "参照はモード間で共有されます — この切り抜きを削除するには参照を使うモードに切り替えてください",
-      "refuseRemoveNoPrompt": "このモードはプロンプトを必要としません",
       "refuseExecuteNoPrompt": "プロンプトを入力してください",
       "refuseInsertTypeUnused": "{kind, select, audio {参照は画像のみで、音声は使えません} video {参照は画像のみで、動画は使えません} other {参照は画像のみで、この種類の素材は使えません}}",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",
-      "mentionEmpty": "参照できる画像がありません — まず画像から線をつないでください",
+      "mentionEmpty": "参照できるものがありません",
+      "mentionNoMatch": "一致するものがありません",
       "selectFromCanvas": "キャンバスから参照を選択",
       "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
       "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
@@ -223,7 +255,6 @@
       "selectDrivingVideoFromCanvas": "キャンバスで動きの元にする動画を選択",
       "selectDrivingAudioFromCanvas": "キャンバスで口の動きに合わせる音声を選択",
       "removeStyle": "スタイル参照を削除",
-      "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
       "locateSource": "ソースノードに移動",
       "presets": "プリセット",
@@ -269,7 +300,6 @@
       "videoParams": "パラメータ",
       "videoPromptPlaceholder": "生成したい動画を説明してください。@ で参照を追加",
       "errorNoReferenceMention": "このモードには参考画像が必要です —— このノードに画像をつないでから、プロンプトで @ を入力して指定してください。",
-      "videoMentionEmpty": "参照できるものがまだありません",
       "firstFrame": "最初のフレーム",
       "firstFrameTip": "動画の最初のフレームにする画像を選ぶ",
       "removeFirstFrame": "最初のフレームを削除",
@@ -291,7 +321,8 @@
       "errorNoDrivingVideo": "動きの元になる動画を選んでください",
       "errorNoDrivingAudio": "口の動きの元になる音声を選んでください",
       "promptNotUsed": "このモードにプロンプトは必要ありません。",
-      "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません"
+      "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません",
+      "errorStorageFull": "Studio のストレージがいっぱいです。生成できません。"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -315,7 +346,8 @@
       "tooLarge": "{filename} はアップロードサイズの上限を超えています。",
       "empty": "{filename} は空のファイルです。追加できる内容がありません。",
       "videoCodecUnsupported": "この動画の形式はブラウザで読み込めません。H.264 / MP4 に変換してからもう一度お試しください。",
-      "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。"
+      "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
+      "storageFull": "Studio のストレージがいっぱいです。アップロードできません。"
     },
     "minimap": {
       "label": "キャンバスのミニマップ"
@@ -739,7 +771,10 @@
       "studioInviteRequest": "{actor} さんが {studio} への参加に招待しました",
       "studioInviteAccepted": "{actor} さんが {studio} への招待を承認しました",
       "projectInviteRequest": "{actor} さんが {project} への参加に招待しました",
-      "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました"
+      "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました",
+      "membershipEnded": "{tier} メンバーシップが終了しました",
+      "membershipUpgradeIncomplete": "{tier} へのアップグレードは完了しませんでした",
+      "storageQuotaExceeded": "ストレージがいっぱいです"
     },
     "actorFallback": "誰か",
     "subtitle": {
@@ -1043,7 +1078,6 @@
       "creditsBalance": "クレジット残高",
       "addCredits": "クレジットを追加",
       "home": "ホーム",
-      "conversationCount": "{count} 件の会話",
       "scrollTabsLeft": "タブを左へスクロール",
       "scrollTabsRight": "タブを右へスクロール",
       "spacesToolbar": "Spaces",
@@ -1145,9 +1179,8 @@
       "enterprise": "エンタープライズ"
     },
     "priceFree": "無料",
-    "pricePerMonth": "{amount} / 月",
+    "taxNote": "価格は税抜きです。",
     "tierNote": "プランで決まるのは容量と共同編集の規模です。制作機能とモデルはどのプランでも同じです。",
-    "upgrade": "アップグレード",
     "myQuota": "利用状況",
     "quota": {
       "teamStudios": "チーム Studio",
@@ -1163,7 +1196,7 @@
     "countConnections": "{count} 接続",
     "overLimitTag": "超過",
     "overLimit": {
-      "storage": "ストレージが上限を超えています。既存のデータはこれまでどおり使えますが、新しくアップロードはできません。容量が必要な場合はアップグレードしてください。",
+      "storage": "ストレージが上限を超えています。既存のコンテンツはそのまま使えますが、新しいアップロードと生成はできません。容量を増やすにはアップグレードしてください。",
       "teamStudios": "チーム Studio の数が上限を超えています。既存のものはこれまでどおり使えますが、新しくは作成できません。必要な場合はアップグレードしてください。"
     },
     "enterpriseQuota": "利用上限は個別契約で定められているため、ここには表示されません。",
@@ -1172,6 +1205,22 @@
     "contactEnterprise": "より大きな規模や個別の商用条件が必要ですか。メールでご相談ください:",
     "contactSelfHosted": "商用ライセンスや個別のサポート条件が必要ですか。メールでご相談ください:",
     "contactEnterpriseAccount": "利用上限についてのご質問や変更のご相談は、メールでお問い合わせください:",
-    "loadFailed": "メンバーシップ情報を読み込めませんでした。通信の問題かもしれません。少し時間をおいてお試しください。"
+    "loadFailed": "メンバーシップ情報を読み込めませんでした。通信の問題かもしれません。少し時間をおいてお試しください。",
+    "action": {
+      "choose": "{tier} を選ぶ",
+      "inProgress": "処理中",
+      "current": "現在"
+    },
+    "nextCharge": "次回請求 {date}",
+    "endsOn": "メンバーシップ終了 {date}",
+    "cancel": "メンバーシップを解約",
+    "resume": "メンバーシップを再開",
+    "notice": {
+      "firstPaymentPending": "支払いが完了していません",
+      "upgradePending": "アップグレードの支払いが完了していません",
+      "paymentOverdue": "今月の支払いができませんでした"
+    },
+    "payNow": "支払う",
+    "actionFailed": "実行できませんでした。もう一度お試しください。"
   }
 }

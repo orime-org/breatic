@@ -6,9 +6,10 @@
  *
  * Both panels carry a tool row and both rows are made of the same two things:
  * a toggle that enters a canvas pick, and a slot that holds one picked image.
- * They differ only in WHICH tools they show — image has style and focus, video
- * has the source slots its mode needs — so the tools themselves live here and
- * each panel's row just arranges them.
+ * They differ only in WHICH tools they show — reference and focus are on both,
+ * style is the image panel's alone, and the video panel adds the source slots
+ * its mode needs — so the tools themselves live here and each panel's row just
+ * arranges them.
  */
 
 import { X, type LucideIcon } from 'lucide-react';
@@ -51,13 +52,19 @@ interface ToggleToolProps {
   Icon: LucideIcon;
   onClick: () => void;
   active: boolean;
-  /** Whether the tool is unavailable (Focus in t2i); omitted = always enabled. */
-  disabled?: boolean;
 }
 
 /**
- * A live toggle tool button (Reference): enters a canvas pick mode and
+ * A live toggle tool button (Reference, Focus): enters a canvas pick mode and
  * highlights (white fill) while its pick runs, so it reads as a toggle.
+ *
+ * It takes no disabled flag, and that is a decision about ENTRIES rather than
+ * an omission: a toggle only COLLECTS something, and what the active mode
+ * cannot use is refused on the row it produced, where the refusal can say why
+ * this mode has no use for it (#1952 / #1986). A dark entry cannot say even
+ * that — a natively disabled button dispatches no click at all.
+ * {@link SlotTool} does take one, on a different axis: a slot HOLDS a value,
+ * and the model's declared capability decides whether it can hold one at all.
  * @param root0 - Component props.
  * @param root0.testId - Stable test id.
  * @param root0.label - Visible + a11y label.
@@ -65,7 +72,6 @@ interface ToggleToolProps {
  * @param root0.Icon - Lucide icon.
  * @param root0.onClick - Enter / exit the pick.
  * @param root0.active - Whether this tool's pick is running (highlighted).
- * @param root0.disabled - Whether the tool is unavailable in the current mode.
  * @returns The toggle tool button.
  */
 export function ToggleTool({
@@ -75,7 +81,6 @@ export function ToggleTool({
   Icon,
   onClick,
   active,
-  disabled = false,
 }: ToggleToolProps): React.JSX.Element {
   return (
     <ToolTip tip={tip}>
@@ -89,7 +94,6 @@ export function ToggleTool({
         data-testid={testId}
         onClick={onClick}
         onFocusCapture={suppressTooltipFocusOpen}
-        disabled={disabled}
         aria-pressed={active}
         className={TOOL_BASE + (active ? TOOL_ACTIVE : TOOL_INACTIVE)}
       >

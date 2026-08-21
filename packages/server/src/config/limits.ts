@@ -10,6 +10,8 @@
  *   - the canvas reference-pool cap.
  *   - the decision window — how long someone has to answer an invitation, a
  *     transfer, or a role-upgrade request.
+ *   - the storage-full notice window — how long one account's "out of
+ *     storage" notice silences the next.
  *
  * Mirrors the `pricing.ts` / `text-tools.ts` business-config loaders:
  * a yaml file under `config/` validated by a Zod schema and memoized.
@@ -28,6 +30,7 @@ export const limitsConfigSchema = z.object({
   canvas_reference_pool_cap: z.number().int().positive().default(50),
   node_history_page_size: z.number().int().positive().default(20),
   decision_window_days: z.number().int().positive().default(7),
+  storage_notice_window_seconds: z.number().int().positive().default(86400),
 });
 
 /** Hours per day × minutes per hour × seconds per minute — written once. */
@@ -129,4 +132,15 @@ export function getDecisionWindowMs(): number {
  */
 export function getDecisionWindowSeconds(): number {
   return getDecisionWindowDays() * SECONDS_PER_DAY;
+}
+
+/**
+ * How long one account's "storage is full" notice silences the next, in
+ * seconds (#89). Keyed by the admin's ACCOUNT because the ceiling is an
+ * account-wide sum: a team account administering four studios would otherwise
+ * get four notices for one event.
+ * @returns The notice window in seconds.
+ */
+export function getStorageNoticeWindowSeconds(): number {
+  return loadConfig().storage_notice_window_seconds;
 }

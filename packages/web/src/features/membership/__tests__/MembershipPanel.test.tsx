@@ -20,14 +20,21 @@
  * 进度条画多满、当前列的底色深浅这类只有像素能判定的，靠真浏览器 smoke，
  * 不在这里断言 —— jsdom 没有布局。
  *
- * 升级按钮这一版点了没去处（块八未做），所以它压暗、带「尚未开放」，并且
- * 用 aria-disabled 而不是 disabled —— 后者会把它踢出键盘顺序。
+ * 块八（#106）之后，升级按钮真的通往 Stripe 收银台，取消和恢复也真的调
+ * 后端。所以这里还钉三件跟那条链路有关的事：每个按钮点下去打的是哪个接口、
+ * 失败时看得到反馈、以及面板画出来的动作服务端一定接受（两边读同一份判据，
+ * 而不是各判各的）。
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { AccountMembership, MembershipLimits } from '@breatic/shared';
+import type {
+  AccountMembership,
+  MembershipLimits,
+  SubscriptionSummary,
+} from '@breatic/shared';
 
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -59,6 +66,24 @@ function limits(over: Partial<MembershipLimits> = {}): MembershipLimits {
 }
 
 /**
+ * 一份订阅，按需覆盖。
+ * @param over - 要覆盖的字段。
+ * @returns 完整的订阅。
+ */
+function subscription(
+  over: Partial<SubscriptionSummary> = {},
+): SubscriptionSummary {
+  return {
+    state: 'active',
+    tier: 'pro',
+    currentPeriodEnd: '2026-09-18T00:00:00.000Z',
+    cancelAtPeriodEnd: false,
+    payableInvoiceUrl: null,
+    ...over,
+  };
+}
+
+/**
  * 一份接口答案，按需覆盖。
  * @param over - 要覆盖的字段。
  * @returns 完整的答案。
@@ -81,8 +106,10 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           project_members: 4,
           storage_bytes: 5 * GIB,
         },
+        priceCents: null,
+        currency: null,
       },
-      { tier: 'pro', limits: limits() },
+      { tier: 'pro', limits: limits(), priceCents: 1200, currency: 'usd' },
       {
         tier: 'team',
         limits: {
@@ -93,8 +120,11 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           project_members: 40,
           storage_bytes: 500 * GIB,
         },
+        priceCents: 3900,
+        currency: 'usd',
       },
     ],
+    subscription: null,
     ...over,
   };
 }
@@ -138,14 +168,17 @@ beforeEach(() => {
 });
 
 describe('MembershipPanel', () => {
-  it('显示档位、价格和账号级的两项额度', async () => {
+  it('显示档位和账号级的两项额度', async () => {
+    // 档位名下面那行现在讲订阅（下次扣费 / 期末结束 / 有款项没付成），
+    // 不再是一个静态价格 —— 价格在对比表里，那行要说的是这个人的钱现在
+    // 是什么情况。没有订阅的账号那行整个不出现。
     membershipMock.mockResolvedValue(answer());
     setup();
 
     expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
       'PRO',
     );
-    expect(screen.getByText('$12 / month')).toBeInTheDocument();
+    expect(screen.queryByTestId('subscription-billing-line')).toBeNull();
     expect(screen.getByTestId('quota-team-studios')).toHaveTextContent('1 / 1');
     expect(screen.getByTestId('quota-storage')).toHaveTextContent(
       '38 GiB / 200 GiB',
@@ -180,16 +213,323 @@ describe('MembershipPanel', () => {
     );
   });
 
-  it('升级按钮压暗、带「尚未开放」，且仍在键盘顺序里', async () => {
-    // 块八没做，按钮点了没去处。HTML disabled 会把它踢出 tab 顺序，
-    // 那样靠焦点浏览的人根本遇不到它。
-    membershipMock.mockResolvedValue(answer());
+  it('只给高于当前档的那几格入口，低的什么都不标', async () => {
+    // 拍定 2026-08-18：降级这个动作在界面上不存在。低档那几格留空 ——
+    // 不是压暗的按钮，也不是「不能降」的提示，因为没有可点的东西就没有
+    // 需要解释的事。
+    membershipMock.mockResolvedValue(answer({ subscription: subscription() }));
     setup();
 
-    const upgrade = await screen.findByTestId('membership-upgrade');
-    expect(upgrade).toHaveAttribute('aria-disabled', 'true');
-    expect(upgrade).not.toHaveAttribute('disabled');
-    expect(upgrade).toHaveTextContent('Not open yet');
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('membership-choose-team')).toBeInTheDocument();
+    expect(screen.queryByTestId('membership-choose-base')).toBeNull();
+    expect(screen.getByTestId('compare-action-base')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('compare-action-pro')).toHaveTextContent(
+      'Current',
+    );
+  });
+
+  it('按后端给的货币格式化金额，不写死符号也不吞末位零', async () => {
+    // 契约里 currency 是后端算好一起给的，前端写死 `$` 等于把它扔了；而
+    // `1250 / 100` 直接字符串化会显示 12.5，钱不能这么写。
+    membershipMock.mockResolvedValue(
+      answer({
+        catalog: [
+          { tier: 'base', limits: limits(), priceCents: null, currency: null },
+          { tier: 'pro', limits: limits(), priceCents: 1250, currency: 'eur' },
+          { tier: 'team', limits: limits(), priceCents: 3900, currency: 'eur' },
+        ],
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    const pro = screen.getByTestId('compare-cell-pro-monthlyFee').textContent ?? '';
+    expect(pro).toMatch(/12[.,]50/);
+    expect(pro).not.toContain('$');
+    expect(screen.getByTestId('compare-cell-base-monthlyFee')).toHaveTextContent(
+      'Free',
+    );
+  });
+
+  it('动作失败时给出反馈，不是点了什么都不发生', async () => {
+    // 两个标签页各停在面板上、其中一个先订阅成功，另一个点升级就会撞 409。
+    // 不需要任何故障环境，是产品自己的正常状态造成的。
+    const { toast } = await import('@web/lib/toast');
+    const errorSpy = vi.spyOn(toast, 'error');
+    const subscriptionApi = await import('@web/data/api/subscription');
+    vi.spyOn(subscriptionApi, 'startSubscriptionCheckout').mockRejectedValue(
+      new Error('409'),
+    );
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'none', tier: 'base', currentPeriodEnd: null }),
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(await screen.findByTestId('membership-choose-pro'));
+
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled());
+    // 失败之后按钮要还能再点，否则用户连重试都做不到。
+    expect(screen.getByTestId('membership-choose-pro')).not.toBeDisabled();
+  });
+
+  it('点取消打的是取消接口，并且重新拉面板而不是整页重载', async () => {
+    // 这两个动作此前一次都没被点过：把刷新用的那个键换成一个没人用的字符串，
+    // 整套测试照绿。取消和恢复都不改档位，所以顶栏没有东西需要靠整页重载去
+    // 更新 —— 重载只会把用户正站着的面板关掉。
+    const subscriptionApi = await import('@web/data/api/subscription');
+    const cancelSpy = vi
+      .spyOn(subscriptionApi, 'cancelSubscription')
+      .mockResolvedValue(undefined as never);
+    const reloadSpy = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      reload: reloadSpy,
+      assign: vi.fn(),
+    } as never);
+
+    membershipMock.mockResolvedValue(answer({ subscription: subscription() }));
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(await screen.findByTestId('membership-cancel'));
+
+    await waitFor(() => expect(cancelSpy).toHaveBeenCalledTimes(1));
+    expect(reloadSpy).not.toHaveBeenCalled();
+    // 重新拉了一次：第一次是打开面板，第二次是取消之后。
+    await waitFor(() => expect(membershipMock.mock.calls.length).toBe(2));
+  });
+
+  it('点恢复打的是恢复接口', async () => {
+    const subscriptionApi = await import('@web/data/api/subscription');
+    const resumeSpy = vi
+      .spyOn(subscriptionApi, 'resumeSubscription')
+      .mockResolvedValue(undefined as never);
+
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({ state: 'cancelling', cancelAtPeriodEnd: true }),
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(await screen.findByTestId('membership-resume'));
+
+    await waitFor(() => expect(resumeSpy).toHaveBeenCalledTimes(1));
+  });
+
+  it('点升级会把人带去 Stripe 收银台', async () => {
+    // 验收第 1 条的成功路径。此前唯一点过这个按钮的用例把接口 mock 成失败，
+    // 所以「点下去真的会去收银台」从来没有人钉过。
+    const subscriptionApi = await import('@web/data/api/subscription');
+    vi.spyOn(subscriptionApi, 'startSubscriptionCheckout').mockResolvedValue({
+      url: 'https://checkout.stripe.example/c/pay/abc',
+    } as never);
+    const assignSpy = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign: assignSpy,
+      reload: vi.fn(),
+    } as never);
+
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'none', tier: 'base', currentPeriodEnd: null }),
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(await screen.findByTestId('membership-choose-pro'));
+
+    await waitFor(() =>
+      expect(assignSpy).toHaveBeenCalledWith(
+        'https://checkout.stripe.example/c/pay/abc',
+      ),
+    );
+  });
+
+  it('面板标明价格不含税', async () => {
+    // 验收第 8 条。它在本任务里已经被整句删掉过一次，而当时没有任何测试红。
+    // 用带订阅的答案，因为那才是会卖东西的部署真正返回的形状：账号没订阅时
+    // 服务端给的是一份空的订阅摘要，不是 null。
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({ state: 'none', currentPeriodEnd: null }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByText('Prices exclude tax.')).toBeInTheDocument();
+  });
+
+  it('首期付款还没成时不给取消入口', async () => {
+    // 服务端对这个状态一律答「你没有会员」，前端却把按钮画出来 —— 点了必失败。
+    // 两边判「算不算持有订阅」得读同一份清单。
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'firstPaymentUnsettled', tier: 'pro' }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.queryByTestId('membership-cancel')).toBeNull();
+    expect(screen.queryByTestId('membership-resume')).toBeNull();
+  });
+
+  it('从没订过的 Base 账号照样看得到升级入口', async () => {
+    // 真机上抓到的：后端把「这个部署不卖订阅」和「这个账号还没订」都答成
+    // null，前端据此把整行藏了 —— 结果是最需要那几个按钮的人反而看不到。
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'none', tier: 'base', currentPeriodEnd: null }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('membership-choose-pro')).toBeInTheDocument();
+    expect(screen.getByTestId('membership-choose-team')).toBeInTheDocument();
+    // 没有活订阅就没有可取消的东西。
+    expect(screen.queryByTestId('membership-cancel')).toBeNull();
+  });
+
+  it('这个部署不卖订阅时，整行操作都不出现', async () => {
+    // 自托管没有价目表这回事，摆一排点不动的按钮比什么都不摆更糟。
+    membershipMock.mockResolvedValue(answer({ subscription: null }));
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.queryByTestId('compare-action-team')).toBeNull();
+    expect(screen.queryByTestId('membership-cancel')).toBeNull();
+  });
+
+  it('正常订阅显示下次扣费日期和取消入口', async () => {
+    membershipMock.mockResolvedValue(answer({ subscription: subscription() }));
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('subscription-billing-line')).toHaveTextContent(
+      'Next charge',
+    );
+    expect(screen.getByTestId('membership-cancel')).toBeInTheDocument();
+    expect(screen.queryByTestId('subscription-notice')).toBeNull();
+  });
+
+  it('已预约取消时说的是结束、给的是恢复', async () => {
+    // 那天不会再扣钱，写「下次扣费」就是在说一笔不会发生的付款。
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({ state: 'cancelling', cancelAtPeriodEnd: true }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('subscription-billing-line')).toHaveTextContent(
+      'Membership ends',
+    );
+    expect(screen.getByTestId('membership-resume')).toBeInTheDocument();
+    expect(screen.queryByTestId('membership-cancel')).toBeNull();
+  });
+
+  it('欠费重试期不画升级入口：服务端对它一律拒绝', async () => {
+    // 设计 §13 的 S5 那一格明写「升级入口不给」。画出来的话，点下去只会
+    // 拿到一句「款项已逾期」——一个必然失败的按钮。
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ state: 'retrying' }) }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.queryByTestId('membership-choose-team')).toBeNull();
+    // 取消入口照旧保留：他还是可以决定不续了。
+    expect(screen.getByTestId('membership-cancel')).toBeInTheDocument();
+  });
+
+  it('升级待付款时入口显示为处理中，点不动', async () => {
+    // S4：升级已经买下了、只差那笔钱，所以入口说的是「在办」，不是再卖
+    // 他一次。
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ state: 'upgradePending' }) }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    const button = screen.getByTestId('membership-choose-team');
+    expect(button).toBeDisabled();
+    expect(button).toHaveTextContent('In progress');
+  });
+
+  it('又欠费又预约了取消：给的是恢复，不是取消', async () => {
+    // 这一格两套判据会分叉。处境读出来叫 retrying（欠费优先于预约取消），
+    // 而这个账号确实预约了取消，能做的是撤销它。面板此前照着
+    // `cancelAtPeriodEnd` 画「恢复」，服务端却按处境判、永远拒绝。
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({
+          state: 'retrying',
+          cancelAtPeriodEnd: true,
+        }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('membership-resume')).toBeInTheDocument();
+    expect(screen.queryByTestId('membership-cancel')).toBeNull();
+  });
+
+  it('扣款失败重试期间给说明和一个能自己付掉的入口', async () => {
+    // 保住档位的另一半：那两周里他必须知道发生了什么，并且有一个自己把钱
+    // 付掉的动作。这一格没有「下次扣费」，因为这个月的还没收上来。
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({
+          state: 'retrying',
+          payableInvoiceUrl: 'https://invoice.example/pay',
+        }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.queryByTestId('subscription-billing-line')).toBeNull();
+    expect(screen.getByTestId('subscription-notice')).toHaveTextContent(
+      'did not go through',
+    );
+    expect(screen.getByTestId('subscription-pay-now')).toHaveAttribute(
+      'href',
+      'https://invoice.example/pay',
+    );
+  });
+
+  it('升级待付款时档位不动，另给一条把差价付掉的路', async () => {
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({
+          state: 'upgradePending',
+          payableInvoiceUrl: 'https://invoice.example/diff',
+        }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('current-tier-name')).toHaveTextContent('PRO');
+    expect(screen.getByTestId('subscription-notice')).toHaveTextContent(
+      'Upgrade payment not completed',
+    );
   });
 
   it('自托管把六项全列出来，并且不显示价格、对比表和升级按钮', async () => {

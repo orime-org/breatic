@@ -119,6 +119,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage, getMessages }));
+// The turn asks the conversation what it is called, so it can say so in the
+// event that opens the turn. Answered with a name already set: these tests are
+// about what a turn streams, not about how a conversation comes by its name.
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  titleForTurn: vi.fn(async () => "already named"),
+}));
+
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
@@ -158,7 +165,7 @@ async function timeTurn(signal: AbortSignal): Promise<number> {
       projectId: "p1",
     },
     async () => {
-      for await (const _event of new MainAgent().chat("hi", undefined, signal)) {
+      for await (const _event of await new MainAgent().chat("hi", signal)) {
         // Drained: the route writes these out; here only the timing matters.
       }
     },

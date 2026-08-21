@@ -285,11 +285,11 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
   // 2026-07-11) — that part is unchanged. What #1945 changed is the SCOPE of
   // the dim. It used to be applied per row by modality, reaching image rows
   // only, which is how audio and video rows stayed bright and removable in a
-  // mode that would never read them (#1930, #1940). The dim now belongs to the
-  // row — every REFERENCE MATERIAL row carries it, and so does its ✕:
-  // references are shared across modes, so throwing one away here loses it for
-  // the mode the user is coming back to (decision 2026-08-11). A text row is
-  // prompt material and outside the rule.
+  // mode that would never read them (#1930, #1940). The dim now covers every
+  // REFERENCE MATERIAL row rather than the image one alone; #1952 then moved it
+  // off the row wrapper onto the row's CONTENT button, so the ✕ beside it never
+  // inherits it and removal works in every state. A text row is prompt material
+  // and outside the rule.
   //
   // The rule's subject is the REFERENCE MATERIAL: a text row substitutes into
   // the prompt STRING, so it is outside this rule entirely — lit, insertable
@@ -311,30 +311,33 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     );
     // Both rows still render — the edges stay visible, they just cannot act.
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
-    // The dim is on each ROW, not on the rail container and not on the
-    // controls: one opacity, so a dark row's buttons cannot end up at 0.25.
+    // The dim is on each row's CONTENT button (#1952) — not on the rail
+    // container, not on the row wrapper, and not on the ✕: one opacity, so a
+    // dark row's controls cannot end up at 0.25, and the ✕ stays usable.
     expect(screen.getByTestId('generate-reference-rail')).not.toHaveClass(
       'opacity-50',
     );
-    expect(screen.getByTestId('generate-ref-a->me')).toHaveClass('opacity-50');
+    expect(screen.getByTestId('generate-ref-a->me')).not.toHaveClass(
+      'opacity-50',
+    );
+    expect(screen.getByTestId('generate-ref-insert-a->me')).toHaveClass(
+      'opacity-50',
+    );
     // The text row is prompt material and stays lit — the dim rule's subject
     // is the reference material (user 2026-08-13, second clarification).
-    expect(screen.getByTestId('generate-ref-b->me')).not.toHaveClass(
+    expect(screen.getByTestId('generate-ref-insert-b->me')).not.toHaveClass(
       'opacity-50',
     );
-    expect(screen.getByTestId('generate-ref-insert-a->me')).not.toHaveClass(
-      'opacity-50',
-    );
-    // Image row: refuses both insert and remove.
+    // Image row: refuses INSERT only. Its ✕ stays live like every other one
+    // (#1952, user 2026-08-19) — the two halves of a row are decoupled.
     expect(screen.getByTestId('generate-ref-insert-a->me')).toHaveAttribute(
       'aria-disabled',
       'true',
     );
-    expect(screen.getByTestId('generate-ref-remove-a->me')).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    // The text row's ✕ stays live, because this mode is already using it.
+    expect(
+      screen.getByTestId('generate-ref-remove-a->me'),
+    ).not.toHaveAttribute('aria-disabled', 'true');
+    // The text row's ✕ stays live too — every ✕ does now.
     expect(screen.getByTestId('generate-ref-remove-b->me')).not.toHaveAttribute(
       'aria-disabled',
       'true',

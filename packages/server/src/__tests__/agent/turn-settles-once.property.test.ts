@@ -5,44 +5,50 @@
  * However a turn is put together, it settles up once.
  *
  * The example-based tests next door each pin one shape of turn. What they
- * cannot cover is the shape nobody thought of, and this is a `finally` around
- * a loop with three `break`s in it — the arrangement whose classic defect is
- * running the wrap-up twice, once on the way out and once in the `finally`.
- * The second ending, the second stored reply and the second charge all arrive
- * together and all look like the first.
+ * cannot cover is the shape nobody thought of, and the arrangement here has
+ * the classic defect built into it: the turn's wrap-up is attached to two
+ * ends of the same stream. The SDK calls it from `flush` when the stream runs
+ * out and from `cancel` when the reader lets go, and only a flag inside it
+ * keeps those from both landing. If that flag ever stopped holding, the
+ * second stored reply and the second charge would arrive together and both
+ * would look exactly like the first.
  *
- * So the stream is generated rather than written: arbitrary runs of deltas,
- * finished steps, tool results, failures and stops, in arbitrary order and
- * number, including the empty one.
+ * So the model's output is generated rather than written: arbitrary runs of
+ * prose, tool calls and failures, in arbitrary order and number, including
+ * none at all -- each read to the end and again with the reader walking away
+ * part way through.
  *
- * The invariant is stated as an equality rather than as "at most one",
- * because how many wrap-up messages a turn owes is decided by rules that hold
- * for any stream at all: one if it produced prose or was stopped, none
- * otherwise. `≤ 1` would be satisfied by a turn that stored nothing at all,
- * which is the very defect the stopped-turn path exists to prevent.
+ * The count of stored replies is stated as an equality rather than as "at
+ * most one", because how many a turn owes follows from rules that hold for
+ * any stream: one if it produced anything or failed, none otherwise. `≤ 1`
+ * would be satisfied by a turn that stored nothing at all, which is the very
+ * defect the failed-turn path exists to prevent.
+ *
+ * A turn the user stopped is not generated here. Stopping is driven by a
+ * signal rather than by anything the model says, so it has no counterpart
+ * among the parts a model produces; `turn-cleanup-on-abort.test.ts` and
+ * `turn-exit-paths.test.ts` cover it.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fc from "fast-check";
 import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
+import { FINISHED } from "../helpers/model-double.js";
+import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const consolidateIfNeeded = vi.fn(async () => undefined);
 const deductOnce = vi.fn(async (..._args: unknown[]) => undefined);
-const streamTextRetry = vi.fn();
+
+/** What the model produces this run. */
+const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
-}));
-vi.mock("ai", () => ({
-  tool: (c: Record<string, unknown>) => c,
-  streamText: vi.fn(),
-  generateText: vi.fn(),
-  stepCountIs: vi.fn(() => 40),
 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -56,18 +62,22 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
+// The finalizer is the real one: what it does with its two entrances is the
+// whole subject here, and a double for it would be this file deciding the
+// answer it then checks.
 vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
   const actual = await vi.importActual<typeof DomainModule>("@breatic/domain");
+  const { modelProducing } = await import("../helpers/model-double.js");
   return {
     ...base,
     finalizeTurn: actual.finalizeTurn,
+    streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "m", instructions: "s", tools: {} }),
-    streamTextRetry,
     creditService: { deductOnce },
     resolveProvider: () => "test",
-    getModel: () => "model",
+    getModel: () => modelProducing(() => modelSays.parts as ModelStreamPart[]),
   };
 });
 
@@ -75,6 +85,7 @@ vi.mock("@server/modules", async (importOriginal) => {
   const { serverModulesMock } = await import("../helpers/mock-core.js");
   return serverModulesMock(importOriginal);
 });
+
 /**
  * What the conversation holds, for the settle-up every turn opens with.
  *
@@ -84,134 +95,148 @@ vi.mock("@server/modules", async (importOriginal) => {
  */
 const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
-vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage, getMessages }));
+vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
+  addMessage,
+  getMessages,
+}));
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  titleForTurn: vi.fn(async () => null),
+}));
+
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
-/** One thing a stream can say. */
-type Part = Record<string, unknown>;
+/** One thing a model can do, as the parts that do it. */
+type Unit = { kind: "prose" | "tool" | "failure"; parts: ModelStreamPart[] };
 
 /**
- * The six kinds of part a turn reacts to, in the shapes the SDK sends — seven
- * arbitraries, because a tool-result is drawn both plain and carrying the
- * sentinel that makes it a blocking interaction.
+ * The three things a model does, each as a run of parts that is valid on its
+ * own -- prose has to be opened and closed around its pieces, so the unit and
+ * not the piece is what gets shuffled.
  */
-const partArbitrary = fc.oneof(
-  fc.string({ minLength: 1, maxLength: 4 }).map((text) => ({ type: "text-delta", text })),
-  fc
-    .integer({ min: 0, max: 900 })
-    .map((totalTokens) => ({ type: "finish-step", usage: { totalTokens } })),
-  fc.constant({ type: "tool-call", toolCallId: "t1", toolName: "web_search", input: {} }),
-  fc.constant({ type: "tool-result", toolCallId: "t1", output: "{}" }),
-  fc.constant({ type: "tool-result", toolCallId: "t1", output: "__ASK_USER__{}" }),
-  fc.constant({ type: "error", error: new Error("provider said no") }),
-  fc.constant({ type: "abort" }),
+const unitArbitrary = fc.oneof(
+  fc.string({ minLength: 1, maxLength: 4 }).map(
+    (text): Unit => ({
+      kind: "prose",
+      parts: [
+        { type: "text-start", id: "t" },
+        { type: "text-delta", id: "t", delta: text },
+        { type: "text-end", id: "t" },
+      ],
+    }),
+  ),
+  fc.constant<Unit>({
+    kind: "tool",
+    parts: [
+      {
+        type: "tool-call",
+        toolCallId: "tc",
+        toolName: "web_search",
+        input: JSON.stringify({}),
+      },
+    ],
+  }),
+  fc.constant<Unit>({
+    kind: "failure",
+    parts: [{ type: "error", error: new Error("provider said no") }],
+  }),
 );
 
 /**
- * What the rules say this stream owes, worked out independently of the code.
+ * What the rules say this turn owes, worked out independently of the code.
  *
- * A turn does not read to the end of its stream, so working this out means
- * working out where it stopped. There are three ways, and the third is the one
- * a hand-written expectation misses — the property found it on the seventeenth
- * try, with a stop that arrived after the turn had already left:
- *
- *   - a failure ends it there;
- *   - a stop ends it there, and a stopped turn is always stored, prose or not;
- *   - a tool that asks the user something ends it at the NEXT finished step,
- *     not at the tool's own result, because that step's tokens arrive after it
- *     and the turn owes the charge for them.
+ * A stored reply is owed when there is anything to say about the turn: prose
+ * it wrote, a tool it called, or the mark a failure leaves. A turn that
+ * produced none of those has nothing to record, and storing an empty message
+ * for it would put a blank reply in the reader's conversation.
  *
  * Deriving the expectation rather than reading it off the run is what makes
  * the assertion a check instead of a restatement.
- * @param parts - The stream the turn was given.
- * @returns How many wrap-up messages the turn owes.
+ * @param units - What the model did.
+ * @returns How many stored replies the turn owes.
  */
-function wrapUpsOwed(parts: readonly Part[]): number {
-  // Anything the turn did is worth recording, not just what it said. A turn
-  // that called a tool and never got a word out used to leave nothing behind;
-  // now the call itself is part of the reply, so there is something to store.
-  //
-  // The two endings that did not finish — stopped and failed — are stored
-  // whatever else happened, because each leaves a mark of its own saying so.
-  // Without that a turn that failed on its first token would leave no trace,
-  // and what the user said would sit alone with no answer and no reason.
-  let didSomething = false;
-  let askedTheUser = false;
-  for (const part of parts) {
-    if (part.type === "error") return 1;
-    if (part.type === "abort") return 1;
-    if (part.type === "finish-step" && askedTheUser) return didSomething ? 1 : 0;
-    if (part.type === "text-delta") didSomething = true;
-    if (part.type === "tool-call") didSomething = true;
-    if (part.type === "tool-result" && String(part.output).startsWith("__ASK_USER__")) {
-      askedTheUser = true;
-    }
-  }
-  return didSomething ? 1 : 0;
-}
-
-/** A stream that plays the given parts and records nothing else. */
-function streamOf(parts: readonly Part[]): Record<string, unknown> {
-  return {
-    fullStream: (async function* () {
-      for (const part of parts) yield part;
-    })(),
-    get usage() {
-      throw new Error("usage must never be read: it consumes the stream");
-    },
-  };
+function storedRepliesOwed(units: readonly Unit[]): number {
+  return units.length > 0 ? 1 : 0;
 }
 
 /**
- * Run one turn over the given stream and report what it settled.
- * @param parts - The stream to play.
- * @returns The endings emitted, the wrap-up messages written, and the charges.
+ * Run one turn over the given model output.
+ * @param units - What the model does, in order.
+ * @param letGoAfter - Read this many chunks and then walk away; read to the
+ *   end when absent.
+ * @returns What was stored and what was charged.
  */
 async function settle(
-  parts: readonly Part[],
-): Promise<{ endings: number; wrapUps: number; charges: number }> {
+  units: readonly Unit[],
+  letGoAfter?: number,
+): Promise<{ storedReplies: number; charges: number }> {
   const { MainAgent } = await import("@server/agent/main-agent.js");
   const { runWithContext } = await import("@breatic/core");
-  streamTextRetry.mockReturnValue(streamOf(parts));
+  modelSays.parts = [...units.flatMap((u) => u.parts), FINISHED];
 
-  let endings = 0;
-  await runWithContext(
-    {
-      userId: "u1",
-      conversationId: "c1",
-      projectId: "p1",
-    },
-    async () => {
-      for await (const event of new MainAgent().chat("hi")) {
-        if ((event as { event: string }).event === "chat_done") endings += 1;
+  await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+    const reader = (await new MainAgent().chat("hi")).getReader();
+    let read = 0;
+    for (;;) {
+      if (letGoAfter !== undefined && read >= letGoAfter) {
+        await reader.cancel();
+        break;
       }
-    },
-  );
+      const { done } = await reader.read();
+      if (done) break;
+      read += 1;
+    }
+  });
 
-  const wrapUps = addMessage.mock.calls
+  const storedReplies = addMessage.mock.calls
     .map(([, msg]) => msg)
-    .filter((msg) => msg.role === "assistant" && msg.tool_calls === undefined).length;
-  return { endings, wrapUps, charges: deductOnce.mock.calls.length };
+    .filter((msg) => msg.role === "assistant").length;
+  return { storedReplies, charges: deductOnce.mock.calls.length };
 }
 
 beforeEach(() => {
-  [addMessage, consolidateIfNeeded, deductOnce, streamTextRetry].forEach((m) => m.mockClear());
+  [addMessage, consolidateIfNeeded, deductOnce].forEach((m) => {
+    m.mockClear();
+  });
 });
 
-describe("whatever the stream says, the turn settles up once", () => {
-  it("emits one ending, stores what it owes, and charges at most once", async () => {
+describe("whatever the model says, the turn settles up once", () => {
+  it("stores what it owes and charges at most once, read to the end", async () => {
     await fc.assert(
-      fc.asyncProperty(fc.array(partArbitrary, { maxLength: 12 }), async (parts) => {
-        [addMessage, deductOnce].forEach((m) => m.mockClear());
-        const { endings, wrapUps, charges } = await settle(parts);
-        expect(endings).toBe(1);
-        expect(wrapUps).toBe(wrapUpsOwed(parts));
-        // At most one, not exactly one: a turn where no step finished consumed
+      fc.asyncProperty(fc.array(unitArbitrary, { maxLength: 8 }), async (units) => {
+        [addMessage, deductOnce].forEach((m) => {
+          m.mockClear();
+        });
+        const { storedReplies, charges } = await settle(units);
+        expect(storedReplies).toBe(storedRepliesOwed(units));
+        // At most one, not exactly one: a turn where no step finished spent
         // nothing and owes nothing. What must never happen is two.
         expect(charges).toBeLessThanOrEqual(1);
       }),
-      { numRuns: 200 },
+      { numRuns: 120 },
+    );
+  }, 60_000);
+
+  it("settles once when the reader walks away part way through", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(unitArbitrary, { maxLength: 8 }),
+        fc.nat({ max: 10 }),
+        async (units, letGoAfter) => {
+          [addMessage, deductOnce].forEach((m) => {
+            m.mockClear();
+          });
+          const { storedReplies, charges } = await settle(units, letGoAfter);
+          // Not an equality here: what a turn has produced by the time the
+          // reader lets go depends on where in the stream that lands, and a
+          // rule derived from the parts alone could not say. What it can say
+          // is that letting go never doubles anything -- which is the defect
+          // two entrances to one wrap-up would produce.
+          expect(storedReplies).toBeLessThanOrEqual(1);
+          expect(charges).toBeLessThanOrEqual(1);
+        },
+      ),
+      { numRuns: 120 },
     );
   }, 60_000);
 });

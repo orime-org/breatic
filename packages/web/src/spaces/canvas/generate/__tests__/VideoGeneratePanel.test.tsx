@@ -64,6 +64,8 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         promptRequired
         references={[]}
         onAddReference={() => {}}
+        onFocus={() => {}}
+        focusPicking={false}
         referencePicking={false}
         onRemoveReference={() => {}}
         onInsertReference={() => {}}

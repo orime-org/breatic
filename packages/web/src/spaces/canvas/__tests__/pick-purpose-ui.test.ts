@@ -52,3 +52,29 @@ describe('the pick table names only banners the catalogs answer', () => {
     }
   });
 });
+
+describe('聚焦这个挑选在表里两个面板都有触发器（#1978）', () => {
+  // Exit 之后键盘焦点回哪，靠这张表按面板查触发器的 testId。视频面板接上
+  // 聚焦之后，同一个 purpose 就有了两个面板的入口 —— 表里少一个，视频面板
+  // 那次挑选退出时焦点会掉在画布容器上，而这正是 #1902 首帧挑选踩过、这张
+  // 表被建出来要终结的那个失败。
+  it('focus 同时给得出图片面板和视频面板的触发器', () => {
+    expect(PICK_PURPOSE_UI.focus.trigger.generate).toBe('generate-tool-focus');
+    expect(PICK_PURPOSE_UI.focus.trigger.generateVideo).toBe(
+      'generate-video-tool-focus',
+    );
+  });
+
+  // 只有 reference 和 focus 是两个面板共有的：style 是图片面板独有，五个源
+  // 槽位（两个帧、人物图、驱动视频、驱动音频）是视频面板独有。把这条数出来
+  // 钉住，防止将来给某个单面板的 purpose 顺手补上另一个面板的入口。
+  it('恰好这两个 purpose 是两个面板共有的', () => {
+    const both = (Object.keys(PICK_PURPOSE_UI) as PickPurpose[]).filter((p) => {
+      // 先加宽成普通字典再读：每一行的 trigger 被收窄成它自己点名的那几个
+      // 面板，直接读一个它没有的键是类型错误。
+      const t: Record<string, string> = PICK_PURPOSE_UI[p].trigger;
+      return t.generate !== undefined && t.generateVideo !== undefined;
+    });
+    expect(both.sort()).toEqual(['focus', 'reference']);
+  });
+});

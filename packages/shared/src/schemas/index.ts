@@ -19,10 +19,15 @@ export {
   understandSchema,
   projectCreateSchema,
   checkoutSchema,
+  subscriptionPlanSchema,
+  subscriptionChangeSchema,
   paginationSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,
   chatEarlierMessagesQuerySchema,
+  chatCreateConversationSchema,
+  chatRenameConversationSchema,
+  CONVERSATION_TITLE_MAX_CHARS,
 } from "@shared/schemas/api.js";
 
 export type {
@@ -40,4 +45,6 @@ export type {
   CheckoutInput,
   PaginationInput,
   ChatConversationsQueryInput,
+  ChatCreateConversationInput,
+  ChatRenameConversationInput,
 } from "@shared/schemas/api.js";
