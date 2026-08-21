@@ -61,14 +61,6 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
 // Mocked EXPLICITLY (no importOriginal) so loading @breatic/domain never
 // pulls the real agent llm and the `ai` SDK behind it.
 vi.mock("@breatic/domain", () => ({
-  creditRepo: {
-    getBalance: vi.fn(),
-    deductBalance: vi.fn(),
-    addBalance: vi.fn(),
-    createBalanceRow: vi.fn(),
-    recordTransaction: vi.fn(),
-    listTransactionsByUser: vi.fn(),
-  },
 }));
 
 const mockSendMail = vi.fn().mockResolvedValue(true);

@@ -442,7 +442,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  *
  * Explicit (no importOriginal) so loading it never pulls the real agent
  * llm and the `ai` SDK behind it. Per-test overrides go through the
- * shared `mocks` refs (creditService / taskService / canvasLock / ...).
+ * shared `mocks` refs (creditLotService / taskService / canvasLock / ...).
  */
 export const domainMock = () => ({
   assetService: mocks.assetService,
