@@ -24,6 +24,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "1:1 with users (PK = user_id); its soft-delete is derived from users.deleted_at through the join in credit.repo.ts, and an own column would be a second source of truth",
   ],
   [
+    "creditLedger",
+    "append-only credit ledger (0061), the table that replaces creditTransactions above and inherits its carve-out: a lot's remaining balance IS this table summed over that lot, so deleting a row would silently change a balance that has already been spent against, and deleting a topup row would make that payment grantable again",
+  ],
+  [
     "projectLifecycleOutbox",
     "internal transactional-outbox command queue, not a business entity: appended in a business tx, marked sent_at by the relay, retained as an audit trail",
   ],

@@ -16,6 +16,7 @@ import {
   text,
   boolean,
   doublePrecision,
+  numeric,
   integer,
   bigint,
   timestamp,
@@ -805,6 +806,178 @@ export const creditBalances = pgTable("credit_balances", {
   balance: doublePrecision("balance").default(0).notNull(),
   ...timestamps,
 });
+
+// ── 8c. Credit Lots & Ledger ─────────────────────────────────────────
+
+/**
+ * One top-up (0061, task #11).
+ *
+ * A row is one payment that succeeded, and it tracks that purchase for the
+ * rest of its life: how much of it is left, which studio may spend it, and
+ * whether it is on its way back to the buyer. Credits are spent lot by lot,
+ * oldest first, which is why the remainder lives per purchase rather than as
+ * one number per account — a refund returns a purchase, so a purchase has to
+ * be a thing that can still be pointed at.
+ *
+ * `payment_id` is NOT NULL and unique, and that is the whole of "a payment
+ * grants credits exactly once". The `payments` table cannot carry that rule:
+ * `stripe_payment_intent_id` has no unique index, and the one on
+ * `stripe_session_id` sits on a nullable column, where Postgres admits any
+ * number of NULLs. A redelivered webhook reaches the same `payments` row and
+ * is refused here, at the insert.
+ *
+ * `payments` and this table hold different facts about the same event and
+ * both keep their own status: `payments.status` says whether the money
+ * arrived, `lifecycle` says whether the credits still exist. Putting them in
+ * one row would give one row two state machines written by two paths, and
+ * every state in the design has a single writer.
+ *
+ * `designated_studio_id` NULL means unassigned, which means unspendable — a
+ * lot has to be pointed at a studio before anything can be charged to it. A
+ * lot pointing at a soft-deleted studio reads as unassigned too, so both
+ * conditions travel together in one shared predicate rather than being
+ * spelled out per query.
+ *
+ * `user_id` is the buyer and never changes: it is where the money came from,
+ * not where it goes. It is copied from `payments.user_id` so that taking the
+ * next lot to spend, and paging the account overview, need no join.
+ *
+ * `refund_attempts` is the only trace of a refund that was refused — the
+ * lifecycle returns to `active` afterwards, so that column plus a
+ * `refund_rejected` ledger row is what keeps the history visible.
+ *
+ * The lifecycle CHECK is added by hand in the migration, as the tier ones
+ * are, because migrations here are hand-written and a drizzle `check()`
+ * beside the column would be a second copy nothing compares against the
+ * first.
+ */
+export const creditLots = pgTable(
+  "credit_lots",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    paymentId: uuid("payment_id")
+      .notNull()
+      .references(() => payments.id, { onDelete: "restrict" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // A charge is a fraction of a cent and is summed across lots, so binary
+    // floating point would strand a residue that cannot be spent or refunded.
+    purchasedCredits: numeric("purchased_credits", {
+      precision: 20,
+      scale: 6,
+    }).notNull(),
+    // A materialised projection of the ledger, not a second source of truth:
+    // it must always equal sum(credit_ledger.amount) over this lot. It is
+    // stored because spending takes lots in order and locks them, which a
+    // sum-on-read cannot do.
+    remainingCredits: numeric("remaining_credits", {
+      precision: 20,
+      scale: 6,
+    }).notNull(),
+    designatedStudioId: uuid("designated_studio_id").references(
+      () => studios.id,
+      { onDelete: "restrict" },
+    ),
+    // One of `active` / `depleted` / `refund_pending` / `refunding` /
+    // `refunded`. CHECK in 0061.
+    lifecycle: varchar("lifecycle", { length: 16 }).notNull(),
+    refundAttempts: integer("refund_attempts").default(0).notNull(),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("credit_lots_payment_id_idx").on(table.paymentId),
+    index("credit_lots_user_id_created_at_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    index("credit_lots_studio_lifecycle_idx").on(
+      table.designatedStudioId,
+      table.lifecycle,
+      table.createdAt,
+    ),
+  ],
+);
+
+/**
+ * Append-only credit ledger (0061, task #11) — what actually happened.
+ *
+ * Every top-up, charge and refund is one row, and a lot's remaining balance
+ * is this table summed over that lot. It replaces `credit_transactions`,
+ * which had no notion of which purchase a charge came out of.
+ *
+ * Two people, two columns. `payer_user_id` is whose credits moved;
+ * `actor_user_id` is who did the spending, and in a team they are routinely
+ * different — a studio's guest can be an editor on a project and spends the
+ * admin's credits there. One column could serve only one of the two views
+ * that have to work: the buyer seeing where their money went, and the
+ * spender seeing what they used.
+ *
+ * `lot_id` is nullable for exactly one situation: with payments disabled —
+ * every local and self-hosted install — a generation still records its usage
+ * but draws down no purchase. `payer_user_id` stays NOT NULL there, because
+ * the account ledger reads by payer and those rows have to appear in it.
+ *
+ * `created_at` only. No `updated_at`, because nothing here is ever edited,
+ * and no `deleted_at`, which is the repository's soft-delete mandate being
+ * waived with its reason stated: a row says something already happened, and
+ * removing it would make that thing repeatable — which is the single reason
+ * this table exists.
+ *
+ * `balance_after` from the old table is deliberately not carried over: the
+ * balance is derived now, and freezing an account-wide total into a row would
+ * be storing the scalar this model just removed.
+ */
+export const creditLedger = pgTable(
+  "credit_ledger",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    payerUserId: uuid("payer_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    lotId: uuid("lot_id").references(() => creditLots.id, {
+      onDelete: "restrict",
+    }),
+    studioId: uuid("studio_id").references(() => studios.id, {
+      onDelete: "restrict",
+    }),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "restrict",
+    }),
+    // One of `topup` / `spend` / `refund` / `refund_rejected`. CHECK in 0061.
+    entryType: varchar("entry_type", { length: 24 }).notNull(),
+    // Positive in, negative out.
+    amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
+    model: varchar("model", { length: 100 }),
+    provider: varchar("provider", { length: 50 }),
+    tokensUsed: integer("tokens_used"),
+    description: text("description"),
+    referenceId: varchar("reference_id", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("credit_ledger_payer_created_idx").on(
+      table.payerUserId,
+      table.createdAt,
+    ),
+    index("credit_ledger_studio_created_idx").on(
+      table.studioId,
+      table.createdAt,
+    ),
+    index("credit_ledger_lot_idx").on(table.lotId),
+    index("credit_ledger_payer_studio_created_idx").on(
+      table.payerUserId,
+      table.studioId,
+      table.createdAt,
+    ),
+  ],
+);
 
 // ── 9. Conversation Memories ─────────────────────────────────────────
 
