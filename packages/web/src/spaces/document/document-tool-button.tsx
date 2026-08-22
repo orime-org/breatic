@@ -11,8 +11,10 @@
  * command must NOT do is appear in a carrier whose object differs from its
  * own).
  *
- * The test id keeps the `doc-bubble-` prefix so that a query by command names
- * one button even once a second carrier renders the same definitions.
+ * The test id names the carrier as well as the command, because the same
+ * definitions are meant to be reachable from more than one place — a query for
+ * a command has to say which carrier it means, and a second carrier rendering
+ * this component would have to bring its own prefix.
  *
  * These buttons come and go with the selection. `SelectionBubbleBar` renders
  * them only while one exists, because each of them dry-runs its command on
@@ -65,17 +67,14 @@ export interface ToolDef {
  * @param root0 - Button props.
  * @param root0.tool - The command definition.
  * @param root0.editor - The editor the command acts on.
- * @param root0.readOnly - True disables it, whatever the command says.
  * @returns The button element.
  */
 export const ToolButton = React.memo(function ToolButton({
   tool,
   editor,
-  readOnly = false,
 }: {
   tool: ToolDef;
   editor: Editor;
-  readOnly?: boolean;
 }): React.JSX.Element {
   const t = useTranslation();
   const state = useEditorState({
@@ -97,7 +96,7 @@ export const ToolButton = React.memo(function ToolButton({
       size='icon'
       aria-label={t(tool.labelKey)}
       aria-pressed={state.active}
-      disabled={readOnly || !state.available}
+      disabled={!state.available}
       onClick={() => tool.run(editor)}
       data-testid={`doc-bubble-tool-${tool.id}`}
       // The bar stays out of the tab order entirely (ruling §5.2): it floats

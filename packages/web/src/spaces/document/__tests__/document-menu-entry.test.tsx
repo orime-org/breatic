@@ -121,6 +121,18 @@ describe('整篇文档命令的入口', () => {
     expect(editor.getHTML()).toBe(before);
   });
 
+  it('菜单开着时不给 body 挂 pointer-events: none', async () => {
+    // Radix 的 modal 菜单会把 body 的指针事件关掉，于是点正文那一下只用来关
+    // 菜单、传不下去，用户得点两次才写得了字。`modal={false}` 就是为这个，而
+    // 它留下的痕迹 jsdom 读得到：`body.style.pointerEvents`。
+    const user = userEvent.setup();
+    render(<DocumentEditor editor={editor} />);
+    await user.click(screen.getByTestId('doc-doc-menu-trigger'));
+    await screen.findByTestId('doc-doc-menu-save-snapshot');
+
+    expect(document.body.style.pointerEvents).not.toBe('none');
+  });
+
   it('入口按钮有能被读出来的名字', () => {
     // 它是纯图标按钮，没有可见文字；缺了 aria-label 就只是一个方块。
     render(<DocumentEditor editor={editor} />);

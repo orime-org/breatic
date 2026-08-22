@@ -5,9 +5,9 @@
  * 整篇文档命令那个入口的 E2E（任务 #129）。
  *
  * 这里只放 jsdom 量不了的那些：入口在屏幕上的实际位置、常驻面积、点开之后
- * 菜单画在哪儿、以及顶部横条真的从渲染树上消失了。展开后装哪两项、每项的
- * 尚未开放态由 `document-menu-entry.test.tsx` 逐条钉住（jsdom 答得了），
- * 这里不重复。
+ * 菜单画在哪儿、它跟正文列和浮出条的几何关系、滚轮落在它上面时正文照样滚。
+ * 展开后装哪两项、每项的尚未开放态由 `document-menu-entry.test.tsx` 逐条钉住
+ * （jsdom 答得了），这里不重复。
  *
  * 需要 dev 起着 + smoke 账号：
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
@@ -55,11 +55,23 @@ async function openFreshDocument(p: Page): Promise<void> {
   await expect(editor).toBeVisible({ timeout: 15_000 });
 }
 
-test('顶部横条真的不在渲染树上了', async () => {
+test('正文区上常驻的东西只有那一个入口', async () => {
+  // 顶部横条整条去掉之后，「那几个 testid 查不到」就恒真了，再也逮不到任何
+  // 东西回来。改成数正文区上真的画着几样常驻的东西 —— 新加一条 chrome 无论
+  // 叫什么都会红。浮出条不算：它只在有选区时出现，这里没有选区。
   await openFreshDocument(page);
-  // 前缀查而不是逐个点名：要断言的是「一个都没有」。
-  await expect(page.locator('[data-testid^="doc-toolbar-tool-"]')).toHaveCount(0);
-  await expect(page.getByTestId('document-toolbar')).toHaveCount(0);
+  const shell = await page.evaluate(() => {
+    const scroller = document.querySelector('.doc-body-scroller')!;
+    return [...scroller.parentElement!.children].map((el) => ({
+      testId: el.getAttribute('data-testid'),
+      hasTrigger: !!el.querySelector('[data-testid="doc-doc-menu-trigger"]'),
+      isScroller: el.classList.contains('doc-body-scroller'),
+    }));
+  });
+
+  expect(shell).toHaveLength(2);
+  expect(shell[0].hasTrigger).toBe(true);
+  expect(shell[1].isScroller).toBe(true);
 });
 
 test('常驻在正文区上的只有那一个入口，32×32，贴右上角', async () => {

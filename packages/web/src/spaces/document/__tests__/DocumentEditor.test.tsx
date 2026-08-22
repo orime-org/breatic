@@ -22,6 +22,7 @@ import * as Y from 'yjs';
 
 import { Awareness } from 'y-protocols/awareness';
 
+import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
@@ -48,13 +49,19 @@ describe('DocumentEditor', () => {
     doc.destroy();
   });
 
-  it('顶部横条不存在：一个 doc-toolbar-tool-* 都渲染不出来', () => {
-    // 横条整条去掉（user 2026-08-21 拍定，任务 #129）。用前缀查而不是逐个点名，
-    // 是因为要断言的是「一个都没有」，点名只能证明点到的那几个没有。
-    render(<DocumentEditor editor={editor} />);
-    expect(
-      document.querySelectorAll('[data-testid^="doc-toolbar-tool-"]'),
-    ).toHaveLength(0);
+  it('常驻的东西只有两样：右上角那个入口，和正文的滚动容器', () => {
+    // 顶部横条整条去掉（user 2026-08-21 拍定，任务 #129）。钉的是「现在有哪
+    // 几样」而不是「那几个 testid 没有」—— 后者在横条删掉之后恒真，再也逮不
+    // 到任何东西回来；这一条对新加的常驻 chrome 一律会红，不管它叫什么。
+    // 浮出条不在其中：它只在有选区时才渲染。
+    const { container } = render(<DocumentEditor editor={editor} />);
+    const children = [...container.firstElementChild!.children];
+
+    expect(children).toHaveLength(2);
+    expect(children[0]).toContainElement(
+      screen.getByTestId('doc-doc-menu-trigger'),
+    );
+    expect(children[1]).toHaveClass(BODY_SCROLLER_CLASS);
   });
 
   it('渲染正文和右上角那个整篇文档命令的入口', () => {

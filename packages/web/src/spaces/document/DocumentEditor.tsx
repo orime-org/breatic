@@ -18,19 +18,19 @@ interface DocumentEditorProps {
 }
 
 /**
- * The document editor's chrome: the scrolling body, and the command rail at
- * its right edge.
+ * The document editor's chrome: the scrolling body, the whole-document command
+ * entry at its top right, and the selection bubble bar.
  *
  * Takes the editor rather than creating it, so the container owns the
  * collaborative wiring and this stays a presentation component.
  *
- * The commands reach people through three carriers that follow what they act
- * on — the selection bubble bar, the block handle menu, the insert menu — plus
- * this rail for commands whose object is the whole document (design §3.0).
+ * Which carrier a command belongs to follows what it acts on (design §3.0).
+ * Two of them are here: the bubble bar for the selection, the entry for the
+ * whole document. The block handle menu and the insert menu are task #113.
  * @param root0 - Editor chrome props.
  * @param root0.editor - The editor to render.
  * @param root0.readOnly - True for a viewer.
- * @returns The editor body, the rail and the bubble bar.
+ * @returns The editor body, the entry and the bubble bar.
  */
 export const DocumentEditor = React.memo(function DocumentEditor({
   editor,
