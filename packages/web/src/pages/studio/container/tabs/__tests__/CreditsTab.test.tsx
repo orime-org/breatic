@@ -201,4 +201,44 @@ describe('CreditsTab', () => {
     // 两页合起来显示，不是后一页把前一页顶掉。
     expect(screen.getByTestId('studio-ledger-e1')).toBeInTheDocument();
   });
+  it('下一页没到时说出来，已经读到的照样在', async () => {
+    // 失败落在一次翻页上，第一页的可用额、充值记录和已读的流水都还在手里。
+    // 底部那块本来就是给这句话留的位置 —— 空着，读者只看到滚动停住了。
+    const first = credits({
+      ledger: { items: credits().ledger.items, nextCursor: 'cursor-1' },
+    });
+    fetchStudioCredits
+      .mockResolvedValueOnce(first)
+      .mockRejectedValueOnce(new Error('network'));
+
+    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    await screen.findByTestId('studio-ledger-e1');
+
+    expect(reachEnd).not.toBeNull();
+    reachEnd!();
+
+    expect(
+      await screen.findByTestId('studio-ledger-page-error'),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('studio-ledger-e1')).toBeInTheDocument();
+    expect(screen.getByTestId('studio-spendable')).toHaveTextContent('4,910');
+    expect(screen.queryByTestId('studio-ledger-end')).not.toBeInTheDocument();
+  });
+
+  it('下一页失败之后，滚动还能再要一次', async () => {
+    // 这一页没到不是终点。监听要留着，读者再滚一下就是再问一次。
+    const first = credits({
+      ledger: { items: credits().ledger.items, nextCursor: 'cursor-1' },
+    });
+    fetchStudioCredits
+      .mockResolvedValueOnce(first)
+      .mockRejectedValueOnce(new Error('network'));
+
+    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    await screen.findByTestId('studio-ledger-e1');
+    reachEnd!();
+    await screen.findByTestId('studio-ledger-page-error');
+
+    expect(reachEnd).not.toBeNull();
+  });
 });
