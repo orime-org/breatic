@@ -146,6 +146,22 @@ describe('ToolCallCard', () => {
     expect(screen.getByTestId('tool-call-card').getAttribute('data-status')).toBe('unfinished');
   });
 
+  it('calls it stopped when the line is the only thing that says so', () => {
+    // 这是用户按停止时最常走的那条路,而它只带得来两个字段里的一个。工具收到
+    // 中止信号后自己抛出「用户停止了」,SDK 因此把这一格推到 output-error,线上
+    // 只有一个 errorText 装那条行文案 —— 说明是哪一种结局的那个字段是回放时
+    // 才从库里读出来的。图标只看那个字段,于是画成红色的失败,配着一句「已停止」。
+    render(
+      <ToolCallCard
+        toolCall={call({ status: 'error', failureKey: FAILURE_LINES.stopped })}
+      />,
+    );
+
+    const card = screen.getByTestId('tool-call-card');
+    expect(card.getAttribute('data-status')).toBe('unfinished');
+    expect(screen.getByTestId('tool-call-unfinished')).toBeDefined();
+  });
+
   it('shows nothing extra for a tool that came back normally', () => {
     render(<ToolCallCard toolCall={call({ status: 'success', result: 'two links' })} />);
 

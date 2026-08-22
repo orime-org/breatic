@@ -36,11 +36,19 @@ export function ToolCallCard({
 }: ToolCallCardProps): React.JSX.Element {
   const t = useTranslation();
   // Storage has no third terminal state, so a call the user stopped mid-flight
-  // is kept as `error` and says so in its own field. Calling that a failure
-  // tells the user something broke when they are the one who stopped it.
+  // is kept as `error` and says so alongside. Calling that a failure tells the
+  // user something broke when they are the one who stopped it.
+  //
+  // Two fields can say it and a call arrives with either. A replayed message
+  // carries which ending it was; a live one carries only the line, because the
+  // wire has one field for a failure and that is what it holds. Reading one
+  // field is how the icon came to draw a failure under the word "stopped".
+  //
   // Narrowed to `error` on purpose: a call still running is also without an
   // outcome, and that one is the spinner's job, not this line's.
-  const unfinished = toolCall.status === 'error' && toolCall.failureKind === 'user_aborted';
+  const unfinished =
+    toolCall.status === 'error' &&
+    (toolCall.failureKind === 'user_aborted' || toolCall.failureKey === FAILURE_LINES.stopped);
   // One judgement drives everything the card says about how the call ended —
   // the icon, the marker, and the caption. Deciding it separately in each is
   // how the words came to say one thing while the icon said another.
