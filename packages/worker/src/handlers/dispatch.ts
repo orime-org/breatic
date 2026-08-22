@@ -507,8 +507,8 @@ async function runTaskBody(
         source,
         toolName,
         model,
-        // #1622 crash-redelivery: thread the same preview + ACTUAL billed
-        // credits so a recovered success row is not preview-less. Sources
+        // #1622 crash-redelivery: thread the same preview + what the run
+        // consumed, so a recovered success row is not preview-less. Sources
         // differ from Stage-4 (no markCompletedAndBill here): outputs from
         // the stored result, credits from the persisted billedCredits.
         outputCount: storedOutputs?.length,
@@ -882,9 +882,12 @@ async function runTaskBody(
       toolName,
       model: (unified.extras.model as string | undefined) ?? model,
       outputCount: persistedOutputs.length,
-      // #1622 preview + ACTUAL billed credits (not the metadata cost
-      // estimate). kind omitted for non-media (understand / 3d) so the
-      // payload stays valid; thumbnailUrl only present for video covers.
+      // #1622 preview + what the run consumed, taken from the usage the
+      // provider reported. A studio near the bottom of its balance finishes
+      // owing credits, so this parts company with what the pool covered;
+      // this feed answers what the run cost. kind omitted for non-media
+      // (understand / 3d) so the payload stays valid; thumbnailUrl only
+      // present for video covers.
       kind: mediaKindForActivity(taskType),
       fileUrl: persistedOutputs[0]?.url,
       thumbnailUrl: persistedOutputs[0]?.cover_url,

@@ -528,7 +528,13 @@ export const tasks = pgTable(
      * stalled-job redelivery, or duplicate Worker instances.
      */
     billedAt: timestamp("billed_at", { withTimezone: true }),
-    /** How many credits were charged (for audit / reconciliation). */
+    /**
+     * What the run consumed, for audit and reconciliation.
+     *
+     * The whole bill, whether or not the studio's lots covered it: the ledger
+     * rows sharing this task's reference id add up to exactly this, with the
+     * uncovered part written as debt.
+     */
     billedCredits: doublePrecision("billed_credits"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
