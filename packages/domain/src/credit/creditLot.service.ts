@@ -37,7 +37,6 @@ import {
   NotFoundError,
   ForbiddenError,
 } from "@breatic/core";
-import type { ActivityCursor } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { CreditLotEntity } from "@breatic/shared";
 
@@ -520,10 +519,30 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
  * @returns The total in credits, below zero when the studio owes.
  */
 export async function getSpendableCredits(studioId: string): Promise<number> {
-  const [lots, debt] = await Promise.all([
-    creditLotRepo.sumSpendableForStudio(studioId),
-    creditLotRepo.readDebt(studioId),
-  ]);
+  return db.transaction(
+    async (tx) => {
+      const [lots, debt] = await Promise.all([
+        creditLotRepo.sumSpendableForStudio(studioId, tx),
+        creditLotRepo.readDebt(studioId, tx),
+      ]);
+      return spendableFrom(lots, debt);
+    },
+    { isolationLevel: "repeatable read" },
+  );
+}
+
+/**
+ * Subtract a studio's debt from its pool.
+ *
+ * Both figures have to come from the same instant for the difference to be a
+ * number the studio was ever at: a charge that empties the pool and records
+ * what it could not cover commits both halves at once, and reading them
+ * separately can catch the pool before it and the debt after it.
+ * @param lots - The sum of what the studio's lots hold.
+ * @param debt - What the studio owes.
+ * @returns The difference, in credits.
+ */
+function spendableFrom(lots: string, debt: string): number {
   return (toMicroCredits(lots) - toMicroCredits(debt)) / 1_000_000;
 }
 
@@ -538,32 +557,33 @@ export interface StudioCreditsSnapshot {
 /**
  * Read a studio's credits page from a single snapshot.
  *
- * The page is an arithmetic claim — the purchases plus what is owed add up to
- * the figure at the top — and four statements outside a transaction each see
+ * The page is an arithmetic claim — the lots plus what is owed add up to the
+ * figure at the top — and four statements outside a transaction each see
  * their own instant. One generation committing between them leaves a screen
  * whose rows never summed to its total at any point in time.
+ *
+ * This is what the tab opens with. Scrolling asks for ledger lines on their
+ * own, which is one statement and needs no snapshot.
  * @param studioId - The studio being read.
  * @param limit - How many ledger lines to take.
- * @param cursor - The previous page's last line, or null for the first page.
  * @returns The four figures, all as of the same instant.
  */
 export async function readStudioCredits(
   studioId: string,
   limit: number,
-  cursor: ActivityCursor | null,
 ): Promise<StudioCreditsSnapshot> {
   return db.transaction(
     async (tx) => {
-      const [lots, debt, purchases, ledger] = await Promise.all([
+      const [lots, debt, designated, ledger] = await Promise.all([
         creditLotRepo.sumSpendableForStudio(studioId, tx),
         creditLotRepo.readDebt(studioId, tx),
         creditLotRepo.listPurchasesByStudio(studioId, tx),
-        creditLotRepo.listLedgerByStudio(studioId, limit, cursor, tx),
+        creditLotRepo.listLedgerByStudio(studioId, limit, null, tx),
       ]);
       return {
-        spendable: (toMicroCredits(lots) - toMicroCredits(debt)) / 1_000_000,
+        spendable: spendableFrom(lots, debt),
         debt: toMicroCredits(debt) / 1_000_000,
-        lots: purchases,
+        lots: designated,
         ledger,
       };
     },

@@ -63,25 +63,13 @@ export interface CreditPage<T> {
   nextCursor: string | null;
 }
 
-/** Matches a canonical UUID, which is what the id columns hold. */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
  * Decode a cursor, treating anything unusable as "start from the beginning".
- *
- * The shared decoder checks the timestamp's shape; the id is checked here
- * because these pages compare it against a uuid column, and anything else
- * reaches the driver as a failed request on a value that arrived over the
- * network.
  * @param raw - The client's `?cursor`, if any.
  * @returns The decoded cursor, or null to start from the beginning.
  */
 function readCursor(raw: string | undefined): ActivityCursor | null {
-  if (!raw) return null;
-  const cursor = decodeActivityCursor(raw);
-  if (!cursor) return null;
-  if (!UUID.test(cursor.id)) return null;
-  return cursor;
+  return raw ? decodeActivityCursor(raw) : null;
 }
 
 /**
@@ -319,6 +307,18 @@ function toStudioLedgerView(
 }
 
 /**
+ * Where a studio ledger row sits in the keyset.
+ * @param row - The row.
+ * @returns Its `created_at` text and id.
+ */
+function studioLedgerKey(row: creditLotRepo.StudioLedgerRow): {
+  cursorAt: string;
+  id: string;
+} {
+  return { cursorAt: row.cursorAt, id: row.id };
+}
+
+/**
  * One studio's credits, as its admin sees them.
  *
  * The pool is the studio's and so is the ledger: the admin manages this
@@ -326,8 +326,18 @@ function toStudioLedgerView(
  * else's top-ups paid for. The person on each line is whoever ran the
  * generation.
  *
- * All four figures come from one snapshot, because the page states that they
- * add up.
+ * The tab opens with four figures that state they add up, so the first page
+ * takes them from one snapshot. A continuation asks for ledger lines and
+ * nothing else, and reads only those: the other three are on the client's
+ * screen already, and one of them is the studio's whole list of lots, which
+ * has no limit and grows with every top-up the studio is given.
+ *
+ * Which page it is comes off the decoded cursor, the same value the ledger
+ * read below uses. Asking whether the client sent a string instead splits the
+ * request in half on the one input where the two disagree: a cursor that
+ * arrives but decodes to nothing would take the ledger to its first page
+ * while this half treated the request as a continuation and omitted the
+ * fields the tab opens with.
  * @param studioId - The studio being viewed.
  * @param rawLimit - The client's `?limit`, if any.
  * @param rawCursor - The client's `?cursor`, if any.
@@ -340,26 +350,23 @@ export async function getStudioCredits(
 ): Promise<StudioCreditsView> {
   const size = pageSize(rawLimit);
   const cursor = readCursor(rawCursor);
-  const snapshot = await creditLotService.readStudioCredits(
-    studioId,
-    size + 1,
-    cursor,
-  );
-  const ledger = toPage(snapshot.ledger, size, toStudioLedgerView, (row) => ({
-    cursorAt: row.cursorAt,
-    id: row.id,
-  }));
-  // Asked of the decoded cursor, which is what the ledger above reads too.
-  // Asking whether the client sent a string instead splits the page in half
-  // on the one input where the two disagree: a cursor that parses but decodes
-  // to nothing takes the ledger to its first page while this half treats the
-  // request as a continuation and omits the fields the tab opens with.
-  if (cursor) return { ledger };
 
+  if (cursor) {
+    const rows = await creditLotRepo.listLedgerByStudio(
+      studioId,
+      size + 1,
+      cursor,
+    );
+    return {
+      ledger: toPage(rows, size, toStudioLedgerView, studioLedgerKey),
+    };
+  }
+
+  const snapshot = await creditLotService.readStudioCredits(studioId, size + 1);
   return {
     spendable: snapshot.spendable,
     debt: snapshot.debt,
     lots: snapshot.lots.map(toPurchaseView),
-    ledger,
+    ledger: toPage(snapshot.ledger, size, toStudioLedgerView, studioLedgerKey),
   };
 }

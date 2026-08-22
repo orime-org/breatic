@@ -64,4 +64,61 @@ describe("activity keyset cursor", () => {
       ).toBeNull();
     }
   });
+
+  it("rejects a timestamp whose shape is right and whose value is not", () => {
+    // Postgres answers every one of these with `date/time field value out of
+    // range` and the request ends as a 500, so the shape alone cannot be the
+    // whole check. February 30th is the one to watch: `Date.parse` rolls it
+    // forward to March instead of refusing it.
+    for (const c of [
+      "2026-13-04 03:00:00+00",
+      "2026-07-45 03:00:00+00",
+      "2026-07-04 99:00:00+00",
+      "2026-07-04 03:70:00+00",
+      "2026-07-04 03:00:70+00",
+      "2026-02-30 00:00:00+00",
+      "2026-04-31 00:00:00+00",
+      "2025-02-29 00:00:00+00",
+      "2026-07-04 03:00:00+99",
+      "2026-07-04 03:00:00+05:70",
+      "0000-07-04 03:00:00+00",
+    ]) {
+      expect(
+        decodeActivityCursor(
+          Buffer.from(JSON.stringify({ c, i: ID })).toString("base64url"),
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it("accepts the edges Postgres does produce", () => {
+    for (const c of [
+      "2024-02-29 00:00:00+00",
+      "2026-12-31 23:59:59.999999+00",
+      "2026-07-04 03:00:00+14",
+      "2026-07-04 03:00:00-12",
+      "2026-07-04 03:00:00+05:45",
+    ]) {
+      expect(
+        decodeActivityCursor(
+          Buffer.from(JSON.stringify({ c, i: ID })).toString("base64url"),
+        ),
+      ).not.toBeNull();
+    }
+  });
+
+  it("rejects an id that is not a uuid", () => {
+    // It reaches a uuid column. Every page these cursors walk compares the id
+    // against one, so a value that is not a uuid fails the query wherever it
+    // is decoded.
+    for (const i of ["not-a-uuid", "0b8f8a52", `${ID} `, `${ID}x`]) {
+      expect(
+        decodeActivityCursor(
+          Buffer.from(JSON.stringify({ c: "2026-07-04 03:00:00+00", i })).toString(
+            "base64url",
+          ),
+        ),
+      ).toBeNull();
+    }
+  });
 });
