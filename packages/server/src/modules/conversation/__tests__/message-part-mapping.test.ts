@@ -20,6 +20,7 @@
  * to still see that a turn was cut off.
  */
 import { describe, it, expect } from "vitest";
+import type { UIMessage } from "ai";
 import type { MessagePart } from "@breatic/shared";
 import {
   toStoredParts,
@@ -85,6 +86,24 @@ describe("what a finished turn writes down", () => {
       toolName: "ask_user_question",
       output: { question: "哪个方向？", options: ["左", "右"] },
     });
+  });
+
+  it("keeps what the model sent when its arguments were not valid JSON", () => {
+    // The SDK puts what arrived on `rawInput`, and when the arguments would
+    // not parse that is the raw string rather than an object. Recording an
+    // empty object instead hands the model back a record of itself calling
+    // the tool with nothing, next to an error about arguments it cannot see.
+    const stored = toStoredParts([
+      {
+        type: "tool-web_fetch",
+        toolCallId: "call-9",
+        state: "output-error",
+        rawInput: '{"url": broken',
+        errorText: "An error occurred.",
+      } as unknown as UIMessage["parts"][number],
+    ]);
+
+    expect(stored[0]).toMatchObject({ input: '{"url": broken' });
   });
 
   it("records why a tool failed", () => {

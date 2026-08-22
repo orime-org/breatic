@@ -400,7 +400,12 @@ export class MainAgent {
           exit === "aborted" ? STOPPED_BY_USER : TURN_ENDED_AROUND_IT;
         for (const [i, part] of replyParts.entries()) {
           if (part.type === "tool" && part.status === "pending") {
-            replyParts[i] = { ...part, status: "error", failure: leftHanging };
+            // A call can be reported as failed and still be left pending here:
+            // the SDK reports a tool ending before the chunk carrying it is
+            // pulled from the stream, and a stream that ends in between
+            // discards that chunk. The account of it is already in hand.
+            const ending = howToolEnded.get(part.toolCallId) ?? leftHanging;
+            replyParts[i] = { ...part, status: "error", failure: ending };
           }
         }
 

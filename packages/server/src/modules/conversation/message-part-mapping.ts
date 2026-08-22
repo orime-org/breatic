@@ -52,9 +52,13 @@ function statusOf(state: string): "pending" | "success" | "error" {
  * @param part - The tool part, in whatever state it ended in.
  * @returns What the model sent, or undefined when the SDK recorded nothing.
  */
-function rawInputOf(part: object): unknown {
+function rawInputOf(part: object): Record<string, unknown> | string | undefined {
   const raw = (part as { rawInput?: unknown }).rawInput;
-  return typeof raw === "object" && raw !== null ? raw : undefined;
+  // A string when the arguments would not parse as JSON, an object when they
+  // parsed but failed the tool's schema. Both are what the model sent.
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "object" && raw !== null) return raw as Record<string, unknown>;
+  return undefined;
 }
 
 /**
@@ -74,7 +78,7 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
     // empty object there would hand the model back a record of itself
     // calling the tool with nothing, next to an error about arguments it
     // cannot see.
-    input: (part.input ?? rawInputOf(part) ?? {}) as Record<string, unknown>,
+    input: (part.input ?? rawInputOf(part) ?? {}) as Record<string, unknown> | string,
     status,
   };
   // Written only in the state that has one. A pending row carrying an empty

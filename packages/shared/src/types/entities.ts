@@ -101,7 +101,14 @@ export type MessagePart =
       type: "tool";
       toolCallId: string;
       toolName: string;
-      input: Record<string, unknown>;
+      /**
+       * What the model sent, as it sent it.
+       *
+       * A string when the arguments would not parse as JSON: the model's own
+       * text is then the only record of what it tried, and it is what the
+       * model needs to see to correct itself.
+       */
+      input: Record<string, unknown> | string;
       /** How far this use of the tool got. */
       status: "pending" | "success" | "error";
       /**

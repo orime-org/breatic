@@ -87,6 +87,18 @@ vi.mock("@breatic/domain", async (importOriginal) => {
                 readerKey: "chat.tool.failure.upstream",
               });
             }
+            if (thisCase.toolDoes === "fails, then the turn stops") {
+              // The stop lands after this failure has been reported and
+              // before the chunk carrying it reaches the stream. The abort is
+              // queued rather than raised outright because the SDK awaits its
+              // own notification between the two.
+              queueMicrotask(() => thisCase.stopper?.abort());
+              throw carrying(new Error("the site answered HTTP 503"), {
+                kind: "tool_failed",
+                forModel: "the site answered HTTP 503; do not fetch it again",
+                readerKey: "chat.tool.failure.upstream",
+              });
+            }
             if (thisCase.toolDoes === "stops the turn") {
               thisCase.stopper?.abort();
               // Left waiting on the stop rather than returning: a call the
@@ -159,7 +171,13 @@ const asksForTheTool: ModelStreamPart = {
  * @returns The parts of the stored assistant message, or an empty list.
  */
 async function storedPartsWhenTool(
-  toolDoes: "answers" | "throws" | "throws with detail" | "throws a stop" | "stops the turn",
+  toolDoes:
+    | "answers"
+    | "throws"
+    | "throws with detail"
+    | "throws a stop"
+    | "stops the turn"
+    | "fails, then the turn stops",
   input?: Record<string, unknown>,
 ): Promise<MessagePart[]> {
   thisCase.toolDoes = toolDoes;
@@ -289,6 +307,17 @@ describe("how a tool use is recorded when it does not come back", () => {
     const parts = await storedPartsWhenTool("throws a stop");
 
     expect(toolPart(parts)?.failure?.kind).toBe("user_aborted");
+  });
+
+  it("keeps the tool's own reason when the stop lands after it failed", async () => {
+    // The turn already knows why this call failed -- the tool reported it
+    // before the stop. Recording the stop instead tells the next turn the
+    // call never returned, and the model tries the same address again.
+    const parts = await storedPartsWhenTool("fails, then the turn stops");
+
+    const part = toolPart(parts);
+    expect(part?.failure?.kind).toBe("tool_failed");
+    expect(part?.failure?.forModel).toContain("503");
   });
 
   it("still records a normal tool use as successful", async () => {
