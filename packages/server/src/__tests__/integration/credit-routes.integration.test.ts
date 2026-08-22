@@ -541,6 +541,12 @@ describe("GET /projects/:id/credits", () => {
 
   it("欠着账时这个数是负的，跟积分页那个数一样", async () => {
     const fx = await seedFixture();
+    // 角色住在 `project_members` 上，studio 的 admin 身份不自动带进 project
+    // （todo #94 说的就是这条）。
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role)
+      VALUES (${fx.projectId}, ${fx.userId}, 'owner')
+    `;
     await seedLot(fx, 30, fx.studioId);
     await creditLotService.chargeForGeneration({
       projectId: fx.projectId,

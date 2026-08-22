@@ -12,7 +12,7 @@
  * the largest pack.
  */
 
-import { creditLotRepo, creditLotService } from "@breatic/domain";
+import { assetService, creditLotRepo, creditLotService } from "@breatic/domain";
 import { encodeActivityCursor, decodeActivityCursor } from "@breatic/core";
 import type { ActivityCursor } from "@breatic/core";
 import type { CreditLotEntity, CreditLedgerEntryEntity } from "@breatic/shared";
@@ -247,6 +247,20 @@ export async function listLedger(
     createdAt: row.createdAt,
     id: row.id,
   }));
+}
+
+/**
+ * What the studio owning a project can spend, for the project's top bar.
+ *
+ * The same figure the studio's credits page shows, below zero when the studio
+ * owes. Reached by project id because that is what the page holds.
+ * @param projectId - The project being viewed.
+ * @returns The studio's spendable credits.
+ * @throws {NotFoundError} When the project has no live studio.
+ */
+export async function getProjectCredits(projectId: string): Promise<number> {
+  const studioId = await assetService.resolveOwnerStudioId(projectId);
+  return creditLotService.getSpendableCredits(studioId);
 }
 
 /** One line of a studio's ledger: everything one event moved. */
