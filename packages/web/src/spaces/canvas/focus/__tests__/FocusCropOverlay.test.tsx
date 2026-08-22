@@ -1268,6 +1268,28 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     expect(row.firstElementChild).toBe(original);
   });
 
+  it('两句指引都不再叫用户去拖，且挑节点那一阶段也说得通（A8）', () => {
+    // 横幅从挑选一开始就在屏幕上，那时比例行还不存在，所以文案里不能提比例；
+    // 「拖」也不能提，因为点比例就能出框。两句一起查：focusSourceChanged 就
+    // 挨着被改的那条清框路径，它原来写的是「请重新框选」。
+    const DRAG_WORDS = /drag|marquee|拖|框选|框選|ドラッグ|드래그/i;
+    for (const [name, catalog] of Object.entries(CATALOGS)) {
+      const panel = catalog.canvas?.generatePanel as Record<string, string>;
+      expect(panel.selectFocusFromCanvas, `${name} 横幅`).not.toMatch(DRAG_WORDS);
+      expect(panel.focusSourceChanged, `${name} 源变更提示`).not.toMatch(DRAG_WORDS);
+      // 两句都得有内容，别被改空
+      expect(panel.selectFocusFromCanvas.length).toBeGreaterThan(0);
+      expect(panel.focusSourceChanged.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('控件条跟着内容走，不再定宽（A5）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    const bar = screen.getByTestId('focus-crop-controls');
+    expect(bar.className).not.toMatch(/\bw-\[\d+px\]/);
+    expect(bar.className).toContain('w-max');
+  });
+
   it('这一项不进 i18n：五个 catalog 都没有为它新增的 key（A6）', () => {
     // 防的是有人后来「顺手」把它 i18n 化 —— 那会让八个按钮回到两种写法
     for (const [name, catalog] of Object.entries(CATALOGS)) {

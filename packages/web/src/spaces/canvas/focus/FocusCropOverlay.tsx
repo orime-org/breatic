@@ -424,7 +424,10 @@ export function FocusCropOverlay({
       );
     }
     setBox(next);
-  }, [nodeId]);
+    // clearMarquee is a stable empty-dep callback, so measure's identity
+    // still changes only with nodeId — the layout effect below depends on
+    // that identity to keep one MutationObserver alive across renders.
+  }, [nodeId, clearMarquee]);
 
   // Switching the crop target discards the in-progress marquee. A LAYOUT
   // effect declared BEFORE the measure effect: layout effects run in
@@ -452,7 +455,7 @@ export function FocusCropOverlay({
     // measure() rebinds a fresh one for the new target's source.
     resizeObsRef.current?.disconnect();
     resizeObsRef.current = null;
-  }, [nodeId]);
+  }, [nodeId, clearMarquee]);
 
   // The timeline's own value: WHERE THE USER PUT THE HANDLE, seeded from the
   // element when the overlay attaches to it. The Slider needs a controlled
@@ -639,7 +642,7 @@ export function FocusCropOverlay({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [backToPick]);
+  }, [backToPick, clearMarquee]);
 
   // The root ALWAYS renders (measure needs its rect — a null-return here
   // would never mount the ref and the overlay could never appear); the
@@ -976,21 +979,25 @@ export function FocusCropOverlay({
             data-testid='focus-crop-controls'
             // rounded-overlay = the 6px chrome radius (user 2026-07-17 #3;
             // rounded-md is 12px in this theme).
-            // Fixed width (user 2026-08-20): the ratio row gains a "whole
-            // image" preset later (#1991), and a bar that sizes to its content
-            // would jump — and take the timeline's length with it — the day
-            // that lands. Content nodes are 288px wide regardless of the
-            // media's aspect, so one width serves every target.
+            // Width follows the content (user 2026-08-21). The bar was fixed
+            // at 432px — the widest locale's content plus padding — which left
+            // 32px and more of empty space inside the border in Chinese and
+            // Korean. Cancel and Confirm still differ across the five locales,
+            // so one number cannot serve them all without that gap.
             //
-            // 432px covers the widest locale's content (English, 413px
-            // measured in the browser at this font size) plus this bar's own
-            // 16px padding and 2px border, rounded up from 431. Japanese needs
-            // 410; Chinese and Korean fit under 382. Every item on the ratio
-            // row is nowrap + no-shrink, so a bar measured from Chinese alone
-            // pushes English and Japanese out past the border. The timeline row
-            // takes up the slack through the slider's `min-w-0 flex-1`.
-            // Re-measure when #1991 adds its preset.
-            className='pointer-events-auto absolute flex w-[432px] -translate-x-1/2 flex-col gap-1.5 rounded-overlay border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
+            // `w-max` (max-content) rather than `auto`: this bar is absolutely
+            // positioned with only `left`, and `auto` there is shrink-to-fit —
+            // a node parked at the canvas edge would squeeze the bar while
+            // every item is nowrap + no-shrink, pushing the row out past its
+            // own border and background. max-content is the intrinsic width
+            // and takes no notice of the room available, which matches this
+            // bar's standing licence to overflow the viewport (below).
+            //
+            // The timeline row cannot widen it back: two time readouts plus a
+            // `min-w-0 flex-1` slider come to far less than the preset row, and
+            // the readouts growing from `--:--` to `0:00.00` is absorbed by the
+            // slider's flex.
+            className='pointer-events-auto absolute flex w-max -translate-x-1/2 flex-col gap-1.5 rounded-overlay border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
             // Anchored under the picked node like the generate panel (user
             // 2026-07-17): always centered below the source box, allowed to
             // overflow the viewport — the earlier viewport clamp pulled the
