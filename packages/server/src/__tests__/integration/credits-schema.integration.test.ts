@@ -294,3 +294,101 @@ describe("credit_ledger", () => {
     expect(defs).toMatch(/\(payer_user_id, studio_id, created_at DESC\)/i);
   });
 });
+
+describe("studio_credit_debts（0063）", () => {
+  it("一个 studio 最多一行，欠多少是个不能为负的数", async () => {
+    const cols = await columnsOf("studio_credit_debts");
+    expect(cols.size, "studio_credit_debts does not exist").toBeGreaterThan(0);
+
+    expect(cols.get("studio_id")?.is_nullable).toBe("NO");
+    expect(cols.get("amount")?.is_nullable).toBe("NO");
+    expect(cols.get("amount")?.data_type).toBe("numeric");
+    expect(cols.get("amount")?.numeric_precision).toBe(20);
+    expect(cols.get("amount")?.numeric_scale).toBe(6);
+    expect(cols.get("amount")?.column_default).toBe("0");
+
+    const defs = (await indexesOf("studio_credit_debts")).join("\n");
+    expect(defs).toMatch(/CREATE UNIQUE INDEX.*\(studio_id\)/i);
+  });
+
+  it("没有 deleted_at —— 软删一行欠账就是让这笔债凭空消失", async () => {
+    // 这张表存在的唯一目的就是记住这笔债。给它一个能把行藏起来的开关，
+    // 跟它的目的正面冲突。studio 被删时债怎么处理是任务 #26 的业务决定。
+    const cols = await columnsOf("studio_credit_debts");
+    expect(cols.size, "studio_credit_debts does not exist").toBeGreaterThan(0);
+
+    expect(cols.has("created_at")).toBe(true);
+    expect(cols.has("updated_at")).toBe(true);
+    expect(cols.has("deleted_at")).toBe(false);
+  });
+
+  it("欠账不能是负数", async () => {
+    const { userId } = await seedUserWithPayment();
+    const studios = await sql<{ id: string }[]>`
+      INSERT INTO studios (created_by_user_id, slug, type, name)
+      VALUES (${userId}, ${`debt-neg-${seq++}-${Date.now()}`}, 'team', 'Debt')
+      RETURNING id
+    `;
+    await expect(
+      sql`
+        INSERT INTO studio_credit_debts (studio_id, amount)
+        VALUES (${studios[0]!.id}, -1)
+      `,
+    ).rejects.toThrow(/check constraint/i);
+  });
+});
+
+describe("欠账带进来的两个流水类型（0063）", () => {
+  it("收 debt_incurred 和 debt_repayment", async () => {
+    const { userId } = await seedUserWithPayment();
+    for (const type of ["debt_incurred", "debt_repayment"]) {
+      await expect(
+        sql`
+          INSERT INTO credit_ledger (payer_user_id, entry_type, amount)
+          VALUES (${userId}, ${type}, -1)
+        `,
+      ).resolves.toBeDefined();
+    }
+  });
+});
+
+describe("退款期间这笔积分不属于任何 studio（0063）", () => {
+  it("退款三态的笔不许带着 designation", async () => {
+    // user 2026-08-21 定的规则：申请退款那一刻这笔就跟这个 studio 没关系了，
+    // 而且在结果出来之前不能再指定给任何一个 studio。不变量 2（欠账时可花
+    // 的笔加起来为 0）整个压在这条规则上，所以它得由数据库看着。
+    const { userId, paymentId } = await seedUserWithPayment();
+    const studios = await sql<{ id: string }[]>`
+      INSERT INTO studios (created_by_user_id, slug, type, name)
+      VALUES (${userId}, ${`debt-refund-${seq++}-${Date.now()}`}, 'team', 'Refund')
+      RETURNING id
+    `;
+    const studioId = studios[0]!.id;
+    const lots = await sql<{ id: string }[]>`
+      INSERT INTO credit_lots
+        (payment_id, user_id, purchased_credits, remaining_credits,
+         designated_studio_id, lifecycle)
+      VALUES (${paymentId}, ${userId}, 880, 880, ${studioId}, 'active')
+      RETURNING id
+    `;
+
+    for (const lifecycle of ["refund_pending", "refunding", "refunded"]) {
+      await expect(
+        sql`UPDATE credit_lots SET lifecycle = ${lifecycle} WHERE id = ${lots[0]!.id}`,
+      ).rejects.toThrow(/check constraint/i);
+    }
+  });
+
+  it("解除指定之后才进得了退款态", async () => {
+    const { userId, paymentId } = await seedUserWithPayment();
+    const lots = await sql<{ id: string }[]>`
+      INSERT INTO credit_lots
+        (payment_id, user_id, purchased_credits, remaining_credits, lifecycle)
+      VALUES (${paymentId}, ${userId}, 880, 880, 'active')
+      RETURNING id
+    `;
+    await expect(
+      sql`UPDATE credit_lots SET lifecycle = 'refund_pending' WHERE id = ${lots[0]!.id}`,
+    ).resolves.toBeDefined();
+  });
+});
