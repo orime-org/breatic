@@ -46,8 +46,9 @@ function statusOf(state: string): "pending" | "success" | "error" {
 /**
  * The arguments a refused call arrived with, when there are any.
  *
- * `rawInput` is not on the part's declared type -- the SDK sets it only on
- * the error states -- so it is read off the object rather than the type.
+ * The SDK declares `rawInput` on one arm of the part union -- the one for a
+ * call that ended in an error -- and this is handed the whole union, on which
+ * a field belonging to a single arm cannot be read. Hence off the object.
  * @param part - The tool part, in whatever state it ended in.
  * @returns What the model sent, or undefined when the SDK recorded nothing.
  */

@@ -42,12 +42,15 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
     const apiKey = env.BRAVE_SEARCH_API_KEY;
     if (!apiKey) {
       // Defensive: `buildToolSet` leaves this tool out of the set entirely
-      // when the key is missing, so a turn should never reach here.
+      // when the key is missing, so a turn should never reach here. The
+      // reader's line is the one for a failure nothing described, because a
+      // line of its own would exist for this branch alone -- five translations
+      // of a sentence no reader is on a path to meet.
       throw toolFailed(
         "Web search is not available on this deployment: it has no search credentials. " +
           "Do not call this tool again on this turn. Answer from what you already know, " +
           "and tell the user you could not search.",
-        FAILURE_LINES.unavailable,
+        FAILURE_LINES.generic,
       );
     }
 

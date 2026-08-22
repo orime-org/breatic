@@ -159,7 +159,6 @@
     "tool": {
       "unfinished": "완료되기 전에 중지됨",
       "failure": {
-        "unavailable": "현재 사용할 수 없습니다",
         "upstream": "오류가 반환되었습니다",
         "unreachable": "주소에 연결할 수 없습니다",
         "blocked": "허용되지 않는 주소입니다",

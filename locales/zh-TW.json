@@ -159,7 +159,6 @@
     "tool": {
       "unfinished": "未跑完就停止了",
       "failure": {
-        "unavailable": "目前無法使用",
         "upstream": "對方回傳了錯誤",
         "unreachable": "位址無法連線",
         "blocked": "這個位址不允許存取",

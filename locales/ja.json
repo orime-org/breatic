@@ -159,7 +159,6 @@
     "tool": {
       "unfinished": "完了前に停止しました",
       "failure": {
-        "unavailable": "現在利用できません",
         "upstream": "エラーが返されました",
         "unreachable": "アドレスに接続できません",
         "blocked": "このアドレスは許可されていません",

@@ -300,6 +300,11 @@ export class MainAgent {
           // one masked line. Here it is still the error itself, saying which
           // field failed which rule, which is exactly what the model needs to
           // send the call again correctly.
+          //
+          // Both writers keep the first account of a call and neither
+          // overwrites, so which of them ran first stops mattering. For a call
+          // that did run, it is the one below: a tool ending is reported as it
+          // happens, and a step ends after everything in it has.
           for (const part of content) {
             if (part.type !== "tool-error") continue;
             if (howToolEnded.has(part.toolCallId)) continue;
@@ -308,6 +313,7 @@ export class MainAgent {
         },
         onToolExecutionEnd: ({ toolCall, toolOutput }) => {
           if (toolOutput.type !== "tool-error") return;
+          if (howToolEnded.has(toolCall.toolCallId)) return;
           howToolEnded.set(toolCall.toolCallId, endingOf(toolOutput.error));
         },
         // Deliberately does nothing. The same failure reaches the end of the

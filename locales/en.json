@@ -159,7 +159,6 @@
     "tool": {
       "unfinished": "Stopped before it finished",
       "failure": {
-        "unavailable": "Currently unavailable",
         "upstream": "Got an error back",
         "unreachable": "Address unreachable",
         "blocked": "This address is not allowed",

@@ -24,8 +24,6 @@
  * that would tell them more is the detail that names hosts and addresses.
  */
 export const FAILURE_LINES = {
-  /** The tool cannot run at all on this deployment. */
-  unavailable: "chat.tool.failure.unavailable",
   /** The far side answered, and what it answered was an error. */
   upstream: "chat.tool.failure.upstream",
   /** Nothing answered. */
@@ -52,11 +50,17 @@ export const FAILURE_LINES = {
   stopped: "chat.tool.unfinished",
 } as const;
 
-/** Which line a reader is shown. */
-export type FailureLine = (typeof FAILURE_LINES)[keyof typeof FAILURE_LINES];
+/** The line for the one ending that is not a failure. */
+export type StoppedLine = typeof FAILURE_LINES.stopped;
+
+/** Which line a reader is shown when a tool failed. */
+export type FailureLine = Exclude<
+  (typeof FAILURE_LINES)[keyof typeof FAILURE_LINES],
+  StoppedLine
+>;
 
 /** The same table, for asking whether a key read off an error is one of ours. */
-const KNOWN_LINES = new Set<FailureLine>(Object.values(FAILURE_LINES));
+const KNOWN_LINES = new Set<string>(Object.values(FAILURE_LINES));
 
 /** What ended a use of a tool without a result. */
 export type ToolFailureKind =
@@ -65,10 +69,13 @@ export type ToolFailureKind =
   /** The user stopped the turn while the tool was still running. */
   | "user_aborted";
 
-/** Why a use of a tool ended without a result. */
-export interface ToolFailure {
-  /** What ended it. */
-  kind: ToolFailureKind;
+/**
+ * What both endings say, apart from which line the reader is shown.
+ *
+ * Split out so the two fields that vary together are the only ones written
+ * twice below.
+ */
+interface FailureDetail {
   /**
    * The reason, in enough detail for the model to do something about it.
    *
@@ -76,16 +83,25 @@ export interface ToolFailure {
    * the model may do instead. Never reaches the browser.
    */
   forModel: string;
-  /**
-   * Which line the panel shows, as a translation key.
-   *
-   * A key rather than a sentence because the row outlives the language it was
-   * written in: a message stored in one reader's language would still be in
-   * that language when a different reader opens the conversation. Narrowed to
-   * the table below so a key nothing translates cannot be written.
-   */
-  readerKey: FailureLine;
 }
+
+/**
+ * Why a use of a tool ended without a result.
+ *
+ * The two fields go together: the line about being stopped belongs to the
+ * ending that was a stop, and the lines about a failure belong to the ending
+ * that was one. Written as one type with a `readerKey` of its own, the pair
+ * "stopped by the user" and "could not run" type-checks, and the panel then
+ * tells a reader their own button press was something going wrong.
+ *
+ * `readerKey` is a translation key rather than a sentence because the row
+ * outlives the language it was written in: a message stored in one reader's
+ * language would still be in that language when a different reader opens the
+ * conversation.
+ */
+export type ToolFailure =
+  | (FailureDetail & { kind: "tool_failed"; readerKey: FailureLine })
+  | (FailureDetail & { kind: "user_aborted"; readerKey: StoppedLine });
 
 /**
  * The property an error carries its failure detail on.
@@ -108,12 +124,20 @@ export function toolFailureOf(err: unknown): ToolFailure | undefined {
   const carried = (err as Record<string, unknown>)[CARRIED_ON];
   if (typeof carried !== "object" || carried === null) return undefined;
   const { kind, forModel, readerKey } = carried as Record<string, unknown>;
-  if (kind !== "tool_failed" && kind !== "user_aborted") return undefined;
   if (typeof forModel !== "string") return undefined;
-  // Checked against the table rather than merely for being a string: a key
-  // nothing translates renders as the key itself, and the panel would show
-  // `chat.tool.failure.whatever` to whoever met it.
-  if (!KNOWN_LINES.has(readerKey as FailureLine)) return undefined;
+  // Checked against the table rather than merely for being a string. What the
+  // table settles is that this key is one of the ones written above, which is
+  // the set the locale files are kept in step with; a key from anywhere else
+  // renders as itself, and the panel would show `chat.tool.failure.whatever`
+  // to whoever met it.
+  if (typeof readerKey !== "string" || !KNOWN_LINES.has(readerKey)) return undefined;
+  // And checked as a pair, which the table alone does not settle: both fields
+  // being known says nothing about them belonging together.
+  if (kind === "user_aborted") {
+    if (readerKey !== FAILURE_LINES.stopped) return undefined;
+    return { kind, forModel, readerKey };
+  }
+  if (kind !== "tool_failed" || readerKey === FAILURE_LINES.stopped) return undefined;
   return { kind, forModel, readerKey: readerKey as FailureLine };
 }
 
