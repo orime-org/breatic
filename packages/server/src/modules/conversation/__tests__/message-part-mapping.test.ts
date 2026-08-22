@@ -21,6 +21,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
+import { NOTHING_SAID_WHY } from "@breatic/shared";
 import type { MessagePart } from "@breatic/shared";
 import {
   toStoredParts,
@@ -106,35 +107,33 @@ describe("what a finished turn writes down", () => {
     expect(stored[0]).toMatchObject({ input: '{"url": broken' });
   });
 
-  it("records why a tool failed", () => {
+  it("records a failed call as failed, without inventing why", () => {
     const stored = toStoredParts([
       {
         type: "tool-web_fetch",
         toolCallId: "call-3",
         state: "output-error",
         input: { url: "https://example.com" },
-        errorText: "读不到",
+        errorText: "chat.tool.failure.upstream",
       },
     ]);
 
-    // What the wire carries at this point is usually the SDK's one generic
-    // line for every error it streams, and the turn replaces it afterwards
-    // from the callback handed the error itself. It is kept rather than
-    // dropped because for one kind of failure it is the only account there
-    // is: a call whose arguments the model shaped wrongly is refused before
-    // any tool runs, so no callback ever fires.
+    // What the wire carries on that field is the line a reader is shown, not
+    // the reason the model needs -- two different things, and this side of
+    // the boundary only ever has the first. The turn fills in the reason
+    // afterwards from the callback handed the error itself; what is written
+    // here stands for the case where no callback saw it, and says so.
     expect(stored[0]).toEqual({
       type: "tool",
       toolCallId: "call-3",
       toolName: "web_fetch",
       input: { url: "https://example.com" },
       status: "error",
-      failure: {
-        kind: "tool_failed",
-        forModel: "读不到",
-        readerKey: "chat.tool.failure.generic",
-      },
+      failure: NOTHING_SAID_WHY,
     });
+    expect((stored[0] as { failure: { forModel: string } }).failure.forModel).not.toBe(
+      "chat.tool.failure.upstream",
+    );
   });
 
   it("marks a call whose arguments never finished arriving", () => {
@@ -299,8 +298,11 @@ describe("a message that goes out and comes back", () => {
       },
     ]);
 
+    // The status and the sentence around it. The host is not checked here:
+    // `input` carries it out on purpose, because the card shows the address
+    // it was asked to fetch.
     expect(JSON.stringify(part)).not.toContain("404");
-    expect(JSON.stringify(part)).not.toContain("example.com/");
+    expect(JSON.stringify(part)).not.toContain("answered HTTP");
     expect(part).toMatchObject({
       state: "output-error",
       errorText: "chat.tool.failure.upstream",

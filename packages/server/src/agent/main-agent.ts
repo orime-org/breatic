@@ -296,10 +296,11 @@ export class MainAgent {
           // The other way a call can fail, and the only place its reason is
           // readable. A call whose arguments the model shaped wrongly is
           // refused at the door -- the SDK never runs it, so the callback
-          // below never fires -- and on the wire its reason is replaced with
-          // one masked line. Here it is still the error itself, saying which
-          // field failed which rule, which is exactly what the model needs to
-          // send the call again correctly.
+          // below never fires. What arrives here for that one is a string:
+          // the SDK renders the error with `toString()` before putting it on
+          // the part, so it reads as `AI_InvalidToolInputError: ...` with the
+          // schema complaint after it. Which field failed which rule is in
+          // there, and that is what the model needs to send the call again.
           //
           // Both writers keep the first account of a call and neither
           // overwrites, so which of them ran first stops mattering. For a call

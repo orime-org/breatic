@@ -159,6 +159,15 @@ describe("web_search hands the request to the shared transport", () => {
 });
 
 describe("what a thrown tool failure carries", () => {
+  // Its own reset. Without one this ran on the key the case above cleared,
+  // and so on the missing-key branch rather than the 503 it sets up below --
+  // the one branch it was written to pin went unrun while it passed.
+  beforeEach(() => {
+    apiKey = "test-key";
+    httpRequestMock.mockReset();
+    httpRequestMock.mockImplementation(async () => braveOk());
+  });
+
   it("puts the model's reason on the Error itself, not only in the detail", async () => {
     // Within one turn the SDK builds the error-text it shows the model from
     // the thrown Error's `message`; the carried detail is only read later,

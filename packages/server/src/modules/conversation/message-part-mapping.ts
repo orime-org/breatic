@@ -17,7 +17,7 @@
  */
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
-import { FAILURE_LINES } from "@breatic/shared";
+import { NOTHING_SAID_WHY } from "@breatic/shared";
 import type { MessageData, MessagePart, StoredMessageMetadata } from "@breatic/shared";
 
 /** What one message's parts look like on the wire. */
@@ -88,22 +88,13 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
   // is in `input` came from a partial parse of them.
   if (part.state === "input-streaming") stored.argumentsIncomplete = true;
   if (status === "error") {
-    // A placeholder the turn is expected to replace. What the wire carries
-    // is the SDK's one masked line for every error it streams -- masked
-    // deliberately, because that channel also carries provider failures
-    // naming endpoints and keys -- so it says nothing a model could act on.
-    // The turn overwrites it from the callbacks that are handed the error
-    // itself, one for a tool that ran and failed, one for a call refused
-    // before it ran.
-    //
-    // It is written at all so that a part is never stored `error` with no
-    // account of itself, in case a path reaches storage that neither
-    // callback saw.
-    stored.failure = {
-      kind: "tool_failed",
-      forModel: "errorText" in part && part.errorText !== undefined ? part.errorText : "",
-      readerKey: FAILURE_LINES.generic,
-    };
+    // Written so that a part is never stored `error` with no account of
+    // itself, and written as not knowing: what this side of the boundary has
+    // is the wire, and the wire carries the line a reader is shown, not the
+    // reason. The turn replaces this from the callbacks handed the error
+    // itself -- one for a tool that ran and failed, one for a call refused
+    // before it ran -- and this stands for the case where neither saw it.
+    stored.failure = NOTHING_SAID_WHY;
   }
   return stored;
 }

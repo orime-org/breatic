@@ -117,6 +117,20 @@ export type ToolFailure =
   | (FailureDetail & { kind: "user_aborted"; readerKey: StoppedLine });
 
 /**
+ * A call that failed with nothing on record saying why.
+ *
+ * Written where a part is being stored `error` and the reason is not in hand:
+ * a record that says nothing at all is one the next turn cannot read, and the
+ * model then has only the fact that something went wrong. Says as much rather
+ * than inventing a cause.
+ */
+export const NOTHING_SAID_WHY: ToolFailure = {
+  kind: "tool_failed",
+  forModel: "This tool call failed, and nothing recorded why.",
+  readerKey: FAILURE_LINES.generic,
+};
+
+/**
  * The property an error carries its failure detail on.
  *
  * A plain property rather than a class checked with `instanceof`: the tools

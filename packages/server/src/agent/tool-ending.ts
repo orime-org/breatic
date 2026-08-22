@@ -8,7 +8,8 @@
  * the reason, one for the model and a key for the panel. Not every failed call
  * comes from one of them, though. Input the model shaped wrongly is rejected
  * before `execute` runs, and a tool name that no longer exists never reaches
- * one at all -- both arrive here as an error with nothing of ours on it.
+ * one at all. Both arrive here with nothing of ours on them, and the second
+ * of the two arrives as a rendered string rather than an error object.
  *
  * Those still have to be recorded as something, because a stored `error` part
  * with no detail is a record that cannot say what happened, and the model

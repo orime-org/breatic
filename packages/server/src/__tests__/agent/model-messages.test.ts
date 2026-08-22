@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { FAILURE_LINES } from "@breatic/shared";
 import type { MessageData } from "@breatic/shared";
 
 import { toModelMessages } from "@server/agent/model-messages.js";
@@ -222,7 +223,12 @@ describe("history on its way to the model", () => {
       ]),
     ]);
 
-    expect(JSON.stringify(messages)).not.toContain("chat.tool.failure");
+    // Every line in the table, not just the ones under the failure prefix:
+    // the one for a stopped call sits outside it, so a check written against
+    // the prefix reads as covering the table while missing a fifth of it.
+    for (const line of Object.values(FAILURE_LINES)) {
+      expect(JSON.stringify(messages)).not.toContain(line);
+    }
   });
 
   it("tells the model the last turn was stopped by the user", () => {
