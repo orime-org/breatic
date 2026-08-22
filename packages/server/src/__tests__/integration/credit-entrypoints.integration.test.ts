@@ -270,3 +270,65 @@ describe("会话载荷", () => {
     expect(Object.keys(body.data)).not.toContain("credits");
   });
 });
+
+describe("Idempotency-Key", () => {
+  it("形状不合法时当场答 422，不等到模型跑完才发现", async () => {
+    // 这个 header 一路走到 `chargeOnceForGeneration` 的 refKey，而那里有
+    // `REFKEY_PATTERN` 拦它。拦得太晚：到那一步模型已经调过了、token 已经
+    // 烧掉了，而扣费抛出来的异常被 `recordTokenUsage` 的 catch 吞掉，用户
+    // 拿到一个看着成功的响应。校验属于入口。
+    const fx = await seedFixture();
+    const token = crypto.randomBytes(24).toString("hex");
+    await setSession(getRedis(), token, fx.userId);
+
+    // 全都是真能发出去的：header 值限 latin-1，所以非 ASCII 的键在 HTTP
+    // 层就被拒了，编一个进来只会测到 fetch 自己。
+    for (const bad of ["a b", "a/b", "a,b", "x".repeat(256), ""]) {
+      const res = await app.request("/api/v1/mini-tools/text", {
+        method: "POST",
+        headers: {
+          Cookie: `${sessionCookieName()}=${token}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": bad,
+        },
+        body: JSON.stringify({ tool: "generate", instructions: "写点什么" }),
+      });
+      expect(res.status, `Idempotency-Key = ${JSON.stringify(bad)}`).toBe(422);
+    }
+  });
+
+  it("形状合法时照常放行", async () => {
+    const fx = await seedFixture();
+    const token = crypto.randomBytes(24).toString("hex");
+    await setSession(getRedis(), token, fx.userId);
+
+    const res = await app.request("/api/v1/mini-tools/text", {
+      method: "POST",
+      headers: {
+        Cookie: `${sessionCookieName()}=${token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": "texttool.retry-1:abc_DEF",
+      },
+      body: JSON.stringify({ tool: "generate", instructions: "写点什么" }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("不给这个 header 也照常放行", async () => {
+    // 缺省时服务端自己发一个 uuid，每次重试各算一次 —— 文本工具每次都重新
+    // 生成内容，这是它本来的语义。
+    const fx = await seedFixture();
+    const token = crypto.randomBytes(24).toString("hex");
+    await setSession(getRedis(), token, fx.userId);
+
+    const res = await app.request("/api/v1/mini-tools/text", {
+      method: "POST",
+      headers: {
+        Cookie: `${sessionCookieName()}=${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ tool: "generate", instructions: "写点什么" }),
+    });
+    expect(res.status).toBe(200);
+  });
+});
