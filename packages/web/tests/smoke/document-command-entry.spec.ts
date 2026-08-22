@@ -195,6 +195,152 @@ test('再点一次入口收起菜单', async () => {
   await expect(page.getByTestId('doc-doc-menu-save-snapshot')).toHaveCount(0);
 });
 
+test('正文列给入口让开，窄窗口下也点得到第一行的行尾', async () => {
+  // 入口占的是「距右 16px 起的 32px」，正文列居中在 viewport 的内边距里 ——
+  // 内边距不够宽时页面就会跑到入口底下，点行尾点开的是菜单（2026-08-22 实测：
+  // 1000 / 1060 / 1100 / 1140 四档全部如此）。这里逐档量两件事：矩形不相交，
+  // 而且行尾那一点真的落在正文上。
+  await openFreshDocument(page);
+  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  await editor.click();
+  await page.keyboard.type(
+    '这是一段刻意写得很长的正文它会在正文列里折成好几行每一行的行尾都会顶到列的右边界' +
+      '所以拿它来量入口有没有压住正文最合适不过了继续写下去让它至少折出三四行来',
+  );
+
+  for (const width of [1000, 1140, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.waitForTimeout(200);
+
+    const shot = await page.evaluate(() => {
+      const pm = document.querySelector(
+        '[data-testid="document-space"] .ProseMirror',
+      )!;
+      const trigger = document.querySelector(
+        '[data-testid="doc-doc-menu-trigger"]',
+      )!;
+      const page_ = pm.getBoundingClientRect();
+      const t = trigger.getBoundingClientRect();
+
+      // 第一条视觉行的最后一个字符
+      const text = pm.querySelector('p')!.firstChild as Text;
+      const topOf = (i: number): number => {
+        const r = document.createRange();
+        r.setStart(text, i);
+        r.setEnd(text, i + 1);
+        return Math.round(r.getBoundingClientRect().top);
+      };
+      const firstTop = topOf(0);
+      let last = 0;
+      for (let i = 0; i < text.length; i += 1) {
+        if (topOf(i) !== firstTop) break;
+        last = i;
+      }
+      const r = document.createRange();
+      r.setStart(text, last);
+      r.setEnd(text, last + 1);
+      const tail = r.getBoundingClientRect();
+
+      const hit = document.elementFromPoint(
+        (tail.left + tail.right) / 2,
+        (tail.top + tail.bottom) / 2,
+      );
+      return {
+        overlaps: page_.right > t.left && page_.top < t.bottom,
+        hitTestId: hit?.closest('[data-testid]')?.getAttribute('data-testid'),
+      };
+    });
+
+    expect(shot.overlaps, `窗口 ${width}：正文列压在入口下面`).toBe(false);
+    expect(shot.hitTestId, `窗口 ${width}：点第一行行尾没落进正文`).toBe(
+      'document-editor-content',
+    );
+  }
+
+  await page.setViewportSize({ width: 1680, height: 950 });
+});
+
+test('浮出条压过入口：重叠的那一块归浮出条', async () => {
+  // 两者是同一个隔离容器里的定位兄弟，条的横向位置跟着选区走、能一直伸到
+  // 入口那个角（2026-08-22 实测 1440 档两者只差 1px）。真实重叠只在很窄的
+  // 一条边界上出现，所以这里把条挪过去造出重叠 —— 钉的是「重叠时谁在上」，
+  // 跟重叠是怎么来的无关。
+  await openFreshDocument(page);
+  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  await editor.click();
+  await page.keyboard.type('拿来选中的一段文字');
+
+  await page.evaluate(() => {
+    const pm = document.querySelector(
+      '[data-testid="document-space"] .ProseMirror',
+    )!;
+    const text = pm.querySelector('p')!.firstChild as Text;
+    const sel = window.getSelection()!;
+    const r = document.createRange();
+    r.setStart(text, 1);
+    r.setEnd(text, 5);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    pm.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({
+    timeout: 5_000,
+  });
+
+  const hit = await page.evaluate(() => {
+    const trigger = document.querySelector(
+      '[data-testid="doc-doc-menu-trigger"]',
+    )!;
+    const bar = document.querySelector(
+      '[data-testid="doc-selection-bubble-bar"]',
+    ) as HTMLElement;
+    const t = trigger.getBoundingClientRect();
+    const origin = bar.parentElement!.getBoundingClientRect();
+    bar.style.left = `${t.left - origin.left}px`;
+    bar.style.top = `${t.top - origin.top}px`;
+    const el = document.elementFromPoint(t.left + 16, t.top + 16);
+    return el?.closest('[data-testid]')?.getAttribute('data-testid');
+  });
+
+  expect(hit).toMatch(/^doc-bubble-tool-/);
+});
+
+test('滚轮落在入口上时，正文照样滚', async () => {
+  // 入口画在滚动容器外面，所以浏览器沿祖先链找不到可滚的东西 —— 指针停在
+  // 刚点完的按钮上滚，正文纹丝不动。
+  await openFreshDocument(page);
+  const scrolled = await page.evaluate(async () => {
+    const viewport = document.querySelector(
+      '.doc-body-scroller [data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    const trigger = document.querySelector(
+      '[data-testid="doc-doc-menu-trigger"]',
+    )!;
+    const pm = document.querySelector(
+      '[data-testid="document-space"] .ProseMirror',
+    ) as HTMLElement;
+    pm.style.minHeight = '3000px';
+    await new Promise((r) => requestAnimationFrame(r));
+
+    const before = viewport.scrollTop;
+    const t = trigger.getBoundingClientRect();
+    trigger.parentElement!.dispatchEvent(
+      new WheelEvent('wheel', {
+        deltaY: 200,
+        bubbles: true,
+        clientX: t.left + 16,
+        clientY: t.top + 16,
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 150));
+    const after = viewport.scrollTop;
+    pm.style.minHeight = '';
+    return after > before;
+  });
+
+  expect(scrolled).toBe(true);
+});
+
 test('按 Escape 收起菜单', async () => {
   await openFreshDocument(page);
   await page.getByTestId('doc-doc-menu-trigger').click();

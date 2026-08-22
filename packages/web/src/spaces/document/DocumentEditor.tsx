@@ -37,7 +37,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   readOnly = false,
 }: DocumentEditorProps): React.JSX.Element {
   return (
-    <div className='relative flex min-h-0 flex-1 flex-col'>
+    // `isolate` keeps the z-values below local: the entry has to paint over
+    // the body and the bubble bar over the entry, and neither of those two
+    // relationships is anyone else's business. Without it both numbers would
+    // be compared against every other layer on the page.
+    <div className='relative isolate flex min-h-0 flex-1 flex-col'>
       <DocumentMenuEntry />
       {/* Overlay scrollbar (#1773): appears only while scrolling, takes no
           layout space. The side gutters live on the viewport — they are the
@@ -45,9 +49,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           The top and bottom breathing room does not: it belongs to the
           editable surface itself, or the strip of it below the last block
           answers no clicks (see `index.css`, `.doc-body-editor .ProseMirror`). */}
+      {/* The gutters are wide enough for the entry to stand clear of the page:
+          it occupies the 32px ending 16px from the right edge, so anything
+          narrower and the page runs under it. At 768px and up the page is
+          already centred well inside them. */}
       <ScrollArea
         className={`${BODY_SCROLLER_CLASS} flex-1`}
-        viewportClassName='px-6'
+        viewportClassName='px-12'
       >
         <EditorContent
           editor={editor}

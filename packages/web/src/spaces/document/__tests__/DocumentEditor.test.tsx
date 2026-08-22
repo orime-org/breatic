@@ -15,8 +15,8 @@
  * 没有任何控件可点。删掉的是测试，不是那条不变量。
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, renderHook, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 
@@ -61,5 +61,22 @@ describe('DocumentEditor', () => {
     render(<DocumentEditor editor={editor} />);
     expect(screen.getByTestId('document-editor-content')).toBeInTheDocument();
     expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
+  });
+
+  it('滚轮落在入口上时，正文照样滚', () => {
+    // 入口画在滚动容器外面（它得逃出那个裁切上下文），所以浏览器沿祖先链
+    // 找不到可滚的东西 —— 指针停在刚点完的按钮上滚，正文纹丝不动。把滚动
+    // 量转交给正文那个 viewport，这块 32×32 就不再是死区。
+    render(<DocumentEditor editor={editor} />);
+    const viewport = document.querySelector(
+      '.doc-body-scroller [data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    const scrollBy = vi.fn();
+    viewport.scrollBy = scrollBy;
+
+    const layer = screen.getByTestId('doc-doc-menu-trigger').parentElement!;
+    fireEvent.wheel(layer, { deltaY: 120, deltaX: 8 });
+
+    expect(scrollBy).toHaveBeenCalledWith({ top: 120, left: 8 });
   });
 });

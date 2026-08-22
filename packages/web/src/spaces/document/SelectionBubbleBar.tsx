@@ -804,7 +804,11 @@ function BubbleBar({
       resizeDelay={0}
       options={options}
       data-testid='doc-selection-bubble-bar'
-      className='flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
+      // Above the whole-document entry: both are absolutely positioned in the
+      // same isolated container, and the bar is the transient one, summoned by
+      // a selection the reader just made. Its horizontal position follows that
+      // selection and can reach the entry's corner.
+      className='z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
     >
       {hasSelection
         ? BUBBLE_TOOLS.map((tool) => (

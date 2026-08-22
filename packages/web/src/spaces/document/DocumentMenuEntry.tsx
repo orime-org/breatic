@@ -25,6 +25,7 @@ import { Camera, History, MoreHorizontal } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
+import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -102,8 +103,22 @@ export const DocumentMenuEntry = React.memo(
   function DocumentMenuEntry(): React.JSX.Element {
     const t = useTranslation();
     const note = t('spaces.document.docMenu.notOpenYet');
+    const forwardWheel = React.useCallback(
+      (event: React.WheelEvent<HTMLDivElement>): void => {
+        const viewport = event.currentTarget.parentElement?.querySelector(
+          `.${BODY_SCROLLER_CLASS} [data-radix-scroll-area-viewport]`,
+        );
+        if (viewport instanceof HTMLElement) {
+          viewport.scrollBy({ top: event.deltaY, left: event.deltaX });
+        }
+      },
+      [],
+    );
     return (
-      <div className='absolute top-5 right-4 z-10'>
+      // This layer sits outside the scroller, so a wheel over it finds no
+      // scrollable ancestor and the body stays put — right where the pointer
+      // rests after using the menu. `onWheel` hands the delta back to the body.
+      <div className='absolute top-5 right-4 z-10' onWheel={forwardWheel}>
         {/* `modal={false}`, same reason as the canvas's left floating menu: a
             modal menu puts `pointer-events: none` on the body, so the click
             that dismisses it is swallowed instead of reaching what was
