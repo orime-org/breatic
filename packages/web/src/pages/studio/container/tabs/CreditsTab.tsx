@@ -12,6 +12,7 @@ import {
   type StudioLedgerView,
   type StudioPurchaseView,
 } from '@web/data/api/credits';
+import { getLocale } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
@@ -27,16 +28,21 @@ interface CreditsTabProps {
  * @returns The amount with thousands separators and at most two decimals.
  */
 function formatAmount(value: number): string {
-  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return value.toLocaleString(getLocale(), { maximumFractionDigits: 2 });
 }
 
 /**
- * Format a timestamp as a date.
+ * Format a timestamp as the reader's own date.
+ *
+ * The wire carries UTC. Slicing the string off at ten characters shows UTC's
+ * day to everyone, and for a reader eight hours ahead a third of every day
+ * lands on the one before — on a record of money, where this column is the
+ * only time it carries.
  * @param iso - An ISO-8601 timestamp.
- * @returns Its date part.
+ * @returns The date in the reader's timezone and language.
  */
 function formatDate(iso: string): string {
-  return iso.slice(0, 10);
+  return new Date(iso).toLocaleDateString(getLocale());
 }
 
 /**
@@ -108,7 +114,7 @@ const SummaryRow = React.memo(function SummaryRow({
       )}
     >
       <span className='text-sm'>{label}</span>
-      <span className='ml-auto text-right text-sm tabular-nums'>
+      <span className='ml-auto text-right text-sm font-semibold tabular-nums'>
         {formatAmount(amount)}
       </span>
     </li>
@@ -173,7 +179,7 @@ const LedgerRow = React.memo(function LedgerRow({
         {note === null ? null : (
           <span
             data-testid='studio-ledger-note'
-            className='ml-1.5 whitespace-nowrap rounded-content-sm bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground'
+            className='block text-2xs font-normal text-muted-foreground'
           >
             {note}
           </span>

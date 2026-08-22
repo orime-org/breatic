@@ -129,6 +129,45 @@ describe('CreditsTab', () => {
     expect(await screen.findByTestId('studio-credits-unassigned-notice')).toBeInTheDocument();
   });
 
+  it('names the four situations apart, since all three zeroes read alike', async () => {
+    // "Nothing was ever assigned here", "it was all spent" and "it owes" are
+    // three different answers, and only one of them is fixed by assigning more.
+    const cases = [
+      {
+        head: { spendable: 4910, debt: 0 },
+        hint: 'Generating in this Studio\'s Projects spends these credits.',
+        prompt: null,
+      },
+      {
+        head: { spendable: 0, debt: 0, lots: [] },
+        hint: 'No credits are assigned to this Studio yet.',
+        prompt: 'Credits have to be assigned to a Studio before they can be spent.',
+      },
+      {
+        head: { spendable: 0, debt: 0 },
+        hint: 'This Studio has spent all of its credits.',
+        prompt: 'Assign more credits from your account credits.',
+      },
+      {
+        head: { spendable: -320, debt: 320 },
+        hint: 'Credits assigned next will pay off what is owed first.',
+        prompt: 'they pay off what is owed first',
+      },
+    ];
+
+    for (const c of cases) {
+      fetchStudioCredits.mockReset();
+      fetchStudioCredits.mockResolvedValue(credits(c.head));
+      const view = renderTab(<CreditsTab slug='acme' />);
+      await screen.findByTestId('studio-spendable');
+      expect(document.body).toHaveTextContent(c.hint);
+      const notice = screen.queryByTestId('studio-credits-unassigned-notice');
+      if (c.prompt === null) expect(notice).toBeNull();
+      else expect(notice).toHaveTextContent(c.prompt);
+      view.unmount();
+    }
+  });
+
   it('有积分时不显示那条提示', async () => {
     fetchStudioCredits.mockResolvedValue(credits());
     renderTab(<CreditsTab slug='acme' />);

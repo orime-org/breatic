@@ -60,10 +60,11 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
  * Studio container page (`/studio/{slug}`, spec §6) — the per-studio
  * workspace. The rail + top bar live in the layout route; this page renders
  * the studio header + center area, forking on the viewer's role:
- * - **member** (`myStudioRole !== null`): six sections (projects / collections
- *   / works / members / credits / settings), the same six for personal studios
- *   — their Members section is read-only rather than absent (decision A,
- *   2026-06-08). Works sits at the 3rd position (spec §6.1).
+ * - **member** (`myStudioRole !== null`): projects / collections / works /
+ *   members / settings, the same for personal studios — their Members section
+ *   is read-only rather than absent (decision A, 2026-06-08). Works sits at the
+ *   3rd position (spec §6.1). The studio's admin also gets Credits, which sits
+ *   between members and settings.
  * - **non-member** (`myStudioRole === null`, decision A: 200 + null): the
  *   header + `NonMemberView` (a "Works" empty state), with NO sections — no
  *   studio data is rendered, so private content cannot leak (spec §6.3).

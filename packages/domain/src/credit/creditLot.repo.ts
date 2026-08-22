@@ -336,10 +336,14 @@ export async function appendLedgerEntry(
 /**
  * What a studio can spend right now.
  * @param studioId - The studio to total.
+ * @param tx - Optional transaction, so a page can share one snapshot.
  * @returns The sum as a decimal string; "0" when the studio has no live lots.
  */
-export async function sumSpendableForStudio(studioId: string): Promise<string> {
-  const rows = await db
+export async function sumSpendableForStudio(
+  studioId: string,
+  tx?: DbTx,
+): Promise<string> {
+  const rows = await (tx ?? db)
     .select({ total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text` })
     .from(creditLots)
     .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
@@ -353,10 +357,11 @@ export async function sumSpendableForStudio(studioId: string): Promise<string> {
  * For display and for the precheck, both of which want the number as it
  * stands. The two writers take {@link lockDebt} instead.
  * @param studioId - The studio to read.
+ * @param tx - Optional transaction, so a page can share one snapshot.
  * @returns The debt as a decimal string; "0" when the studio has never owed.
  */
-export async function readDebt(studioId: string): Promise<string> {
-  const rows = await db
+export async function readDebt(studioId: string, tx?: DbTx): Promise<string> {
+  const rows = await (tx ?? db)
     .select({ amount: studioCreditDebts.amount })
     .from(studioCreditDebts)
     .where(eq(studioCreditDebts.studioId, studioId));
@@ -522,13 +527,15 @@ export interface StudioPurchase extends CreditLotEntity {
  * the one on a ledger row: this is who put the money in, that is who spent
  * it.
  * @param studioId - The studio to read.
+ * @param tx - Optional transaction, so the page can share one snapshot.
  * @returns Its purchases, oldest first.
  */
 export async function listPurchasesByStudio(
   studioId: string,
+  tx?: DbTx,
 ): Promise<StudioPurchase[]> {
   const buyerStudio = alias(studios, "buyer_studio");
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({ lot: creditLots, buyerName: buyerStudio.name })
     .from(creditLots)
     .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
@@ -667,12 +674,14 @@ export interface StudioLedgerRow {
  * @param studioId - The studio whose ledger to read.
  * @param limit - How many lines to return.
  * @param cursor - The `(created_at, id)` of the previous page's last line.
+ * @param tx - Optional transaction, so a page can share one snapshot.
  * @returns The page, newest first.
  */
 export async function listLedgerByStudio(
   studioId: string,
   limit: number,
   cursor: ActivityCursor | null,
+  tx?: DbTx,
 ): Promise<StudioLedgerRow[]> {
   // `ARRAY_AGG(...)[1]` rather than `min()`: uuid has no min/max aggregate
   // before PostgreSQL 18 and this repository runs 16, where the query fails
@@ -681,7 +690,7 @@ export async function listLedgerByStudio(
   const groupId = sql<string>`(ARRAY_AGG(${creditLedger.id} ORDER BY ${creditLedger.id}))[1]`;
   const groupAt = sql<Date>`MAX(${creditLedger.createdAt})`;
   const groupCursorAt = sql<string>`MAX(${creditLedger.createdAt})::text`;
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({
       id: groupId,
       createdAt: groupAt,
@@ -758,9 +767,9 @@ export async function sumSpentByStudio(
         // The studio ledger totals the same two types for the same reason.
         inArray(creditLedger.entryType, ["spend", "debt_repayment"]),
         isNotNull(creditLedger.studioId),
-        // Only rows that actually drew down a purchase. The three paths that
-        // record usage without charging write `spend` with no lot, and counting
-        // those reports money that never left the account.
+        // Only rows that actually drew down a purchase. Usage recorded without
+        // a charge carries no lot, and counting it reports money that never
+        // left the account.
         isNotNull(creditLedger.lotId),
       ),
     )

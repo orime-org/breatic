@@ -621,8 +621,10 @@ describe("坏输入不该 500", () => {
     // 客户端只读第一页那份 lots，后面每页都重算重传是白跑。
     const fx = await seedFixture();
     await seedLot(fx, 100, fx.studioId);
+    // The timestamp is the text Postgres renders, which is what the cursor
+    // carries so the microseconds survive the round trip.
     const cursor = Buffer.from(
-      JSON.stringify({ c: Date.now(), i: crypto.randomUUID() }),
+      JSON.stringify({ c: "2026-08-22 10:00:00.123456+00", i: crypto.randomUUID() }),
     ).toString("base64url");
 
     const res = await app.request(

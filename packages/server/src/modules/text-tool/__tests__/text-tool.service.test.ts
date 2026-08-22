@@ -15,7 +15,10 @@ import type * as CoreModule from "@breatic/core";
 const logError = vi.fn();
 
 /** 这一轮模型吐什么、用了多少 token。 */
-const modelRun = vi.hoisted(() => ({ tokens: 0 }));
+const modelRun = vi.hoisted(() => ({
+  tokens: 0,
+  failsWith: null as Error | null,
+}));
 
 /** 这一轮扣费成不成功。 */
 const charge = vi.hoisted(() => ({
@@ -35,13 +38,18 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 vi.mock("@breatic/domain", () => ({
   getModel: () => ({}),
-  resolveProvider: (model: string) => model.split("/")[0],
-  streamTextRetry: () => ({
-    fullStream: (async function* () {
-      yield { type: "text-delta", text: "ok" };
-    })(),
-    usage: Promise.resolve({ totalTokens: modelRun.tokens }),
-  }),
+  streamTextRetry: () => {
+    if (modelRun.failsWith) throw modelRun.failsWith;
+    return {
+      fullStream: (async function* () {
+        yield { type: "text-delta", text: "ok" };
+      })(),
+      usage: Promise.resolve({ totalTokens: modelRun.tokens }),
+    };
+  },
+  // The real one routes on which API keys the deployment has, so a name
+  // derived from the model string would assert the double, not the wiring.
+  resolveProvider: (model: string) => `routed:${model}`,
   creditLotService: {
     chargeOnceForGeneration: async (...args: unknown[]) => {
       charge.calls.push(args);
@@ -85,6 +93,7 @@ beforeEach(() => {
   charge.fail = null;
   charge.calls = [];
   modelRun.tokens = 2000;
+  modelRun.failsWith = null;
 });
 
 describe("扣费失败", () => {
@@ -119,7 +128,7 @@ describe("扣费失败", () => {
 
     expect(charge.calls[0]?.[1]).toMatchObject({
       model: "openai/gpt-4o-mini",
-      provider: "openai",
+      provider: "routed:openai/gpt-4o-mini",
     });
   });
 
@@ -129,6 +138,20 @@ describe("扣费失败", () => {
 
     await run();
 
+    expect(charge.calls).toHaveLength(0);
+    expect(logError).not.toHaveBeenCalled();
+  });
+});
+
+describe("一次跑到一半就死掉的运行", () => {
+  it("走 error 事件出去，一分钱都不扣", async () => {
+    // The token count is only read once the stream has finished, so a run that
+    // died before that used nothing anybody can be charged for.
+    modelRun.failsWith = new Error("upstream gone");
+
+    const events = await run();
+
+    expect(events.at(-1)).toMatchObject({ type: "error" });
     expect(charge.calls).toHaveLength(0);
     expect(logError).not.toHaveBeenCalled();
   });

@@ -137,9 +137,10 @@ export async function* executeTextTool(
   }
 
   let totalTokens = 0;
-  // Declared out here so the catch branch can name the model too: a run that
-  // died partway still used tokens, and the ledger row it writes carries the
-  // same columns as the one the success path writes.
+  // Declared out here so both exits reach it. The token count is only read
+  // once the stream has finished, so a run that died before that charges
+  // nothing and the model goes unused; a run that died after it is charged
+  // and carries the same columns as the success path.
   let modelString: string | null = null;
 
   try {

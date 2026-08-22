@@ -14,6 +14,7 @@ import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
+import { getLocale } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { Skeleton } from '@web/components/ui/skeleton';
@@ -30,6 +31,25 @@ export type CreditsReadout =
   | { status: 'ready'; value: number }
   | { status: 'pending' }
   | { status: 'error' };
+
+/**
+ * Turn a credits query into what the pill reads out.
+ *
+ * Data first: react-query keeps the last answer while it refetches and while a
+ * refetch fails, and a balance that is one refetch old still beats replacing it
+ * with "unknown".
+ * @param query - The query's data and whether it has settled on an error.
+ * @param query.data - The balance, once an answer has arrived.
+ * @param query.isError - Whether the query gave up.
+ * @returns What to show.
+ */
+export function toCreditsReadout(query: {
+  data?: { spendable: number } | undefined;
+  isError: boolean;
+}): CreditsReadout {
+  if (query.data) return { status: 'ready', value: query.data.spendable };
+  return query.isError ? { status: 'error' } : { status: 'pending' };
+}
 
 interface TopBarProps {
   projectId: string;
@@ -185,7 +205,7 @@ function CreditsPill({
     >
       <Star className='h-3.5 w-3.5 text-muted-foreground' aria-hidden='true' />
       {credits.status === 'ready' ? (
-        <span>{credits.value.toLocaleString()}</span>
+        <span>{credits.value.toLocaleString(getLocale())}</span>
       ) : credits.status === 'pending' ? (
         <Skeleton
           data-testid='credits-chip-placeholder'

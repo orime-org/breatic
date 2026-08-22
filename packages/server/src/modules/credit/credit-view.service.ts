@@ -325,6 +325,9 @@ function toStudioLedgerView(
  * studio's money, and taking the ledger by payer would hide what everyone
  * else's top-ups paid for. The person on each line is whoever ran the
  * generation.
+ *
+ * All four figures come from one snapshot, because the page states that they
+ * add up.
  * @param studioId - The studio being viewed.
  * @param rawLimit - The client's `?limit`, if any.
  * @param rawCursor - The client's `?cursor`, if any.
@@ -337,26 +340,26 @@ export async function getStudioCredits(
 ): Promise<StudioCreditsView> {
   const size = pageSize(rawLimit);
   const cursor = readCursor(rawCursor);
-  const ledgerPage = creditLotRepo
-    .listLedgerByStudio(studioId, size + 1, cursor)
-    .then((rows) =>
-      toPage(rows, size, toStudioLedgerView, (row) => ({
-        cursorAt: row.cursorAt,
-        id: row.id,
-      })),
-    );
+  const snapshot = await creditLotService.readStudioCredits(
+    studioId,
+    size + 1,
+    cursor,
+  );
+  const ledger = toPage(snapshot.ledger, size, toStudioLedgerView, (row) => ({
+    cursorAt: row.cursorAt,
+    id: row.id,
+  }));
   // Asked of the decoded cursor, which is what the ledger above reads too.
   // Asking whether the client sent a string instead splits the page in half
   // on the one input where the two disagree: a cursor that parses but decodes
   // to nothing takes the ledger to its first page while this half treats the
   // request as a continuation and omits the fields the tab opens with.
-  if (cursor) return { ledger: await ledgerPage };
+  if (cursor) return { ledger };
 
-  const [spendable, debt, lots, ledger] = await Promise.all([
-    creditLotService.getSpendableCredits(studioId),
-    creditLotService.getStudioDebt(studioId),
-    creditLotRepo.listPurchasesByStudio(studioId),
-    ledgerPage,
-  ]);
-  return { spendable, debt, lots: lots.map(toPurchaseView), ledger };
+  return {
+    spendable: snapshot.spendable,
+    debt: snapshot.debt,
+    lots: snapshot.lots.map(toPurchaseView),
+    ledger,
+  };
 }

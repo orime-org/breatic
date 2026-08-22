@@ -13,7 +13,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
-import { TopBar } from '@web/pages/project/chrome/top-bar/TopBar';
+import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import type { Member } from '@web/data/api/members';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
@@ -224,6 +224,43 @@ describe('TopBar', () => {
       setup({ role: 'viewer' });
       await user.click(screen.getByTestId('members-trigger'));
       expect(screen.queryByTestId('members-manage-trigger')).toBeNull();
+    });
+  });
+});
+
+describe('toCreditsReadout', () => {
+  it('reads out the balance once an answer has arrived', () => {
+    expect(toCreditsReadout({ data: { spendable: -320 }, isError: false })).toEqual({
+      status: 'ready',
+      value: -320,
+    });
+  });
+
+  it('reads out zero as a balance, because that is what it is', () => {
+    expect(toCreditsReadout({ data: { spendable: 0 }, isError: false })).toEqual({
+      status: 'ready',
+      value: 0,
+    });
+  });
+
+  it('has no figure while the first answer is still on its way', () => {
+    expect(toCreditsReadout({ data: undefined, isError: false })).toEqual({
+      status: 'pending',
+    });
+  });
+
+  it('says it does not know once the query has given up', () => {
+    expect(toCreditsReadout({ data: undefined, isError: true })).toEqual({
+      status: 'error',
+    });
+  });
+
+  it('keeps the last balance when a refetch fails', () => {
+    // React Query holds the previous answer through a failed refetch, and one
+    // refetch old beats replacing a real figure with "unknown".
+    expect(toCreditsReadout({ data: { spendable: 4910 }, isError: true })).toEqual({
+      status: 'ready',
+      value: 4910,
     });
   });
 });

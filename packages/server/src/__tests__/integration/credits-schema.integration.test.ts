@@ -282,7 +282,7 @@ describe("credit_ledger", () => {
     ).rejects.toThrow(/check constraint/i);
   });
 
-  it("indexes the three views that read it", async () => {
+  it("indexes the four reads it serves", async () => {
     const defs = (await indexesOf("credit_ledger")).join("\n");
     // The account ledger, always taken by payer.
     expect(defs).toMatch(/\(payer_user_id, created_at DESC\)/i);

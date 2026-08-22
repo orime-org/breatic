@@ -47,8 +47,7 @@ import {
   LeftFloatingMenu,
 } from '@web/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
 import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
-import { TopBar } from '@web/pages/project/chrome/top-bar/TopBar';
-import type { CreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
+import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useRenameProject } from '@web/pages/project/use-rename-project';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
@@ -190,14 +189,7 @@ function ProjectWorkspace({
     queryFn: () => fetchProjectCredits(projectId),
     enabled: projectId !== 'demo',
   });
-  // Three answers, not one number: the pill has to be able to say it does not
-  // know yet. Zero is a real balance — it is what the pre-check turns a
-  // generation away on — so it cannot double as "no answer".
-  const credits: CreditsReadout = creditsQuery.data
-    ? { status: 'ready', value: creditsQuery.data.spendable }
-    : creditsQuery.isError
-      ? { status: 'error' }
-      : { status: 'pending' };
+  const credits = toCreditsReadout(creditsQuery);
 
   // Rename mutation (optimistic header update + studio-list refresh). Extracted
   // to `useRenameProject` so the cross-query invalidation (#1068) is unit-tested
