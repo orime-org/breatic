@@ -214,6 +214,32 @@ describe("预检", () => {
     expect(err?.message).toBe(t("server.credit.none"));
   });
 
+  it("欠着账时说清欠多少，即便账号里还有未指定的积分", async () => {
+    // 这一条必须排在「你有未指定的积分，去指定吧」之前。欠账时可用额是负的，
+    // 照旧的顺序会落到那句话上，而指定进来先抵债、抵完可能还是不能生成 ——
+    // 等于把人支使去做一件解决不了问题的事。
+    const fx = await seedFixture();
+    const { sessionId } = await seedPendingPayment(fx.userId, 30);
+    await paymentService.handleCheckoutCompleted(sessionId, `pi_${seq++}`);
+    await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `pre-owe-${seq++}`,
+    });
+    // 账号里另有一笔没指定给任何 studio 的，旧顺序会先撞上它。
+    const spare = await seedPendingPayment(fx.userId, 500);
+    await paymentService.handleCheckoutCompleted(spare.sessionId, `pi_${seq++}`);
+
+    const err = await precheckCredits(fx.projectId, fx.userId, 100).then(
+      () => null,
+      (e: unknown) => e as { statusCode: number; message: string },
+    );
+    expect(err?.statusCode).toBe(402);
+    expect(err?.message).toBe(t("server.credit.in_debt", { owed: 320 }));
+  });
+
   it("够花就放行", async () => {
     const fx = await seedFixture();
     const { sessionId } = await seedPendingPayment(fx.userId, 880);

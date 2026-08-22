@@ -13,6 +13,7 @@
     "credit": {
       "not_studio_admin": "You can only assign credits to a studio you administer.",
       "designation_locked": "This purchase is being refunded and cannot be reassigned.",
+      "in_debt": "This Studio owes {owed} credits. Credits assigned next pay that off first.",
       "unassigned": "You have {available} credits that are not assigned to a studio yet. Assign them to use them.",
       "none": "Not enough credits. Add credits to continue."
     },

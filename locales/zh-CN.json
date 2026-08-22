@@ -13,6 +13,7 @@
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
       "designation_locked": "这笔积分在退款流程中，不能改指定。",
+      "in_debt": "这个 Studio 欠着 {owed} 积分，指定新的积分会先抵掉它。",
       "unassigned": "你有 {available} 积分未指定，指定给 Studio 后才能使用。",
       "none": "积分不足，请先充值。"
     },

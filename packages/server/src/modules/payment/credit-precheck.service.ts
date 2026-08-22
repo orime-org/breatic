@@ -25,12 +25,18 @@ import { t } from "@breatic/shared";
  * Reject a task-enqueue request whose studio cannot cover `required` credits.
  * Skipped entirely when payments are disabled (dev / self-host).
  *
- * The pool belongs to the studio owning the project, so the refusal has three
- * distinct causes and they read as three different sentences. The one that
- * matters most is the middle one: a lot is unassigned the moment it is bought,
- * so "bought credits, went straight back to generating" is the most frequent
- * path there is, and answering it with "available 0" tells someone who just
- * paid that their payment did not arrive.
+ * The pool belongs to the studio owning the project, so the refusal has four
+ * distinct causes and they read as four different sentences. The one that
+ * matters most is "assign them first": a lot is unassigned the moment it is
+ * bought, so "bought credits, went straight back to generating" is the most
+ * frequent path there is, and answering it with "available 0" tells someone
+ * who just paid that their payment did not arrive.
+ *
+ * A studio that owes is asked about before the account's unassigned lots are.
+ * Its balance is below zero, so the unassigned branch would otherwise claim
+ * it — and assigning credits into a studio that owes pays the debt down
+ * first, which may still leave nothing to generate with. That sends someone
+ * to do something that does not answer their problem.
  * @param projectId - The project the task will run in; its studio pays.
  * @param userId - The authenticated caller, whose own unassigned lots decide
  *   whether the refusal can point them at the assignment step.
@@ -59,6 +65,11 @@ export async function precheckCredits(
       402,
       t("server.error.insufficient_credits", { required, available }),
     );
+  }
+
+  if (available < 0) {
+    const owed = await creditLotService.getStudioDebt(studioId);
+    throw new AppError(402, t("server.credit.in_debt", { owed }));
   }
 
   const unassigned = await creditLotService.getUnassignedCredits(userId);

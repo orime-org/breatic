@@ -13,6 +13,7 @@
     "credit": {
       "not_studio_admin": "크레딧은 본인이 관리하는 Studio에만 지정할 수 있습니다.",
       "designation_locked": "이 결제는 환불 처리 중이라 지정을 변경할 수 없습니다.",
+      "in_debt": "이 Studio는 크레딧 {owed}을 미납했습니다. 다음에 지정하는 크레딧이 먼저 충당됩니다.",
       "unassigned": "지정되지 않은 크레딧이 {available} 있습니다. 사용하려면 Studio에 지정하세요.",
       "none": "크레딧이 부족합니다. 충전해 주세요."
     },
