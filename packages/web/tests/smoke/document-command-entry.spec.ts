@@ -54,6 +54,35 @@ async function openFreshDocument(p: Page): Promise<void> {
 
   const editor = p.locator('[data-testid="document-space"] .ProseMirror');
   await expect(editor).toBeVisible({ timeout: 15_000 });
+  await waitForSettledEntry(p);
+}
+
+/**
+ * Waits until the entry has stopped moving.
+ *
+ * A visible editor is not a settled one. The entry is sticky, and a freshly
+ * stuck element reaches `getBoundingClientRect` a frame before it reaches the
+ * hit-test tree — so a rectangle read too early is right while a click at its
+ * centre lands on nothing. Every geometry measurement and every
+ * `page.mouse.click` below depends on that having settled, which is why this
+ * waits here rather than in each of them.
+ */
+async function waitForSettledEntry(p: Page): Promise<void> {
+  const trigger = p.getByTestId('doc-doc-menu-trigger');
+  await expect(trigger).toBeVisible({ timeout: 10_000 });
+  await expect(async () => {
+    const settled = await p.evaluate(() => {
+      const t = document.querySelector('[data-testid="doc-doc-menu-trigger"]');
+      if (!t) return false;
+      const b = t.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        b.left + b.width / 2,
+        b.top + b.height / 2,
+      );
+      return !!hit?.closest('[data-testid="doc-doc-menu-trigger"]');
+    });
+    expect(settled).toBe(true);
+  }).toPass({ timeout: 10_000 });
 }
 
 test('the entry sticks inside the scroller, not beside it', async () => {
@@ -130,36 +159,43 @@ test('rests as a single 32×32 button in the top right corner', async () => {
   const trigger = page.getByTestId('doc-doc-menu-trigger');
   await expect(trigger).toBeVisible({ timeout: 10_000 });
 
-  const geometry = await page.evaluate(() => {
-    const t = document.querySelector('[data-testid="doc-doc-menu-trigger"]')!;
-    const viewport = document.querySelector(
-      '.doc-body-scroller [data-radix-scroll-area-viewport]',
-    )!;
-    const tb = t.getBoundingClientRect();
-    const vb = viewport.getBoundingClientRect();
-    return {
-      width: Math.round(tb.width),
-      height: Math.round(tb.height),
-      // Measured against the viewport rather than the window: the body area
-      // moves with whatever chrome is open.
-      insetRight: Math.round(vb.right - tb.right),
-      insetTop: Math.round(tb.top - vb.top),
-      // Hitting itself is what says those pixels were really painted.
-      hitsItself: !!document
-        .elementFromPoint(tb.left + tb.width / 2, tb.top + tb.height / 2)
-        ?.closest('[data-testid="doc-doc-menu-trigger"]'),
-    };
-  });
+  // Retried rather than measured once: `getBoundingClientRect` forces layout,
+  // so the rectangle is right immediately, while `elementFromPoint` reads the
+  // hit-test tree, which lags a frame behind a freshly stuck element. Measured
+  // once the run got fast enough (2026-08-22), that gap made this fail at 1.0s
+  // and pass at 2.4s. The numbers stay exact — only the moment is retried.
+  await expect(async () => {
+    const geometry = await page.evaluate(() => {
+      const t = document.querySelector('[data-testid="doc-doc-menu-trigger"]')!;
+      const viewport = document.querySelector(
+        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+      )!;
+      const tb = t.getBoundingClientRect();
+      const vb = viewport.getBoundingClientRect();
+      return {
+        width: Math.round(tb.width),
+        height: Math.round(tb.height),
+        // Measured against the viewport rather than the window: the body area
+        // moves with whatever chrome is open.
+        insetRight: Math.round(vb.right - tb.right),
+        insetTop: Math.round(tb.top - vb.top),
+        // Hitting itself is what says those pixels were really painted.
+        hitsItself: !!document
+          .elementFromPoint(tb.left + tb.width / 2, tb.top + tb.height / 2)
+          ?.closest('[data-testid="doc-doc-menu-trigger"]'),
+      };
+    });
 
-  // Size and inset come from `--doc-entry-size` / `--doc-entry-inset`
-  // (`index.css`); the 20 is `top-5` on the layer itself, which is the one
-  // number those variables do not carry. Asserted exactly: a range wide enough
-  // to swallow a changed token proves nothing.
-  expect(geometry.width).toBe(32);
-  expect(geometry.height).toBe(32);
-  expect(geometry.insetRight).toBe(16);
-  expect(geometry.insetTop).toBe(20);
-  expect(geometry.hitsItself).toBe(true);
+    // Size and inset come from `--doc-entry-size` / `--doc-entry-inset`
+    // (`index.css`); the 20 is `top-5` on the layer itself, which is the one
+    // number those variables do not carry. Asserted exactly: a range wide
+    // enough to swallow a changed token proves nothing.
+    expect(geometry.width).toBe(32);
+    expect(geometry.height).toBe(32);
+    expect(geometry.insetRight).toBe(16);
+    expect(geometry.insetTop).toBe(20);
+    expect(geometry.hitsItself).toBe(true);
+  }).toPass({ timeout: 5_000 });
 });
 
 test('opens a menu below the trigger, uncropped', async () => {
