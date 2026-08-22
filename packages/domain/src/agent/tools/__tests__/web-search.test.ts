@@ -205,6 +205,29 @@ describe("web_search says a failure is a failure", () => {
     expect(failure.forModel).toContain("503");
   });
 
+  it("does not blame the service for a status that is about our request", async () => {
+    // 401 is the key this side sent being refused. Calling that a fault on
+    // their side, and offering a reworded query as the way out, sends the
+    // model to spend the turn rewording its way past a credential it cannot
+    // reach -- which is the loop this task is named after, entered by being
+    // told the wrong thing about why the call failed.
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 401 }));
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toContain("401");
+    expect(forModel).not.toMatch(/fault on their side|not a problem with the query/i);
+    expect(forModel).not.toMatch(/different wording/i);
+  });
+
+  it("still blames the service for a status that is theirs", async () => {
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 503 }));
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toMatch(/fault on their side/i);
+  });
+
   it("throws when the search service cannot be reached", async () => {
     httpRequestMock.mockImplementation(async () => {
       throw new Error("http request to https://api.search.brave.com failed after 3 attempts");

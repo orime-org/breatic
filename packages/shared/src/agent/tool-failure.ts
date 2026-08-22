@@ -31,13 +31,15 @@ export const FAILURE_LINES = {
   /** The address is one we refuse to fetch. */
   blocked: "chat.tool.failure.blocked",
   /**
-   * Something went wrong that no tool of ours described.
+   * Something went wrong, and none of the lines above is what happened.
    *
-   * Not for a tool to throw -- a tool knows what it was doing and can say so.
-   * This is for the turn, which also has to record calls that failed before
-   * any of our code ran: input the model shaped wrongly, a tool name that no
-   * longer exists. Those arrive as errors from the SDK with no detail of ours
-   * attached, and a record with nothing in it is what this replaced.
+   * Two callers. The turn uses it for calls that failed before any of our
+   * code ran -- input the model shaped wrongly, a tool name that no longer
+   * exists -- which arrive as errors from the SDK with no detail of ours
+   * attached; a record with nothing in it is what that replaced. A tool uses
+   * it when its failure was neither the far side answering, nor an address
+   * that would not answer, nor an address we refuse: a request turned down
+   * before any delivery is all three of those things not happening.
    */
   generic: "chat.tool.failure.generic",
   /**

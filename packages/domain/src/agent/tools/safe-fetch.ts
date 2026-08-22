@@ -45,6 +45,7 @@
  */
 
 import { lookup as dnsLookup } from "node:dns/promises";
+import type { LookupAddress } from "node:dns";
 import ipaddr from "ipaddr.js";
 import { getAgentConfig } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
@@ -161,8 +162,21 @@ async function assertHostnameAllowed(hostname: string): Promise<void> {
     return;
   }
 
-  // Resolve and check every returned address.
-  const addresses = await dnsLookup(normalized, { all: true });
+  // Resolve and check every returned address. A name the resolver turns down
+  // ends here as this guard's own outcome rather than as whatever the system
+  // resolver raised: what reaches the caller from this function is an
+  // `SsrfError`, which is what its callers read to tell a fact about the
+  // address from a fact about the request. A bare ENOTFOUND is neither, and
+  // downstream it lands among the transport's pre-delivery refusals -- the
+  // one group whose whole point is that nothing about the address is known.
+  let addresses: LookupAddress[];
+  try {
+    addresses = await dnsLookup(normalized, { all: true });
+  } catch (err: unknown) {
+    throw new SsrfError(
+      `No DNS records for ${hostname}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   if (addresses.length === 0) {
     throw new SsrfError(`No DNS records for ${hostname}`);
   }

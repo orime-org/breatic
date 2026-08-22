@@ -140,6 +140,11 @@ describe("web_fetch says a failure is a failure", () => {
 
     expect(forModel).toMatch(/ENOTFOUND|dns|resolve/i);
     expect(forModel).not.toMatch(/not allowed|not one that may be fetched/i);
+    // Resolving the name IS a fact about the address, and the only one this
+    // call got. The branch for requests the transport turns down before any
+    // delivery says the opposite, and a model told the failure says nothing
+    // about the address has no reason to question the address.
+    expect(forModel).not.toMatch(/nothing about the address|was not sent/i);
   });
 
   it("tells the model a redirect loop is the site's doing, not a refusal", async () => {
@@ -208,6 +213,18 @@ describe("web_fetch says a failure is a failure", () => {
 
     expect(forModel).toContain("503");
     expect(forModel).not.toMatch(/not there|not public/i);
+  });
+
+  it("does not tell the model how many times the site was asked", async () => {
+    // How many deliveries a status cost is not something this side knows. The
+    // transport stops early on a Retry-After it will not wait out, so a 503
+    // can arrive having been asked for exactly once. Counting it out loud is
+    // the model's evidence for how hard it already tried.
+    fetchMock.mockResolvedValue(new Response(null, { status: 503 }));
+
+    const { forModel } = await failureFrom("https://public.example/down");
+
+    expect(forModel).not.toMatch(/three times|3 times|twice|attempts/i);
   });
 
   it("keeps saying a 404 is a page that is not there", async () => {

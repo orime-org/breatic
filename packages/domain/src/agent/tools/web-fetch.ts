@@ -96,13 +96,17 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
         // from a site that is down says nothing at all about whether the page
         // exists, and the model passes whatever it reads here on to the reader
         // in its own words.
+        //
+        // How many deliveries this status cost is left out. The transport
+        // retries a replay-safe read, but gives up early on a Retry-After
+        // longer than it will wait, so a status can arrive having been asked
+        // for once. Neither number is visible from here.
         const theirSide = res.status >= 500 || res.status === 429;
         throw toolFailed(
           theirSide
             ? `Fetching ${url} failed: the site answered HTTP ${res.status}, which is a fault ` +
-                "on their side and says nothing about this page. It has already been " +
-                "requested three times. Do not fetch it again on this turn; tell the user " +
-                "the site is not answering, and that it may work later."
+                "on their side and says nothing about this page. Do not fetch it again on " +
+                "this turn; tell the user the site is not answering, and that it may work later."
             : `Fetching ${url} failed: the site answered HTTP ${res.status}. The address is ` +
                 "reachable, so it is this page that is not there or not open to us. Do not " +
                 "fetch the same address again; try another source, or tell the user this " +
@@ -205,6 +209,9 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
         `Fetching ${url} was not sent: ${reasonOf(err)}. Nothing was requested, so this says ` +
           "nothing about the address. If the request can be corrected, correct it and fetch " +
           "once more; otherwise tell the user this page could not be read.",
+        // Not `unreachable`: that line is for an address that was reached for
+        // and did not answer. Nothing here was reached for at all, and a
+        // reader told otherwise would have the wrong idea of what to retry.
         FAILURE_LINES.generic,
       );
     }

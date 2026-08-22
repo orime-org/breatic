@@ -25,6 +25,42 @@ const inputSchema = z.object({
 });
 
 /**
+ * What to tell the model about a status the search service refused with.
+ *
+ * Three different next moves hide behind "not 2xx", and the model takes the
+ * one this sentence points at. A 5xx or a 429 is the service having a bad
+ * time and says nothing about the query. A 401 or a 403 is the key this side
+ * sent being turned down, which no rewording reaches. What is left is this
+ * request being one the service would not take, which the model wrote and can
+ * rewrite.
+ * @param query - What was searched for.
+ * @param status - The status the service answered with.
+ * @returns The reason, ending in what the model may do instead.
+ */
+function refusalReason(query: string, status: number): string {
+  const opening = `Searching for "${query}" failed: the search service answered HTTP ${status}.`;
+  if (status >= 500 || status === 429) {
+    return (
+      `${opening} That is a fault on their side, not a problem with the query. Try a ` +
+      "different wording at most once, then continue without search results and tell the " +
+      "user search is unavailable."
+    );
+  }
+  if (status === 401 || status === 403) {
+    return (
+      `${opening} It turned down the credentials this side sent, which is a fault in our ` +
+      "configuration that no wording of the query reaches. Do not call this tool again on " +
+      "this turn; continue without search results and tell the user search is unavailable."
+    );
+  }
+  return (
+    `${opening} The service is reachable, so it is this request it would not take. Try a ` +
+    "different wording at most once, then continue without search results and tell the " +
+    "user search is unavailable."
+  );
+}
+
+/**
  * Search the web using the Brave Search API.
  *
  * Returns formatted results containing titles, URLs, and descriptions.
@@ -99,13 +135,7 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       );
 
       if (!res.ok) {
-        throw toolFailed(
-          `Searching for "${query}" failed: the search service answered HTTP ${res.status}. ` +
-            "That is a fault on their side, not a problem with the query. Try a different " +
-            "wording at most once, then continue without search results and tell the user " +
-            "search is unavailable.",
-          FAILURE_LINES.upstream,
-        );
+        throw toolFailed(refusalReason(query, res.status), FAILURE_LINES.upstream);
       }
 
       // Read inside its own guard. It answered, so whatever goes wrong from
