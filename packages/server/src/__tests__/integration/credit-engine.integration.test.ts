@@ -32,6 +32,7 @@ import fc from "fast-check";
 import postgres from "postgres";
 import { initCore, env, loadLocales } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
+import type { ActivityCursor } from "@breatic/core";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 
 const PG_DRIVER_LOCAL = "credit-engine-test-driver";
@@ -469,6 +470,42 @@ describe("总览的两个数", () => {
     ]);
   });
 
+  it("adds the purchase block up to the figure at the top of the page", async () => {
+    // The block exists to explain that figure, so the two are computed by
+    // different queries on purpose: the top is `sumSpendableForStudio` (active
+    // lots only) less the debt, the block is every purchase this studio ever
+    // received plus the debt line. They agree only while a depleted lot always
+    // has nothing left on it, which no constraint enforces.
+    const fx = await seedFixture();
+    await seedLot(fx, 100, fx.studioId);
+    await seedLot(fx, 250, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 130,
+      referenceId: `sum-a-${Date.now()}`,
+    });
+
+    const addUp = async (): Promise<number> => {
+      const purchases = await creditLotRepo.listPurchasesByStudio(fx.studioId);
+      const lots = purchases.reduce((n, lot) => n + Number(lot.remainingCredits), 0);
+      return lots - (await creditLotService.getStudioDebt(fx.studioId));
+    };
+
+    // A lot fully drained, one partly drained, no debt.
+    expect(await addUp()).toBe(await creditLotService.getSpendableCredits(fx.studioId));
+
+    // And once the studio owes: every lot at zero, the debt line carrying it.
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 400,
+      referenceId: `sum-b-${Date.now()}`,
+    });
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBeGreaterThan(0);
+    expect(await addUp()).toBe(await creditLotService.getSpendableCredits(fx.studioId));
+  });
+
   it("充值记录带着每一笔是谁买的", async () => {
     // demo 每行第一格就是买家的名字。显示名住在个人 studio 上，跟流水取
     // 操作人名字同一处。
@@ -847,6 +884,93 @@ describe("欠账：状态转移表逐格", () => {
     expect((await readLot(lotId)).remaining).toBe("100.000000");
   });
 
+  it("clears the pool and leaves no debt when a lot is undesignated", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 30,
+      referenceId: `undesignate-${Date.now()}`,
+    });
+    expect(Number(await creditLotRepo.sumSpendableForStudio(fx.studioId))).toBe(70);
+
+    await creditLotService.designateLot({
+      lotId,
+      requestingUserId: fx.userId,
+      studioId: null,
+    });
+
+    // Read through the purchase predicate as well: it ignores lifecycle, so an
+    // empty list can only mean the designation is gone.
+    expect(await creditLotRepo.listPurchasesByStudio(fx.studioId)).toEqual([]);
+    expect(Number(await creditLotRepo.sumSpendableForStudio(fx.studioId))).toBe(0);
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+  });
+
+  it("clears the pool and leaves no debt when a refund is requested", async () => {
+    // Asking for a refund releases the lot from the studio the same moment,
+    // which `credit_lots`' own check enforces (0063).
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 30,
+      referenceId: `refund-req-${Date.now()}`,
+    });
+    expect(Number(await creditLotRepo.sumSpendableForStudio(fx.studioId))).toBe(70);
+
+    await sql`
+      UPDATE credit_lots
+      SET lifecycle = 'refund_pending', designated_studio_id = NULL
+      WHERE id = ${lotId}
+    `;
+
+    expect(await creditLotRepo.listPurchasesByStudio(fx.studioId)).toEqual([]);
+    expect(Number(await creditLotRepo.sumSpendableForStudio(fx.studioId))).toBe(0);
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+  });
+
+  it("keeps a rejected refund out of the studio it came from", async () => {
+    // This is the counterexample the refund rule exists to close: a rejected
+    // refund returns the lot to `active` with its balance intact, and if it
+    // came back designated the studio would suddenly have credits again.
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 30,
+      referenceId: `reject-owe-${Date.now()}`,
+    });
+
+    await sql`
+      UPDATE credit_lots
+      SET lifecycle = 'refund_pending', designated_studio_id = NULL
+      WHERE id = ${lotId}
+    `;
+    await sql`
+      UPDATE credit_lots
+      SET lifecycle = 'active', refund_attempts = refund_attempts + 1
+      WHERE id = ${lotId}
+    `;
+    const lot = await readLot(lotId);
+    expect(lot.remaining).toBe("70.000000");
+    expect(lot.lifecycle).toBe("active");
+
+    const outcome = await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 5,
+      referenceId: `reject-charge-${Date.now()}`,
+    });
+
+    expect(outcome.charged).toBe(0);
+    expect(outcome.shortfall).toBe(5);
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(5);
+  });
+
   it("欠账中 + 又扣不满 → 累加", async () => {
     const fx = await seedFixture();
     await seedLot(fx, 30, fx.studioId);
@@ -954,68 +1078,14 @@ describe("欠账：状态转移表逐格", () => {
     );
   });
 
-  it("欠账中 + 那笔申请退款 → 欠的还是那么多，笔也不再算这个 studio 的", async () => {
-    // 申请退款那一刻笔就解除指定（0063 的 CHECK 保证退款三态必然未指定），
-    // 而债是 studio 的、跟哪一笔无关。
-    const fx = await seedFixture();
-    const lotId = await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
-      projectId: fx.projectId,
-      actorUserId: fx.userId,
-      amount: 350,
-      referenceId: `refund-owe-${Date.now()}`,
-    });
-    const owedBefore = await creditLotService.getStudioDebt(fx.studioId);
-
-    await sql`
-      UPDATE credit_lots
-      SET lifecycle = 'refund_pending', designated_studio_id = NULL
-      WHERE id = ${lotId}
-    `;
-
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(owedBefore);
-    expect(
-      Number(await creditLotRepo.sumSpendableForStudio(fx.studioId)),
-    ).toBe(0);
-  });
-
-  it("欠账中 + 那笔退款被拒回到 active → 这个 studio 照样扣不到它", async () => {
-    // 转移表里「欠账中 + 全额扣到」写着不可能，凭据就是这一格：被拒的笔回到
-    // active，但它已经跟这个 studio 没关系了，欠着账的池子不会因此有钱。
-    const fx = await seedFixture();
-    const lotId = await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
-      projectId: fx.projectId,
-      actorUserId: fx.userId,
-      amount: 350,
-      referenceId: `rejected-owe-${Date.now()}`,
-    });
-    const owedBefore = await creditLotService.getStudioDebt(fx.studioId);
-
-    await sql`
-      UPDATE credit_lots
-      SET lifecycle = 'refund_pending', designated_studio_id = NULL
-      WHERE id = ${lotId}
-    `;
-    // 审核拒绝：回到 active、记一次尝试，指定仍是空的。
-    await sql`
-      UPDATE credit_lots
-      SET lifecycle = 'active', refund_attempts = refund_attempts + 1
-      WHERE id = ${lotId}
-    `;
-
-    const outcome = await creditLotService.chargeForGeneration({
-      projectId: fx.projectId,
-      actorUserId: fx.userId,
-      amount: 5,
-      referenceId: `rejected-charge-${Date.now()}`,
-    });
-    expect(outcome.charged).toBe(0);
-    expect(outcome.shortfall).toBe(5);
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(
-      owedBefore + 5,
-    );
-  });
+  // The "owing" row of the transition table has no testable refund cells. A
+  // studio that owes has no lot with a balance left (invariant 2), and a lot
+  // drained to zero is refused a refund outright (§6.1: there is nothing
+  // unspent to return). Any assertion written there holds before the refund as
+  // well as after it. The cell that carries the counterexample the refund rule
+  // closes — a rejected refund handing a lot back to a studio — lives on the
+  // "no debt" row below, where the lot still has a balance and losing its
+  // designation is the only thing that can empty the pool.
 
   it("欠账中扣费一分也扣不到 —— 「全额扣到」那一格进不去", async () => {
     // 转移表里那格写着「不可能」，凭据是不变量 2：欠账意味着上一次把这个
@@ -1293,12 +1363,81 @@ describe("studio 流水：一次生成一行", () => {
     expect(first[0]!.charged).toBe("-35.000000");
 
     const second = await creditLotRepo.listLedgerByStudio(fx.studioId, 1, {
-      createdAt: first[0]!.createdAt,
+      createdAt: first[0]!.cursorAt,
       id: first[0]!.id,
     });
     expect(second).toHaveLength(1);
     expect(second[0]!.charged).toBe("-35.000000");
     expect(second[0]!.id).not.toBe(first[0]!.id);
+  });
+
+  it("walks every row of the account ledger across the same boundary", async () => {
+    // The account ledger pages through the same cursor, so it is the second
+    // consumer of that fix rather than a second fix.
+    const fx = await seedFixture();
+    const stamps = [
+      "2026-08-23 10:00:00.223900+00",
+      "2026-08-23 10:00:00.223400+00",
+      "2026-08-23 10:00:00.223000+00",
+    ];
+    for (let i = 0; i < stamps.length; i++) {
+      await sql.unsafe(`
+        INSERT INTO credit_ledger
+          (payer_user_id, actor_user_id, entry_type, studio_id, project_id,
+           amount, lot_id, reference_id, created_at)
+        VALUES ('${fx.userId}', '${fx.userId}', 'spend', '${fx.studioId}',
+                '${fx.projectId}', -10, NULL, 'payer-ms-${i}',
+                TIMESTAMPTZ '${stamps[i]!}')`);
+    }
+
+    const seen: string[] = [];
+    let cursor: ActivityCursor | null = null;
+    for (let page = 0; page < 5; page++) {
+      const rows = await creditLotRepo.listLedgerByPayer(fx.userId, 1, cursor);
+      if (rows.length === 0) break;
+      seen.push(rows[0]!.id);
+      cursor = { createdAt: rows[0]!.cursorAt, id: rows[0]!.id };
+    }
+
+    expect(seen).toHaveLength(3);
+    expect(new Set(seen).size).toBe(3);
+  });
+
+  it("walks every row when a page boundary falls inside one millisecond", async () => {
+    // `created_at` is written by `now()` and Postgres keeps it to the
+    // microsecond, so two generations a few hundred microseconds apart share a
+    // millisecond. A cursor that carries only milliseconds draws the "continue
+    // from here" line in the wrong place and the rows inside that gap are
+    // never returned again.
+    const fx = await seedFixture();
+    const stamps = [
+      "2026-08-22 10:00:00.123900+00",
+      "2026-08-22 10:00:00.123400+00",
+      "2026-08-22 10:00:00.123000+00",
+    ];
+    for (let i = 0; i < stamps.length; i++) {
+      // A literal, because a parameterised timestamp goes through the driver
+      // and loses the microseconds on the way in.
+      await sql.unsafe(`
+        INSERT INTO credit_ledger
+          (payer_user_id, actor_user_id, entry_type, studio_id, project_id,
+           amount, lot_id, reference_id, created_at)
+        VALUES ('${fx.userId}', '${fx.userId}', 'spend', '${fx.studioId}',
+                '${fx.projectId}', -10, NULL, 'same-ms-${i}',
+                TIMESTAMPTZ '${stamps[i]!}')`);
+    }
+
+    const seen: string[] = [];
+    let cursor: ActivityCursor | null = null;
+    for (let page = 0; page < 5; page++) {
+      const rows = await creditLotRepo.listLedgerByStudio(fx.studioId, 1, cursor);
+      if (rows.length === 0) break;
+      seen.push(rows[0]!.id);
+      cursor = { createdAt: rows[0]!.cursorAt, id: rows[0]!.id };
+    }
+
+    expect(seen).toHaveLength(3);
+    expect(new Set(seen).size).toBe(3);
   });
 
   it("游标带的 id 是 uuid，读侧的校验过得去", async () => {

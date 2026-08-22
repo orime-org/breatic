@@ -481,25 +481,31 @@ export async function listLotsByUser(
   userId: string,
   limit: number,
   cursor: ActivityCursor | null,
-): Promise<CreditLotEntity[]> {
+): Promise<(CreditLotEntity & { cursorAt: string })[]> {
+  const at = cursor ? sql`${cursor.createdAt}::timestamptz` : null;
   const rows = await db
-    .select()
+    .select({
+      lot: creditLots,
+      // What the caller's cursor is built from. The mapped `Date` beside it
+      // has already lost the microseconds this column keeps.
+      cursorAt: sql<string>`${creditLots.createdAt}::text`,
+    })
     .from(creditLots)
     .where(
       and(
         eq(creditLots.userId, userId),
         isNull(creditLots.deletedAt),
-        cursor
+        at
           ? or(
-              lt(creditLots.createdAt, cursor.createdAt),
-              and(eq(creditLots.createdAt, cursor.createdAt), lt(creditLots.id, cursor.id)),
+              lt(creditLots.createdAt, at),
+              and(eq(creditLots.createdAt, at), lt(creditLots.id, cursor!.id)),
             )
           : undefined,
       ),
     )
     .orderBy(desc(creditLots.createdAt), desc(creditLots.id))
     .limit(limit);
-  return rows.map(toLotEntity);
+  return rows.map((row) => ({ ...toLotEntity(row.lot), cursorAt: row.cursorAt }));
 }
 
 /** One purchase a studio received, with the buyer's display name. */
@@ -558,7 +564,7 @@ export async function listLedgerByPayer(
   limit: number,
   cursor: ActivityCursor | null,
   studioId?: string,
-): Promise<CreditLedgerEntryEntity[]> {
+): Promise<(CreditLedgerEntryEntity & { cursorAt: string })[]> {
   // Display names live on the personal studio (`users` is the pure auth
   // table), the same place the activity feed reads an actor's name from.
   const actorStudio = alias(studios, "actor_studio");
@@ -567,6 +573,7 @@ export async function listLedgerByPayer(
       entry: creditLedger,
       actorName: actorStudio.name,
       projectName: projects.name,
+      cursorAt: sql<string>`${creditLedger.createdAt}::text`,
     })
     .from(creditLedger)
     .leftJoin(
@@ -584,9 +591,9 @@ export async function listLedgerByPayer(
         studioId ? eq(creditLedger.studioId, studioId) : undefined,
         cursor
           ? or(
-              lt(creditLedger.createdAt, cursor.createdAt),
+              lt(creditLedger.createdAt, sql`${cursor.createdAt}::timestamptz`),
               and(
-                eq(creditLedger.createdAt, cursor.createdAt),
+                eq(creditLedger.createdAt, sql`${cursor.createdAt}::timestamptz`),
                 lt(creditLedger.id, cursor.id),
               ),
             )
@@ -596,9 +603,12 @@ export async function listLedgerByPayer(
     .orderBy(desc(creditLedger.createdAt), desc(creditLedger.id))
     .limit(limit);
   return rows.map((row) =>
-    toLedgerEntity(row.entry, {
-      actorName: row.actorName,
-      projectName: row.projectName,
+    ({
+      ...toLedgerEntity(row.entry, {
+        actorName: row.actorName,
+        projectName: row.projectName,
+      }),
+      cursorAt: row.cursorAt,
     }),
   );
 }
@@ -614,6 +624,8 @@ export interface StudioLedgerRow {
   id: string;
   /** The latest timestamp in the group, which is what the page is ordered by. */
   createdAt: Date;
+  /** The same instant at the precision the column stores, for the cursor. */
+  cursorAt: string;
   /** A generation, or a designation paying off what the studio owed. */
   kind: "generation" | "debt_repayment";
   actorUserId: string | null;
@@ -668,10 +680,12 @@ export async function listLedgerByStudio(
   // comparison against a differently-computed id skips or repeats rows.
   const groupId = sql<string>`(ARRAY_AGG(${creditLedger.id} ORDER BY ${creditLedger.id}))[1]`;
   const groupAt = sql<Date>`MAX(${creditLedger.createdAt})`;
+  const groupCursorAt = sql<string>`MAX(${creditLedger.createdAt})::text`;
   const rows = await db
     .select({
       id: groupId,
       createdAt: groupAt,
+      cursorAt: groupCursorAt,
       kind: sql<"generation" | "debt_repayment">`CASE
         WHEN BOOL_AND(${creditLedger.entryType} = 'debt_repayment')
         THEN 'debt_repayment' ELSE 'generation' END`,
@@ -703,11 +717,7 @@ export async function listLedgerByStudio(
     .groupBy(sql`COALESCE(${creditLedger.referenceId}, ${creditLedger.id}::text)`)
     .having(
       cursor
-        ? // The timestamp goes in as an ISO string. A bare `sql` template
-          // carries no column for drizzle to encode a `Date` against, so the
-          // driver types the parameter from the `::timestamptz` cast and hands
-          // the Date to a serialiser that only takes strings.
-          sql`(${groupAt}, ${groupId}) < (${cursor.createdAt.toISOString()}::timestamptz, ${cursor.id}::uuid)`
+        ? sql`(${groupAt}, ${groupId}) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`
         : sql`TRUE`,
     )
     .orderBy(sql`${groupAt} DESC`, sql`${groupId} DESC`)

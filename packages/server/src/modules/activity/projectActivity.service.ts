@@ -79,7 +79,7 @@ export async function listProjectActivities(
   // A short page means the feed is exhausted; a full page may have more.
   const nextCursor =
     items.length === limit && last
-      ? encodeActivityCursor(new Date(last.createdAt), last.id)
+      ? encodeActivityCursor(last.cursorAt, last.id)
       : null;
   return { items, nextCursor };
 }

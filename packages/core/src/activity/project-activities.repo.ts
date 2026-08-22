@@ -38,22 +38,35 @@ export interface NewProjectActivity {
   payload: Record<string, unknown>;
 }
 
-/** Decoded keyset cursor - the (created_at, id) of the previous page's last row. */
+/**
+ * Decoded keyset cursor - the (created_at, id) of the previous page's last row.
+ *
+ * The timestamp travels as the text Postgres produced, never as a `Date`. The
+ * columns these cursors page over are `timestamp with time zone`, which keeps
+ * microseconds, and a `Date` holds milliseconds: rounding the boundary down
+ * puts the "continue from here" line before rows that belong on the next page,
+ * and every query that pages by time drops them without a trace.
+ */
 export interface ActivityCursor {
-  createdAt: Date;
+  /** `created_at` as `::text`, at the precision the column stores. */
+  createdAt: string;
   id: string;
 }
 
+/** Matches what Postgres renders a `timestamptz` as, to the microsecond. */
+const PG_TIMESTAMPTZ =
+  /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:\d{2})?$/;
+
 /**
  * Encode a keyset cursor as an opaque base64url token.
- * @param createdAt - `created_at` of the previous page's last row.
+ * @param createdAt - `created_at::text` of the previous page's last row.
  * @param id - `id` of the previous page's last row (tie-breaker).
  * @returns Opaque cursor string for the next page request.
  */
-export function encodeActivityCursor(createdAt: Date, id: string): string {
-  return Buffer.from(
-    JSON.stringify({ c: createdAt.getTime(), i: id }),
-  ).toString("base64url");
+export function encodeActivityCursor(createdAt: string, id: string): string {
+  return Buffer.from(JSON.stringify({ c: createdAt, i: id })).toString(
+    "base64url",
+  );
 }
 
 /**
@@ -71,9 +84,9 @@ export function decodeActivityCursor(cursor: string): ActivityCursor | null {
     if (typeof parsed !== "object" || parsed === null) return null;
     const c = (parsed as Record<string, unknown>)["c"];
     const i = (parsed as Record<string, unknown>)["i"];
-    if (typeof c !== "number" || !Number.isFinite(c)) return null;
+    if (typeof c !== "string" || !PG_TIMESTAMPTZ.test(c)) return null;
     if (typeof i !== "string" || i.length === 0) return null;
-    return { createdAt: new Date(c), id: i };
+    return { createdAt: c, id: i };
   } catch {
     // Malformed base64 / JSON - treated as "no cursor" by callers.
     return null;
@@ -218,27 +231,35 @@ export const projectActivitiesRepo = {
    * @param projectId - Project whose feed to read.
    * @param cursor - Decoded cursor from the previous page, or null for the first page.
    * @param limit - Page size (caller-clamped).
-   * @returns Entries newest-first; `length === limit` implies more pages may exist.
+   * @returns Entries newest-first, each carrying the `created_at` text its
+   *   cursor is built from; `length === limit` implies more pages may exist.
    */
   async listByProject(
     projectId: string,
     cursor: ActivityCursor | null,
     limit: number,
-  ): Promise<ProjectActivityEntry[]> {
-    const keysetFilter = cursor
-      ? or(
-          lt(projectActivities.createdAt, cursor.createdAt),
-          and(
-            eq(projectActivities.createdAt, cursor.createdAt),
-            lt(projectActivities.id, cursor.id),
-          ),
-        )
-      : undefined;
+  ): Promise<(ProjectActivityEntry & { cursorAt: string })[]> {
+    const cursorAt = cursor ? sql`${cursor.createdAt}::timestamptz` : null;
+    const keysetFilter =
+      cursor && cursorAt
+        ? or(
+            lt(projectActivities.createdAt, cursorAt),
+            and(
+              eq(projectActivities.createdAt, cursorAt),
+              lt(projectActivities.id, cursor.id),
+            ),
+          )
+        : undefined;
     // Display names live on the personal studio (`users` is the pure
     // auth table - email-registration rewrite 2026-06-06), so the
     // actor join targets studios(type='personal').
     const rows = await db
-      .select({ row: projectActivities, actorName: studios.name })
+      .select({
+        row: projectActivities,
+        actorName: studios.name,
+        // The cursor is built from this, not from the mapped `Date`.
+        cursorAt: sql<string>`${projectActivities.createdAt}::text`,
+      })
       .from(projectActivities)
       .leftJoin(
         studios,
@@ -257,7 +278,7 @@ export const projectActivitiesRepo = {
       )
       .orderBy(desc(projectActivities.createdAt), desc(projectActivities.id))
       .limit(limit);
-    return rows.map((r) => toEntity(r.row, r.actorName));
+    return rows.map((r) => ({ ...toEntity(r.row, r.actorName), cursorAt: r.cursorAt }));
   },
 
   /**

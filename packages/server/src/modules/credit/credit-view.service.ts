@@ -69,11 +69,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * Decode a cursor, treating anything unusable as "start from the beginning".
  *
- * The shared decoder checks that the timestamp is a finite number and the id a
- * non-empty string, which two usable-looking shapes still get past: an id that
- * is not a uuid reaches a uuid column, and a number no Date can represent
- * reaches the driver as an invalid date. Both surface as a failed request on a
- * value that arrived over the network.
+ * The shared decoder checks the timestamp's shape; the id is checked here
+ * because these pages compare it against a uuid column, and anything else
+ * reaches the driver as a failed request on a value that arrived over the
+ * network.
  * @param raw - The client's `?cursor`, if any.
  * @returns The decoded cursor, or null to start from the beginning.
  */
@@ -82,7 +81,6 @@ function readCursor(raw: string | undefined): ActivityCursor | null {
   const cursor = decodeActivityCursor(raw);
   if (!cursor) return null;
   if (!UUID.test(cursor.id)) return null;
-  if (Number.isNaN(cursor.createdAt.getTime())) return null;
   return cursor;
 }
 
@@ -168,14 +166,14 @@ function toLedgerView(entry: CreditLedgerEntryEntity): CreditLedgerView {
  * @param rows - Rows fetched, one more than the page size.
  * @param size - The page size asked for.
  * @param map - How to turn a row into its view.
- * @param keyOf - The row's `(created_at, id)` for the cursor.
+ * @param keyOf - The row's `(created_at::text, id)` for the cursor.
  * @returns The page and its next cursor.
  */
 function toPage<TRow, TView>(
   rows: TRow[],
   size: number,
   map: (row: TRow) => TView,
-  keyOf: (row: TRow) => { createdAt: Date; id: string },
+  keyOf: (row: TRow) => { cursorAt: string; id: string },
 ): CreditPage<TView> {
   const hasMore = rows.length > size;
   const page = hasMore ? rows.slice(0, size) : rows;
@@ -184,7 +182,7 @@ function toPage<TRow, TView>(
     items: page.map(map),
     nextCursor:
       hasMore && last
-        ? encodeActivityCursor(keyOf(last).createdAt, keyOf(last).id)
+        ? encodeActivityCursor(keyOf(last).cursorAt, keyOf(last).id)
         : null,
   };
 }
@@ -216,7 +214,7 @@ export async function listLots(
   const cursor = readCursor(rawCursor);
   const rows = await creditLotRepo.listLotsByUser(userId, size + 1, cursor);
   return toPage(rows, size, toLotView, (row) => ({
-    createdAt: row.createdAt,
+    cursorAt: row.cursorAt,
     id: row.id,
   }));
 }
@@ -244,7 +242,7 @@ export async function listLedger(
     studioId,
   );
   return toPage(rows, size, toLedgerView, (row) => ({
-    createdAt: row.createdAt,
+    cursorAt: row.cursorAt,
     id: row.id,
   }));
 }
@@ -343,7 +341,7 @@ export async function getStudioCredits(
     .listLedgerByStudio(studioId, size + 1, cursor)
     .then((rows) =>
       toPage(rows, size, toStudioLedgerView, (row) => ({
-        createdAt: row.createdAt,
+        cursorAt: row.cursorAt,
         id: row.id,
       })),
     );
