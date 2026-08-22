@@ -67,6 +67,7 @@ interface Fixture {
   userId: string;
   studioId: string;
   projectId: string;
+  projectName: string;
 }
 
 /** 一个用户 + 他管理的 studio + 该 studio 下的一个 project。 */
@@ -86,11 +87,13 @@ async function seedFixture(): Promise<Fixture> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, 'admin')
   `;
+  const projectName = `Engine 项目 ${n}`;
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
-    VALUES (${studioId}, ${userId}, ${`engine-p-${n}-${Date.now()}`}, 'Engine') RETURNING id
+    VALUES (${studioId}, ${userId}, ${`engine-p-${n}-${Date.now()}`}, ${projectName})
+    RETURNING id
   `;
-  return { userId, studioId, projectId: project!.id };
+  return { userId, studioId, projectId: project!.id, projectName };
 }
 
 /** 另建一个由 `userId` 管理的 studio（一个 studio 只能有一个 admin）。 */

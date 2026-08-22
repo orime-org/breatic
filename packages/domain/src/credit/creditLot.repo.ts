@@ -603,6 +603,121 @@ export async function listLedgerByPayer(
   );
 }
 
+/** One line of a studio's ledger: everything one event moved. */
+export interface StudioLedgerRow {
+  /**
+   * The lowest ledger id in this group. A uuid, which the read side's cursor
+   * check requires — a grouping key can be an idempotency string like
+   * `texttool:abc`, and a cursor carrying that would be rejected on the way
+   * back in and silently start the list over.
+   */
+  id: string;
+  /** The latest timestamp in the group, which is what the page is ordered by. */
+  createdAt: Date;
+  /** A generation, or a designation paying off what the studio owed. */
+  kind: "generation" | "debt_repayment";
+  actorUserId: string | null;
+  actorName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  model: string | null;
+  provider: string | null;
+  /** What left the pool: spends and repayments that drew on a lot. */
+  charged: string;
+  /** What the generation used, whether or not a lot covered it. */
+  consumed: string;
+  /** The part of that no lot covered. */
+  owed: string;
+}
+
+/**
+ * One studio's ledger, newest first, one line per event.
+ *
+ * Grouped in SQL rather than after paging, and the difference is a bug: one
+ * generation writes a row per lot it drew on, all within the same instant, so
+ * a page boundary lands inside a generation and shows it twice with a
+ * fragment of its total each time.
+ *
+ * `COALESCE(reference_id, id::text)` is the grouping key. A generation shares
+ * one reference id across its rows; a repayment has none, and each such row
+ * stands alone.
+ *
+ * The three amounts come from disjoint filters because no single sum answers
+ * all three: a generation nothing could cover writes a `spend` row with a
+ * negative amount too, and adding it up would report money that never left.
+ * What was charged is what drew on a lot; what was consumed is what the run
+ * used; what is owed is the difference, written as its own row.
+ *
+ * Taken by studio, not by who paid. A generation that ran short writes its
+ * `spend` rows against the lot owner and its shortfall against the person
+ * running it, so filtering by payer splits one line between two people and
+ * leaves neither of them a whole one.
+ * @param studioId - The studio whose ledger to read.
+ * @param limit - How many lines to return.
+ * @param cursor - The `(created_at, id)` of the previous page's last line.
+ * @returns The page, newest first.
+ */
+export async function listLedgerByStudio(
+  studioId: string,
+  limit: number,
+  cursor: ActivityCursor | null,
+): Promise<StudioLedgerRow[]> {
+  // `ARRAY_AGG(...)[1]` rather than `min()`: uuid has no min/max aggregate
+  // before PostgreSQL 18 and this repository runs 16, where the query fails
+  // outright. The ORDER BY below uses the same expression, because a keyset
+  // comparison against a differently-computed id skips or repeats rows.
+  const groupId = sql<string>`(ARRAY_AGG(${creditLedger.id} ORDER BY ${creditLedger.id}))[1]`;
+  const groupAt = sql<Date>`MAX(${creditLedger.createdAt})`;
+  const rows = await db
+    .select({
+      id: groupId,
+      createdAt: groupAt,
+      kind: sql<"generation" | "debt_repayment">`CASE
+        WHEN BOOL_AND(${creditLedger.entryType} = 'debt_repayment')
+        THEN 'debt_repayment' ELSE 'generation' END`,
+      actorUserId: sql<string | null>`MAX(${creditLedger.actorUserId}::text)`,
+      actorName: sql<string | null>`MAX(${studios.name})`,
+      projectId: sql<string | null>`MAX(${creditLedger.projectId}::text)`,
+      projectName: sql<string | null>`MAX(${projects.name})`,
+      model: sql<string | null>`MAX(${creditLedger.model})`,
+      provider: sql<string | null>`MAX(${creditLedger.provider})`,
+      charged: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+        WHERE ${creditLedger.entryType} IN ('spend', 'debt_repayment')
+          AND ${creditLedger.lotId} IS NOT NULL), 0)::text`,
+      consumed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+        WHERE ${creditLedger.entryType} IN ('spend', 'debt_incurred')), 0)::text`,
+      owed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+        WHERE ${creditLedger.entryType} = 'debt_incurred'), 0)::text`,
+    })
+    .from(creditLedger)
+    .leftJoin(
+      studios,
+      and(
+        eq(studios.createdByUserId, creditLedger.actorUserId),
+        eq(studios.type, "personal"),
+        isNull(studios.deletedAt),
+      ),
+    )
+    .leftJoin(projects, eq(projects.id, creditLedger.projectId))
+    .where(eq(creditLedger.studioId, studioId))
+    .groupBy(sql`COALESCE(${creditLedger.referenceId}, ${creditLedger.id}::text)`)
+    .having(
+      cursor
+        ? // The timestamp goes in as an ISO string. A bare `sql` template
+          // carries no column for drizzle to encode a `Date` against, so the
+          // driver types the parameter from the `::timestamptz` cast and hands
+          // the Date to a serialiser that only takes strings.
+          sql`(${groupAt}, ${groupId}) < (${cursor.createdAt.toISOString()}::timestamptz, ${cursor.id}::uuid)`
+        : sql`TRUE`,
+    )
+    .orderBy(sql`${groupAt} DESC`, sql`${groupId} DESC`)
+    .limit(limit);
+  return rows.map((row) => ({
+    ...row,
+    createdAt: new Date(row.createdAt),
+  }));
+}
+
 /**
  * What each studio has spent of one account's money.
  *
