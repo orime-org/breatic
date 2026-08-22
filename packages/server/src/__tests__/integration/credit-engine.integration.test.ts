@@ -473,9 +473,9 @@ describe("总览的两个数", () => {
   it("adds the purchase block up to the figure at the top of the page", async () => {
     // The block exists to explain that figure, so the two are computed by
     // different queries on purpose: the top is `sumSpendableForStudio` (active
-    // lots only) less the debt, the block is every purchase this studio ever
-    // received plus the debt line. They agree only while a depleted lot always
-    // has nothing left on it, which no constraint enforces.
+    // lots only) less the debt, the block is every lot designated here right
+    // now plus the debt line. They agree only while a depleted lot always has
+    // nothing left on it, which no constraint enforces.
     const fx = await seedFixture();
     await seedLot(fx, 100, fx.studioId);
     await seedLot(fx, 250, fx.studioId);

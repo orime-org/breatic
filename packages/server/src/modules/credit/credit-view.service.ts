@@ -328,7 +328,7 @@ function studioLedgerKey(row: creditLotRepo.StudioLedgerRow): {
  * takes them from one snapshot. A continuation asks for ledger lines and
  * nothing else, and reads only those: the other three are on the client's
  * screen already, and one of them is the studio's whole list of lots, which
- * has no limit and grows with every top-up the studio is given.
+ * has no limit and grows with every lot the studio is given.
  *
  * Which page it is comes off the decoded cursor, the same value the ledger
  * read below uses. Asking whether the client sent a string instead splits the

@@ -459,8 +459,14 @@ describe("GET /studio/:slug/credits", () => {
     };
     expect(body.data.spendable).toBe(70);
     expect(body.data.debt).toBe(0);
+    // 买家的名字是这一块比账号那侧多出来的那一列：同一个 studio 的钱可能是
+    // 好几个人各充各的。
     expect(body.data.lots).toEqual([
-      expect.objectContaining({ id: lotId, remainingCredits: 70 }),
+      expect.objectContaining({
+        id: lotId,
+        remainingCredits: 70,
+        buyerName: fx.personalStudioName,
+      }),
     ]);
     expect(body.data.ledger.items).toEqual([
       expect.objectContaining({
@@ -502,7 +508,6 @@ describe("GET /studio/:slug/credits", () => {
       expect.objectContaining({ charged: -30, consumed: -350, owed: -320 }),
     ]);
   });
-});
 
   it("积分明细最新的一笔排在最前", async () => {
     // 跟下面的消耗流水同一个方向。设计稿两块都是最新在前，一升一降会让人
@@ -524,6 +529,7 @@ describe("GET /studio/:slug/credits", () => {
 
     expect(body.data.lots.map((lot) => lot.id)).toEqual([newer, older]);
   });
+});
 
 describe("GET /projects/:id/credits", () => {
   it("未登录答 401", async () => {
@@ -597,13 +603,19 @@ describe("坏输入不该 500", () => {
   });
 
   it("结构合法但用不了的游标当第一页，不是 500", async () => {
-    // 解码器只校验「是有限数」和「是非空字符串」，所以这两种都能穿过去：
-    // 一个不是 uuid 的 id，和一个 Date 表示不了的时间戳。
+    // 游标从网络上来，什么形状都可能。下面五种各卡在解码器的一道校验上：
+    // 时间戳不是字符串、形状对但月份越界、二月三十号（Date.parse 会把它
+    // 滚到三月，所以只靠它挡不住）、时区偏移越界、id 不是 uuid。
+    // 每一种到了数据库都是一次失败的查询。
     const fx = await seedFixture();
     await seedLot(fx, 100);
+    const uuid = crypto.randomUUID();
     const bad = [
       Buffer.from(JSON.stringify({ c: 1, i: "x" })).toString("base64url"),
-      Buffer.from(JSON.stringify({ c: 1e308, i: crypto.randomUUID() })).toString("base64url"),
+      Buffer.from(JSON.stringify({ c: "2026-13-04 03:00:00+00", i: uuid })).toString("base64url"),
+      Buffer.from(JSON.stringify({ c: "2026-02-30 00:00:00+00", i: uuid })).toString("base64url"),
+      Buffer.from(JSON.stringify({ c: "2026-07-04 03:00:00+99", i: uuid })).toString("base64url"),
+      Buffer.from(JSON.stringify({ c: "2026-07-04 03:00:00+00", i: "not-a-uuid" })).toString("base64url"),
     ];
     for (const cursor of bad) {
       for (const url of ["/api/v1/credits/lots", "/api/v1/credits/ledger"]) {

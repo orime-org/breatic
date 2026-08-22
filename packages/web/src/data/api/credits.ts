@@ -43,7 +43,7 @@ export interface CreditPage<T> {
   nextCursor: string | null;
 }
 
-/** One purchase a studio received, where the buyer is a column. */
+/** One lot a studio holds, where the buyer is a column. */
 export interface StudioLotView extends CreditLotView {
   /** Who bought it. Absent when their personal studio is gone. */
   buyerName: string | null;
@@ -79,7 +79,7 @@ export interface StudioCredits {
   spendable?: number;
   /** What it owes, as a positive number. Sent with the first page only. */
   debt?: number;
-  /** Every top-up it received, oldest first. Sent with the first page only. */
+  /** The lots it holds right now, newest first. Sent with the first page only. */
   lots?: StudioLotView[];
   /** This studio's spending, one line per event, newest first. */
   ledger: CreditPage<StudioLedgerView>;

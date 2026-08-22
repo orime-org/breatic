@@ -23,7 +23,15 @@ function readingFrom(tz: string): void {
 }
 
 afterEach(() => {
-  process.env['TZ'] = REAL_TZ;
+  // 整个包跑在一个进程里（vitest.config.ts 的 singleFork），而 isolate 只重置
+  // mock 和模块注册表、不碰 process.env。这台机器多半根本没设 TZ，直接写回
+  // undefined 会存成字符串 "undefined"，此后每个测试文件都跑在 UTC 而不是本机
+  // 时区上。
+  if (REAL_TZ === undefined) {
+    delete process.env['TZ'];
+  } else {
+    process.env['TZ'] = REAL_TZ;
+  }
 });
 
 describe('formatLocalDay', () => {

@@ -23,10 +23,9 @@ interface CreditsTabProps {
   slug: string;
 }
 
-
 /**
- * One top-up this studio received.
- * @param props - The purchase.
+ * One lot this studio holds right now.
+ * @param props - The lot.
  * @param props.lot - Who bought it, when, and what is left of it.
  * @returns The row.
  */
@@ -62,8 +61,8 @@ const LotRow = React.memo(function LotRow({
 });
 
 /**
- * One line of the purchase block that is not a purchase: what is owed, and
- * the total the block adds up to.
+ * A line of the credits block that is not a lot: what is owed, and the
+ * total the block adds up to.
  * @param props - The line.
  * @param props.testId - What a test reaches it by.
  * @param props.label - What this line is.
@@ -234,7 +233,7 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
   }
 
   // Only when there is nothing to show. A page that failed after the first one
-  // arrived leaves the balance, the purchases and the rows already read in
+  // arrived leaves the balance, the lots and the rows already read in
   // hand, and throwing them away loses more than the failure did.
   if (!head) {
     return (

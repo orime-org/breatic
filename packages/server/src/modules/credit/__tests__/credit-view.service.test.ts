@@ -56,7 +56,8 @@ describe("GET a studio's credits", () => {
   it("takes the four figures from one snapshot on the first page", async () => {
     await getStudioCredits("s-1", undefined, undefined);
 
-    expect(readStudioCredits).toHaveBeenCalledTimes(1);
+    // One row over the page size is what tells a full page from a last one.
+    expect(readStudioCredits).toHaveBeenCalledWith("s-1", 21);
     expect(listLedgerByStudio).not.toHaveBeenCalled();
   });
 
@@ -68,7 +69,37 @@ describe("GET a studio's credits", () => {
     await getStudioCredits("s-1", undefined, CURSOR);
 
     expect(readStudioCredits).not.toHaveBeenCalled();
-    expect(listLedgerByStudio).toHaveBeenCalledTimes(1);
+    // The decoded cursor reaches the query. Dropping it here would serve the
+    // first page forever, silently, to a client that is scrolling.
+    expect(listLedgerByStudio).toHaveBeenCalledWith("s-1", 21, {
+      createdAt: "2026-08-22 10:00:00.123456+00",
+      id: "0b8f8a52-9f1c-4f6e-9a52-1c2d3e4f5a6b",
+    });
+  });
+
+  it("carries the ledger page and its next cursor back out", async () => {
+    listLedgerByStudio.mockResolvedValue([
+      {
+        id: "0b8f8a52-9f1c-4f6e-9a52-1c2d3e4f5a6b",
+        cursorAt: "2026-08-22 10:00:00.123456+00",
+        kind: "generation",
+        actorUserId: null,
+        actorName: null,
+        projectId: null,
+        projectName: null,
+        model: null,
+        provider: null,
+        charged: "-10.000000",
+        consumed: "-10.000000",
+        owed: "0.000000",
+        createdAt: new Date("2026-08-22T10:00:00.123Z"),
+      },
+    ]);
+
+    const view = await getStudioCredits("s-1", "1", CURSOR);
+
+    expect(view.ledger?.items).toHaveLength(1);
+    expect(view.ledger?.items[0]).toMatchObject({ charged: -10 });
   });
 
   it("keeps the fields the tab opens with off a continuation", async () => {
