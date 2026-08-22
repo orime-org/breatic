@@ -29,7 +29,14 @@ import type { ToolFailure } from "@breatic/shared";
  */
 export const TURN_ENDED_AROUND_IT: ToolFailure = {
   kind: "tool_failed",
-  forModel: "This tool was never run: the turn ended before it could start.",
+  // Alone among these reasons, this one is worth acting on again: nothing was
+  // attempted, so nothing about it failed. Left without a next step it falls
+  // to the prompt's own answer for reasons that name none -- that calling the
+  // same tool the same way will fail the same way -- which is the opposite of
+  // what happened here.
+  forModel:
+    "This tool was never run: the turn ended before it could start. " +
+    "Nothing was attempted, so call it again if you still need it.",
   readerKey: FAILURE_LINES.generic,
 };
 
@@ -45,10 +52,13 @@ export function endingOf(err: unknown): ToolFailure {
   // The message goes to the model and nowhere else. It is the SDK's own
   // wording for a call it would not make -- "invalid input", the schema it
   // failed against -- which is exactly what the model needs to fix the call,
-  // and exactly what a reader has no use for.
+  // and exactly what a reader has no use for. The next step is ours to add:
+  // the SDK states the complaint and stops there, and a call refused over its
+  // arguments is one the model wrote and can rewrite.
+  const said = err instanceof Error ? err.message : String(err);
   return {
     kind: "tool_failed",
-    forModel: err instanceof Error ? err.message : String(err),
+    forModel: `${said} Correct the call and try once more.`,
     readerKey: FAILURE_LINES.generic,
   };
 }

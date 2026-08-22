@@ -128,7 +128,13 @@ export type ToolFailure =
  */
 export const NOTHING_SAID_WHY: ToolFailure = {
   kind: "tool_failed",
-  forModel: "This tool call failed, and nothing recorded why.",
+  // With no reason there is nothing to tell a retry that would work from one
+  // that would not, so the next step is put in the model's hands rather than
+  // left out: a reason ending in nothing falls to the prompt's answer for
+  // reasons that name none, which is to not call it again at all.
+  forModel:
+    "This tool call failed, and nothing recorded why. If this step is needed, try it once " +
+    "more; if it fails again, tell the user it could not be done.",
   readerKey: FAILURE_LINES.generic,
 };
 
