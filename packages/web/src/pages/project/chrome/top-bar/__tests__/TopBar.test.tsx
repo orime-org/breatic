@@ -57,7 +57,7 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
         projectName='Demo'
         // eslint-disable-next-line jsx-a11y/aria-role -- `role` here is a TopBar component prop (owner | editor | viewer), not a DOM ARIA role
         role='owner'
-        credits={42}
+        credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
         members={MEMBERS}
         {...overrides}
@@ -82,7 +82,7 @@ describe('TopBar', () => {
         projectName='Demo'
         // eslint-disable-next-line jsx-a11y/aria-role -- component prop, not a DOM ARIA role
         role='owner'
-        credits={42}
+        credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
       />
     );
@@ -105,19 +105,39 @@ describe('TopBar', () => {
   });
 
   it('shows the credits chip with the credit count', () => {
-    setup({ credits: 7 });
+    setup({ credits: { status: 'ready', value: 7 } });
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('7');
   });
 
   it('reads out a negative balance when the studio owes', () => {
-    setup({ credits: -320 });
+    setup({ credits: { status: 'ready', value: -320 } });
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('-320');
+  });
+
+  it('shows a placeholder while the balance is still being fetched', () => {
+    // Zero is a real balance here — the pre-check turns generation away on it.
+    // Showing it before the answer arrives states something that is not known.
+    setup({ credits: { status: 'pending' } });
+    const chip = screen.getByTestId('credits-chip');
+    expect(chip).not.toHaveTextContent('0');
+    expect(
+      within(chip).getByTestId('credits-chip-placeholder'),
+    ).toBeInTheDocument();
+  });
+
+  it('says the balance is unknown when it could not be fetched', () => {
+    // React Query stops after its retries, so this is where the chip stays
+    // until the page is reopened.
+    setup({ credits: { status: 'error' } });
+    const chip = screen.getByTestId('credits-chip');
+    expect(chip).not.toHaveTextContent('0');
+    expect(chip).toHaveTextContent('—');
   });
 
   it('carries nothing to press — it is a readout', () => {
     // Everyone working in the project sees how much its pool has left.
     // Topping up is an account-level act and lives on the account page.
-    setup({ credits: 7 });
+    setup({ credits: { status: 'ready', value: 7 } });
     const chip = screen.getByTestId('credits-chip');
     expect(within(chip).queryByRole('button')).toBeNull();
   });

@@ -13,7 +13,7 @@
 import { stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import { getModel } from "@breatic/domain";
+import { getModel, resolveProvider } from "@breatic/domain";
 import { getModelForTool, getPromptForTool } from "@server/config/text-tools.js";
 import { env, logger } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
@@ -137,9 +137,13 @@ export async function* executeTextTool(
   }
 
   let totalTokens = 0;
+  // Declared out here so the catch branch can name the model too: a run that
+  // died partway still used tokens, and the ledger row it writes carries the
+  // same columns as the one the success path writes.
+  let modelString: string | null = null;
 
   try {
-    const modelString = getModelForTool(tool);
+    modelString = getModelForTool(tool);
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);
 
@@ -165,7 +169,13 @@ export async function* executeTextTool(
     totalTokens = usage?.totalTokens ?? 0;
 
     // Deduct credits based on token usage
-    const creditsUsed = await recordTokenUsage(userId, totalTokens, tool, idempotencyKey);
+    const creditsUsed = await recordTokenUsage(
+      userId,
+      totalTokens,
+      tool,
+      idempotencyKey,
+      modelString,
+    );
 
     if (signal.aborted) {
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
@@ -178,7 +188,13 @@ export async function* executeTextTool(
     // Deduct for consumed tokens even on error. Uses the same
     // idempotencyKey as the success path so the catch branch can't
     // double-charge if somehow both run for the same request.
-    const creditsUsed = await recordTokenUsage(userId, totalTokens, tool, idempotencyKey);
+    const creditsUsed = await recordTokenUsage(
+      userId,
+      totalTokens,
+      tool,
+      idempotencyKey,
+      modelString,
+    );
 
     if (signal.aborted) {
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
@@ -208,6 +224,8 @@ export async function* executeTextTool(
  * @param tokens - Total tokens consumed by the run, used to compute the credit amount.
  * @param tool - Tool name recorded on the ledger row.
  * @param idempotencyKey - Per-request key combined into the `texttool:` ref to guarantee idempotency.
+ * @param modelString - The model that produced the text, `null` when the run
+ *   failed before one was resolved.
  * @returns Credits actually charged.
  */
 async function recordTokenUsage(
@@ -215,6 +233,7 @@ async function recordTokenUsage(
   tokens: number,
   tool: string,
   idempotencyKey: string,
+  modelString: string | null,
 ): Promise<number> {
   if (tokens === 0) return 0;
 
@@ -233,6 +252,8 @@ async function recordTokenUsage(
         projectId: null,
         actorUserId: userId,
         amount: credits,
+        model: modelString ?? undefined,
+        provider: modelString === null ? undefined : resolveProvider(modelString),
         description: `Text tool: ${tool}`,
         tokensUsed: tokens,
       },

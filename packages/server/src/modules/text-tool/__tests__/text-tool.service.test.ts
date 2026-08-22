@@ -35,6 +35,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 vi.mock("@breatic/domain", () => ({
   getModel: () => ({}),
+  resolveProvider: (model: string) => model.split("/")[0],
   streamTextRetry: () => ({
     fullStream: (async function* () {
       yield { type: "text-delta", text: "ok" };
@@ -109,6 +110,17 @@ describe("扣费失败", () => {
     await run();
     expect(charge.calls).toHaveLength(1);
     expect(logError).not.toHaveBeenCalled();
+  });
+
+  it("扣费带上这次用的模型和它的提供方", async () => {
+    // 流水那四列存在的理由就是「一行数字答不出这次花在什么上」。文本工具跟
+    // 画布生成写进同一张表，两边都得填。
+    await run();
+
+    expect(charge.calls[0]?.[1]).toMatchObject({
+      model: "openai/gpt-4o-mini",
+      provider: "openai",
+    });
   });
 
   it("一个 token 都没用时压根不去扣，也就无从失败", async () => {

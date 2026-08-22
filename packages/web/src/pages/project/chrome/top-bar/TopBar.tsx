@@ -16,14 +16,26 @@ import { BellMenu } from '@web/features/notifications/BellMenu';
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
 import { useTranslation } from '@web/i18n/use-translation';
 
+import { Skeleton } from '@web/components/ui/skeleton';
 import type { ProjectRole } from '@web/stores';
 import type { Member } from '@web/data/api/members';
+
+/**
+ * What the credits pill has to show: the balance, or why there is none yet.
+ *
+ * Kept apart from a plain number because zero is a real balance and the two
+ * answers that are not a balance would otherwise be printed as one.
+ */
+export type CreditsReadout =
+  | { status: 'ready'; value: number }
+  | { status: 'pending' }
+  | { status: 'error' };
 
 interface TopBarProps {
   projectId: string;
   projectName: string;
   role: ProjectRole;
-  credits: number;
+  credits: CreditsReadout;
   onRename: (next: string) => void;
   /**
    * The project's roster, forwarded to both member components. Required: the
@@ -52,7 +64,7 @@ interface TopBarProps {
  * @param root0.projectId - Id of the current project, passed to membership, share, role and bell children.
  * @param root0.projectName - Current project name shown in the editable title.
  * @param root0.role - Viewer's role in this project, surfaced via the role tag.
- * @param root0.credits - Current credit balance shown in the credits pill.
+ * @param root0.credits - What the credits pill reads out.
  * @param root0.onRename - Called with the new title when the user finishes editing the project name.
  * @param root0.members - The project's roster, forwarded to both member components.
  * @param root0.currentUserId - Current user's id, used by MembersStack to mark the "me" row.
@@ -149,11 +161,20 @@ function BackLink(): React.JSX.Element {
  * A readout, shown to everyone working in the project: they spend this pool
  * when they generate. It goes below zero when the studio owes. Topping up is
  * an account-level act and lives on the account credits page.
+ *
+ * Three states rather than one number, because zero is a real balance here —
+ * it is what the pre-check turns a generation away on. Printing it while the
+ * answer is still on its way, or after it failed to arrive, tells everyone in
+ * the project that the pool is empty.
  * @param root0 - Credits pill props.
- * @param root0.credits - What the pool has left, rendered with locale grouping.
+ * @param root0.credits - The balance, or why there is no number to show.
  * @returns the top-bar credits chip.
  */
-function CreditsPill({ credits }: { credits: number }): React.JSX.Element {
+function CreditsPill({
+  credits,
+}: {
+  credits: CreditsReadout;
+}): React.JSX.Element {
   const t = useTranslation();
   return (
     <span
@@ -163,7 +184,16 @@ function CreditsPill({ credits }: { credits: number }): React.JSX.Element {
       style={{ padding: '0 var(--space-4)', gap: 'var(--space-3)' }}
     >
       <Star className='h-3.5 w-3.5 text-muted-foreground' aria-hidden='true' />
-      <span>{credits.toLocaleString()}</span>
+      {credits.status === 'ready' ? (
+        <span>{credits.value.toLocaleString()}</span>
+      ) : credits.status === 'pending' ? (
+        <Skeleton
+          data-testid='credits-chip-placeholder'
+          className='h-3 w-8 rounded-content-sm'
+        />
+      ) : (
+        <span className='text-muted-foreground'>—</span>
+      )}
     </span>
   );
 }
