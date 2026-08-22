@@ -1310,6 +1310,18 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     expect(r.height).toBe(225);
   });
 
+  it('选中之后拖拽画框的过程中，框就已经是该比例（A4 第二条路径）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    // 只按下 + 移动，不抬起 —— 钉的是拖拽进行中那一刻，不是拖完的结果
+    const layer = screen.getByTestId('focus-crop-layer');
+    fireEvent.pointerDown(layer, { clientX: 110, clientY: 100, button: 0, pointerId: 7 });
+    fireEvent.pointerMove(layer, { clientX: 260, clientY: 180, pointerId: 7 });
+    const mid = rectSize();
+    expect(mid.width).toBe(mid.height);
+    expect(mid.width).toBe(150); // 主导轴 150 宽
+  });
+
   it('选中之后拉手柄，框仍保持该比例（A4 第三条路径）', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
