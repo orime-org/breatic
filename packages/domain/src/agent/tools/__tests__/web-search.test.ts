@@ -283,15 +283,52 @@ describe("web_search says a failure is a failure", () => {
     expect(forModel.toLowerCase()).toMatch(/without search|do not repeat|tell the user/); // what instead
   });
 
+  it("calls a search that found nothing a search that found nothing", async () => {
+    // Brave 的 `web` 这一节按它自己的 schema 是 optional (nullable)，官方 API
+    // reference 写着各结果类型「conditionally included based on data
+    // availability」—— 也就是这个词没有网页结果时，整节不出现。这是一次成功的
+    // 搜索，只是搜到零条；报成故障会让模型照着「搜索不可用」去回答用户。
+    httpRequestMock.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ query: { original: "breatic" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const answer = await run({ query: "breatic" });
+
+    expect(answer).toMatch(/no results/i);
+  });
+
+  it("says a body that stopped arriving may be worth asking for again", async () => {
+    // 连接在读响应体期间被重置。我们从没看见对方最终发的是什么，所以「答了但
+    // 不是结果」这个断言本层给不出；而 web_fetch 对结构完全相同的失败说的是
+    // 「站点答了，是正文没到齐，再取一次可能就好」。同一件事两个工具说反了，
+    // 其中一个必然被违背。
+    httpRequestMock.mockImplementation(async () => ({
+      ok: true,
+      status: 200,
+      json: async (): Promise<never> => {
+        throw new Error("terminated");
+      },
+    }));
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toMatch(/terminated/);
+    expect(forModel).toMatch(/once more|again/i);
+    expect(forModel).not.toMatch(/not with results/i);
+  });
+
   it("does not say a service that answered could not be reached", async () => {
-    // A 200 whose body parses but is not the shape this tool reads: an error
-    // envelope, a schema that moved, a proxy answering in its own words. The
+    // A 200 whose body parses to something this tool cannot read at all. The
     // service was reached and it did answer, and a model told otherwise stops
     // searching for the rest of the turn over a network problem that is not
     // there.
     httpRequestMock.mockImplementation(
       async () =>
-        new Response(JSON.stringify({ error: "quota exceeded" }), {
+        new Response("null", {
           status: 200,
           headers: { "content-type": "application/json" },
         }),

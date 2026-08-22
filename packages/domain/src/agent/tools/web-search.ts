@@ -61,19 +61,18 @@ function refusalReason(query: string, status: number): string {
 }
 
 /**
- * What to tell the model when the service answered with something else.
+ * What to tell the model when the whole answer arrived and is not results.
  *
- * Both callers reach it the same way -- the request went through and came
- * back 200 -- and differ only in how far the answer got before it stopped
- * being readable.
+ * For an answer that came back complete and parsed, and is still not the
+ * shape this tool reads. An answer that stopped arriving partway is a
+ * different fact and says so where it is caught: this side never saw what the
+ * service meant to send, and asking again may well get it.
  * @param query - What was searched for.
- * @param detail - What made it unreadable, when there is something to name.
  * @returns The reason, ending in what the model may do instead.
  */
-function notResultsReason(query: string, detail?: string): string {
-  const why = detail === undefined ? "" : ` (${detail})`;
+function notResultsReason(query: string): string {
   return (
-    `Searching for "${query}" failed: the search service answered, but not with results${why}. ` +
+    `Searching for "${query}" failed: the search service answered, but not with results. ` +
     "That is a fault on their side. Continue without search results and tell the user search " +
     "is unavailable."
   );
@@ -160,30 +159,45 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       // Read inside its own guard. It answered, so whatever goes wrong from
       // here is about what it said, and the catch below describes a service
       // that could not be reached at all.
-      let data: {
-        web?: { results?: Array<{ title?: string; url?: string; description?: string }> };
-      };
+      let data: unknown;
       try {
-        data = (await res.json()) as typeof data;
+        data = await res.json();
       } catch (err: unknown) {
         // Asked here rather than left to the guard below, which never sees
         // this: what is thrown from inside this block already carries failure
         // detail, and the outer guard passes anything carrying detail straight
         // through -- past the question of whether the user stopped.
         if (isStop(err, abortSignal)) throw stoppedByUser();
-        throw toolFailed(notResultsReason(query, reasonOf(err)), FAILURE_LINES.upstream);
+        // The body stopped arriving partway. What it would have said is not
+        // something this side ever saw, so it is put as what is known: the
+        // service answered and the answer did not finish. Same reading the
+        // fetch tool gives the same failure.
+        throw toolFailed(
+          `Searching for "${query}" failed while reading the answer: ${reasonOf(err)}. The ` +
+            "service answered, so it is the body that did not arrive. Searching once more may " +
+            "work; if it fails again, continue without search results and tell the user search " +
+            "is unavailable.",
+          FAILURE_LINES.upstream,
+        );
       }
-      // Parsing said it is JSON, which says nothing about it being what this
-      // tool reads. An error envelope, a schema that moved, a proxy answering
-      // in its own words all arrive here as an object with no result list.
-      // Read straight past that and the answer is either a TypeError, which
-      // the guard below calls a service that could not be reached while it
-      // plainly was, or an empty list, which is a search that found nothing --
-      // a fact the model then builds its reply on.
-      const found: unknown = (data as { web?: { results?: unknown } } | null)?.web?.results;
+
+      if (data === null || typeof data !== "object") {
+        throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
+      }
+      // Brave declares the `web` section optional, and its reference says the
+      // result types are "conditionally included based on data availability".
+      // A query with no web results therefore comes back without the section
+      // at all -- a search that succeeded and found nothing, which is what the
+      // model is told. Present but not a list is a different thing: the schema
+      // moved, or something else answered in its place.
+      const found: unknown = (data as { web?: { results?: unknown } }).web?.results;
+      if (found === undefined || found === null) return `No results found for: ${query}`;
       if (!Array.isArray(found)) throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
 
-      const results = (found as NonNullable<NonNullable<typeof data.web>["results"]>).slice(0, n);
+      const results = (found as Array<{ title?: string; url?: string; description?: string }>).slice(
+        0,
+        n,
+      );
       if (results.length === 0) return `No results found for: ${query}`;
 
       const lines = [`Results for: ${query}\n`];
