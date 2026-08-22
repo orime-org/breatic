@@ -486,6 +486,29 @@ describe("坏输入不该 500", () => {
     }
   });
 
+  it("用不了的游标，整页都按第一页答", async () => {
+    // 「是不是第一页」被问了两次：这个端点问原始字符串在不在，而流水那半
+    // 问的是解码之后还剩什么。一个结构合法、解码后用不了的游标恰好让两个
+    // 答案相反 —— 流水照第一页查了，可用额和充值记录被当成翻页省掉，页面
+    // 上那两块就空着。
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100, fx.studioId);
+    const unusable = Buffer.from(
+      JSON.stringify({ c: Date.now(), i: "not-a-uuid" }),
+    ).toString("base64url");
+
+    const res = await app.request(
+      `/api/v1/studio/${fx.studioSlug}/credits?cursor=${encodeURIComponent(unusable)}`,
+      { headers: { Cookie: fx.cookie } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { spendable?: number; lots?: { id: string }[] };
+    };
+    expect(body.data.spendable).toBe(100);
+    expect(body.data.lots).toEqual([expect.objectContaining({ id: lotId })]);
+  });
+
   it("带游标翻页时不重发这个 studio 的全部笔", async () => {
     // 客户端只读第一页那份 lots，后面每页都重算重传是白跑。
     const fx = await seedFixture();
