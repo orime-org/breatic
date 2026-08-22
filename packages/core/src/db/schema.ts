@@ -8,7 +8,7 @@
  * primary keys and timestamp with timezone columns.
  */
 
-import { sql } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -933,20 +933,21 @@ export const creditLedger = pgTable(
       .notNull(),
   },
   (table) => [
+    // Newest-first is the only order any of these are read in, and the two
+    // studio indexes are partial because a row with no studio belongs to no
+    // studio's page. Declared exactly as 0061 creates them: this file is what
+    // a reader consults to know what the table has.
     index("credit_ledger_payer_created_idx").on(
       table.payerUserId,
-      table.createdAt,
+      desc(table.createdAt),
     ),
-    index("credit_ledger_studio_created_idx").on(
-      table.studioId,
-      table.createdAt,
-    ),
+    index("credit_ledger_studio_created_idx")
+      .on(table.studioId, desc(table.createdAt))
+      .where(sql`${table.studioId} IS NOT NULL`),
     index("credit_ledger_lot_idx").on(table.lotId),
-    index("credit_ledger_payer_studio_created_idx").on(
-      table.payerUserId,
-      table.studioId,
-      table.createdAt,
-    ),
+    index("credit_ledger_payer_studio_created_idx")
+      .on(table.payerUserId, table.studioId, desc(table.createdAt))
+      .where(sql`${table.studioId} IS NOT NULL`),
   ],
 );
 

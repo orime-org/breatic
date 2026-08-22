@@ -38,8 +38,9 @@ const BCRYPT_ROUNDS = 12;
 /**
  * Register a new user with email and password (step 1 of 2).
  *
- * Creates the pure account row (no display name, no personal studio) +
- * the credit balance row + a one-time recovery code. The personal studio
+ * Creates the pure account row (no display name, no personal studio) and a
+ * one-time recovery code. Credits belong to purchases, so a new account has
+ * nothing to hold them in until it buys some. The personal studio
  * — which carries the user's display name + URL handle — is created in
  * the SECOND step (`setup-studio`) once the user picks a slug. Until then
  * `/auth/me` reports `personalStudio: null` and the frontend gate forces

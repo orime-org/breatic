@@ -184,7 +184,18 @@ export const mocks = {
   // not. A route suite that leaves these unmocked reaches the real queries
   // against the empty mock `db` and 500s.
   creditLotService: {
+    // Read at module evaluation by `routes/schemas.ts`, so a double without it
+    // hands zod an undefined pattern: the schema still builds, and the first
+    // request carrying the header dies inside the check rather than being
+    // refused at the door.
+    REFKEY_PATTERN: /^[A-Za-z0-9_:.-]{1,255}$/,
     getSpendableCredits: vi.fn().mockResolvedValue(100),
+    getStudioDebt: vi.fn().mockResolvedValue(0),
+    getOverview: vi.fn().mockResolvedValue({
+      assignedCredits: 0,
+      unassignedCredits: 0,
+      studios: [],
+    }),
     getUnassignedCredits: vi.fn().mockResolvedValue(0),
     chargeForGeneration: vi.fn().mockResolvedValue({
       billed: true,

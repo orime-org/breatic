@@ -348,21 +348,6 @@ export interface PaymentEntity {
   updatedAt: Date;
 }
 
-/** Credit transaction entity. */
-export interface CreditTransactionEntity {
-  id: string;
-  userId: string;
-  txType: string;
-  amount: number;
-  balanceAfter: number;
-  tokensUsed: number | null;
-  model: string | null;
-  provider: string | null;
-  description: string | null;
-  referenceId: string | null;
-  createdAt: Date;
-}
-
 /**
  * Where a credit lot stands in its own life, independent of where it is
  * designated. `refunding` is deliberately separate from `refunded`: Stripe

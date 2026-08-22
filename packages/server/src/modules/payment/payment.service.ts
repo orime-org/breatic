@@ -99,7 +99,8 @@ export type CheckoutCompletedOutcome =
  * @param stripeSessionId - Stripe Checkout session ID from the webhook event
  * @param paymentIntentId - Stripe PaymentIntent ID to record on the payment row, if present
  * @returns `{ status: "replay" }` when the payment was already completed,
- *   otherwise the completed outcome with userId, creditsGranted, and the new balance
+ *   otherwise the completed outcome with userId, creditsGranted, and the id of
+ *   the lot the payment opened
  * @throws {NotFoundError} if no payment matches the Stripe session ID
  */
 export async function handleCheckoutCompleted(

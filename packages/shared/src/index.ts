@@ -37,7 +37,6 @@ export type {
   ConversationAttachmentEntity,
   AssetKind,
   PaymentEntity,
-  CreditTransactionEntity,
   CreditLotEntity,
   CreditLotLifecycle,
   CreditLedgerEntryEntity,
