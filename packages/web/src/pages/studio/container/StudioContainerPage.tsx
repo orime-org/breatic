@@ -25,6 +25,7 @@ import { StudioHeader } from '@web/pages/studio/container/StudioHeader';
 import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
 import {
   isAddressableTabSegment,
+  isTabOnThisPage,
   studioTabFromParam,
 } from '@web/pages/studio/container/studio-tabs';
 import { CollectionsTab } from '@web/pages/studio/container/tabs/CollectionsTab';
@@ -144,12 +145,18 @@ export default function StudioContainerPage(): React.JSX.Element {
   // marked as the current page, would point somewhere other than the bar.
   const segmentIsNotOneWeEmit =
     tabParam !== undefined && !isAddressableTabSegment(tabParam);
-  // A real tab name on a studio the viewer is not in. The public façade below
-  // renders no tabs at all, so the address would claim a tab that is not on
-  // the page. This one has to wait for the studio to load: until then we do
-  // not know whether the viewer is a member.
+  // A real tab name for a section this viewer's strip does not carry — a
+  // non-member (whose public façade renders no strip at all) or a member who
+  // is not the admin standing on Credits. Both would leave the address
+  // claiming a section that is not on the page. Asked of the same list the
+  // strip is built from, so the link and the address can never disagree; and
+  // it has to wait for the studio to load, since until then the viewer's role
+  // is unknown.
   const tabIsNotOnThisPage =
-    tabParam !== undefined && studio?.myStudioRole === null;
+    tabParam !== undefined &&
+    studio !== undefined &&
+    isAddressableTabSegment(tabParam) &&
+    !isTabOnThisPage(tabParam, studio.type, studio.myStudioRole);
   if (segmentIsNotOneWeEmit || tabIsNotOnThisPage) {
     return <Navigate to={`/studio/${slug}`} replace />;
   }
@@ -186,6 +193,7 @@ export default function StudioContainerPage(): React.JSX.Element {
           <StudioHeader studio={view.studio} />
           <StudioTabBar
             studioType={view.studio.type}
+            viewerRole={view.studio.myStudioRole}
             current={tab}
             slug={slug}
             counts={{

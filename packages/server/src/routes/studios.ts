@@ -475,22 +475,21 @@ studio.delete(
 );
 
 /**
- * `GET /api/v1/studio/:slug/credits` — this studio's credits, for its members.
+ * `GET /api/v1/studio/:slug/credits` — this studio's credits, for its admin.
  *
- * The pool belongs to the studio, so every member sees what it can spend and
- * which purchases make it up. The ledger beside it is taken by the reader's
- * own payments: it answers where THEIR money went in this studio, which is
- * the question a member can act on.
+ * The pool is the studio's money and the admin is who manages it, so this
+ * page is theirs alone. The web app leaves the section out of everyone else's
+ * strip, but a URL is typed as easily as it is clicked, so the door is here.
  *
- * Guests included — a guest who is an editor on one of the studio's projects
- * spends this pool, so being able to see how much is left is the same fact
- * they already act on when they generate.
- * @returns `200` with `{ data: StudioCreditsView }`; `403` for a non-member
- *   (which also hides whether the studio exists), `401` when signed out
+ * The ledger beside it is taken by the reader's own payments: it answers
+ * where THEIR money went in this studio.
+ * @returns `200` with `{ data: StudioCreditsView }`; `403` for anyone who is
+ *   not this studio's admin (which also hides whether the studio exists),
+ *   `401` when signed out
  */
 studio.get(
   "/:slug/credits",
-  requireStudioRole("guest"),
+  requireStudioRole("admin"),
   validate("query", creditPageQuerySchema),
   async (c) => {
     const user = c.get("user");
