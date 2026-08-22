@@ -157,12 +157,12 @@
       "waiting": "Replying"
     },
     "tool": {
-      "unfinished": "Stopped before it finished",
+      "unfinished": "Stopped",
       "failure": {
-        "upstream": "Got an error back",
-        "unreachable": "Address unreachable",
-        "blocked": "This address is not allowed",
-        "generic": "Could not run"
+        "upstream": "Execution error",
+        "unreachable": "Execution error",
+        "blocked": "Execution error",
+        "generic": "Execution error"
       }
     },
     "loadEarlier": "Load earlier messages",

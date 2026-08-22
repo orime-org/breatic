@@ -40,3 +40,21 @@ describe('工具失败的那一行，五个语种都有', () => {
     });
   });
 });
+
+describe('每种语言里，失败那几条都是同一句', () => {
+  // 卡片只回答「这一步成了没有」。为什么没成是模型在正文里说的事，那里能
+  // 指名是哪个地址、什么状态。这几个键留着是为了将来真要分粒度时不用改结
+  // 构，今天它们说同一句话。
+  const failureLines = Object.values(FAILURE_LINES).filter(
+    (line) => line !== FAILURE_LINES.stopped,
+  );
+
+  it.each(LOCALE_CATALOGS)('%s 四条失败文案一致，且跟停止那条分得开', (_tag, catalog) => {
+    const shown = failureLines.map((key) => readPath(catalog, key));
+
+    expect(shown.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(shown).size).toBe(1);
+    expect(shown[0]).not.toBe(readPath(catalog, FAILURE_LINES.stopped));
+  });
+});
+

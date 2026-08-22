@@ -21,7 +21,7 @@ import { render, screen } from '@testing-library/react';
 
 import { ToolCallCard } from '@web/pages/project/chat/ToolCallCard';
 import type { ToolCall } from '@web/pages/project/chat/types';
-import { t } from '@breatic/shared';
+import { FAILURE_LINES, t } from '@breatic/shared';
 
 /**
  * A tool call in the shape the panel receives it.
@@ -57,23 +57,35 @@ describe('ToolCallCard', () => {
     expect(shown).not.toContain('chat.tool');
   });
 
-  it('renders the line the key names, not just some line', () => {
-    // 只断言「翻译过了」的话，把这一行换成任何另一条文案都照样绿 —— 而换错的
-    // 那条正好是「未跑完就停止了」，它跟图标说的是相反的事。
+  it('says the same thing for every way a tool can fail', () => {
+    // The card answers one question -- did this step work -- and the reason it
+    // did not is the model's to explain in its reply, where it can say which
+    // page and which status. Four lines here were four different half-answers
+    // to a question nobody asked the card.
+    const lines = Object.values(FAILURE_LINES)
+      .filter((line) => line !== FAILURE_LINES.stopped)
+      .map((failureKey) => {
+        const { unmount } = render(<ToolCallCard toolCall={call({ ...failed, failureKey })} />);
+        const shown = screen.getByTestId('tool-call-error').textContent ?? '';
+        unmount();
+        return shown;
+      });
+
+    expect(lines.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(lines).size).toBe(1);
+    expect(lines[0]).toBe(t(FAILURE_LINES.generic));
+  });
+
+  it('tells a stopped call apart from a failed one', () => {
     const { unmount } = render(<ToolCallCard toolCall={call(failed)} />);
-    const unreachable = screen.getByTestId('tool-call-error').textContent ?? '';
+    const failedLine = screen.getByTestId('tool-call-error').textContent ?? '';
     unmount();
 
-    render(
-      <ToolCallCard
-        toolCall={call({ ...failed, failureKey: 'chat.tool.failure.upstream' })}
-      />,
-    );
-    const upstream = screen.getByTestId('tool-call-error').textContent ?? '';
+    render(<ToolCallCard toolCall={call(stopped)} />);
+    const stoppedLine = screen.getByTestId('tool-call-unfinished').textContent ?? '';
 
-    expect(unreachable).not.toBe(upstream);
-    expect(unreachable).toBe(t('chat.tool.failure.unreachable'));
-    expect(upstream).toBe(t('chat.tool.failure.upstream'));
+    expect(stoppedLine).not.toBe(failedLine);
+    expect(stoppedLine).toBe(t(FAILURE_LINES.stopped));
   });
 
   it('does not call a tool the user stopped a failure', () => {
