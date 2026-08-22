@@ -413,7 +413,22 @@ describe("GET /studio/:slug/credits", () => {
     expect(res.status).toBe(403);
   });
 
-  it("给成员看这个 studio 能花多少、由哪几笔构成、花在哪儿了", async () => {
+  it("成员但不是 admin，答 403", async () => {
+    // 这一页是 studio 的账本。管钱的是 admin，别人进不来 —— 前端把 tab 藏了，
+    // 但地址是手输得到的，所以门必须在服务端。
+    const fx = await seedFixture();
+    const helper = await seedFixture();
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${fx.studioId}, ${helper.userId}, 'maintainer')
+    `;
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+      headers: { Cookie: helper.cookie },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("给 admin 看这个 studio 能花多少、由哪几笔构成、花在哪儿了", async () => {
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
     await creditLotService.chargeForGeneration({
