@@ -105,7 +105,9 @@ const SummaryRow = React.memo(function SummaryRow({
       data-testid={testId}
       className={cn(
         'flex items-baseline gap-3 border-t border-border py-2.5',
-        strong && 'font-semibold',
+        // The total is set apart by its weight. Every rule in this interface
+        // is one pixel.
+        strong && 'font-bold',
       )}
     >
       <span className='text-sm'>{label}</span>
@@ -311,7 +313,7 @@ export function CreditsTab({
             {t('studio.container.credits.lotsEmpty')}
           </p>
         ) : (
-          <ul className='flex flex-col [&>li:first-child]:border-t-0 [&>li:first-child]:pt-0'>
+          <ul className='flex flex-col [&>li:first-child]:border-t-0 [&>li:first-child]:pt-0 [&>li:last-child]:pb-0'>
             {(head.lots ?? []).map((lot) => (
               <LotRow key={lot.id} lot={lot} />
             ))}
