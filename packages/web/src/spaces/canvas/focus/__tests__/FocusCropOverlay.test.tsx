@@ -1259,44 +1259,46 @@ function rectSize(): { width: number; height: number; left: number; top: number 
   };
 }
 
-describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991）', () => {
-  it('比例行最左边多一项，label 是固定字面量 Original（A6）', () => {
+describe('FocusCropOverlay — the Original preset, and a click that draws (#1991)', () => {
+  it('the row gains a leftmost item labelled with the literal Original (A6)', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     const original = screen.getByTestId('focus-ratio-original');
     expect(original.textContent).toBe('Original');
-    // 它排在七个比例之前
+    // It sits ahead of the seven ratios
     const row = original.parentElement as HTMLElement;
     expect(row.firstElementChild).toBe(original);
   });
 
-  it('两句指引都不再叫用户去拖，且挑节点那一阶段也说得通（A8）', () => {
-    // 横幅从挑选一开始就在屏幕上，那时比例行还不存在，所以文案里不能提比例；
-    // 「拖」也不能提，因为点比例就能出框。两句一起查：focusSourceChanged 就
-    // 挨着被改的那条清框路径，它原来写的是「请重新框选」。
+  it('neither guidance string tells the user to drag, and both read at pick time (A8)', () => {
+    // The banner is on screen from the moment picking starts, before any ratio
+    // row exists, so the copy can name neither the row nor a drag — a click on a
+    // ratio now draws. Both strings are checked together: focusSourceChanged sits
+    // on the clearing path this PR touched.
     const DRAG_WORDS = /drag|marquee|拖|框选|框選|ドラッグ|드래그/i;
     for (const [name, catalog] of Object.entries(CATALOGS)) {
       const panel = catalog.canvas?.generatePanel as Record<string, string>;
       expect(panel.selectFocusFromCanvas, `${name} 横幅`).not.toMatch(DRAG_WORDS);
       expect(panel.focusSourceChanged, `${name} 源变更提示`).not.toMatch(DRAG_WORDS);
-      // 两句都得有内容，别被改空
+      // Both must carry text; an empty string would pass the word check
       expect(panel.selectFocusFromCanvas.length).toBeGreaterThan(0);
       expect(panel.focusSourceChanged.length).toBeGreaterThan(0);
     }
   });
 
-  it('控件条跟着内容走，不再定宽（A5）', () => {
+  it('the controls bar hugs its content instead of carrying a fixed width (A5)', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     const bar = screen.getByTestId('focus-crop-controls');
     expect(bar.className).not.toMatch(/\bw-\[\d+px\]/);
     expect(bar.className).toContain('w-max');
   });
 
-  it('这一项不进 i18n：五个 catalog 里没有任何一条文案是它（A6）', () => {
-    // 防的是有人后来「顺手」把它 i18n 化 —— 那会让八个按钮回到两种写法。
-    // 钉的是「这个词不来自任何 catalog」这件事本身，key 叫什么都拦得住。
+  it('the label bypasses i18n: no catalog carries it as a string (A6)', () => {
+    // Guards against someone routing the label through t() later, which would
+    // put the eight buttons back on two different footings. What is pinned is
+    // that the word comes from no catalog at all, whatever key it might use.
     /**
-     * @param node - catalog 的任意一层。
-     * @returns 这一层往下的全部文案。
+     * @param node - Any level of a catalog.
+     * @returns Every string at or below it.
      */
     const values = (node: unknown): string[] =>
       typeof node === 'string'
@@ -1310,8 +1312,8 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     }
   });
 
-  it('视频源上同样成立：点 Original 出的框就是素材比例（A7）', () => {
-    // 视频显示盒跟素材同比例（w-full + 内在比例），素材 1600×900
+  it('a video source behaves the same: Original draws at the material aspect (A7)', () => {
+    // A video box carries the material's aspect (w-full + intrinsic); 1600x900
     IMG_BOX.width = 400;
     IMG_BOX.height = 225;
     renderVideoOverlay({ duration: 10, currentTime: 0, videoWidth: 1600, videoHeight: 900 });
@@ -1321,10 +1323,10 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     expect(r.height).toBe(225);
   });
 
-  it('选中之后拖拽画框的过程中，框就已经是该比例（A4 第二条路径）', () => {
+  it('a marquee dragged out under a lit preset carries that ratio throughout (A4)', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
-    // 只按下 + 移动，不抬起 —— 钉的是拖拽进行中那一刻，不是拖完的结果
+    // Press and move without releasing: what is pinned is the marquee mid-drag
     const layer = screen.getByTestId('focus-crop-layer');
     fireEvent.pointerDown(layer, { clientX: 110, clientY: 100, button: 0, pointerId: 7 });
     fireEvent.pointerMove(layer, { clientX: 260, clientY: 180, pointerId: 7 });
@@ -1333,7 +1335,7 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     expect(mid.width).toBe(150); // 主导轴 150 宽
   });
 
-  it('选中之后拉手柄，框仍保持该比例（A4 第三条路径）', () => {
+  it('pulling a handle under a lit preset keeps that ratio (A4)', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
     const before = rectSize();
@@ -1358,37 +1360,37 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     ).toBe('true');
   });
 
-  it('Original 的比例就是素材自身：5:2 的素材上拖出的框是 5:2（A1）', () => {
-    // 显示盒同步成 5:2，跟真实渲染一致（img 是 h-auto，盒比例 = 素材比例）
+  it('Original is the material own aspect: a 5:2 source drags out 5:2 (A1)', () => {
+    // The box follows at 5:2, as it renders (h-auto makes box aspect = material)
     IMG_BOX.width = 400;
     IMG_BOX.height = 160;
     renderImageOverlayReady({ width: 500, height: 200 });
     fireEvent.click(screen.getByTestId('focus-ratio-original'));
-    // 已经有框了（A2），再拖一个更小的，比例仍被锁在 2.5
+    // A marquee already exists (A2); dragging a smaller one stays locked at 2.5
     draw({ x: 150, y: 80 }, { x: 250, y: 200 });
     const r = rectSize();
     expect(r.width / r.height).toBeCloseTo(2.5, 2);
   });
 
-  it('Original 的值取自 naturalSize，不是显示盒（A1）', () => {
-    // 显示盒 4:3，素材 5:2 —— 两者刻意不等
+  it('Original reads the intrinsic size, not the display box (A1)', () => {
+    // Box 4:3 against a 5:2 material — deliberately unequal
     IMG_BOX.width = 400;
     IMG_BOX.height = 300;
     renderImageOverlayReady({ width: 500, height: 200 });
     fireEvent.click(screen.getByTestId('focus-ratio-original'));
     const r = rectSize();
-    // 取 naturalSize → 2.5；取显示盒 → 1.333
+    // Reading the intrinsic size gives 2.5; reading the box would give 1.333
     expect(r.width / r.height).toBeCloseTo(2.5, 2);
   });
 
-  it('没有框时点 1:1：直接出一个框，Y 轴铺满、水平居中（A2）', () => {
+  it('1:1 with no marquee: a marquee appears, Y filled and centred in X (A2)', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
     expect(rectSize()).toEqual({ width: 300, height: 300, left: 50, top: 0 });
   });
 
-  it('没有框时点 9:16：Y 轴铺满、另一轴按比例（A2）', () => {
+  it('9:16 with no marquee: Y filled, the other axis follows the ratio (A2)', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-9:16'));
     const r = rectSize();
@@ -1396,17 +1398,17 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     expect(r.width).toBe(169); // 300 × 9/16 = 168.75
   });
 
-  it('没有框时点 Original：两轴同时铺满，因为它的比例就是素材的（A2）', () => {
+  it('Original with no marquee fills both axes, its ratio being the material own (A2)', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-original'));
     expect(rectSize()).toEqual({ width: 400, height: 300, left: 0, top: 0 });
   });
 
-  it('已经有框时点一项：保当前框的中心重塑，不是重新铺满（A3）', () => {
+  it('with a marquee in hand, a click reshapes around its centre (A3)', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     draw({ x: 160, y: 90 }, { x: 280, y: 180 }); // 120×90，中心在素材坐标 (120, 85)
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
-    // applyRatioPreset 保住宽度和中心：120×120，中心仍是 (120, 85)
+    // applyRatioPreset keeps the width and the centre: 120x120 centred at (120, 85)
     const r = rectSize();
     expect(r.width).toBe(120);
     expect(r.height).toBe(120);
@@ -1414,8 +1416,8 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     expect(r.top + r.height / 2).toBe(85);
   });
 
-  it('素材比例恰好等于某个预设值时，同一时刻仍只亮一个（A4.1）', () => {
-    // 素材 4:3，跟 focus-ratio-4:3 的值相等
+  it('a material whose aspect equals a preset still lights exactly one (A4.1)', () => {
+    // A 4:3 material, equal to the value behind focus-ratio-4:3
     renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-original'));
     expect(
@@ -1424,7 +1426,7 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     expect(
       screen.getByTestId('focus-ratio-4:3').getAttribute('aria-pressed'),
     ).toBe('false');
-    // 反过来点 4:3，亮的换成它
+    // Clicking 4:3 the other way round moves the light to it
     fireEvent.click(screen.getByTestId('focus-ratio-4:3'));
     expect(
       screen.getByTestId('focus-ratio-4:3').getAttribute('aria-pressed'),
@@ -1434,10 +1436,10 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     ).toBe('false');
   });
 
-  it('锁着比例时手柄是圆点，自由时是方点（A9）', () => {
+  it('handles are round while a ratio is locked and square when free (A9)', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     draw({ x: 160, y: 90 }, { x: 280, y: 180 });
-    // 自己拖的框从来没锁过比例 —— 方点
+    // A hand-drawn marquee never locked a ratio, so the handles are square
     expect(screen.getByTestId('focus-crop-handle-se').className).not.toContain(
       'rounded-full',
     );
@@ -1445,14 +1447,14 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     expect(screen.getByTestId('focus-crop-handle-se').className).toContain(
       'rounded-full',
     );
-    // 点灭之后回到方点
+    // Un-lighting returns them to square
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
     expect(screen.getByTestId('focus-crop-handle-se').className).not.toContain(
       'rounded-full',
     );
   });
 
-  it('点灭之后框留着，比例不再锁，可以拖成任意形状（A4.2）', () => {
+  it('after un-lighting the marquee stays and drags to any shape (A4.2)', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
@@ -1468,7 +1470,7 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
  * 亮着的预设和框是两个状态。清框收成单一写入点之后，唯一剩下的失败模式就是
  * 「某一处没接进去」，所以每一处调用点各钉一条。
  */
-describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => {
+describe('FocusCropOverlay — lit implies a marquee (#1991 invariant)', () => {
   /**
    * 断言框没了、而且那一项也熄灭了。
    * @param testId - 该亮着的那个预设按钮。
@@ -1478,7 +1480,7 @@ describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => 
     expect(screen.getByTestId(testId).getAttribute('aria-pressed')).toBe('false');
   }
 
-  it('Esc 剥掉框时，亮着的那一项跟着熄灭', () => {
+  it('Esc strips the marquee and the lit item goes out with it', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-16:9'));
     expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
@@ -1486,7 +1488,7 @@ describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => 
     expectClearedAndUnlit('focus-ratio-16:9');
   });
 
-  it('退化手势被丢弃时，亮着的那一项跟着熄灭', () => {
+  it('a discarded degenerate gesture takes the lit item with it', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-9:16'));
     // 9:16 在 400×300 上得到 169×300 居中框，左右各余 116px 裸露的捕获层
@@ -1496,7 +1498,7 @@ describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => 
     expectClearedAndUnlit('focus-ratio-9:16');
   });
 
-  it('框底下的内容换了时，亮着的那一项跟着熄灭', () => {
+  it('content swapped under the marquee takes the lit item with it', () => {
     const { img } = renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
     act(() => {
@@ -1508,7 +1510,7 @@ describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => 
     expectClearedAndUnlit('focus-ratio-1:1');
   });
 
-  it('手势在飞时被剔除、框判无效被丢掉：目标回来之后那一项已经熄灭', () => {
+  it('a gesture culled mid-flight whose marquee fails the gauge leaves nothing lit', () => {
     const { img } = renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
     // 起一个还没拖开的新手势：此刻框是退化的，而 1:1 亮着
@@ -1531,7 +1533,7 @@ describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => 
     expectClearedAndUnlit('focus-ratio-1:1');
   });
 
-  it('确认时发现源变了：框清掉，亮着的那一项跟着熄灭', () => {
+  it('a source swap caught at confirm time clears the marquee and the light', () => {
     const { img } = renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
     // 直接改 src 而不触发重测，让确认那一步撞上基线不符
@@ -1540,7 +1542,7 @@ describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => 
     expectClearedAndUnlit('focus-ratio-1:1');
   });
 
-  it('源换成另一个元素、内容也不同：亮着的那一项跟着熄灭', () => {
+  it('the source remounted as a different element with different content clears both', () => {
     const { img } = renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
     const node = document.querySelector('.react-flow__node[data-id="n1"]')!;
@@ -1557,7 +1559,7 @@ describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => 
     expectClearedAndUnlit('focus-ratio-1:1');
   });
 
-  it('Cancel 收掉框时，亮着的那一项跟着熄灭', () => {
+  it('Cancel takes the marquee and the lit item together', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-16:9'));
     expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
@@ -1565,7 +1567,7 @@ describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => 
     expectClearedAndUnlit('focus-ratio-16:9');
   });
 
-  it('换一个裁剪目标时，亮着的那一项跟着熄灭', () => {
+  it('switching the crop target clears the marquee and the light', () => {
     /**
      * @param nodeId - 当前的裁剪目标。
      * @returns 两个节点都在画布上，浮层挂在其中一个上。
@@ -1609,8 +1611,8 @@ describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => 
  * 尺寸的素材），以及素材太小、按这个比例塑出来的框过不了退化闸门。两种都是真禁用，
  * 点不动，也没有任何提示。
  */
-describe('FocusCropOverlay：算不出合法框的那一项是禁用的（#1991）', () => {
-  it('素材还没报出自己的尺寸时，只有 Original 禁用', () => {
+describe('FocusCropOverlay — an item that cannot draw is disabled (#1991)', () => {
+  it('before the source reports its size, only Original is disabled', () => {
     // renderOverlay 一次性挂载，mount 时 naturalWidth 还是 jsdom 的 0
     renderOverlay();
     expect(screen.getByTestId('focus-ratio-original')).toBeDisabled();
@@ -1618,7 +1620,7 @@ describe('FocusCropOverlay：算不出合法框的那一项是禁用的（#1991�
     expect(screen.getByTestId('focus-ratio-1:1')).toBeEnabled();
   });
 
-  it('素材太小、放不下某个比例时，那一项禁用，放得下的照常', () => {
+  it('a ratio the material is too small to hold is disabled; the others are not', () => {
     // 400×10 的素材：9:16 塑出来只有 5.6 自然像素宽，过不了 8 像素的闸门
     IMG_BOX.width = 400;
     IMG_BOX.height = 10;
@@ -1628,7 +1630,7 @@ describe('FocusCropOverlay：算不出合法框的那一项是禁用的（#1991�
     expect(screen.getByTestId('focus-ratio-original')).toBeEnabled();
   });
 
-  it('禁用的那一项点不动：不出框、不点亮、不弹提示', () => {
+  it('a disabled item does nothing on click: no marquee, no light, no message', () => {
     const warned = vi.spyOn(toast, 'warning');
     const errored = vi.spyOn(toast, 'error');
     renderOverlay();
@@ -1641,7 +1643,18 @@ describe('FocusCropOverlay：算不出合法框的那一项是禁用的（#1991�
     expect(errored).not.toHaveBeenCalled();
   });
 
-  it('尺寸到达之后 Original 恢复可用', () => {
+  it('a disabled item drops the hover response the others carry', () => {
+    // `Button`'s base deliberately omits `disabled:pointer-events-none`, so a
+    // disabled one still receives hover and would light up like a live item
+    // unless the class is withheld.
+    renderOverlay();
+    expect(
+      screen.getByTestId('focus-ratio-original').className,
+    ).not.toContain('hover:bg-accent');
+    expect(screen.getByTestId('focus-ratio-16:9').className).toContain('hover:bg-accent');
+  });
+
+  it('Original becomes available once the size arrives', () => {
     renderOverlay();
     const img = screen.getByTestId('image-node-img');
     act(() => {

@@ -236,7 +236,7 @@
       "focus": "フォーカス",
       "reference": "参照",
       "styleTip": "画像を1枚選んでスタイル参照にします",
-      "focusTip": "ノードの一部を範囲選択して参照にします",
+      "focusTip": "ノードの一部の領域を参照にします",
       "referenceTip": "キャンバスから画像を選んで参照にします",
       "emptyImageReference": "まだ生成・アップロードされていません",
       "emptyTextReference": "内容がありません",
