@@ -699,7 +699,7 @@
         "label": "整篇文档的命令",
         "saveSnapshot": "保存快照",
         "restoreSnapshot": "恢复快照",
-        "notOpenYet": "尚未开放"
+        "notOpenYet": "未开放"
       }
     },
     "readOnlyReconnect": "重新连接"

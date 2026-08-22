@@ -699,7 +699,7 @@
         "label": "ドキュメント全体の操作",
         "saveSnapshot": "スナップショットを保存",
         "restoreSnapshot": "スナップショットを復元",
-        "notOpenYet": "まだ利用できません"
+        "notOpenYet": "未提供"
       }
     },
     "readOnlyReconnect": "再接続"

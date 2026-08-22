@@ -699,7 +699,7 @@
         "label": "문서 전체 명령",
         "saveSnapshot": "스냅샷 저장",
         "restoreSnapshot": "스냅샷 복원",
-        "notOpenYet": "아직 사용할 수 없습니다"
+        "notOpenYet": "미제공"
       }
     },
     "readOnlyReconnect": "다시 연결"
