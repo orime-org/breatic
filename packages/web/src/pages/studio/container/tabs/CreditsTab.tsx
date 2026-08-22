@@ -15,13 +15,10 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
-import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
 interface CreditsTabProps {
   /** The studio being viewed. */
   slug: string;
-  /** The viewer's studio role, or `null` for a non-member. */
-  studioRole: StudioRole | null;
 }
 
 /**
@@ -138,10 +135,14 @@ const LedgerRow = React.memo(function LedgerRow({
   entry: StudioLedgerView;
 }): React.JSX.Element {
   const t = useTranslation();
+  // What separates the two sentences is whether the studio ended up owing,
+  // which `owed` answers on its own. A charge that reached no lot at all is
+  // still a shortfall — it is the whole bill turned into debt, and reading it
+  // off `charged` would call the moment the debt was created a free run.
   const note =
     entry.kind !== 'generation' || entry.charged === entry.consumed
       ? null
-      : entry.owed !== 0 && entry.charged !== 0
+      : entry.owed !== 0
         ? t('studio.container.credits.noteShortfall', {
           consumed: formatAmount(-entry.consumed),
           owed: formatAmount(-entry.owed),
@@ -185,21 +186,17 @@ const LedgerRow = React.memo(function LedgerRow({
 /**
  * The Credits tab — what this studio can spend, and where its credits went.
  *
- * The pool belongs to the studio, so every member sees the balance: a guest
- * editing one of its projects spends it. The ledger beside it is taken by
- * payer, so a member reads what their own money paid for here.
+ * The admin's page. The pool is the studio's and so is the ledger beside it:
+ * everyone generating here spends the same credits, whoever paid for them, and
+ * the person on each line is whoever ran the generation.
  *
  * Buying and refunding are account-level and live in the account's credit
  * overlay; this tab reports.
- * @param props - The studio and the viewer's role.
+ * @param props - The studio being viewed.
  * @param props.slug - The studio being viewed.
- * @param props.studioRole - The viewer's studio role.
  * @returns The Credits tab content.
  */
-export function CreditsTab({
-  slug,
-  studioRole,
-}: CreditsTabProps): React.JSX.Element {
+export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
   const t = useTranslation();
 
   const query = useInfiniteQuery({
@@ -259,7 +256,6 @@ export function CreditsTab({
     );
   }
 
-  const isMember = studioRole !== null;
   // Four situations, and each one gets its own sentence. Reading them off the
   // balance alone cannot tell "nothing was ever assigned here" from "it was
   // all spent" — both are zero, and only one of them is answered by assigning
@@ -295,7 +291,7 @@ export function CreditsTab({
         </div>
       </div>
 
-      {state === 'spendable' || !isMember ? null : (
+      {state === 'spendable' ? null : (
         <p
           data-testid='studio-credits-unassigned-notice'
           className='rounded-content-sm border border-status-warning-border bg-status-warning-bg px-3 py-2.5 text-sm'
@@ -308,7 +304,12 @@ export function CreditsTab({
         <h3 className='mb-3 text-sm font-semibold'>
           {t('studio.container.credits.lotsTitle')}
         </h3>
-        {(head.lots ?? []).length === 0 ? (
+        {/* This block explains the figure above it, so what decides between a
+            list and an empty state is whether there is anything to add up. A
+            studio that owes without ever having been assigned a lot is the one
+            reading most in need of the explanation: the balance is below zero
+            and the only line that accounts for it is the debt. */}
+        {(head.lots ?? []).length === 0 && (head.debt ?? 0) === 0 ? (
           <p className='text-sm text-muted-foreground'>
             {t('studio.container.credits.lotsEmpty')}
           </p>

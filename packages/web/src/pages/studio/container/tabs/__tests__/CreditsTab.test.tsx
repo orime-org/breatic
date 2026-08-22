@@ -93,7 +93,7 @@ beforeEach(() => {
 describe('CreditsTab', () => {
   it('显示这个 studio 能花多少，数字来自服务器', async () => {
     fetchStudioCredits.mockResolvedValue(credits());
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     expect(await screen.findByTestId('studio-spendable')).toHaveTextContent('4,910');
     expect(fetchStudioCredits).toHaveBeenCalledWith('acme', undefined);
@@ -101,7 +101,7 @@ describe('CreditsTab', () => {
 
   it('列出这个 studio 的每一笔，显示剩多少、一共多少', async () => {
     fetchStudioCredits.mockResolvedValue(credits());
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     const lot = await screen.findByTestId('studio-lot-lot-1');
     expect(lot).toHaveTextContent('3,120');
@@ -110,7 +110,7 @@ describe('CreditsTab', () => {
 
   it('流水每行说得出谁花的、在哪个 project、用了哪个模型', async () => {
     fetchStudioCredits.mockResolvedValue(credits());
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     const row = await screen.findByTestId('studio-ledger-e1');
     expect(row).toHaveTextContent('李静');
@@ -124,14 +124,14 @@ describe('CreditsTab', () => {
     fetchStudioCredits.mockResolvedValue(
       credits({ spendable: 0, lots: [], ledger: { items: [], nextCursor: null } }),
     );
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     expect(await screen.findByTestId('studio-credits-unassigned-notice')).toBeInTheDocument();
   });
 
   it('有积分时不显示那条提示', async () => {
     fetchStudioCredits.mockResolvedValue(credits());
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     await screen.findByTestId('studio-spendable');
     expect(
@@ -139,17 +139,9 @@ describe('CreditsTab', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('访客看到的可用额跟 admin 一样', async () => {
-    // 访客在这个 studio 的 project 里生成，花的就是这个池子。
-    fetchStudioCredits.mockResolvedValue(credits());
-    renderTab(<CreditsTab slug='acme' studioRole='guest' />);
-
-    expect(await screen.findByTestId('studio-spendable')).toHaveTextContent('4,910');
-  });
-
   it('取完了就不再监听滚到底', async () => {
     fetchStudioCredits.mockResolvedValue(credits());
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     await screen.findByTestId('studio-ledger-e1');
     await waitFor(() => expect(reachEnd).toBeNull());
@@ -160,7 +152,7 @@ describe('CreditsTab', () => {
     fetchStudioCredits.mockResolvedValue(
       credits({ ledger: { items: credits().ledger.items, nextCursor: 'c1' } }),
     );
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     await screen.findByTestId('studio-ledger-e1');
     expect(screen.queryByTestId('studio-ledger-end')).not.toBeInTheDocument();
@@ -169,7 +161,7 @@ describe('CreditsTab', () => {
 
   it('取完了才画「到底了」', async () => {
     fetchStudioCredits.mockResolvedValue(credits());
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     expect(await screen.findByTestId('studio-ledger-end')).toBeInTheDocument();
   });
@@ -188,7 +180,7 @@ describe('CreditsTab', () => {
       .mockResolvedValueOnce(first)
       .mockResolvedValueOnce(second);
 
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
     await screen.findByTestId('studio-ledger-e1');
 
     expect(reachEnd).not.toBeNull();
@@ -211,7 +203,7 @@ describe('CreditsTab', () => {
       .mockResolvedValueOnce(first)
       .mockRejectedValueOnce(new Error('network'));
 
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
     await screen.findByTestId('studio-ledger-e1');
 
     expect(reachEnd).not.toBeNull();
@@ -234,7 +226,7 @@ describe('CreditsTab', () => {
       .mockResolvedValueOnce(first)
       .mockRejectedValueOnce(new Error('network'));
 
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
     await screen.findByTestId('studio-ledger-e1');
     reachEnd!();
     await screen.findByTestId('studio-ledger-page-error');
@@ -243,7 +235,7 @@ describe('CreditsTab', () => {
   });
   it('每一笔充值都写着谁买的', async () => {
     fetchStudioCredits.mockResolvedValue(credits());
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     expect(await screen.findByTestId('studio-lot-lot-1')).toHaveTextContent(
       '张伟',
@@ -254,7 +246,7 @@ describe('CreditsTab', () => {
     // 这一块解释的就是上面那个数怎么来的。没有合计，它跟那个数之间没有看得
     // 见的算术关系。
     fetchStudioCredits.mockResolvedValue(credits());
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     expect(await screen.findByTestId('studio-lots-total')).toHaveTextContent(
       '4,910',
@@ -269,13 +261,38 @@ describe('CreditsTab', () => {
         lots: [{ ...credits().lots![0]!, remainingCredits: 0 }],
       }),
     );
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     expect(await screen.findByTestId('studio-spendable')).toHaveTextContent(
       '-320',
     );
     expect(screen.getByTestId('studio-lots-debt')).toHaveTextContent('-320');
     expect(screen.getByTestId('studio-lots-total')).toHaveTextContent('-320');
+  });
+
+  it('一笔都没有却欠着账：欠账和合计照样列出来', async () => {
+    // 这一块解释的就是上面那个数怎么来的，而这一格最需要解释：屏幕上写着
+    // -320，下面得说得出这 -320 是「0 笔减去 320 欠账」。
+    fetchStudioCredits.mockResolvedValue(
+      credits({ spendable: -320, debt: 320, lots: [] }),
+    );
+    renderTab(<CreditsTab slug='acme' />);
+
+    expect(await screen.findByTestId('studio-lots-debt')).toHaveTextContent(
+      '-320',
+    );
+    expect(screen.getByTestId('studio-lots-total')).toHaveTextContent('-320');
+  });
+
+  it('一笔都没有也不欠账时，这一块才是空态', async () => {
+    fetchStudioCredits.mockResolvedValue(
+      credits({ spendable: 0, debt: 0, lots: [] }),
+    );
+    renderTab(<CreditsTab slug='acme' />);
+
+    await screen.findByTestId('studio-spendable');
+    expect(screen.queryByTestId('studio-lots-debt')).toBeNull();
+    expect(screen.queryByTestId('studio-lots-total')).toBeNull();
   });
 
   it('扣不满的生成：金额是实扣，下面标消耗多少、欠多少', async () => {
@@ -294,7 +311,7 @@ describe('CreditsTab', () => {
         },
       }),
     );
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     const row = await screen.findByTestId('studio-ledger-e1');
     expect(row).toHaveTextContent('-30');
@@ -302,7 +319,10 @@ describe('CreditsTab', () => {
     expect(row).toHaveTextContent('320');
   });
 
-  it('没扣费的生成：金额是 0，下面标消耗多少、未扣费', async () => {
+  it('一笔都扣不到的生成：金额是 0，下面标消耗多少、欠多少', async () => {
+    // 这一行的三个数是后端算出来的：一笔都锁不到时 allocations 为空，一行
+    // spend 都不写，只写一行 debt_incurred，所以实扣恰好是 0 而欠额是全额。
+    // 它跟真正的「没扣费」区别在 owed，不在 charged。
     fetchStudioCredits.mockResolvedValue(
       credits({
         ledger: {
@@ -318,13 +338,37 @@ describe('CreditsTab', () => {
         },
       }),
     );
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     const row = await screen.findByTestId('studio-ledger-e1');
-    expect(row).toHaveTextContent('42.5');
-    expect(
-      within(row).getByTestId('studio-ledger-note'),
-    ).toBeInTheDocument();
+    expect(within(row).getByTestId('studio-ledger-note')).toHaveTextContent(
+      'owed 42.5',
+    );
+  });
+
+  it('没扣费的生成：欠额是 0，小字说的是没扣费', async () => {
+    // 支付关掉的部署，用量照记、没有笔可扣，也不欠谁的账。
+    fetchStudioCredits.mockResolvedValue(
+      credits({
+        ledger: {
+          items: [
+            {
+              ...credits().ledger.items[0]!,
+              charged: 0,
+              consumed: -42.5,
+              owed: 0,
+            },
+          ],
+          nextCursor: null,
+        },
+      }),
+    );
+    renderTab(<CreditsTab slug='acme' />);
+
+    const row = await screen.findByTestId('studio-ledger-e1');
+    const note = within(row).getByTestId('studio-ledger-note');
+    expect(note).toHaveTextContent('not charged');
+    expect(note).not.toHaveTextContent('owed');
   });
 
   it('抵扣欠账那行把中间两列合起来写这是什么事', async () => {
@@ -349,7 +393,7 @@ describe('CreditsTab', () => {
         },
       }),
     );
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     const row = await screen.findByTestId('studio-ledger-e1');
     const merged = within(row).getByTestId('studio-ledger-event');
@@ -359,7 +403,7 @@ describe('CreditsTab', () => {
 
   it('消耗和实扣相等时不标小字', async () => {
     fetchStudioCredits.mockResolvedValue(credits());
-    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+    renderTab(<CreditsTab slug='acme' />);
 
     const row = await screen.findByTestId('studio-ledger-e1');
     expect(within(row).queryByTestId('studio-ledger-note')).toBeNull();

@@ -230,10 +230,7 @@ export default function StudioContainerPage(): React.JSX.Element {
                 />
               ) : null}
               {tab === 'credits' ? (
-                <CreditsTab
-                  slug={slug}
-                  studioRole={view.studio.myStudioRole}
-                />
+                <CreditsTab slug={slug} />
               ) : null}
               {tab === 'settings' ? (
                 <SettingsTab studio={view.studio} members={members} />
