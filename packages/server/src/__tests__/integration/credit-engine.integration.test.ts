@@ -418,7 +418,11 @@ describe("总览的两个数", () => {
     expect(mine?.spent).toBe(30);
   });
 
-  it("「由哪几笔构成」不列已经花光的笔", async () => {
+  it("充值记录照样列出已经花光的笔", async () => {
+    // 这一块记的是进来的水：谁充的、充了多少、还剩多少。一笔花光了，它仍然
+    // 是这个 studio 收到过的一笔充值 —— 已确认的 demo 第二行画的就是一笔
+    // remaining 为 0 的。把它拿掉，花光积分的 studio 会看到一块空白，而正
+    // 下方的流水正列着那笔钱花出去的每一行。
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
     await creditLotService.chargeForGeneration({
@@ -428,7 +432,39 @@ describe("总览的两个数", () => {
     });
 
     expect((await readLot(lotId)).lifecycle).toBe("depleted");
-    expect(await creditLotRepo.listLotsByStudio(fx.studioId)).toEqual([]);
+    const purchases = await creditLotRepo.listPurchasesByStudio(fx.studioId);
+    expect(purchases).toEqual([
+      expect.objectContaining({
+        id: lotId,
+        remainingCredits: "0.000000",
+        purchasedCredits: "100.000000",
+      }),
+    ]);
+  });
+
+  it("充值记录带着每一笔是谁买的", async () => {
+    // demo 每行第一格就是买家的名字。显示名住在个人 studio 上，跟流水取
+    // 操作人名字同一处。
+    const fx = await seedFixture();
+    const buyerName = `买家 ${seq}`;
+    await sql`
+      INSERT INTO studios (created_by_user_id, slug, type, name)
+      VALUES (${fx.userId}, ${`engine-me-${seq++}-${Date.now()}`}, 'personal', ${buyerName})
+    `;
+    const lotId = await seedLot(fx, 880, fx.studioId);
+
+    const purchases = await creditLotRepo.listPurchasesByStudio(fx.studioId);
+    expect(purchases).toEqual([
+      expect.objectContaining({ id: lotId, buyerName }),
+    ]);
+  });
+
+  it("充值记录不列指向已软删 studio 的笔", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx, 100, fx.studioId);
+    await sql`UPDATE studios SET deleted_at = NOW() WHERE id = ${fx.studioId}`;
+
+    expect(await creditLotRepo.listPurchasesByStudio(fx.studioId)).toEqual([]);
   });
 });
 
