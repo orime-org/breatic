@@ -10,9 +10,10 @@ import { Skeleton } from '@web/components/ui/skeleton';
 import {
   fetchStudioCredits,
   type StudioLedgerView,
-  type StudioPurchaseView,
+  type StudioLotView,
 } from '@web/data/api/credits';
-import { getLocale } from '@breatic/shared';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
+import { formatLocalDay } from '@web/lib/format-day';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
@@ -22,38 +23,6 @@ interface CreditsTabProps {
   slug: string;
 }
 
-/**
- * Format a credit amount for display.
- * @param value - The amount.
- * @returns The amount with thousands separators and at most two decimals.
- */
-function formatAmount(value: number): string {
-  return value.toLocaleString(getLocale(), { maximumFractionDigits: 2 });
-}
-
-/**
- * Format a timestamp as the reader's own date.
- *
- * The wire carries UTC. Slicing the string off at ten characters shows UTC's
- * day to everyone, and for a reader eight hours ahead a third of every day
- * lands on the one before — on a record of money, where this column is the
- * only time it carries.
- * The parts come off the local Date, so the day is the reader's; the shape is
- * the one the confirmed design draws, and it reads the same in every language
- * this product ships.
- * @param iso - An ISO-8601 timestamp.
- * @returns The date in the reader's timezone, as `YYYY-MM-DD`.
- */
-function formatDate(iso: string): string {
-  const at = new Date(iso);
-  /**
-   * Two digits, so every row lines up.
-   * @param n - A month or a day.
-   * @returns It, zero-padded.
-   */
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
-}
 
 /**
  * One top-up this studio received.
@@ -64,7 +33,7 @@ function formatDate(iso: string): string {
 const LotRow = React.memo(function LotRow({
   lot,
 }: {
-  lot: StudioPurchaseView;
+  lot: StudioLotView;
 }): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -75,16 +44,16 @@ const LotRow = React.memo(function LotRow({
       <span>
         <span className='block text-sm'>{lot.buyerName ?? '—'}</span>
         <span className='block text-xs text-muted-foreground'>
-          {formatDate(lot.createdAt)}
+          {formatLocalDay(lot.createdAt)}
         </span>
       </span>
       <span className='ml-auto text-right tabular-nums'>
         <span className='block text-sm font-semibold'>
-          {formatAmount(lot.remainingCredits)}
+          {formatCreditAmount(lot.remainingCredits)}
         </span>
         <span className='block text-xs text-muted-foreground'>
           {t('studio.container.credits.lotPurchased', {
-            amount: formatAmount(lot.purchasedCredits),
+            amount: formatCreditAmount(lot.purchasedCredits),
           })}
         </span>
       </span>
@@ -130,7 +99,7 @@ const SummaryRow = React.memo(function SummaryRow({
           strong ? 'font-bold' : 'font-semibold',
         )}
       >
-        {formatAmount(amount)}
+        {formatCreditAmount(amount)}
       </span>
     </li>
   );
@@ -165,15 +134,15 @@ const LedgerRow = React.memo(function LedgerRow({
       ? null
       : entry.owed !== 0
         ? t('studio.container.credits.noteShortfall', {
-          consumed: formatAmount(-entry.consumed),
-          owed: formatAmount(-entry.owed),
+          consumed: formatCreditAmount(-entry.consumed),
+          owed: formatCreditAmount(-entry.owed),
         })
         : t('studio.container.credits.noteUnbilled', {
-          consumed: formatAmount(-entry.consumed),
+          consumed: formatCreditAmount(-entry.consumed),
         });
   return (
     <tr data-testid={`studio-ledger-${entry.id}`} className='border-t border-border'>
-      <td className='py-1.5 text-muted-foreground'>{formatDate(entry.createdAt)}</td>
+      <td className='py-1.5 text-muted-foreground'>{formatLocalDay(entry.createdAt)}</td>
       <td className='py-1.5'>{entry.actorName ?? '—'}</td>
       {entry.kind === 'debt_repayment' ? (
         <td
@@ -190,7 +159,7 @@ const LedgerRow = React.memo(function LedgerRow({
         </>
       )}
       <td className='py-1.5 text-right tabular-nums'>
-        {formatAmount(entry.charged)}
+        {formatCreditAmount(entry.charged)}
         {note === null ? null : (
           <span
             data-testid='studio-ledger-note'
@@ -301,7 +270,7 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
             data-testid='studio-spendable'
             className='text-3xl font-extrabold leading-[1.1] tracking-[-0.02em] text-foreground'
           >
-            {formatAmount(head.spendable ?? 0)}
+            {formatCreditAmount(head.spendable ?? 0)}
             <small className='ml-1 align-baseline text-sm font-medium text-muted-foreground'>
               {t('studio.container.credits.unit')}
             </small>

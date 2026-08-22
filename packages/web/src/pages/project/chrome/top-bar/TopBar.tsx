@@ -14,7 +14,7 @@ import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
-import { getLocale } from '@breatic/shared';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { Skeleton } from '@web/components/ui/skeleton';
@@ -205,7 +205,7 @@ function CreditsPill({
     >
       <Star className='h-3.5 w-3.5 text-muted-foreground' aria-hidden='true' />
       {credits.status === 'ready' ? (
-        <span>{credits.value.toLocaleString(getLocale())}</span>
+        <span>{formatCreditAmount(credits.value)}</span>
       ) : credits.status === 'pending' ? (
         <Skeleton
           data-testid='credits-chip-placeholder'

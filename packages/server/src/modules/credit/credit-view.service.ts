@@ -30,8 +30,8 @@ export interface CreditLotView {
   createdAt: string;
 }
 
-/** One purchase on a studio's page, where the buyer is a column. */
-export interface StudioPurchaseView extends CreditLotView {
+/** One lot a studio holds, where the buyer is a column. */
+export interface StudioLotView extends CreditLotView {
   /** Who bought it. Absent when their personal studio is gone. */
   buyerName: string | null;
 }
@@ -111,14 +111,12 @@ function toLotView(lot: CreditLotEntity): CreditLotView {
 }
 
 /**
- * Map a purchase to its display shape on a studio's page.
- * @param purchase - The stored lot, with the buyer's name joined in.
+ * Map a lot to its display shape on a studio's page.
+ * @param lot - The stored lot, with the buyer's name joined in.
  * @returns The view model.
  */
-function toPurchaseView(
-  purchase: creditLotRepo.StudioPurchase,
-): StudioPurchaseView {
-  return { ...toLotView(purchase), buyerName: purchase.buyerName };
+function toStudioLotView(lot: creditLotRepo.StudioLot): StudioLotView {
+  return { ...toLotView(lot), buyerName: lot.buyerName };
 }
 
 /**
@@ -278,7 +276,7 @@ export interface StudioCreditsView {
   /** What the studio owes, as a positive number. First page only. */
   debt?: number;
   /** Present on the first page only, for the same reason. */
-  lots?: StudioPurchaseView[];
+  lots?: StudioLotView[];
   ledger: CreditPage<StudioLedgerView>;
 }
 
@@ -366,7 +364,7 @@ export async function getStudioCredits(
   return {
     spendable: snapshot.spendable,
     debt: snapshot.debt,
-    lots: snapshot.lots.map(toPurchaseView),
+    lots: snapshot.lots.map(toStudioLotView),
     ledger: toPage(snapshot.ledger, size, toStudioLedgerView, studioLedgerKey),
   };
 }

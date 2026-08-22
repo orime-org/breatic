@@ -45,6 +45,7 @@ import {
   ProjectActivityEntrySchema,
   type ProjectActivityPage,
 } from "@breatic/shared";
+import type { ActivityCursor } from "@breatic/core";
 import type { Hono } from "hono";
 
 try {
@@ -297,6 +298,50 @@ describe("GET /projects/:id/activities — keyset feed", () => {
       { headers: { Cookie: await loginCookie(userId) } },
     );
     expect(garbage.status).toBe(200);
+  });
+
+  it("walks every row when a page boundary falls inside one millisecond", async () => {
+    // `created_at` is written by `now()` and Postgres keeps it to the
+    // microsecond. Three things happening in one project a few hundred
+    // microseconds apart share a millisecond, and a cursor rounded to
+    // milliseconds draws the "continue from here" line in the wrong place:
+    // the rows inside that gap are never served again.
+    const { userId } = await insertUserWithStudio("Micro Author");
+    const projectId = await insertProject(userId);
+    const stamps = [
+      "2026-08-22 12:00:00.789900+00",
+      "2026-08-22 12:00:00.789400+00",
+      "2026-08-22 12:00:00.789000+00",
+    ];
+    for (const stamp of stamps) {
+      const id = await projectActivitiesRepo.insert({
+        projectId,
+        actorUserId: userId,
+        type: "space:created",
+        payload: { spaceName: stamp },
+      });
+      // A literal, because a parameterised timestamp goes through the driver
+      // and loses the microseconds on the way in.
+      await sql.unsafe(
+        `UPDATE project_activities SET created_at = TIMESTAMPTZ '${stamp}' WHERE id = '${id}'`,
+      );
+    }
+
+    const seen: string[] = [];
+    let cursor: ActivityCursor | null = null;
+    for (let page = 0; page < 5; page++) {
+      const rows = await projectActivitiesRepo.listByProject(
+        projectId,
+        cursor,
+        1,
+      );
+      if (rows.length === 0) break;
+      seen.push(rows[0]!.entry.id);
+      cursor = { createdAt: rows[0]!.cursorAt, id: rows[0]!.entry.id };
+    }
+
+    expect(seen).toHaveLength(3);
+    expect(new Set(seen).size).toBe(3);
   });
 
   it("sends nothing beyond the fields the page schema declares", async () => {

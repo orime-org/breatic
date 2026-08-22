@@ -504,6 +504,27 @@ describe("GET /studio/:slug/credits", () => {
   });
 });
 
+  it("积分明细最新的一笔排在最前", async () => {
+    // 跟下面的消耗流水同一个方向。设计稿两块都是最新在前，一升一降会让人
+    // 以为两块在按不同的东西排。
+    const fx = await seedFixture();
+    const older = await seedLot(fx, 10, fx.studioId);
+    const newer = await seedLot(fx, 20, fx.studioId);
+    await sql`
+      UPDATE credit_lots SET created_at = '2026-08-04T00:00:00Z' WHERE id = ${older}
+    `;
+    await sql`
+      UPDATE credit_lots SET created_at = '2026-08-19T00:00:00Z' WHERE id = ${newer}
+    `;
+
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+      headers: { Cookie: fx.cookie },
+    });
+    const body = (await res.json()) as { data: { lots: { id: string }[] } };
+
+    expect(body.data.lots.map((lot) => lot.id)).toEqual([newer, older]);
+  });
+
 describe("GET /projects/:id/credits", () => {
   it("未登录答 401", async () => {
     const fx = await seedFixture();

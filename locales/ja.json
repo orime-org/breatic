@@ -907,7 +907,7 @@
         "spendableHint": "この Studio の Project で生成すると、ここのクレジットを使います。",
         "noneHint": "この Studio に割り当てられたクレジットはまだありません。",
         "nonePrompt": "クレジットは Studio に割り当ててから使えます。アカウントのクレジットで割り当ててください。",
-        "lotsTitle": "チャージ履歴",
+        "lotsTitle": "クレジット内訳",
         "lotsDebt": "未払い",
         "lotsTotal": "合計",
         "depletedHint": "この Studio のクレジットは使い切りました。",

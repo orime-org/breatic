@@ -550,7 +550,7 @@ function spendableFrom(lots: string, debt: string): number {
 export interface StudioCreditsSnapshot {
   spendable: number;
   debt: number;
-  lots: creditLotRepo.StudioPurchase[];
+  lots: creditLotRepo.StudioLot[];
   ledger: creditLotRepo.StudioLedgerRow[];
 }
 
@@ -577,7 +577,7 @@ export async function readStudioCredits(
       const [lots, debt, designated, ledger] = await Promise.all([
         creditLotRepo.sumSpendableForStudio(studioId, tx),
         creditLotRepo.readDebt(studioId, tx),
-        creditLotRepo.listPurchasesByStudio(studioId, tx),
+        creditLotRepo.listLotsByStudio(studioId, tx),
         creditLotRepo.listLedgerByStudio(studioId, limit, null, tx),
       ]);
       return {

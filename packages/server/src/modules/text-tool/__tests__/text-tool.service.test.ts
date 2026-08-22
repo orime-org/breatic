@@ -155,6 +155,29 @@ describe("一次跑到一半就死掉的运行", () => {
     expect(charge.calls).toHaveLength(0);
     expect(logError).not.toHaveBeenCalled();
   });
+
+  it("死在 token 数读出来之后，那些 token 照样计费", async () => {
+    // 这是 catch 里那次扣费存在的唯一理由。消费方在收到事件时抛出，异常
+    // 从挂起的 yield 处回到这个 try 里，而 totalTokens 已经有值了 ——
+    // 模型的账已经产生，谁读走了结果不改变这件事。
+    const gen = executeTextTool(
+      "u-1",
+      "generate",
+      { instructions: "写点什么" },
+      new AbortController().signal,
+      "key-1",
+    );
+    await gen.next();
+    await gen.next();
+
+    const thrown = await gen.throw(new Error("consumer gone"));
+
+    expect(thrown.value).toMatchObject({ type: "error" });
+    expect(charge.calls).toHaveLength(2);
+    // 同一个幂等键，所以两次里只有一次真扣得下去。
+    expect(charge.calls[1]?.[0]).toBe(charge.calls[0]?.[0]);
+    expect(charge.calls[1]?.[1]).toMatchObject({ tokensUsed: 2000 });
+  });
 });
 
 export type { CoreModule };

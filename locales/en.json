@@ -907,7 +907,7 @@
         "spendableHint": "Generating in this Studio's Projects spends these credits.",
         "noneHint": "No credits are assigned to this Studio yet.",
         "nonePrompt": "Credits have to be assigned to a Studio before they can be spent. Assign them under account credits.",
-        "lotsTitle": "Top-ups",
+        "lotsTitle": "Credits",
         "lotsDebt": "Owed",
         "lotsTotal": "Total",
         "depletedHint": "This Studio has spent all of its credits.",

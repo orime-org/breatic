@@ -114,6 +114,15 @@ describe('TopBar', () => {
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('-320');
   });
 
+  it('rounds a fractional balance the way the credits tab does', () => {
+    // Model costs are not whole credits, so a balance with decimals is the
+    // normal case. This is the same figure the Studio's credits tab shows,
+    // and one place reading 10.368 while the other reads 10.37 makes a
+    // person check which of the two is their money.
+    setup({ credits: { status: 'ready', value: 10.368 } });
+    expect(screen.getByTestId('credits-chip')).toHaveTextContent('10.37');
+  });
+
   it('shows a placeholder while the balance is still being fetched', () => {
     // Zero is a real balance here — the pre-check turns generation away on it.
     // Showing it before the answer arrives states something that is not known.

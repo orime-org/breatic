@@ -67,21 +67,22 @@ function spendableByStudio(studioId: string): SQL | undefined {
 }
 
 /**
- * What counts as one of a studio's purchases, stated once.
+ * What counts as one of a studio's credits, stated once.
  *
- * Designated to a studio that is still there — and nothing about the
- * lifecycle. A lot spent to nothing is still a top-up this studio received,
- * and the block this feeds is what explains the number at the top of the
- * page: leaving spent lots out makes a studio that spent everything look
- * like one that was never given anything.
+ * The designation as it stands right now, to a studio that is still there —
+ * and nothing about the lifecycle or the balance. A lot spent to nothing is
+ * still designated here and still says so, at zero; a lot designated
+ * elsewhere since belongs to that studio and stops appearing under this one.
+ * What this feeds is what the studio holds today, which is what explains the
+ * number at the top of the page.
  *
  * The refund lifecycles are absent from here because they cannot reach it: a
  * lot under refund carries no designation at all, which `credit_lots`' own
  * check enforces (0063). Naming them would filter nothing.
- * @param studioId - The studio whose purchases are being read.
+ * @param studioId - The studio whose credits are being read.
  * @returns The condition, to be combined with the caller's own.
  */
-function purchasedByStudio(studioId: string): SQL | undefined {
+function designatedToStudio(studioId: string): SQL | undefined {
   return and(
     eq(creditLots.designatedStudioId, studioId),
     isNull(creditLots.deletedAt),
@@ -513,14 +514,17 @@ export async function listLotsByUser(
   return rows.map((row) => ({ ...toLotEntity(row.lot), cursorAt: row.cursorAt }));
 }
 
-/** One purchase a studio received, with the buyer's display name. */
-export interface StudioPurchase extends CreditLotEntity {
+/** One lot a studio holds, with the buyer's display name. */
+export interface StudioLot extends CreditLotEntity {
   /** Who bought it. Absent when their personal studio is gone. */
   buyerName: string | null;
 }
 
 /**
- * Every top-up designated to a studio, oldest first.
+ * Every lot designated to a studio right now, newest first.
+ *
+ * Newest first is the direction the ledger below it reads, and the two blocks
+ * on that page are read together.
  *
  * The buyer's name comes from their personal studio, which is where display
  * names live — `users` is the pure auth table. It is a different person from
@@ -528,12 +532,12 @@ export interface StudioPurchase extends CreditLotEntity {
  * it.
  * @param studioId - The studio to read.
  * @param tx - Optional transaction, so the page can share one snapshot.
- * @returns Its purchases, oldest first.
+ * @returns The lots it holds, newest first.
  */
-export async function listPurchasesByStudio(
+export async function listLotsByStudio(
   studioId: string,
   tx?: DbTx,
-): Promise<StudioPurchase[]> {
+): Promise<StudioLot[]> {
   const buyerStudio = alias(studios, "buyer_studio");
   const rows = await (tx ?? db)
     .select({ lot: creditLots, buyerName: buyerStudio.name })
@@ -547,8 +551,8 @@ export async function listPurchasesByStudio(
         isNull(buyerStudio.deletedAt),
       ),
     )
-    .where(purchasedByStudio(studioId))
-    .orderBy(asc(creditLots.createdAt), asc(creditLots.id));
+    .where(designatedToStudio(studioId))
+    .orderBy(desc(creditLots.createdAt), desc(creditLots.id));
   return rows.map((row) => ({
     ...toLotEntity(row.lot),
     buyerName: row.buyerName,

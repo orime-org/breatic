@@ -460,7 +460,7 @@ describe("总览的两个数", () => {
     });
 
     expect((await readLot(lotId)).lifecycle).toBe("depleted");
-    const purchases = await creditLotRepo.listPurchasesByStudio(fx.studioId);
+    const purchases = await creditLotRepo.listLotsByStudio(fx.studioId);
     expect(purchases).toEqual([
       expect.objectContaining({
         id: lotId,
@@ -487,7 +487,7 @@ describe("总览的两个数", () => {
     });
 
     const addUp = async (): Promise<number> => {
-      const purchases = await creditLotRepo.listPurchasesByStudio(fx.studioId);
+      const purchases = await creditLotRepo.listLotsByStudio(fx.studioId);
       const lots = purchases.reduce((n, lot) => n + Number(lot.remainingCredits), 0);
       return lots - (await creditLotService.getStudioDebt(fx.studioId));
     };
@@ -517,7 +517,7 @@ describe("总览的两个数", () => {
     `;
     const lotId = await seedLot(fx, 880, fx.studioId);
 
-    const purchases = await creditLotRepo.listPurchasesByStudio(fx.studioId);
+    const purchases = await creditLotRepo.listLotsByStudio(fx.studioId);
     expect(purchases).toEqual([
       expect.objectContaining({ id: lotId, buyerName }),
     ]);
@@ -528,7 +528,7 @@ describe("总览的两个数", () => {
     await seedLot(fx, 100, fx.studioId);
     await sql`UPDATE studios SET deleted_at = NOW() WHERE id = ${fx.studioId}`;
 
-    expect(await creditLotRepo.listPurchasesByStudio(fx.studioId)).toEqual([]);
+    expect(await creditLotRepo.listLotsByStudio(fx.studioId)).toEqual([]);
   });
 });
 
@@ -903,33 +903,34 @@ describe("欠账：状态转移表逐格", () => {
 
     // Read through the purchase predicate as well: it ignores lifecycle, so an
     // empty list can only mean the designation is gone.
-    expect(await creditLotRepo.listPurchasesByStudio(fx.studioId)).toEqual([]);
+    expect(await creditLotRepo.listLotsByStudio(fx.studioId)).toEqual([]);
     expect(Number(await creditLotRepo.sumSpendableForStudio(fx.studioId))).toBe(0);
     expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
   });
 
-  it("clears the pool and leaves no debt when a refund is requested", async () => {
-    // Asking for a refund releases the lot from the studio the same moment,
-    // which `credit_lots`' own check enforces (0063).
+  it("refuses to leave a lot designated once a refund is asked for", async () => {
+    // Every read of a studio's credits starts from the designation, so a lot
+    // on its way out of the account has to lose it. That is not a rule the
+    // read side can enforce — it would have to name the refund lifecycles in
+    // each of its predicates, and one of them forgetting is a studio that can
+    // spend money already being returned. The table refuses the state
+    // instead (0063), so the rule holds for every path that writes it,
+    // including ones written after this test.
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
-      projectId: fx.projectId,
-      actorUserId: fx.userId,
-      amount: 30,
-      referenceId: `refund-req-${Date.now()}`,
-    });
-    expect(Number(await creditLotRepo.sumSpendableForStudio(fx.studioId))).toBe(70);
 
-    await sql`
-      UPDATE credit_lots
-      SET lifecycle = 'refund_pending', designated_studio_id = NULL
-      WHERE id = ${lotId}
-    `;
+    await expect(
+      sql`
+        UPDATE credit_lots
+        SET lifecycle = 'refund_pending'
+        WHERE id = ${lotId}
+      `,
+    ).rejects.toThrow(/credit_lots_refund_undesignated/);
 
-    expect(await creditLotRepo.listPurchasesByStudio(fx.studioId)).toEqual([]);
-    expect(Number(await creditLotRepo.sumSpendableForStudio(fx.studioId))).toBe(0);
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+    // The refused write left the row alone: the studio still holds it.
+    expect(Number(await creditLotRepo.sumSpendableForStudio(fx.studioId))).toBe(
+      100,
+    );
   });
 
   it("keeps a rejected refund out of the studio it came from", async () => {
@@ -1431,6 +1432,39 @@ describe("studio 流水：一次生成一行", () => {
     let cursor: ActivityCursor | null = null;
     for (let page = 0; page < 5; page++) {
       const rows = await creditLotRepo.listLedgerByStudio(fx.studioId, 1, cursor);
+      if (rows.length === 0) break;
+      seen.push(rows[0]!.id);
+      cursor = { createdAt: rows[0]!.cursorAt, id: rows[0]!.id };
+    }
+
+    expect(seen).toHaveLength(3);
+    expect(new Set(seen).size).toBe(3);
+  });
+
+  it("walks every lot when a page boundary falls inside one millisecond", async () => {
+    // Same reason as the ledger above, on the other list that pages by time:
+    // a person who buys three packs in one go has three lots inside one
+    // millisecond, and a cursor rounded to milliseconds skips the ones behind
+    // the boundary.
+    const fx = await seedFixture();
+    const stamps = [
+      "2026-08-22 11:00:00.456900+00",
+      "2026-08-22 11:00:00.456400+00",
+      "2026-08-22 11:00:00.456000+00",
+    ];
+    for (const stamp of stamps) {
+      const lotId = await seedLot(fx, 10, fx.studioId);
+      // A literal, because a parameterised timestamp goes through the driver
+      // and loses the microseconds on the way in.
+      await sql.unsafe(
+        `UPDATE credit_lots SET created_at = TIMESTAMPTZ '${stamp}' WHERE id = '${lotId}'`,
+      );
+    }
+
+    const seen: string[] = [];
+    let cursor: ActivityCursor | null = null;
+    for (let page = 0; page < 5; page++) {
+      const rows = await creditLotRepo.listLotsByUser(fx.userId, 1, cursor);
       if (rows.length === 0) break;
       seen.push(rows[0]!.id);
       cursor = { createdAt: rows[0]!.cursorAt, id: rows[0]!.id };

@@ -140,7 +140,10 @@ export async function* executeTextTool(
   // Declared out here so both exits reach it. The token count is only read
   // once the stream has finished, so a run that died before that charges
   // nothing and the model goes unused; a run that died after it is charged
-  // and carries the same columns as the success path.
+  // and carries the same columns as the success path. The second case is
+  // reached when the consumer throws while taking an event: the throw comes
+  // back out of the suspended `yield`, by which point the model has already
+  // billed us.
   let modelString: string | null = null;
 
   try {
