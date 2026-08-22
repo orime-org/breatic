@@ -912,6 +912,7 @@
         "activityTitle": "사용 내역",
         "activityEmpty": "아직 사용 내역이 없습니다.",
         "activityEnd": "더 이상 없습니다",
+        "activityPageError": "이 페이지를 불러오지 못했습니다. 계속 스크롤하면 다시 시도합니다.",
         "colTime": "날짜",
         "colWho": "누가",
         "colProject": "Project",

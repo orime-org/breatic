@@ -912,6 +912,7 @@
         "activityTitle": "Spending",
         "activityEmpty": "Nothing spent yet.",
         "activityEnd": "No more",
+        "activityPageError": "This page did not load. Keep scrolling to retry.",
         "colTime": "Date",
         "colWho": "Who",
         "colProject": "Project",

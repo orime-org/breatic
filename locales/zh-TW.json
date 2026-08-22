@@ -912,6 +912,7 @@
         "activityTitle": "消耗流水",
         "activityEmpty": "還沒有消耗紀錄。",
         "activityEnd": "沒有更多了",
+        "activityPageError": "這一頁沒能載入，繼續捲動可重試。",
         "colTime": "時間",
         "colWho": "誰",
         "colProject": "Project",

@@ -912,6 +912,7 @@
         "activityTitle": "消耗流水",
         "activityEmpty": "还没有消耗记录。",
         "activityEnd": "没有更多了",
+        "activityPageError": "这一页没能加载，继续滚动可重试。",
         "colTime": "时间",
         "colWho": "谁",
         "colProject": "Project",

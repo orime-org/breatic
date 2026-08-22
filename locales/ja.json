@@ -912,6 +912,7 @@
         "activityTitle": "使用履歴",
         "activityEmpty": "まだ使用履歴はありません。",
         "activityEnd": "これ以上ありません",
+        "activityPageError": "このページを読み込めませんでした。スクロールを続けると再試行します。",
         "colTime": "日付",
         "colWho": "だれ",
         "colProject": "Project",

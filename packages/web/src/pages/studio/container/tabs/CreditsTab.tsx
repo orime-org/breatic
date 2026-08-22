@@ -125,7 +125,8 @@ export function CreditsTab({
     getNextPageParam: (last) => last.ledger.nextCursor ?? undefined,
   });
 
-  const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;
+  const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } =
+    query;
   // Stable so the scroll watcher's effect does not re-subscribe every render.
   const loadMore = React.useCallback((): void => {
     void fetchNextPage();
@@ -144,7 +145,11 @@ export function CreditsTab({
     // A page that did not arrive stops the watcher until the reader scrolls
     // again; without it an end already in view asks for the same page back to
     // back for as long as the failure lasts.
-    failed: query.isError,
+    //
+    // `isFetchNextPageError`, because a first page that arrived leaves the
+    // query successful: `isError` describes the query as a whole and stays
+    // false for exactly the failure this is here to notice.
+    failed: isFetchNextPageError,
   });
 
   if (query.isPending) {
@@ -262,6 +267,10 @@ export function CreditsTab({
               <div className='flex items-center justify-center py-2 text-2xs tracking-wider text-muted-foreground'>
                 {isFetchingNextPage ? (
                   <Loader2 className='h-3.5 w-3.5 animate-spin' aria-hidden='true' />
+                ) : isFetchNextPageError ? (
+                  <span role='status' data-testid='studio-ledger-page-error'>
+                    {t('studio.container.credits.activityPageError')}
+                  </span>
                 ) : !hasNextPage ? (
                   <span data-testid='studio-ledger-end'>
                     · {t('studio.container.credits.activityEnd')} ·
