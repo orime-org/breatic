@@ -10,7 +10,7 @@
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";
-import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
+import { FAILURE_LINES, HttpRetryError, toolFailureOf } from "@breatic/shared";
 import { isStop, reasonOf, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
 import { safeFetch, SsrfError } from "@domain/agent/tools/safe-fetch.js";
 
@@ -91,22 +91,48 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
       });
 
       if (!res.ok) {
+        // What the status says about the page, and what it says about the
+        // server, are different facts and lead to different next moves. A 503
+        // from a site that is down says nothing at all about whether the page
+        // exists, and the model passes whatever it reads here on to the reader
+        // in its own words.
+        const theirSide = res.status >= 500 || res.status === 429;
         throw toolFailed(
-          `Fetching ${url} failed: the site answered HTTP ${res.status}. The address is ` +
-            "reachable, so it is this page that is not there or not public. Do not fetch " +
-            "the same address again; try another source, or tell the user this page could " +
-            "not be read.",
+          theirSide
+            ? `Fetching ${url} failed: the site answered HTTP ${res.status}, which is a fault ` +
+                "on their side and says nothing about this page. It has already been " +
+                "requested three times. Do not fetch it again on this turn; tell the user " +
+                "the site is not answering, and that it may work later."
+            : `Fetching ${url} failed: the site answered HTTP ${res.status}. The address is ` +
+                "reachable, so it is this page that is not there or not open to us. Do not " +
+                "fetch the same address again; try another source, or tell the user this " +
+                "page could not be read.",
           FAILURE_LINES.upstream,
         );
       }
 
-      // Read plainly. The signal handed to `safeFetch` above is still attached
-      // to this response's body — the transport composes it into the request
-      // and that link outlives the call, which is a guarantee its own boundary
-      // doc now states. So a stop ends this read too, and a reader taken here
-      // to cancel it would be a second mechanism for something already done.
+      // Read inside its own guard. It answered, so whatever goes wrong from
+      // here is about what it said; the catch below describes an address that
+      // could not be reached at all, which this one just was.
+      //
+      // The signal handed to `safeFetch` above is still attached to this
+      // response's body — the transport composes it into the request and that
+      // link outlives the call, which is a guarantee its own boundary doc
+      // states. So a stop ends this read too, and it is told apart here from
+      // the body simply dying.
       const contentType = res.headers.get("content-type") ?? "";
-      const body = await res.text();
+      let body: string;
+      try {
+        body = await res.text();
+      } catch (err: unknown) {
+        if (isStop(err, abortSignal)) throw stoppedByUser();
+        throw toolFailed(
+          `Fetching ${url} failed while reading the page: ${reasonOf(err)}. The site answered, ` +
+            "so the address is good and it is the page body that did not arrive. Fetching it " +
+            "once more may work; if it fails again, tell the user this page could not be read.",
+          FAILURE_LINES.upstream,
+        );
+      }
 
       let text: string;
       if (contentType.includes("application/json")) {
@@ -160,10 +186,26 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
         );
       }
 
+      if (err instanceof HttpRetryError) {
+        // Deliveries were made and none of them came back. The address is
+        // where the problem is, and no rewording of the request reaches it.
+        throw toolFailed(
+          `Fetching ${url} failed: ${reasonOf(err)}. Do not retry it; try another source, or ` +
+            "tell the user the page could not be read.",
+          FAILURE_LINES.unreachable,
+        );
+      }
+
+      // Left over: what the transport refuses before it delivers anything --
+      // a URL carrying credentials, a deadline no timer can hold. Its own
+      // boundary doc names them and says they are raised before any delivery,
+      // so nothing was reached and nothing about the address is known. They
+      // are facts about the request, which the model wrote and can rewrite.
       throw toolFailed(
-        `Fetching ${url} failed: ${reasonOf(err)}. Do not retry it; try another source, or ` +
-          "tell the user the page could not be read.",
-        FAILURE_LINES.unreachable,
+        `Fetching ${url} was not sent: ${reasonOf(err)}. Nothing was requested, so this says ` +
+          "nothing about the address. If the request can be corrected, correct it and fetch " +
+          "once more; otherwise tell the user this page could not be read.",
+        FAILURE_LINES.generic,
       );
     }
   },

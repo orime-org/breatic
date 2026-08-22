@@ -198,6 +198,54 @@ describe("web_fetch says a failure is a failure", () => {
     }
   });
 
+  it("does not tell the model a 503 means the page is not there", async () => {
+    // A server that is down says nothing about whether the page exists. The
+    // model reads this reason and passes it on to the reader in its own
+    // words, so a wrong one becomes a wrong answer.
+    fetchMock.mockResolvedValue(new Response(null, { status: 503 }));
+
+    const { forModel } = await failureFrom("https://public.example/page");
+
+    expect(forModel).toContain("503");
+    expect(forModel).not.toMatch(/not there|not public/i);
+  });
+
+  it("keeps saying a 404 is a page that is not there", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 404 }));
+
+    const { forModel } = await failureFrom("https://public.example/gone");
+
+    expect(forModel).toMatch(/not there|not public/i);
+  });
+
+  it("does not call a site that answered unreachable", async () => {
+    // It answered 200 and then the body died mid-read. Saying the address
+    // could not be reached sends the model looking for a network problem
+    // that is not there, and tells the reader an address they just reached
+    // is unreachable.
+    const body = new ReadableStream({
+      start(controller) {
+        controller.error(Object.assign(new TypeError("terminated"), { name: "TypeError" }));
+      },
+    });
+    fetchMock.mockResolvedValue(new Response(body, { status: 200 }));
+
+    const failure = await failureFrom("https://public.example/page");
+
+    expect(failure.forModel).not.toMatch(/could not be reached|unreachable/i);
+    expect(failure.readerKey).not.toBe("chat.tool.failure.unreachable");
+  });
+
+  it("tells the model a request it can correct is one it can correct", async () => {
+    // The transport refuses a URL carrying credentials before any delivery.
+    // That is a fact about the request, which the model can fix -- not a
+    // fact about the address, which it cannot.
+    const failure = await failureFrom("https://user:secret@public.example/page");
+
+    expect(failure.readerKey).not.toBe("chat.tool.failure.unreachable");
+    expect(failure.forModel).not.toMatch(/do not retry/i);
+  });
+
   it("calls a stopped fetch stopped, not failed", async () => {
     // The general catch takes both endings. Told apart here because they mean
     // opposite things to the reader: one is something going wrong, the other
