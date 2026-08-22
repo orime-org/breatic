@@ -104,8 +104,8 @@ export function presetRatio(
  */
 export function samePreset(a: CropPreset | null, b: CropPreset | null): boolean {
   if (a === null || b === null) return a === b;
-  if (a.kind !== b.kind) return false;
-  return a.kind === 'original' || a.value === b.value;
+  if (a.kind === 'original' || b.kind === 'original') return a.kind === b.kind;
+  return a.value === b.value;
 }
 
 /**
