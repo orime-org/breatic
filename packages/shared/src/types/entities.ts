@@ -376,12 +376,21 @@ export type CreditLotLifecycle =
   | "refunding"
   | "refunded";
 
-/** The four things that can appear in the credit ledger. */
+/**
+ * The six things that can appear in the credit ledger.
+ *
+ * The last two are the debt a charge could not cover and a designation
+ * paying it down. Both carry a negative amount: `debt_incurred` says credits
+ * were consumed that no lot supplied, `debt_repayment` says a lot supplied
+ * them after the fact.
+ */
 export type CreditLedgerEntryType =
   | "topup"
   | "spend"
   | "refund"
-  | "refund_rejected";
+  | "refund_rejected"
+  | "debt_incurred"
+  | "debt_repayment";
 
 /**
  * One top-up, tracked for the rest of its life.

@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { initCore, NotFoundError } from "@breatic/core";
 
 const resolveOwnerStudioId = vi.fn<(projectId: string) => Promise<string>>();
-const appendLedgerEntry = vi.fn(async () => undefined);
+const appendLedgerEntry = vi.fn(async (..._args: unknown[]) => undefined);
 
 vi.mock("@domain/asset/asset.service.js", () => ({
   resolveOwnerStudioId: (projectId: string) => resolveOwnerStudioId(projectId),

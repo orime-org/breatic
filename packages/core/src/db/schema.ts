@@ -912,7 +912,8 @@ export const creditLedger = pgTable(
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "restrict",
     }),
-    // One of `topup` / `spend` / `refund` / `refund_rejected`. CHECK in 0061.
+    // One of `topup` / `spend` / `refund` / `refund_rejected` (0061) or
+    // `debt_incurred` / `debt_repayment` (0063). CHECK in 0063.
     entryType: varchar("entry_type", { length: 24 }).notNull(),
     // Positive in, negative out.
     amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
@@ -940,6 +941,54 @@ export const creditLedger = pgTable(
       table.studioId,
       table.createdAt,
     ),
+  ],
+);
+
+/**
+ * What a studio owes (0063, task #11) — one row per studio, at most.
+ *
+ * The precheck reads what is spendable and freezes nothing, and what it asks
+ * for is a floor rather than the bill: every mini-tool asks for
+ * `MIN_TASK_CREDIT_COST`, and a model with no `cost_per_call` falls back to
+ * the same number. The worker then charges what the run actually used. So a
+ * studio near the bottom of its balance finishes a generation owing credits,
+ * with no concurrency involved at all. That shortfall is this row.
+ *
+ * A mutable current value, not a sum over the ledger. Two paths write it —
+ * a charge that could not be covered, and a designation paying it down — and
+ * they have to be serialised against each other, which a sum cannot be. It is
+ * the same trade `credit_lots.remaining_credits` makes, and it reconciles
+ * against the ledger the same way: `amount` equals
+ * `sum(debt_repayment) - sum(debt_incurred)`.
+ *
+ * Its own table rather than a column on `studios`, because both writers lock
+ * it and `studios` is read on the way into every project — locking there would
+ * queue a charge behind a rename.
+ *
+ * No `deleted_at`, which is the repository's soft-delete mandate waived with
+ * its reason stated: hiding a debt row is the debt vanishing, and preventing
+ * exactly that is why the table exists. What becomes of a debt when its studio
+ * is deleted is a business decision, not a hidden row.
+ *
+ * The CHECK is added by hand in the migration, as `credit_lots`' are, because
+ * a drizzle `check()` beside the column would be a second copy nothing
+ * compares against the first.
+ */
+export const studioCreditDebts = pgTable(
+  "studio_credit_debts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    // What is owed right now, never negative. CHECK in 0063.
+    amount: numeric("amount", { precision: 20, scale: 6 })
+      .default("0")
+      .notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("studio_credit_debts_studio_id_idx").on(table.studioId),
   ],
 );
 

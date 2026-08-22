@@ -268,10 +268,11 @@ describe("credit_ledger", () => {
     expect(cols.has("deleted_at")).toBe(false);
   });
 
-  it("refuses an entry type outside the four", async () => {
-    // `topup` / `spend` / `refund` / `refund_rejected`. Every sum over this
-    // table filters on one of them, so a fifth spelling is money that no
-    // balance and no ledger view accounts for.
+  it("refuses an entry type outside the six", async () => {
+    // `topup` / `spend` / `refund` / `refund_rejected` from 0061, plus
+    // `debt_incurred` / `debt_repayment` from 0063. Every sum over this table
+    // filters on some of them, so a seventh spelling is money that no balance
+    // and no ledger view accounts for.
     const { userId } = await seedUserWithPayment();
     await expect(
       sql`

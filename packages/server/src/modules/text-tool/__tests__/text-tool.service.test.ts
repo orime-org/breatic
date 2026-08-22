@@ -74,7 +74,7 @@ async function run(): Promise<{ type: string }[]> {
     new AbortController().signal,
     "key-1",
   )) {
-    events.push(event as { type: string });
+    events.push(event);
   }
   return events;
 }
