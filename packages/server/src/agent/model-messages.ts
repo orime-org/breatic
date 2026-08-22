@@ -73,8 +73,16 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
  * reply that was cut off looks, on the way back in, exactly like one it chose
  * to end there -- so it carries on as though the answer were given, and the
  * user never gets the rest.
+ *
+ * Says the connection ended rather than that the user pressed stop, because
+ * pressing stop is not what this side is told. The route has one signal for
+ * it (`s.onAbort`, raised when the client goes away) and it covers the stop
+ * button, a closed tab, a dropped network and a sleeping laptop alike. Told
+ * the first when it was the third, the model opens the next turn apologising
+ * for something the user never did. Telling the two apart needs the browser
+ * to say which it was, which is task #149.
  */
-const STOP_NOTE = "[This turn was stopped by the user before it finished.]";
+const STOP_NOTE = "[This turn did not finish: the connection to the user closed.]";
 
 /**
  * The note that says a turn broke off on its own.

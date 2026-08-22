@@ -241,6 +241,16 @@ describe("web_search says a failure is a failure", () => {
     expect(forModel.toLowerCase()).toMatch(/do not call this tool again|do not search again/);
   });
 
+  it("counts being rate limited as the service's own trouble", async () => {
+    // Numbered among the 4xx, but the query is not what it objects to.
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 429 }));
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toMatch(/fault on their side/i);
+    expect(forModel).not.toMatch(/would not take/i);
+  });
+
   it("does offer a reworded query for a request the service would not take", async () => {
     httpRequestMock.mockImplementation(async () => new Response(null, { status: 422 }));
 

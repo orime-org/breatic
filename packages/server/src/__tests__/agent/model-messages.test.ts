@@ -142,7 +142,7 @@ describe("history on its way to the model", () => {
     // has that anything happened here at all.
     const [, note] = toModelMessages(history);
     expect(note).toMatchObject({ role: "assistant" });
-    expect(String((note as { content: string }).content)).toMatch(/stopped/i);
+    expect(String((note as { content: string }).content)).toMatch(/did not finish/i);
   });
 
   it("keeps what a stopped turn managed to say, and marks it as cut off", () => {
@@ -154,7 +154,7 @@ describe("history on its way to the model", () => {
     expect(String((said as { content: string }).content)).toBe("half a sen");
     // The note follows what was said rather than being spliced into it: the
     // words are the model's, the note is ours.
-    expect(String((note as { content: string }).content)).toMatch(/stopped/i);
+    expect(String((note as { content: string }).content)).toMatch(/did not finish/i);
   });
 
   it("never sends the model its own reasoning back", () => {
@@ -304,7 +304,7 @@ describe("history on its way to the model", () => {
       ]),
     ]);
 
-    expect(JSON.stringify(messages)).toMatch(/stopped/i);
+    expect(JSON.stringify(messages)).toMatch(/did not finish/i);
   });
 
   it("says a turn was stopped once, at the end, however many times it spoke", () => {
@@ -329,7 +329,7 @@ describe("history on its way to the model", () => {
       ]),
     ]);
 
-    const notes = JSON.stringify(messages).match(/stopped by the user/g) ?? [];
+    const notes = JSON.stringify(messages).match(/connection to the user closed/g) ?? [];
     expect(notes).toHaveLength(1);
   });
 
@@ -342,8 +342,8 @@ describe("history on its way to the model", () => {
     ]);
 
     const note = String((messages[messages.length - 1] as { content: string }).content);
-    expect(note).toMatch(/could not|did not/i);
-    expect(note).not.toMatch(/stopped by the user/i);
+    expect(note).toMatch(/broke off/i);
+    expect(note).not.toMatch(/connection to the user closed/i);
   });
 
   it("leaves out a call whose arguments never finished arriving", () => {

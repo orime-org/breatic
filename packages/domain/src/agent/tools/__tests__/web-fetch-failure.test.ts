@@ -227,6 +227,19 @@ describe("web_fetch says a failure is a failure", () => {
     expect(forModel).not.toMatch(/three times|3 times|twice|attempts/i);
   });
 
+  it("counts being rate limited as the site's own trouble", async () => {
+    // 429 sits with the 5xx rather than with the 4xx it is numbered among:
+    // the site is answering and the page is not the problem, it is asking for
+    // less traffic. Told it as a 4xx, the model reads "this page is not there
+    // or not open to us" and gives up on an address that is fine.
+    fetchMock.mockResolvedValue(new Response(null, { status: 429 }));
+
+    const { forModel } = await failureFrom("https://public.example/busy");
+
+    expect(forModel).toMatch(/fault[\s\S]*on their side/i);
+    expect(forModel).not.toMatch(/not there or not open/i);
+  });
+
   it("keeps saying a 404 is a page that is not there", async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 404 }));
 

@@ -41,12 +41,14 @@ export function toolFailed(forModel: string, readerKey: FailureLine): Error {
  */
 export const STOPPED_BY_USER: ToolFailure = {
   kind: "user_aborted",
-  // The next step here is to leave it alone. Nothing failed, and the person
-  // who ended it is the one who would ask for it again -- a model that takes
-  // the missing result as work to redo spends the next turn on something they
-  // stopped on purpose.
+  // What ended it is put as the connection closing, which is what the server
+  // is actually told: one signal covers the stop button, a closed tab and a
+  // dropped network alike. The next step is the same for all three -- leave it
+  // alone. Nothing failed, and whoever ended it is the one who would ask for
+  // it again; a model that takes the missing result as work to redo spends the
+  // next turn on something that was called off.
   forModel:
-    "The user stopped this turn while the tool was still running, so it never returned. " +
+    "The turn ended while this tool was still running, so it never returned. " +
     "Do not call it again unless the user asks for this again.",
   readerKey: FAILURE_LINES.stopped,
 };

@@ -415,6 +415,17 @@ export class MainAgent {
         // like one left hanging by the user pressing stop, and recording
         // the second as the first tells the next turn the user did
         // something they never did.
+        //
+        // Neither of these is reachable with the tools registered today, and
+        // the reason is worth writing down because nothing about the code
+        // says it. All six declare an `execute`, and the SDK waits for a
+        // running tool to settle before the stream ends -- measured: a tool
+        // that never returns holds the turn open rather than being dropped.
+        // Once it settles one of the two callbacks above has recorded it. So
+        // this stands for a call nothing was ever reported about, which today
+        // there is no way to be. It is the floor under a record that must
+        // never say a call is still running, and it holds whether or not
+        // anything can reach it.
         const leftHanging: ToolFailure =
           exit === "aborted" ? STOPPED_BY_USER : TURN_ENDED_AROUND_IT;
         for (const [i, part] of replyParts.entries()) {
