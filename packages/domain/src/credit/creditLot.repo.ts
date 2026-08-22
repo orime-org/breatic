@@ -32,7 +32,13 @@ import type { SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@breatic/core";
 import type { ActivityCursor, DbTx } from "@breatic/core";
-import { creditLots, creditLedger, studios, projects } from "@breatic/core";
+import {
+  creditLots,
+  creditLedger,
+  studioCreditDebts,
+  studios,
+  projects,
+} from "@breatic/core";
 import type {
   CreditLotEntity,
   CreditLotLifecycle,
@@ -316,6 +322,75 @@ export async function sumSpendableForStudio(studioId: string): Promise<string> {
     .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(spendableByStudio(studioId));
   return rows[0]?.total ?? "0";
+}
+
+/**
+ * What a studio owes, read without locking.
+ *
+ * For display and for the precheck, both of which want the number as it
+ * stands. The two writers take {@link lockDebt} instead.
+ * @param studioId - The studio to read.
+ * @returns The debt as a decimal string; "0" when the studio has never owed.
+ */
+export async function readDebt(studioId: string): Promise<string> {
+  const rows = await db
+    .select({ amount: studioCreditDebts.amount })
+    .from(studioCreditDebts)
+    .where(eq(studioCreditDebts.studioId, studioId));
+  return rows[0]?.amount ?? "0";
+}
+
+/**
+ * Put this studio's debt row under lock, creating it first if it is absent.
+ *
+ * Two statements, and the first one is why: `SELECT ... FOR UPDATE` on a row
+ * that does not exist locks nothing, so two concurrent charges on a studio
+ * that has never owed would both find nothing, both insert, and one would die
+ * on the unique index — losing that charge at the exact moment first debt and
+ * concurrency coincide. The insert claims the row, conceding to whoever got
+ * there first; the select then has something to hold.
+ * @param studioId - The studio whose debt is being changed.
+ * @param tx - The transaction that will hold the lock.
+ * @returns What is owed as of this lock, as a decimal string.
+ */
+export async function lockDebt(studioId: string, tx: DbTx): Promise<string> {
+  await tx
+    .insert(studioCreditDebts)
+    .values({ studioId, amount: "0" })
+    .onConflictDoNothing({ target: studioCreditDebts.studioId });
+  const rows = await tx
+    .select({ amount: studioCreditDebts.amount })
+    .from(studioCreditDebts)
+    .where(eq(studioCreditDebts.studioId, studioId))
+    .for("update");
+  return rows[0]!.amount;
+}
+
+/**
+ * Move a studio's debt by a signed amount, in `numeric`.
+ *
+ * The arithmetic happens in Postgres so the value written is exact to the
+ * column's scale, the same reason {@link applyCharge} does. The caller holds
+ * the lock from {@link lockDebt} and has already decided the move is within
+ * range; the column's non-negative constraint is the backstop.
+ * @param studioId - The studio whose debt moves.
+ * @param delta - Signed decimal string: positive to owe more, negative to pay down.
+ * @param tx - The transaction holding the lock.
+ * @returns What is owed afterwards, as a decimal string.
+ */
+export async function adjustDebt(
+  studioId: string,
+  delta: string,
+  tx: DbTx,
+): Promise<string> {
+  const result = await tx.execute(
+    sql`UPDATE studio_credit_debts
+        SET amount = amount + ${delta}::numeric, updated_at = NOW()
+        WHERE studio_id = ${studioId}
+        RETURNING amount`,
+  );
+  const rows = result as unknown as Array<{ amount: string }>;
+  return rows[0]!.amount;
 }
 
 /**

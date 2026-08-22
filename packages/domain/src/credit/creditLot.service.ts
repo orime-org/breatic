@@ -233,6 +233,10 @@ export async function chargeForGeneration(
   }
 
   return db.transaction(async (tx) => {
+    // The debt row first, and before any lot. Both writers take it in this
+    // order, so two charges on one studio — or a charge and a designation —
+    // queue up rather than each holding half of what the other needs.
+    await creditLotRepo.lockDebt(studioId, tx);
     const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
 
     const locked: { id: string; remaining: number }[] = [];
@@ -251,34 +255,6 @@ export async function chargeForGeneration(
 
     const plan = planCharge(locked, amountMicro);
 
-    // Nothing could be taken: the studio holds no spendable lot, or the ones
-    // it held were reassigned or refunded while the task ran. The usage is
-    // recorded against the person with no lot behind it, the same shape a
-    // payments-off install writes — without it this generation leaves no
-    // trace at all, and the account shows work that never happened.
-    //
-    // A partial charge writes no such row: its allocations already record the
-    // generation under one reference id, and a second row for the uncovered
-    // part would double it in any sum over that id. What went uncharged there
-    // reaches the caller as `shortfall`.
-    if (plan.allocations.length === 0) {
-      await creditLotRepo.appendLedgerEntry(
-        {
-          ...usageEntry,
-          amount: fromMicroCredits(-amountMicro),
-          lotId: null,
-        },
-        tx,
-      );
-      return {
-        billed: false,
-        charged: 0,
-        shortfall: amountMicro / 1_000_000,
-        studioId,
-        lotIds: [],
-      };
-    }
-
     for (const allocation of plan.allocations) {
       await creditLotRepo.applyCharge(
         allocation.lotId,
@@ -291,6 +267,28 @@ export async function chargeForGeneration(
           payerUserId: candidates.find((lot) => lot.id === allocation.lotId)!.userId,
           amount: fromMicroCredits(-allocation.amount),
           lotId: allocation.lotId,
+        },
+        tx,
+      );
+    }
+
+    // What the lots could not cover becomes what this studio owes. One row,
+    // whether the charge took part of the bill or none of it: both are the
+    // same event seen from the pool, and it carries the full context because
+    // a charge that took nothing wrote no `spend` row to carry it — the
+    // project and the model on the credits page come from here.
+    if (plan.shortfall > 0) {
+      await creditLotRepo.adjustDebt(
+        studioId,
+        fromMicroCredits(plan.shortfall),
+        tx,
+      );
+      await creditLotRepo.appendLedgerEntry(
+        {
+          ...usageEntry,
+          entryType: "debt_incurred",
+          amount: fromMicroCredits(-plan.shortfall),
+          lotId: null,
         },
         tx,
       );
@@ -356,11 +354,16 @@ export async function chargeOnceForGeneration(
  * them. A lot that belongs to somebody else answers 404 rather than 403, so
  * the endpoint does not confirm which lot ids exist.
  *
- * A lot in the refund flow refuses to move. Not because it would change the
- * refund — that is computed from what remains, which this does not touch —
- * but because the lot is on its way out of the account, and letting it move
- * between studios in the meantime makes "what can this studio spend" jump
- * around for a balance that is about to be zero.
+ * A lot in the refund flow refuses to move, because it is on its way out of
+ * the account: asking for a refund detaches the lot from its studio then and
+ * there, and until the refund resolves the money belongs to no pool and may
+ * not be put back to work. A rejection returns it to `active`, still
+ * unassigned, and only then may it be designated again.
+ *
+ * Designating into a studio that owes credits pays the debt down first, out
+ * of this lot, before any of it becomes spendable. That is what makes the
+ * debt collectable at all: a studio that owes has nothing left to charge, so
+ * the only moment credits and a debt meet is this one.
  *
  * Submitting the designation a lot already has succeeds and changes nothing,
  * including `null` on an unassigned lot: the operation is idempotent, and a
@@ -390,6 +393,13 @@ export async function designateLot(input: {
   }
 
   return db.transaction(async (tx) => {
+    // The debt row before the lot, the same order a charge takes them in, so
+    // the two queue up rather than deadlocking against each other.
+    const owedMicro =
+      input.studioId === null
+        ? 0
+        : toMicroCredits(await creditLotRepo.lockDebt(input.studioId, tx));
+
     const lot = await creditLotRepo.lockLot(input.lotId, tx);
     if (!lot || lot.userId !== input.requestingUserId) {
       throw new NotFoundError(t("server.error.not_found"));
@@ -398,7 +408,39 @@ export async function designateLot(input: {
       throw new AppError(409, t("server.credit.designation_locked"));
     }
     if (lot.designatedStudioId === input.studioId) return lot;
-    return creditLotRepo.setDesignation(input.lotId, input.studioId, tx);
+    const designated = await creditLotRepo.setDesignation(
+      input.lotId,
+      input.studioId,
+      tx,
+    );
+
+    if (input.studioId === null || owedMicro <= 0) return designated;
+
+    const repaidMicro = Math.min(
+      owedMicro,
+      toMicroCredits(designated.remainingCredits),
+    );
+    if (repaidMicro <= 0) return designated;
+
+    const repaid = fromMicroCredits(repaidMicro);
+    const charged = await creditLotRepo.applyCharge(input.lotId, repaid, tx);
+    await creditLotRepo.adjustDebt(input.studioId, `-${repaid}`, tx);
+    await creditLotRepo.appendLedgerEntry(
+      {
+        payerUserId: designated.userId,
+        actorUserId: input.requestingUserId,
+        entryType: "debt_repayment",
+        studioId: input.studioId,
+        amount: fromMicroCredits(-repaidMicro),
+        lotId: input.lotId,
+      },
+      tx,
+    );
+    return {
+      ...designated,
+      remainingCredits: charged.remainingCredits,
+      lifecycle: charged.lifecycle,
+    };
   });
 }
 
@@ -462,12 +504,38 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
 }
 
 /**
- * What a studio can spend right now.
+ * What a studio can spend right now, which is negative when it owes.
+ *
+ * One number rather than a balance and a debt beside it: two numbers about
+ * the same thing leave the reader to subtract, and every caller would have to
+ * do it the same way for the answer to agree.
+ *
+ * The account overview does NOT subtract debt from its own totals. What it
+ * reports is sliced by account — how this person's money is distributed —
+ * while a debt belongs to the studio, is caused by everyone generating in it,
+ * and exists once. Subtracting a shared debt from a per-account figure makes
+ * two funders each lose the whole of it.
  * @param studioId - The studio to total.
- * @returns The total in credits.
+ * @returns The total in credits, below zero when the studio owes.
  */
 export async function getSpendableCredits(studioId: string): Promise<number> {
-  return toMicroCredits(await creditLotRepo.sumSpendableForStudio(studioId)) / 1_000_000;
+  const [lots, debt] = await Promise.all([
+    creditLotRepo.sumSpendableForStudio(studioId),
+    creditLotRepo.readDebt(studioId),
+  ]);
+  return (toMicroCredits(lots) - toMicroCredits(debt)) / 1_000_000;
+}
+
+/**
+ * What a studio owes.
+ *
+ * The credits page shows it as its own line, and the precheck names the
+ * amount when it turns a generation away.
+ * @param studioId - The studio to read.
+ * @returns The debt in credits; zero when it owes nothing.
+ */
+export async function getStudioDebt(studioId: string): Promise<number> {
+  return toMicroCredits(await creditLotRepo.readDebt(studioId)) / 1_000_000;
 }
 
 /**

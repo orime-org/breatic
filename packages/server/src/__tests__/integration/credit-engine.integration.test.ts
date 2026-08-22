@@ -324,31 +324,6 @@ describe("扣费", () => {
     expect(await creditLotRepo.listSpendableLots(other.studioId)).toEqual([]);
   });
 
-  it("取笔这一层自己就滤掉退款流程里的笔", async () => {
-    // 锁到之后还会复核一次 lifecycle，所以这两道各自都能拦住。要让它们
-    // 各有一个只属于自己的观察点，这一条必须直接问取笔那一层。
-    const fx = await seedFixture();
-    const lotId = await seedLot(fx, 500, fx.studioId);
-    await sql`UPDATE credit_lots SET lifecycle = 'refund_pending' WHERE id = ${lotId}`;
-
-    expect(await creditLotRepo.listSpendableLots(fx.studioId)).toEqual([]);
-  });
-
-  it("不取退款流程里的笔", async () => {
-    const fx = await seedFixture();
-    const lotId = await seedLot(fx, 500, fx.studioId);
-    await sql`UPDATE credit_lots SET lifecycle = 'refund_pending' WHERE id = ${lotId}`;
-
-    const outcome = await creditLotService.chargeForGeneration({
-      projectId: fx.projectId,
-      actorUserId: fx.userId,
-      amount: 10,
-    });
-
-    expect(outcome.charged).toBe(0);
-    expect((await readLot(lotId)).remaining).toBe("500.000000");
-  });
-
   it("笔加起来不够时能扣多少扣多少，差额报出来而不是失败", async () => {
     // 这一层跑在交付之后：用户已经拿到产物，任务不能因为账不够而失败。
     const fx = await seedFixture();
@@ -519,8 +494,11 @@ describe("指定", () => {
   });
 
   it("退款流程里的笔不许改指定", async () => {
+    // 这笔未指定，因为申请退款那一刻它就跟原来的 studio 解除了关系
+    // （0063 的 CHECK 看着这一条）。它想再进任何一个池子，都要等退款有
+    // 结果 —— 这段时间里这笔钱正在往账外走。
     const fx = await seedFixture();
-    const lotId = await seedLot(fx, 100, fx.studioId);
+    const lotId = await seedLot(fx, 100);
     await sql`UPDATE credit_lots SET lifecycle = 'refunding' WHERE id = ${lotId}`;
 
     await expect(
@@ -557,6 +535,42 @@ describe("并发", () => {
    * @param lotId - 要攥住的那一笔。
    * @returns 放闸门的函数。
    */
+  /**
+   * 闸门 2：持住这个 studio 的欠账行，两条写路径的第一把锁都在它上面。
+   * @param studioId - 要卡住的 studio。
+   * @returns 放闸门的函数。
+   */
+  async function holdDebtLock(studioId: string): Promise<() => Promise<void>> {
+    const gate = postgres(inject("DATABASE_URL"), {
+      max: 1,
+      prepare: false,
+      connection: { application_name: `${PG_DRIVER_LOCAL}-debt-gate` },
+    });
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let acquired: () => void = () => {};
+    const lockHeld = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+    await sql`
+      INSERT INTO studio_credit_debts (studio_id, amount) VALUES (${studioId}, 0)
+      ON CONFLICT (studio_id) DO NOTHING
+    `;
+    const done = gate.begin(async (tx) => {
+      await tx`SELECT id FROM studio_credit_debts WHERE studio_id = ${studioId} FOR UPDATE`;
+      acquired();
+      await held;
+    });
+    await lockHeld;
+    return async () => {
+      release();
+      await done;
+      await gate.end({ timeout: 1 });
+    };
+  }
+
   async function holdLotLock(lotId: string): Promise<() => Promise<void>> {
     const gate = postgres(inject("DATABASE_URL"), {
       max: 1,
@@ -587,9 +601,11 @@ describe("并发", () => {
   }
 
   it("两个并发扣费不会把同一笔重复花掉", async () => {
+    // 闸门卡在欠账行上，因为那是扣费拿的第一把锁。挪到这里之后，同一个
+    // studio 上的两个扣费在进笔之前就排好了队。
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
-    const open = await holdLotLock(lotId);
+    const open = await holdDebtLock(fx.studioId);
 
     // 两次都要 60，而这一笔只有 100。谁也不许读到没被对方扣过的余额。
     const first = creditLotService.chargeForGeneration({
@@ -597,13 +613,13 @@ describe("并发", () => {
       actorUserId: fx.userId,
       amount: 60,
     });
-    await waitUntilBlockedOn(sql, ["credit_lots", "for update"], 1);
+    await waitUntilBlockedOn(sql, ["studio_credit_debts", "for update"], 1);
     const second = creditLotService.chargeForGeneration({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 60,
     });
-    await waitUntilBlockedOn(sql, ["credit_lots", "for update"], 2);
+    await waitUntilBlockedOn(sql, ["studio_credit_debts", "for update"], 2);
 
     await open();
     const [a, b] = await Promise.all([first, second]);
@@ -650,47 +666,6 @@ describe("并发", () => {
     });
   });
 
-  it("一笔在被选中和被锁住之间进了退款流程，就扣不到它了", async () => {
-    // 跟上一条同一个道理，换成 lifecycle 那一列：这笔正在离开这个账号，
-    // 锁到之后必须重读，否则退款金额算的是一个已经被人花过的剩余。
-    const fx = await seedFixture();
-    const lotId = await seedLot(fx, 100, fx.studioId);
-    const gate = postgres(inject("DATABASE_URL"), {
-      max: 1,
-      prepare: false,
-      connection: { application_name: `${PG_DRIVER_LOCAL}-gate2` },
-    });
-    let release: () => void = () => {};
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let acquired: () => void = () => {};
-    const lockHeld = new Promise<void>((resolve) => {
-      acquired = resolve;
-    });
-    const done = gate.begin(async (tx) => {
-      await tx`SELECT id FROM credit_lots WHERE id = ${lotId} FOR UPDATE`;
-      acquired();
-      await held;
-      await tx`UPDATE credit_lots SET lifecycle = 'refund_pending' WHERE id = ${lotId}`;
-    });
-    await lockHeld;
-
-    const charging = creditLotService.chargeForGeneration({
-      projectId: fx.projectId,
-      actorUserId: fx.userId,
-      amount: 40,
-    });
-    await waitUntilBlockedOn(sql, ["credit_lots", "for update"], 1);
-
-    release();
-    await done;
-    await gate.end({ timeout: 1 });
-    const outcome = await charging;
-
-    expect(outcome.charged).toBe(0);
-    expect(await readLot(lotId)).toMatchObject({ remaining: "100.000000" });
-  });
 });
 
 /** 这个 studio 现在欠多少，直接读表。 */
@@ -883,9 +858,9 @@ describe("欠账：状态转移表逐格", () => {
       referenceId: `imposs-${Date.now()}`,
     });
 
-    expect(await creditLotRepo.sumSpendableForStudio(fx.studioId)).toBe(
-      "0.000000",
-    );
+    expect(
+      Number(await creditLotRepo.sumSpendableForStudio(fx.studioId)),
+    ).toBe(0);
     const outcome = await creditLotService.chargeForGeneration({
       projectId: fx.projectId,
       actorUserId: fx.userId,

@@ -358,6 +358,9 @@ describe("退款期间这笔积分不属于任何 studio（0063）", () => {
     // user 2026-08-21 定的规则：申请退款那一刻这笔就跟这个 studio 没关系了，
     // 而且在结果出来之前不能再指定给任何一个 studio。不变量 2（欠账时可花
     // 的笔加起来为 0）整个压在这条规则上，所以它得由数据库看着。
+    //
+    // 「退款流程里的笔扣不到」这个事实，从 0063 起由这一条加上引擎套件里的
+    // 「不取未指定的笔」两条合成：退款态必然未指定，未指定的笔取不到。
     const { userId, paymentId } = await seedUserWithPayment();
     const studios = await sql<{ id: string }[]>`
       INSERT INTO studios (created_by_user_id, slug, type, name)
