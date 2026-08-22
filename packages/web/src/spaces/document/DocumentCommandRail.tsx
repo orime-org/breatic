@@ -104,7 +104,14 @@ export const DocumentCommandRail = React.memo(
     const note = t('spaces.document.docMenu.notOpenYet');
     return (
       <div className='absolute top-5 right-4 z-10'>
-        <DropdownMenu>
+        {/* `modal={false}`, same reason as the canvas's left floating menu: a
+            modal menu puts `pointer-events: none` on the body, so the click
+            that dismisses it is swallowed instead of reaching what was
+            clicked. Here that click is nearly always the body — someone
+            opening the menu, deciding against it, and going back to writing.
+            Modal, they had to click twice: once to dismiss (focus went to the
+            trigger), once to put the caret back (measured 2026-08-22). */}
+        <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <Button
               variant='ghost'
