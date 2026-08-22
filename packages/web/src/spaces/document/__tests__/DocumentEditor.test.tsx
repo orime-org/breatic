@@ -58,9 +58,9 @@ describe('DocumentEditor', () => {
     ).toHaveLength(0);
   });
 
-  it('渲染正文和右侧那一列命令', () => {
+  it('渲染正文和右上角那个整篇文档命令的入口', () => {
     render(<DocumentEditor editor={editor} />);
     expect(screen.getByTestId('document-editor-content')).toBeInTheDocument();
-    expect(screen.getByTestId('doc-command-rail')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
   });
 });
