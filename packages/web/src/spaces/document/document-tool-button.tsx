@@ -32,7 +32,6 @@ import { useEditorState } from '@tiptap/react';
 import type { Bold } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
-import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /** A toggle whose pressed state mirrors what is under the cursor. */
@@ -108,7 +107,7 @@ export const ToolButton = React.memo(function ToolButton({
       // free-standing one — but only shorter. The demo's `.pop .tb-btn`
       // (`:209`) overrides height alone, leaving `.tb-btn`'s own
       // `min-width: 28px` (`:138-139`) in force, so the button stays 28 wide.
-      className={cn('h-[26px] w-7')}
+      className='h-[26px] w-7'
     >
       <Icon className='h-4 w-4' />
     </Button>

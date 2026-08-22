@@ -45,9 +45,7 @@ import type * as Y from 'yjs';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import {
-  createDocumentUndoManager,
-} from '@web/spaces/document/document-undo';
+import { createDocumentUndoManager } from '@web/spaces/document/document-undo';
 import { documentBodyFragment } from '@breatic/shared';
 
 /** The editor plus the handles a caller needs alongside it. */

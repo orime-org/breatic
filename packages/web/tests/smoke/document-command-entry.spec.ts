@@ -72,15 +72,57 @@ test('the entry sticks inside the scroller, not beside it', async () => {
     return {
       shellChildren: scroller.parentElement!.children.length,
       insideViewport: viewport.contains(trigger),
-      aheadOfPage: viewport.firstElementChild!.contains(trigger),
+      // Compared directly rather than inferred from being in the first child:
+      // the entry has to precede the page for the text to scroll under it.
+      beforeThePage:
+        !!(
+          trigger.compareDocumentPosition(
+            document.querySelector('[data-testid="document-editor-content"]')!,
+          ) & Node.DOCUMENT_POSITION_FOLLOWING
+        ),
       position: getComputedStyle(layer).position,
     };
   });
 
   expect(layout.shellChildren).toBe(1);
   expect(layout.insideViewport).toBe(true);
-  expect(layout.aheadOfPage).toBe(true);
+  expect(layout.beforeThePage).toBe(true);
   expect(layout.position).toBe('sticky');
+
+  // Declaring `sticky` is not the same as sticking: an `overflow` on any
+  // ancestor turns it off while `getComputedStyle` still reports `sticky`
+  // (verified 2026-08-22 by adding one — the button scrolled away and the
+  // string never changed). So scroll and measure again.
+  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  await editor.click();
+  for (let i = 0; i < 40; i += 1) {
+    await page.keyboard.type(`line ${i} — long enough to scroll`);
+    await page.keyboard.press('Enter');
+  }
+  const stuck = await page.evaluate(async () => {
+    const viewport = document.querySelector(
+      '.doc-body-scroller [data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    viewport.scrollTop = 500;
+    void viewport.offsetHeight;
+    await new Promise((r) => requestAnimationFrame(r));
+    const trigger = document.querySelector(
+      '[data-testid="doc-doc-menu-trigger"]',
+    )!;
+    const t = trigger.getBoundingClientRect();
+    const v = viewport.getBoundingClientRect();
+    return {
+      scrolled: viewport.scrollTop,
+      insetTop: Math.round(t.top - v.top),
+      hitsItself: !!document
+        .elementFromPoint(t.left + t.width / 2, t.top + t.height / 2)
+        ?.closest('[data-testid="doc-doc-menu-trigger"]'),
+    };
+  });
+
+  expect(stuck.scrolled).toBeGreaterThan(0);
+  expect(stuck.insetTop).toBe(20);
+  expect(stuck.hitsItself).toBe(true);
 });
 
 test('rests as a single 32×32 button in the top right corner', async () => {
@@ -109,9 +151,10 @@ test('rests as a single 32×32 button in the top right corner', async () => {
     };
   });
 
-  // The three numbers come from `--doc-entry-size` and `--doc-entry-inset`
-  // (`index.css`), which also size the gutter the button stands in. Asserted
-  // exactly: a range wide enough to swallow a changed token proves nothing.
+  // Size and inset come from `--doc-entry-size` / `--doc-entry-inset`
+  // (`index.css`); the 20 is `top-5` on the layer itself, which is the one
+  // number those variables do not carry. Asserted exactly: a range wide enough
+  // to swallow a changed token proves nothing.
   expect(geometry.width).toBe(32);
   expect(geometry.height).toBe(32);
   expect(geometry.insetRight).toBe(16);
@@ -222,115 +265,84 @@ test('a second click on the trigger closes the menu', async () => {
   await expect(page.getByTestId('doc-doc-menu-save-snapshot')).toHaveCount(0);
 });
 
-test('the page clears the entry, down to the width where it used to not', async () => {
-  // The page is centred inside the viewport's padding; the entry stands in the
-  // right half of that padding. Below a certain content width the page grows
-  // into it and a click at the end of the first line opens the menu instead
-  // (measured 2026-08-22 with the old 24px gutter: 1000 / 1060 / 1100 / 1140
-  // all did this). Two things per width: the rectangles miss each other, and
-  // the end of the first line really is the page.
+test('keeps a fixed gap between the page and the entry', async () => {
+  // 8px is what the confirmed demo draws between the page and the button
+  // (`2026-08-21-editor-command-surface.html`: body padding 56, button 32 at
+  // right 16). It is asserted as that literal rather than read back from
+  // `--doc-entry-clearance`, because reading it back moves the expectation
+  // along with the value and the assertion holds for any number at all.
   //
-  // The widths below are window widths, and what decides the outcome is the
-  // content area — narrower than the window by whatever chrome is open. The
-  // assertion after the loop keeps this test honest: unless one of the runs
-  // lands under the threshold where a too-narrow gutter would overlap, the
-  // whole loop passes with the bug present.
+  // Measured rather than derived from the rectangles missing each other: that
+  // weaker statement is true whatever the gutter is, since the negative margin
+  // pins the button's left edge relative to the page's right edge.
   await openFreshDocument(page);
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   await editor.click();
   await page.keyboard.type(
-    'A deliberately long paragraph, long enough that it wraps several times and ' +
-      'every line but the last one ends flush against the right edge of the ' +
-      'page, which is what makes it useful for measuring whether the entry ' +
-      'covers any of it.',
+    'A deliberately long paragraph, long enough that it wraps several times ' +
+      'and every line but the last ends flush against the right edge of the ' +
+      'page, which is what makes it useful for measuring the gap.',
   );
 
-  const contentWidths: number[] = [];
   for (const width of [1000, 1140, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(200);
 
     const shot = await page.evaluate(() => {
-      const pm = document.querySelector(
-        '[data-testid="document-space"] .ProseMirror',
+      const page_ = document.querySelector(
+        '[data-testid="document-editor-content"]',
       )!;
       const trigger = document.querySelector(
         '[data-testid="doc-doc-menu-trigger"]',
       )!;
-      const page_ = pm.getBoundingClientRect();
-      const t = trigger.getBoundingClientRect();
-
-      // The last character on the first visual line
-      const text = pm.querySelector('p')!.firstChild as Text;
-      const topOf = (i: number): number => {
-        const r = document.createRange();
-        r.setStart(text, i);
-        r.setEnd(text, i + 1);
-        return Math.round(r.getBoundingClientRect().top);
-      };
-      const firstTop = topOf(0);
-      let last = 0;
-      for (let i = 0; i < text.length; i += 1) {
-        if (topOf(i) !== firstTop) break;
-        last = i;
-      }
-      const r = document.createRange();
-      r.setStart(text, last);
-      r.setEnd(text, last + 1);
-      const tail = r.getBoundingClientRect();
-
-      const hit = document.elementFromPoint(
-        (tail.left + tail.right) / 2,
-        (tail.top + tail.bottom) / 2,
-      );
       const viewport = document.querySelector(
         '.doc-body-scroller [data-radix-scroll-area-viewport]',
       )!;
+      void viewport;
       return {
-        overlaps: page_.right > t.left && page_.top < t.bottom,
-        hitTestId: hit?.closest('[data-testid]')?.getAttribute('data-testid'),
-        contentWidth: viewport.getBoundingClientRect().width,
+        gap: Math.round(
+          trigger.getBoundingClientRect().left -
+            page_.getBoundingClientRect().right,
+        ),
       };
     });
 
-    expect(shot.overlaps, `window ${width}: the page runs under the entry`).toBe(
-      false,
-    );
+    // At wide viewports the page is centred well inside the gutter, so the gap
+    // is larger; what has to hold everywhere is that it never drops below the
+    // 8, and at the narrow end it is exactly 8.
     expect(
-      shot.hitTestId,
-      `window ${width}: the end of the first line is not the page`,
-    ).toBe('document-editor-content');
-    contentWidths.push(shot.contentWidth);
+      shot.gap,
+      `window ${width}: page-to-entry gap dropped below 8px`,
+    ).toBeGreaterThanOrEqual(8);
   }
 
-  // Overlap happens when the content area is narrower than the page plus both
-  // gutters — that is the only region where this test can tell a right gutter
-  // from a wrong one.
-  const threshold = await page.evaluate(() => {
-    const viewport = document.querySelector(
-      '.doc-body-scroller [data-radix-scroll-area-viewport]',
-    )!;
+  // The narrowest run is the one that pins the number itself.
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.waitForTimeout(200);
+  const narrowGap = await page.evaluate(() => {
     const page_ = document.querySelector(
       '[data-testid="document-editor-content"]',
     )!;
-    const gutter = parseFloat(getComputedStyle(viewport).paddingLeft);
-    const maxPage = parseFloat(getComputedStyle(page_).maxWidth);
-    return maxPage + 2 * gutter;
+    const trigger = document.querySelector(
+      '[data-testid="doc-doc-menu-trigger"]',
+    )!;
+    return Math.round(
+      trigger.getBoundingClientRect().left -
+        page_.getBoundingClientRect().right,
+    );
   });
-  expect(
-    Math.min(...contentWidths),
-    `every width tested was wide enough to pass with any gutter (threshold ${threshold})`,
-  ).toBeLessThan(threshold);
+  expect(narrowGap).toBe(8);
 
   await page.setViewportSize({ width: 1680, height: 950 });
 });
 
 test('the bubble bar paints above the entry where they overlap', async () => {
-  // Both are positioned siblings in the same isolated container, and the bar
-  // follows the selection horizontally — far enough to reach that corner (at
-  // 1440 the two came within 1px, measured 2026-08-22). Real overlap only
-  // happens along a narrow band, so the bar is moved onto the entry here. What
-  // this pins is which one paints on top, not how they came to overlap.
+  // The bar follows the selection horizontally, far enough to reach that
+  // corner (at 1440 the two came within 1px, measured 2026-08-22). Both z
+  // values are compared inside the editor's `isolate` shell and nowhere else.
+  // Real overlap only happens along a narrow band, so the bar is moved onto
+  // the entry here: what this pins is which one paints on top, not how they
+  // came to overlap.
   await openFreshDocument(page);
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   await editor.click();

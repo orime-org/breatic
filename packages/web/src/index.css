@@ -589,16 +589,24 @@ body {
    asking you to. The switch is the Editor's `injectCSS` option, which defaults
    to true and is left alone. Measured with a 180-character URL: two lines, no
    horizontal overflow, with and without an `overflow-wrap` of our own. */
-/* How wide the body's side gutters are, and how big the whole-document entry
-   that stands in the right one is. Three numbers that have to agree, declared
-   in one place on their common ancestor: the gutter is the entry plus the gap
-   it keeps from the edge, and the entry cancels the gutter with a negative
-   margin to sit in it. A gutter narrower than the entry puts the page under
-   the button; wider and the button drifts away from the text. */
+/* The body's side gutters, and the whole-document entry that stands in the
+   right one. Declared together on their common ancestor because the gutter is
+   built out of the other three: the button, the gap it keeps from the text on
+   its left, and the gap it keeps from the viewport edge on its right.
+
+   The entry sits in the gutter by cancelling everything to the left of the
+   viewport edge — its own width plus the clearance — with a negative margin
+   (`DocumentMenuEntry`). So the two edges land where each number says:
+   page-to-button is the clearance, button-to-edge is the inset. Change the
+   gutter alone and neither moves; the button just runs past the viewport edge
+   and gets clipped. */
 .doc-body-scroller {
   --doc-entry-size: 32px;
   --doc-entry-inset: 16px;
-  --doc-body-gutter: calc(var(--doc-entry-size) + var(--doc-entry-inset));
+  --doc-entry-clearance: 8px;
+  --doc-body-gutter: calc(
+    var(--doc-entry-size) + var(--doc-entry-inset) + var(--doc-entry-clearance)
+  );
 }
 
 .doc-body-editor .ProseMirror {
