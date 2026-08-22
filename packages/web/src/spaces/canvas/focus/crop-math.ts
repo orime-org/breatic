@@ -51,6 +51,64 @@ export const CROP_RATIOS: ReadonlyArray<{ key: string; value: number }> = [
 ];
 
 /**
+ * One item of the preset row. `original` is the eighth ratio (#1991): its
+ * value is the material's own aspect, so it is not a constant like the seven.
+ */
+export type CropPreset = { kind: 'original' } | { kind: 'ratio'; value: number };
+
+/**
+ * The preset row in display order — `Original` first, then the seven ratios.
+ * Derived from {@link CROP_RATIOS} so a ratio cannot exist in one list and not
+ * the other. Every label is a literal: the seven already carried their key as
+ * their label, and the eighth does the same (user 2026-08-21), so the row
+ * reads identically in every locale and none of it goes through `t()`.
+ */
+export const CROP_PRESETS: ReadonlyArray<{
+  key: string;
+  label: string;
+  preset: CropPreset;
+}> = [
+  { key: 'original', label: 'Original', preset: { kind: 'original' } },
+  ...CROP_RATIOS.map(({ key, value }) => ({
+    key,
+    label: key,
+    preset: { kind: 'ratio', value } as CropPreset,
+  })),
+];
+
+/**
+ * The width/height a preset constrains to.
+ * @param preset - The selected item, or null for free cropping.
+ * @param natural - The material's intrinsic size, null until it decodes.
+ * @returns The ratio, or null when nothing constrains the marquee — either
+ *   because no preset is selected, or because `original` cannot be evaluated
+ *   until the material reports its own size.
+ */
+export function presetRatio(
+  preset: CropPreset | null,
+  natural: CropSize | null,
+): number | null {
+  if (preset === null) return null;
+  if (preset.kind === 'ratio') return preset.value;
+  return natural && natural.height > 0 ? natural.width / natural.height : null;
+}
+
+/**
+ * Whether two selections are the same item of the row. `original` is its own
+ * item whatever it currently measures — a square material makes it equal 1:1,
+ * and comparing numbers there would light both (#1991). The seven numeric
+ * items hold seven distinct values, so among them the value IS the identity.
+ * @param a - One selection.
+ * @param b - The other.
+ * @returns True when they are the same row item.
+ */
+export function samePreset(a: CropPreset | null, b: CropPreset | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.kind === 'original' || b.kind === 'original') return a.kind === b.kind;
+  return a.value === b.value;
+}
+
+/**
  * Clamp a value into `[min, max]`.
  * @param v - The value.
  * @param min - Lower bound.
@@ -380,6 +438,25 @@ export function isCropValid(rect: CropRect): boolean {
 export const MIN_NATURAL_CROP_PX = 8;
 
 /**
+ * Relative slack on the natural-pixel minimum, absorbing float noise in the
+ * scaling that reaches it.
+ *
+ * `shapeForPreset` solves a display-px floor out of this gauge and hands it to
+ * `applyRatioPreset`, which multiplies it by the ratio and divides back — and
+ * that pass can land a last bit below the floor it started from. On a 64×64
+ * source in a 201.6px box the floor is 25.2, which measures exactly 8 natural
+ * px; after the ratio pass at 4:3 the height is 25.199999999999996, which
+ * measures 7.999999999999999.
+ *
+ * The value is PEP 485's default `rel_tol` for `math.isclose`, chosen there as
+ * about half the precision a double carries; the error it forgives here is near
+ * 1e-16, and a rect a thousandth of a pixel short is 1e-4 off and still
+ * refused.
+ * @see https://peps.python.org/pep-0485/
+ */
+const NATURAL_CROP_REL_TOL = 1e-9;
+
+/**
  * Zoom-INDEPENDENT confirm validity (round-8): gauges the marquee by the
  * natural pixels it selects, not its on-screen size — zooming out rescales
  * a perfectly valid selection below the display minimum, which is a
@@ -396,10 +473,80 @@ export function isNaturalCropValid(
   natural: CropSize,
 ): boolean {
   if (display.width <= 0 || display.height <= 0) return false;
+  const floor = MIN_NATURAL_CROP_PX * (1 - NATURAL_CROP_REL_TOL);
   return (
-    (rect.width * natural.width) / display.width >= MIN_NATURAL_CROP_PX &&
-    (rect.height * natural.height) / display.height >= MIN_NATURAL_CROP_PX
+    (rect.width * natural.width) / display.width >= floor &&
+    (rect.height * natural.height) / display.height >= floor
   );
+}
+
+/**
+ * Whether a marquee is big enough to keep. The natural gauge applies once both
+ * the source's own size and its display box are known; the display gauge covers
+ * every other case. Every decision in the overlay asks through here, so the button
+ * that offers an action and the guard that performs it cannot disagree.
+ * @param rect - The marquee in display px.
+ * @param display - The source's display size, or null before it is measured.
+ * @param natural - The source's own size, or null before it reports one.
+ * @returns True when the marquee clears whichever gauge applies.
+ */
+export function isCropUsable(
+  rect: CropRect,
+  display: CropSize | null,
+  natural: CropSize | null,
+): boolean {
+  return natural && display
+    ? isNaturalCropValid(rect, display, natural)
+    : isCropValid(rect);
+}
+
+/**
+ * The marquee a row item would produce if it were clicked right now, or null
+ * when it would produce none.
+ *
+ * One answer serves both the button's availability and the click that follows,
+ * so an item can never look available and then refuse. Null means one of: the
+ * item has no ratio yet (`original` on a source that has not reported its own
+ * size), the display box has not been measured, or the material is too small to
+ * hold this ratio at all — each knowable before the click.
+ * @param preset - The row item.
+ * @param seed - The current marquee, or null to shape the whole material.
+ * @param display - The material's box in display px, which is both the
+ *   marquee's limits and the scale the natural gauge divides by; null before
+ *   the box is measured.
+ * @param natural - The material's own size, or null before it reports one.
+ * @returns The shaped marquee, or null when there is none to give.
+ */
+export function shapeForPreset(
+  preset: CropPreset,
+  seed: CropRect | null,
+  display: CropSize | null,
+  natural: CropSize | null,
+): CropRect | null {
+  const ratio = presetRatio(preset, natural);
+  if (ratio === null || display === null) return null;
+  // Natural-aware display minimums: at zoom-in the natural gauge demands more
+  // display px than MIN_CROP_PX, and a display-seeded reshape landed below the
+  // gauge — a preset click destroyed a selection a valid 16:9 rect trivially
+  // fit. Solved from the gauge below so the two cannot drift apart.
+  const minW = natural
+    ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * display.width) / natural.width)
+    : MIN_CROP_PX;
+  const minH = natural
+    ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * display.height) / natural.height)
+    : MIN_CROP_PX;
+  // With no marquee yet the whole material is the seed (#1991): the same
+  // reshape then fills one axis, derives the other and centres — the rect a
+  // "fit the ratio inside the material" pass would produce, without a second
+  // copy of the geometry.
+  const shaped = applyRatioPreset(
+    seed ?? { x: 0, y: 0, width: display.width, height: display.height },
+    ratio,
+    display,
+    minW,
+    minH,
+  );
+  return isCropUsable(shaped, display, natural) ? shaped : null;
 }
 
 /**
