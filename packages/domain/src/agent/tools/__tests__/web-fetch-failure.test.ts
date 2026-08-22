@@ -234,6 +234,25 @@ describe("web_fetch says a failure is a failure", () => {
 
     expect(failure.forModel).not.toMatch(/could not be reached|unreachable/i);
     expect(failure.readerKey).not.toBe("chat.tool.failure.unreachable");
+    // And says which half broke, so the model knows the address is good and
+    // one more try is worth it.
+    expect(failure.forModel).toMatch(/reading the page/i);
+    expect(failure.forModel).toContain("terminated");
+  });
+
+  it("gives the model the connection error, not the wrapper around it", async () => {
+    // A real connection failure nests twice: the transport wraps a
+    // TypeError("fetch failed"), which wraps the error that says what
+    // actually happened. Stopping one level down reaches "fetch failed",
+    // which reads the same for a refused port, a dead host and a bad
+    // certificate.
+    const connection = new Error("connect ECONNREFUSED 93.184.216.34:443");
+    const wrapped = Object.assign(new TypeError("fetch failed"), { cause: connection });
+    fetchMock.mockRejectedValue(wrapped);
+
+    const { forModel } = await failureFrom("https://public.example/page");
+
+    expect(forModel).toContain("ECONNREFUSED");
   });
 
   it("tells the model a request it can correct is one it can correct", async () => {
