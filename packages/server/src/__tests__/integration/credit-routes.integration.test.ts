@@ -504,6 +504,60 @@ describe("GET /studio/:slug/credits", () => {
   });
 });
 
+describe("GET /projects/:id/credits", () => {
+  it("未登录答 401", async () => {
+    const fx = await seedFixture();
+    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`);
+    expect(res.status).toBe(401);
+  });
+
+  it("进不了这个 project 的人答 404", async () => {
+    // 跟这个 project 的其他读路径一样，无权访问收敛成 404，不泄露它存不存在。
+    const fx = await seedFixture();
+    const stranger = await seedFixture();
+    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`, {
+      headers: { Cookie: stranger.cookie },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("给这个 project 的成员看它所属 studio 还能花多少", async () => {
+    // 顶栏那个数对所有成员显示。积分页是 admin 一个人的，这个数不是。
+    const fx = await seedFixture();
+    await seedLot(fx, 100, fx.studioId);
+    const helper = await seedFixture();
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role)
+      VALUES (${fx.projectId}, ${helper.userId}, 'viewer')
+    `;
+
+    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`, {
+      headers: { Cookie: helper.cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { spendable: number } };
+    expect(body.data.spendable).toBe(100);
+  });
+
+  it("欠着账时这个数是负的，跟积分页那个数一样", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `top-owe-${Date.now()}`,
+    });
+
+    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`, {
+      headers: { Cookie: fx.cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { spendable: number } };
+    expect(body.data.spendable).toBe(-320);
+  });
+});
+
 describe("坏输入不该 500", () => {
   it("路径里不是 uuid 时答 422，不是 500", async () => {
     const fx = await seedFixture();
