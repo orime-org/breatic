@@ -695,7 +695,8 @@
         "riskUploads": "uploads still in progress will be interrupted — you can switch to the Space they are in and check first.",
         "action": "Refresh page"
       },
-      "rail": {
+      "docMenu": {
+        "label": "Document commands",
         "saveSnapshot": "Save snapshot",
         "restoreSnapshot": "Restore snapshot",
         "notOpenYet": "Not open yet"

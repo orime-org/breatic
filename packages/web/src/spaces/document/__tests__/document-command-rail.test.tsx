@@ -88,8 +88,12 @@ describe('整篇文档命令的入口', () => {
       expect(item).toHaveAttribute('aria-disabled', 'true');
       expect(item.className).toContain('cursor-not-allowed');
       expect(item.querySelector('.opacity-50')).not.toBeNull();
-      // 常驻的 note 徽章 —— `ComingEntry` 用它说明为什么不可用。
-      expect(item.textContent).toContain('尚未开放');
+      // 常驻的 note 徽章 —— `ComingEntry` 用它说明为什么不可用。断言的是徽章
+      // 这个元素本身有字，不是某一种语言的字：测试跑在英文 locale 下，写死
+      // 中文只会钉住测试环境的语言，钉不住「这里有没有说明」。
+      const note = item.querySelector('.text-2xs');
+      expect(note).not.toBeNull();
+      expect(note?.textContent?.trim()).toBeTruthy();
     }
   });
 

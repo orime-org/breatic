@@ -695,7 +695,8 @@
         "riskUploads": "進行中のアップロードは中断されます。該当する Space に切り替えて先に確認できます。",
         "action": "ページを再読み込み"
       },
-      "rail": {
+      "docMenu": {
+        "label": "ドキュメント全体の操作",
         "saveSnapshot": "スナップショットを保存",
         "restoreSnapshot": "スナップショットを復元",
         "notOpenYet": "まだ利用できません"

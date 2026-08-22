@@ -695,7 +695,8 @@
         "riskUploads": "진행 중인 업로드가 중단됩니다. 해당 Space로 이동해 먼저 확인할 수 있습니다.",
         "action": "페이지 새로고침"
       },
-      "rail": {
+      "docMenu": {
+        "label": "문서 전체 명령",
         "saveSnapshot": "스냅샷 저장",
         "restoreSnapshot": "스냅샷 복원",
         "notOpenYet": "아직 사용할 수 없습니다"

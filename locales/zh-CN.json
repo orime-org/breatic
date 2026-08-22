@@ -695,7 +695,8 @@
         "riskUploads": "正在进行的上传会被中断，可以先切到对应的 Space 看一眼。",
         "action": "刷新页面"
       },
-      "rail": {
+      "docMenu": {
+        "label": "整篇文档的命令",
         "saveSnapshot": "保存快照",
         "restoreSnapshot": "恢复快照",
         "notOpenYet": "尚未开放"

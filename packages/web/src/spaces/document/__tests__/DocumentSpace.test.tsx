@@ -233,23 +233,17 @@ describe('DocumentSpace', () => {
     expect(root.getAttribute('data-space-id')).toBe('beta');
   });
 
-  it('把整篇文档那一列命令送到屏幕上', async () => {
-    // 整列一起断言，不抽样：生产环境挂这一列的就是这个 Space，在这里到不了
-    // 屏幕就等于谁都看不到。`document-command-rail.test` 在下一层钉同一份
-    // 清单 —— 两层都要，因为一个控件可以在组件里好好的，却穿不过这个容器。
+  it('把整篇文档命令的入口送到屏幕上', async () => {
+    // 生产环境挂这个入口的就是这个 Space，在这里到不了屏幕就等于谁都看不到。
+    // `document-command-rail.test` 在下一层钉展开后装什么 —— 两层都要，因为
+    // 一个控件可以在组件里好好的，却穿不过这个容器。
     //
     // 这条原来数的是顶部横条那八个按钮。横条去掉后（#129），穿过容器到达的
-    // 是这一列；浮出条要有选区才出现，它的到达由 `selection-bubble-bar.test`
+    // 是这个入口；浮出条要有选区才出现，它的到达由 `selection-bubble-bar.test`
     // 钉。
     render(<DocumentSpace projectId='p' spaceId='s' />);
     await screen.findByTestId('document-editor-content');
-    const ids = Array.from(
-      document.querySelectorAll('[data-testid^="doc-rail-"]'),
-    ).map((el) => el.getAttribute('data-testid'));
-    expect(ids.sort()).toEqual([
-      'doc-rail-restore-snapshot',
-      'doc-rail-save-snapshot',
-    ]);
+    expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
   });
 
   it('binds the editor to THIS Space’s document, not some other doc', async () => {
