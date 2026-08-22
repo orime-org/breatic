@@ -62,6 +62,19 @@ export type FailureLine = Exclude<
 /** The same table, for asking whether a key read off an error is one of ours. */
 const KNOWN_LINES = new Set<string>(Object.values(FAILURE_LINES));
 
+/**
+ * Whether a value is one of the lines above.
+ *
+ * The wire carries this key as a bare string on a field the SDK defines and
+ * fills in itself when nothing else does. Asking the table is how a reader
+ * tells our key from whatever else may arrive there.
+ * @param value - Whatever arrived where a key was expected.
+ * @returns True when it is a key from the table.
+ */
+export function isReaderLine(value: unknown): value is FailureLine | StoppedLine {
+  return typeof value === "string" && KNOWN_LINES.has(value);
+}
+
 /** What ended a use of a tool without a result. */
 export type ToolFailureKind =
   /** The tool ran and could not do what it was asked. */

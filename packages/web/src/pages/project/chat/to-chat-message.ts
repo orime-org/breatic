@@ -16,6 +16,7 @@
  */
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
+import { isReaderLine } from '@breatic/shared';
 import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
 
 /** The part type carrying a turn that was stopped. */
@@ -83,18 +84,18 @@ export function toChatMessage(
         status,
         ...(status === 'success' ? { result: part.output as string } : {}),
         ...cutShort,
-        // Both come off a replayed message, and `failureKind` is what says so.
-        // A turn still streaming has an `errorText` too — the SDK's client
-        // assembles those parts itself and writes one fixed English sentence
-        // for every error — and taking that as our own put it on the screen
-        // untranslated, in a product that ships five languages.
+        // The key vouches for itself: it is either one of ours or it is not,
+        // and the table is what answers that. The same field carries the SDK's
+        // own fixed English sentence when it has nothing else to put there,
+        // and taking that as our own put it on the screen untranslated, in a
+        // product that ships five languages.
+        ...(status === 'error' && 'errorText' in part && isReaderLine(part.errorText)
+          ? { failureKey: part.errorText }
+          : {}),
+        // Which of the two endings it was comes off a replayed message only:
+        // the wire has one field for a failure and it is carrying the line.
         ...(status === 'error' && 'failureKind' in part
-          ? {
-            failureKind: (part as { failureKind: ToolCall['failureKind'] }).failureKind,
-            ...('errorText' in part && part.errorText !== undefined
-              ? { failureKey: part.errorText }
-              : {}),
-          }
+          ? { failureKind: (part as { failureKind: ToolCall['failureKind'] }).failureKind }
           : {}),
       });
       continue;

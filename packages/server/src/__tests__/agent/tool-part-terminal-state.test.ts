@@ -320,6 +320,26 @@ describe("how a tool use is recorded when it does not come back", () => {
     expect(part?.failure?.forModel).toContain("503");
   });
 
+  it("puts the reader's line on the wire, not a sentence in one language", async () => {
+    // Until the turn is stored and read back, the wire is all the panel has.
+    // The SDK's default fills this field with one fixed English sentence,
+    // which is neither translatable nor specific.
+    thisCase.toolDoes = "throws with detail";
+    thisCase.parts = [asksForTheTool, FINISHED_ASKING_FOR_A_TOOL];
+    const stopper = new AbortController();
+    thisCase.stopper = stopper;
+
+    const chunks: unknown[] = [];
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("do something", stopper.signal);
+      for await (const chunk of turn) chunks.push(chunk);
+    });
+
+    const onWire = JSON.stringify(chunks);
+    expect(onWire).toContain("chat.tool.failure.upstream");
+    expect(onWire).not.toContain("An error occurred.");
+  });
+
   it("still records a normal tool use as successful", async () => {
     const parts = await storedPartsWhenTool("answers");
 

@@ -155,3 +155,95 @@ describe('一个工具调用走到哪了', () => {
     expect(toChatMessage(done, { streaming: false }).toolCalls?.[0]?.status).toBe('success');
   });
 });
+
+describe('直播中的失败文案', () => {
+  it('流上带的是我们那张表里的键时就用它', () => {
+    // 直播的 part 上没有 `failureKind` —— 那是回放才有的字段。键本身能自证：
+    // 它要么在我们那张表里，要么不是我们发的。
+    const message: UIMessage = {
+      id: 'm-live',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-web_fetch',
+          toolCallId: 'call-live',
+          state: 'output-error',
+          input: { url: 'https://example.com' },
+          errorText: 'chat.tool.failure.upstream',
+        },
+      ],
+    } as unknown as UIMessage;
+
+    const view = toChatMessage(message, { streaming: false });
+
+    expect(view.toolCalls?.[0]?.failureKey).toBe('chat.tool.failure.upstream');
+  });
+
+  it('表以外的字符串一概不当文案用', () => {
+    // SDK 自己那句写死的英文就是从这个字段来的。
+    const message: UIMessage = {
+      id: 'm-sdk',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-web_fetch',
+          toolCallId: 'call-sdk',
+          state: 'output-error',
+          input: {},
+          errorText: 'An error occurred.',
+        },
+      ],
+    } as unknown as UIMessage;
+
+    const view = toChatMessage(message, { streaming: false });
+
+    expect(view.toolCalls?.[0]?.failureKey).toBeUndefined();
+  });
+});
+
+describe('工具真失败之后这一轮才被停掉', () => {
+  it('已经失败的调用不因为这一轮被停而改判成用户停止', () => {
+    // 顺序是：工具自己失败了（部件停在 output-error），模型接着往下走，
+    // 用户这时按停止。前端就地给这条回复盖上「被停止」的标记，而那条标记
+    // 说的是这一轮，不是这次调用。
+    const message: UIMessage = {
+      id: 'm-both',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-web_fetch',
+          toolCallId: 'call-failed',
+          state: 'output-error',
+          input: { url: 'https://example.com' },
+          errorText: 'chat.tool.failure.upstream',
+        },
+        { type: 'data-interrupted', data: {} },
+      ],
+    } as unknown as UIMessage;
+
+    const view = toChatMessage(message, { streaming: false });
+
+    expect(view.toolCalls?.[0]?.failureKind).not.toBe('user_aborted');
+    expect(view.toolCalls?.[0]?.failureKey).toBe('chat.tool.failure.upstream');
+  });
+
+  it('还没跑完的调用在这一轮被停时算用户停止', () => {
+    const message: UIMessage = {
+      id: 'm-running',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-web_fetch',
+          toolCallId: 'call-running',
+          state: 'input-available',
+          input: { url: 'https://example.com' },
+        },
+        { type: 'data-interrupted', data: {} },
+      ],
+    } as unknown as UIMessage;
+
+    const view = toChatMessage(message, { streaming: false });
+
+    expect(view.toolCalls?.[0]?.failureKind).toBe('user_aborted');
+  });
+});

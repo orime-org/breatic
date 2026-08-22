@@ -326,7 +326,14 @@ export class MainAgent {
         ...reasoningOptionsFor(resolveProvider(agentConfig.modelId), agentCfg.thinking_enabled),
       });
 
-      return result.toUIMessageStream();
+      // The one field the wire has for a failure, filled with the line a
+      // reader is shown. Left to its default the SDK writes one fixed English
+      // sentence here -- a default that exists so a server does not leak its
+      // own error text, which a translation key does not do either. Without
+      // this the panel has nothing to go on until the turn is stored and read
+      // back, so the same failure reads one way while it happens and another
+      // after a reload.
+      return result.toUIMessageStream({ onError: (err) => endingOf(err).readerKey });
     };
 
     return createUIMessageStream({

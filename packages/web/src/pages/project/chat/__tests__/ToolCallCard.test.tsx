@@ -21,6 +21,7 @@ import { render, screen } from '@testing-library/react';
 
 import { ToolCallCard } from '@web/pages/project/chat/ToolCallCard';
 import type { ToolCall } from '@web/pages/project/chat/types';
+import { t } from '@breatic/shared';
 
 /**
  * A tool call in the shape the panel receives it.
@@ -54,6 +55,25 @@ describe('ToolCallCard', () => {
     // Translated, not the key itself: an untranslated key would render as
     // `chat.tool.failure.unreachable` and read as a bug to whoever saw it.
     expect(shown).not.toContain('chat.tool');
+  });
+
+  it('renders the line the key names, not just some line', () => {
+    // 只断言「翻译过了」的话，把这一行换成任何另一条文案都照样绿 —— 而换错的
+    // 那条正好是「未跑完就停止了」，它跟图标说的是相反的事。
+    const { unmount } = render(<ToolCallCard toolCall={call(failed)} />);
+    const unreachable = screen.getByTestId('tool-call-error').textContent ?? '';
+    unmount();
+
+    render(
+      <ToolCallCard
+        toolCall={call({ ...failed, failureKey: 'chat.tool.failure.upstream' })}
+      />,
+    );
+    const upstream = screen.getByTestId('tool-call-error').textContent ?? '';
+
+    expect(unreachable).not.toBe(upstream);
+    expect(unreachable).toBe(t('chat.tool.failure.unreachable'));
+    expect(upstream).toBe(t('chat.tool.failure.upstream'));
   });
 
   it('does not call a tool the user stopped a failure', () => {
