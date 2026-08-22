@@ -679,7 +679,7 @@
       "unsupported": {
         "label": "Unsupported content"
       },
-      "toolbar": {
+      "commands": {
         "bold": "Bold",
         "italic": "Italic",
         "bulletList": "Bullet list",
@@ -696,7 +696,7 @@
         "action": "Refresh page"
       },
       "docMenu": {
-        "label": "Document commands",
+        "label": "Whole-document commands",
         "saveSnapshot": "Save snapshot",
         "restoreSnapshot": "Restore snapshot",
         "notOpenYet": "Not open yet"

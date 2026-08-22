@@ -32,7 +32,7 @@ import type { ToolDef } from '@web/spaces/document/document-tool-button';
 export const MARK_TOOLS: ToolDef[] = [
   {
     id: 'bold',
-    labelKey: 'spaces.document.toolbar.bold',
+    labelKey: 'spaces.document.commands.bold',
     Icon: Bold,
     isActive: (e) => e.isActive('bold'),
     canRun: (e) => e.can().chain().toggleBold().run(),
@@ -40,7 +40,7 @@ export const MARK_TOOLS: ToolDef[] = [
   },
   {
     id: 'italic',
-    labelKey: 'spaces.document.toolbar.italic',
+    labelKey: 'spaces.document.commands.italic',
     Icon: Italic,
     isActive: (e) => e.isActive('italic'),
     canRun: (e) => e.can().chain().toggleItalic().run(),
@@ -48,7 +48,7 @@ export const MARK_TOOLS: ToolDef[] = [
   },
   {
     id: 'strike',
-    labelKey: 'spaces.document.toolbar.strike',
+    labelKey: 'spaces.document.commands.strike',
     Icon: Strikethrough,
     isActive: (e) => e.isActive('strike'),
     canRun: (e) => e.can().chain().toggleStrike().run(),
@@ -74,7 +74,7 @@ export const MARK_TOOLS: ToolDef[] = [
 export const BLOCK_TOOLS: ToolDef[] = [
   {
     id: 'bullet-list',
-    labelKey: 'spaces.document.toolbar.bulletList',
+    labelKey: 'spaces.document.commands.bulletList',
     Icon: List,
     isActive: (e) => e.isActive('bulletList'),
     canRun: (e) => e.can().chain().toggleBulletList().run(),
@@ -82,7 +82,7 @@ export const BLOCK_TOOLS: ToolDef[] = [
   },
   {
     id: 'ordered-list',
-    labelKey: 'spaces.document.toolbar.orderedList',
+    labelKey: 'spaces.document.commands.orderedList',
     Icon: ListOrdered,
     isActive: (e) => e.isActive('orderedList'),
     canRun: (e) => e.can().chain().toggleOrderedList().run(),
@@ -90,7 +90,7 @@ export const BLOCK_TOOLS: ToolDef[] = [
   },
   {
     id: 'quote',
-    labelKey: 'spaces.document.toolbar.quote',
+    labelKey: 'spaces.document.commands.quote',
     Icon: Quote,
     isActive: (e) => e.isActive('blockquote'),
     canRun: (e) => e.can().chain().toggleBlockquote().run(),

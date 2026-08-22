@@ -679,7 +679,7 @@
       "unsupported": {
         "label": "不支持的内容"
       },
-      "toolbar": {
+      "commands": {
         "bold": "加粗",
         "italic": "斜体",
         "bulletList": "无序列表",

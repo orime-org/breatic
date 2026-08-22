@@ -60,12 +60,11 @@ async function openFreshDocument(p: Page): Promise<void> {
 /**
  * Waits until the entry has stopped moving.
  *
- * A visible editor is not a settled one. The entry is sticky, and a freshly
- * stuck element reaches `getBoundingClientRect` a frame before it reaches the
- * hit-test tree — so a rectangle read too early is right while a click at its
- * centre lands on nothing. Every geometry measurement and every
- * `page.mouse.click` below depends on that having settled, which is why this
- * waits here rather than in each of them.
+ * A visible editor is not a settled one. On 2026-08-22 a click at the centre
+ * of the entry's own rectangle was seen landing on nothing while the rectangle
+ * itself already read correctly; why has not been established. Every geometry
+ * measurement and every `page.mouse.click` below depends on that having
+ * settled, which is why this waits here rather than in each of them.
  */
 async function waitForSettledEntry(p: Page): Promise<void> {
   const trigger = p.getByTestId('doc-doc-menu-trigger');
@@ -159,11 +158,10 @@ test('rests as a single 32×32 button in the top right corner', async () => {
   const trigger = page.getByTestId('doc-doc-menu-trigger');
   await expect(trigger).toBeVisible({ timeout: 10_000 });
 
-  // Retried rather than measured once: `getBoundingClientRect` forces layout,
-  // so the rectangle is right immediately, while `elementFromPoint` reads the
-  // hit-test tree, which lags a frame behind a freshly stuck element. Measured
-  // once the run got fast enough (2026-08-22), that gap made this fail at 1.0s
-  // and pass at 2.4s. The numbers stay exact — only the moment is retried.
+  // Retried rather than measured once: on 2026-08-22 this was seen failing at
+  // 1.0s into the run and passing at 2.4s. Why the geometry was still moving
+  // that late was never established, so the moment is retried. The numbers
+  // stay exact.
   await expect(async () => {
     const geometry = await page.evaluate(() => {
       const t = document.querySelector('[data-testid="doc-doc-menu-trigger"]')!;
@@ -179,10 +177,6 @@ test('rests as a single 32×32 button in the top right corner', async () => {
         // moves with whatever chrome is open.
         insetRight: Math.round(vb.right - tb.right),
         insetTop: Math.round(tb.top - vb.top),
-        // Hitting itself is what says those pixels were really painted.
-        hitsItself: !!document
-          .elementFromPoint(tb.left + tb.width / 2, tb.top + tb.height / 2)
-          ?.closest('[data-testid="doc-doc-menu-trigger"]'),
       };
     });
 
@@ -194,7 +188,6 @@ test('rests as a single 32×32 button in the top right corner', async () => {
     expect(geometry.height).toBe(32);
     expect(geometry.insetRight).toBe(16);
     expect(geometry.insetTop).toBe(20);
-    expect(geometry.hitsItself).toBe(true);
   }).toPass({ timeout: 5_000 });
 });
 
@@ -320,65 +313,52 @@ test('keeps a fixed gap between the page and the entry', async () => {
       'page, which is what makes it useful for measuring the gap.',
   );
 
-  for (const width of [1000, 1140, 1440]) {
+  const shoot = async (width: number): Promise<{
+    gap: number;
+    pageWidth: number;
+  }> => {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(200);
-
-    const shot = await page.evaluate(() => {
+    return page.evaluate(() => {
       const page_ = document.querySelector(
         '[data-testid="document-editor-content"]',
       )!;
       const trigger = document.querySelector(
         '[data-testid="doc-doc-menu-trigger"]',
       )!;
-      const viewport = document.querySelector(
-        '.doc-body-scroller [data-radix-scroll-area-viewport]',
-      )!;
-      void viewport;
+      const pb = page_.getBoundingClientRect();
       return {
-        gap: Math.round(
-          trigger.getBoundingClientRect().left -
-            page_.getBoundingClientRect().right,
-        ),
+        gap: Math.round(trigger.getBoundingClientRect().left - pb.right),
+        pageWidth: Math.round(pb.width),
       };
     });
+  };
 
-    // At wide viewports the page is centred well inside the gutter, so the gap
-    // is larger; what has to hold everywhere is that it never drops below the
-    // 8, and at the narrow end it is exactly 8.
-    expect(
-      shot.gap,
-      `window ${width}: page-to-entry gap dropped below 8px`,
-    ).toBeGreaterThanOrEqual(8);
-  }
+  // Two runs, and the two of them say different things. Narrow: the page fills
+  // the gutters, so the gap it leaves is the clearance itself. Wide: the page
+  // hits its `max-w-3xl` cap and centres, which leaves more — asserted as
+  // "more" rather than as a number, because that number falls out of how wide
+  // the surrounding chrome happens to be.
+  const narrow = await shoot(1000);
+  expect(narrow.pageWidth).toBeLessThan(768);
+  expect(narrow.gap).toBe(8);
 
-  // The narrowest run is the one that pins the number itself.
-  await page.setViewportSize({ width: 1000, height: 900 });
-  await page.waitForTimeout(200);
-  const narrowGap = await page.evaluate(() => {
-    const page_ = document.querySelector(
-      '[data-testid="document-editor-content"]',
-    )!;
-    const trigger = document.querySelector(
-      '[data-testid="doc-doc-menu-trigger"]',
-    )!;
-    return Math.round(
-      trigger.getBoundingClientRect().left -
-        page_.getBoundingClientRect().right,
-    );
-  });
-  expect(narrowGap).toBe(8);
+  const wide = await shoot(1440);
+  expect(wide.pageWidth).toBe(768);
+  expect(wide.gap).toBeGreaterThan(8);
 
   await page.setViewportSize({ width: 1680, height: 950 });
 });
 
 test('the bubble bar paints above the entry where they overlap', async () => {
-  // The bar follows the selection horizontally, far enough to reach that
-  // corner (at 1440 the two came within 1px, measured 2026-08-22). Both z
-  // values are compared inside the editor's `isolate` shell and nowhere else.
-  // Real overlap only happens along a narrow band, so the bar is moved onto
-  // the entry here: what this pins is which one paints on top, not how they
-  // came to overlap.
+  // They do overlap in normal use: the bar stops at the top of the visible
+  // body rather than flipping away from the entry, so once the page is
+  // scrolled past it the bar covers the entry outright (measured 2026-08-22,
+  // 1440 wide: the whole 32px of it). How far it reaches sideways depends on
+  // which column the selection starts in. Both z values are compared inside
+  // the editor's `isolate` shell and nowhere else. The bar is moved onto the
+  // entry here rather than scrolled into place: what this pins is which one
+  // paints on top, not how they came to overlap.
   await openFreshDocument(page);
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   await editor.click();

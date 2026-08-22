@@ -591,15 +591,18 @@ body {
    horizontal overflow, with and without an `overflow-wrap` of our own. */
 /* The body's side gutters, and the whole-document entry that stands in the
    right one. Declared together on their common ancestor because the gutter is
-   built out of the other three: the button, the gap it keeps from the text on
-   its left, and the gap it keeps from the viewport edge on its right.
+   built out of the other three: the button, the gap it keeps from the padding
+   box on its left, and the gap it keeps from the viewport edge on its right.
 
    The entry sits in the gutter by cancelling everything to the left of the
    viewport edge — its own width plus the clearance — with a negative margin
    (`DocumentMenuEntry`). So the two edges land where each number says:
-   page-to-button is the clearance, button-to-edge is the inset. Change the
-   gutter alone and neither moves; the button just runs past the viewport edge
-   and gets clipped. */
+   padding-box-right to button is the clearance, button to viewport edge is the
+   inset. The page itself is capped at `max-w-3xl` and centres inside the
+   padding box, so what it leaves the button is the clearance at the narrow end
+   and more than that once it stops filling the box. Change the gutter alone
+   and neither edge moves; the button just runs past the viewport edge and gets
+   clipped. */
 .doc-body-scroller {
   --doc-entry-size: 32px;
   --doc-entry-inset: 16px;

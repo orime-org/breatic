@@ -48,12 +48,14 @@ import { buildDocumentExtensions } from '@web/spaces/document/document-extension
 import { createDocumentUndoManager } from '@web/spaces/document/document-undo';
 import { documentBodyFragment } from '@breatic/shared';
 
-/** The editor plus the handles a caller needs alongside it. */
+/** The editor plus what is handed out alongside it. */
 export interface DocumentEditorHandle {
   editor: Editor;
   /**
    * The editor's undo manager. Held rather than looked up by plugin-key name,
-   * which misses silently against a duplicated copy of the binding.
+   * which misses silently against a duplicated copy of the binding. Since the
+   * top bar went (task #129) the readers are the tests, which assert on the
+   * undo stack directly; the extensions get it from the local it is built in.
    */
   undoManager: Y.UndoManager;
   /**

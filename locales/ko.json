@@ -679,7 +679,7 @@
       "unsupported": {
         "label": "지원되지 않는 콘텐츠"
       },
-      "toolbar": {
+      "commands": {
         "bold": "굵게",
         "italic": "기울임꼴",
         "bulletList": "글머리 기호 목록",

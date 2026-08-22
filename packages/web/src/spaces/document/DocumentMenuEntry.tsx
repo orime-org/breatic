@@ -107,9 +107,10 @@ export const DocumentMenuEntry = React.memo(
       // wheel then reaches the body the way the browser does it for everything
       // else, and the button keeps its corner while the text scrolls under it.
       // Zero height keeps it out of the flow. The negative margin is the
-      // button plus the clearance, which is everything between the page's
-      // right edge and the viewport's — so the button lands in the gutter with
-      // the clearance on its left and the inset on its right (`index.css`).
+      // button plus the clearance, which is everything between the padding
+      // box's right edge and the button's own right edge — so the button lands
+      // in the gutter with the clearance on its left and the inset between it
+      // and the viewport edge (`index.css`).
       <div className='sticky top-5 z-10 mr-[calc((var(--doc-entry-size)+var(--doc-entry-clearance))*-1)] flex h-0 justify-end'>
         {/* `modal={false}`, same reason as the canvas's left floating menu: a
             modal menu puts `pointer-events: none` on the body, so the click
