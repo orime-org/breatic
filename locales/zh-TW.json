@@ -292,6 +292,7 @@
       "removeReferenceNamed": "移除參考:{name}",
       "removeFocusCropNamed": "移除參考:{name}(聚焦裁剪)",
       "focusExportFailed": "無法裁剪——請重試。",
+      "focusSourceNotReady": "素材尺寸還沒讀到",
       "focusUploadFailed": "聚焦圖上傳失敗——請重試。",
       "focusSourceChanged": "來源素材已變更——選區已清除。",
       "focusCropDiscarded": "節點已被刪除——聚焦圖已丟棄。",

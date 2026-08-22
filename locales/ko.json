@@ -292,6 +292,7 @@
       "removeReferenceNamed": "참조 제거: {name}",
       "removeFocusCropNamed": "참조 제거: {name} (포커스 크롭)",
       "focusExportFailed": "자를 수 없습니다——다시 시도하세요.",
+      "focusSourceNotReady": "소재 크기를 아직 가져오지 못했습니다",
       "focusUploadFailed": "포커스 이미지를 업로드할 수 없습니다——다시 시도하세요.",
       "focusSourceChanged": "원본 소재가 변경되었습니다——영역이 해제되었습니다.",
       "focusCropDiscarded": "노드가 삭제되어 포커스 이미지가 삭제되었습니다.",

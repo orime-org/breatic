@@ -366,6 +366,12 @@ export function FocusCropOverlay({
       // gesture too (round-4: same resurrection mode as the Esc fix).
       interactionRef.current = null;
       clearMarquee();
+      // The size belongs to the material, so it dies with it — same as
+      // switching targets below. A video reports 0×0 until its metadata
+      // arrives, and the guard below only ever overwrites a non-zero size, so
+      // without this the NEW content is measured against the OLD one's
+      // resolution and `Original` draws at a ratio nothing on screen has.
+      setNaturalSize(null);
     } else if (
       prev &&
       rectRef.current &&
@@ -572,10 +578,10 @@ export function FocusCropOverlay({
    */
   const backToPick = React.useCallback((): void => {
     interactionRef.current = null;
-    setRect(null);
+    clearMarquee();
     handOffFocusToPickBanner(rootRef.current);
     onBackToPick();
-  }, [onBackToPick]);
+  }, [onBackToPick, clearMarquee]);
 
   // Esc: clear the marquee first; with nothing drawn, exit the session.
   // Bubble phase, never capture (adversarial 2026-07-16: a window CAPTURE
@@ -828,9 +834,16 @@ export function FocusCropOverlay({
       setPreset(null);
       return;
     }
-    // G1: `original` has no value until the material reports its own size.
+    // G1: `original` has no value until the material reports its own size. The
+    // row is on screen in that state — a video with no cover has a non-zero
+    // layout box while its metadata is still in flight (measured: 288×150) —
+    // so the other seven draw normally and this one has to say why it cannot.
     const nextRatio = presetRatio(next, naturalSize);
-    if (nextRatio === null || !box) return;
+    if (nextRatio === null) {
+      toast.warning(t('canvas.generatePanel.focusSourceNotReady'));
+      return;
+    }
+    if (!box) return;
     // Seed the reshape with NATURAL-aware display minimums (round-11): at
     // zoom-in the natural gauge demands more display px than MIN_CROP_PX, and
     // a display-seeded reshape landed below the gauge — a preset click
@@ -1059,6 +1072,11 @@ export function FocusCropOverlay({
                   size={null}
                   data-testid={`focus-ratio-${key}`}
                   aria-pressed={samePreset(preset, item)}
+                  // aria-disabled, never the HTML attribute: a disabled element
+                  // dispatches no click, and clicking is how the user finds out
+                  // why this one is refusing (same treatment as the reference
+                  // rail's refused rows).
+                  aria-disabled={presetRatio(item, naturalSize) === null}
                   onClick={() => onPresetClick(item)}
                   // whitespace-nowrap + shrink-0 (user 2026-07-17 #1): an
                   // abspos bar near the viewport edge shrink-to-fits against
@@ -1069,6 +1087,7 @@ export function FocusCropOverlay({
                     // Tabular figures line the seven numeric labels up; the
                     // word carries no digits and takes the normal face.
                     (item.kind === 'ratio' ? 'tabular-nums ' : '') +
+                    (presetRatio(item, naturalSize) === null ? 'opacity-50 ' : '') +
                     (samePreset(preset, item)
                       ? 'bg-foreground text-background'
                       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')
