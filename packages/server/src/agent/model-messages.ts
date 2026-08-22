@@ -19,6 +19,7 @@
 import type { ModelMessage } from "ai";
 import type { ToolResultPart } from "ai";
 
+import { NOTHING_SAID_WHY } from "@breatic/shared";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
@@ -38,15 +39,19 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  * reaches the screen and nothing says why, so a conversation goes quiet from
  * its first interaction tool onward.
  *
- * Only called for parts that ended, so an `error` here always carries its
- * detail -- and it is the model's half of that detail that goes, never the
- * key the panel translates.
+ * Only called for parts that ended. What goes is the model's half of the
+ * detail, never the key the panel translates, and a sentence saying as much
+ * for the rows that predate the field.
  * @param part - The tool part to render
  * @returns The output in its typed form, saying plainly when the tool failed
  */
 function toolOutput(part: ToolPart): ToolResultPart["output"] {
   if (part.status === "error") {
-    return { type: "error-text", value: part.failure?.forModel ?? "" };
+    // The field is newer than some of the rows it is read off, and a row
+    // written before it existed has none. An empty string reads as a call
+    // that failed for no reason at all, and what the model does next is
+    // decided by this sentence.
+    return { type: "error-text", value: part.failure?.forModel ?? NOTHING_SAID_WHY.forModel };
   }
   if (typeof part.output === "string") return { type: "text", value: part.output };
   // Whatever the tool answered with, as it was stored. It came out of a

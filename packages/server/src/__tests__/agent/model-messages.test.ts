@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { FAILURE_LINES } from "@breatic/shared";
+import { FAILURE_LINES, NOTHING_SAID_WHY } from "@breatic/shared";
 import type { MessageData } from "@breatic/shared";
 
 import { toModelMessages } from "@server/agent/model-messages.js";
@@ -199,6 +199,29 @@ describe("history on its way to the model", () => {
         },
       ],
     });
+  });
+
+  it("says a failure with no reason on record had no reason on record", () => {
+    // 这个字段是后加的,库里早就躺着一批没有它的行。空字符串递给模型,读起来
+    // 是「这次调用失败了,理由:」后面什么都没有 —— 而模型下一步做什么,全看
+    // 它读到的这句话。
+    const [, toolMessage] = toModelMessages([
+      stored("user", [{ type: "text", text: "fetch it" }]),
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-9",
+          toolName: "web_fetch",
+          input: { url: "https://example.com" },
+          status: "error",
+        },
+      ]),
+    ]).slice(1);
+
+    const output = (toolMessage as { content: Array<{ output: { value: string } }> }).content[0]!
+      .output;
+    expect(output.value.trim()).not.toBe("");
+    expect(output.value).toBe(NOTHING_SAID_WHY.forModel);
   });
 
   it("keeps the line meant for a reader out of what the model is sent", () => {

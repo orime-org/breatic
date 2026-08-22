@@ -101,11 +101,9 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }
             if (thisCase.toolDoes === "stops the turn") {
               thisCase.stopper?.abort();
-              // Left waiting on the stop rather than returning: a call the
-              // user stopped is one that never came back, which is the whole
-              // situation being recorded here. The already-raised case is
-              // checked first because the stop above is synchronous -- a
-              // listener added after the fact waits for an event that has
+              // Waits out the stop and then answers anyway. The already-raised
+              // case is checked first because the stop above is synchronous --
+              // a listener added after the fact waits for an event that has
               // been and gone.
               await new Promise<void>((resolve) => {
                 if (abortSignal === undefined || abortSignal.aborted) {
@@ -223,21 +221,21 @@ describe("how a tool use is recorded when it does not come back", () => {
     expect(failed?.failure?.forModel).toContain("refused");
   });
 
-  it("does not leave a tool the user stopped mid-flight looking like it is still running", async () => {
-    // The SDK delivers no result for a call in flight when the turn is
-    // stopped, so nothing else will ever close this part out.
+  it("keeps what a tool answered even when the turn was stopped around it", async () => {
+    // 这个调用跑完了、也交出了答案,停止是随后落在整轮上的。SDK 先通报工具结束、
+    // 再把那个 chunk 塞进流,而停在两者之间的一轮把 chunk 丢掉了 —— 于是这一格
+    // 停在 pending,再没有别的时刻会把它收尾。
+    //
+    // 收尾时按已经拿到的答案记:这次调用花掉的东西已经花了,记成没跑过或者记成
+    // 用户停掉的,下一轮都会被邀请再花一次。
     const parts = await storedPartsWhenTool("stops the turn");
 
-    const stopped = toolPart(parts);
-    expect(stopped).toBeDefined();
-    expect(stopped?.status).not.toBe("pending");
-    // And it says which of the two endings it was, so neither the panel nor
-    // the next turn has to guess. This used to be told from whether a reason
-    // came with it, which made every failure look like the user's doing the
-    // moment a reason went missing.
-    expect(stopped?.failure?.kind).toBe("user_aborted");
-    // And the turn itself is marked, or coming back to the conversation shows
-    // an answer that simply stopped short with nothing to say why.
+    const answered = toolPart(parts);
+    expect(answered).toBeDefined();
+    expect(answered?.status).toBe("success");
+    expect(answered?.output).toBe("两条链接");
+    // 被停的是这一轮,不是这次调用,所以那件事记在轮上。少了它,回到会话里看到的
+    // 是一个话说到一半、也不说为什么的答复。
     expect(parts.some((p) => p.type === "interrupted")).toBe(true);
   });
 

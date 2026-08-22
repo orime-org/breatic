@@ -245,6 +245,8 @@ export class MainAgent {
     // argument and cannot do anything differently. This callback is handed
     // the error itself, before any of that.
     const howToolEnded = new Map<string, ToolFailure>();
+    /** What a tool answered, for calls whose result chunk never got read. */
+    const whatToolAnswered = new Map<string, unknown>();
 
     /**
      * Ask the model, once everything it needs has been read.
@@ -313,9 +315,18 @@ export class MainAgent {
           }
         },
         onToolExecutionEnd: ({ toolCall, toolOutput }) => {
-          if (toolOutput.type !== "tool-error") return;
-          if (howToolEnded.has(toolCall.toolCallId)) return;
-          howToolEnded.set(toolCall.toolCallId, endingOf(toolOutput.error));
+          // Both endings are kept, because the chunk carrying either one can
+          // be thrown away before anything reads it: the SDK reports a tool
+          // ending first and enqueues it after, and a turn that ends in
+          // between loses what was enqueued. The part is then left saying the
+          // call is still running, and the only account of it left anywhere
+          // is this one.
+          if (toolOutput.type === "tool-error") {
+            if (howToolEnded.has(toolCall.toolCallId)) return;
+            howToolEnded.set(toolCall.toolCallId, endingOf(toolOutput.error));
+            return;
+          }
+          whatToolAnswered.set(toolCall.toolCallId, toolOutput.output);
         },
         // Deliberately does nothing. The same failure reaches the end of the
         // stream as an error chunk and is recorded there, alongside the ones
@@ -407,14 +418,22 @@ export class MainAgent {
         const leftHanging: ToolFailure =
           exit === "aborted" ? STOPPED_BY_USER : TURN_ENDED_AROUND_IT;
         for (const [i, part] of replyParts.entries()) {
-          if (part.type === "tool" && part.status === "pending") {
-            // A call can be reported as failed and still be left pending here:
-            // the SDK reports a tool ending before the chunk carrying it is
-            // pulled from the stream, and a stream that ends in between
-            // discards that chunk. The account of it is already in hand.
-            const ending = howToolEnded.get(part.toolCallId) ?? leftHanging;
-            replyParts[i] = { ...part, status: "error", failure: ending };
+          if (part.type !== "tool" || part.status !== "pending") continue;
+          // A call the SDK already reported on can still be left pending
+          // here: the ending is reported before the chunk carrying it is
+          // pulled from the stream, and a stream that ends in between
+          // discards that chunk. What it ended with is in hand either way,
+          // and asked for before the account above -- that one describes a
+          // call nothing was ever reported about, and a call that answered
+          // recorded as one that never ran invites the next turn to spend
+          // whatever this one already spent all over again.
+          if (whatToolAnswered.has(part.toolCallId)) {
+            const output = whatToolAnswered.get(part.toolCallId);
+            replyParts[i] = { ...part, status: "success", output };
+            continue;
           }
+          const ending = howToolEnded.get(part.toolCallId) ?? leftHanging;
+          replyParts[i] = { ...part, status: "error", failure: ending };
         }
 
         let creditsUsed = 0;
