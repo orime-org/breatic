@@ -41,7 +41,7 @@ export * as assetRepo from "@domain/asset/asset.repo.js";
 export { getModel, resolveProvider } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export { buildToolSet, BASELINE_TOOLS, TOOLS_THAT_BLOCK } from "@domain/agent/tools/index.js";
-export { FAILURE_LINES, STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
+export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
 export { assertSkillUsable } from "@domain/agent/skill-gate.js";
 export {

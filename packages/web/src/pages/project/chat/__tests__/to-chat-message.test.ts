@@ -103,6 +103,29 @@ describe('一个工具调用走到哪了', () => {
     expect(view.toolCalls?.[0]?.failureKind).toBeUndefined();
   });
 
+  it('这一轮被用户停掉时，还在跑的调用算「用户停止」不算失败', () => {
+    // 停止之后 part 停在 input-available，SDK 客户端不会把它推到任何终态。
+    // 这条消息带着 data-interrupted，那就是「谁停的」这个问题的答案。
+    const stopped = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-web_fetch',
+          toolCallId: 'call-1',
+          state: 'input-available',
+          input: {},
+        },
+        { type: 'data-interrupted', data: {} },
+      ],
+    } as unknown as UIMessage;
+
+    const view = toChatMessage(stopped, { streaming: false });
+
+    expect(view.toolCalls?.[0]?.status).toBe('error');
+    expect(view.toolCalls?.[0]?.failureKind).toBe('user_aborted');
+  });
+
   it('用户拒了这次调用，同样是终态', () => {
     const denied = {
       id: 'm1',

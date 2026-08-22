@@ -18,6 +18,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { tool } from "ai";
+import { carrying } from "@breatic/shared";
 import { z } from "zod";
 import type * as CoreModule from "@breatic/core";
 import { FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
@@ -64,10 +65,20 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       tools: {
         web_fetch: tool({
           description: "取一个网页",
-          inputSchema: z.object({ url: z.string() }),
+          inputSchema: z.object({ url: z.string().url() }),
           execute: async (_input: { url: string }, { abortSignal }) => {
             if (thisCase.toolDoes === "throws") {
               throw new Error("the site refused the connection");
+            }
+            if (thisCase.toolDoes === "throws with detail") {
+              // What the real tools throw. The two halves differ on purpose:
+              // a stored record that took the message would look right while
+              // the carried detail was being dropped on the floor.
+              throw carrying(new Error("the message"), {
+                kind: "tool_failed",
+                forModel: "the reason only the model gets",
+                readerKey: "chat.tool.failure.upstream",
+              });
             }
             if (thisCase.toolDoes === "stops the turn") {
               thisCase.stopper?.abort();
@@ -141,10 +152,15 @@ const asksForTheTool: ModelStreamPart = {
  * @returns The parts of the stored assistant message, or an empty list.
  */
 async function storedPartsWhenTool(
-  toolDoes: "answers" | "throws" | "stops the turn",
+  toolDoes: "answers" | "throws" | "throws with detail" | "stops the turn",
+  input?: Record<string, unknown>,
 ): Promise<MessagePart[]> {
   thisCase.toolDoes = toolDoes;
-  thisCase.parts = [asksForTheTool, FINISHED_ASKING_FOR_A_TOOL];
+  const asked =
+    input === undefined
+      ? asksForTheTool
+      : { ...asksForTheTool, input: JSON.stringify(input) };
+  thisCase.parts = [asked, FINISHED_ASKING_FOR_A_TOOL];
   const stopper = new AbortController();
   thisCase.stopper = stopper;
 
@@ -198,6 +214,58 @@ describe("how a tool use is recorded when it does not come back", () => {
     // And the turn itself is marked, or coming back to the conversation shows
     // an answer that simply stopped short with nothing to say why.
     expect(parts.some((p) => p.type === "interrupted")).toBe(true);
+  });
+
+  it("records what the SDK said when it refused the call before running it", async () => {
+    // The model shaped its arguments wrongly, so the SDK rejects the call at
+    // `parseToolCall` and emits a tool-error itself -- `onToolExecutionEnd`
+    // never fires, because nothing was executed. The reason still has to be
+    // one the model can act on: it is the model's own mistake to fix.
+    const parts = await storedPartsWhenTool("answers", { url: "example.com" });
+
+    const refused = toolPart(parts);
+    expect(refused?.status).toBe("error");
+    expect(refused?.failure?.kind).toBe("tool_failed");
+    expect(refused?.failure?.forModel.length).toBeGreaterThan(0);
+    expect(refused?.failure?.forModel).not.toBe("undefined");
+  });
+
+  it("does not call a provider failure the user's doing", async () => {
+    // The step ended between the model asking for the tool and the tool
+    // running -- a dropped connection looks exactly like a stop from here.
+    // Recording it as a stop tells the next turn the user did something they
+    // never did, in the same message that also carries a `failed` mark.
+    thisCase.toolDoes = "answers";
+    thisCase.parts = [
+      { type: "tool-input-start", id: "tc-9", toolName: "web_fetch" },
+      { type: "tool-input-delta", id: "tc-9", delta: '{"url":"https://example.com"}' },
+      { type: "error", error: new Error("provider connection dropped") },
+    ];
+    addMessage.mockClear();
+    const stopper = new AbortController();
+    thisCase.stopper = stopper;
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("do something", stopper.signal);
+      for await (const _chunk of turn) {
+        // drained
+      }
+    });
+    const reply = addMessage.mock.calls.map(([, m]) => m).find((m) => m.role === "assistant");
+    const parts = (reply?.parts as MessagePart[]) ?? [];
+
+    expect(parts.some((p) => p.type === "failed")).toBe(true);
+    expect(toolPart(parts)?.failure?.kind).not.toBe("user_aborted");
+  });
+
+  it("keeps both halves of what a tool threw, all the way to the record", async () => {
+    // The joint between the two halves this file and the tool tests each
+    // cover: the tool proves it throws the detail, storage proves a record
+    // has one, and only this says the detail that arrives is the one thrown.
+    const parts = await storedPartsWhenTool("throws with detail");
+
+    const failed = toolPart(parts);
+    expect(failed?.failure?.forModel).toBe("the reason only the model gets");
+    expect(failed?.failure?.readerKey).toBe("chat.tool.failure.upstream");
   });
 
   it("still records a normal tool use as successful", async () => {

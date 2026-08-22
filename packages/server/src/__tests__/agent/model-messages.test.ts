@@ -129,25 +129,30 @@ describe("history on its way to the model", () => {
     });
   });
 
-  it("leaves out a turn that was stopped before it said or did anything", () => {
+  it("says so even for a turn stopped before it got a word out", () => {
     const history = [
       stored("user", [{ type: "text", text: "hello" }]),
       stored("assistant", [{ type: "interrupted" }]),
     ];
 
-    // An assistant message with nothing in it still reaches the provider as an
-    // empty text block, which is not something the model should be shown.
-    expect(toModelMessages(history)).toEqual([{ role: "user", content: "hello" }]);
+    // Used to be dropped whole, on the grounds that an assistant message with
+    // nothing in it reaches the provider as an empty text block. The note is
+    // what it has instead -- not empty, and it is the only trace the next turn
+    // has that anything happened here at all.
+    const [, note] = toModelMessages(history);
+    expect(note).toMatchObject({ role: "assistant" });
+    expect(String((note as { content: string }).content)).toMatch(/stopped/i);
   });
 
-  it("keeps what a stopped turn managed to say, and drops only the mark", () => {
+  it("keeps what a stopped turn managed to say, and marks it as cut off", () => {
     const history = [
       stored("assistant", [{ type: "text", text: "half a sen" }, { type: "interrupted" }]),
     ];
 
-    expect(toModelMessages(history)).toEqual([
-      { role: "assistant", content: "half a sen" },
-    ]);
+    const [only] = toModelMessages(history);
+    const content = String((only as { content: string }).content);
+    expect(content).toContain("half a sen");
+    expect(content).toMatch(/stopped/i);
   });
 
   it("never sends the model its own reasoning back", () => {
@@ -255,6 +260,21 @@ describe("history on its way to the model", () => {
         },
       ],
     });
+  });
+
+  it("tells the model a turn stopped mid-sentence was stopped", () => {
+    // Task #93's other half. No tool was ever called -- the model was writing
+    // prose and the user pressed stop -- so the tool path that carries this
+    // never runs, and the turn read back as one the model had finished.
+    const messages = toModelMessages([
+      stored("user", [{ type: "text", text: "list twenty of them" }]),
+      stored("assistant", [
+        { type: "text", text: "1. first 2. sec" },
+        { type: "interrupted" },
+      ]),
+    ]);
+
+    expect(JSON.stringify(messages)).toMatch(/stopped/i);
   });
 
   it("leaves out a call still in flight", () => {

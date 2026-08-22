@@ -62,15 +62,27 @@ export function toChatMessage(
   let interrupted = false;
   let failed = false;
 
+  // Read before the loop because a tool part can come before the mark. A call
+  // this turn cut short has nothing on it saying so — the SDK client leaves it
+  // exactly where it was — and this mark is the only answer to who stopped it.
+  const wasStopped = message.parts.some((p) => p.type === INTERRUPTED);
+
   for (const part of message.parts) {
     if (isToolUIPart(part)) {
       const status = statusOf(part.state, options.streaming === true);
+      // Cut short rather than failed: it never reached an end state of its
+      // own, and the turn it belonged to was stopped.
+      const cutShort =
+        status === 'error' && wasStopped && part.state !== 'output-error'
+          ? ({ failureKind: 'user_aborted' } as const)
+          : {};
       toolCalls.push({
         id: part.toolCallId,
         name: getToolName(part),
         args: (part.input ?? {}) as Record<string, unknown>,
         status,
         ...(status === 'success' ? { result: part.output as string } : {}),
+        ...cutShort,
         // Both come off a replayed message, and `failureKind` is what says so.
         // A turn still streaming has an `errorText` too — the SDK's client
         // assembles those parts itself and writes one fixed English sentence

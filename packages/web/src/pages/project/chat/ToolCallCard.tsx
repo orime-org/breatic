@@ -4,20 +4,21 @@
 import { CircleAlert, CircleCheck, CircleSlash, Loader2 } from 'lucide-react';
 import type * as React from 'react';
 
+import { FAILURE_LINES } from '@breatic/shared';
+
+/**
+ * What a call the user stopped says, when the record did not bring a line.
+ *
+ * A stopped call carries its own key from storage; a turn stopped mid-stream
+ * has no stored record yet, and this is the same sentence that key resolves
+ * to.
+ */
+const STOPPED_LINE = 'chat.tool.unfinished';
+
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import type { ToolCall } from '@web/pages/project/chat/types';
-
-/**
- * What the card says when the failure came over without a line of its own.
- *
- * A turn still streaming is the ordinary way that happens: those parts are
- * the SDK client's own, and it has nothing of ours to put on them. A blank
- * row under a failure icon reads as a rendering fault, so the coarse line
- * stands in until the stored version replaces it.
- */
-const GENERIC_FAILURE = 'chat.tool.failure.generic';
 
 interface ToolCallCardProps {
   toolCall: ToolCall;
@@ -66,14 +67,14 @@ export function ToolCallCard({
       </div>
       {unfinished ? (
         <div className='mt-1 text-muted-foreground' data-testid='tool-call-unfinished'>
-          {t('chat.tool.unfinished')}
+          {t(toolCall.failureKey ?? STOPPED_LINE)}
         </div>
       ) : toolCall.status === 'error' ? (
         <div
           className='mt-1 text-status-error-foreground'
           data-testid='tool-call-error'
         >
-          {t(toolCall.failureKey ?? GENERIC_FAILURE)}
+          {t(toolCall.failureKey ?? FAILURE_LINES.generic)}
         </div>
       ) : null}
     </div>

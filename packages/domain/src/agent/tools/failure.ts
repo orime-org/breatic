@@ -14,37 +14,8 @@
  * Catching is fine. Answering is not.
  */
 import { carrying } from "@breatic/shared";
-import type { ToolFailure } from "@breatic/shared";
+import type { FailureLine, ToolFailure } from "@breatic/shared";
 
-/**
- * The lines a reader may be shown when a tool comes back empty.
- *
- * Coarse on purpose. A reader needs to know the step did not work; the detail
- * that would tell them more is the detail that names hosts and addresses.
- */
-export const FAILURE_LINES = {
-  /** The tool cannot run at all on this deployment. */
-  unavailable: "chat.tool.failure.unavailable",
-  /** The far side answered, and what it answered was an error. */
-  upstream: "chat.tool.failure.upstream",
-  /** Nothing answered. */
-  unreachable: "chat.tool.failure.unreachable",
-  /** The address is one we refuse to fetch. */
-  blocked: "chat.tool.failure.blocked",
-  /**
-   * Something went wrong that no tool of ours described.
-   *
-   * Not for a tool to throw -- a tool knows what it was doing and can say so.
-   * This is for the turn, which also has to record calls that failed before
-   * any of our code ran: input the model shaped wrongly, a tool name that no
-   * longer exists. Those arrive as errors from the SDK with no detail of ours
-   * attached, and a record with nothing in it is what this replaced.
-   */
-  generic: "chat.tool.failure.generic",
-} as const;
-
-/** Which line a reader is shown. */
-export type FailureLine = (typeof FAILURE_LINES)[keyof typeof FAILURE_LINES];
 
 /**
  * Build the error a tool throws when it failed.

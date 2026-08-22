@@ -9,14 +9,8 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { env, getAgentConfig } from "@breatic/core";
-import { httpRequest, toolFailureOf } from "@breatic/shared";
-import {
-  FAILURE_LINES,
-  isStop,
-  reasonOf,
-  stoppedByUser,
-  toolFailed,
-} from "@domain/agent/tools/failure.js";
+import { FAILURE_LINES, httpRequest, toolFailureOf } from "@breatic/shared";
+import { isStop, reasonOf, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
 
 /** What the model may ask this tool to search for. */
 const inputSchema = z.object({

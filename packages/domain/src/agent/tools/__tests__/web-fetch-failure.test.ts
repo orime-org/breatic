@@ -121,6 +121,30 @@ describe("web_fetch says a failure is a failure", () => {
     expect(readerKey).toMatch(/^chat\.tool\.failure\./);
   });
 
+  it("tells the model a name that does not resolve is a name that does not resolve", async () => {
+    // Not every refusal from the fetch guard is an address-policy refusal.
+    // A hostname with no DNS records means the model got the address wrong;
+    // calling that "not allowed" sends it looking for permission it will
+    // never get, when what it needed was to check the spelling.
+    dnsLookupMock.mockResolvedValue([]);
+
+    const { forModel } = await failureFrom("https://nowhere.example/page");
+
+    expect(forModel).toMatch(/dns|resolve|does not exist/i);
+    expect(forModel).not.toMatch(/not allowed|not one that may be fetched/i);
+  });
+
+  it("tells the model a redirect loop is the site's doing, not a refusal", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(null, { status: 302, headers: { location: "https://public.example/next" } }),
+    );
+
+    const { forModel } = await failureFrom("https://public.example/loop");
+
+    expect(forModel).toMatch(/redirect/i);
+    expect(forModel).not.toMatch(/not allowed|not one that may be fetched/i);
+  });
+
   it("calls a stopped fetch stopped, not failed", async () => {
     // The general catch takes both endings. Told apart here because they mean
     // opposite things to the reader: one is something going wrong, the other

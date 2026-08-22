@@ -10,14 +10,8 @@
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";
-import { toolFailureOf } from "@breatic/shared";
-import {
-  FAILURE_LINES,
-  isStop,
-  reasonOf,
-  stoppedByUser,
-  toolFailed,
-} from "@domain/agent/tools/failure.js";
+import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
+import { isStop, reasonOf, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
 import { safeFetch, SsrfError } from "@domain/agent/tools/safe-fetch.js";
 
 const USER_AGENT =
@@ -137,7 +131,7 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
       if (toolFailureOf(err) !== undefined) throw err;
       if (isStop(err, abortSignal)) throw stoppedByUser();
 
-      if (err instanceof SsrfError) {
+      if (err instanceof SsrfError && err.aboutTheAddress) {
         // Deliberately vague, and the one place where the model is told less
         // than we know. Refusing this address meant resolving it, so the
         // error names an internal address -- handing that back would make
@@ -151,9 +145,22 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
         );
       }
 
+      if (err instanceof SsrfError) {
+        // The rest of what this guard rejects is a plain fact about the
+        // request -- a name with no DNS records, a scheme it does not speak, a
+        // redirect chain that never ends. Told plainly, because each one asks
+        // for a different next move and only the model can make it.
+        throw toolFailed(
+          `Fetching ${url} failed: ${err.message}. Do not retry the same address; correct it ` +
+            "if it was mistyped, otherwise try another source or tell the user this page " +
+            "could not be read.",
+          FAILURE_LINES.unreachable,
+        );
+      }
+
       throw toolFailed(
-        `Fetching ${url} failed: ${reasonOf(err)}. Nothing answered at that address. Do not retry it; ` +
-          "try another source, or tell the user the page could not be read.",
+        `Fetching ${url} failed: ${reasonOf(err)}. Do not retry it; try another source, or ` +
+          "tell the user the page could not be read.",
         FAILURE_LINES.unreachable,
       );
     }

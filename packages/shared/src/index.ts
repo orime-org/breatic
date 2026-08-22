@@ -274,8 +274,8 @@ export { newId, deriveId } from "@shared/ids.js";
 // called dead. How often they arrive is `config/agent.yaml`'s, served to the
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
-export { carrying, toolFailureOf } from "@shared/agent/tool-failure.js";
-export type { ToolFailure, ToolFailureKind } from "@shared/agent/tool-failure.js";
+export { carrying, FAILURE_LINES, toolFailureOf } from "@shared/agent/tool-failure.js";
+export type { FailureLine, ToolFailure, ToolFailureKind } from "@shared/agent/tool-failure.js";
 
 // The one HTTP transport with retries — backend services and browser alike.
 // Anything aimed at OUR OWN backend keeps using the browser's axios singleton;

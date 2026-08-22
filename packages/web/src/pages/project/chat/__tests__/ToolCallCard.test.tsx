@@ -102,6 +102,18 @@ describe('ToolCallCard', () => {
     expect(shown).not.toContain('chat.tool');
   });
 
+  it('calls a call the user stopped stopped, even mid-stream', () => {
+    // A turn stopped while a tool was running leaves that part exactly where
+    // it was — the SDK client pushes it to no end state — so the panel reads
+    // it as `error` with nothing on it. Drawing that as a failure tells the
+    // user something broke when they are the one who stopped it.
+    render(
+      <ToolCallCard toolCall={call({ status: 'error', failureKind: 'user_aborted' })} />,
+    );
+
+    expect(screen.getByTestId('tool-call-card').getAttribute('data-status')).toBe('unfinished');
+  });
+
   it('shows nothing extra for a tool that came back normally', () => {
     render(<ToolCallCard toolCall={call({ status: 'success', result: 'two links' })} />);
 

@@ -14,9 +14,23 @@
  * with no detail is a record that cannot say what happened, and the model
  * reads that record back next turn.
  */
-import { toolFailureOf } from "@breatic/shared";
+import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
 import type { ToolFailure } from "@breatic/shared";
-import { FAILURE_LINES } from "@breatic/domain";
+
+/**
+ * A call the turn ended around, without the turn being stopped by anyone.
+ *
+ * What is left when a step ends between the model asking for a tool and the
+ * tool running: the provider dropped the connection, or the turn's own code
+ * failed. Nothing ran, so nothing has anything to say about why -- but the
+ * next turn still reads this record, and it must not read as the user having
+ * pressed stop.
+ */
+export const TURN_ENDED_AROUND_IT: ToolFailure = {
+  kind: "tool_failed",
+  forModel: "This tool was never run: the turn ended before it could start.",
+  readerKey: FAILURE_LINES.generic,
+};
 
 /**
  * How a failed tool call ended, in the form the record keeps.

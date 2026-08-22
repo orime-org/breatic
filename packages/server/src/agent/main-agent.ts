@@ -29,7 +29,7 @@ import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
-import { endingOf } from "@server/agent/tool-ending.js";
+import { endingOf, TURN_ENDED_AROUND_IT } from "@server/agent/tool-ending.js";
 
 /**
  * What a client is told when the turn's own code fails.
@@ -364,22 +364,25 @@ export class MainAgent {
         // read back next turn -- see `howToolEnded`.
         for (const [i, part] of replyParts.entries()) {
           if (part.type !== "tool" || part.status !== "error") continue;
-          replyParts[i] = {
-            ...part,
-            failure: howToolEnded.get(part.toolCallId) ?? endingOf(undefined),
-          };
+          const ending = howToolEnded.get(part.toolCallId);
+          if (ending !== undefined) replyParts[i] = { ...part, failure: ending };
         }
 
         // A stored message is a record of something that already happened,
         // so nothing in it may still say "running". A call in flight when
-        // the turn was stopped never gets a result, and there is no later
-        // moment that would close it out. It is recorded as the user
-        // stopping rather than as a failure: nothing went wrong with the
-        // tool, the turn simply ended around it, and the next turn reads
-        // that record.
+        // the turn ended never gets a result, and there is no later moment
+        // that would close it out.
+        //
+        // Why it ended is what `exit` says, and it has to be asked: a call
+        // left hanging by a provider that dropped mid-step looks exactly
+        // like one left hanging by the user pressing stop, and recording
+        // the second as the first tells the next turn the user did
+        // something they never did.
+        const leftHanging: ToolFailure =
+          exit === "aborted" ? STOPPED_BY_USER : TURN_ENDED_AROUND_IT;
         for (const [i, part] of replyParts.entries()) {
           if (part.type === "tool" && part.status === "pending") {
-            replyParts[i] = { ...part, status: "error", failure: STOPPED_BY_USER };
+            replyParts[i] = { ...part, status: "error", failure: leftHanging };
           }
         }
 

@@ -98,16 +98,23 @@ describe("what a finished turn writes down", () => {
       },
     ]);
 
-    // No `failure` here on purpose. What the wire carries at this point is the
-    // SDK's one generic line for every error it streams; the specific reason
-    // never went out, and the turn puts it on afterwards from the callback
-    // that was handed the error itself.
+    // What the wire carries at this point is usually the SDK's one generic
+    // line for every error it streams, and the turn replaces it afterwards
+    // from the callback handed the error itself. It is kept rather than
+    // dropped because for one kind of failure it is the only account there
+    // is: a call whose arguments the model shaped wrongly is refused before
+    // any tool runs, so no callback ever fires.
     expect(stored[0]).toEqual({
       type: "tool",
       toolCallId: "call-3",
       toolName: "web_fetch",
       input: { url: "https://example.com" },
       status: "error",
+      failure: {
+        kind: "tool_failed",
+        forModel: "读不到",
+        readerKey: "chat.tool.failure.generic",
+      },
     });
   });
 
@@ -200,11 +207,29 @@ describe("a message that goes out and comes back", () => {
         toolName: "web_search",
         input: { query: "参考图" },
         status: "error",
+        failure: {
+          kind: "tool_failed",
+          forModel: "读不到",
+          readerKey: "chat.tool.failure.generic",
+        },
       },
       { type: "interrupted" },
     ];
 
-    expect(toStoredParts(toUiParts(original))).toEqual(original);
+    // One field does not survive, deliberately: the model's copy of the
+    // reason does not go out to the browser, so what comes back carries the
+    // reader's key in its place. Everything else is the same message.
+    const back = toStoredParts(toUiParts(original));
+    expect(back.map((p) => p.type)).toEqual(original.map((p) => p.type));
+    expect(back[0]).toEqual(original[0]);
+    expect(back[1]).toEqual(original[1]);
+    expect(back[2]).toEqual(original[2]);
+    expect(back[3]).toMatchObject({
+      toolCallId: "call-2",
+      status: "error",
+      failure: { kind: "tool_failed", readerKey: "chat.tool.failure.generic" },
+    });
+    expect(back[4]).toEqual(original[4]);
   });
 
   it("does not carry the model's reason out to the browser", () => {

@@ -52,12 +52,27 @@ import { httpRequest } from "@breatic/shared";
 /** Error thrown when a URL would reach a forbidden host or IP. */
 export class SsrfError extends Error {
   /**
+   * Whether this refusal is about which address the URL points at.
+   *
+   * Only those may not be described to the model: the message names a
+   * hostname on our block list or an address inside the network, and knowing
+   * it is a way to read the inside of the network from outside. Everything
+   * else this guard rejects -- a name with no DNS records, a scheme it does
+   * not speak, a redirect chain that never ends -- is a plain fact about the
+   * request, and one the model needs to correct its next move.
+   */
+  readonly aboutTheAddress: boolean;
+
+  /**
    * Create an SsrfError.
    * @param message - Description of why the URL or host was rejected.
+   * @param aboutTheAddress - True when the message names a blocked host or a
+   *   resolved address, which is detail the model may not be shown.
    */
-  constructor(message: string) {
+  constructor(message: string, aboutTheAddress = false) {
     super(message);
     this.name = "SsrfError";
+    this.aboutTheAddress = aboutTheAddress;
   }
 }
 
@@ -128,7 +143,7 @@ async function assertHostnameAllowed(hostname: string): Promise<void> {
   }
 
   if (BLOCKED_HOSTNAMES.has(normalized)) {
-    throw new SsrfError(`Blocked hostname: ${hostname}`);
+    throw new SsrfError(`Blocked hostname: ${hostname}`, true);
   }
 
   // A bare IP literal in the URL — check it directly.
@@ -163,14 +178,12 @@ async function assertHostnameAllowed(hostname: string): Promise<void> {
  */
 function assertIpAllowed(ip: string): void {
   if (!ipaddr.isValid(ip)) {
-    throw new SsrfError(`Invalid IP address: ${ip}`);
+    throw new SsrfError(`Invalid IP address: ${ip}`, true);
   }
   const parsed = ipaddr.parse(ip);
   const range = parsed.range();
   if (!ALLOWED_RANGES.has(range)) {
-    throw new SsrfError(
-      `Blocked IP range '${range}' for ${ip}`,
-    );
+    throw new SsrfError(`Blocked IP range '${range}' for ${ip}`, true);
   }
 }
 

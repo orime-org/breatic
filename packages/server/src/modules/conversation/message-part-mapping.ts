@@ -17,6 +17,7 @@
  */
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
+import { FAILURE_LINES } from "@breatic/shared";
 import type { MessageData, MessagePart, StoredMessageMetadata } from "@breatic/shared";
 
 /** What one message's parts look like on the wire. */
@@ -59,11 +60,23 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
   // Written only in the state that has one. A pending row carrying an empty
   // output would read as a tool that answered with nothing.
   if (status === "success") stored.output = part.output;
-  // Nothing is written for an error here. What the wire carries is the SDK's
-  // one generic line for every error it streams, deliberately, because that
-  // channel also carries provider failures naming endpoints and keys. The
-  // turn puts the real detail on afterwards, from the callback handed the
-  // error itself.
+  if (status === "error") {
+    // What the SDK put here, which the turn overwrites when it has something
+    // better. Usually that is its one generic line for every error it
+    // streams -- deliberately generic, because that channel also carries
+    // provider failures naming endpoints and keys -- and the turn replaces it
+    // from the callback handed the error itself.
+    //
+    // For one kind of failure this IS the better answer: a call whose
+    // arguments the model shaped wrongly is refused at the door, before any
+    // tool runs, so no callback ever fires and what the SDK wrote here (which
+    // schema the input failed) is the only account of it there is.
+    stored.failure = {
+      kind: "tool_failed",
+      forModel: "errorText" in part && part.errorText !== undefined ? part.errorText : "",
+      readerKey: FAILURE_LINES.generic,
+    };
+  }
   return stored;
 }
 
