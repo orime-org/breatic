@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   render as rtlRender,
   screen,
+  within,
   type RenderOptions,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -106,6 +107,19 @@ describe('TopBar', () => {
   it('shows the credits chip with the credit count', () => {
     setup({ credits: 7 });
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('7');
+  });
+
+  it('reads out a negative balance when the studio owes', () => {
+    setup({ credits: -320 });
+    expect(screen.getByTestId('credits-chip')).toHaveTextContent('-320');
+  });
+
+  it('carries nothing to press — it is a readout', () => {
+    // Everyone working in the project sees how much its pool has left.
+    // Topping up is an account-level act and lives on the account page.
+    setup({ credits: 7 });
+    const chip = screen.getByTestId('credits-chip');
+    expect(within(chip).queryByRole('button')).toBeNull();
   });
 
   it('title double-click swaps to <input>; typing + Enter commits the new name', async () => {
