@@ -153,13 +153,15 @@ export async function grantFromPayment(input: {
  * locks, then locked one at a time in that same order — a fixed order, so two
  * concurrent charges on one studio queue up instead of each holding half of
  * what the other needs and deadlocking. Each lock is taken on the primary key
- * alone and everything that decides eligibility is re-read afterwards:
- * Postgres re-evaluates a `FOR UPDATE` predicate once the lock is granted and
- * skips rows that no longer match, so a predicate mentioning `lifecycle` or
- * `designated_studio_id` would come back empty exactly when a concurrent
- * writer had touched the row. Re-checking the designation matters on its own:
- * without it, a lot reassigned between being chosen and being locked would
- * still be charged to the studio that just lost it.
+ * alone, and the three things a concurrent writer can change are re-read once
+ * it is held: the lifecycle, the designation, and what is left. The key alone
+ * is what the lock can name, because Postgres re-evaluates a `FOR UPDATE`
+ * predicate once the lock is granted and skips rows that no longer match — a
+ * predicate mentioning `lifecycle` or `designated_studio_id` would come back
+ * empty exactly when a concurrent writer had touched the row. Re-checking the
+ * designation matters on its own: without it, a lot reassigned between being
+ * chosen and being locked would still be charged to the studio that just lost
+ * it.
  *
  * Only as many lots are locked as the charge needs.
  * @param input - What to charge and on whose behalf.

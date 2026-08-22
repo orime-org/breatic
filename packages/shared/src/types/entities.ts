@@ -412,9 +412,10 @@ export interface CreditLotEntity {
  * One movement of credits. Append-only: rows are never edited or deleted.
  *
  * `payerUserId` is whose credits moved, `actorUserId` is who spent them, and
- * in a team they are routinely different people. `lotId` is absent only when
- * payments are disabled, where usage is recorded but no purchase is drawn
- * down.
+ * in a team they are routinely different people. `lotId` is absent in the
+ * three situations where usage is recorded but no purchase is drawn down:
+ * payments disabled, a route that carries no project to pick a pool from,
+ * and a studio with nothing spendable left.
  */
 export interface CreditLedgerEntryEntity {
   id: string;
