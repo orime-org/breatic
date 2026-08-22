@@ -70,6 +70,13 @@ const KNOWN_LINES = new Set<string>(Object.values(FAILURE_LINES));
  * The wire carries this key as a bare string on a field the SDK defines and
  * fills in itself when nothing else does. Asking the table is how a reader
  * tells our key from whatever else may arrive there.
+ *
+ * A true answer says the key is ours, not that it is about a tool. The one
+ * callback that fills that field serves three chunk types, and the third is
+ * the stream's own error frame -- a turn that never got going carries a key
+ * from this table too, because that callback has no way to tell which of the
+ * three it is answering for. What kind of failure it was is the chunk type,
+ * and reading it is task #134.
  * @param value - Whatever arrived where a key was expected.
  * @returns True when it is a key from the table.
  */

@@ -14,7 +14,14 @@ export type ChatRole = 'user' | 'assistant' | 'system';
 export interface ToolCall {
   id: string;
   name: string;
-  args: Record<string, unknown>;
+  /**
+   * What the model sent this call.
+   *
+   * A string when the arguments would not parse as JSON: the call is refused
+   * before it runs and what arrived is kept as it was, which is the only form
+   * of it there is.
+   */
+  args: Record<string, unknown> | string;
   result?: unknown;
   /** How far this use of the tool got, as the store recorded it. */
   status: 'pending' | 'success' | 'error';

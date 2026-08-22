@@ -50,7 +50,13 @@ import ipaddr from "ipaddr.js";
 import { getAgentConfig } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
 
-/** Error thrown when a URL would reach a forbidden host or IP. */
+/**
+ * What this guard refuses a URL with, whatever the reason.
+ *
+ * Not only forbidden hosts: a name the resolver turns down ends here too, so
+ * that callers reading this type get every fact the guard established about
+ * the address. Which kind it was is `aboutTheAddress` below.
+ */
 export class SsrfError extends Error {
   /**
    * Whether this refusal is about which address the URL points at.

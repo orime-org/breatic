@@ -80,7 +80,7 @@ export function toChatMessage(
       toolCalls.push({
         id: part.toolCallId,
         name: getToolName(part),
-        args: (part.input ?? {}) as Record<string, unknown>,
+        args: (part.input ?? {}) as ToolCall['args'],
         status,
         ...(status === 'success' ? { result: part.output as string } : {}),
         ...cutShort,
